@@ -2,13 +2,9 @@
 
 import React, { useCallback, useMemo, useState } from "react";
 import { Box, Button, Flex, Tooltip } from "@chakra-ui/react";
-import { LuEye } from "react-icons/lu";
+import { VscArchive, VscDiscard, VscEye, VscLibrary, VscNewFile } from "react-icons/vsc";
+import { CollapseAllIconGlyph, ExpandAllIconGlyph } from "../../shared/components/Icons";
 import { getSettings } from "../../shared/settings";
-import {
-    CollapseAllIconGlyph,
-    ExpandAllIconGlyph,
-    ShowDiffIconGlyph,
-} from "../../shared/components/Icons";
 import { ContextMenu, type MenuItem } from "../../shared/components/ContextMenu";
 import { RefreshButton } from "../../shared/components/RefreshButton";
 import { ToolbarIconButton } from "../../shared/components/ToolbarIconButton";
@@ -104,19 +100,14 @@ export function Toolbar({
             <ToolbarIconButton
                 label={t("common.rollback")}
                 onClick={onRollback}
-                color="#b8adff"
-                icon={toolbarIcon(
-                    <path
-                        fill="currentColor"
-                        d="M2.5 2l3.068 3.069L4.856 5.78l.707-.707L3.594 3.1H7A4.505 4.505 0 0 1 11.5 7.609 4.505 4.505 0 0 1 7 12.109H3.5v1H7a5.506 5.506 0 0 0 5.5-5.5A5.506 5.506 0 0 0 7 2.109H3.594l1.97-1.97-.708-.707L1.788 2.5z"
-                    />,
-                )}
+                color="#f2c46d"
+                icon={<VscDiscard size={16} />}
             />
             <ToolbarIconButton
                 label={t("common.viewOptions")}
                 onClick={handleOpenViewMenu}
                 color="#8fd5ff"
-                icon={<LuEye size={16} />}
+                icon={<VscEye size={16} />}
             />
             {viewMenuPosition && (
                 <ContextMenu
@@ -133,50 +124,50 @@ export function Toolbar({
                 label={t("common.stashChanges")}
                 onClick={onStash}
                 color="#ea8fb3"
-                icon={toolbarIcon(
-                    <path
-                        fill="currentColor"
-                        d="M14.5 1h-13A1.5 1.5 0 0 0 0 2.5v2A1.5 1.5 0 0 0 1 5.95V13.5A1.5 1.5 0 0 0 2.5 15h11a1.5 1.5 0 0 0 1.5-1.5V5.95A1.5 1.5 0 0 0 16 4.5v-2A1.5 1.5 0 0 0 14.5 1zM14 13.5a.5.5 0 0 1-.5.5h-11a.5.5 0 0 1-.5-.5V6h12v7.5zm1-9a.5.5 0 0 1-.5.5h-13a.5.5 0 0 1-.5-.5v-2a.5.5 0 0 1 .5-.5h13a.5.5 0 0 1 .5.5v2zM6 9h4v1H6V9z"
-                    />,
-                )}
+                icon={<VscArchive size={16} />}
             />
             {onOpenShelfMenu ? (
                 <ToolbarIconButton
                     label={t("shelf.action.toolbar")}
                     onClick={onOpenShelfMenu}
-                    color="#ea8fb3"
-                    icon={toolbarIcon(
-                        <path
-                            fill="currentColor"
-                            d="M1.5 3.5h13v9h-13zM3 1.5h10v2H3zm1.5 5h7v1h-7zm-2 4h11v1h-11z"
-                        />,
-                    )}
+                    color="#c8a2ff"
+                    icon={<VscLibrary size={16} />}
                 />
             ) : null}
             <ToolbarSeparator />
             <ToolbarIconButton
                 label={t("common.showDiffPreview")}
                 onClick={onShowDiff}
-                color="#8fd5ff"
-                icon={toolbarIcon(<ShowDiffIconGlyph />)}
+                color="#b8adff"
+                icon={<VscNewFile size={16} />}
             />
             <ToolbarIconButton
                 label={t("common.expandAll")}
                 onClick={onExpandAll}
                 color="#f3b1cf"
-                icon={toolbarIcon(<ExpandAllIconGlyph />)}
+                icon={
+                    <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden>
+                        <ExpandAllIconGlyph />
+                    </svg>
+                }
             />
             <ToolbarIconButton
                 label={t("common.collapseAll")}
                 onClick={onCollapseAll}
                 color="#f3b1cf"
-                icon={toolbarIcon(<CollapseAllIconGlyph />)}
+                icon={
+                    <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden>
+                        <CollapseAllIconGlyph />
+                    </svg>
+                }
             />
             {showAbortMerge ? (
                 <>
                     <ToolbarSeparator />
                     <ToolbarButton label={t("merge.action.abortMerge")} onClick={onAbortMerge}>
-                        <path fill="currentColor" d="M4 4h8v8H4z" />
+                        <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+                            <path fill="currentColor" d="M4 4h8v8H4z" />
+                        </svg>
                     </ToolbarButton>
                 </>
             ) : null}
@@ -213,14 +204,7 @@ function CheckMark(): React.ReactElement {
     );
 }
 
-function toolbarIcon(glyph: React.ReactNode): React.ReactElement {
-    return (
-        <svg width="16" height="16" viewBox="0 0 16 16">
-            {glyph}
-        </svg>
-    );
-}
-
+/** Renders the abort-merge action with a Chakra-compatible element icon. */
 function ToolbarButton({
     label,
     onClick,
@@ -228,7 +212,7 @@ function ToolbarButton({
 }: {
     label: string;
     onClick: (event: React.MouseEvent<HTMLButtonElement>) => void;
-    children?: React.ReactNode;
+    children?: React.ReactElement;
 }): React.ReactElement {
     const { hoverDelay, tooltipsEnabled } = getSettings();
     return (
@@ -243,7 +227,7 @@ function ToolbarButton({
                 variant="danger"
                 size="sm"
                 onClick={onClick}
-                leftIcon={toolbarIcon(children)}
+                leftIcon={children}
                 minW="auto"
                 h="24px"
                 px="8px"

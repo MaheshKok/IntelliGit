@@ -327,5 +327,6 @@
     "stash.dialog.invalidBranch": "Insira um nome de ramo válido.",
     "stash.fileAction.openDiff": "Abrir diferenças",
     "stash.fileAction.editSource": "Editar fonte",
-    "stash.fileAction.cherryPickSelectedChanges": "Fazer cherry-pick das alterações selecionadas"
+    "stash.fileAction.cherryPickSelectedChanges": "Fazer cherry-pick das alterações selecionadas",
+    "a11y.resizeRepositoryColumn": "Redimensionar a coluna do repositório"
 }

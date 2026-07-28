@@ -234,6 +234,7 @@ export function useUnifiedMessages(params: UseUnifiedMessagesParams): void {
                                 : undefined;
                         const normalized = normalizeSectionWidths(
                             {
+                                repositoryWidth: data.repositoryWidth,
                                 branchWidth: data.branchWidth,
                                 graphWidth: data.graphWidth,
                                 infoWidth: data.infoWidth,

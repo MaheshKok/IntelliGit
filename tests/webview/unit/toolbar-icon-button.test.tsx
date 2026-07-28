@@ -6,8 +6,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ToolbarIconButton } from "../../../src/webviews/react/shared/components/ToolbarIconButton";
 import { ShelfToolbar } from "../../../src/webviews/react/commit-panel/components/ShelfToolbar";
 import { StashToolbar } from "../../../src/webviews/react/commit-panel/components/StashToolbar";
+import { Toolbar } from "../../../src/webviews/react/commit-panel/components/Toolbar";
 import theme from "../../../src/webviews/react/commit-panel/theme";
 import { initReactDomTestEnvironment, mount, unmount } from "../../helpers/reactDomTestUtils";
+import { installWebviewI18n } from "../../helpers/webviewI18nTestUtils";
 
 vi.mock("@chakra-ui/react", async (importOriginal) => {
     const chakra = await importOriginal<typeof import("@chakra-ui/react")>();
@@ -46,7 +48,51 @@ function renderButton(overrides: Partial<React.ComponentProps<typeof ToolbarIcon
     return { ...mounted, onClick };
 }
 
+function toolbarGlyph(container: ParentNode, label: string): SVGElement {
+    const button = container.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`);
+    const glyph = button?.querySelector<SVGElement>("svg");
+    if (!glyph) throw new Error(`Missing ${label} toolbar glyph`);
+    return glyph;
+}
+
+function expectDirectCodicon(container: ParentNode, label: string): SVGElement {
+    const button = container.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`);
+    const icons = button?.querySelectorAll<SVGElement>("svg");
+    expect(icons).toHaveLength(1);
+    const glyph = icons?.[0] ?? toolbarGlyph(container, label);
+    expect(glyph.getAttribute("width")).toBe("16");
+    expect(glyph.getAttribute("height")).toBe("16");
+    expect(glyph.getAttribute("fill")).toBe("currentColor");
+    return glyph;
+}
+
+function expectLegacyTreeControlGlyph(
+    container: ParentNode,
+    label: string,
+    pathData: string,
+): SVGElement {
+    const button = container.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`);
+    const icons = button?.querySelectorAll<SVGElement>("svg");
+    expect(icons).toHaveLength(1);
+    const glyph = icons?.[0] ?? toolbarGlyph(container, label);
+    expect(glyph.getAttribute("width")).toBe("16");
+    expect(glyph.getAttribute("height")).toBe("16");
+    expect(glyph.getAttribute("viewBox")).toBe("0 0 16 16");
+    expect(glyph.getAttribute("fill")).toBeNull();
+    const path = glyph.querySelector("path");
+    expect(path?.getAttribute("fill")).toBe("currentColor");
+    expect(path?.getAttribute("fill-rule")).toBe("evenodd");
+    expect(path?.getAttribute("d")).toBe(pathData);
+    return glyph;
+}
+
+const EXPAND_ALL_PATH =
+    "M5.828 10.172a.5.5 0 0 0-.707 0l-4.096 4.096V11.5a.5.5 0 0 0-1 0v3.975a.5.5 0 0 0 .5.5H4.5a.5.5 0 0 0 0-1H1.732l4.096-4.096a.5.5 0 0 0 0-.707m4.344-4.344a.5.5 0 0 0 .707 0l4.096-4.096V4.5a.5.5 0 1 0 1 0V.525a.5.5 0 0 0-.5-.5H11.5a.5.5 0 0 0 0 1h2.768l-4.096 4.096a.5.5 0 0 0 0 .707";
+const COLLAPSE_ALL_PATH =
+    "M.172 15.828a.5.5 0 0 0 .707 0l4.096-4.096V14.5a.5.5 0 1 0 1 0v-3.975a.5.5 0 0 0-.5-.5H1.5a.5.5 0 0 0 0 1h2.768L.172 15.121a.5.5 0 0 0 0 .707M15.828.172a.5.5 0 0 0-.707 0l-4.096 4.096V1.5a.5.5 0 1 0-1 0v3.975a.5.5 0 0 0 .5.5H14.5a.5.5 0 0 0 0-1h-2.768L15.828.879a.5.5 0 0 0 0-.707";
+
 beforeEach(() => {
+    installWebviewI18n();
     window.intelligitSettings = {
         hoverDelay: 300,
         tooltipsEnabled: true,
@@ -110,6 +156,88 @@ describe("ToolbarIconButton", () => {
         unmount(root, container);
     });
 
+    it("keeps Codicons for the unchanged Commit toolbar actions", () => {
+        const { root, container } = mount(
+            <ChakraProvider theme={theme}>
+                <Toolbar
+                    onRefresh={vi.fn()}
+                    groupByDir={false}
+                    showIgnoredFiles={false}
+                    onRollback={vi.fn()}
+                    onToggleGroupBy={vi.fn()}
+                    onToggleShowIgnoredFiles={vi.fn()}
+                    onStash={vi.fn()}
+                    onOpenShelfMenu={vi.fn()}
+                    onShowDiff={vi.fn()}
+                    onExpandAll={vi.fn()}
+                    onCollapseAll={vi.fn()}
+                    showAbortMerge={false}
+                    onAbortMerge={vi.fn()}
+                />
+            </ChakraProvider>,
+        );
+
+        for (const label of [
+            "Refresh",
+            "Rollback",
+            "View Options",
+            "Stash Changes",
+            "Shelf actions",
+            "Show Diff Preview",
+        ]) {
+            expectDirectCodicon(container, label);
+        }
+        expectLegacyTreeControlGlyph(container, "Expand All", EXPAND_ALL_PATH);
+        expectLegacyTreeControlGlyph(container, "Collapse All", COLLAPSE_ALL_PATH);
+
+        unmount(root, container);
+    });
+
+    it("uses semantic accent colors for Commit toolbar actions", () => {
+        window.intelligitSettings = { ...window.intelligitSettings, iconStyle: "color" };
+        const { root, container } = mount(
+            <ChakraProvider theme={theme}>
+                <Toolbar
+                    onRefresh={vi.fn()}
+                    groupByDir={false}
+                    showIgnoredFiles={false}
+                    onRollback={vi.fn()}
+                    onToggleGroupBy={vi.fn()}
+                    onToggleShowIgnoredFiles={vi.fn()}
+                    onStash={vi.fn()}
+                    onOpenShelfMenu={vi.fn()}
+                    onShowDiff={vi.fn()}
+                    onExpandAll={vi.fn()}
+                    onCollapseAll={vi.fn()}
+                    showAbortMerge={false}
+                    onAbortMerge={vi.fn()}
+                />
+            </ChakraProvider>,
+        );
+
+        expect(expectDirectCodicon(container, "Rollback").style.color).toBe("rgb(242, 196, 109)");
+        expect(expectDirectCodicon(container, "View Options").style.color).toBe(
+            "rgb(143, 213, 255)",
+        );
+        expect(expectDirectCodicon(container, "Stash Changes").style.color).toBe(
+            "rgb(234, 143, 179)",
+        );
+        expect(expectDirectCodicon(container, "Shelf actions").style.color).toBe(
+            "rgb(200, 162, 255)",
+        );
+        expect(expectDirectCodicon(container, "Show Diff Preview").style.color).toBe(
+            "rgb(184, 173, 255)",
+        );
+        expect(expectLegacyTreeControlGlyph(container, "Expand All", EXPAND_ALL_PATH).style.color).toBe(
+            "rgb(243, 177, 207)",
+        );
+        expect(
+            expectLegacyTreeControlGlyph(container, "Collapse All", COLLAPSE_ALL_PATH).style.color,
+        ).toBe("rgb(243, 177, 207)");
+
+        unmount(root, container);
+    });
+
     it("resolves icon color and spin state through one contract for every toolbar", () => {
         // iconStyle "color" honors the per-icon accent; spin always advertises
         // data-refreshing, no matter which toolbar renders the button.
@@ -153,11 +281,21 @@ describe("ToolbarIconButton", () => {
                 />
             </ChakraProvider>,
         );
-        const stashIcons = stash.container.querySelectorAll("svg");
-        expect(stashIcons[1]?.style.color).toBe("rgb(143, 213, 255)");
-        expect(stashIcons[2]?.style.color).toBe("rgb(143, 213, 255)");
-        expect(stashIcons[3]?.style.color).toBe("rgb(243, 177, 207)");
-        expect(stashIcons[4]?.style.color).toBe("rgb(243, 177, 207)");
+        expectDirectCodicon(stash.container, "Refresh");
+        expect(expectDirectCodicon(stash.container, "Show Diff").style.color).toBe(
+            "rgb(184, 173, 255)",
+        );
+        expect(expectDirectCodicon(stash.container, "Group by Directory").style.color).toBe(
+            "rgb(143, 213, 255)",
+        );
+        expect(expectLegacyTreeControlGlyph(stash.container, "Expand All", EXPAND_ALL_PATH).style.color).toBe(
+            "rgb(243, 177, 207)",
+        );
+        expect(
+            expectLegacyTreeControlGlyph(stash.container, "Collapse All", COLLAPSE_ALL_PATH).style.color,
+        ).toBe(
+            "rgb(243, 177, 207)",
+        );
         unmount(stash.root, stash.container);
 
         const shelf = mount(
@@ -176,11 +314,21 @@ describe("ToolbarIconButton", () => {
                 />
             </ChakraProvider>,
         );
-        const shelfIcons = shelf.container.querySelectorAll("svg");
-        expect(shelfIcons[1]?.style.color).toBe("rgb(143, 213, 255)");
-        expect(shelfIcons[2]?.style.color).toBe("rgb(243, 177, 207)");
-        expect(shelfIcons[3]?.style.color).toBe("rgb(243, 177, 207)");
-        expect(shelfIcons[4]?.style.color).toBe("rgb(243, 177, 207)");
+        expectDirectCodicon(shelf.container, "Refresh");
+        expect(expectDirectCodicon(shelf.container, "Group by Directory").style.color).toBe(
+            "rgb(143, 213, 255)",
+        );
+        expect(expectLegacyTreeControlGlyph(shelf.container, "Expand All", EXPAND_ALL_PATH).style.color).toBe(
+            "rgb(243, 177, 207)",
+        );
+        expect(
+            expectLegacyTreeControlGlyph(shelf.container, "Collapse All", COLLAPSE_ALL_PATH).style.color,
+        ).toBe(
+            "rgb(243, 177, 207)",
+        );
+        expect(expectDirectCodicon(shelf.container, "More Options").style.color).toBe(
+            "var(--vscode-icon-foreground)",
+        );
         unmount(shelf.root, shelf.container);
     });
 });

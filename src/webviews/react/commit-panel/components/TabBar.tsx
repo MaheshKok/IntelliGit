@@ -23,6 +23,8 @@ interface Props {
     onFetch?: () => void;
     onPull?: () => void;
     onPush?: () => void;
+    /** Optional undocked-only action that returns IntelliGit to the docked views. */
+    onDock?: () => void;
     commitContent: React.ReactNode;
     stashContent: React.ReactNode;
     shelfContent?: React.ReactNode;
@@ -63,6 +65,7 @@ export function TabBar({
     onFetch,
     onPull,
     onPush,
+    onDock,
     commitContent,
     stashContent,
     shelfContent,
@@ -207,6 +210,22 @@ export function TabBar({
                         </GitActionButton>
                     </Flex>
                 ) : null}
+                {onDock ? (
+                    <Flex align="center" ml={gitActions ? 0 : "auto"} pr="6px">
+                        <GitActionButton
+                            label={t("common.dockIntelliGit")}
+                            title={t("common.dockIntelliGit")}
+                            onClick={onDock}
+                            color="#8fd5ff"
+                            standardColor="var(--vscode-button-foreground)"
+                        >
+                            <path
+                                fill="currentColor"
+                                d="M2 3h12v10H2V3zm1 1v8h10V4H3zm1 1h3v6H4V5zm4 0h4v2H8V5z"
+                            />
+                        </GitActionButton>
+                    </Flex>
+                ) : null}
             </Flex>
             <TabPanels flex={1} overflow="hidden" display="flex" flexDirection="column">
                 {tabs.map((tab) => (
@@ -228,14 +247,18 @@ export function TabBar({
 
 function GitActionButton({
     label,
+    title,
     onClick,
     color,
+    standardColor = "var(--vscode-icon-foreground)",
     disabled = false,
     children,
 }: {
     label: string;
+    title?: string;
     onClick: () => void;
     color: string;
+    standardColor?: string;
     disabled?: boolean;
     children: React.ReactNode;
 }): React.ReactElement {
@@ -243,7 +266,7 @@ function GitActionButton({
     const resolvedColor = disabled
         ? "var(--vscode-disabledForeground)"
         : iconStyle === "standard"
-          ? "var(--vscode-icon-foreground)"
+          ? standardColor
           : color;
     return (
         <Tooltip
@@ -255,6 +278,7 @@ function GitActionButton({
         >
             <IconButton
                 aria-label={label}
+                title={tooltipsEnabled ? undefined : title}
                 aria-disabled={disabled || undefined}
                 isDisabled={disabled}
                 variant="toolbarGhost"

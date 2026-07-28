@@ -1659,6 +1659,7 @@ describe("view providers integration", () => {
 
         expect(postMessageSpy).toHaveBeenCalledWith({
             type: "columnWidths",
+            repositoryWidth: 168,
             branchWidth: 400,
             graphWidth: 300,
             infoWidth: 300,
@@ -1858,12 +1859,14 @@ describe("view providers integration", () => {
 
         await send({
             type: "columnWidths",
+            repositoryWidth: 180,
             branchWidth: 410,
             graphWidth: 510,
             infoWidth: 310,
             commitPanelWidth: 210,
         });
         expect(workspaceStore.update).toHaveBeenCalledWith("intelligit.undockedColumnWidths", {
+            repositoryWidth: 180,
             branchWidth: 410,
             graphWidth: 510,
             infoWidth: 310,

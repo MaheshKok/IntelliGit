@@ -33,6 +33,7 @@ interface CommitPanelPaneProps {
     showIgnoredFiles: boolean;
     onToggleGroupBy: () => void;
     onToggleShowIgnoredFiles: () => void;
+    onDock: () => void;
 }
 
 /**
@@ -65,6 +66,7 @@ export function CommitPanelPane({
     showIgnoredFiles,
     onToggleGroupBy,
     onToggleShowIgnoredFiles,
+    onDock,
 }: CommitPanelPaneProps): React.ReactElement {
     const vscode = getVsCodeApi();
     return (
@@ -84,6 +86,7 @@ export function CommitPanelPane({
                     onFetch={onFetch}
                     onPull={onPull}
                     onPush={onPush}
+                    onDock={onDock}
                     commitContent={
                         <CommitTab
                             files={cpState.files}

@@ -24,7 +24,6 @@ import { t } from "../shared/i18n";
 import { ThemeIconFontFaces } from "../shared/components/ThemeIconFontFaces";
 import { CommitPanelPane } from "./CommitPanelPane";
 import { RepositoryColumn } from "./RepositoryColumn";
-import { UndockedHeader } from "./UndockedHeader";
 import type { CommitChecksValue, CommitPanelState } from "./commitPanelState";
 
 /**
@@ -38,6 +37,7 @@ export interface UndockedLayoutProps {
     cpState: CommitPanelState;
     checkedPaths: Set<string>;
     commitPanelPosition: "left" | "right";
+    repositoryWidth: number;
     commitPanelWidth: number;
     branchWidth: number;
     graphWidth: number;
@@ -74,6 +74,8 @@ export interface UndockedLayoutProps {
     isSomeChecked: (files: WorkingFile[]) => boolean;
     layoutRef: React.MutableRefObject<HTMLDivElement | null>;
     markWidthsHydrated: () => void;
+    onRepositoryDividerMouseDown: (e: React.MouseEvent) => void;
+    onRepositoryDividerKeyDown: (e: React.KeyboardEvent) => void;
     onLeftCommitPanelDividerMouseDown: (e: React.MouseEvent) => void;
     onLeftCommitPanelDividerKeyDown: (e: React.KeyboardEvent) => void;
     onBranchDividerMouseDown: (e: React.MouseEvent) => void;
@@ -122,6 +124,7 @@ export function UndockedLayout(props: UndockedLayoutProps): React.ReactElement {
         cpState,
         checkedPaths,
         commitPanelPosition,
+        repositoryWidth,
         commitPanelWidth,
         branchWidth,
         graphWidth,
@@ -158,6 +161,8 @@ export function UndockedLayout(props: UndockedLayoutProps): React.ReactElement {
         isSomeChecked,
         layoutRef,
         markWidthsHydrated,
+        onRepositoryDividerMouseDown,
+        onRepositoryDividerKeyDown,
         onLeftCommitPanelDividerMouseDown,
         onLeftCommitPanelDividerKeyDown,
         onBranchDividerMouseDown,
@@ -198,12 +203,31 @@ export function UndockedLayout(props: UndockedLayoutProps): React.ReactElement {
         <ChakraProvider theme={theme}>
             <ThemeIconFontFaces fonts={iconFonts} />
             <Box display="flex" height="100vh" overflow="hidden" flexDirection="column">
-                <UndockedHeader onDock={onDock} />
                 <Box ref={layoutRef} display="flex" flex={1} overflow="hidden" minHeight={0}>
                     <RepositoryColumn
+                        width={repositoryWidth}
                         repositories={repositories}
                         selectedRepositoryRoot={selectedRepositoryRoot}
                         onSelectRepository={handleSelectRepository}
+                    />
+
+                    <Box
+                        as="button"
+                        type="button"
+                        aria-label={t("a11y.resizeRepositoryColumn")}
+                        data-testid="undocked-repository-divider"
+                        width="4px"
+                        flexShrink={0}
+                        cursor="col-resize"
+                        bg="var(--vscode-panel-border)"
+                        border={0}
+                        p={0}
+                        onMouseDown={(e: React.MouseEvent) => {
+                            markWidthsHydrated();
+                            onRepositoryDividerMouseDown(e);
+                        }}
+                        onKeyDown={onRepositoryDividerKeyDown}
+                        _hover={{ bg: "var(--vscode-focusBorder, #007acc)" }}
                     />
 
                     {/* Divider and commit panel — only on left side */}
@@ -233,6 +257,7 @@ export function UndockedLayout(props: UndockedLayoutProps): React.ReactElement {
                                 showIgnoredFiles={showIgnoredFiles}
                                 onToggleGroupBy={onToggleGroupBy}
                                 onToggleShowIgnoredFiles={onToggleShowIgnoredFiles}
+                                onDock={onDock}
                             />
 
                             <Box
@@ -420,6 +445,7 @@ export function UndockedLayout(props: UndockedLayoutProps): React.ReactElement {
                                 showIgnoredFiles={showIgnoredFiles}
                                 onToggleGroupBy={onToggleGroupBy}
                                 onToggleShowIgnoredFiles={onToggleShowIgnoredFiles}
+                                onDock={onDock}
                             />
                         </>
                     )}

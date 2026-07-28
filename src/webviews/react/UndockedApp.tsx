@@ -219,7 +219,7 @@ function App(): React.ReactElement {
     const [sectionWidths, setSectionWidthsState] = useState<SectionWidths>(
         () => initialWidths.current!,
     );
-    const { branchWidth, graphWidth, infoWidth, commitPanelWidth } = sectionWidths;
+    const { repositoryWidth, branchWidth, graphWidth, infoWidth, commitPanelWidth } = sectionWidths;
     const layoutRef = useRef<HTMLDivElement | null>(null);
     const sectionWidthsRef = useRef(sectionWidths);
     sectionWidthsRef.current = sectionWidths;
@@ -308,6 +308,12 @@ function App(): React.ReactElement {
         "infoWidth",
         "commitPanelWidth",
     );
+    const onRepositoryDividerMouseDown = useColumnPairDrag(
+        sectionWidths,
+        setSectionWidths,
+        "repositoryWidth",
+        commitPanelPosition === "left" ? "commitPanelWidth" : "branchWidth",
+    );
     const handleSectionPairKeyDown = useCallback(
         (event: React.KeyboardEvent, firstKey: SectionWidthKey, secondKey: SectionWidthKey) => {
             if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
@@ -337,16 +343,32 @@ function App(): React.ReactElement {
             handleSectionPairKeyDown(event, "infoWidth", "commitPanelWidth"),
         [handleSectionPairKeyDown],
     );
+    const onRepositoryDividerKeyDown = useCallback(
+        (event: React.KeyboardEvent) =>
+            handleSectionPairKeyDown(
+                event,
+                "repositoryWidth",
+                commitPanelPosition === "left" ? "commitPanelWidth" : "branchWidth",
+            ),
+        [commitPanelPosition, handleSectionPairKeyDown],
+    );
 
     // --- Persist column widths ---
     useEffect(() => {
         try {
             const prev = vscode.getState() ?? {};
-            vscode.setState({ ...prev, branchWidth, graphWidth, infoWidth, commitPanelWidth });
+            vscode.setState({
+                ...prev,
+                repositoryWidth,
+                branchWidth,
+                graphWidth,
+                infoWidth,
+                commitPanelWidth,
+            });
         } catch {
             /* ignore */
         }
-    }, [branchWidth, graphWidth, infoWidth, commitPanelWidth]);
+    }, [repositoryWidth, branchWidth, graphWidth, infoWidth, commitPanelWidth]);
 
     // --- Send column widths to extension for cross-session persistence ---
     const widthSendTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -358,6 +380,7 @@ function App(): React.ReactElement {
         widthSendTimer.current = setTimeout(() => {
             vscode.postMessage({
                 type: "columnWidths",
+                repositoryWidth,
                 branchWidth,
                 graphWidth,
                 infoWidth,
@@ -367,7 +390,7 @@ function App(): React.ReactElement {
         return () => {
             if (widthSendTimer.current) clearTimeout(widthSendTimer.current);
         };
-    }, [branchWidth, graphWidth, infoWidth, commitPanelWidth]);
+    }, [repositoryWidth, branchWidth, graphWidth, infoWidth, commitPanelWidth]);
 
     // --- Persist commit-panel view options ---
     useEffect(() => {
@@ -437,6 +460,7 @@ function App(): React.ReactElement {
             cpState={cpState}
             checkedPaths={checkedPaths}
             commitPanelPosition={commitPanelPosition}
+            repositoryWidth={repositoryWidth}
             commitPanelWidth={commitPanelWidth}
             branchWidth={branchWidth}
             graphWidth={graphWidth}
@@ -473,6 +497,8 @@ function App(): React.ReactElement {
             isSomeChecked={isSomeChecked}
             layoutRef={layoutRef}
             markWidthsHydrated={markWidthsHydrated}
+            onRepositoryDividerMouseDown={onRepositoryDividerMouseDown}
+            onRepositoryDividerKeyDown={onRepositoryDividerKeyDown}
             onLeftCommitPanelDividerMouseDown={onLeftCommitPanelDividerMouseDown}
             onLeftCommitPanelDividerKeyDown={onLeftCommitPanelDividerKeyDown}
             onBranchDividerMouseDown={onBranchDividerMouseDown}

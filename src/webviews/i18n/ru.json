@@ -334,5 +334,6 @@
     "stash.dialog.invalidBranch": "Введите допустимое имя ветки.",
     "stash.fileAction.openDiff": "Открыть различия",
     "stash.fileAction.editSource": "Редактировать исходный файл",
-    "stash.fileAction.cherryPickSelectedChanges": "Выполнить cherry-pick выбранных изменений"
+    "stash.fileAction.cherryPickSelectedChanges": "Выполнить cherry-pick выбранных изменений",
+    "a11y.resizeRepositoryColumn": "Изменить размер столбца репозитория"
 }
