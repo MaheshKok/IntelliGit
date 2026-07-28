@@ -16,7 +16,7 @@ import { installWebviewI18n } from "../../helpers/webviewI18nTestUtils";
 
 initReactDomTestEnvironment();
 
-function renderTabBar(shelfWarningCount: number) {
+function renderTabBar(shelfWarningCount: number, onDock?: () => void) {
     installWebviewI18n();
     return mount(
         <ChakraProvider theme={theme}>
@@ -26,6 +26,7 @@ function renderTabBar(shelfWarningCount: number) {
                 commitContent={<div />}
                 stashContent={<div />}
                 shelfContent={<div />}
+                onDock={onDock}
             />
         </ChakraProvider>,
     );
@@ -102,6 +103,25 @@ describe("shelf health badge and banner", () => {
         expect(badge).not.toBeNull();
         expect(badge?.textContent).toBe("3");
         unmount(root, container);
+    });
+
+    it("uses a native title only when toolbar tooltips are disabled", () => {
+        window.intelligitSettings = {
+            hoverDelay: 300,
+            tooltipsEnabled: true,
+            iconStyle: "standard",
+            commitWindowPosition: "left",
+        };
+        const enabled = renderTabBar(0, vi.fn());
+        const enabledDock = enabled.container.querySelector('button[aria-label="Dock IntelliGit"]');
+        expect(enabledDock?.getAttribute("title")).toBeNull();
+        unmount(enabled.root, enabled.container);
+
+        window.intelligitSettings = { ...window.intelligitSettings, tooltipsEnabled: false };
+        const disabled = renderTabBar(0, vi.fn());
+        const disabledDock = disabled.container.querySelector('button[aria-label="Dock IntelliGit"]');
+        expect(disabledDock?.getAttribute("title")).toBe("Dock IntelliGit");
+        unmount(disabled.root, disabled.container);
     });
 
     it("shows the warning banner, opens details listing kind and detail, and closes", () => {

@@ -320,5 +320,6 @@
     "stash.dialog.invalidBranch": "Geben Sie einen gültigen Branchnamen ein.",
     "stash.fileAction.openDiff": "Diff öffnen",
     "stash.fileAction.editSource": "Quelldatei bearbeiten",
-    "stash.fileAction.cherryPickSelectedChanges": "Ausgewählte Änderungen cherry-picken"
+    "stash.fileAction.cherryPickSelectedChanges": "Ausgewählte Änderungen cherry-picken",
+    "a11y.resizeRepositoryColumn": "Größe der Repositoryspalte ändern"
 }

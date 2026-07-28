@@ -1,12 +1,8 @@
 import React, { useState } from "react";
 import { Flex } from "@chakra-ui/react";
+import { VscKebabVertical, VscListTree } from "react-icons/vsc";
 import { ContextMenu } from "../../shared/components/ContextMenu";
-import {
-    CollapseAllIconGlyph,
-    ExpandAllIconGlyph,
-    GroupByDirectoryIconGlyph,
-    MoreOptionsIconGlyph,
-} from "../../shared/components/Icons";
+import { CollapseAllIconGlyph, ExpandAllIconGlyph } from "../../shared/components/Icons";
 import { RefreshButton } from "../../shared/components/RefreshButton";
 import { ToolbarIconButton } from "../../shared/components/ToolbarIconButton";
 import { t } from "../../shared/i18n";
@@ -23,14 +19,6 @@ export interface ShelfToolbarProps {
     onCollapseAll: () => void;
     onCleanUp: () => void;
     onToggleAlreadyUnshelved: () => void;
-}
-
-function icon(path: React.ReactNode): React.ReactElement {
-    return (
-        <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden>
-            {path}
-        </svg>
-    );
 }
 
 /** PyCharm-parity Shelf controls: three icon actions and one overflow trigger. */
@@ -76,29 +64,36 @@ export function ShelfToolbar({
             <RefreshButton isRefreshing={isRefreshing} onRefresh={onRefresh} />
             <ToolbarIconButton
                 label={t("shelf.action.groupBy")}
-                icon={icon(<GroupByDirectoryIconGlyph />)}
+                icon={<VscListTree size={16} />}
                 onClick={onToggleGroupBy}
                 pressed={groupByDir}
                 color="#8fd5ff"
             />
             <ToolbarIconButton
                 label={t("shelf.action.expandAll")}
-                icon={icon(<ExpandAllIconGlyph />)}
+                icon={
+                    <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden>
+                        <ExpandAllIconGlyph />
+                    </svg>
+                }
                 onClick={onExpandAll}
                 disabled={!canExpandOrCollapse}
                 color="#f3b1cf"
             />
             <ToolbarIconButton
                 label={t("shelf.action.collapseAll")}
-                icon={icon(<CollapseAllIconGlyph />)}
+                icon={
+                    <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden>
+                        <CollapseAllIconGlyph />
+                    </svg>
+                }
                 onClick={onCollapseAll}
                 disabled={!canExpandOrCollapse}
                 color="#f3b1cf"
             />
             <ToolbarIconButton
                 label={t("shelf.action.moreOptions")}
-                icon={icon(<MoreOptionsIconGlyph />)}
-                color="#f3b1cf"
+                icon={<VscKebabVertical size={16} />}
                 onClick={(event) => {
                     const rect = event.currentTarget.getBoundingClientRect();
                     setOverflow({ x: rect.left, y: rect.bottom });

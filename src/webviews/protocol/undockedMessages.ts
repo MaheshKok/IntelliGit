@@ -49,6 +49,8 @@ export type UnifiedInbound =
            * widths do not overwrite the user's persisted layout.
            */
           type: "columnWidths";
+          /** Repository selector width in CSS pixels from workspace-state persistence. */
+          repositoryWidth: number;
           /** Branch column width in CSS pixels from workspace-state persistence. */
           branchWidth: number;
           /** Commit graph column width in CSS pixels from workspace-state persistence. */
@@ -178,6 +180,8 @@ export type UnifiedOutbound =
     | {
           /** Layout persistence event sent after restored widths hydrate or a user drags. */
           type: "columnWidths";
+          /** Repository selector width in normalized CSS pixels. */
+          repositoryWidth: number;
           /** Branch column width in normalized CSS pixels. */
           branchWidth: number;
           /** Commit graph column width in normalized CSS pixels. */

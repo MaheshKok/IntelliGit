@@ -313,5 +313,6 @@
     "stash.dialog.invalidBranch": "请输入有效的分支名称。",
     "stash.fileAction.openDiff": "打开差异",
     "stash.fileAction.editSource": "编辑源文件",
-    "stash.fileAction.cherryPickSelectedChanges": "挑选选定的更改"
+    "stash.fileAction.cherryPickSelectedChanges": "挑选选定的更改",
+    "a11y.resizeRepositoryColumn": "调整存储库列大小"
 }

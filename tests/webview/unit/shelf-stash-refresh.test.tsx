@@ -43,6 +43,17 @@ function refreshGlyphStyle(container: ParentNode): string {
     return found.getAttribute("style") ?? "";
 }
 
+function expectDirectRefreshCodicon(container: ParentNode): void {
+    const glyphs = refreshButton(container).querySelectorAll<SVGElement>("svg");
+    expect(glyphs).toHaveLength(1);
+    const glyph = glyphs[0];
+    if (!glyph) throw new Error("Missing refresh glyph");
+    expect(glyph.getAttribute("width")).toBe("16");
+    expect(glyph.getAttribute("height")).toBe("16");
+    expect(glyph.getAttribute("viewBox")).toBe("0 0 16 16");
+    expect(glyph.getAttribute("fill")).toBe("currentColor");
+}
+
 function renderShelf(isRefreshing: boolean, onRefresh: () => void = vi.fn()) {
     return mount(
         <ChakraProvider theme={theme}>
@@ -130,10 +141,12 @@ describe("shelf and stash toolbars expose the same refresh control as commit", (
         };
         try {
             const idle = renderShelf(false);
+            expectDirectRefreshCodicon(idle.container);
             const idleStyle = refreshGlyphStyle(idle.container);
             unmount(idle.root, idle.container);
 
             const busy = renderShelf(true);
+            expectDirectRefreshCodicon(busy.container);
             const busyStyle = refreshGlyphStyle(busy.container);
 
             expect(idleStyle).toMatch(/rgb\(78,\s*199,\s*214\)/);

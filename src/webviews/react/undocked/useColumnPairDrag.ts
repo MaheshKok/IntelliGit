@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, type MouseEvent as ReactMouseEvent } from "react";
-import { MIN_SECTION_WIDTH, type SectionWidthKey, type SectionWidths } from "./sectionWidths";
+import { baseMinimumWidth, type SectionWidthKey, type SectionWidths } from "./sectionWidths";
 
 /**
  * Redistributes an adjacent section pair by a signed pixel delta while keeping
- * the pair total stable and preserving the same minimum-width behavior as drag.
+ * the pair total stable and honoring each pane's own minimum width.
  */
 export function resizeSectionPair(
     widths: SectionWidths,
@@ -14,8 +14,16 @@ export function resizeSectionPair(
     const firstStart = widths[firstKey];
     const secondStart = widths[secondKey];
     const pairTotal = firstStart + secondStart;
-    const pairMin = Math.min(MIN_SECTION_WIDTH, pairTotal / 2);
-    const nextFirst = Math.max(pairMin, Math.min(pairTotal - pairMin, firstStart + delta));
+    const minimumScale = Math.min(
+        1,
+        pairTotal / (baseMinimumWidth(firstKey) + baseMinimumWidth(secondKey)),
+    );
+    const firstMinimum = baseMinimumWidth(firstKey) * minimumScale;
+    const secondMinimum = baseMinimumWidth(secondKey) * minimumScale;
+    const nextFirst = Math.max(
+        firstMinimum,
+        Math.min(pairTotal - secondMinimum, firstStart + delta),
+    );
 
     return {
         ...widths,

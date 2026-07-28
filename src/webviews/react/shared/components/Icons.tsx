@@ -307,6 +307,7 @@ export function PullArrowIcon({
     );
 }
 
+/** Original diagonal expand control used by the Commit, Stash, and Shelf file trees. */
 export function ExpandAllIconGlyph(): React.ReactElement {
     return (
         <path
@@ -317,38 +318,13 @@ export function ExpandAllIconGlyph(): React.ReactElement {
     );
 }
 
-export function GroupByDirectoryIconGlyph(): React.ReactElement {
-    return (
-        <path fill="currentColor" d="M2 2h4v4H2V2zm8 0h4v4h-4V2zM2 10h4v4H2v-4zm8 0h4v4h-4v-4z" />
-    );
-}
-
+/** Original diagonal collapse control used by the Commit, Stash, and Shelf file trees. */
 export function CollapseAllIconGlyph(): React.ReactElement {
     return (
         <path
             fill="currentColor"
             fillRule="evenodd"
             d="M.172 15.828a.5.5 0 0 0 .707 0l4.096-4.096V14.5a.5.5 0 1 0 1 0v-3.975a.5.5 0 0 0-.5-.5H1.5a.5.5 0 0 0 0 1h2.768L.172 15.121a.5.5 0 0 0 0 .707M15.828.172a.5.5 0 0 0-.707 0l-4.096 4.096V1.5a.5.5 0 1 0-1 0v3.975a.5.5 0 0 0 .5.5H14.5a.5.5 0 0 0 0-1h-2.768L15.828.879a.5.5 0 0 0 0-.707"
-        />
-    );
-}
-
-/** Canonical 16px document-plus glyph for opening a diff preview. */
-export function ShowDiffIconGlyph(): React.ReactElement {
-    return (
-        <path
-            fill="currentColor"
-            d="M2 3.5A1.5 1.5 0 0 1 3.5 2h5.586a1.5 1.5 0 0 1 1.06.44l2.415 2.414A1.5 1.5 0 0 1 13 5.914V12.5a1.5 1.5 0 0 1-1.5 1.5h-8A1.5 1.5 0 0 1 2 12.5v-9zm1.5-.5a.5.5 0 0 0-.5.5v9a.5.5 0 0 0 .5.5h8a.5.5 0 0 0 .5-.5V5.914L9.086 2.5H3.5zM7 7V5h1v2h2v1H8v2H7V8H5V7h2z"
-        />
-    );
-}
-
-/** Overflow glyph shared by compact toolbar menus. */
-export function MoreOptionsIconGlyph(): React.ReactElement {
-    return (
-        <path
-            fill="currentColor"
-            d="M8 3a1.25 1.25 0 1 0 0-2.5A1.25 1.25 0 0 0 8 3zm0 6.25a1.25 1.25 0 1 0 0-2.5 1.25 1.25 0 0 0 0 2.5zm0 6.25a1.25 1.25 0 1 0 0-2.5A1.25 1.25 0 0 0 8 15.5z"
         />
     );
 }
