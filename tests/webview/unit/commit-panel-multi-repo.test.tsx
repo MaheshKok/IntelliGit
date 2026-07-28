@@ -411,7 +411,7 @@ describe("commit panel multi-repository view", () => {
         expect(text).not.toContain("↓1");
     });
 
-    it("renders each native repository kind icon immediately after its chevron", async () => {
+    it("renders each direct 16px Codicon repository kind icon immediately after its chevron", async () => {
         await renderApp();
         await hydrateTwoRepositories();
 
@@ -425,11 +425,25 @@ describe("commit panel multi-repository view", () => {
         expect(repositoryIcon).not.toBeNull();
         expect(repositoryIcon?.getAttribute("data-repository-kind")).toBe("repository");
         expect(repositoryIcon?.previousElementSibling?.querySelector("svg")).not.toBeNull();
-        expect(repositoryIcon?.querySelector("svg")?.getAttribute("viewBox")).toBe("0 0 16 16");
+        const repositoryGlyphs = repositoryIcon?.querySelectorAll<SVGElement>("svg");
+        expect(repositoryGlyphs).toHaveLength(1);
+        const repositoryGlyph = repositoryGlyphs?.[0];
+        expect(repositoryGlyph?.getAttribute("width")).toBe("16");
+        expect(repositoryGlyph?.getAttribute("height")).toBe("16");
+        expect(repositoryGlyph?.getAttribute("viewBox")).toBe("0 0 16 16");
+        expect(repositoryGlyph?.getAttribute("fill")).toBe("currentColor");
+        expect(repositoryGlyph?.style.color).toBe("var(--vscode-descriptionForeground)");
         expect(worktreeIcon).not.toBeNull();
         expect(worktreeIcon?.getAttribute("data-repository-kind")).toBe("worktree");
         expect(worktreeIcon?.previousElementSibling?.querySelector("svg")).not.toBeNull();
-        expect(worktreeIcon?.querySelector("svg")?.getAttribute("viewBox")).toBe("0 0 10 10");
+        const worktreeGlyphs = worktreeIcon?.querySelectorAll<SVGElement>("svg");
+        expect(worktreeGlyphs).toHaveLength(1);
+        const worktreeGlyph = worktreeGlyphs?.[0];
+        expect(worktreeGlyph?.getAttribute("width")).toBe("16");
+        expect(worktreeGlyph?.getAttribute("height")).toBe("16");
+        expect(worktreeGlyph?.getAttribute("viewBox")).toBe("0 0 16 16");
+        expect(worktreeGlyph?.getAttribute("fill")).toBe("currentColor");
+        expect(worktreeGlyph?.style.color).toBe("var(--vscode-descriptionForeground)");
     });
 
     it("updates repository B without overwriting repository A", async () => {

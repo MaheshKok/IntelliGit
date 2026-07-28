@@ -3,7 +3,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { IconButton, Tooltip } from "@chakra-ui/react";
-import { IoMdRefresh } from "react-icons/io";
+import { VscRefresh } from "react-icons/vsc";
 import { getSettings, resolveIconColor } from "../settings";
 import { t } from "../i18n";
 import { SPIN_KEYFRAMES } from "./iconStyles";
@@ -107,7 +107,7 @@ export function RefreshButton({
                         opacity: 1,
                     }}
                     data-refreshing={spin ? "true" : undefined}
-                    icon={<IoMdRefresh size={16} aria-hidden focusable="false" style={iconStyle} />}
+                    icon={<VscRefresh size={16} aria-hidden focusable="false" style={iconStyle} />}
                 />
             </Tooltip>
         </>

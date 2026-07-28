@@ -2,12 +2,8 @@
 
 import React from "react";
 import { Box, Flex } from "@chakra-ui/react";
-import {
-    CollapseAllIconGlyph,
-    ExpandAllIconGlyph,
-    GroupByDirectoryIconGlyph,
-    ShowDiffIconGlyph,
-} from "../../shared/components/Icons";
+import { VscListTree, VscNewFile } from "react-icons/vsc";
+import { CollapseAllIconGlyph, ExpandAllIconGlyph } from "../../shared/components/Icons";
 import { RefreshButton } from "../../shared/components/RefreshButton";
 import { ToolbarIconButton } from "../../shared/components/ToolbarIconButton";
 import { t } from "../../shared/i18n";
@@ -52,15 +48,15 @@ export function StashToolbar({
                 label={t("common.showDiff")}
                 onClick={onShowStashDiff}
                 disabled={selectedIndex === null}
-                color="#8fd5ff"
-                icon={icon(<ShowDiffIconGlyph />)}
+                color="#b8adff"
+                icon={<VscNewFile size={16} />}
             />
             <ToolbarIconButton
                 label={groupByDir ? t("common.ungroupFiles") : t("common.groupByDirectory")}
                 onClick={onToggleGroupBy}
                 pressed={groupByDir}
                 color="#8fd5ff"
-                icon={icon(<GroupByDirectoryIconGlyph />)}
+                icon={<VscListTree size={16} />}
             />
             <Box flex={1} />
             <ToolbarIconButton
@@ -68,24 +64,23 @@ export function StashToolbar({
                 onClick={onExpandAll}
                 disabled={!canExpandOrCollapse}
                 color="#f3b1cf"
-                icon={icon(<ExpandAllIconGlyph />)}
+                icon={
+                    <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden>
+                        <ExpandAllIconGlyph />
+                    </svg>
+                }
             />
             <ToolbarIconButton
                 label={t("common.collapseAll")}
                 onClick={onCollapseAll}
                 disabled={!canExpandOrCollapse}
                 color="#f3b1cf"
-                icon={icon(<CollapseAllIconGlyph />)}
+                icon={
+                    <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden>
+                        <CollapseAllIconGlyph />
+                    </svg>
+                }
             />
         </Flex>
-    );
-}
-
-/** Keeps the stash toolbar's 16px standard-color SVG wrapper intact. */
-function icon(glyph: React.ReactNode): React.ReactElement {
-    return (
-        <svg width="16" height="16" viewBox="0 0 16 16">
-            {glyph}
-        </svg>
     );
 }
