@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { access, mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { access, chmod, mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -16,12 +16,14 @@ const vscodeMock = vi.hoisted(() => ({
 }));
 
 vi.mock("vscode", () => vscodeMock);
-vi.mock("../../../src/utils/notifications", () => ({
+const notificationsMock = vi.hoisted(() => ({
     runWithNotificationProgress: async (_title: string, task: () => Promise<void>): Promise<void> =>
         task(),
     showTimedWarningMessage: vi.fn(),
     showTimedInformationMessage: vi.fn(),
 }));
+
+vi.mock("../../../src/utils/notifications", () => notificationsMock);
 
 import { commitSelectedFromPanel } from "../../../src/views/commitPanelActions";
 
@@ -252,6 +254,32 @@ describe("commitSelectedFromPanel commit accuracy", () => {
         expect(await git(repo, ["rev-parse", "HEAD"])).toBe(beforeHead);
         expect(await git(repo, ["ls-files", "-s"])).toBe(beforeIndex);
         expect(await git(repo, ["diff", "--cached"])).toBe(beforeCachedDiff);
+    });
+
+    it("does not report success or move HEAD when a normal checked commit hook fails silently", async () => {
+        const repo = await createRepository();
+        await write(repo, "selected.txt", "selected\n");
+        await write(repo, "unchecked.txt", "unchecked\n");
+        await git(repo, ["add", "selected.txt", "unchecked.txt"]);
+        const preCommitHook = path.join(repo, ".git", "hooks", "pre-commit");
+        await writeFile(preCommitHook, ["#!/bin/sh", "exit 1", ""].join("\n"), "utf8");
+        await chmod(preCommitHook, 0o755);
+        const beforeHead = await git(repo, ["rev-parse", "HEAD"]);
+        const beforeIndex = await git(repo, ["ls-files", "-s"]);
+        const beforeCachedDiff = await git(repo, ["diff", "--cached"]);
+        await expect(git(repo, ["commit", "-m", "verify hook"])).rejects.toThrow();
+        notificationsMock.showTimedInformationMessage.mockClear();
+
+        await expect(
+            commitSelected(repo, { message: "silent hook", paths: ["selected.txt"] }),
+        ).rejects.toThrow();
+
+        expect(await git(repo, ["rev-parse", "HEAD"])).toBe(beforeHead);
+        expect(await git(repo, ["ls-files", "-s"])).toBe(beforeIndex);
+        expect(await git(repo, ["diff", "--cached"])).toBe(beforeCachedDiff);
+        expect(notificationsMock.showTimedInformationMessage).not.toHaveBeenCalledWith(
+            "Committed successfully.",
+        );
     });
 
     it("does not stage a copy source when only its destination is checked", async () => {

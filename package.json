@@ -1017,7 +1017,6 @@
         "vitest": "^1.2.0"
     },
     "dependencies": {
-        "jsonc-parser": "^3.3.1",
-        "simple-git": "^3.32.3"
+        "jsonc-parser": "^3.3.1"
     }
 }

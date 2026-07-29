@@ -796,6 +796,12 @@ export class GitOps {
         try {
             await this.executor.run(["ls-remote", "--exit-code", remote]);
         } catch (err) {
+            if (isEmptyLsRemoteExitCode(err)) {
+                throw new Error(
+                    `Push remote "${remote}" reached but reported no refs; it may simply be empty (no branches yet). Verify the remote repository still exists, update the remote URL, or use Publish Branch to configure a new remote. ${getErrorMessage(err)}`,
+                    { cause: err },
+                );
+            }
             throw new Error(
                 `Push remote "${remote}" is unavailable. Verify the remote repository still exists, update the remote URL, or use Publish Branch to configure a new remote. ${getErrorMessage(err)}`,
                 { cause: err },
@@ -1343,6 +1349,11 @@ export class GitOps {
 function isNoUpstreamPushError(err: unknown): boolean {
     const message = getErrorMessage(err).toLowerCase();
     return message.includes("has no upstream branch");
+}
+
+/** True when `ls-remote --exit-code` reached the remote but found no matching refs (e.g. an empty repository) rather than failing to reach it. */
+function isEmptyLsRemoteExitCode(err: unknown): boolean {
+    return getErrorMessage(err).includes("git ls-remote --exit-code exited with 2:");
 }
 function withLiteralPathspecs(args: string[]): string[] {
     return ["--literal-pathspecs", ...args];
