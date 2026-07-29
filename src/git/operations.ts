@@ -350,6 +350,18 @@ export class GitOps {
             return false;
         }
     }
+    /**
+     * Reads up to ten subject lines reachable from the current HEAD for commit-message style context.
+     *
+     * Unlike getLog, this deliberately excludes unrelated refs and avoids spawning Git for an unborn HEAD.
+     */
+    async getRecentCommitSubjects(): Promise<string[]> {
+        if (!(await this.hasAnyCommits())) return [];
+        const output = await this.executor.run(["log", "--format=%s", "-n", "10"]);
+        const subjects = output.split(/\r?\n/);
+        if (subjects.at(-1) === "") subjects.pop();
+        return subjects.slice(0, 10);
+    }
     /** Lists configured remotes after filtering invalid remote names and falling back to an empty list. */
     async getRemotes(): Promise<string[]> {
         try {

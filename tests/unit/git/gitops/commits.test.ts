@@ -205,6 +205,26 @@ describe("GitOps", () => {
             expect(call).toContain("--skip=200");
         });
     });
+
+    describe("getRecentCommitSubjects", () => {
+        it("reads at most ten current-HEAD subjects and avoids a log spawn for an unborn HEAD", async () => {
+            const executor = createMockExecutor({
+                "rev-list --count HEAD": "1\n",
+                "log --format=%s -n 10": "feat: current branch\nfix: trailing newline\n",
+            });
+            const ops = new GitOps(executor);
+
+            await expect(ops.getRecentCommitSubjects()).resolves.toEqual([
+                "feat: current branch",
+                "fix: trailing newline",
+            ]);
+            expect(executor.run).toHaveBeenLastCalledWith(["log", "--format=%s", "-n", "10"]);
+
+            const unbornExecutor = createMockExecutor({ "rev-list --count HEAD": "0\n" });
+            await expect(new GitOps(unbornExecutor).getRecentCommitSubjects()).resolves.toEqual([]);
+            expect(unbornExecutor.run).toHaveBeenCalledTimes(1);
+        });
+    });
     describe("getCommitDetail", () => {
         const FIELD_SEP = "\0";
 
