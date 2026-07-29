@@ -8,6 +8,8 @@ export interface GitBinaryRunOptions {
     input?: Buffer;
     expectedExitCodes?: readonly number[];
     outputFile?: string;
+    /** Stops stdout acquisition after this many bytes, retaining only the bounded prefix. */
+    maxOutputBytes?: number;
 }
 
 /** Raw process result for a binary Git invocation; streamed stdout is empty. */
@@ -15,6 +17,8 @@ export interface GitBinaryRunResult {
     stdout: Buffer;
     stderr: Buffer;
     exitCode: number;
+    /** True when stdout reached `maxOutputBytes` and the Git process was stopped. */
+    truncated: boolean;
 }
 
 /**
@@ -94,15 +98,38 @@ export class GitExecutor {
         options: GitBinaryRunOptions = {},
     ): Promise<GitBinaryRunResult> {
         const expectedExitCodes = options.expectedExitCodes ?? [0];
+        if (options.outputFile && options.maxOutputBytes !== undefined) {
+            throw new Error(
+                "Git binary output cannot be both streamed to a file and byte-limited.",
+            );
+        }
         return new Promise<GitBinaryRunResult>((resolve, reject) => {
             const child = spawn("git", args, { cwd: this.repoRoot, stdio: "pipe" });
             const stdout: Buffer[] = [];
             const stderr: Buffer[] = [];
             const output = options.outputFile ? createWriteStream(options.outputFile) : undefined;
+            let stdoutBytes = 0;
+            let truncated = false;
+            let terminatedForOutputLimit = false;
             const stdoutDone = output
                 ? pipeline(child.stdout, output)
                 : new Promise<void>((resolve) => {
-                      child.stdout.on("data", (chunk: Buffer) => stdout.push(chunk));
+                      child.stdout.on("data", (chunk: Buffer) => {
+                          const maxOutputBytes = options.maxOutputBytes;
+                          if (maxOutputBytes === undefined) {
+                              stdout.push(chunk);
+                              return;
+                          }
+                          const remainingBytes = maxOutputBytes - stdoutBytes;
+                          if (remainingBytes > 0) {
+                              stdout.push(chunk.subarray(0, remainingBytes));
+                              stdoutBytes += Math.min(chunk.length, remainingBytes);
+                          }
+                          if (chunk.length > remainingBytes) {
+                              truncated = true;
+                              terminatedForOutputLimit = child.kill();
+                          }
+                      });
                       child.stdout.once("end", resolve);
                   });
             void stdoutDone.catch(() => undefined);
@@ -121,7 +148,14 @@ export class GitExecutor {
                     stdout: output ? Buffer.alloc(0) : Buffer.concat(stdout),
                     stderr: Buffer.concat(stderr),
                     exitCode: exitCode ?? -1,
+                    truncated,
                 };
+                if (
+                    result.truncated &&
+                    (result.exitCode === 0 || (terminatedForOutputLimit && signal !== null))
+                ) {
+                    return resolve(result);
+                }
                 if (!signal && expectedExitCodes.includes(result.exitCode)) return resolve(result);
                 const command = args.slice(0, 2).join(" ") || "(no subcommand)";
                 const stderrText = result.stderr.toString("utf8").trim() || "(no stderr)";

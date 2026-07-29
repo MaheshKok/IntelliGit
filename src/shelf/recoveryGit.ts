@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { readEmptyTreeOid } from "../git/emptyTree";
 import { GitExecutor } from "../git/executor";
 import type { ShelfJournalIndexEntry } from "./store";
 
@@ -66,7 +67,10 @@ export class GitExecutorRecoveryGit implements ShelfRecoveryGit {
 
     /** Computes the repository's object-format-specific empty tree ID once. */
     async emptyTreeOid(): Promise<string> {
-        this.emptyTree ??= this.readEmptyTreeOid();
+        this.emptyTree ??= readEmptyTreeOid(
+            this.executor,
+            () => new RecoverySafetyError("Git returned an invalid empty tree object ID."),
+        );
         return this.emptyTree;
     }
 
@@ -122,17 +126,6 @@ export class GitExecutorRecoveryGit implements ShelfRecoveryGit {
         await this.executor.runBinary(["update-index", "-z", "--index-info"], {
             input: Buffer.from(record),
         });
-    }
-
-    private async readEmptyTreeOid(): Promise<string> {
-        return readOid(
-            (
-                await this.executor.runBinary(["hash-object", "-t", "tree", "--stdin"], {
-                    input: Buffer.alloc(0),
-                })
-            ).stdout,
-            "empty tree",
-        );
     }
 }
 

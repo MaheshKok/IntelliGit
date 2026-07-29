@@ -30,6 +30,7 @@ function gateProbe(): GateProbe {
 async function runFakeGit(
     script: string,
     args: string[],
+    options: Parameters<GitExecutor["runBinary"]>[1] = {},
 ): Promise<Awaited<ReturnType<GitExecutor["runBinary"]>>> {
     const directory = await mkdtemp(join(tmpdir(), "intelligit-fake-git-"));
     const executable = join(directory, "git");
@@ -38,7 +39,7 @@ async function runFakeGit(
     await chmod(executable, 0o755);
     process.env.PATH = `${directory}${delimiter}${originalPath ?? ""}`;
     try {
-        return await new GitExecutor(process.cwd()).runBinary(args);
+        return await new GitExecutor(process.cwd()).runBinary(args, options);
     } finally {
         if (originalPath === undefined) delete process.env.PATH;
         else process.env.PATH = originalPath;
@@ -94,6 +95,34 @@ describe("GitExecutor", () => {
 
         expect(output.stdout).toEqual(Buffer.from("stdout"));
         expect(output.stderr).toEqual(Buffer.from("advice\n"));
+    });
+
+    it("resolves capped output after the executor terminates a long-running Git process", async () => {
+        const startedAt = Date.now();
+        const output = await runFakeGit("printf 0123456789; exec sleep 5", ["diff"], {
+            maxOutputBytes: 4,
+        });
+
+        expect(output.stdout).toEqual(Buffer.from("0123"));
+        expect(output.truncated).toBe(true);
+        expect(Date.now() - startedAt).toBeLessThan(2_000);
+    });
+
+    it("rejects capped output when Git exits non-zero before the executor kill takes effect", async () => {
+        await expect(
+            runFakeGit("printf 0123456789; printf boom >&2; exit 3", ["diff"], {
+                maxOutputBytes: 4,
+            }),
+        ).rejects.toThrow("git diff exited with 3: boom");
+    });
+
+    it("resolves capped output when Git exits cleanly", async () => {
+        const output = await runFakeGit("printf 0123456789; exit 0", ["diff"], {
+            maxOutputBytes: 4,
+        });
+
+        expect(output.stdout).toEqual(Buffer.from("0123"));
+        expect(output.truncated).toBe(true);
     });
 
     it("names the terminating signal when the Git process is killed", async () => {
