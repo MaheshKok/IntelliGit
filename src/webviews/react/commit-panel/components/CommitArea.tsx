@@ -65,6 +65,7 @@ function getBranchIndicatorUpstream(
  * message changes, amend toggles, commit requests, and message-generation lifecycle
  * callbacks are translated into outbound webview messages.
  */
+// react-doctor-disable-next-line react-doctor/no-many-boolean-props
 export function CommitArea({
     commitMessage,
     isAmend,

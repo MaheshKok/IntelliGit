@@ -697,6 +697,8 @@ export class GitOps {
         const numstatByPath = new Map<string, DiffNumstat>();
         for (let start = 0; start < trackedPaths.length; start += DIFF_NUMSTAT_PATH_BATCH_SIZE) {
             const pathBatch = trackedPaths.slice(start, start + DIFF_NUMSTAT_PATH_BATCH_SIZE);
+            // Sequential batches preserve Git-process bounds and the cumulative output budget.
+            // react-doctor-disable-next-line react-doctor/async-await-in-loop
             const result = await this.executor.runBinary(
                 withLiteralPathspecs(["diff", "--numstat", baseRef, "--", ...pathBatch]),
                 { maxOutputBytes: DIFF_CUMULATIVE_BYTE_LIMIT },
@@ -783,6 +785,8 @@ export class GitOps {
         };
 
         for (const filePath of trackedPaths) {
+            // Preserve diff ordering and cumulative-byte accounting between paths.
+            // react-doctor-disable-next-line react-doctor/async-await-in-loop
             await acquire(
                 filePath,
                 withLiteralPathspecs([
@@ -878,6 +882,8 @@ export class GitOps {
             );
         };
         for (const filePath of untrackedPaths) {
+            // Preserve diff ordering and cumulative-byte accounting between paths.
+            // react-doctor-disable-next-line react-doctor/async-await-in-loop
             await acquireUntrackedPath(filePath);
         }
         if (options.includeHead && hasHead) {
@@ -997,6 +1003,8 @@ export class GitOps {
 
         for (let attempt = 0; attempt < maxAttempts; attempt++) {
             try {
+                // Lock creation retries must remain serialized.
+                // react-doctor-disable-next-line react-doctor/async-await-in-loop
                 await writeFile(lockPath, snapshotBytes, { flag: "wx" });
             } catch (error) {
                 if (!isLockAlreadyExistsError(error)) throw error;

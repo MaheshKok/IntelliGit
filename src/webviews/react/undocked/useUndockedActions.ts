@@ -176,8 +176,8 @@ export function useUndockedActions(params: UseUndockedActionsParams): UndockedAc
                     message,
                 });
             }
-            // react-doctor-disable-next-line react-doctor/exhaustive-deps
         },
+        // react-doctor-disable-next-line react-doctor/exhaustive-deps
         [generation.status, selectedRepositoryRoot],
     );
 
@@ -188,8 +188,8 @@ export function useUndockedActions(params: UseUndockedActionsParams): UndockedAc
             if (isAmend) {
                 vscode.postMessage({ type: "getLastCommitMessage" });
             }
-            // react-doctor-disable-next-line react-doctor/exhaustive-deps
         },
+        // react-doctor-disable-next-line react-doctor/exhaustive-deps
         [generation.status, hasCommits],
     );
 
@@ -216,6 +216,7 @@ export function useUndockedActions(params: UseUndockedActionsParams): UndockedAc
             paths: Array.from(checkedPaths),
             amend: isAmend,
         });
+        // react-doctor-disable-next-line react-doctor/exhaustive-deps
     }, [
         checkedPaths,
         commitMessage,

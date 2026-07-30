@@ -1796,15 +1796,16 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             requestId,
             host: this.commitMessageGenerationHost,
             validate: async (control) => {
+                // The post-await active check is the generation cancellation fence.
+                // react-doctor-disable-next-line react-doctor/async-defer-await
                 const validatedStatusSnapshot = await runtime.gitOps.getStatus({
                     withStats: false,
                 });
                 if (!control.isActive()) return undefined;
-                const selectablePaths = new Set(
-                    validatedStatusSnapshot
-                        .filter((file) => file.status !== "!")
-                        .map((file) => file.path),
-                );
+                const selectablePaths = new Set<string>();
+                for (const file of validatedStatusSnapshot) {
+                    if (file.status !== "!") selectablePaths.add(file.path);
+                }
                 if (paths.some((filePath) => !selectablePaths.has(filePath))) return undefined;
                 if (paths.length === 0) {
                     if (!amend) return undefined;

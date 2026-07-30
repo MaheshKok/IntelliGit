@@ -1198,6 +1198,8 @@ export class UndockedViewProvider {
                             this.stashFiles = state.stashFiles;
                         },
                         postUpdate: async (message) => {
+                            // The selected-root check after this await prevents stale updates.
+                            // react-doctor-disable-next-line react-doctor/async-defer-await
                             const [hasCommits, wholeIndexOperationInProgress] = await Promise.all([
                                 stashGitOps.hasAnyCommits(),
                                 stashGitOps.hasWholeIndexOperationInProgress(),
@@ -1268,18 +1270,16 @@ export class UndockedViewProvider {
             requestId,
             host: this.commitMessageGenerationHost,
             validate: async (control) => {
+                // The post-await active check is the generation cancellation fence.
+                // react-doctor-disable-next-line react-doctor/async-defer-await
                 const validatedStatusSnapshot = await gitOps.getStatus({ withStats: false });
                 if (!control.isActive()) return undefined;
-                const selectablePaths = new Set(
-                    validatedStatusSnapshot
-                        .filter((file) => file.status !== "!")
-                        .map((file) => file.path),
-                );
-                const renameSources = new Set(
-                    validatedStatusSnapshot.flatMap((file) =>
-                        file.status === "R" && file.sourcePath ? [file.sourcePath] : [],
-                    ),
-                );
+                const selectablePaths = new Set<string>();
+                const renameSources = new Set<string>();
+                for (const file of validatedStatusSnapshot) {
+                    if (file.status !== "!") selectablePaths.add(file.path);
+                    if (file.status === "R" && file.sourcePath) renameSources.add(file.sourcePath);
+                }
                 if (
                     paths.some(
                         (filePath) => !selectablePaths.has(filePath) || renameSources.has(filePath),
@@ -1620,13 +1620,19 @@ export class UndockedViewProvider {
         if (!silent) this.postToWebview({ type: "refreshing", active: true });
         try {
             // Theme initialization must finish before decorated working-tree files are built.
-            // react-doctor-disable-next-line react-doctor/async-parallel
+            // react-doctor-disable-next-line react-doctor/async-parallel, react-doctor/async-defer-await
             await this.iconTheme.initIconThemeData();
             if (!canUpdate()) return;
+            // The post-await root guard prevents stale refresh data from being published.
+            // react-doctor-disable-next-line react-doctor/async-defer-await
             const status = await rootGitOps.getStatus({ includeIgnored: this.showIgnoredFiles });
             if (!canUpdate()) return;
+            // The post-await root guard prevents stale refresh data from being published.
+            // react-doctor-disable-next-line react-doctor/async-defer-await
             const files = await this.iconTheme.decorateWorkingFiles(status);
             if (!canUpdate()) return;
+            // The post-await root guard prevents stale refresh data from being published.
+            // react-doctor-disable-next-line react-doctor/async-defer-await
             const [stashes, currentBranchStatus, shelfState] = await Promise.all([
                 rootGitOps.listStashes(),
                 this.currentBranchStatus(rootGitOps),
@@ -1646,6 +1652,7 @@ export class UndockedViewProvider {
                 : stashes.length > 0
                   ? stashes[0].index
                   : null;
+            // The post-await root guard prevents stale refresh data from being published.
             // react-doctor-disable-next-line react-doctor/async-defer-await
             const stashFiles =
                 selectedStashIndex !== null
@@ -1654,12 +1661,16 @@ export class UndockedViewProvider {
                       )
                     : [];
             if (!canUpdate()) return;
+            // The post-await root guard prevents stale refresh data from being published.
+            // react-doctor-disable-next-line react-doctor/async-defer-await
             const cpFolderIconsByName = await this.iconTheme.getFolderIconsByPaths([
                 ...files.map((file) => file.path),
                 ...stashFiles.map((file) => file.path),
                 ...shelfFilePaths(shelfState.shelves),
             ]);
             if (!canUpdate()) return;
+            // The post-await root guard prevents stale refresh data from being published.
+            // react-doctor-disable-next-line react-doctor/async-defer-await
             const [hasCommits, wholeIndexOperationInProgress] = await Promise.all([
                 rootGitOps.hasAnyCommits(),
                 rootGitOps.hasWholeIndexOperationInProgress(),

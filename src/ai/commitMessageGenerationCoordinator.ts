@@ -336,11 +336,15 @@ export class CommitMessageGenerationCoordinator {
         validation: ValidatedCommitMessageGenerationRequest,
     ): Promise<AcquiredCommitMessageGenerationContext | undefined> {
         if (!this.isActive(attempt)) return undefined;
+        // The post-await active check is the cancellation fence for this request.
+        // react-doctor-disable-next-line react-doctor/async-defer-await
         const diffResult = await attempt.context.gitOps.getDiffForPaths(validation.paths, {
             includeHead: validation.amend,
             validatedStatusSnapshot: validation.validatedStatusSnapshot,
         });
         if (!this.isActive(attempt)) return undefined;
+        // The post-await active check is the cancellation fence for this request.
+        // react-doctor-disable-next-line react-doctor/async-defer-await
         const commitSubjects = await attempt.context.gitOps.getRecentCommitSubjects();
         if (!this.isActive(attempt)) return undefined;
         return { diffResult, commitSubjects, amend: validation.amend };
@@ -351,6 +355,8 @@ export class CommitMessageGenerationCoordinator {
         context: AcquiredCommitMessageGenerationContext,
     ): Promise<void> {
         try {
+            // The post-await active check is the cancellation fence for this request.
+            // react-doctor-disable-next-line react-doctor/async-defer-await
             const prepared = await this.prepare({
                 workspaceFolder: attempt.context.workspaceFolder,
                 diffResult: context.diffResult,
@@ -385,8 +391,12 @@ export class CommitMessageGenerationCoordinator {
     private async finalize(attempt: ActiveGenerationAttempt): Promise<void> {
         while (this.isActive(attempt)) {
             const signalVersion = attempt.wholeIndexSignalVersion;
+            // Finalization intentionally serializes whole-index checks and cancellation fences.
+            // react-doctor-disable-next-line react-doctor/async-await-in-loop, react-doctor/async-defer-await
             await attempt.wholeIndexCheckTail;
             if (!this.isActive(attempt)) return;
+            // The post-await active check is the cancellation fence for this request.
+            // react-doctor-disable-next-line react-doctor/async-defer-await
             const inProgress = await this.queueWholeIndexCheck(attempt);
             if (!this.isActive(attempt)) return;
             if (inProgress) {
