@@ -5,6 +5,23 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.22.0] - 2026-07-30
+
+### Added
+
+- Added GitHub Copilot commit-message generation to the docked and undocked Commit panels, with localized sparkle and stop controls, live streaming, cancellation, and support for normal, amend, and first-commit workflows.
+- Added repository-aware prompt context from checked-file diffs, recent commit subjects, and `github.copilot.chat.commitMessageGeneration.instructions`, including bounded text and file instructions.
+
+### Changed
+
+- Limited Copilot input to host-validated checked paths and bounded diff acquisition, with support for tracked, untracked, deleted, renamed, symlink, special-character, SHA-1, and SHA-256 repository changes.
+- Coordinated generation per repository across docked and undocked panels, preserving drafts after cancellation or errors and preventing generation from interleaving with commits and whole-index Git operations.
+
+### Fixed
+
+- Ensured Commit panel commits include exactly the checked changes while preserving staged-but-unchecked content, checked renames, literal paths, zero-path amend behavior, and whole-index operation semantics.
+- Rejected unexpected non-zero Git exits even when stderr is empty, preventing failed Git operations from being reported as successful.
+
 ## [0.21.2] - 2026-07-28
 
 ### Changed
