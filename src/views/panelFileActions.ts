@@ -56,7 +56,7 @@ interface StashSelectionDeps extends PanelFileActionDeps {
         folderIconsByName: ThemeFolderIconMap;
         iconFonts: ThemeIconFont[];
         currentBranchHasUpstream: boolean;
-    }) => void;
+    }) => void | Promise<void>;
 }
 
 /**
@@ -350,7 +350,7 @@ export async function selectStashFromPanel(
     ]);
     deps.setStashState({ selectedStashIndex, stashFiles, folderIconsByName });
     const { folderIcons, iconFonts } = deps.iconTheme.getThemeData();
-    deps.postUpdate({
+    await deps.postUpdate({
         type: "update",
         files,
         stashes: deps.getStashes(),

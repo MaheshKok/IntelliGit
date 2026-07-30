@@ -471,5 +471,10 @@
     "Local File": "本機檔案",
     "Stashed: {ref}": "儲藏：{ref}",
     "Stash {reference}": "儲藏 {reference}",
-    "{path} (Local File <-> Stash {reference})": "{path}（本機檔案 <-> 儲藏 {reference}）"
+    "{path} (Local File <-> Stash {reference})": "{path}（本機檔案 <-> 儲藏 {reference}）",
+    "Install Copilot": "安裝 Copilot",
+    "Sign In": "登入",
+    "GitHub Copilot is unavailable for commit-message generation.": "GitHub Copilot 無法用於產生提交訊息。",
+    "GitHub Copilot permission is required for commit-message generation.": "產生提交訊息需要 GitHub Copilot 權限。",
+    "GitHub Copilot blocked commit-message generation.": "GitHub Copilot 已封鎖產生提交訊息。"
 }

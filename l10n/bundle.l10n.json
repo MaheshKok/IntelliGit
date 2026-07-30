@@ -471,5 +471,10 @@
     "Stashed: {ref}": "Stashed: {ref}",
     "{path} (Stashed: {ref}) <-> Local File": "{path} (Stashed: {ref}) <-> Local File",
     "{path} (Local File <-> Stash {reference})": "{path} (Local File <-> Stash {reference})",
-    "{title}: {detail}{hintText}": "{title}: {detail}{hintText}"
+    "{title}: {detail}{hintText}": "{title}: {detail}{hintText}",
+    "Install Copilot": "Install Copilot",
+    "Sign In": "Sign In",
+    "GitHub Copilot is unavailable for commit-message generation.": "GitHub Copilot is unavailable for commit-message generation.",
+    "GitHub Copilot permission is required for commit-message generation.": "GitHub Copilot permission is required for commit-message generation.",
+    "GitHub Copilot blocked commit-message generation.": "GitHub Copilot blocked commit-message generation."
 }

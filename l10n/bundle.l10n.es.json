@@ -471,5 +471,10 @@
     "Local File": "Archivo local",
     "Stashed: {ref}": "En el stash: {ref}",
     "Stash {reference}": "Stash {reference}",
-    "{path} (Local File <-> Stash {reference})": "{path} (Archivo local <-> Stash {reference})"
+    "{path} (Local File <-> Stash {reference})": "{path} (Archivo local <-> Stash {reference})",
+    "Install Copilot": "Instalar Copilot",
+    "Sign In": "Iniciar sesión",
+    "GitHub Copilot is unavailable for commit-message generation.": "GitHub Copilot no está disponible para generar mensajes de commit.",
+    "GitHub Copilot permission is required for commit-message generation.": "Se requiere permiso de GitHub Copilot para generar mensajes de commit.",
+    "GitHub Copilot blocked commit-message generation.": "GitHub Copilot bloqueó la generación de mensajes de commit."
 }

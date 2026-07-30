@@ -471,5 +471,10 @@
     "Local File": "로컬 파일",
     "Stashed: {ref}": "스태시: {ref}",
     "Stash {reference}": "스태시 {reference}",
-    "{path} (Local File <-> Stash {reference})": "{path} (로컬 파일 <-> 스태시 {reference})"
+    "{path} (Local File <-> Stash {reference})": "{path} (로컬 파일 <-> 스태시 {reference})",
+    "Install Copilot": "Copilot 설치",
+    "Sign In": "로그인",
+    "GitHub Copilot is unavailable for commit-message generation.": "GitHub Copilot은 커밋 메시지 생성에 사용할 수 없습니다.",
+    "GitHub Copilot permission is required for commit-message generation.": "커밋 메시지 생성에는 GitHub Copilot 권한이 필요합니다.",
+    "GitHub Copilot blocked commit-message generation.": "GitHub Copilot이 커밋 메시지 생성을 차단했습니다."
 }

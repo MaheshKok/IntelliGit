@@ -6,6 +6,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import * as vscode from "vscode";
+import { resolveGitDir } from "../git/gitDirectory";
 import { GitOps } from "../git/operations";
 import type { Branch, GitWorktree } from "../types";
 import { CommitGraphViewProvider } from "./CommitGraphViewProvider";
@@ -240,28 +241,9 @@ export class RefreshService implements vscode.Disposable {
         }, RefreshService.pollingRefreshIntervalMs);
     }
 
-    /** Resolve the real Git metadata directory, including worktree-style .git files. */
-    private resolveGitDir(): string {
-        const dotGit = path.join(this.repoRoot, ".git");
-        try {
-            const stat = fs.statSync(dotGit);
-            if (stat.isFile()) {
-                const content = fs.readFileSync(dotGit, "utf8").trim();
-                const match = content.match(/^gitdir:\s*(.+)$/);
-                if (match) {
-                    const gitDir = match[1];
-                    return path.isAbsolute(gitDir) ? gitDir : path.resolve(this.repoRoot, gitDir);
-                }
-            }
-        } catch {
-            // Fall through to default
-        }
-        return dotGit;
-    }
-
     /** Watch Git metadata files whose changes imply light or full UI refreshes. */
     private registerGitDirWatchers(): void {
-        const gitDir = this.resolveGitDir();
+        const gitDir = resolveGitDir(this.repoRoot);
         const gitStateFiles = new Set([
             "HEAD",
             "FETCH_HEAD",

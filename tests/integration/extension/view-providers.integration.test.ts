@@ -47,6 +47,21 @@ class FakeRelativePattern {
     ) {}
 }
 
+class FakeCancellationTokenSource {
+    readonly token = {
+        isCancellationRequested: false,
+        onCancellationRequested: vi.fn(() => ({ dispose: vi.fn() })),
+    };
+
+    cancel(): void {
+        this.token.isCancellationRequested = true;
+    }
+
+    dispose(): void {
+        this.cancel();
+    }
+}
+
 class FakeFileSystemWatcher {
     private changeListeners: Array<(uri: { fsPath: string; path: string }) => void> = [];
     private createListeners: Array<(uri: { fsPath: string; path: string }) => void> = [];
@@ -95,6 +110,7 @@ const showWarningMessage = vi.fn(async () => undefined);
 const showInformationMessage = vi.fn(async () => undefined);
 const showTextDocument = vi.fn(async () => undefined);
 const executeCommand = vi.fn(async () => undefined);
+const openExternal = vi.fn(async () => true);
 const openTextDocument = vi.fn(async () => ({ getText: () => "local file contents" }));
 const postMessageSpy = vi.fn();
 const fileSystemWatchers: FakeFileSystemWatcher[] = [];
@@ -172,6 +188,7 @@ function createControlledMemento(initial: Record<string, unknown> = {}) {
 }
 
 const vscodeMock = {
+    CancellationTokenSource: FakeCancellationTokenSource,
     EventEmitter: FakeEventEmitter,
     TreeItem: FakeTreeItem,
     ThemeIcon: FakeThemeIcon,
@@ -179,6 +196,7 @@ const vscodeMock = {
     RelativePattern: FakeRelativePattern,
     env: {
         language: "en",
+        openExternal,
     },
     l10n: {
         t: (message: string, _placeholders?: unknown) => message,
@@ -454,6 +472,7 @@ vi.mock("../../../src/git/operations", () => ({
         );
         getUnpushedCommitHashes = vi.fn(async () => []);
         hasUncommittedChanges = vi.fn(async () => false);
+        hasWholeIndexOperationInProgress = vi.fn(async () => false);
         getStatus = vi.fn(async () => gitStatusByRoot.get(this.currentRoot()) ?? []);
         listStashes = vi.fn(async () => []);
         getConflictFilesDetailed = vi.fn(async () => []);
@@ -714,10 +733,17 @@ function makeGitOpsMock() {
         getRemoteUrl: vi.fn(async () => "https://github.com/owner/repo.git"),
         getUnpushedCommitHashes: vi.fn(async () => ["abc1234"]),
         hasAnyCommits: vi.fn(async () => true),
+        hasWholeIndexOperationInProgress: vi.fn(async () => false),
         hasUncommittedChanges: vi.fn(async () => false),
         getStatus: vi.fn(async () => [
             { path: "src/a.ts", status: "M", staged: false, additions: 1, deletions: 0 },
         ]),
+        getDiffForPaths: vi.fn(async () => ({
+            diff: "diff",
+            summarizedPaths: [],
+            truncated: false,
+        })),
+        getRecentCommitSubjects: vi.fn(async () => []),
         listStashes: vi.fn(async () => [
             { index: 0, message: "On main: save", date: "2026-02-19T00:00:00Z", hash: "stashhash" },
         ]),
@@ -872,7 +898,11 @@ function lastCommitChecksSnapshot():
 
 async function setupCommitPanelProvider(
     configure?: (gitOps: ReturnType<typeof makeGitOpsMock>) => void,
-    options: { secrets?: ReturnType<typeof makeSecretStorage>; shelfService?: unknown } = {},
+    options: {
+        secrets?: ReturnType<typeof makeSecretStorage>;
+        shelfService?: unknown;
+        coordinator?: unknown;
+    } = {},
 ) {
     const { CommitPanelViewProvider } = await import("../../../src/views/CommitPanelViewProvider");
     const gitOps = makeGitOpsMock();
@@ -887,6 +917,8 @@ async function setupCommitPanelProvider(
         options.shelfService
             ? ((() => options.shelfService) as unknown as (repositoryRoot: string) => object)
             : undefined,
+        true,
+        options.coordinator as never,
     );
     const webview = createWebviewView();
     provider.resolveWebviewView(
@@ -934,6 +966,465 @@ describe("view providers integration", () => {
             summary: "All checks passed",
             items: [],
         }));
+    });
+
+    it("CommitPanelViewProvider sends one correlated generation request with its fresh validated snapshot", async () => {
+        const { CommitPanelViewProvider } =
+            await import("../../../src/views/CommitPanelViewProvider");
+        const gitOps = makeGitOpsMock();
+        const coordinator = {
+            submit: vi.fn(),
+            cancel: vi.fn(),
+            dropHost: vi.fn(),
+            dropHostRoot: vi.fn(),
+            acquireCommitLease: vi.fn(() => vi.fn()),
+        };
+        const provider = new CommitPanelViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+            gitOps as unknown as object,
+            { fsPath: "/repo", path: "/repo" } as unknown as { fsPath: string; path: string },
+            createMemento() as unknown as object,
+            undefined,
+            undefined,
+            true,
+            coordinator as never,
+        );
+        const webview = createWebviewView();
+        provider.resolveWebviewView(
+            webview.view as unknown as object,
+            {} as unknown as object,
+            {} as unknown as object,
+        );
+        await webview.send({ type: "ready" });
+        const snapshot = [
+            { path: "destination.ts", status: "R", sourcePath: "source.ts", staged: false },
+            { path: "ignored.log", status: "!", staged: false },
+        ];
+        gitOps.getStatus.mockClear();
+        gitOps.getStatus.mockResolvedValueOnce(snapshot);
+
+        await webview.send({
+            type: "generateCommitMessage",
+            repositoryRoot: "/repo",
+            requestId: "generation-1",
+            paths: ["destination.ts", "destination.ts"],
+            amend: false,
+        });
+
+        expect(coordinator.submit).toHaveBeenCalledWith(
+            expect.objectContaining({
+                repositoryRoot: "/repo",
+                requestId: "generation-1",
+            }),
+        );
+        const request = coordinator.submit.mock.calls[0]?.[0] as {
+            host: { emit(event: unknown): void };
+            validate(control: { isActive(): boolean }): Promise<unknown>;
+        };
+        await expect(request.validate({ isActive: () => true })).resolves.toEqual({
+            paths: ["destination.ts"],
+            amend: false,
+            validatedStatusSnapshot: snapshot,
+        });
+        expect(gitOps.getStatus).toHaveBeenCalledWith({ withStats: false });
+        request.host.emit({
+            repositoryRoot: "/repo",
+            requestId: "generation-1",
+            kind: "chunk",
+            text: "feat: generated",
+        });
+        await webview.send({
+            type: "cancelCommitMessageGeneration",
+            repositoryRoot: "/repo",
+            requestId: "generation-1",
+        });
+        expect(coordinator.cancel).toHaveBeenCalledWith({
+            repositoryRoot: "/repo",
+            requestId: "generation-1",
+            host: request.host,
+        });
+        expect(postMessageSpy).toHaveBeenCalledWith({
+            type: "commitMessageGeneration",
+            repositoryRoot: "/repo",
+            requestId: "generation-1",
+            kind: "chunk",
+            text: "feat: generated",
+        });
+        provider.dispose();
+    });
+
+    it("registers a docked request before deferred status so an exact cancel cannot restart it", async () => {
+        const { CommitMessageGenerationCoordinator } =
+            await import("../../../src/ai/commitMessageGenerationCoordinator");
+        const { CommitPanelViewProvider } =
+            await import("../../../src/views/CommitPanelViewProvider");
+        const gitOps = makeGitOpsMock();
+        const status =
+            Promise.withResolvers<Array<{ path: string; status: string; staged: boolean }>>();
+        const prepare = vi.fn();
+        const resolveRoot = vi.fn(() => ({
+            workspaceFolder: { uri: { fsPath: "/workspace" } } as never,
+            gitOps: gitOps as never,
+            watchWholeIndexOperation: () => ({ dispose: vi.fn() }),
+        }));
+        const coordinator = new CommitMessageGenerationCoordinator({
+            resolveRoot,
+            prepare,
+        });
+        const provider = new CommitPanelViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+            gitOps as unknown as object,
+            { fsPath: "/repo", path: "/repo" } as unknown as { fsPath: string; path: string },
+            createMemento() as unknown as object,
+            undefined,
+            undefined,
+            true,
+            coordinator,
+        );
+        const webview = createWebviewView();
+        provider.resolveWebviewView(
+            webview.view as unknown as object,
+            {} as unknown as object,
+            {} as unknown as object,
+        );
+        await webview.send({ type: "ready" });
+        await vi.waitFor(() => expect(gitOps.getStatus).toHaveBeenCalled());
+        postMessageSpy.mockClear();
+        gitOps.getStatus.mockClear();
+        gitOps.getStatus.mockReturnValueOnce(status.promise);
+
+        await webview.send({
+            type: "generateCommitMessage",
+            repositoryRoot: "/repo",
+            requestId: "cancel-during-status",
+            paths: ["src/a.ts"],
+            amend: false,
+        });
+        await flushMicrotasks();
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        expect(resolveRoot).toHaveBeenCalledWith("/repo");
+        await vi.waitFor(() => {
+            expect(gitOps.getStatus).toHaveBeenCalledWith({ withStats: false });
+        });
+        await webview.send({
+            type: "cancelCommitMessageGeneration",
+            repositoryRoot: "/repo",
+            requestId: "cancel-during-status",
+        });
+        status.resolve([{ path: "src/a.ts", status: "M", staged: false }]);
+        await new Promise<void>((resolve) => setImmediate(resolve));
+
+        expect(postMessageSpy).toHaveBeenCalledWith({
+            type: "commitMessageGeneration",
+            repositoryRoot: "/repo",
+            requestId: "cancel-during-status",
+            kind: "cancelled",
+        });
+        expect(gitOps.getStatus).toHaveBeenCalledTimes(1);
+        expect(gitOps.getDiffForPaths).not.toHaveBeenCalled();
+        expect(prepare).not.toHaveBeenCalled();
+        provider.dispose();
+    });
+
+    it("CommitPanelViewProvider rejects synchronous invalid generation boundaries without superseding a valid submission", async () => {
+        const coordinator = {
+            submit: vi.fn(),
+            cancel: vi.fn(),
+            dropHost: vi.fn(),
+            dropHostRoot: vi.fn(),
+            acquireCommitLease: vi.fn(() => vi.fn()),
+        };
+        const { provider, gitOps, webview } = await setupCommitPanelProvider(undefined, {
+            coordinator,
+        });
+        await flushMicrotasks();
+        gitOps.getStatus.mockClear();
+        postMessageSpy.mockClear();
+
+        await webview.send({
+            type: "generateCommitMessage",
+            repositoryRoot: "/repo",
+            requestId: "valid-current",
+            paths: ["destination.ts"],
+            amend: false,
+        });
+        await webview.send({
+            type: "generateCommitMessage",
+            repositoryRoot: "/missing",
+            requestId: "unknown-root",
+            paths: ["destination.ts"],
+            amend: false,
+        });
+        await webview.send({
+            type: "generateCommitMessage",
+            repositoryRoot: "/repo",
+            requestId: "bad-amend",
+            paths: ["destination.ts"],
+            amend: "false",
+        });
+        await webview.send({
+            type: "generateCommitMessage",
+            repositoryRoot: "/repo",
+            requestId: "bad-paths",
+            paths: [42],
+            amend: false,
+        });
+
+        expect(coordinator.submit).toHaveBeenCalledTimes(1);
+        expect(gitOps.getStatus).not.toHaveBeenCalled();
+        expect(
+            postMessageSpy.mock.calls
+                .map(([message]) => message)
+                .filter(
+                    (
+                        message,
+                    ): message is {
+                        type: "commitMessageGeneration";
+                        requestId: string;
+                        kind: string;
+                        errorKind: string;
+                    } =>
+                        typeof message === "object" &&
+                        message !== null &&
+                        "type" in message &&
+                        message.type === "commitMessageGeneration",
+                ),
+        ).toEqual(
+            ["unknown-root", "bad-amend", "bad-paths"].map((requestId) => ({
+                type: "commitMessageGeneration",
+                repositoryRoot: requestId === "unknown-root" ? "/missing" : "/repo",
+                requestId,
+                kind: "error",
+                errorKind: "invalidRequest",
+            })),
+        );
+        provider.dispose();
+    });
+
+    it("CommitPanelViewProvider fails closed with a correlated error when no coordinator is injected", async () => {
+        const { provider, webview } = await setupCommitPanelProvider();
+        postMessageSpy.mockClear();
+
+        await webview.send({
+            type: "generateCommitMessage",
+            repositoryRoot: "/repo",
+            requestId: "no-coordinator",
+            paths: ["src/a.ts"],
+            amend: false,
+        });
+
+        expect(postMessageSpy).toHaveBeenCalledWith({
+            type: "commitMessageGeneration",
+            repositoryRoot: "/repo",
+            requestId: "no-coordinator",
+            kind: "error",
+            errorKind: "invalidRequest",
+        });
+        provider.dispose();
+    });
+
+    it("CommitPanelViewProvider cancels exact requests and drops only retired roots", async () => {
+        const coordinator = {
+            submit: vi.fn(),
+            cancel: vi.fn(),
+            dropHost: vi.fn(),
+            dropHostRoot: vi.fn(),
+            acquireCommitLease: vi.fn(() => vi.fn()),
+        };
+        const { provider, webview } = await setupCommitPanelProvider(undefined, { coordinator });
+
+        await webview.send({
+            type: "cancelCommitMessageGeneration",
+            repositoryRoot: "/repo",
+            requestId: "cancel-me",
+        });
+        expect(coordinator.cancel).toHaveBeenCalledWith(
+            expect.objectContaining({ repositoryRoot: "/repo", requestId: "cancel-me" }),
+        );
+
+        provider.setRepositories(
+            [
+                { root: "/repo-a", label: "Repo A" },
+                { root: "/repo-b", label: "Repo B" },
+            ],
+            "/repo-a",
+        );
+        coordinator.dropHostRoot.mockClear();
+        provider.setRepositoryRootUri({ fsPath: "/repo-b", path: "/repo-b" } as never);
+        expect(coordinator.dropHostRoot).toHaveBeenCalledTimes(1);
+        expect(coordinator.dropHostRoot).toHaveBeenCalledWith(expect.any(Object), "/repo-a");
+
+        coordinator.dropHostRoot.mockClear();
+        provider.setRepositories([{ root: "/repo-b", label: "Repo B" }], "/repo-b");
+        expect(coordinator.dropHostRoot).toHaveBeenCalledTimes(1);
+        expect(coordinator.dropHostRoot).toHaveBeenCalledWith(expect.any(Object), "/repo-a");
+
+        provider.dispose();
+        expect(coordinator.dropHost).toHaveBeenCalledTimes(1);
+    });
+
+    it("CommitPanelViewProvider releases the root generation lease after selected commits succeed or fail", async () => {
+        const release = vi.fn();
+        const coordinator = {
+            submit: vi.fn(),
+            cancel: vi.fn(),
+            dropHost: vi.fn(),
+            dropHostRoot: vi.fn(),
+            acquireCommitLease: vi.fn(() => release),
+        };
+        const { provider, gitOps, webview } = await setupCommitPanelProvider(undefined, {
+            coordinator,
+        });
+        gitOps.commit.mockImplementationOnce(async () => {
+            expect(coordinator.acquireCommitLease).toHaveBeenCalledWith("/repo");
+            throw new Error("commit failed");
+        });
+
+        await webview.send({
+            type: "commitSelected",
+            repositoryRoot: "/repo",
+            message: "feat: fail",
+            amend: false,
+            push: false,
+            paths: ["src/a.ts"],
+        });
+        await webview.send({
+            type: "commitSelected",
+            repositoryRoot: "/repo",
+            message: "feat: pass",
+            amend: false,
+            push: false,
+            paths: ["src/a.ts"],
+        });
+
+        expect(coordinator.acquireCommitLease).toHaveBeenCalledTimes(2);
+        expect(release).toHaveBeenCalledTimes(2);
+        provider.dispose();
+    });
+
+    it("CommitPanelViewProvider includes a fresh whole-index predicate in every full and cached update", async () => {
+        const { provider, gitOps, webview } = await setupCommitPanelProvider();
+        const testProvider = provider as unknown as {
+            runtimes: Map<string, unknown>;
+            postWorkingTreeSnapshot(runtime: unknown): Promise<void>;
+            refreshRepositoryData(runtime: unknown, silent: boolean): Promise<void>;
+        };
+        const runtime = testProvider.runtimes.get("/repo");
+        postMessageSpy.mockClear();
+        gitOps.hasWholeIndexOperationInProgress.mockResolvedValueOnce(false);
+        await testProvider.postWorkingTreeSnapshot(runtime);
+        gitOps.hasWholeIndexOperationInProgress.mockResolvedValueOnce(true);
+        await testProvider.refreshRepositoryData(runtime, true);
+        await webview.send({ type: "stashSelect", index: 0 });
+
+        const updates = postMessageSpy.mock.calls
+            .map(([message]) => message)
+            .filter(
+                (message): message is { type: "update"; wholeIndexOperationInProgress: boolean } =>
+                    typeof message === "object" &&
+                    message !== null &&
+                    "type" in message &&
+                    message.type === "update",
+            );
+        expect(updates).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({ wholeIndexOperationInProgress: false }),
+                expect.objectContaining({ wholeIndexOperationInProgress: true }),
+            ]),
+        );
+        expect(updates).not.toHaveLength(0);
+        expect(
+            updates.every((update) => typeof update.wholeIndexOperationInProgress === "boolean"),
+        ).toBe(true);
+        provider.dispose();
+    });
+
+    it("commit-message generation notifications offer only the documented actions in order", async () => {
+        const { showCommitMessageGenerationNotification } =
+            await import("../../../src/ai/commitMessageGenerationNotifications");
+        showErrorMessage.mockReset();
+        openExternal.mockReset();
+        githubSessionGet.mockReset();
+        showErrorMessage.mockResolvedValue(undefined);
+        showErrorMessage.mockResolvedValueOnce("Install Copilot");
+        await showCommitMessageGenerationNotification("copilotUnavailable");
+        expect(showErrorMessage).toHaveBeenLastCalledWith(
+            "GitHub Copilot is unavailable for commit-message generation.",
+            "Install Copilot",
+            "Sign In",
+        );
+        expect(openExternal).toHaveBeenCalledWith(
+            expect.objectContaining({
+                scheme: "https",
+                fsPath: "https://marketplace.visualstudio.com/items?itemName=GitHub.copilot",
+            }),
+        );
+
+        showErrorMessage.mockResolvedValueOnce(undefined);
+        await showCommitMessageGenerationNotification("notFound");
+        expect(showErrorMessage).toHaveBeenLastCalledWith(
+            "GitHub Copilot is unavailable for commit-message generation.",
+            "Install Copilot",
+            "Sign In",
+        );
+        expect(openExternal).toHaveBeenCalledTimes(1);
+        expect(githubSessionGet).not.toHaveBeenCalled();
+
+        showErrorMessage.mockResolvedValueOnce("Sign In");
+        await showCommitMessageGenerationNotification("noPermissions");
+        expect(showErrorMessage).toHaveBeenLastCalledWith(
+            "GitHub Copilot permission is required for commit-message generation.",
+            "Sign In",
+        );
+        expect(openExternal).toHaveBeenCalledTimes(1);
+        expect(githubSessionGet).toHaveBeenCalledWith("github", ["user:email"], {
+            createIfNone: true,
+        });
+
+        await showCommitMessageGenerationNotification("blocked");
+        expect(showInformationMessage).toHaveBeenCalledWith(
+            "GitHub Copilot blocked commit-message generation.",
+        );
+        const errorCallCount = showErrorMessage.mock.calls.length;
+        const informationCallCount = showInformationMessage.mock.calls.length;
+        await showCommitMessageGenerationNotification("unknown");
+        expect(showErrorMessage).toHaveBeenCalledTimes(errorCallCount);
+        expect(showInformationMessage).toHaveBeenCalledTimes(informationCallCount);
+    });
+
+    it("contains rejected notification remediation actions at the docked host boundary", async () => {
+        const { provider } = await setupCommitPanelProvider();
+        const notificationHost = provider as unknown as {
+            commitMessageGenerationHost: { emit(event: unknown): void };
+        };
+        const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
+        showErrorMessage.mockReset();
+        showErrorMessage.mockResolvedValue("Install Copilot");
+        openExternal.mockRejectedValueOnce(new Error("marketplace unavailable"));
+
+        notificationHost.commitMessageGenerationHost.emit({
+            repositoryRoot: "/repo",
+            requestId: "install-rejected",
+            kind: "error",
+            errorKind: "copilotUnavailable",
+        });
+        await vi.waitFor(() => expect(log).toHaveBeenCalledTimes(1));
+        expect(log).toHaveBeenCalledWith(
+            "[IntelliGit] Commit-message generation notification failed:",
+            expect.any(Error),
+        );
+
+        log.mockClear();
+        showErrorMessage.mockResolvedValueOnce("Sign In");
+        githubSessionGet.mockRejectedValueOnce(new Error("sign-in unavailable"));
+        notificationHost.commitMessageGenerationHost.emit({
+            repositoryRoot: "/repo",
+            requestId: "sign-in-rejected",
+            kind: "error",
+            errorKind: "noPermissions",
+        });
+        await vi.waitFor(() => expect(log).toHaveBeenCalledTimes(1));
+        provider.dispose();
     });
 
     it("starts shelf recovery before initial snapshots without blocking activation", async () => {
@@ -1847,8 +2338,14 @@ describe("view providers integration", () => {
         });
 
         postMessageSpy.mockClear();
+        const selectedStashGitOps = makeGitOpsMock();
+        gitOps.deriveFor.mockImplementation((root: string) => {
+            expect(root).toBe("/repo");
+            return selectedStashGitOps;
+        });
         await send({ type: "stashSelect", index: 0 });
-        expect(gitOps.getStashFiles).toHaveBeenLastCalledWith(0);
+        expect(selectedStashGitOps.getStashFiles).toHaveBeenLastCalledWith(0);
+        expect(gitOps.getStashFiles).not.toHaveBeenCalledWith(0);
         expect(postMessageSpy).toHaveBeenCalledWith(
             expect.objectContaining({
                 type: "update",
@@ -1896,6 +2393,11 @@ describe("view providers integration", () => {
         await send({ type: "stageFiles", paths: ["src/a.ts"] });
         await send({ type: "unstageFiles", paths: ["src/a.ts"] });
         gitOps.getStatus.mockResolvedValue([]);
+        const selectedCommitGitOps = makeGitOpsMock();
+        gitOps.deriveFor.mockImplementation((root: string) => {
+            expect(root).toBe("/repo");
+            return selectedCommitGitOps;
+        });
         await send({
             type: "commitSelected",
             message: "feat: selected",
@@ -1949,7 +2451,14 @@ describe("view providers integration", () => {
 
         expect(gitOps.stageFiles).toHaveBeenCalledWith(["src/a.ts"]);
         expect(gitOps.unstageFiles).toHaveBeenCalledWith(["src/a.ts"]);
-        expect(gitOps.commit).toHaveBeenCalledWith("feat: selected", false, ["src/a.ts"]);
+        expect(gitOps.deriveFor).toHaveBeenCalledWith("/repo");
+        expect(selectedCommitGitOps.stageFiles).toHaveBeenCalledWith(["src/a.ts"]);
+        expect(selectedCommitGitOps.commit).toHaveBeenCalledWith(
+            "feat: selected",
+            false,
+            ["src/a.ts"],
+        );
+        expect(gitOps.commit).not.toHaveBeenCalledWith("feat: selected", false, ["src/a.ts"]);
         expect(gitOps.commit).toHaveBeenCalledWith("feat: commit", false);
         expect(gitOps.commit).toHaveBeenCalledWith("feat: push", false);
         expect(gitOps.commitAndPush).not.toHaveBeenCalled();
@@ -2148,6 +2657,26 @@ describe("view providers integration", () => {
             callRoots.push(`stashes:${executor.root}`);
             return [];
         });
+        gitOps.deriveFor.mockImplementation((root: string) => ({
+            ...gitOps,
+            getBranches: vi.fn(async () => {
+                callRoots.push(`branches:${root}`);
+                return makeBranchesForRoot(root);
+            }),
+            getRemotes: vi.fn(async () => {
+                callRoots.push(`remotes:${root}`);
+                return ["origin"];
+            }),
+            getStatus: vi.fn(async () => {
+                callRoots.push(`status:${root}`);
+                return [];
+            }),
+            listStashes: vi.fn(async () => {
+                callRoots.push(`stashes:${root}`);
+                return [];
+            }),
+            hasWholeIndexOperationInProgress: vi.fn(async () => false),
+        }));
         const workspaceStore = createMemento({ "commitDraft:/repo-a": "draft A" });
         const provider = new UndockedViewProvider(
             { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
@@ -2320,6 +2849,14 @@ describe("view providers integration", () => {
             callRoots.push(`status:${executor.root}`);
             return [];
         });
+        gitOps.deriveFor.mockImplementation((root: string) => ({
+            ...gitOps,
+            getStatus: vi.fn(async () => {
+                callRoots.push(`status:${root}`);
+                return [];
+            }),
+            hasWholeIndexOperationInProgress: vi.fn(async () => false),
+        }));
         const workspaceStore = createMemento({ "commitDraft:/repo-a": "draft A" });
         const provider = new UndockedViewProvider(
             { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },

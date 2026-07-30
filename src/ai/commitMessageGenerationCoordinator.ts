@@ -5,6 +5,7 @@ import type {
     PreparedCommitMessageGeneration,
 } from "./commitMessageGenerator";
 import type { DiffForPathsResult } from "../git/operations";
+import type { WorkingFile } from "../types";
 
 /** Kinds emitted by the shared generation lifecycle. */
 type CommitMessageGenerationEventKind = "start" | "chunk" | "done" | "cancelled" | "error";
@@ -19,7 +20,8 @@ export type CommitMessageGenerationCoordinatorErrorKind =
     | "promptTooLarge"
     | "emptyResult"
     | "operationInProgress"
-    | "commitInProgress";
+    | "commitInProgress"
+    | "invalidRequest";
 
 /** A correlated structural event emitted to the host that owns a generation attempt. */
 export interface CommitMessageGenerationEvent {
@@ -44,7 +46,7 @@ export interface CommitMessageGenerationHost {
 interface CommitMessageGenerationGitOps {
     getDiffForPaths(
         paths: string[],
-        options: { includeHead?: boolean },
+        options: { includeHead?: boolean; validatedStatusSnapshot: readonly WorkingFile[] },
     ): Promise<DiffForPathsResult>;
     getRecentCommitSubjects(): Promise<string[]>;
     hasWholeIndexOperationInProgress(): Promise<boolean>;
@@ -63,7 +65,36 @@ export interface CommitMessageGenerationRequest {
     requestId: string;
     paths: string[];
     amend: boolean;
+    /** Exact fresh status snapshot already validated by the host boundary. */
+    validatedStatusSnapshot: readonly WorkingFile[];
     host: CommitMessageGenerationHost;
+}
+
+/** Read-only lifecycle control supplied to one asynchronous host validation callback. */
+interface CommitMessageGenerationValidationControl {
+    /** Returns false immediately after cancellation, supersession, a host drop, or a commit lease. */
+    isActive(): boolean;
+}
+
+/** Exact host-validated input promoted atomically into diff acquisition. */
+export interface ValidatedCommitMessageGenerationRequest {
+    paths: string[];
+    amend: boolean;
+    validatedStatusSnapshot: readonly WorkingFile[];
+}
+
+/**
+ * Registers a correlated attempt before a host starts its asynchronous validation.
+ *
+ * The validation callback must return no result for a rejected request and check its control after every await.
+ */
+export interface CommitMessageGenerationSubmission {
+    repositoryRoot: string;
+    requestId: string;
+    host: CommitMessageGenerationHost;
+    validate(
+        control: CommitMessageGenerationValidationControl,
+    ): Promise<ValidatedCommitMessageGenerationRequest | undefined>;
 }
 
 /** Exact ownership key required for a user-requested cancellation. */
@@ -101,49 +132,64 @@ export class CommitMessageGenerationCoordinator {
         this.prepare = dependencies.prepare ?? prepareCommitMessageGeneration;
     }
 
-    /** Starts a root-keyed generation attempt and emits only structural lifecycle events to its host. */
+    /** Starts a legacy prevalidated request through the same serialized submission lifecycle. */
     request(request: CommitMessageGenerationRequest): void {
+        this.submit({
+            repositoryRoot: request.repositoryRoot,
+            requestId: request.requestId,
+            host: request.host,
+            validate: () =>
+                Promise.resolve({
+                    paths: request.paths,
+                    amend: request.amend,
+                    validatedStatusSnapshot: request.validatedStatusSnapshot,
+                }),
+        });
+    }
+
+    /** Registers a root-keyed attempt before asynchronous host validation and streams only lifecycle events. */
+    submit(submission: CommitMessageGenerationSubmission): void {
         if (this.disposed) {
-            request.host.emit({
-                repositoryRoot: request.repositoryRoot,
-                requestId: request.requestId,
+            submission.host.emit({
+                repositoryRoot: submission.repositoryRoot,
+                requestId: submission.requestId,
                 kind: "error",
                 errorKind: "unknown",
             });
             return;
         }
-        if ((this.commitLeaseCounts.get(request.repositoryRoot) ?? 0) > 0) {
-            request.host.emit({
-                repositoryRoot: request.repositoryRoot,
-                requestId: request.requestId,
+        if ((this.commitLeaseCounts.get(submission.repositoryRoot) ?? 0) > 0) {
+            submission.host.emit({
+                repositoryRoot: submission.repositoryRoot,
+                requestId: submission.requestId,
                 kind: "error",
                 errorKind: "commitInProgress",
             });
             return;
         }
-        const previous = this.activeByRoot.get(request.repositoryRoot);
+        const previous = this.activeByRoot.get(submission.repositoryRoot);
         if (previous) this.emitTerminal(previous, "cancelled", undefined, true);
         let context: CommitMessageGenerationRootContext;
         try {
-            context = this.dependencies.resolveRoot(request.repositoryRoot);
+            context = this.dependencies.resolveRoot(submission.repositoryRoot);
         } catch {
-            request.host.emit({
-                repositoryRoot: request.repositoryRoot,
-                requestId: request.requestId,
+            submission.host.emit({
+                repositoryRoot: submission.repositoryRoot,
+                requestId: submission.requestId,
                 kind: "error",
                 errorKind: "unknown",
             });
             return;
         }
         const attempt: ActiveGenerationAttempt = {
-            ...request,
+            ...submission,
             context,
             tokenSource: new vscode.CancellationTokenSource(),
             wholeIndexCheckTail: Promise.resolve(),
             wholeIndexSignalVersion: 0,
             active: true,
         };
-        this.activeByRoot.set(request.repositoryRoot, attempt);
+        this.activeByRoot.set(submission.repositoryRoot, attempt);
         try {
             attempt.watcher = context.watchWholeIndexOperation(() => {
                 attempt.wholeIndexSignalVersion += 1;
@@ -173,6 +219,12 @@ export class CommitMessageGenerationCoordinator {
         for (const attempt of [...this.activeByRoot.values()]) {
             if (attempt.host === host) this.emitTerminal(attempt, "cancelled");
         }
+    }
+
+    /** Cancels one active attempt only when both the host and repository root match exactly. */
+    dropHostRoot(host: CommitMessageGenerationHost, repositoryRoot: string): void {
+        const attempt = this.activeByRoot.get(repositoryRoot);
+        if (attempt?.host === host) this.emitTerminal(attempt, "cancelled");
     }
 
     /** Acquires a root-scoped generation fence and returns an idempotent release callback. */
@@ -237,8 +289,8 @@ export class CommitMessageGenerationCoordinator {
     private scheduleAcquisition(attempt: ActiveGenerationAttempt): void {
         const previous = this.acquisitionTails.get(attempt.repositoryRoot) ?? Promise.resolve();
         const acquisition = previous.then(
-            () => this.acquire(attempt),
-            () => this.acquire(attempt),
+            () => this.validateAndAcquire(attempt),
+            () => this.validateAndAcquire(attempt),
         );
         const retainedTail = acquisition.then(
             () => undefined,
@@ -260,29 +312,50 @@ export class CommitMessageGenerationCoordinator {
         );
     }
 
+    private async validateAndAcquire(
+        attempt: ActiveGenerationAttempt,
+    ): Promise<AcquiredCommitMessageGenerationContext | undefined> {
+        if (!this.isActive(attempt)) return undefined;
+        let validation: ValidatedCommitMessageGenerationRequest | undefined;
+        try {
+            validation = await attempt.validate({ isActive: () => this.isActive(attempt) });
+        } catch {
+            if (this.isActive(attempt)) this.emitTerminal(attempt, "error", "invalidRequest");
+            return undefined;
+        }
+        if (!this.isActive(attempt)) return undefined;
+        if (!validation) {
+            this.emitTerminal(attempt, "error", "invalidRequest");
+            return undefined;
+        }
+        return this.acquire(attempt, validation);
+    }
+
     private async acquire(
         attempt: ActiveGenerationAttempt,
-    ): Promise<{ diffResult: DiffForPathsResult; commitSubjects: string[] } | undefined> {
+        validation: ValidatedCommitMessageGenerationRequest,
+    ): Promise<AcquiredCommitMessageGenerationContext | undefined> {
         if (!this.isActive(attempt)) return undefined;
-        const diffResult = await attempt.context.gitOps.getDiffForPaths(attempt.paths, {
-            includeHead: attempt.amend,
+        const diffResult = await attempt.context.gitOps.getDiffForPaths(validation.paths, {
+            includeHead: validation.amend,
+            validatedStatusSnapshot: validation.validatedStatusSnapshot,
         });
         if (!this.isActive(attempt)) return undefined;
         const commitSubjects = await attempt.context.gitOps.getRecentCommitSubjects();
         if (!this.isActive(attempt)) return undefined;
-        return { diffResult, commitSubjects };
+        return { diffResult, commitSubjects, amend: validation.amend };
     }
 
     private async prepareAndStream(
         attempt: ActiveGenerationAttempt,
-        context: { diffResult: DiffForPathsResult; commitSubjects: string[] },
+        context: AcquiredCommitMessageGenerationContext,
     ): Promise<void> {
         try {
             const prepared = await this.prepare({
                 workspaceFolder: attempt.context.workspaceFolder,
                 diffResult: context.diffResult,
                 commitSubjects: context.commitSubjects,
-                amend: attempt.amend,
+                amend: context.amend,
                 token: attempt.tokenSource.token,
             });
             if (!this.isActive(attempt)) return;
@@ -356,7 +429,7 @@ export class CommitMessageGenerationCoordinator {
     }
 }
 
-type ActiveGenerationAttempt = CommitMessageGenerationRequest & {
+type ActiveGenerationAttempt = CommitMessageGenerationSubmission & {
     context: CommitMessageGenerationRootContext;
     tokenSource: vscode.CancellationTokenSource;
     watcher?: vscode.Disposable;
@@ -364,6 +437,12 @@ type ActiveGenerationAttempt = CommitMessageGenerationRequest & {
     wholeIndexSignalVersion: number;
     active: boolean;
 };
+
+interface AcquiredCommitMessageGenerationContext {
+    diffResult: DiffForPathsResult;
+    commitSubjects: string[];
+    amend: boolean;
+}
 
 /** Translates only P3's documented stable errors; every unrelated failure remains unknown. */
 function toCoordinatorErrorKind(

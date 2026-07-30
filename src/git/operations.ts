@@ -7,13 +7,13 @@ import {
     readlink,
     rename,
     rm,
-    stat,
     writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { readEmptyTreeOid } from "./emptyTree";
 import { GitExecutor } from "./executor";
+import { resolveGitDir } from "./gitDirectory";
 import type {
     Branch,
     Commit,
@@ -136,6 +136,14 @@ export interface DiffForPathsResult {
 /** Controls optional patch sources for selected-path diff assembly. */
 export interface GetDiffForPathsOptions {
     includeHead?: boolean;
+    /**
+     * Immutable, already-validated status for this request's selection boundary.
+     *
+     * When supplied, this snapshot is authoritative for rename expansion and untracked-file
+     * classification, so `getDiffForPaths` does not perform a later status read that could observe
+     * a different working-tree state.
+     */
+    readonly validatedStatusSnapshot?: readonly WorkingFile[];
 }
 
 /**
@@ -646,7 +654,7 @@ export class GitOps {
      * and rebase state. It reads the filesystem on every call so callers never act on stale state.
      */
     async hasWholeIndexOperationInProgress(): Promise<boolean> {
-        const gitDir = await resolveGitDir(await this.getRepositoryRoot());
+        const gitDir = resolveGitDir(await this.getRepositoryRoot());
         const statePaths = [
             "MERGE_HEAD",
             "CHERRY_PICK_HEAD",
@@ -661,20 +669,23 @@ export class GitOps {
     /**
      * Assembles the selected working-tree and optional amend patches under strict byte budgets.
      *
-     * Rename sources come only from one fresh porcelain snapshot, and every Git command that
-     * receives selected paths enables literal pathspecs before acquiring bounded output.
+     * Rename sources come from the caller's validated snapshot or one fresh porcelain snapshot,
+     * and every Git command that receives selected paths enables literal pathspecs before
+     * acquiring bounded output.
      */
     async getDiffForPaths(
         paths: string[],
         options: GetDiffForPathsOptions = {},
     ): Promise<DiffForPathsResult> {
         const selectedPaths = new Set(paths);
-        const statusSnapshot = await this.getStatus({ withStats: false });
+        const statusSnapshot =
+            options.validatedStatusSnapshot ?? (await this.getStatus({ withStats: false }));
         const renameSources = new Map<string, string>();
         const untrackedPaths = new Set<string>();
         for (const file of statusSnapshot) {
             if (!selectedPaths.has(file.path)) continue;
-            if (file.sourcePath) renameSources.set(file.path, file.sourcePath);
+            if (file.status === "R" && file.sourcePath)
+                renameSources.set(file.path, file.sourcePath);
             if (file.status === "?") untrackedPaths.add(file.path);
         }
         const expandedPaths = Array.from(new Set([...paths, ...renameSources.values()]));
@@ -1771,22 +1782,6 @@ function isMissingUntrackedPathError(error: unknown): boolean {
         message.includes("no such file or directory") ||
         message.includes("could not access")
     );
-}
-
-/** Resolves the repository Git directory, including linked-worktree `gitdir:` pointer files. */
-async function resolveGitDir(repoRoot: string): Promise<string> {
-    const dotGit = path.join(repoRoot, ".git");
-    try {
-        if ((await stat(dotGit)).isFile()) {
-            const content = (await readFile(dotGit, "utf8")).trim();
-            const match = content.match(/^gitdir:\s*(.+)$/);
-            if (match)
-                return path.isAbsolute(match[1]) ? match[1] : path.resolve(repoRoot, match[1]);
-        }
-    } catch {
-        // Fall through to the standard repository Git directory.
-    }
-    return dotGit;
 }
 
 /** Returns whether a Git operation-state marker currently exists. */

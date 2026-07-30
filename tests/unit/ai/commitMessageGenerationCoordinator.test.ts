@@ -36,6 +36,7 @@ import {
     CommitMessageGenerationCoordinator,
     type CommitMessageGenerationEvent,
     type CommitMessageGenerationHost,
+    type CommitMessageGenerationRequest,
     type CommitMessageGenerationRootContext,
 } from "../../../src/ai/commitMessageGenerationCoordinator";
 import { GenerationRequestError } from "../../../src/ai/commitMessageGenerator";
@@ -92,6 +93,15 @@ function coordinator(
     });
 }
 
+function requestGeneration(
+    subject: CommitMessageGenerationCoordinator,
+    request: Omit<CommitMessageGenerationRequest, "validatedStatusSnapshot"> & {
+        validatedStatusSnapshot?: CommitMessageGenerationRequest["validatedStatusSnapshot"];
+    },
+): void {
+    subject.request({ ...request, validatedStatusSnapshot: request.validatedStatusSnapshot ?? [] });
+}
+
 async function settle(): Promise<void> {
     await new Promise<void>((resolve) => setImmediate(resolve));
     await Promise.resolve();
@@ -105,7 +115,7 @@ describe("CommitMessageGenerationCoordinator", () => {
         const other = host();
         const subject = coordinator();
 
-        subject.request({
+        requestGeneration(subject, {
             repositoryRoot: "/repo",
             requestId: "request-1",
             paths: ["file.ts"],
@@ -148,7 +158,7 @@ describe("CommitMessageGenerationCoordinator", () => {
         const superseded = host();
         const winner = host();
 
-        subject.request({
+        requestGeneration(subject, {
             repositoryRoot: "/repo",
             requestId: "old",
             paths: ["old.ts"],
@@ -156,7 +166,7 @@ describe("CommitMessageGenerationCoordinator", () => {
             host: superseded.host,
         });
         await settle();
-        subject.request({
+        requestGeneration(subject, {
             repositoryRoot: "/repo",
             requestId: "new",
             paths: ["new.ts"],
@@ -194,7 +204,7 @@ describe("CommitMessageGenerationCoordinator", () => {
         const subject = coordinator(rootContext);
         const owner = host();
         const other = host();
-        subject.request({
+        requestGeneration(subject, {
             repositoryRoot: "/repo",
             requestId: "request-2",
             paths: ["file.ts"],
@@ -227,7 +237,7 @@ describe("CommitMessageGenerationCoordinator", () => {
         });
         const subjectCoordinator = coordinator(subjectContext);
         const subjectOwner = host();
-        subjectCoordinator.request({
+        requestGeneration(subjectCoordinator, {
             repositoryRoot: "/subjects",
             requestId: "subjects",
             paths: ["file.ts"],
@@ -252,7 +262,7 @@ describe("CommitMessageGenerationCoordinator", () => {
         const prepare = vi.fn(() => preparation.promise);
         const preparationCoordinator = coordinator(context(), prepare);
         const preparationOwner = host();
-        preparationCoordinator.request({
+        requestGeneration(preparationCoordinator, {
             repositoryRoot: "/preparation",
             requestId: "preparation",
             paths: ["file.ts"],
@@ -300,7 +310,7 @@ describe("CommitMessageGenerationCoordinator", () => {
         const subject = coordinator(rootContext);
         const active = host();
         const waiting = host();
-        subject.request({
+        requestGeneration(subject, {
             repositoryRoot: "/repo",
             requestId: "active",
             paths: ["active.ts"],
@@ -308,7 +318,7 @@ describe("CommitMessageGenerationCoordinator", () => {
             host: active.host,
         });
         await settle();
-        subject.request({
+        requestGeneration(subject, {
             repositoryRoot: "/repo",
             requestId: "waiting",
             paths: ["waiting.ts"],
@@ -355,7 +365,7 @@ describe("CommitMessageGenerationCoordinator", () => {
         const first = host();
         const second = host();
         const queued = host();
-        subject.request({
+        requestGeneration(subject, {
             repositoryRoot: "/repo",
             requestId: "first",
             paths: ["first.ts"],
@@ -363,7 +373,7 @@ describe("CommitMessageGenerationCoordinator", () => {
             host: first.host,
         });
         await settle();
-        subject.request({
+        requestGeneration(subject, {
             repositoryRoot: "/repo",
             requestId: "second",
             paths: ["second.ts"],
@@ -375,7 +385,7 @@ describe("CommitMessageGenerationCoordinator", () => {
         gates[0].resolve({ diff: "first", summarizedPaths: [], truncated: false });
         await settle();
         expect(getDiffForPaths).toHaveBeenCalledTimes(2);
-        subject.request({
+        requestGeneration(subject, {
             repositoryRoot: "/repo",
             requestId: "queued",
             paths: ["queued.ts"],
@@ -417,7 +427,7 @@ describe("CommitMessageGenerationCoordinator", () => {
         const active = host();
         const blocked = host();
         const reopened = host();
-        subject.request({
+        requestGeneration(subject, {
             repositoryRoot: "/repo",
             requestId: "active",
             paths: ["active.ts"],
@@ -428,7 +438,7 @@ describe("CommitMessageGenerationCoordinator", () => {
 
         const releaseFirst = subject.acquireCommitLease("/repo");
         const releaseSecond = subject.acquireCommitLease("/repo");
-        subject.request({
+        requestGeneration(subject, {
             repositoryRoot: "/repo",
             requestId: "blocked",
             paths: ["blocked.ts"],
@@ -437,7 +447,7 @@ describe("CommitMessageGenerationCoordinator", () => {
         });
         releaseFirst();
         releaseFirst();
-        subject.request({
+        requestGeneration(subject, {
             repositoryRoot: "/repo",
             requestId: "still-blocked",
             paths: ["still-blocked.ts"],
@@ -445,7 +455,7 @@ describe("CommitMessageGenerationCoordinator", () => {
             host: blocked.host,
         });
         releaseSecond();
-        subject.request({
+        requestGeneration(subject, {
             repositoryRoot: "/repo",
             requestId: "reopened",
             paths: ["reopened.ts"],
@@ -520,7 +530,7 @@ describe("CommitMessageGenerationCoordinator", () => {
             })),
         );
         const owner = host();
-        subject.request({
+        requestGeneration(subject, {
             repositoryRoot: "/repo",
             requestId: "watch",
             paths: ["file.ts"],
@@ -587,7 +597,7 @@ describe("CommitMessageGenerationCoordinator", () => {
             })),
         );
         const owner = host();
-        subject.request({
+        requestGeneration(subject, {
             repositoryRoot: "/repo",
             requestId: "overlap",
             paths: ["file.ts"],
@@ -707,7 +717,7 @@ describe("CommitMessageGenerationCoordinator", () => {
             }),
         });
         const setupFailure = host();
-        coordinator(setupFailureContext).request({
+        requestGeneration(coordinator(setupFailureContext), {
             repositoryRoot: "/setup-failure",
             requestId: "setup-failure",
             paths: ["file.ts"],
@@ -731,7 +741,7 @@ describe("CommitMessageGenerationCoordinator", () => {
             },
         });
         const marker = host();
-        coordinator(markerContext).request({
+        requestGeneration(coordinator(markerContext), {
             repositoryRoot: "/marker",
             requestId: "marker",
             paths: ["file.ts"],
@@ -945,7 +955,7 @@ describe("CommitMessageGenerationCoordinator", () => {
         const subject = coordinator(context(), prepare);
         const stale = host();
         const winner = host();
-        subject.request({
+        requestGeneration(subject, {
             repositoryRoot: "/repo",
             requestId: "stale",
             paths: ["stale.ts"],
@@ -1118,5 +1128,351 @@ describe("CommitMessageGenerationCoordinator", () => {
         ]);
         expect(markedContext.gitOps.getDiffForPaths).not.toHaveBeenCalled();
         expect(markerDisposable.dispose).toHaveBeenCalledTimes(1);
+    });
+
+    it("forwards the exact validated snapshot and drops only the matching host root", async () => {
+        const pendingDiff = deferred<{
+            diff: string;
+            summarizedPaths: string[];
+            truncated: boolean;
+        }>();
+        const getDiffForPaths = vi.fn(() => pendingDiff.promise);
+        const subject = coordinator(
+            context({
+                gitOps: {
+                    getDiffForPaths,
+                    getRecentCommitSubjects: vi.fn(async () => []),
+                    hasWholeIndexOperationInProgress: vi.fn(async () => false),
+                },
+            }),
+        );
+        const sharedHost = host();
+        const otherHost = host();
+        const snapshot = [
+            {
+                path: "destination.ts",
+                sourcePath: "source.ts",
+                status: "R" as const,
+                staged: false,
+                additions: 1,
+                deletions: 0,
+            },
+        ] as const;
+
+        subject.request({
+            repositoryRoot: "/first",
+            requestId: "first",
+            paths: ["destination.ts"],
+            amend: false,
+            validatedStatusSnapshot: snapshot,
+            host: sharedHost.host,
+        });
+        subject.request({
+            repositoryRoot: "/second",
+            requestId: "second",
+            paths: ["other.ts"],
+            amend: false,
+            validatedStatusSnapshot: snapshot,
+            host: sharedHost.host,
+        });
+        subject.request({
+            repositoryRoot: "/third",
+            requestId: "third",
+            paths: ["third.ts"],
+            amend: false,
+            validatedStatusSnapshot: snapshot,
+            host: otherHost.host,
+        });
+        await settle();
+
+        expect(getDiffForPaths).toHaveBeenCalledWith(["destination.ts"], {
+            includeHead: false,
+            validatedStatusSnapshot: snapshot,
+        });
+        expect(getDiffForPaths.mock.calls[0]?.[1]?.validatedStatusSnapshot).toBe(snapshot);
+
+        subject.dropHostRoot(sharedHost.host, "/first");
+
+        expect(sharedHost.events).toEqual([
+            { repositoryRoot: "/first", requestId: "first", kind: "cancelled" },
+        ]);
+        expect(otherHost.events).toEqual([]);
+        pendingDiff.resolve({ diff: "diff", summarizedPaths: [], truncated: false });
+    });
+
+    it("cancels a registered deferred validation before it can acquire a diff or prepare a model", async () => {
+        const validation = deferred<{
+            paths: string[];
+            amend: boolean;
+            validatedStatusSnapshot: readonly [];
+        }>();
+        const rootContext = context();
+        const prepare = vi.fn();
+        const subject = coordinator(rootContext, prepare);
+        const owner = host();
+
+        subject.submit({
+            repositoryRoot: "/repo",
+            requestId: "deferred-status",
+            host: owner.host,
+            validate: () => validation.promise,
+        });
+        await settle();
+        subject.cancel({
+            repositoryRoot: "/repo",
+            requestId: "deferred-status",
+            host: owner.host,
+        });
+        validation.resolve({ paths: ["src/a.ts"], amend: false, validatedStatusSnapshot: [] });
+        await settle();
+
+        expect(owner.events).toEqual([
+            { repositoryRoot: "/repo", requestId: "deferred-status", kind: "cancelled" },
+        ]);
+        expect(rootContext.gitOps.getDiffForPaths).not.toHaveBeenCalled();
+        expect(prepare).not.toHaveBeenCalled();
+    });
+
+    it("supersedes pending peer-host validation promptly and serializes the successor behind it", async () => {
+        const firstValidation = deferred<{
+            paths: string[];
+            amend: boolean;
+            validatedStatusSnapshot: readonly [];
+        }>();
+        const secondValidation = deferred<{
+            paths: string[];
+            amend: boolean;
+            validatedStatusSnapshot: readonly [];
+        }>();
+        const firstValidate = vi.fn(() => firstValidation.promise);
+        const secondValidate = vi.fn(() => secondValidation.promise);
+        const subject = coordinator();
+        const first = host();
+        const second = host();
+
+        subject.submit({
+            repositoryRoot: "/repo",
+            requestId: "old",
+            host: first.host,
+            validate: firstValidate,
+        });
+        await settle();
+        expect(firstValidate).toHaveBeenCalledOnce();
+
+        subject.submit({
+            repositoryRoot: "/repo",
+            requestId: "new",
+            host: second.host,
+            validate: secondValidate,
+        });
+        await settle();
+        expect(first.events).toEqual([
+            { repositoryRoot: "/repo", requestId: "old", kind: "cancelled", superseded: true },
+        ]);
+        expect(secondValidate).not.toHaveBeenCalled();
+
+        firstValidation.resolve({ paths: ["old.ts"], amend: false, validatedStatusSnapshot: [] });
+        await settle();
+        expect(secondValidate).toHaveBeenCalledOnce();
+        secondValidation.resolve({ paths: ["new.ts"], amend: false, validatedStatusSnapshot: [] });
+        await settle();
+
+        expect(first.events).toHaveLength(1);
+        expect(second.events.at(-1)).toEqual({
+            repositoryRoot: "/repo",
+            requestId: "new",
+            kind: "done",
+        });
+    });
+
+    it("keeps cancelled validation tails until each in-flight callback settles", async () => {
+        const gates = [
+            deferred<{ paths: string[]; amend: boolean; validatedStatusSnapshot: readonly [] }>(),
+            deferred<{ paths: string[]; amend: boolean; validatedStatusSnapshot: readonly [] }>(),
+            deferred<{ paths: string[]; amend: boolean; validatedStatusSnapshot: readonly [] }>(),
+        ];
+        let concurrent = 0;
+        let maximumConcurrent = 0;
+        const validations = gates.map((gate) =>
+            vi.fn(() =>
+                gate.promise.finally(() => {
+                    concurrent -= 1;
+                }),
+            ),
+        );
+        for (const validate of validations) {
+            validate.mockImplementationOnce(() => {
+                concurrent += 1;
+                maximumConcurrent = Math.max(maximumConcurrent, concurrent);
+                return gates[validations.indexOf(validate)].promise.finally(() => {
+                    concurrent -= 1;
+                });
+            });
+        }
+        const subject = coordinator();
+        const owners = [host(), host(), host()];
+
+        for (const [index, owner] of owners.entries()) {
+            subject.submit({
+                repositoryRoot: "/repo",
+                requestId: `request-${index}`,
+                host: owner.host,
+                validate: validations[index],
+            });
+            await settle();
+        }
+        expect(maximumConcurrent).toBe(1);
+        gates[0].resolve({ paths: ["one.ts"], amend: false, validatedStatusSnapshot: [] });
+        await settle();
+        expect(maximumConcurrent).toBe(1);
+        gates[1].resolve({ paths: ["two.ts"], amend: false, validatedStatusSnapshot: [] });
+        await settle();
+        expect(maximumConcurrent).toBe(1);
+        gates[2].resolve({ paths: ["three.ts"], amend: false, validatedStatusSnapshot: [] });
+        await settle();
+
+        expect(
+            owners.map((owner) => owner.events.filter((event) => event.kind === "cancelled")),
+        ).toEqual([
+            [
+                {
+                    repositoryRoot: "/repo",
+                    requestId: "request-0",
+                    kind: "cancelled",
+                    superseded: true,
+                },
+            ],
+            [
+                {
+                    repositoryRoot: "/repo",
+                    requestId: "request-1",
+                    kind: "cancelled",
+                    superseded: true,
+                },
+            ],
+            [],
+        ]);
+    });
+
+    it("fences pending validation on leases and host lifecycle drops without later promotion", async () => {
+        const controls: Array<{
+            terminate(
+                subject: CommitMessageGenerationCoordinator,
+                owner: CommitMessageGenerationHost,
+            ): void;
+            terminal: { kind: "cancelled"; superseded?: true };
+        }> = [
+            {
+                terminate: (subject) => {
+                    subject.acquireCommitLease("/repo");
+                },
+                terminal: { kind: "cancelled", superseded: true },
+            },
+            {
+                terminate: (subject, owner) => subject.dropHostRoot(owner, "/repo"),
+                terminal: { kind: "cancelled" },
+            },
+            {
+                terminate: (subject, owner) => subject.dropHost(owner),
+                terminal: { kind: "cancelled" },
+            },
+            {
+                terminate: (subject) => subject.dispose(),
+                terminal: { kind: "cancelled" },
+            },
+        ];
+
+        for (const [index, { terminate, terminal }] of controls.entries()) {
+            const validation = deferred<{
+                paths: string[];
+                amend: boolean;
+                validatedStatusSnapshot: readonly [];
+            }>();
+            const rootContext = context();
+            const subject = coordinator(rootContext);
+            const owner = host();
+            subject.submit({
+                repositoryRoot: "/repo",
+                requestId: `termination-${index}`,
+                host: owner.host,
+                validate: () => validation.promise,
+            });
+            await settle();
+            terminate(subject, owner.host);
+            validation.resolve({ paths: ["file.ts"], amend: false, validatedStatusSnapshot: [] });
+            await settle();
+
+            expect(owner.events).toEqual([
+                {
+                    repositoryRoot: "/repo",
+                    requestId: `termination-${index}`,
+                    ...terminal,
+                },
+            ]);
+            expect(rootContext.gitOps.getDiffForPaths).not.toHaveBeenCalled();
+        }
+    });
+
+    it("promotes only the exact active validation snapshot and maps active validation failures to invalidRequest", async () => {
+        const getDiffForPaths = vi.fn(async () => ({
+            diff: "diff",
+            summarizedPaths: [],
+            truncated: false,
+        }));
+        const rootContext = context({
+            gitOps: {
+                getDiffForPaths,
+                getRecentCommitSubjects: vi.fn(async () => []),
+                hasWholeIndexOperationInProgress: vi.fn(async () => false),
+            },
+        });
+        const snapshot = [
+            {
+                path: "destination.ts",
+                sourcePath: "source.ts",
+                status: "R" as const,
+                staged: false,
+                additions: 1,
+                deletions: 1,
+            },
+        ] as const;
+        const subject = coordinator(rootContext);
+        const valid = host();
+        const invalid = host();
+
+        subject.submit({
+            repositoryRoot: "/valid",
+            requestId: "valid",
+            host: valid.host,
+            validate: async () => ({
+                paths: ["destination.ts"],
+                amend: false,
+                validatedStatusSnapshot: snapshot,
+            }),
+        });
+        await settle();
+        expect(getDiffForPaths).toHaveBeenCalledWith(["destination.ts"], {
+            includeHead: false,
+            validatedStatusSnapshot: snapshot,
+        });
+        expect(getDiffForPaths.mock.calls[0]?.[1]?.validatedStatusSnapshot).toBe(snapshot);
+
+        subject.submit({
+            repositoryRoot: "/invalid",
+            requestId: "invalid",
+            host: invalid.host,
+            validate: async () => {
+                throw new Error("status failed");
+            },
+        });
+        await settle();
+        expect(invalid.events).toEqual([
+            {
+                repositoryRoot: "/invalid",
+                requestId: "invalid",
+                kind: "error",
+                errorKind: "invalidRequest",
+            },
+        ]);
     });
 });

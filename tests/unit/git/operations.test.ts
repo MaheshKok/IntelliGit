@@ -12,9 +12,10 @@ import {
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { GitExecutor } from "../../../src/git/executor";
 import { GitOps, type DiffForPathsResult } from "../../../src/git/operations";
+import type { WorkingFile } from "../../../src/types";
 
 const execFileAsync = promisify(execFile);
 const directories: string[] = [];
@@ -316,6 +317,92 @@ describe("GitOps.getDiffForPaths", () => {
 
         expect(result.diff).toContain("source.txt");
         expect(result.diff).toContain("destination.txt");
+    });
+
+    it("does not expand a selected copy destination to an independently modified source", async () => {
+        const root = await createGitRepository();
+        const original = "shared copy content\n".repeat(100);
+        await commitFile(root, "source.txt", original);
+        await git(root, ["config", "status.renames", "copies"]);
+        await writeFile(path.join(root, "source.txt"), `${original}SOURCE_SENTINEL\n`);
+        await writeFile(path.join(root, "destination.txt"), `${original}DESTINATION_CHANGE\n`);
+        await git(root, ["add", "source.txt", "destination.txt"]);
+        const gitOps = gitOpsFor(root);
+
+        await expect(gitOps.getStatus({ withStats: false })).resolves.toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({
+                    path: "destination.txt",
+                    status: "C",
+                    sourcePath: "source.txt",
+                }),
+            ]),
+        );
+
+        const result = await gitOps.getDiffForPaths(["destination.txt"]);
+
+        expect(result.diff).toContain("DESTINATION_CHANGE");
+        expect(result.diff).not.toContain("SOURCE_SENTINEL");
+    });
+
+    it("uses a supplied validated status snapshot instead of a later live status", async () => {
+        const root = await createGitRepository();
+        await commitFile(root, "source.txt", "before rename\n");
+        await git(root, ["mv", "source.txt", "destination.txt"]);
+        const gitOps = gitOpsFor(root);
+        const validatedStatusSnapshot: readonly WorkingFile[] = [
+            {
+                path: "destination.txt",
+                sourcePath: "source.txt",
+                status: "R",
+                staged: false,
+                additions: 0,
+                deletions: 0,
+            },
+        ];
+        const getStatus = vi.spyOn(gitOps, "getStatus").mockResolvedValue([]);
+
+        const result = await gitOps.getDiffForPaths(["destination.txt"], {
+            validatedStatusSnapshot,
+        });
+
+        expect(getStatus).not.toHaveBeenCalled();
+        expect(result.diff).toContain("source.txt");
+        expect(result.diff).toContain("destination.txt");
+    });
+
+    it("keeps supplied untracked classification authoritative over a later live status", async () => {
+        const root = await createGitRepository();
+        const filePath = "snapshot-untracked.txt";
+        await writeFile(path.join(root, filePath), "snapshot untracked content\n");
+        const gitOps = gitOpsFor(root);
+        const validatedStatusSnapshot: readonly WorkingFile[] = [
+            {
+                path: filePath,
+                status: "?",
+                staged: false,
+                additions: 0,
+                deletions: 0,
+            },
+        ];
+        const getStatus = vi.spyOn(gitOps, "getStatus").mockResolvedValue([
+            {
+                path: filePath,
+                status: "M",
+                staged: false,
+                additions: 0,
+                deletions: 0,
+            },
+        ]);
+
+        const result = await gitOps.getDiffForPaths([filePath], { validatedStatusSnapshot });
+
+        expect(getStatus).not.toHaveBeenCalled();
+        expect(result.diff).toContain(`diff --git a/${filePath} b/${filePath}`);
+        expect(result.diff).toContain("new file mode 100644");
+        expect(result.diff).toContain("--- /dev/null");
+        expect(result.diff).toContain(`+++ b/${filePath}`);
+        expect(result.diff).toContain("+snapshot untracked content");
     });
 
     it("treats wildcard-magic filenames as literal pathspecs", async () => {
