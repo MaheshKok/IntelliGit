@@ -12,6 +12,8 @@ const postMessage = vi.fn();
 let messageHandler: MessageHandler | undefined;
 let panelDisposeHandler: (() => void) | undefined;
 const commitSelectedFromPanel = vi.hoisted(() => vi.fn(async () => undefined));
+const commitOnlyFromPanel = vi.hoisted(() => vi.fn(async () => undefined));
+const commitAndPushFromPanel = vi.hoisted(() => vi.fn(async () => undefined));
 const showCommitMessageGenerationNotification = vi.hoisted(() => vi.fn(async () => undefined));
 
 const webview = {
@@ -88,6 +90,8 @@ vi.mock("../../../src/views/webviewHtml", () => ({
 
 vi.mock("../../../src/views/commitPanelActions", () => ({
     commitSelectedFromPanel,
+    commitOnlyFromPanel,
+    commitAndPushFromPanel,
 }));
 
 vi.mock("../../../src/ai/commitMessageGenerationNotifications", () => ({
@@ -183,6 +187,8 @@ describe("UndockedViewProvider commit-message generation", () => {
         messageHandler = undefined;
         panelDisposeHandler = undefined;
         commitSelectedFromPanel.mockClear();
+        commitOnlyFromPanel.mockClear();
+        commitAndPushFromPanel.mockClear();
         showCommitMessageGenerationNotification.mockReset();
         showCommitMessageGenerationNotification.mockResolvedValue(undefined);
     });
@@ -275,6 +281,31 @@ describe("UndockedViewProvider commit-message generation", () => {
             requestId: "valid",
             kind: "chunk",
             text: "feat: generated",
+        });
+        provider.dispose();
+    });
+
+    it("rejects oversized raw generation paths before deduplication or Git validation", async () => {
+        const { coordinator, gitOps, provider } = await createProvider();
+        const paths = Array.from({ length: 201 }, () => "src/a.ts");
+
+        await send({
+            type: "generateCommitMessage",
+            repositoryRoot: "/repo-a",
+            requestId: "oversized",
+            paths,
+            amend: false,
+        });
+
+        expect(coordinator.submit).not.toHaveBeenCalled();
+        expect(gitOps.deriveFor).not.toHaveBeenCalled();
+        expect(gitOps.rootGitOps.getStatus).not.toHaveBeenCalled();
+        expect(postMessage).toHaveBeenCalledWith({
+            type: "commitMessageGeneration",
+            repositoryRoot: "/repo-a",
+            requestId: "oversized",
+            kind: "error",
+            errorKind: "invalidRequest",
         });
         provider.dispose();
     });
@@ -429,6 +460,45 @@ describe("UndockedViewProvider commit-message generation", () => {
 
         expect(coordinator.acquireCommitLease).toHaveBeenCalledWith("/repo-a");
         expect(rejectedRelease).toHaveBeenCalledTimes(1);
+        provider.dispose();
+    });
+
+    it("scopes direct commit routes to the selected root and releases each lease", async () => {
+        const { coordinator, gitOps, provider } = await createProvider();
+        const repoBGitOps = gitOps.rootGitOpsByRoot["/repo-b"];
+        const commitRelease = vi.fn();
+        const pushRelease = vi.fn();
+        coordinator.acquireCommitLease.mockReturnValueOnce(commitRelease).mockReturnValueOnce(pushRelease);
+        provider.setRepositoryRootUri({ fsPath: "/repo-b", path: "/repo-b" } as never);
+        gitOps.deriveFor.mockClear();
+
+        commitOnlyFromPanel.mockImplementationOnce(
+            async (deps: { gitOps: unknown }, message: string, amend: boolean) => {
+                expect(deps.gitOps).toBe(repoBGitOps);
+                expect(message).toBe("feat: direct commit");
+                expect(amend).toBe(true);
+                throw new Error("commit rejected");
+            },
+        );
+        await send({ type: "commit", message: "  feat: direct commit  ", amend: true });
+
+        commitAndPushFromPanel.mockImplementationOnce(
+            async (deps: { gitOps: unknown }, message: string, amend: boolean) => {
+                expect(deps.gitOps).toBe(repoBGitOps);
+                expect(message).toBe("feat: direct push");
+                expect(amend).toBe(false);
+            },
+        );
+        await send({ type: "commitAndPush", message: "  feat: direct push  ", amend: false });
+
+        expect(commitOnlyFromPanel).toHaveBeenCalledOnce();
+        expect(commitAndPushFromPanel).toHaveBeenCalledOnce();
+        expect(gitOps.deriveFor).toHaveBeenNthCalledWith(1, "/repo-b");
+        expect(gitOps.deriveFor).toHaveBeenNthCalledWith(2, "/repo-b");
+        expect(coordinator.acquireCommitLease).toHaveBeenNthCalledWith(1, "/repo-b");
+        expect(coordinator.acquireCommitLease).toHaveBeenNthCalledWith(2, "/repo-b");
+        expect(commitRelease).toHaveBeenCalledOnce();
+        expect(pushRelease).toHaveBeenCalledOnce();
         provider.dispose();
     });
 

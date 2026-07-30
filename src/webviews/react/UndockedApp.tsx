@@ -259,12 +259,21 @@ function App(): React.ReactElement {
     // --- Commit-panel state ---
     const [cpState, reactCpDispatch] = useReducer(commitPanelReducer, initialCommitPanelState);
     const cpStateRef = useRef(initialCommitPanelState);
-    const cpDispatch = useCallback(
+    /** Reduces an action into the synchronous state mirror and returns the resulting state. */
+    const applyCommitPanelAction = useCallback(
         (action: CommitPanelAction) => {
-            cpStateRef.current = commitPanelReducer(cpStateRef.current, action);
+            const nextState = commitPanelReducer(cpStateRef.current, action);
+            cpStateRef.current = nextState;
             reactCpDispatch(action);
+            return nextState;
         },
         [reactCpDispatch],
+    );
+    const cpDispatch = useCallback(
+        (action: CommitPanelAction): void => {
+            applyCommitPanelAction(action);
+        },
+        [applyCommitPanelAction],
     );
     const { checkedPaths, toggleFile, toggleFolder, toggleSection, isAllChecked, isSomeChecked } =
         useCheckedFiles(cpState.files);
@@ -424,6 +433,7 @@ function App(): React.ReactElement {
     useUnifiedMessages({
         graphDispatch,
         cpDispatch,
+        applyCommitPanelAction,
         cpStateRef,
         loadingMore,
         selectedHash,

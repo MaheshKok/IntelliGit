@@ -19,12 +19,14 @@ export interface WholeIndexOperationWatcher {
  *
  * The watcher is deliberately request-scoped: callers own and dispose it with the request that
  * initiated it. Setup errors from `fs.watch` are not swallowed, letting the request boundary map
- * them to its established error result. Events without a filename are treated as relevant because
- * Node does not guarantee that filename is supplied on every platform.
+ * them to its established error result. Asynchronous watcher failures stop the watcher before an
+ * optional request boundary callback receives the original error. Events without a filename are
+ * treated as relevant because Node does not guarantee that filename is supplied on every platform.
  */
 export function watchWholeIndexOperation(
     repoRoot: string,
     onDidChange: () => void,
+    onDidError: (error: unknown) => void = () => undefined,
 ): WholeIndexOperationWatcher {
     const gitDir = resolveGitDir(repoRoot);
     let disposed = false;
@@ -33,12 +35,18 @@ export function watchWholeIndexOperation(
         const name = filename?.toString();
         if (!name || wholeIndexOperationMarkers.has(name)) onDidChange();
     });
+    const dispose = (): void => {
+        if (disposed) return;
+        disposed = true;
+        watcher.close();
+    };
+    watcher.on("error", (error) => {
+        if (disposed) return;
+        dispose();
+        onDidError(error);
+    });
 
     return {
-        dispose(): void {
-            if (disposed) return;
-            disposed = true;
-            watcher.close();
-        },
+        dispose,
     };
 }

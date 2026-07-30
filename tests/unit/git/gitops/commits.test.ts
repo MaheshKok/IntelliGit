@@ -17,7 +17,13 @@ function createMockExecutor(responses: Record<string, string> = {}): GitExecutor
         }
         return "";
     });
-    return { run } as unknown as GitExecutor;
+    const runBinary = vi.fn(async (args: string[]) => ({
+        stdout: Buffer.from(await run(args)),
+        stderr: Buffer.alloc(0),
+        exitCode: 0,
+        truncated: false,
+    }));
+    return { run, runBinary } as unknown as GitExecutor;
 }
 
 class RealGitExecutor {
@@ -472,17 +478,50 @@ describe("GitOps", () => {
             ]);
         });
 
+        it("reports an empty reachable upstream remote from its structured exit code", async () => {
+            const executor = {
+                run: vi.fn(async (args: string[]) =>
+                    args.join(" ") === "rev-parse --abbrev-ref @{upstream}" ? "origin/main\n" : "",
+                ),
+                runBinary: vi.fn(async () => ({
+                    stdout: Buffer.alloc(0),
+                    stderr: Buffer.from("fatal: no refs found\n"),
+                    exitCode: 2,
+                    truncated: false,
+                })),
+            } as unknown as GitExecutor;
+            const ops = new GitOps(executor);
+
+            await expect(ops.commitAndPush("msg")).rejects.toThrow(
+                'Push remote "origin" reached but reported no refs;',
+            );
+
+            expect(executor.runBinary).toHaveBeenCalledWith(
+                ["ls-remote", "--exit-code", "origin"],
+                { expectedExitCodes: [0, 2] },
+            );
+            expect(executor.run).toHaveBeenCalledTimes(1);
+        });
+
         it("does not commit when the upstream remote repository is unavailable", async () => {
             const executor = {
                 run: vi.fn(async (args: string[]) => {
                     const key = args.join(" ");
                     if (key === "rev-parse --abbrev-ref @{upstream}") return "origin/main\n";
-                    if (key === "ls-remote --exit-code origin") {
+                    return "";
+                }),
+                runBinary: vi.fn(async (args: string[]) => {
+                    if (args.join(" ") === "ls-remote --exit-code origin") {
                         throw new Error(
                             "remote: Repository not found.\nfatal: repository 'https://github.com/MaheshKok/practice.git/' not found",
                         );
                     }
-                    return "";
+                    return {
+                        stdout: Buffer.alloc(0),
+                        stderr: Buffer.alloc(0),
+                        exitCode: 0,
+                        truncated: false,
+                    };
                 }),
             } as unknown as GitExecutor;
             const ops = new GitOps(executor);
@@ -491,11 +530,11 @@ describe("GitOps", () => {
                 'Push remote "origin" is unavailable.',
             );
 
-            const calls = (executor.run as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0]);
-            expect(calls).toEqual([
-                ["rev-parse", "--abbrev-ref", "@{upstream}"],
+            expect(executor.run).toHaveBeenCalledWith(["rev-parse", "--abbrev-ref", "@{upstream}"]);
+            expect(executor.runBinary).toHaveBeenCalledWith(
                 ["ls-remote", "--exit-code", "origin"],
-            ]);
+                { expectedExitCodes: [0, 2] },
+            );
         });
     });
     describe("getLastCommitMessage", () => {

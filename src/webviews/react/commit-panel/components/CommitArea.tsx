@@ -180,7 +180,8 @@ export function CommitArea({
                     borderColor="var(--intelligit-pycharm-input-border)"
                     borderRadius="4px"
                     p="6px 8px"
-                    style={{ paddingRight: "32px" }}
+                    pr="32px"
+                    aria-busy={isGenerationActive}
                     fontFamily={SYSTEM_FONT_STACK}
                     fontSize="12px"
                     _placeholder={{ color: "rgba(214, 219, 229, 0.48)" }}

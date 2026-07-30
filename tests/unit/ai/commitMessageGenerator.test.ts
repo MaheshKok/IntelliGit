@@ -45,6 +45,7 @@ import {
 
 const directories: string[] = [];
 const execFileAsync = promisify(execFile);
+const itPosix = process.platform === "win32" ? it.skip : it;
 
 afterEach(async () => {
     await Promise.all(
@@ -186,7 +187,7 @@ describe("prepareCommitMessageGeneration", () => {
         ).rejects.toBeInstanceOf(CopilotUnavailableError);
     });
 
-    it("loads bounded repository instruction text and safely skips invalid file entries", async () => {
+    itPosix("loads bounded repository instruction text and safely skips invalid file entries", async () => {
         const folder = await workspace();
         await writeFile(
             path.join(folder.uri.fsPath, "instructions.txt"),
@@ -251,6 +252,22 @@ describe("prepareCommitMessageGeneration", () => {
         expect((selected.sendRequest as ReturnType<typeof vi.fn>).mock.calls).toHaveLength(1);
     });
 
+    it("retains only complete repository instruction entries when proportional capping trims context", async () => {
+        const folder = await workspace();
+        const completeInstruction = "Use imperative mood.\nKeep a concise body when needed.";
+        mocks.configuration = [
+            { text: completeInstruction },
+            { text: `SECOND-INSTRUCTION-${"x".repeat(50_000)}` },
+        ];
+        const selected = model("gpt-4o");
+        mocks.selectChatModels.mockResolvedValue([selected]);
+
+        const prepared = await prepareCommitMessageGeneration(request(folder) as never);
+
+        expect(prepared.prompt).toContain(completeInstruction);
+        expect(prepared.prompt).not.toContain("SECOND-INSTRUCTION-");
+    });
+
     it("proportionally trims adversarial token counts instead of wasting the three-count budget", async () => {
         const folder = await workspace();
         const budget = 400;
@@ -279,7 +296,7 @@ describe("prepareCommitMessageGeneration", () => {
         expect(selected.sendRequest).toHaveBeenCalledOnce();
     });
 
-    it("skips a FIFO without entering its blocking open path", async () => {
+    itPosix("skips a FIFO without entering its blocking open path", async () => {
         const folder = await workspace();
         const fifo = path.join(folder.uri.fsPath, "instructions.fifo");
         await execFileAsync("mkfifo", [fifo]);
@@ -385,15 +402,27 @@ describe("prepareCommitMessageGeneration", () => {
         const folder = await workspace();
         const deferred = Promise.withResolvers<readonly Record<string, unknown>[]>();
         const cancellation = cancellableToken();
+        const selected = model("gpt-4o");
+        const onUnhandledRejection = vi.fn();
         mocks.selectChatModels.mockReturnValue(deferred.promise);
+        process.on("unhandledRejection", onUnhandledRejection);
 
-        const preparing = prepareCommitMessageGeneration(
-            request(folder, { token: cancellation.token }) as never,
-        );
-        cancellation.cancel();
-        await expect(preparing).rejects.toMatchObject({ kind: "cancelled" });
-        deferred.resolve([model("gpt-4o")]);
-        await expect(Promise.resolve()).resolves.toBeUndefined();
+        try {
+            const preparing = prepareCommitMessageGeneration(
+                request(folder, { token: cancellation.token }) as never,
+            );
+            cancellation.cancel();
+            const failure = await preparing.catch((error: unknown) => error);
+            expect(failure).toBeInstanceOf(GenerationRequestError);
+            expect(failure).toMatchObject({ kind: "cancelled" });
+            expect(failure).not.toHaveProperty("cause");
+            deferred.resolve([selected]);
+            await new Promise<void>((resolve) => setImmediate(resolve));
+            expect(onUnhandledRejection).not.toHaveBeenCalled();
+            expect(selected.sendRequest).not.toHaveBeenCalled();
+        } finally {
+            process.off("unhandledRejection", onUnhandledRejection);
+        }
     });
 
     it("keeps amend context, ten supplied subjects, the output contract, and mapped causes", async () => {

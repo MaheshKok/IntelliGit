@@ -24,6 +24,8 @@ const vscode = getVsCodeApi<UnifiedOutbound, Record<string, unknown>>();
 export interface UseUnifiedMessagesParams {
     graphDispatch: React.Dispatch<GraphAction>;
     cpDispatch: React.Dispatch<CommitPanelAction>;
+    /** Applies a commit-panel action and exposes its reduced next state for synchronous follow-up work. */
+    applyCommitPanelAction: (action: CommitPanelAction) => CommitPanelState;
     cpStateRef: React.MutableRefObject<CommitPanelState>;
     loadingMore: React.MutableRefObject<boolean>;
     selectedHash: string | null;
@@ -258,7 +260,7 @@ function handleCommitPanelMessage(data: CommitPanelInboundMessage, context: Mess
             if (data.repositoryRoot !== context.selectedRepositoryRootRef.current) return;
             const generation = context.cpStateRef.current.generation;
             if (generation.status === "idle" || generation.requestId !== data.requestId) return;
-            context.cpDispatch({
+            const nextState = context.applyCommitPanelAction({
                 type: "COMMIT_MESSAGE_GENERATION_EVENT",
                 requestId: data.requestId,
                 kind: data.kind,
@@ -272,7 +274,7 @@ function handleCommitPanelMessage(data: CommitPanelInboundMessage, context: Mess
                 vscode.postMessage({
                     type: "saveCommitDraft",
                     repositoryRoot: data.repositoryRoot,
-                    message: context.cpStateRef.current.commitMessage,
+                    message: nextState.commitMessage,
                 });
             }
             return;
@@ -334,6 +336,7 @@ export function useUnifiedMessages(params: UseUnifiedMessagesParams): void {
     const {
         graphDispatch,
         cpDispatch,
+        applyCommitPanelAction,
         cpStateRef,
         loadingMore,
         selectedHash,
@@ -355,6 +358,7 @@ export function useUnifiedMessages(params: UseUnifiedMessagesParams): void {
         const context: MessageContext = {
             graphDispatch,
             cpDispatch,
+            applyCommitPanelAction,
             cpStateRef,
             loadingMore,
             setRepositories,
@@ -381,6 +385,7 @@ export function useUnifiedMessages(params: UseUnifiedMessagesParams): void {
         return () => window.removeEventListener("message", handler);
     }, [
         cpDispatch,
+        applyCommitPanelAction,
         cpStateRef,
         graphDispatch,
         layoutRef,

@@ -584,31 +584,57 @@ describe("GitOps.getDiffForPaths", () => {
         expect(result.diff).not.toContain(`large-4.txt-${"z".repeat(60_000)}`);
     });
 
-    it("charges truncated patch bytes before acquiring more tracked content", async () => {
+    it("does not charge discarded truncated bytes against later patch budget", async () => {
         const root = await createGitRepository();
-        const paths = Array.from({ length: 20 }, (_, index) => `budget-${index}.txt`);
+        const paths = ["truncated.txt", "middle-one.txt", "middle-two.txt", "middle-three.txt", "later.txt"];
         for (const filePath of paths) {
             await commitFile(root, filePath, "before\\n");
-            await writeFile(path.join(root, filePath), `${"z".repeat(70_000)}\\n`);
+            await writeFile(path.join(root, filePath), "after\\n");
         }
         const gitOps = gitOpsFor(root);
         const executor = (gitOps as unknown as { executor: GitExecutor }).executor;
         const runBinary = executor.runBinary.bind(executor);
-        let contentDiffInvocations = 0;
+        const laterPatch = Buffer.from(`diff --git a/later.txt b/later.txt\\n${"x".repeat(60_000)}`);
         executor.runBinary = async (args, options) => {
             if (
                 args[0] === "--literal-pathspecs" &&
                 args[1] === "diff" &&
                 args[2] === "--full-index"
             ) {
-                contentDiffInvocations += 1;
+                if (args.at(-1) === "truncated.txt") {
+                    return {
+                        stdout: Buffer.alloc(options.maxOutputBytes ?? 0),
+                        stderr: Buffer.alloc(0),
+                        exitCode: 0,
+                        truncated: true,
+                    };
+                }
+                if (args.at(-1) === "later.txt") {
+                    const maxOutputBytes = options.maxOutputBytes ?? 0;
+                    return {
+                        stdout:
+                            maxOutputBytes >= laterPatch.length
+                                ? laterPatch
+                                : laterPatch.subarray(0, maxOutputBytes),
+                        stderr: Buffer.alloc(0),
+                        exitCode: 0,
+                        truncated: maxOutputBytes < laterPatch.length,
+                    };
+                }
+                return {
+                    stdout: Buffer.alloc(60_000),
+                    stderr: Buffer.alloc(0),
+                    exitCode: 0,
+                    truncated: false,
+                };
             }
             return runBinary(args, options);
         };
 
-        await gitOps.getDiffForPaths(paths);
+        const result = await gitOps.getDiffForPaths(paths);
 
-        expect(contentDiffInvocations).toBeLessThanOrEqual(6);
+        expect(result.summarizedPaths).toContain("truncated.txt");
+        expect(result.diff).toContain("diff --git a/later.txt b/later.txt");
     });
 
     it("labels an applied cumulative cap at the per-file boundary", async () => {
@@ -664,7 +690,7 @@ describe("GitOps.getDiffForPaths", () => {
         );
     });
 
-    it("never spawns hash-object for an untracked symlink met after the cumulative budget is exhausted", async () => {
+    it("does not starve an untracked symlink after discarded truncated patches", async () => {
         const root = await createGitRepository();
         const trackedPaths = Array.from({ length: 6 }, (_, index) => `large-${index}.txt`);
         for (const filePath of trackedPaths) {
@@ -685,8 +711,9 @@ describe("GitOps.getDiffForPaths", () => {
 
         const result = await gitOps.getDiffForPaths([...trackedPaths, "late-link"]);
 
-        expect(result.summarizedPaths).toContain("late-link");
-        expect(hashObjectSpawns).toBe(0);
+        expect(result.summarizedPaths).not.toContain("late-link");
+        expect(result.diff).toContain("diff --git a/late-link b/late-link");
+        expect(hashObjectSpawns).toBe(1);
     });
 
     it("represents an untracked symlink whose target text contains embedded newlines", async () => {

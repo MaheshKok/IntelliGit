@@ -192,8 +192,8 @@ export async function activateRepositoryMode(
             return {
                 workspaceFolder,
                 gitOps: gitOps.deriveFor(repository.root),
-                watchWholeIndexOperation: (onDidChange) =>
-                    watchWholeIndexOperation(repository.root, onDidChange),
+                watchWholeIndexOperation: (onDidChange, onDidError) =>
+                    watchWholeIndexOperation(repository.root, onDidChange, onDidError),
             };
         },
     });

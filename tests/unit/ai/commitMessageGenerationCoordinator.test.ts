@@ -15,6 +15,10 @@ vi.mock("vscode", () => {
             this.isCancellationRequested = true;
             for (const listener of this.listeners) listener();
         }
+
+        dispose(): void {
+            this.listeners.clear();
+        }
     }
 
     return {
@@ -26,7 +30,7 @@ vi.mock("vscode", () => {
             }
 
             dispose(): void {
-                this.cancel();
+                this.token.dispose();
             }
         },
     };
@@ -132,6 +136,40 @@ describe("CommitMessageGenerationCoordinator", () => {
             { repositoryRoot: "/repo", requestId: "request-1", kind: "done" },
         ]);
         expect(other.events).toEqual([]);
+    });
+
+    it("does not cancel a completed attempt while disposing its token source", async () => {
+        let preparationToken: { isCancellationRequested: boolean } | undefined;
+        const subject = coordinator(
+            context(),
+            vi.fn(async (options) => {
+                preparationToken = options.token;
+                return {
+                    model: {} as never,
+                    prompt: "prompt",
+                    text: (async function* () {
+                        yield "fix: complete";
+                    })(),
+                };
+            }),
+        );
+        const owner = host();
+
+        requestGeneration(subject, {
+            repositoryRoot: "/repo",
+            requestId: "complete",
+            paths: ["file.ts"],
+            amend: false,
+            host: owner.host,
+        });
+        await settle();
+
+        expect(owner.events.at(-1)).toEqual({
+            repositoryRoot: "/repo",
+            requestId: "complete",
+            kind: "done",
+        });
+        expect(preparationToken?.isCancellationRequested).toBe(false);
     });
 
     it("supersedes an active same-root request across hosts and suppresses its stale work", async () => {
@@ -765,6 +803,58 @@ describe("CommitMessageGenerationCoordinator", () => {
         });
     });
 
+    it("maps an asynchronous watcher error to one correlated unknown terminal", async () => {
+        const streamResume = deferred<void>();
+        const watcherDisposable = { dispose: vi.fn() };
+        let onWatcherError: ((error: unknown) => void) | undefined;
+        const rootContext = context({
+            watchWholeIndexOperation: vi.fn((_onDidChange, onDidError) => {
+                onWatcherError = onDidError;
+                return watcherDisposable;
+            }),
+        });
+        const subject = coordinator(
+            rootContext,
+            vi.fn(async () => ({
+                model: {} as never,
+                prompt: "prompt",
+                text: (async function* () {
+                    await streamResume.promise;
+                    yield "stale chunk";
+                })(),
+            })),
+        );
+        const owner = host();
+        const watcherError = new Error("watch failed asynchronously");
+        const log = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+        requestGeneration(subject, {
+            repositoryRoot: "/watcher-error",
+            requestId: "watcher-error",
+            paths: ["file.ts"],
+            amend: false,
+            host: owner.host,
+        });
+        await settle();
+        if (!onWatcherError) throw new Error("Expected watcher error callback");
+        onWatcherError(watcherError);
+        await settle();
+        streamResume.resolve();
+        await settle();
+
+        expect(owner.events).toEqual([
+            { repositoryRoot: "/watcher-error", requestId: "watcher-error", kind: "start" },
+            {
+                repositoryRoot: "/watcher-error",
+                requestId: "watcher-error",
+                kind: "error",
+                errorKind: "unknown",
+            },
+        ]);
+        expect(watcherDisposable.dispose).toHaveBeenCalledOnce();
+        expect(log).toHaveBeenCalledWith("[intelligit] Commit-message generation failed:", watcherError);
+    });
+
     it("maps resolver, initial predicate, and watcher predicate throws to one correlated unknown error", async () => {
         const resolverFailure = host();
         new CommitMessageGenerationCoordinator({
@@ -1294,21 +1384,14 @@ describe("CommitMessageGenerationCoordinator", () => {
         let concurrent = 0;
         let maximumConcurrent = 0;
         const validations = gates.map((gate) =>
-            vi.fn(() =>
-                gate.promise.finally(() => {
-                    concurrent -= 1;
-                }),
-            ),
-        );
-        for (const validate of validations) {
-            validate.mockImplementationOnce(() => {
+            vi.fn(() => {
                 concurrent += 1;
                 maximumConcurrent = Math.max(maximumConcurrent, concurrent);
-                return gates[validations.indexOf(validate)].promise.finally(() => {
+                return gate.promise.finally(() => {
                     concurrent -= 1;
                 });
-            });
-        }
+            }),
+        );
         const subject = coordinator();
         const owners = [host(), host(), host()];
 

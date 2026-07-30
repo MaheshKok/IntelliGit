@@ -1085,12 +1085,38 @@ export class UndockedViewProvider {
             }
             case "commit": {
                 const message = (typeof msg.message === "string" ? msg.message : "").trim();
-                await commitOnlyFromPanel(actionDeps, message, msg.amend === true);
+                const rootGitOps = this.gitOps.deriveFor(commitRepositoryRoot);
+                const release =
+                    this.commitMessageGenerationCoordinator?.acquireCommitLease(
+                        commitRepositoryRoot,
+                    );
+                try {
+                    await commitOnlyFromPanel(
+                        { ...actionDeps, gitOps: rootGitOps },
+                        message,
+                        msg.amend === true,
+                    );
+                } finally {
+                    release?.();
+                }
                 break;
             }
             case "commitAndPush": {
                 const message = (typeof msg.message === "string" ? msg.message : "").trim();
-                await commitAndPushFromPanel(actionDeps, message, msg.amend === true);
+                const rootGitOps = this.gitOps.deriveFor(commitRepositoryRoot);
+                const release =
+                    this.commitMessageGenerationCoordinator?.acquireCommitLease(
+                        commitRepositoryRoot,
+                    );
+                try {
+                    await commitAndPushFromPanel(
+                        { ...actionDeps, gitOps: rootGitOps },
+                        message,
+                        msg.amend === true,
+                    );
+                } finally {
+                    release?.();
+                }
                 break;
             }
             case "fetch":
@@ -1252,6 +1278,13 @@ export class UndockedViewProvider {
             !coordinator ||
             !this.findRepository(repositoryRoot) ||
             repositoryRoot !== this.selectedRepositoryRoot
+        ) {
+            reject();
+            return;
+        }
+        if (
+            !Array.isArray(message.paths) ||
+            message.paths.length > UndockedViewProvider.MAX_VISIBLE_COMMIT_CHECKS
         ) {
             reject();
             return;

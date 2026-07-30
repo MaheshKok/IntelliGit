@@ -18,6 +18,7 @@ vi.mock("node:fs", async (importOriginal) => {
 });
 
 type FsWatchCallback = (eventType: string, filename: string | Buffer | null) => void;
+type FsWatchErrorCallback = (error: Error) => void;
 
 const directories: string[] = [];
 
@@ -89,7 +90,7 @@ describe("watchWholeIndexOperation", () => {
             const callback = args.at(-1);
             if (typeof callback !== "function") throw new Error("Expected fs.watch callback");
             callbacks.push(callback as FsWatchCallback);
-            return { close } as unknown as FSWatcher;
+            return { close, on: vi.fn() } as unknown as FSWatcher;
         });
         const onDidChange = vi.fn();
 
@@ -128,6 +129,34 @@ describe("watchWholeIndexOperation", () => {
         expect(() => watchWholeIndexOperation(root, vi.fn())).toThrow(setupError);
     });
 
+    it("disposes and routes an asynchronous fs.watch error once", async () => {
+        const root = await createRoot();
+        const close = vi.fn();
+        let onError: FsWatchErrorCallback | undefined;
+        const watcher = {
+            close,
+            on: vi.fn((event: string, listener: unknown) => {
+                if (event === "error" && typeof listener === "function") {
+                    onError = listener as FsWatchErrorCallback;
+                }
+                return watcher;
+            }),
+        };
+        watchMock.mockReturnValue(watcher as unknown as FSWatcher);
+        const onDidError = vi.fn();
+        const disposable = watchWholeIndexOperation(root, vi.fn(), onDidError);
+        if (!onError) throw new Error("Expected fs.watch error listener");
+        const watcherError = new Error("watch failed asynchronously");
+
+        onError(watcherError);
+        disposable.dispose();
+        onError(watcherError);
+
+        expect(close).toHaveBeenCalledOnce();
+        expect(onDidError).toHaveBeenCalledOnce();
+        expect(onDidError).toHaveBeenCalledWith(watcherError);
+    });
+
     it("decodes Buffer marker names without treating unrelated Buffers as unknown", async () => {
         const root = await createRoot();
         let callback: FsWatchCallback | undefined;
@@ -136,7 +165,7 @@ describe("watchWholeIndexOperation", () => {
             const listener = args.at(-1);
             if (typeof listener !== "function") throw new Error("Expected fs.watch callback");
             callback = listener as FsWatchCallback;
-            return { close } as unknown as FSWatcher;
+            return { close, on: vi.fn() } as unknown as FSWatcher;
         });
         const onDidChange = vi.fn();
         const disposable = watchWholeIndexOperation(root, onDidChange);

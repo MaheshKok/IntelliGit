@@ -315,7 +315,7 @@ async function awaitWithCancellation<T>(
     return new Promise<T>((resolve, reject) => {
         const subscription = token.onCancellationRequested(() => {
             subscription.dispose();
-            reject(new Error(CANCELLATION_MESSAGE));
+            reject(new GenerationRequestError("cancelled", CANCELLATION_MESSAGE));
         });
         Promise.resolve(operation).then(
             (value) => {
@@ -382,7 +382,20 @@ function buildPrompt(context: PromptContext, amend: boolean): string {
         .join("\n");
 }
 
-/** Reduces mutable input proportionally while leaving structural and output instructions untouched. */
+/** Retains whole instruction entries whose joined text fits within the supplied character budget. */
+function retainCompleteInstructions(instructions: readonly string[], cap: number): string[] {
+    const retained: string[] = [];
+    let length = 0;
+    for (const instruction of instructions) {
+        const nextLength = length + (retained.length > 0 ? 1 : 0) + instruction.length;
+        if (nextLength > cap) break;
+        retained.push(instruction);
+        length = nextLength;
+    }
+    return retained;
+}
+
+/** Reduces mutable input proportionally while retaining only complete instruction entries. */
 function capContext(context: PromptContext, cap: number): PromptContext {
     const parts = [
         context.diff,
@@ -397,7 +410,10 @@ function capContext(context: PromptContext, cap: number): PromptContext {
     const diff = limit(context.diff);
     const summaries = limit(context.summarizedPaths.join("\n")).split("\n").filter(Boolean);
     const subjects = limit(context.subjects.join("\n")).split("\n").filter(Boolean);
-    const instructions = limit(context.instructions.join("\n")).split("\n").filter(Boolean);
+    const instructions = retainCompleteInstructions(
+        context.instructions,
+        limit(context.instructions.join("\n")).length,
+    );
     return {
         ...context,
         diff,

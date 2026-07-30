@@ -705,7 +705,8 @@ describe("webview ui smoke", () => {
             ) as HTMLButtonElement;
 
             expect(textarea.readOnly).toBe(true);
-            expect(textarea.style.paddingRight).toBe("32px");
+            expect(textarea.style.paddingRight).toBe("");
+            expect(textarea.getAttribute("aria-busy")).toBe("true");
             expect(amend.disabled).toBe(true);
             expect(stop.disabled).toBe(false);
             expect(commit.disabled).toBe(true);

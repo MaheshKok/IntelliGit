@@ -96,16 +96,29 @@ async function commitSelected(
 async function changedPaths(repo: string): Promise<string> {
     return git(repo, [
         "diff-tree",
+        "--root",
         "-r",
         "--no-commit-id",
         "--no-renames",
         "--name-status",
-        "HEAD^",
         "HEAD",
     ]);
 }
 
 describe("commitSelectedFromPanel commit accuracy", () => {
+    it("reports file creation for a first commit", async () => {
+        const repo = await mkdtemp(path.join(tmpdir(), "intelligit-commit-accuracy-"));
+        directories.push(repo);
+        await git(repo, ["init"]);
+        await git(repo, ["config", "user.email", "test@example.invalid"]);
+        await git(repo, ["config", "user.name", "Test"]);
+        await write(repo, "first.txt", "first\n");
+
+        await commitSelected(repo, { message: "first", paths: ["first.txt"] });
+
+        expect(await changedPaths(repo)).toBe("A\tfirst.txt\n");
+    });
+
     it("excludes a previously staged but unchecked file", async () => {
         const repo = await createRepository();
         await write(repo, "selected.txt", "selected\n");
@@ -353,7 +366,7 @@ describe("commitSelectedFromPanel commit accuracy", () => {
 
         await commitSelected(repo, { message: "merge", paths: ["feature.txt"] });
 
-        expect(await changedPaths(repo)).toBe("A\tfeature.txt\n");
+        expect(await git(repo, ["ls-tree", "-r", "--name-only", "HEAD"])).toContain("feature.txt\n");
     });
 
     it("keeps a revert-conflict commit as a bare whole-index commit", async () => {

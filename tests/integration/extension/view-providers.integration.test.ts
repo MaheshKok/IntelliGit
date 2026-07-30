@@ -2213,6 +2213,7 @@ describe("view providers integration", () => {
     it("UndockedViewProvider keeps a delayed commit completion scoped to its original repository", async () => {
         const { UndockedViewProvider } = await import("../../../src/views/UndockedViewProvider");
         const gitOps = makeGitOpsMock();
+        gitOps.deriveFor.mockImplementation(() => gitOps);
         let resolveCommit!: () => void;
         gitOps.commit = vi.fn(
             () =>
@@ -2477,10 +2478,10 @@ describe("view providers integration", () => {
             "src/a.ts",
         ]);
         expect(gitOps.commit).not.toHaveBeenCalledWith("feat: selected", false, ["src/a.ts"]);
-        expect(gitOps.commit).toHaveBeenCalledWith("feat: commit", false);
-        expect(gitOps.commit).toHaveBeenCalledWith("feat: push", false);
-        expect(gitOps.commitAndPush).not.toHaveBeenCalled();
-        expect(gitOps.push).toHaveBeenCalled();
+        expect(selectedCommitGitOps.commit).toHaveBeenCalledWith("feat: commit", false);
+        expect(selectedCommitGitOps.commit).toHaveBeenCalledWith("feat: push", false);
+        expect(selectedCommitGitOps.commitAndPush).not.toHaveBeenCalled();
+        expect(selectedCommitGitOps.push).toHaveBeenCalled();
         expect(executeCommand).toHaveBeenCalledWith("intelligit.publishBranch");
         expect(postMessageSpy).toHaveBeenCalledWith({
             type: "lastCommitMessage",

@@ -1091,7 +1091,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         );
     }
     /**
-     * Posts the cached working-tree snapshot without performing Git I/O.
+     * Posts a working-tree snapshot after awaiting snapshotForRuntime's Git I/O.
      *
      * This is used when a newly-ready webview reconnects so it can render the most recent file list
      * immediately, before the follow-up silent refresh reconciles any changes that happened while

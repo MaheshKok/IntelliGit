@@ -256,13 +256,19 @@ describe("undocked commit-message generation lifecycle", () => {
             const [, reactDispatch] = useReducer(commitPanelReducer, initialCommitPanelState);
             const currentStateRef = useRef(initialCommitPanelState);
             stateRef = currentStateRef;
-            dispatch = (action) => {
-                currentStateRef.current = commitPanelReducer(currentStateRef.current, action);
+            const applyCommitPanelAction = (action: Parameters<typeof commitPanelReducer>[1]) => {
+                const nextState = commitPanelReducer(currentStateRef.current, action);
+                currentStateRef.current = nextState;
                 reactDispatch(action);
+                return nextState;
+            };
+            dispatch = (action) => {
+                applyCommitPanelAction(action);
             };
             useUnifiedMessages({
                 graphDispatch: vi.fn(),
                 cpDispatch: dispatch,
+                applyCommitPanelAction,
                 cpStateRef: currentStateRef,
                 loadingMore: { current: false },
                 selectedHash: null,
@@ -402,5 +408,73 @@ describe("undocked commit-message generation lifecycle", () => {
             kind: "done",
         });
         expect(savedDraftMessages()).toHaveLength(1);
+    });
+
+    it("saves the terminal generation message from the reduced next state", async () => {
+        const postMessage = vi.fn();
+        vi.doMock("../../../src/webviews/react/shared/vscodeApi", () => ({
+            getVsCodeApi: () => ({ postMessage }),
+        }));
+        const { useUnifiedMessages } =
+            await import("../../../src/webviews/react/undocked/useUnifiedMessages");
+        let applyCommitPanelAction:
+            | ((action: Parameters<typeof commitPanelReducer>[1]) => ReturnType<typeof commitPanelReducer>)
+            | undefined;
+
+        function Harness(): React.ReactElement {
+            const [, reactDispatch] = useReducer(commitPanelReducer, initialCommitPanelState);
+            const stateRef = useRef(initialCommitPanelState);
+            applyCommitPanelAction = (action) => {
+                const nextState = commitPanelReducer(stateRef.current, action);
+                stateRef.current = nextState;
+                reactDispatch(action);
+                return nextState;
+            };
+            const cpDispatch: React.Dispatch<Parameters<typeof commitPanelReducer>[1]> = (action) => {
+                reactDispatch(action);
+            };
+            useUnifiedMessages({
+                graphDispatch: vi.fn(),
+                cpDispatch,
+                cpStateRef: stateRef,
+                loadingMore: { current: false },
+                selectedHash: null,
+                selectedRepositoryRoot: "/repo-a",
+                setRepositories: vi.fn(),
+                setSelectedRepositoryRoot: vi.fn(),
+                markWidthsHydrated: vi.fn(),
+                setSectionWidths: vi.fn(),
+                layoutRef: { current: null },
+                setCommitPanelPosition: vi.fn(),
+                setViewVisible: vi.fn(),
+                applyCommitPanelAction: applyCommitPanelAction!,
+            });
+            return <div />;
+        }
+
+        await render(<Harness />);
+        act(() => {
+            applyCommitPanelAction?.({
+                type: "REQUEST_COMMIT_MESSAGE_GENERATION",
+                requestId: "terminal-message",
+                snapshot: "saved draft",
+            });
+        });
+        send({
+            type: "commitMessageGeneration",
+            repositoryRoot: "/repo-a",
+            requestId: "terminal-message",
+            kind: "cancelled",
+        });
+
+        expect(postMessage.mock.calls.filter(([message]) => message.type === "saveCommitDraft")).toEqual([
+            [
+                {
+                    type: "saveCommitDraft",
+                    repositoryRoot: "/repo-a",
+                    message: "saved draft",
+                },
+            ],
+        ]);
     });
 });

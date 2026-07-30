@@ -266,8 +266,10 @@ describe("commit-message generation host wiring", () => {
             index: 0,
         });
         expect(gitOpsDeriveFor).toHaveBeenCalledWith("/repo-b");
-        rootContext.watchWholeIndexOperation?.(vi.fn());
-        expect(watchWholeIndexOperation).toHaveBeenCalledWith("/repo-b", expect.any(Function));
+        const onDidChange = vi.fn();
+        const onDidError = vi.fn();
+        rootContext.watchWholeIndexOperation?.(onDidChange, onDidError);
+        expect(watchWholeIndexOperation).toHaveBeenCalledWith("/repo-b", onDidChange, onDidError);
         expect(() => coordinator.dependencies.resolveRoot("/unknown")).toThrow(
             "Unknown repository root for commit-message generation.",
         );

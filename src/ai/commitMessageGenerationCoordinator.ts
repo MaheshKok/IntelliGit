@@ -56,7 +56,11 @@ interface CommitMessageGenerationGitOps {
 export interface CommitMessageGenerationRootContext {
     workspaceFolder: vscode.WorkspaceFolder;
     gitOps: CommitMessageGenerationGitOps;
-    watchWholeIndexOperation(onDidChange: () => void): vscode.Disposable;
+    /** Routes asynchronous watcher failures through the owning generation lifecycle. */
+    watchWholeIndexOperation(
+        onDidChange: () => void,
+        onDidError?: (error: unknown) => void,
+    ): vscode.Disposable;
 }
 
 /** Input owned by the host boundary after it has validated repository and path selection. */
@@ -172,7 +176,8 @@ export class CommitMessageGenerationCoordinator {
         let context: CommitMessageGenerationRootContext;
         try {
             context = this.dependencies.resolveRoot(submission.repositoryRoot);
-        } catch {
+        } catch (error) {
+            logCoordinatorFailure(error);
             submission.host.emit({
                 repositoryRoot: submission.repositoryRoot,
                 requestId: submission.requestId,
@@ -191,11 +196,19 @@ export class CommitMessageGenerationCoordinator {
         };
         this.activeByRoot.set(submission.repositoryRoot, attempt);
         try {
-            attempt.watcher = context.watchWholeIndexOperation(() => {
-                attempt.wholeIndexSignalVersion += 1;
-                void this.recheckWholeIndexOperation(attempt);
-            });
-        } catch {
+            attempt.watcher = context.watchWholeIndexOperation(
+                () => {
+                    attempt.wholeIndexSignalVersion += 1;
+                    void this.recheckWholeIndexOperation(attempt);
+                },
+                (error) => {
+                    if (!this.isActive(attempt)) return;
+                    logCoordinatorFailure(error);
+                    this.emitTerminal(attempt, "error", "unknown");
+                },
+            );
+        } catch (error) {
+            logCoordinatorFailure(error);
             this.emitTerminal(attempt, "error", "unknown");
             return;
         }
@@ -260,7 +273,8 @@ export class CommitMessageGenerationCoordinator {
             }
             if (!this.isActive(attempt)) return;
             this.scheduleAcquisition(attempt);
-        } catch {
+        } catch (error) {
+            logCoordinatorFailure(error);
             if (this.isActive(attempt)) this.emitTerminal(attempt, "error", "unknown");
         }
     }
@@ -269,7 +283,8 @@ export class CommitMessageGenerationCoordinator {
         try {
             const inProgress = await this.queueWholeIndexCheck(attempt);
             if (inProgress && this.isActive(attempt)) this.emitTerminal(attempt, "cancelled");
-        } catch {
+        } catch (error) {
+            logCoordinatorFailure(error);
             if (this.isActive(attempt)) this.emitTerminal(attempt, "error", "unknown");
         }
     }
@@ -306,7 +321,8 @@ export class CommitMessageGenerationCoordinator {
             (context) => {
                 if (context && this.isActive(attempt)) void this.prepareAndStream(attempt, context);
             },
-            () => {
+            (error) => {
+                logCoordinatorFailure(error);
                 if (this.isActive(attempt)) this.emitTerminal(attempt, "error", "unknown");
             },
         );
@@ -319,7 +335,8 @@ export class CommitMessageGenerationCoordinator {
         let validation: ValidatedCommitMessageGenerationRequest | undefined;
         try {
             validation = await attempt.validate({ isActive: () => this.isActive(attempt) });
-        } catch {
+        } catch (error) {
+            logCoordinatorFailure(error);
             if (this.isActive(attempt)) this.emitTerminal(attempt, "error", "invalidRequest");
             return undefined;
         }
@@ -384,7 +401,10 @@ export class CommitMessageGenerationCoordinator {
             if (!this.isActive(attempt)) return;
             const errorKind = toCoordinatorErrorKind(error);
             if (errorKind === "cancelled") this.emitTerminal(attempt, "cancelled");
-            else this.emitTerminal(attempt, "error", errorKind);
+            else {
+                if (errorKind === "unknown") logCoordinatorFailure(error);
+                this.emitTerminal(attempt, "error", errorKind);
+            }
         }
     }
 
@@ -452,6 +472,11 @@ interface AcquiredCommitMessageGenerationContext {
     diffResult: DiffForPathsResult;
     commitSubjects: string[];
     amend: boolean;
+}
+
+/** Logs the original internal failure without widening the correlated host error surface. */
+function logCoordinatorFailure(error: unknown): void {
+    console.warn("[intelligit] Commit-message generation failed:", error);
 }
 
 /** Translates only P3's documented stable errors; every unrelated failure remains unknown. */

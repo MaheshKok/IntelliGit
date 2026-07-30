@@ -777,7 +777,6 @@ export class GitOps {
                 throw error;
             }
             if (result.truncated) {
-                usedBytes += result.stdout.length;
                 summarize(filePath, budgetReason, numstat);
                 return;
             }
@@ -1115,18 +1114,24 @@ export class GitOps {
         const remote = upstream.split("/")[0];
         if (!remote) return;
         assertValidRemoteName(remote);
+        let lsRemoteResult;
         try {
-            await this.executor.run(["ls-remote", "--exit-code", remote]);
+            lsRemoteResult = await this.executor.runBinary(["ls-remote", "--exit-code", remote], {
+                expectedExitCodes: [0, 2],
+            });
         } catch (err) {
-            if (isEmptyLsRemoteExitCode(err)) {
-                throw new Error(
-                    `Push remote "${remote}" reached but reported no refs; it may simply be empty (no branches yet). Verify the remote repository still exists, update the remote URL, or use Publish Branch to configure a new remote. ${getErrorMessage(err)}`,
-                    { cause: err },
-                );
-            }
             throw new Error(
                 `Push remote "${remote}" is unavailable. Verify the remote repository still exists, update the remote URL, or use Publish Branch to configure a new remote. ${getErrorMessage(err)}`,
                 { cause: err },
+            );
+        }
+        if (lsRemoteResult.exitCode === 2) {
+            const error = new Error(
+                `git ls-remote --exit-code exited with 2: ${lsRemoteResult.stderr.toString("utf8").trim() || "(no stderr)"}`,
+            );
+            throw new Error(
+                `Push remote "${remote}" reached but reported no refs; it may simply be empty (no branches yet). Verify the remote repository still exists, update the remote URL, or use Publish Branch to configure a new remote. ${getErrorMessage(error)}`,
+                { cause: error },
             );
         }
     }
@@ -1673,10 +1678,6 @@ function isNoUpstreamPushError(err: unknown): boolean {
     return message.includes("has no upstream branch");
 }
 
-/** True when `ls-remote --exit-code` reached the remote but found no matching refs (e.g. an empty repository) rather than failing to reach it. */
-function isEmptyLsRemoteExitCode(err: unknown): boolean {
-    return getErrorMessage(err).includes("git ls-remote --exit-code exited with 2:");
-}
 function withLiteralPathspecs(args: string[]): string[] {
     return ["--literal-pathspecs", ...args];
 }

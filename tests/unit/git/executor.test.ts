@@ -5,6 +5,8 @@ import { describe, expect, it } from "vitest";
 import { GitExecutor } from "../../../src/git/executor";
 import type { RepositoryMutationGate } from "../../../src/git/repositoryMutationGate";
 
+const itPosix = process.platform === "win32" ? it.skip : it;
+
 interface GateProbe {
     gate: RepositoryMutationGate;
     gatedRuns: number[];
@@ -72,13 +74,13 @@ describe("GitExecutor", () => {
         expect(output.exitCode).toBe(1);
     });
 
-    it("rejects a non-zero exit without stderr using a bounded command description", async () => {
+    itPosix("rejects a non-zero exit without stderr using a bounded command description", async () => {
         await expect(
             runFakeGit("exit 17", ["commit", "--message", "ignored-argument"]),
         ).rejects.toThrow("git commit --message exited with 17: (no stderr)");
     });
 
-    it("preserves trimmed stderr when a Git command exits non-zero", async () => {
+    itPosix("preserves trimmed stderr when a Git command exits non-zero", async () => {
         await expect(
             runFakeGit("printf 'hook failure\\n' >&2; exit 17", [
                 "commit",
@@ -88,7 +90,7 @@ describe("GitExecutor", () => {
         ).rejects.toThrow("git commit --message exited with 17: hook failure");
     });
 
-    it("returns stdout when a zero-exit Git command writes to stderr", async () => {
+    itPosix("returns stdout when a zero-exit Git command writes to stderr", async () => {
         const output = await runFakeGit("printf stdout; printf 'advice\\n' >&2; exit 0", [
             "status",
         ]);
@@ -97,7 +99,7 @@ describe("GitExecutor", () => {
         expect(output.stderr).toEqual(Buffer.from("advice\n"));
     });
 
-    it("resolves capped output after the executor terminates a long-running Git process", async () => {
+    itPosix("resolves capped output after the executor terminates a long-running Git process", async () => {
         const startedAt = Date.now();
         const output = await runFakeGit("printf 0123456789; exec sleep 5", ["diff"], {
             maxOutputBytes: 4,
@@ -108,15 +110,17 @@ describe("GitExecutor", () => {
         expect(Date.now() - startedAt).toBeLessThan(2_000);
     });
 
-    it("rejects capped output when Git exits non-zero before the executor kill takes effect", async () => {
+    itPosix("rejects capped output when Git exits non-zero before the executor kill takes effect", async () => {
         await expect(
-            runFakeGit("printf 0123456789; printf boom >&2; exit 3", ["diff"], {
-                maxOutputBytes: 4,
-            }),
+            runFakeGit(
+                "trap 'printf boom >&2; exit 3' TERM; printf 0123456789; printf boom >&2; exit 3",
+                ["diff"],
+                { maxOutputBytes: 4 },
+            ),
         ).rejects.toThrow("git diff exited with 3: boom");
     });
 
-    it("resolves capped output when Git exits cleanly", async () => {
+    itPosix("resolves capped output when Git exits cleanly", async () => {
         const output = await runFakeGit("printf 0123456789; exit 0", ["diff"], {
             maxOutputBytes: 4,
         });
@@ -125,7 +129,7 @@ describe("GitExecutor", () => {
         expect(output.truncated).toBe(true);
     });
 
-    it("names the terminating signal when the Git process is killed", async () => {
+    itPosix("names the terminating signal when the Git process is killed", async () => {
         await expect(runFakeGit("kill -TERM $$", ["commit"])).rejects.toThrow(
             "git commit was terminated by signal SIGTERM",
         );
@@ -196,7 +200,7 @@ describe("GitExecutor", () => {
         expect(gatedRuns).toHaveLength(1);
     });
 
-    it("caps concurrent spawned processes at 6 per executor instance", async () => {
+    itPosix("caps concurrent spawned processes at 6 per executor instance", async () => {
         const directory = await mkdtemp(join(tmpdir(), "intelligit-fake-git-concurrency-"));
         const executable = join(directory, "git");
         const activeDir = join(directory, "active");
