@@ -8,6 +8,7 @@ import type {
 import { t } from "../../shared/i18n";
 import type { MenuItem } from "../../shared/components/ContextMenu";
 import type { ShelveDialogSubmit } from "./ShelveDialog";
+import type { CommitMessageGenerationStatus } from "./CommitArea";
 import { getVsCodeApi } from "../hooks/useVsCodeApi";
 
 const MIN_REFRESH_FEEDBACK_MS = 700;
@@ -47,6 +48,12 @@ export interface CommitTabProps {
     currentBranchAhead?: number;
     currentBranchName: string | null;
     currentBranchUpstream: string | null;
+    /** Shared generation contract; optional until the docked and undocked state slices are wired. */
+    generationStatus?: CommitMessageGenerationStatus;
+    onGenerateMessage?: () => void;
+    onCancelGeneration?: () => void;
+    hasCommits?: boolean;
+    wholeIndexOperationInProgress?: boolean;
     groupByDir: boolean;
     showIgnoredFiles: boolean;
     onToggleGroupBy: () => void;

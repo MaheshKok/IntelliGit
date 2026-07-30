@@ -314,5 +314,7 @@
     "stash.fileAction.openDiff": "차이점 열기",
     "stash.fileAction.editSource": "소스 편집",
     "stash.fileAction.cherryPickSelectedChanges": "선택한 변경 사항 체리픽",
-    "a11y.resizeRepositoryColumn": "리포지토리 열 크기 조정"
+    "a11y.resizeRepositoryColumn": "리포지토리 열 크기 조정",
+    "commit.message.generate": "커밋 메시지 생성",
+    "commit.message.stopGeneration": "커밋 메시지 생성 중지"
 }

@@ -553,13 +553,16 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         runtime: CommitPanelRepositoryRuntime,
     ): Promise<CommitPanelRepositorySnapshot> {
         const { folderIcons, iconFonts } = this.iconTheme.getThemeData();
-        const wholeIndexOperationInProgress =
-            await runtime.gitOps.hasWholeIndexOperationInProgress();
+        const [hasCommits, wholeIndexOperationInProgress] = await Promise.all([
+            runtime.gitOps.hasAnyCommits(),
+            runtime.gitOps.hasWholeIndexOperationInProgress(),
+        ]);
         return {
             repositoryRoot: runtime.repository.root,
             repositoryLabel: runtime.repository.label,
             changedFileCount: this.countChangedFiles(runtime),
             files: runtime.files,
+            hasCommits,
             wholeIndexOperationInProgress,
             stashes: runtime.stashes,
             stashFiles: runtime.stashFiles,
@@ -1458,14 +1461,17 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                     runtime.folderIconsByName = state.folderIconsByName;
                 },
                 postUpdate: async (message) => {
-                    const wholeIndexOperationInProgress =
-                        await runtime.gitOps.hasWholeIndexOperationInProgress();
+                    const [hasCommits, wholeIndexOperationInProgress] = await Promise.all([
+                        runtime.gitOps.hasAnyCommits(),
+                        runtime.gitOps.hasWholeIndexOperationInProgress(),
+                    ]);
                     this.postToWebview({
                         ...message,
                         repositoryRoot: runtime.repository.root,
                         shelves: runtime.shelves,
                         catalogGeneration: runtime.catalogGeneration,
                         selectedShelfId: runtime.selectedShelfId,
+                        hasCommits,
                         wholeIndexOperationInProgress,
                     });
                 },

@@ -74,6 +74,15 @@ export interface CommitPanelRepositorySummary {
     changedFileCount: number;
 }
 
+/** Transient, root-scoped lifecycle state for one host commit-message generation request. */
+interface CommitMessageGenerationState {
+    status: "idle" | "requested" | "running";
+    /** Host correlation token while a request is active. */
+    requestId?: string;
+    /** Draft captured before the host clears the editor at the `start` lifecycle event. */
+    snapshot?: string;
+}
+
 /** Commit-panel state for one repository row in the docked multi-repository view. */
 export interface RepositoryCommitPanelState extends CommitPanelState {
     root: string;
@@ -81,6 +90,12 @@ export interface RepositoryCommitPanelState extends CommitPanelState {
     /** Native Git classification retained across repository snapshot updates. */
     kind: "repository" | "worktree";
     changedFileCount: number;
+    /** Lifecycle for the only generation request this repository row may own at once. */
+    generation: CommitMessageGenerationState;
+    /** Whether this repository has a reachable HEAD commit, as reported by the host. */
+    hasCommits: boolean;
+    /** Whether a whole-index operation currently fences a new generation request. */
+    wholeIndexOperationInProgress: boolean;
 }
 
 /** Root commit-panel state keyed by repository root. */
@@ -128,6 +143,8 @@ export type CommitPanelAction =
           currentBranchBehind: number;
           currentBranchName?: string | null;
           currentBranchUpstream?: string | null;
+          hasCommits?: boolean;
+          wholeIndexOperationInProgress?: boolean;
           refreshing?: boolean;
           error?: string | null;
       }
@@ -148,6 +165,22 @@ export type CommitPanelAction =
       }
     | { type: "SET_COMMIT_MESSAGE"; repositoryRoot?: string; message: string }
     | { type: "SET_AMEND"; repositoryRoot?: string; isAmend: boolean }
+    | {
+          /** Starts a locally initiated request and captures the draft before host messages arrive. */
+          type: "REQUEST_COMMIT_MESSAGE_GENERATION";
+          repositoryRoot: string;
+          requestId: string;
+          snapshot: string;
+      }
+    | {
+          /** Applies one host lifecycle event only when its root and request ID match active state. */
+          type: "COMMIT_MESSAGE_GENERATION_EVENT";
+          repositoryRoot: string;
+          requestId: string;
+          kind: "start" | "chunk" | "done" | "cancelled" | "error";
+          text?: string;
+          superseded?: boolean;
+      }
     | {
           type: "SET_AMEND_BRANCH_COMMITS";
           repositoryRoot?: string;

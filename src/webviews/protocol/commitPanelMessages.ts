@@ -95,6 +95,13 @@ export interface CommitPanelRepositorySnapshot {
     changedFileCount?: number;
     /** Working-tree and index entries parsed from `git status` and numstat output. */
     files: WorkingFile[];
+    /**
+     * Whether the snapshot's repository has a reachable HEAD commit.
+     *
+     * The extension host derives this from the root-bound GitOps facade; consumers must not infer
+     * it from branch metadata because unborn repositories and detached HEADs have distinct states.
+     */
+    hasCommits: boolean;
     /** Whether a whole-index Git operation currently fences commit-message generation. */
     wholeIndexOperationInProgress: boolean;
     /** Stashed changes parsed from `git stash list`; indices are not stable after refresh. */

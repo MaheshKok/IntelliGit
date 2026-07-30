@@ -20,6 +20,13 @@ import type {
 /** Commit-check state cached by the undocked commit graph. */
 export type CommitChecksValue = CommitChecksSnapshot | "loading";
 
+/** Transient lifecycle for the single commit-message generation request in the undocked view. */
+export interface CommitMessageGenerationState {
+    status: "idle" | "requested" | "running";
+    requestId?: string;
+    snapshot?: string;
+}
+
 /** Reducer action for graph state owned by the undocked app shell. */
 export type GraphAction =
     | { type: "resetRepository" }
@@ -94,6 +101,9 @@ export interface CommitPanelState {
     currentBranchBehind: number;
     currentBranchName: string | null;
     currentBranchUpstream: string | null;
+    generation: CommitMessageGenerationState;
+    hasCommits: boolean;
+    wholeIndexOperationInProgress: boolean;
 }
 
 /** Reducer actions emitted by unified undocked messages and local commit-panel controls. */
@@ -118,6 +128,8 @@ export type CommitPanelAction =
           currentBranchBehind: number;
           currentBranchName?: string | null;
           currentBranchUpstream?: string | null;
+          hasCommits?: boolean;
+          wholeIndexOperationInProgress?: boolean;
       }
     | { type: "RESTORE_COMMIT_DRAFT"; message: string }
     | { type: "SET_LAST_COMMIT_MESSAGE"; message: string }
@@ -135,6 +147,18 @@ export type CommitPanelAction =
       }
     | { type: "SET_COMMIT_MESSAGE"; message: string }
     | { type: "SET_AMEND"; isAmend: boolean }
+    | {
+          type: "REQUEST_COMMIT_MESSAGE_GENERATION";
+          requestId: string;
+          snapshot: string;
+      }
+    | {
+          type: "COMMIT_MESSAGE_GENERATION_EVENT";
+          requestId: string;
+          kind: "start" | "chunk" | "done" | "cancelled" | "error";
+          text?: string;
+          superseded?: boolean;
+      }
     | { type: "SET_AMEND_BRANCH_COMMITS"; commits: AmendBranchCommitSummary[] };
 
 /** Default commit-panel state before the extension sends the first working-tree update. */
@@ -163,7 +187,51 @@ export const initialCommitPanelState: CommitPanelState = {
     currentBranchBehind: 0,
     currentBranchName: null,
     currentBranchUpstream: null,
+    generation: { status: "idle" },
+    hasCommits: false,
+    wholeIndexOperationInProgress: false,
 };
+
+/**
+ * Applies one generation event after the reducer has validated its request identity.
+ *
+ * Terminal events restore the saved draft when required and clear the active marker so later
+ * draft messages may update the state again.
+ */
+function applyGenerationEvent(
+    state: CommitPanelState,
+    action: Extract<CommitPanelAction, { type: "COMMIT_MESSAGE_GENERATION_EVENT" }>,
+): CommitPanelState {
+    switch (action.kind) {
+        case "start":
+            return state.generation.status === "requested"
+                ? {
+                      ...state,
+                      commitMessage: "",
+                      generation: { ...state.generation, status: "running" },
+                  }
+                : state;
+        case "chunk":
+            return state.generation.status === "running"
+                ? { ...state, commitMessage: state.commitMessage + (action.text ?? "") }
+                : state;
+        case "done":
+            return {
+                ...state,
+                ...(action.superseded
+                    ? { commitMessage: state.generation.snapshot ?? state.commitMessage }
+                    : {}),
+                generation: { status: "idle" },
+            };
+        case "cancelled":
+        case "error":
+            return {
+                ...state,
+                commitMessage: state.generation.snapshot ?? state.commitMessage,
+                generation: { status: "idle" },
+            };
+    }
+}
 
 /**
  * Applies undocked commit-panel updates while preserving icon theme metadata
@@ -202,6 +270,9 @@ export function commitPanelReducer(
                     action.currentBranchUpstream !== undefined
                         ? action.currentBranchUpstream
                         : state.currentBranchUpstream,
+                hasCommits: action.hasCommits ?? state.hasCommits,
+                wholeIndexOperationInProgress:
+                    action.wholeIndexOperationInProgress ?? state.wholeIndexOperationInProgress,
                 error: null,
             };
         case "SET_REFRESHING":
@@ -215,8 +286,9 @@ export function commitPanelReducer(
             }
             return { ...state, isRefreshing: action.active };
         case "RESTORE_COMMIT_DRAFT":
-            return { ...state, commitMessage: action.message };
         case "SET_LAST_COMMIT_MESSAGE":
+        case "SET_COMMIT_MESSAGE":
+            if (state.generation.status !== "idle") return state;
             return { ...state, commitMessage: action.message };
         case "COMMITTED":
             return {
@@ -240,15 +312,32 @@ export function commitPanelReducer(
                     newGeneration: action.newGeneration,
                 },
             };
-        case "SET_COMMIT_MESSAGE":
-            return { ...state, commitMessage: action.message };
         case "SET_AMEND":
+            if (state.generation.status !== "idle") return state;
             return {
                 ...state,
                 isAmend: action.isAmend,
                 amendBranchCommits: [],
                 amendBranchHistoryLoaded: false,
             };
+        case "REQUEST_COMMIT_MESSAGE_GENERATION":
+            if (state.generation.status !== "idle") return state;
+            return {
+                ...state,
+                generation: {
+                    status: "requested",
+                    requestId: action.requestId,
+                    snapshot: action.snapshot,
+                },
+            };
+        case "COMMIT_MESSAGE_GENERATION_EVENT":
+            if (
+                state.generation.status === "idle" ||
+                state.generation.requestId !== action.requestId
+            ) {
+                return state;
+            }
+            return applyGenerationEvent(state, action);
         case "SET_AMEND_BRANCH_COMMITS":
             if (!state.isAmend) return state;
             return {

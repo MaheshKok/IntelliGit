@@ -99,6 +99,8 @@ export interface UndockedLayoutProps {
     handleSignInForCommitChecks: (host: string) => void;
     handleMessageChange: (message: string) => void;
     handleAmendChange: (isAmend: boolean) => void;
+    handleGenerateMessage: () => void;
+    handleCancelGeneration: () => void;
     handleCommit: () => void;
     handlePush: () => void;
     handleSync: () => void;
@@ -186,6 +188,8 @@ export function UndockedLayout(props: UndockedLayoutProps): React.ReactElement {
         handleSignInForCommitChecks,
         handleMessageChange,
         handleAmendChange,
+        handleGenerateMessage,
+        handleCancelGeneration,
         handleCommit,
         handlePush,
         handleSync,
@@ -245,6 +249,8 @@ export function UndockedLayout(props: UndockedLayoutProps): React.ReactElement {
                                 isSomeChecked={isSomeChecked}
                                 onMessageChange={handleMessageChange}
                                 onAmendChange={handleAmendChange}
+                                onGenerateMessage={handleGenerateMessage}
+                                onCancelGeneration={handleCancelGeneration}
                                 onCommit={handleCommit}
                                 canCommit={canCommit}
                                 onSync={handleSync}
@@ -433,6 +439,8 @@ export function UndockedLayout(props: UndockedLayoutProps): React.ReactElement {
                                 isSomeChecked={isSomeChecked}
                                 onMessageChange={handleMessageChange}
                                 onAmendChange={handleAmendChange}
+                                onGenerateMessage={handleGenerateMessage}
+                                onCancelGeneration={handleCancelGeneration}
                                 onCommit={handleCommit}
                                 canCommit={canCommit}
                                 onSync={handleSync}

@@ -321,5 +321,7 @@
     "stash.fileAction.openDiff": "Diff öffnen",
     "stash.fileAction.editSource": "Quelldatei bearbeiten",
     "stash.fileAction.cherryPickSelectedChanges": "Ausgewählte Änderungen cherry-picken",
-    "a11y.resizeRepositoryColumn": "Größe der Repositoryspalte ändern"
+    "a11y.resizeRepositoryColumn": "Größe der Repositoryspalte ändern",
+    "commit.message.generate": "Commit-Nachricht generieren",
+    "commit.message.stopGeneration": "Generierung der Commit-Nachricht beenden"
 }

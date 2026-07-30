@@ -452,6 +452,7 @@ export class UndockedViewProvider {
      */
     private async reloadSelectedRepository(shouldContinue: () => boolean): Promise<void> {
         if (!shouldContinue()) return;
+        const repositoryRoot = this.selectedRepositoryRoot;
         // react-doctor-disable-next-line react-doctor/async-defer-await
         await this.iconTheme.initIconThemeData();
         if (!shouldContinue()) return;
@@ -467,7 +468,8 @@ export class UndockedViewProvider {
         if (!shouldContinue()) return;
         this.postToWebview({
             type: "restoreCommitDraft",
-            message: this.getStoredCommitDraft(),
+            repositoryRoot,
+            message: this.getStoredCommitDraft(repositoryRoot),
         });
     }
 
@@ -867,7 +869,11 @@ export class UndockedViewProvider {
                     }
                 }
                 if (this.repoRootUri.fsPath !== commitRepositoryRoot) return;
-                this.postToWebview({ type: "committed", clearCommitMessage });
+                this.postToWebview({
+                    type: "committed",
+                    repositoryRoot: commitRepositoryRoot,
+                    clearCommitMessage,
+                });
             },
             maybeOfferPublishBranch: () => Promise.resolve(),
         };
@@ -903,7 +909,8 @@ export class UndockedViewProvider {
                 await this.refreshCommitPanelData();
                 this.postToWebview({
                     type: "restoreCommitDraft",
-                    message: this.getStoredCommitDraft(),
+                    repositoryRoot: commitRepositoryRoot,
+                    message: this.getStoredCommitDraft(commitRepositoryRoot),
                 });
                 break;
             case "selectRepository":
@@ -1038,8 +1045,12 @@ export class UndockedViewProvider {
                 break;
             case "saveCommitDraft": {
                 const message = assertString(msg.message, "message");
+                const repository = this.findRepository(msg.repositoryRoot);
+                if (!repository) {
+                    throw new Error("Unknown repository root received from webview.");
+                }
                 await this.workspaceState?.update(
-                    this.getCommitDraftStorageKey(),
+                    this.getCommitDraftStorageKey(repository.root),
                     message || undefined,
                 );
                 break;
@@ -1092,13 +1103,25 @@ export class UndockedViewProvider {
                 await publishBranchFromPanel(fileActionDeps);
                 break;
             case "getLastCommitMessage": {
-                const lastMsg = await this.gitOps.getLastCommitMessage();
-                this.postToWebview({ type: "lastCommitMessage", message: lastMsg });
+                const lastMsg = await this.gitOps
+                    .deriveFor(commitRepositoryRoot)
+                    .getLastCommitMessage();
+                this.postToWebview({
+                    type: "lastCommitMessage",
+                    repositoryRoot: commitRepositoryRoot,
+                    message: lastMsg,
+                });
                 break;
             }
             case "getAmendBranchCommits": {
-                const commits = await this.gitOps.getAmendBranchCommits();
-                this.postToWebview({ type: "amendBranchCommits", commits });
+                const commits = await this.gitOps
+                    .deriveFor(commitRepositoryRoot)
+                    .getAmendBranchCommits();
+                this.postToWebview({
+                    type: "amendBranchCommits",
+                    repositoryRoot: commitRepositoryRoot,
+                    commits,
+                });
                 break;
             }
             case "rollback": {
@@ -1175,14 +1198,18 @@ export class UndockedViewProvider {
                             this.stashFiles = state.stashFiles;
                         },
                         postUpdate: async (message) => {
-                            const wholeIndexOperationInProgress =
-                                await stashGitOps.hasWholeIndexOperationInProgress();
+                            const [hasCommits, wholeIndexOperationInProgress] = await Promise.all([
+                                stashGitOps.hasAnyCommits(),
+                                stashGitOps.hasWholeIndexOperationInProgress(),
+                            ]);
                             if (this.selectedRepositoryRoot !== stashRepositoryRoot) return;
                             this.postToWebview({
                                 ...message,
+                                repositoryRoot: stashRepositoryRoot,
                                 shelves: this.shelves,
                                 catalogGeneration: this.catalogGeneration,
                                 selectedShelfId: this.selectedShelfId,
+                                hasCommits,
                                 wholeIndexOperationInProgress,
                             });
                         },
@@ -1633,8 +1660,10 @@ export class UndockedViewProvider {
                 ...shelfFilePaths(shelfState.shelves),
             ]);
             if (!canUpdate()) return;
-            const wholeIndexOperationInProgress =
-                await rootGitOps.hasWholeIndexOperationInProgress();
+            const [hasCommits, wholeIndexOperationInProgress] = await Promise.all([
+                rootGitOps.hasAnyCommits(),
+                rootGitOps.hasWholeIndexOperationInProgress(),
+            ]);
             if (!canUpdate()) return;
             this.files = files;
             this.stashes = stashes;
@@ -1652,6 +1681,7 @@ export class UndockedViewProvider {
             this.lastFileCount = count;
             this.postToWebview({
                 type: "update",
+                repositoryRoot,
                 files,
                 stashes,
                 stashFiles,
@@ -1669,6 +1699,7 @@ export class UndockedViewProvider {
                 currentBranchBehind: currentBranchStatus.behind,
                 currentBranchName: currentBranchStatus.name,
                 currentBranchUpstream: currentBranchStatus.upstream,
+                hasCommits,
                 wholeIndexOperationInProgress,
             });
         } finally {
@@ -1796,11 +1827,13 @@ export class UndockedViewProvider {
     /**
      * Builds the repository-scoped workspace-state key for the undocked commit draft.
      */
-    private getCommitDraftStorageKey(): string {
-        return `${UndockedViewProvider.COMMIT_DRAFT_KEY_PREFIX}${this.repoRootUri.fsPath}`;
+    private getCommitDraftStorageKey(repositoryRoot = this.repoRootUri.fsPath): string {
+        return `${UndockedViewProvider.COMMIT_DRAFT_KEY_PREFIX}${repositoryRoot}`;
     }
-    private getStoredCommitDraft(): string {
-        return this.workspaceState?.get<string>(this.getCommitDraftStorageKey()) ?? "";
+    private getStoredCommitDraft(repositoryRoot = this.repoRootUri.fsPath): string {
+        return (
+            this.workspaceState?.get<string>(this.getCommitDraftStorageKey(repositoryRoot)) ?? ""
+        );
     }
     /**
      * Sends validated persisted column widths before the webview performs layout writes.

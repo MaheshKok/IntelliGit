@@ -131,6 +131,12 @@ function CommitTabLayout({
                     currentBranchAhead={props.currentBranchAhead}
                     currentBranchName={props.currentBranchName}
                     currentBranchUpstream={props.currentBranchUpstream}
+                    generationStatus={props.generationStatus}
+                    onGenerateMessage={props.onGenerateMessage}
+                    onCancelGeneration={props.onCancelGeneration}
+                    hasCommits={props.hasCommits}
+                    hasCheckedPaths={props.checkedPaths.size > 0}
+                    wholeIndexOperationInProgress={props.wholeIndexOperationInProgress}
                 />
             </Box>
             {controller.isShelveDialogOpen ? (

@@ -471,6 +471,7 @@ vi.mock("../../../src/git/operations", () => ({
                 gitRemoteUrlByRoot.get(this.currentRoot()) ?? "https://github.com/owner/repo.git",
         );
         getUnpushedCommitHashes = vi.fn(async () => []);
+        hasAnyCommits = vi.fn(async () => true);
         hasUncommittedChanges = vi.fn(async () => false);
         hasWholeIndexOperationInProgress = vi.fn(async () => false);
         getStatus = vi.fn(async () => gitStatusByRoot.get(this.currentRoot()) ?? []);
@@ -1302,7 +1303,7 @@ describe("view providers integration", () => {
         provider.dispose();
     });
 
-    it("CommitPanelViewProvider includes a fresh whole-index predicate in every full and cached update", async () => {
+    it("CommitPanelViewProvider includes fresh repository predicates in every full and cached update", async () => {
         const { provider, gitOps, webview } = await setupCommitPanelProvider();
         const testProvider = provider as unknown as {
             runtimes: Map<string, unknown>;
@@ -1312,8 +1313,21 @@ describe("view providers integration", () => {
         const runtime = testProvider.runtimes.get("/repo");
         postMessageSpy.mockClear();
         gitOps.hasWholeIndexOperationInProgress.mockResolvedValueOnce(false);
+        gitOps.hasAnyCommits.mockResolvedValueOnce(false);
         await testProvider.postWorkingTreeSnapshot(runtime);
         gitOps.hasWholeIndexOperationInProgress.mockResolvedValueOnce(true);
+        gitOps.hasAnyCommits.mockResolvedValueOnce(true);
+        gitOps.getBranches.mockResolvedValueOnce([
+            {
+                name: "HEAD",
+                hash: "abc1234",
+                isRemote: false,
+                isCurrent: true,
+                upstream: "",
+                ahead: 0,
+                behind: 0,
+            },
+        ]);
         await testProvider.refreshRepositoryData(runtime, true);
         await webview.send({ type: "stashSelect", index: 0 });
 
@@ -1330,12 +1344,15 @@ describe("view providers integration", () => {
             expect.arrayContaining([
                 expect.objectContaining({ wholeIndexOperationInProgress: false }),
                 expect.objectContaining({ wholeIndexOperationInProgress: true }),
+                expect.objectContaining({ hasCommits: false }),
+                expect.objectContaining({ hasCommits: true, currentBranchName: "HEAD" }),
             ]),
         );
         expect(updates).not.toHaveLength(0);
         expect(
             updates.every((update) => typeof update.wholeIndexOperationInProgress === "boolean"),
         ).toBe(true);
+        expect(updates.every((update) => typeof update.hasCommits === "boolean")).toBe(true);
         provider.dispose();
     });
 
@@ -2187,6 +2204,7 @@ describe("view providers integration", () => {
 
         expect(postMessageSpy).toHaveBeenCalledWith({
             type: "committed",
+            repositoryRoot: "/repo",
             clearCommitMessage: false,
         });
         provider.dispose();
@@ -2334,6 +2352,7 @@ describe("view providers integration", () => {
         expect(gitOps.getLog).toHaveBeenCalledWith(500, undefined, undefined, 0);
         expect(postMessageSpy).toHaveBeenCalledWith({
             type: "restoreCommitDraft",
+            repositoryRoot: "/repo",
             message: "stored draft",
         });
 
@@ -2349,6 +2368,7 @@ describe("view providers integration", () => {
         expect(postMessageSpy).toHaveBeenCalledWith(
             expect.objectContaining({
                 type: "update",
+                repositoryRoot: "/repo",
                 selectedStashIndex: 0,
                 stashFiles: [expect.objectContaining({ path: "src/a.ts" })],
             }),
@@ -2387,7 +2407,7 @@ describe("view providers integration", () => {
         expect(gitOps.getLog).toHaveBeenCalledWith(500, "main", undefined, 0);
         expect(gitOps.getLog).toHaveBeenCalledWith(500, "main", undefined, 1);
 
-        await send({ type: "saveCommitDraft", message: "new draft" });
+        await send({ type: "saveCommitDraft", repositoryRoot: "/repo", message: "new draft" });
         expect(workspaceStore.update).toHaveBeenCalledWith("commitDraft:/repo", "new draft");
 
         await send({ type: "stageFiles", paths: ["src/a.ts"] });
@@ -2453,11 +2473,9 @@ describe("view providers integration", () => {
         expect(gitOps.unstageFiles).toHaveBeenCalledWith(["src/a.ts"]);
         expect(gitOps.deriveFor).toHaveBeenCalledWith("/repo");
         expect(selectedCommitGitOps.stageFiles).toHaveBeenCalledWith(["src/a.ts"]);
-        expect(selectedCommitGitOps.commit).toHaveBeenCalledWith(
-            "feat: selected",
-            false,
-            ["src/a.ts"],
-        );
+        expect(selectedCommitGitOps.commit).toHaveBeenCalledWith("feat: selected", false, [
+            "src/a.ts",
+        ]);
         expect(gitOps.commit).not.toHaveBeenCalledWith("feat: selected", false, ["src/a.ts"]);
         expect(gitOps.commit).toHaveBeenCalledWith("feat: commit", false);
         expect(gitOps.commit).toHaveBeenCalledWith("feat: push", false);
@@ -2466,10 +2484,12 @@ describe("view providers integration", () => {
         expect(executeCommand).toHaveBeenCalledWith("intelligit.publishBranch");
         expect(postMessageSpy).toHaveBeenCalledWith({
             type: "lastCommitMessage",
+            repositoryRoot: "/repo",
             message: "last message",
         });
         expect(postMessageSpy).toHaveBeenCalledWith({
             type: "amendBranchCommits",
+            repositoryRoot: "/repo",
             commits: [
                 { shortHash: "abc1234", subject: "feat: amend ctx", date: "2026-02-19T00:00:00Z" },
             ],
@@ -2755,6 +2775,7 @@ describe("view providers integration", () => {
         });
         expect(postMessageSpy).toHaveBeenCalledWith({
             type: "restoreCommitDraft",
+            repositoryRoot: "/repo-a",
             message: "draft A",
         });
 
@@ -2774,15 +2795,26 @@ describe("view providers integration", () => {
         const restoreMessages = postMessageSpy.mock.calls
             .map(([message]) => message)
             .filter(
-                (message): message is { type: "restoreCommitDraft"; message: string } =>
+                (
+                    message,
+                ): message is {
+                    type: "restoreCommitDraft";
+                    repositoryRoot: string;
+                    message: string;
+                } =>
                     typeof message === "object" &&
                     message !== null &&
                     "type" in message &&
                     message.type === "restoreCommitDraft",
             );
-        expect(restoreMessages.at(-1)).toEqual({ type: "restoreCommitDraft", message: "" });
+        expect(restoreMessages.at(-1)).toEqual({
+            type: "restoreCommitDraft",
+            repositoryRoot: "/repo-b",
+            message: "",
+        });
         expect(restoreMessages).not.toContainEqual({
             type: "restoreCommitDraft",
+            repositoryRoot: "/repo-a",
             message: "draft A",
         });
 
@@ -2795,7 +2827,11 @@ describe("view providers integration", () => {
             if (
                 postMessageSpy.mock.calls.some(([message]) =>
                     expect
-                        .objectContaining({ type: "restoreCommitDraft", message: "draft A" })
+                        .objectContaining({
+                            type: "restoreCommitDraft",
+                            repositoryRoot: "/repo-a",
+                            message: "draft A",
+                        })
                         .asymmetricMatch(message),
                 )
             ) {
@@ -2809,6 +2845,7 @@ describe("view providers integration", () => {
         );
         expect(postMessageSpy).toHaveBeenCalledWith({
             type: "restoreCommitDraft",
+            repositoryRoot: "/repo-a",
             message: "draft A",
         });
 
@@ -5469,7 +5506,7 @@ describe("view providers integration", () => {
 
         await webview.send({ type: "publishBranch", repositoryRoot: "/repo-b" });
 
-        expect(repoBGitOps.hasAnyCommits).toHaveBeenCalledTimes(1);
+        expect(repoBGitOps.hasAnyCommits).toHaveBeenCalled();
         expect(repoBGitOps.getBranches).toHaveBeenCalledTimes(1);
         expect(gitOps.hasAnyCommits).not.toHaveBeenCalled();
         expect(gitOps.getBranches).not.toHaveBeenCalled();
@@ -5522,7 +5559,7 @@ describe("view providers integration", () => {
 
         await webview.send({ type: "push", repositoryRoot: "/repo-b" });
 
-        expect(repoBGitOps.hasAnyCommits).toHaveBeenCalledTimes(1);
+        expect(repoBGitOps.hasAnyCommits).toHaveBeenCalled();
         expect(repoBGitOps.getBranches).toHaveBeenCalled();
         expect(repoBGitOps.push).not.toHaveBeenCalled();
         expect(gitOps.hasAnyCommits).not.toHaveBeenCalled();

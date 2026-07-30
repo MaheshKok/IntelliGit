@@ -3,9 +3,14 @@
 
 import React from "react";
 import { Flex, Box, Textarea, Button } from "@chakra-ui/react";
+import { VscDebugStop, VscSparkle } from "react-icons/vsc";
 import { VscCheckbox } from "../../shared/components/VscCheckbox";
+import { ToolbarIconButton } from "../../shared/components/ToolbarIconButton";
 import { SYSTEM_FONT_STACK } from "../../../../utils/constants";
 import { t } from "../../shared/i18n";
+
+/** The host lifecycle states that fence commit-message generation controls. */
+export type CommitMessageGenerationStatus = "idle" | "requested" | "running";
 
 interface Props {
     commitMessage: string;
@@ -20,7 +25,21 @@ interface Props {
     currentBranchAhead?: number;
     currentBranchName: string | null;
     currentBranchUpstream: string | null;
+    /** Latest host-observed generation lifecycle; defaults safely while callers migrate. */
+    generationStatus?: CommitMessageGenerationStatus;
+    /** Requests generation from the host when the current index selection is valid. */
+    onGenerateMessage?: () => void;
+    /** Cancels an in-flight generation request through the host. */
+    onCancelGeneration?: () => void;
+    /** Distinguishes amendable detached histories from an unborn repository. */
+    hasCommits?: boolean;
+    /** Whether at least one working-tree path is selected for a new commit message. */
+    hasCheckedPaths?: boolean;
+    /** Disables a new request while the whole index is being mutated. */
+    wholeIndexOperationInProgress?: boolean;
 }
+
+const NOOP = (): void => undefined;
 
 const disabledButtonStyles = {
     bg: "rgba(255,255,255,0.03)",
@@ -43,7 +62,8 @@ function getBranchIndicatorUpstream(
  * Renders amend controls, the commit message editor, and the commit action.
  *
  * The component does not talk to the extension host directly; callers decide how
- * message changes, amend toggles, and commit requests are translated into outbound webview messages.
+ * message changes, amend toggles, commit requests, and message-generation lifecycle
+ * callbacks are translated into outbound webview messages.
  */
 export function CommitArea({
     commitMessage,
@@ -58,9 +78,22 @@ export function CommitArea({
     currentBranchAhead = 0,
     currentBranchName,
     currentBranchUpstream,
+    generationStatus = "idle",
+    onGenerateMessage = NOOP,
+    onCancelGeneration = NOOP,
+    hasCommits = true,
+    hasCheckedPaths = false,
+    wholeIndexOperationInProgress = false,
 }: Props): React.ReactElement {
     const amendCheckboxId = "commit-area-amend-checkbox";
     const branchUpstream = getBranchIndicatorUpstream(currentBranchName, currentBranchUpstream);
+    const isGenerationActive = generationStatus !== "idle";
+    const isAmendDisabled = !hasCommits || isGenerationActive;
+    const isGenerateDisabled =
+        wholeIndexOperationInProgress ||
+        (isAmend ? !hasCommits : !hasCheckedPaths) ||
+        isGenerationActive;
+    const isCommitDisabled = !canCommit || isGenerationActive;
     const isPushVisuallyDisabled = !canPush;
     const isPushButtonDisabled = !canPush;
     const branchLabel = currentBranchName
@@ -97,11 +130,14 @@ export function CommitArea({
                 py="3px"
                 fontSize="12px"
                 minH="24px"
-                cursor="pointer"
+                cursor={isAmendDisabled ? "default" : "pointer"}
+                opacity={isAmendDisabled ? 0.62 : 1}
+                aria-disabled={isAmendDisabled || undefined}
             >
                 <VscCheckbox
                     isChecked={isAmend}
                     onChange={() => onAmendChange(!isAmend)}
+                    disabled={isAmendDisabled}
                     inputId={amendCheckboxId}
                     inputTestId="amend-checkbox"
                     ariaLabel={t("commit.amend")}
@@ -110,10 +146,29 @@ export function CommitArea({
                     {t("commit.amend")}
                 </Box>
             </Flex>
-            <Box px="8px" flex={1} overflow="hidden">
+            <Box px="8px" flex={1} overflow="hidden" position="relative">
+                <Box position="absolute" top="4px" right="12px" zIndex={1}>
+                    {isGenerationActive ? (
+                        <ToolbarIconButton
+                            label={t("commit.message.stopGeneration")}
+                            icon={<VscDebugStop size={16} />}
+                            onClick={onCancelGeneration}
+                            color="var(--vscode-errorForeground)"
+                        />
+                    ) : (
+                        <ToolbarIconButton
+                            label={t("commit.message.generate")}
+                            icon={<VscSparkle size={16} />}
+                            onClick={onGenerateMessage}
+                            disabled={isGenerateDisabled}
+                            color="var(--intelligit-pycharm-blue)"
+                        />
+                    )}
+                </Box>
                 <Textarea
                     value={commitMessage}
                     onChange={(e) => onMessageChange(e.target.value)}
+                    readOnly={isGenerationActive}
                     placeholder={t("commit.message.placeholder")}
                     resize="none"
                     w="100%"
@@ -124,6 +179,7 @@ export function CommitArea({
                     borderColor="var(--intelligit-pycharm-input-border)"
                     borderRadius="4px"
                     p="6px 8px"
+                    style={{ paddingRight: "32px" }}
                     fontFamily={SYSTEM_FONT_STACK}
                     fontSize="12px"
                     _placeholder={{ color: "rgba(214, 219, 229, 0.48)" }}
@@ -137,8 +193,8 @@ export function CommitArea({
                 <Button
                     variant="primary"
                     size="sm"
-                    onClick={onCommit}
-                    isDisabled={!canCommit}
+                    onClick={isCommitDisabled ? undefined : onCommit}
+                    isDisabled={isCommitDisabled}
                     fontSize="12px"
                     fontFamily={SYSTEM_FONT_STACK}
                     _disabled={disabledButtonStyles}

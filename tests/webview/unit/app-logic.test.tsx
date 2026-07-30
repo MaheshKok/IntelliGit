@@ -43,6 +43,7 @@ function makeCommitPanelState(
         currentBranchBehind: 0,
         currentBranchName: "main",
         currentBranchUpstream: "origin/main",
+        hasCommits: true,
         folderIconsByName: {},
         changedFileCount: 0,
         label: "Repo",

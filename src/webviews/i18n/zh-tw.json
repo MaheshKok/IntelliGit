@@ -314,5 +314,7 @@
     "stash.fileAction.openDiff": "開啟差異",
     "stash.fileAction.editSource": "編輯原始檔",
     "stash.fileAction.cherryPickSelectedChanges": "挑選選取的變更",
-    "a11y.resizeRepositoryColumn": "調整存放庫資料行大小"
+    "a11y.resizeRepositoryColumn": "調整存放庫資料行大小",
+    "commit.message.generate": "產生提交訊息",
+    "commit.message.stopGeneration": "停止產生提交訊息"
 }

@@ -170,6 +170,7 @@ describe("CommitPanelApp integration", () => {
                             },
                         ],
                         selectedStashIndex: 0,
+                        hasCommits: true,
                     },
                 }),
             );

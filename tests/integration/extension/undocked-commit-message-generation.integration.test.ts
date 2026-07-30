@@ -71,6 +71,7 @@ vi.mock("../../../src/views/shared/IconThemeService", () => ({
         dispose = vi.fn();
         initIconThemeData = vi.fn(async () => undefined);
         decorateWorkingFiles = vi.fn(async <T>(files: T[]) => files);
+        getFolderIconsByBranches = vi.fn(async () => ({}));
         getFolderIconsByPaths = vi.fn(async () => ({}));
         getThemeData = vi.fn(() => ({ folderIcons: {}, iconFonts: [] }));
     },
@@ -108,6 +109,8 @@ function createRootGitOps() {
         ]),
         hasAnyCommits: vi.fn(async () => true),
         hasWholeIndexOperationInProgress: vi.fn(async () => false),
+        getLastCommitMessage: vi.fn(async () => "feat: previous commit"),
+        getAmendBranchCommits: vi.fn(async () => []),
         getBranches: vi.fn(async () => []),
         getRemotes: vi.fn(async () => []),
         listStashes: vi.fn(async () => []),
@@ -145,12 +148,16 @@ async function createProvider() {
     const { UndockedViewProvider } = await import("../../../src/views/UndockedViewProvider");
     const gitOps = createGitOps();
     const coordinator = createCoordinator();
+    const workspaceState = {
+        get: vi.fn(() => undefined),
+        update: vi.fn(async () => undefined),
+    };
     const provider = new UndockedViewProvider(
         { fsPath: "/extension", path: "/extension" } as never,
         gitOps as never,
         { fsPath: "/repo-a", path: "/repo-a" } as never,
         {} as never,
-        undefined,
+        workspaceState as never,
         {},
         undefined,
         {
@@ -163,7 +170,7 @@ async function createProvider() {
         } as never,
     );
     provider.open();
-    return { coordinator, gitOps, provider };
+    return { coordinator, gitOps, provider, workspaceState };
 }
 
 async function send(message: unknown): Promise<void> {
@@ -425,11 +432,12 @@ describe("UndockedViewProvider commit-message generation", () => {
         provider.dispose();
     });
 
-    it("refreshes through one root-bound GitOps facade and rejects ABA repository switches", async () => {
+    it("refreshes hasCommits through one root-bound GitOps facade and rejects ABA repository switches", async () => {
         const { gitOps, provider } = await createProvider();
         const repoBGitOps = gitOps.rootGitOpsByRoot["/repo-b"];
         repoBGitOps.listStashes.mockResolvedValue([{ index: 3 }]);
         repoBGitOps.getStashFiles.mockResolvedValue([{ path: "stash/b.ts", status: "M" }]);
+        repoBGitOps.hasAnyCommits.mockResolvedValue(false);
         repoBGitOps.hasWholeIndexOperationInProgress.mockResolvedValue(true);
 
         provider.setRepositoryRootUri({ fsPath: "/repo-b", path: "/repo-b" } as never);
@@ -444,9 +452,14 @@ describe("UndockedViewProvider commit-message generation", () => {
         expect(repoBGitOps.getBranches).toHaveBeenCalledTimes(1);
         expect(repoBGitOps.getRemotes).toHaveBeenCalledTimes(1);
         expect(repoBGitOps.getStashFiles).toHaveBeenCalledWith(3);
+        expect(repoBGitOps.hasAnyCommits).toHaveBeenCalledTimes(1);
         expect(repoBGitOps.hasWholeIndexOperationInProgress).toHaveBeenCalledTimes(1);
         expect(postMessage).toHaveBeenCalledWith(
-            expect.objectContaining({ type: "update", wholeIndexOperationInProgress: true }),
+            expect.objectContaining({
+                type: "update",
+                hasCommits: false,
+                wholeIndexOperationInProgress: true,
+            }),
         );
 
         postMessage.mockClear();
@@ -502,6 +515,85 @@ describe("UndockedViewProvider commit-message generation", () => {
         await send({ type: "stashSelect", index: 0 });
         expect(postMessage).toHaveBeenCalledWith(
             expect.objectContaining({ type: "error", message: "whole-index failed" }),
+        );
+        provider.dispose();
+    });
+
+    it("posts captured roots for the undocked UI's exact-root filtered commit-panel events", async () => {
+        const { provider } = await createProvider();
+
+        provider.setRepositoryRootUri({ fsPath: "/repo-b", path: "/repo-b" } as never);
+        await (
+            provider as unknown as { refreshCommitPanelData: () => Promise<void> }
+        ).refreshCommitPanelData();
+        expect(postMessage).toHaveBeenCalledWith(
+            expect.objectContaining({ type: "update", repositoryRoot: "/repo-b" }),
+        );
+
+        postMessage.mockClear();
+        await send({ type: "ready" });
+        expect(postMessage).toHaveBeenCalledWith({
+            type: "restoreCommitDraft",
+            repositoryRoot: "/repo-b",
+            message: "",
+        });
+
+        postMessage.mockClear();
+        await send({ type: "getLastCommitMessage" });
+        await send({ type: "getAmendBranchCommits" });
+        commitSelectedFromPanel.mockImplementationOnce(
+            async (deps: { postCommitted: () => Promise<void> }) => deps.postCommitted(),
+        );
+        await send({
+            type: "commitSelected",
+            message: "feat: root scoped",
+            amend: false,
+            push: false,
+            paths: ["src/a.ts"],
+        });
+        expect(postMessage).toHaveBeenCalledWith({
+            type: "lastCommitMessage",
+            repositoryRoot: "/repo-b",
+            message: "feat: previous commit",
+        });
+        expect(postMessage).toHaveBeenCalledWith({
+            type: "amendBranchCommits",
+            repositoryRoot: "/repo-b",
+            commits: [],
+        });
+        expect(postMessage).toHaveBeenCalledWith({
+            type: "committed",
+            repositoryRoot: "/repo-b",
+            clearCommitMessage: true,
+        });
+        provider.dispose();
+    });
+
+    it("persists a terminal draft to its accepted root after the selected root switches", async () => {
+        const { provider, workspaceState } = await createProvider();
+
+        provider.setRepositoryRootUri({ fsPath: "/repo-b", path: "/repo-b" } as never);
+        await send({
+            type: "saveCommitDraft",
+            repositoryRoot: "/repo-a",
+            message: "generated for repo a",
+        });
+
+        expect(workspaceState.update).toHaveBeenCalledWith(
+            expect.stringContaining("/repo-a"),
+            "generated for repo a",
+        );
+        await send({
+            type: "saveCommitDraft",
+            repositoryRoot: "/unknown",
+            message: "must not persist",
+        });
+        expect(workspaceState.update).toHaveBeenCalledTimes(1);
+        expect(postMessage).toHaveBeenCalledWith(
+            expect.objectContaining({
+                type: "error",
+                message: "Unknown repository root received from webview.",
+            }),
         );
         provider.dispose();
     });

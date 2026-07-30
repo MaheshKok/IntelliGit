@@ -335,5 +335,7 @@
     "stash.fileAction.openDiff": "Otwórz różnice",
     "stash.fileAction.editSource": "Edytuj źródło",
     "stash.fileAction.cherryPickSelectedChanges": "Cherry-pick wybranych zmian",
-    "a11y.resizeRepositoryColumn": "Zmień rozmiar kolumny repozytorium"
+    "a11y.resizeRepositoryColumn": "Zmień rozmiar kolumny repozytorium",
+    "commit.message.generate": "Wygeneruj komunikat commita",
+    "commit.message.stopGeneration": "Zatrzymaj generowanie komunikatu commita"
 }

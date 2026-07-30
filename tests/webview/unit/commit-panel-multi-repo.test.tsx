@@ -10,7 +10,14 @@ type CommitTabMockProps = {
     isAmend: boolean;
     amendBranchCommits: Array<{ shortHash: string }>;
     amendBranchHistoryLoaded: boolean;
+    generationStatus?: "idle" | "requested" | "running";
+    hasCommits?: boolean;
+    wholeIndexOperationInProgress?: boolean;
+    onToggleFile: (path: string) => void;
+    onMessageChange: (message: string) => void;
     onAmendChange: (isAmend: boolean) => void;
+    onGenerateMessage?: () => void;
+    onCancelGeneration?: () => void;
     onCommit: () => void;
 };
 
@@ -68,6 +75,8 @@ function snapshot(root: string, label: string, path: string): object {
         repositoryLabel: label,
         changedFileCount: 1,
         files: [workingFile(path)],
+        hasCommits: true,
+        wholeIndexOperationInProgress: false,
         stashes: [],
         stashFiles: [],
         selectedStashIndex: null,
@@ -149,10 +158,36 @@ async function renderApp(): Promise<void> {
                 <span data-testid="amend-state" data-root={props.repositoryRoot}>
                     {`${props.isAmend}:${props.amendBranchCommits.length}:${props.amendBranchHistoryLoaded}`}
                 </span>
+                <span data-testid="generation-status" data-root={props.repositoryRoot}>
+                    {props.generationStatus}
+                </span>
+                <span data-testid="generation-host-state" data-root={props.repositoryRoot}>
+                    {`${props.hasCommits}:${props.wholeIndexOperationInProgress}`}
+                </span>
+                <button
+                    data-testid="draft-edit"
+                    data-root={props.repositoryRoot}
+                    onClick={() => props.onMessageChange("local edit")}
+                />
+                <button
+                    data-testid="toggle-first-file"
+                    data-root={props.repositoryRoot}
+                    onClick={() => props.onToggleFile(props.files[0]?.path ?? "")}
+                />
                 <button
                     data-testid="amend-toggle"
                     data-root={props.repositoryRoot}
                     onClick={() => props.onAmendChange(true)}
+                />
+                <button
+                    data-testid="generate-message"
+                    data-root={props.repositoryRoot}
+                    onClick={props.onGenerateMessage}
+                />
+                <button
+                    data-testid="cancel-generation"
+                    data-root={props.repositoryRoot}
+                    onClick={props.onCancelGeneration}
                 />
                 <button
                     data-testid="commit-action"
@@ -610,5 +645,226 @@ describe("commit panel multi-repository view", () => {
                 message: "feat: b",
             }),
         );
+    });
+
+    it("correlates docked generation lifecycle state per repository", async () => {
+        await renderApp();
+        await hydrateTwoRepositories();
+        click(header("/repo-b"));
+        await sendHostMessage({
+            type: "restoreCommitDraft",
+            repositoryRoot: "/repo-a",
+            message: "draft A",
+        });
+        await sendHostMessage({
+            type: "restoreCommitDraft",
+            repositoryRoot: "/repo-b",
+            message: "draft B",
+        });
+
+        postMessage.mockClear();
+        click(document.querySelector('[data-testid="generate-message"][data-root="/repo-b"]'));
+        expect(postMessage).not.toHaveBeenCalled();
+        click(document.querySelector('[data-testid="toggle-first-file"][data-root="/repo-b"]'));
+
+        click(document.querySelector('[data-testid="generate-message"][data-root="/repo-b"]'));
+        const requestedRequest = postMessage.mock.calls.find(
+            ([message]) => message.type === "generateCommitMessage",
+        )?.[0];
+        expect(requestedRequest).toEqual(
+            expect.objectContaining({
+                type: "generateCommitMessage",
+                repositoryRoot: "/repo-b",
+                paths: ["src/b.ts"],
+                amend: false,
+            }),
+        );
+        expect(
+            document.querySelector('[data-testid="generation-status"][data-root="/repo-b"]')
+                ?.textContent,
+        ).toBe("requested");
+        click(document.querySelector('[data-testid="cancel-generation"][data-root="/repo-b"]'));
+        expect(postMessage).toHaveBeenLastCalledWith({
+            type: "cancelCommitMessageGeneration",
+            repositoryRoot: "/repo-b",
+            requestId: requestedRequest.requestId,
+        });
+        await sendHostMessage({
+            type: "commitMessageGeneration",
+            repositoryRoot: "/repo-b",
+            requestId: requestedRequest.requestId,
+            kind: "cancelled",
+        });
+
+        postMessage.mockImplementation(
+            (message: { type: string; repositoryRoot?: string; requestId?: string }) => {
+                if (message.type === "generateCommitMessage") {
+                    window.dispatchEvent(
+                        new MessageEvent("message", {
+                            data: {
+                                type: "commitMessageGeneration",
+                                repositoryRoot: message.repositoryRoot,
+                                requestId: message.requestId,
+                                kind: "start",
+                            },
+                        }),
+                    );
+                }
+            },
+        );
+        postMessage.mockClear();
+        click(document.querySelector('[data-testid="generate-message"][data-root="/repo-b"]'));
+        await flush();
+
+        const firstRequest = postMessage.mock.calls.find(
+            ([message]) => message.type === "generateCommitMessage",
+        )?.[0];
+        expect(firstRequest).toEqual(
+            expect.objectContaining({
+                type: "generateCommitMessage",
+                repositoryRoot: "/repo-b",
+                paths: ["src/b.ts"],
+                amend: false,
+            }),
+        );
+        expect(messageText("/repo-b")).toBe("");
+        expect(
+            document.querySelector('[data-testid="generation-status"][data-root="/repo-b"]')
+                ?.textContent,
+        ).toBe("running");
+        expect(
+            document.querySelector('[data-testid="generation-host-state"][data-root="/repo-b"]')
+                ?.textContent,
+        ).toBe("true:false");
+
+        postMessage.mockClear();
+        click(document.querySelector('[data-testid="draft-edit"][data-root="/repo-b"]'));
+        click(document.querySelector('[data-testid="amend-toggle"][data-root="/repo-b"]'));
+        click(document.querySelector('[data-testid="commit-action"][data-root="/repo-b"]'));
+        expect(postMessage).not.toHaveBeenCalled();
+
+        click(document.querySelector('[data-testid="cancel-generation"][data-root="/repo-b"]'));
+        expect(postMessage).toHaveBeenCalledWith({
+            type: "cancelCommitMessageGeneration",
+            repositoryRoot: "/repo-b",
+            requestId: firstRequest.requestId,
+        });
+        await sendHostMessage({
+            type: "commitMessageGeneration",
+            repositoryRoot: "/repo-b",
+            requestId: firstRequest.requestId,
+            kind: "cancelled",
+        });
+        expect(messageText("/repo-a")).toBe("draft A");
+        expect(messageText("/repo-b")).toBe("draft B");
+        expect(postMessage).toHaveBeenCalledWith({
+            type: "saveCommitDraft",
+            repositoryRoot: "/repo-b",
+            message: "draft B",
+        });
+
+        postMessage.mockClear();
+        postMessage.mockImplementation(() => undefined);
+        click(document.querySelector('[data-testid="generate-message"][data-root="/repo-b"]'));
+        const secondRequest = postMessage.mock.calls[0][0];
+        await sendHostMessage({
+            type: "commitMessageGeneration",
+            repositoryRoot: "/repo-b",
+            requestId: secondRequest.requestId,
+            kind: "error",
+        });
+        expect(messageText("/repo-b")).toBe("draft B");
+        expect(postMessage).toHaveBeenCalledWith({
+            type: "saveCommitDraft",
+            repositoryRoot: "/repo-b",
+            message: "draft B",
+        });
+
+        postMessage.mockClear();
+        click(document.querySelector('[data-testid="generate-message"][data-root="/repo-b"]'));
+        const thirdRequest = postMessage.mock.calls[0][0];
+        await sendHostMessage({
+            type: "commitMessageGeneration",
+            repositoryRoot: "/unknown",
+            requestId: thirdRequest.requestId,
+            kind: "done",
+        });
+        await sendHostMessage({
+            type: "commitMessageGeneration",
+            repositoryRoot: "/repo-b",
+            requestId: "stale-request",
+            kind: "done",
+        });
+        expect(
+            postMessage.mock.calls.filter(([message]) => message.type === "generateCommitMessage"),
+        ).toHaveLength(1);
+        await sendHostMessage({
+            type: "commitMessageGeneration",
+            repositoryRoot: "/repo-b",
+            requestId: thirdRequest.requestId,
+            kind: "error",
+            superseded: true,
+        });
+        expect(messageText("/repo-b")).toBe("draft B");
+        expect(
+            postMessage.mock.calls.filter(([message]) => message.type === "generateCommitMessage"),
+        ).toHaveLength(1);
+
+        postMessage.mockClear();
+        click(document.querySelector('[data-testid="generate-message"][data-root="/repo-b"]'));
+        const winningRequest = postMessage.mock.calls[0][0];
+        await sendHostMessage({
+            type: "commitMessageGeneration",
+            repositoryRoot: "/repo-b",
+            requestId: winningRequest.requestId,
+            kind: "start",
+        });
+        await sendHostMessage({
+            type: "commitMessageGeneration",
+            repositoryRoot: "/repo-b",
+            requestId: winningRequest.requestId,
+            kind: "chunk",
+            text: "feat: ",
+        });
+        await sendHostMessage({
+            type: "commitMessageGeneration",
+            repositoryRoot: "/repo-b",
+            requestId: winningRequest.requestId,
+            kind: "chunk",
+            text: "generated",
+        });
+        await sendHostMessage({
+            type: "commitMessageGeneration",
+            repositoryRoot: "/repo-b",
+            requestId: winningRequest.requestId,
+            kind: "done",
+        });
+        expect(messageText("/repo-b")).toBe("feat: generated");
+        expect(messageText("/repo-a")).toBe("draft A");
+        expect(postMessage).toHaveBeenCalledWith({
+            type: "saveCommitDraft",
+            repositoryRoot: "/repo-b",
+            message: "feat: generated",
+        });
+
+        click(document.querySelector('[data-testid="amend-toggle"][data-root="/repo-b"]'));
+        const fencedSnapshot = snapshot("/repo-b", "Repo B", "src/b.ts") as Record<string, unknown>;
+        fencedSnapshot.hasCommits = false;
+        fencedSnapshot.wholeIndexOperationInProgress = false;
+        await sendHostMessage(fencedSnapshot);
+        expect(
+            document.querySelector('[data-testid="generation-host-state"][data-root="/repo-b"]')
+                ?.textContent,
+        ).toBe("false:false");
+        postMessage.mockClear();
+        click(document.querySelector('[data-testid="amend-toggle"][data-root="/repo-b"]'));
+        click(document.querySelector('[data-testid="generate-message"][data-root="/repo-b"]'));
+        click(document.querySelector('[data-testid="commit-action"][data-root="/repo-b"]'));
+        expect(
+            postMessage.mock.calls.filter(
+                ([message]) =>
+                    message.type === "generateCommitMessage" || message.type === "commitSelected",
+            ),
+        ).toEqual([]);
     });
 });
