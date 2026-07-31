@@ -280,7 +280,7 @@ bun run test -- -t "CommitPanelApp"
 ## Architecture
 
 ```text
-GitExecutor (simple-git wrapper)
+GitExecutor (src/git/executor.ts — spawns the Git binary directly)
     |
 GitOps (operations layer)
     |
@@ -298,17 +298,17 @@ Data flow highlights:
 
 ## Tech Stack
 
-| Component       | Technology         |
-| --------------- | ------------------ |
-| Extension host  | TypeScript, ES2022 |
-| Git operations  | simple-git v3      |
-| Webviews        | React 18           |
-| Graph rendering | HTML5 Canvas       |
-| Bundler         | esbuild            |
-| Package manager | Bun                |
-| Testing         | Vitest             |
-| Linting         | ESLint             |
-| Formatting      | Prettier           |
+| Component       | Technology                       |
+| --------------- | -------------------------------- |
+| Extension host  | TypeScript, ES2022               |
+| Git operations  | Git CLI via `node:child_process` |
+| Webviews        | React 18                         |
+| Graph rendering | HTML5 Canvas                     |
+| Bundler         | esbuild                          |
+| Package manager | Bun                              |
+| Testing         | Vitest                           |
+| Linting         | ESLint                           |
+| Formatting      | Prettier                         |
 
 ## License
 

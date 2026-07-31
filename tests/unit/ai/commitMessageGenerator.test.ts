@@ -217,7 +217,8 @@ describe("prepareCommitMessageGeneration", () => {
                 path.join(folder.uri.fsPath, "instructions.txt"),
                 "Use conventional commits.",
             );
-            await writeFile(path.join(folder.uri.fsPath, "large.txt"), "x".repeat(20_000));
+            const oversizedInstruction = "x".repeat(20_000);
+            await writeFile(path.join(folder.uri.fsPath, "large.txt"), oversizedInstruction);
             await writeFile(path.join(folder.uri.fsPath, "cumulative-one.txt"), "a".repeat(8_000));
             await writeFile(path.join(folder.uri.fsPath, "cumulative-two.txt"), "b".repeat(8_000));
             await writeFile(path.join(folder.uri.fsPath, "cumulative-three.txt"), "c");
@@ -247,7 +248,8 @@ describe("prepareCommitMessageGeneration", () => {
 
             expect(prepared.prompt).toContain("Use imperative mood.");
             expect(prepared.prompt).toContain("Use conventional commits.");
-            expect(prepared.prompt).not.toContain("large.txt");
+            // The prompt never carries instruction file names, so only the body proves the cap held.
+            expect(prepared.prompt).not.toContain(oversizedInstruction.slice(0, 1_000));
             expect(logger).toHaveBeenCalledTimes(8);
         },
     );
