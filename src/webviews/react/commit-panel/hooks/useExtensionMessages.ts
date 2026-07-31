@@ -10,6 +10,7 @@ import type {
     RepositoryCommitPanelState,
 } from "../types";
 import type { WorkingFile } from "../../../../types";
+import { commitMessageGenerationPrefix } from "../../shared/commitMessageDraft";
 
 const LEGACY_REPOSITORY_ROOT = "";
 
@@ -169,7 +170,9 @@ function applyGenerationEvent(
             return repository.generation.status === "requested"
                 ? {
                       ...repository,
-                      commitMessage: "",
+                      commitMessage: commitMessageGenerationPrefix(
+                          repository.generation.snapshot ?? repository.commitMessage,
+                      ),
                       generation: { ...repository.generation, status: "running" },
                   }
                 : repository;

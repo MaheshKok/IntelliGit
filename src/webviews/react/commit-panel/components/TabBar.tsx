@@ -13,6 +13,7 @@ import {
     Tooltip,
 } from "@chakra-ui/react";
 import { getSettings } from "../../shared/settings";
+import { DISABLED_GLYPH_COLOR } from "../../shared/components/ToolbarIconButton";
 import { t } from "../../shared/i18n";
 
 interface Props {
@@ -264,7 +265,7 @@ function GitActionButton({
 }): React.ReactElement {
     const { hoverDelay, tooltipsEnabled, iconStyle } = getSettings();
     const resolvedColor = disabled
-        ? "var(--vscode-disabledForeground)"
+        ? DISABLED_GLYPH_COLOR
         : iconStyle === "standard"
           ? standardColor
           : color;
@@ -284,7 +285,7 @@ function GitActionButton({
                 variant="toolbarGhost"
                 size="sm"
                 alignSelf="center"
-                opacity={disabled ? 0.55 : undefined}
+                _disabled={{ opacity: 1, cursor: "default" }}
                 cursor={disabled ? "default" : undefined}
                 onClick={disabled ? undefined : onClick}
                 icon={

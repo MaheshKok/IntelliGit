@@ -72,7 +72,7 @@ describe("undocked commit-message generation lifecycle", () => {
                 text: "generated",
             },
         );
-        expect(streamed.commitMessage).toBe("feat: generated");
+        expect(streamed.commitMessage).toBe("saved draft\nfeat: generated");
 
         const winner = commitPanelReducer(streamed, {
             type: "COMMIT_MESSAGE_GENERATION_EVENT",
@@ -80,7 +80,7 @@ describe("undocked commit-message generation lifecycle", () => {
             kind: "done",
         });
         expect(winner).toMatchObject({
-            commitMessage: "feat: generated",
+            commitMessage: "saved draft\nfeat: generated",
             generation: { status: "idle" },
         });
 
@@ -351,7 +351,7 @@ describe("undocked commit-message generation lifecycle", () => {
             kind: "done",
         });
         expect(stateRef?.current).toMatchObject({
-            commitMessage: "feat: generated",
+            commitMessage: "saved draft\nfeat: generated",
             generation: { status: "idle" },
         });
         const savedDraftMessages = () =>
@@ -361,7 +361,7 @@ describe("undocked commit-message generation lifecycle", () => {
                 {
                     type: "saveCommitDraft",
                     repositoryRoot: "/repo-a",
-                    message: "feat: generated",
+                    message: "saved draft\nfeat: generated",
                 },
             ],
         ]);

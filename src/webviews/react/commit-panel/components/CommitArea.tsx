@@ -148,7 +148,8 @@ export function CommitArea({
                 </Box>
             </Flex>
             <Box px="8px" flex={1} overflow="hidden" position="relative">
-                <Box position="absolute" top="4px" right="12px" zIndex={1}>
+                {/* Above the focused textarea, whose Chakra outline variant raises itself to z-index 1. */}
+                <Box position="absolute" top="4px" right="12px" zIndex={2}>
                     {isGenerationActive ? (
                         <ToolbarIconButton
                             label={t("commit.message.stopGeneration")}

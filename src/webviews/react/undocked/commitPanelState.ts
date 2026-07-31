@@ -16,6 +16,7 @@ import type {
     ShelfEntry,
     ShelfMutationStatus,
 } from "../../protocol/commitPanelMessages";
+import { commitMessageGenerationPrefix } from "../shared/commitMessageDraft";
 
 /** Commit-check state cached by the undocked commit graph. */
 export type CommitChecksValue = CommitChecksSnapshot | "loading";
@@ -207,7 +208,9 @@ function applyGenerationEvent(
             return state.generation.status === "requested"
                 ? {
                       ...state,
-                      commitMessage: "",
+                      commitMessage: commitMessageGenerationPrefix(
+                          state.generation.snapshot ?? state.commitMessage,
+                      ),
                       generation: { ...state.generation, status: "running" },
                   }
                 : state;

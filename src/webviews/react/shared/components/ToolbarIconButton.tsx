@@ -17,6 +17,13 @@ interface ToolbarIconButtonProps {
 }
 
 /**
+ * Disabled glyph tint. `--vscode-disabledForeground` is already translucent
+ * (`#CCCCCC80` in Dark+), so it must not be dimmed a second time by an opacity
+ * layer or the control disappears instead of reading as disabled.
+ */
+export const DISABLED_GLYPH_COLOR = "var(--vscode-disabledForeground, rgba(214, 219, 229, 0.55))";
+
+/**
  * Shared 24px toolbar icon button used by the commit, stash, and shelf toolbars.
  *
  * One geometry everywhere: the `toolbarGhost` variant supplies the 24×24 hit
@@ -35,7 +42,7 @@ export function ToolbarIconButton({
     const resolvedColor = spin
         ? (color ?? "var(--vscode-icon-foreground)")
         : disabled
-          ? "var(--vscode-disabledForeground)"
+          ? DISABLED_GLYPH_COLOR
           : iconStyle === "standard"
             ? "var(--vscode-icon-foreground)"
             : (color ?? "var(--vscode-icon-foreground)");
@@ -73,9 +80,9 @@ export function ToolbarIconButton({
                 isDisabled={disabled}
                 _disabled={{
                     bg: "rgba(255,255,255,0.03)",
-                    color: "var(--vscode-disabledForeground)",
+                    color: DISABLED_GLYPH_COLOR,
                     cursor: "default",
-                    opacity: 0.55,
+                    opacity: 1,
                 }}
                 data-refreshing={spin ? "true" : undefined}
                 icon={renderedIcon}

@@ -727,7 +727,7 @@ describe("commit panel multi-repository view", () => {
                 amend: false,
             }),
         );
-        expect(messageText("/repo-b")).toBe("");
+        expect(messageText("/repo-b")).toBe("draft B\n");
         expect(
             document.querySelector('[data-testid="generation-status"][data-root="/repo-b"]')
                 ?.textContent,
@@ -839,12 +839,12 @@ describe("commit panel multi-repository view", () => {
             requestId: winningRequest.requestId,
             kind: "done",
         });
-        expect(messageText("/repo-b")).toBe("feat: generated");
+        expect(messageText("/repo-b")).toBe("draft B\nfeat: generated");
         expect(messageText("/repo-a")).toBe("draft A");
         expect(postMessage).toHaveBeenCalledWith({
             type: "saveCommitDraft",
             repositoryRoot: "/repo-b",
-            message: "feat: generated",
+            message: "draft B\nfeat: generated",
         });
 
         click(document.querySelector('[data-testid="amend-toggle"][data-root="/repo-b"]'));

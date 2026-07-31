@@ -193,7 +193,7 @@ describe("docked commit-message generation lifecycle", () => {
                 });
             });
             expect(stateFor("/repo-a")).toMatchObject({
-                commitMessage: "feat: generated",
+                commitMessage: "draft A\nfeat: generated",
                 generation: {
                     status: "running",
                     requestId: "winning-request",
@@ -229,14 +229,14 @@ describe("docked commit-message generation lifecycle", () => {
                 });
             });
             expect(stateFor("/repo-a")).toMatchObject({
-                commitMessage: "feat: generated",
+                commitMessage: "draft A\nfeat: generated",
                 isAmend: false,
                 generation: { status: "idle" },
             });
             expect(postMessage).toHaveBeenLastCalledWith({
                 type: "saveCommitDraft",
                 repositoryRoot: "/repo-a",
-                message: "feat: generated",
+                message: "draft A\nfeat: generated",
             });
             expect(latestState.repositories).toHaveLength(2);
 
