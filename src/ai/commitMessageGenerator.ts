@@ -292,7 +292,7 @@ async function awaitWithCancellation<T>(
             (error: unknown) => {
                 subscription.dispose();
                 if (error instanceof Error) reject(error);
-                else reject(new Error("Copilot model selection failed."));
+                else reject(new Error("Copilot model selection failed.", { cause: error }));
             },
         );
     });

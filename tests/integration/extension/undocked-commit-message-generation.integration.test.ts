@@ -425,6 +425,32 @@ describe("UndockedViewProvider commit-message generation", () => {
         provider.dispose();
     });
 
+    it("rejects amend generation while the repository is unborn and allows it once commits exist", async () => {
+        const { coordinator, gitOps, provider } = await createProvider();
+        await send({
+            type: "generateCommitMessage",
+            repositoryRoot: "/repo-a",
+            requestId: "amend-unborn",
+            paths: ["src/a.ts"],
+            amend: true,
+        });
+        const submission = coordinator.submit.mock.calls[0]?.[0] as {
+            validate: (control: { isActive: () => boolean }) => Promise<unknown>;
+        };
+        gitOps.rootGitOps.hasAnyCommits.mockResolvedValue(false);
+        await expect(submission.validate({ isActive: () => true })).resolves.toBeUndefined();
+
+        gitOps.rootGitOps.hasAnyCommits.mockResolvedValue(true);
+        await expect(submission.validate({ isActive: () => true })).resolves.toEqual({
+            paths: ["src/a.ts"],
+            amend: true,
+            validatedStatusSnapshot: [
+                { path: "src/a.ts", status: "M", staged: false, additions: 1, deletions: 0 },
+            ],
+        });
+        provider.dispose();
+    });
+
     it("drops submitted work synchronously when the panel closes", async () => {
         const { coordinator, provider } = await createProvider();
 
@@ -635,6 +661,25 @@ describe("UndockedViewProvider commit-message generation", () => {
         expect(postMessage).toHaveBeenCalledWith(
             expect.objectContaining({ type: "error", message: "whole-index failed" }),
         );
+        provider.dispose();
+    });
+
+    it("drops a stale stash update when the repository switches away and back mid-select", async () => {
+        const { gitOps, provider } = await createProvider();
+        postMessage.mockClear();
+        const pendingWholeIndexState = createDeferred<boolean>();
+        gitOps.rootGitOps.hasWholeIndexOperationInProgress.mockImplementationOnce(
+            () => pendingWholeIndexState.promise,
+        );
+        const selectStash = send({ type: "stashSelect", index: 0 });
+        await vi.waitFor(() =>
+            expect(gitOps.rootGitOps.hasWholeIndexOperationInProgress).toHaveBeenCalledTimes(1),
+        );
+        provider.setRepositoryRootUri({ fsPath: "/repo-b", path: "/repo-b" } as never);
+        provider.setRepositoryRootUri({ fsPath: "/repo-a", path: "/repo-a" } as never);
+        pendingWholeIndexState.resolve(false);
+        await selectStash;
+        expect(postMessage).not.toHaveBeenCalledWith(expect.objectContaining({ type: "update" }));
         provider.dispose();
     });
 

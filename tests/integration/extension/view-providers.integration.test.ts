@@ -1054,6 +1054,41 @@ describe("view providers integration", () => {
         provider.dispose();
     });
 
+    it("CommitPanelViewProvider rejects amend generation while the repository has no commits", async () => {
+        const coordinator = {
+            submit: vi.fn(),
+            cancel: vi.fn(),
+            dropHost: vi.fn(),
+            dropHostRoot: vi.fn(),
+            acquireCommitLease: vi.fn(() => vi.fn()),
+        };
+        const { provider, gitOps, webview } = await setupCommitPanelProvider(undefined, {
+            coordinator,
+        });
+        const snapshot = [{ path: "destination.ts", status: "M", staged: false }];
+        gitOps.getStatus.mockResolvedValue(snapshot);
+        await webview.send({
+            type: "generateCommitMessage",
+            repositoryRoot: "/repo",
+            requestId: "amend-unborn",
+            paths: ["destination.ts"],
+            amend: true,
+        });
+        const request = coordinator.submit.mock.calls[0]?.[0] as {
+            validate(control: { isActive(): boolean }): Promise<unknown>;
+        };
+        gitOps.hasAnyCommits.mockResolvedValue(false);
+        await expect(request.validate({ isActive: () => true })).resolves.toBeUndefined();
+
+        gitOps.hasAnyCommits.mockResolvedValue(true);
+        await expect(request.validate({ isActive: () => true })).resolves.toEqual({
+            paths: ["destination.ts"],
+            amend: true,
+            validatedStatusSnapshot: snapshot,
+        });
+        provider.dispose();
+    });
+
     it("registers a docked request before deferred status so an exact cancel cannot restart it", async () => {
         const { CommitMessageGenerationCoordinator } =
             await import("../../../src/ai/commitMessageGenerationCoordinator");

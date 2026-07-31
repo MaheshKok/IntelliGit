@@ -1824,8 +1824,8 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                     if (file.status !== "!") selectablePaths.add(file.path);
                 }
                 if (paths.some((filePath) => !selectablePaths.has(filePath))) return undefined;
-                if (paths.length === 0) {
-                    if (!amend) return undefined;
+                if (paths.length === 0 && !amend) return undefined;
+                if (amend) {
                     const hasAnyCommits = await runtime.gitOps.hasAnyCommits();
                     if (!control.isActive() || !hasAnyCommits) return undefined;
                 }

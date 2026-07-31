@@ -1063,13 +1063,8 @@ export class UndockedViewProvider {
                 break;
             case "commitSelected": {
                 const message = (typeof msg.message === "string" ? msg.message : "").trim();
-                const rootGitOps = this.gitOps.deriveFor(commitRepositoryRoot);
-                const release =
-                    this.commitMessageGenerationCoordinator?.acquireCommitLease(
-                        commitRepositoryRoot,
-                    );
-                try {
-                    await commitSelectedFromPanel(
+                await this.runCommitActionWithLease(commitRepositoryRoot, (rootGitOps) =>
+                    commitSelectedFromPanel(
                         { ...actionDeps, gitOps: rootGitOps },
                         {
                             message,
@@ -1077,46 +1072,30 @@ export class UndockedViewProvider {
                             push: msg.push === true,
                             paths: assertRepoPathArray(msg.paths, "paths"),
                         },
-                    );
-                } finally {
-                    release?.();
-                }
+                    ),
+                );
                 break;
             }
             case "commit": {
                 const message = (typeof msg.message === "string" ? msg.message : "").trim();
-                const rootGitOps = this.gitOps.deriveFor(commitRepositoryRoot);
-                const release =
-                    this.commitMessageGenerationCoordinator?.acquireCommitLease(
-                        commitRepositoryRoot,
-                    );
-                try {
-                    await commitOnlyFromPanel(
+                await this.runCommitActionWithLease(commitRepositoryRoot, (rootGitOps) =>
+                    commitOnlyFromPanel(
                         { ...actionDeps, gitOps: rootGitOps },
                         message,
                         msg.amend === true,
-                    );
-                } finally {
-                    release?.();
-                }
+                    ),
+                );
                 break;
             }
             case "commitAndPush": {
                 const message = (typeof msg.message === "string" ? msg.message : "").trim();
-                const rootGitOps = this.gitOps.deriveFor(commitRepositoryRoot);
-                const release =
-                    this.commitMessageGenerationCoordinator?.acquireCommitLease(
-                        commitRepositoryRoot,
-                    );
-                try {
-                    await commitAndPushFromPanel(
+                await this.runCommitActionWithLease(commitRepositoryRoot, (rootGitOps) =>
+                    commitAndPushFromPanel(
                         { ...actionDeps, gitOps: rootGitOps },
                         message,
                         msg.amend === true,
-                    );
-                } finally {
-                    release?.();
-                }
+                    ),
+                );
                 break;
             }
             case "fetch":
@@ -1202,6 +1181,7 @@ export class UndockedViewProvider {
                 break;
             case "stashSelect": {
                 const stashRepositoryRoot = this.selectedRepositoryRoot;
+                const stashSwitchSeq = this.repositorySwitchSeq;
                 const stashGitOps = this.gitOps.deriveFor(stashRepositoryRoot);
                 await selectStashFromPanel(
                     {
@@ -1230,7 +1210,12 @@ export class UndockedViewProvider {
                                 stashGitOps.hasAnyCommits(),
                                 stashGitOps.hasWholeIndexOperationInProgress(),
                             ]);
-                            if (this.selectedRepositoryRoot !== stashRepositoryRoot) return;
+                            if (
+                                this.selectedRepositoryRoot !== stashRepositoryRoot ||
+                                this.repositorySwitchSeq !== stashSwitchSeq
+                            ) {
+                                return;
+                            }
                             this.postToWebview({
                                 ...message,
                                 repositoryRoot: stashRepositoryRoot,
@@ -1260,6 +1245,21 @@ export class UndockedViewProvider {
             case "deleteFile":
                 await deleteFileFromPanel(fileActionDeps, msg.path);
                 break;
+        }
+    }
+
+    /** Runs one root-bound commit action while holding the shared commit lease until it settles. */
+    private async runCommitActionWithLease(
+        commitRepositoryRoot: string,
+        operation: (rootGitOps: GitOps) => Promise<void>,
+    ): Promise<void> {
+        const rootGitOps = this.gitOps.deriveFor(commitRepositoryRoot);
+        const release =
+            this.commitMessageGenerationCoordinator?.acquireCommitLease(commitRepositoryRoot);
+        try {
+            await operation(rootGitOps);
+        } finally {
+            release?.();
         }
     }
 
@@ -1320,8 +1320,8 @@ export class UndockedViewProvider {
                 ) {
                     return undefined;
                 }
-                if (paths.length === 0) {
-                    if (!amend) return undefined;
+                if (paths.length === 0 && !amend) return undefined;
+                if (amend) {
                     const hasAnyCommits = await gitOps.hasAnyCommits();
                     if (!control.isActive() || !hasAnyCommits) return undefined;
                 }
@@ -1808,12 +1808,6 @@ export class UndockedViewProvider {
             name: currentBranch?.name ?? null,
             upstream,
         };
-    }
-
-    private async currentBranchHasUpstream(): Promise<boolean> {
-        const branches = await this.gitOps.getBranches();
-        const currentBranch = branches.find((branch) => branch.isCurrent);
-        return currentBranch?.upstream !== undefined && currentBranch.upstream.length > 0;
     }
 
     // --- Commit detail ------------------------------------------------------

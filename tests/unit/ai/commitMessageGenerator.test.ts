@@ -191,6 +191,24 @@ describe("prepareCommitMessageGeneration", () => {
         ).rejects.toBeInstanceOf(CopilotUnavailableError);
     });
 
+    it("wraps a non-Error model selection rejection with a stable message and preserved cause", async () => {
+        const folder = await workspace();
+        mocks.selectChatModels.mockRejectedValue("copilot exploded");
+
+        const failure: unknown = await prepareCommitMessageGeneration(
+            request(folder) as never,
+        ).then(
+            () => undefined,
+            (error: unknown) => error,
+        );
+
+        expect(failure).toBeInstanceOf(Error);
+        const cause = (failure as Error).cause;
+        expect(cause).toBeInstanceOf(Error);
+        expect((cause as Error).message).toBe("Copilot model selection failed.");
+        expect((cause as Error).cause).toBe("copilot exploded");
+    });
+
     itPosix(
         "loads bounded repository instruction text and safely skips invalid file entries",
         async () => {
