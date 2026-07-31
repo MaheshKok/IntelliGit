@@ -332,3 +332,15 @@ Phase 6 implementation ACCEPTED for code, protocol, localization, static analysi
 Post-commit pre-push correction: the tracked pre-push hook rejected the first push attempt because strict React Doctor promoted the 25 previously reported findings to failures. A Sol-xhigh planning challenge classified two behavior-preserving single-pass `Set` rewrites and 23 rule-specific suppressions that preserve Git byte-budget/order/retry semantics plus generation cancellation/root guards. A Terra-xhigh writer reproduced the 25-warning RED, implemented the six-file bounded repair, and reached React Doctor 100/100 with zero findings.
 
 Independent repair Gate 4: Codex gpt-5.6-sol @ xhigh — ACCEPT, no findings. Root re-ran strict React Doctor (100/100, zero findings) and the focused Git/coordinator/provider/webview matrix (5 files / 77 tests); targeted Prettier, ESLint, strict lint, typecheck, and diff checks passed. GitNexus reported HIGH by symbol breadth across six expected files; manual diff review rejected its stale/misaligned undocked symbol attribution and confirmed only the intended validation, sequencing, cancellation, and UI-contract surfaces changed. Repair commit and tracked pre-push hook next.
+
+## Post-audit cleanup — 2026-07-31
+
+Plan-conformance audit (root spot-checks + 4 independent lanes) returned verdict "implemented as planned" with 6 minor findings and 1 open item. Cleanup completed on codex/commit-message-generation:
+
+- Docked `commit`/`commitAndPush` handlers now hold the commit lease via a shared `acquireCommitLeaseForRuntime` helper (also reused by `commitSelected`), symmetric with the undocked host. The paths stay webview-undispatched; fencing was chosen over deletion because the undocked fenced versions are integration-tested protocol surface.
+- Deleted the dead `buildCommitMessagePrompt` export and its stale `@public` claim; the prompt-contract test now exercises `prepareCommitMessageGeneration`'s real prompt output.
+- Test-matrix gaps closed: coordinator keeps two roots generating concurrently and completes both without supersession (both diffs pending simultaneously, subprocess-count asserted); undocked host boundary forwards late cross-host superseded terminals verbatim (`cancelled`/`done` with `superseded: true`, no notification) so the webview's no-persist guard receives the flag; undocked webview restores the saved draft on a plain non-superseded `emptyResult` error mid-stream and re-saves the restored draft (the named empty-result restore case).
+- Cosmetic plan deviations (instruction budget located in the generator, `includeHead` flag naming, unborn-amend breadth) accepted as documented; no change.
+- Gates re-run green: typecheck (both configs), lint:strict (after extracting the lease helper to keep `handleMessage` under the complexity cap), format, strict Knip, architecture (244 modules / 910 dependencies), full suite 135 files / 2085 tests.
+
+Rendered docked/undocked runtime verification remains OPEN — requires a manual generate/stop/supersede click-through in a VS Code >=1.96 extension host (Computer Use cannot read the 1.131 window; the drivable 1.91 instance is below the engine floor).

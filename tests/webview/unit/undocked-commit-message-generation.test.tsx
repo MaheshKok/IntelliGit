@@ -410,6 +410,96 @@ describe("undocked commit-message generation lifecycle", () => {
         expect(savedDraftMessages()).toHaveLength(1);
     });
 
+    it("restores the saved draft when a plain empty-result error arrives mid-stream", async () => {
+        const postMessage = vi.fn();
+        vi.doMock("../../../src/webviews/react/shared/vscodeApi", () => ({
+            getVsCodeApi: () => ({ postMessage }),
+        }));
+        const { useUnifiedMessages } =
+            await import("../../../src/webviews/react/undocked/useUnifiedMessages");
+        let stateRef: React.MutableRefObject<typeof initialCommitPanelState> | undefined;
+        let dispatch: React.Dispatch<Parameters<typeof commitPanelReducer>[1]> | undefined;
+
+        function Harness(): React.ReactElement {
+            const [, reactDispatch] = useReducer(commitPanelReducer, initialCommitPanelState);
+            const currentStateRef = useRef(initialCommitPanelState);
+            stateRef = currentStateRef;
+            const applyCommitPanelAction = (action: Parameters<typeof commitPanelReducer>[1]) => {
+                const nextState = commitPanelReducer(currentStateRef.current, action);
+                currentStateRef.current = nextState;
+                reactDispatch(action);
+                return nextState;
+            };
+            dispatch = (action) => {
+                applyCommitPanelAction(action);
+            };
+            useUnifiedMessages({
+                graphDispatch: vi.fn(),
+                cpDispatch: dispatch,
+                applyCommitPanelAction,
+                cpStateRef: currentStateRef,
+                loadingMore: { current: false },
+                selectedHash: null,
+                selectedRepositoryRoot: "/repo-a",
+                setRepositories: vi.fn(),
+                setSelectedRepositoryRoot: vi.fn(),
+                markWidthsHydrated: vi.fn(),
+                setSectionWidths: vi.fn(),
+                layoutRef: { current: null },
+                setCommitPanelPosition: vi.fn(),
+                setViewVisible: vi.fn(),
+            });
+            return <div />;
+        }
+
+        await render(<Harness />);
+        act(() => {
+            dispatch?.({
+                type: "REQUEST_COMMIT_MESSAGE_GENERATION",
+                requestId: "empty-result",
+                snapshot: "saved draft",
+            });
+        });
+        send({
+            type: "commitMessageGeneration",
+            repositoryRoot: "/repo-a",
+            requestId: "empty-result",
+            kind: "start",
+        });
+        send({
+            type: "commitMessageGeneration",
+            repositoryRoot: "/repo-a",
+            requestId: "empty-result",
+            kind: "chunk",
+            text: "   ",
+        });
+        expect(stateRef?.current.generation.status).toBe("running");
+
+        send({
+            type: "commitMessageGeneration",
+            repositoryRoot: "/repo-a",
+            requestId: "empty-result",
+            kind: "error",
+            errorKind: "emptyResult",
+        });
+
+        expect(stateRef?.current).toMatchObject({
+            commitMessage: "saved draft",
+            generation: { status: "idle" },
+        });
+        expect(
+            postMessage.mock.calls.filter(([message]) => message.type === "saveCommitDraft"),
+        ).toEqual([
+            [
+                {
+                    type: "saveCommitDraft",
+                    repositoryRoot: "/repo-a",
+                    message: "saved draft",
+                },
+            ],
+        ]);
+    });
+
     it("saves the terminal generation message from the reduced next state", async () => {
         const postMessage = vi.fn();
         vi.doMock("../../../src/webviews/react/shared/vscodeApi", () => ({
@@ -418,7 +508,9 @@ describe("undocked commit-message generation lifecycle", () => {
         const { useUnifiedMessages } =
             await import("../../../src/webviews/react/undocked/useUnifiedMessages");
         let applyCommitPanelAction:
-            | ((action: Parameters<typeof commitPanelReducer>[1]) => ReturnType<typeof commitPanelReducer>)
+            | ((
+                  action: Parameters<typeof commitPanelReducer>[1],
+              ) => ReturnType<typeof commitPanelReducer>)
             | undefined;
 
         function Harness(): React.ReactElement {
@@ -430,7 +522,9 @@ describe("undocked commit-message generation lifecycle", () => {
                 reactDispatch(action);
                 return nextState;
             };
-            const cpDispatch: React.Dispatch<Parameters<typeof commitPanelReducer>[1]> = (action) => {
+            const cpDispatch: React.Dispatch<Parameters<typeof commitPanelReducer>[1]> = (
+                action,
+            ) => {
                 reactDispatch(action);
             };
             useUnifiedMessages({
@@ -467,7 +561,9 @@ describe("undocked commit-message generation lifecycle", () => {
             kind: "cancelled",
         });
 
-        expect(postMessage.mock.calls.filter(([message]) => message.type === "saveCommitDraft")).toEqual([
+        expect(
+            postMessage.mock.calls.filter(([message]) => message.type === "saveCommitDraft"),
+        ).toEqual([
             [
                 {
                     type: "saveCommitDraft",

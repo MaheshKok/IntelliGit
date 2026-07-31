@@ -40,7 +40,6 @@ import {
     GenerationRequestError,
     PromptTooLargeError,
     prepareCommitMessageGeneration,
-    buildCommitMessagePrompt,
 } from "../../../src/ai/commitMessageGenerator";
 
 const directories: string[] = [];
@@ -141,26 +140,31 @@ function request(
     };
 }
 
-describe("buildCommitMessagePrompt", () => {
-    it("carries diff metadata, context, instructions, and the protected output contract", () => {
-        const prompt = buildCommitMessagePrompt(
-            ["Use imperative mood."],
-            {
-                diff: "diff --git a/a.ts b/a.ts\n+new line",
-                summarizedPaths: ["big.ts"],
-                truncated: true,
-            },
-            ["fix: existing convention"],
-            false,
+describe("prepared prompt contract", () => {
+    it("carries diff metadata, context, instructions, and the protected output contract", async () => {
+        const folder = await workspace();
+        mocks.configuration = [{ text: "Use imperative mood." }];
+        mocks.selectChatModels.mockResolvedValue([model("gpt-4o")]);
+
+        const prepared = await prepareCommitMessageGeneration(
+            request(folder, {
+                diffResult: {
+                    diff: "diff --git a/a.ts b/a.ts\n+new line",
+                    summarizedPaths: ["big.ts"],
+                    truncated: true,
+                },
+                commitSubjects: ["fix: existing convention"],
+                amend: false,
+            }) as never,
         );
 
-        expect(prompt).toContain("diff --git a/a.ts b/a.ts");
-        expect(prompt).toContain("big.ts");
-        expect(prompt).toContain("truncated");
-        expect(prompt).toContain("fix: existing convention");
-        expect(prompt).toContain("normal commit");
-        expect(prompt).toContain("Use imperative mood.");
-        expect(prompt).toContain("no Markdown/code fences");
+        expect(prepared.prompt).toContain("diff --git a/a.ts b/a.ts");
+        expect(prepared.prompt).toContain("big.ts");
+        expect(prepared.prompt).toContain("truncated");
+        expect(prepared.prompt).toContain("fix: existing convention");
+        expect(prepared.prompt).toContain("normal commit");
+        expect(prepared.prompt).toContain("Use imperative mood.");
+        expect(prepared.prompt).toContain("no Markdown/code fences");
     });
 });
 
@@ -187,43 +191,48 @@ describe("prepareCommitMessageGeneration", () => {
         ).rejects.toBeInstanceOf(CopilotUnavailableError);
     });
 
-    itPosix("loads bounded repository instruction text and safely skips invalid file entries", async () => {
-        const folder = await workspace();
-        await writeFile(
-            path.join(folder.uri.fsPath, "instructions.txt"),
-            "Use conventional commits.",
-        );
-        await writeFile(path.join(folder.uri.fsPath, "large.txt"), "x".repeat(20_000));
-        await writeFile(path.join(folder.uri.fsPath, "cumulative-one.txt"), "a".repeat(8_000));
-        await writeFile(path.join(folder.uri.fsPath, "cumulative-two.txt"), "b".repeat(8_000));
-        await writeFile(path.join(folder.uri.fsPath, "cumulative-three.txt"), "c");
-        await mkdir(path.join(folder.uri.fsPath, "directory"));
-        await symlink(tmpdir(), path.join(folder.uri.fsPath, "escape"));
-        mocks.configuration = [
-            { text: "Use imperative mood." },
-            { file: "instructions.txt" },
-            { file: "../escape" },
-            { file: "escape" },
-            { file: "directory" },
-            { file: "large.txt" },
-            { file: "missing.txt" },
-            { file: "cumulative-one.txt" },
-            { file: "cumulative-two.txt" },
-            { file: "cumulative-three.txt" },
-            { text: "", file: "instructions.txt" },
-            { unknown: "bad" },
-        ];
-        const logger = vi.fn();
-        const selected = model("gpt-4o");
-        mocks.selectChatModels.mockResolvedValue([selected]);
+    itPosix(
+        "loads bounded repository instruction text and safely skips invalid file entries",
+        async () => {
+            const folder = await workspace();
+            await writeFile(
+                path.join(folder.uri.fsPath, "instructions.txt"),
+                "Use conventional commits.",
+            );
+            await writeFile(path.join(folder.uri.fsPath, "large.txt"), "x".repeat(20_000));
+            await writeFile(path.join(folder.uri.fsPath, "cumulative-one.txt"), "a".repeat(8_000));
+            await writeFile(path.join(folder.uri.fsPath, "cumulative-two.txt"), "b".repeat(8_000));
+            await writeFile(path.join(folder.uri.fsPath, "cumulative-three.txt"), "c");
+            await mkdir(path.join(folder.uri.fsPath, "directory"));
+            await symlink(tmpdir(), path.join(folder.uri.fsPath, "escape"));
+            mocks.configuration = [
+                { text: "Use imperative mood." },
+                { file: "instructions.txt" },
+                { file: "../escape" },
+                { file: "escape" },
+                { file: "directory" },
+                { file: "large.txt" },
+                { file: "missing.txt" },
+                { file: "cumulative-one.txt" },
+                { file: "cumulative-two.txt" },
+                { file: "cumulative-three.txt" },
+                { text: "", file: "instructions.txt" },
+                { unknown: "bad" },
+            ];
+            const logger = vi.fn();
+            const selected = model("gpt-4o");
+            mocks.selectChatModels.mockResolvedValue([selected]);
 
-        const prepared = await prepareCommitMessageGeneration(request(folder, { logger }) as never);
+            const prepared = await prepareCommitMessageGeneration(
+                request(folder, { logger }) as never,
+            );
 
-        expect(prepared.prompt).toContain("Use imperative mood.");
-        expect(prepared.prompt).toContain("Use conventional commits.");
-        expect(prepared.prompt).not.toContain("large.txt");
-        expect(logger).toHaveBeenCalledTimes(8);
-    });
+            expect(prepared.prompt).toContain("Use imperative mood.");
+            expect(prepared.prompt).toContain("Use conventional commits.");
+            expect(prepared.prompt).not.toContain("large.txt");
+            expect(logger).toHaveBeenCalledTimes(8);
+        },
+    );
 
     it("coarse-caps mutable context, keeps the output contract, and fits within the selected token budget", async () => {
         const folder = await workspace();

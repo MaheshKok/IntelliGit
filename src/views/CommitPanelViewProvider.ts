@@ -773,6 +773,15 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         }
     }
 
+    /** Holds the shared commit lease for a runtime-scoped commit so generation cannot race it. */
+    private acquireCommitLeaseForRuntime(
+        runtime: CommitPanelRepositoryRuntime | undefined,
+    ): (() => void) | undefined {
+        return runtime
+            ? this.commitMessageGenerationCoordinator?.acquireCommitLease(runtime.repository.root)
+            : undefined;
+    }
+
     private actionDepsForRuntime(runtime?: CommitPanelRepositoryRuntime) {
         return {
             gitOps: runtime?.gitOps ?? this.gitOps,
@@ -1623,11 +1632,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 const runtime = scopedRuntime();
                 const actionDeps = this.actionDepsForRuntime(runtime);
                 const message = (typeof msg.message === "string" ? msg.message : "").trim();
-                const release = runtime
-                    ? this.commitMessageGenerationCoordinator?.acquireCommitLease(
-                          runtime.repository.root,
-                      )
-                    : undefined;
+                const release = this.acquireCommitLeaseForRuntime(runtime);
                 try {
                     await commitSelectedFromPanel(actionDeps, {
                         message,
@@ -1641,21 +1646,33 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 break;
             }
             case "commit": {
+                const runtime = scopedRuntime();
                 const message = (typeof msg.message === "string" ? msg.message : "").trim();
-                await commitOnlyFromPanel(
-                    this.actionDepsForRuntime(scopedRuntime()),
-                    message,
-                    msg.amend === true,
-                );
+                const release = this.acquireCommitLeaseForRuntime(runtime);
+                try {
+                    await commitOnlyFromPanel(
+                        this.actionDepsForRuntime(runtime),
+                        message,
+                        msg.amend === true,
+                    );
+                } finally {
+                    release?.();
+                }
                 break;
             }
             case "commitAndPush": {
+                const runtime = scopedRuntime();
                 const message = (typeof msg.message === "string" ? msg.message : "").trim();
-                await commitAndPushFromPanel(
-                    this.actionDepsForRuntime(scopedRuntime()),
-                    message,
-                    msg.amend === true,
-                );
+                const release = this.acquireCommitLeaseForRuntime(runtime);
+                try {
+                    await commitAndPushFromPanel(
+                        this.actionDepsForRuntime(runtime),
+                        message,
+                        msg.amend === true,
+                    );
+                } finally {
+                    release?.();
+                }
                 break;
             }
             case "getLastCommitMessage": {

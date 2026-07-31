@@ -117,39 +117,6 @@ export interface PreparedCommitMessageGeneration {
     text: AsyncIterable<string>;
 }
 
-/**
- * Builds the deterministic, model-facing commit-message prompt from already-normalized context.
- * The function has no I/O and always retains the final output contract.
- *
- * @public consumed by the later commit-message coordinator.
- */
-export function buildCommitMessagePrompt(
-    instructions: readonly string[],
-    diffResult: DiffForPathsResult,
-    commitSubjects: readonly string[],
-    amend: boolean,
-): string {
-    return [
-        "Generate a commit message for the selected checked paths.",
-        `This is a ${amend ? "commit amendment" : "normal commit"}.`,
-        "Selected-path unified diff:",
-        diffResult.diff || "(No patch text was available.)",
-        diffResult.summarizedPaths.length > 0
-            ? `Change-carrying paths summarized outside the patch: ${diffResult.summarizedPaths.join(", ")}.`
-            : "",
-        diffResult.truncated
-            ? "The selected-path diff was truncated; account for the summaries."
-            : "",
-        "Recent commit subjects (style context only):",
-        ...commitSubjects,
-        "Repository commit-message instructions:",
-        ...instructions,
-        FINAL_OUTPUT_CONTRACT,
-    ]
-        .filter(Boolean)
-        .join("\n");
-}
-
 /** Loads normalized instructions from the target repository configuration without letting files escape it. */
 async function loadInstructions(
     workspaceFolder: vscode.WorkspaceFolder,

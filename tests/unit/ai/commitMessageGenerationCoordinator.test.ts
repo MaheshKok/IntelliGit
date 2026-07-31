@@ -852,7 +852,10 @@ describe("CommitMessageGenerationCoordinator", () => {
             },
         ]);
         expect(watcherDisposable.dispose).toHaveBeenCalledOnce();
-        expect(log).toHaveBeenCalledWith("[intelligit] Commit-message generation failed:", watcherError);
+        expect(log).toHaveBeenCalledWith(
+            "[intelligit] Commit-message generation failed:",
+            watcherError,
+        );
     });
 
     it("maps resolver, initial predicate, and watcher predicate throws to one correlated unknown error", async () => {
@@ -1218,6 +1221,82 @@ describe("CommitMessageGenerationCoordinator", () => {
         ]);
         expect(markedContext.gitOps.getDiffForPaths).not.toHaveBeenCalled();
         expect(markerDisposable.dispose).toHaveBeenCalledTimes(1);
+    });
+
+    it("keeps two roots generating concurrently and completes both without supersession", async () => {
+        const firstDiff = deferred<{
+            diff: string;
+            summarizedPaths: string[];
+            truncated: boolean;
+        }>();
+        const secondDiff = deferred<{
+            diff: string;
+            summarizedPaths: string[];
+            truncated: boolean;
+        }>();
+        const getDiffForPaths = vi.fn((paths: string[]) =>
+            paths[0] === "first.ts" ? firstDiff.promise : secondDiff.promise,
+        );
+        const rootContext = context({
+            gitOps: {
+                getDiffForPaths,
+                getRecentCommitSubjects: vi.fn(async () => []),
+                hasWholeIndexOperationInProgress: vi.fn(async () => false),
+            },
+        });
+        const subject = coordinator(rootContext);
+        const first = host();
+        const second = host();
+
+        requestGeneration(subject, {
+            repositoryRoot: "/first",
+            requestId: "first",
+            paths: ["first.ts"],
+            amend: false,
+            host: first.host,
+        });
+        requestGeneration(subject, {
+            repositoryRoot: "/second",
+            requestId: "second",
+            paths: ["second.ts"],
+            amend: false,
+            host: second.host,
+        });
+        await settle();
+
+        expect(getDiffForPaths).toHaveBeenCalledTimes(2);
+        expect(first.events).toEqual([]);
+        expect(second.events).toEqual([]);
+
+        secondDiff.resolve({ diff: "second", summarizedPaths: [], truncated: false });
+        await settle();
+        expect(second.events.at(-1)).toEqual({
+            repositoryRoot: "/second",
+            requestId: "second",
+            kind: "done",
+        });
+        expect(first.events).toEqual([]);
+
+        firstDiff.resolve({ diff: "first", summarizedPaths: [], truncated: false });
+        await settle();
+        expect(first.events.at(-1)).toEqual({
+            repositoryRoot: "/first",
+            requestId: "first",
+            kind: "done",
+        });
+        const allEvents = [...first.events, ...second.events];
+        expect(allEvents.map((event) => event.kind)).not.toContain("cancelled");
+        expect(allEvents.some((event) => event.superseded === true)).toBe(false);
+        expect(
+            first.events.every(
+                (event) => event.repositoryRoot === "/first" && event.requestId === "first",
+            ),
+        ).toBe(true);
+        expect(
+            second.events.every(
+                (event) => event.repositoryRoot === "/second" && event.requestId === "second",
+            ),
+        ).toBe(true);
     });
 
     it("forwards the exact validated snapshot and drops only the matching host root", async () => {

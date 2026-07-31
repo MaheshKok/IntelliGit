@@ -285,6 +285,53 @@ describe("UndockedViewProvider commit-message generation", () => {
         provider.dispose();
     });
 
+    it("forwards late cross-host superseded terminals verbatim so the webview can discard them", async () => {
+        const { coordinator, provider } = await createProvider();
+        await send({
+            type: "generateCommitMessage",
+            repositoryRoot: "/repo-a",
+            requestId: "late",
+            paths: ["src/a.ts"],
+            amend: false,
+        });
+        const submission = coordinator.submit.mock.calls[0]?.[0] as {
+            host: { emit: (event: unknown) => void };
+        };
+        postMessage.mockClear();
+
+        submission.host.emit({
+            repositoryRoot: "/repo-a",
+            requestId: "late",
+            kind: "cancelled",
+            superseded: true,
+        });
+        submission.host.emit({
+            repositoryRoot: "/repo-a",
+            requestId: "late",
+            kind: "done",
+            superseded: true,
+        });
+
+        expect(postMessage.mock.calls.map(([message]) => message)).toEqual([
+            {
+                type: "commitMessageGeneration",
+                repositoryRoot: "/repo-a",
+                requestId: "late",
+                kind: "cancelled",
+                superseded: true,
+            },
+            {
+                type: "commitMessageGeneration",
+                repositoryRoot: "/repo-a",
+                requestId: "late",
+                kind: "done",
+                superseded: true,
+            },
+        ]);
+        expect(showCommitMessageGenerationNotification).not.toHaveBeenCalled();
+        provider.dispose();
+    });
+
     it("rejects oversized raw generation paths before deduplication or Git validation", async () => {
         const { coordinator, gitOps, provider } = await createProvider();
         const paths = Array.from({ length: 201 }, () => "src/a.ts");
@@ -468,7 +515,9 @@ describe("UndockedViewProvider commit-message generation", () => {
         const repoBGitOps = gitOps.rootGitOpsByRoot["/repo-b"];
         const commitRelease = vi.fn();
         const pushRelease = vi.fn();
-        coordinator.acquireCommitLease.mockReturnValueOnce(commitRelease).mockReturnValueOnce(pushRelease);
+        coordinator.acquireCommitLease
+            .mockReturnValueOnce(commitRelease)
+            .mockReturnValueOnce(pushRelease);
         provider.setRepositoryRootUri({ fsPath: "/repo-b", path: "/repo-b" } as never);
         gitOps.deriveFor.mockClear();
 
