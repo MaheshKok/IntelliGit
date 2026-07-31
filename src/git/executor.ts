@@ -200,10 +200,51 @@ function isMutatingGitCommand(args: string[]): boolean {
     )
         return true;
     if (command === "stash") return !["list", "show"].includes(args[1] ?? "");
-    if (command === "branch") return !args.includes("--list") && args.length > 1;
+    if (command === "branch") return isBranchMutation(args);
     if (command === "push") return true;
     if (command === "worktree") return !["list"].includes(args[1] ?? "");
     return false;
+}
+
+/** `git branch` options that write refs or config even without naming a branch. */
+const BRANCH_WRITE_FLAGS = [
+    "-d",
+    "-D",
+    "--delete",
+    "-m",
+    "-M",
+    "--move",
+    "-c",
+    "-C",
+    "--copy",
+    "-f",
+    "--force",
+    "-u",
+    "--set-upstream",
+    "--set-upstream-to",
+    "--unset-upstream",
+    "--edit-description",
+];
+
+/**
+ * Classifies one `git branch` invocation, defaulting to a mutation when unsure.
+ *
+ * Listing branches is a read, and gating reads is not merely wasteful: the mutation
+ * queue has no timeout, so a listing issued while a long mutation holds the gate —
+ * a push whose pre-push hooks take minutes — waits for that mutation to finish.
+ * A bare positional argument names a branch to create or rename, except under
+ * `--list`, where positionals are name patterns.
+ */
+function isBranchMutation(args: string[]): boolean {
+    const options = args.slice(1);
+    if (
+        options.some((option) =>
+            BRANCH_WRITE_FLAGS.some((flag) => option === flag || option.startsWith(`${flag}=`)),
+        )
+    )
+        return true;
+    if (options.includes("--list") || options.includes("-l")) return false;
+    return options.some((option) => !option.startsWith("-"));
 }
 
 /** Matches the previous Simple Git `maxConcurrentProcesses` cap. */
