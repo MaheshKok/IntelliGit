@@ -106,7 +106,13 @@ export function CommitArea({
             : t("commit.branchIndicator.local", { branch: currentBranchName })
         : null;
     return (
-        <Flex direction="column" overflow="hidden" flex={1} bg="var(--intelligit-pycharm-panel)">
+        <Flex
+            data-commit-area="true"
+            direction="column"
+            overflow="hidden"
+            flex={1}
+            bg="var(--intelligit-pycharm-panel)"
+        >
             {branchLabel ? (
                 <Box
                     px="8px"
@@ -149,7 +155,15 @@ export function CommitArea({
             </Flex>
             <Box px="8px" flex={1} overflow="hidden" position="relative">
                 {/* Above the focused textarea, whose Chakra outline variant raises itself to z-index 1. */}
-                <Box position="absolute" top="4px" right="12px" zIndex={2}>
+                <Box
+                    position="absolute"
+                    top="4px"
+                    right="12px"
+                    zIndex={2}
+                    // An icon button has nothing to cut, copy, or paste; without this the
+                    // webview's native editing menu opens over it.
+                    onContextMenu={(event) => event.preventDefault()}
+                >
                     {isGenerationActive ? (
                         <ToolbarIconButton
                             label={t("commit.message.stopGeneration")}

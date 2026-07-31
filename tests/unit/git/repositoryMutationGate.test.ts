@@ -57,8 +57,13 @@ describe("RepositoryMutationGate", () => {
         const shared = gate();
         const order: string[] = [];
         let releaseFirst: (() => void) | undefined;
+        let signalFirstStart: (() => void) | undefined;
+        const firstStarted = new Promise<void>((resolve) => {
+            signalFirstStart = resolve;
+        });
         const first = shared.run(repoRoot, common, async () => {
             order.push("first-start");
+            signalFirstStart?.();
             await new Promise<void>((resolve) => {
                 releaseFirst = resolve;
             });
@@ -68,6 +73,10 @@ describe("RepositoryMutationGate", () => {
             order.push("second");
         });
 
+        // Anchor the grace period to the first callback actually starting: measured from
+        // `run()` instead, a slow canonicalization eats the window and the assertion sees
+        // an empty order under load.
+        await firstStarted;
         await new Promise<void>((resolve) => setTimeout(resolve, 20));
         expect(order).toEqual(["first-start"]);
         releaseFirst?.();
