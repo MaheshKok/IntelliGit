@@ -115,6 +115,45 @@ describe("CommitTab shelving", () => {
         unmount(root, container);
     });
 
+    it("leaves the commit message box to its native context menu", () => {
+        const { root, container } = renderCommitTab();
+        const textarea = container.querySelector("textarea") as HTMLTextAreaElement;
+        expect(textarea).not.toBeNull();
+
+        const event = new MouseEvent("contextmenu", {
+            bubbles: true,
+            cancelable: true,
+            clientX: 5,
+            clientY: 7,
+        });
+        act(() => textarea.dispatchEvent(event));
+        // Shelving acts on the file list; hijacking the editor would also cost the
+        // message box its native cut/copy/paste menu.
+        expect(event.defaultPrevented).toBe(false);
+        expect(document.querySelector('[role="menu"]')).toBeNull();
+        unmount(root, container);
+    });
+
+    it("suppresses every context menu on the generate button", () => {
+        const { root, container } = renderCommitTab();
+        const generate = container.querySelector(
+            '[aria-label="Generate commit message"]',
+        ) as HTMLElement;
+        expect(generate).not.toBeNull();
+
+        const event = new MouseEvent("contextmenu", {
+            bubbles: true,
+            cancelable: true,
+            clientX: 5,
+            clientY: 7,
+        });
+        act(() => generate.dispatchEvent(event));
+        // An icon button has nothing to cut, copy, or paste, so the native menu is noise.
+        expect(event.defaultPrevented).toBe(true);
+        expect(document.querySelector('[role="menu"]')).toBeNull();
+        unmount(root, container);
+    });
+
     it("opens a per-file shelve dialog from the context menu and preserves draft-name whitespace", () => {
         vscode.postMessage.mockReset();
         const { root, container } = renderCommitTab();

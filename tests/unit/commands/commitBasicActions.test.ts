@@ -347,6 +347,53 @@ describe("resetCurrentToHere", () => {
         expect(refreshOf(ctx)).toHaveBeenCalledTimes(1);
     });
 
+    it.each([
+        ["soft", "This moves HEAD but preserves the index and working tree."],
+        ["mixed", "This resets the index but preserves working-tree changes."],
+        [
+            "hard",
+            "This resets the index and working tree and permanently discards uncommitted changes.",
+        ],
+        [
+            "merge",
+            "This resets the index and updates changed files while preserving non-conflicting local changes.",
+        ],
+        [
+            "keep",
+            "This resets the index and updates changed files, but aborts if affected files have local changes.",
+        ],
+    ] as const)(
+        "names the checked-out branch in the %s confirmation and moves its explanation into the modal detail",
+        async (mode, detail) => {
+            quickPick.mockImplementation(async (items: unknown[]) =>
+                (items as Array<{ mode: string }>).find((item) => item.mode === mode),
+            );
+            warn.mockResolvedValue("Reset");
+            mockedCheckedOut.mockResolvedValue("feature/login");
+            const ctx = makeCtx();
+            await resetCurrentToHere(ctx);
+            const title = `${mode[0].toUpperCase()}${mode.slice(1)} reset feature/login to ${SHORT}?`;
+            expect(warn).toHaveBeenCalledWith(title, { modal: true, detail }, "Reset");
+            expect(info).toHaveBeenCalledWith(`Reset feature/login to ${SHORT}.`);
+        },
+    );
+
+    it("falls back to HEAD in the confirmation when no branch is checked out", async () => {
+        quickPick.mockImplementation(async (items: unknown[]) =>
+            (items as Array<{ mode: string }>).find((item) => item.mode === "hard"),
+        );
+        warn.mockResolvedValue("Reset");
+        mockedCheckedOut.mockResolvedValue(null);
+        const ctx = makeCtx();
+        await resetCurrentToHere(ctx);
+        expect(warn).toHaveBeenCalledWith(
+            `Hard reset HEAD to ${SHORT}?`,
+            expect.objectContaining({ modal: true }),
+            "Reset",
+        );
+        expect(info).toHaveBeenCalledWith(`Reset HEAD to ${SHORT}.`);
+    });
+
     it("does not run Git or refresh when the reset-mode picker is cancelled", async () => {
         quickPick.mockResolvedValue(undefined);
         const ctx = makeCtx();

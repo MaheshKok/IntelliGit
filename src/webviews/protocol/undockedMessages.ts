@@ -10,6 +10,29 @@ import type {
 } from "./commitPanelMessages";
 import type { CommitGraphInbound } from "./commitGraphTypes";
 
+/** Host messages whose stale-root filtering is mandatory in the undocked webview. */
+type RootFilteredCommitPanelInbound = Extract<
+    CommitPanelInbound,
+    {
+        type:
+            | "update"
+            | "restoreCommitDraft"
+            | "lastCommitMessage"
+            | "amendBranchCommits"
+            | "committed";
+    }
+> & { repositoryRoot: string };
+
+/** Commit-panel inbound surface tightened only for the root-filtering undocked webview. */
+type UndockedCommitPanelInbound =
+    | Exclude<CommitPanelInbound, { type: RootFilteredCommitPanelInbound["type"] }>
+    | RootFilteredCommitPanelInbound;
+
+/** Commit-panel outbound persistence tightened only for the undocked webview. */
+type UndockedCommitPanelOutbound =
+    | Exclude<CommitPanelOutbound, { type: "saveCommitDraft" }>
+    | (Extract<CommitPanelOutbound, { type: "saveCommitDraft" }> & { repositoryRoot: string });
+
 /** Minimal repository identity sent to the undocked repository selector. */
 export interface RepositoryViewIdentity {
     /** Absolute filesystem path to the Git repository root. */
@@ -28,7 +51,7 @@ export interface RepositoryViewIdentity {
  */
 export type UnifiedInbound =
     | CommitGraphInbound
-    | CommitPanelInbound
+    | UndockedCommitPanelInbound
     | {
           /** Repository list hydration for the fixed far-left undocked selector. */
           type: "repositories";
@@ -176,7 +199,7 @@ type GraphOutbound =
  */
 export type UnifiedOutbound =
     | GraphOutbound
-    | CommitPanelOutbound
+    | UndockedCommitPanelOutbound
     | {
           /** Layout persistence event sent after restored widths hydrate or a user drags. */
           type: "columnWidths";

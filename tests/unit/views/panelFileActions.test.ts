@@ -39,8 +39,9 @@ const createReadonlyDiffUri = vi.hoisted(() =>
 vi.mock("vscode", () => vscodeMock);
 vi.mock("../../../src/services/diffService", () => ({ createReadonlyDiffUri }));
 
-import { showStashDiffFromPanel } from "../../../src/views/panelFileActions";
+import { selectStashFromPanel, showStashDiffFromPanel } from "../../../src/views/panelFileActions";
 import type { GitOps } from "../../../src/git/operations";
+import type { WorkingFile } from "../../../src/types";
 
 function makeGitOps(): GitOps {
     return {
@@ -54,6 +55,35 @@ function makeGitOps(): GitOps {
 
 function fileActionDeps(gitOps: GitOps) {
     return { gitOps, getWorkspaceRoot: () => ({ scheme: "file", path: "/repo" }) };
+}
+
+function stashSelectionDeps(
+    postUpdate: (message: { selectedStashIndex: number }) => void | Promise<void>,
+) {
+    return {
+        gitOps: {
+            getStashFiles: vi.fn(async (index: number) => [
+                {
+                    path: `stash-${index}.ts`,
+                    status: "M",
+                    staged: false,
+                    additions: 1,
+                    deletions: 0,
+                },
+            ]),
+        },
+        iconTheme: {
+            decorateWorkingFiles: vi.fn(async (files: WorkingFile[]) => files),
+            getFolderIconsByPaths: vi.fn(async () => ({})),
+            getThemeData: vi.fn(() => ({ folderIcons: {}, iconFonts: [] })),
+        },
+        getFiles: () => [],
+        getStashes: () => [],
+        getShelfFilePaths: () => [],
+        currentBranchHasUpstream: vi.fn(async () => false),
+        setStashState: vi.fn(),
+        postUpdate,
+    } as Parameters<typeof selectStashFromPanel>[0];
 }
 
 describe("showStashDiffFromPanel", () => {
@@ -72,11 +102,7 @@ describe("showStashDiffFromPanel", () => {
         await showStashDiffFromPanel(fileActionDeps(gitOps), 2, "src/a.ts", false);
 
         expect(gitOps.getStashFileContents).toHaveBeenCalledWith(2, "src/a.ts");
-        expect(createReadonlyDiffUri).toHaveBeenCalledWith(
-            "src/a.ts",
-            "stash",
-            "Stash {2}",
-        );
+        expect(createReadonlyDiffUri).toHaveBeenCalledWith("src/a.ts", "stash", "Stash {2}");
         expect(createReadonlyDiffUri).toHaveBeenCalledWith(
             "src/a.ts",
             "local file contents",
@@ -126,7 +152,9 @@ describe("showStashDiffFromPanel", () => {
 
     it("shows a missing local file as an empty original before the stashed addition", async () => {
         const gitOps = makeGitOps();
-        const missingFileError = new Error("Unable to resolve nonexistent file 'file:///repo/src/a.ts'");
+        const missingFileError = new Error(
+            "Unable to resolve nonexistent file 'file:///repo/src/a.ts'",
+        );
         vi.mocked(vscodeMock.workspace.fs.stat).mockRejectedValueOnce(missingFileError);
 
         await showStashDiffFromPanel(fileActionDeps(gitOps), 2, "src/a.ts");
@@ -283,11 +311,13 @@ describe("showStashDiffFromPanel", () => {
         vi.mocked(gitOps.getStashFiles).mockResolvedValueOnce([
             { path: "src/a.ts", status: "M", staged: false, additions: 1, deletions: 1 },
         ]);
-        vscodeMock.workspace.textDocuments = [{
-            isDirty: true,
-            getText: () => "unsaved local content",
-            uri: { toString: () => "file:///repo/src/a.ts" },
-        }];
+        vscodeMock.workspace.textDocuments = [
+            {
+                isDirty: true,
+                getText: () => "unsaved local content",
+                uri: { toString: () => "file:///repo/src/a.ts" },
+            },
+        ];
 
         await showStashDiffFromPanel(fileActionDeps(gitOps), 2, undefined);
 
@@ -357,5 +387,56 @@ describe("showStashDiffFromPanel", () => {
         await expect(showDiff).rejects.toBe(permissionError);
         expect(createReadonlyDiffUri).not.toHaveBeenCalled();
         expect(vscodeMock.commands.executeCommand).not.toHaveBeenCalled();
+    });
+});
+
+describe("selectStashFromPanel", () => {
+    it("does not resolve until its asynchronous panel update has been posted", async () => {
+        const posted = Promise.withResolvers<void>();
+        const postUpdate = vi.fn(() => posted.promise);
+        const selection = selectStashFromPanel(stashSelectionDeps(postUpdate), 3);
+
+        await vi.waitFor(() => expect(postUpdate).toHaveBeenCalledOnce());
+        let resolved = false;
+        void selection.then(() => {
+            resolved = true;
+        });
+        await Promise.resolve();
+        expect(resolved).toBe(false);
+        posted.resolve();
+        await selection;
+        expect(resolved).toBe(true);
+    });
+
+    it("keeps two sequential awaited stash selections in post order", async () => {
+        const firstPost = Promise.withResolvers<void>();
+        const secondPost = Promise.withResolvers<void>();
+        const order: number[] = [];
+        const postUpdate = vi.fn((message: { selectedStashIndex: number }) => {
+            order.push(message.selectedStashIndex);
+            return message.selectedStashIndex === 1 ? firstPost.promise : secondPost.promise;
+        });
+        const deps = stashSelectionDeps(postUpdate);
+        const selections = (async () => {
+            await selectStashFromPanel(deps, 1);
+            await selectStashFromPanel(deps, 2);
+        })();
+
+        await vi.waitFor(() => expect(order).toEqual([1]));
+        firstPost.resolve();
+        await vi.waitFor(() => expect(order).toEqual([1, 2]));
+        secondPost.resolve();
+        await selections;
+        expect(order).toEqual([1, 2]);
+    });
+
+    it("propagates a rejected post update without a later stale post", async () => {
+        const rejection = new Error("whole-index predicate failed");
+        const postUpdate = vi.fn(() => Promise.reject(rejection));
+
+        await expect(selectStashFromPanel(stashSelectionDeps(postUpdate), 5)).rejects.toBe(
+            rejection,
+        );
+        expect(postUpdate).toHaveBeenCalledOnce();
     });
 });

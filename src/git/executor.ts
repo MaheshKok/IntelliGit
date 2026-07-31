@@ -1,7 +1,6 @@
 import { spawn } from "node:child_process";
 import { createWriteStream } from "node:fs";
 import { pipeline } from "node:stream/promises";
-import simpleGit, { SimpleGit } from "simple-git";
 import { RepositoryMutationGate } from "./repositoryMutationGate";
 
 /** Options for a binary Git process invocation. */
@@ -9,6 +8,8 @@ export interface GitBinaryRunOptions {
     input?: Buffer;
     expectedExitCodes?: readonly number[];
     outputFile?: string;
+    /** Stops stdout acquisition after this many bytes, retaining only the bounded prefix. */
+    maxOutputBytes?: number;
 }
 
 /** Raw process result for a binary Git invocation; streamed stdout is empty. */
@@ -16,19 +17,21 @@ export interface GitBinaryRunResult {
     stdout: Buffer;
     stderr: Buffer;
     exitCode: number;
+    /** True when stdout reached `maxOutputBytes` and the Git process was stopped. */
+    truncated: boolean;
 }
 
 /**
- * Owns the repository-scoped Simple Git instance used by extension Git operations.
+ * Owns the repository-scoped Git process runner used by extension Git operations.
  *
  * The executor is intentionally thin: callers provide raw Git arguments, and
  * higher layers remain responsible for validation, path safety, and workflow-
  * specific error handling. This class only binds invocations to the active
- * repository root while preserving the shared concurrency limit.
+ * repository root for every invocation.
  */
 export class GitExecutor {
-    private git: SimpleGit;
     private repoRoot: string;
+    private readonly processSemaphore = new Semaphore(MAX_CONCURRENT_PROCESSES);
 
     /**
      * Creates an executor rooted at the repository path selected during activation.
@@ -38,7 +41,6 @@ export class GitExecutor {
         private readonly mutationGate?: RepositoryMutationGate,
     ) {
         this.repoRoot = repoRoot;
-        this.git = simpleGit(repoRoot, { maxConcurrentProcesses: 6 });
     }
 
     /**
@@ -49,7 +51,6 @@ export class GitExecutor {
      */
     setRoot(repoRoot: string): void {
         this.repoRoot = repoRoot;
-        this.git = simpleGit(repoRoot, { maxConcurrentProcesses: 6 });
     }
 
     /**
@@ -62,22 +63,33 @@ export class GitExecutor {
     }
 
     /**
-     * Runs a raw Git command through Simple Git and returns stdout.
+     * Runs a raw Git command and returns stdout.
      *
      * Callers own argument validation, path safety, and user-facing error handling;
-     * this method intentionally preserves Simple Git's rejection behavior so higher
-     * layers can translate failures in workflow-specific ways.
+     * this method rejects every unexpected process exit so higher layers can
+     * translate failures in workflow-specific ways. At most MAX_CONCURRENT_PROCESSES
+     * spawned Git processes run concurrently per executor instance, matching the
+     * previous Simple Git concurrency cap.
      */
     async run(args: string[]): Promise<string> {
-        if (this.mutationGate && isMutatingGitCommand(args)) {
-            const commonDir = await this.git.raw(["rev-parse", "--git-common-dir"]);
-            return this.mutationGate.run(
-                this.repoRoot,
-                this.mutationGate.resolveCommonDir(this.repoRoot, commonDir),
-                () => this.git.raw(args),
-            );
+        await this.processSemaphore.acquire();
+        try {
+            const runText = async (): Promise<string> =>
+                (await this.runBinary(args)).stdout.toString("utf8");
+            if (this.mutationGate && isMutatingGitCommand(args)) {
+                const commonDir = (
+                    await this.runBinary(["rev-parse", "--git-common-dir"])
+                ).stdout.toString("utf8");
+                return await this.mutationGate.run(
+                    this.repoRoot,
+                    this.mutationGate.resolveCommonDir(this.repoRoot, commonDir),
+                    runText,
+                );
+            }
+            return await runText();
+        } finally {
+            this.processSemaphore.release();
         }
-        return this.git.raw(args);
     }
 
     /** Runs Git without decoding stdout; output-file mode streams stdout and returns an empty buffer. */
@@ -86,20 +98,46 @@ export class GitExecutor {
         options: GitBinaryRunOptions = {},
     ): Promise<GitBinaryRunResult> {
         const expectedExitCodes = options.expectedExitCodes ?? [0];
+        if (options.outputFile && options.maxOutputBytes !== undefined) {
+            throw new Error(
+                "Git binary output cannot be both streamed to a file and byte-limited.",
+            );
+        }
         return new Promise<GitBinaryRunResult>((resolve, reject) => {
             const child = spawn("git", args, { cwd: this.repoRoot, stdio: "pipe" });
             const stdout: Buffer[] = [];
             const stderr: Buffer[] = [];
             const output = options.outputFile ? createWriteStream(options.outputFile) : undefined;
+            let stdoutBytes = 0;
+            let truncated = false;
+            let terminatedForOutputLimit = false;
             const stdoutDone = output
                 ? pipeline(child.stdout, output)
                 : new Promise<void>((resolve) => {
-                      child.stdout.on("data", (chunk: Buffer) => stdout.push(chunk));
+                      child.stdout.on("data", (chunk: Buffer) => {
+                          const maxOutputBytes = options.maxOutputBytes;
+                          if (maxOutputBytes === undefined) {
+                              stdout.push(chunk);
+                              return;
+                          }
+                          const remainingBytes = maxOutputBytes - stdoutBytes;
+                          if (remainingBytes > 0) {
+                              stdout.push(chunk.subarray(0, remainingBytes));
+                              stdoutBytes += Math.min(chunk.length, remainingBytes);
+                          }
+                          if (chunk.length > remainingBytes) {
+                              truncated = true;
+                              terminatedForOutputLimit = child.kill();
+                          }
+                      });
                       child.stdout.once("end", resolve);
                   });
             void stdoutDone.catch(() => undefined);
             child.stderr.on("data", (chunk: Buffer) => stderr.push(chunk));
-            const finish = async (exitCode: number | null): Promise<void> => {
+            const finish = async (
+                exitCode: number | null,
+                signal: NodeJS.Signals | null,
+            ): Promise<void> => {
                 try {
                     await stdoutDone;
                 } catch (error) {
@@ -110,17 +148,25 @@ export class GitExecutor {
                     stdout: output ? Buffer.alloc(0) : Buffer.concat(stdout),
                     stderr: Buffer.concat(stderr),
                     exitCode: exitCode ?? -1,
+                    truncated,
                 };
-                if (expectedExitCodes.includes(result.exitCode)) return resolve(result);
-                reject(
-                    new Error(
-                        `git ${args.join(" ")} exited with ${result.exitCode}: ${result.stderr.toString("utf8")}`,
-                    ),
-                );
+                if (
+                    result.truncated &&
+                    (result.exitCode === 0 || (terminatedForOutputLimit && signal !== null))
+                ) {
+                    return resolve(result);
+                }
+                if (!signal && expectedExitCodes.includes(result.exitCode)) return resolve(result);
+                const command = args.slice(0, 2).join(" ") || "(no subcommand)";
+                const stderrText = result.stderr.toString("utf8").trim() || "(no stderr)";
+                const outcome = signal
+                    ? `was terminated by signal ${signal}`
+                    : `exited with ${result.exitCode}`;
+                reject(new Error(`git ${command} ${outcome}: ${stderrText}`));
             };
             child.once("error", reject);
-            child.once("close", (exitCode) => {
-                void finish(exitCode);
+            child.once("close", (exitCode, signal) => {
+                void finish(exitCode, signal);
             });
             if (options.input) child.stdin.end(options.input);
             else child.stdin.end();
@@ -154,8 +200,77 @@ function isMutatingGitCommand(args: string[]): boolean {
     )
         return true;
     if (command === "stash") return !["list", "show"].includes(args[1] ?? "");
-    if (command === "branch") return !args.includes("--list") && args.length > 1;
+    if (command === "branch") return isBranchMutation(args);
     if (command === "push") return true;
     if (command === "worktree") return !["list"].includes(args[1] ?? "");
     return false;
+}
+
+/** `git branch` options that write refs or config even without naming a branch. */
+const BRANCH_WRITE_FLAGS = [
+    "-d",
+    "-D",
+    "--delete",
+    "-m",
+    "-M",
+    "--move",
+    "-c",
+    "-C",
+    "--copy",
+    "-f",
+    "--force",
+    "-u",
+    "--set-upstream",
+    "--set-upstream-to",
+    "--unset-upstream",
+    "--edit-description",
+];
+
+/**
+ * Classifies one `git branch` invocation, defaulting to a mutation when unsure.
+ *
+ * Listing branches is a read, and gating reads is not merely wasteful: the mutation
+ * queue has no timeout, so a listing issued while a long mutation holds the gate —
+ * a push whose pre-push hooks take minutes — waits for that mutation to finish.
+ * A bare positional argument names a branch to create or rename, except under
+ * `--list`, where positionals are name patterns.
+ */
+function isBranchMutation(args: string[]): boolean {
+    const options = args.slice(1);
+    if (
+        options.some((option) =>
+            BRANCH_WRITE_FLAGS.some((flag) => option === flag || option.startsWith(`${flag}=`)),
+        )
+    )
+        return true;
+    if (options.includes("--list") || options.includes("-l")) return false;
+    return options.some((option) => !option.startsWith("-"));
+}
+
+/** Matches the previous Simple Git `maxConcurrentProcesses` cap. */
+const MAX_CONCURRENT_PROCESSES = 6;
+
+/** Tiny FIFO semaphore bounding how many Git processes one executor spawns concurrently. */
+class Semaphore {
+    private active = 0;
+    private readonly queue: Array<() => void> = [];
+
+    constructor(private readonly limit: number) {}
+
+    async acquire(): Promise<void> {
+        if (this.active < this.limit) {
+            this.active += 1;
+            return;
+        }
+        await new Promise<void>((resolve) => this.queue.push(resolve));
+    }
+
+    release(): void {
+        const next = this.queue.shift();
+        if (next) {
+            next();
+            return;
+        }
+        this.active -= 1;
+    }
 }

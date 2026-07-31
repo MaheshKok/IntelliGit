@@ -31,6 +31,19 @@ interface Props {
 }
 
 type SavedWebviewState = Record<string, unknown> | undefined;
+let commitMessageGenerationRequestSequence = 0;
+const IDLE_GENERATION: RepositoryCommitPanelState["generation"] = { status: "idle" };
+
+/**
+ * Creates an opaque, client-local token that correlates one docked generation request with host events.
+ *
+ * The token deliberately contains no repository or draft data; callers generate it immediately before
+ * dispatching so a synchronous host `start` event can only target the already-recorded request.
+ */
+function nextCommitMessageGenerationRequestId(): string {
+    commitMessageGenerationRequestSequence += 1;
+    return `commit-message-${Date.now()}-${commitMessageGenerationRequestSequence}`;
+}
 
 function savedBooleanByRepository(
     saved: SavedWebviewState,
@@ -73,6 +86,13 @@ function repositoryScope(root: string): { repositoryRoot?: string } {
     return root ? { repositoryRoot: root } : {};
 }
 
+/** Returns the idle lifecycle used by legacy repository snapshots that predate generation state. */
+function generationOrIdle(
+    generation: RepositoryCommitPanelState["generation"] | undefined,
+): RepositoryCommitPanelState["generation"] {
+    return generation ?? IDLE_GENERATION;
+}
+
 /**
  * Renders one repository accordion row and scopes every outbound row action by root.
  *
@@ -106,6 +126,10 @@ export function RepositoryAccordion({
     });
     const summary = branchSummary(repository);
     const displayLabel = displayRepositoryLabel(repository);
+    const generation = generationOrIdle(repository.generation);
+    const generationStatus = generation.status;
+    const generationRequestId = generation.requestId;
+    const isGenerationActive = generationStatus !== "idle";
     const canCommit = canRunCommitAction(
         repository.isAmend,
         checkedPaths.size,
@@ -158,6 +182,7 @@ export function RepositoryAccordion({
 
     const handleMessageChange = useCallback(
         (message: string) => {
+            if (isGenerationActive) return;
             dispatch({ type: "SET_COMMIT_MESSAGE", repositoryRoot: repository.root, message });
             vscode.postMessage({
                 type: "saveCommitDraft",
@@ -165,11 +190,12 @@ export function RepositoryAccordion({
                 message,
             });
         },
-        [dispatch, repository.root, vscode],
+        [dispatch, isGenerationActive, repository.root, vscode],
     );
 
     const handleAmendChange = useCallback(
         (isAmend: boolean) => {
+            if (isGenerationActive || !repository.hasCommits) return;
             dispatch({ type: "SET_AMEND", repositoryRoot: repository.root, isAmend });
             if (isAmend) {
                 vscode.postMessage({
@@ -178,10 +204,11 @@ export function RepositoryAccordion({
                 });
             }
         },
-        [dispatch, repository.root, vscode],
+        [dispatch, isGenerationActive, repository.hasCommits, repository.root, vscode],
     );
 
     const handleCommit = useCallback(() => {
+        if (isGenerationActive || (repository.isAmend && !repository.hasCommits)) return;
         vscode.postMessage({
             type: "commitSelected",
             ...repositoryScope(repository.root),
@@ -190,7 +217,67 @@ export function RepositoryAccordion({
             push: false,
             paths: Array.from(checkedPaths),
         });
-    }, [checkedPaths, repository.commitMessage, repository.isAmend, repository.root, vscode]);
+    }, [
+        checkedPaths,
+        isGenerationActive,
+        repository.commitMessage,
+        repository.hasCommits,
+        repository.isAmend,
+        repository.root,
+        vscode,
+    ]);
+
+    const handleGenerateMessage = useCallback(() => {
+        const hasGenerationInput = repository.isAmend
+            ? repository.hasCommits
+            : checkedPaths.size > 0;
+        if (
+            !repository.root ||
+            isGenerationActive ||
+            repository.wholeIndexOperationInProgress ||
+            !hasGenerationInput
+        ) {
+            return;
+        }
+        const requestId = nextCommitMessageGenerationRequestId();
+        dispatch({
+            type: "REQUEST_COMMIT_MESSAGE_GENERATION",
+            repositoryRoot: repository.root,
+            requestId,
+            snapshot: repository.commitMessage,
+        });
+        vscode.postMessage({
+            type: "generateCommitMessage",
+            repositoryRoot: repository.root,
+            requestId,
+            paths: Array.from(checkedPaths),
+            amend: repository.isAmend,
+        });
+    }, [
+        checkedPaths,
+        dispatch,
+        isGenerationActive,
+        repository.commitMessage,
+        repository.hasCommits,
+        repository.isAmend,
+        repository.root,
+        repository.wholeIndexOperationInProgress,
+        vscode,
+    ]);
+
+    const handleCancelGeneration = useCallback(() => {
+        if (
+            (generationStatus !== "requested" && generationStatus !== "running") ||
+            !generationRequestId
+        ) {
+            return;
+        }
+        vscode.postMessage({
+            type: "cancelCommitMessageGeneration",
+            repositoryRoot: repository.root,
+            requestId: generationRequestId,
+        });
+    }, [generationRequestId, generationStatus, repository.root, vscode]);
 
     const handlePush = useCallback(() => {
         postRepositoryCommand(shouldPublishBranch ? "publishBranch" : "push");
@@ -225,6 +312,11 @@ export function RepositoryAccordion({
             currentBranchAhead={repository.currentBranchAhead}
             currentBranchName={repository.currentBranchName}
             currentBranchUpstream={repository.currentBranchUpstream}
+            generationStatus={generationStatus}
+            onGenerateMessage={handleGenerateMessage}
+            onCancelGeneration={handleCancelGeneration}
+            hasCommits={repository.hasCommits}
+            wholeIndexOperationInProgress={repository.wholeIndexOperationInProgress}
             folderIcon={repository.folderIcon}
             folderExpandedIcon={repository.folderExpandedIcon}
             folderIconsByName={repository.folderIconsByName}

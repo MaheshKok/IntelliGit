@@ -1,6 +1,6 @@
 // Message bridge between the VS Code extension host and commit panel React app.
 
-import { useEffect, useReducer, type Dispatch } from "react";
+import { useCallback, useEffect, useReducer, useRef, type Dispatch } from "react";
 import { getVsCodeApi } from "./useVsCodeApi";
 import type {
     CommitPanelAction,
@@ -10,6 +10,7 @@ import type {
     RepositoryCommitPanelState,
 } from "../types";
 import type { WorkingFile } from "../../../../types";
+import { commitMessageGenerationPrefix } from "../../shared/commitMessageDraft";
 
 const LEGACY_REPOSITORY_ROOT = "";
 
@@ -50,6 +51,9 @@ function createRepositoryState(
         currentBranchBehind: 0,
         currentBranchName: null,
         currentBranchUpstream: null,
+        generation: { status: "idle" },
+        hasCommits: false,
+        wholeIndexOperationInProgress: false,
     };
 }
 
@@ -117,6 +121,27 @@ function updateRepository(
     return { repositories, activeRepositoryRoot, expandedRepositoryRoots };
 }
 
+/**
+ * Applies an action only to an already-hydrated repository.
+ *
+ * Lifecycle events must never create a row from an arbitrary host root: a stale event from a
+ * removed repository is not a snapshot and therefore has no authority to add state.
+ */
+function updateKnownRepository(
+    state: MultiRepositoryCommitPanelState,
+    repositoryRoot: string,
+    update: (repository: RepositoryCommitPanelState) => RepositoryCommitPanelState,
+): MultiRepositoryCommitPanelState {
+    const index = state.repositories.findIndex((repository) => repository.root === repositoryRoot);
+    if (index < 0) return state;
+    return {
+        ...state,
+        repositories: state.repositories.map((repository, currentIndex) =>
+            currentIndex === index ? update(repository) : repository,
+        ),
+    };
+}
+
 function updateRepositoryMetadata(
     repository: RepositoryCommitPanelState,
     summary: CommitPanelRepositorySummary,
@@ -128,6 +153,49 @@ function updateRepositoryMetadata(
         kind: summary.kind,
         changedFileCount: summary.changedFileCount,
     };
+}
+
+/**
+ * Applies one generation event after the reducer has validated its request identity.
+ *
+ * Terminal events restore the prior draft when appropriate and clear the active marker so later
+ * draft messages may update the repository again.
+ */
+function applyGenerationEvent(
+    repository: RepositoryCommitPanelState,
+    action: Extract<CommitPanelAction, { type: "COMMIT_MESSAGE_GENERATION_EVENT" }>,
+): RepositoryCommitPanelState {
+    switch (action.kind) {
+        case "start":
+            return repository.generation.status === "requested"
+                ? {
+                      ...repository,
+                      commitMessage: commitMessageGenerationPrefix(
+                          repository.generation.snapshot ?? repository.commitMessage,
+                      ),
+                      generation: { ...repository.generation, status: "running" },
+                  }
+                : repository;
+        case "chunk":
+            return repository.generation.status === "running"
+                ? { ...repository, commitMessage: repository.commitMessage + (action.text ?? "") }
+                : repository;
+        case "done":
+            return {
+                ...repository,
+                ...(action.superseded
+                    ? { commitMessage: repository.generation.snapshot ?? repository.commitMessage }
+                    : {}),
+                generation: { status: "idle" },
+            };
+        case "cancelled":
+        case "error":
+            return {
+                ...repository,
+                commitMessage: repository.generation.snapshot ?? repository.commitMessage,
+                generation: { status: "idle" },
+            };
+    }
 }
 
 function reducer(
@@ -199,6 +267,10 @@ function reducer(
                     action.currentBranchUpstream !== undefined
                         ? action.currentBranchUpstream
                         : repository.currentBranchUpstream,
+                hasCommits: action.hasCommits ?? repository.hasCommits,
+                wholeIndexOperationInProgress:
+                    action.wholeIndexOperationInProgress ??
+                    repository.wholeIndexOperationInProgress,
                 isRefreshing: action.refreshing ?? repository.isRefreshing,
                 error: action.error ?? null,
             }));
@@ -217,10 +289,11 @@ function reducer(
         case "RESTORE_COMMIT_DRAFT":
         case "SET_LAST_COMMIT_MESSAGE":
         case "SET_COMMIT_MESSAGE":
-            return updateRepository(state, action.repositoryRoot, (repository) => ({
-                ...repository,
-                commitMessage: action.message,
-            }));
+            return updateRepository(state, action.repositoryRoot, (repository) =>
+                repository.generation.status === "idle"
+                    ? { ...repository, commitMessage: action.message }
+                    : repository,
+            );
         case "COMMITTED":
             return updateRepository(state, action.repositoryRoot, (repository) => ({
                 ...repository,
@@ -247,12 +320,37 @@ function reducer(
                 },
             }));
         case "SET_AMEND":
-            return updateRepository(state, action.repositoryRoot, (repository) => ({
-                ...repository,
-                isAmend: action.isAmend,
-                amendBranchCommits: [],
-                amendBranchHistoryLoaded: false,
-            }));
+            return updateRepository(state, action.repositoryRoot, (repository) => {
+                if (repository.generation.status !== "idle") return repository;
+                return {
+                    ...repository,
+                    isAmend: action.isAmend,
+                    amendBranchCommits: [],
+                    amendBranchHistoryLoaded: false,
+                };
+            });
+        case "REQUEST_COMMIT_MESSAGE_GENERATION":
+            return updateKnownRepository(state, action.repositoryRoot, (repository) => {
+                if (repository.generation.status !== "idle") return repository;
+                return {
+                    ...repository,
+                    generation: {
+                        status: "requested",
+                        requestId: action.requestId,
+                        snapshot: action.snapshot,
+                    },
+                };
+            });
+        case "COMMIT_MESSAGE_GENERATION_EVENT":
+            return updateKnownRepository(state, action.repositoryRoot, (repository) => {
+                if (
+                    repository.generation.status === "idle" ||
+                    repository.generation.requestId !== action.requestId
+                ) {
+                    return repository;
+                }
+                return applyGenerationEvent(repository, action);
+            });
         case "SET_AMEND_BRANCH_COMMITS":
             return updateRepository(state, action.repositoryRoot, (repository) => {
                 if (!repository.isAmend) return repository;
@@ -275,7 +373,30 @@ export function useExtensionMessages(): [
     MultiRepositoryCommitPanelState,
     Dispatch<CommitPanelAction>,
 ] {
-    const [state, dispatch] = useReducer(reducer, initialState);
+    const [state, reactDispatch] = useReducer(reducer, initialState);
+    const stateRef = useRef(initialState);
+
+    /**
+     * Reduces an action into a synchronous mirror before React schedules its render.
+     *
+     * VS Code may synchronously answer an outbound request, so the message handler must be able to
+     * validate the just-created request ID without waiting for a component render.
+     */
+    const applyAction = useCallback(
+        (action: CommitPanelAction): MultiRepositoryCommitPanelState => {
+            const nextState = reducer(stateRef.current, action);
+            stateRef.current = nextState;
+            reactDispatch(action);
+            return nextState;
+        },
+        [reactDispatch],
+    );
+    const dispatch = useCallback(
+        (action: CommitPanelAction): void => {
+            applyAction(action);
+        },
+        [applyAction],
+    );
 
     useEffect(() => {
         const vscode = getVsCodeApi();
@@ -284,14 +405,14 @@ export function useExtensionMessages(): [
             const msg = event.data;
             switch (msg.type) {
                 case "setRepositories":
-                    dispatch({
+                    applyAction({
                         type: "SET_REPOSITORIES",
                         repositories: msg.repositories,
                         activeRepositoryRoot: msg.activeRepositoryRoot,
                     });
                     break;
                 case "update":
-                    dispatch({
+                    applyAction({
                         type: "SET_FILES_AND_STASHES",
                         repositoryRoot: msg.repositoryRoot,
                         repositoryLabel: msg.repositoryLabel,
@@ -315,54 +436,56 @@ export function useExtensionMessages(): [
                         currentBranchBehind: msg.currentBranchBehind ?? 0,
                         currentBranchName: msg.currentBranchName,
                         currentBranchUpstream: msg.currentBranchUpstream,
+                        hasCommits: msg.hasCommits,
+                        wholeIndexOperationInProgress: msg.wholeIndexOperationInProgress,
                         refreshing: msg.refreshing,
                         error: msg.error,
                     });
                     break;
                 case "restoreCommitDraft":
-                    dispatch({
+                    applyAction({
                         type: "RESTORE_COMMIT_DRAFT",
                         repositoryRoot: msg.repositoryRoot,
                         message: msg.message,
                     });
                     break;
                 case "lastCommitMessage":
-                    dispatch({
+                    applyAction({
                         type: "SET_LAST_COMMIT_MESSAGE",
                         repositoryRoot: msg.repositoryRoot,
                         message: msg.message,
                     });
                     break;
                 case "amendBranchCommits":
-                    dispatch({
+                    applyAction({
                         type: "SET_AMEND_BRANCH_COMMITS",
                         repositoryRoot: msg.repositoryRoot,
                         commits: msg.commits,
                     });
                     break;
                 case "committed":
-                    dispatch({
+                    applyAction({
                         type: "COMMITTED",
                         repositoryRoot: msg.repositoryRoot,
                         clearCommitMessage: msg.clearCommitMessage,
                     });
                     break;
                 case "refreshing":
-                    dispatch({
+                    applyAction({
                         type: "SET_REFRESHING",
                         repositoryRoot: msg.repositoryRoot,
                         active: msg.active,
                     });
                     break;
                 case "error":
-                    dispatch({
+                    applyAction({
                         type: "SET_ERROR",
                         repositoryRoot: msg.repositoryRoot,
                         message: msg.message,
                     });
                     break;
                 case "shelfMutationCompleted":
-                    dispatch({
+                    applyAction({
                         type: "SET_SHELF_MUTATION_OUTCOME",
                         repositoryRoot: msg.repositoryRoot,
                         status: msg.status,
@@ -373,6 +496,39 @@ export function useExtensionMessages(): [
                         newGeneration: msg.newGeneration,
                     });
                     break;
+                case "commitMessageGeneration": {
+                    const repository = stateRef.current.repositories.find(
+                        (candidate) => candidate.root === msg.repositoryRoot,
+                    );
+                    if (
+                        !repository ||
+                        repository.generation.status === "idle" ||
+                        repository.generation.requestId !== msg.requestId
+                    ) {
+                        break;
+                    }
+                    const nextState = applyAction({
+                        type: "COMMIT_MESSAGE_GENERATION_EVENT",
+                        repositoryRoot: msg.repositoryRoot,
+                        requestId: msg.requestId,
+                        kind: msg.kind,
+                        text: msg.text,
+                        superseded: msg.superseded,
+                    });
+                    if (msg.kind === "done" || msg.kind === "cancelled" || msg.kind === "error") {
+                        const nextRepository = nextState.repositories.find(
+                            (candidate) => candidate.root === msg.repositoryRoot,
+                        );
+                        if (!msg.superseded && nextRepository) {
+                            vscode.postMessage({
+                                type: "saveCommitDraft",
+                                repositoryRoot: msg.repositoryRoot,
+                                message: nextRepository.commitMessage,
+                            });
+                        }
+                    }
+                    break;
+                }
             }
         };
 
@@ -380,7 +536,7 @@ export function useExtensionMessages(): [
         vscode.postMessage({ type: "ready" });
 
         return () => window.removeEventListener("message", handler);
-    }, []);
+    }, [applyAction]);
 
     return [state, dispatch];
 }

@@ -11,6 +11,7 @@ import {
     commitPanelReducer,
     initialCommitPanelState,
     type CommitChecksValue,
+    type CommitPanelAction,
     type GraphAction,
 } from "./undocked/commitPanelState";
 import { canRunCommitAction } from "./commit-panel/commitEligibility";
@@ -256,7 +257,24 @@ function App(): React.ReactElement {
     }, [setSectionWidths]);
 
     // --- Commit-panel state ---
-    const [cpState, cpDispatch] = useReducer(commitPanelReducer, initialCommitPanelState);
+    const [cpState, reactCpDispatch] = useReducer(commitPanelReducer, initialCommitPanelState);
+    const cpStateRef = useRef(initialCommitPanelState);
+    /** Reduces an action into the synchronous state mirror and returns the resulting state. */
+    const applyCommitPanelAction = useCallback(
+        (action: CommitPanelAction) => {
+            const nextState = commitPanelReducer(cpStateRef.current, action);
+            cpStateRef.current = nextState;
+            reactCpDispatch(action);
+            return nextState;
+        },
+        [reactCpDispatch],
+    );
+    const cpDispatch = useCallback(
+        (action: CommitPanelAction): void => {
+            applyCommitPanelAction(action);
+        },
+        [applyCommitPanelAction],
+    );
     const { checkedPaths, toggleFile, toggleFolder, toggleSection, isAllChecked, isSomeChecked } =
         useCheckedFiles(cpState.files);
 
@@ -415,6 +433,8 @@ function App(): React.ReactElement {
     useUnifiedMessages({
         graphDispatch,
         cpDispatch,
+        applyCommitPanelAction,
+        cpStateRef,
         loadingMore,
         selectedHash,
         selectedRepositoryRoot,
@@ -427,7 +447,10 @@ function App(): React.ReactElement {
         setViewVisible,
     });
 
-    const canCommit = canRunCommitAction(cpState.isAmend, checkedPaths.size, cpState.commitMessage);
+    const canCommit =
+        cpState.generation.status === "idle" &&
+        (!cpState.isAmend || cpState.hasCommits) &&
+        canRunCommitAction(cpState.isAmend, checkedPaths.size, cpState.commitMessage);
     const shouldPublishBranch = !cpState.currentBranchHasUpstream;
     const canPush = shouldPublishBranch
         ? cpState.currentBranchName !== null
@@ -441,7 +464,11 @@ function App(): React.ReactElement {
         loadingMore,
         commitMessage: cpState.commitMessage,
         isAmend: cpState.isAmend,
+        generation: cpState.generation,
+        hasCommits: cpState.hasCommits,
+        wholeIndexOperationInProgress: cpState.wholeIndexOperationInProgress,
         checkedPaths,
+        selectedRepositoryRoot,
         shouldPublishBranch,
     });
 
@@ -522,6 +549,8 @@ function App(): React.ReactElement {
             handleSignInForCommitChecks={actions.handleSignInForCommitChecks}
             handleMessageChange={actions.handleMessageChange}
             handleAmendChange={actions.handleAmendChange}
+            handleGenerateMessage={actions.handleGenerateMessage}
+            handleCancelGeneration={actions.handleCancelGeneration}
             handleCommit={actions.handleCommit}
             handlePush={actions.handlePush}
             handleSync={actions.handleSync}

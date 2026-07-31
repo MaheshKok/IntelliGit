@@ -8,6 +8,7 @@ import type {
 import { t } from "../../shared/i18n";
 import type { MenuItem } from "../../shared/components/ContextMenu";
 import type { ShelveDialogSubmit } from "./ShelveDialog";
+import type { CommitMessageGenerationStatus } from "./CommitArea";
 import { getVsCodeApi } from "../hooks/useVsCodeApi";
 
 const MIN_REFRESH_FEEDBACK_MS = 700;
@@ -47,6 +48,12 @@ export interface CommitTabProps {
     currentBranchAhead?: number;
     currentBranchName: string | null;
     currentBranchUpstream: string | null;
+    /** Shared generation contract; optional until the docked and undocked state slices are wired. */
+    generationStatus?: CommitMessageGenerationStatus;
+    onGenerateMessage?: () => void;
+    onCancelGeneration?: () => void;
+    hasCommits?: boolean;
+    wholeIndexOperationInProgress?: boolean;
     groupByDir: boolean;
     showIgnoredFiles: boolean;
     onToggleGroupBy: () => void;
@@ -288,7 +295,13 @@ export function useCommitTabController(props: CommitTabProps): CommitTabControll
     );
     const onCommitTabContextMenu = useCallback(
         (event: React.MouseEvent<HTMLElement>): void => {
-            if (event.target instanceof Element && event.target.closest("[data-vscode-context]"))
+            // File rows contribute their own VS Code menu, and the commit editor keeps the
+            // native one so its message box and buttons stay usable; shelving is a
+            // file-list action and has no meaning over either.
+            if (
+                event.target instanceof Element &&
+                event.target.closest("[data-vscode-context], [data-commit-area]")
+            )
                 return;
             event.preventDefault();
             openShelfMenuAt(event.clientX, event.clientY);

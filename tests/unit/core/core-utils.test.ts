@@ -13,27 +13,16 @@ import {
     isUntrackedPathspecError,
 } from "../../../src/utils/errors";
 import { getChevronIconStyle } from "../../../src/webviews/react/branch-column/styles";
-import { contentContainerStyle, headerRowStyle } from "../../../src/webviews/react/commit-list/styles";
+import {
+    contentContainerStyle,
+    headerRowStyle,
+} from "../../../src/webviews/react/commit-list/styles";
 import { interpolateL10n } from "../../helpers/l10nTestHelper";
 
 describe("core utilities", () => {
     beforeEach(() => {
         vi.resetModules();
         vi.clearAllMocks();
-    });
-
-    it("GitExecutor delegates to simple-git raw", async () => {
-        const raw = vi.fn(async () => "ok");
-        const simpleGit = vi.fn(() => ({ raw }));
-        vi.doMock("simple-git", () => ({ default: simpleGit }));
-        const { GitExecutor } = await import("../../../src/git/executor");
-
-        const executor = new GitExecutor("/tmp/repo");
-        const out = await executor.run(["status", "--short"]);
-
-        expect(out).toBe("ok");
-        expect(simpleGit).toHaveBeenCalledWith("/tmp/repo", { maxConcurrentProcesses: 6 });
-        expect(raw).toHaveBeenCalledWith(["status", "--short"]);
     });
 
     it("deleteFileWithFallback uses git rm success path", async () => {

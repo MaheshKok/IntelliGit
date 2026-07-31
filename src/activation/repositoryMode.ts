@@ -4,6 +4,8 @@ import { handleCommitContextAction } from "../commands/commitCommands";
 import { GitExecutor } from "../git/executor";
 import { RepositoryMutationCoordinator } from "../git/mutationCoordinator";
 import { GitOps } from "../git/operations";
+import { watchWholeIndexOperation } from "../git/wholeIndexOperationWatcher";
+import { CommitMessageGenerationCoordinator } from "../ai/commitMessageGenerationCoordinator";
 import { RepositoryLock } from "../git/repositoryLock";
 import { RepositoryMutationGate } from "../git/repositoryMutationGate";
 import type { Branch, GitWorktree } from "../types";
@@ -169,6 +171,32 @@ export async function activateRepositoryMode(
     }
     const executor = new GitExecutor(repoRoot, mutationGate);
     const gitOps = new GitOps(executor);
+    /**
+     * Binds every accepted generation request to a currently discovered root, never to webview input
+     * or either provider's mutable executor. Repositories outside VS Code workspace folders retain a
+     * minimal root-folder fallback so the generation API still receives a stable workspace context.
+     */
+    const commitMessageGenerationCoordinator = new CommitMessageGenerationCoordinator({
+        resolveRoot: (repositoryRoot) => {
+            const repository = repositories.find((candidate) => candidate.root === repositoryRoot);
+            if (!repository)
+                throw new Error("Unknown repository root for commit-message generation.");
+            const repositoryUri = vscode.Uri.file(repository.root);
+            const workspaceFolder =
+                vscode.workspace.getWorkspaceFolder(repositoryUri) ??
+                ({
+                    uri: repositoryUri,
+                    name: path.basename(repository.root) || repository.root,
+                    index: 0,
+                } satisfies vscode.WorkspaceFolder);
+            return {
+                workspaceFolder,
+                gitOps: gitOps.deriveFor(repository.root),
+                watchWholeIndexOperation: (onDidChange, onDidError) =>
+                    watchWholeIndexOperation(repository.root, onDidChange, onDidError),
+            };
+        },
+    });
     // Shared per-host token store for non-GitHub commit-check providers (e.g. GitLab).
     const credentialStore = new CredentialStore(context.secrets);
     // Self-hosted commit-check host → provider mappings from user config. Read once at
@@ -268,6 +296,7 @@ export async function activateRepositoryMode(
         context.secrets,
         shelfServiceForRepository,
         shelfSettings.removeOnUnshelve,
+        commitMessageGenerationCoordinator,
     );
     const mergeConflicts = new MergeConflictsTreeProvider(gitOps, repoRootUri);
     const worktreeService = new WorktreeService(executor, () => repoRoot);
@@ -725,6 +754,7 @@ export async function activateRepositoryMode(
                 },
                 commitChecksService,
                 commitChecksProviders,
+                commitMessageGenerationCoordinator,
                 onSelectedRepositoryRootChanged: async (root) => {
                     undockedSelectedRepositoryRoot = root;
                     undockedSelectionWrite = undockedSelectionWrite
@@ -1102,6 +1132,7 @@ export async function activateRepositoryMode(
 
     context.subscriptions.push(
         fileCountBadgeSubscription,
+        commitMessageGenerationCoordinator,
         { dispose: () => refreshService.dispose() },
         commitGraph,
         commitInfo,

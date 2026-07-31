@@ -1,5 +1,19 @@
+import {
+    access,
+    copyFile,
+    lstat,
+    mkdtemp,
+    readFile,
+    readlink,
+    rename,
+    rm,
+    writeFile,
+} from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
+import { readEmptyTreeOid } from "./emptyTree";
 import { GitExecutor } from "./executor";
+import { resolveGitDir } from "./gitDirectory";
 import type {
     Branch,
     Commit,
@@ -88,6 +102,62 @@ type DefaultBranchRefs = {
     remotesWithDefault: Set<string>;
     defaultLocalNames: Set<string>;
 };
+
+/** Maximum patch bytes retained for one tracked file or the HEAD amend patch. */
+const DIFF_PER_FILE_BYTE_LIMIT = 64 * 1024;
+/** Maximum patch bytes retained across tracked, untracked, and amend sources. */
+const DIFF_CUMULATIVE_BYTE_LIMIT = 256 * 1024;
+/** Maximum bytes read from an untracked file before it is summarized. */
+const UNTRACKED_READ_BYTE_LIMIT = 64 * 1024;
+/** Limits literal pathspec batches so the numstat pre-pass cannot exceed the OS argument limit. */
+const DIFF_NUMSTAT_PATH_BATCH_SIZE = 200;
+/**
+ * Upper bound on a Git object ID's hex length across both formats Git supports today (`sha1`
+ * defaults to 40 hex chars, `sha256` to 64). A same-length placeholder objectId of this length
+ * lets a synthesized symlink-add diff be sized *before* spawning `hash-object`: if it fits the
+ * remaining budget at this worst-case length, the real (equal-or-shorter) hash is guaranteed to
+ * fit too, so the subprocess is only ever spawned when its result will actually be used.
+ */
+const SYMLINK_DIFF_OBJECT_ID_MAX_LENGTH = 64;
+
+type DiffNumstat = {
+    added: number;
+    deleted: number;
+    binary: boolean;
+};
+
+/** Structural information accompanying the bounded patch text supplied to a later prompt builder. */
+export interface DiffForPathsResult {
+    diff: string;
+    summarizedPaths: string[];
+    truncated: boolean;
+}
+
+/** Controls optional patch sources for selected-path diff assembly. */
+export interface GetDiffForPathsOptions {
+    includeHead?: boolean;
+    /**
+     * Immutable, already-validated status for this request's selection boundary.
+     *
+     * When supplied, this snapshot is authoritative for rename expansion and untracked-file
+     * classification, so `getDiffForPaths` does not perform a later status read that could observe
+     * a different working-tree state.
+     */
+    readonly validatedStatusSnapshot?: readonly WorkingFile[];
+}
+
+/**
+ * Raised when an amend request has no available HEAD patch source.
+ *
+ * @public consumed by later host wiring that maps typed diff-assembly failures to user-facing messages.
+ */
+export class UnbornHeadDiffError extends Error {
+    /** Creates the typed refusal used when no amend patch source exists. */
+    constructor() {
+        super("Cannot assemble an amend diff for an unborn HEAD.");
+        this.name = "UnbornHeadDiffError";
+    }
+}
 
 /** Splits Git's tab-delimited branch output into non-empty rows for later validation. */
 function parseBranchRows(result: string): BranchRow[] {
@@ -287,6 +357,18 @@ export class GitOps {
         } catch {
             return false;
         }
+    }
+    /**
+     * Reads up to ten subject lines reachable from the current HEAD for commit-message style context.
+     *
+     * Unlike getLog, this deliberately excludes unrelated refs and avoids spawning Git for an unborn HEAD.
+     */
+    async getRecentCommitSubjects(): Promise<string[]> {
+        if (!(await this.hasAnyCommits())) return [];
+        const output = await this.executor.run(["log", "--format=%s", "-n", "10"]);
+        const subjects = output.split(/\r?\n/);
+        if (subjects.at(-1) === "") subjects.pop();
+        return subjects.slice(0, 10);
     }
     /** Lists configured remotes after filtering invalid remote names and falling back to an empty list. */
     async getRemotes(): Promise<string[]> {
@@ -565,7 +647,265 @@ export class GitOps {
         return result.length > 0;
     }
 
-    /** Stages literal repository paths, skipping files already staged as deletions to avoid re-adding them. */
+    /**
+     * Returns whether Git requires the current repository index to be committed as a whole.
+     *
+     * The marker probe resolves linked-worktree `gitdir:` files before checking merge, sequencer,
+     * and rebase state. It reads the filesystem on every call so callers never act on stale state.
+     */
+    async hasWholeIndexOperationInProgress(): Promise<boolean> {
+        const gitDir = resolveGitDir(await this.getRepositoryRoot());
+        const statePaths = [
+            "MERGE_HEAD",
+            "CHERRY_PICK_HEAD",
+            "REVERT_HEAD",
+            "rebase-merge",
+            "rebase-apply",
+        ].map((statePath) => path.join(gitDir, statePath));
+        const states = await Promise.all(statePaths.map(pathExists));
+        return states.some(Boolean);
+    }
+
+    /**
+     * Assembles the selected working-tree and optional amend patches under strict byte budgets.
+     *
+     * Rename sources come from the caller's validated snapshot or one fresh porcelain snapshot,
+     * and every Git command that receives selected paths enables literal pathspecs before
+     * acquiring bounded output.
+     */
+    async getDiffForPaths(
+        paths: string[],
+        options: GetDiffForPathsOptions = {},
+    ): Promise<DiffForPathsResult> {
+        const selectedPaths = new Set(paths);
+        const statusSnapshot =
+            options.validatedStatusSnapshot ?? (await this.getStatus({ withStats: false }));
+        const renameSources = new Map<string, string>();
+        const untrackedPaths = new Set<string>();
+        for (const file of statusSnapshot) {
+            if (!selectedPaths.has(file.path)) continue;
+            if (file.status === "R" && file.sourcePath)
+                renameSources.set(file.path, file.sourcePath);
+            if (file.status === "?") untrackedPaths.add(file.path);
+        }
+        const expandedPaths = Array.from(new Set([...paths, ...renameSources.values()]));
+        const trackedPaths = expandedPaths.filter((filePath) => !untrackedPaths.has(filePath));
+        const hasHead = await this.hasAnyCommits();
+        if (options.includeHead && !hasHead && paths.length === 0) throw new UnbornHeadDiffError();
+
+        const baseRef = hasHead ? "HEAD" : await this.getEmptyTreeId();
+        const numstatByPath = new Map<string, DiffNumstat>();
+        for (let start = 0; start < trackedPaths.length; start += DIFF_NUMSTAT_PATH_BATCH_SIZE) {
+            const pathBatch = trackedPaths.slice(start, start + DIFF_NUMSTAT_PATH_BATCH_SIZE);
+            // Sequential batches preserve Git-process bounds and the cumulative output budget.
+            // react-doctor-disable-next-line react-doctor/async-await-in-loop
+            const result = await this.executor.runBinary(
+                withLiteralPathspecs(["diff", "--numstat", baseRef, "--", ...pathBatch]),
+                { maxOutputBytes: DIFF_CUMULATIVE_BYTE_LIMIT },
+            );
+            for (const [filePath, numstat] of parseDiffNumstat(result.stdout)) {
+                numstatByPath.set(filePath, numstat);
+            }
+        }
+
+        const diffParts: string[] = [];
+        const summarizedPaths: string[] = [];
+        let usedBytes = 0;
+        const addPart = (part: string): void => {
+            diffParts.push(part);
+            usedBytes += Buffer.byteLength(part);
+        };
+        const summaryPart = (filePath: string, reason: string, numstat?: DiffNumstat): string => {
+            const change = numstat
+                ? numstat.binary
+                    ? "binary file, "
+                    : `+${numstat.added}/-${numstat.deleted} lines, `
+                : "";
+            return `[Diff omitted for ${filePath}: ${change}${reason}.]\n`;
+        };
+        const summarize = (filePath: string, reason: string, numstat?: DiffNumstat): void => {
+            if (!summarizedPaths.includes(filePath)) summarizedPaths.push(filePath);
+            addPart(summaryPart(filePath, reason, numstat));
+        };
+        const summarizeRemoval = (filePath: string): void => {
+            if (!summarizedPaths.includes(filePath)) summarizedPaths.push(filePath);
+            addPart(`[${filePath} was removed while assembling the diff.]\n`);
+        };
+        const acquire = async (
+            filePath: string,
+            args: string[],
+            perSourceLimit: number,
+            expectedExitCodes?: readonly number[],
+            numstat?: DiffNumstat,
+            allowMissingPath: boolean = false,
+        ): Promise<void> => {
+            const remainingBytes = DIFF_CUMULATIVE_BYTE_LIMIT - usedBytes;
+            if (remainingBytes <= 0) {
+                summarize(filePath, "cumulative byte budget reached", numstat);
+                return;
+            }
+            const perFileBudgetReason = "per-file byte budget reached";
+            const cumulativeBudgetReason = "cumulative byte budget reached";
+            const perFileSummaryBytes = Buffer.byteLength(
+                summaryPart(filePath, perFileBudgetReason, numstat),
+            );
+            const budgetReason =
+                perSourceLimit <= remainingBytes - perFileSummaryBytes
+                    ? perFileBudgetReason
+                    : cumulativeBudgetReason;
+            const summaryBytes = Buffer.byteLength(summaryPart(filePath, budgetReason, numstat));
+            const maxOutputBytes = Math.min(perSourceLimit, remainingBytes - summaryBytes);
+            if (maxOutputBytes <= 0) {
+                summarize(filePath, "cumulative byte budget reached", numstat);
+                return;
+            }
+            if (!numstat?.binary && numstat && numstat.added + numstat.deleted > maxOutputBytes) {
+                summarize(filePath, budgetReason, numstat);
+                return;
+            }
+            let result;
+            try {
+                result = await this.executor.runBinary(args, {
+                    expectedExitCodes,
+                    maxOutputBytes,
+                });
+            } catch (error) {
+                if (allowMissingPath && isMissingUntrackedPathError(error)) {
+                    summarizeRemoval(filePath);
+                    return;
+                }
+                throw error;
+            }
+            if (result.truncated) {
+                summarize(filePath, budgetReason, numstat);
+                return;
+            }
+            addPart(result.stdout.toString("utf8"));
+        };
+
+        for (const filePath of trackedPaths) {
+            // Preserve diff ordering and cumulative-byte accounting between paths.
+            // react-doctor-disable-next-line react-doctor/async-await-in-loop
+            await acquire(
+                filePath,
+                withLiteralPathspecs([
+                    "diff",
+                    "--full-index",
+                    "--no-color",
+                    baseRef,
+                    "--",
+                    filePath,
+                ]),
+                DIFF_PER_FILE_BYTE_LIMIT,
+                undefined,
+                numstatByPath.get(filePath),
+            );
+        }
+        let repoRoot: string | undefined;
+        /** Adds an untracked path without allowing Git to follow a symlink target. */
+        const acquireUntrackedPath = async (filePath: string): Promise<void> => {
+            repoRoot ??= await this.getRepositoryRoot();
+            let untrackedStat;
+            try {
+                untrackedStat = await lstat(path.resolve(repoRoot, filePath));
+            } catch (error) {
+                if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+                    summarizeRemoval(filePath);
+                    return;
+                }
+                throw error;
+            }
+            if (untrackedStat.isSymbolicLink()) {
+                let linkTarget: string;
+                try {
+                    linkTarget = await readlink(path.resolve(repoRoot, filePath));
+                } catch (error) {
+                    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+                        summarizeRemoval(filePath);
+                        return;
+                    }
+                    throw error;
+                }
+                const remainingBytes = DIFF_CUMULATIVE_BYTE_LIMIT - usedBytes;
+                const summaryBytes = Buffer.byteLength(
+                    summaryPart(filePath, "cumulative byte budget reached"),
+                );
+                // Size the diff with a worst-case (longest-possible) object ID first so a
+                // symlink met once the budget is already spent never pays for a `hash-object`
+                // spawn whose output would only be discarded (see SYMLINK_DIFF_OBJECT_ID_MAX_LENGTH).
+                const worstCaseDiff = buildSymlinkAddDiff(
+                    filePath,
+                    linkTarget,
+                    "0".repeat(SYMLINK_DIFF_OBJECT_ID_MAX_LENGTH),
+                );
+                if (Buffer.byteLength(worstCaseDiff) > remainingBytes - summaryBytes) {
+                    summarize(filePath, "cumulative byte budget reached");
+                    return;
+                }
+                const objectId = (
+                    await this.executor.runBinary(["hash-object", "--stdin"], {
+                        input: Buffer.from(linkTarget),
+                    })
+                ).stdout
+                    .toString("utf8")
+                    .trim();
+                addPart(buildSymlinkAddDiff(filePath, linkTarget, objectId));
+                return;
+            }
+            if (!untrackedStat.isFile()) {
+                summarize(filePath, "not a regular file; diff omitted");
+                return;
+            }
+            if (untrackedStat.size > UNTRACKED_READ_BYTE_LIMIT) {
+                summarize(
+                    filePath,
+                    `untracked file is ${untrackedStat.size} bytes, per-file byte budget reached`,
+                );
+                return;
+            }
+            await acquire(
+                filePath,
+                withLiteralPathspecs([
+                    "diff",
+                    "--no-index",
+                    "--full-index",
+                    "--no-color",
+                    "--",
+                    "/dev/null",
+                    filePath,
+                ]),
+                Math.min(DIFF_PER_FILE_BYTE_LIMIT, UNTRACKED_READ_BYTE_LIMIT),
+                [0, 1],
+                undefined,
+                true,
+            );
+        };
+        for (const filePath of untrackedPaths) {
+            // Preserve diff ordering and cumulative-byte accounting between paths.
+            // react-doctor-disable-next-line react-doctor/async-await-in-loop
+            await acquireUntrackedPath(filePath);
+        }
+        if (options.includeHead && hasHead) {
+            await acquire(
+                "HEAD",
+                withLiteralPathspecs(["show", "--format=", "--no-color", "HEAD"]),
+                DIFF_PER_FILE_BYTE_LIMIT,
+            );
+        }
+
+        return {
+            diff: diffParts.join(""),
+            summarizedPaths,
+            truncated: summarizedPaths.length > 0,
+        };
+    }
+
+    /** Derives the repository's empty-tree object ID without assuming a SHA-1 object format. */
+    private async getEmptyTreeId(): Promise<string> {
+        return readEmptyTreeOid(this.executor);
+    }
+
+    /** Stages literal repository paths, including selected deletions and rename sources. */
     async stageFiles(paths: string[]): Promise<void> {
         if (paths.length === 0) return;
         const pathsToStage = await this.excludeAlreadyStagedDeletedPaths(paths);
@@ -597,10 +937,111 @@ export class GitOps {
         if (paths.length === 0) return;
         await this.executor.run(withLiteralPathspecs(["reset", "HEAD", "--", ...paths]));
     }
-    /** Creates or amends a commit with the caller-provided message and returns Git output. */
-    async commit(message: string, amend: boolean = false): Promise<string> {
+    /**
+     * Runs an index-mutating operation while restoring the exact original index on success or failure.
+     * The index path is Git-resolved so linked worktrees snapshot their own index rather than a guessed `.git` path.
+     * A restore failure is surfaced as a distinct error rather than masking the operation's own
+     * outcome: the operation's error (or success) always stays the primary signal.
+     */
+    async withIndexSnapshot<T>(operation: () => Promise<T>): Promise<T> {
+        const repoRoot = await this.getRepositoryRoot();
+        const reportedIndexPath = (
+            await this.executor.run(["rev-parse", "--git-path", "index"])
+        ).trim();
+        const indexPath = path.isAbsolute(reportedIndexPath)
+            ? reportedIndexPath
+            : path.resolve(repoRoot, reportedIndexPath);
+        const snapshotDirectory = await mkdtemp(path.join(tmpdir(), "intelligit-index-"));
+
+        try {
+            const snapshotPath = path.join(snapshotDirectory, "index");
+            await copyFile(indexPath, snapshotPath);
+
+            const outcome = await operation().then(
+                (value) => ({ succeeded: true as const, value }),
+                (error: unknown) => ({ succeeded: false as const, error }),
+            );
+
+            try {
+                await this.restoreIndexSnapshot(snapshotPath, indexPath);
+            } catch (restoreError) {
+                if (!outcome.succeeded) {
+                    throw new Error(
+                        `The Git operation failed (${getErrorMessage(outcome.error)}), and restoring the Git index snapshot also failed (${getErrorMessage(restoreError)}). The index may be left with the commit's temporary unstaging applied.`,
+                        { cause: outcome.error },
+                    );
+                }
+                throw new Error(
+                    `The commit succeeded, but restoring the Git index snapshot failed (${getErrorMessage(restoreError)}). The index may be left with the commit's temporary unstaging applied.`,
+                    { cause: restoreError },
+                );
+            }
+
+            if (!outcome.succeeded) throw outcome.error;
+            return outcome.value;
+        } finally {
+            await rm(snapshotDirectory, { recursive: true, force: true });
+        }
+    }
+
+    /**
+     * Restores a snapshotted index atomically: the snapshot is written to an exclusively created
+     * `<index>.lock` file and then renamed onto the index, so a concurrent reader such as
+     * `git status` never observes a partially written file.
+     *
+     * An existing `.lock` file means another Git process is currently writing the index; this is
+     * retried briefly since that window is normally sub-second. If contention persists past the
+     * retry budget, restoring the user's index takes priority over strict atomicity, so this
+     * falls back to a direct, non-atomic copy rather than failing the restore outright.
+     */
+    private async restoreIndexSnapshot(snapshotPath: string, indexPath: string): Promise<void> {
+        const lockPath = `${indexPath}.lock`;
+        const maxAttempts = 3;
+        const retryDelayMs = 50;
+        const snapshotBytes = await readFile(snapshotPath);
+
+        for (let attempt = 0; attempt < maxAttempts; attempt++) {
+            try {
+                // Lock creation retries must remain serialized.
+                // react-doctor-disable-next-line react-doctor/async-await-in-loop
+                await writeFile(lockPath, snapshotBytes, { flag: "wx" });
+            } catch (error) {
+                if (!isLockAlreadyExistsError(error)) throw error;
+                if (attempt < maxAttempts - 1) {
+                    await new Promise<void>((resolve) => setTimeout(resolve, retryDelayMs));
+                    continue;
+                }
+                // Lock contention persisted past the retry window, so another Git process is
+                // still writing the index. Restoring the user's index takes priority over strict
+                // atomicity here, so fall back to a direct copy instead of failing the restore.
+                await copyFile(snapshotPath, indexPath);
+                return;
+            }
+            try {
+                await rename(lockPath, indexPath);
+                return;
+            } catch (renameError) {
+                await rm(lockPath, { force: true });
+                throw renameError;
+            }
+        }
+    }
+
+    /**
+     * Creates or amends a commit, limiting panel-owned path requests while preserving whole-index Git states.
+     *
+     * Omitting `paths` keeps existing callers' bare-commit behavior intact. Passing an empty array for an
+     * amend request makes a message-only amend, and a whole-index operation always keeps Git's bare commit.
+     */
+    async commit(message: string, amend: boolean = false, paths?: string[]): Promise<string> {
         const args = ["commit", "-m", message];
         if (amend) args.push("--amend");
+        if (paths === undefined) return this.executor.run(args);
+        if (await this.hasWholeIndexOperationInProgress()) return this.executor.run(args);
+        if (paths.length > 0) {
+            return this.executor.run(withLiteralPathspecs([...args, "--only", "--", ...paths]));
+        }
+        if (amend) args.push("--only");
         return this.executor.run(args);
     }
     /**
@@ -673,12 +1114,24 @@ export class GitOps {
         const remote = upstream.split("/")[0];
         if (!remote) return;
         assertValidRemoteName(remote);
+        let lsRemoteResult;
         try {
-            await this.executor.run(["ls-remote", "--exit-code", remote]);
+            lsRemoteResult = await this.executor.runBinary(["ls-remote", "--exit-code", remote], {
+                expectedExitCodes: [0, 2],
+            });
         } catch (err) {
             throw new Error(
                 `Push remote "${remote}" is unavailable. Verify the remote repository still exists, update the remote URL, or use Publish Branch to configure a new remote. ${getErrorMessage(err)}`,
                 { cause: err },
+            );
+        }
+        if (lsRemoteResult.exitCode === 2) {
+            const error = new Error(
+                `git ls-remote --exit-code exited with 2: ${lsRemoteResult.stderr.toString("utf8").trim() || "(no stderr)"}`,
+            );
+            throw new Error(
+                `Push remote "${remote}" reached but reported no refs; it may simply be empty (no branches yet). Verify the remote repository still exists, update the remote URL, or use Publish Branch to configure a new remote. ${getErrorMessage(error)}`,
+                { cause: error },
             );
         }
     }
@@ -1224,8 +1677,137 @@ function isNoUpstreamPushError(err: unknown): boolean {
     const message = getErrorMessage(err).toLowerCase();
     return message.includes("has no upstream branch");
 }
+
 function withLiteralPathspecs(args: string[]): string[] {
     return ["--literal-pathspecs", ...args];
+}
+
+/** Parses Git's line-oriented numstat output into a path-keyed change summary. */
+function parseDiffNumstat(output: Buffer): Map<string, DiffNumstat> {
+    const stats = new Map<string, DiffNumstat>();
+    for (const line of output.toString("utf8").split("\n")) {
+        const [added, deleted, filePath] = line.split("\t", 3);
+        if (!filePath || added === undefined || deleted === undefined) continue;
+        const binary = added === "-" || deleted === "-";
+        const addedLines = Number(added);
+        const deletedLines = Number(deleted);
+        if (
+            (!binary &&
+                (!Number.isSafeInteger(addedLines) || !Number.isSafeInteger(deletedLines))) ||
+            addedLines < 0 ||
+            deletedLines < 0
+        )
+            continue;
+        stats.set(normalizeGitNumstatPath(filePath), {
+            added: binary ? 0 : addedLines,
+            deleted: binary ? 0 : deletedLines,
+            binary,
+        });
+    }
+    return stats;
+}
+
+/** Git's default (`core.quotePath=true`) short mnemonic escapes for individual path bytes. */
+const GIT_PATH_SHORT_ESCAPES: ReadonlyMap<number, string> = new Map([
+    [0x07, "\\a"],
+    [0x08, "\\b"],
+    [0x09, "\\t"],
+    [0x0a, "\\n"],
+    [0x0b, "\\v"],
+    [0x0c, "\\f"],
+    [0x0d, "\\r"],
+    [0x22, '\\"'],
+    [0x5c, "\\\\"],
+]);
+
+/** True when a byte forces Git's default C-style path quoting: control chars, DEL, non-ASCII, `"`, or `\`. */
+function isGitPathQuoteByte(byte: number): boolean {
+    return byte < 0x20 || byte > 0x7e || byte === 0x22 || byte === 0x5c;
+}
+
+/** Renders one path byte verbatim, or Git-escaped (short mnemonic, else zero-padded `\nnn` octal) when it is quote-worthy. */
+function escapeGitPathByte(byte: number): string {
+    if (!isGitPathQuoteByte(byte)) return String.fromCharCode(byte);
+    return GIT_PATH_SHORT_ESCAPES.get(byte) ?? `\\${byte.toString(8).padStart(3, "0")}`;
+}
+
+/**
+ * Quotes a `diff --git`/`+++` display path (e.g. `b/${filePath}`) the way Git quotes it by
+ * default (`core.quotePath=true`): left bare when every byte is plain ASCII, otherwise wrapped in
+ * double quotes with each quote-worthy byte C-escaped individually (UTF-8 bytes, not code points,
+ * so one non-ASCII character can expand into several octal escapes).
+ */
+function quoteGitDiffPath(displayPath: string): { text: string; quoted: boolean } {
+    const bytes = Buffer.from(displayPath, "utf8");
+    if (!bytes.some(isGitPathQuoteByte)) {
+        return { text: displayPath, quoted: false };
+    }
+    let escaped = "";
+    for (const byte of bytes) escaped += escapeGitPathByte(byte);
+    return { text: `"${escaped}"`, quoted: true };
+}
+
+/**
+ * Builds the `@@ -0,0 +1[,N] @@` hunk for a brand-new file whose sole content is `content`,
+ * matching Git's line splitting: every `\n`-terminated segment becomes its own `+` line, and the
+ * trailing `\ No newline at end of file` marker is emitted only when `content` itself does not
+ * end with a newline.
+ */
+function buildAddedContentHunk(content: string): string {
+    const endsWithNewline = content.endsWith("\n");
+    const lines = (endsWithNewline ? content.slice(0, -1) : content).split("\n");
+    const header = lines.length === 1 ? "@@ -0,0 +1 @@" : `@@ -0,0 +1,${lines.length} @@`;
+    const body = lines.map((line) => `+${line}`).join("\n");
+    const noNewlineMarker = endsWithNewline ? "" : "\n\\ No newline at end of file";
+    return `${header}\n${body}${noNewlineMarker}\n`;
+}
+
+/**
+ * Assembles the full synthesized `git diff`-shaped text for adding a new symlink whose target is
+ * `linkTarget`, without ever invoking Git. Paths are C-quoted the way `core.quotePath=true` quotes
+ * them; `objectId` stands in for the new blob's hash so callers can pass a same-length placeholder
+ * (see `SYMLINK_DIFF_OBJECT_ID_MAX_LENGTH`) to size the diff before hashing anything.
+ */
+function buildSymlinkAddDiff(filePath: string, linkTarget: string, objectId: string): string {
+    const aSide = quoteGitDiffPath(`a/${filePath}`);
+    const bSide = quoteGitDiffPath(`b/${filePath}`);
+    const bTrailer = !bSide.quoted && filePath.includes(" ") ? "\t" : "";
+    return (
+        `diff --git ${aSide.text} ${bSide.text}\n` +
+        `new file mode 120000\n` +
+        `index ${"0".repeat(objectId.length)}..${objectId}\n` +
+        `--- /dev/null\n` +
+        `+++ ${bSide.text}${bTrailer}\n` +
+        buildAddedContentHunk(linkTarget)
+    );
+}
+
+/** Identifies an untracked path that vanished between the porcelain snapshot and no-index diff. */
+function isMissingUntrackedPathError(error: unknown): boolean {
+    const message = getErrorMessage(error).toLowerCase();
+    return (
+        (error as NodeJS.ErrnoException).code === "ENOENT" ||
+        isMissingGitPathError(message) ||
+        message.includes("no such file or directory") ||
+        message.includes("could not access")
+    );
+}
+
+/** Returns whether a Git operation-state marker currently exists. */
+async function pathExists(filePath: string): Promise<boolean> {
+    try {
+        await access(filePath);
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+/** Returns whether an `fs` error indicates the target path already exists (e.g. `EEXIST` from an exclusive create). */
+function isLockAlreadyExistsError(error: unknown): boolean {
+    return (
+        typeof error === "object" && error !== null && "code" in error && error.code === "EEXIST"
+    );
 }
 
 /** Returns whether Git reported a path absent from an otherwise valid treeish. */

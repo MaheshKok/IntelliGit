@@ -5,6 +5,11 @@
 import * as path from "path";
 import * as vscode from "vscode";
 import { GitOps } from "../git/operations";
+import {
+    CommitMessageGenerationCoordinator,
+    type CommitMessageGenerationHost,
+} from "../ai/commitMessageGenerationCoordinator";
+import { showCommitMessageGenerationNotification } from "../ai/commitMessageGenerationNotifications";
 import type { Branch, CommitDetail, ThemeFolderIconMap } from "../types";
 import { buildWebviewShellHtml } from "./webviewHtml";
 import { decorateShelfFiles, shelfFilePaths } from "./shelfIconDecoration";
@@ -142,6 +147,21 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         filePath: string;
     }>();
     readonly onOpenCommitFileDiff = this._onOpenCommitFileDiff.event;
+    private readonly commitMessageGenerationHost: CommitMessageGenerationHost = {
+        emit: (event) => {
+            this.postToWebview({ type: "commitMessageGeneration", ...event });
+            if (event.kind === "error" && event.errorKind) {
+                void showCommitMessageGenerationNotification(event.errorKind).catch(
+                    (error: unknown) => {
+                        console.error(
+                            "[IntelliGit] Commit-message generation notification failed:",
+                            error,
+                        );
+                    },
+                );
+            }
+        },
+    };
     /**
      * Creates the Changes provider for the active repository activation path.
      *
@@ -159,6 +179,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             repositoryRoot: string,
         ) => ShelfService | undefined,
         private readonly shelfRemoveOnUnshelve: boolean = true,
+        private readonly commitMessageGenerationCoordinator?: CommitMessageGenerationCoordinator,
     ) {
         this.iconTheme = new IconThemeService(this.extensionUri);
         this.loadStoredChangedFileCounts();
@@ -196,6 +217,10 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             return;
         }
         for (const runtime of this.runtimes.values()) {
+            this.commitMessageGenerationCoordinator?.dropHostRoot(
+                this.commitMessageGenerationHost,
+                runtime.repository.root,
+            );
             this.invalidateRuntime(runtime);
         }
         this.disposeAllRuntimeWatchers();
@@ -232,6 +257,10 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
 
         for (const [root, runtime] of this.runtimes) {
             if (nextRoots.has(root)) continue;
+            this.commitMessageGenerationCoordinator?.dropHostRoot(
+                this.commitMessageGenerationHost,
+                root,
+            );
             this.expandedRepositoryRoots.delete(root);
             this.disposeRuntimeWatcher(root);
             this.invalidateRuntime(runtime);
@@ -267,7 +296,10 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 ? this.activeRepositoryRoot
                 : (repositories[0]?.root ?? null));
         const activeChanged = previousActiveRoot !== this.activeRepositoryRoot;
-        if (activeChanged && previousActiveRuntime) this.invalidateRuntime(previousActiveRuntime);
+        if (activeChanged && previousActiveRuntime) {
+            this.dropCommitMessageGenerationForRetainedRoot(previousActiveRoot, nextRoots);
+            this.invalidateRuntime(previousActiveRuntime);
+        }
 
         this.updateAggregateChangedFileCount();
 
@@ -280,6 +312,18 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         if (activeChanged && previousActiveRoot !== null && activeRuntime) {
             void this.scanRepositoryFileCount(activeRuntime);
         }
+    }
+
+    /** Cancels a generation owned by this host when the previous active runtime remains registered. */
+    private dropCommitMessageGenerationForRetainedRoot(
+        previousActiveRoot: string | null,
+        nextRoots: ReadonlySet<string>,
+    ): void {
+        if (previousActiveRoot === null || !nextRoots.has(previousActiveRoot)) return;
+        this.commitMessageGenerationCoordinator?.dropHostRoot(
+            this.commitMessageGenerationHost,
+            previousActiveRoot,
+        );
     }
 
     /** Clears active-repository state and restores its persisted draft after a repository change. */
@@ -505,15 +549,21 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
      * The active single-repository UI still consumes this as an `update` message; Task 4 can reuse
      * the same payload for per-row accordion state without re-querying Git.
      */
-    private snapshotForRuntime(
+    private async snapshotForRuntime(
         runtime: CommitPanelRepositoryRuntime,
-    ): CommitPanelRepositorySnapshot {
+    ): Promise<CommitPanelRepositorySnapshot> {
         const { folderIcons, iconFonts } = this.iconTheme.getThemeData();
+        const [hasCommits, wholeIndexOperationInProgress] = await Promise.all([
+            runtime.gitOps.hasAnyCommits(),
+            runtime.gitOps.hasWholeIndexOperationInProgress(),
+        ]);
         return {
             repositoryRoot: runtime.repository.root,
             repositoryLabel: runtime.repository.label,
             changedFileCount: this.countChangedFiles(runtime),
             files: runtime.files,
+            hasCommits,
+            wholeIndexOperationInProgress,
             stashes: runtime.stashes,
             stashFiles: runtime.stashFiles,
             selectedStashIndex: runtime.selectedStashIndex,
@@ -723,6 +773,15 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         }
     }
 
+    /** Holds the shared commit lease for a runtime-scoped commit so generation cannot race it. */
+    private acquireCommitLeaseForRuntime(
+        runtime: CommitPanelRepositoryRuntime | undefined,
+    ): (() => void) | undefined {
+        return runtime
+            ? this.commitMessageGenerationCoordinator?.acquireCommitLease(runtime.repository.root)
+            : undefined;
+    }
+
     private actionDepsForRuntime(runtime?: CommitPanelRepositoryRuntime) {
         return {
             gitOps: runtime?.gitOps ?? this.gitOps,
@@ -802,7 +861,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         runtime.shelves = await decorateShelfFiles(this.iconTheme, listed.shelves);
         runtime.catalogGeneration = listed.catalogGeneration;
         runtime.selectedShelfId = shelfId;
-        this.postWorkingTreeSnapshot(runtime);
+        await this.postWorkingTreeSnapshot(runtime);
     }
 
     /** Runs one correlated shelf mutation and scopes its completion to the addressed runtime. */
@@ -1000,7 +1059,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             if (!webviewView.visible) return;
             const runtime = this.getActiveRuntime();
             if (!runtime) return;
-            this.postWorkingTreeSnapshot(runtime);
+            void this.postWorkingTreeSnapshot(runtime).catch(() => {});
             this.refreshAllRepositoriesWithErrorHandling(true);
         });
         this.postRepositoryListHydration();
@@ -1041,16 +1100,16 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         );
     }
     /**
-     * Posts the cached working-tree snapshot without performing Git I/O.
+     * Posts a working-tree snapshot after awaiting snapshotForRuntime's Git I/O.
      *
      * This is used when a newly-ready webview reconnects so it can render the most recent file list
      * immediately, before the follow-up silent refresh reconciles any changes that happened while
      * the webview was hidden or loading.
      */
-    private postWorkingTreeSnapshot(runtime: CommitPanelRepositoryRuntime): void {
+    private async postWorkingTreeSnapshot(runtime: CommitPanelRepositoryRuntime): Promise<void> {
         this.postToWebview({
             type: "update",
-            ...this.snapshotForRuntime(runtime),
+            ...(await this.snapshotForRuntime(runtime)),
         });
     }
 
@@ -1182,7 +1241,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 this.updateAggregateChangedFileCount();
                 this.postToWebview({
                     type: "update",
-                    ...this.snapshotForRuntime(runtime),
+                    ...(await this.snapshotForRuntime(runtime)),
                 });
                 this.postRepositoryListHydration();
             }
@@ -1341,7 +1400,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         const runtime = this.getActiveRuntime();
         this.postRepositoryListHydration();
         if (runtime) {
-            this.postWorkingTreeSnapshot(runtime);
+            await this.postWorkingTreeSnapshot(runtime);
             // The snapshot above comes from an empty cache on a cold start, so the first
             // load announces itself: the panel would otherwise sit on "No shelves." with
             // no sign that Git is still being read. The refresh itself stays silent and
@@ -1410,14 +1469,21 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                     runtime.stashFiles = state.stashFiles;
                     runtime.folderIconsByName = state.folderIconsByName;
                 },
-                postUpdate: (message) =>
+                postUpdate: async (message) => {
+                    const [hasCommits, wholeIndexOperationInProgress] = await Promise.all([
+                        runtime.gitOps.hasAnyCommits(),
+                        runtime.gitOps.hasWholeIndexOperationInProgress(),
+                    ]);
                     this.postToWebview({
                         ...message,
                         repositoryRoot: runtime.repository.root,
                         shelves: runtime.shelves,
                         catalogGeneration: runtime.catalogGeneration,
                         selectedShelfId: runtime.selectedShelfId,
-                    }),
+                        hasCommits,
+                        wholeIndexOperationInProgress,
+                    });
+                },
             },
             index,
         );
@@ -1432,6 +1498,14 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
      */
     private async handleMessage(raw: unknown): Promise<void> {
         const msg = assertMessage(raw);
+        if (msg.type === "generateCommitMessage") {
+            this.handleGenerateCommitMessage(msg);
+            return;
+        }
+        if (msg.type === "cancelCommitMessageGeneration") {
+            this.handleCancelCommitMessageGeneration(msg);
+            return;
+        }
         this.validateKnownRepositoryRoot(msg);
         const activeRuntime = () => this.requireActiveRuntime();
         const scopedRuntime = () => this.runtimeForMessage(msg);
@@ -1555,32 +1629,50 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 );
                 break;
             case "commitSelected": {
-                const actionDeps = this.actionDepsForRuntime(scopedRuntime());
+                const runtime = scopedRuntime();
+                const actionDeps = this.actionDepsForRuntime(runtime);
                 const message = (typeof msg.message === "string" ? msg.message : "").trim();
-                await commitSelectedFromPanel(actionDeps, {
-                    message,
-                    amend: msg.amend === true,
-                    push: msg.push === true,
-                    paths: assertRepoPathArray(msg.paths, "paths"),
-                });
+                const release = this.acquireCommitLeaseForRuntime(runtime);
+                try {
+                    await commitSelectedFromPanel(actionDeps, {
+                        message,
+                        amend: msg.amend === true,
+                        push: msg.push === true,
+                        paths: assertRepoPathArray(msg.paths, "paths"),
+                    });
+                } finally {
+                    release?.();
+                }
                 break;
             }
             case "commit": {
+                const runtime = scopedRuntime();
                 const message = (typeof msg.message === "string" ? msg.message : "").trim();
-                await commitOnlyFromPanel(
-                    this.actionDepsForRuntime(scopedRuntime()),
-                    message,
-                    msg.amend === true,
-                );
+                const release = this.acquireCommitLeaseForRuntime(runtime);
+                try {
+                    await commitOnlyFromPanel(
+                        this.actionDepsForRuntime(runtime),
+                        message,
+                        msg.amend === true,
+                    );
+                } finally {
+                    release?.();
+                }
                 break;
             }
             case "commitAndPush": {
+                const runtime = scopedRuntime();
                 const message = (typeof msg.message === "string" ? msg.message : "").trim();
-                await commitAndPushFromPanel(
-                    this.actionDepsForRuntime(scopedRuntime()),
-                    message,
-                    msg.amend === true,
-                );
+                const release = this.acquireCommitLeaseForRuntime(runtime);
+                try {
+                    await commitAndPushFromPanel(
+                        this.actionDepsForRuntime(runtime),
+                        message,
+                        msg.amend === true,
+                    );
+                } finally {
+                    release?.();
+                }
                 break;
             }
             case "getLastCommitMessage": {
@@ -1690,6 +1782,82 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 await deleteFileFromPanel(this.fileActionDepsForRuntime(scopedRuntime()), msg.path);
                 break;
         }
+    }
+
+    /** Registers a docked generation before the coordinator serializes its one fresh status validation. */
+    private handleGenerateCommitMessage(message: { [key: string]: unknown }): void {
+        const repositoryRoot = message.repositoryRoot;
+        const requestId = message.requestId;
+        if (typeof repositoryRoot !== "string" || typeof requestId !== "string") return;
+        const reject = () => this.postInvalidCommitMessageGeneration(repositoryRoot, requestId);
+        const amend = message.amend;
+        if (typeof amend !== "boolean") {
+            reject();
+            return;
+        }
+        const runtime = this.runtimes.get(repositoryRoot);
+        const coordinator = this.commitMessageGenerationCoordinator;
+        if (!runtime || !coordinator) {
+            reject();
+            return;
+        }
+        let paths: string[];
+        try {
+            paths = Array.from(new Set(assertRepoPathArray(message.paths, "paths")));
+        } catch {
+            reject();
+            return;
+        }
+        coordinator.submit({
+            repositoryRoot,
+            requestId,
+            host: this.commitMessageGenerationHost,
+            validate: async (control) => {
+                // The post-await active check is the generation cancellation fence.
+                // react-doctor-disable-next-line react-doctor/async-defer-await
+                const validatedStatusSnapshot = await runtime.gitOps.getStatus({
+                    withStats: false,
+                });
+                if (!control.isActive()) return undefined;
+                const selectablePaths = new Set<string>();
+                for (const file of validatedStatusSnapshot) {
+                    if (file.status !== "!") selectablePaths.add(file.path);
+                }
+                if (paths.some((filePath) => !selectablePaths.has(filePath))) return undefined;
+                if (paths.length === 0 && !amend) return undefined;
+                if (amend) {
+                    const hasAnyCommits = await runtime.gitOps.hasAnyCommits();
+                    if (!control.isActive() || !hasAnyCommits) return undefined;
+                }
+                return { paths, amend, validatedStatusSnapshot };
+            },
+        });
+    }
+
+    /** Cancels only the current provider host's exact correlated generation request. */
+    private handleCancelCommitMessageGeneration(message: { [key: string]: unknown }): void {
+        const repositoryRoot = message.repositoryRoot;
+        const requestId = message.requestId;
+        if (typeof repositoryRoot !== "string" || typeof requestId !== "string") return;
+        if (!this.runtimes.has(repositoryRoot) || !this.commitMessageGenerationCoordinator) {
+            this.postInvalidCommitMessageGeneration(repositoryRoot, requestId);
+            return;
+        }
+        this.commitMessageGenerationCoordinator.cancel({
+            repositoryRoot,
+            requestId,
+            host: this.commitMessageGenerationHost,
+        });
+    }
+
+    /** Emits a correlated rejection without routing a generation boundary failure through generic webview errors. */
+    private postInvalidCommitMessageGeneration(repositoryRoot: string, requestId: string): void {
+        this.commitMessageGenerationHost.emit({
+            repositoryRoot,
+            requestId,
+            kind: "error",
+            errorKind: "invalidRequest",
+        });
     }
 
     /** Confirms and aborts an active merge, then refreshes all conflict and working-tree surfaces. */
@@ -1810,6 +1978,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
      * Releases theme listeners, icon resources, and event emitters owned by the Changes provider.
      */
     dispose(): void {
+        this.commitMessageGenerationCoordinator?.dropHost(this.commitMessageGenerationHost);
         this.disposeAllRuntimeWatchers();
         this.iconTheme.dispose();
         this.disposeThemeChangeDisposables();

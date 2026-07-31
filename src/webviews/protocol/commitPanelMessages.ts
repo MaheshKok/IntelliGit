@@ -95,6 +95,15 @@ export interface CommitPanelRepositorySnapshot {
     changedFileCount?: number;
     /** Working-tree and index entries parsed from `git status` and numstat output. */
     files: WorkingFile[];
+    /**
+     * Whether the snapshot's repository has a reachable HEAD commit.
+     *
+     * The extension host derives this from the root-bound GitOps facade; consumers must not infer
+     * it from branch metadata because unborn repositories and detached HEADs have distinct states.
+     */
+    hasCommits: boolean;
+    /** Whether a whole-index Git operation currently fences commit-message generation. */
+    wholeIndexOperationInProgress: boolean;
     /** Stashed changes parsed from `git stash list`; indices are not stable after refresh. */
     stashes: StashEntry[];
     /** Files for `selectedStashIndex`, parsed from `git stash show` output. */
@@ -230,6 +239,26 @@ export type OutboundMessage =
           /** Whether a successful commit should be followed by a push. */
           push: boolean;
       }>
+    | {
+          /** Starts a correlated Copilot commit-message generation attempt for one known repository. */
+          type: "generateCommitMessage";
+          /** Exact host-discovered repository root. */
+          repositoryRoot: string;
+          /** Opaque webview correlation token. */
+          requestId: string;
+          /** Repository-relative status destinations selected by the webview. */
+          paths: string[];
+          /** Whether generation includes the current HEAD commit for amend context. */
+          amend: boolean;
+      }
+    | {
+          /** Cancels the exact correlated Copilot commit-message generation attempt. */
+          type: "cancelCommitMessageGeneration";
+          /** Exact host-discovered repository root. */
+          repositoryRoot: string;
+          /** Opaque webview correlation token. */
+          requestId: string;
+      }
     | RepositoryScopedMessage<{
           /** Command committing currently staged changes without staging panel selections first. */
           type: "commit";
@@ -532,6 +561,32 @@ export type InboundMessage =
           /** Omitted legacy events clear the draft; only false preserves it. */
           clearCommitMessage?: boolean;
       }>
+    | {
+          /** Correlated structural lifecycle event for one Copilot commit-message request. */
+          type: "commitMessageGeneration";
+          /** Exact repository root that owns this generation attempt. */
+          repositoryRoot: string;
+          /** Opaque request token echoed from the initiating webview message. */
+          requestId: string;
+          /** Lifecycle stage with no host-specific UI behavior embedded in the protocol. */
+          kind: "start" | "chunk" | "done" | "cancelled" | "error";
+          /** Incremental generated text, present only for a `chunk` event. */
+          text?: string;
+          /** Stable host-renderable failure category, present only for an `error` event. */
+          errorKind?:
+              | "copilotUnavailable"
+              | "notFound"
+              | "noPermissions"
+              | "blocked"
+              | "unknown"
+              | "promptTooLarge"
+              | "emptyResult"
+              | "operationInProgress"
+              | "commitInProgress"
+              | "invalidRequest";
+          /** True only when a newer request or commit fence superseded this request. */
+          superseded?: boolean;
+      }
     | RepositoryIdentifiedMessage<{
           /** Event acknowledging that a correlated stash mutation attempt has fully finished. */
           type: "stashMutationCompleted";

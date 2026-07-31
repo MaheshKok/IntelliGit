@@ -436,7 +436,11 @@ describe("webview ui smoke", () => {
                     label="Changes"
                     isOpen={true}
                     onToggleOpen={onToggleOpen}
-                    checkbox={{ isAllChecked: false, isSomeChecked: false, onToggle: checkboxToggle }}
+                    checkbox={{
+                        isAllChecked: false,
+                        isSomeChecked: false,
+                        onToggle: checkboxToggle,
+                    }}
                 />
             </ChakraProvider>,
         );
@@ -446,7 +450,9 @@ describe("webview ui smoke", () => {
         expect(header.tabIndex).toBe(0);
         expect(header.getAttribute("aria-expanded")).toBe("true");
         act(() => header.click());
-        act(() => header.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
+        act(() =>
+            header.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })),
+        );
         const space = new KeyboardEvent("keydown", { key: " ", bubbles: true, cancelable: true });
         act(() => header.dispatchEvent(space));
         expect(space.defaultPrevented).toBe(true);
@@ -463,16 +469,21 @@ describe("webview ui smoke", () => {
                 <SectionHeader label="Changes" isOpen={false} onToggleOpen={vi.fn()} />
             </ChakraProvider>,
         );
-        expect(closed.container.querySelector('[role="button"]')?.getAttribute("aria-expanded")).toBe(
-            "false",
-        );
+        expect(
+            closed.container.querySelector('[role="button"]')?.getAttribute("aria-expanded"),
+        ).toBe("false");
         unmount(closed.root, closed.container);
     });
 
     it("mirrors checkbox focus on the visual shell while preserving native input behavior", () => {
         const onChange = vi.fn();
         const mounted = mount(
-            <VscCheckbox isChecked={true} isIndeterminate={true} onChange={onChange} ariaLabel="Changes" />,
+            <VscCheckbox
+                isChecked={true}
+                isIndeterminate={true}
+                onChange={onChange}
+                ariaLabel="Changes"
+            />,
         );
         const input = mounted.container.querySelector("input") as HTMLInputElement;
         const shell = input.nextElementSibling as HTMLElement;
@@ -490,6 +501,222 @@ describe("webview ui smoke", () => {
         expect(onChange).toHaveBeenCalledOnce();
         unmount(mounted.root, mounted.container);
     });
+
+    it("does not invoke disabled checkbox changes", () => {
+        const onChange = vi.fn();
+        const mounted = mount(
+            <VscCheckbox isChecked={false} onChange={onChange} disabled={true} ariaLabel="Amend" />,
+        );
+        const input = mounted.container.querySelector("input") as HTMLInputElement;
+
+        expect(input.disabled).toBe(true);
+        act(() => input.click());
+        expect(onChange).not.toHaveBeenCalled();
+        unmount(mounted.root, mounted.container);
+    });
+
+    it("uses commit history and checked paths to gate amend and idle generation", () => {
+        const onGenerate = vi.fn();
+        const noop = vi.fn();
+        const detached = mount(
+            <ChakraProvider theme={theme}>
+                <CommitArea
+                    commitMessage="feat: message"
+                    isAmend={false}
+                    onMessageChange={noop}
+                    onAmendChange={noop}
+                    onCommit={noop}
+                    onPush={noop}
+                    canCommit={true}
+                    canPush={true}
+                    pushLabel="common.push"
+                    currentBranchName={null}
+                    currentBranchUpstream={null}
+                    hasCommits={true}
+                    hasCheckedPaths={true}
+                    onGenerateMessage={onGenerate}
+                />
+            </ChakraProvider>,
+        );
+        const detachedAmend = detached.container.querySelector(
+            '[data-testid="amend-checkbox"]',
+        ) as HTMLInputElement;
+        const generate = detached.container.querySelector(
+            'button[aria-label="Generate commit message"]',
+        ) as HTMLButtonElement;
+
+        expect(detachedAmend.disabled).toBe(false);
+        expect(generate.disabled).toBe(false);
+        act(() => generate.click());
+        expect(onGenerate).toHaveBeenCalledOnce();
+        unmount(detached.root, detached.container);
+
+        const noPaths = mount(
+            <ChakraProvider theme={theme}>
+                <CommitArea
+                    commitMessage="feat: message"
+                    isAmend={false}
+                    onMessageChange={noop}
+                    onAmendChange={noop}
+                    onCommit={noop}
+                    onPush={noop}
+                    canCommit={true}
+                    canPush={true}
+                    pushLabel="common.push"
+                    currentBranchName="main"
+                    currentBranchUpstream="origin/main"
+                    hasCommits={true}
+                    hasCheckedPaths={false}
+                    wholeIndexOperationInProgress={false}
+                />
+            </ChakraProvider>,
+        );
+        const noPathsGenerate = noPaths.container.querySelector(
+            'button[aria-label="Generate commit message"]',
+        ) as HTMLButtonElement;
+
+        expect(noPathsGenerate.disabled).toBe(true);
+        unmount(noPaths.root, noPaths.container);
+
+        const zeroPathAmend = mount(
+            <ChakraProvider theme={theme}>
+                <CommitArea
+                    commitMessage="feat: message"
+                    isAmend={true}
+                    onMessageChange={noop}
+                    onAmendChange={noop}
+                    onCommit={noop}
+                    onPush={noop}
+                    canCommit={true}
+                    canPush={true}
+                    pushLabel="common.push"
+                    currentBranchName="main"
+                    currentBranchUpstream="origin/main"
+                    hasCommits={true}
+                    hasCheckedPaths={false}
+                    wholeIndexOperationInProgress={false}
+                />
+            </ChakraProvider>,
+        );
+        const zeroPathAmendGenerate = zeroPathAmend.container.querySelector(
+            'button[aria-label="Generate commit message"]',
+        ) as HTMLButtonElement;
+
+        expect(zeroPathAmendGenerate.disabled).toBe(false);
+        unmount(zeroPathAmend.root, zeroPathAmend.container);
+
+        const wholeIndex = mount(
+            <ChakraProvider theme={theme}>
+                <CommitArea
+                    commitMessage="feat: message"
+                    isAmend={false}
+                    onMessageChange={noop}
+                    onAmendChange={noop}
+                    onCommit={noop}
+                    onPush={noop}
+                    canCommit={true}
+                    canPush={true}
+                    pushLabel="common.push"
+                    currentBranchName="main"
+                    currentBranchUpstream="origin/main"
+                    hasCommits={true}
+                    hasCheckedPaths={true}
+                    wholeIndexOperationInProgress={true}
+                />
+            </ChakraProvider>,
+        );
+        const wholeIndexGenerate = wholeIndex.container.querySelector(
+            'button[aria-label="Generate commit message"]',
+        ) as HTMLButtonElement;
+
+        expect(wholeIndexGenerate.disabled).toBe(true);
+        unmount(wholeIndex.root, wholeIndex.container);
+
+        const unborn = mount(
+            <ChakraProvider theme={theme}>
+                <CommitArea
+                    commitMessage="feat: message"
+                    isAmend={true}
+                    onMessageChange={noop}
+                    onAmendChange={noop}
+                    onCommit={noop}
+                    onPush={noop}
+                    canCommit={true}
+                    canPush={true}
+                    pushLabel="common.push"
+                    currentBranchName={null}
+                    currentBranchUpstream={null}
+                    hasCommits={false}
+                    hasCheckedPaths={true}
+                    wholeIndexOperationInProgress={false}
+                />
+            </ChakraProvider>,
+        );
+        const unbornAmend = unborn.container.querySelector(
+            '[data-testid="amend-checkbox"]',
+        ) as HTMLInputElement;
+        const amendLabel = unbornAmend.closest("label") as HTMLLabelElement;
+        const blockedGenerate = unborn.container.querySelector(
+            'button[aria-label="Generate commit message"]',
+        ) as HTMLButtonElement;
+
+        expect(unbornAmend.disabled).toBe(true);
+        expect(amendLabel.getAttribute("aria-disabled")).toBe("true");
+        expect(blockedGenerate.disabled).toBe(true);
+        unmount(unborn.root, unborn.container);
+    });
+
+    it.each(["requested", "running"] as const)(
+        "fences editing and committing while generation is %s but keeps stop available",
+        (generationStatus) => {
+            const onCancel = vi.fn();
+            const onCommit = vi.fn();
+            const noop = vi.fn();
+            const mounted = mount(
+                <ChakraProvider theme={theme}>
+                    <CommitArea
+                        commitMessage="feat: message"
+                        isAmend={false}
+                        onMessageChange={noop}
+                        onAmendChange={noop}
+                        onCommit={onCommit}
+                        onPush={noop}
+                        canCommit={true}
+                        canPush={true}
+                        pushLabel="common.push"
+                        currentBranchName="main"
+                        currentBranchUpstream="origin/main"
+                        generationStatus={generationStatus}
+                        hasCommits={true}
+                        hasCheckedPaths={true}
+                        onCancelGeneration={onCancel}
+                    />
+                </ChakraProvider>,
+            );
+            const textarea = mounted.container.querySelector("textarea") as HTMLTextAreaElement;
+            const amend = mounted.container.querySelector(
+                '[data-testid="amend-checkbox"]',
+            ) as HTMLInputElement;
+            const stop = mounted.container.querySelector(
+                'button[aria-label="Stop commit message generation"]',
+            ) as HTMLButtonElement;
+            const commit = Array.from(mounted.container.querySelectorAll("button")).find(
+                (button) => button.textContent === "Commit",
+            ) as HTMLButtonElement;
+
+            expect(textarea.readOnly).toBe(true);
+            expect(textarea.style.paddingRight).toBe("");
+            expect(textarea.getAttribute("aria-busy")).toBe("true");
+            expect(amend.disabled).toBe(true);
+            expect(stop.disabled).toBe(false);
+            expect(commit.disabled).toBe(true);
+            act(() => stop.click());
+            act(() => commit.click());
+            expect(onCancel).toHaveBeenCalledOnce();
+            expect(onCommit).not.toHaveBeenCalled();
+            unmount(mounted.root, mounted.container);
+        },
+    );
 
     it("opens GitHub commit checks popover on click and closes on outside pointer", () => {
         const onRequestChecks = vi.fn();

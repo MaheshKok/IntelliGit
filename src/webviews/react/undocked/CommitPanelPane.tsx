@@ -21,6 +21,8 @@ interface CommitPanelPaneProps {
     isSomeChecked: (files: WorkingFile[]) => boolean;
     onMessageChange: (message: string) => void;
     onAmendChange: (isAmend: boolean) => void;
+    onGenerateMessage: () => void;
+    onCancelGeneration: () => void;
     onCommit: () => void;
     canCommit: boolean;
     onSync: () => void;
@@ -54,6 +56,8 @@ export function CommitPanelPane({
     isSomeChecked,
     onMessageChange,
     onAmendChange,
+    onGenerateMessage,
+    onCancelGeneration,
     onCommit,
     canCommit,
     onSync,
@@ -103,6 +107,11 @@ export function CommitPanelPane({
                             isSomeChecked={isSomeChecked}
                             onMessageChange={onMessageChange}
                             onAmendChange={onAmendChange}
+                            generationStatus={cpState.generation.status}
+                            onGenerateMessage={onGenerateMessage}
+                            onCancelGeneration={onCancelGeneration}
+                            hasCommits={cpState.hasCommits}
+                            wholeIndexOperationInProgress={cpState.wholeIndexOperationInProgress}
                             onCommit={onCommit}
                             canCommit={canCommit}
                             onPush={onPush}

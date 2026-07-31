@@ -10,9 +10,20 @@ import type { Branch } from "../../../types";
 import type { BranchAction, CommitAction, WorktreeAction } from "../../protocol/commitGraphTypes";
 import type { UnifiedOutbound } from "../../protocol/undockedMessages";
 import { getVsCodeApi } from "../shared/vscodeApi";
-import type { CommitPanelAction, GraphAction } from "./commitPanelState";
+import type {
+    CommitMessageGenerationState,
+    CommitPanelAction,
+    GraphAction,
+} from "./commitPanelState";
 
 const vscode = getVsCodeApi<UnifiedOutbound, Record<string, unknown>>();
+let commitMessageGenerationRequestSequence = 0;
+
+/** Creates an opaque client-local token for one undocked generation request. */
+function nextCommitMessageGenerationRequestId(): string {
+    commitMessageGenerationRequestSequence += 1;
+    return `undocked-commit-message-${Date.now()}-${commitMessageGenerationRequestSequence}`;
+}
 
 /**
  * Parameters for graph and commit-panel command callback extraction.
@@ -26,7 +37,11 @@ export interface UseUndockedActionsParams {
     loadingMore: React.MutableRefObject<boolean>;
     commitMessage: string;
     isAmend: boolean;
+    generation: CommitMessageGenerationState;
+    hasCommits: boolean;
+    wholeIndexOperationInProgress: boolean;
     checkedPaths: Set<string>;
+    selectedRepositoryRoot: string | null;
     shouldPublishBranch: boolean;
 }
 
@@ -47,6 +62,8 @@ export interface UndockedActions {
     handleSignInForCommitChecks: (host: string) => void;
     handleMessageChange: (message: string) => void;
     handleAmendChange: (isAmend: boolean) => void;
+    handleGenerateMessage: () => void;
+    handleCancelGeneration: () => void;
     handleCommit: () => void;
     handlePush: () => void;
     handleSync: () => void;
@@ -67,7 +84,11 @@ export function useUndockedActions(params: UseUndockedActionsParams): UndockedAc
         loadingMore,
         commitMessage,
         isAmend,
+        generation,
+        hasCommits,
+        wholeIndexOperationInProgress,
         checkedPaths,
+        selectedRepositoryRoot,
         shouldPublishBranch,
     } = params;
     const handleSelectRepository = useCallback((repositoryRoot: string) => {
@@ -144,21 +165,86 @@ export function useUndockedActions(params: UseUndockedActionsParams): UndockedAc
         vscode.postMessage({ type: "signInForCommitChecks", host });
     }, []);
 
-    const handleMessageChange = useCallback((message: string) => {
-        cpDispatch({ type: "SET_COMMIT_MESSAGE", message });
-        vscode.postMessage({ type: "saveCommitDraft", message });
+    const handleMessageChange = useCallback(
+        (message: string) => {
+            if (generation.status !== "idle") return;
+            cpDispatch({ type: "SET_COMMIT_MESSAGE", message });
+            if (selectedRepositoryRoot) {
+                vscode.postMessage({
+                    type: "saveCommitDraft",
+                    repositoryRoot: selectedRepositoryRoot,
+                    message,
+                });
+            }
+        },
         // react-doctor-disable-next-line react-doctor/exhaustive-deps
-    }, []);
+        [generation.status, selectedRepositoryRoot],
+    );
 
-    const handleAmendChange = useCallback((isAmend: boolean) => {
-        cpDispatch({ type: "SET_AMEND", isAmend });
-        if (isAmend) {
-            vscode.postMessage({ type: "getLastCommitMessage" });
-        }
+    const handleAmendChange = useCallback(
+        (isAmend: boolean) => {
+            if (generation.status !== "idle" || (isAmend && !hasCommits)) return;
+            cpDispatch({ type: "SET_AMEND", isAmend });
+            if (isAmend) {
+                vscode.postMessage({ type: "getLastCommitMessage" });
+            }
+        },
         // react-doctor-disable-next-line react-doctor/exhaustive-deps
-    }, []);
+        [generation.status, hasCommits],
+    );
+
+    const handleGenerateMessage = useCallback(() => {
+        const hasGenerationInput = isAmend ? hasCommits : checkedPaths.size > 0;
+        if (
+            !selectedRepositoryRoot ||
+            generation.status !== "idle" ||
+            wholeIndexOperationInProgress ||
+            !hasGenerationInput
+        ) {
+            return;
+        }
+        const requestId = nextCommitMessageGenerationRequestId();
+        cpDispatch({
+            type: "REQUEST_COMMIT_MESSAGE_GENERATION",
+            requestId,
+            snapshot: commitMessage,
+        });
+        vscode.postMessage({
+            type: "generateCommitMessage",
+            repositoryRoot: selectedRepositoryRoot,
+            requestId,
+            paths: Array.from(checkedPaths),
+            amend: isAmend,
+        });
+        // react-doctor-disable-next-line react-doctor/exhaustive-deps
+    }, [
+        checkedPaths,
+        commitMessage,
+        generation.status,
+        hasCommits,
+        isAmend,
+        selectedRepositoryRoot,
+        wholeIndexOperationInProgress,
+    ]);
+
+    const handleCancelGeneration = useCallback(() => {
+        const { requestId, status } = generation;
+        if (
+            !selectedRepositoryRoot ||
+            (status !== "requested" && status !== "running") ||
+            !requestId
+        ) {
+            return;
+        }
+        vscode.postMessage({
+            type: "cancelCommitMessageGeneration",
+            repositoryRoot: selectedRepositoryRoot,
+            requestId,
+        });
+    }, [generation, selectedRepositoryRoot]);
 
     const handleCommit = useCallback(() => {
+        if (generation.status !== "idle" || (isAmend && !hasCommits)) return;
         const msg = commitMessage.trim();
         vscode.postMessage({
             type: "commitSelected",
@@ -167,7 +253,7 @@ export function useUndockedActions(params: UseUndockedActionsParams): UndockedAc
             push: false,
             paths: Array.from(checkedPaths),
         });
-    }, [commitMessage, isAmend, checkedPaths]);
+    }, [checkedPaths, commitMessage, generation.status, hasCommits, isAmend]);
 
     const handlePush = useCallback(() => {
         vscode.postMessage({ type: shouldPublishBranch ? "publishBranch" : "push" });
@@ -205,6 +291,8 @@ export function useUndockedActions(params: UseUndockedActionsParams): UndockedAc
         handleSignInForCommitChecks,
         handleMessageChange,
         handleAmendChange,
+        handleGenerateMessage,
+        handleCancelGeneration,
         handleCommit,
         handlePush,
         handleSync,

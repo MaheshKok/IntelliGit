@@ -200,6 +200,8 @@ export interface CommitDetail {
  */
 export interface WorkingFile {
     path: string;
+    /** Original path paired with a rename or copy destination in porcelain status. */
+    sourcePath?: string;
     status: "M" | "A" | "D" | "U" | "?" | "!" | "R" | "C";
     staged: boolean;
     additions: number;

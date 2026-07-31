@@ -4,6 +4,11 @@
 import * as vscode from "vscode";
 import type { GitExecutor } from "../git/executor";
 import { GitOps } from "../git/operations";
+import {
+    type CommitMessageGenerationHost,
+    CommitMessageGenerationCoordinator,
+} from "../ai/commitMessageGenerationCoordinator";
+import { showCommitMessageGenerationNotification } from "../ai/commitMessageGenerationNotifications";
 import type { ShelfService } from "../services/shelfService";
 import type { ShelfEntry, ShelfHealthWarning } from "../webviews/protocol/commitPanelMessages";
 import { IconThemeService } from "./shared/IconThemeService";
@@ -116,6 +121,8 @@ interface UndockedViewProviderOptions {
     shelfRemoveOnUnshelve?: boolean;
     commitChecksService?: CommitChecksService;
     commitChecksProviders?: readonly CommitChecksProvider[];
+    /** Shared activation-owned coordinator; undocked providers never construct their own. */
+    commitMessageGenerationCoordinator?: CommitMessageGenerationCoordinator;
 }
 
 /**
@@ -175,6 +182,7 @@ export class UndockedViewProvider {
     private readonly onSelectedRepositoryRootChanged?: (root: string) => Promise<void> | void;
     private readonly shelfServiceForRepository?: (root: string) => ShelfService | undefined;
     private readonly shelfRemoveOnUnshelve: boolean;
+    private readonly commitMessageGenerationCoordinator?: CommitMessageGenerationCoordinator;
     private shelfService?: ShelfService;
     private readonly iconTheme: IconThemeService;
     private repoRootUri: vscode.Uri;
@@ -247,6 +255,22 @@ export class UndockedViewProvider {
     readonly onDockRequested = this._onDockRequested.event;
     private readonly _onDidDispose = new vscode.EventEmitter<void>();
     readonly onDidDispose = this._onDidDispose.event;
+    /** Stable host identity scopes shared-generation cancellation to this provider lifetime. */
+    private readonly commitMessageGenerationHost: CommitMessageGenerationHost = {
+        emit: (event) => {
+            this.postToWebview({ type: "commitMessageGeneration", ...event });
+            if (event.kind === "error" && event.errorKind) {
+                void showCommitMessageGenerationNotification(event.errorKind).catch(
+                    (error: unknown) => {
+                        console.error(
+                            "[IntelliGit] Commit-message generation notification failed:",
+                            error,
+                        );
+                    },
+                );
+            }
+        },
+    };
     private static readonly COMMIT_DRAFT_KEY_PREFIX = "commitDraft:";
     private static readonly COLUMN_WIDTHS_KEY = "intelligit.undockedColumnWidths";
     /**
@@ -271,6 +295,7 @@ export class UndockedViewProvider {
         this.onSelectedRepositoryRootChanged = options.onSelectedRepositoryRootChanged;
         this.shelfServiceForRepository = options.shelfServiceForRepository;
         this.shelfRemoveOnUnshelve = options.shelfRemoveOnUnshelve ?? true;
+        this.commitMessageGenerationCoordinator = options.commitMessageGenerationCoordinator;
         this.repositories =
             options.repositories && options.repositories.length > 0
                 ? options.repositories
@@ -324,6 +349,9 @@ export class UndockedViewProvider {
 
     /**
      * Replaces known repositories while preserving the selected undocked root when possible.
+     *
+     * If no known root remains, active generation work and async repository operations for the
+     * previous selection are cancelled without inventing a replacement root.
      */
     setRepositories(
         repositories: RepositoryViewIdentity[],
@@ -334,19 +362,32 @@ export class UndockedViewProvider {
             this.findRepository(selectedRepositoryRoot) ??
             this.findRepository(this.selectedRepositoryRoot) ??
             this.repositories[0];
-        if (selected) {
-            const changed = selected.root !== this.selectedRepositoryRoot;
-            const shouldContinue = changed ? this.beginRepositorySwitch() : undefined;
-            this.applyRepositoryRoot(selected, { reset: changed, updateExecutor: changed });
-            if (shouldContinue) {
-                this.sendRepositories();
-                void this.reloadSelectedRepository(shouldContinue).catch((err) => {
-                    const message = getErrorMessage(err);
-                    vscode.window.showErrorMessage(message);
-                    this.postToWebview({ type: "error", message });
-                });
-                return;
-            }
+        if (!selected) {
+            this.beginRepositorySwitch();
+            this.commitMessageGenerationCoordinator?.dropHostRoot(
+                this.commitMessageGenerationHost,
+                this.selectedRepositoryRoot,
+            );
+            this.sendRepositories();
+            return;
+        }
+        const changed = selected.root !== this.selectedRepositoryRoot;
+        const shouldContinue = changed ? this.beginRepositorySwitch() : undefined;
+        if (changed) {
+            this.commitMessageGenerationCoordinator?.dropHostRoot(
+                this.commitMessageGenerationHost,
+                this.selectedRepositoryRoot,
+            );
+        }
+        this.applyRepositoryRoot(selected, { reset: changed, updateExecutor: changed });
+        if (shouldContinue) {
+            this.sendRepositories();
+            void this.reloadSelectedRepository(shouldContinue).catch((err) => {
+                const message = getErrorMessage(err);
+                vscode.window.showErrorMessage(message);
+                this.postToWebview({ type: "error", message });
+            });
+            return;
         }
         this.sendRepositories();
     }
@@ -358,10 +399,16 @@ export class UndockedViewProvider {
      * are reset so subsequent refreshes cannot display rows from the previous repository.
      */
     setRepositoryRootUri(repoRootUri: vscode.Uri): void {
-        this.applyRepositoryRoot(
-            this.findRepository(repoRootUri.fsPath) ?? this.repositoryFromRoot(repoRootUri.fsPath),
-            { reset: true, updateExecutor: false },
-        );
+        const repository =
+            this.findRepository(repoRootUri.fsPath) ?? this.repositoryFromRoot(repoRootUri.fsPath);
+        if (repository.root !== this.selectedRepositoryRoot) {
+            this.beginRepositorySwitch();
+            this.commitMessageGenerationCoordinator?.dropHostRoot(
+                this.commitMessageGenerationHost,
+                this.selectedRepositoryRoot,
+            );
+        }
+        this.applyRepositoryRoot(repository, { reset: true, updateExecutor: false });
     }
 
     /**
@@ -375,6 +422,12 @@ export class UndockedViewProvider {
         const repository = this.findRepository(root);
         if (!repository) {
             throw new Error("Unknown repository root received from webview.");
+        }
+        if (repository.root !== this.selectedRepositoryRoot) {
+            this.commitMessageGenerationCoordinator?.dropHostRoot(
+                this.commitMessageGenerationHost,
+                this.selectedRepositoryRoot,
+            );
         }
         const shouldContinue = this.beginRepositorySwitch();
         this.applyRepositoryRoot(repository, { reset: true, updateExecutor: true });
@@ -399,6 +452,7 @@ export class UndockedViewProvider {
      */
     private async reloadSelectedRepository(shouldContinue: () => boolean): Promise<void> {
         if (!shouldContinue()) return;
+        const repositoryRoot = this.selectedRepositoryRoot;
         // react-doctor-disable-next-line react-doctor/async-defer-await
         await this.iconTheme.initIconThemeData();
         if (!shouldContinue()) return;
@@ -414,7 +468,8 @@ export class UndockedViewProvider {
         if (!shouldContinue()) return;
         this.postToWebview({
             type: "restoreCommitDraft",
-            message: this.getStoredCommitDraft(),
+            repositoryRoot,
+            message: this.getStoredCommitDraft(repositoryRoot),
         });
     }
 
@@ -605,6 +660,7 @@ export class UndockedViewProvider {
         this.panel.webview.html = this.getHtml(this.panel.webview);
         this.panel.onDidDispose(() => {
             this.commitCheckDemandSeq += 1;
+            this.commitMessageGenerationCoordinator?.dropHost(this.commitMessageGenerationHost);
             this.panel = undefined;
             this.iconTheme.dispose();
             this.disposeThemeChangeDisposables();
@@ -633,6 +689,7 @@ export class UndockedViewProvider {
      */
     dispose(): void {
         this.commitCheckDemandSeq += 1;
+        this.commitMessageGenerationCoordinator?.dropHost(this.commitMessageGenerationHost);
         this.iconTheme.dispose();
         this.disposeThemeChangeDisposables();
         this._onCommitSelected.dispose();
@@ -812,7 +869,11 @@ export class UndockedViewProvider {
                     }
                 }
                 if (this.repoRootUri.fsPath !== commitRepositoryRoot) return;
-                this.postToWebview({ type: "committed", clearCommitMessage });
+                this.postToWebview({
+                    type: "committed",
+                    repositoryRoot: commitRepositoryRoot,
+                    clearCommitMessage,
+                });
             },
             maybeOfferPublishBranch: () => Promise.resolve(),
         };
@@ -823,6 +884,12 @@ export class UndockedViewProvider {
             fireWorkingTreeChanged: () => this._onDidChangeWorkingTree.fire(),
         };
         switch (msg.type) {
+            case "generateCommitMessage":
+                this.handleGenerateCommitMessage(msg);
+                break;
+            case "cancelCommitMessageGeneration":
+                this.handleCancelCommitMessageGeneration(msg);
+                break;
             // Graph-side
             case "ready":
                 this.postToWebview({
@@ -842,7 +909,8 @@ export class UndockedViewProvider {
                 await this.refreshCommitPanelData();
                 this.postToWebview({
                     type: "restoreCommitDraft",
-                    message: this.getStoredCommitDraft(),
+                    repositoryRoot: commitRepositoryRoot,
+                    message: this.getStoredCommitDraft(commitRepositoryRoot),
                 });
                 break;
             case "selectRepository":
@@ -977,8 +1045,12 @@ export class UndockedViewProvider {
                 break;
             case "saveCommitDraft": {
                 const message = assertString(msg.message, "message");
+                const repository = this.findRepository(msg.repositoryRoot);
+                if (!repository) {
+                    throw new Error("Unknown repository root received from webview.");
+                }
                 await this.workspaceState?.update(
-                    this.getCommitDraftStorageKey(),
+                    this.getCommitDraftStorageKey(repository.root),
                     message || undefined,
                 );
                 break;
@@ -991,22 +1063,39 @@ export class UndockedViewProvider {
                 break;
             case "commitSelected": {
                 const message = (typeof msg.message === "string" ? msg.message : "").trim();
-                await commitSelectedFromPanel(actionDeps, {
-                    message,
-                    amend: msg.amend === true,
-                    push: msg.push === true,
-                    paths: assertRepoPathArray(msg.paths, "paths"),
-                });
+                await this.runCommitActionWithLease(commitRepositoryRoot, (rootGitOps) =>
+                    commitSelectedFromPanel(
+                        { ...actionDeps, gitOps: rootGitOps },
+                        {
+                            message,
+                            amend: msg.amend === true,
+                            push: msg.push === true,
+                            paths: assertRepoPathArray(msg.paths, "paths"),
+                        },
+                    ),
+                );
                 break;
             }
             case "commit": {
                 const message = (typeof msg.message === "string" ? msg.message : "").trim();
-                await commitOnlyFromPanel(actionDeps, message, msg.amend === true);
+                await this.runCommitActionWithLease(commitRepositoryRoot, (rootGitOps) =>
+                    commitOnlyFromPanel(
+                        { ...actionDeps, gitOps: rootGitOps },
+                        message,
+                        msg.amend === true,
+                    ),
+                );
                 break;
             }
             case "commitAndPush": {
                 const message = (typeof msg.message === "string" ? msg.message : "").trim();
-                await commitAndPushFromPanel(actionDeps, message, msg.amend === true);
+                await this.runCommitActionWithLease(commitRepositoryRoot, (rootGitOps) =>
+                    commitAndPushFromPanel(
+                        { ...actionDeps, gitOps: rootGitOps },
+                        message,
+                        msg.amend === true,
+                    ),
+                );
                 break;
             }
             case "fetch":
@@ -1019,13 +1108,25 @@ export class UndockedViewProvider {
                 await publishBranchFromPanel(fileActionDeps);
                 break;
             case "getLastCommitMessage": {
-                const lastMsg = await this.gitOps.getLastCommitMessage();
-                this.postToWebview({ type: "lastCommitMessage", message: lastMsg });
+                const lastMsg = await this.gitOps
+                    .deriveFor(commitRepositoryRoot)
+                    .getLastCommitMessage();
+                this.postToWebview({
+                    type: "lastCommitMessage",
+                    repositoryRoot: commitRepositoryRoot,
+                    message: lastMsg,
+                });
                 break;
             }
             case "getAmendBranchCommits": {
-                const commits = await this.gitOps.getAmendBranchCommits();
-                this.postToWebview({ type: "amendBranchCommits", commits });
+                const commits = await this.gitOps
+                    .deriveFor(commitRepositoryRoot)
+                    .getAmendBranchCommits();
+                this.postToWebview({
+                    type: "amendBranchCommits",
+                    repositoryRoot: commitRepositoryRoot,
+                    commits,
+                });
                 break;
             }
             case "rollback": {
@@ -1079,25 +1180,52 @@ export class UndockedViewProvider {
                 await this.runStashMutationRequest({ action: "clear" }, msg.requestId);
                 break;
             case "stashSelect": {
+                const stashRepositoryRoot = this.selectedRepositoryRoot;
+                const stashSwitchSeq = this.repositorySwitchSeq;
+                const stashGitOps = this.gitOps.deriveFor(stashRepositoryRoot);
                 await selectStashFromPanel(
                     {
                         ...fileActionDeps,
+                        gitOps: stashGitOps,
                         iconTheme: this.iconTheme,
                         getFiles: () => this.files,
                         getStashes: () => this.stashes,
                         getShelfFilePaths: () => shelfFilePaths(this.shelves),
-                        currentBranchHasUpstream: () => this.currentBranchHasUpstream(),
+                        currentBranchHasUpstream: async () => {
+                            const branches = await stashGitOps.getBranches();
+                            const currentBranch = branches.find((branch) => branch.isCurrent);
+                            return (
+                                currentBranch?.upstream !== undefined &&
+                                currentBranch.upstream.length > 0
+                            );
+                        },
                         setStashState: (state) => {
                             this.selectedStashIndex = state.selectedStashIndex;
                             this.stashFiles = state.stashFiles;
                         },
-                        postUpdate: (message) =>
+                        postUpdate: async (message) => {
+                            // The selected-root check after this await prevents stale updates.
+                            // react-doctor-disable-next-line react-doctor/async-defer-await
+                            const [hasCommits, wholeIndexOperationInProgress] = await Promise.all([
+                                stashGitOps.hasAnyCommits(),
+                                stashGitOps.hasWholeIndexOperationInProgress(),
+                            ]);
+                            if (
+                                this.selectedRepositoryRoot !== stashRepositoryRoot ||
+                                this.repositorySwitchSeq !== stashSwitchSeq
+                            ) {
+                                return;
+                            }
                             this.postToWebview({
                                 ...message,
+                                repositoryRoot: stashRepositoryRoot,
                                 shelves: this.shelves,
                                 catalogGeneration: this.catalogGeneration,
                                 selectedShelfId: this.selectedShelfId,
-                            }),
+                                hasCommits,
+                                wholeIndexOperationInProgress,
+                            });
+                        },
                     },
                     msg.index,
                 );
@@ -1118,6 +1246,121 @@ export class UndockedViewProvider {
                 await deleteFileFromPanel(fileActionDeps, msg.path);
                 break;
         }
+    }
+
+    /** Runs one root-bound commit action while holding the shared commit lease until it settles. */
+    private async runCommitActionWithLease(
+        commitRepositoryRoot: string,
+        operation: (rootGitOps: GitOps) => Promise<void>,
+    ): Promise<void> {
+        const rootGitOps = this.gitOps.deriveFor(commitRepositoryRoot);
+        const release =
+            this.commitMessageGenerationCoordinator?.acquireCommitLease(commitRepositoryRoot);
+        try {
+            await operation(rootGitOps);
+        } finally {
+            release?.();
+        }
+    }
+
+    /** Registers an undocked request before root-bound asynchronous status validation. */
+    private handleGenerateCommitMessage(message: { [key: string]: unknown }): void {
+        const repositoryRoot = message.repositoryRoot;
+        const requestId = message.requestId;
+        if (typeof repositoryRoot !== "string" || typeof requestId !== "string") return;
+        const reject = () => this.postInvalidCommitMessageGeneration(repositoryRoot, requestId);
+        if (!repositoryRoot || !requestId || typeof message.amend !== "boolean") {
+            reject();
+            return;
+        }
+        const coordinator = this.commitMessageGenerationCoordinator;
+        if (
+            !coordinator ||
+            !this.findRepository(repositoryRoot) ||
+            repositoryRoot !== this.selectedRepositoryRoot
+        ) {
+            reject();
+            return;
+        }
+        if (
+            !Array.isArray(message.paths) ||
+            message.paths.length > UndockedViewProvider.MAX_VISIBLE_COMMIT_CHECKS
+        ) {
+            reject();
+            return;
+        }
+        let paths: string[];
+        try {
+            paths = Array.from(new Set(assertRepoPathArray(message.paths, "paths")));
+        } catch {
+            reject();
+            return;
+        }
+        const amend = message.amend;
+        const gitOps = this.gitOps.deriveFor(repositoryRoot);
+        coordinator.submit({
+            repositoryRoot,
+            requestId,
+            host: this.commitMessageGenerationHost,
+            validate: async (control) => {
+                // The post-await active check is the generation cancellation fence.
+                // react-doctor-disable-next-line react-doctor/async-defer-await
+                const validatedStatusSnapshot = await gitOps.getStatus({ withStats: false });
+                if (!control.isActive()) return undefined;
+                const selectablePaths = new Set<string>();
+                const renameSources = new Set<string>();
+                for (const file of validatedStatusSnapshot) {
+                    if (file.status !== "!") selectablePaths.add(file.path);
+                    if (file.status === "R" && file.sourcePath) renameSources.add(file.sourcePath);
+                }
+                if (
+                    paths.some(
+                        (filePath) => !selectablePaths.has(filePath) || renameSources.has(filePath),
+                    )
+                ) {
+                    return undefined;
+                }
+                if (paths.length === 0 && !amend) return undefined;
+                if (amend) {
+                    const hasAnyCommits = await gitOps.hasAnyCommits();
+                    if (!control.isActive() || !hasAnyCommits) return undefined;
+                }
+                return { paths, amend, validatedStatusSnapshot };
+            },
+        });
+    }
+
+    /** Cancels only this provider's current correlated attempt for its selected root. */
+    private handleCancelCommitMessageGeneration(message: { [key: string]: unknown }): void {
+        const repositoryRoot = message.repositoryRoot;
+        const requestId = message.requestId;
+        if (typeof repositoryRoot !== "string" || typeof requestId !== "string") return;
+        const coordinator = this.commitMessageGenerationCoordinator;
+        if (
+            !repositoryRoot ||
+            !requestId ||
+            !coordinator ||
+            !this.findRepository(repositoryRoot) ||
+            repositoryRoot !== this.selectedRepositoryRoot
+        ) {
+            this.postInvalidCommitMessageGeneration(repositoryRoot, requestId);
+            return;
+        }
+        coordinator.cancel({
+            repositoryRoot,
+            requestId,
+            host: this.commitMessageGenerationHost,
+        });
+    }
+
+    /** Emits a correlated invalid-request error without routing it through generic webview failures. */
+    private postInvalidCommitMessageGeneration(repositoryRoot: string, requestId: string): void {
+        this.commitMessageGenerationHost.emit({
+            repositoryRoot,
+            requestId,
+            kind: "error",
+            errorKind: "invalidRequest",
+        });
     }
     // --- Graph data fetching ------------------------------------------------
     /**
@@ -1388,32 +1631,51 @@ export class UndockedViewProvider {
     }
 
     /**
-     * Reloads working-tree files, stashes, selected stash contents, and upstream status.
+     * Reloads working-tree files, stashes, selected stash contents, and upstream status through one
+     * root-bound GitOps facade.
      *
      * The selected stash is preserved when still present; otherwise the first stash is selected.
      * Non-silent calls emit `refreshing` messages so the undocked UI can show action feedback.
+     * The captured root and repository-switch sequence fence every asynchronous continuation so a
+     * superseded or ABA repository selection cannot mutate cached state or post a stale snapshot.
      */
     private async refreshCommitPanelData(
         silent = false,
         shouldContinue: () => boolean = () => true,
     ): Promise<void> {
+        const repositoryRoot = this.selectedRepositoryRoot;
+        const repositorySwitchSeq = this.repositorySwitchSeq;
+        const rootGitOps = this.gitOps.deriveFor(repositoryRoot);
+        const canUpdate = () =>
+            shouldContinue() &&
+            repositorySwitchSeq === this.repositorySwitchSeq &&
+            repositoryRoot === this.selectedRepositoryRoot;
         if (!silent) this.postToWebview({ type: "refreshing", active: true });
         try {
             // Theme initialization must finish before decorated working-tree files are built.
-            // react-doctor-disable-next-line react-doctor/async-parallel
+            // react-doctor-disable-next-line react-doctor/async-parallel, react-doctor/async-defer-await
             await this.iconTheme.initIconThemeData();
-            const files = await this.iconTheme.decorateWorkingFiles(
-                await this.gitOps.getStatus({ includeIgnored: this.showIgnoredFiles }),
-            );
+            if (!canUpdate()) return;
+            // The post-await root guard prevents stale refresh data from being published.
+            // react-doctor-disable-next-line react-doctor/async-defer-await
+            const status = await rootGitOps.getStatus({ includeIgnored: this.showIgnoredFiles });
+            if (!canUpdate()) return;
+            // The post-await root guard prevents stale refresh data from being published.
+            // react-doctor-disable-next-line react-doctor/async-defer-await
+            const files = await this.iconTheme.decorateWorkingFiles(status);
+            if (!canUpdate()) return;
+            // The post-await root guard prevents stale refresh data from being published.
+            // react-doctor-disable-next-line react-doctor/async-defer-await
             const [stashes, currentBranchStatus, shelfState] = await Promise.all([
-                this.gitOps.listStashes(),
-                this.currentBranchStatus(),
+                rootGitOps.listStashes(),
+                this.currentBranchStatus(rootGitOps),
                 this.shelfSnapshot().catch(() => ({
                     shelves: this.shelves,
                     catalogGeneration: this.catalogGeneration,
                     selectedShelfId: this.selectedShelfId,
                 })),
             ]);
+            if (!canUpdate()) return;
             const { folderIcons, iconFonts } = this.iconTheme.getThemeData();
             const hasSelected =
                 this.selectedStashIndex !== null &&
@@ -1423,20 +1685,30 @@ export class UndockedViewProvider {
                 : stashes.length > 0
                   ? stashes[0].index
                   : null;
-            if (!shouldContinue()) return;
+            // The post-await root guard prevents stale refresh data from being published.
             // react-doctor-disable-next-line react-doctor/async-defer-await
             const stashFiles =
                 selectedStashIndex !== null
                     ? await this.iconTheme.decorateWorkingFiles(
-                          await this.gitOps.getStashFiles(selectedStashIndex),
+                          await rootGitOps.getStashFiles(selectedStashIndex),
                       )
                     : [];
+            if (!canUpdate()) return;
+            // The post-await root guard prevents stale refresh data from being published.
+            // react-doctor-disable-next-line react-doctor/async-defer-await
             const cpFolderIconsByName = await this.iconTheme.getFolderIconsByPaths([
                 ...files.map((file) => file.path),
                 ...stashFiles.map((file) => file.path),
                 ...shelfFilePaths(shelfState.shelves),
             ]);
-            if (!shouldContinue()) return;
+            if (!canUpdate()) return;
+            // The post-await root guard prevents stale refresh data from being published.
+            // react-doctor-disable-next-line react-doctor/async-defer-await
+            const [hasCommits, wholeIndexOperationInProgress] = await Promise.all([
+                rootGitOps.hasAnyCommits(),
+                rootGitOps.hasWholeIndexOperationInProgress(),
+            ]);
+            if (!canUpdate()) return;
             this.files = files;
             this.stashes = stashes;
             this.selectedStashIndex = selectedStashIndex;
@@ -1453,6 +1725,7 @@ export class UndockedViewProvider {
             this.lastFileCount = count;
             this.postToWebview({
                 type: "update",
+                repositoryRoot,
                 files,
                 stashes,
                 stashFiles,
@@ -1470,10 +1743,11 @@ export class UndockedViewProvider {
                 currentBranchBehind: currentBranchStatus.behind,
                 currentBranchName: currentBranchStatus.name,
                 currentBranchUpstream: currentBranchStatus.upstream,
+                hasCommits,
+                wholeIndexOperationInProgress,
             });
         } finally {
-            if (!silent && shouldContinue())
-                this.postToWebview({ type: "refreshing", active: false });
+            if (!silent && canUpdate()) this.postToWebview({ type: "refreshing", active: false });
         }
     }
     // --- Branch sending -----------------------------------------------------
@@ -1508,7 +1782,14 @@ export class UndockedViewProvider {
         });
     }
 
-    private async currentBranchStatus(): Promise<{
+    /**
+     * Resolves branch and remote state through the supplied repository facade.
+     *
+     * Refresh callers pass their captured facade so branch metadata cannot come from a later root.
+     */
+    private async currentBranchStatus(
+        gitOps: Pick<GitOps, "getBranches" | "getRemotes"> = this.gitOps,
+    ): Promise<{
         hasUpstream: boolean;
         hasRemotes: boolean;
         ahead: number;
@@ -1516,10 +1797,7 @@ export class UndockedViewProvider {
         name: string | null;
         upstream: string | null;
     }> {
-        const [branches, remotes] = await Promise.all([
-            this.gitOps.getBranches(),
-            this.gitOps.getRemotes(),
-        ]);
+        const [branches, remotes] = await Promise.all([gitOps.getBranches(), gitOps.getRemotes()]);
         const currentBranch = branches.find((branch) => branch.isCurrent && !branch.isRemote);
         const upstream = currentBranch?.upstream?.trim() || null;
         return {
@@ -1530,12 +1808,6 @@ export class UndockedViewProvider {
             name: currentBranch?.name ?? null,
             upstream,
         };
-    }
-
-    private async currentBranchHasUpstream(): Promise<boolean> {
-        const branches = await this.gitOps.getBranches();
-        const currentBranch = branches.find((branch) => branch.isCurrent);
-        return currentBranch?.upstream !== undefined && currentBranch.upstream.length > 0;
     }
 
     // --- Commit detail ------------------------------------------------------
@@ -1593,11 +1865,13 @@ export class UndockedViewProvider {
     /**
      * Builds the repository-scoped workspace-state key for the undocked commit draft.
      */
-    private getCommitDraftStorageKey(): string {
-        return `${UndockedViewProvider.COMMIT_DRAFT_KEY_PREFIX}${this.repoRootUri.fsPath}`;
+    private getCommitDraftStorageKey(repositoryRoot = this.repoRootUri.fsPath): string {
+        return `${UndockedViewProvider.COMMIT_DRAFT_KEY_PREFIX}${repositoryRoot}`;
     }
-    private getStoredCommitDraft(): string {
-        return this.workspaceState?.get<string>(this.getCommitDraftStorageKey()) ?? "";
+    private getStoredCommitDraft(repositoryRoot = this.repoRootUri.fsPath): string {
+        return (
+            this.workspaceState?.get<string>(this.getCommitDraftStorageKey(repositoryRoot)) ?? ""
+        );
     }
     /**
      * Sends validated persisted column widths before the webview performs layout writes.

@@ -73,9 +73,8 @@ afterEach(() => {
 describe("undocked repository selector", () => {
     it("renders known repositories and emits the selected root", async () => {
         const onSelectRepository = vi.fn();
-        const { RepositoryColumn } = await import(
-            "../../../src/webviews/react/undocked/RepositoryColumn"
-        );
+        const { RepositoryColumn } =
+            await import("../../../src/webviews/react/undocked/RepositoryColumn");
 
         await render(
             <ChakraProvider>
@@ -107,9 +106,8 @@ describe("undocked repository selector", () => {
                 postMessage,
             }),
         }));
-        const { useUndockedActions } = await import(
-            "../../../src/webviews/react/undocked/useUndockedActions"
-        );
+        const { useUndockedActions } =
+            await import("../../../src/webviews/react/undocked/useUndockedActions");
         const graphDispatch = vi.fn();
         const cpDispatch = vi.fn();
         const loadingMore = { current: true };
@@ -122,7 +120,11 @@ describe("undocked repository selector", () => {
                 commitChecks: new Map(),
                 commitMessage: "",
                 isAmend: false,
+                generation: { status: "idle" },
+                hasCommits: false,
+                wholeIndexOperationInProgress: false,
                 checkedPaths: new Set(),
+                selectedRepositoryRoot: "/repo-a",
                 shouldPublishBranch: false,
             });
             return (
@@ -149,9 +151,8 @@ describe("undocked repository selector", () => {
     it("renders a Dock action in the existing transport row only when requested", async () => {
         installWebviewI18n();
         const onDock = vi.fn();
-        const { TabBar } = await import(
-            "../../../src/webviews/react/commit-panel/components/TabBar"
-        );
+        const { TabBar } =
+            await import("../../../src/webviews/react/commit-panel/components/TabBar");
 
         await render(
             <ChakraProvider>
@@ -169,8 +170,8 @@ describe("undocked repository selector", () => {
         );
 
         const tabRow = document.querySelector('[data-testid="commit-panel-tab-row"]');
-        const labels = Array.from(tabRow?.querySelectorAll("button") ?? []).map(
-            (button) => button.getAttribute("aria-label"),
+        const labels = Array.from(tabRow?.querySelectorAll("button") ?? []).map((button) =>
+            button.getAttribute("aria-label"),
         );
 
         const dockButton = Array.from(tabRow?.querySelectorAll("button") ?? []).find(
@@ -185,9 +186,8 @@ describe("undocked repository selector", () => {
 
     it("omits Dock from the normal docked TabBar", async () => {
         installWebviewI18n();
-        const { TabBar } = await import(
-            "../../../src/webviews/react/commit-panel/components/TabBar"
-        );
+        const { TabBar } =
+            await import("../../../src/webviews/react/commit-panel/components/TabBar");
 
         await render(
             <ChakraProvider>

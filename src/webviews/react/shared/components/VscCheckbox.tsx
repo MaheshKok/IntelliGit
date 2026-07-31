@@ -7,6 +7,7 @@ interface Props {
     isChecked: boolean;
     isIndeterminate?: boolean;
     onChange: () => void;
+    disabled?: boolean;
     inputTestId?: string;
     inputId?: string;
     ariaLabel?: string;
@@ -70,6 +71,7 @@ function VscCheckboxInner({
     isChecked,
     isIndeterminate,
     onChange,
+    disabled = false,
     inputTestId,
     inputId,
     ariaLabel,
@@ -87,7 +89,9 @@ function VscCheckboxInner({
     const shellStyle = {
         ...(filled ? CHECKBOX_FILLED_STYLE : CHECKBOX_UNCHECKED_STYLE),
         ...(isFocused ? CHECKBOX_FOCUS_STYLE : {}),
+        ...(disabled ? { cursor: "default", opacity: 0.55 } : {}),
     };
+    const inputStyle = { ...CHECKBOX_INPUT_STYLE, cursor: disabled ? "default" : "pointer" };
 
     return (
         <span style={CHECKBOX_CONTAINER_STYLE}>
@@ -98,13 +102,15 @@ function VscCheckboxInner({
                 aria-label={ariaLabel}
                 data-testid={inputTestId}
                 checked={isChecked}
+                disabled={disabled}
                 onChange={(e) => {
                     e.stopPropagation();
+                    if (disabled) return;
                     onChange();
                 }}
                 onFocus={() => setIsFocused(true)}
                 onBlur={() => setIsFocused(false)}
-                style={CHECKBOX_INPUT_STYLE}
+                style={inputStyle}
             />
             <span data-focused={isFocused ? "true" : undefined} style={shellStyle}>
                 {isChecked && !isIndeterminate && (
@@ -129,6 +135,7 @@ function VscCheckboxInner({
  * Memoized VS Code-styled checkbox used by file, folder, section, and amend rows.
  *
  * The native input remains the event source while the visual shell mirrors the
- * checked or indeterminate state for consistent dark-theme borders.
+ * checked or indeterminate state for consistent dark-theme borders. Disabled
+ * instances retain native disabled semantics and suppress their callback.
  */
 export const VscCheckbox = React.memo(VscCheckboxInner);
