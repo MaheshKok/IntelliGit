@@ -27,6 +27,7 @@ import { UndockedLayout } from "./undocked/UndockedLayout";
 import { resizeSectionPair, useColumnPairDrag } from "./undocked/useColumnPairDrag";
 import { useUnifiedMessages } from "./undocked/useUnifiedMessages";
 import { type UndockedActions, useUndockedActions } from "./undocked/useUndockedActions";
+import { RebaseDialog } from "./shared/components/RebaseDialog/RebaseDialog";
 import type {
     Branch,
     Commit,
@@ -36,12 +37,19 @@ import type {
     ThemeIconFont,
     ThemeTreeIcon,
 } from "../../types";
-import type { RepositoryViewIdentity, UnifiedOutbound } from "../protocol/undockedMessages";
+import type {
+    RepositoryViewIdentity,
+    UnifiedInbound,
+    UnifiedOutbound,
+} from "../protocol/undockedMessages";
+import type { RebaseTodoEntry } from "../protocol/commitGraphTypes";
 
 // --- Helpers ----------------------------------------------------------------
 
 const vscode = getVsCodeApi<UnifiedOutbound, Record<string, unknown>>();
 const KEYBOARD_RESIZE_STEP = 16;
+
+type RebaseDialogMessage = Extract<UnifiedInbound, { type: "showRebaseDialog" }>;
 
 interface GraphState {
     commits: Commit[];
@@ -300,6 +308,8 @@ function App(): React.ReactElement {
         () => getSettings().commitWindowPosition,
     );
     const [viewVisible, setViewVisible] = useState(true);
+    const [rebaseDialog, setRebaseDialog] = useState<RebaseDialogMessage | null>(null);
+    const rebaseDialogRef = useRef<RebaseDialogMessage | null>(null);
 
     // --- Drag handlers ---
     const onBranchDividerMouseDown = useColumnPairDrag(
@@ -430,6 +440,32 @@ function App(): React.ReactElement {
     }, [cpState.isAmend, cpState.isRefreshing]);
 
     // --- Single message handler for both sides ---
+    const handleShowRebaseDialog = useCallback((dialog: RebaseDialogMessage) => {
+        const previous = rebaseDialogRef.current;
+        if (previous)
+            vscode.postMessage({ type: "cancelRebaseDialog", requestId: previous.requestId });
+        rebaseDialogRef.current = dialog;
+        setRebaseDialog(dialog);
+    }, []);
+    const handleRebaseDialogSubmit = useCallback((entries: readonly RebaseTodoEntry[]) => {
+        const dialog = rebaseDialogRef.current;
+        if (!dialog) return;
+        rebaseDialogRef.current = null;
+        setRebaseDialog(null);
+        vscode.postMessage({
+            type: "startInteractiveRebase",
+            requestId: dialog.requestId,
+            entries: [...entries],
+        });
+    }, []);
+    const handleRebaseDialogCancel = useCallback(() => {
+        const dialog = rebaseDialogRef.current;
+        if (!dialog) return;
+        rebaseDialogRef.current = null;
+        setRebaseDialog(null);
+        vscode.postMessage({ type: "cancelRebaseDialog", requestId: dialog.requestId });
+    }, []);
+
     useUnifiedMessages({
         graphDispatch,
         cpDispatch,
@@ -445,6 +481,7 @@ function App(): React.ReactElement {
         layoutRef,
         setCommitPanelPosition,
         setViewVisible,
+        onShowRebaseDialog: handleShowRebaseDialog,
     });
 
     const canCommit =
@@ -482,87 +519,96 @@ function App(): React.ReactElement {
 
     // --- Render ---
     return (
-        <UndockedLayout
-            iconFonts={iconFonts}
-            cpState={cpState}
-            checkedPaths={checkedPaths}
-            commitPanelPosition={commitPanelPosition}
-            repositoryWidth={repositoryWidth}
-            commitPanelWidth={commitPanelWidth}
-            branchWidth={branchWidth}
-            graphWidth={graphWidth}
-            infoWidth={infoWidth}
-            repositories={repositories}
-            selectedRepositoryRoot={selectedRepositoryRoot}
-            branches={branches}
-            worktrees={worktrees}
-            selectedBranch={selectedBranch}
-            commits={commits}
-            selectedHash={selectedHash}
-            filterText={filterText}
-            hasMore={hasMore}
-            unpushedHashes={unpushedHashes}
-            currentBranchName={currentBranchName}
-            currentBranchHeadHash={currentBranchHeadHash}
-            commitChecks={commitChecks}
-            commitChecksEnabled={commitChecksEnabled}
-            isViewVisible={viewVisible}
-            selectedDetail={selectedDetail}
-            commitDetailLoading={commitDetailLoading}
-            branchFolderIcon={branchFolderIcon}
-            branchFolderExpandedIcon={branchFolderExpandedIcon}
-            branchFolderIconsByName={branchFolderIconsByName}
-            commitFolderIcon={commitFolderIcon}
-            commitFolderExpandedIcon={commitFolderExpandedIcon}
-            commitFolderIconsByName={commitFolderIconsByName}
-            groupByDir={groupByDir}
-            showIgnoredFiles={showIgnoredFiles}
-            canCommit={canCommit}
-            canPush={canPush}
-            pushLabel={pushLabel}
-            isAllChecked={isAllChecked}
-            isSomeChecked={isSomeChecked}
-            layoutRef={layoutRef}
-            markWidthsHydrated={markWidthsHydrated}
-            onRepositoryDividerMouseDown={onRepositoryDividerMouseDown}
-            onRepositoryDividerKeyDown={onRepositoryDividerKeyDown}
-            onLeftCommitPanelDividerMouseDown={onLeftCommitPanelDividerMouseDown}
-            onLeftCommitPanelDividerKeyDown={onLeftCommitPanelDividerKeyDown}
-            onBranchDividerMouseDown={onBranchDividerMouseDown}
-            onBranchDividerKeyDown={onBranchDividerKeyDown}
-            onGraphDividerMouseDown={onGraphDividerMouseDown}
-            onGraphDividerKeyDown={onGraphDividerKeyDown}
-            onRightCommitPanelDividerMouseDown={onRightCommitPanelDividerMouseDown}
-            onRightCommitPanelDividerKeyDown={onRightCommitPanelDividerKeyDown}
-            handleSelectRepository={actions.handleSelectRepository}
-            handleSelectCommit={actions.handleSelectCommit}
-            handleFilterText={actions.handleFilterText}
-            handleLoadMore={actions.handleLoadMore}
-            handleSelectBranch={actions.handleSelectBranch}
-            handleBranchAction={actions.handleBranchAction}
-            handleDeleteBranches={actions.handleDeleteBranches}
-            handleWorktreeAction={actions.handleWorktreeAction}
-            handleCommitAction={actions.handleCommitAction}
-            handleOpenDiff={actions.handleOpenDiff}
-            handleRequestCommitChecks={actions.handleRequestCommitChecks}
-            handleOpenCommitCheckUrl={actions.handleOpenCommitCheckUrl}
-            handleSignInForCommitChecks={actions.handleSignInForCommitChecks}
-            handleMessageChange={actions.handleMessageChange}
-            handleAmendChange={actions.handleAmendChange}
-            handleGenerateMessage={actions.handleGenerateMessage}
-            handleCancelGeneration={actions.handleCancelGeneration}
-            handleCommit={actions.handleCommit}
-            handlePush={actions.handlePush}
-            handleSync={actions.handleSync}
-            handleFetch={actions.handleFetch}
-            handlePull={actions.handlePull}
-            toggleFile={toggleFile}
-            toggleFolder={toggleFolder}
-            toggleSection={toggleSection}
-            onToggleGroupBy={onToggleGroupBy}
-            onToggleShowIgnoredFiles={onToggleShowIgnoredFiles}
-            onDock={actions.handleDock}
-        />
+        <>
+            <UndockedLayout
+                iconFonts={iconFonts}
+                cpState={cpState}
+                checkedPaths={checkedPaths}
+                commitPanelPosition={commitPanelPosition}
+                repositoryWidth={repositoryWidth}
+                commitPanelWidth={commitPanelWidth}
+                branchWidth={branchWidth}
+                graphWidth={graphWidth}
+                infoWidth={infoWidth}
+                repositories={repositories}
+                selectedRepositoryRoot={selectedRepositoryRoot}
+                branches={branches}
+                worktrees={worktrees}
+                selectedBranch={selectedBranch}
+                commits={commits}
+                selectedHash={selectedHash}
+                filterText={filterText}
+                hasMore={hasMore}
+                unpushedHashes={unpushedHashes}
+                currentBranchName={currentBranchName}
+                currentBranchHeadHash={currentBranchHeadHash}
+                commitChecks={commitChecks}
+                commitChecksEnabled={commitChecksEnabled}
+                isViewVisible={viewVisible}
+                selectedDetail={selectedDetail}
+                commitDetailLoading={commitDetailLoading}
+                branchFolderIcon={branchFolderIcon}
+                branchFolderExpandedIcon={branchFolderExpandedIcon}
+                branchFolderIconsByName={branchFolderIconsByName}
+                commitFolderIcon={commitFolderIcon}
+                commitFolderExpandedIcon={commitFolderExpandedIcon}
+                commitFolderIconsByName={commitFolderIconsByName}
+                groupByDir={groupByDir}
+                showIgnoredFiles={showIgnoredFiles}
+                canCommit={canCommit}
+                canPush={canPush}
+                pushLabel={pushLabel}
+                isAllChecked={isAllChecked}
+                isSomeChecked={isSomeChecked}
+                layoutRef={layoutRef}
+                markWidthsHydrated={markWidthsHydrated}
+                onRepositoryDividerMouseDown={onRepositoryDividerMouseDown}
+                onRepositoryDividerKeyDown={onRepositoryDividerKeyDown}
+                onLeftCommitPanelDividerMouseDown={onLeftCommitPanelDividerMouseDown}
+                onLeftCommitPanelDividerKeyDown={onLeftCommitPanelDividerKeyDown}
+                onBranchDividerMouseDown={onBranchDividerMouseDown}
+                onBranchDividerKeyDown={onBranchDividerKeyDown}
+                onGraphDividerMouseDown={onGraphDividerMouseDown}
+                onGraphDividerKeyDown={onGraphDividerKeyDown}
+                onRightCommitPanelDividerMouseDown={onRightCommitPanelDividerMouseDown}
+                onRightCommitPanelDividerKeyDown={onRightCommitPanelDividerKeyDown}
+                handleSelectRepository={actions.handleSelectRepository}
+                handleSelectCommit={actions.handleSelectCommit}
+                handleFilterText={actions.handleFilterText}
+                handleLoadMore={actions.handleLoadMore}
+                handleSelectBranch={actions.handleSelectBranch}
+                handleBranchAction={actions.handleBranchAction}
+                handleDeleteBranches={actions.handleDeleteBranches}
+                handleWorktreeAction={actions.handleWorktreeAction}
+                handleCommitAction={actions.handleCommitAction}
+                handleOpenDiff={actions.handleOpenDiff}
+                handleRequestCommitChecks={actions.handleRequestCommitChecks}
+                handleOpenCommitCheckUrl={actions.handleOpenCommitCheckUrl}
+                handleSignInForCommitChecks={actions.handleSignInForCommitChecks}
+                handleMessageChange={actions.handleMessageChange}
+                handleAmendChange={actions.handleAmendChange}
+                handleGenerateMessage={actions.handleGenerateMessage}
+                handleCancelGeneration={actions.handleCancelGeneration}
+                handleCommit={actions.handleCommit}
+                handlePush={actions.handlePush}
+                handleSync={actions.handleSync}
+                handleFetch={actions.handleFetch}
+                handlePull={actions.handlePull}
+                toggleFile={toggleFile}
+                toggleFolder={toggleFolder}
+                toggleSection={toggleSection}
+                onToggleGroupBy={onToggleGroupBy}
+                onToggleShowIgnoredFiles={onToggleShowIgnoredFiles}
+                onDock={actions.handleDock}
+            />
+            {rebaseDialog ? (
+                <RebaseDialog
+                    commits={rebaseDialog.commits}
+                    onSubmit={handleRebaseDialogSubmit}
+                    onCancel={handleRebaseDialogCancel}
+                />
+            ) : null}
+        </>
     );
 }
 

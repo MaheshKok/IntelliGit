@@ -297,6 +297,16 @@ describe("commit menu", () => {
         expect(disabledActions).toEqual([]);
     });
 
+    it("enables interactive rebase for pushed non-merge commits only", () => {
+        const items = getCommitMenuItems(makeCommit({ parentHashes: ["parent"] }), false, true);
+        const rebase = items.find((item) => item.action === "interactiveRebaseFromHere");
+        const pushUpToHere = items.find((item) => item.action === "pushAllUpToHere");
+        const undo = items.find((item) => item.action === "undoCommit");
+        expect(rebase?.disabled).toBe(false);
+        expect(pushUpToHere?.disabled).toBe(true);
+        expect(undo?.disabled).toBe(true);
+    });
+
     it("keeps checkout revision action in commit menu", () => {
         const items = getCommitMenuItems(makeCommit(), true, false);
         const checkoutRevision = items.find((item) => item.action === "checkoutRevision");

@@ -91,7 +91,7 @@ export function getCommitMenuItems(
     items.push({
         label: t("commit.menu.interactiveRebaseFromHere"),
         action: "interactiveRebaseFromHere",
-        disabled: isPushed || isMergeCommit,
+        disabled: isMergeCommit,
     });
 
     items.push({ separator: true, label: "", action: "sep-create" });

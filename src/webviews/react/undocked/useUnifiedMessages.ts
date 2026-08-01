@@ -37,6 +37,7 @@ export interface UseUnifiedMessagesParams {
     layoutRef: React.MutableRefObject<HTMLDivElement | null>;
     setCommitPanelPosition: (pos: "left" | "right") => void;
     setViewVisible: (visible: boolean) => void;
+    onShowRebaseDialog: (dialog: Extract<UnifiedInbound, { type: "showRebaseDialog" }>) => void;
 }
 
 type MessageContext = Omit<UseUnifiedMessagesParams, "selectedHash" | "selectedRepositoryRoot"> & {
@@ -55,6 +56,7 @@ type GraphInboundMessage = Extract<
             | "clearCommitDetail"
             | "setCommitChecks"
             | "setViewVisibility"
+            | "showRebaseDialog"
             | "loadError";
     }
 >;
@@ -85,6 +87,7 @@ function isGraphMessage(data: UnifiedInbound): data is GraphInboundMessage {
         "clearCommitDetail",
         "setCommitChecks",
         "setViewVisibility",
+        "showRebaseDialog",
         "loadError",
     ].includes(data.type);
 }
@@ -193,6 +196,9 @@ function handleGraphMessage(data: GraphInboundMessage, context: MessageContext):
             return;
         case "setViewVisibility":
             context.setViewVisible(data.visible);
+            return;
+        case "showRebaseDialog":
+            context.onShowRebaseDialog(data);
             return;
         case "loadError":
             context.graphDispatch({
@@ -348,6 +354,7 @@ export function useUnifiedMessages(params: UseUnifiedMessagesParams): void {
         layoutRef,
         setCommitPanelPosition,
         setViewVisible,
+        onShowRebaseDialog,
     } = params;
     const selectedHashRef = useRef<string | null>(selectedHash);
     selectedHashRef.current = selectedHash;
@@ -368,6 +375,7 @@ export function useUnifiedMessages(params: UseUnifiedMessagesParams): void {
             layoutRef,
             setCommitPanelPosition,
             setViewVisible,
+            onShowRebaseDialog,
             selectedHashRef,
             selectedRepositoryRootRef,
         };
@@ -396,5 +404,6 @@ export function useUnifiedMessages(params: UseUnifiedMessagesParams): void {
         setSectionWidths,
         setSelectedRepositoryRoot,
         setViewVisible,
+        onShowRebaseDialog,
     ]);
 }

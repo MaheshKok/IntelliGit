@@ -14,7 +14,9 @@ import type {
 import type {
     BranchAction,
     CommitAction,
+    CommitGraphInbound,
     CommitGraphOutbound,
+    RebaseTodoEntry,
     WorktreeAction,
 } from "../protocol/commitGraphTypes";
 import type { OutboundMessage as CommitPanelOutbound } from "./commit-panel/types";
@@ -25,6 +27,7 @@ import { JETBRAINS_UI } from "./shared/tokens";
 import { useCommitGraphMessages } from "./commit-graph/useCommitGraphMessages";
 import type { CommitGraphPanelAction } from "./commit-graph/types";
 import { t } from "./shared/i18n";
+import { RebaseDialog } from "./shared/components/RebaseDialog/RebaseDialog";
 
 const MIN_BRANCH_WIDTH = 80;
 const MAX_BRANCH_WIDTH = 500;
@@ -39,6 +42,8 @@ interface Props {
     stateKeyPrefix?: string;
     sendReady?: boolean;
 }
+
+type RebaseDialogMessage = Extract<CommitGraphInbound, { type: "showRebaseDialog" }>;
 
 /** Builds persisted webview-state keys without adding a leading separator. */
 function stateKey(prefix: string, key: string): string {
@@ -270,6 +275,8 @@ export function CommitGraphPanel({
     });
     const loadingMore = useRef(false);
     const [viewVisible, setViewVisible] = useState(true);
+    const [rebaseDialog, setRebaseDialog] = useState<RebaseDialogMessage | null>(null);
+    const rebaseDialogRef = useRef<RebaseDialogMessage | null>(null);
     const currentBranch = useMemo(
         () => branches.find((branch) => branch.isCurrent && !branch.isRemote),
         [branches],
@@ -291,6 +298,38 @@ export function CommitGraphPanel({
         true,
     );
 
+    const handleShowRebaseDialog = useCallback(
+        (dialog: RebaseDialogMessage) => {
+            const previous = rebaseDialogRef.current;
+            if (previous)
+                vscode.postMessage({ type: "cancelRebaseDialog", requestId: previous.requestId });
+            rebaseDialogRef.current = dialog;
+            setRebaseDialog(dialog);
+        },
+        [vscode],
+    );
+    const handleRebaseDialogSubmit = useCallback(
+        (entries: readonly RebaseTodoEntry[]) => {
+            const dialog = rebaseDialogRef.current;
+            if (!dialog) return;
+            rebaseDialogRef.current = null;
+            setRebaseDialog(null);
+            vscode.postMessage({
+                type: "startInteractiveRebase",
+                requestId: dialog.requestId,
+                entries: [...entries],
+            });
+        },
+        [vscode],
+    );
+    const handleRebaseDialogCancel = useCallback(() => {
+        const dialog = rebaseDialogRef.current;
+        if (!dialog) return;
+        rebaseDialogRef.current = null;
+        setRebaseDialog(null);
+        vscode.postMessage({ type: "cancelRebaseDialog", requestId: dialog.requestId });
+    }, [vscode]);
+
     useCommitGraphMessages({
         vscode,
         dispatch,
@@ -298,6 +337,7 @@ export function CommitGraphPanel({
         loadingMore,
         selectedHash,
         setViewVisible,
+        onShowRebaseDialog: handleShowRebaseDialog,
     });
 
     const handleBranchDividerKeyDown = useCallback((event: React.KeyboardEvent) => {
@@ -425,6 +465,13 @@ export function CommitGraphPanel({
     return (
         <>
             <ThemeIconFontFaces fonts={iconFonts} />
+            {rebaseDialog ? (
+                <RebaseDialog
+                    commits={rebaseDialog.commits}
+                    onSubmit={handleRebaseDialogSubmit}
+                    onCancel={handleRebaseDialogCancel}
+                />
+            ) : null}
             <div
                 style={{
                     display: "flex",

@@ -2,13 +2,21 @@
 
 import React, { act } from "react";
 import { ChakraProvider } from "@chakra-ui/react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { InteractiveRebaseRangeCommit } from "../../../src/git/interactiveRebase/types";
 import { validateRebaseSubmission } from "../../../src/git/interactiveRebase/todo";
 import { RebaseDialog } from "../../../src/webviews/react/shared/components/RebaseDialog/RebaseDialog";
+import { CommitGraphPanel } from "../../../src/webviews/react/CommitGraphPanel";
+import { NativeCommitGraph } from "../../../src/webviews/react/NativeCommitGraph";
 import { formatDateTime } from "../../../src/webviews/react/shared/date";
 import theme from "../../../src/webviews/react/commit-panel/theme";
-import { initReactDomTestEnvironment, mount, unmount } from "../../helpers/reactDomTestUtils";
+import {
+    flush,
+    initReactDomTestEnvironment,
+    mount,
+    unmount,
+} from "../../helpers/reactDomTestUtils";
+import { installWebviewI18n } from "../../helpers/webviewI18nTestUtils";
 
 initReactDomTestEnvironment();
 
@@ -333,5 +341,212 @@ describe("RebaseDialog", () => {
             ),
         ).toMatchObject({ status: "valid" });
         unmount(root, container);
+    });
+});
+
+describe("commit-list rebase dialog hosts", () => {
+    const offer = (requestId: string) => ({
+        type: "showRebaseDialog" as const,
+        requestId,
+        commits,
+        branch: "main",
+        hasPushed: true,
+    });
+
+    function exerciseHost(Host: typeof CommitGraphPanel | typeof NativeCommitGraph): void {
+        const postMessage = vi.fn();
+        const { root, container } = mount(
+            <ChakraProvider theme={theme}>
+                <Host
+                    vscode={{ postMessage, getState: () => undefined, setState: vi.fn() } as never}
+                    sendReady={false}
+                />
+            </ChakraProvider>,
+        );
+        act(() => window.dispatchEvent(new MessageEvent("message", { data: offer("first") })));
+        expect(container.querySelector('[role="dialog"]')).not.toBeNull();
+        act(() => window.dispatchEvent(new MessageEvent("message", { data: offer("second") })));
+        expect(postMessage).toHaveBeenCalledWith({
+            type: "cancelRebaseDialog",
+            requestId: "first",
+        });
+        click(
+            Array.from(container.querySelectorAll("button")).find(
+                (button) => button.textContent === "Start Rebasing",
+            ) as HTMLButtonElement,
+        );
+        expect(postMessage).toHaveBeenLastCalledWith({
+            type: "startInteractiveRebase",
+            requestId: "second",
+            entries: commits.map((commit) => ({ hash: commit.hash, action: "pick" })),
+        });
+        expect(container.querySelector('[role="dialog"]')).toBeNull();
+        act(() => window.dispatchEvent(new MessageEvent("message", { data: offer("third") })));
+        click(
+            Array.from(container.querySelectorAll("button")).find(
+                (button) => button.textContent === "Cancel",
+            ) as HTMLButtonElement,
+        );
+        expect(postMessage).toHaveBeenLastCalledWith({
+            type: "cancelRebaseDialog",
+            requestId: "third",
+        });
+        unmount(root, container);
+    }
+
+    it("mounts and settles the dialog in the docked graph host", () => {
+        exerciseHost(CommitGraphPanel);
+    });
+
+    it("mounts and settles the dialog in the compact graph host", () => {
+        exerciseHost(NativeCommitGraph);
+    });
+});
+
+describe("UndockedApp rebase dialog host", () => {
+    const offer = (requestId: string) => ({
+        type: "showRebaseDialog" as const,
+        requestId,
+        commits,
+        branch: "main",
+        hasPushed: true,
+    });
+
+    function installVsCodeMock() {
+        const api = {
+            postMessage: vi.fn(),
+            getState: vi.fn(() => ({})),
+            setState: vi.fn(),
+        };
+        Object.defineProperty(globalThis, "acquireVsCodeApi", {
+            configurable: true,
+            value: vi.fn(() => api),
+        });
+        installWebviewI18n();
+        return api;
+    }
+
+    function mockUndockedChildren(): void {
+        vi.doMock("../../../src/webviews/react/BranchColumn", () => ({
+            BranchColumn: () => <div>Branches</div>,
+        }));
+        vi.doMock("../../../src/webviews/react/CommitList", () => ({
+            CommitList: () => <div>Graph</div>,
+        }));
+        vi.doMock("../../../src/webviews/react/commit-info/CommitInfoPane", () => ({
+            CommitInfoPane: () => <div>Info</div>,
+        }));
+        vi.doMock("../../../src/webviews/react/commit-panel/components/TabBar", () => ({
+            TabBar: ({ commitContent }: { commitContent: React.ReactNode }) => (
+                <div>{commitContent}</div>
+            ),
+        }));
+        vi.doMock("../../../src/webviews/react/commit-panel/components/CommitTab", () => ({
+            CommitTab: () => <div>Commit</div>,
+        }));
+        vi.doMock("../../../src/webviews/react/commit-panel/components/StashTab", () => ({
+            StashTab: () => <div>Stash</div>,
+        }));
+    }
+
+    async function mountUndocked() {
+        const root = document.createElement("div");
+        root.id = "root";
+        document.body.appendChild(root);
+        const vscode = installVsCodeMock();
+        mockUndockedChildren();
+        await act(async () => {
+            await import("../../../src/webviews/react/UndockedApp");
+        });
+        await flush();
+        return vscode;
+    }
+
+    function send(message: ReturnType<typeof offer>): void {
+        act(() => window.dispatchEvent(new MessageEvent("message", { data: message })));
+    }
+
+    function rebaseMessages(vscode: ReturnType<typeof installVsCodeMock>) {
+        return vscode.postMessage.mock.calls
+            .map(([message]) => message)
+            .filter(
+                (message) =>
+                    typeof message === "object" &&
+                    message !== null &&
+                    "type" in message &&
+                    (message.type === "startInteractiveRebase" ||
+                        message.type === "cancelRebaseDialog"),
+            );
+    }
+
+    beforeEach(() => {
+        vi.resetModules();
+        document.body.replaceChildren();
+    });
+
+    afterEach(() => {
+        vi.doUnmock("../../../src/webviews/react/BranchColumn");
+        vi.doUnmock("../../../src/webviews/react/CommitList");
+        vi.doUnmock("../../../src/webviews/react/commit-info/CommitInfoPane");
+        vi.doUnmock("../../../src/webviews/react/commit-panel/components/TabBar");
+        vi.doUnmock("../../../src/webviews/react/commit-panel/components/CommitTab");
+        vi.doUnmock("../../../src/webviews/react/commit-panel/components/StashTab");
+    });
+
+    it("settles each offered dialog exactly once with its own request id and current entries", async () => {
+        const vscode = await mountUndocked();
+        vscode.postMessage.mockClear();
+
+        send(offer("submit-request"));
+        expect(document.querySelector('[role="dialog"]')).not.toBeNull();
+        click(
+            row(document.body, commits[1].hash).querySelector(
+                '[aria-label="Move commit up"]',
+            ) as HTMLButtonElement,
+        );
+        click(
+            Array.from(document.querySelectorAll("button")).find(
+                (button) => button.textContent === "Start Rebasing",
+            ) as HTMLButtonElement,
+        );
+        expect(rebaseMessages(vscode)).toEqual([
+            {
+                type: "startInteractiveRebase",
+                requestId: "submit-request",
+                entries: [
+                    { hash: commits[1].hash, action: "pick" },
+                    { hash: commits[0].hash, action: "pick" },
+                    { hash: commits[2].hash, action: "pick" },
+                ],
+            },
+        ]);
+        expect(document.querySelector('[role="dialog"]')).toBeNull();
+
+        vscode.postMessage.mockClear();
+        send(offer("cancel-request"));
+        click(
+            Array.from(document.querySelectorAll("button")).find(
+                (button) => button.textContent === "Cancel",
+            ) as HTMLButtonElement,
+        );
+        expect(rebaseMessages(vscode)).toEqual([
+            { type: "cancelRebaseDialog", requestId: "cancel-request" },
+        ]);
+
+        vscode.postMessage.mockClear();
+        send(offer("superseded-request"));
+        send(offer("replacement-request"));
+        expect(rebaseMessages(vscode)).toEqual([
+            { type: "cancelRebaseDialog", requestId: "superseded-request" },
+        ]);
+        click(
+            Array.from(document.querySelectorAll("button")).find(
+                (button) => button.textContent === "Cancel",
+            ) as HTMLButtonElement,
+        );
+        expect(rebaseMessages(vscode)).toEqual([
+            { type: "cancelRebaseDialog", requestId: "superseded-request" },
+            { type: "cancelRebaseDialog", requestId: "replacement-request" },
+        ]);
     });
 });
