@@ -597,3 +597,72 @@ Rounds used: 1 build + 1 Codex fix round + 2 orchestrator fixes (the O(n²), the
 - **Phase 5 must carry the full multi-line message to `GIT_EDITOR`** — see the amendment above. This is the single most losable consequence of this phase.
 - **Security consequence of the amendment, for phase 5.** Relaxing the validator does *not* open todo-file injection: the threat is a message containing `\npick <hash>`, and `buildRebaseTodo` truncates to the first physical line and strips CR/LF/NUL before writing, independently of the validator — that defense is unchanged and is pinned by the test at `interactiveRebase.test.ts:150` (mutation-verified). NUL is still rejected outright. What the amendment *does* change is that arbitrary multi-line, attacker-influenced text (a commit body from a fetched branch) now reaches phase 5 intact. **Phase 5 must deliver that text to git through a file — the `GIT_EDITOR` buffer — and must never interpolate it into a shell command line, an env var, or a `-m` argument.** File-based delivery is what makes multi-line safe; anything else turns this phase's decision into an injection vector.
 - **Residual risk, now one phase from shipping:** `range.ts` decodes commit bodies with `toString("utf8")`, so a non-UTF-8 body does not round-trip byte-identically. Phase 4a pre-fills the reword editor from that body; phase 5 writes it back **and now writes back multi-line bodies, which widens the exposure**. Prove or fix before the reword path ships.
+
+## Phase 4b — mount the dialog in all three commit-list hosts
+
+Work order `scratchpad/p4b.md` (PLAN steps 6 + 10). Build SID `019fbf73-910b-7613-8f2c-6ed07cbf075d`, effort `high`, **PEAK 71%**. Fix SID `019fbf81-df5c-7463-a353-35fe9881eb56`, effort `high`, PEAK 64%.
+
+### Sizing miss, recorded
+
+71% against a 45–50% target, and the phase was predicted at 51%. That is the second phase to overshoot its prediction (3b hit 93%). The pattern across seven phases: predictions drift up, never down — the skill says so and this run keeps confirming it. Three webview hosts is three integration seams, not one; the seam count, not the line count, is what predicts the peak. A future phase touching three hosts should be planned as three packages.
+
+### The build under-delivered on exactly one host, and said so in a hedge
+
+Codex reported deliverable 9 (lifecycle coverage for **all three** hosts) as DONE, with the qualifier "undocked **message-bridge** coverage". That word is the whole finding. My mutation sweep found three survivors, all undocked, all real:
+
+- **N6** — submit posts an invented requestId. The host answers `unknown-or-expired` and the rebase silently never runs. No test noticed.
+- **N7** — cancel posts nothing at all: the host-side lease leaks and never expires.
+- **N8** — a superseding offer does not cancel the previous one: orphaned lease.
+
+Docked and compact killed every equivalent mutation. The undocked host was wired correctly in production code and tested nowhere.
+
+**Root cause of the shortcut, and why it is not an excuse:** `UndockedApp` self-mounts — `App` is not exported, and `createRoot(document.getElementById("root")!)` runs at module scope (~line 615) — so the shared `exerciseHost` helper cannot reach it. But the repo already solved this, in four places: `commitChecksEnabled-gating.integration.test.tsx:191` carries both the explanatory comment and a `mountUndocked` helper, and `webview-apps.integration.test.tsx` uses it at :913, :1007, :1056. An established, commented, four-site precedent was available and unused. A "hard to test" host is the one that most needs the test.
+
+### Fix round — tests only, verified as tests only
+
+Fix round 1 changed no production code. Verified rather than trusted: `git diff --name-only <base> -- src/` was empty and src line counts were identical before and after; `rebase-dialog.test.tsx` went 61 → 219 lines. The fix used the `mountUndocked` precedent named in the work order.
+
+Re-run sweep: **13/13 killed** (12 planned + N13 below). N6, N7, N8 now fail in `UndockedApp rebase dialog host > settles each offered dialog exactly once with its own requestId`. Tree restored byte-identical across all six mutated files, SHA-256 verified. No `git stash` at any point.
+
+### `warn=1`, and the fix that created its own coverage hole
+
+Accept gates came back GREEN but `warn=1` — the first non-zero warn count in seven phases. The warning was `lint-silenced` on `useCommitGraphMessages.ts`: Codex had added `onShowRebaseDialog` to a deps array that carries a pre-existing `// eslint-disable-line react-hooks/exhaustive-deps`. The suppression was old; touching the line is what surfaced it.
+
+Judged a real defect, not gate noise. The in-file comment mandates a fixed subscription lifetime, and that effect owns the single `ready` post — naming the callback as a dependency means every host re-render that re-creates the handler tears down the listener **and re-posts `ready` to the extension host**. The file already solves exactly this with `selectedHashRef`; the fix follows its own convention:
+
+```ts
+const onShowRebaseDialogRef = useRef(onShowRebaseDialog);
+onShowRebaseDialogRef.current = onShowRebaseDialog;
+// …
+case "showRebaseDialog":
+    onShowRebaseDialogRef.current(data);
+```
+
+**Then the sweep caught me.** N13 — delete the ref-refresh line — **survived**: 12/13. My own fix had traded a tested path for an untested defensive one, because no test ever re-rendered with a different callback identity. Added `delivers offers to the newest handler without resubscribing the message listener`, which renders with `first`, offers, re-renders with `second`, offers again, and asserts each handler got exactly its own offer **and** that the `message` subscription count did not change. N13 now fails. 13/13.
+
+The test failed on first run for an instructive reason: the harness built `vscode: { postMessage } as unknown as VsCodeApi` inline, a fresh object literal every render, so the effect legitimately re-subscribed. That is a harness artifact, not a product bug — memoized with `useMemo`, and the memo now protects the assertion for every future test in the file.
+
+Two lessons worth keeping: an orchestrator fix needs its own mutation, exactly like a delegated one; and a `warn` on a *pre-existing* suppression is still worth reading, because what changed is that someone had a reason to touch that line.
+
+### `tests/**` is not typechecked
+
+Found while investigating the above, and it explains an oddity: the `Harness` in `commitGraphMessages.test.tsx` omits `setViewVisible` and types `onShowRebaseDialog` as optional, against a hook that declares both **required** — and `typecheck` is green. `tsconfig.json` excludes `tests`; `tsconfig.webview.json` includes only `src/webviews/react/**`. No test file is typechecked by either config.
+
+Consequence for this build's evidence standard: **"typecheck green" says nothing about test types.** A test can drift out of sync with the interface it exercises and stay green until the assertion itself breaks. This is why the mutation sweeps are load-bearing here and not merely thorough — they are the only mechanism that checks whether a test still tests what it claims to.
+
+### Acceptance
+
+Accept gates: **lint OK 11.7s, typecheck OK 4.2s, format OK 2.4s, knip OK 1.0s, architecture OK 1.1s, suite OK 42.1s — GATES: GREEN warn=0.** Six gates, now including the `architecture` gate added in 4a. Seal: `SEAL: WRITTEN files=10 green=True`, re-checked `SEAL: INTACT files=10 warns_open=0`.
+
+Shadow-mode datum: **not collected, seventh time.** Same structural reason. Seven builds, zero clean data points — `SEAL_MODE` stays `shadow`.
+
+Rounds used: 1 build + 1 Codex fix round + 2 orchestrator fixes (the `warn=1` ref conversion, and the test that made it load-bearing).
+
+## Handoff — resume at Phase 5
+
+- Branch `feat/interactive-rebase-from-here`; BASE_HEAD for phase 5 = the tip after this phase's two commits. Tunables unchanged; `SEAL_MODE=shadow`.
+- **`.claudex-gates.json` is gitignored and does not travel.** It must contain six gates, `architecture` among them at `stage: accept`. A fresh clone re-derives a single gate from `PROOF_CMD` and silently ships the weaker definition of green that 4a caught. Re-create it before launching phase 5 on any other machine.
+- Phase 5 scope: PLAN steps 2 + 7 — reservation, session dir + manifest, in-gate recheck, run the rebase under `GIT_SEQUENCE_EDITOR`/`GIT_EDITOR`, pause classification, force-push offer.
+- **Phase 5 must carry the full multi-line message to `GIT_EDITOR` through a file.** Restated because it is now the immediately-next phase, not a distant one: never a shell command line, never an env var, never `-m`. The step-2 amendment (Phase 4a) is what makes this binding — see its security note above; `buildRebaseTodo`'s truncate-and-strip is unchanged and still pinned by `interactiveRebase.test.ts:150`.
+- **Residual risk, now due:** `range.ts` decodes commit bodies with `toString("utf8")`, so a non-UTF-8 body does not round-trip byte-identically. 4a pre-fills the reword editor from that body; phase 5 writes it back, multi-line. Prove or fix in phase 5 — the reword path ships with it.
+- Size phase 5 by seam count, not line count. Steps 2 and 7 together are the process-launch seam plus the pause/resume state machine; if the prediction lands above 50%, split them.
