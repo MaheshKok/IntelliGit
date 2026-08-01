@@ -26,6 +26,15 @@ knip.json
 .env*
 AGENTS.md
 
+# Planning and build-protocol artifacts (PLAN.md, PLAN-REVIEW-LOG.md, gate manifest)
+PLAN*.md
+.claudex-gates.json
+
+# Repository automation that has no meaning inside an installed extension
+.githooks/**
+.pre-commit-config.yaml
+.coderabbit.yaml
+
 # Build tools and caches
 .vscode/**
 .idea/**
