@@ -19,6 +19,18 @@ const extensionConfig = {
     mainFields: ["module", "main"],
 };
 
+const editorHelperConfig = {
+    entryPoints: [path.resolve(__dirname, "../src/git/interactiveRebase/editorHelper.ts")],
+    bundle: true,
+    outfile: path.resolve(__dirname, "../dist/interactive-rebase-editor-helper.cjs"),
+    format: "cjs",
+    platform: "node",
+    target: "node20",
+    sourcemap: true,
+    minify: process.argv.includes("--production"),
+    treeShaking: true,
+};
+
 const webviewConfigs = WEBVIEW_CONFIGS.map(({ entry, out }) => ({
     entryPoints: [path.resolve(__dirname, `../src/webviews/${entry}.tsx`)],
     bundle: true,
@@ -36,10 +48,14 @@ const webviewConfigs = WEBVIEW_CONFIGS.map(({ entry, out }) => ({
     },
 }));
 
+/** Builds the extension, editor helper, and every configured webview bundle for the requested mode. */
 async function build() {
     try {
         await esbuild.build(extensionConfig);
         console.log("Extension bundle built.");
+
+        await esbuild.build(editorHelperConfig);
+        console.log("Interactive rebase editor helper built.");
 
         for (const config of webviewConfigs) {
             try {

@@ -295,6 +295,22 @@ Verified clean: no new deps, no `console.*`/`vscode` in domain files, TSDoc on e
 - Work order: all six findings, self-contained (fresh session has no memory of the build round), test-first per defect. CRITICAL fixed in both halves — validation rejects control chars in `message`, and `buildRebaseTodo` renders defensively (first line only, control chars stripped) so it is structurally impossible to emit more lines than entries.
 - Watcher armed.
 
+Telemetry: PEAK=117178 LAST=117178 PCT=45% NONRESUMABLE=no. Codex self-report: 7/7 DONE, RED→GREEN, 19 focused tests. Round gates GREEN first try.
+
+Independent verifier (opus, fable-method, ≤30 calls) — **PHASE_VERDICT: DEFECTS**, but no CRITICAL and the two security-critical properties were proven sound:
+- **Quoting is injection-safe, empirically.** The verifier built its own `sh -c` harness with a working positive control (proved it *can* execute an injection when quoting is bypassed), then ran 13 hostile inputs — `'; touch … ;'`, `$(…)`, backticks, `$IFS`, `${HOME}`, newline, double quote, non-ASCII, `C:\dir's path\x`, trailing backslash, glob — all arrived byte-identical, no file created. `ELECTRON_RUN_AS_NODE` confirmed scoped: no parent-env leak, no sibling visibility.
+- **The message role's fail-closed rule holds.** Marker revalidation is the first statement before any map read or keyed lookup. A 14-case adversarial matrix (empty `done`, malformed tail, foreign hash, corrupt JSON, truncated JSON, missing map, missing session dir, uppercase key, `__proto__` key, abbreviated hash, marker absent, marker mismatched) produced 13 nonzero exits with the message file untouched and no consumption marker; the 14th was the happy-path control reaching outcome (a), proving the matrix isn't vacuous. Mutation-checked: defeating marker revalidation fails 2 tests, defeating the fail-closed exit fails 1.
+- Also empirically established: git's `done` file carries **full 40-hex** hashes, so the helper's `FULL_OBJECT_ID` gate is correct rather than over-strict. And the helper was driven by a **real `git rebase -i`** via `GIT_SEQUENCE_EDITOR`/`GIT_EDITOR` — exit 0, commits reordered as submitted, marker present.
+
+Five defects, all fixed directly by the orchestrator (mechanical, each with a prescribed fix — cheaper and lower-risk than an `xhigh` Codex round):
+1. [REQUIRED] `package.json` — `"test": "bun vitest run"` had no build step while 7 of 19 helper tests depend on the built `dist/` artifact; proven by deleting the artifact and watching them fail. `bun run test` was red on a clean checkout or any CI job that doesn't build first. Fixed with `"pretest": "bun run build"`, which also removes the stale-artifact weakness in the packaging assertion (the artifact is now always freshly built). Verified by deleting `dist/interactive-rebase-editor-helper.cjs` and running `npm run -s test`: the helper rebuilt and all 2169 tests across 138 files passed.
+2. [REQUIRED] `scripts/watch.js` — the dev watch loop had no editor-helper entry, so `bun run watch` never rebuilt the helper and a developer editing it would silently run a stale or absent bundle. Added an esbuild context mirroring `scripts/build.js`.
+3. [MINOR] Every fail-closed path returned 1 with empty stderr, while PLAN step 7 expects the stop to be surfaced with captured stderr. Added a `fail(reason)` helper writing one machine-readable token (`intelligit-rebase-editor: <reason>`) before each nonzero return — ten distinct reasons.
+4. [MINOR] Two fail-closed tests asserted only `status !== 0`, which a failure-to-launch also satisfies (they stayed green in the no-artifact run). Now assert `status === 1` plus the specific stderr reason.
+5. [MINOR] An undocumented second invocation form via `INTELLIGIT_REBASE_EDITOR_ROLE`/`INTELLIGIT_REBASE_SESSION_DIRECTORY` was outside PLAN item 3's invocation contract and had no test. Deleted — argv is the sole supported form.
+
+Accept gates: **lint OK, typecheck OK, format OK, knip OK, suite OK (36.0s) — GATES: GREEN warn=0.** Seal: `SEAL: WRITTEN files=6 green=True`.
+
 Telemetry: PEAK=99038 LAST=99038 PCT=38% NONRESUMABLE=no. Codex self-report: 6/6 FIXED, RED (8 failing) → GREEN (60 passing). Round gates GREEN.
 
 Re-verification (fresh opus verifier, fable-method, mutation-checked) — **PHASE_VERDICT: ACCEPT**:
@@ -327,3 +343,15 @@ Accept gates, final run: **lint OK, typecheck OK, format OK, knip OK, suite OK (
 Seal: rewritten after the knip fixes — `SEAL: WRITTEN green=True`. SEAL_MODE=shadow, and the fresh final verifier had already returned ACCEPT before these changes; the changes since are the dead-export cleanup above, all covered by the green gate run.
 
 Security note (project Tier-2 rule — code touching untrusted user input): the adversarial pass was performed by the independent verifier, which found and then proved-closed a real command-injection reachable from ordinary webview use. No push is being made; the security-reviewer gate before push still applies.
+
+**Phase 1 COMMITTED: `08d92e95` — `feat: interactive rebase domain foundation (phase 1)`.** The repo's full pre-commit chain ran and passed: format, `eslint --max-warnings=0`, knip, dependency-cruiser (249 modules, no violations), l10n validate + audit, both typecheck projects, full build, and `vsce package`. Rounds used: 1 build + 1 fix (ladder position: one fix round left at `xhigh` before Claude takeover, but the phase is accepted, so the ladder resets for Phase 2).
+
+Carry-forward (unchanged by this phase, still open): the VSIX packages `PLAN.md`, `PLAN-REVIEW-LOG.md`, and `.claudex-gates.json` — visible again in this commit's `vsce package` output. Tracked as a separate task; fix belongs in `.vscodeignore`, not in this feature branch.
+
+## Phase 2 — PLAN step 3 (editor helper script) — gpt-5.6-terra @ xhigh
+
+- BASE_HEAD: `08d92e950e5f5783d2f438965eca5d06df7e1f0a` (clean tree at launch).
+- SID: `019fbd1e-86dc` → `019fbd37-a9d2-78a2-90cf-3e0885e7c050` (fresh session).
+- Work order: 7 deliverables — the `.cjs` helper (sequence role writing todo + `rebase-merge/intelligit-session` marker; message role with keyed lookup, consumption tracking, and the exactly-three-outcomes fail-closed rule), the POSIX/MSYS quoting algorithm as a separately testable export with `env ELECTRON_RUN_AS_NODE=1` scoped to the editor invocation, a second esbuild entry, real-child-`sh` round-trip tests across every metacharacter class, child-process tests of both roles against a mimicked `rebase-merge` layout, and a packaged-artifact assertion.
+- The work order points Codex at Phase 1's committed `types.ts`/`storage.ts` as the authoritative on-disk contract (`RebaseSessionPaths`: `todoPath`, `messageMapPath`, `consumptionDirectory`) and states that object IDs in the map are lowercase, so the helper must lowercase hashes parsed out of git's files. It also carries forward the knip constraint that bit Phase 1: export nothing without a consumer.
+- Watcher armed.

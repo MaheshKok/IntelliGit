@@ -970,6 +970,7 @@
         "typecheck:ext": "tsc -p tsconfig.json --noEmit",
         "typecheck:webview": "tsc -p tsconfig.webview.json --noEmit",
         "typecheck": "bun run typecheck:ext && bun run typecheck:webview",
+        "pretest": "bun run build",
         "test": "bun vitest run",
         "test:coverage": "bun vitest run --coverage",
         "test:watch": "bun vitest",

@@ -20,6 +20,19 @@ async function watch() {
     await extensionCtx.watch();
     console.log("Watching extension...");
 
+    const editorHelperCtx = await esbuild.context({
+        entryPoints: [path.resolve(__dirname, "../src/git/interactiveRebase/editorHelper.ts")],
+        bundle: true,
+        outfile: path.resolve(__dirname, "../dist/interactive-rebase-editor-helper.cjs"),
+        format: "cjs",
+        platform: "node",
+        target: "node20",
+        sourcemap: true,
+    });
+
+    await editorHelperCtx.watch();
+    console.log("Watching interactive rebase editor helper...");
+
     for (const webview of WEBVIEW_CONFIGS.map(({ entry, out }) => ({
         name: out.replace(/^webview-/, ""),
         entry: `../src/webviews/${entry}.tsx`,
