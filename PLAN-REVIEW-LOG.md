@@ -227,3 +227,32 @@ PLAN.md now v8 (50/50 across 7 rounds, zero REJECTED). Trajectory: 12→12→9�
 ## Act 2 close — arbitrated
 
 User closed the review by arbitration (no Codex APPROVED was issued; the option was presented with that stated plainly). Basis: two consecutive zero-CRITICAL rounds, 50/50 findings dispositioned FIXED across 7 rounds with zero REJECTED, constant-rate precision residue whose class is covered by the build phase's own adversarial layer (Claude diff review + full AGENTS.md acceptance matrix). Act 3 begins: **Codex builds** from frozen PLAN.md v8 via claudex-build; roles flip — Codex writes with access, Claude reviews the diff and runs the proof. Plan artifacts committed as a checkpoint before the build.
+
+## Act 3 — Build
+
+### Step 0 — gates (2026-08-01)
+
+- Spec gate: PLAN.md v8 (grilled + 7 review rounds) — pass.
+- Clean-tree gate: clean at `0ecdb97b` (plan checkpoint committed; branch ahead of origin by 1, pushes user-driven) — pass.
+- BASE_HEAD: `0ecdb97b3c75656e8329f2463a253ab6b16dad14`
+- Protocol SHAs: SKILL.md `fece62ecf381`, helpers.py `cf85c8260269`, verify.py `db9282d4db13`. codex-cli 0.144.1.
+- Gates manifest `.claudex-gates.json`: round+accept = lint (`npm run -s lint:strict`), typecheck, format; accept-only = knip (`deps:check:strict`), suite (`npm run -s test`, 1800s) — suite is PROOF_CMD.
+- Tunables: BUILD_MODEL=gpt-5.6-terra, BUILD_EFFORT=high (xhigh at launch for subtle-state phases 1, 2, 5, 6), SANDBOX=danger-full-access, MAX_FIX_ROUNDS=2 (ladder high→xhigh→takeover), SEAL_MODE=shadow (no prior build has logged zero shadow findings yet).
+
+## Handoff — resume at Phase 1
+
+Orchestrator-session sizing rule: this session already auto-compacted once (continued from summary) and carries the full 7-round review context — per protocol, no phase launches into a compacting session. Fresh orchestrator session takes over from here; the spec (PLAN.md v8), this log, and the committed tree at `0ecdb97b` are the complete state.
+
+- BASE_HEAD: `0ecdb97b3c75656e8329f2463a253ab6b16dad14`
+- Resolved tunables + SEAL_MODE: see Step 0 above.
+- Phases committed so far: none.
+- Phase plan (dependency-sliced; predicted peak 45–50% each; effort per phase in parentheses):
+  1. PLAN steps 1–2 (xhigh): executor `env?` support + `src/git/interactiveRebase.ts` domain module — types, todo builder, submission validation, reservation + manifest store (sessionId, pushTarget?, atomic writes) — + unit tests.
+  2. PLAN step 3 (xhigh): helper `.cjs` (sequence role + marker write, message role + marker revalidation, quoting algorithm) + second esbuild entry + real-sh/child-process tests + packaged-artifact inspection.
+  3. PLAN steps 4–5 (high): command rewrite — guards, 500-cap `-z` NUL-framed range load, pending request (fully-qualified expectedBranch) — + protocol messages + origin-bound one-shot consume + unit/mocked-integration tests.
+  4. PLAN steps 6+10 (high): RebaseDialog shared component in the three hosts + first-non-dropped recomputation + pushed banner + commitMenu enablement change + webview tests.
+  5. PLAN step 7 (xhigh): run-the-rebase path — session files, in-gate recheck, pause classification (ls-files -u), success split (pending-push vs direct-done), force-push offer with full pushTarget predicate + Dismiss — + tests.
+  6. PLAN step 8 (xhigh): activeOperation + rebaseControl protocol, repo-scoped marker-first reload reconciliation (default-deny), toolbar Continue/Abort with per-control side effects, `REVERT_HEAD → revert --abort` dispatch in abortMerge + tests.
+  7. PLAN steps 9+11 (high): enumerated operation fence + rejection tests; l10n CSV pipeline for all new strings.
+  8. PLAN steps 12–14 (high): real-git integration suite (temp repos, file:// bare remotes, full matrix), docs + CHANGELOG, full acceptance matrix incl. build:prod/package inspection + Impeccable workflow + Windows release-gate note.
+- Next action for the fresh session: re-run Step 0 quickly (tree must still be clean at the recorded BASE_HEAD), then launch Phase 1 per Step 1–2 of the skill.
