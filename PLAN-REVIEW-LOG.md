@@ -529,3 +529,71 @@ Process notes worth carrying forward:
 - Scope `prettier --write` to the phase's own files — `format:check` only covers `src/**` and `scripts/**`, so a repo-wide run silently reformats 30+ unrelated test files into the diff.
 
 Resolved since the last handoff: the VSIX no longer packages `PLAN.md`, `PLAN-REVIEW-LOG.md`, `.claudex-gates.json`, `.githooks/`, `.pre-commit-config.yaml`, or `.coderabbit.yaml` — `.vscodeignore` fixed in `8e09518f` and verified by `unzip -l` on the built package (116 files → 109).
+
+## Phase 4a — the RebaseDialog component
+
+Build round: Codex `019fbf43-81e5-7760-ac30-31244bebd857`, effort high, `PEAK=132078 PCT=51%` — the sizing target held for the second phase running. Round gates green (lint 12.1s, typecheck 4.3s, format 2.4s, warn=0).
+
+### The spec contradicted itself, and seven review rounds missed it
+
+The verifier's CRITICAL finding was not a coding defect. PLAN step 2 required the validator to *"reject any CR/LF/NUL"* in `entry.message`; PLAN step 6 required an inline editor that *"expands"* for reword/squash and *"pre-fills combined messages"*. A combined message is two commit messages joined — it contains a newline by construction. So step 6 produced exactly what step 2 rejected: **every squash and every reword of a commit with a body would have been rejected by the host with `invalid-message`.** The dialog was faithful to step 6; the validator was faithful to step 2; the pair was unshippable.
+
+This is the first defect in the build that no amount of implementation care could have prevented, and the review process that produced the frozen plan is what missed it — the two steps are 14 lines apart. Worth noting for future plans: a review that checks each step against the codebase, but never checks steps against *each other*, will pass a self-contradictory spec.
+
+Escalated to the author rather than resolved unilaterally, because the two readings ship different products. **Decision: allow multi-line.** The validator relaxes to NUL-only (`todo.ts:53`); `buildRebaseTodo` at `todo.ts:23` is unchanged and keeps the todo file safe on its own, because it already truncates each message to its first physical line and strips CR/LF/NUL before writing. The validator's CR/LF ban was pure redundancy layered on top of a defense that was already sufficient — and the redundancy, not the defense, is what broke the feature. PLAN step 2 carries the amendment inline.
+
+**Consequence for phase 5, recorded now because it is easy to lose:** the keyed message map handed to `GIT_EDITOR` must carry the **full multi-line message**, not the todo-line subject. A phase-5 implementation that reuses the todo line will silently truncate every squash to its first line.
+
+### Verifier findings
+
+One CRITICAL (the above), eight real defects, one unsupported claim: no `missing-message` guard so Start was never disabled (D2); squash prefill combining with the preceding row even when dropped (D3); prefill going stale after reorder (D4); DnD tests that never dispatched a real event (D5); `setNotice` called inside the `setEntries` updater (D6); `commits` prop updates ignored after mount (D7); memoization defeated during drag (D8); raw ISO timestamp rendered (D9). D10 — a claimed removal of a stale CSV row — was **unsupported**: the CSV diff is 12 insertions / 0 deletions, so the removal never happened. Codex's report described work it had not done.
+
+Verified CLEAN: first-non-dropped parity with the host validator (exact match across 5 edge cases), props-only with no direct messaging, immutability under an `Object.freeze` probe, 500-row render O(n) at 2 ms interaction, and all 12 new keys present in all 12 catalogs with zero English copies and no mojibake.
+
+**D5 is the one that matters for process.** Deleting `preventDefault()` from the `dragover` handler — which is what makes a row a valid drop target, i.e. deleting drag-and-drop — **survived all nine tests.** The tests called the handlers directly with bare objects, so they asserted the reordering function worked while proving nothing about whether a user could actually drag. A test that invokes a handler is not a test of the interaction that invokes it.
+
+### Fix round and independent verification
+
+Fix round 1: Codex `019fbf5b-6b86-7cb3-9963-d29fe54d28af`, `FIX_EFFORT=high`, `PEAK=133272 PCT=51%`. All 14 items reported DONE, and unlike prior phases the report was specific enough to check: for D5 it reported the RED (1 failed / 8 passed with `preventDefault` removed) and the GREEN (9/9 restored) separately, as the work order demanded.
+
+Independent mutation sweep, 10 mutations, run by the orchestrator against the fixed tree — **10/10 killed**, including:
+
+- **M3 — `preventDefault()` deleted from `dragover`.** The mutation that survived all nine tests before the fix now fails `reorders by buttons and drag-and-drop`. This is the sweep's whole point: the same mutation, re-run, is the only evidence that a test-coverage fix actually landed.
+- M1 — reverting the validator to `/[\r\n\0]/` fails both the domain test *and* the new round-trip test, so the amendment cannot be silently undone.
+- M2 — NUL rejection removed: still caught, so relaxing CR/LF did not relax NUL.
+- M5/M6/M7 — the three ways the prefill logic can be wrong (targets a dropped row; never recomputes; wipes user edits) are each caught by a distinct test.
+
+Tree restored byte-identical after every mutation, SHA-256 verified on all three mutated files. No `git stash` at any point — the tree carries uncommitted work.
+
+**The coverage hole that let the CRITICAL through:** not one test ever fed dialog output into the real `validateRebaseSubmission`. Nine tests passed against a dialog whose every submission the host would reject. The fix adds a round-trip test that drives realistic interactions and passes the captured entries to the real validator — the single most valuable test in this phase.
+
+### Orchestrator's own fix
+
+Found while reading the fixed code, not reported by anyone: `messageMissing={missingMessageEntries.some(…)}` inside the row map is a linear scan per row — **O(n²)** in the same render the verifier had certified O(n). It is invisible in the common case (the array is empty, so `some()` is O(1)) and only bites when a large range has many blank messages. Replaced with a hash `Set`. Fixed rather than filed: it is two lines, and it undercut a property the verifier had explicitly certified.
+
+Deliberately **not** changed: `commitsRef.current = commits` is a ref write during render, the same impurity class as D6. It is idempotent, so StrictMode's double-invoke is harmless, and moving it into an effect would introduce a real staleness window — a drag or action change dispatched between render and effect flush would compute its prefill from the previous range. Trading a theoretical purity violation for a real correctness window is the wrong direction; leaving it is the considered choice, not an oversight.
+
+### Acceptance
+
+Accept gates: **lint OK 10.3s, typecheck OK 3.9s, format OK 2.3s, knip OK 0.9s, suite OK 38.2s — GATES: GREEN warn=0.** Seal: `SEAL: WRITTEN files=23 green=True`, re-checked `SEAL: INTACT files=23 warns_open=0`.
+
+Shadow-mode datum: **not collected, for the sixth time.** Same structural reason as phase 3c — the verifier runs before the fix round, so every file it reported on changed afterwards. Six shadow builds, zero clean data points. Keep `SEAL_MODE=shadow`; do not flip to enforce on an empty record.
+
+### The gate manifest was incomplete, and the commit hook caught what the gates missed
+
+Accept gates went GREEN, and then `git commit` failed: the pre-commit chain runs `architecture:check` (dependency-cruiser), which `.claudex-gates.json` did not. Three violations of `no-webview-to-extension-host` — `RebaseDialog.tsx`, `rebaseDialogState.ts`, and `types.ts` each imported straight from `src/git/interactiveRebase/types`. React webviews run in the browser and must not import extension-host modules; the rule has existed the whole time and nothing in the build path checked it.
+
+Fixed properly rather than by relaxing the rule: `src/webviews/protocol/` is the sanctioned bridge (it is outside the rule's `from` scope and already imported `InteractiveRebaseRangeCommit` for the `showRebaseDialog` message), and the repo's own convention is React components importing shared types from `../protocol/*` — `ShelfEntry`, `CommitAction`, `WorktreeAction` all work this way. `commitGraphTypes.ts` now re-exports `InteractiveRebaseRangeCommit`, `RebaseAction`, and `RebaseTodoEntry`, and the three dialog files import from there. Type-only, no cycle, no runtime change.
+
+**Process fix, and the more important half:** `architecture` is now an accept-stage gate in `.claudex-gates.json`. That file is **gitignored**, so the manifest change is local to this machine and will not travel with the branch — a future session on a fresh clone must re-add it, and this paragraph is the only record that it belongs there. Five phases shipped with the build's definition of "green" weaker than the repo's own commit gate — this phase is simply the first whose code happened to violate the missing rule. Every prior phase's GREEN was measured against an incomplete manifest. Worth stating plainly: an acceptance gate set that is a subset of the pre-commit hook is not an acceptance gate set.
+
+Rounds used: 1 build + 1 Codex fix round + 2 orchestrator fixes (the O(n²), the architecture violation).
+
+## Handoff — resume at Phase 4b
+
+- Branch `feat/interactive-rebase-from-here`; BASE_HEAD for 4b = the tip after this phase's two commits. Tunables unchanged; `SEAL_MODE=shadow`.
+- **4b work order is already written** at `scratchpad/p4b.md` and is still accurate — it depends only on the component's props contract, which the fix round did not change. One correction to apply before launching: it cites PLAN step 6 at line 30, and the step-2 amendment has shifted the line numbers; re-derive them rather than trusting the citation.
+- 4b scope: mount `RebaseDialog` in `CommitGraphPanel.tsx`, `NativeCommitGraph.tsx`, `UndockedApp.tsx`; post `startInteractiveRebase` / `cancelRebaseDialog` with the requestId that arrived; supersede-cancels-previous; `commitMenu.tsx` drops the `isPushed` gate (PLAN step 10) and `webview-utils.test.ts:289` updates with it.
+- **Phase 5 must carry the full multi-line message to `GIT_EDITOR`** — see the amendment above. This is the single most losable consequence of this phase.
+- **Security consequence of the amendment, for phase 5.** Relaxing the validator does *not* open todo-file injection: the threat is a message containing `\npick <hash>`, and `buildRebaseTodo` truncates to the first physical line and strips CR/LF/NUL before writing, independently of the validator — that defense is unchanged and is pinned by the test at `interactiveRebase.test.ts:150` (mutation-verified). NUL is still rejected outright. What the amendment *does* change is that arbitrary multi-line, attacker-influenced text (a commit body from a fetched branch) now reaches phase 5 intact. **Phase 5 must deliver that text to git through a file — the `GIT_EDITOR` buffer — and must never interpolate it into a shell command line, an env var, or a `-m` argument.** File-based delivery is what makes multi-line safe; anything else turns this phase's decision into an injection vector.
+- **Residual risk, now one phase from shipping:** `range.ts` decodes commit bodies with `toString("utf8")`, so a non-UTF-8 body does not round-trip byte-identically. Phase 4a pre-fills the reword editor from that body; phase 5 writes it back **and now writes back multi-line bodies, which widens the exposure**. Prove or fix before the reword path ships.
