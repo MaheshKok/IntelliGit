@@ -256,3 +256,10 @@ Orchestrator-session sizing rule: this session already auto-compacted once (cont
   7. PLAN steps 9+11 (high): enumerated operation fence + rejection tests; l10n CSV pipeline for all new strings.
   8. PLAN steps 12–14 (high): real-git integration suite (temp repos, file:// bare remotes, full matrix), docs + CHANGELOG, full acceptance matrix incl. build:prod/package inspection + Impeccable workflow + Windows release-gate note.
 - Next action for the fresh session: re-run Step 0 quickly (tree must still be clean at the recorded BASE_HEAD), then launch Phase 1 per Step 1–2 of the skill.
+
+### Handoff superseded — user override (same session)
+
+User re-invoked `/claudex-build` in the same session with explicit instructions: build now, on a new branch. Handoff-to-fresh-session recommendation overridden by the user; risk (possible orchestrator auto-compact mid-phase) accepted and mitigated by background Codex rounds + durable on-disk state (spec, log, tree). Additional user instruction executed: claudex-grill SKILL.md updated so Act 3 auto-invokes claudex-build on Act-2 convergence (no "who builds?" ask; claudex-build Step-0 confirmation is the single human gate).
+
+- Branch: `feat/interactive-rebase-from-here` created at `d79abad6` (BASE_HEAD for Phase 1).
+- Tunables re-confirmed: BUILD_MODEL=gpt-5.6-terra, SANDBOX=danger-full-access, SEAL_MODE=shadow; Phase 1 effort xhigh per the phase plan.
