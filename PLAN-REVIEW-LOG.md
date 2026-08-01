@@ -467,4 +467,22 @@ Shadow-mode datum: **not collected this phase** — same reason as 3a; the verif
 
 Diff-hygiene note: an orchestrator `prettier --write` over `tests/**` during the round-gate fix reformatted 34 test files unrelated to this phase — `format:check` covers only `src/**` and `scripts/**`, so those files had never been formatted. All 34 were reverted to `f93d4e7d` before acceptance; the committed diff is 17 files, all phase-3b. Scope future formatting runs to the files the phase actually touches.
 
-Rounds used: 1 build + 0 Codex fix rounds.
+Rounds used: 1 build + 0 Codex fix rounds. Committed as `3ded2af0`.
+
+## Handoff — resume at Phase 3c
+
+Orchestrator-session sizing rule (claudex-build Step 5.5): this session has now auto-compacted **twice** and delivered two committed phases (3a, 3b) — past the documented 1–2 phase ceiling on both counts. This is a checkpoint report, not a request for approval: PLAN.md v8, this log, and the committed tree are the complete state.
+
+- Branch: `feat/interactive-rebase-from-here`. **BASE_HEAD for Phase 3c = the tip after this docs commit** (last code commit is Phase 3b's `3ded2af0ee271e9be16e3efb57ad1849e97c8e4d`; Step 0 re-derives it with `git rev-parse HEAD` against a clean tree).
+- Tunables unchanged: BUILD_MODEL=gpt-5.6-terra; effort xhigh for phases 5 and 6, high for the rest; SANDBOX=danger-full-access; SEAL_MODE=shadow — **four shadow builds, still zero clean data points, do NOT flip to enforce**; PROOF_CMD / suite gate = `npm run -s test`.
+- Phases committed: 1 (`08d92e95`, domain + storage), 2 (`1f7ac5df`, editor helper), 3a (`f93d4e7d`, range + guards), 3b (`3ded2af0`, dialog request wiring).
+- **Phase 3c — cut it to roughly a third of 3b.** Scope: inbound `startInteractiveRebase` / `cancelRebaseDialog` handling, consume-by-requestId with the origin check, the `expectedHead` / `expectedBranch` re-checks *inside* the mutation-gate critical section, expiry wiring, reservation acquisition, and mocked integration coverage. Nothing else. Phases 4–8 (dialog component + menu enablement; run-the-rebase; activeOperation/rebaseControl + reconciliation; fence + l10n; integration suite + docs) follow as listed in the phase plan above.
+- Next action: relaunch `/claudex-build SPEC_FILE=PLAN.md LOG_FILE=PLAN-REVIEW-LOG.md` in a fresh session, re-run Step 0 against the new BASE_HEAD, then build Phase 3c at effort high.
+
+Process notes worth carrying forward:
+- **Phase sizing has now missed four times running, always upward.** 45–50% target → 3a landed at 66%, 3b at 93% with a compaction. Size the next package against the *measured* curve, not the intended one: if a slice looks like 3b did, it is two slices.
+- **Codex's self-report has been optimistic in all four phases.** 3b claimed 6/6 DONE with green gates while carrying a CRITICAL TOCTOU. The independent verifier keeps earning its cost — and in 3b it did more than confirm: it independently reproduced the orchestrator's TOCTOU finding and prescribed a *better* fix (pin the range to an explicit head OID rather than merely reordering the captures). Keep demanding empirical proof with a working positive control.
+- **Carried-forward residual risk from 3a, still unresolved:** `range.ts` decodes commit bodies with `toString("utf8")`, so a non-UTF-8 body does not round-trip byte-identically. Harmless while the range is display-only; **it becomes a correctness bug the moment a body is written back as a reword message (phases 4–5)**. Prove or fix before the reword path ships.
+- Scope `prettier --write` to the phase's own files — `format:check` only covers `src/**` and `scripts/**`, so a repo-wide run silently reformats 30+ unrelated test files into the diff.
+
+Still open, unrelated to this feature: the VSIX packages `PLAN.md`, `PLAN-REVIEW-LOG.md`, and `.claudex-gates.json` — needs a `.vscodeignore` fix in a separate change.
