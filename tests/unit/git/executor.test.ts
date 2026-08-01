@@ -52,6 +52,28 @@ async function runFakeGit(
     }
 }
 
+/** Runs text-mode executor commands against a temporary Git executable. */
+async function runFakeGitText(
+    script: string,
+    args: string[],
+    options: Parameters<GitExecutor["run"]>[1] = {},
+    gate?: RepositoryMutationGate,
+): Promise<string> {
+    const directory = await mkdtemp(join(tmpdir(), "intelligit-fake-git-"));
+    const executable = join(directory, "git");
+    const originalPath = process.env.PATH;
+    await writeFile(executable, `#!/bin/sh\n${script}\n`, "utf8");
+    await chmod(executable, 0o755);
+    process.env.PATH = `${directory}${delimiter}${originalPath ?? ""}`;
+    try {
+        return await new GitExecutor(process.cwd(), gate).run(args, options);
+    } finally {
+        if (originalPath === undefined) delete process.env.PATH;
+        else process.env.PATH = originalPath;
+        await rm(directory, { force: true, recursive: true });
+    }
+}
+
 /**
  * Reports how many times `args` reached the mutation gate, running against a stub
  * `git` so write-shaped commands are classified without touching a real repository.
@@ -75,6 +97,40 @@ async function gatedRunCount(args: string[]): Promise<number> {
 }
 
 describe("GitExecutor", () => {
+    itPosix("merges custom environment variables without mutating process.env", async () => {
+        const variable = "INTELLIGIT_EXECUTOR_ENV_TEST";
+        const original = process.env[variable];
+        process.env[variable] = "parent";
+
+        try {
+            await expect(
+                runFakeGitText(`printf '%s' \"$${variable}\"`, ["rebase", "--continue"], {
+                    env: { [variable]: "scoped" },
+                }),
+            ).resolves.toBe("scoped");
+            expect(process.env[variable]).toBe("parent");
+        } finally {
+            if (original === undefined) delete process.env[variable];
+            else process.env[variable] = original;
+        }
+    });
+
+    itPosix("merges custom environment variables through the mutation gate", async () => {
+        const variable = "INTELLIGIT_EXECUTOR_GATED_ENV_TEST";
+        const { gate, gatedRuns } = gateProbe();
+
+        await expect(
+            runFakeGitText(
+                `printf '%s' \"$${variable}\"`,
+                ["rebase", "--continue"],
+                { env: { [variable]: "scoped" } },
+                gate,
+            ),
+        ).resolves.toBe("scoped");
+
+        expect(gatedRuns).toHaveLength(1);
+    });
+
     it("returns binary stdout without decoding it", async () => {
         const executor = new GitExecutor(process.cwd());
 

@@ -263,3 +263,67 @@ User re-invoked `/claudex-build` in the same session with explicit instructions:
 
 - Branch: `feat/interactive-rebase-from-here` created at `d79abad6` (BASE_HEAD for Phase 1).
 - Tunables re-confirmed: BUILD_MODEL=gpt-5.6-terra, SANDBOX=danger-full-access, SEAL_MODE=shadow; Phase 1 effort xhigh per the phase plan.
+
+## Phase 1 — PLAN steps 1–2 (executor env + rebase domain module) — gpt-5.6-terra @ xhigh
+
+- BASE_HEAD: `230a871c60c79a7e143091bc9d9e58b1dc17c7b7` (docs commit for this override note included).
+- SID: `019fbc9e-c698-71c2-a424-b5c34b82d3ec` (fresh session — nothing resumes in build rounds).
+- Work order: 8 deliverables (executor `env?` merge; domain types; todo builder; fail-closed validation; O_EXCL reservation + orphan sweep; session-dir helpers; manifest store with pushTarget? all-or-none + ambiguous classification; unit tests for all). GIT clause: no commits, stay on branch. Checks: focused vitest only.
+- Watcher armed (600s stale threshold, 2-frozen-sample alert, 3h expiry).
+
+### Round 1 (build) — result
+
+Telemetry: PEAK=119165 LAST=119165 PCT=46% NONRESUMABLE=no (sizing target 45–50% hit).
+Codex self-report: 8/8 DONE, RED-then-GREEN per slice, 43 focused tests passing, no git ref moved.
+Round gates: RED on first run — `format` failed on the two new files (`interactiveRebase/storage.ts`, `todo.ts`). Orchestrator ran `npx prettier --write` on both; re-run GREEN (lint 10.6s, typecheck 3.8s, format 2.2s).
+
+Independent phase verifier (opus, fable-method, read-only) — **PHASE_VERDICT: DEFECTS**. Deliverables 1,2,3,6,7 PASS; 4,5,8 FAIL. Builder's own report claimed all 8 DONE — the verifier contradicting it is exactly why the round gate is not the acceptance gate.
+
+Findings (all reproduced by the verifier; 1/2/3 re-confirmed at source by the orchestrator):
+1. [CRITICAL] `todo.ts:42-53` + `:14-15` — `message` never checked for CR/LF/NUL and interpolated verbatim into the todo line → one entry can emit arbitrary extra todo lines. Proven exploitable end-to-end against real `git rebase -i` (injected `exec` ran a command). Reachable in ordinary use: squash pre-fills combined multi-line messages.
+2. [REQUIRED] `storage.ts:119` — sweep retains on `lifecycle !== "done"`, so `completed-pending-push` orphans are never reclaimable → a crash between rebase success and reservation release permanently blocks all future rebases in that repo.
+3. [REQUIRED] `todo.ts:45,55-59` — membership tested on a lowercased set but original casing emitted → uppercase hash reaches the todo file un-normalized; Phase 3's keyed message lookup (git writes lowercase into `rebase-merge/done`) would miss and fail-closed-halt a legal rebase.
+4. [REQUIRED] `interactiveRebase.test.ts` — missing adversarial rows let all three defects through (message control chars, uppercase hex, 41-char hash, sweep at `completed-pending-push`/`done`, foreign-owner release, non-pushTarget manifest rejections).
+5. [MINOR] `executor.test.ts:99-115` — env test only exercises the ungated path; `rebase` is mutating and takes the gated branch in production.
+6. [MINOR] `storage.ts:203-211` — `pathExists` probes with `readFile` and infers from `EISDIR`; rethrows on `EACCES`.
+
+Verified clean: no new deps, no `console.*`/`vscode` in domain files, TSDoc on every export, no input mutation, largest file 377 lines, change surface exactly the 7 expected paths (no scope creep into later phases).
+
+### Fix round 1 — gpt-5.6-terra @ high (fresh session, per `helpers.py route fix 1` → `EFFORT=high MODE=fresh`)
+
+- SID: `019fbc9e-c698` → `019fbd1e-86dc-7d21-941d-9e4d012c8cfa`.
+- Work order: all six findings, self-contained (fresh session has no memory of the build round), test-first per defect. CRITICAL fixed in both halves — validation rejects control chars in `message`, and `buildRebaseTodo` renders defensively (first line only, control chars stripped) so it is structurally impossible to emit more lines than entries.
+- Watcher armed.
+
+Telemetry: PEAK=99038 LAST=99038 PCT=38% NONRESUMABLE=no. Codex self-report: 6/6 FIXED, RED (8 failing) → GREEN (60 passing). Round gates GREEN.
+
+Re-verification (fresh opus verifier, fable-method, mutation-checked) — **PHASE_VERDICT: ACCEPT**:
+- #1 CRITICAL closed and proven closed: verifier rebuilt the exploit in a scratch repo against real git 2.50.1. Positive control first — a hand-built todo with a raw LF injection *did* execute (`Executing: touch …/RAW_LF`), so the harness genuinely fires; then the same attack through the public API returns `invalid-message` for LF/CR/NUL × pick/reword/squash. Adjacent escapes tested empirically, not assumed: U+2028, U+2029, VT, FF, NEL, CR produced zero markers — git's sequencer breaks todo lines on LF only, so `[\r\n\0]` is sufficient and `\r`/`\0` are defense in depth. 84-shape structural fuzz: zero violations of "exactly entries.length lines". Mutation: reverting both halves fails 6 tests.
+- #2 closed (`LIVE_LIFECYCLES = {starting, running, paused}`); every sweep exit still fails closed. Mutation: reverting fails the lifecycle test.
+- #3 closed (`normalizedHash` emitted; uppercase in → lowercase out through the public API).
+- #4 closed and load-bearing: mutation dropping `options` *only* inside the gated branch fails the gated test while the ungated one still passes — the exact discrimination required.
+- #5 production fix correct (`stat`, ENOENT-only-absent). Codex's deviation claim ("no public test seam without an out-of-scope refactor") **rejected as factually wrong** — the verifier proved `chmod 000` yields EACCES reachable through the public `tryAcquireRebaseReservation`, using helpers the test file already has.
+- #6 closed: every demanded row exists and asserts a typed reason code. Codex's second deviation ("some coverage-only rows already passed") **accepted and honestly reported** — the control-char and structural rows did go RED under mutation; the rest are behavior-locking tests for already-correct code.
+
+Four new MINORs, all fixed directly by the orchestrator (cheaper than a fix round for one-liners):
+- `storage.ts` FULL_OBJECT_ID is now lowercase-only — `validateManifest` previously accepted and persisted uppercase OIDs, so an uppercase `expectedHead` would silently never equal a `git rev-parse` result. Two regression rows added.
+- `tryAcquireRebaseReservation` TSDoc now states the caller must persist a `starting` manifest before yielding control (the sweep treats a manifest-less pointer as reclaimable — a pre-existing race, not introduced this round).
+- `run()` TSDoc documents `options.env` merge semantics on both paths.
+- Sweep lifecycle table gained `paused` and `starting` rows.
+Not fixed: the EACCES test for #5 — a `chmod 000` test is environment-fragile (no-op as root, needs cleanup) and the production code is already correct; recorded rather than silently dropped.
+
+### Phase 1 acceptance
+
+Accept gates, first run: lint OK, typecheck OK, format OK, **suite OK (38.2s — full `npm run -s test`, no regressions)**, knip **RED** — 16 unused *exported types*, all barrel re-exports plus 2 in `types.ts`.
+
+The repo's `.githooks/pre-commit` runs `deps:check:strict` (knip) and blocks the commit on it, so this is an enforced project rule — "every export has a consumer" — not an advisory lint. `--no-verify` would also have skipped `architecture:check`, `l10n:validate`, `build`, and `vsce package`, so it was never an option. Resolved honestly rather than suppressed:
+- `storage.ts` now names `RebaseSessionLifecycle` for its two lifecycle sets instead of the structural `RebaseSessionManifest["lifecycle"]` — the alias exists for exactly this and now has a consumer.
+- `todo.ts` routes its eight rejection returns through a typed `invalid(reason: RebaseSubmissionValidationReason)` helper — removes eight repeated object literals and gives the reason union a consumer.
+- The barrel keeps only the four types with real consumers (`RebaseAction`, `RebaseSessionManifest`, `RebaseSubmissionEntry`, `RebaseTodoEntry`, all used by the tests) and drops eleven result/path types that nothing names; a comment records that later phases re-export from `./interactiveRebase/types` as they import them. PLAN step 2's mandated `RebaseAction`/`RebaseTodoEntry` surface is preserved.
+- The test fixtures are now typed with those public types (`satisfies readonly RebaseSubmissionEntry[]`, `readonly RebaseTodoEntry[]`, `satisfies readonly RebaseAction[]`), which is both the consumer knip wanted and a genuine strengthening — the tables now fail to compile if the public unions drift.
+
+Accept gates, final run: **lint OK, typecheck OK, format OK, knip OK, suite OK (32.5s) — GATES: GREEN warn=0.** Focused tests: 64 passed (45 + 19).
+
+Seal: rewritten after the knip fixes — `SEAL: WRITTEN green=True`. SEAL_MODE=shadow, and the fresh final verifier had already returned ACCEPT before these changes; the changes since are the dead-export cleanup above, all covered by the green gate run.
+
+Security note (project Tier-2 rule — code touching untrusted user input): the adversarial pass was performed by the independent verifier, which found and then proved-closed a real command-injection reachable from ordinary webview use. No push is being made; the security-reviewer gate before push still applies.
