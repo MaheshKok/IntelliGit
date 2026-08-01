@@ -183,3 +183,69 @@ export type RebaseReservationSweepResult =
           /** Condition that prevents safe orphan cleanup. */
           reason: "rebase-in-progress" | "live-manifest" | "ambiguous-state";
       };
+
+/** One commit offered to the interactive-rebase dialog in oldest-first order. */
+export interface InteractiveRebaseRangeCommit {
+    /** Full Git object ID for the commit. */
+    hash: string;
+    /** Author name exactly as Git emitted it. */
+    authorName: string;
+    /** ISO-8601 author timestamp exactly as Git emitted it. */
+    authoredAt: string;
+    /** Full commit body exactly as Git emitted it. */
+    body: string;
+    /** Whether the commit is already reachable from a remote-tracking reference. */
+    isPushed: boolean;
+}
+
+/** Machine-readable reason loading a bounded interactive-rebase range was rejected. */
+export type InteractiveRebaseRangeRejectionReason =
+    | "invalid-base-hash"
+    | "range-too-large"
+    | "invalid-range-count"
+    | "empty-range"
+    | "output-truncated"
+    | "missing-trailing-sentinel"
+    | "malformed-arity"
+    | "count-mismatch"
+    | "git-error";
+
+/** Fail-closed result of loading one interactive-rebase commit range. */
+export type InteractiveRebaseRangeResult =
+    | {
+          /** The bounded range was loaded and parsed without ambiguity. */
+          status: "ok";
+          /** Commits ordered from the selected commit through HEAD. */
+          commits: readonly InteractiveRebaseRangeCommit[];
+      }
+    | {
+          /** The range could not safely be offered to a dialog. */
+          status: "rejected";
+          /** Machine-readable rejection cause for the later UI layer. */
+          reason: InteractiveRebaseRangeRejectionReason;
+      };
+
+/** Machine-readable reason the interactive-rebase action cannot proceed. */
+export type InteractiveRebaseGuardRejectionReason =
+    | "invalid-selected-hash"
+    | "operation-in-progress"
+    | "detached-head"
+    | "selected-merge-commit"
+    | "commit-not-ancestor"
+    | "initial-commit"
+    | "working-tree-dirty"
+    | "range-contains-merge-commit"
+    | "git-error";
+
+/** Fail-closed result of evaluating interactive-rebase action guards. */
+export type InteractiveRebaseGuardResult =
+    | {
+          /** Every guard passed and the range may proceed to the next host-side phase. */
+          status: "ok";
+      }
+    | {
+          /** At least one safety guard failed. */
+          status: "rejected";
+          /** Machine-readable reason the action must stop. */
+          reason: InteractiveRebaseGuardRejectionReason;
+      };

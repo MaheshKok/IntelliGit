@@ -375,3 +375,51 @@ Process notes worth carrying forward (each cost a round to learn):
 - Codex's self-report has been optimistic in both phases — Phase 1 claimed "8/8 done" while a proven-exploitable todo injection was live; Phase 2 claimed "7/7 done" while `bun run test` was red on a clean checkout. The independent verifier is earning its cost. Keep spawning it, and keep demanding empirical proof with a working positive control rather than reasoning about whether something is safe.
 
 Still open, unrelated to this feature: the VSIX packages `PLAN.md`, `PLAN-REVIEW-LOG.md`, and `.claudex-gates.json` — needs a `.vscodeignore` fix in a separate change.
+
+### Handoff superseded — user override (second time)
+
+The user answered the checkpoint with "continue", so Phase 3 was built in the same orchestrator session rather than a fresh one. Same override as the Phase-1 checkpoint. Recorded because the sizing rule exists for a measured reason: the risk accepted here is a mid-phase auto-compact, and the mitigation is the split below plus committing at each phase boundary.
+
+## Phase 3a — PLAN step 4 host-side primitives (range loading + action guards) — gpt-5.6-terra @ high
+
+- BASE_HEAD: `90eebf58` (clean tree at launch).
+- SID: `019fbd6e-5a7c-7790-a162-374e924fbeaf` (fresh session).
+- **Split before launching.** PLAN step 4 as written spans ~10 files (range loading, guards, command rewrite, three protocol messages, pending-request registry, origin-provider identity at four dispatch sites, consume-path re-checks). Predicted peak was well over the 45–50% target, so the phase was cut at the seam between pure host-side primitives and the extension wiring: **3a = `range.ts` + `guards.ts` + the shared types**, 3b = command rewrite, protocol messages, pending registry, origin-provider threading, consume path. Splitting is cheap; a bloated session is not.
+- Work order: 6 deliverables — bounded range loading with NUL-framed fixed-arity parsing, a 500-commit product cap, batched pushedness, seven action guards, the typed fail-closed result unions, and focused tests for both modules.
+- Watcher armed.
+
+Telemetry: PEAK=172889 LAST=172889 PCT=66% NONRESUMABLE=no. Codex self-report: 6/6 DONE, gates green. Round gates independently re-run by the orchestrator: **GREEN**.
+
+Two independent review passes found **8 defects**. Note the peak: 66% even after splitting — the prediction drifted up again, exactly as the protocol warns. Phase 3b must be sliced tighter still.
+
+Independent verifier (opus, fable-method) — **PHASE_VERDICT: DEFECTS**.
+
+VERIFIED CLEAN by the verifier:
+- **The NUL framing is genuinely resynchronization-proof.** Driven against a real repository with bodies containing CR, lone LF, and text shaped exactly like a well-formed record (`<40-hex><author><ISO-date>…`), records still split correctly — grouping is strictly by arity of 4, never by content.
+- **The tests are not tautological.** 6/6 mutants killed. The orchestrator re-ran a wider mutation sweep after the fix pass: **10/10 killed** (drop object-ID validation, drop `--end-of-options`, drop the count cross-check, accept an empty range, ignore truncation, drop the trailing-sentinel check, drop the bisect probe, drop guard hash validation, drop `--end-of-options` on the ancestor probe, drop the range merge scan).
+
+NOT COVERED — carried forward as a known residual risk:
+- **Non-UTF-8 commit bodies are lossy.** `stdout.toString("utf8")` maps invalid byte sequences to U+FFFD. Framing survives (NUL bytes are preserved), so this cannot corrupt record boundaries, but a body containing non-UTF-8 bytes will not round-trip byte-identically. Harmless while the range is display-only; **it becomes a correctness bug the moment a body is written back as a reword message (phases 4–5)**. Unproven either way — nobody has run a non-UTF-8 body end-to-end yet. Prove or fix it before the reword path ships.
+
+The 8 defects, all fixed in place by the orchestrator (mechanical, each with a prescribed fix — same call as Phase 2, cheaper than an `xhigh` Codex round):
+
+1. **[CRITICAL, verifier] Proven arbitrary file write.** `loadInteractiveRebaseRange` took a caller-built revision range and passed it straight to `git log`. The verifier passed `--output=<path>`, which `git log` accepts as an option: the file was created on disk while the module returned a benign `git-error` rejection — a write that looks like a clean failure. Fixed by moving the range construction inside the module and accepting only a bare lowercase 40/64-hex object ID (`FULL_OBJECT_ID`), plus `--end-of-options` on every revision-bearing read. Regression-tested against a real repository with `existsSync(target) === false` after the call.
+2. **[REQUIRED, verifier] Unbounded pushedness query.** Pushedness was computed with `rev-list --branches --not --remotes`, which enumerates every unpushed commit in the repository — unbounded output for a query about at most 500 commits. Scoped to `<range> --not --remotes`, so the 500-commit cap now bounds it. `--not` must precede non-option arguments and therefore cannot carry `--end-of-options`; the range is safe because it is built from an already-validated object ID, and the code says so at the call site.
+3. **[REQUIRED, verifier] Empty range failed open.** A count of 0 produced `{status:"ok", commits:[]}`, handing the later dialog an empty rebase. Now rejects `empty-range` before any body load.
+4. **[REQUIRED, orchestrator] Bisect detection was added to the wrong module.** Codex extended the shared `hasWholeIndexOperationInProgress` (`operations.ts`, `wholeIndexOperationWatcher.ts`) with `BISECT_LOG` — my work order asked for reuse rather than a second detector, and that instruction was wrong. Proven empirically with a positive control: git **refuses** a partial commit during a merge (`fatal: cannot do a partial commit during a merge.`, rc 128) but **permits** one during bisect (rc 0, only the named path committed). `GitOps.commit` uses that predicate to decide whether to drop a path filter, so the change would have silently widened a user's path-filtered commit into a whole-index commit while bisecting. All four shared files reverted to `90eebf58`; `guards.ts` now owns a local `git bisect log` probe (exit status is the signal — it exits 0 only while bisecting) instead of a second filesystem-marker interpretation.
+5. **[MINOR] Unreachable rejection reason.** `extra-trailing-sentinel` could never be distinguished from a genuine arity error — both leave `length % 4 === 1`. Removed; both report `malformed-arity`, and the code states why.
+6. **[MINOR] No cross-check between the two Git queries.** The independent count probe and the parsed record count were never compared, so framing drift could surface as a silently short range. Added `count-mismatch`.
+7. **[MINOR] The guards module had the same option-injection exposure.** `selectedHash` reached three revision-bearing probes unvalidated. Added the same `FULL_OBJECT_ID` gate (before any spawn) and `--end-of-options` on the parent, ancestor, and range probes.
+8. **[MINOR] Guard ordering and naming.** The pending-operation check now runs first, so an in-progress operation reports itself rather than the detached HEAD it happens to produce — which would send the user to the wrong remedy. Reason renamed `whole-index-operation-in-progress` → `operation-in-progress` (it no longer describes only whole-index states). Covered by both a mocked ordering test and a real-git test that starts an actual bisect, asserts `symbolic-ref` fails, and still gets `operation-in-progress`.
+
+Test coverage after the fix pass: 49 tests across the two modules, including real-repository blocks for both — hostile-body round-trip, the blocked injection, a real truncation at `maxOutputBytes: 12`, and for guards: clean linear range (positive control), active bisect, detached HEAD, initial commit, untracked-only dirt, staged-only dirt, and a mid-range merge.
+
+### Phase 3a acceptance
+
+Accept gates: **lint OK, typecheck OK, format OK, knip OK, suite OK (32.4s) — GATES: GREEN warn=0.** Seal: `SEAL: WRITTEN files=5 green=True`, re-checked `SEAL: INTACT files=5 warns_open=0`.
+
+Shadow-mode datum: **not collected this phase.** The fresh verifier ran before the fix pass, and every file it reported on changed afterwards, so there is no "verifier findings in hash-unchanged files" measurement to log. Three shadow builds now, none yielding a clean datum — keep `SEAL_MODE=shadow`.
+
+Knip note: the first accept run was RED on one unused export (`MAX_INTERACTIVE_REBASE_RANGE_OUTPUT_BYTES`). Fixed by *consuming* it — the test now asserts the exact default byte cap instead of `expect.any(Number)` — which both satisfies knip and tightens the assertion. Deleting the export would have been the weaker fix.
+
+Rounds used: 1 build + 0 Codex fix rounds.
