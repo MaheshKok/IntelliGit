@@ -32,6 +32,7 @@ import type {
     CommitAction,
     CommitGraphInbound,
 } from "../webviews/protocol/commitGraphTypes";
+import type { RebaseSubmissionEntry } from "../git/interactiveRebase/types";
 import { isBranchAction, isCommitAction } from "../webviews/protocol/commitGraphTypes";
 import { IconThemeService } from "./shared/IconThemeService";
 import { registerThemeChangeListeners, disposeAll } from "./shared/themeListeners";
@@ -142,6 +143,13 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         hash: string;
     }>();
     readonly onCommitAction = this._onCommitAction.event;
+    private readonly _onRebaseDialogSubmit = new vscode.EventEmitter<{
+        requestId: string;
+        entries: RebaseSubmissionEntry[];
+    }>();
+    readonly onRebaseDialogSubmit = this._onRebaseDialogSubmit.event;
+    private readonly _onRebaseDialogCancel = new vscode.EventEmitter<{ requestId: string }>();
+    readonly onRebaseDialogCancel = this._onRebaseDialogCancel.event;
     private readonly _onOpenCommitFileDiff = new vscode.EventEmitter<{
         commitHash: string;
         filePath: string;
@@ -1449,6 +1457,22 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         }
         this._onCommitAction.fire({ action: commitAction, hash: assertGitHash(hash, "hash") });
     }
+    /** Validates only the rebase-dialog transport shape before forwarding raw entries. */
+    private handleRebaseDialogSubmitMessage(requestId: unknown, entries: unknown): void {
+        const id = assertString(requestId, "requestId");
+        if (id.length === 0) throw new Error("Expected non-empty string for 'requestId'.");
+        if (!Array.isArray(entries)) throw new Error("Expected array for 'entries'.");
+        this._onRebaseDialogSubmit.fire({
+            requestId: id,
+            entries: entries as RebaseSubmissionEntry[],
+        });
+    }
+    /** Validates only the rebase-dialog cancellation transport shape before forwarding it. */
+    private handleRebaseDialogCancelMessage(requestId: unknown): void {
+        const id = assertString(requestId, "requestId");
+        if (id.length === 0) throw new Error("Expected non-empty string for 'requestId'.");
+        this._onRebaseDialogCancel.fire({ requestId: id });
+    }
     /** Loads a selected stash into the addressed runtime and publishes the resulting file state. */
     private async handleStashSelectMessage(
         runtime: CommitPanelRepositoryRuntime | undefined,
@@ -1594,6 +1618,12 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 break;
             case "commitAction":
                 this.handleCommitActionMessage(msg.action, msg.hash);
+                break;
+            case "startInteractiveRebase":
+                this.handleRebaseDialogSubmitMessage(msg.requestId, msg.entries);
+                break;
+            case "cancelRebaseDialog":
+                this.handleRebaseDialogCancelMessage(msg.requestId);
                 break;
             case "openCommitFileDiff":
                 this._onOpenCommitFileDiff.fire({
@@ -2001,6 +2031,8 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         this._onBranchFilterChanged.dispose();
         this._onBranchAction.dispose();
         this._onCommitAction.dispose();
+        this._onRebaseDialogSubmit.dispose();
+        this._onRebaseDialogCancel.dispose();
         this._onOpenCommitFileDiff.dispose();
     }
     /**

@@ -8,7 +8,12 @@ import type {
     CommitGraphInbound,
     WorktreeAction,
 } from "../webviews/protocol/commitGraphTypes";
-import type { PendingRebaseDialogRequests } from "../git/interactiveRebase/types";
+import { createInteractiveRebaseSubmissionHandler } from "../git/interactiveRebase/submission";
+import type {
+    InteractiveRebaseSubmissionRejectionReason,
+    PendingRebaseDialogRequests,
+    RebaseSubmissionEntry,
+} from "../git/interactiveRebase/types";
 import { handleCommitContextAction } from "../commands/commitCommands";
 import { openCommitFileDiff } from "../services/diffService";
 import { RefreshService } from "../views/RefreshService";
@@ -259,6 +264,38 @@ export function registerRepositoryViewEvents(
             }
         };
 
+    const rebaseSubmissionHandler = createInteractiveRebaseSubmissionHandler({
+        executor,
+        pendingRebaseDialogRequests,
+        getRepoRoot,
+        hasWholeIndexOperationInProgress: () => gitOps.hasWholeIndexOperationInProgress(),
+    });
+    const handleRebaseDialogSubmit =
+        (originProvider: object) =>
+        async ({ requestId, entries }: { requestId: string; entries: RebaseSubmissionEntry[] }) => {
+            const result = await rebaseSubmissionHandler.submit(
+                { requestId, entries },
+                originProvider,
+            );
+            if (result.status === "rejected") {
+                showInteractiveRebaseSubmissionRejection(result.reason);
+                return;
+            }
+            console.info("[IntelliGit] Interactive rebase submission accepted:", result);
+            // Phase seam: the next phase wires accepted entries to the rebase engine.
+            await vscode.window.showInformationMessage(
+                vscode.l10n.t(
+                    "Interactive rebase is ready, but the rebase engine is not wired yet.",
+                ),
+            );
+        };
+    const handleRebaseDialogCancel =
+        (originProvider: object) =>
+        ({ requestId }: { requestId: string }) => {
+            // An already-consumed request is a benign no-op, so its boolean result is intentionally ignored.
+            rebaseSubmissionHandler.cancel({ requestId }, originProvider);
+        };
+
     context.subscriptions.push(
         commitGraph.onCommitSelected(loadCommitDetail),
         sidebarGraph.onCommitSelected(loadCommitDetail),
@@ -286,9 +323,157 @@ export function registerRepositoryViewEvents(
         commitPanel.onCommitAction(
             runCommitAction(commitPanel, (message) => commitPanel.showRebaseDialog(message)),
         ),
+        commitGraph.onRebaseDialogSubmit(handleRebaseDialogSubmit(commitGraph)),
+        sidebarGraph.onRebaseDialogSubmit(handleRebaseDialogSubmit(sidebarGraph)),
+        commitPanel.onRebaseDialogSubmit(handleRebaseDialogSubmit(commitPanel)),
+        commitGraph.onRebaseDialogCancel(handleRebaseDialogCancel(commitGraph)),
+        sidebarGraph.onRebaseDialogCancel(handleRebaseDialogCancel(sidebarGraph)),
+        commitPanel.onRebaseDialogCancel(handleRebaseDialogCancel(commitPanel)),
         commitGraph.onOpenCommitFileDiff(handleOpenCommitFileDiff),
         sidebarGraph.onOpenCommitFileDiff(handleOpenCommitFileDiff),
         commitPanel.onOpenCommitFileDiff(handleOpenCommitFileDiff),
         commitInfo.onOpenCommitFileDiff(handleOpenCommitFileDiff),
     );
+}
+
+/** Shows the distinct host-side reason an interactive-rebase dialog submission was refused. */
+export function showInteractiveRebaseSubmissionRejection(
+    reason: InteractiveRebaseSubmissionRejectionReason,
+): void {
+    switch (reason) {
+        case "unknown-or-expired":
+            vscode.window.showErrorMessage(
+                vscode.l10n.t("Interactive rebase dialog is no longer active."),
+            );
+            return;
+        case "wrong-origin":
+            vscode.window.showErrorMessage(
+                vscode.l10n.t(
+                    "This interactive rebase dialog belongs to a different IntelliGit view.",
+                ),
+            );
+            return;
+        case "invalid-action":
+            vscode.window.showErrorMessage(
+                vscode.l10n.t("Interactive rebase contains an invalid action."),
+            );
+            return;
+        case "invalid-hash":
+            vscode.window.showErrorMessage(
+                vscode.l10n.t("Interactive rebase contains an invalid commit hash."),
+            );
+            return;
+        case "hash-not-offered":
+            vscode.window.showErrorMessage(
+                vscode.l10n.t("Interactive rebase contains a commit that was not offered."),
+            );
+            return;
+        case "duplicate-hash":
+            vscode.window.showErrorMessage(
+                vscode.l10n.t("Interactive rebase contains the same commit more than once."),
+            );
+            return;
+        case "entry-count-mismatch":
+            vscode.window.showErrorMessage(
+                vscode.l10n.t("Interactive rebase changed the offered commit count."),
+            );
+            return;
+        case "missing-message":
+            vscode.window.showErrorMessage(
+                vscode.l10n.t("Interactive rebase requires a replacement message for this action."),
+            );
+            return;
+        case "invalid-message":
+            vscode.window.showErrorMessage(
+                vscode.l10n.t("Interactive rebase contains an invalid commit message."),
+            );
+            return;
+        case "invalid-first-action":
+            vscode.window.showErrorMessage(
+                vscode.l10n.t("Interactive rebase cannot start with squash or fixup."),
+            );
+            return;
+        case "repo-changed":
+            vscode.window.showErrorMessage(
+                vscode.l10n.t("The selected repository changed while the dialog was open."),
+            );
+            return;
+        case "branch-unavailable":
+            vscode.window.showErrorMessage(
+                vscode.l10n.t("Interactive rebase could not resolve the current branch."),
+            );
+            return;
+        case "head-unavailable":
+            vscode.window.showErrorMessage(
+                vscode.l10n.t("Interactive rebase could not resolve the current HEAD."),
+            );
+            return;
+        case "branch-moved":
+            vscode.window.showErrorMessage(
+                vscode.l10n.t("The checked-out branch changed while the dialog was open."),
+            );
+            return;
+        case "head-moved":
+            vscode.window.showErrorMessage(
+                vscode.l10n.t("HEAD changed while the interactive rebase dialog was open."),
+            );
+            return;
+        case "invalid-selected-hash":
+            vscode.window.showErrorMessage(
+                vscode.l10n.t("Interactive rebase received an invalid selected commit."),
+            );
+            return;
+        case "operation-in-progress":
+            vscode.window.showErrorMessage(
+                vscode.l10n.t(
+                    "Interactive rebase cannot start while another Git operation is in progress.",
+                ),
+            );
+            return;
+        case "detached-head":
+            vscode.window.showErrorMessage(
+                vscode.l10n.t("Interactive rebase requires a checked-out branch."),
+            );
+            return;
+        case "selected-merge-commit":
+            vscode.window.showErrorMessage(
+                vscode.l10n.t("Interactive rebase is not available for merge commits."),
+            );
+            return;
+        case "commit-not-ancestor":
+            vscode.window.showErrorMessage(
+                vscode.l10n.t("The selected commit is not in the current branch history."),
+            );
+            return;
+        case "initial-commit":
+            vscode.window.showErrorMessage(
+                vscode.l10n.t("Interactive rebase is not available for the initial commit."),
+            );
+            return;
+        case "working-tree-dirty":
+            vscode.window.showErrorMessage(
+                vscode.l10n.t("Interactive rebase requires a clean working tree."),
+            );
+            return;
+        case "range-contains-merge-commit":
+            vscode.window.showErrorMessage(
+                vscode.l10n.t(
+                    "Interactive rebase is not available for ranges containing merge commits.",
+                ),
+            );
+            return;
+        case "git-error":
+            vscode.window.showErrorMessage(
+                vscode.l10n.t("Interactive rebase could not inspect the repository."),
+            );
+            return;
+        default:
+            return assertNeverInteractiveRebaseSubmissionReason(reason);
+    }
+}
+
+/** Makes newly added submission rejection reasons a compile-time exhaustiveness error. */
+function assertNeverInteractiveRebaseSubmissionReason(reason: never): never {
+    void reason;
+    throw new Error("Unhandled interactive rebase submission rejection reason.");
 }

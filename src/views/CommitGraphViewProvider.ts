@@ -42,6 +42,7 @@ import { httpGetJson } from "../services/commitChecks/http";
 import type { CredentialStore } from "../services/commitChecks/credentialStore";
 import type { CommitChecksProvider, HostMap } from "../services/commitChecks/types";
 import { runGitOperationFromPanel, type CommitPanelGitOperation } from "./commitPanelActions";
+import type { RebaseSubmissionEntry } from "../git/interactiveRebase/types";
 
 /**
  * Hosts the commit graph webview used by the bottom panel and sidebar graph views.
@@ -106,6 +107,15 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
         hash: string;
     }>();
     readonly onCommitAction = this._onCommitAction.event;
+
+    private readonly _onRebaseDialogSubmit = new vscode.EventEmitter<{
+        requestId: string;
+        entries: RebaseSubmissionEntry[];
+    }>();
+    readonly onRebaseDialogSubmit = this._onRebaseDialogSubmit.event;
+
+    private readonly _onRebaseDialogCancel = new vscode.EventEmitter<{ requestId: string }>();
+    readonly onRebaseDialogCancel = this._onRebaseDialogCancel.event;
 
     private readonly _onOpenCommitFileDiff = new vscode.EventEmitter<{
         commitHash: string;
@@ -288,6 +298,17 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
                         this._onCommitAction.fire({
                             action: msg.action,
                             hash: this.assertGitHash(msg.hash, "hash"),
+                        });
+                        break;
+                    case "startInteractiveRebase":
+                        this._onRebaseDialogSubmit.fire({
+                            requestId: this.assertNonEmptyString(msg.requestId, "requestId"),
+                            entries: this.assertRebaseSubmissionEntries(msg.entries),
+                        });
+                        break;
+                    case "cancelRebaseDialog":
+                        this._onRebaseDialogCancel.fire({
+                            requestId: this.assertNonEmptyString(msg.requestId, "requestId"),
                         });
                         break;
                     case "openCommitFileDiff":
@@ -770,6 +791,19 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
         return this.assertString(value, field);
     }
 
+    /** Validates only the dialog transport envelope, leaving entry content to the host handler. */
+    private assertRebaseSubmissionEntries(value: unknown): RebaseSubmissionEntry[] {
+        if (!Array.isArray(value)) throw new Error("Expected array for 'entries'.");
+        return value as RebaseSubmissionEntry[];
+    }
+
+    /** Rejects an empty host-issued dialog request ID without normalizing webview input. */
+    private assertNonEmptyString(value: unknown, field: string): string {
+        const string = this.assertString(value, field);
+        if (string.length === 0) throw new Error(`Expected non-empty string for '${field}'.`);
+        return string;
+    }
+
     /**
      * Normalizes and validates a webview-provided commit hash before firing host events.
      */
@@ -860,6 +894,8 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
         this._onDeleteBranches.dispose();
         this._onWorktreeAction.dispose();
         this._onCommitAction.dispose();
+        this._onRebaseDialogSubmit.dispose();
+        this._onRebaseDialogCancel.dispose();
         this._onOpenCommitFileDiff.dispose();
     }
 

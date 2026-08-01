@@ -37,6 +37,7 @@ import type {
     CommitAction,
     WorktreeAction,
 } from "../webviews/protocol/commitGraphTypes";
+import type { RebaseSubmissionEntry } from "../git/interactiveRebase/types";
 import type {
     RepositoryViewIdentity,
     UnifiedOutbound,
@@ -242,6 +243,13 @@ export class UndockedViewProvider {
         hash: string;
     }>();
     readonly onCommitAction = this._onCommitAction.event;
+    private readonly _onRebaseDialogSubmit = new vscode.EventEmitter<{
+        requestId: string;
+        entries: RebaseSubmissionEntry[];
+    }>();
+    readonly onRebaseDialogSubmit = this._onRebaseDialogSubmit.event;
+    private readonly _onRebaseDialogCancel = new vscode.EventEmitter<{ requestId: string }>();
+    readonly onRebaseDialogCancel = this._onRebaseDialogCancel.event;
     private readonly _onOpenCommitFileDiff = new vscode.EventEmitter<{
         commitHash: string;
         filePath: string;
@@ -697,6 +705,8 @@ export class UndockedViewProvider {
         this._onDeleteBranches.dispose();
         this._onWorktreeAction.dispose();
         this._onCommitAction.dispose();
+        this._onRebaseDialogSubmit.dispose();
+        this._onRebaseDialogCancel.dispose();
         this._onOpenCommitFileDiff.dispose();
         this._onDidChangeFileCount.dispose();
         this._onDidChangeWorkingTree.dispose();
@@ -970,6 +980,26 @@ export class UndockedViewProvider {
                     hash: assertGitHash(msg.hash, "hash"),
                 });
                 break;
+            case "startInteractiveRebase": {
+                const requestId = assertString(msg.requestId, "requestId");
+                if (requestId.length === 0) {
+                    throw new Error("Expected non-empty string for 'requestId'.");
+                }
+                if (!Array.isArray(msg.entries)) throw new Error("Expected array for 'entries'.");
+                this._onRebaseDialogSubmit.fire({
+                    requestId,
+                    entries: msg.entries,
+                });
+                break;
+            }
+            case "cancelRebaseDialog": {
+                const requestId = assertString(msg.requestId, "requestId");
+                if (requestId.length === 0) {
+                    throw new Error("Expected non-empty string for 'requestId'.");
+                }
+                this._onRebaseDialogCancel.fire({ requestId });
+                break;
+            }
             case "openCommitFileDiff":
                 this._onOpenCommitFileDiff.fire({
                     commitHash: assertGitHash(msg.commitHash, "commitHash"),

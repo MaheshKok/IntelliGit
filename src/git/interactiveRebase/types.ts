@@ -32,6 +32,18 @@ export type RebaseSubmissionValidationReason =
     | "invalid-message"
     | "invalid-first-action";
 
+/** Machine-readable reason an interactive-rebase dialog submission is refused by the host. */
+export type InteractiveRebaseSubmissionRejectionReason =
+    | "unknown-or-expired"
+    | "wrong-origin"
+    | RebaseSubmissionValidationReason
+    | "repo-changed"
+    | "branch-unavailable"
+    | "head-unavailable"
+    | "branch-moved"
+    | "head-moved"
+    | InteractiveRebaseGuardRejectionReason;
+
 /** The typed result of fail-closed interactive-rebase submission validation. */
 export type RebaseSubmissionValidationResult =
     | {
@@ -286,6 +298,23 @@ export type PendingRebaseDialogConsumeResult =
           status: "rejected";
           /** Distinguishes missing or expired state from a request owned by another provider. */
           reason: "unknown-or-expired" | "wrong-origin";
+      };
+
+/** Result of handling one consumed interactive-rebase dialog submission. */
+export type InteractiveRebaseSubmissionResult =
+    | {
+          /** The host accepted immutable validated todo entries for the next rebase phase. */
+          status: "accepted";
+          /** One-shot request consumed from the originating provider. */
+          request: PendingRebaseDialogRequest;
+          /** Validated copied todo entries in dialog order. */
+          entries: readonly RebaseTodoEntry[];
+      }
+    | {
+          /** The submission must not progress to the rebase engine. */
+          status: "rejected";
+          /** Distinct fail-closed cause for this host-side refusal. */
+          reason: InteractiveRebaseSubmissionRejectionReason;
       };
 
 /** Clock override used to make pending-request expiry deterministic in unit tests. */

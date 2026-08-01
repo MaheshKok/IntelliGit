@@ -10,7 +10,10 @@ import type {
     WorkingFile,
 } from "../../types";
 import type { ShelfFileEntry, ShelfMetadata } from "../../shelf/model";
-import type { InteractiveRebaseRangeCommit } from "../../git/interactiveRebase/types";
+import type {
+    InteractiveRebaseRangeCommit,
+    RebaseSubmissionEntry,
+} from "../../git/interactiveRebase/types";
 
 /** A shelf manifest entry carrying the file icon its path resolves to in the active theme. */
 export interface ShelfFileView extends ShelfFileEntry {
@@ -167,6 +170,20 @@ export type OutboundMessage =
     | {
           /** Lifecycle event requesting working-tree, stash, graph, and draft state. */
           type: "ready";
+      }
+    | {
+          /** One-shot interactive-rebase submission from the embedded graph dialog. */
+          type: "startInteractiveRebase";
+          /** Host-issued request ID returned unchanged by the dialog. */
+          requestId: string;
+          /** Raw dialog entries that the host validates against its recorded offer. */
+          entries: RebaseSubmissionEntry[];
+      }
+    | {
+          /** Dismisses the one-shot interactive-rebase dialog for this provider. */
+          type: "cancelRebaseDialog";
+          /** Host-issued request ID returned unchanged by the dialog. */
+          requestId: string;
       }
     | RepositoryScopedMessage<{
           /** User event requesting a fresh working-tree and stash snapshot. */

@@ -11,7 +11,10 @@ import type {
     ThemeIconFont,
     ThemeTreeIcon,
 } from "../../types";
-import type { InteractiveRebaseRangeCommit } from "../../git/interactiveRebase/types";
+import type {
+    InteractiveRebaseRangeCommit,
+    RebaseSubmissionEntry,
+} from "../../git/interactiveRebase/types";
 
 /**
  * Branch context-menu action discriminants accepted from graph webviews.
@@ -155,6 +158,20 @@ export type CommitGraphOutbound =
           action: CommitAction;
           /** Full Git object ID for the targeted commit; host validates before dispatch. */
           hash: string;
+      }
+    | {
+          /** One-shot interactive-rebase submission from the dialog that this provider opened. */
+          type: "startInteractiveRebase";
+          /** Host-issued request ID returned unchanged by the dialog. */
+          requestId: string;
+          /** Raw dialog entries that the host validates against its recorded offer. */
+          entries: RebaseSubmissionEntry[];
+      }
+    | {
+          /** Dismisses the one-shot interactive-rebase dialog for this provider. */
+          type: "cancelRebaseDialog";
+          /** Host-issued request ID returned unchanged by the dialog. */
+          requestId: string;
       }
     | {
           /** Command asking the host to open a committed file diff. */

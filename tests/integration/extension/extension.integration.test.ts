@@ -307,6 +307,11 @@ class MockCommitGraphViewProvider {
         action: string;
         hash: string;
     }>();
+    private rebaseDialogSubmitEmitter = new MockEventEmitter<{
+        requestId: string;
+        entries: unknown[];
+    }>();
+    private rebaseDialogCancelEmitter = new MockEventEmitter<{ requestId: string }>();
     private openCommitFileDiffEmitter = new MockEventEmitter<{
         commitHash: string;
         filePath: string;
@@ -330,6 +335,8 @@ class MockCommitGraphViewProvider {
     onBranchAction = this.branchActionEmitter.event;
     onDeleteBranches = this.deleteBranchesEmitter.event;
     onCommitAction = this.commitActionEmitter.event;
+    onRebaseDialogSubmit = this.rebaseDialogSubmitEmitter.event;
+    onRebaseDialogCancel = this.rebaseDialogCancelEmitter.event;
     onOpenCommitFileDiff = this.openCommitFileDiffEmitter.event;
     setBranches = vi.fn();
     refresh = vi.fn(async () => undefined);
@@ -364,6 +371,14 @@ class MockCommitGraphViewProvider {
     emitCommitAction(payload: { action: string; hash: string }): void {
         this.commitActionEmitter.fire(payload);
     }
+    /** Emits an interactive-rebase dialog submission from this mocked graph provider. */
+    emitRebaseDialogSubmit(payload: { requestId: string; entries: unknown[] }): void {
+        this.rebaseDialogSubmitEmitter.fire(payload);
+    }
+    /** Emits an interactive-rebase dialog cancellation from this mocked graph provider. */
+    emitRebaseDialogCancel(payload: { requestId: string }): void {
+        this.rebaseDialogCancelEmitter.fire(payload);
+    }
     /** Emits file-diff requests from the mocked graph provider. */
     emitOpenCommitFileDiff(payload: { commitHash: string; filePath: string }): void {
         this.openCommitFileDiffEmitter.fire(payload);
@@ -395,6 +410,11 @@ class MockCommitPanelViewProvider {
         action: string;
         hash: string;
     }>();
+    private rebaseDialogSubmitEmitter = new MockEventEmitter<{
+        requestId: string;
+        entries: unknown[];
+    }>();
+    private rebaseDialogCancelEmitter = new MockEventEmitter<{ requestId: string }>();
     private openCommitFileDiffEmitter = new MockEventEmitter<{
         commitHash: string;
         filePath: string;
@@ -409,6 +429,8 @@ class MockCommitPanelViewProvider {
     onBranchFilterChanged = this.branchFilterEmitter.event;
     onBranchAction = this.branchActionEmitter.event;
     onCommitAction = this.commitActionEmitter.event;
+    onRebaseDialogSubmit = this.rebaseDialogSubmitEmitter.event;
+    onRebaseDialogCancel = this.rebaseDialogCancelEmitter.event;
     onOpenCommitFileDiff = this.openCommitFileDiffEmitter.event;
     refresh = vi.fn(async () => {
         await commitPanelRefreshHook?.(this);
@@ -450,6 +472,14 @@ class MockCommitPanelViewProvider {
     emitCommitAction(payload: { action: string; hash: string }): void {
         this.commitActionEmitter.fire(payload);
     }
+    /** Emits an interactive-rebase dialog submission from this mocked commit panel. */
+    emitRebaseDialogSubmit(payload: { requestId: string; entries: unknown[] }): void {
+        this.rebaseDialogSubmitEmitter.fire(payload);
+    }
+    /** Emits an interactive-rebase dialog cancellation from this mocked commit panel. */
+    emitRebaseDialogCancel(payload: { requestId: string }): void {
+        this.rebaseDialogCancelEmitter.fire(payload);
+    }
     /** Emits file-diff requests from the mocked commit panel. */
     emitOpenCommitFileDiff(payload: { commitHash: string; filePath: string }): void {
         this.openCommitFileDiffEmitter.fire(payload);
@@ -465,6 +495,11 @@ class MockUndockedViewProvider {
         action: string;
         hash: string;
     }>();
+    private rebaseDialogSubmitEmitter = new MockEventEmitter<{
+        requestId: string;
+        entries: unknown[];
+    }>();
+    private rebaseDialogCancelEmitter = new MockEventEmitter<{ requestId: string }>();
     private openCommitFileDiffEmitter = new MockEventEmitter<{
         commitHash: string;
         filePath: string;
@@ -481,6 +516,8 @@ class MockUndockedViewProvider {
     onCommitSelected = this.commitSelectedEmitter.event;
     onBranchAction = this.branchActionEmitter.event;
     onCommitAction = this.commitActionEmitter.event;
+    onRebaseDialogSubmit = this.rebaseDialogSubmitEmitter.event;
+    onRebaseDialogCancel = this.rebaseDialogCancelEmitter.event;
     onOpenCommitFileDiff = this.openCommitFileDiffEmitter.event;
     onDidChangeFileCount = this.fileCountEmitter.event;
     onDidChangeWorkingTree = this.workingTreeEmitter.event;
@@ -516,6 +553,14 @@ class MockUndockedViewProvider {
     /** Emits commit-row actions from the mocked undocked provider. */
     emitCommitAction(payload: { action: string; hash: string }): void {
         this.commitActionEmitter.fire(payload);
+    }
+    /** Emits an interactive-rebase dialog submission from this mocked undocked provider. */
+    emitRebaseDialogSubmit(payload: { requestId: string; entries: unknown[] }): void {
+        this.rebaseDialogSubmitEmitter.fire(payload);
+    }
+    /** Emits an interactive-rebase dialog cancellation from this mocked undocked provider. */
+    emitRebaseDialogCancel(payload: { requestId: string }): void {
+        this.rebaseDialogCancelEmitter.fire(payload);
     }
 }
 
@@ -3387,6 +3432,194 @@ describe("extension integration", () => {
             undocked.emitCommitAction({ action: "interactiveRebaseFromHere", hash: fullHash }),
         );
         expect(createTerminal).not.toHaveBeenCalled();
+    });
+
+    it("binds interactive-rebase dialog submission to the provider that opened the request", async () => {
+        const { activate } = await import("../../../src/extension");
+        const context = {
+            extensionUri: { fsPath: "/ext", path: "/ext" },
+            subscriptions: mockDisposables,
+        } as unknown as MockExtensionContext;
+
+        await activate(context);
+        await waitForAsync();
+        const graph = latestCommitGraphProvider;
+        const sidebar = latestSidebarGraphProvider;
+        if (!graph || !sidebar) throw new Error("Expected docked graph providers.");
+        const hash = "a".repeat(40);
+        executorRunBinary.mockImplementation(async (args: string[]) => {
+            if (args[0] === "log") {
+                return {
+                    stdout: Buffer.from(
+                        [
+                            hash,
+                            "Ada Lovelace",
+                            "2026-08-01T12:00:00.000Z",
+                            "first commit",
+                            HEAD_OID,
+                            "Grace Hopper",
+                            "2026-08-01T13:00:00.000Z",
+                            "second commit",
+                            "",
+                        ].join("\0"),
+                    ),
+                    truncated: false,
+                };
+            }
+            return { stdout: Buffer.from(`${hash}\n${HEAD_OID}\n`), truncated: false };
+        });
+        graph.emitCommitAction({ action: "interactiveRebaseFromHere", hash });
+        await waitForAsync();
+        await waitForAsync();
+        const dialog = graph.showRebaseDialog.mock.calls.at(-1)?.[0] as {
+            requestId?: string;
+            commits?: Array<{ hash: string }>;
+        };
+        if (!dialog.requestId || !dialog.commits) {
+            throw new Error("Expected the graph dialog request ID and offered commits.");
+        }
+        const entries = dialog.commits.map((commit) => ({ hash: commit.hash, action: "pick" }));
+
+        showErrorMessage.mockClear();
+        showInformationMessage.mockClear();
+        sidebar.emitRebaseDialogSubmit({
+            requestId: dialog.requestId,
+            entries,
+        });
+        await waitForAsync();
+        expect(showErrorMessage).toHaveBeenCalledWith(
+            expect.stringContaining("different IntelliGit view"),
+        );
+
+        graph.emitRebaseDialogSubmit({
+            requestId: dialog.requestId,
+            entries,
+        });
+        await waitForAsync();
+        await waitForAsync();
+        expect(showErrorMessage).toHaveBeenCalledTimes(1);
+        expect(showInformationMessage).toHaveBeenCalledWith(
+            expect.stringContaining("rebase engine is not wired yet"),
+        );
+    });
+
+    it("routes interactive-rebase submit and cancel through commit-panel and undocked origins", async () => {
+        const { activate } = await import("../../../src/extension");
+        const context = {
+            extensionUri: { fsPath: "/ext", path: "/ext" },
+            subscriptions: mockDisposables,
+        } as unknown as MockExtensionContext;
+        const hash = "a".repeat(40);
+
+        await activate(context);
+        await registeredCommands.get("intelligit.openUndocked")?.();
+        await waitForAsync();
+        const panel = latestCommitPanelProvider;
+        const undocked = latestUndockedProvider;
+        if (!panel || !undocked) throw new Error("Expected commit-panel and undocked providers.");
+        executorRunBinary.mockImplementation(async (args: string[]) => {
+            if (args[0] === "log") {
+                return {
+                    stdout: Buffer.from(
+                        [
+                            hash,
+                            "Ada Lovelace",
+                            "2026-08-01T12:00:00.000Z",
+                            "first commit",
+                            HEAD_OID,
+                            "Grace Hopper",
+                            "2026-08-01T13:00:00.000Z",
+                            "second commit",
+                            "",
+                        ].join("\0"),
+                    ),
+                    truncated: false,
+                };
+            }
+            return { stdout: Buffer.from(`${hash}\n${HEAD_OID}\n`), truncated: false };
+        });
+        const openDialog = async (emit: () => void, calls: unknown[][]) => {
+            emit();
+            await waitForAsync();
+            await waitForAsync();
+            const dialog = calls.at(-1)?.[0] as {
+                requestId?: string;
+                commits?: Array<{ hash: string }>;
+            };
+            if (!dialog.requestId || !dialog.commits) throw new Error("Expected a rebase dialog.");
+            return {
+                requestId: dialog.requestId,
+                entries: dialog.commits.map((commit) => ({ hash: commit.hash, action: "pick" })),
+            };
+        };
+
+        const panelDialog = await openDialog(
+            () => panel.emitCommitAction({ action: "interactiveRebaseFromHere", hash }),
+            panel.showRebaseDialog.mock.calls,
+        );
+        showErrorMessage.mockClear();
+        showInformationMessage.mockClear();
+        panel.emitRebaseDialogSubmit(panelDialog);
+        await waitForAsync();
+        await waitForAsync();
+        expect(showErrorMessage).not.toHaveBeenCalled();
+        expect(showInformationMessage).toHaveBeenCalledWith(
+            expect.stringContaining("rebase engine is not wired yet"),
+        );
+
+        showErrorMessage.mockClear();
+        panel.emitRebaseDialogCancel({ requestId: "missing" });
+        await waitForAsync();
+        expect(showErrorMessage).not.toHaveBeenCalled();
+
+        const cancelledPanelDialog = await openDialog(
+            () => panel.emitCommitAction({ action: "interactiveRebaseFromHere", hash }),
+            panel.showRebaseDialog.mock.calls,
+        );
+        showErrorMessage.mockClear();
+        showInformationMessage.mockClear();
+        panel.emitRebaseDialogCancel({ requestId: cancelledPanelDialog.requestId });
+        panel.emitRebaseDialogSubmit(cancelledPanelDialog);
+        await waitForAsync();
+        expect(showErrorMessage).toHaveBeenCalledWith(expect.stringContaining("no longer active"));
+        expect(showInformationMessage).not.toHaveBeenCalled();
+
+        const panelOwnedDialog = await openDialog(
+            () => panel.emitCommitAction({ action: "interactiveRebaseFromHere", hash }),
+            panel.showRebaseDialog.mock.calls,
+        );
+        showErrorMessage.mockClear();
+        undocked.emitRebaseDialogSubmit(panelOwnedDialog);
+        await waitForAsync();
+        expect(showErrorMessage).toHaveBeenCalledWith(
+            expect.stringContaining("different IntelliGit view"),
+        );
+
+        const undockedDialog = await openDialog(
+            () => undocked.emitCommitAction({ action: "interactiveRebaseFromHere", hash }),
+            undocked.showRebaseDialog.mock.calls,
+        );
+        showErrorMessage.mockClear();
+        showInformationMessage.mockClear();
+        undocked.emitRebaseDialogSubmit(undockedDialog);
+        await waitForAsync();
+        await waitForAsync();
+        expect(showErrorMessage).not.toHaveBeenCalled();
+        expect(showInformationMessage).toHaveBeenCalledWith(
+            expect.stringContaining("rebase engine is not wired yet"),
+        );
+
+        const cancelledUndockedDialog = await openDialog(
+            () => undocked.emitCommitAction({ action: "interactiveRebaseFromHere", hash }),
+            undocked.showRebaseDialog.mock.calls,
+        );
+        showErrorMessage.mockClear();
+        showInformationMessage.mockClear();
+        undocked.emitRebaseDialogCancel({ requestId: cancelledUndockedDialog.requestId });
+        undocked.emitRebaseDialogSubmit(cancelledUndockedDialog);
+        await waitForAsync();
+        expect(showErrorMessage).toHaveBeenCalledWith(expect.stringContaining("no longer active"));
+        expect(showInformationMessage).not.toHaveBeenCalled();
     });
 
     it("rejects invalid file context command paths before Git operations", async () => {

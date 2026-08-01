@@ -5,6 +5,7 @@ import { GitExecutor } from "../git/executor";
 import { RepositoryMutationCoordinator } from "../git/mutationCoordinator";
 import { GitOps } from "../git/operations";
 import { createPendingRebaseDialogRequests } from "../git/interactiveRebase/pendingRequests";
+import { createInteractiveRebaseSubmissionHandler } from "../git/interactiveRebase/submission";
 import { watchWholeIndexOperation } from "../git/wholeIndexOperationWatcher";
 import { CommitMessageGenerationCoordinator } from "../ai/commitMessageGenerationCoordinator";
 import { RepositoryLock } from "../git/repositoryLock";
@@ -55,6 +56,7 @@ import { registerShelfCommands } from "./shelfCommands";
 import {
     createOpenCommitFileDiffHandler,
     registerRepositoryViewEvents,
+    showInteractiveRebaseSubmissionRejection,
 } from "./repositoryViewEvents";
 import { showTimedWarningMessage } from "../utils/notifications";
 
@@ -741,6 +743,13 @@ export async function activateRepositoryMode(
             gitOps: undockedGitOps,
             getRepoRoot: getUndockedSelectedRepositoryRoot,
         });
+        const rebaseSubmissionHandler = createInteractiveRebaseSubmissionHandler({
+            executor: undockedExecutor,
+            pendingRebaseDialogRequests,
+            getRepoRoot: getUndockedSelectedRepositoryRoot,
+            hasWholeIndexOperationInProgress: () =>
+                undockedGitOps.hasWholeIndexOperationInProgress(),
+        });
 
         undocked = new UndockedViewProvider(
             context.extensionUri,
@@ -794,6 +803,7 @@ export async function activateRepositoryMode(
         // Bound to the instance just constructed rather than to the mutable `undocked`, so a panel
         // disposed after a replacement was created cancels its own requests and not the new one's.
         const disposingPanel = undocked;
+        const rebaseDialogOriginProvider = undocked;
         context.subscriptions.push(
             undocked.onDidDispose(() => {
                 pendingRebaseDialogRequests.cancelAllForOrigin(disposingPanel);
@@ -889,6 +899,27 @@ export async function activateRepositoryMode(
                         vscode.l10n.t("Commit action failed: {message}", { message }),
                     );
                 }
+            }),
+            undocked.onRebaseDialogSubmit(async ({ requestId, entries }) => {
+                const result = await rebaseSubmissionHandler.submit(
+                    { requestId, entries },
+                    rebaseDialogOriginProvider,
+                );
+                if (result.status === "rejected") {
+                    showInteractiveRebaseSubmissionRejection(result.reason);
+                    return;
+                }
+                console.info("[IntelliGit] Interactive rebase submission accepted:", result);
+                // Phase seam: the next phase wires accepted entries to the rebase engine.
+                await vscode.window.showInformationMessage(
+                    vscode.l10n.t(
+                        "Interactive rebase is ready, but the rebase engine is not wired yet.",
+                    ),
+                );
+            }),
+            undocked.onRebaseDialogCancel(({ requestId }) => {
+                // An already-consumed request is a benign no-op, so its boolean result is intentionally ignored.
+                rebaseSubmissionHandler.cancel({ requestId }, rebaseDialogOriginProvider);
             }),
             undocked.onOpenCommitFileDiff(handleOpenUndockedCommitFileDiff),
             undocked.onDidChangeWorkingTree(() => {

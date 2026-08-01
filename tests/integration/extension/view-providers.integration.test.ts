@@ -4580,6 +4580,121 @@ describe("view providers integration", () => {
         provider.dispose();
     });
 
+    it("dispatches only transport-shaped interactive-rebase dialog messages from every commit-list provider", async () => {
+        const { CommitGraphViewProvider } =
+            await import("../../../src/views/CommitGraphViewProvider");
+        const { CommitPanelViewProvider } =
+            await import("../../../src/views/CommitPanelViewProvider");
+        const { UndockedViewProvider } = await import("../../../src/views/UndockedViewProvider");
+        const entries = [
+            { hash: "not-validated-here", action: "not-an-action", message: "bad\nraw" },
+        ];
+
+        const graph = new CommitGraphViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+            makeGitOpsMock() as unknown as object,
+            makeCredentialStore() as unknown as object,
+        );
+        const graphWebview = createWebviewView();
+        const graphSubmit = vi.fn();
+        const graphCancel = vi.fn();
+        graph.onRebaseDialogSubmit(graphSubmit);
+        graph.onRebaseDialogCancel(graphCancel);
+        graph.resolveWebviewView(
+            graphWebview.view as unknown as object,
+            {} as unknown as object,
+            {} as unknown as object,
+        );
+        await graphWebview.send({ type: "startInteractiveRebase", requestId: "graph", entries });
+        await graphWebview.send({ type: "cancelRebaseDialog", requestId: "graph" });
+        await graphWebview.send({ type: "startInteractiveRebase", requestId: "", entries });
+        await graphWebview.send({
+            type: "startInteractiveRebase",
+            requestId: "graph",
+            entries: {},
+        });
+        expect(graphSubmit).toHaveBeenCalledTimes(1);
+        expect(graphSubmit).toHaveBeenLastCalledWith({ requestId: "graph", entries });
+        expect(graphCancel).toHaveBeenCalledTimes(1);
+        expect(graphCancel).toHaveBeenLastCalledWith({ requestId: "graph" });
+
+        const panel = new CommitPanelViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+            makeGitOpsMock() as unknown as object,
+            { fsPath: "/repo", path: "/repo" } as unknown as { fsPath: string; path: string },
+        );
+        const panelSubmit = vi.fn();
+        const panelCancel = vi.fn();
+        panel.onRebaseDialogSubmit(panelSubmit);
+        panel.onRebaseDialogCancel(panelCancel);
+        const panelMessages = panel as unknown as {
+            handleMessage: (message: unknown) => Promise<void>;
+        };
+        await panelMessages.handleMessage({
+            type: "startInteractiveRebase",
+            requestId: "panel",
+            entries,
+        });
+        await panelMessages.handleMessage({ type: "cancelRebaseDialog", requestId: "panel" });
+        await expect(
+            panelMessages.handleMessage({ type: "startInteractiveRebase", requestId: "", entries }),
+        ).rejects.toThrow("non-empty string");
+        await expect(
+            panelMessages.handleMessage({
+                type: "startInteractiveRebase",
+                requestId: "panel",
+                entries: {},
+            }),
+        ).rejects.toThrow("Expected array");
+        expect(panelSubmit).toHaveBeenCalledTimes(1);
+        expect(panelSubmit).toHaveBeenLastCalledWith({ requestId: "panel", entries });
+        expect(panelCancel).toHaveBeenCalledTimes(1);
+        expect(panelCancel).toHaveBeenLastCalledWith({ requestId: "panel" });
+
+        const undocked = new UndockedViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+            makeGitOpsMock() as unknown as object,
+            { fsPath: "/repo", path: "/repo" } as unknown as { fsPath: string; path: string },
+            makeCredentialStore() as unknown as object,
+            createMemento() as unknown as object,
+        );
+        const undockedSubmit = vi.fn();
+        const undockedCancel = vi.fn();
+        undocked.onRebaseDialogSubmit(undockedSubmit);
+        undocked.onRebaseDialogCancel(undockedCancel);
+        const undockedMessages = undocked as unknown as {
+            handleMessage: (message: unknown) => Promise<void>;
+        };
+        await undockedMessages.handleMessage({
+            type: "startInteractiveRebase",
+            requestId: "undocked",
+            entries,
+        });
+        await undockedMessages.handleMessage({ type: "cancelRebaseDialog", requestId: "undocked" });
+        await expect(
+            undockedMessages.handleMessage({
+                type: "startInteractiveRebase",
+                requestId: "",
+                entries,
+            }),
+        ).rejects.toThrow("non-empty string");
+        await expect(
+            undockedMessages.handleMessage({
+                type: "startInteractiveRebase",
+                requestId: "undocked",
+                entries: {},
+            }),
+        ).rejects.toThrow("Expected array");
+        expect(undockedSubmit).toHaveBeenCalledTimes(1);
+        expect(undockedSubmit).toHaveBeenLastCalledWith({ requestId: "undocked", entries });
+        expect(undockedCancel).toHaveBeenCalledTimes(1);
+        expect(undockedCancel).toHaveBeenLastCalledWith({ requestId: "undocked" });
+
+        graph.dispose();
+        panel.dispose();
+        undocked.dispose();
+    });
+
     it("CommitGraphViewProvider emits validated bulk branch delete messages", async () => {
         const { CommitGraphViewProvider } =
             await import("../../../src/views/CommitGraphViewProvider");

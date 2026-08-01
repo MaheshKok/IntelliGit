@@ -105,6 +105,8 @@ vi.mock("../../../src/views/UndockedViewProvider", () => ({
         onWorktreeAction = event();
         onDeleteBranches = event();
         onCommitAction = event();
+        onRebaseDialogSubmit = event();
+        onRebaseDialogCancel = event();
         onOpenCommitFileDiff = event();
         onDidChangeWorkingTree = event();
         onDidChangeFileCount = event();
@@ -116,6 +118,8 @@ vi.mock("../../../src/views/UndockedViewProvider", () => ({
         refresh = vi.fn(async () => undefined);
         refreshSilent = vi.fn(async () => undefined);
         clearChecksCache = vi.fn();
+        // Mirrors the real provider's delivery contract: true only while a webview is live.
+        showRebaseDialog = vi.fn(() => true);
         dispose = vi.fn();
         constructor(...args: unknown[]) {
             undockedOptions.push(args.at(-1) as Record<string, unknown>);
