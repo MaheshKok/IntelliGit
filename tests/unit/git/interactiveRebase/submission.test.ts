@@ -134,7 +134,7 @@ describe("interactive rebase submission handler", () => {
         ["missing message", [{ hash: HASH_A, action: "reword" }], [HASH_A], "missing-message"],
         [
             "invalid message",
-            [{ hash: HASH_A, action: "pick", message: "bad\ntext" }],
+            [{ hash: HASH_A, action: "pick", message: "bad\0text" }],
             [HASH_A],
             "invalid-message",
         ],

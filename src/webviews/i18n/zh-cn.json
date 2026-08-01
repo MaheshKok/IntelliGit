@@ -316,5 +316,17 @@
     "stash.fileAction.cherryPickSelectedChanges": "挑选选定的更改",
     "a11y.resizeRepositoryColumn": "调整存储库列大小",
     "commit.message.generate": "生成提交信息",
-    "commit.message.stopGeneration": "停止生成提交信息"
+    "commit.message.stopGeneration": "停止生成提交信息",
+    "rebase.dialog.title": "正在变基提交",
+    "rebase.dialog.pushedWarning": "一些提交已推送。变基会重写已发布的历史记录。",
+    "rebase.dialog.firstActionCleared": "第一个未丢弃的提交不能压缩或修正，因此已改为 pick。",
+    "rebase.dialog.action": "变基操作",
+    "rebase.dialog.message": "提交消息",
+    "rebase.dialog.moveUp": "上移提交",
+    "rebase.dialog.moveDown": "下移提交",
+    "rebase.dialog.start": "开始变基",
+    "rebase.action.pick": "选取",
+    "rebase.action.reword": "修改消息",
+    "rebase.action.squash": "压缩",
+    "rebase.action.fixup": "修正"
 }

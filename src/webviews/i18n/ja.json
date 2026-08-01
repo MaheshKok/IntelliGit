@@ -316,5 +316,17 @@
     "stash.fileAction.cherryPickSelectedChanges": "選択した変更をチェリーピック",
     "a11y.resizeRepositoryColumn": "リポジトリ列のサイズを変更",
     "commit.message.generate": "コミットメッセージを生成",
-    "commit.message.stopGeneration": "コミットメッセージの生成を停止"
+    "commit.message.stopGeneration": "コミットメッセージの生成を停止",
+    "rebase.dialog.title": "コミットをリベース中",
+    "rebase.dialog.pushedWarning": "一部のコミットはすでにプッシュされています。リベースすると公開済みの履歴が書き換えられます。",
+    "rebase.dialog.firstActionCleared": "最初に残るコミットは squash または fixup にできないため pick に変更されました。",
+    "rebase.dialog.action": "リベース操作",
+    "rebase.dialog.message": "コミットメッセージ",
+    "rebase.dialog.moveUp": "コミットを上へ移動",
+    "rebase.dialog.moveDown": "コミットを下へ移動",
+    "rebase.dialog.start": "リベースを開始",
+    "rebase.action.pick": "選択",
+    "rebase.action.reword": "メッセージを編集",
+    "rebase.action.squash": "まとめる",
+    "rebase.action.fixup": "修正"
 }

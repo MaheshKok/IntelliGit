@@ -30,7 +30,8 @@ export function buildRebaseTodo(entries: readonly RebaseTodoEntry[]): string {
  * Validates an untrusted dialog submission before any entry can reach a Git todo file.
  *
  * Offered hashes are host-recorded and may not be augmented, reordered, or replaced by
- * the submitted entries. The returned valid entries are copied to prevent caller mutation.
+ * the submitted entries. Messages may be multi-line because the todo writer truncates and
+ * sanitizes them independently. The returned valid entries are copied to prevent caller mutation.
  */
 export function validateRebaseSubmission(
     entries: readonly RebaseSubmissionEntry[],
@@ -49,7 +50,7 @@ export function validateRebaseSubmission(
         }
         if (
             entry.message !== undefined &&
-            (typeof entry.message !== "string" || /[\r\n\0]/.test(entry.message))
+            (typeof entry.message !== "string" || /\0/.test(entry.message))
         ) {
             return invalid("invalid-message");
         }

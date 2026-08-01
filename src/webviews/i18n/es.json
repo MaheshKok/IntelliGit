@@ -330,5 +330,17 @@
     "stash.fileAction.cherryPickSelectedChanges": "Hacer cherry-pick de los cambios seleccionados",
     "a11y.resizeRepositoryColumn": "Cambiar el tamaño de la columna del repositorio",
     "commit.message.generate": "Generar mensaje de confirmación",
-    "commit.message.stopGeneration": "Detener la generación del mensaje de confirmación"
+    "commit.message.stopGeneration": "Detener la generación del mensaje de confirmación",
+    "rebase.dialog.title": "Reorganizando commits",
+    "rebase.dialog.pushedWarning": "Algunos commits ya se han enviado. Al reorganizarlos se reescribe el historial publicado.",
+    "rebase.dialog.firstActionCleared": "El primer commit restante no se puede fusionar ni corregir y se cambió a pick.",
+    "rebase.dialog.action": "Acción de rebase",
+    "rebase.dialog.message": "Mensaje del commit",
+    "rebase.dialog.moveUp": "Subir commit",
+    "rebase.dialog.moveDown": "Bajar commit",
+    "rebase.dialog.start": "Reorganizar commits",
+    "rebase.action.pick": "Seleccionar",
+    "rebase.action.reword": "Reescribir",
+    "rebase.action.squash": "Combinar",
+    "rebase.action.fixup": "Corrección"
 }

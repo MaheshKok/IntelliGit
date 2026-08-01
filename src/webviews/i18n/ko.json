@@ -316,5 +316,17 @@
     "stash.fileAction.cherryPickSelectedChanges": "선택한 변경 사항 체리픽",
     "a11y.resizeRepositoryColumn": "리포지토리 열 크기 조정",
     "commit.message.generate": "커밋 메시지 생성",
-    "commit.message.stopGeneration": "커밋 메시지 생성 중지"
+    "commit.message.stopGeneration": "커밋 메시지 생성 중지",
+    "rebase.dialog.title": "커밋 리베이스",
+    "rebase.dialog.pushedWarning": "일부 커밋은 이미 푸시되었습니다. 리베이스하면 공개된 기록이 다시 작성됩니다.",
+    "rebase.dialog.firstActionCleared": "첫 번째 남은 커밋은 squash 또는 fixup으로 설정할 수 없어 pick으로 변경되었습니다.",
+    "rebase.dialog.action": "리베이스 작업",
+    "rebase.dialog.message": "커밋 메시지",
+    "rebase.dialog.moveUp": "커밋 위로 이동",
+    "rebase.dialog.moveDown": "커밋 아래로 이동",
+    "rebase.dialog.start": "리베이스 시작",
+    "rebase.action.pick": "선택",
+    "rebase.action.reword": "메시지 수정",
+    "rebase.action.squash": "스쿼시",
+    "rebase.action.fixup": "수정"
 }

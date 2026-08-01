@@ -323,5 +323,17 @@
     "stash.fileAction.cherryPickSelectedChanges": "Ausgewählte Änderungen cherry-picken",
     "a11y.resizeRepositoryColumn": "Größe der Repositoryspalte ändern",
     "commit.message.generate": "Commit-Nachricht generieren",
-    "commit.message.stopGeneration": "Generierung der Commit-Nachricht beenden"
+    "commit.message.stopGeneration": "Generierung der Commit-Nachricht beenden",
+    "rebase.dialog.title": "Commits rebasieren",
+    "rebase.dialog.pushedWarning": "Einige Commits wurden bereits gepusht. Durch das Rebasen wird veröffentlichter Verlauf umgeschrieben.",
+    "rebase.dialog.firstActionCleared": "Der erste verbleibende Commit kann nicht zusammengeführt oder korrigiert werden und wurde daher in pick geändert.",
+    "rebase.dialog.action": "Rebase-Aktion",
+    "rebase.dialog.message": "Commit-Nachricht",
+    "rebase.dialog.moveUp": "Commit nach oben verschieben",
+    "rebase.dialog.moveDown": "Commit nach unten verschieben",
+    "rebase.dialog.start": "Rebase starten",
+    "rebase.action.pick": "Auswählen",
+    "rebase.action.reword": "Nachricht bearbeiten",
+    "rebase.action.squash": "Zusammenführen",
+    "rebase.action.fixup": "Korrektur"
 }

@@ -88,54 +88,75 @@ describe("interactive rebase domain", () => {
         ).toMatchObject({ status: "valid" });
     });
 
-    it.each(["\n", "\r", "\0"])(
-        "rejects a pick label containing a control character",
-        (controlCharacter) => {
+    it.each([
+        "pick",
+        "reword",
+        "squash",
+        "fixup",
+        "drop",
+    ] as const satisfies readonly RebaseAction[])(
+        "rejects a %s message containing NUL",
+        (action) => {
+            const entries =
+                action === "squash" || action === "fixup"
+                    ? [
+                          { hash: HASH_A, action: "pick" as const },
+                          { hash: HASH_B, action, message: "subject\0injected" },
+                      ]
+                    : [{ hash: HASH_A, action, message: "subject\0injected" }];
+
+            expect(
+                validateRebaseSubmission(entries, new Set(entries.map((entry) => entry.hash))),
+            ).toEqual({ status: "invalid", reason: "invalid-message" });
+        },
+    );
+
+    it.each(["reword", "squash"] as const satisfies readonly RebaseAction[])(
+        "rejects a %s message containing NUL",
+        (action) => {
             expect(
                 validateRebaseSubmission(
-                    [
-                        {
-                            hash: HASH_A,
-                            action: "pick",
-                            message: `subject${controlCharacter}injected`,
-                        },
-                    ],
+                    [{ hash: HASH_A, action, message: "replacement\0injected" }],
                     new Set([HASH_A]),
                 ),
             ).toEqual({ status: "invalid", reason: "invalid-message" });
         },
     );
 
-    it.each(["reword", "squash"] as const satisfies readonly RebaseAction[])(
-        "rejects a %s message containing every todo control character",
+    it.each([
+        "pick",
+        "reword",
+        "squash",
+        "fixup",
+        "drop",
+    ] as const satisfies readonly RebaseAction[])(
+        "accepts a %s message containing CR and LF",
         (action) => {
-            for (const controlCharacter of ["\n", "\r", "\0"]) {
-                expect(
-                    validateRebaseSubmission(
-                        [
-                            {
-                                hash: HASH_A,
-                                action,
-                                message: `replacement${controlCharacter}injected`,
-                            },
-                        ],
-                        new Set([HASH_A]),
-                    ),
-                ).toEqual({ status: "invalid", reason: "invalid-message" });
-            }
+            const message = "subject\n\nbody\rwith carriage return";
+            const entries =
+                action === "squash" || action === "fixup"
+                    ? [
+                          { hash: HASH_A, action: "pick" as const },
+                          { hash: HASH_B, action, message },
+                      ]
+                    : [{ hash: HASH_A, action, message }];
+
+            expect(
+                validateRebaseSubmission(entries, new Set(entries.map((entry) => entry.hash))),
+            ).toMatchObject({ status: "valid" });
         },
     );
 
     it("limits validation-free todo entries to one physical line each", () => {
         const entries: readonly RebaseTodoEntry[] = [
-            { hash: HASH_A, action: "pick", message: "subject\ninjected" },
-            { hash: HASH_B, action: "reword", message: "replacement\rreturn" },
+            { hash: HASH_A, action: "pick", message: "subject\n\nbody" },
+            { hash: HASH_B, action: "reword", message: "replacement\r\nbody" },
             { hash: HASH_C, action: "squash", message: "combined\0suffix" },
         ];
 
-        const lines = buildRebaseTodo(entries).split("\n");
-        expect(lines).toHaveLength(entries.length + 1);
-        expect(lines.at(-1)).toBe("");
+        expect(buildRebaseTodo(entries)).toBe(
+            `pick ${HASH_A} subject\nreword ${HASH_B} replacement\nsquash ${HASH_C} combinedsuffix\n`,
+        );
     });
 
     it("normalizes uppercase object IDs in validated entries", () => {

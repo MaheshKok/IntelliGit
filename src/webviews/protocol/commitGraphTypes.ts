@@ -16,6 +16,15 @@ import type {
     RebaseSubmissionEntry,
 } from "../../git/interactiveRebase/types";
 
+// Re-exported so the rebase dialog can share the host's todo vocabulary without importing from
+// `src/git/**` directly, which the webview architecture rule forbids. The protocol layer is the
+// sanctioned bridge between the extension host and the React webviews.
+export type {
+    InteractiveRebaseRangeCommit,
+    RebaseAction,
+    RebaseTodoEntry,
+} from "../../git/interactiveRebase/types";
+
 /**
  * Branch context-menu action discriminants accepted from graph webviews.
  *
