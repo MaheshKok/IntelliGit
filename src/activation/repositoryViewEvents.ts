@@ -5,8 +5,10 @@ import type { Branch, GitWorktree } from "../types";
 import type {
     BranchAction,
     CommitAction,
+    CommitGraphInbound,
     WorktreeAction,
 } from "../webviews/protocol/commitGraphTypes";
+import type { PendingRebaseDialogRequests } from "../git/interactiveRebase/types";
 import { handleCommitContextAction } from "../commands/commitCommands";
 import { openCommitFileDiff } from "../services/diffService";
 import { RefreshService } from "../views/RefreshService";
@@ -85,6 +87,8 @@ export interface RepositoryViewEventDeps {
     getCurrentBranches: () => Branch[];
     getCurrentWorktrees: () => GitWorktree[];
     refreshService: () => RefreshService;
+    /** Registry shared with undocked dispatch so only one request exists for each origin/root pair. */
+    pendingRebaseDialogRequests: PendingRebaseDialogRequests;
 }
 
 /**
@@ -116,6 +120,7 @@ export function registerRepositoryViewEvents(
         getCurrentBranches,
         getCurrentWorktrees,
         refreshService,
+        pendingRebaseDialogRequests,
     } = deps;
 
     /**
@@ -219,30 +224,40 @@ export function registerRepositoryViewEvents(
     };
 
     /**
-     * Runs a view-originated commit action against the active repository state.
+     * Binds a commit-action listener to the provider that emitted it.
      *
-     * Refresh callbacks are resolved lazily so actions that mutate history refresh
-     * the current repository even after a repository switch.
+     * The bound callback keeps interactive-rebase dialog delivery on the originating webview while
+     * preserving the lazy active-repository access used by every other commit context action.
      */
-    const runCommitAction = async ({ action, hash }: { action: CommitAction; hash: string }) => {
-        try {
-            await handleCommitContextAction({
-                action,
-                hash,
-                executor,
-                gitOps,
-                repoRoot: getRepoRoot(),
-                currentBranches: getCurrentBranches(),
-                refreshAll: () => refreshService().refreshAll(),
-            });
-        } catch (error) {
-            const message = getErrorMessage(error);
-            console.error(`Commit action '${action}' failed:`, error);
-            vscode.window.showErrorMessage(
-                vscode.l10n.t("Commit action failed: {message}", { message }),
-            );
-        }
-    };
+    const runCommitAction =
+        (
+            originProvider: object,
+            postRebaseDialog: (
+                message: Extract<CommitGraphInbound, { type: "showRebaseDialog" }>,
+            ) => boolean,
+        ) =>
+        async ({ action, hash }: { action: CommitAction; hash: string }): Promise<void> => {
+            try {
+                await handleCommitContextAction({
+                    action,
+                    hash,
+                    executor,
+                    gitOps,
+                    repoRoot: getRepoRoot(),
+                    currentBranches: getCurrentBranches(),
+                    refreshAll: () => refreshService().refreshAll(),
+                    originProvider,
+                    postRebaseDialog,
+                    pendingRebaseDialogRequests,
+                });
+            } catch (error) {
+                const message = getErrorMessage(error);
+                console.error(`Commit action '${action}' failed:`, error);
+                vscode.window.showErrorMessage(
+                    vscode.l10n.t("Commit action failed: {message}", { message }),
+                );
+            }
+        };
 
     context.subscriptions.push(
         commitGraph.onCommitSelected(loadCommitDetail),
@@ -262,9 +277,15 @@ export function registerRepositoryViewEvents(
             new vscode.Disposable(() => undefined),
         sidebarGraph.onWorktreeAction?.(forwardWorktreeAction) ??
             new vscode.Disposable(() => undefined),
-        commitGraph.onCommitAction(runCommitAction),
-        sidebarGraph.onCommitAction(runCommitAction),
-        commitPanel.onCommitAction(runCommitAction),
+        commitGraph.onCommitAction(
+            runCommitAction(commitGraph, (message) => commitGraph.showRebaseDialog(message)),
+        ),
+        sidebarGraph.onCommitAction(
+            runCommitAction(sidebarGraph, (message) => sidebarGraph.showRebaseDialog(message)),
+        ),
+        commitPanel.onCommitAction(
+            runCommitAction(commitPanel, (message) => commitPanel.showRebaseDialog(message)),
+        ),
         commitGraph.onOpenCommitFileDiff(handleOpenCommitFileDiff),
         sidebarGraph.onOpenCommitFileDiff(handleOpenCommitFileDiff),
         commitPanel.onOpenCommitFileDiff(handleOpenCommitFileDiff),

@@ -201,6 +201,7 @@ export interface InteractiveRebaseRangeCommit {
 /** Machine-readable reason loading a bounded interactive-rebase range was rejected. */
 export type InteractiveRebaseRangeRejectionReason =
     | "invalid-base-hash"
+    | "invalid-head-hash"
     | "range-too-large"
     | "invalid-range-count"
     | "empty-range"
@@ -249,3 +250,66 @@ export type InteractiveRebaseGuardResult =
           /** Machine-readable reason the action must stop. */
           reason: InteractiveRebaseGuardRejectionReason;
       };
+
+/** Values captured before issuing a single-use interactive-rebase dialog request. */
+export interface PendingRebaseDialogRequestInput {
+    /** Provider instance that opened the dialog and must later consume its request. */
+    originProvider: object;
+    /** Absolute root for the repository whose history produced the offered range. */
+    repoRoot: string;
+    /** Full selected commit object ID at the start of the offered range. */
+    baseHash: string;
+    /** Full object IDs in the exact oldest-to-newest order offered to the dialog. */
+    rangeHashes: readonly string[];
+    /** HEAD object ID that must still match when a later submission is accepted. */
+    expectedHead: string;
+    /** Fully qualified symbolic branch ref that must still be checked out on submission. */
+    expectedBranch: string;
+}
+
+/** Immutable host-side record for one active interactive-rebase dialog. */
+export interface PendingRebaseDialogRequest extends PendingRebaseDialogRequestInput {
+    /** Host-generated one-shot identifier that never lets the webview choose Git revisions. */
+    requestId: string;
+}
+
+/** Outcome of consuming one pending dialog request from a provider-specific inbound channel. */
+export type PendingRebaseDialogConsumeResult =
+    | {
+          /** The request belonged to this provider and is removed before being returned. */
+          status: "consumed";
+          /** Immutable request snapshot for the submission validation phase. */
+          request: PendingRebaseDialogRequest;
+      }
+    | {
+          /** The request cannot be used by this message. */
+          status: "rejected";
+          /** Distinguishes missing or expired state from a request owned by another provider. */
+          reason: "unknown-or-expired" | "wrong-origin";
+      };
+
+/** Clock override used to make pending-request expiry deterministic in unit tests. */
+export interface PendingRebaseDialogRequestRegistryOptions {
+    /** Returns the current epoch milliseconds; production defaults to {@link Date.now}. */
+    now?: () => number;
+}
+
+/** In-memory request registry that keeps a dialog handoff bound to its originating provider. */
+export interface PendingRebaseDialogRequests {
+    /** Registers one request and returns its host-generated single-use ID. */
+    register(request: PendingRebaseDialogRequestInput): string;
+    /** Removes and returns a request only when the same provider instance consumes it. */
+    consume(requestId: string, originProvider: object): PendingRebaseDialogConsumeResult;
+    /** Removes one pending request when its dialog is explicitly dismissed or superseded. */
+    cancel(requestId: string): void;
+    /** Removes every pending request owned by a disposed provider instance. */
+    cancelAllForOrigin(originProvider: object): void;
+    /**
+     * Removes requests the named providers captured for a repository they no longer show.
+     *
+     * Cancellation is scoped to origins rather than keyed on the repository alone because the
+     * docked views and the undocked panel switch repositories independently: a root-wide sweep
+     * would destroy a dialog that is still open and still valid in the other window.
+     */
+    cancelForOrigins(origins: readonly object[], repoRoot: string): void;
+}

@@ -4,6 +4,7 @@ import { handleCommitContextAction } from "../commands/commitCommands";
 import { GitExecutor } from "../git/executor";
 import { RepositoryMutationCoordinator } from "../git/mutationCoordinator";
 import { GitOps } from "../git/operations";
+import { createPendingRebaseDialogRequests } from "../git/interactiveRebase/pendingRequests";
 import { watchWholeIndexOperation } from "../git/wholeIndexOperationWatcher";
 import { CommitMessageGenerationCoordinator } from "../ai/commitMessageGenerationCoordinator";
 import { RepositoryLock } from "../git/repositoryLock";
@@ -119,6 +120,7 @@ export async function activateRepositoryMode(
         new RepositoryMutationCoordinator(),
         new RepositoryLock(),
     );
+    const pendingRebaseDialogRequests = createPendingRebaseDialogRequests();
     const shelfSettings = readShelfSettings(vscode.workspace.getConfiguration("intelligit"));
     const shelfServices = new Map<string, ShelfService>();
     const globalStoragePath = context.globalStorageUri?.fsPath;
@@ -541,6 +543,12 @@ export async function activateRepositoryMode(
             switchSeq === repositorySwitchSeq && callerShouldContinue();
         if (!shouldContinue()) return;
 
+        if (repoRoot !== repository.root) {
+            pendingRebaseDialogRequests.cancelForOrigins(
+                [commitGraph, sidebarGraph, commitPanel],
+                repoRoot,
+            );
+        }
         activeRepository = repository;
         repoRoot = repository.root;
         repoRootUri = vscode.Uri.file(repoRoot);
@@ -756,6 +764,13 @@ export async function activateRepositoryMode(
                 commitChecksProviders,
                 commitMessageGenerationCoordinator,
                 onSelectedRepositoryRootChanged: async (root) => {
+                    const panel = undocked;
+                    if (panel && undockedSelectedRepositoryRoot !== root) {
+                        pendingRebaseDialogRequests.cancelForOrigins(
+                            [panel],
+                            undockedSelectedRepositoryRoot,
+                        );
+                    }
                     undockedSelectedRepositoryRoot = root;
                     undockedSelectionWrite = undockedSelectionWrite
                         .catch(() => undefined)
@@ -776,8 +791,12 @@ export async function activateRepositoryMode(
         undocked.setRepositories(repositories, initialUndockedRepository.root);
         context.subscriptions.push(undocked);
 
+        // Bound to the instance just constructed rather than to the mutable `undocked`, so a panel
+        // disposed after a replacement was created cancels its own requests and not the new one's.
+        const disposingPanel = undocked;
         context.subscriptions.push(
             undocked.onDidDispose(() => {
+                pendingRebaseDialogRequests.cancelAllForOrigin(disposingPanel);
                 undocked = undefined;
                 undockedRuntime?.worktreeService.dispose();
                 undockedRuntime = undefined;
@@ -842,6 +861,8 @@ export async function activateRepositoryMode(
                 void vscode.commands.executeCommand("intelligit.deleteBranches", { branches });
             }) ?? new vscode.Disposable(() => undefined),
             undocked.onCommitAction(async ({ action, hash }) => {
+                const originProvider = undocked;
+                if (!originProvider) return;
                 try {
                     await handleCommitContextAction({
                         action,
@@ -857,6 +878,9 @@ export async function activateRepositoryMode(
                             }
                             await loadUndockedData();
                         },
+                        originProvider,
+                        postRebaseDialog: (message) => originProvider.showRebaseDialog(message),
+                        pendingRebaseDialogRequests,
                     });
                 } catch (error) {
                     const message = getErrorMessage(error);
@@ -1077,6 +1101,7 @@ export async function activateRepositoryMode(
             getCurrentBranches,
             getCurrentWorktrees,
             refreshService: getRefreshService,
+            pendingRebaseDialogRequests,
         },
         handleOpenCommitFileDiff,
     );

@@ -16,7 +16,8 @@ const execFileAsync = promisify(execFile);
 const HASH_A = "a".repeat(40);
 const HASH_B = "b".repeat(40);
 const BASE = "c".repeat(40);
-const RANGE = `${BASE}^..HEAD`;
+const HEAD_HASH = "d".repeat(40);
+const RANGE = `${BASE}^..${HEAD_HASH}`;
 const AUTHOR_DATE = "2026-08-01T12:00:00+00:00";
 const directories: string[] = [];
 
@@ -78,7 +79,7 @@ describe("loadInteractiveRebaseRange", () => {
             unpushed: `${HASH_B}\n`,
         });
 
-        await expect(loadInteractiveRebaseRange(executor, BASE)).resolves.toEqual({
+        await expect(loadInteractiveRebaseRange(executor, BASE, HEAD_HASH)).resolves.toEqual({
             status: "ok",
             commits: [
                 { hash: HASH_A, authorName: "", authoredAt: AUTHOR_DATE, body: "", isPushed: true },
@@ -121,10 +122,10 @@ describe("loadInteractiveRebaseRange", () => {
         ["a revision expression", "HEAD~5"],
         ["a range the caller built itself", `${BASE}^..HEAD`],
         ["an empty string", ""],
-    ] as const)("rejects %s before spawning Git", async (_name, baseHash) => {
+    ] as const)("rejects %s as a base before spawning Git", async (_name, baseHash) => {
         const executor = executorFor();
 
-        await expect(loadInteractiveRebaseRange(executor, baseHash)).resolves.toEqual({
+        await expect(loadInteractiveRebaseRange(executor, baseHash, HEAD_HASH)).resolves.toEqual({
             status: "rejected",
             reason: "invalid-base-hash",
         });
@@ -132,10 +133,40 @@ describe("loadInteractiveRebaseRange", () => {
         expect(executor.runBinary).not.toHaveBeenCalled();
     });
 
+    it.each([
+        ["an option-shaped argument", "--output=/tmp/intelligit-should-not-exist"],
+        ["a leading dash", "-HEAD"],
+        ["the literal HEAD", "HEAD"],
+        ["an abbreviated hash", "abc1234"],
+        ["an empty string", ""],
+    ] as const)("rejects %s as a head before spawning Git", async (_name, headHash) => {
+        const executor = executorFor();
+
+        await expect(loadInteractiveRebaseRange(executor, BASE, headHash)).resolves.toEqual({
+            status: "rejected",
+            reason: "invalid-head-hash",
+        });
+        expect(executor.run).not.toHaveBeenCalled();
+        expect(executor.runBinary).not.toHaveBeenCalled();
+    });
+
+    it("pins every query to the supplied head instead of resolving HEAD itself", async () => {
+        const executor = executorFor();
+
+        await loadInteractiveRebaseRange(executor, BASE, HEAD_HASH);
+
+        const issued = [
+            ...(executor.run as ReturnType<typeof vi.fn>).mock.calls,
+            ...(executor.runBinary as ReturnType<typeof vi.fn>).mock.calls,
+        ].flatMap(([args]: [string[]]) => args);
+        expect(issued).not.toContain("HEAD");
+        expect(issued.filter((arg) => arg === RANGE)).toHaveLength(3);
+    });
+
     it("rejects a range over the product cap before loading bodies or pushedness", async () => {
         const executor = executorFor({ count: MAX_INTERACTIVE_REBASE_RANGE_COMMITS + 1 });
 
-        await expect(loadInteractiveRebaseRange(executor, BASE)).resolves.toEqual({
+        await expect(loadInteractiveRebaseRange(executor, BASE, HEAD_HASH)).resolves.toEqual({
             status: "rejected",
             reason: "range-too-large",
         });
@@ -151,7 +182,7 @@ describe("loadInteractiveRebaseRange", () => {
             ).join("\0")}\0`,
         });
 
-        const result = await loadInteractiveRebaseRange(executor, BASE);
+        const result = await loadInteractiveRebaseRange(executor, BASE, HEAD_HASH);
         expect(result).toMatchObject({ status: "ok" });
         if (result.status === "ok") {
             expect(result.commits).toHaveLength(MAX_INTERACTIVE_REBASE_RANGE_COMMITS);
@@ -161,7 +192,7 @@ describe("loadInteractiveRebaseRange", () => {
     it("rejects an empty range instead of returning zero commits", async () => {
         const executor = executorFor({ count: 0, output: "" });
 
-        await expect(loadInteractiveRebaseRange(executor, BASE)).resolves.toEqual({
+        await expect(loadInteractiveRebaseRange(executor, BASE, HEAD_HASH)).resolves.toEqual({
             status: "rejected",
             reason: "empty-range",
         });
@@ -171,7 +202,7 @@ describe("loadInteractiveRebaseRange", () => {
     it("rejects a record count that disagrees with the independent count probe", async () => {
         const executor = executorFor({ count: 2, output: `${record(HASH_A)}\0` });
 
-        await expect(loadInteractiveRebaseRange(executor, BASE)).resolves.toEqual({
+        await expect(loadInteractiveRebaseRange(executor, BASE, HEAD_HASH)).resolves.toEqual({
             status: "rejected",
             reason: "count-mismatch",
         });
@@ -181,7 +212,9 @@ describe("loadInteractiveRebaseRange", () => {
         ["the range load", { truncated: true }],
         ["the pushedness query", { unpushedTruncated: true }],
     ] as const)("rejects truncated output from %s without parsing it", async (_name, overrides) => {
-        await expect(loadInteractiveRebaseRange(executorFor(overrides), BASE)).resolves.toEqual({
+        await expect(
+            loadInteractiveRebaseRange(executorFor(overrides), BASE, HEAD_HASH),
+        ).resolves.toEqual({
             status: "rejected",
             reason: "output-truncated",
         });
@@ -195,7 +228,9 @@ describe("loadInteractiveRebaseRange", () => {
         ["an arity remainder of two", `field\0field\0`, "malformed-arity"],
         ["an arity remainder of three", `field\0field\0field\0`, "malformed-arity"],
     ] as const)("rejects %s", async (_name, output, reason) => {
-        await expect(loadInteractiveRebaseRange(executorFor({ output }), BASE)).resolves.toEqual({
+        await expect(
+            loadInteractiveRebaseRange(executorFor({ output }), BASE, HEAD_HASH),
+        ).resolves.toEqual({
             status: "rejected",
             reason,
         });
@@ -205,7 +240,9 @@ describe("loadInteractiveRebaseRange", () => {
         ["a non-numeric count", "not-a-count"],
         ["a blank count", ""],
     ] as const)("fails closed on %s", async (_name, count) => {
-        await expect(loadInteractiveRebaseRange(executorFor({ count }), BASE)).resolves.toEqual({
+        await expect(
+            loadInteractiveRebaseRange(executorFor({ count }), BASE, HEAD_HASH),
+        ).resolves.toEqual({
             status: "rejected",
             reason: "invalid-range-count",
         });
@@ -223,7 +260,7 @@ describe("loadInteractiveRebaseRange real Git framing", () => {
         const secondHash = await commit(repo, secondBody);
 
         await expect(
-            loadInteractiveRebaseRange(await executorIn(repo), firstHash),
+            loadInteractiveRebaseRange(await executorIn(repo), firstHash, secondHash),
         ).resolves.toEqual({
             status: "ok",
             commits: [
@@ -236,12 +273,17 @@ describe("loadInteractiveRebaseRange real Git framing", () => {
     it("does not let an option-shaped argument reach Git and write a file", async () => {
         const repo = await createRepository();
         await commit(repo, "initial\n");
-        await commit(repo, "second\n");
+        const head = await commit(repo, "second\n");
         const target = path.join(repo, "PWNED");
 
         await expect(
-            loadInteractiveRebaseRange(await executorIn(repo), `--output=${target}`),
+            loadInteractiveRebaseRange(await executorIn(repo), `--output=${target}`, head),
         ).resolves.toEqual({ status: "rejected", reason: "invalid-base-hash" });
+        expect(existsSync(target)).toBe(false);
+
+        await expect(
+            loadInteractiveRebaseRange(await executorIn(repo), head, `--output=${target}`),
+        ).resolves.toEqual({ status: "rejected", reason: "invalid-head-hash" });
         expect(existsSync(target)).toBe(false);
     });
 
@@ -249,11 +291,28 @@ describe("loadInteractiveRebaseRange real Git framing", () => {
         const repo = await createRepository();
         await commit(repo, "initial\n");
         const base = await commit(repo, "second\n");
-        await commit(repo, "third\n");
+        const head = await commit(repo, "third\n");
 
         await expect(
-            loadInteractiveRebaseRange(await executorIn(repo), base, { maxOutputBytes: 12 }),
+            loadInteractiveRebaseRange(await executorIn(repo), base, head, {
+                maxOutputBytes: 12,
+            }),
         ).resolves.toEqual({ status: "rejected", reason: "output-truncated" });
+    });
+
+    it("loads the pinned range even after the branch moves past it", async () => {
+        const repo = await createRepository();
+        await commit(repo, "initial\n");
+        const base = await commit(repo, "second\n");
+        const pinnedHead = await commit(repo, "third\n");
+        const laterHash = await commit(repo, "fourth\n");
+
+        const result = await loadInteractiveRebaseRange(await executorIn(repo), base, pinnedHead);
+
+        expect(result).toMatchObject({ status: "ok" });
+        if (result.status !== "ok") return;
+        expect(result.commits.map((commit) => commit.hash)).toEqual([base, pinnedHead]);
+        expect(result.commits.map((commit) => commit.hash)).not.toContain(laterHash);
     });
 });
 

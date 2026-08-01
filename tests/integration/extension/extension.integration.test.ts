@@ -136,10 +136,15 @@ class MockEventEmitter<T> {
     dispose = vi.fn();
 }
 
+/** Full object ID `git rev-parse HEAD` resolves to; the short form appears only in view payloads. */
+const HEAD_OID = "feed1234abcdef0123456789abcdef0123456789";
+
 /** Provides deterministic Git command output for extension activation command tests. */
 const defaultExecutorRunImpl = async (args: string[]) => {
+    if (args[0] === "bisect") throw new Error("not bisecting");
+    if (args[0] === "symbolic-ref") return "refs/heads/main";
     if (args[0] === "rev-parse" && args[1] === "--abbrev-ref") return "main";
-    if (args[0] === "rev-parse" && args[1] === "HEAD") return "feed1234";
+    if (args[0] === "rev-parse" && args[1] === "HEAD") return HEAD_OID;
     if (args[0] === "format-patch") return "patch-content";
     if (args[0] === "status" && args[1] === "--porcelain") return "";
     if (args[0] === "rev-list" && args[1] === "--reverse" && args[2] === "--parents") {
@@ -162,6 +167,29 @@ const defaultExecutorRunImpl = async (args: string[]) => {
     return "";
 };
 const executorRun = vi.fn(defaultExecutorRunImpl);
+const executorRunBinary = vi.fn(async (args: string[]) => {
+    const range = args.at(-1) ?? "";
+    const baseHash = range.split("^", 1)[0] || "a".repeat(40);
+    if (args[0] === "log") {
+        return {
+            stdout: Buffer.from(
+                [
+                    baseHash,
+                    "Ada Lovelace",
+                    "2026-08-01T12:00:00.000Z",
+                    "first commit",
+                    "feed1234",
+                    "Grace Hopper",
+                    "2026-08-01T13:00:00.000Z",
+                    "second commit",
+                    "",
+                ].join("\0"),
+            ),
+            truncated: false,
+        };
+    }
+    return { stdout: Buffer.from(`${baseHash}\n`), truncated: false };
+});
 
 const gitOpsState = {
     isRepository: vi.fn(async () => true),
@@ -238,6 +266,7 @@ const gitOpsState = {
     acceptConflictSide: vi.fn(async () => undefined),
     abortMerge: vi.fn(async () => undefined),
     getConflictFileVersions: vi.fn(async () => ({ base: "", ours: "", theirs: "" })),
+    hasWholeIndexOperationInProgress: vi.fn(async () => false),
     stageFile: vi.fn(async () => undefined),
     push: vi.fn(async () => ""),
 };
@@ -311,6 +340,8 @@ class MockCommitGraphViewProvider {
     clearCommitDetail = vi.fn();
     setRepositoryLabel = vi.fn();
     setShowRepositoryLabel = vi.fn();
+    /** Mirrors the real provider's delivery contract: true only while a webview is live. */
+    showRebaseDialog = vi.fn(() => true);
     dispose = vi.fn();
 
     /** Emits commit selection from the mocked graph provider. */
@@ -392,6 +423,8 @@ class MockCommitPanelViewProvider {
     setBranches = vi.fn();
     setCommitDetail = vi.fn();
     clearCommitDetail = vi.fn();
+    /** Mirrors the real provider's delivery contract: true only while a webview is live. */
+    showRebaseDialog = vi.fn(() => true);
     dispose = vi.fn();
     /** Emits changed-file counts from the mocked commit panel. */
     emitFileCount(count: number): void {
@@ -461,6 +494,8 @@ class MockUndockedViewProvider {
     open = vi.fn(async () => undefined);
     refresh = vi.fn(async () => undefined);
     refreshSilent = vi.fn(async () => undefined);
+    /** Mirrors the real provider's delivery contract: true only while a webview is live. */
+    showRebaseDialog = vi.fn(() => true);
     clearChecksCache = vi.fn();
     reveal = vi.fn();
     dispose = vi.fn(() => {
@@ -477,6 +512,10 @@ class MockUndockedViewProvider {
     /** Emits a request to dock the mocked undocked provider. */
     requestDock(): void {
         this.dockRequestedEmitter.fire(undefined);
+    }
+    /** Emits commit-row actions from the mocked undocked provider. */
+    emitCommitAction(payload: { action: string; hash: string }): void {
+        this.commitActionEmitter.fire(payload);
     }
 }
 
@@ -688,6 +727,7 @@ vi.mock("../../../src/git/executor", () => ({
             this.repoRoot = repoRoot;
         }
         run = executorRun;
+        runBinary = executorRunBinary;
         setRoot = vi.fn((repoRoot: string) => {
             this.repoRoot = repoRoot;
         });
@@ -724,6 +764,7 @@ vi.mock("../../../src/git/operations", async (importOriginal) => {
             acceptConflictSide = gitOpsState.acceptConflictSide;
             abortMerge = gitOpsState.abortMerge;
             getConflictFileVersions = gitOpsState.getConflictFileVersions;
+            hasWholeIndexOperationInProgress = gitOpsState.hasWholeIndexOperationInProgress;
             stageFile = gitOpsState.stageFile;
             push = gitOpsState.push;
             init = async (_repoPath: string) => executorRun(["init"]);
@@ -2329,10 +2370,7 @@ describe("extension integration", () => {
             fsPath: "/repo/src/conflicted.ts",
             path: "/repo/src/conflicted.ts",
         });
-        expect(executeCommandFallback).not.toHaveBeenCalledWith(
-            "vscode.open",
-            expect.anything(),
-        );
+        expect(executeCommandFallback).not.toHaveBeenCalledWith("vscode.open", expect.anything());
         expect(latestCommitPanelProvider!.refreshSilent).toHaveBeenCalledTimes(1);
     });
 
@@ -3201,7 +3239,7 @@ describe("extension integration", () => {
             "Squash Commits is not available for merge commits.",
         );
         expect(showErrorMessage).toHaveBeenCalledWith(
-            "Interactive Rebase from Here is available only for unpushed commits.",
+            "Interactive Rebase from Here received an invalid selected commit.",
         );
         expect(createTerminal).toHaveBeenCalled();
     });
@@ -3299,36 +3337,56 @@ describe("extension integration", () => {
         );
     });
 
-    it("opens interactive rebase terminals with git shell arguments instead of sent shell text", async () => {
+    it("routes an interactive rebase dialog to only the provider that dispatched its action", async () => {
         const { activate } = await import("../../../src/extension");
         const context = {
             extensionUri: { fsPath: "/ext", path: "/ext" },
             subscriptions: mockDisposables,
         } as unknown as MockExtensionContext;
-        const terminal = { show: vi.fn(), sendText: vi.fn() };
-        createTerminal.mockReturnValueOnce(terminal);
 
         await activate(context);
+        await registeredCommands.get("intelligit.openUndocked")?.();
         await waitForAsync();
 
-        if (!latestCommitGraphProvider) throw new Error("Expected commit graph provider");
-        gitOpsState.getUnpushedCommitHashes.mockResolvedValueOnce(["a1b2c3d4"]);
-        latestCommitGraphProvider.emitCommitAction({
-            action: "interactiveRebaseFromHere",
-            hash: "a1b2c3d4",
-        });
-        await waitForAsync();
+        const graph = latestCommitGraphProvider;
+        const sidebar = latestSidebarGraphProvider;
+        const panel = latestCommitPanelProvider;
+        const undocked = latestUndockedProvider;
+        if (!graph || !sidebar || !panel || !undocked) {
+            throw new Error("Expected all four commit-list providers.");
+        }
+        const providers = [graph, sidebar, panel, undocked] as const;
+        const emitFrom = async (
+            origin: (typeof providers)[number],
+            emit: () => void,
+        ): Promise<void> => {
+            providers.forEach((provider) => provider.showRebaseDialog.mockClear());
+            showErrorMessage.mockClear();
+            executorRun.mockClear();
+            emit();
+            await waitForAsync();
+            await waitForAsync();
+            expect(showErrorMessage).not.toHaveBeenCalled();
+            expect(executorRun).toHaveBeenCalled();
+            expect(
+                providers.map((provider) => provider.showRebaseDialog.mock.calls.length),
+            ).toEqual(providers.map((provider) => (provider === origin ? 1 : 0)));
+        };
+        const fullHash = "a".repeat(40);
 
-        expect(createTerminal).toHaveBeenCalledWith(
-            expect.objectContaining({
-                name: expect.any(String),
-                cwd: "/repo",
-                shellPath: "git",
-                shellArgs: ["rebase", "-i", "a1b2c3d4^"],
-            }),
+        await emitFrom(graph, () =>
+            graph.emitCommitAction({ action: "interactiveRebaseFromHere", hash: fullHash }),
         );
-        expect(terminal.show).toHaveBeenCalledTimes(1);
-        expect(terminal.sendText).not.toHaveBeenCalled();
+        await emitFrom(sidebar, () =>
+            sidebar.emitCommitAction({ action: "interactiveRebaseFromHere", hash: fullHash }),
+        );
+        await emitFrom(panel, () =>
+            panel.emitCommitAction({ action: "interactiveRebaseFromHere", hash: fullHash }),
+        );
+        await emitFrom(undocked, () =>
+            undocked.emitCommitAction({ action: "interactiveRebaseFromHere", hash: fullHash }),
+        );
+        expect(createTerminal).not.toHaveBeenCalled();
     });
 
     it("rejects invalid file context command paths before Git operations", async () => {

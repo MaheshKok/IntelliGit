@@ -423,3 +423,48 @@ Shadow-mode datum: **not collected this phase.** The fresh verifier ran before t
 Knip note: the first accept run was RED on one unused export (`MAX_INTERACTIVE_REBASE_RANGE_OUTPUT_BYTES`). Fixed by *consuming* it — the test now asserts the exact default byte cap instead of `expect.any(Number)` — which both satisfies knip and tightens the assertion. Deleting the export would have been the weaker fix.
 
 Rounds used: 1 build + 0 Codex fix rounds.
+
+## Phase 3b — PLAN step 4 extension wiring (pending-request registry, command rewrite, dialog delivery) — gpt-5.6-terra @ high
+
+- BASE_HEAD: `f93d4e7d` (clean tree at launch).
+- SID: `019fbd97-b90a-7871-9e2b-ccd97214e58e` (fresh session).
+- Work order: 6 deliverables — the single-use pending-request registry, the `interactiveRebaseFromHere` rewrite on top of the 3a primitives, the three protocol messages, origin-provider identity threaded to all four dispatch sites, delivery back to the originating webview only, and focused tests.
+
+Telemetry: PEAK=241995 LAST=39435 PCT=93% **NONRESUMABLE=yes** — the session compacted mid-build (LAST is under a fifth of PEAK). Codex self-report: 6/6 DONE, gates green. Round gates independently re-run by the orchestrator: **GREEN**.
+
+**The sizing rule failed again, harder.** 3a was split to stay near 45–50% and landed at 66% on 4 files; 3b was sized from that experience and landed at **93% with a compaction** on 16 files. Predictions have drifted up in every phase and never down. Phase 3c must be cut to roughly a third of this: inbound handling + consume path only, tests included.
+
+Two independent review passes found **7 defects**.
+
+Independent verifier (opus, fable-method) — **PHASE_VERDICT: DEFECTS**.
+
+VERIFIED CLEAN by the verifier:
+- **Origin binding actually isolates the four commit surfaces.** Driven through real activation with all four providers live, a dialog dispatched from one provider reaches that provider and no other, and a request registered by one origin cannot be consumed by another (`wrong-origin`, without consuming).
+- **The registry and dispatch tests are load-bearing.** 8/8 mutants killed in the verifier's own sweep; the orchestrator re-ran a targeted sweep over the fix-pass assertions afterwards: **7/7 killed** (cancel ignoring the origin filter, supersede keyed on repoRoot alone, a live `HEAD` reference in the range load, the movement re-check dropped entirely, the same check ignoring the branch, ignoring HEAD, and an undelivered dialog leaving its request registered).
+
+The 7 defects, all fixed in place by the orchestrator (mechanical, each with a prescribed fix):
+
+1. **[CRITICAL] TOCTOU between the range load and the registered lease.** The command captured `expectedHead` *after* loading the range, so a branch that moved during the load produced a request whose `rangeHashes` and `expectedHead` came from two different observations of the repository — and the submission-time equality re-check would still pass, because it compares against the later capture. Found by the orchestrator; **independently confirmed by the verifier, which prescribed a better fix than the orchestrator's**: rather than merely reordering the captures, pin the range to an explicit head OID. `loadInteractiveRebaseRange` now takes `headHash` and builds `<base>^..<head>` itself (new rejection `invalid-head-hash`), which also closes a second-order gap — its own `rev-list --count` and `git log` previously resolved `HEAD` independently and could disagree. The command resolves the tip once, loads the pinned range, re-reads the tip, and refuses with a visible error if either the head or the branch moved.
+2. **[REQUIRED] Repository-switch cancellation was too broad.** `cancelAllForRepoRoot(repoRoot)` closed every pending dialog for a root, but the docked views and the undocked panel switch repositories independently — a docked switch would silently close the undocked window's open dialog. Replaced by `cancelForOrigins(origins, repoRoot)`; `repositoryMode.ts` passes only the origins that actually switched.
+3. **[REQUIRED] Undeliverable dialogs left a dead lease.** `postRebaseDialog` returned `void`, so a view closed during the range load consumed the origin's single registry slot until it timed out (5 min) with no user-visible failure. All three providers now return `false` when no webview is live, the signature is `=> boolean` end to end, and the command retracts the request and reports the failure.
+4. **[REQUIRED, verifier] Registry test coverage holes — surviving mutations.** Two behaviors the registry claims were unproven: a request for the same origin in a *different* repository must survive a registration, and a request for a *different* origin in the same repository must survive one. Both cases landed as tests; the corresponding mutants are now killed.
+5. **[REQUIRED, verifier] The capture-order probe was never landed.** The verifier proved defect 1 by hand but left no regression test. Landed as three: the range loader must receive the pinned OID and never a literal `HEAD`, a HEAD that advances mid-load must be refused, and a branch that changes mid-load must be refused.
+6. **[MINOR, verifier] Protocol narrowing was an identity transform.** `Exclude<…> | UndockedRebaseDialogInbound` on the undocked inbound union added no constraint — it re-admitted exactly what it excluded, so the type read as a guarantee while enforcing nothing. Reverted to the plain union and the dead alias deleted.
+7. **[MINOR] Stale closures over the undocked panel.** The root-change and dispose subscribers referenced the mutable `undocked` binding, so a panel replaced between subscription and callback would have had the wrong instance cancelled. Both now capture the instance at subscription time; `UndockedViewProvider.dispose()` was also reordered so the webview panel is disposed before the emitter that reports it.
+
+Found while landing the fixes, not by either review pass:
+- The integration fixture returned `feed1234` for `rev-parse HEAD` — an 8-character hash that `git rev-parse HEAD` never produces. Harmless until 3a's object-ID validation started seeing it. Fixture corrected to a full 40-hex OID (`HEAD_OID`); the short form remains only where it belongs, in view payloads.
+- The three mock providers returned `undefined` from `showRebaseDialog`, which the new delivery contract reads as failure. Corrected to model a live webview.
+- `invalid-head-hash` was missing from the command's error-message table test, leaving one of the ten range rejections unasserted.
+
+Test coverage after the fix pass: 9 registry tests, 25 command tests, 32 range tests, and the four-provider routing test in the integration suite. Full suite 1683 tests, all green.
+
+### Phase 3b acceptance
+
+Accept gates: **lint OK, typecheck OK, format OK, knip OK, suite OK (34.2s) — GATES: GREEN warn=0.** Seal: `SEAL: WRITTEN files=17 green=True`, re-checked `SEAL: INTACT files=17 warns_open=0`.
+
+Shadow-mode datum: **not collected this phase** — same reason as 3a; the verifier ran before the fix pass and every file it reported on changed afterwards. Four shadow builds, still no clean datum. Keep `SEAL_MODE=shadow`.
+
+Diff-hygiene note: an orchestrator `prettier --write` over `tests/**` during the round-gate fix reformatted 34 test files unrelated to this phase — `format:check` covers only `src/**` and `scripts/**`, so those files had never been formatted. All 34 were reverted to `f93d4e7d` before acceptance; the committed diff is 17 files, all phase-3b. Scope future formatting runs to the files the phase actually touches.
+
+Rounds used: 1 build + 0 Codex fix rounds.

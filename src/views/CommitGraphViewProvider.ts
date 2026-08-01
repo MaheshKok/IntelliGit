@@ -566,6 +566,18 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
         await this.loadInitial();
     }
 
+    /**
+     * Posts a validated rebase-dialog request only to this graph provider's webview instance.
+     *
+     * Returns whether a live webview existed to receive it, so a caller that already registered a
+     * one-shot request can retract it instead of leaving the user with neither a dialog nor an error.
+     */
+    showRebaseDialog(message: Extract<CommitGraphInbound, { type: "showRebaseDialog" }>): boolean {
+        if (!this.view) return false;
+        this.postToWebview(message);
+        return true;
+    }
+
     private postToWebview(msg: CommitGraphInbound): void {
         this.view?.webview.postMessage(msg);
     }

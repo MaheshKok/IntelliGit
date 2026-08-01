@@ -9,6 +9,8 @@ import type { CommitAction } from "../webviews/protocol/commitGraphTypes";
 import { isValidGitHash } from "../services/gitHelpers";
 import type { Branch } from "../types";
 import type { CommitActionContext } from "./commitActionContext";
+import type { PendingRebaseDialogRequests } from "../git/interactiveRebase/types";
+import type { CommitGraphInbound } from "../webviews/protocol/commitGraphTypes";
 import {
     checkoutRevision,
     cherryPick,
@@ -48,8 +50,24 @@ export async function handleCommitContextAction(params: {
     repoRoot: string;
     currentBranches: Branch[];
     refreshAll: () => Promise<void>;
+    originProvider: object;
+    postRebaseDialog: (
+        message: Extract<CommitGraphInbound, { type: "showRebaseDialog" }>,
+    ) => boolean;
+    pendingRebaseDialogRequests: PendingRebaseDialogRequests;
 }): Promise<void> {
-    const { action, hash, executor, gitOps, repoRoot, currentBranches, refreshAll } = params;
+    const {
+        action,
+        hash,
+        executor,
+        gitOps,
+        repoRoot,
+        currentBranches,
+        refreshAll,
+        originProvider,
+        postRebaseDialog,
+        pendingRebaseDialogRequests,
+    } = params;
     const validatedHash = hash.trim();
     if (!isValidGitHash(validatedHash)) {
         console.error("Blocked commit action due to invalid hash:", { action, hash });
@@ -67,6 +85,9 @@ export async function handleCommitContextAction(params: {
         repoRoot,
         currentBranches,
         refreshAll,
+        originProvider,
+        postRebaseDialog,
+        pendingRebaseDialogRequests,
     };
     await dispatchCommitContextAction(action, ctx);
 }

@@ -701,8 +701,11 @@ export class UndockedViewProvider {
         this._onDidChangeFileCount.dispose();
         this._onDidChangeWorkingTree.dispose();
         this._onDockRequested.dispose();
-        this._onDidDispose.dispose();
+        // Disposed last: `panel.dispose()` is what fires `_onDidDispose`, so tearing the emitter
+        // down first silently drops that event on the programmatic disposal paths (docking,
+        // extension deactivation) and leaves subscribers' cleanup unrun.
         this.panel?.dispose();
+        this._onDidDispose.dispose();
     }
     // --- Message handling --------------------------------------------------
     /**
@@ -1961,6 +1964,18 @@ export class UndockedViewProvider {
         disposeAll(this.themeChangeDisposables);
     }
     // --- Webview helpers ----------------------------------------------------
+    /**
+     * Posts a validated rebase-dialog request only to this undocked panel instance.
+     *
+     * Returns whether a live webview existed to receive it, so a caller that already registered a
+     * one-shot request can retract it instead of leaving the user with neither a dialog nor an error.
+     */
+    showRebaseDialog(message: Extract<UnifiedInbound, { type: "showRebaseDialog" }>): boolean {
+        if (!this.panel) return false;
+        this.postToWebview(message);
+        return true;
+    }
+
     private postToWebview(msg: UnifiedInbound): void {
         this.panel?.webview.postMessage(msg);
     }

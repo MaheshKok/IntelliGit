@@ -10,6 +10,7 @@ import type {
     WorkingFile,
 } from "../../types";
 import type { ShelfFileEntry, ShelfMetadata } from "../../shelf/model";
+import type { InteractiveRebaseRangeCommit } from "../../git/interactiveRebase/types";
 
 /** A shelf manifest entry carrying the file icon its path resolves to in the active theme. */
 export interface ShelfFileView extends ShelfFileEntry {
@@ -525,6 +526,18 @@ export type OutboundMessage =
  * data for the current view.
  */
 export type InboundMessage =
+    | {
+          /** Opens the host-validated interactive-rebase dialog for this webview instance only. */
+          type: "showRebaseDialog";
+          /** Host-issued ID that the later submission must return from this same provider. */
+          requestId: string;
+          /** Ordered range rows including the pushed-history warning state. */
+          commits: readonly InteractiveRebaseRangeCommit[];
+          /** Fully qualified branch ref captured with the offered range. */
+          branch: string;
+          /** Whether at least one offered commit is already pushed. */
+          hasPushed: boolean;
+      }
     | {
           /** Repository list hydration for host-owned multi-repository state. */
           type: "setRepositories";

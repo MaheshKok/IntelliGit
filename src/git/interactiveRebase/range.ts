@@ -22,13 +22,18 @@ export interface InteractiveRebaseRangeOptions {
 }
 
 /**
- * Loads the selected-to-HEAD rebase range with fixed-arity NUL framing and batched pushedness.
+ * Loads the base-to-head rebase range with fixed-arity NUL framing and batched pushedness.
  *
- * This function is the boundary that spawns Git, so it owns object-ID validation: the caller
- * supplies only a base commit hash and the revision range is constructed here. A hash is rejected
- * unless it is a bare lowercase object ID, because Git parses a leading `-` as an option — an
- * argument such as `--output=<path>` is accepted by `git log` and writes an arbitrary file. Both
- * read commands additionally pass `--end-of-options` so no revision can be reparsed as a flag.
+ * Both endpoints are explicit object IDs rather than `HEAD`, so every query below observes the
+ * same tip even if the branch moves mid-load. Resolving `HEAD` here instead would let the count
+ * probe, the body load, and the caller's own `rev-parse` each see a different commit, and the
+ * caller would then record a tip that no longer matches the range it was handed.
+ *
+ * This function is the boundary that spawns Git, so it owns object-ID validation: the revision
+ * range is constructed here from validated hashes. A hash is rejected unless it is a bare
+ * lowercase object ID, because Git parses a leading `-` as an option — an argument such as
+ * `--output=<path>` is accepted by `git log` and writes an arbitrary file. Both read commands
+ * additionally pass `--end-of-options` so no revision can be reparsed as a flag.
  *
  * A count probe runs before body loading, and every malformed, empty, or bounded-output case
  * rejects without returning a partial range.
@@ -36,10 +41,12 @@ export interface InteractiveRebaseRangeOptions {
 export async function loadInteractiveRebaseRange(
     executor: GitExecutor,
     baseHash: string,
+    headHash: string,
     options: InteractiveRebaseRangeOptions = {},
 ): Promise<InteractiveRebaseRangeResult> {
     if (!FULL_OBJECT_ID.test(baseHash)) return rejected("invalid-base-hash");
-    const revisionRange = `${baseHash}^..HEAD`;
+    if (!FULL_OBJECT_ID.test(headHash)) return rejected("invalid-head-hash");
+    const revisionRange = `${baseHash}^..${headHash}`;
     const maxOutputBytes = options.maxOutputBytes ?? MAX_INTERACTIVE_REBASE_RANGE_OUTPUT_BYTES;
 
     let countOutput: string;

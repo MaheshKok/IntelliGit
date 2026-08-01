@@ -1921,6 +1921,19 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             this.postGraphCommitDetailState();
         }
     }
+
+    /**
+     * Posts a validated rebase-dialog request only to this commit-panel webview instance.
+     *
+     * Returns whether a live webview existed to receive it, so a caller that already registered a
+     * one-shot request can retract it instead of leaving the user with neither a dialog nor an error.
+     */
+    showRebaseDialog(message: Extract<CommitGraphInbound, { type: "showRebaseDialog" }>): boolean {
+        if (!this.view) return false;
+        this.postToWebview(message);
+        return true;
+    }
+
     private postToWebview(msg: InboundMessage | CommitGraphInbound): void {
         this.view?.webview.postMessage(msg);
     }

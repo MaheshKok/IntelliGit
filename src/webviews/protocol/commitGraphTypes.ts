@@ -11,6 +11,7 @@ import type {
     ThemeIconFont,
     ThemeTreeIcon,
 } from "../../types";
+import type { InteractiveRebaseRangeCommit } from "../../git/interactiveRebase/types";
 
 /**
  * Branch context-menu action discriminants accepted from graph webviews.
@@ -208,6 +209,18 @@ export type CommitGraphOutbound =
  * theme cannot provide a serializable webview-safe resource or glyph payload.
  */
 export type CommitGraphInbound =
+    | {
+          /** Opens the host-validated interactive-rebase dialog for this webview instance only. */
+          type: "showRebaseDialog";
+          /** Host-issued ID that the later submission must return from this same provider. */
+          requestId: string;
+          /** Ordered range rows including the pushed-history warning state. */
+          commits: readonly InteractiveRebaseRangeCommit[];
+          /** Fully qualified branch ref captured with the offered range. */
+          branch: string;
+          /** Whether at least one offered commit is already pushed. */
+          hasPushed: boolean;
+      }
     | {
           /** Response/update containing a page of `git log` commits. */
           type: "loadCommits";
