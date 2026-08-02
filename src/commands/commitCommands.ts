@@ -11,6 +11,7 @@ import type { Branch } from "../types";
 import type { CommitActionContext } from "./commitActionContext";
 import type { PendingRebaseDialogRequests } from "../git/interactiveRebase/types";
 import type { CommitGraphInbound } from "../webviews/protocol/commitGraphTypes";
+import { rejectCommitActionWhenOperationInProgress } from "./operationFence";
 import {
     checkoutRevision,
     cherryPick,
@@ -103,6 +104,8 @@ async function dispatchCommitContextAction(
     action: CommitAction,
     ctx: CommitActionContext,
 ): Promise<void> {
+    if (await rejectCommitActionWhenOperationInProgress(action, ctx.gitOps)) return;
+
     switch (action) {
         case "copyRevision":
             await copyRevision(ctx);

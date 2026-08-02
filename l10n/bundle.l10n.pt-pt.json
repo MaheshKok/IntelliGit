@@ -509,5 +509,10 @@
     "The branch moved since the rebase — push manually.": "O ramo mudou desde o rebase — envie manualmente.",
     "Force push failed: {message}": "O envio forçado falhou: {message}",
     "A rebase session did not finish cleanly — verify your branch, then push manually if intended": "Uma sessão de rebase não foi concluída corretamente — verifique o seu ramo e faça push manualmente se for o caso",
-    "Discard rebase session state": "Rejeitar o estado da sessão de rebase"
+    "Discard rebase session state": "Rejeitar o estado da sessão de rebase",
+    "A rebase is in progress — continue or abort it first.": "Existe um rebase em curso — continue-o ou cancele-o primeiro.",
+    "A merge is in progress — resolve or abort it first.": "Existe uma mesclagem em curso — resolva-a ou cancele-a primeiro.",
+    "A cherry-pick is in progress — continue or abort it first.": "Existe um cherry-pick em curso — continue-o ou cancele-o primeiro.",
+    "A revert is in progress — continue or abort it first.": "Existe uma reversão em curso — continue-a ou cancele-a primeiro.",
+    "Unable to check whether a Git operation is in progress. Try again before changing history.": "Não foi possível verificar se existe uma operação do Git em curso. Tente novamente antes de alterar o histórico."
 }

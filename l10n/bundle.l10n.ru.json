@@ -509,5 +509,10 @@
     "The branch moved since the rebase — push manually.": "Ветка изменилась после rebase — отправьте изменения вручную.",
     "Force push failed: {message}": "Принудительная отправка не удалась: {message}",
     "A rebase session did not finish cleanly — verify your branch, then push manually if intended": "Сеанс rebase завершился некорректно — проверьте ветку, затем при необходимости отправьте изменения вручную",
-    "Discard rebase session state": "Отменить состояние сеанса rebase"
+    "Discard rebase session state": "Отменить состояние сеанса rebase",
+    "A rebase is in progress — continue or abort it first.": "Выполняется rebase — сначала продолжите или прервите его.",
+    "A merge is in progress — resolve or abort it first.": "Выполняется слияние — сначала разрешите или прервите его.",
+    "A cherry-pick is in progress — continue or abort it first.": "Выполняется cherry-pick — сначала продолжите или прервите его.",
+    "A revert is in progress — continue or abort it first.": "Выполняется отмена коммита — сначала продолжите или прервите её.",
+    "Unable to check whether a Git operation is in progress. Try again before changing history.": "Не удалось проверить, выполняется ли операция Git. Повторите попытку перед изменением истории."
 }

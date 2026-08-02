@@ -267,6 +267,7 @@ const gitOpsState = {
     abortMerge: vi.fn(async () => undefined),
     getConflictFileVersions: vi.fn(async () => ({ base: "", ours: "", theirs: "" })),
     hasWholeIndexOperationInProgress: vi.fn(async () => false),
+    getActiveOperation: vi.fn(async () => "none"),
     stageFile: vi.fn(async () => undefined),
     push: vi.fn(async () => ""),
 };
@@ -815,6 +816,7 @@ vi.mock("../../../src/git/operations", async (importOriginal) => {
             abortMerge = gitOpsState.abortMerge;
             getConflictFileVersions = gitOpsState.getConflictFileVersions;
             hasWholeIndexOperationInProgress = gitOpsState.hasWholeIndexOperationInProgress;
+            getActiveOperation = gitOpsState.getActiveOperation;
             stageFile = gitOpsState.stageFile;
             push = gitOpsState.push;
             init = async (_repoPath: string) => executorRun(["init"]);

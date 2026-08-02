@@ -509,5 +509,10 @@
     "The branch moved since the rebase — push manually.": "变基后分支已移动，请手动推送。",
     "Force push failed: {message}": "强制推送失败：{message}",
     "A rebase session did not finish cleanly — verify your branch, then push manually if intended": "变基会话未正常完成——请检查您的分支，如有需要请手动推送",
-    "Discard rebase session state": "放弃变基会话状态"
+    "Discard rebase session state": "放弃变基会话状态",
+    "A rebase is in progress — continue or abort it first.": "变基正在进行中——请先继续或中止。",
+    "A merge is in progress — resolve or abort it first.": "合并正在进行中——请先解决或中止。",
+    "A cherry-pick is in progress — continue or abort it first.": "Cherry-pick 正在进行中——请先继续或中止。",
+    "A revert is in progress — continue or abort it first.": "还原正在进行中——请先继续或中止。",
+    "Unable to check whether a Git operation is in progress. Try again before changing history.": "无法检查是否有 Git 操作正在进行。请在更改历史记录前重试。"
 }

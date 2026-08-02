@@ -509,5 +509,10 @@
     "The branch moved since the rebase — push manually.": "Gałąź zmieniła się od czasu rebase — wypchnij ręcznie.",
     "Force push failed: {message}": "Wymuszone wypchnięcie nie powiodło się: {message}",
     "A rebase session did not finish cleanly — verify your branch, then push manually if intended": "Sesja rebase nie zakończyła się poprawnie — sprawdź gałąź, a następnie w razie potrzeby wypchnij zmiany ręcznie",
-    "Discard rebase session state": "Odrzuć stan sesji rebase"
+    "Discard rebase session state": "Odrzuć stan sesji rebase",
+    "A rebase is in progress — continue or abort it first.": "Trwa operacja rebase — najpierw kontynuuj ją lub przerwij.",
+    "A merge is in progress — resolve or abort it first.": "Trwa scalanie — najpierw rozwiąż je lub przerwij.",
+    "A cherry-pick is in progress — continue or abort it first.": "Trwa operacja cherry-pick — najpierw kontynuuj ją lub przerwij.",
+    "A revert is in progress — continue or abort it first.": "Trwa przywracanie — najpierw kontynuuj je lub przerwij.",
+    "Unable to check whether a Git operation is in progress. Try again before changing history.": "Nie można sprawdzić, czy trwa operacja Git. Spróbuj ponownie przed zmianą historii."
 }

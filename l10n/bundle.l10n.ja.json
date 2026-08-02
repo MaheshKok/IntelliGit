@@ -509,5 +509,10 @@
     "The branch moved since the rebase — push manually.": "リベース後にブランチが移動しました。手動でプッシュしてください。",
     "Force push failed: {message}": "強制プッシュに失敗しました: {message}",
     "A rebase session did not finish cleanly — verify your branch, then push manually if intended": "リベースセッションが正常に終了しませんでした。ブランチを確認し、必要に応じて手動でプッシュしてください。",
-    "Discard rebase session state": "リベースセッションの状態を破棄"
+    "Discard rebase session state": "リベースセッションの状態を破棄",
+    "A rebase is in progress — continue or abort it first.": "リベースが進行中です。まず続行するか中止してください。",
+    "A merge is in progress — resolve or abort it first.": "マージが進行中です。まず解決するか中止してください。",
+    "A cherry-pick is in progress — continue or abort it first.": "チェリーピックが進行中です。まず続行するか中止してください。",
+    "A revert is in progress — continue or abort it first.": "リバートが進行中です。まず続行するか中止してください。",
+    "Unable to check whether a Git operation is in progress. Try again before changing history.": "Git 操作が進行中かどうかを確認できませんでした。履歴を変更する前にもう一度お試しください。"
 }
