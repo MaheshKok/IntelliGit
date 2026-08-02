@@ -669,7 +669,7 @@ export class GitOps {
      *
      * Rebase wins over merge, then cherry-pick, then revert because the controlling operation is
      * the one whose continue or abort command the user must run: a rebase replaying a merge-like
-     * step remains a rebase. `abortMerge` dispatches in this same order for that reason.
+     * step remains a rebase. `abortMerge` consumes this classification directly.
      */
     async getActiveOperation(): Promise<ActiveOperationKind> {
         const present = await this.presentOperationMarkers();
@@ -1671,35 +1671,33 @@ export class GitOps {
     /**
      * Aborts the active merge-like operation, including stash-apply index conflicts.
      *
-     * The refs are tested in `getActiveOperation`'s precedence order so the command that runs is
-     * always the one for the operation the panel reports. A rebase replaying a merge leaves both
-     * `REBASE_HEAD` and `MERGE_HEAD`, and aborting only the merge step there would strand the user
-     * inside a rebase they asked to leave.
+     * The dispatch consumes the same marker-based classification the panel reports, so stale refs
+     * cannot override a live operation and a rebase replaying a merge remains a rebase.
      */
     async abortMerge(): Promise<void> {
-        const hasRef = async (ref: string): Promise<boolean> => {
-            try {
-                await this.executor.run(["rev-parse", "--verify", "--quiet", ref]);
-                return true;
-            } catch {
-                return false;
-            }
-        };
-        if (await hasRef("REBASE_HEAD")) {
-            await this.executor.run(["rebase", "--abort"]);
-            return;
-        }
-        if (await hasRef("MERGE_HEAD")) {
-            await this.executor.run(["merge", "--abort"]);
-            return;
-        }
-        if (await hasRef("CHERRY_PICK_HEAD")) {
-            await this.executor.run(["cherry-pick", "--abort"]);
-            return;
-        }
-        if (await hasRef("REVERT_HEAD")) {
-            await this.executor.run(["revert", "--abort"]);
-            return;
+        const activeOperation = await this.getActiveOperation();
+        switch (activeOperation) {
+            case "rebase":
+                await this.executor.run(["rebase", "--abort"]);
+                return;
+            case "merge":
+                await this.executor.run(["merge", "--abort"]);
+                return;
+            case "cherry-pick":
+                await this.executor.run(["cherry-pick", "--abort"]);
+                return;
+            case "revert":
+                await this.executor.run(["revert", "--abort"]);
+                return;
+            // Only an unclassified repository may reach the index fallback below. A future
+            // operation kind added to the union must choose its abort command here rather than
+            // inherit `reset --merge`, so the union is closed at compile time instead of quietly
+            // widening the fallback — this dispatch drifting from the classification is the
+            // defect this method was rewritten to remove.
+            case "none":
+                break;
+            default:
+                return assertNeverActiveOperationKind(activeOperation);
         }
         const unmergedEntries = (await this.executor.run(["ls-files", "-u"])).trim();
         if (unmergedEntries) {
@@ -1714,6 +1712,10 @@ export class GitOps {
         await this.executor.run(withLiteralPathspecs(args));
     }
 }
+function assertNeverActiveOperationKind(operation: never): never {
+    throw new Error(`Unhandled active operation kind: ${String(operation)}`);
+}
+
 function isNoUpstreamPushError(err: unknown): boolean {
     const message = getErrorMessage(err).toLowerCase();
     return message.includes("has no upstream branch");

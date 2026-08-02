@@ -4,7 +4,11 @@ import { mkdtemp, rm, writeFile, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
-import { GitOps, UpstreamPushDeclinedError } from "../../../../src/git/operations";
+import {
+    GitOps,
+    UpstreamPushDeclinedError,
+    type ActiveOperationKind,
+} from "../../../../src/git/operations";
 import type { GitExecutor } from "../../../../src/git/executor";
 
 const execFileAsync = promisify(execFile);
@@ -76,23 +80,23 @@ describe("GitOps", () => {
         });
     });
     describe("abortMerge", () => {
-        it.each([
-            ["MERGE_HEAD", ["merge", "--abort"]],
-            ["REBASE_HEAD", ["rebase", "--abort"]],
-            ["CHERRY_PICK_HEAD", ["cherry-pick", "--abort"]],
-            ["REVERT_HEAD", ["revert", "--abort"]],
-        ])("uses the abort command for %s", async (activeRef, expectedCommand) => {
+        // Which operation wins when several markers coexist is decided by `getActiveOperation`,
+        // and it is proved against real marker files in tests/unit/git/operations.test.ts. These
+        // cases stub that classification deliberately: what is left to prove here is that the
+        // dispatch runs the command belonging to whatever it was told, with no second probe of its
+        // own. That the classification comes from a live repository at all is proved by the
+        // real-Git suite in tests/integration/operations/.
+        it.each<[ActiveOperationKind, string[]]>([
+            ["merge", ["merge", "--abort"]],
+            ["rebase", ["rebase", "--abort"]],
+            ["cherry-pick", ["cherry-pick", "--abort"]],
+            ["revert", ["revert", "--abort"]],
+        ])("uses the abort command for %s", async (activeOperation, expectedCommand) => {
             const executor = {
-                run: vi.fn(async (args: string[]) => {
-                    const key = args.join(" ");
-                    if (key.startsWith("rev-parse --verify --quiet ")) {
-                        if (key.endsWith(activeRef)) return "";
-                        throw new Error("missing ref");
-                    }
-                    return "";
-                }),
+                run: vi.fn(async () => ""),
             } as unknown as GitExecutor;
             const ops = new GitOps(executor);
+            vi.spyOn(ops, "getActiveOperation").mockResolvedValue(activeOperation);
 
             await ops.abortMerge();
 
@@ -102,49 +106,17 @@ describe("GitOps", () => {
             expect(executor.run).not.toHaveBeenCalledWith(["reset", "--merge"]);
         });
 
-        it.each([
-            [["REBASE_HEAD", "MERGE_HEAD"], ["rebase", "--abort"]],
-            [["MERGE_HEAD", "CHERRY_PICK_HEAD"], ["merge", "--abort"]],
-            [["CHERRY_PICK_HEAD", "REVERT_HEAD"], ["cherry-pick", "--abort"]],
-        ])(
-            "aborts the controlling operation when %j are both present",
-            async (activeRefs, expectedCommand) => {
-                // A rebase replaying a merge commit leaves REBASE_HEAD and MERGE_HEAD together.
-                // Aborting only the merge step there would leave the rebase live, so the dispatch
-                // order must match the precedence getActiveOperation reports to the panel.
-                const executor = {
-                    run: vi.fn(async (args: string[]) => {
-                        const key = args.join(" ");
-                        if (key.startsWith("rev-parse --verify --quiet ")) {
-                            if (activeRefs.some((ref) => key.endsWith(ref))) return "";
-                            throw new Error("missing ref");
-                        }
-                        return "";
-                    }),
-                } as unknown as GitExecutor;
-
-                await new GitOps(executor).abortMerge();
-
-                expect((executor.run as ReturnType<typeof vi.fn>).mock.calls.at(-1)?.[0]).toEqual(
-                    expectedCommand,
-                );
-            },
-        );
-
         it("resets unmerged index conflicts left by stash apply", async () => {
             const executor = {
                 run: vi.fn(async (args: string[]) => {
-                    const key = args.join(" ");
-                    if (key.startsWith("rev-parse --verify --quiet ")) {
-                        throw new Error("missing ref");
-                    }
-                    if (key === "ls-files -u") {
+                    if (args.join(" ") === "ls-files -u") {
                         return "100644 abc 1\tfile.ts\n100644 def 2\tfile.ts\n";
                     }
                     return "";
                 }),
             } as unknown as GitExecutor;
             const ops = new GitOps(executor);
+            vi.spyOn(ops, "getActiveOperation").mockResolvedValue("none");
 
             await ops.abortMerge();
 
@@ -157,17 +129,14 @@ describe("GitOps", () => {
         it("uses revert abort instead of reset merge for a conflicted revert", async () => {
             const executor = {
                 run: vi.fn(async (args: string[]) => {
-                    const key = args.join(" ");
-                    if (key.startsWith("rev-parse --verify --quiet ")) {
-                        if (key.endsWith("REVERT_HEAD")) return "\n";
-                        throw new Error("missing ref");
-                    }
-                    if (key === "ls-files -u") return "100644 abc 1\tconflict.ts\n";
+                    if (args.join(" ") === "ls-files -u") return "100644 abc 1\tconflict.ts\n";
                     return "";
                 }),
             } as unknown as GitExecutor;
+            const ops = new GitOps(executor);
+            vi.spyOn(ops, "getActiveOperation").mockResolvedValue("revert");
 
-            await new GitOps(executor).abortMerge();
+            await ops.abortMerge();
 
             expect(executor.run).toHaveBeenCalledWith(["revert", "--abort"]);
             expect(executor.run).not.toHaveBeenCalledWith(["reset", "--merge"]);
