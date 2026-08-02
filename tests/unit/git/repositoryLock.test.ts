@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { RepositoryLock, RepositoryLockBusyError } from "../../../src/git/repositoryLock";
 
 const directories: string[] = [];
@@ -53,6 +53,49 @@ describe("RepositoryLock", () => {
         const releaseContender = await contender.acquire(common);
         await releaseContender();
         await release();
+    });
+
+    describe("default liveness probe", () => {
+        /**
+         * Drives the built-in probe by faking the errno `process.kill(pid, 0)` reports,
+         * then asking a stale-immediately contender whether it may take the lock over.
+         */
+        async function takesOverWhenKillFails(code: string | undefined): Promise<boolean> {
+            const common = await commonDir();
+            const first = new RepositoryLock({ heartbeatIntervalMs: 1_000, staleAfterMs: 0 });
+            const release = await first.acquire(common);
+            await new Promise<void>((resolve) => setTimeout(resolve, 2));
+
+            const kill = vi.spyOn(process, "kill").mockImplementation(() => {
+                throw Object.assign(new Error("probe"), code ? { code } : {});
+            });
+            try {
+                const releaseContender = await new RepositoryLock({ staleAfterMs: 0 }).acquire(
+                    common,
+                );
+                await releaseContender();
+                return true;
+            } catch (error) {
+                if (error instanceof RepositoryLockBusyError) return false;
+                throw error;
+            } finally {
+                kill.mockRestore();
+                await release();
+            }
+        }
+
+        it("treats ESRCH as the only proof that the owner is gone", async () => {
+            await expect(takesOverWhenKillFails("ESRCH")).resolves.toBe(true);
+        });
+
+        it("treats EPERM as a live owner running under another user", async () => {
+            await expect(takesOverWhenKillFails("EPERM")).resolves.toBe(false);
+        });
+
+        it("refuses to take over when the probe fails in an unrecognized way", async () => {
+            await expect(takesOverWhenKillFails("EINVAL")).resolves.toBe(false);
+            await expect(takesOverWhenKillFails(undefined)).resolves.toBe(false);
+        });
     });
 
     it("allows exactly one contender to take over the same stale dead lock", async () => {

@@ -481,5 +481,9 @@
     "Sign In": "登录",
     "GitHub Copilot is unavailable for commit-message generation.": "GitHub Copilot 无法用于生成提交消息。",
     "GitHub Copilot permission is required for commit-message generation.": "生成提交消息需要 GitHub Copilot 权限。",
-    "GitHub Copilot blocked commit-message generation.": "GitHub Copilot 已阻止生成提交消息。"
+    "GitHub Copilot blocked commit-message generation.": "GitHub Copilot 已阻止生成提交消息。",
+    "Enjoying IntelliGit? A quick rating helps others find it.": "喜欢 IntelliGit 吗？一个简单的评分能帮助更多人发现它。",
+    "Rate IntelliGit": "评价 IntelliGit",
+    "Later": "以后",
+    "Don't ask again": "不再询问"
 }

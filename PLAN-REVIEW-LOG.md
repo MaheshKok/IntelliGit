@@ -223,3 +223,30 @@ Final ledger: 46 findings — 44 FIXED, 1 REJECTED (#2, live-registry evidence),
 ## Act 3 — Build
 
 Builder: Claude (direct), TDD-first, all repo validation gates per Approach 12.
+
+### Built
+
+- `src/services/reviewPrompt.ts` — `ReviewPromptService` (write-once latch + Memento counters + Settings-Sync mirror), `countsAsSuccess`, `getReviewUrl`, `registerReviewPrompt`.
+- `src/git/executor.ts` — module-scoped `setGitSuccessListener` / `notifyGitSuccessSafely`, fired from `run()` after success and filtered to `commit`/`push`; `run()` split so the mutation-gate branch lives in `runGated`.
+- `src/services/publishService.ts` — the askpass push reports its own success, since it bypasses the executor.
+- `src/extension.ts` — registered in `activate()` before the mode dispatch, so the no-repository → repository transition is covered.
+- `src/git/repositoryLock.ts` — drive-by fix: `isProcessLive` reports dead only on `ESRCH`; `EPERM` and unrecognized errnos are live.
+- Setting `intelligit.reviewPrompt.enabled` (scope `application`) + 4 strings across `package.nls.*` and `l10n/bundle.l10n.*` for all 11 locales, CSV re-synced; README + CHANGELOG.
+
+### Deviations from v10
+
+- **No in-process latch-retry ladder.** Once a decision is made the window is silenced, and the Settings-Sync mirror already carries it across restarts (init seeds the latch from the mirror). The retry only mattered when latch *and* mirror both failed, which the plan already books as an accepted residual.
+- **Counting is classified per subcommand.** `-n` is `--dry-run` for `push` but `--no-verify` for `commit`, so a global exclusion list would have silently dropped every `commit -n`. Found while implementing; pinned by test.
+- **Storage path resolves inside `init()`, not the constructor.** Caught by the extension integration suite: a context without `globalStorageUri` threw synchronously, and `void registerReviewPrompt(...)` turned that into an unhandled rejection during activation. Containment now covers construction and registration, with a regression test.
+
+### Gates
+
+`format:check` ✓ · `lint:strict` ✓ · `lint:complexity` ✓ · `architecture:check` ✓ · `l10n:sync|validate|translate --only-missing|audit` ✓ (audit adds no findings) · `typecheck` ✓ · `build` ✓ · `vitest run` 2145/2145 in 137 files, 0 unhandled errors ✓ · `test:coverage` ✓ (93.28 lines / 84.99 branches / 90.6 functions against floors 88.5 / 80.5 / 83; `reviewPrompt.ts` 98.19 / 91.37 / 100).
+
+`deps:check:strict` still reports the 7 unused devDependencies and 8 unlisted binaries that predate this branch (identical set at `36e43d03`); tracked separately.
+
+The new lock tests were verified non-vacuous by temporarily restoring the fail-open `isProcessLive` — the unrecognized-errno case fails against it.
+
+### Not run
+
+The four dev-host acceptance scenarios need a human `F5` in the Extension Development Host; they cannot be driven from this environment. Steps are in Approach 11.

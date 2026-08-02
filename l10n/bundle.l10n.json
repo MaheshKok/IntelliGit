@@ -481,5 +481,9 @@
     "Sign In": "Sign In",
     "GitHub Copilot is unavailable for commit-message generation.": "GitHub Copilot is unavailable for commit-message generation.",
     "GitHub Copilot permission is required for commit-message generation.": "GitHub Copilot permission is required for commit-message generation.",
-    "GitHub Copilot blocked commit-message generation.": "GitHub Copilot blocked commit-message generation."
+    "GitHub Copilot blocked commit-message generation.": "GitHub Copilot blocked commit-message generation.",
+    "Enjoying IntelliGit? A quick rating helps others find it.": "Enjoying IntelliGit? A quick rating helps others find it.",
+    "Rate IntelliGit": "Rate IntelliGit",
+    "Later": "Later",
+    "Don't ask again": "Don't ask again"
 }

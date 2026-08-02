@@ -2,8 +2,8 @@ import { existsSync } from "node:fs";
 import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
-import { describe, expect, it } from "vitest";
-import { GitExecutor } from "../../../src/git/executor";
+import { afterEach, describe, expect, it } from "vitest";
+import { GitExecutor, setGitSuccessListener } from "../../../src/git/executor";
 import { RepositoryMutationCoordinator } from "../../../src/git/mutationCoordinator";
 import { RepositoryLock } from "../../../src/git/repositoryLock";
 import { RepositoryMutationGate } from "../../../src/git/repositoryMutationGate";
@@ -67,6 +67,23 @@ async function gatedRunCount(args: string[]): Promise<number> {
         const { gate, gatedRuns } = gateProbe();
         await new GitExecutor(process.cwd(), gate).run(args);
         return gatedRuns.length;
+    } finally {
+        if (originalPath === undefined) delete process.env.PATH;
+        else process.env.PATH = originalPath;
+        await rm(directory, { force: true, recursive: true });
+    }
+}
+
+/** Runs `run()` against a stub `git`, so the success hook is observable without a repository. */
+async function runWithStubGit(args: string[], script = "exit 0"): Promise<void> {
+    const directory = await mkdtemp(join(tmpdir(), "intelligit-hook-git-"));
+    const executable = join(directory, "git");
+    const originalPath = process.env.PATH;
+    await writeFile(executable, `#!/bin/sh\n${script}\n`, "utf8");
+    await chmod(executable, 0o755);
+    process.env.PATH = `${directory}${delimiter}${originalPath ?? ""}`;
+    try {
+        await new GitExecutor(process.cwd()).run(args);
     } finally {
         if (originalPath === undefined) delete process.env.PATH;
         else process.env.PATH = originalPath;
@@ -334,5 +351,57 @@ describe("GitExecutor", () => {
 
         expect(observedMaxConcurrency).toBeGreaterThan(1);
         expect(observedMaxConcurrency).toBeLessThanOrEqual(6);
+    });
+});
+
+describe("git success hook", () => {
+    afterEach(() => {
+        setGitSuccessListener(undefined);
+    });
+
+    itPosix("reports a successful commit with its full argument list", async () => {
+        const seen: Array<[string, readonly string[]]> = [];
+        setGitSuccessListener((subcommand, argv) => seen.push([subcommand, argv]));
+
+        await runWithStubGit(["commit", "-m", "msg"]);
+
+        expect(seen).toEqual([["commit", ["commit", "-m", "msg"]]]);
+    });
+
+    itPosix("stays silent for subcommands outside the hook's narrow set", async () => {
+        const seen: string[] = [];
+        setGitSuccessListener((subcommand) => seen.push(subcommand));
+
+        await runWithStubGit(["status", "--porcelain"]);
+
+        expect(seen).toEqual([]);
+    });
+
+    itPosix("stays silent when the command fails", async () => {
+        const seen: string[] = [];
+        setGitSuccessListener((subcommand) => seen.push(subcommand));
+
+        await expect(runWithStubGit(["push"], "exit 1")).rejects.toThrow();
+
+        expect(seen).toEqual([]);
+    });
+
+    itPosix("never turns a listener fault into a failed Git command", async () => {
+        setGitSuccessListener(() => {
+            throw new Error("listener exploded");
+        });
+
+        await expect(runWithStubGit(["push"])).resolves.toBeUndefined();
+    });
+
+    itPosix("stops reporting once the listener is cleared", async () => {
+        const seen: string[] = [];
+        setGitSuccessListener((subcommand) => seen.push(subcommand));
+        await runWithStubGit(["commit"]);
+        setGitSuccessListener(undefined);
+
+        await runWithStubGit(["commit"]);
+
+        expect(seen).toEqual(["commit"]);
     });
 });

@@ -74,22 +74,28 @@ export class GitExecutor {
     async run(args: string[]): Promise<string> {
         await this.processSemaphore.acquire();
         try {
-            const runText = async (): Promise<string> =>
-                (await this.runBinary(args)).stdout.toString("utf8");
-            if (this.mutationGate && isMutatingGitCommand(args)) {
-                const commonDir = (
-                    await this.runBinary(["rev-parse", "--git-common-dir"])
-                ).stdout.toString("utf8");
-                return await this.mutationGate.run(
-                    this.repoRoot,
-                    this.mutationGate.resolveCommonDir(this.repoRoot, commonDir),
-                    runText,
-                );
-            }
-            return await runText();
+            const output = await this.runGated(args);
+            notifyGitSuccessSafely(args);
+            return output;
         } finally {
             this.processSemaphore.release();
         }
+    }
+
+    /** Routes mutating commands through the repository mutation gate; others run directly. */
+    private async runGated(args: string[]): Promise<string> {
+        const runText = async (): Promise<string> =>
+            (await this.runBinary(args)).stdout.toString("utf8");
+        if (!this.mutationGate || !isMutatingGitCommand(args)) return await runText();
+
+        const commonDir = (await this.runBinary(["rev-parse", "--git-common-dir"])).stdout.toString(
+            "utf8",
+        );
+        return await this.mutationGate.run(
+            this.repoRoot,
+            this.mutationGate.resolveCommonDir(this.repoRoot, commonDir),
+            runText,
+        );
     }
 
     /** Runs Git without decoding stdout; output-file mode streams stdout and returns an empty buffer. */
@@ -171,6 +177,42 @@ export class GitExecutor {
             if (options.input) child.stdin.end(options.input);
             else child.stdin.end();
         });
+    }
+}
+
+/** Called after a Git command the user initiated has completed successfully. */
+export type GitSuccessListener = (subcommand: string, argv: readonly string[]) => void;
+
+/**
+ * Subcommands the success hook reports.
+ *
+ * Deliberately narrow: IntelliGit runs read-only Git commands constantly, and a hook
+ * that fired on all of them would put listener code on a hot path it has no business
+ * being on. Widen this only with a reason.
+ */
+const NOTIFIED_SUBCOMMANDS: ReadonlySet<string> = new Set(["commit", "push"]);
+
+let gitSuccessListener: GitSuccessListener | undefined;
+
+/** Installs the process-wide success listener, or clears it when passed `undefined`. */
+export function setGitSuccessListener(listener: GitSuccessListener | undefined): void {
+    gitSuccessListener = listener;
+}
+
+/**
+ * Reports a successful Git command to the installed listener, if any.
+ *
+ * Exported because `publishService` spawns its authenticated push directly and would
+ * otherwise bypass the executor. A listener fault is swallowed on purpose: a Git command
+ * that already succeeded must never be reported to the user as failed.
+ */
+export function notifyGitSuccessSafely(argv: readonly string[]): void {
+    const subcommand = argv[0];
+    if (!subcommand || !NOTIFIED_SUBCOMMANDS.has(subcommand)) return;
+    try {
+        gitSuccessListener?.(subcommand, argv);
+    } catch {
+        // Intentionally ignored — see the doc comment above.
     }
 }
 

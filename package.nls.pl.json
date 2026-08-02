@@ -77,5 +77,6 @@
     "configuration.commitChecks.providers.markdownDescription": "Enable or disable commit-check badges per provider. Keys are `github`, `gitlab`, `bitbucket-cloud`, and `bitbucket-server`; set one to `false` to suppress its badges. A disabled provider that matches your origin remote yields no badge (IntelliGit does not fall through to another remote). All default to `true`. Changes take effect after a window reload.",
     "configuration.commitChecks.ciCdFilter.markdownDescription": "Zastąp nazwy sprawdzeń uznawane za CI/CD na potrzeby odznaki (tylko GitHub i GitLab). Podaj wyrażenie regularne (dopasowywane bez rozróżniania wielkości liter do nazwy i opisu każdego sprawdzenia); pozostaw puste, aby użyć wbudowanego wzorca. Boty do przeglądu kodu są zawsze wykluczane niezależnie od tej wartości. Zmiany zaczną obowiązywać po ponownym załadowaniu okna.",
     "command.openInVsCodeMergeEditor": "Open in VS Code Merge Editor",
-    "configuration.clearLastCommit.markdownDescription": "Czyści wersję roboczą wiadomości commitu po pomyślnym lokalnym commicie. Wyłącz tę opcję aby zachować wersję roboczą w panelu Commit."
+    "configuration.clearLastCommit.markdownDescription": "Czyści wersję roboczą wiadomości commitu po pomyślnym lokalnym commicie. Wyłącz tę opcję aby zachować wersję roboczą w panelu Commit.",
+    "configuration.reviewPrompt.enabled.description": "Poproś o ocenę w witrynie marketplace po pewnym czasie używania IntelliGit. Wyłącz, aby nigdy nie otrzymywać takiej prośby."
 }

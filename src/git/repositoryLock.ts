@@ -154,16 +154,22 @@ function isNotFound(error: unknown): boolean {
     );
 }
 
+/**
+ * Reports whether a lock owner is still running.
+ *
+ * `ESRCH` is the only errno that proves the process is gone. `EPERM` means it exists
+ * under another user, and an unrecognized errno proves nothing — both are reported as
+ * live so an uncertain probe never lets a second window seize a held lock.
+ */
 function isProcessLive(pid: number): Promise<boolean> {
     try {
         process.kill(pid, 0);
         return Promise.resolve(true);
     } catch (error) {
-        return Promise.resolve(
-            typeof error === "object" &&
-                error !== null &&
-                "code" in error &&
-                error.code === "EPERM",
-        );
+        const code =
+            typeof error === "object" && error !== null && "code" in error
+                ? (error as { code?: unknown }).code
+                : undefined;
+        return Promise.resolve(code !== "ESRCH");
     }
 }

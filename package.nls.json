@@ -77,5 +77,6 @@
     "configuration.commitChecks.providers.markdownDescription": "Enable or disable commit-check badges per provider. Keys are `github`, `gitlab`, `bitbucket-cloud`, and `bitbucket-server`; set one to `false` to suppress its badges. A disabled provider that matches your origin remote yields no badge (IntelliGit does not fall through to another remote). All default to `true`. Changes take effect after a window reload.",
     "configuration.commitChecks.ciCdFilter.markdownDescription": "Override which check names count as CI/CD for the badge (GitHub and GitLab only). Provide a regular expression (matched case-insensitively against each check's name and description); leave empty to use the built-in pattern. Code-review bots are always excluded regardless of this value. Changes take effect after a window reload.",
     "command.commitChecksSignIn": "Sign In to Commit Checks Provider",
-    "command.commitChecksSignOut": "Sign Out of Commit Checks Provider"
+    "command.commitChecksSignOut": "Sign Out of Commit Checks Provider",
+    "configuration.reviewPrompt.enabled.description": "Ask for a marketplace rating after IntelliGit has been used for a while. Disable to never be asked."
 }

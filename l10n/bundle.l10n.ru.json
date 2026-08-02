@@ -481,5 +481,9 @@
     "Sign In": "Войти",
     "GitHub Copilot is unavailable for commit-message generation.": "GitHub Copilot недоступен для создания сообщений коммитов.",
     "GitHub Copilot permission is required for commit-message generation.": "Для создания сообщений коммитов требуется разрешение GitHub Copilot.",
-    "GitHub Copilot blocked commit-message generation.": "GitHub Copilot заблокировал создание сообщений коммитов."
+    "GitHub Copilot blocked commit-message generation.": "GitHub Copilot заблокировал создание сообщений коммитов.",
+    "Enjoying IntelliGit? A quick rating helps others find it.": "Нравится IntelliGit? Короткая оценка поможет другим его найти.",
+    "Rate IntelliGit": "Оценить IntelliGit",
+    "Later": "Позже",
+    "Don't ask again": "Больше не спрашивать"
 }

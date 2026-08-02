@@ -835,6 +835,12 @@
                     "scope": "window",
                     "description": "%configuration.shelf.cleanupAfterDays.description%"
                 },
+                "intelligit.reviewPrompt.enabled": {
+                    "type": "boolean",
+                    "default": true,
+                    "scope": "application",
+                    "description": "%configuration.reviewPrompt.enabled.description%"
+                },
                 "intelligit.clearLastCommit": {
                     "type": "boolean",
                     "default": true,

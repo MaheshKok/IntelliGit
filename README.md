@@ -226,6 +226,9 @@ Configure IntelliGit from VS Code Settings or `settings.json`.
 
     // Commit panel position inside the undocked/tabbed IntelliGit window: "auto", "left", or "right".
     "intelligit.commitWindowPosition": "auto",
+
+    // Ask for a marketplace rating after IntelliGit has been used for a while.
+    "intelligit.reviewPrompt.enabled": true,
 }
 ```
 

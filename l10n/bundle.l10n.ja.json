@@ -481,5 +481,9 @@
     "Sign In": "サインイン",
     "GitHub Copilot is unavailable for commit-message generation.": "GitHub Copilot はコミット メッセージの生成に利用できません。",
     "GitHub Copilot permission is required for commit-message generation.": "コミット メッセージの生成には GitHub Copilot のアクセス許可が必要です。",
-    "GitHub Copilot blocked commit-message generation.": "GitHub Copilot によりコミット メッセージの生成がブロックされました。"
+    "GitHub Copilot blocked commit-message generation.": "GitHub Copilot によりコミット メッセージの生成がブロックされました。",
+    "Enjoying IntelliGit? A quick rating helps others find it.": "IntelliGit はお役に立っていますか? 簡単な評価が他のユーザーの発見につながります。",
+    "Rate IntelliGit": "IntelliGit を評価",
+    "Later": "後で",
+    "Don't ask again": "今後は表示しない"
 }
