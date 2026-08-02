@@ -5,7 +5,7 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.23.0] - 2026-08-02
 
 ### Added
 
@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Fixed abort dispatch running the wrong Git command after a completed rebase left `REBASE_HEAD` behind. Abort now dispatches on a single classification of the active operation rather than probing markers independently, so aborting a genuine merge conflict no longer fails with `fatal: no rebase in progress` and leaves the merge unresolved.
+- Fixed 73 host-side messages that were shipping in English for every locale. They were wrapped for translation but never added to the English catalog the translation pipeline reads, so no locale ever received them; they are now catalogued and translated into all 11 supported locales.
 
 ## [0.22.0] - 2026-07-30
 
