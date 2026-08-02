@@ -7,6 +7,7 @@ import {
 } from "../../../src/git/interactiveRebase/control";
 import { REBASE_SESSION_MARKER } from "../../../src/git/interactiveRebase/editorCommand";
 import {
+    dismissRebasePushOffer,
     forcePushRebasedHead,
     readRebasePushTarget,
 } from "../../../src/git/interactiveRebase/push";
@@ -364,6 +365,76 @@ describe("interactive rebase real Git integration", () => {
                 ),
             ),
         ).rejects.toMatchObject({ code: "ENOENT" });
+    });
+
+    it("stops surfacing a pending push offer once the toast's Dismiss clears it", async () => {
+        const fixture = await createPushableRebaseFixture(helperScriptPath);
+        const manifest = await completePendingPushRebase(fixture);
+        const remoteHeadBefore = await readBareRemoteRef(
+            fixture.remote.root,
+            fixture.remote.remoteHeadRef,
+        );
+
+        // The mirror: reconciliation has to surface this offer *before* the dismissal, or the
+        // half that matters would pass just as well against a reconciler that surfaces nothing.
+        const beforeDismissal = await gatherRebaseReconciliationEvidence(
+            fixture.reconciliationDependencies,
+            fixture.root,
+        );
+        expect(reconcileRebaseSessions(beforeDismissal)).toEqual({
+            rebaseControl: "none",
+            dispositions: [
+                {
+                    status: "ambiguous",
+                    sessionId: manifest.sessionId,
+                    reason: "pending-push-retained",
+                },
+            ],
+        });
+
+        await dismissRebasePushOffer(fixture.reconciliationDependencies.storageRoot, manifest);
+
+        const afterDismissal = await gatherRebaseReconciliationEvidence(
+            fixture.reconciliationDependencies,
+            fixture.root,
+        );
+        expect(reconcileRebaseSessions(afterDismissal)).toEqual({
+            rebaseControl: "none",
+            dispositions: [],
+        });
+        // Dismissing is bookkeeping, so the rewritten history stays unpublished — the remote ref
+        // must still be where it was before the rebase ran, not at the rebased head.
+        await expect(
+            readBareRemoteRef(fixture.remote.root, fixture.remote.remoteHeadRef),
+        ).resolves.toBe(remoteHeadBefore);
+        expect(remoteHeadBefore).not.toBe(manifest.rebasedHeadOid);
+    });
+
+    it("never rearms a push offer from a manifest a failed dismissal left behind", async () => {
+        const fixture = await createPushableRebaseFixture(helperScriptPath);
+        const manifest = await completePendingPushRebase(fixture);
+
+        // `completeRebasePushOffer` commits the terminal lifecycle first and only then removes the
+        // file, so a crash between those two steps leaves exactly this on disk. The offer coming
+        // back is the failure that would matter: a terminal lifecycle stops qualifying for
+        // pending-push classification, and the recorded pre-rebase head no longer matches the real
+        // rebased HEAD, so what is left is an inert ambiguity rather than a rearmed force push.
+        //
+        // `reconcile.test.ts` pins that guard too, against a hand-built manifest. This is the same
+        // property against one the runner actually wrote, with a real rebased HEAD — composition
+        // coverage, not a claim that the mocked layer misses it.
+        await rewritePersistedRebaseManifest(fixture, { ...manifest, lifecycle: "done" });
+
+        const evidence = await gatherRebaseReconciliationEvidence(
+            fixture.reconciliationDependencies,
+            fixture.root,
+        );
+        expect(reconcileRebaseSessions(evidence)).toEqual({
+            rebaseControl: "none",
+            dispositions: [
+                { status: "ambiguous", sessionId: manifest.sessionId, reason: "head-moved" },
+            ],
+        });
     });
 
     it("completes pushed history without a pending push offer when main has no upstream", async () => {
