@@ -1183,3 +1183,60 @@ l10n: five host strings across 12 catalogs. Terminology was sampled per-locale f
 - A dependency-cruiser rule forbidding any `src/**` import of `editorHelper.ts` is still unwritten.
 - **Run the `suite` gate with `VITEST_MAX_THREADS=3`** and `VITEST_MIN_THREADS=1`. vitest here is **1.6.1** — `--maxWorkers` and `--poolOptions.*` are not CLI flags and are silently parsed as filename filters, yielding `no tests`.
 - **Do not read Codex-written files through the context cache.** Confirmed again this phase: a `grep` for keys that `git diff` had just shown in `l10n/bundle.l10n.json` returned zero matches through the cached path. Use `git show` / `git diff`.
+
+## Phase 7b — operation fence, branch-command half (PLAN step 9, second bullet)
+
+BASE_HEAD `adf543b1`. SID `019fc244-9613-7f31-b35d-20a7e56877aa`, `gpt-5.6-terra`/`high`. Telemetry `PEAK=133399 LAST=133399 PCT=51% NONRESUMABLE=no`. Rounds: 1 build, 0 Codex fix rounds, 2 orchestrator fixes. Scope: 4 files, 0 added, +201/−7. Codex reported all 7 deliverables DONE with **no deviations**, and the diff bears that out.
+
+### The 7a handoff was wrong, and correcting it is the whole reason this phase cost 51% instead of 92%
+
+The handoff written one commit earlier said 7b had to fence eight handlers inside `src/commands/branchCommands.ts` (1096 lines), that the file has no unit-test suite, and that building a seven-dependency `BranchCommandDeps` harness "is a larger job than the fence itself and is the real content of the phase."
+
+None of that was necessary. `registerBranchCommands` (`repositoryCommands.ts:467`) wraps **every** entry returned by `createBranchCommands` in one `vscode.commands.registerCommand` call, so a single guard inside that wrapper covers all thirteen commands — and covers the command palette and keybindings too, which per-handler fencing would also have caught but only by editing eight sites. The harness already existed as well: `tests/unit/activation/repositoryCommands.test.ts` mocks `createBranchCommands`, captures registered handlers in a Map, and invokes them by id. The work order forbade opening `branchCommands.ts` and supplied the id list instead.
+
+That is 7a's own lesson applied: **peak tracks what a phase must read.** 7a hit 92% because a 5-line change forced open a 3837-line integration suite. 7b changed a comparable amount of production code and peaked at **51%** because it opened neither the 1096-line command file nor the integration suite. The sizing heuristic is not diff size, file count, or deliverable count — it is the sum of the files the change forces you to read, and it is controllable from the work order.
+
+### Eight ids, not six — verified against the registry, not the plan
+
+`PLAN.md:48` names six operations. `grep -n 'id: "' src/commands/branchCommands.ts` returns exactly thirteen registrations, of which eight move HEAD, mutate refs, or rewrite history: `intelligit.checkout` (`:623`), `checkoutAndRebase` (`:680`), `rebaseCurrentOnto` (`:722`), `mergeIntoCurrent` (`:749`), `updateBranch` (`:793`), `renameBranch` (`:938`), `deleteBranch` (`:987`), `deleteBranches` (`:995`). The plural multi-select variant is a separate registration; fencing only `deleteBranch` would have left the fence bypassable by selecting two branches. Unfenced, per PLAN line 49's "read/copy actions stay available": `openWorktree`, `createWorktreeFromBranch`, `worktree.create`, `newBranchFrom`, `pushBranch` — none moves HEAD or rewrites the current branch.
+
+Independently verified before accepting: the id list matches the registry exactly (13, no more), each of the five messages appears **exactly once** in `src/` (`operationFence.ts:68,73,78,83,94`), `l10n/` and the translation CSV are untouched, and rebase Continue/Abort live in `repositoryViewEvents.ts:682,687` — they are not branch commands, so the remedy the message points at stays runnable during a rebase.
+
+### Defects found and fixed
+
+1. **The decision map's type lied about the lookup the fence depends on.** `BRANCH_COMMAND_FENCE_DECISIONS` was typed `Readonly<Record<string, boolean>>`, so `BRANCH_COMMAND_FENCE_DECISIONS[cmd.id]` type-checks as `boolean` — but this repo sets `strict: true` **without** `noUncheckedIndexedAccess`, so an unknown id returns `undefined` at runtime. The whole fail-closed guarantee of deliverable 3 rides on that `undefined`, expressed as `!== false`, and the type made that comparison read as a redundant double negative someone could "simplify" to a truthiness check — which silently flips unknown commands to fail-**open**. Widened the value type to `boolean | undefined` so the fail-closed branch is visible to the type checker rather than disguised by it. Same class as 7a's fail-open switch exit: a runtime hole that TypeScript actively hides.
+2. **A third hand-copied id list in the test, tied to nothing.** The suite declared `BRANCH_COMMAND_IDS`, `FENCED_BRANCH_COMMAND_IDS`, and `UNFENCED_BRANCH_COMMAND_IDS` as literals. The exhaustiveness test tied the production map to the real factory, but nothing tied these three arrays to either — so a branch command added later to both the factory and the map would be covered by **zero** behavior tests while every test stayed green. Third appearance of this smell (`sweepOrphanedRebaseReservation` in 6d-2, `FENCED_COMMIT_ACTIONS` in 7a). Derived all three from the production map, and pinned the partition itself with literal `toEqual` assertions inside the exhaustiveness test — deriving alone would have made a flipped decision *quieter*, not louder, since the command would simply move into the other passing matrix. Also asserted the actual message text in the fenced matrix, since naming the blocking operation is the user-visible contract from the goal statement, not merely refusing.
+
+Codex's own work needed no correction. Two choices were better than the work order required: the exhaustiveness test calls the **real** `createBranchCommands` through `vi.importActual` with stub deps rather than comparing against a copied list, and the `l10n.t` mock was indirected to a non-identity translator across the whole file rather than only where required — the 6d-2 lesson propagating for the second phase running.
+
+### Mutation sweep — 5 mutants, 5 killed
+
+- **A** (read the map by truthiness instead of `!== false`, so an unclassified command fails open) — killed by *"fails closed for an unclassified branch command"*.
+- **B** (quietly unfence `intelligit.deleteBranches`, the multi-select bypass) — killed by the exhaustiveness test, and **only** by the partition pin added in fix 2: with the matrices derived and unpinned, the command moves into the passing unfenced loop and every other test stays green.
+- **C** (drop the `await`, so the pending Promise is always truthy and every fenced command refuses on a clear repository) — killed by the eight fenced cases.
+- **D** (drop one id from the decision map — behavior stays safe, since unknown ⇒ fenced) — killed only by the map-versus-factory check, which is the one test that can see it.
+- **E** (no fence at all in the registration callback) — killed.
+
+Both files restored byte-identically after every round, SHA-256 verified. `git stash` is never used — the tree carries uncommitted work.
+
+### Acceptance
+
+6 accept gates GREEN warn=0 — `lint` 8.1s, `typecheck` 3.5s, `format` 2.2s, `knip` 0.8s, `architecture` 0.9s, `suite` 281.3s. Counting run: **2549/2549** across 159 files, 157.55s (+30 over 7a's 2519, all in the two fence suites). `SEAL: INTACT files=4 warns_open=0`.
+
+No l10n work this phase — the five strings shipped in 7a and the fence reuses them through one extracted function. GitNexus MCP is not exposed in this session, so the mandated `detect_changes()` scope check could not be run by the orchestrator; Codex reported its own changed-symbol scan as low risk with 0 affected processes, which is its claim, not independent verification.
+
+**Shadow-mode datum: not collected, sixteenth time.** Two orchestrator fixes changed hash-covered files during verification. Sixteen builds, zero data points. `SEAL_MODE` remains undecidable on evidence and should be redesigned or dropped rather than left permanently in shadow.
+
+## Handoff — resume at Phase 8
+
+- Branch `feat/interactive-rebase-from-here`; BASE_HEAD for phase 8 = the tip after this phase's two commits. Tunables unchanged; `SEAL_MODE=shadow`.
+- **Step 9 is complete and step 10 needed nothing** (`commitMenu.tsx:94` already shipped it — see the 7a record). Phase 8 is PLAN steps **12c + 13 + 14**: the real-git integration suite, docs, and CHANGELOG.
+- **Fence rejections at the integration layer are still uncovered**, and this is now the oldest open obligation. `PLAN.md:55` puts them in the mocked `emitCommitAction` harness under step 12c. The unit layer covers both halves of step 9 (nine commit-action rejections in 7a, twenty-nine branch cases here); the integration layer has never been exercised.
+- **Size phase 8 by what it forces open.** Step 12c lands in `tests/integration/extension/extension.integration.test.ts` — **3837 lines**, the file that alone drove 7a to 92%. Unlike 7a and 7b there is no way to avoid opening it, so split step 12c away from steps 13–14 and give Codex explicit line ranges for the harness it must extend.
+- **Any new production consumer of `gitOps` must be added to the integration fixture.** `extension.integration.test.ts:270` and `:819` carry `getActiveOperation`; a fail-closed probe against a mock lacking the method refuses every action and turns the suite red in a way that reads like a fence bug.
+- `UndockedViewProvider` still calls `hasWholeIndexOperationInProgress` directly and never sees `activeOperation` or `rebaseControl`. Six phases past the point where it started to matter.
+- **`CommitPanelViewProvider` still takes 12 positional constructor dependencies.** One positional insert away from breaking the test that pins `.at(-1)`.
+- A dependency-cruiser rule forbidding any `src/**` import of `editorHelper.ts` is still unwritten.
+- **The hand-copied-list smell has now appeared in three consecutive phases.** Any new decision map should derive its test matrices from the production map and pin the partition literally, in the same commit — not as a follow-up fix.
+- **Run the `suite` gate with `VITEST_MAX_THREADS=3`** and `VITEST_MIN_THREADS=1`. vitest here is **1.6.1** — `--maxWorkers` and `--poolOptions.*` are not CLI flags and are silently parsed as filename filters, yielding `no tests`.
+- **Do not read Codex-written files through the context cache.** Use `git show` / `git diff`.
