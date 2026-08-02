@@ -734,11 +734,69 @@ Shadow-mode datum: **not collected, eighth time.** The orchestrator changed hash
 
 Rounds used: 1 hung launch (no work), 1 blocked launch, 1 build, 0 Codex fix rounds, 5 orchestrator fixes (the UTF-8 flag, and the four `run.ts` findings).
 
-## Handoff — resume at Phase 5b
+## Phase 5b — the post-rebase force-push offer
 
-- Branch `feat/interactive-rebase-from-here`; BASE_HEAD for 5b = the tip after this phase's two commits. Tunables unchanged; `SEAL_MODE=shadow`.
+Scope: PLAN step 7 only. Upstream → `pushTarget` under all-or-none rules, the `completed-pending-push` lifecycle and its manifest retention, the Force Push / Dismiss toast, and a source- and destination-pinned push with `--force-with-lease`.
+
+| SID | Outcome | PEAK | Codex fix rounds |
+|---|---|---|---|
+| `019fbfec` | DONE, 10/10 deliverables | **93%** | 0 |
+
+**PEAK 93% — the phase was undersized, and the sizing rule caught it after the fact, not before.** The target is 45–50%. 5a, split off the same original phase, landed at 44%; 5b, sized by the same seam count, nearly hit the ceiling. Seam count is a weak predictor when one seam (the push argv and its validators) carries most of the reasoning. The datum matters for phases 6–8: **count decisions, not seams.**
+
+**Codex ran the proof suite this time.** 5a's delegated round reported all deliverables DONE with two integration tests red; the amended work order made the suite an explicit deliverable, and this round arrived with all six accept gates green on first check. The fix was in the work order, not the model.
+
+**Codex corrected the work order, and was right.** The order said 12 locale catalogs. There are **11** (`de es fr ja ko pl pt-br pt-pt ru zh-cn zh-tw`) plus `bundle.l10n.json`, the English base — 12 files, 11 locales. Codex raised the discrepancy instead of translating into a twelfth catalog that does not exist.
+
+### The one real defect — a landed push reported as a failure
+
+`forcePushRebasedHead` called `completeRebasePushOffer` inside its own `try`. Cleanup writes a `done` manifest and unlinks it; either half can throw. When it did, the throw hit the outer `catch` and the function returned `{status:"failed"}` — **for a push whose remote ref had already moved.**
+
+The consequence is not cosmetic. The user sees "Force push failed", clicks Force Push again, and the second attempt runs `--force-with-lease=<ref>:<upstreamOid>` against a remote that is no longer at `upstreamOid`. The lease fails closed, so nothing is destroyed — but the user is now debugging a lease rejection caused entirely by a bookkeeping error.
+
+Fixed by making the boundary explicit rather than by widening the `try`:
+
+```ts
+const offerRetained = await completeRebasePushOffer(dependencies.storageRoot, manifest)
+    .then(() => false, () => true);
+return { status: "pushed", offerRetained } as const;
+```
+
+`offerRetained` is carried into the UI, not swallowed: a retained offer resurfaces on the next reload, and the toast says so, so the reappearance reads as bookkeeping rather than a missed push. That is **one new l10n key**, shipped in this phase across all 11 catalogs plus the CSV round-trip (905 rows, `l10n:translate --only-missing` → 9,927 cells, none missing). A third exhaustiveness helper, `assertNeverForcePushResult`, was added because the existing one belonged to the submission-reason union and would have silently accepted any new push outcome.
+
+### Mutation sweep — 19/19
+
+First pass killed **11/19**. The historical defect above (**N17**) was killed on the first pass, which is the point of writing the test before trusting the fix. The 8 survivors were all real coverage gaps and all were closed:
+
+- **N6 / N7** — `readRebasePushTarget` had **no tests at all**. Its ref-shape guard and its field-count check were both free to delete. N7 also showed why a naive test would not have caught it: a *short* field list still fails `resolveRebasePushTarget` on its own, so only a list with **more** fields than the format defines distinguishes the check from the validator behind it.
+- **N2 / N4** — the ref regex accepted refspec punctuation (`refs/heads/main:refs/heads/other` would smuggle a second destination into the push) and the target accepted extra keys. Both now have explicit malformed cases.
+- **N13** — an incomplete manifest could reach the mutation gate. The test now asserts the gate is never entered and no Git command runs at all.
+- **N14** — a truncated probe could authorize a push. The fixture returns full, matching text with `truncated: true`, so the flag alone is what gates the push.
+- **N18** — the restore-on-removal-failure path in `completeRebasePushOffer` is unreachable through the filesystem (any condition that fails the unlink also fails the write that precedes it). Tested by mocking `node:fs/promises` to fail removal for **one armed path only**, leaving storage's own temp-file cleanup working. Without the restore, the surviving record reads `done` and reconciliation would treat an uncleared offer as handled.
+- **N19** — `.trim()` was untested because the fixture returned probe output with no trailing newline. Real Git emits one; the fixture now does too. *Same class of error as 5a's permissive exit-code mock: a fixture cleaner than production hides the code that copes with production.*
+
+Second pass **19/19**, `push.ts` restored byte-identical (sha256 `33553825…`). No `git stash` at any point — byte-level save/restore with a SHA-256 round-trip check, because the tree carries uncommitted work.
+
+### A near-miss worth recording
+
+The phase commit was first made with `git -c core.hooksPath=.husky commit`. This repo's hooks live in **`.githooks`**; the override pointed at a directory that does not exist, so the entire pre-commit chain — `format:check`, `lint:strict`, `deps:check:strict`, `architecture:check`, `l10n:validate`, `l10n:audit`, `typecheck`, `build`, `vsce package` — was silently skipped. A hook path that does not exist is not an error to Git, it is simply no hooks. Caught by checking `git config core.hooksPath` afterwards and amended; the chain then ran green through `vsce package` (115 files, 13.43 MB). **Never pass `-c core.hooksPath` when the repo already configures one.**
+
+### Acceptance
+
+Accept gates: **lint OK 10.4s, typecheck OK 3.9s, format OK 2.3s, knip OK 0.9s, architecture OK 0.9s, suite OK 33.7s — GATES: GREEN warn=0.** Seal: `SEAL: WRITTEN files=25 green=True`, re-checked `SEAL: INTACT files=25 warns_open=0`. Commit `8fbab579`, 25 files, 972 insertions.
+
+`detect_changes` ran this time — it needs the full project slug `Users-maheshkokare-PycharmProjects-IntelliGit`, not `IntelliGit`. 84 files changed vs `main`, all inside the interactive-rebase surface.
+
+Shadow-mode datum: **not collected, ninth time.** The orchestrator again changed hash-covered files during verification (the defect fix, the mutation-driven tests, the new l10n key), so there is nothing clean for a fresh verifier to compare. Nine builds, zero data points. `SEAL_MODE` stays `shadow`, but the shadow protocol has now failed to produce its go/no-go signal on every build it has run in.
+
+Rounds used: 1 build, 0 Codex fix rounds, 3 orchestrator fixes (the failed-push classification, the retained-offer toast, and the eight mutation survivors).
+
+## Handoff — resume at Phase 6
+
+- Branch `feat/interactive-rebase-from-here`; BASE_HEAD for 6 = the tip after this phase's two commits. Tunables unchanged; `SEAL_MODE=shadow`.
 - **`.claudex-gates.json` is gitignored and does not travel.** Six gates, `architecture` among them at `stage: accept`. Re-create it before launching on any other machine.
-- 5b scope: PLAN step 7 — `pushTarget` resolution under the all-or-none upstream rules, the `completed-pending-push` lifecycle and its manifest retention, the Force Push / Dismiss toast, and a source- and destination-pinned push with `--force-with-lease`.
-- **The `guard-rejected` result is new and its UI path is exhaustive-checked.** Adding a run-result variant in 5b requires handling it in `showInteractiveRebaseSubmissionRunResult`, or the switch fails to compile — which is the intended pressure.
-- The carried UTF-8 risk is **closed** (see deliverable 8). Nothing to re-prove in 5b.
-- Fixture lesson worth carrying into 5b's tests: a mock that is more permissive than the real executor cannot catch classification bugs. Any new mock for the push path should enforce the same exit-code contract `GitExecutor` enforces.
+- 6 scope: PLAN step 8 — `activeOperation`/`rebaseControl` discriminators, the Continue/Abort toolbar, reload reconciliation, and the `REVERT_HEAD` dispatch fix at `src/git/operations.ts:1642`.
+- **Size it by decisions, not seams.** 5b hit 93% on a seam count that predicted ~50%. Step 8 carries at least three independent decision surfaces (discriminator shape, toolbar wiring, reconciliation rules) — split before launching, not after the session bloats.
+- **Reload reconciliation must read `offerRetained`'s consequence.** A manifest left at `completed-pending-push` after a *successful* push is now a reachable state, not a contradiction. Reconciliation that assumes such a manifest means "push never happened" will re-offer a push that already landed; the lease makes that safe but confusing. The manifest alone cannot distinguish the two cases — decide in step 8 whether that needs a durable marker.
+- Both exhaustiveness helpers (`assertNeverInteractiveRebaseSubmissionReason`, `assertNeverForcePushResult`) are compile-time gates on their own unions. Adding a variant to either in step 8 will fail typecheck until it is handled — intended pressure, not an obstacle.
+- Fixture lessons now hold twice over: a mock more permissive than production hides classification bugs (5a), and a fixture cleaner than production hides the code that copes with production (5b). Step 8's reconciliation fixtures should reproduce partial and contradictory on-disk state, not only the tidy cases.
