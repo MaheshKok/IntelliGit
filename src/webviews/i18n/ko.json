@@ -328,5 +328,7 @@
     "rebase.action.pick": "선택",
     "rebase.action.reword": "메시지 수정",
     "rebase.action.squash": "스쿼시",
-    "rebase.action.fixup": "수정"
+    "rebase.action.fixup": "수정",
+    "rebase.action.continueRebase": "리베이스 계속",
+    "rebase.action.abortRebase": "리베이스 중단"
 }

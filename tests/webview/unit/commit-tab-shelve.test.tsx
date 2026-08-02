@@ -31,7 +31,15 @@ function menuItem(label: string): HTMLElement {
     return item;
 }
 
-function renderCommitTab({ commitMessage = "draft shelf" }: { commitMessage?: string } = {}) {
+function renderCommitTab({
+    commitMessage = "draft shelf",
+    activeOperation,
+    rebaseControl,
+}: {
+    commitMessage?: string;
+    activeOperation?: "none" | "merge" | "cherry-pick" | "revert" | "rebase";
+    rebaseControl?: "owned" | "unowned" | "foreign";
+} = {}) {
     return mount(
         <ChakraProvider theme={theme}>
             <CommitTab
@@ -62,12 +70,42 @@ function renderCommitTab({ commitMessage = "draft shelf" }: { commitMessage?: st
                 onToggleGroupBy={vi.fn()}
                 onToggleShowIgnoredFiles={vi.fn()}
                 catalogGeneration={12}
+                activeOperation={activeOperation}
+                rebaseControl={rebaseControl}
             />
         </ChakraProvider>,
     );
 }
 
 describe("CommitTab shelving", () => {
+    it("posts repository-scoped Continue Rebase and Abort Rebase commands", () => {
+        vscode.postMessage.mockReset();
+        const { root, container } = renderCommitTab({
+            activeOperation: "rebase",
+            rebaseControl: "owned",
+        });
+
+        const continueButton = Array.from(container.querySelectorAll("button")).find(
+            (button) => button.textContent === "Continue Rebase",
+        );
+        const abortButton = Array.from(container.querySelectorAll("button")).find(
+            (button) => button.textContent === "Abort Rebase",
+        );
+        if (!continueButton || !abortButton) throw new Error("Missing rebase controls");
+        click(continueButton);
+        click(abortButton);
+
+        expect(vscode.postMessage).toHaveBeenNthCalledWith(1, {
+            type: "continueRebase",
+            repositoryRoot: "/repo",
+        });
+        expect(vscode.postMessage).toHaveBeenNthCalledWith(2, {
+            type: "abortRebase",
+            repositoryRoot: "/repo",
+        });
+        unmount(root, container);
+    });
+
     it("suggests a date-free default shelf name when the menu opens", () => {
         const { root, container } = renderCommitTab({ commitMessage: "" });
         const tab = container.querySelector('[data-testid="commit-tab"]') as HTMLElement;

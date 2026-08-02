@@ -415,6 +415,10 @@ class MockCommitPanelViewProvider {
         entries: unknown[];
     }>();
     private rebaseDialogCancelEmitter = new MockEventEmitter<{ requestId: string }>();
+    private rebaseControlEmitter = new MockEventEmitter<{
+        action: "continue" | "abort";
+        repositoryRoot?: string;
+    }>();
     private openCommitFileDiffEmitter = new MockEventEmitter<{
         commitHash: string;
         filePath: string;
@@ -431,6 +435,7 @@ class MockCommitPanelViewProvider {
     onCommitAction = this.commitActionEmitter.event;
     onRebaseDialogSubmit = this.rebaseDialogSubmitEmitter.event;
     onRebaseDialogCancel = this.rebaseDialogCancelEmitter.event;
+    onRebaseControl = this.rebaseControlEmitter.event;
     onOpenCommitFileDiff = this.openCommitFileDiffEmitter.event;
     refresh = vi.fn(async () => {
         await commitPanelRefreshHook?.(this);

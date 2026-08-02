@@ -54,6 +54,8 @@ export interface CommitTabProps {
     onCancelGeneration?: () => void;
     hasCommits?: boolean;
     wholeIndexOperationInProgress?: boolean;
+    activeOperation?: "none" | "merge" | "cherry-pick" | "revert" | "rebase";
+    rebaseControl?: "owned" | "unowned" | "foreign";
     groupByDir: boolean;
     showIgnoredFiles: boolean;
     onToggleGroupBy: () => void;
@@ -115,6 +117,8 @@ export interface CommitTabController {
     expandAllSignal: number;
     collapseAllSignal: number;
     hasMergeConflicts: boolean;
+    activeOperation?: "none" | "merge" | "cherry-pick" | "revert" | "rebase";
+    rebaseControl?: "owned" | "unowned" | "foreign";
     isRefreshFeedbackActive: boolean;
     shelfDialogFocusRef: React.MutableRefObject<HTMLElement | null>;
     shelfMenuItems: MenuItem[];
@@ -129,6 +133,8 @@ export interface CommitTabController {
     handleSelectShelfMenuItem: (action: string) => void;
     handleShowDiff: () => void;
     handleAbortMerge: () => void;
+    handleContinueRebase: () => void;
+    handleAbortRebase: () => void;
     handleFileClick: (path: string) => void;
     handleTrackUnversionedFiles: (paths: string[]) => void;
     onExpandAll: () => void;
@@ -273,6 +279,15 @@ export function useCommitTabController(props: CommitTabProps): CommitTabControll
     const handleAbortMerge = useCallback((): void => {
         vscode.postMessage({ type: "abortMerge", ...(repositoryRoot ? { repositoryRoot } : {}) });
     }, [repositoryRoot, vscode]);
+    const handleContinueRebase = useCallback((): void => {
+        vscode.postMessage({
+            type: "continueRebase",
+            ...(repositoryRoot ? { repositoryRoot } : {}),
+        });
+    }, [repositoryRoot, vscode]);
+    const handleAbortRebase = useCallback((): void => {
+        vscode.postMessage({ type: "abortRebase", ...(repositoryRoot ? { repositoryRoot } : {}) });
+    }, [repositoryRoot, vscode]);
     const handleFileClick = useCallback(
         (path: string): void => {
             vscode.postMessage({
@@ -327,6 +342,8 @@ export function useCommitTabController(props: CommitTabProps): CommitTabControll
     return {
         ...state,
         hasMergeConflicts,
+        activeOperation: props.activeOperation,
+        rebaseControl: props.rebaseControl,
         shelfDialogFocusRef,
         shelfMenuItems,
         shelvePaths,
@@ -337,6 +354,8 @@ export function useCommitTabController(props: CommitTabProps): CommitTabControll
         handleSelectShelfMenuItem,
         handleShowDiff,
         handleAbortMerge,
+        handleContinueRebase,
+        handleAbortRebase,
         handleFileClick,
         handleTrackUnversionedFiles,
         onExpandAll: () => dispatch({ type: "expandAll" }),

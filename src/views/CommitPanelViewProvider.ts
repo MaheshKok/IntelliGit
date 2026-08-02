@@ -154,6 +154,11 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
     readonly onRebaseDialogSubmit = this._onRebaseDialogSubmit.event;
     private readonly _onRebaseDialogCancel = new vscode.EventEmitter<{ requestId: string }>();
     readonly onRebaseDialogCancel = this._onRebaseDialogCancel.event;
+    private readonly _onRebaseControl = new vscode.EventEmitter<{
+        action: "continue" | "abort";
+        repositoryRoot?: string;
+    }>();
+    readonly onRebaseControl = this._onRebaseControl.event;
     private readonly _onOpenCommitFileDiff = new vscode.EventEmitter<{
         commitHash: string;
         filePath: string;
@@ -1608,6 +1613,18 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 break;
             case "abortMerge":
                 await this.abortMerge(scopedRuntime());
+                break;
+            case "continueRebase":
+                this._onRebaseControl.fire({
+                    action: "continue",
+                    repositoryRoot: scopedRuntime()?.repository.root,
+                });
+                break;
+            case "abortRebase":
+                this._onRebaseControl.fire({
+                    action: "abort",
+                    repositoryRoot: scopedRuntime()?.repository.root,
+                });
                 break;
             case "setShowIgnoredFiles":
                 await this.handleSetShowIgnoredFilesMessage(msg.showIgnoredFiles, scopedRuntime());

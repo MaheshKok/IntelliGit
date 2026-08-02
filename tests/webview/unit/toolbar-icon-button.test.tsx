@@ -102,6 +102,64 @@ beforeEach(() => {
 });
 
 describe("ToolbarIconButton", () => {
+    it("renders the ownership-scoped rebase controls without replacing the non-rebase abort contract", () => {
+        const renderToolbar = (
+            activeOperation: "rebase" | "merge" | "cherry-pick" | "revert" | "none" | undefined,
+            rebaseControl?: "owned" | "unowned" | "foreign",
+        ) =>
+            mount(
+                <ChakraProvider theme={theme}>
+                    <Toolbar
+                        {...({
+                            onRefresh: vi.fn(),
+                            groupByDir: false,
+                            showIgnoredFiles: false,
+                            onRollback: vi.fn(),
+                            onToggleGroupBy: vi.fn(),
+                            onToggleShowIgnoredFiles: vi.fn(),
+                            onStash: vi.fn(),
+                            onShowDiff: vi.fn(),
+                            onExpandAll: vi.fn(),
+                            onCollapseAll: vi.fn(),
+                            showAbortMerge: true,
+                            onAbortMerge: vi.fn(),
+                            activeOperation,
+                            rebaseControl,
+                            onContinueRebase: vi.fn(),
+                            onAbortRebase: vi.fn(),
+                        } as React.ComponentProps<typeof Toolbar> & {
+                            activeOperation?: "rebase" | "merge" | "cherry-pick" | "revert" | "none";
+                            rebaseControl?: "owned" | "unowned" | "foreign";
+                            onContinueRebase: () => void;
+                            onAbortRebase: () => void;
+                        })}
+                    />
+                </ChakraProvider>,
+            );
+
+        for (const rebaseControl of ["owned", "unowned"] as const) {
+            const mounted = renderToolbar("rebase", rebaseControl);
+            expect(mounted.container.textContent).toContain("Continue Rebase");
+            expect(mounted.container.textContent).toContain("Abort Rebase");
+            expect(mounted.container.textContent).not.toContain("Abort Merge");
+            unmount(mounted.root, mounted.container);
+        }
+
+        const foreign = renderToolbar("rebase", "foreign");
+        expect(foreign.container.textContent).not.toContain("Continue Rebase");
+        expect(foreign.container.textContent).toContain("Abort Rebase");
+        expect(foreign.container.textContent).not.toContain("Abort Merge");
+        unmount(foreign.root, foreign.container);
+
+        for (const operation of ["merge", "cherry-pick", "revert", "none", undefined] as const) {
+            const mounted = renderToolbar(operation);
+            expect(mounted.container.textContent).not.toContain("Continue Rebase");
+            expect(mounted.container.textContent).not.toContain("Abort Rebase");
+            expect(mounted.container.textContent).toContain("Abort Merge");
+            unmount(mounted.root, mounted.container);
+        }
+    });
+
     it("omits the tooltip when tooltips are disabled", () => {
         window.intelligitSettings = { ...window.intelligitSettings, tooltipsEnabled: false };
         const { root, container } = renderButton();

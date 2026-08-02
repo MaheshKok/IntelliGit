@@ -335,5 +335,7 @@
     "rebase.action.pick": "Auswählen",
     "rebase.action.reword": "Nachricht bearbeiten",
     "rebase.action.squash": "Zusammenführen",
-    "rebase.action.fixup": "Korrektur"
+    "rebase.action.fixup": "Korrektur",
+    "rebase.action.continueRebase": "Rebase fortsetzen",
+    "rebase.action.abortRebase": "Rebase abbrechen"
 }

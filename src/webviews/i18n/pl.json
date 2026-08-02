@@ -349,5 +349,7 @@
     "rebase.action.pick": "Wybierz",
     "rebase.action.reword": "Zmień opis",
     "rebase.action.squash": "Połącz",
-    "rebase.action.fixup": "Poprawka"
+    "rebase.action.fixup": "Poprawka",
+    "rebase.action.continueRebase": "Kontynuuj rebase",
+    "rebase.action.abortRebase": "Przerwij rebase"
 }

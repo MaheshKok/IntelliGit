@@ -342,5 +342,7 @@
     "rebase.action.pick": "Seleccionar",
     "rebase.action.reword": "Reescribir",
     "rebase.action.squash": "Combinar",
-    "rebase.action.fixup": "Corrección"
+    "rebase.action.fixup": "Corrección",
+    "rebase.action.continueRebase": "Continuar rebase",
+    "rebase.action.abortRebase": "Cancelar rebase"
 }

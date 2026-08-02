@@ -25,6 +25,10 @@ interface Props {
     onCollapseAll: () => void;
     showAbortMerge: boolean;
     onAbortMerge: () => void;
+    activeOperation?: "none" | "merge" | "cherry-pick" | "revert" | "rebase";
+    rebaseControl?: "owned" | "unowned" | "foreign";
+    onContinueRebase: () => void;
+    onAbortRebase: () => void;
 }
 
 /**
@@ -49,6 +53,10 @@ export function Toolbar({
     onCollapseAll,
     showAbortMerge,
     onAbortMerge,
+    activeOperation,
+    rebaseControl,
+    onContinueRebase,
+    onAbortRebase,
 }: Props): React.ReactElement {
     const [viewMenuPosition, setViewMenuPosition] = useState<{ x: number; y: number } | null>(null);
     const viewMenuItems = useMemo<MenuItem[]>(
@@ -161,7 +169,27 @@ export function Toolbar({
                     </svg>
                 }
             />
-            {showAbortMerge ? (
+            {activeOperation === "rebase" && rebaseControl ? (
+                <>
+                    <ToolbarSeparator />
+                    {rebaseControl !== "foreign" ? (
+                        <ToolbarButton
+                            label={t("rebase.action.continueRebase")}
+                            onClick={onContinueRebase}
+                        >
+                            <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+                                <path fill="currentColor" d="m4 8 3 3 5-6-1.5-1.25L7 8 5.5 6.5z" />
+                            </svg>
+                        </ToolbarButton>
+                    ) : null}
+                    <ToolbarButton label={t("rebase.action.abortRebase")} onClick={onAbortRebase}>
+                        <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+                            <path fill="currentColor" d="M4 4h8v8H4z" />
+                        </svg>
+                    </ToolbarButton>
+                </>
+            ) : null}
+            {showAbortMerge && activeOperation !== "rebase" ? (
                 <>
                     <ToolbarSeparator />
                     <ToolbarButton label={t("merge.action.abortMerge")} onClick={onAbortMerge}>

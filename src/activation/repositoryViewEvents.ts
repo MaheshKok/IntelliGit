@@ -11,11 +11,17 @@ import type {
 import { createInteractiveRebaseSubmissionHandler } from "../git/interactiveRebase/submission";
 import { runInteractiveRebaseSubmission } from "../git/interactiveRebase/run";
 import { dismissRebasePushOffer, forcePushRebasedHead } from "../git/interactiveRebase/push";
+import {
+    abortInteractiveRebase,
+    continueInteractiveRebase,
+    type InteractiveRebaseControlResult,
+} from "../git/interactiveRebase/control";
 import { RepositoryMutationGate } from "../git/repositoryMutationGate";
 import type {
     InteractiveRebaseSubmissionRejectionReason,
     PendingRebaseDialogRequests,
     RebaseSubmissionEntry,
+    RebaseSessionManifest,
 } from "../git/interactiveRebase/types";
 import { handleCommitContextAction } from "../commands/commitCommands";
 import { openCommitFileDiff } from "../services/diffService";
@@ -333,6 +339,44 @@ export function registerRepositoryViewEvents(
             // An already-consumed request is a benign no-op, so its boolean result is intentionally ignored.
             rebaseSubmissionHandler.cancel({ requestId }, originProvider);
         };
+    const handleRebaseControl = async ({
+        action,
+        repositoryRoot,
+    }: {
+        action: "continue" | "abort";
+        repositoryRoot?: string;
+    }): Promise<void> => {
+        const repoRoot = repositoryRoot ?? getRepoRoot();
+        const scopedGitOps = repoRoot === getRepoRoot() ? gitOps : gitOps.deriveFor(repoRoot);
+        const scopedExecutor =
+            repoRoot === getRepoRoot() ? executor : new GitExecutor(repoRoot, mutationGate);
+        const directories = await scopedGitOps.getGitDirectories();
+        const dependencies = {
+            executor: scopedExecutor,
+            mutationGate,
+            storageRoot: context.globalStorageUri?.fsPath,
+            gitDir: directories.gitDir,
+            commonDir: directories.commonDir,
+            helperScriptPath: context.asAbsolutePath("dist/interactive-rebase-editor-helper.cjs"),
+        };
+        const result = await (action === "continue"
+            ? continueInteractiveRebase(dependencies, repoRoot)
+            : abortInteractiveRebase(dependencies, repoRoot));
+        await showInteractiveRebaseControlResult(result, () => refreshService().refreshAll(), {
+            forcePush: (manifest) =>
+                forcePushRebasedHead(
+                    {
+                        executor: scopedExecutor,
+                        mutationGate,
+                        storageRoot: context.globalStorageUri?.fsPath ?? "",
+                        commonDir: directories.commonDir,
+                    },
+                    manifest,
+                ),
+            dismiss: (manifest) =>
+                dismissRebasePushOffer(context.globalStorageUri?.fsPath ?? "", manifest),
+        });
+    };
 
     context.subscriptions.push(
         commitGraph.onCommitSelected(loadCommitDetail),
@@ -367,6 +411,7 @@ export function registerRepositoryViewEvents(
         commitGraph.onRebaseDialogCancel(handleRebaseDialogCancel(commitGraph)),
         sidebarGraph.onRebaseDialogCancel(handleRebaseDialogCancel(sidebarGraph)),
         commitPanel.onRebaseDialogCancel(handleRebaseDialogCancel(commitPanel)),
+        commitPanel.onRebaseControl(handleRebaseControl),
         commitGraph.onOpenCommitFileDiff(handleOpenCommitFileDiff),
         sidebarGraph.onOpenCommitFileDiff(handleOpenCommitFileDiff),
         commitPanel.onOpenCommitFileDiff(handleOpenCommitFileDiff),
@@ -597,6 +642,94 @@ export async function showInteractiveRebaseSubmissionRunResult(
     }
 }
 
+/**
+ * Reports every Continue/Abort outcome and refreshes the affected repository before returning.
+ *
+ * Each outcome refreshes once. The exception is a retained completed manifest, which is delegated
+ * whole to the existing pinned post-rebase force-push offer: that flow refreshes at two points the
+ * user can distinguish — the finished rebase, then the landed push — and owns both itself.
+ */
+export async function showInteractiveRebaseControlResult(
+    result: InteractiveRebaseControlResult,
+    refresh: () => Promise<void>,
+    pushOfferActions: {
+        forcePush: (
+            manifest: RebaseSessionManifest,
+        ) => Promise<import("../git/interactiveRebase/push").RebaseForcePushResult>;
+        dismiss: (manifest: RebaseSessionManifest) => Promise<void>;
+    },
+): Promise<void> {
+    let refreshed = false;
+    const refreshOnce = async (): Promise<void> => {
+        if (refreshed) return;
+        refreshed = true;
+        await refresh();
+    };
+    try {
+        switch (result.status) {
+            case "no-rebase-in-progress":
+                await vscode.window.showWarningMessage(
+                    vscode.l10n.t("No interactive rebase is in progress."),
+                );
+                return;
+            case "foreign-continue-refused":
+                await vscode.window.showWarningMessage(
+                    vscode.l10n.t("Another tool owns this rebase. IntelliGit cannot continue it."),
+                );
+                return;
+            case "continued":
+                await vscode.window.showInformationMessage(
+                    vscode.l10n.t("Interactive rebase continued."),
+                );
+                return;
+            case "aborted":
+                await vscode.window.showInformationMessage(
+                    vscode.l10n.t("Interactive rebase aborted."),
+                );
+                return;
+            case "completed":
+                await vscode.window.showInformationMessage(
+                    vscode.l10n.t("Interactive rebase completed."),
+                );
+                return;
+            case "completed-pending-push":
+                // The offer refreshes twice on purpose — once before it is shown, once after a
+                // push lands — so it receives the unguarded refresh and owns its own bookkeeping.
+                // Collapsing those into one would leave the panel showing the pre-push branch
+                // state after the push had already succeeded.
+                refreshed = true;
+                await showInteractiveRebaseSubmissionRunResult(result, refresh, pushOfferActions);
+                return;
+            case "paused-conflict":
+                await vscode.window.showWarningMessage(
+                    vscode.l10n.t("Rebase paused on conflict — resolve, then Continue."),
+                );
+                return;
+            case "paused-helper-stop":
+                await vscode.window.showErrorMessage(
+                    vscode.l10n.t("Rebase editor stopped: {message}", { message: result.stderr }),
+                );
+                return;
+            case "failed":
+                await vscode.window.showErrorMessage(
+                    result.reason === "git-failed"
+                        ? vscode.l10n.t("Git could not complete the rebase: {message}", {
+                              message: result.message,
+                          })
+                        : vscode.l10n.t(
+                              "Rebase ownership changed while the action was running: {message}",
+                              { message: result.message },
+                          ),
+                );
+                return;
+            default:
+                return assertNeverInteractiveRebaseControlResult(result);
+        }
+    } finally {
+        await refreshOnce();
+    }
+}
+
 /** Maps runner failure reasons to user-facing detail without inventing a recovery state. */
 function interactiveRebaseRunFailureMessage(
     result: Extract<
@@ -628,6 +761,12 @@ function interactiveRebaseRunFailureMessage(
 function assertNeverForcePushResult(result: never): never {
     void result;
     throw new Error("Unhandled interactive rebase force-push result.");
+}
+
+/** Makes a newly added control outcome a compile-time exhaustiveness error. */
+function assertNeverInteractiveRebaseControlResult(result: never): never {
+    void result;
+    throw new Error("Unhandled interactive rebase control result.");
 }
 
 /** Makes newly added submission rejection reasons a compile-time exhaustiveness error. */

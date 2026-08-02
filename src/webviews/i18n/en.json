@@ -335,5 +335,7 @@
     "rebase.action.pick": "Pick",
     "rebase.action.reword": "Reword",
     "rebase.action.squash": "Squash",
-    "rebase.action.fixup": "Fixup"
+    "rebase.action.fixup": "Fixup",
+    "rebase.action.continueRebase": "Continue Rebase",
+    "rebase.action.abortRebase": "Abort Rebase"
 }

@@ -328,5 +328,7 @@
     "rebase.action.pick": "选取",
     "rebase.action.reword": "修改消息",
     "rebase.action.squash": "压缩",
-    "rebase.action.fixup": "修正"
+    "rebase.action.fixup": "修正",
+    "rebase.action.continueRebase": "继续变基",
+    "rebase.action.abortRebase": "中止变基"
 }

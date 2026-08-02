@@ -72,6 +72,10 @@ function CommitTabLayout({
                 onCollapseAll={controller.onCollapseAll}
                 showAbortMerge={controller.hasMergeConflicts}
                 onAbortMerge={controller.handleAbortMerge}
+                activeOperation={controller.activeOperation}
+                rebaseControl={controller.rebaseControl}
+                onContinueRebase={controller.handleContinueRebase}
+                onAbortRebase={controller.handleAbortRebase}
             />
             {controller.shelfMenuPosition ? (
                 <ContextMenu

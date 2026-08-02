@@ -63,6 +63,10 @@ interface CommitPanelState {
     currentBranchBehind: number;
     currentBranchName: string | null;
     currentBranchUpstream: string | null;
+    /** Optional additive operation snapshot; undefined means an older host supplied no classification. */
+    activeOperation?: "none" | "merge" | "cherry-pick" | "revert" | "rebase";
+    /** Present only when the host classified the active operation as a rebase. */
+    rebaseControl?: "owned" | "unowned" | "foreign";
 }
 
 /** Summary row supplied by the extension host for a known Git repository. */
@@ -143,6 +147,8 @@ export type CommitPanelAction =
           currentBranchBehind: number;
           currentBranchName?: string | null;
           currentBranchUpstream?: string | null;
+          activeOperation?: "none" | "merge" | "cherry-pick" | "revert" | "rebase";
+          rebaseControl?: "owned" | "unowned" | "foreign";
           hasCommits?: boolean;
           wholeIndexOperationInProgress?: boolean;
           refreshing?: boolean;

@@ -267,6 +267,19 @@ function reducer(
                     action.currentBranchUpstream !== undefined
                         ? action.currentBranchUpstream
                         : repository.currentBranchUpstream,
+                // The classification moves as a pair. An action without one is a partial update
+                // and must not erase the operation the toolbar is rendering, or the rebase
+                // controls vanish on the next unrelated refresh; an action with one replaces
+                // both, so a finished rebase cannot strand its ownership state behind it.
+                ...(action.activeOperation === undefined
+                    ? {
+                          activeOperation: repository.activeOperation,
+                          rebaseControl: repository.rebaseControl,
+                      }
+                    : {
+                          activeOperation: action.activeOperation,
+                          rebaseControl: action.rebaseControl,
+                      }),
                 hasCommits: action.hasCommits ?? repository.hasCommits,
                 wholeIndexOperationInProgress:
                     action.wholeIndexOperationInProgress ??
@@ -436,6 +449,8 @@ export function useExtensionMessages(): [
                         currentBranchBehind: msg.currentBranchBehind ?? 0,
                         currentBranchName: msg.currentBranchName,
                         currentBranchUpstream: msg.currentBranchUpstream,
+                        activeOperation: msg.activeOperation,
+                        rebaseControl: msg.rebaseControl,
                         hasCommits: msg.hasCommits,
                         wholeIndexOperationInProgress: msg.wholeIndexOperationInProgress,
                         refreshing: msg.refreshing,

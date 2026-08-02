@@ -4655,8 +4655,10 @@ describe("view providers integration", () => {
         );
         const panelSubmit = vi.fn();
         const panelCancel = vi.fn();
+        const panelRebaseControl = vi.fn();
         panel.onRebaseDialogSubmit(panelSubmit);
         panel.onRebaseDialogCancel(panelCancel);
+        panel.onRebaseControl(panelRebaseControl);
         const panelMessages = panel as unknown as {
             handleMessage: (message: unknown) => Promise<void>;
         };
@@ -4666,6 +4668,8 @@ describe("view providers integration", () => {
             entries,
         });
         await panelMessages.handleMessage({ type: "cancelRebaseDialog", requestId: "panel" });
+        await panelMessages.handleMessage({ type: "continueRebase", repositoryRoot: "/repo" });
+        await panelMessages.handleMessage({ type: "abortRebase", repositoryRoot: "/repo" });
         await expect(
             panelMessages.handleMessage({ type: "startInteractiveRebase", requestId: "", entries }),
         ).rejects.toThrow("non-empty string");
@@ -4680,6 +4684,14 @@ describe("view providers integration", () => {
         expect(panelSubmit).toHaveBeenLastCalledWith({ requestId: "panel", entries });
         expect(panelCancel).toHaveBeenCalledTimes(1);
         expect(panelCancel).toHaveBeenLastCalledWith({ requestId: "panel" });
+        expect(panelRebaseControl).toHaveBeenNthCalledWith(1, {
+            action: "continue",
+            repositoryRoot: "/repo",
+        });
+        expect(panelRebaseControl).toHaveBeenNthCalledWith(2, {
+            action: "abort",
+            repositoryRoot: "/repo",
+        });
 
         const undocked = new UndockedViewProvider(
             { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },

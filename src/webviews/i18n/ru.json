@@ -349,5 +349,7 @@
     "rebase.action.pick": "Выбрать",
     "rebase.action.reword": "Изменить сообщение",
     "rebase.action.squash": "Объединить",
-    "rebase.action.fixup": "Исправление"
+    "rebase.action.fixup": "Исправление",
+    "rebase.action.continueRebase": "Продолжить rebase",
+    "rebase.action.abortRebase": "Прервать rebase"
 }

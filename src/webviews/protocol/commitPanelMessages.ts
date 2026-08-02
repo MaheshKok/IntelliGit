@@ -218,6 +218,14 @@ export type OutboundMessage =
           type: "abortMerge";
       }>
     | RepositoryScopedMessage<{
+          /** Command continuing the active interactive rebase under its host-derived ownership contract. */
+          type: "continueRebase";
+      }>
+    | RepositoryScopedMessage<{
+          /** Command aborting the active interactive rebase under its host-derived ownership contract. */
+          type: "abortRebase";
+      }>
+    | RepositoryScopedMessage<{
           /** View option controlling whether ignored files are included in working-tree snapshots. */
           type: "setShowIgnoredFiles";
           /** True asks the host to include `git status --ignored` rows; false restores the default. */

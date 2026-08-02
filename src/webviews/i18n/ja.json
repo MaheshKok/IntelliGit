@@ -328,5 +328,7 @@
     "rebase.action.pick": "選択",
     "rebase.action.reword": "メッセージを編集",
     "rebase.action.squash": "まとめる",
-    "rebase.action.fixup": "修正"
+    "rebase.action.fixup": "修正",
+    "rebase.action.continueRebase": "リベースを続行",
+    "rebase.action.abortRebase": "リベースを中止"
 }
