@@ -986,6 +986,8 @@ describe("extension integration", () => {
         );
         executorRun.mockImplementation(defaultExecutorRunImpl);
         gitOpsState.isRepository.mockResolvedValue(true);
+        // clearAllMocks preserves implementations; reset the fail-closed probe so blockers do not leak.
+        gitOpsState.getActiveOperation.mockResolvedValue("none");
         gitOpsState.getRepositoryRoot.mockResolvedValue("/repo");
         gitOpsState.getBranches.mockResolvedValue([
             {
@@ -2808,6 +2810,129 @@ describe("extension integration", () => {
         expect(showErrorMessage).not.toHaveBeenCalledWith(
             "Invalid commit hash received for commit action.",
         );
+    });
+
+    describe("operation fence through commit graph actions", () => {
+        /** Activates the extension and isolates action effects from activation work. */
+        const activateCommitGraph = async (): Promise<void> => {
+            const { activate } = await import("../../../src/extension");
+            const context = {
+                extensionUri: { fsPath: "/ext", path: "/ext" },
+                subscriptions: [],
+            } as unknown as MockExtensionContext;
+
+            await activate(context);
+            executorRun.mockClear();
+            showErrorMessage.mockClear();
+        };
+
+        /** Sends one commit action through the graph event path used by the webview. */
+        const emitCommitAction = async (action: string, hash = "a1b2c3d4"): Promise<void> => {
+            latestCommitGraphProvider!.emitCommitAction({ action, hash });
+            await waitForAsync();
+        };
+
+        /**
+         * Derives the integration matrix from the production decision map after mocks initialize.
+         *
+         * The partition itself is pinned against literals by the unit suite
+         * (`tests/unit/commands/operationFence.test.ts`), which owns the decision contract. This
+         * layer only needs the list to drive its wiring checks, so restating the literals here
+         * would create a second copy to maintain without catching anything the unit pin misses.
+         */
+        const getFencedCommitActions = async (): Promise<string[]> => {
+            const { COMMIT_ACTION_FENCE_DECISIONS } =
+                await import("../../../src/commands/operationFence");
+
+            return Object.entries(COMMIT_ACTION_FENCE_DECISIONS)
+                .filter(([, fenced]) => fenced)
+                .map(([action]) => action);
+        };
+
+        it("refuses every fenced action during a rebase before its Git effect reaches the executor", async () => {
+            const fenced = await getFencedCommitActions();
+            await activateCommitGraph();
+            gitOpsState.getActiveOperation.mockResolvedValue("rebase");
+
+            for (const action of fenced) {
+                executorRun.mockClear();
+                showErrorMessage.mockClear();
+                await emitCommitAction(action);
+
+                expect(showErrorMessage).toHaveBeenCalledWith(
+                    "A rebase is in progress — continue or abort it first.",
+                );
+                expect(executorRun).not.toHaveBeenCalled();
+            }
+        });
+
+        it("keeps copyRevision and createPatch available during a rebase", async () => {
+            await activateCommitGraph();
+            gitOpsState.getActiveOperation.mockResolvedValue("rebase");
+
+            await emitCommitAction("copyRevision");
+            await emitCommitAction("createPatch");
+
+            expect(clipboardWriteText).toHaveBeenCalledWith("a1b2c3d4");
+            expect(showSaveDialog).toHaveBeenCalled();
+            expect(showErrorMessage).not.toHaveBeenCalled();
+        });
+
+        it.each([
+            ["merge", "A merge is in progress — resolve or abort it first."],
+            ["cherry-pick", "A cherry-pick is in progress — continue or abort it first."],
+            ["revert", "A revert is in progress — continue or abort it first."],
+        ] as const)("names an active %s operation", async (operation, message) => {
+            await activateCommitGraph();
+            gitOpsState.getActiveOperation.mockResolvedValue(operation);
+
+            await emitCommitAction("cherryPick");
+
+            expect(showErrorMessage).toHaveBeenCalledWith(message);
+            expect(executorRun).not.toHaveBeenCalled();
+        });
+
+        it("refuses checkout branch actions during a rebase through the graph event path", async () => {
+            await activateCommitGraph();
+            gitOpsState.getActiveOperation.mockResolvedValue("rebase");
+
+            latestCommitGraphProvider!.emitBranchAction({ action: "checkout", branchName: "main" });
+            await waitForAsync();
+
+            expect(showErrorMessage).toHaveBeenCalledWith(
+                "A rebase is in progress — continue or abort it first.",
+            );
+            expect(executorRun).not.toHaveBeenCalled();
+        });
+
+        it("keeps pushBranch routed through the graph event path during a rebase", async () => {
+            await activateCommitGraph();
+            gitOpsState.getActiveOperation.mockResolvedValue("rebase");
+
+            latestCommitGraphProvider!.emitBranchAction({
+                action: "pushBranch",
+                branchName: "main",
+            });
+            await waitForAsync();
+
+            // Argv-level, not merely "the executor ran": activation and refresh work also reaches
+            // the executor, so a bare call count would pass even if the push never happened.
+            expect(executorRun).toHaveBeenCalledWith(expect.arrayContaining(["push"]));
+            expect(showErrorMessage).not.toHaveBeenCalled();
+        });
+
+        it("refuses multi-select branch deletion during a rebase", async () => {
+            await activateCommitGraph();
+            gitOpsState.getActiveOperation.mockResolvedValue("rebase");
+
+            latestCommitGraphProvider!.emitDeleteBranches([{ name: "main" }]);
+            await waitForAsync();
+
+            expect(showErrorMessage).toHaveBeenCalledWith(
+                "A rebase is in progress — continue or abort it first.",
+            );
+            expect(executorRun).not.toHaveBeenCalled();
+        });
     });
 
     it("pushes commits up to selected revision from commit context action", async () => {
