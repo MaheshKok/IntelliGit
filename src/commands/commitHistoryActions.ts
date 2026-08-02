@@ -353,134 +353,81 @@ async function resolveInteractiveRebaseTip(
     }
 }
 
+/**
+ * Maps each host-side eligibility guard rejection to the message carrying its remediation.
+ *
+ * Keying a `Record` by the reason union makes a newly added reason a compile-time error at this
+ * table, which is what the previous `switch` bought at runtime through an `assertNever` default.
+ * Both reason unions are produced host-side (`guards.ts`, `range.ts`) and never crossed a webview
+ * boundary, so there is no unvalidated value left for a runtime default to catch.
+ *
+ * The messages are thunks because `vscode.l10n.t` resolves against the active bundle when it is
+ * called, and this table is built at module load.
+ */
+const INTERACTIVE_REBASE_GUARD_REJECTION_MESSAGES: Record<
+    InteractiveRebaseGuardRejectionReason,
+    () => string
+> = {
+    "invalid-selected-hash": () =>
+        vscode.l10n.t("Interactive Rebase from Here received an invalid selected commit."),
+    "operation-in-progress": () =>
+        vscode.l10n.t(
+            "Interactive Rebase from Here cannot start while another Git operation is in progress.",
+        ),
+    "detached-head": () =>
+        vscode.l10n.t("Interactive Rebase from Here requires a checked-out branch."),
+    "selected-merge-commit": () =>
+        vscode.l10n.t("Interactive Rebase from Here is not available for merge commits."),
+    "commit-not-ancestor": () =>
+        vscode.l10n.t("The selected commit is not in the current branch history."),
+    "initial-commit": () =>
+        vscode.l10n.t("Interactive Rebase from Here is not available for the initial commit."),
+    "working-tree-dirty": () =>
+        vscode.l10n.t("Interactive Rebase from Here requires a clean working tree."),
+    "range-contains-merge-commit": () =>
+        vscode.l10n.t(
+            "Interactive Rebase from Here is not available for ranges containing merge commits.",
+        ),
+    "git-error": () =>
+        vscode.l10n.t("Interactive Rebase from Here could not inspect the repository."),
+};
+
 /** Shows the specific failed host-side eligibility guard without losing its remediation. */
 function showInteractiveRebaseGuardRejection(reason: InteractiveRebaseGuardRejectionReason): void {
-    switch (reason) {
-        case "invalid-selected-hash":
-            vscode.window.showErrorMessage(
-                vscode.l10n.t("Interactive Rebase from Here received an invalid selected commit."),
-            );
-            return;
-        case "operation-in-progress":
-            vscode.window.showErrorMessage(
-                vscode.l10n.t(
-                    "Interactive Rebase from Here cannot start while another Git operation is in progress.",
-                ),
-            );
-            return;
-        case "detached-head":
-            vscode.window.showErrorMessage(
-                vscode.l10n.t("Interactive Rebase from Here requires a checked-out branch."),
-            );
-            return;
-        case "selected-merge-commit":
-            vscode.window.showErrorMessage(
-                vscode.l10n.t("Interactive Rebase from Here is not available for merge commits."),
-            );
-            return;
-        case "commit-not-ancestor":
-            vscode.window.showErrorMessage(
-                vscode.l10n.t("The selected commit is not in the current branch history."),
-            );
-            return;
-        case "initial-commit":
-            vscode.window.showErrorMessage(
-                vscode.l10n.t(
-                    "Interactive Rebase from Here is not available for the initial commit.",
-                ),
-            );
-            return;
-        case "working-tree-dirty":
-            vscode.window.showErrorMessage(
-                vscode.l10n.t("Interactive Rebase from Here requires a clean working tree."),
-            );
-            return;
-        case "range-contains-merge-commit":
-            vscode.window.showErrorMessage(
-                vscode.l10n.t(
-                    "Interactive Rebase from Here is not available for ranges containing merge commits.",
-                ),
-            );
-            return;
-        case "git-error":
-            vscode.window.showErrorMessage(
-                vscode.l10n.t("Interactive Rebase from Here could not inspect the repository."),
-            );
-            return;
-        default:
-            return assertNeverInteractiveRebaseReason(reason);
-    }
+    vscode.window.showErrorMessage(INTERACTIVE_REBASE_GUARD_REJECTION_MESSAGES[reason]());
 }
+
+/** Maps each bounded-range load rejection to its message. Thunked for the reason above. */
+const INTERACTIVE_REBASE_RANGE_REJECTION_MESSAGES: Record<
+    InteractiveRebaseRangeRejectionReason,
+    () => string
+> = {
+    "invalid-base-hash": () =>
+        vscode.l10n.t("Interactive Rebase from Here received an invalid selected commit."),
+    "invalid-head-hash": () =>
+        vscode.l10n.t("Interactive Rebase from Here could not resolve the current HEAD."),
+    "range-too-large": () =>
+        vscode.l10n.t("Interactive Rebase from Here supports at most {count} commits at once.", {
+            count: MAX_INTERACTIVE_REBASE_RANGE_COMMITS,
+        }),
+    "invalid-range-count": () =>
+        vscode.l10n.t("Interactive Rebase from Here could not count the selected range."),
+    "empty-range": () => vscode.l10n.t("Interactive Rebase from Here found no commits to rebase."),
+    "output-truncated": () =>
+        vscode.l10n.t("Interactive Rebase from Here could not safely load the selected range."),
+    "missing-trailing-sentinel": () =>
+        vscode.l10n.t("Interactive Rebase from Here received incomplete range output."),
+    "malformed-arity": () =>
+        vscode.l10n.t("Interactive Rebase from Here received malformed range output."),
+    "count-mismatch": () =>
+        vscode.l10n.t("Interactive Rebase from Here received an inconsistent commit range."),
+    "git-error": () =>
+        vscode.l10n.t("Interactive Rebase from Here could not load the selected range."),
+};
 
 /** Shows the specific bounded-range failure before any dialog request is registered. */
 function showInteractiveRebaseRangeRejection(reason: InteractiveRebaseRangeRejectionReason): void {
-    switch (reason) {
-        case "invalid-base-hash":
-            vscode.window.showErrorMessage(
-                vscode.l10n.t("Interactive Rebase from Here received an invalid selected commit."),
-            );
-            return;
-        case "invalid-head-hash":
-            vscode.window.showErrorMessage(
-                vscode.l10n.t("Interactive Rebase from Here could not resolve the current HEAD."),
-            );
-            return;
-        case "range-too-large":
-            vscode.window.showErrorMessage(
-                vscode.l10n.t(
-                    "Interactive Rebase from Here supports at most {count} commits at once.",
-                    { count: MAX_INTERACTIVE_REBASE_RANGE_COMMITS },
-                ),
-            );
-            return;
-        case "invalid-range-count":
-            vscode.window.showErrorMessage(
-                vscode.l10n.t("Interactive Rebase from Here could not count the selected range."),
-            );
-            return;
-        case "empty-range":
-            vscode.window.showErrorMessage(
-                vscode.l10n.t("Interactive Rebase from Here found no commits to rebase."),
-            );
-            return;
-        case "output-truncated":
-            vscode.window.showErrorMessage(
-                vscode.l10n.t(
-                    "Interactive Rebase from Here could not safely load the selected range.",
-                ),
-            );
-            return;
-        case "missing-trailing-sentinel":
-            vscode.window.showErrorMessage(
-                vscode.l10n.t("Interactive Rebase from Here received incomplete range output."),
-            );
-            return;
-        case "malformed-arity":
-            vscode.window.showErrorMessage(
-                vscode.l10n.t("Interactive Rebase from Here received malformed range output."),
-            );
-            return;
-        case "count-mismatch":
-            vscode.window.showErrorMessage(
-                vscode.l10n.t(
-                    "Interactive Rebase from Here received an inconsistent commit range.",
-                ),
-            );
-            return;
-        case "git-error":
-            vscode.window.showErrorMessage(
-                vscode.l10n.t("Interactive Rebase from Here could not load the selected range."),
-            );
-            return;
-        default:
-            return assertNeverInteractiveRebaseReason(reason);
-    }
-}
-
-/** Makes newly added guard or range rejection reasons a compile-time exhaustiveness error. */
-function assertNeverInteractiveRebaseReason(reason: never): never {
-    void reason;
-    throw new Error("Unhandled interactive rebase rejection reason.");
+    vscode.window.showErrorMessage(INTERACTIVE_REBASE_RANGE_REJECTION_MESSAGES[reason]());
 }
 
 /**
