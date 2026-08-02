@@ -1240,3 +1240,60 @@ No l10n work this phase — the five strings shipped in 7a and the fence reuses 
 - **The hand-copied-list smell has now appeared in three consecutive phases.** Any new decision map should derive its test matrices from the production map and pin the partition literally, in the same commit — not as a follow-up fix.
 - **Run the `suite` gate with `VITEST_MAX_THREADS=3`** and `VITEST_MIN_THREADS=1`. vitest here is **1.6.1** — `--maxWorkers` and `--poolOptions.*` are not CLI flags and are silently parsed as filename filters, yielding `no tests`.
 - **Do not read Codex-written files through the context cache.** Use `git show` / `git diff`.
+
+## Phase 8a — operation fence at the integration layer (PLAN step 12c, sub-layer (a))
+
+BASE_HEAD `9f099db4`. SID `019fc264-4e96-7a13-803e-bf07ed21796a`, `gpt-5.6-terra`/`high`. Telemetry `PEAK=73613 LAST=73613 PCT=28% NONRESUMABLE=no`. Rounds: 1 build, 0 Codex fix rounds, 2 orchestrator fixes. Scope: **1 file, +135 lines, test-only** — no `src/` change, by instruction.
+
+### 28% on the file that caused 92%
+
+`extension.integration.test.ts` is 3837 lines and is the single reason phase 7a peaked at 92%. This phase's whole content lives inside it and peaked at **28%** — the lowest of the build. The difference is that the work order named six line ranges (`:240-275`, `:360-380`, `:810-830`, `:952-1010`, `:2761-2812`, `:3198-3260`) and said explicitly not to read the file end to end. Across 7a → 7b → 8a the peak went 92% → 51% → 28% while the production surface stayed comparable. The controllable variable is not what a phase writes; it is how much of the repository the work order forces open, and line ranges are a sufficient lever even when the target file cannot be avoided.
+
+### The trap that was closed before it cost a round
+
+The shared `beforeEach` (`:953`) calls `vi.clearAllMocks()`, which clears recorded calls but **not** mock implementations. `gitOpsState.getActiveOperation` is declared once at `:270` as `vi.fn(async () => "none")` and — unlike `showErrorMessage`, `executorRun`, and `gitOpsState.isRepository` — was never re-seeded there. A single `mockResolvedValue("rebase")` would therefore persist for the rest of the file, where a fail-closed probe refuses every subsequent action and reddens the suite in a way that reads like a fence bug rather than a test-isolation bug. The work order made re-seeding deliverable 1, ahead of writing any test. Mutant E confirms it was load-bearing rather than defensive decoration: removing that one line turns four unrelated downstream tests red.
+
+### Every webview surface routes through the fenced command, verified
+
+Before accepting, each surface's branch-action path was traced to `vscode.commands.executeCommand`, which is what makes the single registration-loop guard from 7b sufficient: `forwardBranchAction` (`repositoryViewEvents.ts:195`) for the graph, sidebar, and commit panel; `forwardDeleteBranches` (`:219`) for multi-select delete; and the undocked view's own handler (`repositoryMode.ts:852`). There is no surface that reaches a branch handler directly, so the fence has no bypass — the multi-select delete path that motivated the eight-versus-six id decision in 7b is now exercised end to end through `emitDeleteBranches`.
+
+### Defects found and fixed
+
+1. **A second literal copy of the commit-action partition.** The build pinned all fourteen actions against literals at the integration layer, duplicating the pin that `tests/unit/commands/operationFence.test.ts:47` already owns. This is my work order's fault — it asked for the 7b shape without noticing that 7b's reason for pinning does not apply here. In 7b nothing else pinned the partition, so deriving without pinning made a flipped decision *quieter*. Here the unit suite pins it, once, at the layer that owns the decision contract; restating it created a second list to maintain that catches nothing the unit pin misses. Removed, with the reasoning recorded in the helper's TSDoc so the next phase does not "restore" it.
+2. **`expect(executorRun).toHaveBeenCalled()` for the unfenced `pushBranch` path.** Activation and refresh work also reach the executor, so a bare call-count assertion passes whether or not the push happened. Tightened to argv level — `expect.arrayContaining(["push"])`, which `branchCommands.ts:889-906` actually runs.
+
+Codex declared two deviations, both honest and both correct calls: it read `PLAN.md` lines 50–60 rather than only line 55, and it revised its own `pushBranch` assertion after discovering the handler does not call `gitOps.push`. It also stated plainly that an authentic TDD RED was impossible here — the fence shipped two phases ago, so a red-first test would require deleting production code this phase forbids. That is the correct reading: characterization tests of already-shipped behavior get their proof from mutation, not from a red run.
+
+### Mutation sweep — 5 mutants, 5 killed, integration suite only
+
+The unit fence suites were **excluded** from the sweep on purpose. This phase's claim is that the *integration layer* sees the fence; running the unit suites alongside would let their existing coverage take the credit.
+
+- **A** (no fence on the commit-action dispatcher) — killed, 4 cases.
+- **B** (no fence in the branch registration loop) — killed by the checkout and multi-select-delete cases.
+- **C** (unfence `intelligit.deleteBranches`) — killed by the `emitDeleteBranches` case.
+- **D** (collapse the merge wording onto the rebase message) — killed by the per-kind case.
+- **E** (drop the `beforeEach` re-seed) — killed, and by four tests that have nothing to do with the fence, which is precisely the failure mode deliverable 1 exists to prevent.
+
+Both files restored byte-identically after every round, SHA-256 verified. `git stash` is never used — the tree carries uncommitted work.
+
+### Acceptance
+
+6 accept gates GREEN warn=0 — `lint` 9.1s, `typecheck` 3.6s, `format` 2.2s, `knip` 0.8s, `architecture` 0.9s, `suite` 282.7s. Counting run: **2557/2557** across 159 files, 157.84s (+8 over 7b's 2549: the build's 9 new cases minus the duplicated partition pin removed in fix 1). `SEAL: INTACT files=1 warns_open=0`.
+
+No l10n work — this phase adds no strings and asserts the existing five. GitNexus MCP is not exposed in this session, so the mandated `detect_changes()` scope check could not be run by the orchestrator.
+
+**Shadow-mode datum: not collected, seventeenth time.** Two orchestrator fixes changed the hash-covered file during verification. Seventeen builds, zero data points.
+
+## Handoff — resume at Phase 8b
+
+- Branch `feat/interactive-rebase-from-here`; BASE_HEAD for 8b = the tip after this phase's two commits. Tunables unchanged; `SEAL_MODE=shadow`.
+- **PLAN step 9 and step 12c sub-layer (a) are both complete.** Remaining: step 12c sub-layer **(b)** — the new real-git integration suite — then steps 13 and 14.
+- **Sub-layer (b) is the largest single item left in the plan and must be split.** `PLAN.md:55` enumerates roughly twenty end-to-end scenarios over temp repos and `file://` bare remotes: every action verified against resulting `git log`, reorder, conflict → pause → resolve → Continue with a queued reword, helper-stop pause classification, Abort restoring pre-rebase HEAD, all reload-reconciliation matrix branches, same-tip branch-switch rejection, operation-kind toolbar states, terminal-started rebase over a stale paused manifest including the identical-input restart, conflicted multi-commit revert abort via REVERT_HEAD, no-upstream manifest deletion, toast Dismiss, force-push success plus lease and source-pin rejections, and the four guard rejections. Three or four phases, not one.
+- **There is no real-git integration harness yet.** `tests/integration/` currently holds `extension/`, `merge/`, `shelf/`, and `webviews/`, all mock-based; `tests/fixtures/git/` exists but nothing creates temp repositories. Phase 8b should build the harness alone — temp repo creation, `file://` bare remote, deterministic author/committer identity, cleanup — plus the two or three simplest end-to-end scenarios, and nothing more. Scenario breadth belongs in 8c and later, once the harness has proven itself.
+- **Do not let the real-git suite run in the same vitest pool as the mocked suites** without checking timing. The current suite is 158s at `VITEST_MAX_THREADS=3`; real `git` subprocess work per test will dominate that, and the `suite` gate has a timeout.
+- `UndockedViewProvider` still calls `hasWholeIndexOperationInProgress` directly and never sees `activeOperation` or `rebaseControl`. Its *branch commands* are now verified fenced (see above), so what remains is only the toolbar state, not the safety fence.
+- **`CommitPanelViewProvider` still takes 12 positional constructor dependencies.** One positional insert away from breaking the test that pins `.at(-1)`.
+- A dependency-cruiser rule forbidding any `src/**` import of `editorHelper.ts` is still unwritten.
+- **Size by line ranges, not by file.** This phase is the proof: the same 3837-line file cost 92% when handed over whole and 28% when handed over as six ranges.
+- **Run the `suite` gate with `VITEST_MAX_THREADS=3`** and `VITEST_MIN_THREADS=1`. vitest here is **1.6.1** — `--maxWorkers` and `--poolOptions.*` are not CLI flags and are silently parsed as filename filters, yielding `no tests`.
+- **Do not read Codex-written files through the context cache.** Use `git show` / `git diff`.
