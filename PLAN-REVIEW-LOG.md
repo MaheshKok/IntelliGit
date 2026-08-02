@@ -925,3 +925,69 @@ The gate was therefore run with `VITEST_MAX_THREADS=3` — the same manifest, th
 - A dependency-cruiser rule forbidding any `src/**` import of `editorHelper.ts` is still unwritten. 5a's blocker was that module executing on import; nothing prevents a future import from reintroducing it.
 - **Run the `suite` gate with `VITEST_MAX_THREADS=3`.** Uncapped it fails nondeterministically in the shelf and real-git suites regardless of how quiet the machine is, and it is slower. Note that vitest here is **1.6.1**, where `--maxWorkers` and `--poolOptions.*` do not exist as CLI flags — passing them silently yields `no tests` because they are parsed as filename filters. The env var is the working lever.
 - **Do not diagnose a red `suite` gate from the gate alone.** `verdict.json` records pass/fail per gate and keeps no output, so a failure has to be reproduced with the suite captured to a file before it means anything. If the failures are in the shelf or real-git suites, run the same suite in a detached worktree at the phase's base before touching a line of code — at base it fails worse.
+
+## Phase 6c — Toolbar rebase controls
+
+BASE_HEAD `a6ced0cc`. SID `019fc1ac-deb0-73f1-b636-9220180dde37`, `gpt-5.6-terra`/`high`. Telemetry `PEAK=243102 LAST=218049 PCT=94% NONRESUMABLE=yes`. Rounds: 1 build, 0 Codex fix rounds, 3 orchestrator fixes. Scope: 40 files touched, 2 added, +469/−14 plus two added test files.
+
+### The self-report was truthful again, and the sizing warning it carried was ignored
+
+Second consecutive phase where the pasted summary lines held. The self-report carried `Test Files 154 passed (154)` / `Tests 2453 passed (2453)`; an independent rerun before touching anything reproduced them exactly — `RC=0`, 154 files, 2453 tests, 165.9s at ambient load 2.71. Both declared deviations were verified true: the provider really does stay an event transport (it scopes and fires; `repositoryViewEvents` assembles dependencies and calls the sealed operations), and the repository really does carry 12 webview catalogs, not the 13 the work order asserted. The `src/git/interactiveRebase/` fence held — not one byte of phase 6a/6b's sealed modules changed — and the 140K-token localization CSV grew by 8 script-written lines rather than being hand-edited.
+
+**`PCT=94%` is the finding of this phase.** The work order was sized against the 45–50% target and landed at 94% — the worst overshoot in this build, past even 5b's and 6b's 93%. Six deliverables spanning the protocol, the toolbar, the controller, the provider, the activation mapping, twelve locale catalogs, and four test files is not one integration seam; it is three. The skill's own sizing rule says predictions drift up and never down, and this is the fourth phase in a row to confirm it. 6d must be split before launch, not after the session bloats.
+
+### Defects found and fixed
+
+1. **The reducer erased the rebase classification on every partial update.** `SET_FILES_AND_STASHES` assigned `activeOperation: action.activeOperation` and `rebaseControl: action.rebaseControl` unconditionally, while every neighbouring field in the same object literal — `currentBranchName`, `currentBranchUpstream`, `hasCommits`, `hasRemotes` — preserves prior state when the action omits it. The protocol makes the omission meaningful: `CommitPanelOperationSnapshot`'s first variant is `activeOperation?: undefined`, the shape an older or partial producer sends. So any refresh that did not recompute the operation — a file watcher, a stash listing — would clobber both fields to `undefined` and the Continue/Abort controls would vanish mid-rebase. The fix spreads the pair conditionally: absent `activeOperation` preserves both, present `activeOperation` replaces both. Preserving them *independently* would be the opposite bug — a finished rebase would strand its ownership behind the new operation and keep Abort Rebase rendered. Both directions are now pinned by tests.
+2. **The delegated force-push offer lost its second refresh.** `showInteractiveRebaseControlResult` wraps every outcome in a `refreshOnce` guard and a `finally`, which is right for the eight variants that report and return. `completed-pending-push` is not one of them: it hands the whole result to 5b's existing offer, which refreshes at two points the user can distinguish — the finished rebase, then the landed push — and the once-guard swallowed the second. The panel would sit showing the pre-push branch state after the push had already succeeded. The variant now marks the refresh consumed and passes the unguarded `refresh` to the delegate, which owns its own bookkeeping. The doc comment says so, because the asymmetry is the kind a later reader tidies away.
+3. **Four files failed `format:check`.** `types.ts` re-indented existing lines to 11 spaces where the file uses 10. Codex ran `typecheck`, `lint:strict`, `l10n:validate` and the full suite, and reported them — but **never ran `format:check`**, which is a repo pre-commit hook and an accept-stage gate. The work order should name the gate commands rather than trusting the builder to infer the project's full check set.
+
+### Mutation sweep — 5 mutants, 3 killed on arrival, 2 survivors that were exactly the two behavior fixes
+
+The sweep was aimed at the phase's decision points, and it split cleanly along the line between what Codex tested and what it did not:
+
+- **A** (Continue's ownership gate: `rebaseControl !== "foreign"` → `!== "owned"`) — killed.
+- **B** (drop the rebase suppression from Abort Merge) — killed.
+- **E** (swap the `continueRebase`/`abortRebase` transport types) — killed.
+- **C** (revert defect 1 — reducer clobbers the pair) — **SURVIVED**.
+- **D** (revert defect 2 — the once-guard swallows the delegate's refresh) — **SURVIVED**.
+
+The two survivors are not a coincidence: both defects shipped in a build whose suite was green, which is the definition of an untested branch. C survived the four test files that touch the reducer; D survived all 136 tests in `rebaseControlResult.test.ts` and `view-providers.integration.test.ts`, because the existing `completed-pending-push` case lets the offer's warning modal return `undefined` — the user dismissed it — so the push never runs and only one refresh is ever observed. The path where the push actually lands was unreached.
+
+Two tests were added and both mutants then died:
+
+- `tests/webview/unit/commit-panel-operation-state.test.tsx` drives the real `useExtensionMessages` hook with `MessageEvent`s, the same harness shape the docked-generation suite uses. One case sends a classified update then an unrelated partial one and asserts the pair survives; the other asserts `activeOperation: "none"` clears `rebaseControl` rather than stranding it.
+- `rebaseControlResult.test.ts` gained a case that makes the offer's warning modal return `"Force Push"`, so `forcePush` actually runs and lands, and asserts `refresh` is called **twice**.
+
+Final: **5 mutants, 5 killed.** All four mutated files restored byte-identically, SHA-256 verified against a pre-sweep baseline. `git stash` is never used — the tree carries uncommitted work.
+
+### lean-ctx served stale bytes for a file Codex wrote, and agreed with itself three times
+
+Reading `Toolbar.tsx` through `ctx_read` returned the **pre-Codex** file: no `activeOperation`, no `rebaseControl`, no Continue/Abort buttons — while `git status` listed it as modified. `ctx_search` on the same path reported zero matches for `rebaseControl`. A native `grep` issued as a cross-check was silently rewritten into `ctx_search` by the shadow-mode interceptor and returned the same wrong answer in ctx's own output format. Three agreeing reads, one source, all stale.
+
+`git diff` showed the real file: 29 added lines, exactly the specified render rules. The cache had never seen the write because Codex writes outside this session's tool layer.
+
+**Read Codex-written files through `git diff` / `git show`, not through the context cache.** Agreement between tools that share a cache is not corroboration. Had this gone unchecked the conclusion would have been that 6c's toolbar wiring was missing entirely — and the "fix" would have been to write it a second time.
+
+### The nvm codex install is broken
+
+`PATH`'s first `codex` is nvm's, and its vendor binary directory (`@openai/codex-darwin-arm64/vendor/aarch64-apple-darwin/codex/`) is empty — emptied 26 Jul 09:50 — so it fails `ENOENT` at spawn. The bun install at `/Users/maheshkokare/.bun/bin/codex` is intact at `codex-cli 0.144.1` and every round in this phase used it explicitly. Repair with `npm i -g @openai/codex`; until then any launcher that relies on `PATH` resolution will fail.
+
+### Acceptance
+
+6 accept gates GREEN warn=0. Suite **2456/2456**, 155 files — the three added cases are the whole delta from the build's own 2453. `SEAL: INTACT files=40`. Full `.githooks` pre-commit chain green through `vsce package`.
+
+**Shadow-mode datum: not collected, twelfth time.** Three orchestrator fixes and two added test files changed hash-covered files during verification, so the seal again covers bytes the verifier itself wrote. Twelve builds, zero data points. The recommendation from 6b stands and is now overdue: redesign `SEAL_MODE` around a distinct fix stage, or drop it.
+
+## Handoff — resume at Phase 6d
+
+- Branch `feat/interactive-rebase-from-here`; BASE_HEAD for 6d = the tip after this phase's two commits. Tunables unchanged; `SEAL_MODE=shadow`.
+- 6d scope: PLAN step 8 reload reconciliation — marker-first, once-per-repository, default-deny evidence matrix, ambiguous-discard notice. **Split it before launching.** Four phases running have overshot their sizing prediction, 6c by the widest margin yet at 94%; the evidence matrix and the notice/dedup path are separable and should be separate work orders.
+- **Name the gate commands in the work order.** 6c ran four checks and reported them honestly, but `format:check` was not among them and it is both a pre-commit hook and an accept gate. A builder that is told "the suite" runs the suite; one that is told `format:check`, `lint:strict`, `deps:check:strict`, `architecture:check`, `l10n:validate`, `typecheck` runs those.
+- **The operation snapshot moves as a pair, in both directions.** `CommitPanelOperationSnapshot` encodes it in the protocol — `activeOperation` absent means "no classification supplied", `"rebase"` requires `rebaseControl`, everything else forbids it. Any future reducer or provider field that touches one must touch both; the two tests in `commit-panel-operation-state.test.tsx` fail loudly if that is broken from either side.
+- **`completed-pending-push` refreshes twice by design.** The variant is delegated whole to 5b's offer and is deliberately exempt from `showInteractiveRebaseControlResult`'s once-guard. It reads like an inconsistency and is not; the comment on the case says why, and a test pins the count at two.
+- `UndockedViewProvider` still calls `hasWholeIndexOperationInProgress` directly and never sees `activeOperation` or `rebaseControl`. Carried forward from 6a and 6b, now two phases past the point where it started to matter: the undocked panel cannot render rebase controls at all.
+- **`CommitPanelViewProvider` now takes 12 positional constructor dependencies** and gained an event emitter this phase. Still unconverted to an options object; still one positional insert away from breaking the test that pins `.at(-1)`.
+- A dependency-cruiser rule forbidding any `src/**` import of `editorHelper.ts` is still unwritten.
+- **Run the `suite` gate with `VITEST_MAX_THREADS=3`** (and `VITEST_MIN_THREADS=1`, which this vitest requires alongside it). Uncapped it fails nondeterministically regardless of ambient load, and it is slower. vitest here is **1.6.1** — `--maxWorkers` and `--poolOptions.*` are not CLI flags and are silently parsed as filename filters, yielding `no tests`.
+- **Do not read Codex-written files through the context cache.** Use `git diff` / `git show`. Native `Read`/`Grep` may be transparently rewritten to the cached tools, so a cross-check in a different tool is not necessarily a different source.
