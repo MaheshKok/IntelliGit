@@ -329,6 +329,7 @@
     "rebase.dialog.firstActionCleared": "The first remaining commit cannot be squashed or fixed up, so it was changed to pick.",
     "rebase.dialog.action": "Rebase action",
     "rebase.dialog.message": "Commit message",
+    "rebase.dialog.missingMessage": "A commit message is required for: {hashes}",
     "rebase.dialog.moveUp": "Move commit up",
     "rebase.dialog.moveDown": "Move commit down",
     "rebase.dialog.start": "Start Rebasing",

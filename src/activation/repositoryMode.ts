@@ -918,61 +918,69 @@ export async function activateRepositoryMode(
                 }
             }),
             undocked.onRebaseDialogSubmit(async ({ requestId, entries }) => {
-                const result = await rebaseSubmissionHandler.submit(
-                    { requestId, entries },
-                    rebaseDialogOriginProvider,
-                );
-                if (result.status === "rejected") {
-                    showInteractiveRebaseSubmissionRejection(result.reason);
-                    return;
-                }
-                const directories = await undockedGitOps.getGitDirectories();
-                const runResult = await runWithNotificationProgress(
-                    vscode.l10n.t("Running interactive rebase..."),
-                    async () =>
-                        runInteractiveRebaseSubmission(
-                            {
-                                executor: undockedExecutor,
-                                mutationGate,
-                                storageRoot: context.globalStorageUri?.fsPath,
-                                gitDir: directories.gitDir,
-                                commonDir: directories.commonDir,
-                                hasWholeIndexOperationInProgress: () =>
-                                    undockedGitOps.hasWholeIndexOperationInProgress(),
-                                helperScriptPath: context.asAbsolutePath(
-                                    "dist/interactive-rebase-editor-helper.cjs",
-                                ),
-                            },
-                            result,
-                        ),
-                );
-                await showInteractiveRebaseSubmissionRunResult(
-                    runResult,
-                    async () => {
-                        if (getUndockedSelectedRepositoryRoot() === repoRoot) {
-                            await refreshService.refreshAll();
-                            return;
-                        }
-                        await loadUndockedData();
-                    },
-                    {
-                        forcePush: (manifest) =>
-                            forcePushRebasedHead(
+                try {
+                    const result = await rebaseSubmissionHandler.submit(
+                        { requestId, entries },
+                        rebaseDialogOriginProvider,
+                    );
+                    if (result.status === "rejected") {
+                        showInteractiveRebaseSubmissionRejection(result.reason);
+                        return;
+                    }
+                    const directories = await undockedGitOps.getGitDirectories();
+                    const runResult = await runWithNotificationProgress(
+                        vscode.l10n.t("Running interactive rebase..."),
+                        async () =>
+                            runInteractiveRebaseSubmission(
                                 {
                                     executor: undockedExecutor,
                                     mutationGate,
-                                    storageRoot: context.globalStorageUri?.fsPath ?? "",
+                                    storageRoot: context.globalStorageUri?.fsPath,
+                                    gitDir: directories.gitDir,
                                     commonDir: directories.commonDir,
+                                    hasWholeIndexOperationInProgress: () =>
+                                        undockedGitOps.hasWholeIndexOperationInProgress(),
+                                    helperScriptPath: context.asAbsolutePath(
+                                        "dist/interactive-rebase-editor-helper.cjs",
+                                    ),
                                 },
-                                manifest,
+                                result,
                             ),
-                        dismiss: (manifest) =>
-                            dismissRebasePushOffer(
-                                context.globalStorageUri?.fsPath ?? "",
-                                manifest,
-                            ),
-                    },
-                );
+                    );
+                    await showInteractiveRebaseSubmissionRunResult(
+                        runResult,
+                        async () => {
+                            if (getUndockedSelectedRepositoryRoot() === repoRoot) {
+                                await refreshService.refreshAll();
+                                return;
+                            }
+                            await loadUndockedData();
+                        },
+                        {
+                            forcePush: (manifest) =>
+                                forcePushRebasedHead(
+                                    {
+                                        executor: undockedExecutor,
+                                        mutationGate,
+                                        storageRoot: context.globalStorageUri?.fsPath ?? "",
+                                        commonDir: directories.commonDir,
+                                    },
+                                    manifest,
+                                ),
+                            dismiss: (manifest) =>
+                                dismissRebasePushOffer(
+                                    context.globalStorageUri?.fsPath ?? "",
+                                    manifest,
+                                ),
+                        },
+                    );
+                } catch (error) {
+                    const message = getErrorMessage(error);
+                    console.error("Interactive rebase submission failed:", error);
+                    vscode.window.showErrorMessage(
+                        vscode.l10n.t("Interactive rebase failed: {message}", { message }),
+                    );
+                }
             }),
             undocked.onRebaseDialogCancel(({ requestId }) => {
                 // An already-consumed request is a benign no-op, so its boolean result is intentionally ignored.

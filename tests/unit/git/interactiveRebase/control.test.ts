@@ -2,6 +2,7 @@ import { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promise
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { REBASE_SESSION_MARKER } from "../../../../src/git/interactiveRebase/editorCommand";
 import {
     abortInteractiveRebase,
     continueInteractiveRebase,
@@ -83,7 +84,7 @@ async function fixture(
         await mkdir(mergeDirectory);
         if (control === "owned" || control === "foreign") {
             await writeFile(
-                path.join(mergeDirectory, "intelligit-session"),
+                path.join(mergeDirectory, REBASE_SESSION_MARKER),
                 control === "owned" ? SESSION_ID : "other-session",
             );
         }
@@ -106,7 +107,7 @@ async function fixture(
                 if (after === "end") await rm(mergeDirectory, { recursive: true, force: true });
                 if (after === "steal") {
                     await writeFile(
-                        path.join(mergeDirectory, "intelligit-session"),
+                        path.join(mergeDirectory, REBASE_SESSION_MARKER),
                         "other-session",
                     );
                 }

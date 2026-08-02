@@ -2063,6 +2063,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         this._onCommitAction.dispose();
         this._onRebaseDialogSubmit.dispose();
         this._onRebaseDialogCancel.dispose();
+        this._onRebaseControl.dispose();
         this._onOpenCommitFileDiff.dispose();
     }
     /**

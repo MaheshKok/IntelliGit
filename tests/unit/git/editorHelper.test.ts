@@ -8,12 +8,14 @@ import {
     createGitEditorCommand,
     quoteGitEditorArgument,
 } from "../../../src/git/interactiveRebase/editorCommand";
+import { supportsPosixShell } from "../../helpers/platformCapabilities";
 
 const HASH_A = "a".repeat(40);
 const HASH_B = "b".repeat(40);
 const HASH_C = "c".repeat(40);
 const HELPER_PATH = path.resolve(process.cwd(), "dist/interactive-rebase-editor-helper.cjs");
 const directories: string[] = [];
+const itPosix = supportsPosixShell ? it : it.skip;
 
 afterEach(async () => {
     await Promise.all(
@@ -129,7 +131,9 @@ describe("interactive rebase editor helper", () => {
 
         // The builder module is probed from source because it is the host-facing half and imports
         // nothing at runtime, so Node's type stripping resolves it unaided.
-        const safe = probe(path.resolve(process.cwd(), "src/git/interactiveRebase/editorCommand.ts"));
+        const safe = probe(
+            path.resolve(process.cwd(), "src/git/interactiveRebase/editorCommand.ts"),
+        );
         expect(safe.status).toBe(0);
         expect(safe.stdout).toBe("undefined");
         expect(safe.stderr).toBe("");
@@ -247,7 +251,7 @@ describe("interactive rebase editor helper", () => {
 });
 
 describe("Git editor command quoting", () => {
-    it.each([
+    itPosix.each([
         ["spaces", "a path with spaces"],
         ["backslashes", "a\\path\\with\\backslashes"],
         ["apostrophes", "a'quoted'path"],

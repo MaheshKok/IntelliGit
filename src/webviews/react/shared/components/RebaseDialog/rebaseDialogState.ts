@@ -50,6 +50,7 @@ export function moveRebaseEntry(
     editedMessageHashes: ReadonlySet<string> = EMPTY_EDITED_MESSAGES,
 ): RebaseEntryMutation {
     const source = entries.findIndex((entry) => entry.hash === hash);
+    if (source < 0) return { entries, firstActionCleared: false };
     const target = source + (direction === "up" ? -1 : 1);
     return target < 0 || target >= entries.length
         ? { entries, firstActionCleared: false }

@@ -4,9 +4,9 @@ import path from "node:path";
 import type { GitExecutor } from "../executor";
 import type { RepositoryMutationGate } from "../repositoryMutationGate";
 import { createGitEditorCommand } from "./editorCommand";
+import { completeInteractiveRebase } from "./completion";
 import { errorMessage, readGitText } from "./gitText";
 import { evaluateInteractiveRebaseGuards } from "./guards";
-import { shouldOfferRebaseForcePush } from "./push";
 import { writeInteractiveRebaseSession } from "./session";
 import {
     createRebaseSessionDirectory,
@@ -109,7 +109,9 @@ export async function runInteractiveRebaseSubmission(
             dependencies.commonDir,
             async () => {
                 const [branch, head] = await Promise.all([
-                    readGitText(dependencies.executor, ["symbolic-ref", "--quiet", "HEAD"]),
+                    readGitText(dependencies.executor, ["symbolic-ref", "--quiet", "HEAD"], {
+                        expectedExitCodes: [0, 1],
+                    }),
                     readGitText(dependencies.executor, ["rev-parse", "HEAD"]),
                 ]);
                 if (branch !== manifest.branch)
@@ -157,25 +159,16 @@ export async function runInteractiveRebaseSubmission(
                         "rev-parse",
                         "HEAD",
                     ]);
-                    if (shouldOfferRebaseForcePush(request.hasPushedCommit, pushTarget)) {
-                        const pendingPushManifest = {
-                            ...runningManifest,
-                            lifecycle: "completed-pending-push" as const,
-                            rebasedHeadOid,
-                        };
-                        await writeRebaseManifest(storageRoot, pendingPushManifest);
-                        shouldDeleteManifest = false;
-                        return {
-                            status: "completed-pending-push",
-                            manifest: pendingPushManifest,
-                        } as const;
-                    }
-                    await writeRebaseManifest(storageRoot, {
-                        ...runningManifest,
-                        lifecycle: "done",
+                    const completion = await completeInteractiveRebase(
+                        storageRoot,
+                        runningManifest,
                         rebasedHeadOid,
-                    });
-                    return { status: "completed", rebasedHeadOid } as const;
+                    );
+                    if (completion.status === "completed-pending-push") {
+                        shouldDeleteManifest = false;
+                        return completion;
+                    }
+                    return completion;
                 }
                 if (!(await hasRebaseDirectory(dependencies.gitDir))) {
                     return { status: "failed", reason: "rebase-failed" } as const;
@@ -207,16 +200,30 @@ export async function runInteractiveRebaseSubmission(
         return { status: "failed", reason: "unexpected-error", message: errorMessage(error) };
     } finally {
         if (reservation && shouldCleanUp) {
-            await deleteRebaseSessionDirectory(storageRoot, request.repoRoot, sessionId);
-            if (shouldDeleteManifest) {
-                await rm(
-                    getRebaseStoragePaths(storageRoot, request.repoRoot).manifestPath(sessionId),
-                    {
-                        force: true,
-                    },
-                );
+            try {
+                await deleteRebaseSessionDirectory(storageRoot, request.repoRoot, sessionId);
+            } catch {
+                // Cleanup is best-effort after the operation result has already been decided.
             }
-            await releaseRebaseReservation(reservation);
+            if (shouldDeleteManifest) {
+                try {
+                    await rm(
+                        getRebaseStoragePaths(storageRoot, request.repoRoot).manifestPath(
+                            sessionId,
+                        ),
+                        {
+                            force: true,
+                        },
+                    );
+                } catch {
+                    // Cleanup is best-effort after the operation result has already been decided.
+                }
+            }
+            try {
+                await releaseRebaseReservation(reservation);
+            } catch {
+                // Cleanup is best-effort after the operation result has already been decided.
+            }
         }
     }
 }

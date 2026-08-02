@@ -62,12 +62,12 @@ describe("pending interactive-rebase dialog requests", () => {
         });
     });
 
-    it("expires requests through the injected clock without waiting", () => {
+    it("expires requests after the editing window through the injected clock", () => {
         let now = 0;
         const origin = {};
         const requests = createPendingRebaseDialogRequests({ now: () => now });
         const requestId = requests.register(request(origin));
-        now = Number.MAX_SAFE_INTEGER;
+        now = 30 * 60 * 1_000;
 
         expect(requests.consume(requestId, origin)).toEqual({
             status: "rejected",
@@ -105,16 +105,15 @@ describe("pending interactive-rebase dialog requests", () => {
         expect(requests.consume(otherRootRequest, docked)).toMatchObject({ status: "consumed" });
     });
 
-    it("supersedes an earlier request from the same origin and repository", () => {
+    it("keeps same-origin requests live throughout a realistic editing window", () => {
+        let now = 0;
         const origin = {};
-        const requests = createPendingRebaseDialogRequests();
+        const requests = createPendingRebaseDialogRequests({ now: () => now });
         const first = requests.register(request(origin));
         const second = requests.register(request(origin));
+        now = 29 * 60 * 1_000;
 
-        expect(requests.consume(first, origin)).toEqual({
-            status: "rejected",
-            reason: "unknown-or-expired",
-        });
+        expect(requests.consume(first, origin)).toMatchObject({ status: "consumed" });
         expect(requests.consume(second, origin)).toMatchObject({ status: "consumed" });
     });
 
@@ -125,7 +124,7 @@ describe("pending interactive-rebase dialog requests", () => {
         const sameOriginOtherRoot = requests.register(request(originA, "/other-repo"));
         const otherOriginSameRoot = requests.register(request(originB));
 
-        // Registering for (originA, /repo) may only supersede that exact pair.
+        // Registering for (originA, /repo) must not invalidate any already-live dialog.
         requests.register(request(originA));
 
         expect(requests.consume(sameOriginOtherRoot, originA)).toMatchObject({

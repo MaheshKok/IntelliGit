@@ -351,5 +351,6 @@
     "rebase.action.squash": "Połącz",
     "rebase.action.fixup": "Poprawka",
     "rebase.action.continueRebase": "Kontynuuj rebase",
-    "rebase.action.abortRebase": "Przerwij rebase"
+    "rebase.action.abortRebase": "Przerwij rebase",
+    "rebase.dialog.missingMessage": "Wymagany jest komunikat commita dla: {hashes}"
 }

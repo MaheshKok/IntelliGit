@@ -19,7 +19,10 @@ const vscodeMock = vi.hoisted(() => ({
 
 vi.mock("vscode", () => vscodeMock);
 
-import { showInteractiveRebaseControlResult } from "../../../src/activation/repositoryViewEvents";
+import {
+    showInteractiveRebaseControlResult,
+    showInteractiveRebaseSubmissionRunResult,
+} from "../../../src/activation/repositoryViewEvents";
 import type { InteractiveRebaseControlResult } from "../../../src/git/interactiveRebase/control";
 import type { RebaseSessionManifest } from "../../../src/git/interactiveRebase/types";
 
@@ -87,6 +90,42 @@ describe("interactive rebase control result messages", () => {
         expect(vscodeMock.window.showInformationMessage).toHaveBeenCalledWith(
             "Interactive rebase completed.",
         );
+    });
+
+    it("refreshes the completed rebase state before notifying the user", async () => {
+        const events: string[] = [];
+        const refresh = vi.fn(async () => {
+            events.push("refresh");
+        });
+        vscodeMock.window.showInformationMessage.mockImplementationOnce(async () => {
+            events.push("notification");
+        });
+
+        await showInteractiveRebaseControlResult(
+            { status: "completed", rebasedHeadOid: "c".repeat(40) },
+            refresh,
+            { forcePush: vi.fn(), dismiss: vi.fn() },
+        );
+
+        expect(events).toEqual(["refresh", "notification"]);
+    });
+
+    it("refreshes a submitted completed rebase before notifying the user", async () => {
+        const events: string[] = [];
+        const refresh = vi.fn(async () => {
+            events.push("refresh");
+        });
+        vscodeMock.window.showInformationMessage.mockImplementationOnce(async () => {
+            events.push("notification");
+        });
+
+        await showInteractiveRebaseSubmissionRunResult(
+            { status: "completed", rebasedHeadOid: "c".repeat(40) },
+            refresh,
+            { forcePush: vi.fn(), dismiss: vi.fn() },
+        );
+
+        expect(events).toEqual(["refresh", "notification"]);
     });
 
     it("routes completed-pending-push through the existing force-push offer", async () => {

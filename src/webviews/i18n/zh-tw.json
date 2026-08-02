@@ -330,5 +330,6 @@
     "rebase.action.squash": "壓縮",
     "rebase.action.fixup": "修正",
     "rebase.action.continueRebase": "繼續變基",
-    "rebase.action.abortRebase": "中止變基"
+    "rebase.action.abortRebase": "中止變基",
+    "rebase.dialog.missingMessage": "下列提交需要提交訊息：{hashes}"
 }

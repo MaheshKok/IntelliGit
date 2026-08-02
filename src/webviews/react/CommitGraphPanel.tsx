@@ -16,7 +16,6 @@ import type {
     CommitAction,
     CommitGraphInbound,
     CommitGraphOutbound,
-    RebaseTodoEntry,
     WorktreeAction,
 } from "../protocol/commitGraphTypes";
 import type { OutboundMessage as CommitPanelOutbound } from "./commit-panel/types";
@@ -28,6 +27,7 @@ import { useCommitGraphMessages } from "./commit-graph/useCommitGraphMessages";
 import type { CommitGraphPanelAction } from "./commit-graph/types";
 import { t } from "./shared/i18n";
 import { RebaseDialog } from "./shared/components/RebaseDialog/RebaseDialog";
+import { useRebaseDialogController } from "./shared/hooks/useRebaseDialogController";
 
 const MIN_BRANCH_WIDTH = 80;
 const MAX_BRANCH_WIDTH = 500;
@@ -275,8 +275,12 @@ export function CommitGraphPanel({
     });
     const loadingMore = useRef(false);
     const [viewVisible, setViewVisible] = useState(true);
-    const [rebaseDialog, setRebaseDialog] = useState<RebaseDialogMessage | null>(null);
-    const rebaseDialogRef = useRef<RebaseDialogMessage | null>(null);
+    const {
+        rebaseDialog,
+        handleShowRebaseDialog,
+        handleRebaseDialogSubmit,
+        handleRebaseDialogCancel,
+    } = useRebaseDialogController<RebaseDialogMessage>((message) => vscode.postMessage(message));
     const currentBranch = useMemo(
         () => branches.find((branch) => branch.isCurrent && !branch.isRemote),
         [branches],
@@ -297,38 +301,6 @@ export function CommitGraphPanel({
         MAX_INFO_WIDTH,
         true,
     );
-
-    const handleShowRebaseDialog = useCallback(
-        (dialog: RebaseDialogMessage) => {
-            const previous = rebaseDialogRef.current;
-            if (previous)
-                vscode.postMessage({ type: "cancelRebaseDialog", requestId: previous.requestId });
-            rebaseDialogRef.current = dialog;
-            setRebaseDialog(dialog);
-        },
-        [vscode],
-    );
-    const handleRebaseDialogSubmit = useCallback(
-        (entries: readonly RebaseTodoEntry[]) => {
-            const dialog = rebaseDialogRef.current;
-            if (!dialog) return;
-            rebaseDialogRef.current = null;
-            setRebaseDialog(null);
-            vscode.postMessage({
-                type: "startInteractiveRebase",
-                requestId: dialog.requestId,
-                entries: [...entries],
-            });
-        },
-        [vscode],
-    );
-    const handleRebaseDialogCancel = useCallback(() => {
-        const dialog = rebaseDialogRef.current;
-        if (!dialog) return;
-        rebaseDialogRef.current = null;
-        setRebaseDialog(null);
-        vscode.postMessage({ type: "cancelRebaseDialog", requestId: dialog.requestId });
-    }, [vscode]);
 
     useCommitGraphMessages({
         vscode,

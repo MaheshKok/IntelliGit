@@ -286,52 +286,63 @@ export function registerRepositoryViewEvents(
     const handleRebaseDialogSubmit =
         (originProvider: object) =>
         async ({ requestId, entries }: { requestId: string; entries: RebaseSubmissionEntry[] }) => {
-            const result = await rebaseSubmissionHandler.submit(
-                { requestId, entries },
-                originProvider,
-            );
-            if (result.status === "rejected") {
-                showInteractiveRebaseSubmissionRejection(result.reason);
-                return;
-            }
-            const directories = await gitOps.getGitDirectories();
-            const runResult = await runWithNotificationProgress(
-                vscode.l10n.t("Running interactive rebase..."),
-                async () =>
-                    runInteractiveRebaseSubmission(
-                        {
-                            executor,
-                            mutationGate,
-                            storageRoot: context.globalStorageUri?.fsPath,
-                            gitDir: directories.gitDir,
-                            commonDir: directories.commonDir,
-                            hasWholeIndexOperationInProgress: () =>
-                                gitOps.hasWholeIndexOperationInProgress(),
-                            helperScriptPath: context.asAbsolutePath(
-                                "dist/interactive-rebase-editor-helper.cjs",
-                            ),
-                        },
-                        result,
-                    ),
-            );
-            await showInteractiveRebaseSubmissionRunResult(
-                runResult,
-                () => refreshService().refreshAll(),
-                {
-                    forcePush: (manifest) =>
-                        forcePushRebasedHead(
+            try {
+                const result = await rebaseSubmissionHandler.submit(
+                    { requestId, entries },
+                    originProvider,
+                );
+                if (result.status === "rejected") {
+                    showInteractiveRebaseSubmissionRejection(result.reason);
+                    return;
+                }
+                const directories = await gitOps.getGitDirectories();
+                const runResult = await runWithNotificationProgress(
+                    vscode.l10n.t("Running interactive rebase..."),
+                    async () =>
+                        runInteractiveRebaseSubmission(
                             {
                                 executor,
                                 mutationGate,
-                                storageRoot: context.globalStorageUri?.fsPath ?? "",
+                                storageRoot: context.globalStorageUri?.fsPath,
+                                gitDir: directories.gitDir,
                                 commonDir: directories.commonDir,
+                                hasWholeIndexOperationInProgress: () =>
+                                    gitOps.hasWholeIndexOperationInProgress(),
+                                helperScriptPath: context.asAbsolutePath(
+                                    "dist/interactive-rebase-editor-helper.cjs",
+                                ),
                             },
-                            manifest,
+                            result,
                         ),
-                    dismiss: (manifest) =>
-                        dismissRebasePushOffer(context.globalStorageUri?.fsPath ?? "", manifest),
-                },
-            );
+                );
+                await showInteractiveRebaseSubmissionRunResult(
+                    runResult,
+                    () => refreshService().refreshAll(),
+                    {
+                        forcePush: (manifest) =>
+                            forcePushRebasedHead(
+                                {
+                                    executor,
+                                    mutationGate,
+                                    storageRoot: context.globalStorageUri?.fsPath ?? "",
+                                    commonDir: directories.commonDir,
+                                },
+                                manifest,
+                            ),
+                        dismiss: (manifest) =>
+                            dismissRebasePushOffer(
+                                context.globalStorageUri?.fsPath ?? "",
+                                manifest,
+                            ),
+                    },
+                );
+            } catch (error) {
+                const message = getErrorMessage(error);
+                console.error("Interactive rebase submission failed:", error);
+                vscode.window.showErrorMessage(
+                    vscode.l10n.t("Interactive rebase failed: {message}", { message }),
+                );
+            }
         };
     const handleRebaseDialogCancel =
         (originProvider: object) =>
@@ -346,36 +357,46 @@ export function registerRepositoryViewEvents(
         action: "continue" | "abort";
         repositoryRoot?: string;
     }): Promise<void> => {
-        const repoRoot = repositoryRoot ?? getRepoRoot();
-        const scopedGitOps = repoRoot === getRepoRoot() ? gitOps : gitOps.deriveFor(repoRoot);
-        const scopedExecutor =
-            repoRoot === getRepoRoot() ? executor : new GitExecutor(repoRoot, mutationGate);
-        const directories = await scopedGitOps.getGitDirectories();
-        const dependencies = {
-            executor: scopedExecutor,
-            mutationGate,
-            storageRoot: context.globalStorageUri?.fsPath,
-            gitDir: directories.gitDir,
-            commonDir: directories.commonDir,
-            helperScriptPath: context.asAbsolutePath("dist/interactive-rebase-editor-helper.cjs"),
-        };
-        const result = await (action === "continue"
-            ? continueInteractiveRebase(dependencies, repoRoot)
-            : abortInteractiveRebase(dependencies, repoRoot));
-        await showInteractiveRebaseControlResult(result, () => refreshService().refreshAll(), {
-            forcePush: (manifest) =>
-                forcePushRebasedHead(
-                    {
-                        executor: scopedExecutor,
-                        mutationGate,
-                        storageRoot: context.globalStorageUri?.fsPath ?? "",
-                        commonDir: directories.commonDir,
-                    },
-                    manifest,
+        try {
+            const repoRoot = repositoryRoot ?? getRepoRoot();
+            const scopedGitOps = repoRoot === getRepoRoot() ? gitOps : gitOps.deriveFor(repoRoot);
+            const scopedExecutor =
+                repoRoot === getRepoRoot() ? executor : new GitExecutor(repoRoot, mutationGate);
+            const directories = await scopedGitOps.getGitDirectories();
+            const dependencies = {
+                executor: scopedExecutor,
+                mutationGate,
+                storageRoot: context.globalStorageUri?.fsPath,
+                gitDir: directories.gitDir,
+                commonDir: directories.commonDir,
+                helperScriptPath: context.asAbsolutePath(
+                    "dist/interactive-rebase-editor-helper.cjs",
                 ),
-            dismiss: (manifest) =>
-                dismissRebasePushOffer(context.globalStorageUri?.fsPath ?? "", manifest),
-        });
+            };
+            const result = await (action === "continue"
+                ? continueInteractiveRebase(dependencies, repoRoot)
+                : abortInteractiveRebase(dependencies, repoRoot));
+            await showInteractiveRebaseControlResult(result, () => refreshService().refreshAll(), {
+                forcePush: (manifest) =>
+                    forcePushRebasedHead(
+                        {
+                            executor: scopedExecutor,
+                            mutationGate,
+                            storageRoot: context.globalStorageUri?.fsPath ?? "",
+                            commonDir: directories.commonDir,
+                        },
+                        manifest,
+                    ),
+                dismiss: (manifest) =>
+                    dismissRebasePushOffer(context.globalStorageUri?.fsPath ?? "", manifest),
+            });
+        } catch (error) {
+            const message = getErrorMessage(error);
+            console.error(`Interactive rebase ${action} failed:`, error);
+            vscode.window.showErrorMessage(
+                vscode.l10n.t("Interactive rebase failed: {message}", { message }),
+            );
+        }
     };
 
     context.subscriptions.push(
@@ -501,10 +522,10 @@ export async function showInteractiveRebaseSubmissionRunResult(
 ): Promise<void> {
     switch (result.status) {
         case "completed":
+            await refresh();
             await vscode.window.showInformationMessage(
                 vscode.l10n.t("Interactive rebase completed."),
             );
-            await refresh();
             return;
         case "completed-pending-push": {
             await refresh();
@@ -570,6 +591,9 @@ export async function showInteractiveRebaseSubmissionRunResult(
                     message: interactiveRebaseRunFailureMessage(result),
                 }),
             );
+            return;
+        default:
+            return assertNeverInteractiveRebaseRunResult(result);
     }
 }
 
@@ -619,6 +643,7 @@ export async function showInteractiveRebaseControlResult(
                 );
                 return;
             case "completed":
+                await refreshOnce();
                 await vscode.window.showInformationMessage(
                     vscode.l10n.t("Interactive rebase completed."),
                 );
@@ -698,4 +723,10 @@ function assertNeverForcePushResult(result: never): never {
 function assertNeverInteractiveRebaseControlResult(result: never): never {
     void result;
     throw new Error("Unhandled interactive rebase control result.");
+}
+
+/** Makes a newly added runner outcome a compile-time exhaustiveness error. */
+function assertNeverInteractiveRebaseRunResult(result: never): never {
+    void result;
+    throw new Error("Unhandled interactive rebase run result.");
 }

@@ -498,16 +498,14 @@ describe("UndockedViewProvider commit-message generation", () => {
 
     it("invalidates a selected root removed from the repository catalog", async () => {
         const { coordinator, gitOps, provider } = await createProvider();
-        const pendingWholeIndexState = createDeferred<boolean>();
-        gitOps.rootGitOps.hasWholeIndexOperationInProgress.mockImplementationOnce(
-            () => pendingWholeIndexState.promise,
-        );
+        const pendingOperation = createDeferred<"none">();
+        gitOps.rootGitOps.getActiveOperation.mockImplementationOnce(() => pendingOperation.promise);
 
         const refresh = (
             provider as unknown as { refreshCommitPanelData: () => Promise<void> }
         ).refreshCommitPanelData();
         await vi.waitFor(() =>
-            expect(gitOps.rootGitOps.hasWholeIndexOperationInProgress).toHaveBeenCalledTimes(1),
+            expect(gitOps.rootGitOps.getActiveOperation).toHaveBeenCalledTimes(1),
         );
 
         provider.setRepositories([]);
@@ -516,7 +514,7 @@ describe("UndockedViewProvider commit-message generation", () => {
             (provider as unknown as { selectedRepositoryRoot: string }).selectedRepositoryRoot,
         ).toBe("/repo-a");
 
-        pendingWholeIndexState.resolve(false);
+        pendingOperation.resolve("none");
         await refresh;
 
         expect(postMessage).not.toHaveBeenCalledWith(expect.objectContaining({ type: "update" }));
@@ -688,7 +686,7 @@ describe("UndockedViewProvider commit-message generation", () => {
         repoBGitOps.listStashes.mockResolvedValue([{ index: 3 }]);
         repoBGitOps.getStashFiles.mockResolvedValue([{ path: "stash/b.ts", status: "M" }]);
         repoBGitOps.hasAnyCommits.mockResolvedValue(false);
-        repoBGitOps.hasWholeIndexOperationInProgress.mockResolvedValue(true);
+        repoBGitOps.getActiveOperation.mockResolvedValue("merge");
 
         provider.setRepositoryRootUri({ fsPath: "/repo-b", path: "/repo-b" } as never);
         await (
@@ -703,7 +701,7 @@ describe("UndockedViewProvider commit-message generation", () => {
         expect(repoBGitOps.getRemotes).toHaveBeenCalledTimes(1);
         expect(repoBGitOps.getStashFiles).toHaveBeenCalledWith(3);
         expect(repoBGitOps.hasAnyCommits).toHaveBeenCalledTimes(1);
-        expect(repoBGitOps.hasWholeIndexOperationInProgress).toHaveBeenCalledTimes(1);
+        expect(repoBGitOps.getActiveOperation).toHaveBeenCalledTimes(1);
         expect(postMessage).toHaveBeenCalledWith(
             expect.objectContaining({
                 type: "update",
@@ -731,35 +729,33 @@ describe("UndockedViewProvider commit-message generation", () => {
         provider.dispose();
     });
 
-    it("awaits whole-index state for refresh and successful stash updates, surfacing a stash predicate failure", async () => {
+    it("awaits the operation snapshot for refresh and successful stash updates, surfacing a snapshot failure", async () => {
         const { gitOps, provider } = await createProvider();
         await (
             provider as unknown as { refreshCommitPanelData: () => Promise<void> }
         ).refreshCommitPanelData();
-        expect(gitOps.rootGitOps.hasWholeIndexOperationInProgress).toHaveBeenCalledTimes(1);
+        expect(gitOps.rootGitOps.getActiveOperation).toHaveBeenCalledTimes(1);
         expect(postMessage).toHaveBeenCalledWith(
             expect.objectContaining({ type: "update", wholeIndexOperationInProgress: false }),
         );
 
         postMessage.mockClear();
-        const pendingWholeIndexState = createDeferred<boolean>();
-        gitOps.rootGitOps.hasWholeIndexOperationInProgress.mockImplementationOnce(
-            () => pendingWholeIndexState.promise,
-        );
+        const pendingOperation = createDeferred<"merge">();
+        gitOps.rootGitOps.getActiveOperation.mockImplementationOnce(() => pendingOperation.promise);
         const selectStash = send({ type: "stashSelect", index: 0 });
         await vi.waitFor(() =>
-            expect(gitOps.rootGitOps.hasWholeIndexOperationInProgress).toHaveBeenCalledTimes(1),
+            expect(gitOps.rootGitOps.getActiveOperation).toHaveBeenCalledTimes(2),
         );
         expect(postMessage).not.toHaveBeenCalledWith(
             expect.objectContaining({ type: "update", wholeIndexOperationInProgress: true }),
         );
-        pendingWholeIndexState.resolve(true);
+        pendingOperation.resolve("merge");
         await selectStash;
         expect(postMessage).toHaveBeenCalledWith(
             expect.objectContaining({ type: "update", wholeIndexOperationInProgress: true }),
         );
 
-        gitOps.rootGitOps.hasWholeIndexOperationInProgress.mockRejectedValueOnce(
+        gitOps.rootGitOps.getActiveOperation.mockRejectedValueOnce(
             new Error("whole-index failed"),
         );
         await send({ type: "stashSelect", index: 0 });
@@ -772,17 +768,15 @@ describe("UndockedViewProvider commit-message generation", () => {
     it("drops a stale stash update when the repository switches away and back mid-select", async () => {
         const { gitOps, provider } = await createProvider();
         postMessage.mockClear();
-        const pendingWholeIndexState = createDeferred<boolean>();
-        gitOps.rootGitOps.hasWholeIndexOperationInProgress.mockImplementationOnce(
-            () => pendingWholeIndexState.promise,
-        );
+        const pendingOperation = createDeferred<"none">();
+        gitOps.rootGitOps.getActiveOperation.mockImplementationOnce(() => pendingOperation.promise);
         const selectStash = send({ type: "stashSelect", index: 0 });
         await vi.waitFor(() =>
-            expect(gitOps.rootGitOps.hasWholeIndexOperationInProgress).toHaveBeenCalledTimes(1),
+            expect(gitOps.rootGitOps.getActiveOperation).toHaveBeenCalledTimes(1),
         );
         provider.setRepositoryRootUri({ fsPath: "/repo-b", path: "/repo-b" } as never);
         provider.setRepositoryRootUri({ fsPath: "/repo-a", path: "/repo-a" } as never);
-        pendingWholeIndexState.resolve(false);
+        pendingOperation.resolve("none");
         await selectStash;
         expect(postMessage).not.toHaveBeenCalledWith(expect.objectContaining({ type: "update" }));
         provider.dispose();

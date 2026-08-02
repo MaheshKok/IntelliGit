@@ -330,5 +330,6 @@
     "rebase.action.squash": "まとめる",
     "rebase.action.fixup": "修正",
     "rebase.action.continueRebase": "リベースを続行",
-    "rebase.action.abortRebase": "リベースを中止"
+    "rebase.action.abortRebase": "リベースを中止",
+    "rebase.dialog.missingMessage": "次のコミットにはコミットメッセージが必要です: {hashes}"
 }

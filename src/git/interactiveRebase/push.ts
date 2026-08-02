@@ -2,11 +2,10 @@ import { rm } from "node:fs/promises";
 import type { GitExecutor } from "../executor";
 import type { RepositoryMutationGate } from "../repositoryMutationGate";
 import { errorMessage, readGitText } from "./gitText";
+import { isLowerCaseFullObjectId } from "./objectId";
 import { REMOTE_HEAD_REF, SAFE_REMOTE_NAME } from "./remoteTarget";
 import { getRebaseStoragePaths, writeRebaseManifest } from "./storage";
 import type { RebasePushTarget, RebaseSessionManifest } from "./types";
-
-const FULL_OBJECT_ID = /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/;
 
 /** Resolves untrusted upstream fields into an all-or-none force-push target. */
 export function resolveRebasePushTarget(candidate: unknown): RebasePushTarget | undefined {
@@ -18,7 +17,7 @@ export function resolveRebasePushTarget(candidate: unknown): RebasePushTarget | 
         typeof remoteHeadRef !== "string" ||
         !REMOTE_HEAD_REF.test(remoteHeadRef) ||
         typeof upstreamOid !== "string" ||
-        !FULL_OBJECT_ID.test(upstreamOid)
+        !isLowerCaseFullObjectId(upstreamOid)
     ) {
         return undefined;
     }
@@ -93,7 +92,9 @@ export async function forcePushRebasedHead(
     return dependencies.mutationGate.run(manifest.repoRoot, dependencies.commonDir, async () => {
         try {
             const [branch, head] = await Promise.all([
-                readGitText(dependencies.executor, ["symbolic-ref", "--quiet", "HEAD"]),
+                readGitText(dependencies.executor, ["symbolic-ref", "--quiet", "HEAD"], {
+                    expectedExitCodes: [0, 1],
+                }),
                 readGitText(dependencies.executor, ["rev-parse", "HEAD"]),
             ]);
             if (branch !== manifest.branch) return { status: "branch-moved" } as const;

@@ -108,7 +108,7 @@ Findings:
 
 ### Claude's response (disposition ledger)
 
-#33 claim verified (AGENTS.md:65 "Impeccable Frontend Workflow"; earlier partial read missed it). #27 confirmed against git -z semantics. All 9 accepted.
+\#33 claim verified (AGENTS.md:65 "Impeccable Frontend Workflow"; earlier partial read missed it). \#27 confirmed against git -z semantics. All 9 accepted.
 
 - #25 FIXED — Approach 4/5: pending request + checks gain expectedBranch (exact ref equality) at submit AND inside the gate; same-tip branch-switch regression test added.
 - #26 FIXED (conservative variant) — Approach 8: manifest-without-dir + moved HEAD is ALWAYS ambiguous — notice + explicit discard action; force-push offer armed exclusively by the live success path the extension witnessed; reconciliation never arms it.
@@ -1461,7 +1461,7 @@ Five mutants on `push.ts`, all killed, each by the scenario built for it: **A** 
 
 The discriminating mutant has to be one both layers agree on. **Mutant F** changes production *and* the mock's expectation together: lease bare instead of pinned. That is the failure a mock-only suite structurally cannot catch — prod and mock agreeing on a string Git does not honour the way both assume. Result:
 
-```
+```text
 integration RC=1   mocked pushOffer RC=0
 MUTANT F: KILLED by the real remote ONLY — mocks green. Layer proven.
 ```
@@ -1513,7 +1513,7 @@ Seven mutants. Each ran against the real-Git suite **and** both mocked suites th
 
 G is the one that matters. A, B, C2 and E all die to the mocked suites because `reconcile.test.ts:329-334` writes its own `.git/rebase-merge` fixture by hand and reads it back through the real gatherer — real coverage, but only against files written by whoever wrote the reader. G makes production and that hand-written fixture share the *same* wrong assumption (`head_name` in both):
 
-```
+```text
 real-Git RC=1   mocked RC=0
 MUTANT G: KILLED by real Git ONLY — mocks green. Layer proven.
 ```
@@ -1577,7 +1577,7 @@ Two rounds, because the first round's verdict was an artifact of finding 3.
 
 **Round 2** (after the unit tests): A, B, C, D all killed by both layers. Only **E** — production and the unit suite's hand-made fixture agreeing on `rebase-merged`, a name Git never writes — is killed by real Git alone.
 
-```
+```text
 MUTANT E: real RC=1 mocked RC=0 -> KILLED by real Git ONLY - mocks green. LAYER PROVEN.
 ```
 
@@ -1644,7 +1644,7 @@ Storage-root parity confirmed at the wiring layer: `repositoryMode.ts:308` (dock
 
 One targeted mutant, aimed at fix round 1's core deliverable: drop `...(liveManifest ? { liveManifest } : {})` from the shared module's `deriveRebaseControl` call — exactly the divergence the review rejected.
 
-```
+```text
 MUTANT (no liveManifest): RC=1 -> Tests 1 failed | 216 passed (217)
 ```
 
@@ -1689,7 +1689,7 @@ BASE_HEAD `f1ee86b3`. SID `019fc360-89e7-7e90-a1d3-318919b7dd42`, `gpt-5.6-terra
 
 Scoping this phase started by testing its cheapest load-bearing unknown instead of writing the work order first. `GitOps.abortMerge` decided its command with `rev-parse --verify REBASE_HEAD` and friends; `getActiveOperation` decided the same thing from the on-disk marker set; the doc comment asserted the two agreed. Against real Git 2.50.1 they do not:
 
-```
+```text
 git rebase <branch>                    # conflicts
 <resolve>; git add .; git rebase --continue    # completes
 ```
@@ -1721,7 +1721,7 @@ Reverting **only** production to `f1ee86b3` and rerunning the new suite: `Tests 
 
 Then the mandated consistent-mistake mutant, which this time needed no invention: revert production **and** its mocked suite together to `f1ee86b3` — the repository's own history is the consistent mistake.
 
-```
+```text
 MOCKED  suite: RC=0  Tests  44 passed (44)
 REAL-GIT suite: RC=1  Tests  1 failed | 5 passed (6)
 -> KILLED by real Git ONLY, mocks green. LAYER PROVEN.
@@ -1771,7 +1771,7 @@ Triage, reading the code for each rather than trusting the label:
 
 The claim that the effect version committed a stale frame is a timing claim, so it was measured rather than cited. `frameprobe.py` instrumented both variants identically — a dependency-free `useLayoutEffect` recording the row hashes present in the document at every commit — ran the same offered-range change against each, and restored the file verified by SHA-256:
 
-```
+```text
 fixed  (render-phase): commits=1 frames=['ca']
 effect (HEAD)       : commits=2 frames=['ac', 'ca']
 ```
@@ -1793,7 +1793,7 @@ The fix introduced one new warning worth naming rather than hiding: `:40` "State
 | `react-doctor` | rc=0 — 85/100, 0 errors (from rc=1, 83/100, 1 error) |
 | `build` | rc=0, 1s |
 | `build:prod` | rc=0, 1s |
-| `test` | rc=0, 324s — **2596/2596 across 162 files** |
+| `VITEST_MAX_THREADS=3 VITEST_MIN_THREADS=1 bun run test` | rc=0, 324s — **2596/2596 across 162 files** |
 | `l10n:validate` | rc=0 |
 | `l10n:audit` | rc=0 — 9 candidates, all pre-existing, none in this feature's files |
 | `knip` (`deps:check:strict`) | rc=0, no output |
@@ -1838,4 +1838,4 @@ Every PLAN step is implemented, verified, and committed on `feat/interactive-reb
 - The nvm `codex` install is broken; `/Users/maheshkokare/.bun/bin/codex` (0.144.1) is the working one.
 - `SEAL_MODE=shadow` cannot produce its go/no-go datum in a single-reviewer configuration.
 
-**Before release:** Windows editor-invocation verification, then a `security-reviewer` pass, then the version bump that converts `## [Unreleased]` into a numbered heading.
+This branch neither includes nor schedules release work. Any future versioning and the Windows editor-invocation and `security-reviewer` release gates are owned separately.

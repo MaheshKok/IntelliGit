@@ -147,7 +147,7 @@ describe("ToolbarIconButton", () => {
 
         const foreign = renderToolbar("rebase", "foreign");
         expect(foreign.container.textContent).not.toContain("Continue Rebase");
-        expect(foreign.container.textContent).toContain("Abort Rebase");
+        expect(foreign.container.textContent).not.toContain("Abort Rebase");
         expect(foreign.container.textContent).not.toContain("Abort Merge");
         unmount(foreign.root, foreign.container);
 

@@ -6,9 +6,9 @@
 import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { REBASE_SESSION_MARKER, type EditorRole } from "./editorCommand";
+import { isLowerCaseFullObjectId, normalizeFullObjectId } from "./objectId";
 
 const ACTIONS = new Set(["pick", "reword", "squash", "fixup", "drop"]);
-const FULL_OBJECT_ID = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
 
 interface Invocation {
     editorPath: string;
@@ -168,11 +168,7 @@ function readPreparedMessages(pathname: string): Record<string, PreparedMessage>
         if (!isRecord(parsed)) return undefined;
         const messages: Record<string, PreparedMessage> = {};
         for (const [hash, value] of Object.entries(parsed)) {
-            if (
-                !FULL_OBJECT_ID.test(hash) ||
-                hash !== hash.toLowerCase() ||
-                !isPreparedMessage(value)
-            ) {
+            if (!isLowerCaseFullObjectId(hash) || !isPreparedMessage(value)) {
                 return undefined;
             }
             messages[hash] = value;
@@ -193,8 +189,9 @@ function readTodo(pathname: string): TodoStep[] | undefined {
         const trimmed = line.trim();
         if (trimmed.length === 0 || trimmed.startsWith("#")) continue;
         const [action, hash] = trimmed.split(/\s+/, 3);
-        if (!ACTIONS.has(action) || !FULL_OBJECT_ID.test(hash ?? "")) return undefined;
-        steps.push({ action, hash: hash.toLowerCase() });
+        const normalizedHash = normalizeFullObjectId(hash);
+        if (!ACTIONS.has(action) || !normalizedHash) return undefined;
+        steps.push({ action, hash: normalizedHash });
     }
     return steps;
 }
@@ -224,8 +221,9 @@ function parseDoneTail(contents: string): TodoStep | undefined {
         const tail = lines[index].trim();
         if (tail.length === 0 || tail.startsWith("#")) continue;
         const [action, hash] = tail.split(/\s+/, 3);
-        if (!ACTIONS.has(action) || !FULL_OBJECT_ID.test(hash ?? "")) return undefined;
-        return { action, hash: hash.toLowerCase() };
+        const normalizedHash = normalizeFullObjectId(hash);
+        if (!ACTIONS.has(action) || !normalizedHash) return undefined;
+        return { action, hash: normalizedHash };
     }
     return undefined;
 }

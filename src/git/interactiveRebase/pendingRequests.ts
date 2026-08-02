@@ -2,12 +2,11 @@ import * as crypto from "node:crypto";
 import type {
     PendingRebaseDialogConsumeResult,
     PendingRebaseDialogRequest,
-    PendingRebaseDialogRequestInput,
     PendingRebaseDialogRequestRegistryOptions,
     PendingRebaseDialogRequests,
 } from "./types";
 
-const REQUEST_TIMEOUT_MS = 5 * 60 * 1_000;
+const REQUEST_TIMEOUT_MS = 30 * 60 * 1_000;
 
 type StoredRequest = {
     request: PendingRebaseDialogRequest;
@@ -34,13 +33,6 @@ export function createPendingRebaseDialogRequests(
         }
     };
 
-    const hasSameOriginAndRoot = (
-        stored: StoredRequest,
-        request: PendingRebaseDialogRequestInput,
-    ): boolean =>
-        stored.request.originProvider === request.originProvider &&
-        stored.request.repoRoot === request.repoRoot;
-
     const freezeRequest = (request: PendingRebaseDialogRequest): PendingRebaseDialogRequest =>
         Object.freeze({
             ...request,
@@ -50,9 +42,6 @@ export function createPendingRebaseDialogRequests(
     return {
         register(request) {
             expireRequests();
-            for (const [requestId, stored] of requests) {
-                if (hasSameOriginAndRoot(stored, request)) requests.delete(requestId);
-            }
             const requestId = crypto.randomUUID();
             requests.set(requestId, {
                 request: freezeRequest({ ...request, requestId }),

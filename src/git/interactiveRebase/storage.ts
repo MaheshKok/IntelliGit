@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, open, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { isLowerCaseFullObjectId } from "./objectId";
 import { REMOTE_HEAD_REF, SAFE_REMOTE_NAME } from "./remoteTarget";
 import type {
     RebaseManifestAmbiguousReason,
@@ -18,7 +19,6 @@ import type {
 const SESSION_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
 // Lowercase-only: Git emits lowercase object IDs and submission validation normalizes to
 // lowercase, so an uppercase ID in a manifest can never equal a later `git rev-parse` result.
-const FULL_OBJECT_ID = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
 const LIFECYCLES = new Set<RebaseSessionLifecycle>([
     "starting",
     "running",
@@ -407,9 +407,15 @@ function validateManifest(manifest: RebaseSessionManifest): ManifestValidationEr
         return "invalid-schema";
     }
     if (typeof manifest.hasPushedCommit !== "boolean") return "invalid-schema";
-    if (!isFullObjectId(manifest.baseHash) || !isFullObjectId(manifest.expectedHead))
+    if (
+        !isLowerCaseFullObjectId(manifest.baseHash) ||
+        !isLowerCaseFullObjectId(manifest.expectedHead)
+    )
         return "invalid-schema";
-    if (manifest.rebasedHeadOid !== undefined && !isFullObjectId(manifest.rebasedHeadOid)) {
+    if (
+        manifest.rebasedHeadOid !== undefined &&
+        !isLowerCaseFullObjectId(manifest.rebasedHeadOid)
+    ) {
         return "invalid-schema";
     }
     if (!isNonEmptyString(manifest.createdAt) || !Number.isFinite(Date.parse(manifest.createdAt))) {
@@ -428,7 +434,7 @@ function isPushTarget(value: unknown): value is RebasePushTarget {
         SAFE_REMOTE_NAME.test(value.remoteName) &&
         typeof value.remoteHeadRef === "string" &&
         REMOTE_HEAD_REF.test(value.remoteHeadRef) &&
-        isFullObjectId(value.upstreamOid) &&
+        isLowerCaseFullObjectId(value.upstreamOid) &&
         Object.keys(value).length === 3
     );
 }
@@ -443,10 +449,6 @@ function isNonEmptyString(value: unknown): value is string {
 
 function isFullyQualifiedRef(value: unknown): value is string {
     return isNonEmptyString(value) && value.startsWith("refs/");
-}
-
-function isFullObjectId(value: unknown): value is string {
-    return typeof value === "string" && FULL_OBJECT_ID.test(value);
 }
 
 function isSafeSessionId(value: unknown): value is string {

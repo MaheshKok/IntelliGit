@@ -351,5 +351,6 @@
     "rebase.action.squash": "Объединить",
     "rebase.action.fixup": "Исправление",
     "rebase.action.continueRebase": "Продолжить rebase",
-    "rebase.action.abortRebase": "Прервать rebase"
+    "rebase.action.abortRebase": "Прервать rebase",
+    "rebase.dialog.missingMessage": "Для следующих коммитов требуется сообщение коммита: {hashes}"
 }

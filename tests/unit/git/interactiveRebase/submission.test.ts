@@ -11,7 +11,9 @@ const HASH_C = "c".repeat(40);
 const BRANCH = "refs/heads/main";
 // "🎉" is 2 UTF-16 code units but 4 UTF-8 bytes: a naive `.length` cap would under-count this
 // message by half, so these fixtures prove the validator measures real UTF-8 bytes.
-const MESSAGE_AT_CAP = "\u{1F389}".repeat(MAX_INTERACTIVE_REBASE_MESSAGE_BYTES / 4);
+const MESSAGE_AT_CAP =
+    "\u{1F389}".repeat(Math.floor(MAX_INTERACTIVE_REBASE_MESSAGE_BYTES / 4)) +
+    "a".repeat(MAX_INTERACTIVE_REBASE_MESSAGE_BYTES % 4);
 const MESSAGE_OVER_CAP = `${MESSAGE_AT_CAP}a`;
 
 type GitResponse = string | Error | readonly (string | Error)[];
@@ -24,7 +26,7 @@ function executorFor(overrides: Record<string, GitResponse> = {}): GitExecutor {
         "bisect log": new Error("not bisecting"),
         [`rev-list --parents -n 1 --end-of-options ${HASH_A}`]: `${HASH_A} ${HASH_B}\n`,
         [`merge-base --is-ancestor --end-of-options ${HASH_A} HEAD`]: "",
-        "status --porcelain=v1 -z -uall": "",
+        "status --porcelain=v1 -z -uno": "",
         [`rev-list --parents --end-of-options ${HASH_A}^..HEAD`]: `${HASH_B} ${HASH_A}\n${HASH_A}\n`,
         ...overrides,
     };
@@ -38,7 +40,8 @@ function executorFor(overrides: Record<string, GitResponse> = {}): GitExecutor {
             return value;
         }),
         runBinary: vi.fn(async (args: string[]) => {
-            if (args[0] !== "for-each-ref") throw new Error(`Unexpected Git binary command: ${args.join(" ")}`);
+            if (args[0] !== "for-each-ref")
+                throw new Error(`Unexpected Git binary command: ${args.join(" ")}`);
             return {
                 stdout: Buffer.from("\0\0"),
                 stderr: Buffer.alloc(0),
@@ -114,7 +117,9 @@ describe("interactive rebase submission handler", () => {
         });
         const { handler, origin, requestId } = setup({ executor });
 
-        await expect(handler.submit({ requestId, entries: validEntries() }, origin)).resolves.toMatchObject({
+        await expect(
+            handler.submit({ requestId, entries: validEntries() }, origin),
+        ).resolves.toMatchObject({
             status: "accepted",
             request: {
                 pushTarget: {
@@ -296,7 +301,7 @@ describe("interactive rebase submission handler", () => {
         ],
         [
             "dirty working tree",
-            { "status --porcelain=v1 -z -uall": " M tracked.txt\0" },
+            { "status --porcelain=v1 -z -uno": " M tracked.txt\0" },
             "working-tree-dirty",
         ],
         [
@@ -308,7 +313,7 @@ describe("interactive rebase submission handler", () => {
         ],
         [
             "guard git error",
-            { "status --porcelain=v1 -z -uall": new Error("status failed") },
+            { "status --porcelain=v1 -z -uno": new Error("status failed") },
             "git-error",
         ],
     ] as const)(

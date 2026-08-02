@@ -1241,9 +1241,9 @@ export class UndockedViewProvider {
                         postUpdate: async (message) => {
                             // The selected-root check after this await prevents stale updates.
                             // react-doctor-disable-next-line react-doctor/async-defer-await
-                            const [hasCommits, wholeIndexOperationInProgress] = await Promise.all([
+                            const [hasCommits, operation] = await Promise.all([
                                 stashGitOps.hasAnyCommits(),
-                                stashGitOps.hasWholeIndexOperationInProgress(),
+                                this.operationSnapshotFor(stashGitOps, stashRepositoryRoot),
                             ]);
                             if (
                                 this.selectedRepositoryRoot !== stashRepositoryRoot ||
@@ -1258,7 +1258,8 @@ export class UndockedViewProvider {
                                 catalogGeneration: this.catalogGeneration,
                                 selectedShelfId: this.selectedShelfId,
                                 hasCommits,
-                                wholeIndexOperationInProgress,
+                                wholeIndexOperationInProgress: operation.activeOperation !== "none",
+                                ...operation,
                             });
                         },
                     },
@@ -1739,9 +1740,8 @@ export class UndockedViewProvider {
             if (!canUpdate()) return;
             // The post-await root guard prevents stale refresh data from being published.
             // react-doctor-disable-next-line react-doctor/async-defer-await
-            const [hasCommits, wholeIndexOperationInProgress, operation] = await Promise.all([
+            const [hasCommits, operation] = await Promise.all([
                 rootGitOps.hasAnyCommits(),
-                rootGitOps.hasWholeIndexOperationInProgress(),
                 this.operationSnapshotFor(rootGitOps, repositoryRoot),
             ]);
             if (!canUpdate()) return;
@@ -1780,7 +1780,7 @@ export class UndockedViewProvider {
                 currentBranchName: currentBranchStatus.name,
                 currentBranchUpstream: currentBranchStatus.upstream,
                 hasCommits,
-                wholeIndexOperationInProgress,
+                wholeIndexOperationInProgress: operation.activeOperation !== "none",
                 ...operation,
             });
         } finally {

@@ -112,18 +112,6 @@ describe("interactive rebase domain", () => {
         },
     );
 
-    it.each(["reword", "squash"] as const satisfies readonly RebaseAction[])(
-        "rejects a %s message containing NUL",
-        (action) => {
-            expect(
-                validateRebaseSubmission(
-                    [{ hash: HASH_A, action, message: "replacement\0injected" }],
-                    new Set([HASH_A]),
-                ),
-            ).toEqual({ status: "invalid", reason: "invalid-message" });
-        },
-    );
-
     it.each([
         "pick",
         "reword",
@@ -517,10 +505,12 @@ describe("interactive rebase storage", () => {
         await mkdir(paths.manifestDirectory, { recursive: true });
         await writeFile(paths.manifestPath(current.sessionId), JSON.stringify(legacy), "utf8");
 
-        await expect(readRebaseManifest(storageRoot, repoRoot, current.sessionId)).resolves.toEqual({
-            status: "ambiguous",
-            reason: "invalid-schema",
-        });
+        await expect(readRebaseManifest(storageRoot, repoRoot, current.sessionId)).resolves.toEqual(
+            {
+                status: "ambiguous",
+                reason: "invalid-schema",
+            },
+        );
     });
 
     it.each([

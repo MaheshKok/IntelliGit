@@ -35,17 +35,20 @@ vi.mock("../../../src/git/interactiveRebase/guards", () => ({
     evaluateInteractiveRebaseGuards: vi.fn(),
 }));
 
-vi.mock("../../../src/git/interactiveRebase/range", () => ({
-    loadInteractiveRebaseRange: vi.fn(),
-    MAX_INTERACTIVE_REBASE_RANGE_COMMITS: 500,
-}));
+vi.mock("../../../src/git/interactiveRebase/range", async (importOriginal) => {
+    const actual = await importOriginal<typeof import("../../../src/git/interactiveRebase/range")>();
+    return { ...actual, loadInteractiveRebaseRange: vi.fn() };
+});
 
 import * as vscode from "vscode";
 import { interactiveRebaseFromHere } from "../../../src/commands/commitHistoryActions";
 import type { CommitActionContext } from "../../../src/commands/commitActionContext";
 import { evaluateInteractiveRebaseGuards } from "../../../src/git/interactiveRebase/guards";
 import { createPendingRebaseDialogRequests } from "../../../src/git/interactiveRebase/pendingRequests";
-import { loadInteractiveRebaseRange } from "../../../src/git/interactiveRebase/range";
+import {
+    loadInteractiveRebaseRange,
+    MAX_INTERACTIVE_REBASE_RANGE_COMMITS,
+} from "../../../src/git/interactiveRebase/range";
 import type { InteractiveRebaseRangeCommit } from "../../../src/git/interactiveRebase/types";
 import type { GitExecutor } from "../../../src/git/executor";
 import type { GitOps } from "../../../src/git/operations";
@@ -166,7 +169,10 @@ describe("interactiveRebaseFromHere", () => {
     it.each([
         ["invalid-base-hash", "Interactive Rebase from Here received an invalid selected commit."],
         ["invalid-head-hash", "Interactive Rebase from Here could not resolve the current HEAD."],
-        ["range-too-large", "Interactive Rebase from Here supports at most 500 commits at once."],
+        [
+            "range-too-large",
+            `Interactive Rebase from Here supports at most ${MAX_INTERACTIVE_REBASE_RANGE_COMMITS} commits at once.`,
+        ],
         ["invalid-range-count", "Interactive Rebase from Here could not count the selected range."],
         ["empty-range", "Interactive Rebase from Here found no commits to rebase."],
         [

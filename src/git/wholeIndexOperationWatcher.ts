@@ -11,6 +11,7 @@ export const WHOLE_INDEX_OPERATION_MARKERS = [
     "MERGE_HEAD",
     "CHERRY_PICK_HEAD",
     "REVERT_HEAD",
+    "sequencer",
     "rebase-merge",
     "rebase-apply",
 ] as const;

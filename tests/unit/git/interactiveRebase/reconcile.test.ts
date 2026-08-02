@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { REBASE_SESSION_MARKER } from "../../../../src/git/interactiveRebase/editorCommand";
 import {
     gatherRebaseReconciliationEvidence,
     reconcileRebaseSessions,
@@ -328,7 +329,7 @@ describe("gatherRebaseReconciliationEvidence", () => {
         const rebaseDirectory = path.join(gitDir, "rebase-merge");
         await mkdir(rebaseDirectory);
         await Promise.all([
-            writeFile(path.join(rebaseDirectory, "intelligit-session"), live.sessionId + "\n"),
+            writeFile(path.join(rebaseDirectory, REBASE_SESSION_MARKER), live.sessionId + "\n"),
             writeFile(path.join(rebaseDirectory, "head-name"), live.branch + "\n"),
             writeFile(path.join(rebaseDirectory, "onto"), live.baseHash + "\n"),
             writeFile(path.join(rebaseDirectory, "orig-head"), live.expectedHead + "\n"),

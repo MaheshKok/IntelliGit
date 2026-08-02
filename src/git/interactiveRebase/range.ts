@@ -1,4 +1,5 @@
 import type { GitExecutor } from "../executor";
+import { isLowerCaseFullObjectId } from "./objectId";
 import type {
     InteractiveRebaseRangeCommit,
     InteractiveRebaseRangeRejectionReason,
@@ -11,7 +12,6 @@ export const MAX_INTERACTIVE_REBASE_RANGE_COMMITS = 500;
 /** Byte ceiling for one range load, so a pathological body cannot exhaust the extension host. */
 export const MAX_INTERACTIVE_REBASE_RANGE_OUTPUT_BYTES = 4 * 1024 * 1024;
 
-const FULL_OBJECT_ID = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
 const RANGE_RECORD_ARITY = 4;
 const RANGE_LOG_FORMAT = "--format=%H%x00%an%x00%aI%x00%B";
 // Git only transcodes a commit to UTF-8 when `i18n.commitEncoding` is unset; with it set (say to
@@ -45,13 +45,13 @@ export interface InteractiveRebaseRangeOptions {
  * rejects without returning a partial range.
  */
 export async function loadInteractiveRebaseRange(
-    executor: GitExecutor,
+    executor: Pick<GitExecutor, "run" | "runBinary">,
     baseHash: string,
     headHash: string,
     options: InteractiveRebaseRangeOptions = {},
 ): Promise<InteractiveRebaseRangeResult> {
-    if (!FULL_OBJECT_ID.test(baseHash)) return rejected("invalid-base-hash");
-    if (!FULL_OBJECT_ID.test(headHash)) return rejected("invalid-head-hash");
+    if (!isLowerCaseFullObjectId(baseHash)) return rejected("invalid-base-hash");
+    if (!isLowerCaseFullObjectId(headHash)) return rejected("invalid-head-hash");
     const revisionRange = `${baseHash}^..${headHash}`;
     const maxOutputBytes = options.maxOutputBytes ?? MAX_INTERACTIVE_REBASE_RANGE_OUTPUT_BYTES;
 

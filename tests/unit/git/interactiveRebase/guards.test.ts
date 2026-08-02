@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { devNull, tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -25,7 +25,7 @@ function allowedResponses(): Record<string, string | Error> {
         "symbolic-ref --quiet HEAD": "refs/heads/main\n",
         [`rev-list --parents -n 1 --end-of-options ${HASH}`]: `${HASH} ${PARENT}\n`,
         [`merge-base --is-ancestor --end-of-options ${HASH} HEAD`]: "",
-        "status --porcelain=v1 -z -uall": "",
+        "status --porcelain=v1 -z -uno": "",
         [`rev-list --parents --end-of-options ${HASH}^..HEAD`]: `${HASH} ${PARENT}\n`,
     };
 }
@@ -81,8 +81,7 @@ describe("evaluateInteractiveRebaseGuards", () => {
         [
             "a selected merge commit",
             {
-                [`rev-list --parents -n 1 --end-of-options ${HASH}`]:
-                    `${HASH} ${PARENT} ${OTHER}\n`,
+                [`rev-list --parents -n 1 --end-of-options ${HASH}`]: `${HASH} ${PARENT} ${OTHER}\n`,
             },
             "selected-merge-commit",
         ],
@@ -102,18 +101,21 @@ describe("evaluateInteractiveRebaseGuards", () => {
         ],
         [
             "a dirty working tree",
-            { "status --porcelain=v1 -z -uall": " M tracked.txt\0" },
+            { "status --porcelain=v1 -z -uno": " M tracked.txt\0" },
             "working-tree-dirty",
         ],
         [
             "a merge within the selected range",
             {
-                [`rev-list --parents --end-of-options ${HASH}^..HEAD`]:
-                    `${HASH} ${PARENT}\n${OTHER} ${PARENT} ${HASH}\n`,
+                [`rev-list --parents --end-of-options ${HASH}^..HEAD`]: `${HASH} ${PARENT}\n${OTHER} ${PARENT} ${HASH}\n`,
             },
             "range-contains-merge-commit",
         ],
-        ["an active bisect session", { "bisect log": "git bisect start\n" }, "operation-in-progress"],
+        [
+            "an active bisect session",
+            { "bisect log": "git bisect start\n" },
+            "operation-in-progress",
+        ],
     ] as const)("rejects %s", async (_name, overrides, reason) => {
         await expect(evaluate(executorFor(overrides))).resolves.toEqual({
             status: "rejected",
@@ -142,7 +144,7 @@ describe("evaluateInteractiveRebaseGuards", () => {
 
     it("fails closed when a required Git guard probe fails", async () => {
         await expect(
-            evaluate(executorFor({ "status --porcelain=v1 -z -uall": new Error("status failed") })),
+            evaluate(executorFor({ "status --porcelain=v1 -z -uno": new Error("status failed") })),
         ).resolves.toEqual({ status: "rejected", reason: "git-error" });
     });
 });
@@ -198,19 +200,22 @@ describe("evaluateInteractiveRebaseGuards against a real repository", () => {
     });
 
     it.each([
-        ["untracked-only dirt", false],
-        ["staged-only dirt", true],
-    ] as const)("rejects %s", async (_name, staged) => {
+        ["untracked-only dirt", "untracked", { status: "ok" }],
+        ["staged-only dirt", "staged", { status: "rejected", reason: "working-tree-dirty" }],
+        ["tracked dirt", "tracked", { status: "rejected", reason: "working-tree-dirty" }],
+    ] as const)("handles %s", async (_name, dirt, expected) => {
         const repo = await createRepository();
         await commit(repo, "initial");
+        if (dirt === "tracked") {
+            await writeFile(path.join(repo, "tracked.txt"), "before\n", "utf8");
+            await git(repo, ["add", "tracked.txt"]);
+        }
         const selected = await commit(repo, "second");
-        await writeFile(path.join(repo, "scratch.txt"), "dirt\n", "utf8");
-        if (staged) await git(repo, ["add", "scratch.txt"]);
+        const target = dirt === "tracked" ? "tracked.txt" : "scratch.txt";
+        await writeFile(path.join(repo, target), "dirt\n", "utf8");
+        if (dirt === "staged") await git(repo, ["add", target]);
 
-        await expect(evaluateIn(repo, selected)).resolves.toEqual({
-            status: "rejected",
-            reason: "working-tree-dirty",
-        });
+        await expect(evaluateIn(repo, selected)).resolves.toEqual(expected);
     });
 
     it("rejects a merge commit inside the selected range", async () => {
@@ -288,7 +293,12 @@ async function createRepository(): Promise<string> {
 }
 
 async function git(repo: string, args: string[]): Promise<string> {
-    return (await execFileAsync("git", args, { cwd: repo })).stdout;
+    return (
+        await execFileAsync("git", ["-c", "commit.gpgSign=false", ...args], {
+            cwd: repo,
+            env: { ...process.env, GIT_CONFIG_GLOBAL: devNull, GIT_CONFIG_NOSYSTEM: "1" },
+        })
+    ).stdout;
 }
 
 async function commit(repo: string, subject: string): Promise<string> {

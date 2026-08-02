@@ -1,7 +1,6 @@
 import type { GitExecutor } from "../executor";
+import { isLowerCaseFullObjectId } from "./objectId";
 import type { InteractiveRebaseGuardRejectionReason, InteractiveRebaseGuardResult } from "./types";
-
-const FULL_OBJECT_ID = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
 
 /** Dependencies required to evaluate the pure host-side interactive-rebase action guards. */
 export interface InteractiveRebaseGuardOptions {
@@ -32,7 +31,7 @@ export async function evaluateInteractiveRebaseGuards(
     options: InteractiveRebaseGuardOptions,
 ): Promise<InteractiveRebaseGuardResult> {
     const { executor, selectedHash, hasWholeIndexOperationInProgress } = options;
-    if (!FULL_OBJECT_ID.test(selectedHash)) return rejected("invalid-selected-hash");
+    if (!isLowerCaseFullObjectId(selectedHash)) return rejected("invalid-selected-hash");
 
     try {
         if ((await hasWholeIndexOperationInProgress()) || (await isBisecting(executor))) {
@@ -70,7 +69,7 @@ export async function evaluateInteractiveRebaseGuards(
             return rejected("commit-not-ancestor");
         }
 
-        if ((await executor.run(["status", "--porcelain=v1", "-z", "-uall"])).length > 0) {
+        if ((await executor.run(["status", "--porcelain=v1", "-z", "-uno"])).length > 0) {
             return rejected("working-tree-dirty");
         }
 

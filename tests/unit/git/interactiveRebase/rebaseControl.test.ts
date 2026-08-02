@@ -2,6 +2,7 @@ import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { supportsUnreadableDirectories } from "../../../helpers/platformCapabilities";
 import { REBASE_SESSION_MARKER } from "../../../../src/git/interactiveRebase/editorCommand";
 import {
     deriveRebaseControl,
@@ -9,6 +10,7 @@ import {
 } from "../../../../src/git/interactiveRebase/rebaseControl";
 
 const directories: string[] = [];
+const canAssertUnreadableDirectory = supportsUnreadableDirectories;
 
 afterEach(async () => {
     await Promise.all(
@@ -114,14 +116,17 @@ describe("deriveRebaseControl", () => {
         );
     });
 
-    it("fails closed when the live rebase directory is unreadable", async () => {
-        const gitDir = await gitDirectory();
-        await rebaseMerge(gitDir, "session-one\n");
-        await chmod(gitDir, 0o000);
+    it.skipIf(!canAssertUnreadableDirectory)(
+        "fails closed when the live rebase directory is unreadable",
+        async () => {
+            const gitDir = await gitDirectory();
+            await rebaseMerge(gitDir, "session-one\n");
+            await chmod(gitDir, 0o000);
 
-        await expect(deriveRebaseControl({ gitDir, liveManifest: liveManifest() })).resolves.toBe(
-            "foreign",
-        );
-        await chmod(gitDir, 0o700);
-    });
+            await expect(
+                deriveRebaseControl({ gitDir, liveManifest: liveManifest() }),
+            ).resolves.toBe("foreign");
+            await chmod(gitDir, 0o700);
+        },
+    );
 });

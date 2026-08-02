@@ -131,7 +131,7 @@ describe("undocked commit-panel operation state", () => {
         unmount(mounted.root, mounted.container);
     });
 
-    it("suppresses Abort Merge during a rebase exactly as the docked toolbar does", () => {
+    it("suppresses rebase controls during a foreign rebase exactly as the docked toolbar does", () => {
         const cpState = {
             ...initialCommitPanelState,
             files: [conflictedFile],
@@ -141,7 +141,8 @@ describe("undocked commit-panel operation state", () => {
         const mounted = renderPane(cpState);
 
         expect(mounted.container.textContent).not.toContain("Abort Merge");
-        expect(mounted.container.textContent).toContain("Abort Rebase");
+        expect(mounted.container.textContent).not.toContain("Abort Rebase");
+        expect(mounted.container.textContent).not.toContain("Continue Rebase");
         unmount(mounted.root, mounted.container);
     });
 });

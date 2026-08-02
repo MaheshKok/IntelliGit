@@ -344,5 +344,6 @@
     "rebase.action.squash": "Fusionner",
     "rebase.action.fixup": "Correction",
     "rebase.action.continueRebase": "Continuer le rebase",
-    "rebase.action.abortRebase": "Annuler le rebase"
+    "rebase.action.abortRebase": "Annuler le rebase",
+    "rebase.dialog.missingMessage": "Un message de commit est requis pour : {hashes}"
 }

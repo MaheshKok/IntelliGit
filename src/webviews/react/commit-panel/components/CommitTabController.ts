@@ -10,6 +10,7 @@ import type { MenuItem } from "../../shared/components/ContextMenu";
 import type { ShelveDialogSubmit } from "./ShelveDialog";
 import type { CommitMessageGenerationStatus } from "./CommitArea";
 import { getVsCodeApi } from "../hooks/useVsCodeApi";
+import type { CommitPanelActiveOperation, CommitPanelRebaseControl } from "./operationTypes";
 
 const MIN_REFRESH_FEEDBACK_MS = 700;
 let shelfRequestSequence = 0;
@@ -54,8 +55,8 @@ export interface CommitTabProps {
     onCancelGeneration?: () => void;
     hasCommits?: boolean;
     wholeIndexOperationInProgress?: boolean;
-    activeOperation: "none" | "merge" | "cherry-pick" | "revert" | "rebase";
-    rebaseControl: "owned" | "unowned" | "foreign" | undefined;
+    activeOperation: CommitPanelActiveOperation;
+    rebaseControl?: CommitPanelRebaseControl;
     groupByDir: boolean;
     showIgnoredFiles: boolean;
     onToggleGroupBy: () => void;
@@ -117,8 +118,8 @@ export interface CommitTabController {
     expandAllSignal: number;
     collapseAllSignal: number;
     hasMergeConflicts: boolean;
-    activeOperation: "none" | "merge" | "cherry-pick" | "revert" | "rebase";
-    rebaseControl: "owned" | "unowned" | "foreign" | undefined;
+    activeOperation: CommitPanelActiveOperation;
+    rebaseControl?: CommitPanelRebaseControl;
     isRefreshFeedbackActive: boolean;
     shelfDialogFocusRef: React.MutableRefObject<HTMLElement | null>;
     shelfMenuItems: MenuItem[];

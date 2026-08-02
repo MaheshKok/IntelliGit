@@ -1,16 +1,29 @@
 import { execFile } from "node:child_process";
 import { access, mkdtemp, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { devNull, tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { GitExecutor } from "../../../src/git/executor";
 import { GitOps } from "../../../src/git/operations";
 
 const execFileAsync = promisify(execFile);
 const directories: string[] = [];
+let originalGitConfigGlobal: string | undefined;
+let originalGitConfigNoSystem: string | undefined;
+
+beforeEach(() => {
+    originalGitConfigGlobal = process.env.GIT_CONFIG_GLOBAL;
+    originalGitConfigNoSystem = process.env.GIT_CONFIG_NOSYSTEM;
+    process.env.GIT_CONFIG_GLOBAL = devNull;
+    process.env.GIT_CONFIG_NOSYSTEM = "1";
+});
 
 afterEach(async () => {
+    if (originalGitConfigGlobal === undefined) delete process.env.GIT_CONFIG_GLOBAL;
+    else process.env.GIT_CONFIG_GLOBAL = originalGitConfigGlobal;
+    if (originalGitConfigNoSystem === undefined) delete process.env.GIT_CONFIG_NOSYSTEM;
+    else process.env.GIT_CONFIG_NOSYSTEM = originalGitConfigNoSystem;
     await Promise.all(
         directories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })),
     );
@@ -118,7 +131,7 @@ describe("GitOps.abortMerge active operation dispatch", () => {
         expect(await head(repositoryRoot)).toBe(preRebaseHead);
     });
 
-    it("uses the live merge classification after a completed rebase leaves REBASE_HEAD behind", async () => {
+    it("uses the live merge classification after a completed rebase", async () => {
         const repositoryRoot = await createRepository();
         await commitFile(repositoryRoot, "rebase.txt", "base\n", "base");
         await git(repositoryRoot, ["branch", "topic"]);
@@ -131,7 +144,8 @@ describe("GitOps.abortMerge active operation dispatch", () => {
         await git(repositoryRoot, ["add", "rebase.txt"]);
         await git(repositoryRoot, ["rebase", "--continue"]);
 
-        expect(await markerExists(repositoryRoot, "REBASE_HEAD")).toBe(true);
+        // Some Git versions retain REBASE_HEAD after --continue while others remove it. Only the
+        // rebase directories identify a live operation, so neither behavior is a test precondition.
         expect(await markerExists(repositoryRoot, "rebase-merge")).toBe(false);
         expect(await markerExists(repositoryRoot, "rebase-apply")).toBe(false);
 
@@ -157,6 +171,7 @@ async function createRepository(): Promise<string> {
     await git(repositoryRoot, ["init", "-b", "main"]);
     await git(repositoryRoot, ["config", "user.email", "integration@example.invalid"]);
     await git(repositoryRoot, ["config", "user.name", "Integration Test"]);
+    await git(repositoryRoot, ["config", "commit.gpgSign", "false"]);
     await commitFile(repositoryRoot, "initial.txt", "initial\n", "initial");
     return repositoryRoot;
 }
@@ -177,7 +192,12 @@ async function commitFile(
 async function git(repositoryRoot: string, args: readonly string[]): Promise<string> {
     const { stdout } = await execFileAsync("git", [...args], {
         cwd: repositoryRoot,
-        env: { ...process.env, GIT_EDITOR: "true" },
+        env: {
+            ...process.env,
+            GIT_CONFIG_GLOBAL: devNull,
+            GIT_CONFIG_NOSYSTEM: "1",
+            GIT_EDITOR: "true",
+        },
     });
     return stdout;
 }

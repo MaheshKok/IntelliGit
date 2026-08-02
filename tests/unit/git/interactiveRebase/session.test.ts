@@ -37,6 +37,7 @@ describe("writeInteractiveRebaseSession", () => {
                 message: "subject\n\nfirst body line\nsecond body line\n",
             },
             { hash: "c".repeat(40), action: "squash", message: "squash subject\n\nfull body" },
+            { hash: "f".repeat(40), action: "reword" },
             { hash: "d".repeat(40), action: "fixup", message: "keep out" },
             { hash: "e".repeat(40), action: "drop", message: "keep out" },
         ];
@@ -44,14 +45,12 @@ describe("writeInteractiveRebaseSession", () => {
         await writeInteractiveRebaseSession(paths, entries);
 
         await expect(readFile(paths.todoPath, "utf8")).resolves.toBe(buildRebaseTodo(entries));
-        await expect(readFile(paths.messageMapPath, "utf8")).resolves.toEqual(
-            JSON.stringify({
-                [HASH_B.toLowerCase()]: {
-                    action: "reword",
-                    message: "subject\n\nfirst body line\nsecond body line\n",
-                },
-                ["c".repeat(40)]: { action: "squash", message: "squash subject\n\nfull body" },
-            }),
-        );
+        expect(JSON.parse(await readFile(paths.messageMapPath, "utf8"))).toEqual({
+            [HASH_B.toLowerCase()]: {
+                action: "reword",
+                message: "subject\n\nfirst body line\nsecond body line\n",
+            },
+            ["c".repeat(40)]: { action: "squash", message: "squash subject\n\nfull body" },
+        });
     });
 });

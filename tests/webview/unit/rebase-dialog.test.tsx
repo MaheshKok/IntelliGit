@@ -230,9 +230,29 @@ describe("RebaseDialog", () => {
             ),
         ).toHaveProperty("disabled", true);
         expect(middle.querySelector("textarea")?.getAttribute("aria-invalid")).toBe("true");
-        expect(container.querySelector("[data-rebase-missing-message]")?.textContent).toContain(
-            commits[1].hash.slice(0, 8),
+        expect(container.querySelector("[data-rebase-missing-message]")?.textContent).toBe(
+            `A commit message is required for: ${commits[1].hash.slice(0, 8)}`,
         );
+        unmount(root, container);
+    });
+
+    it("traps Tab navigation inside the modal while retaining the initial focus target", () => {
+        const { root, container } = render();
+        const dialog = container.querySelector('[role="dialog"]') as HTMLElement;
+        const controls = Array.from(
+            dialog.querySelectorAll<HTMLElement>('button:not([disabled]), select, textarea'),
+        );
+        const first = controls[0];
+        const last = controls.at(-1) as HTMLElement;
+
+        expect(document.activeElement).toBe(
+            Array.from(container.querySelectorAll("button")).find(
+                (button) => button.textContent === "Cancel",
+            ),
+        );
+        last.focus();
+        act(() => last.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", bubbles: true })));
+        expect(document.activeElement).toBe(first);
         unmount(root, container);
     });
 

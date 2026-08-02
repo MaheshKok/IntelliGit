@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { devNull, tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -389,7 +389,12 @@ async function createRepository(): Promise<string> {
 }
 
 async function git(repo: string, args: string[]): Promise<string> {
-    return (await execFileAsync("git", args, { cwd: repo })).stdout;
+    return (
+        await execFileAsync("git", ["-c", "commit.gpgSign=false", ...args], {
+            cwd: repo,
+            env: { ...process.env, GIT_CONFIG_GLOBAL: devNull, GIT_CONFIG_NOSYSTEM: "1" },
+        })
+    ).stdout;
 }
 
 async function commit(repo: string, body: string): Promise<string> {

@@ -5,6 +5,7 @@ import type {
     RebaseSubmissionValidationResult,
     RebaseTodoEntry,
 } from "./types";
+import { normalizeFullObjectId } from "./objectId";
 
 /** Builds the fail-closed rejection result carrying the machine-readable reason code. */
 function invalid(reason: RebaseSubmissionValidationReason): RebaseSubmissionValidationResult {
@@ -15,7 +16,6 @@ function invalid(reason: RebaseSubmissionValidationReason): RebaseSubmissionVali
 export const MAX_INTERACTIVE_REBASE_MESSAGE_BYTES = 1024 * 1024;
 
 const ALLOWED_ACTIONS = new Set<RebaseAction>(["pick", "reword", "squash", "fixup", "drop"]);
-const FULL_OBJECT_ID = /^(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})$/;
 
 /** Builds deterministic Git todo-file content in the supplied oldest-first dialog order. */
 export function buildRebaseTodo(entries: readonly RebaseTodoEntry[]): string {
@@ -48,7 +48,8 @@ export function validateRebaseSubmission(
 
     for (const entry of entries) {
         if (!isRebaseAction(entry.action)) return invalid("invalid-action");
-        if (typeof entry.hash !== "string" || !FULL_OBJECT_ID.test(entry.hash)) {
+        const normalizedHash = normalizeFullObjectId(entry.hash);
+        if (!normalizedHash) {
             return invalid("invalid-hash");
         }
         if (
@@ -59,7 +60,6 @@ export function validateRebaseSubmission(
         ) {
             return invalid("invalid-message");
         }
-        const normalizedHash = entry.hash.toLowerCase();
         if (!offered.has(normalizedHash)) return invalid("hash-not-offered");
         if (seen.has(normalizedHash)) return invalid("duplicate-hash");
         if (

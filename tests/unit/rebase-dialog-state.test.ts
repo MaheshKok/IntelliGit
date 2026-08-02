@@ -61,13 +61,22 @@ describe("rebase dialog state", () => {
             commits[0].hash,
             commits[2].hash,
         ]);
-        expect(result.entries[0].action).toBe("pick");
+        expect(result.entries[0]).toEqual({ hash: commits[1].hash, action: "pick" });
         expect(result.firstActionCleared).toBe(true);
         expect(
             reorderRebaseEntries(entries, commits[2].hash, commits[0].hash).entries.map(
                 (entry) => entry.hash,
             ),
         ).toEqual([commits[2].hash, commits[0].hash, commits[1].hash]);
+    });
+
+    it("leaves entries unchanged when a requested move hash is absent", () => {
+        const entries = createRebaseEntries(commits);
+
+        expect(moveRebaseEntry(entries, "missing", "down")).toEqual({
+            entries,
+            firstActionCleared: false,
+        });
     });
 
     it("recomputes the first active entry after dropping earlier entries", () => {

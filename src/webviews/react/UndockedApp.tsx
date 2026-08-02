@@ -42,7 +42,7 @@ import type {
     UnifiedInbound,
     UnifiedOutbound,
 } from "../protocol/undockedMessages";
-import type { RebaseTodoEntry } from "../protocol/commitGraphTypes";
+import { useRebaseDialogController } from "./shared/hooks/useRebaseDialogController";
 
 // --- Helpers ----------------------------------------------------------------
 
@@ -308,8 +308,12 @@ function App(): React.ReactElement {
         () => getSettings().commitWindowPosition,
     );
     const [viewVisible, setViewVisible] = useState(true);
-    const [rebaseDialog, setRebaseDialog] = useState<RebaseDialogMessage | null>(null);
-    const rebaseDialogRef = useRef<RebaseDialogMessage | null>(null);
+    const {
+        rebaseDialog,
+        handleShowRebaseDialog,
+        handleRebaseDialogSubmit,
+        handleRebaseDialogCancel,
+    } = useRebaseDialogController<RebaseDialogMessage>((message) => vscode.postMessage(message));
 
     // --- Drag handlers ---
     const onBranchDividerMouseDown = useColumnPairDrag(
@@ -438,33 +442,6 @@ function App(): React.ReactElement {
         if (!cpState.isAmend || cpState.isRefreshing) return;
         vscode.postMessage({ type: "getAmendBranchCommits" });
     }, [cpState.isAmend, cpState.isRefreshing]);
-
-    // --- Single message handler for both sides ---
-    const handleShowRebaseDialog = useCallback((dialog: RebaseDialogMessage) => {
-        const previous = rebaseDialogRef.current;
-        if (previous)
-            vscode.postMessage({ type: "cancelRebaseDialog", requestId: previous.requestId });
-        rebaseDialogRef.current = dialog;
-        setRebaseDialog(dialog);
-    }, []);
-    const handleRebaseDialogSubmit = useCallback((entries: readonly RebaseTodoEntry[]) => {
-        const dialog = rebaseDialogRef.current;
-        if (!dialog) return;
-        rebaseDialogRef.current = null;
-        setRebaseDialog(null);
-        vscode.postMessage({
-            type: "startInteractiveRebase",
-            requestId: dialog.requestId,
-            entries: [...entries],
-        });
-    }, []);
-    const handleRebaseDialogCancel = useCallback(() => {
-        const dialog = rebaseDialogRef.current;
-        if (!dialog) return;
-        rebaseDialogRef.current = null;
-        setRebaseDialog(null);
-        vscode.postMessage({ type: "cancelRebaseDialog", requestId: dialog.requestId });
-    }, []);
 
     useUnifiedMessages({
         graphDispatch,

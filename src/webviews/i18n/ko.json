@@ -330,5 +330,6 @@
     "rebase.action.squash": "스쿼시",
     "rebase.action.fixup": "수정",
     "rebase.action.continueRebase": "리베이스 계속",
-    "rebase.action.abortRebase": "리베이스 중단"
+    "rebase.action.abortRebase": "리베이스 중단",
+    "rebase.dialog.missingMessage": "다음 커밋에는 커밋 메시지가 필요합니다: {hashes}"
 }

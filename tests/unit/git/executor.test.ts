@@ -31,12 +31,12 @@ function gateProbe(): GateProbe {
     return { gate, gatedRuns };
 }
 
-/** Runs the executor against a real temporary Git executable with controlled process behavior. */
-async function runFakeGit(
+/** Runs one callback against a temporary Git executable with a restored process PATH. */
+async function withFakeGit<T>(
     script: string,
-    args: string[],
-    options: Parameters<GitExecutor["runBinary"]>[1] = {},
-): Promise<Awaited<ReturnType<GitExecutor["runBinary"]>>> {
+    run: (executor: GitExecutor) => Promise<T>,
+    gate?: RepositoryMutationGate,
+): Promise<T> {
     const directory = await mkdtemp(join(tmpdir(), "intelligit-fake-git-"));
     const executable = join(directory, "git");
     const originalPath = process.env.PATH;
@@ -44,12 +44,21 @@ async function runFakeGit(
     await chmod(executable, 0o755);
     process.env.PATH = `${directory}${delimiter}${originalPath ?? ""}`;
     try {
-        return await new GitExecutor(process.cwd()).runBinary(args, options);
+        return await run(new GitExecutor(process.cwd(), gate));
     } finally {
         if (originalPath === undefined) delete process.env.PATH;
         else process.env.PATH = originalPath;
         await rm(directory, { force: true, recursive: true });
     }
+}
+
+/** Runs the executor against a real temporary Git executable with controlled process behavior. */
+async function runFakeGit(
+    script: string,
+    args: string[],
+    options: Parameters<GitExecutor["runBinary"]>[1] = {},
+): Promise<Awaited<ReturnType<GitExecutor["runBinary"]>>> {
+    return withFakeGit(script, (executor) => executor.runBinary(args, options));
 }
 
 /** Runs text-mode executor commands against a temporary Git executable. */
@@ -59,19 +68,7 @@ async function runFakeGitText(
     options: Parameters<GitExecutor["run"]>[1] = {},
     gate?: RepositoryMutationGate,
 ): Promise<string> {
-    const directory = await mkdtemp(join(tmpdir(), "intelligit-fake-git-"));
-    const executable = join(directory, "git");
-    const originalPath = process.env.PATH;
-    await writeFile(executable, `#!/bin/sh\n${script}\n`, "utf8");
-    await chmod(executable, 0o755);
-    process.env.PATH = `${directory}${delimiter}${originalPath ?? ""}`;
-    try {
-        return await new GitExecutor(process.cwd(), gate).run(args, options);
-    } finally {
-        if (originalPath === undefined) delete process.env.PATH;
-        else process.env.PATH = originalPath;
-        await rm(directory, { force: true, recursive: true });
-    }
+    return withFakeGit(script, (executor) => executor.run(args, options), gate);
 }
 
 /**

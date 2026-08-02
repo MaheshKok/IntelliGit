@@ -266,7 +266,7 @@ export type InteractiveRebaseGuardResult =
       };
 
 /** Values captured before issuing a single-use interactive-rebase dialog request. */
-export interface PendingRebaseDialogRequestInput {
+interface PendingRebaseDialogRequestInput {
     /** Provider instance that opened the dialog and must later consume its request. */
     originProvider: object;
     /** Absolute root for the repository whose history produced the offered range. */

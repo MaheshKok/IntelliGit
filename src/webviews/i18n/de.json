@@ -337,5 +337,6 @@
     "rebase.action.squash": "Zusammenführen",
     "rebase.action.fixup": "Korrektur",
     "rebase.action.continueRebase": "Rebase fortsetzen",
-    "rebase.action.abortRebase": "Rebase abbrechen"
+    "rebase.action.abortRebase": "Rebase abbrechen",
+    "rebase.dialog.missingMessage": "Für folgende Commits ist eine Commit-Nachricht erforderlich: {hashes}"
 }

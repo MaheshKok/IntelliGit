@@ -34,6 +34,7 @@ export function RebaseDialog({
     onSubmit,
 }: RebaseDialogProps): React.ReactElement {
     const cancelRef = useRef<HTMLButtonElement>(null);
+    const dialogRef = useRef<HTMLDivElement>(null);
     useShelfDialogFocus(returnFocusTarget, cancelRef);
     const [entries, setEntries] = useState<readonly RebaseTodoEntry[]>(() =>
         createRebaseEntries(commits),
@@ -89,6 +90,30 @@ export function RebaseDialog({
         onCancel();
         restoreShelfDialogFocus(returnFocusTarget);
     }, [onCancel, returnFocusTarget]);
+    const trapFocus = useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
+        if (event.key !== "Tab") return;
+        const dialog = dialogRef.current;
+        if (!dialog) return;
+        const focusable = Array.from(
+            dialog.querySelectorAll<HTMLElement>(
+                'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+            ),
+        );
+        if (focusable.length === 0) {
+            event.preventDefault();
+            dialog.focus();
+            return;
+        }
+        const first = focusable[0];
+        const last = focusable.at(-1) as HTMLElement;
+        if (event.shiftKey && document.activeElement === first) {
+            event.preventDefault();
+            last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+            event.preventDefault();
+            first.focus();
+        }
+    }, []);
     const changeAction = useCallback(
         (hash: string, action: RebaseAction) => {
             const editedMessageHashes = new Set(editedMessageHashesRef.current);
@@ -162,9 +187,11 @@ export function RebaseDialog({
             onKeyDown={(event) => event.key === "Escape" && close()}
         >
             <Flex
+                ref={dialogRef}
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby="rebase-title"
+                tabIndex={-1}
                 direction="column"
                 gap="12px"
                 w="min(900px, calc(100vw - 32px))"
@@ -173,6 +200,7 @@ export function RebaseDialog({
                 borderRadius="4px"
                 bg="var(--intelligit-pycharm-panel)"
                 color="var(--intelligit-pycharm-foreground)"
+                onKeyDown={trapFocus}
             >
                 <Box as="h2" id="rebase-title" fontSize="14px" fontWeight={600}>
                     {t("rebase.dialog.title")}
@@ -183,12 +211,11 @@ export function RebaseDialog({
                 {notice && <Box role="status">{t("rebase.dialog.firstActionCleared")}</Box>}
                 {missingMessageEntries.length > 0 && (
                     <Box role="alert" data-rebase-missing-message>
-                        {missingMessageEntries
-                            .map(
-                                (entry) =>
-                                    `${t("rebase.dialog.message")}: ${entry.hash.slice(0, 8)}`,
-                            )
-                            .join(", ")}
+                        {t("rebase.dialog.missingMessage", {
+                            hashes: missingMessageEntries
+                                .map((entry) => entry.hash.slice(0, 8))
+                                .join(", "),
+                        })}
                     </Box>
                 )}
                 <Box className="rebase-dialog-list">

@@ -2,6 +2,23 @@ import { access, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:f
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+
+const cleanupFault = vi.hoisted(() => ({ manifestRemoval: false }));
+
+vi.mock("node:fs/promises", async (importOriginal) => {
+    const actual = await importOriginal<typeof import("node:fs/promises")>();
+    return {
+        ...actual,
+        rm: (...args: Parameters<typeof actual.rm>) => {
+            if (cleanupFault.manifestRemoval && String(args[0]).endsWith(".json")) {
+                cleanupFault.manifestRemoval = false;
+                throw new Error("forced manifest cleanup failure");
+            }
+            return actual.rm(...args);
+        },
+    };
+});
+
 import { runInteractiveRebaseSubmission } from "../../../../src/git/interactiveRebase/run";
 import { getRebaseStoragePaths } from "../../../../src/git/interactiveRebase/storage";
 import type { InteractiveRebaseRunDependencies } from "../../../../src/git/interactiveRebase/run";
@@ -13,6 +30,7 @@ const BRANCH = "refs/heads/main";
 const directories: string[] = [];
 
 afterEach(async () => {
+    cleanupFault.manifestRemoval = false;
     await Promise.all(
         directories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })),
     );
@@ -23,6 +41,7 @@ async function fixture(
     options: {
         exitCode?: number;
         branch?: string;
+        branchExitCode?: number;
         head?: string;
         unmerged?: string;
         createRebaseDirectory?: boolean;
@@ -58,7 +77,13 @@ async function fixture(
             calls.push(args);
             const command = args.join(" ");
             if (!inGate) throw new Error(`Git command escaped mutation gate: ${args.join(" ")}`);
-            if (command === "symbolic-ref --quiet HEAD") return binary(options.branch ?? BRANCH);
+            if (command === "symbolic-ref --quiet HEAD") {
+                const exitCode = options.branchExitCode ?? 0;
+                if (!(runOptions?.expectedExitCodes ?? [0]).includes(exitCode)) {
+                    throw new Error(`Git exited with ${exitCode}`);
+                }
+                return binary(options.branch ?? BRANCH, "", exitCode);
+            }
             if (command === "rev-parse HEAD")
                 return binary(
                     calls.filter((call) => call.join(" ") === command).length > 1
@@ -110,7 +135,7 @@ async function fixture(
         if (command === `rev-list --parents -n 1 --end-of-options ${BASE}`)
             return `${BASE} ${"e".repeat(40)}\n`;
         if (command === `merge-base --is-ancestor --end-of-options ${BASE} HEAD`) return "";
-        if (command === "status --porcelain=v1 -z -uall") return options.dirty ? " M file\0" : "";
+        if (command === "status --porcelain=v1 -z -uno") return options.dirty ? " M file\0" : "";
         if (command === `rev-list --parents --end-of-options ${BASE}^..HEAD`)
             return `${HEAD} ${BASE}\n`;
         throw new Error(`Unexpected Git text command: ${command}`);
@@ -161,7 +186,9 @@ function binary(stdout: string, stderr = "", exitCode = 0, truncated = false) {
 
 function input(
     hasPushedCommit = false,
-    pushTarget: { remoteName: string; remoteHeadRef: string; upstreamOid: string } | undefined = undefined,
+    pushTarget:
+        | { remoteName: string; remoteHeadRef: string; upstreamOid: string }
+        | undefined = undefined,
 ) {
     return {
         request: {
@@ -212,7 +239,9 @@ describe("runInteractiveRebaseSubmission", () => {
     it("does not retain an offer when the submission had no upstream", async () => {
         const test = await fixture();
 
-        await expect(runInteractiveRebaseSubmission(test.dependencies, input(true))).resolves.toEqual({
+        await expect(
+            runInteractiveRebaseSubmission(test.dependencies, input(true)),
+        ).resolves.toEqual({
             status: "completed",
             rebasedHeadOid: REBASED,
         });
@@ -221,13 +250,34 @@ describe("runInteractiveRebaseSubmission", () => {
         await expectMissing(paths.manifestPath("session-1"));
     });
 
+    it("preserves the computed result when manifest cleanup fails", async () => {
+        const test = await fixture();
+        cleanupFault.manifestRemoval = true;
+
+        await expect(runInteractiveRebaseSubmission(test.dependencies, input())).resolves.toEqual({
+            status: "completed",
+            rebasedHeadOid: REBASED,
+        });
+
+        const paths = getRebaseStoragePaths(test.storageRoot, "/fixture-repository");
+        await Promise.all([
+            expectMissing(paths.sessionDirectory("session-1")),
+            expectMissing(paths.reservationPath),
+            expect(access(paths.manifestPath("session-1"))).resolves.toBeUndefined(),
+        ]);
+    });
+
     it("does not offer a push when the submitted range was entirely unpushed", async () => {
         const test = await fixture();
 
         await expect(
             runInteractiveRebaseSubmission(
                 test.dependencies,
-                input(false, { remoteName: "origin", remoteHeadRef: "refs/heads/main", upstreamOid: BASE }),
+                input(false, {
+                    remoteName: "origin",
+                    remoteHeadRef: "refs/heads/main",
+                    upstreamOid: BASE,
+                }),
             ),
         ).resolves.toEqual({
             status: "completed",
@@ -241,14 +291,22 @@ describe("runInteractiveRebaseSubmission", () => {
         await expect(
             runInteractiveRebaseSubmission(
                 test.dependencies,
-                input(true, { remoteName: "origin", remoteHeadRef: "refs/heads/main", upstreamOid: BASE }),
+                input(true, {
+                    remoteName: "origin",
+                    remoteHeadRef: "refs/heads/main",
+                    upstreamOid: BASE,
+                }),
             ),
         ).resolves.toMatchObject({
             status: "completed-pending-push",
             manifest: {
                 lifecycle: "completed-pending-push",
                 rebasedHeadOid: REBASED,
-                pushTarget: { remoteName: "origin", remoteHeadRef: "refs/heads/main", upstreamOid: BASE },
+                pushTarget: {
+                    remoteName: "origin",
+                    remoteHeadRef: "refs/heads/main",
+                    upstreamOid: BASE,
+                },
             },
         });
 
@@ -278,6 +336,15 @@ describe("runInteractiveRebaseSubmission", () => {
         await expectMissing(
             getRebaseStoragePaths(test.storageRoot, "/fixture-repository").reservationPath,
         );
+    });
+
+    it("reports an exit-one symbolic-ref probe as branch movement instead of a generic failure", async () => {
+        const test = await fixture({ branch: "", branchExitCode: 1 });
+
+        await expect(runInteractiveRebaseSubmission(test.dependencies, input())).resolves.toEqual({
+            status: "failed",
+            reason: "branch-moved",
+        });
     });
 
     it.each([

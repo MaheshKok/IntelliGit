@@ -1,7 +1,7 @@
 import { rm } from "node:fs/promises";
+import { completeInteractiveRebase } from "./completion";
 import { createGitEditorCommand } from "./editorCommand";
 import { errorMessage, readGitText } from "./gitText";
-import { shouldOfferRebaseForcePush } from "./push";
 import { deriveRebaseControl, type RebaseControl } from "./rebaseControl";
 import type { InteractiveRebaseRunDependencies } from "./run";
 import {
@@ -160,23 +160,17 @@ async function continueOwnedRebase(
         });
         if (rebase.exitCode === 0) {
             const rebasedHeadOid = await readGitText(dependencies.executor, ["rev-parse", "HEAD"]);
-            if (shouldOfferRebaseForcePush(manifest.hasPushedCommit, manifest.pushTarget)) {
-                const pendingPushManifest = {
-                    ...manifest,
-                    lifecycle: "completed-pending-push" as const,
-                    rebasedHeadOid,
-                };
-                await writeRebaseManifest(requiredStorageRoot(dependencies), pendingPushManifest);
-                await cleanUpOwnedSession(dependencies, repoRoot, manifest, false);
-                return { status: "completed-pending-push", manifest: pendingPushManifest };
-            }
-            await writeRebaseManifest(requiredStorageRoot(dependencies), {
-                ...manifest,
-                lifecycle: "done",
+            const completion = await completeInteractiveRebase(
+                requiredStorageRoot(dependencies),
+                manifest,
                 rebasedHeadOid,
-            });
+            );
+            if (completion.status === "completed-pending-push") {
+                await cleanUpOwnedSession(dependencies, repoRoot, manifest, false);
+                return completion;
+            }
             await cleanUpOwnedSession(dependencies, repoRoot, manifest, true);
-            return { status: "completed", rebasedHeadOid };
+            return completion;
         }
 
         const stateAfterContinue = await deriveRebaseControl({
