@@ -1680,3 +1680,72 @@ No l10n work: the fence reuses the docked panel's existing labels, and the diff 
 - `CommitPanelViewProvider`'s 12 positional constructor dependencies and the missing dependency-cruiser rule against `src/**` importing `editorHelper.ts` remain open.
 - **Run the `suite` gate with `VITEST_MAX_THREADS=3`** and `VITEST_MIN_THREADS=1`. vitest here is **1.6.1** — `--maxWorkers` and `--poolOptions.*` are not CLI flags; they are silently parsed as filename filters and yield `no tests` with a vacuous exit 0.
 - **Do not read Codex-written files through the context cache.** Use `git show` / `git diff`.
+
+## Phase 8h — the abort dispatch drifted from the classification (PLAN step 12c, sub-layer (b), part 7)
+
+BASE_HEAD `f1ee86b3`. SID `019fc360-89e7-7e90-a1d3-318919b7dd42`, `gpt-5.6-terra`/`high`, telemetry `PEAK=119957 LAST=119957 PCT=46% NONRESUMABLE=no`, DONE 7/7, **zero fix rounds**. Scope: 3 files, 217 of them a new real-Git suite.
+
+### A real bug, found before the launch
+
+Scoping this phase started by testing its cheapest load-bearing unknown instead of writing the work order first. `GitOps.abortMerge` decided its command with `rev-parse --verify REBASE_HEAD` and friends; `getActiveOperation` decided the same thing from the on-disk marker set; the doc comment asserted the two agreed. Against real Git 2.50.1 they do not:
+
+```
+git rebase <branch>                    # conflicts
+<resolve>; git add .; git rebase --continue    # completes
+```
+
+`.git/REBASE_HEAD` **survives that completed rebase** while `.git/rebase-merge` and `.git/rebase-apply` are removed. From then on, in that repository, every later operation is broken: `getActiveOperation` correctly reports `merge`, the toolbar correctly offers **Abort Merge**, and `abortMerge` takes its first branch on the stale ref and runs `git rebase --abort`, which exits 128 with `fatal: no rebase in progress`. The abort throws and the merge is still in progress. Reproduced end to end in a scratch repository before a single line was specified.
+
+The fix is the same shape as 8g's: the dispatch consumes `getActiveOperation()` instead of carrying a second probe. One classification, one place.
+
+### The sizing law, finally applied on purpose
+
+**PEAK 46% — the first phase inside the 45–50% target of the whole build.** Nothing about this phase was smaller than its predecessors; the work order was written against the corrected law:
+
+- **Reads bounded by region, not by file.** `operations.ts` is 1875 lines. The spec named lines 655–700 and 1670–1712 and said *do not read the rest of it*.
+- **Proof bounded by count.** Two focused suites while iterating, each verification command exactly once at the end, and an explicit "do not run the full suite more than once."
+
+The two levers are independent, and the proof lever is the one every earlier phase missed.
+
+### What the review found
+
+Codex delivered all seven items, and the production change is exactly right. Three defects in the tests, all fixed here rather than spent on a fix round:
+
+1. **The precedence `it.each` was hollowed out into something worse than deletion.** It had proved that when several markers coexist the controlling one wins, by planting both. The rewrite mocked `getActiveOperation` and passed a tuple — `[["rebase","merge"], "rebase", …]` — whose first element is **bound but never used**. The body became byte-equivalent to the `it.each` above it, while the title still said "when %j are both active." *A test that survives a refactor by having its subject mocked away is worse than a deleted one: it reads as coverage.* Deleted, with a comment pointing at `operations.test.ts`, where marker-level precedence is actually proved against real files.
+2. **`mockResolvedValue(activeOperation as never)`** defeated type checking on the tuples that are the test's only input — a typo like `"rebse"` would have compiled and passed. Typed as `it.each<[ActiveOperationKind, string[]]>`.
+3. **The new `switch` had no `"none"` case and no exhaustiveness guard**, in a codebase with nine `assertNever*` helpers. A future member of `ActiveOperationKind` would silently inherit the `reset --merge` fallback — the exact class of silent divergence this phase exists to remove. Added `case "none": break;` plus `default: assertNeverActiveOperationKind(...)`, so the union is now closed at compile time.
+
+### Independent verification and the layer proof
+
+Reverting **only** production to `f1ee86b3` and rerunning the new suite: `Tests 1 failed | 5 passed`, with `Error: git rebase --abort exited with 128: fatal: no rebase in progress`. Codex's RED claim is accurate, and exactly one scenario is a bug proof — the other five are new real-Git coverage of behaviour that was already correct.
+
+Then the mandated consistent-mistake mutant, which this time needed no invention: revert production **and** its mocked suite together to `f1ee86b3` — the repository's own history is the consistent mistake.
+
+```
+MOCKED  suite: RC=0  Tests  44 passed (44)
+REAL-GIT suite: RC=1  Tests  1 failed | 5 passed (6)
+-> KILLED by real Git ONLY, mocks green. LAYER PROVEN.
+```
+
+Checked against the 8f rule before believing it: the mocked layer *did* cover this surface — `status.test.ts` at `f1ee86b3` had four dispatch cases and three precedence cases aimed squarely at `abortMerge`, all green. So this is a genuine layer proof rather than a coverage hole wearing one, and it is the strongest of the build: forty-four mocked tests stayed green for the entire life of a user-facing bug.
+
+### Acceptance
+
+6 accept gates GREEN warn=0 — `lint` 10.2s, `typecheck` 3.7s, `format` 4.1s, `knip` 1.0s, `architecture` 1.0s, `suite` 343.8s (load 11.67 at start). Counting run: **2596/2596** across 162 files, 212.07s — Codex reported 2599 before the review, and 2596 is that minus the three cases the vacuous `it.each` contributed. `SEAL: INTACT files=3 warns_open=0`. New suite cost 17.3s in-suite for six scenarios.
+
+No l10n work: no user-facing string changes. The new `assertNeverActiveOperationKind` message is internal, matching the nine existing helpers. GitNexus MCP is not exposed in this session, so the mandated `detect_changes()` scope check could not be run by the orchestrator.
+
+**Shadow-mode datum: not collected, twenty-fourth time — and the 8g handoff's explanation was wrong.** That handoff blamed ordering and prescribed writing the seal before the final review. Ordering is not the binding constraint: the datum compares a *fresh* verifier's findings against hash-unchanged files, and this configuration has exactly one reviewer, who is also the one whose findings would be measured. Reviewing my own review after sealing is not independence, it is a second pass. `SEAL_MODE=shadow` cannot produce its go/no-go datum without a verifier distinct from the orchestrator — that is a protocol gap, not a scheduling mistake, and no ordering change inside this skill will close it.
+
+## Handoff — resume at Phase 9 (PLAN steps 13 + 14)
+
+- Branch `feat/interactive-rebase-from-here`; BASE_HEAD for phase 9 = the tip after this phase's two commits. Tunables unchanged; `SEAL_MODE=shadow`.
+- **Sub-layer (b) is complete.** Reconciliation, force push, serialization, the no-upstream path, the operation-kind fence in both panels, the toast Dismiss round trip (`f1ee86b3`), and the abort dispatch are all done. What remains is PLAN step **13** (acceptance matrix) and step **14** (docs + CHANGELOG) — the last phase of the build.
+- **Verify every claim in this handoff before scoping from it.** Seven handoffs running have shipped a wrong claim, including this record correcting the previous one about the shadow datum.
+- **Bound reads by region and proof by count.** Naming line ranges inside a large file and capping the full suite at one run is what put this phase at 46% after eleven phases above it.
+- **Probe the unknown before writing the work order.** Twenty minutes of scratch-repository Git produced a user-facing bug, an exact reproduction, and a spec precise enough to need zero fix rounds.
+- **A mocked-away subject is not coverage.** When a refactor moves a decision behind a collaborator, the tests that used to prove that decision must move too — or be deleted. Leaving them mocked and re-titled is the failure mode this phase caught.
+- **A mock-green mutant verdict is not a layer proof until the mocked layer is confirmed to cover that surface** (8f). Here it did, and the proof stands.
+- `CommitPanelViewProvider`'s 12 positional constructor dependencies and the missing dependency-cruiser rule against `src/**` importing `editorHelper.ts` remain open. `tests/` is not covered by the `lint` gate (`eslint src scripts`), which is why the new integration file could not be linted directly — pre-existing, worth its own change.
+- **Run the `suite` gate with `VITEST_MAX_THREADS=3`** and `VITEST_MIN_THREADS=1`; vitest is **1.6.1**, where `--maxWorkers` and `--poolOptions.*` are silently parsed as filename filters and yield a vacuous exit 0.
+- **Do not read Codex-written files through the context cache.** Use `git show` / `git diff`. And `grep -E` on macOS — BSD grep has no `\|` alternation, a trap hit again this phase.
