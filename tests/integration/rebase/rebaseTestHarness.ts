@@ -2,12 +2,14 @@ import { execFile } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import { GitExecutor } from "../../../src/git/executor";
 import { RepositoryMutationCoordinator } from "../../../src/git/mutationCoordinator";
 import { RepositoryLock } from "../../../src/git/repositoryLock";
 import { RepositoryMutationGate } from "../../../src/git/repositoryMutationGate";
 import type { InteractiveRebaseRunDependencies } from "../../../src/git/interactiveRebase/run";
+import type { RebasePushTarget } from "../../../src/git/interactiveRebase/types";
 
 const execFileAsync = promisify(execFile);
 const directories: string[] = [];
@@ -65,6 +67,41 @@ export interface RebaseFixture {
     readonly dependencies: InteractiveRebaseRunDependencies;
 }
 
+/**
+ * A fixture that also has a bare `file://` origin wired as `origin` with `main` tracking it.
+ *
+ * Separate from `RebaseFixture` so the remote is opt-in: initializing a bare repository and pushing
+ * to it costs ~0.3s per fixture (measured 16.88s against 15.15s for this suite once the six
+ * scenarios that never push stopped paying for one), and that is charged per scenario forever.
+ */
+export interface PushableRebaseFixture extends RebaseFixture {
+    readonly remote: RebaseFixtureRemote;
+}
+
+/** Bare `file://` origin details used to verify a force push against the remote's own ref. */
+interface RebaseFixtureRemote {
+    readonly root: string;
+    readonly url: string;
+    readonly remoteHeadRef: "refs/heads/main";
+    readonly pushTarget: RebasePushTarget;
+}
+
+/** Reads a ref directly from the bare remote rather than a potentially stale local tracking ref. */
+export async function readBareRemoteRef(
+    bareRemoteRoot: string,
+    remoteHeadRef: string,
+): Promise<string> {
+    return (await git(bareRemoteRoot, ["rev-parse", remoteHeadRef])).toString("utf8").trim();
+}
+
+/** Clones the fixture's bare origin into a cleanup-managed working tree for a collaborating push. */
+export async function createRemoteCollaborator(fixture: PushableRebaseFixture): Promise<string> {
+    const collaboratorRoot = await mkdtemp(path.join(tmpdir(), "intelligit-rebase-collaborator-"));
+    directories.push(collaboratorRoot);
+    await git(fixture.root, ["clone", "--branch", "main", fixture.remote.url, collaboratorRoot]);
+    return collaboratorRoot;
+}
+
 /** Creates the named four-commit main history used by every interactive-rebase integration scenario. */
 export async function createRebaseFixture(helperScriptPath: string): Promise<RebaseFixture> {
     return createFixture(helperScriptPath, [
@@ -73,6 +110,34 @@ export async function createRebaseFixture(helperScriptPath: string): Promise<Reb
         ["second", "second.txt", "second\n"],
         ["third", "third.txt", "third\n"],
     ]);
+}
+
+/** Creates the standard fixture with a bare `file://` origin already wired up and pushed to. */
+export async function createPushableRebaseFixture(
+    helperScriptPath: string,
+): Promise<PushableRebaseFixture> {
+    const fixture = await createRebaseFixture(helperScriptPath);
+    const remoteRoot = await mkdtemp(path.join(tmpdir(), "intelligit-rebase-remote-"));
+    directories.push(remoteRoot);
+    const remoteHeadRef = "refs/heads/main" as const;
+    const remoteName = "origin";
+    const url = pathToFileURL(remoteRoot).href;
+
+    await git(remoteRoot, ["init", "--bare"]);
+    await git(remoteRoot, ["symbolic-ref", "HEAD", remoteHeadRef]);
+    await git(fixture.root, ["remote", "add", remoteName, url]);
+    await git(fixture.root, ["push", "--set-upstream", remoteName, "main"]);
+    const upstreamOid = await readBareRemoteRef(remoteRoot, remoteHeadRef);
+
+    return {
+        ...fixture,
+        remote: {
+            root: remoteRoot,
+            url,
+            remoteHeadRef,
+            pushTarget: { remoteName, remoteHeadRef, upstreamOid },
+        },
+    };
 }
 
 /** Creates a rebase fixture whose reordered second and third commits conflict on `shared.txt`. */

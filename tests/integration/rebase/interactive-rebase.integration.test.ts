@@ -5,14 +5,20 @@ import {
     abortInteractiveRebase,
     continueInteractiveRebase,
 } from "../../../src/git/interactiveRebase/control";
+import { forcePushRebasedHead } from "../../../src/git/interactiveRebase/push";
 import { runInteractiveRebaseSubmission } from "../../../src/git/interactiveRebase/run";
+import { getRebaseStoragePaths } from "../../../src/git/interactiveRebase/storage";
 import type { RebaseTodoEntry } from "../../../src/git/interactiveRebase/types";
 import {
     cleanTemporaryRepositories,
     createConflictingRebaseFixture,
+    createPushableRebaseFixture,
     createRebaseFixture,
+    createRemoteCollaborator,
     git,
+    readBareRemoteRef,
     readHistory,
+    type PushableRebaseFixture,
     type RebaseFixture,
 } from "./rebaseTestHarness";
 
@@ -195,6 +201,89 @@ describe("interactive rebase real Git integration", () => {
             "reworded fourth",
         ]);
     });
+
+    it("force-pushes a rebased head to the bare remote and clears the pending offer", async () => {
+        const fixture = await createPushableRebaseFixture(helperScriptPath);
+        const manifest = await completePendingPushRebase(fixture);
+
+        await expect(forcePushRebasedHead(fixture.dependencies, manifest)).resolves.toEqual({
+            status: "pushed",
+            offerRetained: false,
+        });
+        await expect(
+            readBareRemoteRef(fixture.remote.root, fixture.remote.remoteHeadRef),
+        ).resolves.toBe(manifest.rebasedHeadOid);
+        await expect(
+            access(
+                getRebaseStoragePaths(fixture.dependencies.storageRoot!, fixture.root).manifestPath(
+                    manifest.sessionId,
+                ),
+            ),
+        ).rejects.toMatchObject({ code: "ENOENT" });
+    });
+
+    it("refuses a stale lease without moving the bare remote ref", async () => {
+        const fixture = await createPushableRebaseFixture(helperScriptPath);
+        const manifest = await completePendingPushRebase(fixture);
+        const collaborator = await createRemoteCollaborator(fixture);
+        await writeFile(path.join(collaborator, "remote-advance.txt"), "advance\n", "utf8");
+        await git(collaborator, ["add", "remote-advance.txt"]);
+        await git(collaborator, ["commit", "-m", "advance remote"]);
+        await git(collaborator, ["push", "origin", "main"]);
+        // Fetching is what makes this a test of the *pinned* lease. VS Code autofetches by default,
+        // and a bare `--force-with-lease` leases against the local tracking ref — once that ref has
+        // caught up, a bare lease matches the remote and happily clobbers the collaborator. Only a
+        // lease pinned to the object ID the manifest recorded still refuses after the fetch.
+        await git(fixture.root, ["fetch", "origin"]);
+        const remoteBeforeAttempt = await readBareRemoteRef(
+            fixture.remote.root,
+            fixture.remote.remoteHeadRef,
+        );
+
+        await expect(forcePushRebasedHead(fixture.dependencies, manifest)).resolves.toMatchObject({
+            status: "failed",
+        });
+        await expect(
+            readBareRemoteRef(fixture.remote.root, fixture.remote.remoteHeadRef),
+        ).resolves.toBe(remoteBeforeAttempt);
+    });
+
+    it("refuses a moved local head without touching the bare remote ref", async () => {
+        const fixture = await createPushableRebaseFixture(helperScriptPath);
+        const manifest = await completePendingPushRebase(fixture);
+        // Committed on `main`, so the branch check passes and only the HEAD check can refuse.
+        await git(fixture.root, ["commit", "--allow-empty", "-m", "moved local head"]);
+        const remoteBeforeAttempt = await readBareRemoteRef(
+            fixture.remote.root,
+            fixture.remote.remoteHeadRef,
+        );
+
+        await expect(forcePushRebasedHead(fixture.dependencies, manifest)).resolves.toEqual({
+            status: "head-moved",
+        });
+        await expect(
+            readBareRemoteRef(fixture.remote.root, fixture.remote.remoteHeadRef),
+        ).resolves.toBe(remoteBeforeAttempt);
+    });
+
+    it("refuses a switched branch without touching the bare remote ref", async () => {
+        const fixture = await createPushableRebaseFixture(helperScriptPath);
+        const manifest = await completePendingPushRebase(fixture);
+        // Branched at the same commit on purpose. HEAD still equals what the manifest recorded as
+        // rebased, so `head-moved` cannot fire and only the branch check can produce this refusal.
+        await git(fixture.root, ["switch", "-c", "other-branch"]);
+        const remoteBeforeAttempt = await readBareRemoteRef(
+            fixture.remote.root,
+            fixture.remote.remoteHeadRef,
+        );
+
+        await expect(forcePushRebasedHead(fixture.dependencies, manifest)).resolves.toEqual({
+            status: "branch-moved",
+        });
+        await expect(
+            readBareRemoteRef(fixture.remote.root, fixture.remote.remoteHeadRef),
+        ).resolves.toBe(remoteBeforeAttempt);
+    });
 });
 
 function conflictingReorderEntries(fixture: RebaseFixture): RebaseTodoEntry[] {
@@ -230,4 +319,27 @@ function submission(fixture: RebaseFixture, entries: readonly RebaseTodoEntry[])
         },
         entries,
     };
+}
+
+/**
+ * Runs a real reorder whose submission declares pushed history and a push target, so the runner
+ * stops at its pending-push outcome and yields the manifest the force push is then handed. Building
+ * the manifest here rather than by hand keeps the push scenarios testing data the runner produces.
+ */
+async function completePendingPushRebase(fixture: PushableRebaseFixture) {
+    const rebaseable = fixture.commits.slice(2);
+    const { request, entries } = submission(fixture, [
+        { hash: rebaseable[1].hash, action: "pick" },
+        { hash: rebaseable[0].hash, action: "pick" },
+    ]);
+    const completion = await runInteractiveRebaseSubmission(fixture.dependencies, {
+        entries,
+        request: { ...request, hasPushedCommit: true, pushTarget: fixture.remote.pushTarget },
+    });
+    if (completion.status !== "completed-pending-push") {
+        throw new Error(
+            `Expected the runner to produce a pending-push manifest, got "${completion.status}".`,
+        );
+    }
+    return completion.manifest;
 }
