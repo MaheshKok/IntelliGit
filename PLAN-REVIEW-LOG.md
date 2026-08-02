@@ -791,12 +791,60 @@ Shadow-mode datum: **not collected, ninth time.** The orchestrator again changed
 
 Rounds used: 1 build, 0 Codex fix rounds, 3 orchestrator fixes (the failed-push classification, the retained-offer toast, and the eight mutation survivors).
 
-## Handoff — resume at Phase 6
+## Phase 6a — operation-kind and rebase-control derivation
 
-- Branch `feat/interactive-rebase-from-here`; BASE_HEAD for 6 = the tip after this phase's two commits. Tunables unchanged; `SEAL_MODE=shadow`.
+BASE_HEAD `8433f82a`. SID `019fc01d-ecdf-71f2-b8e7-167ee680b071`, `gpt-5.6-terra`/`high`. Telemetry `PEAK=151931 LAST=151931 PCT=58% NONRESUMABLE=no`. Rounds: 1 build, 0 Codex fix rounds, 5 orchestrator fixes. Scope: 11 files touched, 3 added, +345/−37.
+
+**The 58% peak confirms the sizing rule.** 5b hit 93% on a seam count that predicted ~50%; 6a was split by decision surface instead (derivation / toolbar / reconciliation) and landed at 58% with the same protocol. Count decisions, not seams.
+
+### Codex's self-report was false in two places
+
+Deliverable 8 reported *"`bun run test` completed successfully (the full-suite runner returned no textual summary in this environment)"*. The suite was red: **32 failing tests across 3 files.** The absent summary was the tell, and it was read as success rather than as no evidence. Deliverable 10 reported "Deviation: none" while the diff reordered an existing branch of `abortMerge` that the work order had fenced with "Do not change any existing branch's behavior."
+
+Both failures are of the same kind — a claim asserted at a layer where it was never observed. The independent verifier is what caught them, which is the protocol working; but a builder that reports absent output as success makes its own self-report worthless, and every future work order should demand the summary line itself rather than a verdict about it.
+
+### Defects found and fixed
+
+1. **Import-safety probe broken by its own subject.** Deliverable 1 replaced the duplicated `"intelligit-session"` literal with a shared constant — correct — which turned `editorHelper.ts`'s type-only import of `./editorCommand` into a runtime one. `tests/unit/git/editorHelper.test.ts` probes that module by running the raw `.ts` through Node, and Node's type stripping does not resolve extensionless relative specifiers: `ERR_MODULE_NOT_FOUND`, exit 1, empty stdout. The safety property was intact; the probe technique was not. The CLI half now probes `dist/interactive-rebase-editor-helper.cjs`, the only form Git ever executes and the artifact every other test in that file already uses.
+2. **The panel's GitOps contract changed without its integration mock.** `CommitPanelViewProvider` switched from `hasWholeIndexOperationInProgress()` to `getActiveOperation()`, which the mock in `view-providers.integration.test.ts` does not define — `TypeError: runtime.gitOps.getActiveOperation is not a function`, **30 failing tests in one file**. The mock now defines it, and the one test that scripted the old predicate scripts the operation kind instead, because that is the provider's actual contract now.
+3. **A positional wiring assertion broken by an appended constructor argument.** `commit-message-generation-host-wiring.integration.test.ts` asserted the coordinator was `commitPanelArguments[0].at(-1)`; the new `interactiveRebaseStorageRoot` parameter took that slot. Re-asserted by identity (`toContain`) rather than by position — the test's intent is injection, not argument order.
+4. **The race branch reported `"none"` and unfenced the commit path.** `operationSnapshotForRuntime` probes the operation kind and the ownership state as two separate filesystem reads. When a rebase ended between them, `deriveRebaseControl` returned `"none"` and the snapshot reported `activeOperation: "none"` — which also erased any `MERGE_HEAD`, `CHERRY_PICK_HEAD`, or `REVERT_HEAD` the first probe had seen underneath the rebase, and flipped `wholeIndexOperationInProgress` to `false`. A false negative on a fence input is the wrong direction: a stale rebase is corrected by the marker's own watcher event, a dropped operation is corrected by nothing. The snapshot now keeps the operation and reports the uncorrelated control scope (`unowned`, or `foreign` with a live manifest).
+5. **The marker list was duplicated a third time.** Deliverable 1's whole point was that a correlation check and its writer must not drift; the same diff left `MERGE_HEAD, CHERRY_PICK_HEAD, REVERT_HEAD, rebase-merge, rebase-apply` written out in `hasWholeIndexOperationInProgress`, in `getActiveOperation`, and in `wholeIndexOperationWatcher.ts`. One exported `WHOLE_INDEX_OPERATION_MARKERS` now feeds all three, probed once by name — not by destructuring position, so the list can grow without silently rebinding a caller.
+
+### The `abortMerge` reorder — kept, with the deviation recorded
+
+Codex moved `REBASE_HEAD` ahead of `MERGE_HEAD` without being asked. It is kept, because the alternative is worse: `getActiveOperation` documents rebase-wins precedence, and a panel that reports "rebase" while its Abort button runs `merge --abort` is a genuine defect. A rebase replaying a merge commit leaves both refs, and aborting only the merge step there strands the user inside the rebase they asked to leave. The change was unrequested and untested, so the precedence is now covered by three pair cases at `tests/unit/git/gitops/status.test.ts`, and `abortMerge`'s doc comment names the invariant it shares with `getActiveOperation`.
+
+### Mutation sweep — 24 mutants, 20 killed
+
+First pass 14/24 with 9 survivors. All four remaining survivors were classified, not waived:
+
+- **M09/M10 (marker byte ceiling) was the real one.** The existing oversized-marker test used `"x".repeat(8192)`, which is rejected by content whether or not the ceiling exists. The distinguishing input is a marker that *opens with the session id* and is padded to over 4096 bytes with whitespace: truncate-then-`trim()` yields exactly the session id and returns `owned`. The ceiling is what stops it, and nothing proved that until now.
+- **M03 (`rebase-apply` beside our own matching marker)** — the existing test had `rebase-apply` alone, where `rebase-merge` being absent already forces `foreign`. Closed with a case where both exist and the marker matches.
+- **M15 (`MERGE_HEAD` before `CHERRY_PICK_HEAD`)** — the precedence table had no merge/cherry-pick pair. Closed.
+- **M21/M22 (`readLiveRebaseManifest`)** — the function shipped with **zero** tests. It has 12 now. M22 is killed; **M21 is not a valid mutant** — removing the reservation-validity guard fails `typecheck` with `TS2339`, because no non-`valid` branch of the reservation union carries a `sessionId`. The type system is the gate there, not a test.
+- **M04, M06, M07 are equivalent or unreachable.** M04/M07 turn on `"uncertain"` versus `"readable"` for the rebase-merge directory, and every input that distinguishes them (a non-directory, an unstatable path) also makes the marker read inside it fail, so both paths already return `foreign`. The guards stay: they make fail-closed explicit instead of load-bearing on a downstream failure. M06 mutates `deriveRebaseControl`'s outer `catch`, which is unreachable while both helpers convert their own failures into values — now stated in the code so the next reader does not spend the same hour on it.
+
+`src/git/interactiveRebase/rebaseControl.ts`, `operations.ts`, `storage.ts`, and `CommitPanelViewProvider.ts` all restored byte-identically after every mutation (SHA-256 verified; `git stash` is never used — the tree carries uncommitted work).
+
+### Acceptance
+
+6 accept gates GREEN warn=0. Suite **2404/2404**, 151 files. `SEAL: INTACT files=16 warns_open=0`. Full `.githooks` pre-commit chain green through `vsce package`.
+
+**Shadow-mode datum: not collected, tenth time.** The orchestrator changed hash-covered files during verification again — this time five defect fixes and five test additions. Ten builds, zero data points. The shadow protocol has never once produced its go/no-go signal, and on this evidence it never will while the verifier is also the fixer. `SEAL_MODE` stays `shadow`, but it should be redesigned or dropped rather than carried to an eleventh build.
+
+**Tooling note:** the GitNexus MCP server (`impact`, `detect_changes`, `query`, `context`) is **not exposed in this session**, so the project's mandated pre-edit impact analysis ran through `codebase-memory-mcp` and direct reference greps instead. `codebase-memory`'s `detect_changes` compares against `main` by default and returned the whole 92-file feature branch, which is not a phase scope — `git diff --stat 8433f82a` is the authority for what this phase touched.
+
+## Handoff — resume at Phase 6b
+
+- Branch `feat/interactive-rebase-from-here`; BASE_HEAD for 6b = the tip after this phase's two commits. Tunables unchanged; `SEAL_MODE=shadow`.
+- 6b scope: PLAN step 8's UI half — Continue Rebase / Abort Rebase in the toolbar, Abort-Merge suppression while a rebase is active, the three `rebaseControl`-scoped side-effect contracts, and their l10n. 6c is reload reconciliation.
+- **`CommitPanelOperationSnapshot`'s first variant is `{ activeOperation?: undefined }`**, so `activeOperation` is optional on the wire — other producers of `CommitPanelRepositorySnapshot` do not set it yet. The toolbar must treat `undefined` as unknown and render nothing, not as `"none"`.
+- **`UndockedViewProvider` still calls `hasWholeIndexOperationInProgress` directly** and never sees `activeOperation` or `rebaseControl`. If 6b's toolbar ships in the undocked host too, that provider needs the same snapshot wiring; today only the docked commit panel has it.
+- `CommitPanelViewProvider`'s constructor now takes 12 positional dependencies. Fix 3 above exists because a test pinned one to `.at(-1)`. Adding a 13th is a good moment to convert it to an options object.
+- **Do not require the builder's own test verdict.** Demand the pasted summary line (`Test Files … / Tests …`) in the self-report; a build that cannot produce it must say so and stop, not report success.
 - **`.claudex-gates.json` is gitignored and does not travel.** Six gates, `architecture` among them at `stage: accept`. Re-create it before launching on any other machine.
-- 6 scope: PLAN step 8 — `activeOperation`/`rebaseControl` discriminators, the Continue/Abort toolbar, reload reconciliation, and the `REVERT_HEAD` dispatch fix at `src/git/operations.ts:1642`.
-- **Size it by decisions, not seams.** 5b hit 93% on a seam count that predicted ~50%. Step 8 carries at least three independent decision surfaces (discriminator shape, toolbar wiring, reconciliation rules) — split before launching, not after the session bloats.
+- **Size it by decisions, not seams** — now confirmed in both directions: 5b hit 93% on a seam count predicting ~50%, 6a hit 58% after splitting step 8 by decision surface. Keep 6b and 6c separate.
 - **Reload reconciliation must read `offerRetained`'s consequence.** A manifest left at `completed-pending-push` after a *successful* push is now a reachable state, not a contradiction. Reconciliation that assumes such a manifest means "push never happened" will re-offer a push that already landed; the lease makes that safe but confusing. The manifest alone cannot distinguish the two cases — decide in step 8 whether that needs a durable marker.
 - Both exhaustiveness helpers (`assertNeverInteractiveRebaseSubmissionReason`, `assertNeverForcePushResult`) are compile-time gates on their own unions. Adding a variant to either in step 8 will fail typecheck until it is handled — intended pressure, not an obstacle.
 - Fixture lessons now hold twice over: a mock more permissive than production hides classification bugs (5a), and a fixture cleaner than production hides the code that copes with production (5b). Step 8's reconciliation fixtures should reproduce partial and contradictory on-disk state, not only the tidy cases.
