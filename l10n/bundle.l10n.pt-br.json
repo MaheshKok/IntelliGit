@@ -494,5 +494,12 @@
     "The checked-out branch changed before the rebase started.": "O branch com checkout foi alterado antes do início do rebase.",
     "HEAD changed before the rebase started.": "HEAD foi alterado antes do início do rebase.",
     "Git stopped without leaving a resumable rebase.": "O Git parou sem deixar um rebase que possa ser retomado.",
-    "An unexpected error occurred.": "Ocorreu um erro inesperado."
+    "An unexpected error occurred.": "Ocorreu um erro inesperado.",
+    "Interactive rebase completed. Force-push the rewritten commits?": "O rebase interativo foi concluído. Forçar o envio dos commits reescritos?",
+    "Force Push": "Forçar envio",
+    "Dismiss": "Dispensar",
+    "Force push completed.": "O envio forçado foi concluído.",
+    "Force push completed, but its pending offer could not be cleared and may reappear.": "O envio forçado foi concluído, mas não foi possível limpar a oferta pendente, que pode reaparecer.",
+    "The branch moved since the rebase — push manually.": "O branch mudou desde o rebase — envie manualmente.",
+    "Force push failed: {message}": "O envio forçado falhou: {message}"
 }

@@ -7,6 +7,7 @@ import { GitOps } from "../git/operations";
 import { createPendingRebaseDialogRequests } from "../git/interactiveRebase/pendingRequests";
 import { createInteractiveRebaseSubmissionHandler } from "../git/interactiveRebase/submission";
 import { runInteractiveRebaseSubmission } from "../git/interactiveRebase/run";
+import { dismissRebasePushOffer, forcePushRebasedHead } from "../git/interactiveRebase/push";
 import { watchWholeIndexOperation } from "../git/wholeIndexOperationWatcher";
 import { CommitMessageGenerationCoordinator } from "../ai/commitMessageGenerationCoordinator";
 import { RepositoryLock } from "../git/repositoryLock";
@@ -931,13 +932,33 @@ export async function activateRepositoryMode(
                             result,
                         ),
                 );
-                await showInteractiveRebaseSubmissionRunResult(runResult, async () => {
-                    if (getUndockedSelectedRepositoryRoot() === repoRoot) {
-                        await refreshService.refreshAll();
-                        return;
-                    }
-                    await loadUndockedData();
-                });
+                await showInteractiveRebaseSubmissionRunResult(
+                    runResult,
+                    async () => {
+                        if (getUndockedSelectedRepositoryRoot() === repoRoot) {
+                            await refreshService.refreshAll();
+                            return;
+                        }
+                        await loadUndockedData();
+                    },
+                    {
+                        forcePush: (manifest) =>
+                            forcePushRebasedHead(
+                                {
+                                    executor: undockedExecutor,
+                                    mutationGate,
+                                    storageRoot: context.globalStorageUri?.fsPath ?? "",
+                                    commonDir: directories.commonDir,
+                                },
+                                manifest,
+                            ),
+                        dismiss: (manifest) =>
+                            dismissRebasePushOffer(
+                                context.globalStorageUri?.fsPath ?? "",
+                                manifest,
+                            ),
+                    },
+                );
             }),
             undocked.onRebaseDialogCancel(({ requestId }) => {
                 // An already-consumed request is a benign no-op, so its boolean result is intentionally ignored.

@@ -303,6 +303,7 @@ export async function interactiveRebaseFromHere(ctx: CommitActionContext): Promi
         repoRoot: ctx.repoRoot,
         baseHash: ctx.validatedHash,
         rangeHashes: rangeResult.commits.map((commit) => commit.hash),
+        hasPushedCommit: rangeResult.commits.some((commit) => commit.isPushed),
         expectedHead,
         expectedBranch,
     });

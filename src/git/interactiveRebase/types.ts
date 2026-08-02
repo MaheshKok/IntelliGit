@@ -273,6 +273,8 @@ export interface PendingRebaseDialogRequestInput {
     baseHash: string;
     /** Full object IDs in the exact oldest-to-newest order offered to the dialog. */
     rangeHashes: readonly string[];
+    /** Whether the offered range already contained history reachable from a remote. */
+    hasPushedCommit: boolean;
     /** HEAD object ID that must still match when a later submission is accepted. */
     expectedHead: string;
     /** Fully qualified symbolic branch ref that must still be checked out on submission. */
@@ -285,13 +287,19 @@ export interface PendingRebaseDialogRequest extends PendingRebaseDialogRequestIn
     requestId: string;
 }
 
+/** Immutable submission-time request snapshot, including any upstream captured at submission. */
+export interface SubmittedRebaseDialogRequest extends PendingRebaseDialogRequest {
+    /** All-or-none upstream target captured before the rebase runner starts. */
+    pushTarget?: RebasePushTarget;
+}
+
 /** Outcome of consuming one pending dialog request from a provider-specific inbound channel. */
 export type PendingRebaseDialogConsumeResult =
     | {
           /** The request belonged to this provider and is removed before being returned. */
           status: "consumed";
           /** Immutable request snapshot for the submission validation phase. */
-          request: PendingRebaseDialogRequest;
+          request: SubmittedRebaseDialogRequest;
       }
     | {
           /** The request cannot be used by this message. */
@@ -340,6 +348,12 @@ export type InteractiveRebaseRunResult =
           status: "completed";
           /** Fresh HEAD object ID observed after the completed rebase. */
           rebasedHeadOid: string;
+      }
+    | {
+          /** Git completed after rewriting pushed history and needs a pinned push decision. */
+          status: "completed-pending-push";
+          /** Retained durable state that owns the exact force-push source and destination. */
+          manifest: RebaseSessionManifest;
       }
     | {
           /**

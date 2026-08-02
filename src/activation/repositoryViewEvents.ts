@@ -10,6 +10,7 @@ import type {
 } from "../webviews/protocol/commitGraphTypes";
 import { createInteractiveRebaseSubmissionHandler } from "../git/interactiveRebase/submission";
 import { runInteractiveRebaseSubmission } from "../git/interactiveRebase/run";
+import { dismissRebasePushOffer, forcePushRebasedHead } from "../git/interactiveRebase/push";
 import { RepositoryMutationGate } from "../git/repositoryMutationGate";
 import type {
     InteractiveRebaseSubmissionRejectionReason,
@@ -307,8 +308,23 @@ export function registerRepositoryViewEvents(
                         result,
                     ),
             );
-            await showInteractiveRebaseSubmissionRunResult(runResult, () =>
-                refreshService().refreshAll(),
+            await showInteractiveRebaseSubmissionRunResult(
+                runResult,
+                () => refreshService().refreshAll(),
+                {
+                    forcePush: (manifest) =>
+                        forcePushRebasedHead(
+                            {
+                                executor,
+                                mutationGate,
+                                storageRoot: context.globalStorageUri?.fsPath ?? "",
+                                commonDir: directories.commonDir,
+                            },
+                            manifest,
+                        ),
+                    dismiss: (manifest) =>
+                        dismissRebasePushOffer(context.globalStorageUri?.fsPath ?? "", manifest),
+                },
             );
         };
     const handleRebaseDialogCancel =
@@ -498,6 +514,14 @@ export function showInteractiveRebaseSubmissionRejection(
 export async function showInteractiveRebaseSubmissionRunResult(
     result: import("../git/interactiveRebase/types").InteractiveRebaseRunResult,
     refresh: () => Promise<void>,
+    pushOfferActions: {
+        forcePush: (
+            manifest: import("../git/interactiveRebase/types").RebaseSessionManifest,
+        ) => Promise<import("../git/interactiveRebase/push").RebaseForcePushResult>;
+        dismiss: (
+            manifest: import("../git/interactiveRebase/types").RebaseSessionManifest,
+        ) => Promise<void>;
+    },
 ): Promise<void> {
     switch (result.status) {
         case "completed":
@@ -506,6 +530,49 @@ export async function showInteractiveRebaseSubmissionRunResult(
             );
             await refresh();
             return;
+        case "completed-pending-push": {
+            await refresh();
+            const forcePush = vscode.l10n.t("Force Push");
+            const dismiss = vscode.l10n.t("Dismiss");
+            const action = await vscode.window.showWarningMessage(
+                vscode.l10n.t("Interactive rebase completed. Force-push the rewritten commits?"),
+                forcePush,
+                dismiss,
+            );
+            if (action === dismiss) {
+                await pushOfferActions.dismiss(result.manifest);
+                return;
+            }
+            if (action !== forcePush) return;
+            const pushResult = await pushOfferActions.forcePush(result.manifest);
+            if (pushResult.status === "pushed") {
+                // The push landed either way, so the outcome is never reported as a failure. A
+                // retained offer still resurfaces on the next reload, and saying so here is the
+                // only way the user learns that reappearance is bookkeeping, not a missed push.
+                await (pushResult.offerRetained
+                    ? vscode.window.showWarningMessage(
+                          vscode.l10n.t(
+                              "Force push completed, but its pending offer could not be cleared and may reappear.",
+                          ),
+                      )
+                    : vscode.window.showInformationMessage(vscode.l10n.t("Force push completed.")));
+                await refresh();
+                return;
+            }
+            if (pushResult.status === "branch-moved" || pushResult.status === "head-moved") {
+                await vscode.window.showWarningMessage(
+                    vscode.l10n.t("The branch moved since the rebase — push manually."),
+                );
+                return;
+            }
+            if (pushResult.status === "failed") {
+                await vscode.window.showErrorMessage(
+                    vscode.l10n.t("Force push failed: {message}", { message: pushResult.message }),
+                );
+                return;
+            }
+            return assertNeverForcePushResult(pushResult);
+        }
         case "guard-rejected":
             // The in-gate re-check found the same condition the up-front guard reports, so the
             // user gets the same remedy text rather than a second vocabulary for one problem.
@@ -555,6 +622,12 @@ function interactiveRebaseRunFailureMessage(
         case "unexpected-error":
             return result.message ?? vscode.l10n.t("An unexpected error occurred.");
     }
+}
+
+/** Makes a newly added force-push outcome a compile-time exhaustiveness error. */
+function assertNeverForcePushResult(result: never): never {
+    void result;
+    throw new Error("Unhandled interactive rebase force-push result.");
 }
 
 /** Makes newly added submission rejection reasons a compile-time exhaustiveness error. */

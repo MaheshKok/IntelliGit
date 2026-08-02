@@ -1,5 +1,6 @@
 import type { GitExecutor } from "../executor";
 import { evaluateInteractiveRebaseGuards } from "./guards";
+import { readRebasePushTarget } from "./push";
 import { validateRebaseSubmission } from "./todo";
 import type {
     InteractiveRebaseSubmissionResult,
@@ -59,7 +60,12 @@ export function createInteractiveRebaseSubmissionHandler(deps: {
             });
             if (guards.status === "rejected") return guards;
 
-            return { status: "accepted", request, entries: validation.entries };
+            const pushTarget = await readRebasePushTarget(deps.executor, request.expectedBranch);
+            const submittedRequest = Object.freeze({
+                ...request,
+                ...(pushTarget ? { pushTarget } : {}),
+            });
+            return { status: "accepted", request: submittedRequest, entries: validation.entries };
         },
         cancel(message, originProvider) {
             return (

@@ -5,6 +5,7 @@ import type { GitExecutor } from "../executor";
 import type { RepositoryMutationGate } from "../repositoryMutationGate";
 import { createGitEditorCommand } from "./editorCommand";
 import { evaluateInteractiveRebaseGuards } from "./guards";
+import { shouldOfferRebaseForcePush } from "./push";
 import { writeInteractiveRebaseSession } from "./session";
 import {
     createRebaseSessionDirectory,
@@ -16,10 +17,10 @@ import {
 } from "./storage";
 import type {
     InteractiveRebaseRunResult,
-    PendingRebaseDialogRequest,
     RebaseReservation,
     RebaseSessionManifest,
     RebaseTodoEntry,
+    SubmittedRebaseDialogRequest,
 } from "./types";
 
 /** Dependencies required to start one accepted interactive-rebase submission. */
@@ -47,7 +48,7 @@ export interface InteractiveRebaseRunDependencies {
 /** Input captured by the accepted dialog handoff. */
 export interface InteractiveRebaseRunInput {
     /** Immutable request snapshot validated before the runner is called. */
-    request: PendingRebaseDialogRequest;
+    request: SubmittedRebaseDialogRequest;
     /** Validated todo entries in the submitted order. */
     entries: readonly RebaseTodoEntry[];
 }
@@ -67,6 +68,7 @@ export async function runInteractiveRebaseSubmission(
     const sessionId = (dependencies.createSessionId ?? randomUUID)();
     let reservation: RebaseReservation | undefined;
     let shouldCleanUp = false;
+    let shouldDeleteManifest = true;
     try {
         const acquired = await tryAcquireRebaseReservation({
             storageRoot,
@@ -86,11 +88,13 @@ export async function runInteractiveRebaseSubmission(
             sessionId,
         );
         await writeInteractiveRebaseSession(session, input.entries);
+        const pushTarget = request.pushTarget;
         const manifest: RebaseSessionManifest = {
             version: 1,
             sessionId,
             repoRoot: request.repoRoot,
             branch: request.expectedBranch,
+            ...(pushTarget ? { pushTarget } : {}),
             baseHash: request.baseHash,
             expectedHead: request.expectedHead,
             createdAt: (dependencies.now ?? (() => new Date()))().toISOString(),
@@ -151,6 +155,19 @@ export async function runInteractiveRebaseSubmission(
                         "rev-parse",
                         "HEAD",
                     ]);
+                    if (shouldOfferRebaseForcePush(request.hasPushedCommit, pushTarget)) {
+                        const pendingPushManifest = {
+                            ...runningManifest,
+                            lifecycle: "completed-pending-push" as const,
+                            rebasedHeadOid,
+                        };
+                        await writeRebaseManifest(storageRoot, pendingPushManifest);
+                        shouldDeleteManifest = false;
+                        return {
+                            status: "completed-pending-push",
+                            manifest: pendingPushManifest,
+                        } as const;
+                    }
                     await writeRebaseManifest(storageRoot, {
                         ...runningManifest,
                         lifecycle: "done",
@@ -188,12 +205,15 @@ export async function runInteractiveRebaseSubmission(
         return { status: "failed", reason: "unexpected-error", message: errorMessage(error) };
     } finally {
         if (reservation && shouldCleanUp) {
-            await Promise.all([
-                deleteRebaseSessionDirectory(storageRoot, request.repoRoot, sessionId),
-                rm(getRebaseStoragePaths(storageRoot, request.repoRoot).manifestPath(sessionId), {
-                    force: true,
-                }),
-            ]);
+            await deleteRebaseSessionDirectory(storageRoot, request.repoRoot, sessionId);
+            if (shouldDeleteManifest) {
+                await rm(
+                    getRebaseStoragePaths(storageRoot, request.repoRoot).manifestPath(sessionId),
+                    {
+                        force: true,
+                    },
+                );
+            }
             await releaseRebaseReservation(reservation);
         }
     }

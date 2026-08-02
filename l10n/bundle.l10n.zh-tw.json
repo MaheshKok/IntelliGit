@@ -494,5 +494,12 @@
     "The checked-out branch changed before the rebase started.": "已檢出的分支在變基開始前已變更。",
     "HEAD changed before the rebase started.": "HEAD 在變基開始前已變更。",
     "Git stopped without leaving a resumable rebase.": "Git 已停止且未留下可繼續的變基。",
-    "An unexpected error occurred.": "發生未預期的錯誤。"
+    "An unexpected error occurred.": "發生未預期的錯誤。",
+    "Interactive rebase completed. Force-push the rewritten commits?": "互動式變基已完成。要強制推送重寫後的提交嗎？",
+    "Force Push": "強制推送",
+    "Dismiss": "關閉",
+    "Force push completed.": "強制推送已完成。",
+    "Force push completed, but its pending offer could not be cleared and may reappear.": "強制推送已完成，但未能清除其待處理的提示，該提示可能會再次出現。",
+    "The branch moved since the rebase — push manually.": "重新定基後分支已移動，請手動推送。",
+    "Force push failed: {message}": "強制推送失敗：{message}"
 }

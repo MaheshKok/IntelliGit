@@ -32,6 +32,15 @@ function executorFor(overrides: Record<string, GitResponse> = {}): GitExecutor {
             if (value === undefined) throw new Error(`Unexpected Git command: ${command}`);
             return value;
         }),
+        runBinary: vi.fn(async (args: string[]) => {
+            if (args[0] !== "for-each-ref") throw new Error(`Unexpected Git binary command: ${args.join(" ")}`);
+            return {
+                stdout: Buffer.from("\0\0"),
+                stderr: Buffer.alloc(0),
+                exitCode: 0,
+                truncated: false,
+            };
+        }),
     } as unknown as GitExecutor;
 }
 
@@ -88,6 +97,28 @@ describe("interactive rebase submission handler", () => {
         if (result.status !== "accepted") throw new Error("Expected accepted submission.");
         expect(result.entries).not.toBe(submitted);
         expect(result.entries[0]?.hash).toBe(HASH_A);
+    });
+
+    it("captures a complete upstream target at submission time", async () => {
+        const executor = executorFor();
+        (executor.runBinary as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+            stdout: Buffer.from(`origin\0refs/heads/main\0${HASH_C}`),
+            stderr: Buffer.alloc(0),
+            exitCode: 0,
+            truncated: false,
+        });
+        const { handler, origin, requestId } = setup({ executor });
+
+        await expect(handler.submit({ requestId, entries: validEntries() }, origin)).resolves.toMatchObject({
+            status: "accepted",
+            request: {
+                pushTarget: {
+                    remoteName: "origin",
+                    remoteHeadRef: "refs/heads/main",
+                    upstreamOid: HASH_C,
+                },
+            },
+        });
     });
 
     it("does not consume a request when a different provider submits it", async () => {

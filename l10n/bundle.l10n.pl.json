@@ -494,5 +494,12 @@
     "The checked-out branch changed before the rebase started.": "Wyewidencjonowana gałąź zmieniła się przed rozpoczęciem rebase.",
     "HEAD changed before the rebase started.": "HEAD zmienił się przed rozpoczęciem rebase.",
     "Git stopped without leaving a resumable rebase.": "Git zatrzymał się bez pozostawienia rebase możliwego do wznowienia.",
-    "An unexpected error occurred.": "Wystąpił nieoczekiwany błąd."
+    "An unexpected error occurred.": "Wystąpił nieoczekiwany błąd.",
+    "Interactive rebase completed. Force-push the rewritten commits?": "Interaktywny rebase został ukończony. Wymusić wypchnięcie przepisanych commitów?",
+    "Force Push": "Wymuś wypchnięcie",
+    "Dismiss": "Odrzuć",
+    "Force push completed.": "Wymuszone wypchnięcie zostało ukończone.",
+    "Force push completed, but its pending offer could not be cleared and may reappear.": "Wymuszone wypchnięcie zostało ukończone, ale nie udało się usunąć oczekującej propozycji i może się ona pojawić ponownie.",
+    "The branch moved since the rebase — push manually.": "Gałąź zmieniła się od czasu rebase — wypchnij ręcznie.",
+    "Force push failed: {message}": "Wymuszone wypchnięcie nie powiodło się: {message}"
 }

@@ -56,8 +56,8 @@ async function fixture(
     const executor = {
         runBinary: vi.fn(async (args: string[], runOptions?: { expectedExitCodes?: number[] }) => {
             calls.push(args);
-            if (!inGate) throw new Error(`Git command escaped mutation gate: ${args.join(" ")}`);
             const command = args.join(" ");
+            if (!inGate) throw new Error(`Git command escaped mutation gate: ${args.join(" ")}`);
             if (command === "symbolic-ref --quiet HEAD") return binary(options.branch ?? BRANCH);
             if (command === "rev-parse HEAD")
                 return binary(
@@ -159,7 +159,10 @@ function binary(stdout: string, stderr = "", exitCode = 0, truncated = false) {
     return { stdout: Buffer.from(stdout), stderr: Buffer.from(stderr), exitCode, truncated };
 }
 
-function input() {
+function input(
+    hasPushedCommit = false,
+    pushTarget: { remoteName: string; remoteHeadRef: string; upstreamOid: string } | undefined = undefined,
+) {
     return {
         request: {
             requestId: "request-1",
@@ -167,8 +170,10 @@ function input() {
             repoRoot: "/fixture-repository",
             baseHash: BASE,
             rangeHashes: [BASE],
+            hasPushedCommit,
             expectedHead: HEAD,
             expectedBranch: BRANCH,
+            ...(pushTarget ? { pushTarget } : {}),
         },
         entries: [{ hash: HEAD, action: "reword" as const, message: "subject\n\nbody" }],
     };
@@ -202,6 +207,57 @@ describe("runInteractiveRebaseSubmission", () => {
         await expectMissing(paths.sessionDirectory("session-1"));
         await expectMissing(paths.manifestPath("session-1"));
         await expectMissing(paths.reservationPath);
+    });
+
+    it("does not retain an offer when the submission had no upstream", async () => {
+        const test = await fixture();
+
+        await expect(runInteractiveRebaseSubmission(test.dependencies, input(true))).resolves.toEqual({
+            status: "completed",
+            rebasedHeadOid: REBASED,
+        });
+
+        const paths = getRebaseStoragePaths(test.storageRoot, "/fixture-repository");
+        await expectMissing(paths.manifestPath("session-1"));
+    });
+
+    it("does not offer a push when the submitted range was entirely unpushed", async () => {
+        const test = await fixture();
+
+        await expect(
+            runInteractiveRebaseSubmission(
+                test.dependencies,
+                input(false, { remoteName: "origin", remoteHeadRef: "refs/heads/main", upstreamOid: BASE }),
+            ),
+        ).resolves.toEqual({
+            status: "completed",
+            rebasedHeadOid: REBASED,
+        });
+    });
+
+    it("retains only the completed push offer after rewriting pushed history", async () => {
+        const test = await fixture();
+
+        await expect(
+            runInteractiveRebaseSubmission(
+                test.dependencies,
+                input(true, { remoteName: "origin", remoteHeadRef: "refs/heads/main", upstreamOid: BASE }),
+            ),
+        ).resolves.toMatchObject({
+            status: "completed-pending-push",
+            manifest: {
+                lifecycle: "completed-pending-push",
+                rebasedHeadOid: REBASED,
+                pushTarget: { remoteName: "origin", remoteHeadRef: "refs/heads/main", upstreamOid: BASE },
+            },
+        });
+
+        const paths = getRebaseStoragePaths(test.storageRoot, "/fixture-repository");
+        await Promise.all([
+            expectMissing(paths.sessionDirectory("session-1")),
+            expectMissing(paths.reservationPath),
+            expect(access(paths.manifestPath("session-1"))).resolves.toBeUndefined(),
+        ]);
     });
 
     it.each([
