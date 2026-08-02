@@ -658,11 +658,87 @@ Shadow-mode datum: **not collected, seventh time.** Same structural reason. Seve
 
 Rounds used: 1 build + 1 Codex fix round + 2 orchestrator fixes (the `warn=1` ref conversion, and the test that made it load-bearing).
 
-## Handoff — resume at Phase 5
+## Phase 5a — run the rebase and classify the outcome
 
-- Branch `feat/interactive-rebase-from-here`; BASE_HEAD for phase 5 = the tip after this phase's two commits. Tunables unchanged; `SEAL_MODE=shadow`.
-- **`.claudex-gates.json` is gitignored and does not travel.** It must contain six gates, `architecture` among them at `stage: accept`. A fresh clone re-derives a single gate from `PROOF_CMD` and silently ships the weaker definition of green that 4a caught. Re-create it before launching phase 5 on any other machine.
-- Phase 5 scope: PLAN steps 2 + 7 — reservation, session dir + manifest, in-gate recheck, run the rebase under `GIT_SEQUENCE_EDITOR`/`GIT_EDITOR`, pause classification, force-push offer.
-- **Phase 5 must carry the full multi-line message to `GIT_EDITOR` through a file.** Restated because it is now the immediately-next phase, not a distant one: never a shell command line, never an env var, never `-m`. The step-2 amendment (Phase 4a) is what makes this binding — see its security note above; `buildRebaseTodo`'s truncate-and-strip is unchanged and still pinned by `interactiveRebase.test.ts:150`.
-- **Residual risk, now due:** `range.ts` decodes commit bodies with `toString("utf8")`, so a non-UTF-8 body does not round-trip byte-identically. 4a pre-fills the reword editor from that body; phase 5 writes it back, multi-line. Prove or fix in phase 5 — the reword path ships with it.
-- Size phase 5 by seam count, not line count. Steps 2 and 7 together are the process-launch seam plus the pause/resume state machine; if the prediction lands above 50%, split them.
+Scope: PLAN step 2's run path only. Reservation → session directory → manifest → in-gate re-check → spawn `git rebase -i` under both helper editors → classify. Step 7 (`pushTarget`, force-push offer) deferred to 5b. The split was sized by seam count; 5a peaked at **44%**, against the 45–50% target, so the split was correct.
+
+### Session chain — three SIDs for one phase
+
+| SID | Outcome | PEAK |
+|---|---|---|
+| `019fbfa2` | init hang, killed | — (zero token events) |
+| `019fbfbf` | returned BLOCKED (correctly) | 46% |
+| `019fbfc9` | DONE_WITH_CONCERNS, all 8 deliverables | 44% |
+
+**The init hang.** The watcher fired `rollout frozen 2x600s (size=18853 tokens=0)`. Six-signal corroboration before killing: rollout mtime frozen ~31 min; byte size flat at launch size; token-event count flat at **zero**; no worktree file mtimes advancing (`git status` empty); cumulative CPU TIME 1.64s → 1.66s across a 25s gap; `$ERR` carried only the cosmetic `failed to load models cache` line and no exit notification. Last rollout event was `task_started`. That is the init-hang signature exactly — zero token events ever means there is no partial work to preserve, so recovery was a **fresh relaunch, not a resume**.
+
+**The BLOCKED round was correct behavior.** `editorHelper.ts` ended in `process.exitCode = main();` at module scope, so importing `createGitEditorCommand` from the extension host would run the CLI inside the host process. Codex stopped and reported it instead of working around it. Verified independently before acting: `require(".../editorHelper.ts")` printed `intelligit-rebase-editor: invalid-invocation` and set `process.exitCode = 1`, and `grep -c 'invalid-invocation'` against the existing test run returned 1 — the defect had been live since phase 2, not introduced here.
+
+Fixed by **splitting the module**, not by a `require.main` guard: `editorCommand.ts` holds the pure builders the host imports, `editorHelper.ts` stays the CLI that executes on import. A guard would have left one module that behaves differently depending on how it is loaded; the split makes "safe to import" a property of the file rather than of the caller. The regression test probes both halves in a clean child process, because the property under test is what a bare import does to the process performing it. Mutation-verified: 1/1 killed.
+
+The amended work order reinforced the behavior rather than only unblocking it: *"If you hit another genuine blocker like the one above, stop and report it exactly as the last attempt did. That was the right call."*
+
+### Deliverable 8 — the carried UTF-8 risk, closed by fixing it
+
+Phase 4b handed over a residual risk: `range.ts` decodes commit bodies with `toString("utf8")`, so a non-UTF-8 body may not survive. Codex's answer was that the risk is void — *"a `0xFF` byte written to the commit-message file does not survive as that byte. Git normalizes it to UTF-8 `ÿ` before `loadInteractiveRebaseRange` reads it"* — with a probe asserting it.
+
+**The probe could not prove that, and the claim is false in general.** The probe read `git cat-file commit` through `execFileAsync`, whose `stdout` is a utf8-decoded **string** by default, then re-encoded it with `Buffer.from`. Both byte assertions therefore tested Node's decoder, not Git: any real `0xFF` would already have become U+FFFD before the check ran.
+
+Probed properly, reading raw bytes with no decoding anywhere:
+
+| `i18n.commitEncoding` | object keeps `0xFF` | `encoding` header | `%B` emits raw `0xFF` |
+|---|---|---|---|
+| unset (default) | no — stored as `c3 bf` | none | no |
+| `ISO-8859-1` | **yes** | `encoding ISO-8859-1` | **yes** |
+| `ISO-8859-1` + `logOutputEncoding=UTF-8` | yes | yes | no |
+| `ISO-8859-1`, read with `--encoding=UTF-8` | yes | yes | no |
+
+Git transcodes latin-1 → UTF-8 **only when no commit encoding is configured**. With one configured — a supported, ordinary setting — the bytes are stored verbatim, an `encoding` header records them, and `git log` emits them raw. The conclusion was right for the default and wrong for the case that matters.
+
+Fixed at the source: `range.ts` now passes `--encoding=UTF-8`, which makes Git convert through the `encoding` header on every path. One flag. The old test was replaced with two that read real bytes — one per configuration — and the configured-encoding one fails without the flag. Mutation-verified 2/2 (flag dropped; flag value changed to `ISO-8859-1`).
+
+**The residual risk is closed, not carried forward.**
+
+### Review of the delegated `run.ts` — four findings, all fixed
+
+1. **Cleanup could destroy a live rebase.** `runBinary` rejects on any exit code outside `expectedExitCodes`, so a Git fatal (128) that had already written `rebase-merge` landed in the outer `catch` → `unexpected-error` → `finally`, which deleted the session directory, the manifest, and the reservation. PLAN line 20 requires cleanup only on exits *verifiably* not paused; the throw path performed no check at all. The result would be a real resumable rebase with no todo, no message map, and no reservation. Now the throw path probes first, and an unreadable probe keeps the session — "cannot tell" is not "nothing to keep".
+2. **The in-gate re-check was not the full guard set.** Only branch, HEAD, and the rebase directory were re-checked; PLAN requires *all* guards re-evaluated inside the critical section, because submission evaluated them before this work joined the mutation queue. Missing: working-tree-dirty and bisect. A mutation that ran while the submission waited could dirty the tree, and nothing would notice. Now `evaluateInteractiveRebaseGuards` runs inside the gate. Its rejection surfaces as a distinct `guard-rejected` result carrying the guard's own reason, so the UI reuses the remedy text it already shows for that guard — **zero new l10n keys**, and no second vocabulary for one condition.
+3. **The manifest was mutated in place** (`manifest.lifecycle = "running"`, then `"done"`, plus `rebasedHeadOid`), against the project's immutability rule. Each lifecycle write now derives a new object.
+4. **Probes were unbounded.** `readGitText` called `runBinary` with no `maxOutputBytes`; `ls-files -u` grows with the conflict. Now bounded, and a truncated probe throws rather than being trimmed into a plausible answer — a truncated conflict list would otherwise read as empty and misreport a real conflict as a clean helper stop.
+
+`guards.ts` was widened from `GitExecutor` to `Pick<GitExecutor, "run">` so the runner can reuse it without taking the whole class.
+
+### Mutation sweep — 17/17
+
+First pass killed **9/17**. Every one of the 8 survivors was a real coverage gap in the phase's core artifact, and all 8 were closed rather than accepted:
+
+- **N7 / N11** (pre-spawn rebase-directory check; `rebase-apply` ignored) survived for an instructive reason: reservation acquisition already rejects a rebase that exists up front, so removing the runner's own check changed nothing observable *that way*. The race it actually guards is a rebase starting **while the submission is queued** — reachable only by creating the directory inside the mutation gate before the operation runs. Both directories are now covered at that seam. Without chasing why the mutation survived, the obvious test would have passed while testing the wrong layer.
+- **N4 / N15** (fail-open on an unreadable probe): a self-referential symlink makes `stat` fail `ELOOP` rather than `ENOENT`. The first attempt placed it before the run and was rejected at acquisition — again the wrong layer — so it was retargeted to appear during the spawn, where the cleanup probe actually reads it.
+- **N12 / N13** (truncated probe accepted; byte ceiling removed) — the ceiling is asserted on the call, the truncation on the outcome.
+- **N16** (running lifecycle never written): asserted by reading the manifest from inside the spawn, since a completed run deletes it before the test could look.
+- **N17** (exit-code contract widened): the fixture's executor mock returned any exit code regardless of `expectedExitCodes`, so it could not distinguish a rebase outcome from a Git fatal. The mock now enforces the contract the real executor enforces — **a fixture that is more permissive than production hides exactly the classification bugs it exists to catch.**
+
+Second pass: **17/17 killed**, `run.ts` restored byte-identical (sha256 `debb7b16…`). `git stash` was not used at any point — the tree carries uncommitted work, so mutations were applied by byte-level save/restore with a SHA-256 round-trip check.
+
+### The delegated round left the suite red
+
+Two integration tests still asserted `"rebase engine is not wired yet"` — the phase-3b placeholder that this phase's own work order replaced with the real runner — and the mock `ExtensionContext` had no `asAbsolutePath`, which surfaced as an unhandled rejection rather than a clean failure. Codex reported all 8 deliverables DONE without running the accept-stage suite. Both tests now assert the wired path: the submission reaches the real runner and reports `storage-unavailable`, which is what this harness can truthfully produce without doing real rebases (that is phase 8's job).
+
+Also corrected: `knip` flagged `editorHelper.ts` as unused, a true consequence of the split — nothing imports it, but `scripts/build.js:23` builds it as an esbuild entry point. Declared as an entry in `knip.json`, which is accurate rather than a suppression. `InteractiveRebaseRunFailureReason` is no longer exported; callers narrow the result type instead.
+
+### Acceptance
+
+Accept gates: **lint OK 9.8s, typecheck OK 3.9s, format OK 2.3s, knip OK 0.9s, architecture OK 0.9s, suite OK 31.8s — GATES: GREEN warn=0.** Seal: `SEAL: WRITTEN files=28 green=True`, re-checked `SEAL: INTACT files=28 warns_open=0`.
+
+Shadow-mode datum: **not collected, eighth time.** The orchestrator changed hash-covered files during verification again, so the fresh-verifier comparison has nothing clean to measure. Eight builds, zero clean data points — `SEAL_MODE` stays `shadow`, and at this point the shadow protocol is not earning its cost on this build.
+
+Rounds used: 1 hung launch (no work), 1 blocked launch, 1 build, 0 Codex fix rounds, 5 orchestrator fixes (the UTF-8 flag, and the four `run.ts` findings).
+
+## Handoff — resume at Phase 5b
+
+- Branch `feat/interactive-rebase-from-here`; BASE_HEAD for 5b = the tip after this phase's two commits. Tunables unchanged; `SEAL_MODE=shadow`.
+- **`.claudex-gates.json` is gitignored and does not travel.** Six gates, `architecture` among them at `stage: accept`. Re-create it before launching on any other machine.
+- 5b scope: PLAN step 7 — `pushTarget` resolution under the all-or-none upstream rules, the `completed-pending-push` lifecycle and its manifest retention, the Force Push / Dismiss toast, and a source- and destination-pinned push with `--force-with-lease`.
+- **The `guard-rejected` result is new and its UI path is exhaustive-checked.** Adding a run-result variant in 5b requires handling it in `showInteractiveRebaseSubmissionRunResult`, or the switch fails to compile — which is the intended pressure.
+- The carried UTF-8 risk is **closed** (see deliverable 8). Nothing to re-prove in 5b.
+- Fixture lesson worth carrying into 5b's tests: a mock that is more permissive than the real executor cannot catch classification bugs. Any new mock for the push path should enforce the same exit-code contract `GitExecutor` enforces.
