@@ -1749,3 +1749,93 @@ No l10n work: no user-facing string changes. The new `assertNeverActiveOperation
 - `CommitPanelViewProvider`'s 12 positional constructor dependencies and the missing dependency-cruiser rule against `src/**` importing `editorHelper.ts` remain open. `tests/` is not covered by the `lint` gate (`eslint src scripts`), which is why the new integration file could not be linted directly — pre-existing, worth its own change.
 - **Run the `suite` gate with `VITEST_MAX_THREADS=3`** and `VITEST_MIN_THREADS=1`; vitest is **1.6.1**, where `--maxWorkers` and `--poolOptions.*` are silently parsed as filename filters and yield a vacuous exit 0.
 - **Do not read Codex-written files through the context cache.** Use `git show` / `git diff`. And `grep -E` on macOS — BSD grep has no `\|` alternation, a trap hit again this phase.
+
+## Phase 9 — acceptance matrix and docs (PLAN steps 13 + 14)
+
+Claude ran this phase directly; no Codex round. Steps 13 and 14 are verification and prose, not implementation.
+
+### react-doctor found a real defect in the feature's own dialog
+
+The one acceptance-matrix command not already covered by the gate manifest was `bun run react-doctor`. It returned **rc=1, 83/100, ten issues** — and all ten were in code this build wrote. None was pre-existing noise, so none could be dismissed on that basis.
+
+Triage, reading the code for each rather than trusting the label:
+
+- **`RebaseDialog.tsx:64` "State synced to a prop inside an effect" (the sole error), with `:63` "Derived value copied into state"** — true positive, one root cause. Fixed.
+- **`rebaseDialogState.ts:109` "array.find() inside a loop"** — true positive. `[...recomputed].reverse().find(...)` ran once per squash entry: a full copy plus reverse inside the loop, quadratic over a range the dialog's own comment at `RebaseDialog.tsx:52` describes as possibly "hundreds of commits". Fixed by scanning backwards in place, predicate preserved exactly — `fixup` and `drop` are still both skipped, for their own separate reasons.
+- **`reconcile.ts:102` "Sequential independent awaits"** — false positive, high confidence. The awaits are genuinely independent, but the sequencing is the design: the doc comment at `:94` states the rebase directory and marker are read once *before* manifest selection, and marker-first ordering is what the classifier rests on. Folding it into the `Promise.all` would race the marker against the manifest listing.
+- **`pendingRequests.ts:85` `origins.includes(...)` inside a loop** — false positive. `origins` is the set of view providers, three at most; a `Set` would be slower and noisier than the scan it replaces.
+- **`RebaseDialog.tsx:41` "Ref initializer runs on every render"** — false positive for impact. The initializer is `new Set()`, not the expensive call the rule targets, and the prescribed fix makes the type nullable.
+- **`range.ts:123`, `rebaseReconciliation.ts:44` and `:62`, `storage.ts:232` — chained iterations** — false positives for impact. Two passes over git output lines, session ids, and directory entries; `.reduce()` would be harder to read and no faster.
+
+### The flash was measured, not assumed
+
+The claim that the effect version committed a stale frame is a timing claim, so it was measured rather than cited. `frameprobe.py` instrumented both variants identically — a dependency-free `useLayoutEffect` recording the row hashes present in the document at every commit — ran the same offered-range change against each, and restored the file verified by SHA-256:
+
+```
+fixed  (render-phase): commits=1 frames=['ca']
+effect (HEAD)       : commits=2 frames=['ac', 'ca']
+```
+
+The effect version's first frame is `ac`: the previous range's entry order rendered against the new commit map, with the dropped commit already filtered out of the rows. Changing the offered range painted one frame of rows in the superseded order before the reseed landed. The render-phase adjustment commits `ca` once.
+
+react-doctor after the fix: **rc=0, 85/100, eight issues, zero errors** — it now passes as a gate instead of failing.
+
+The fix introduced one new warning worth naming rather than hiding: `:40` "State only used in handlers", pointing at `lastCommitKey` and recommending a ref — which is what the code had before. That is the canonical react.dev pattern being flagged, and the frame measurement is the evidence that it costs nothing here: the render-phase `setLastCommitKey` participates in the same discarded pass as `setEntries`, and that version commits exactly one frame. Kept as state; a ref would reintroduce a render-phase write of the guard itself, which is the impurity the pattern exists to avoid.
+
+### Acceptance matrix (PLAN step 13)
+
+| Command | Result |
+|---|---|
+| `format:check` | rc=0, 3s |
+| `lint` / `lint:strict` | rc=0, 9s — `lint:strict` is `eslint src scripts --max-warnings=0`, identical to the `lint` gate already running, so one run covers both |
+| `typecheck` | rc=0, 3s |
+| `architecture:check` | rc=0, 1s — 269 modules, 1014 dependencies, no violations |
+| `react-doctor` | rc=0 — 85/100, 0 errors (from rc=1, 83/100, 1 error) |
+| `build` | rc=0, 1s |
+| `build:prod` | rc=0, 1s |
+| `test` | rc=0, 324s — **2596/2596 across 162 files** |
+| `l10n:validate` | rc=0 |
+| `l10n:audit` | rc=0 — 9 candidates, all pre-existing, none in this feature's files |
+| `knip` (`deps:check:strict`) | rc=0, no output |
+| `package` | rc=0, 8s |
+
+Packaged helper entry, inspected inside the VSIX: `extension/dist/interactive-rebase-editor-helper.cjs`, 3,848 bytes, with its source map. Present and shipped, which was the point of inspecting it — the helper is a new shipped artifact, not just new source.
+
+`.vscodeignore` re-verified by the pre-commit chain's VSIX listing on every commit this phase: top level is CHANGELOG.md, LICENSE.txt, README.md, image.png, package.json, the twelve `package.nls` files, and the `dist/`, `docs/`, `l10n/`, `media/` directories. **No PLAN.md and no PLAN-REVIEW-LOG.md.**
+
+Rendered interaction check in each host is covered by `rebase-dialog.test.tsx`: docked at `:397`, compact at `:401`, undocked at `:496` (settles each offered dialog exactly once with its own request id). These are jsdom renders driving real events.
+
+Impeccable: `npx --yes impeccable detect` on both changed UI paths returned rc=0 with no findings, and the PostToolUse impeccable hook scanned each edit clean. The narrowest-command rule applied to the review half — the change is render timing with zero visual delta, so no design-review command matched.
+
+**Not verifiable in this environment, and it is the release gate: Windows editor invocation.** The helper reaches Git through a `GIT_SEQUENCE_EDITOR` / `GIT_EDITOR` command string whose quoting is platform-sensitive, and this session is darwin. PLAN's Risks section names it the release gate; it must be exercised on Windows before shipping. Recorded in `docs/interactive-rebase/README.md` under Platform notes so it survives this log.
+
+GitNexus MCP is still not exposed, so the mandated `detect_changes()` scope check could not be run — unchanged from every prior phase.
+
+### Docs (PLAN step 14)
+
+`docs/interactive-rebase/README.md`, following the `docs/commit-checks/README.md` convention: a feature directory with no index entry, because no feature doc in this repo is linked from the README. It covers the dialog's rules, the editor helper's two roles and its refusal contract, session state and the reconciliation classification including all seven ambiguity reasons, the force-push offer and its dismissal, the single-classification abort dispatch, and the Windows gate.
+
+CHANGELOG entry sits under `## [Unreleased]` rather than a new version heading. This is an unmerged feature branch; the version number and its `package.json` bump are a release decision that is not this branch's to make, and a version heading would also conflict on merge. Keep a Changelog, which this file declares it follows, prescribes exactly this.
+
+README needed no change: it already claims interactive rebase in both the Commit Actions prose and the Feature Support table, from `e1b59c33`, which predates this build. Both claims are now true.
+
+### Acceptance
+
+The matrix above is a superset of the gate manifest except `knip`, run separately: rc=0, no output. `SEAL: INTACT files=2 warns_open=0` against base `dc76bbfa`. Commits `ed4653c9` (fix) and `706f7045` (docs).
+
+**Shadow-mode datum: not collected, and this is the last chance to.** Unchanged from the 8h record — one reviewer cannot serve as the fresh verifier measuring their own findings. The gap is protocol, not scheduling, and `SEAL_MODE` never left `shadow` across the whole build.
+
+## Build complete
+
+Every PLAN step is implemented, verified, and committed on `feat/interactive-rebase-from-here`. Nothing was pushed: pushing is user-driven, and the project's Tier-1 rule requires a `security-reviewer` pass first.
+
+**Open, deliberately not built** — each was surfaced during the build and judged out of its phase's scope rather than forgotten:
+
+- A dependency-cruiser rule forbidding any `src/**` import of `editorHelper.ts`. The helper runs `main()` on import, so the ban is currently a comment rather than an enforced constraint.
+- `CommitPanelViewProvider`'s twelve positional constructor dependencies, which should be an options object.
+- `tests/` is outside the `lint` gate (`eslint src scripts`), which is why new integration files could not be linted directly.
+- The real-Git integration suite deserves its own vitest pool once it passes roughly 15% of full-suite wall clock.
+- The nvm `codex` install is broken; `/Users/maheshkokare/.bun/bin/codex` (0.144.1) is the working one.
+- `SEAL_MODE=shadow` cannot produce its go/no-go datum in a single-reviewer configuration.
+
+**Before release:** Windows editor-invocation verification, then a `security-reviewer` pass, then the version bump that converts `## [Unreleased]` into a numbered heading.
