@@ -18,6 +18,7 @@ vi.mock("vscode", () => ({
 import {
     COMMIT_ACTION_FENCE_DECISIONS,
     rejectCommitActionWhenOperationInProgress,
+    rejectWhenOperationInProgress,
 } from "../../../src/commands/operationFence";
 
 function gitOps() {
@@ -85,6 +86,20 @@ describe("operation fence", () => {
         );
 
         expect(mocks.showErrorMessage).not.toHaveBeenCalled();
+    });
+
+    it("uses the extracted operation rejection for commit and branch entry points", async () => {
+        mocks.getActiveOperation.mockResolvedValueOnce("rebase");
+        await rejectCommitActionWhenOperationInProgress("dropCommit", gitOps());
+        const commitMessage = mocks.showErrorMessage.mock.calls[0]?.[0];
+
+        mocks.showErrorMessage.mockClear();
+        mocks.l10nT.mockClear();
+        mocks.getActiveOperation.mockResolvedValueOnce("rebase");
+        await rejectWhenOperationInProgress(gitOps());
+
+        expect(mocks.l10nT).toHaveBeenCalledTimes(1);
+        expect(mocks.showErrorMessage).toHaveBeenCalledWith(commitMessage);
     });
 
     it("fails closed on an operation kind it does not recognize", async () => {

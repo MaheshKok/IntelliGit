@@ -26,19 +26,40 @@ export const COMMIT_ACTION_FENCE_DECISIONS = {
 } satisfies Record<CommitAction, boolean>;
 
 /**
- * Refuses a fenced commit action while another whole-index Git operation controls the repository.
+ * Explicit operation-fence decision for every command registered by the branch command factory.
+ *
+ * Unknown command IDs deliberately fall through to the fence so new mutations cannot silently
+ * bypass the active-operation guard. The value type admits `undefined` to keep that lookup honest:
+ * `strict` alone does not enable `noUncheckedIndexedAccess`, so a plain `Record<string, boolean>`
+ * would type an unknown-ID lookup as `boolean` and make the fail-closed branch read as dead code.
+ */
+export const BRANCH_COMMAND_FENCE_DECISIONS: Readonly<Record<string, boolean | undefined>> = {
+    "intelligit.checkout": true,
+    "intelligit.checkoutAndRebase": true,
+    "intelligit.rebaseCurrentOnto": true,
+    "intelligit.mergeIntoCurrent": true,
+    "intelligit.updateBranch": true,
+    "intelligit.renameBranch": true,
+    "intelligit.deleteBranch": true,
+    "intelligit.deleteBranches": true,
+    "intelligit.openWorktree": false,
+    "intelligit.createWorktreeFromBranch": false,
+    "intelligit.worktree.create": false,
+    "intelligit.newBranchFrom": false,
+    "intelligit.pushBranch": false,
+};
+
+/**
+ * Reports an active whole-index Git operation and returns whether dispatch must stop.
  *
  * The operation probe is deliberately fail-closed: a failed marker check cannot be treated as a
  * clear repository because a history mutation could corrupt the active operation.
  *
  * @returns Whether the caller must stop dispatching the action.
  */
-export async function rejectCommitActionWhenOperationInProgress(
-    action: CommitAction,
+export async function rejectWhenOperationInProgress(
     gitOps: Pick<GitOps, "getActiveOperation">,
 ): Promise<boolean> {
-    if (!COMMIT_ACTION_FENCE_DECISIONS[action]) return false;
-
     try {
         const activeOperation = await gitOps.getActiveOperation();
         switch (activeOperation) {
@@ -77,4 +98,21 @@ export async function rejectCommitActionWhenOperationInProgress(
         );
         return true;
     }
+}
+
+/**
+ * Refuses a fenced commit action while another whole-index Git operation controls the repository.
+ *
+ * The operation probe is deliberately fail-closed: a failed marker check cannot be treated as a
+ * clear repository because a history mutation could corrupt the active operation.
+ *
+ * @returns Whether the caller must stop dispatching the action.
+ */
+export async function rejectCommitActionWhenOperationInProgress(
+    action: CommitAction,
+    gitOps: Pick<GitOps, "getActiveOperation">,
+): Promise<boolean> {
+    if (!COMMIT_ACTION_FENCE_DECISIONS[action]) return false;
+
+    return rejectWhenOperationInProgress(gitOps);
 }

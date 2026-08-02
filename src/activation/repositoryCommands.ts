@@ -1,6 +1,10 @@
 import * as path from "path";
 import * as vscode from "vscode";
 import { createBranchCommands } from "../commands/branchCommands";
+import {
+    BRANCH_COMMAND_FENCE_DECISIONS,
+    rejectWhenOperationInProgress,
+} from "../commands/operationFence";
 import { GitExecutor } from "../git/executor";
 import { GitOps } from "../git/operations";
 import { runPublishBranchFlow } from "../services/publishService";
@@ -462,7 +466,13 @@ function registerBranchCommands(deps: RepositoryCommandsDeps): void {
 
     for (const cmd of branchCommands) {
         deps.context.subscriptions.push(
-            vscode.commands.registerCommand(cmd.id, (item: unknown) => {
+            vscode.commands.registerCommand(cmd.id, async (item: unknown) => {
+                if (
+                    BRANCH_COMMAND_FENCE_DECISIONS[cmd.id] !== false &&
+                    (await rejectWhenOperationInProgress(deps.gitOps))
+                )
+                    return;
+
                 const validated =
                     item &&
                     typeof item === "object" &&
