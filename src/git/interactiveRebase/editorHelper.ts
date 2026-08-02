@@ -1,10 +1,14 @@
+// Standalone CLI entry point Git executes as GIT_SEQUENCE_EDITOR and GIT_EDITOR.
+//
+// This module runs `main()` on import (see the final line), so it must never be imported by the
+// extension host. The pure command builders the host needs live in `editorCommand.ts`.
+
 import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import type { EditorRole } from "./editorCommand";
 
 const ACTIONS = new Set(["pick", "reword", "squash", "fixup", "drop"]);
 const FULL_OBJECT_ID = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
-
-type EditorRole = "message" | "sequence";
 
 interface Invocation {
     editorPath: string;
@@ -20,36 +24,6 @@ interface PreparedMessage {
 interface TodoStep {
     action: string;
     hash: string;
-}
-
-/**
- * Quotes one argument for the shell Git uses to execute configured editors.
- *
- * The value is normalized for POSIX/MSYS paths before it is single-quoted; apostrophes use the
- * POSIX `\\''` escape sequence so the resulting editor command contains no unquoted input.
- */
-export function quoteGitEditorArgument(value: string): string {
-    return `'${value.replaceAll("\\", "/").replaceAll("'", "'\\''")}'`;
-}
-
-/**
- * Builds the editor command string Git executes through its shell.
- *
- * `ELECTRON_RUN_AS_NODE` is scoped to this command with `env`, so Git hooks and their children
- * do not inherit it. The returned command accepts the target editor path as Git's final argument.
- */
-export function createGitEditorCommand(
-    scriptPath: string,
-    role: EditorRole,
-    sessionDirectory: string,
-): string {
-    return [
-        "env ELECTRON_RUN_AS_NODE=1",
-        quoteGitEditorArgument(process.execPath),
-        quoteGitEditorArgument(scriptPath),
-        quoteGitEditorArgument(role),
-        quoteGitEditorArgument(sessionDirectory),
-    ].join(" ");
 }
 
 /**

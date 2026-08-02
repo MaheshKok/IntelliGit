@@ -101,6 +101,7 @@ describe("loadInteractiveRebaseRange", () => {
                     "log",
                     "--reverse",
                     "-z",
+                    "--encoding=UTF-8",
                     "--format=%H%x00%an%x00%aI%x00%B",
                     "--end-of-options",
                     RANGE,
@@ -314,7 +315,64 @@ describe("loadInteractiveRebaseRange real Git framing", () => {
         expect(result.commits.map((commit) => commit.hash)).toEqual([base, pinnedHead]);
         expect(result.commits.map((commit) => commit.hash)).not.toContain(laterHash);
     });
+
+    it("reads a body Git already transcoded when i18n.commitEncoding is unset", async () => {
+        const repo = await createRepository();
+        await commit(repo, "initial\n");
+        const head = await commitRawMessage(repo, NON_UTF8_MESSAGE);
+
+        const result = await loadInteractiveRebaseRange(await executorIn(repo), head, head);
+
+        // Git treats a non-UTF-8 message as latin-1 and stores UTF-8 when no encoding is
+        // configured, so the stored object never holds the original byte. Read as raw bytes:
+        // decoding this to a string first would replace the byte and make the check vacuous.
+        const stored = await gitBytes(repo, ["cat-file", "commit", head]);
+        expect(stored.includes(0xff)).toBe(false);
+        expect(stored.includes(Buffer.from("ÿ", "utf8"))).toBe(true);
+        expect(result).toEqual({
+            status: "ok",
+            commits: [expect.objectContaining({ hash: head, body: "subject\n\nÿ\n" })],
+        });
+    });
+
+    it("decodes a body Git stored verbatim under a configured commit encoding", async () => {
+        const repo = await createRepository();
+        // With an encoding configured, Git stores the message bytes untouched and records an
+        // `encoding` header. This is the case the range loader must ask Git to convert — without
+        // an explicit output encoding the raw byte reaches `toString("utf8")` as U+FFFD.
+        await git(repo, ["config", "i18n.commitEncoding", "ISO-8859-1"]);
+        await commit(repo, "initial\n");
+        const head = await commitRawMessage(repo, NON_UTF8_MESSAGE);
+
+        const result = await loadInteractiveRebaseRange(await executorIn(repo), head, head);
+
+        const stored = await gitBytes(repo, ["cat-file", "commit", head]);
+        expect(stored.includes(0xff)).toBe(true);
+        expect(stored.includes(Buffer.from("encoding ISO-8859-1"))).toBe(true);
+        expect(result).toEqual({
+            status: "ok",
+            commits: [expect.objectContaining({ hash: head, body: "subject\n\nÿ\n" })],
+        });
+        if (result.status !== "ok") return;
+        expect(result.commits[0].body).not.toContain("�");
+    });
 });
+
+/** `subject\n\n<0xFF>\n` — a body that is not valid UTF-8. */
+const NON_UTF8_MESSAGE = Buffer.from([
+    0x73, 0x75, 0x62, 0x6a, 0x65, 0x63, 0x74, 0x0a, 0x0a, 0xff, 0x0a,
+]);
+
+async function commitRawMessage(repo: string, message: Buffer): Promise<string> {
+    const messagePath = path.join(repo, `raw-message-${message.length}`);
+    await writeFile(messagePath, message);
+    await git(repo, ["commit", "--allow-empty", "--cleanup=verbatim", "-F", messagePath]);
+    return (await git(repo, ["rev-parse", "HEAD"])).trim();
+}
+
+async function gitBytes(repo: string, args: string[]): Promise<Buffer> {
+    return (await execFileAsync("git", args, { cwd: repo, encoding: "buffer" })).stdout;
+}
 
 async function executorIn(repo: string): Promise<GitExecutor> {
     const { GitExecutor: Executor } = await import("../../../../src/git/executor");

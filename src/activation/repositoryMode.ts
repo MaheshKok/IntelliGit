@@ -6,6 +6,7 @@ import { RepositoryMutationCoordinator } from "../git/mutationCoordinator";
 import { GitOps } from "../git/operations";
 import { createPendingRebaseDialogRequests } from "../git/interactiveRebase/pendingRequests";
 import { createInteractiveRebaseSubmissionHandler } from "../git/interactiveRebase/submission";
+import { runInteractiveRebaseSubmission } from "../git/interactiveRebase/run";
 import { watchWholeIndexOperation } from "../git/wholeIndexOperationWatcher";
 import { CommitMessageGenerationCoordinator } from "../ai/commitMessageGenerationCoordinator";
 import { RepositoryLock } from "../git/repositoryLock";
@@ -57,8 +58,9 @@ import {
     createOpenCommitFileDiffHandler,
     registerRepositoryViewEvents,
     showInteractiveRebaseSubmissionRejection,
+    showInteractiveRebaseSubmissionRunResult,
 } from "./repositoryViewEvents";
-import { showTimedWarningMessage } from "../utils/notifications";
+import { runWithNotificationProgress, showTimedWarningMessage } from "../utils/notifications";
 
 type BranchDeleteSelection = Array<Branch | string>;
 const UNDOCKED_SELECTED_REPOSITORY_KEY = "intelligit.undockedSelectedRepositoryRoot";
@@ -909,13 +911,33 @@ export async function activateRepositoryMode(
                     showInteractiveRebaseSubmissionRejection(result.reason);
                     return;
                 }
-                console.info("[IntelliGit] Interactive rebase submission accepted:", result);
-                // Phase seam: the next phase wires accepted entries to the rebase engine.
-                await vscode.window.showInformationMessage(
-                    vscode.l10n.t(
-                        "Interactive rebase is ready, but the rebase engine is not wired yet.",
-                    ),
+                const directories = await undockedGitOps.getGitDirectories();
+                const runResult = await runWithNotificationProgress(
+                    vscode.l10n.t("Running interactive rebase..."),
+                    async () =>
+                        runInteractiveRebaseSubmission(
+                            {
+                                executor: undockedExecutor,
+                                mutationGate,
+                                storageRoot: context.globalStorageUri?.fsPath,
+                                gitDir: directories.gitDir,
+                                commonDir: directories.commonDir,
+                                hasWholeIndexOperationInProgress: () =>
+                                    undockedGitOps.hasWholeIndexOperationInProgress(),
+                                helperScriptPath: context.asAbsolutePath(
+                                    "dist/interactive-rebase-editor-helper.cjs",
+                                ),
+                            },
+                            result,
+                        ),
                 );
+                await showInteractiveRebaseSubmissionRunResult(runResult, async () => {
+                    if (getUndockedSelectedRepositoryRoot() === repoRoot) {
+                        await refreshService.refreshAll();
+                        return;
+                    }
+                    await loadUndockedData();
+                });
             }),
             undocked.onRebaseDialogCancel(({ requestId }) => {
                 // An already-consumed request is a benign no-op, so its boolean result is intentionally ignored.
@@ -1133,6 +1155,7 @@ export async function activateRepositoryMode(
             getCurrentWorktrees,
             refreshService: getRefreshService,
             pendingRebaseDialogRequests,
+            mutationGate,
         },
         handleOpenCommitFileDiff,
     );

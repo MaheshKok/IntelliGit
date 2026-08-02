@@ -481,5 +481,18 @@
     "Sign In": "로그인",
     "GitHub Copilot is unavailable for commit-message generation.": "GitHub Copilot은 커밋 메시지 생성에 사용할 수 없습니다.",
     "GitHub Copilot permission is required for commit-message generation.": "커밋 메시지 생성에는 GitHub Copilot 권한이 필요합니다.",
-    "GitHub Copilot blocked commit-message generation.": "GitHub Copilot이 커밋 메시지 생성을 차단했습니다."
+    "GitHub Copilot blocked commit-message generation.": "GitHub Copilot이 커밋 메시지 생성을 차단했습니다.",
+    "Running interactive rebase...": "대화형 리베이스 실행 중...",
+    "Interactive rebase completed.": "대화형 리베이스가 완료되었습니다.",
+    "Rebase paused on conflict — resolve, then Continue.": "충돌로 인해 리베이스가 일시 중지되었습니다. 해결한 후 계속하세요.",
+    "Rebase editor stopped: {message}": "리베이스 편집기가 중지되었습니다: {message}",
+    "Interactive rebase failed: {message}": "대화형 리베이스에 실패했습니다: {message}",
+    "Extension storage is unavailable.": "확장 프로그램 저장소를 사용할 수 없습니다.",
+    "The interactive rebase editor helper is missing.": "대화형 리베이스 편집기 도우미가 없습니다.",
+    "Another interactive rebase is already reserved.": "다른 대화형 리베이스가 이미 예약되어 있습니다.",
+    "A Git rebase is already in progress.": "Git 리베이스가 이미 진행 중입니다.",
+    "The checked-out branch changed before the rebase started.": "체크아웃된 브랜치가 리베이스 시작 전에 변경되었습니다.",
+    "HEAD changed before the rebase started.": "리베이스 시작 전에 HEAD가 변경되었습니다.",
+    "Git stopped without leaving a resumable rebase.": "Git이 재개 가능한 리베이스를 남기지 않고 중지되었습니다.",
+    "An unexpected error occurred.": "예기치 않은 오류가 발생했습니다."
 }

@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
     createGitEditorCommand,
     quoteGitEditorArgument,
-} from "../../../src/git/interactiveRebase/editorHelper";
+} from "../../../src/git/interactiveRebase/editorCommand";
 
 const HASH_A = "a".repeat(40);
 const HASH_B = "b".repeat(40);
@@ -108,6 +108,33 @@ function runHelper(
 describe("interactive rebase editor helper", () => {
     it("ships the built helper in dist", () => {
         expect(existsSync(HELPER_PATH)).toBe(true);
+    });
+
+    it("exposes the command builders from a module the extension host can import safely", () => {
+        // `editorHelper.ts` runs `main()` on import, so importing it from the host reports an
+        // invalid invocation and sets the host's exit code. The builders therefore live in a
+        // side-effect-free sibling. Both halves are probed in a clean child process, because the
+        // property under test is what a bare import does to the process that performs it.
+        const probe = (module: string): ReturnType<typeof spawnSync> =>
+            spawnSync(
+                process.execPath,
+                [
+                    "-e",
+                    `require(${JSON.stringify(
+                        path.resolve(process.cwd(), "src/git/interactiveRebase", module),
+                    )});process.stdout.write(String(process.exitCode));`,
+                ],
+                { encoding: "utf8" },
+            );
+
+        const safe = probe("editorCommand.ts");
+        expect(safe.stdout).toBe("undefined");
+        expect(safe.stderr).toBe("");
+
+        // The CLI half must keep executing on import — that is how Git runs it as an editor.
+        const cli = probe("editorHelper.ts");
+        expect(cli.stdout).toBe("1");
+        expect(cli.stderr).toContain("invalid-invocation");
     });
 
     it("writes the submitted todo and ownership marker in sequence mode", async () => {

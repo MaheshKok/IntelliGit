@@ -317,6 +317,61 @@ export type InteractiveRebaseSubmissionResult =
           reason: InteractiveRebaseSubmissionRejectionReason;
       };
 
+/**
+ * Machine-readable cause for an accepted submission that could not start a rebase.
+ *
+ * Deliberately not exported: callers narrow {@link InteractiveRebaseRunResult} instead, so the
+ * union stays reachable only through the result it describes.
+ */
+type InteractiveRebaseRunFailureReason =
+    | "reservation-exists"
+    | "rebase-in-progress"
+    | "storage-unavailable"
+    | "editor-helper-missing"
+    | "branch-moved"
+    | "head-moved"
+    | "rebase-failed"
+    | "unexpected-error";
+
+/** Terminal or paused result of running an accepted interactive-rebase submission. */
+export type InteractiveRebaseRunResult =
+    | {
+          /** Git completed the rebase and the durable session has been removed. */
+          status: "completed";
+          /** Fresh HEAD object ID observed after the completed rebase. */
+          rebasedHeadOid: string;
+      }
+    | {
+          /**
+           * A guard that held at submission time no longer holds inside the mutation gate.
+           *
+           * This carries the guard's own reason rather than a run-failure reason so the UI can
+           * reuse the remedy text it already shows when the same guard rejects up front — a
+           * working tree dirtied by a queued mutation deserves the same message either way.
+           */
+          status: "guard-rejected";
+          /** The guard that rejected during the final in-gate re-check. */
+          reason: InteractiveRebaseGuardRejectionReason;
+      }
+    | {
+          /** Git is paused with unmerged index entries that require conflict resolution. */
+          status: "paused-conflict";
+      }
+    | {
+          /** Git is paused because the sequence or message helper stopped it safely. */
+          status: "paused-helper-stop";
+          /** Captured Git stderr containing the helper's machine-readable failure token. */
+          stderr: string;
+      }
+    | {
+          /** The session could not be started or completed and was fully cleaned up. */
+          status: "failed";
+          /** Stable cause suitable for host-side user feedback. */
+          reason: InteractiveRebaseRunFailureReason;
+          /** Optional diagnostic from an unexpected process or filesystem failure. */
+          message?: string;
+      };
+
 /** Clock override used to make pending-request expiry deterministic in unit tests. */
 export interface PendingRebaseDialogRequestRegistryOptions {
     /** Returns the current epoch milliseconds; production defaults to {@link Date.now}. */

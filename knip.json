@@ -1,6 +1,7 @@
 {
     "$schema": "https://unpkg.com/knip@6/schema.json",
     "entry": [
+        "src/git/interactiveRebase/editorHelper.ts",
         "src/webviews/react/CommitGraphApp.tsx",
         "src/webviews/react/CompactCommitGraphApp.tsx",
         "src/webviews/react/commit-panel/CommitPanelApp.tsx",

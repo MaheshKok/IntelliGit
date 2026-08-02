@@ -481,5 +481,18 @@
     "Sign In": "登录",
     "GitHub Copilot is unavailable for commit-message generation.": "GitHub Copilot 无法用于生成提交消息。",
     "GitHub Copilot permission is required for commit-message generation.": "生成提交消息需要 GitHub Copilot 权限。",
-    "GitHub Copilot blocked commit-message generation.": "GitHub Copilot 已阻止生成提交消息。"
+    "GitHub Copilot blocked commit-message generation.": "GitHub Copilot 已阻止生成提交消息。",
+    "Running interactive rebase...": "正在运行交互式变基...",
+    "Interactive rebase completed.": "交互式变基已完成。",
+    "Rebase paused on conflict — resolve, then Continue.": "变基因冲突暂停——请解决后继续。",
+    "Rebase editor stopped: {message}": "变基编辑器已停止：{message}",
+    "Interactive rebase failed: {message}": "交互式变基失败：{message}",
+    "Extension storage is unavailable.": "扩展存储不可用。",
+    "The interactive rebase editor helper is missing.": "缺少交互式变基编辑器帮助程序。",
+    "Another interactive rebase is already reserved.": "另一个交互式变基已被保留。",
+    "A Git rebase is already in progress.": "Git 变基已在进行中。",
+    "The checked-out branch changed before the rebase started.": "检出的分支在变基开始前已更改。",
+    "HEAD changed before the rebase started.": "HEAD 在变基开始前已更改。",
+    "Git stopped without leaving a resumable rebase.": "Git 已停止且未留下可继续的变基。",
+    "An unexpected error occurred.": "发生了意外错误。"
 }

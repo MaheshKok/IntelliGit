@@ -481,5 +481,18 @@
     "Sign In": "サインイン",
     "GitHub Copilot is unavailable for commit-message generation.": "GitHub Copilot はコミット メッセージの生成に利用できません。",
     "GitHub Copilot permission is required for commit-message generation.": "コミット メッセージの生成には GitHub Copilot のアクセス許可が必要です。",
-    "GitHub Copilot blocked commit-message generation.": "GitHub Copilot によりコミット メッセージの生成がブロックされました。"
+    "GitHub Copilot blocked commit-message generation.": "GitHub Copilot によりコミット メッセージの生成がブロックされました。",
+    "Running interactive rebase...": "対話的リベースを実行中...",
+    "Interactive rebase completed.": "対話的リベースが完了しました。",
+    "Rebase paused on conflict — resolve, then Continue.": "競合のためリベースが一時停止しました。解決してから続行してください。",
+    "Rebase editor stopped: {message}": "リベースエディターが停止しました: {message}",
+    "Interactive rebase failed: {message}": "対話的リベースに失敗しました: {message}",
+    "Extension storage is unavailable.": "拡張機能のストレージを利用できません。",
+    "The interactive rebase editor helper is missing.": "対話的リベースエディターのヘルパーが見つかりません。",
+    "Another interactive rebase is already reserved.": "別の対話的リベースがすでに予約されています。",
+    "A Git rebase is already in progress.": "Git リベースはすでに進行中です。",
+    "The checked-out branch changed before the rebase started.": "チェックアウトされたブランチがリベース開始前に変更されました。",
+    "HEAD changed before the rebase started.": "リベース開始前に HEAD が変更されました。",
+    "Git stopped without leaving a resumable rebase.": "Git は再開可能なリベースを残さずに停止しました。",
+    "An unexpected error occurred.": "予期しないエラーが発生しました。"
 }

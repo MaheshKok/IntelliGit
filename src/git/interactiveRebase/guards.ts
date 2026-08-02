@@ -6,7 +6,7 @@ const FULL_OBJECT_ID = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
 /** Dependencies required to evaluate the pure host-side interactive-rebase action guards. */
 export interface InteractiveRebaseGuardOptions {
     /** Executor rooted at the repository whose selected commit is being evaluated. */
-    executor: GitExecutor;
+    executor: Pick<GitExecutor, "run">;
     /** Full object ID for the selected commit. */
     selectedHash: string;
     /**
@@ -96,7 +96,7 @@ export async function evaluateInteractiveRebaseGuards(
  * `git bisect log` exits zero only while bisecting, so its exit status is the probe rather than a
  * second filesystem-marker interpretation of repository state.
  */
-async function isBisecting(executor: GitExecutor): Promise<boolean> {
+async function isBisecting(executor: Pick<GitExecutor, "run">): Promise<boolean> {
     try {
         await executor.run(["bisect", "log"]);
         return true;

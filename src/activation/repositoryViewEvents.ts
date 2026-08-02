@@ -9,6 +9,8 @@ import type {
     WorktreeAction,
 } from "../webviews/protocol/commitGraphTypes";
 import { createInteractiveRebaseSubmissionHandler } from "../git/interactiveRebase/submission";
+import { runInteractiveRebaseSubmission } from "../git/interactiveRebase/run";
+import { RepositoryMutationGate } from "../git/repositoryMutationGate";
 import type {
     InteractiveRebaseSubmissionRejectionReason,
     PendingRebaseDialogRequests,
@@ -21,6 +23,7 @@ import { CommitGraphViewProvider } from "../views/CommitGraphViewProvider";
 import { CommitInfoViewProvider } from "../views/CommitInfoViewProvider";
 import { CommitPanelViewProvider } from "../views/CommitPanelViewProvider";
 import { getErrorMessage } from "../utils/errors";
+import { runWithNotificationProgress } from "../utils/notifications";
 
 interface CommitFileDiffDeps {
     executor: GitExecutor;
@@ -94,6 +97,8 @@ export interface RepositoryViewEventDeps {
     refreshService: () => RefreshService;
     /** Registry shared with undocked dispatch so only one request exists for each origin/root pair. */
     pendingRebaseDialogRequests: PendingRebaseDialogRequests;
+    /** Shared mutation gate used to keep the final check and rebase spawn adjacent. */
+    mutationGate: RepositoryMutationGate;
 }
 
 /**
@@ -126,6 +131,7 @@ export function registerRepositoryViewEvents(
         getCurrentWorktrees,
         refreshService,
         pendingRebaseDialogRequests,
+        mutationGate,
     } = deps;
 
     /**
@@ -281,12 +287,28 @@ export function registerRepositoryViewEvents(
                 showInteractiveRebaseSubmissionRejection(result.reason);
                 return;
             }
-            console.info("[IntelliGit] Interactive rebase submission accepted:", result);
-            // Phase seam: the next phase wires accepted entries to the rebase engine.
-            await vscode.window.showInformationMessage(
-                vscode.l10n.t(
-                    "Interactive rebase is ready, but the rebase engine is not wired yet.",
-                ),
+            const directories = await gitOps.getGitDirectories();
+            const runResult = await runWithNotificationProgress(
+                vscode.l10n.t("Running interactive rebase..."),
+                async () =>
+                    runInteractiveRebaseSubmission(
+                        {
+                            executor,
+                            mutationGate,
+                            storageRoot: context.globalStorageUri?.fsPath,
+                            gitDir: directories.gitDir,
+                            commonDir: directories.commonDir,
+                            hasWholeIndexOperationInProgress: () =>
+                                gitOps.hasWholeIndexOperationInProgress(),
+                            helperScriptPath: context.asAbsolutePath(
+                                "dist/interactive-rebase-editor-helper.cjs",
+                            ),
+                        },
+                        result,
+                    ),
+            );
+            await showInteractiveRebaseSubmissionRunResult(runResult, () =>
+                refreshService().refreshAll(),
             );
         };
     const handleRebaseDialogCancel =
@@ -469,6 +491,69 @@ export function showInteractiveRebaseSubmissionRejection(
             return;
         default:
             return assertNeverInteractiveRebaseSubmissionReason(reason);
+    }
+}
+
+/** Shows the truthful terminal or paused outcome of an interactive-rebase run. */
+export async function showInteractiveRebaseSubmissionRunResult(
+    result: import("../git/interactiveRebase/types").InteractiveRebaseRunResult,
+    refresh: () => Promise<void>,
+): Promise<void> {
+    switch (result.status) {
+        case "completed":
+            await vscode.window.showInformationMessage(
+                vscode.l10n.t("Interactive rebase completed."),
+            );
+            await refresh();
+            return;
+        case "guard-rejected":
+            // The in-gate re-check found the same condition the up-front guard reports, so the
+            // user gets the same remedy text rather than a second vocabulary for one problem.
+            showInteractiveRebaseSubmissionRejection(result.reason);
+            return;
+        case "paused-conflict":
+            await vscode.window.showWarningMessage(
+                vscode.l10n.t("Rebase paused on conflict — resolve, then Continue."),
+            );
+            return;
+        case "paused-helper-stop":
+            await vscode.window.showErrorMessage(
+                vscode.l10n.t("Rebase editor stopped: {message}", { message: result.stderr }),
+            );
+            return;
+        case "failed":
+            await vscode.window.showErrorMessage(
+                vscode.l10n.t("Interactive rebase failed: {message}", {
+                    message: interactiveRebaseRunFailureMessage(result),
+                }),
+            );
+    }
+}
+
+/** Maps runner failure reasons to user-facing detail without inventing a recovery state. */
+function interactiveRebaseRunFailureMessage(
+    result: Extract<
+        import("../git/interactiveRebase/types").InteractiveRebaseRunResult,
+        { status: "failed" }
+    >,
+): string {
+    switch (result.reason) {
+        case "storage-unavailable":
+            return vscode.l10n.t("Extension storage is unavailable.");
+        case "editor-helper-missing":
+            return vscode.l10n.t("The interactive rebase editor helper is missing.");
+        case "reservation-exists":
+            return vscode.l10n.t("Another interactive rebase is already reserved.");
+        case "rebase-in-progress":
+            return vscode.l10n.t("A Git rebase is already in progress.");
+        case "branch-moved":
+            return vscode.l10n.t("The checked-out branch changed before the rebase started.");
+        case "head-moved":
+            return vscode.l10n.t("HEAD changed before the rebase started.");
+        case "rebase-failed":
+            return vscode.l10n.t("Git stopped without leaving a resumable rebase.");
+        case "unexpected-error":
+            return result.message ?? vscode.l10n.t("An unexpected error occurred.");
     }
 }
 

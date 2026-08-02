@@ -481,5 +481,18 @@
     "Sign In": "Iniciar sessão",
     "GitHub Copilot is unavailable for commit-message generation.": "GitHub Copilot não está disponível para gerar mensagens de commit.",
     "GitHub Copilot permission is required for commit-message generation.": "É necessária permissão do GitHub Copilot para gerar mensagens de commit.",
-    "GitHub Copilot blocked commit-message generation.": "O GitHub Copilot bloqueou a geração de mensagens de commit."
+    "GitHub Copilot blocked commit-message generation.": "O GitHub Copilot bloqueou a geração de mensagens de commit.",
+    "Running interactive rebase...": "A executar rebase interativo...",
+    "Interactive rebase completed.": "Rebase interativo concluído.",
+    "Rebase paused on conflict — resolve, then Continue.": "Rebase em pausa devido a conflito — resolva e continue.",
+    "Rebase editor stopped: {message}": "O editor de rebase parou: {message}",
+    "Interactive rebase failed: {message}": "Falha no rebase interativo: {message}",
+    "Extension storage is unavailable.": "O armazenamento da extensão não está disponível.",
+    "The interactive rebase editor helper is missing.": "O auxiliar do editor de rebase interativo está em falta.",
+    "Another interactive rebase is already reserved.": "Outro rebase interativo já está reservado.",
+    "A Git rebase is already in progress.": "Já existe um rebase do Git em curso.",
+    "The checked-out branch changed before the rebase started.": "O ramo com checkout foi alterado antes de o rebase iniciar.",
+    "HEAD changed before the rebase started.": "HEAD foi alterado antes de o rebase iniciar.",
+    "Git stopped without leaving a resumable rebase.": "O Git parou sem deixar um rebase que possa ser retomado.",
+    "An unexpected error occurred.": "Ocorreu um erro inesperado."
 }

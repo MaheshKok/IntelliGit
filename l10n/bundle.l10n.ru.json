@@ -481,5 +481,18 @@
     "Sign In": "Войти",
     "GitHub Copilot is unavailable for commit-message generation.": "GitHub Copilot недоступен для создания сообщений коммитов.",
     "GitHub Copilot permission is required for commit-message generation.": "Для создания сообщений коммитов требуется разрешение GitHub Copilot.",
-    "GitHub Copilot blocked commit-message generation.": "GitHub Copilot заблокировал создание сообщений коммитов."
+    "GitHub Copilot blocked commit-message generation.": "GitHub Copilot заблокировал создание сообщений коммитов.",
+    "Running interactive rebase...": "Выполняется интерактивный rebase...",
+    "Interactive rebase completed.": "Интерактивный rebase завершён.",
+    "Rebase paused on conflict — resolve, then Continue.": "Rebase приостановлен из-за конфликта — устраните его и продолжите.",
+    "Rebase editor stopped: {message}": "Редактор rebase остановлен: {message}",
+    "Interactive rebase failed: {message}": "Сбой интерактивного rebase: {message}",
+    "Extension storage is unavailable.": "Хранилище расширения недоступно.",
+    "The interactive rebase editor helper is missing.": "Отсутствует помощник редактора интерактивного rebase.",
+    "Another interactive rebase is already reserved.": "Другой интерактивный rebase уже зарезервирован.",
+    "A Git rebase is already in progress.": "Rebase Git уже выполняется.",
+    "The checked-out branch changed before the rebase started.": "Текущая ветка изменилась до начала rebase.",
+    "HEAD changed before the rebase started.": "HEAD изменился до начала rebase.",
+    "Git stopped without leaving a resumable rebase.": "Git завершился без rebase который можно продолжить.",
+    "An unexpected error occurred.": "Произошла непредвиденная ошибка."
 }

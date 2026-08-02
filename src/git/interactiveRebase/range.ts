@@ -14,6 +14,12 @@ export const MAX_INTERACTIVE_REBASE_RANGE_OUTPUT_BYTES = 4 * 1024 * 1024;
 const FULL_OBJECT_ID = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
 const RANGE_RECORD_ARITY = 4;
 const RANGE_LOG_FORMAT = "--format=%H%x00%an%x00%aI%x00%B";
+// Git only transcodes a commit to UTF-8 when `i18n.commitEncoding` is unset; with it set (say to
+// ISO-8859-1) the object keeps its original bytes, an `encoding` header records them, and `git log`
+// emits them raw — which `toString("utf8")` below would turn into U+FFFD. Asking for the output
+// encoding explicitly makes Git convert via that header on every path. Verified by probing real
+// commits under unset, set, and `logOutputEncoding` configurations.
+const RANGE_LOG_ENCODING = "--encoding=UTF-8";
 
 /** Overrides used by tests to exercise the real truncation boundary cheaply. */
 export interface InteractiveRebaseRangeOptions {
@@ -66,7 +72,15 @@ export async function loadInteractiveRebaseRange(
     try {
         const [rangeOutput, unpushedOutput] = await Promise.all([
             executor.runBinary(
-                ["log", "--reverse", "-z", RANGE_LOG_FORMAT, "--end-of-options", revisionRange],
+                [
+                    "log",
+                    "--reverse",
+                    "-z",
+                    RANGE_LOG_ENCODING,
+                    RANGE_LOG_FORMAT,
+                    "--end-of-options",
+                    revisionRange,
+                ],
                 { maxOutputBytes },
             ),
             // `--not` must precede non-option arguments, so this query cannot also carry

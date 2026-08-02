@@ -3439,6 +3439,9 @@ describe("extension integration", () => {
         const context = {
             extensionUri: { fsPath: "/ext", path: "/ext" },
             subscriptions: mockDisposables,
+            // The rebase runner resolves its editor helper through the context, which the real
+            // `ExtensionContext` always provides.
+            asAbsolutePath: (relative: string) => `/ext/${relative}`,
         } as unknown as MockExtensionContext;
 
         await activate(context);
@@ -3497,10 +3500,13 @@ describe("extension integration", () => {
         });
         await waitForAsync();
         await waitForAsync();
-        expect(showErrorMessage).toHaveBeenCalledTimes(1);
-        expect(showInformationMessage).toHaveBeenCalledWith(
-            expect.stringContaining("rebase engine is not wired yet"),
+        // The owning view's submission now reaches the real runner, which reports the first
+        // thing it cannot satisfy in this harness: the extension has no global storage.
+        expect(showErrorMessage).toHaveBeenCalledTimes(2);
+        expect(showErrorMessage).toHaveBeenLastCalledWith(
+            expect.stringContaining("Extension storage is unavailable"),
         );
+        expect(showInformationMessage).not.toHaveBeenCalled();
     });
 
     it("routes interactive-rebase submit and cancel through commit-panel and undocked origins", async () => {
@@ -3508,6 +3514,7 @@ describe("extension integration", () => {
         const context = {
             extensionUri: { fsPath: "/ext", path: "/ext" },
             subscriptions: mockDisposables,
+            asAbsolutePath: (relative: string) => `/ext/${relative}`,
         } as unknown as MockExtensionContext;
         const hash = "a".repeat(40);
 
@@ -3562,10 +3569,10 @@ describe("extension integration", () => {
         panel.emitRebaseDialogSubmit(panelDialog);
         await waitForAsync();
         await waitForAsync();
-        expect(showErrorMessage).not.toHaveBeenCalled();
-        expect(showInformationMessage).toHaveBeenCalledWith(
-            expect.stringContaining("rebase engine is not wired yet"),
+        expect(showErrorMessage).toHaveBeenCalledWith(
+            expect.stringContaining("Extension storage is unavailable"),
         );
+        expect(showInformationMessage).not.toHaveBeenCalled();
 
         showErrorMessage.mockClear();
         panel.emitRebaseDialogCancel({ requestId: "missing" });
@@ -3604,10 +3611,10 @@ describe("extension integration", () => {
         undocked.emitRebaseDialogSubmit(undockedDialog);
         await waitForAsync();
         await waitForAsync();
-        expect(showErrorMessage).not.toHaveBeenCalled();
-        expect(showInformationMessage).toHaveBeenCalledWith(
-            expect.stringContaining("rebase engine is not wired yet"),
+        expect(showErrorMessage).toHaveBeenCalledWith(
+            expect.stringContaining("Extension storage is unavailable"),
         );
+        expect(showInformationMessage).not.toHaveBeenCalled();
 
         const cancelledUndockedDialog = await openDialog(
             () => undocked.emitCommitAction({ action: "interactiveRebaseFromHere", hash }),
