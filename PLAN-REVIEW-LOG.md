@@ -991,3 +991,69 @@ Reading `Toolbar.tsx` through `ctx_read` returned the **pre-Codex** file: no `ac
 - A dependency-cruiser rule forbidding any `src/**` import of `editorHelper.ts` is still unwritten.
 - **Run the `suite` gate with `VITEST_MAX_THREADS=3`** (and `VITEST_MIN_THREADS=1`, which this vitest requires alongside it). Uncapped it fails nondeterministically regardless of ambient load, and it is slower. vitest here is **1.6.1** — `--maxWorkers` and `--poolOptions.*` are not CLI flags and are silently parsed as filename filters, yielding `no tests`.
 - **Do not read Codex-written files through the context cache.** Use `git diff` / `git show`. Native `Read`/`Grep` may be transparently rewritten to the cached tools, so a cross-check in a different tool is not necessarily a different source.
+
+## Phase 6d-1 — reload reconciliation engine (PLAN step 8, first half)
+
+BASE_HEAD `9f472aa0`. SID `019fc1dd-c39f-7872-8641-fefc374849ba`, `gpt-5.6-terra`/`xhigh`. Telemetry `PEAK=205396 LAST=205396 PCT=79% NONRESUMABLE=no`. Rounds: 1 build, 0 Codex fix rounds, 2 orchestrator fixes. Scope: 6 files, 2 added, +267/−16 across the four tracked files plus 683 lines of new `reconcile.ts` and its suite.
+
+### Splitting the phase cut 15 points off the peak and still missed the target
+
+6d was split at the `vscode` import boundary — 6d-1 is the pure engine and its storage primitives, 6d-2 is activation wiring, the notice, and l10n — specifically so `architecture:check` (dependency-cruiser) enforces the seam rather than a convention. The split is the first thing in five phases to move the number: `PCT=79%` against 6c's 94%. It is still 29 points over the skill's 45–50% target, and the reason is visible in the deliverables — enumeration and discard primitives in `storage.ts` are one seam, the evidence reader plus classifier are another. A third split was available and was not taken.
+
+`xhigh` was the right call. The spec is a five-row default-deny matrix over partial, stale, and mutually contradictory on-disk state, which is exactly the "subtle state" case the skill reserves the rung for, and the classifier came back with the one ordering subtlety that matters already correct: `completed-pending-push` is classified from HEAD and branch **before** the rebase-directory check, so a terminal pending-push manifest can never contest the live directory with a running session. Get that order wrong and a finished-but-unpushed rebase reports `rebase-directory-present` and blocks its own push offer.
+
+The self-report was truthful for the third consecutive phase — all seven deliverables verified against the diff, and the declared deviation was an honest one nobody would have caught: it over-read `PLAN.md` lines 46–81 while retrieving its allowed block and reported not using the content. Naming the seven gate commands explicitly in the work order (6c's handoff item) worked: `format:check` ran this time, and the format gate was green on arrival.
+
+### Defects found and fixed
+
+1. **`discardRebaseSession` threw on exactly the entries `listRebaseManifests` surfaces.** It built its paths through `paths.manifestPath(sessionId)` and `paths.sessionDirectory(sessionId)`, both of which run `validateSessionId` and **throw** on anything failing `/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/`. But the listing enumerates every `*.json` file by name and returns unsafe names as `ambiguous`/`invalid-schema` (`storage.ts:195`) — so the discard action 6d-2 offers for a listed entry would throw on precisely the corrupt entries the notice exists to clear. The notice would return on every reload with no user action able to remove it. Replaced with a `confineToDirectory` helper: resolve the name against the parent and require `path.dirname(resolved) === parent`. Traversal is still refused, but every name the listing can produce is now deletable. Two regression tests pin both halves — a stray name this module's own writer could never emit is listed *and* discarded, and `"../../unrelated"` deletes nothing outside the namespace.
+2. **`selectedLiveSessionId` was written into the evidence snapshot and never read.** Dead on its own, but worse than dead on this type: `RebaseReconciliationEvidence` is the public input to a pure default-deny classifier, and a precomputed ownership hint sitting in it invites a future caller to supply a selection the evidence contradicts. Removed from the interface and the gatherer's return; the doc comment now states that the marker-first selection is deliberately absent because the classifier derives it from the snapshot alone.
+
+### Mutation sweep — 5 mutants, 3 killed on arrival, 2 survivors on the ownership boundary
+
+- **A** (drop the three-field metadata downgrade so a bare marker match grants `owned`) — killed.
+- **C** (classify `completed-pending-push` *after* the rebase-directory check instead of before) — killed.
+- **D** (drop the branch guard from the discard path, letting HEAD equality alone authorize deletion) — killed.
+- **B** (trust the manifest's embedded `sessionId` over the filename it was read from) — **SURVIVED**.
+- **E** (`hasLiveManifest: false` — a foreign rebase beside a live manifest reports as `unowned`) — **SURVIVED**.
+
+**B** is unreachable through the production path today: `readRebaseManifest` rejects a filename/identifier mismatch as `invalid-schema` (`storage.ts:206`) before it can ever be `valid`. It is still a real hole, because `reconcileRebaseSessions` is exported, its input type permits the pair, and the failure mode is that a `discard` disposition is keyed on `manifest.sessionId` while the entry was read from a *different* filename — the host would delete a file it never examined. The guard exists twice, in `selectLiveManifests` and in `classifyValidManifest`, and neither copy had a test. A pure exported function is tested at its own boundary, not at the boundary of the one caller that currently happens to pre-filter for it.
+
+**E** is fully reachable. `hasLiveManifest` is the only thing separating `foreign` from `unowned` for an apply-layout rebase, or a merge rebase whose marker matches nothing. `unowned` means "Git controls are safe, nothing of ours is at stake"; reporting it while a live manifest is retained is precisely the confusion the three-state union exists to prevent.
+
+Two tests were added and both mutants died:
+
+- *"never acts on a manifest that answers to a different name than its file"* — asserts the disposition is `ambiguous` keyed on the **filename**, not a `discard` keyed on the embedded name, and that a rebase marker matching the embedded name still yields `unowned` rather than `owned`.
+- *"reports … as foreign while a live manifest is still retained"*, an `it.each` over the apply layout and a foreign merge rebase — each case also asserts that the same directory evidence with no manifests is `unowned`, pinning both sides of the distinction instead of one.
+
+Final: **5 mutants, 5 killed.** `reconcile.ts` restored byte-identically after every round, SHA-256 `0e1aea42…` verified. `git stash` is never used — the tree carries uncommitted work.
+
+### Detached HEAD is state, not an error
+
+`gitText.ts` gained an additive `expectedExitCodes` passthrough (default `{}`, and typed so it cannot override `maxOutputBytes`). `readCurrentBranch` uses it to run `git symbolic-ref --quiet HEAD` with `[0, 1]`, so Git's normal exit-1-on-detached becomes `{ status: "detached" }` rather than a thrown error indistinguishable from a broken repository. The branch evidence union therefore carries three states — `attached`, `detached`, `unavailable` — and `isCurrentManifestBranch` requires `attached` with a matching ref, which is what makes the same-tip branch switch default-deny instead of a silent discard.
+
+### Acceptance
+
+6 accept gates GREEN warn=0 — `lint` 9.7s, `typecheck` 3.6s, `format` 2.4s, `knip` 1.0s, `architecture` 1.0s, `suite` 286.7s. Counting run: **2473/2473** across 156 files, 160.15s. The delta from the build's own 2468 is exactly the five added cases — two in `storage.test.ts`, three in `reconcile.test.ts`, one of which is an `it.each` with two rows. No new test file: both fixes belong beside the behavior they pin. `SEAL: INTACT files=6 warns_open=0`.
+
+The `architecture` gate is doing real work this phase rather than passing by default: it is what holds the 6d split at the `vscode` import boundary, and it would go red the moment the engine reached for the extension host.
+
+**No l10n in this phase, by construction.** 6d-1 adds no user-facing string — the notice and its action are 6d-2's, and so is the full CSV round-trip they require.
+
+**Shadow-mode datum: not collected, thirteenth time.** Two orchestrator fixes and four added tests changed hash-covered files during verification, so the seal once again covers bytes the verifier itself wrote. Thirteen builds, zero data points. The recommendation stands and is now two phases overdue: redesign `SEAL_MODE` around a distinct fix stage, or drop it.
+
+## Handoff — resume at Phase 6d-2
+
+- Branch `feat/interactive-rebase-from-here`; BASE_HEAD for 6d-2 = the tip after this phase's two commits. Tunables unchanged; `SEAL_MODE=shadow`.
+- 6d-2 scope: run reconciliation once per repository at activation, surface the ambiguous dispositions as a notice with a "Discard rebase session state" action, and ship the l10n for it **in the same phase** — the accept suite goes red otherwise.
+- **`listRebaseManifests` throws on any non-ENOENT `readdir` failure** (`storage.ts:230`). That is deliberate fail-closed — a permissions or I/O error must not be silently reported as "no retained sessions". The host has to catch it at the activation boundary; an unhandled rejection during activation is worse than a missing notice.
+- **`discardRebaseSession` is idempotent and confinement-checked, not validating.** It resolves to nothing and returns cleanly for a name that would escape the namespace. The notice must not read "no error" as "the file existed and is gone" — if it wants to report what it removed, it has to re-list.
+- **Reconciliation never arms a push.** A `completed-pending-push` manifest reconciles to `ambiguous` / `pending-push-retained`, deliberately: the offer was already made on the live path, and re-offering it on every reload would push a branch the user declined to push. 6d-2 must not convert that reason into a prompt.
+- **`rebaseControl` from `reconcileRebaseSessions` is the same union the toolbar already renders** (`owned` | `unowned` | `foreign` | `none`), so the activation wiring feeds the existing `CommitPanelOperationSnapshot` pair rather than introducing a parallel state. The pair still moves together in both directions.
+- The engine imports nothing from `vscode` and must stay that way — the split exists so `architecture:check` enforces it. Put every `vscode` dependency in the 6d-2 wiring module.
+- `UndockedViewProvider` still calls `hasWholeIndexOperationInProgress` directly and never sees `activeOperation` or `rebaseControl`. Three phases past the point where it started to matter: the undocked panel cannot render rebase controls at all, and will not show the 6d-2 notice state either.
+- **`CommitPanelViewProvider` still takes 12 positional constructor dependencies.** Unconverted; one positional insert away from breaking the test that pins `.at(-1)`.
+- A dependency-cruiser rule forbidding any `src/**` import of `editorHelper.ts` is still unwritten.
+- **Run the `suite` gate with `VITEST_MAX_THREADS=3`** and `VITEST_MIN_THREADS=1`. vitest here is **1.6.1** — `--maxWorkers` and `--poolOptions.*` are not CLI flags and are silently parsed as filename filters, yielding `no tests`.
+- **Do not read Codex-written files through the context cache.** Use `git diff` / `git show`; native `Read`/`Grep` may be transparently rewritten to the cached tools, so a cross-check in a different tool is not necessarily a different source.
+
