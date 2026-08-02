@@ -40,7 +40,22 @@ const skippedPathParts = [
     `${path.sep}src${path.sep}webviews${path.sep}react${path.sep}shared${path.sep}i18n.ts`,
 ];
 
+// The two English catalogs `scripts/localization-csv.js` treats as translation sources. A localized
+// string absent from its catalog never reaches the CSV, so it is never translated and ships in
+// English for every locale — silently, because wrapping it in `t(...)` satisfies the audit below.
+const catalogs = {
+    host: {
+        file: "l10n/bundle.l10n.json",
+        keys: readCatalogKeys("l10n/bundle.l10n.json"),
+    },
+    webview: {
+        file: "src/webviews/i18n/en.json",
+        keys: readCatalogKeys("src/webviews/i18n/en.json"),
+    },
+};
+
 const findings = [];
+const uncatalogued = [];
 
 for (const filePath of sourceFiles(path.join(repoRoot, "src"))) {
     if (skippedPathParts.some((part) => filePath.includes(part))) continue;
@@ -58,7 +73,33 @@ console.log(
 );
 if (reportPath) console.log(`Report written to ${path.relative(repoRoot, reportPath)}.`);
 if (!reportPath && findings.length > 0) console.log(report);
-if (strict && findings.length > 0) process.exit(1);
+
+console.log(
+    `Localization catalog coverage: ${uncatalogued.length} localized string${
+        uncatalogued.length === 1 ? "" : "s"
+    } missing from an English catalog.`,
+);
+if (uncatalogued.length > 0) {
+    for (const item of uncatalogued) {
+        console.log(`  ${item.file}:${item.line} -> ${item.catalog}: ${item.text}`);
+    }
+    console.log(
+        [
+            "",
+            "Each string above is localized in code but absent from the English catalog that feeds",
+            "docs/localization/localization_translation_review.csv, so it is never translated and",
+            "ships in English for all 11 locales.",
+            "",
+            "Fix: add the English text to the catalog, then run",
+            "  bun run l10n:sync      # adds the CSV rows",
+            "  <fill every current_<locale> cell from an approved translation source>",
+            "  bun run l10n:import    # writes the locale catalogs",
+            "  bun run l10n:validate",
+        ].join("\n"),
+    );
+}
+
+if (uncatalogued.length > 0 || (strict && findings.length > 0)) process.exit(1);
 
 function auditFile(filePath) {
     const text = fs.readFileSync(filePath, "utf8");
@@ -76,6 +117,7 @@ function auditFile(filePath) {
         if (ts.isCallExpression(node)) {
             auditMessageCall(filePath, sourceFile, node);
             auditObjectArgument(filePath, sourceFile, node);
+            auditCatalogCoverage(filePath, sourceFile, node);
         }
         if (ts.isJsxAttribute(node)) auditJsxAttribute(filePath, sourceFile, node);
         if (ts.isJsxText(node)) auditJsxText(filePath, sourceFile, node);
@@ -183,6 +225,59 @@ function addFinding({ filePath, sourceFile, node, surface, text }) {
         surface,
         text: collapse(text),
     });
+}
+
+/**
+ * Records a localized string whose English text is missing from the catalog that feeds the CSV.
+ *
+ * This is the exact half of the audit: a key either is in the catalog or is not. The candidate
+ * findings above are heuristic, which is why only this half fails the build.
+ */
+function auditCatalogCoverage(filePath, sourceFile, node) {
+    const catalogName = localizationCatalogFor(node.expression);
+    if (!catalogName) return;
+
+    const firstArg = node.arguments[0];
+    // A computed key cannot be resolved here. Every such call in this repo is a wrapper forwarding
+    // its own caller's literal, and that literal is checked where it is written.
+    if (!firstArg || !ts.isStringLiteralLike(firstArg)) return;
+
+    const catalog = catalogs[catalogName];
+    if (Object.hasOwn(catalog.keys, firstArg.text)) return;
+
+    const position = sourceFile.getLineAndCharacterOfPosition(firstArg.getStart(sourceFile));
+    uncatalogued.push({
+        file: path.relative(repoRoot, filePath),
+        line: position.line + 1,
+        catalog: catalog.file,
+        text: collapse(firstArg.text),
+    });
+}
+
+/** Names the English catalog a localization call resolves against, or "" if it is not one. */
+function localizationCatalogFor(expression) {
+    if (ts.isIdentifier(expression)) {
+        if (expression.text === "t") return "webview";
+        // `shelfCommands.ts` wraps `vscode.l10n.t` to stay usable when the API is absent.
+        if (expression.text === "localize") return "host";
+        return "";
+    }
+
+    if (!ts.isPropertyAccessExpression(expression) || expression.name.text !== "t") return "";
+
+    const receiver = expression.expression;
+    if (ts.isIdentifier(receiver)) return receiver.text === "l10n" ? "host" : "";
+
+    return ts.isPropertyAccessExpression(receiver) &&
+        receiver.name.text === "l10n" &&
+        ts.isIdentifier(receiver.expression) &&
+        receiver.expression.text === "vscode"
+        ? "host"
+        : "";
+}
+
+function readCatalogKeys(relativePath) {
+    return JSON.parse(fs.readFileSync(path.join(repoRoot, relativePath), "utf8"));
 }
 
 function callMethodName(expression) {
