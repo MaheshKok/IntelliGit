@@ -1297,3 +1297,68 @@ No l10n work — this phase adds no strings and asserts the existing five. GitNe
 - **Size by line ranges, not by file.** This phase is the proof: the same 3837-line file cost 92% when handed over whole and 28% when handed over as six ranges.
 - **Run the `suite` gate with `VITEST_MAX_THREADS=3`** and `VITEST_MIN_THREADS=1`. vitest here is **1.6.1** — `--maxWorkers` and `--poolOptions.*` are not CLI flags and are silently parsed as filename filters, yielding `no tests`.
 - **Do not read Codex-written files through the context cache.** Use `git show` / `git diff`.
+
+## Phase 8b — real-Git rebase harness + first three end-to-end scenarios (PLAN step 12c, sub-layer (b), part 1)
+
+BASE_HEAD `4782b04a`. SID `019fc277-68a7-7ac0-8636-7292b0fe6509`, `gpt-5.6-terra`/`high`. Telemetry `PEAK=191586 LAST=191586 PCT=74% NONRESUMABLE=no`. Rounds: 1 build, 0 Codex fix rounds, 5 orchestrator fixes. Scope: **2 new files, 279 lines, test-only** — no `src/` change, no config change, nothing tracked modified.
+
+### Correction: the 8a handoff was wrong about the harness
+
+The 8a handoff states verbatim: *"There is no real-git integration harness yet. `tests/integration/` currently holds `extension/`, `merge/`, `shelf/`, and `webviews/`, all mock-based."* That is false. `tests/integration/shelf/shelfTestHarness.ts` is 150 lines of exactly this — `mkdtemp`, `git init`, a named commit graph, registered cleanup — and `vitest.config.ts` says so in prose: the shelf suites drive a real repository, so one test can spawn dozens of Git processes. The p8b work order superseded the handoff and told Codex to copy that template instead of inventing one, which is why the new harness lands at 149 lines against the shelf harness's 150.
+
+Cost this phase: none, because the error was caught while writing the work order. But this is the second handoff in three phases to assert a codebase fact that was never checked — the 7a handoff claimed phase 7b would have to create `tests/unit/commands/branchCommands.test.ts` and mock seven `BranchCommandDeps` members, which the registration-loop approach made unnecessary (corrected in the 7b record). Handoffs are written at the end of a long session and are the least-verified prose in this log. **Treat every factual claim in a handoff as a lead, not a finding.**
+
+### The cost number the handoff asked for
+
+Standalone: **5.47s as built, 3.83s after the fixes below** — three scenarios, real `git` subprocesses and a real spawned editor helper throughout. Full suite: 160 files / 2560 tests / **165.95s**.
+
+So the real-Git rebase suite is ~2.3% of wall clock at `VITEST_MAX_THREADS=3`, and the separate-pool split the 8a handoff worried about is **not needed**. At ~1.3s per scenario the remaining ~17 scenarios of sub-layer (b) project to roughly +22s. Revisit only when a scenario needs a `file://` bare remote — a clone costs more than a local commit, and the force-push scenarios need several.
+
+### Mutation sweep — 5 mutants, one survived, and the survivor was the point
+
+All five mutants are in production rebase code, and the sweep runs **only** `tests/integration/rebase/`. The unit rebase suites were excluded on purpose: this phase's claim is that a *real Git run* observes these defects, and a unit kill would not prove that.
+
+- **A** (`buildRebaseTodo` ignores the submitted action, picks everything) — killed by the drop and abort scenarios.
+- **B** (`buildRebaseTodo` emits newest-first) — killed by the reorder scenario.
+- **C** (`rebase --quit` instead of `rebase --abort` on the owned abort path) — **SURVIVED the first sweep.**
+- **D** (`rebase -i` from `baseHash~1`, so a commit absent from the todo silently disappears) — killed by the drop and reorder scenarios.
+- **E** (classify every non-zero rebase exit as `paused-conflict`) — killed by the abort scenario's `paused-helper-stop` assertion.
+
+**Why C survived.** The scenario's headline claim is "restores the exact pre-rebase HEAD", and its assertion is `rev-parse HEAD === headBeforeRun` after the abort. But the fixture pins `GIT_AUTHOR_DATE`/`GIT_COMMITTER_DATE`, and the submitted entries left the range in its existing order — so Git recreated byte-identical commit objects, and the *paused* HEAD already equalled `headBeforeRun`. `--quit` clears rebase state without restoring anything, and that was indistinguishable from `--abort` because there was nothing to restore. Determinism, which the harness introduced to keep object IDs stable across machines, is exactly what made the assertion vacuous.
+
+Fix: the abort scenario now submits the two commits **reordered**, so the rebase rewrites history before it stops, plus an assertion that the paused HEAD *differs* from `headBeforeRun` — which pins the non-vacuity so it cannot silently return. Re-run: **C killed. 5/5.**
+
+Reading the file did not find this. Two of the four defects below were found by reading; this one was found only because a mutant that should have died didn't.
+
+### Defects found and fixed
+
+1. **`applyDeterministicGitEnvironment()` mutated `process.env`.** The build reached the runner's spawned Git processes by assigning onto `process.env` at fixture-creation time. `process.env` is shared by every test file that lands in the same vitest worker, and `GitExecutor` documents the opposite guarantee at `src/git/executor.ts:76` — `options.env` merges over a copy of the parent environment *for this invocation only*, `process.env` is never mutated. Replaced with `withPinnedEnvironment()`, which wraps the executor and merges the pinned identity into each call. Legal because `InteractiveRebaseRunDependencies.executor` is typed `Pick<GitExecutor, "run" | "runBinary">`, so a wrapper object satisfies it.
+2. **Session storage lived inside the fixture repository.** `storageRoot` was `<repo>/.intelligit-rebase-storage`, which needed a `.gitignore` to keep the tree clean. Production storage is the extension's global storage directory, never the repository — and an ignored directory inside the repo actively hides a runner that dirties the working tree. Moved to its own registered `mkdtemp`; the `.gitignore` workaround is gone.
+3. **The post-abort `rebase-merge` ENOENT assertion was vacuous.** A run that never started satisfies it. Added an existence assertion after the pause, so the ENOENT means "the state was there and abort removed it".
+4. **The restore assertion was vacuous** — see the mutation section above.
+5. **Nothing asserted the working tree.** Fix 2 made the tree assertable; leaving it unasserted would have made that rationale aspirational. The drop scenario now checks `git status --porcelain` is empty after a completed rebase.
+
+Codex declared no deviations, and the build's own claims held up: 8/8 deliverables present, `git status --porcelain` showed only `?? tests/integration/rebase/`, and no fixture leaked into the repository.
+
+### Acceptance
+
+6 accept gates GREEN warn=0 — `lint` 9.8s, `typecheck` 3.8s, `format` 2.3s, `knip` 0.9s, `architecture` 1.0s, `suite` 292.1s. Counting run: **2560/2560** across 160 files, 165.95s (+3 over 8a's 2557: exactly the three new scenarios). `SEAL: INTACT files=2 warns_open=0`.
+
+No l10n work — this phase adds no strings. GitNexus MCP is not exposed in this session, so the mandated `detect_changes()` scope check could not be run by the orchestrator.
+
+**Shadow-mode datum: not collected, eighteenth time.** Five orchestrator fixes changed both hash-covered files during verification. Eighteen builds, zero data points. At this point the seal's fast-path premise — that a phase can reach acceptance with its hash-covered files untouched by review — has never once held, and `SEAL_MODE=enforce` has no evidence behind it.
+
+## Handoff — resume at Phase 8c
+
+- Branch `feat/interactive-rebase-from-here`; BASE_HEAD for 8c = the tip after this phase's two commits. Tunables unchanged; `SEAL_MODE=shadow`.
+- **The harness exists and is proven.** `tests/integration/rebase/rebaseTestHarness.ts` exports `createRebaseFixture(helperScriptPath)`, `git(root, args)`, `readHistory(root)`, and `cleanTemporaryRepositories()`. A new scenario is a `RebaseTodoEntry[]` plus assertions; do not rebuild any of this. The fixture's four commits are `root`/`first`/`second`/`third`, `baseHash` is `first`, and the rebaseable range is `second`/`third`.
+- **The harness has no `file://` bare remote yet.** The force-push scenarios (success, stale-lease rejection, source-pin rejection) need one — `git init --bare` in a second `mkdtemp`, `git remote add origin file://…`, `git push -u`. That is the one genuinely new piece of fixture work left, and it belongs at the top of whichever phase first needs it.
+- **Timing is not a constraint.** ~1.3s per scenario against a 166s suite. Split later phases by reading cost, not by runtime.
+- **Determinism cuts both ways.** Pinned dates make recreated commits byte-identical when order and content are unchanged — which silently voids any assertion of the form "the hash changed" or "HEAD was restored". Any scenario asserting a *difference* must first make the difference real (reorder, drop, or reword with content), and should pin that with an explicit inequality assertion. This is what mutant C caught.
+- **Mutate production, run only the new suite.** The kill has to be credited to the real-Git layer; the unit rebase suites already cover the same functions and would take the credit.
+- Remaining sub-layer (b) scenarios, roughly in dependency order: conflict → pause → resolve → Continue with a queued reword; message injection; the reload-reconciliation matrix branches; operation-kind toolbar states; terminal-started rebase over a stale paused manifest including the identical-input restart; same-tip branch-switch rejection; the four guard rejections (dirty tree, merge in range, detached HEAD, concurrent second submission); conflicted multi-commit revert abort via `REVERT_HEAD`; no-upstream manifest deletion; toast Dismiss; then the three force-push scenarios once the bare remote exists.
+- `UndockedViewProvider` still calls `hasWholeIndexOperationInProgress` directly and never sees `activeOperation` or `rebaseControl` — toolbar state only, the safety fence is verified closed.
+- **`CommitPanelViewProvider` still takes 12 positional constructor dependencies.** One positional insert away from breaking the test that pins `.at(-1)`.
+- A dependency-cruiser rule forbidding any `src/**` import of `editorHelper.ts` is still unwritten.
+- **Run the `suite` gate with `VITEST_MAX_THREADS=3`** and `VITEST_MIN_THREADS=1`. vitest here is **1.6.1** — `--maxWorkers` and `--poolOptions.*` are not CLI flags and are silently parsed as filename filters, yielding `no tests`.
+- **Do not read Codex-written files through the context cache.** Use `git show` / `git diff`.
