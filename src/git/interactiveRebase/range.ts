@@ -120,10 +120,10 @@ function parseRangeOutput(
     if (fields.length % RANGE_RECORD_ARITY !== 0) return rejected("malformed-arity");
 
     const unpushedHashes = new Set(
-        unpushedOutput
-            .split("\n")
-            .map((hash) => hash.trim().toLowerCase())
-            .filter(Boolean),
+        unpushedOutput.split("\n").flatMap((line) => {
+            const hash = line.trim().toLowerCase();
+            return hash ? [hash] : [];
+        }),
     );
     const commits: InteractiveRebaseRangeCommit[] = [];
     for (let index = 0; index < fields.length; index += RANGE_RECORD_ARITY) {

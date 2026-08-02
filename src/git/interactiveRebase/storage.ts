@@ -230,8 +230,7 @@ export async function listRebaseManifests(
         throw error;
     }
     const sessionIds = entries
-        .filter((entry) => entry.endsWith(".json"))
-        .map((entry) => entry.slice(0, -".json".length))
+        .flatMap((entry) => (entry.endsWith(".json") ? [entry.slice(0, -".json".length)] : []))
         .sort();
     return Promise.all(
         sessionIds.map(async (sessionId) => ({

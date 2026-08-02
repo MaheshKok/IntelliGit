@@ -41,9 +41,9 @@ export async function reconcileRebaseSessionsOnActivation(
             repositoryRoot,
         );
         const reconciliation = reconcileRebaseSessions(evidence);
-        const discardedSessionIds = reconciliation.dispositions
-            .filter((disposition) => disposition.status === "discard")
-            .map((disposition) => disposition.sessionId);
+        const discardedSessionIds = reconciliation.dispositions.flatMap((disposition) =>
+            disposition.status === "discard" ? [disposition.sessionId] : [],
+        );
 
         await Promise.all(
             discardedSessionIds.map((sessionId) =>
@@ -59,9 +59,9 @@ export async function reconcileRebaseSessionsOnActivation(
             gitDir,
         });
 
-        const ambiguousSessionIds = reconciliation.dispositions
-            .filter((disposition) => disposition.status === "ambiguous")
-            .map((disposition) => disposition.sessionId);
+        const ambiguousSessionIds = reconciliation.dispositions.flatMap((disposition) =>
+            disposition.status === "ambiguous" ? [disposition.sessionId] : [],
+        );
         if (ambiguousSessionIds.length === 0) return;
 
         // The dialog answers with the exact label it was handed, which is the translated one.

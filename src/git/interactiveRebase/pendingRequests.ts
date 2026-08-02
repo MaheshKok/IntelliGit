@@ -80,9 +80,10 @@ export function createPendingRebaseDialogRequests(
         },
         cancelForOrigins(origins, repoRoot) {
             expireRequests();
+            const originsToCancel = new Set(origins);
             for (const [requestId, stored] of requests) {
                 if (stored.request.repoRoot !== repoRoot) continue;
-                if (origins.includes(stored.request.originProvider)) requests.delete(requestId);
+                if (originsToCancel.has(stored.request.originProvider)) requests.delete(requestId);
             }
         },
     };

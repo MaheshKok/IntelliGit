@@ -23,6 +23,9 @@ import "./RebaseDialog.css";
 
 const ACTIONS: readonly RebaseAction[] = ["pick", "reword", "squash", "fixup", "drop"];
 
+/** Shared empty set: the ref below never mutates it in place, only ever replaces `.current`. */
+const EMPTY_EDITED_MESSAGE_HASHES: ReadonlySet<string> = new Set();
+
 /** Props-only editor for an offered interactive-rebase todo range. */
 export function RebaseDialog({
     commits,
@@ -37,10 +40,17 @@ export function RebaseDialog({
     );
     const [notice, setNotice] = useState(false);
     const commitKey = commits.map((commit) => commit.hash).join("\0");
+    // Deliberately useState, not useRef: this gates the render-time reseed below by comparing
+    // against `commitKey`, then calls `setEntries`/`setNotice` in the same pass so React discards
+    // this render and re-commits with the reseeded state (see the comment above the `if` block). A
+    // ref mutated here would not roll back if React discards and retries this render — the retry
+    // would see the ref already updated, skip the reseed, and commit stale entries against new
+    // commits.
+    // react-doctor-disable-next-line react-doctor/rerender-state-only-in-handlers
     const [lastCommitKey, setLastCommitKey] = useState(commitKey);
     const entriesRef = useRef(entries);
     const commitsRef = useRef(commits);
-    const editedMessageHashesRef = useRef<ReadonlySet<string>>(new Set());
+    const editedMessageHashesRef = useRef<ReadonlySet<string>>(EMPTY_EDITED_MESSAGE_HASHES);
     const draggedHashRef = useRef<string>();
 
     commitsRef.current = commits;

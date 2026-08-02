@@ -98,8 +98,8 @@ export async function gatherRebaseReconciliationEvidence(
     dependencies: RebaseReconciliationDependencies,
     repoRoot: string,
 ): Promise<RebaseReconciliationEvidence> {
-    const rebaseDirectory = await readRebaseDirectoryEvidence(dependencies.gitDir);
-    const [manifests, head, branch] = await Promise.all([
+    const [rebaseDirectory, manifests, head, branch] = await Promise.all([
+        readRebaseDirectoryEvidence(dependencies.gitDir),
         listRebaseManifests(dependencies.storageRoot, repoRoot),
         readCurrentHead(dependencies.executor),
         readCurrentBranch(dependencies.executor),
