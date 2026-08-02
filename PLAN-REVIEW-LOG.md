@@ -1121,3 +1121,65 @@ The fill script earns its guards. It refuses if either target row already carrie
 - A dependency-cruiser rule forbidding any `src/**` import of `editorHelper.ts` is still unwritten.
 - **Run the `suite` gate with `VITEST_MAX_THREADS=3`** and `VITEST_MIN_THREADS=1`. vitest here is **1.6.1** — `--maxWorkers` and `--poolOptions.*` are not CLI flags and are silently parsed as filename filters, yielding `no tests`.
 - **Do not read Codex-written files through the context cache.** Use `git diff` / `git show`; native `Read`/`Grep` may be transparently rewritten to the cached tools, so a cross-check in a different tool is not necessarily a different source.
+
+## Phase 7a — operation fence, commit-action half (PLAN step 9, first bullet)
+
+BASE_HEAD `c5d15cf5`. SID `019fc228-9d54-7e72-a198-aae819d01cf6`, `gpt-5.6-terra`/`high`. Telemetry `PEAK=239986 LAST=36875 PCT=92% NONRESUMABLE=yes`. Rounds: 1 build, 0 Codex fix rounds, 2 orchestrator fixes. Scope: 18 files, 3 added — a 76-line fence module and two suites — plus **five changed lines** across the two tracked source files and the five-key l10n round-trip.
+
+### Step 10 was already shipped, and the plan did not know it
+
+`PLAN.md:50` asks for `interactiveRebaseFromHere` to stop being disabled for pushed commits. `commitMenu.tsx:94` already reads `disabled: isMergeCommit` with no `isPushed`, and `tests/webview/unit/webview-utils.test.ts:300` — *"enables interactive rebase for pushed non-merge commits only"* — already pins both halves of it. It landed during the dialog phase as a side effect of building the menu entry. Phase 7 is therefore step 9 alone. The work order told Codex explicitly that re-doing it would be a deviation, which is the only reason a frozen spec item that is already true does not get re-implemented.
+
+### 92% on a phase that changed five lines
+
+This is the number that matters from this phase, and it breaks the model the previous four were sized under. 7a was scoped deliberately small: one 152-line dispatcher, a new module, two new suites. It peaked **higher than 6d-1's whole reconciliation engine** and compacted mid-session (`LAST=36875` against `PEAK=239986`).
+
+The cause is `tests/integration/extension/extension.integration.test.ts` — **3837 lines** that Codex had to read to place a two-line mock addition. Peak tracks what a phase must *read*, not what it writes, and the work order sized it by deliverables. Deliverable count, file count, and diff size are all uninformative here; the only predictive quantity is the size of the files the change forces open. Phase 7b's target is a 1096-line file with no unit-test suite, so this is not a one-off.
+
+### Defects found and fixed
+
+1. **A fail-open exit from a function whose doc comment says fail-closed.** `rejectCommitActionWhenOperationInProgress` switched over the operation kind with a case per member and no `default`. TypeScript accepts this — the switch is exhaustive over `ActiveOperationKind`, so the end of the block is unreachable *as typed* — but at runtime an unrecognized kind falls out of the switch and the function resolves `undefined`. The dispatcher reads that as "not refused" and dispatches, which is a history rewrite landing on top of an active operation: the exact outcome the fence exists to prevent, reached through the one path the fence does not check. Not reachable through `GitOps`, whose `getActiveOperation` returns a closed set of literals. But the parameter is `Pick<GitOps, "getActiveOperation">` — duck-typed, so any adapter or test double satisfies it, and this phase added one. Same reasoning that retired 6d-1's mutant B: a pure exported function is hardened at its own boundary, not at the boundary of the one caller that currently happens to constrain it. Now throws into its own `catch`, which reuses the already-tested refusal path rather than adding a second one.
+2. **`FENCED_COMMIT_ACTIONS` was dead in `src/`.** A `ReadonlySet` derived from `COMMIT_ACTION_FENCE_DECISIONS`, exported, and consumed only by tests — while the production guard read the decision map directly. Two exports for one fact, one of them with no `src/` call site: the `sweepOrphanedRebaseReservation` smell recorded against 6d-2 exactly one commit earlier. This one is the work order's fault, not a deviation — deliverable 1 asked for both shapes. Removed; both suites now derive their matrices from the single production map, so a new protocol action lands in whichever matrix its own declared decision puts it in instead of quietly in neither.
+
+Codex's own work was otherwise clean, and two of its choices were better than what the work order asked for: `satisfies Record<CommitAction, boolean>` makes a missing decision a compile error (the work order only said "a bare `Set` does not do this"), and the `l10n.t` mock defaults to a **non-identity** translator across every test rather than only in the one case that was required. The 6d-2 lesson propagated.
+
+### The plan's single message would have lied
+
+`PLAN.md:46` fences on "a rebase (or merge) is in progress" but quotes one string: "A rebase is in progress — continue or abort it first." Told to a user paused mid-cherry-pick, that names the wrong operation and points at the wrong remedy. The fence keys on the existing `getActiveOperation()` — which already encodes the rebase > merge > cherry-pick > revert precedence, so none of it is re-derived — and carries one message per kind, with the rebase string byte-identical to the plan's. This is the faithful reading of a spec that quoted its most common case, not a redesign.
+
+`interactiveRebaseFromHere` is now fenced twice, deliberately. `evaluateInteractiveRebaseGuards` (`guards.ts:38`) is strictly **wider** than this fence: it also probes `git bisect`, which writes no whole-index marker and so is invisible to `getActiveOperation()`. The work order forbade touching it. The fence reaches the user first for the four marker kinds; the guard still owns bisect and the five conditions after it.
+
+### Mutation sweep — 5 mutants, 5 killed
+
+- **A** (revert the fail-closed fallback, restoring the `undefined` exit) — killed **by the test added for it**, confirming the hole was not already covered by the build's own seven cases.
+- **B** (quietly unfence `checkoutRevision`) — killed.
+- **C** (collapse the merge wording onto the rebase message) — killed.
+- **D** (an unreadable probe reports the repository as clear) — killed.
+- **E** (fence after the switch, so the handler has already run when it refuses) — killed.
+
+Both files restored byte-identically after every round, SHA-256 verified. `git stash` is never used — the tree carries uncommitted work.
+
+### Acceptance
+
+6 accept gates GREEN warn=0 — `lint` 9.0s, `typecheck` 3.5s, `format` 2.3s, `knip` 0.8s, `architecture` 0.9s, `suite` 280.8s. Counting run: **2519/2519** across 159 files, 159.43s. The delta from the build's own 2518 is exactly the one added case. `SEAL: INTACT files=18 warns_open=0`.
+
+l10n: five host strings across 12 catalogs. Terminology was sampled per-locale from each catalog's existing merge, cherry-pick, and revert strings rather than produced fresh — German keeps "Zusammenführung" for merge and treats Rebase as feminine to match `"Der Branch wurde seit der Rebase verschoben"`, Japanese keeps チェリーピック, zh-cn keeps 变基 against zh-tw's 變基. `l10n:import` applied 10092 cells across 11 files; validate passed; every catalog diff is append-only.
+
+**Shadow-mode datum: not collected, fifteenth time.** Two orchestrator fixes and one added test changed hash-covered files during verification. Fifteen builds, zero data points.
+
+## Handoff — resume at Phase 7b
+
+- Branch `feat/interactive-rebase-from-here`; BASE_HEAD for 7b = the tip after this phase's two commits. Tunables unchanged; `SEAL_MODE=shadow`.
+- 7b scope: the branch-command bullet of step 9 (`PLAN.md:48`) — checkout/switch, merge, rebase-onto, update, delete, rename. Step 10 needs nothing; see above.
+- **Size 7b by what it forces open, not by its deliverables.** `src/commands/branchCommands.ts` is **1096 lines** and `createBranchCommands` is one 500-line function literal returning 13 entries. Give Codex line ranges per command, not the file. This phase's 92% is the evidence.
+- **`src/commands/branchCommands.ts` has no unit-test file.** Its handlers are reachable only through `tests/integration/extension/extension.integration.test.ts` (3837 lines). 7b must create `tests/unit/commands/branchCommands.test.ts` and mock seven `BranchCommandDeps` members; that harness is a larger job than the fence itself and is the real content of the phase.
+- **Eight ids, not six.** `PLAN.md:48` names six operations but the registry has eight matching commands: `intelligit.checkout`, `checkoutAndRebase`, `rebaseCurrentOnto`, `mergeIntoCurrent`, `updateBranch`, `renameBranch`, `deleteBranch`, **`deleteBranches`**. The plural multi-select variant is a separate registration — fencing only `deleteBranch` leaves the fence bypassable by selecting two branches. Unfenced: `openWorktree`, `createWorktreeFromBranch`, `worktree.create`, `newBranchFrom`, `pushBranch`.
+- **The fence module and all five strings already exist.** 7b adds a branch-command decision map and reuses `rejectCommitActionWhenOperationInProgress`'s message logic; it needs no new l10n. Do not let it fork a second copy of the four kind messages.
+- `deps.gitOps` is already on `BranchCommandDeps` (`branchCommands.ts:534`) — no plumbing, same as the commit half.
+- **Adding a `getActiveOperation` mock to the integration fixture is now required for any new production consumer.** `extension.integration.test.ts:270` and `:819` carry it; a fail-closed probe against a mock that lacks the method refuses every action and turns the whole integration suite red in a way that reads like a fence bug.
+- **Fence rejections at the integration layer are still uncovered.** `PLAN.md:55` puts them in the mocked `emitCommitAction` harness under step 12c, which is phase 8. The nine unit rejection tests satisfy step 9's "each fenced path gets an in-progress rejection test"; the integration layer is a separate obligation and has not been met.
+- `UndockedViewProvider` still calls `hasWholeIndexOperationInProgress` directly and never sees `activeOperation` or `rebaseControl`. Five phases past the point where it started to matter.
+- **`CommitPanelViewProvider` still takes 12 positional constructor dependencies.** Unconverted; one positional insert away from breaking the test that pins `.at(-1)`.
+- A dependency-cruiser rule forbidding any `src/**` import of `editorHelper.ts` is still unwritten.
+- **Run the `suite` gate with `VITEST_MAX_THREADS=3`** and `VITEST_MIN_THREADS=1`. vitest here is **1.6.1** — `--maxWorkers` and `--poolOptions.*` are not CLI flags and are silently parsed as filename filters, yielding `no tests`.
+- **Do not read Codex-written files through the context cache.** Confirmed again this phase: a `grep` for keys that `git diff` had just shown in `l10n/bundle.l10n.json` returned zero matches through the cached path. Use `git show` / `git diff`.
