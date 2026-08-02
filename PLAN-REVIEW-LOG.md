@@ -1546,3 +1546,68 @@ No l10n work — this phase adds no strings. GitNexus MCP is not exposed in this
 - `UndockedViewProvider` toolbar state, `CommitPanelViewProvider`'s 12 positional constructor dependencies, and the missing dependency-cruiser rule against `src/**` importing `editorHelper.ts` all remain open.
 - **Run the `suite` gate with `VITEST_MAX_THREADS=3`** and `VITEST_MIN_THREADS=1`. vitest here is **1.6.1** — `--maxWorkers` and `--poolOptions.*` are not CLI flags and are silently parsed as filename filters, yielding `no tests`.
 - **Do not read Codex-written files through the context cache.** Use `git show` / `git diff`.
+
+## Phase 8f — submission serialization and the no-upstream path (PLAN step 12c, sub-layer (b), part 5)
+
+BASE_HEAD `b2062585`. SID `019fc2f2-2061-7423-964e-0d16397308d1`, `gpt-5.6-terra`/`high`. Telemetry `PEAK=220577 LAST=220577 PCT=85% NONRESUMABLE=no`. Rounds: 1 build (DONE 6/6), 0 fix rounds; the orchestrator corrected two scenarios and closed a unit-coverage hole. Scope: **3 files, test-only** — no `src/` change.
+
+### The sizing law needs a second clause
+
+A 170-line test-only phase peaked at **85%** — the worst overshoot of the build against a 45–50% target, and from the smallest diff. The reads were bounded and Codex honoured them. What blew the budget was the **proof**: the work order demanded the full Vitest suite, the rebase suite three times, and seven other gates. Suite output is enormous and it all lands in context.
+
+**The sizing law, corrected: peak tracks the files a change forces you to read *plus* the output of the proof it forces you to run.** A phase whose diff is small but whose proof is the full suite is not a small phase. Ask for the focused suite plus one full run, or split the proof across the round and accept stages — do not ask for ×3 of anything that prints thousands of lines.
+
+### What the review found
+
+Codex delivered all six items and respected every bound. Three problems survived its self-report:
+
+1. **The overlap scenario proved the wrong refusal.** It parked the first runner after `git rebase -i` returned and asserted the second submission failed with `rebase-in-progress`. But `tryAcquireRebaseReservation` checks Git's rebase directory at `storage.ts:85` — *before* it writes the exclusive pointer — so that refusal is reachable with no concurrency at all, and the second call never reached either the pointer or the mutation gate. The elaborate hold machinery contributed nothing to the outcome it asserted. This is the **mirror rule** from 8d: an assertion of a *specific* refusal needs the other refusals made unreachable.
+
+   Fixed by generalizing the seam — `suspendInteractiveRebase(dependencies, "before-git" | "after-git")` — and adding the scenario that parks *before* the delegation, where no rebase directory exists yet and the only exclusion left is the pointer. That one asserts `reservation-exists` and pins both `rebase-merge` and `rebase-apply` absent, so the other refusal is unreachable by construction.
+
+2. **The orphan scenario could not fail.** It swept, then submitted, and asserted the submission completed — never establishing that the orphan blocked anything. A sweep that reclaimed nothing passed it unchanged. Fixed with a pre-sweep assertion that the submission is refused for `reservation-exists`.
+
+3. **`storage.test.ts` had no tests for either reservation function.** Nine tests, all on `readLiveRebaseManifest` / `listRebaseManifests` / `discardRebaseSession`; `tryAcquireRebaseReservation` and `sweepOrphanedRebaseReservation` — the repository's mutual-exclusion primitive — had zero unit coverage. Six added.
+
+### The mutation sweep, and the trap in reading it
+
+Two rounds, because the first round's verdict was an artifact of finding 3.
+
+**Round 1** (before the unit tests): A (`wx`→`w`), B (sweep never removes), C (drop the rebase-directory check), D (probe misspelled) — all four `real RC=1 mocked RC=0`, i.e. "killed by real Git only, mocks green." Four layer proofs, apparently. They were nothing of the kind: the mocked suite was green because it **had no tests for that code at all**.
+
+**Round 2** (after the unit tests): A, B, C, D all killed by both layers. Only **E** — production and the unit suite's hand-made fixture agreeing on `rebase-merged`, a name Git never writes — is killed by real Git alone.
+
+```
+MUTANT E: real RC=1 mocked RC=0 -> KILLED by real Git ONLY - mocks green. LAYER PROVEN.
+```
+
+**New rule: "killed by real Git only" is a layer proof only if the mocked layer actually covers that surface.** Otherwise it is a unit-coverage hole wearing a layer proof's clothes, and the integration suite has been quietly conscripted as the sole cover for a primitive that belongs one layer down. Before reading a mock-green verdict as a win, check what the unit suite tests. Third phase running, the consistent-mistake mutant is still the only construction that survives this check.
+
+**Honest answer to "what does this depend on that mocks could not fake":** the two reservation scenarios depend on *nothing* a mocked filesystem could not fake — `storage.test.ts` uses a real `mkdtemp` anyway. What they add is composition: the pointer exercised through `runInteractiveRebaseSubmission` with a real rebase in flight. Only the `after-git` and no-upstream scenarios genuinely require real Git.
+
+All files restored byte-identically after every round, SHA-256 verified (`storage.ts` `8e1eccb7…`, `storage.test.ts` `ff0f8bb1…`). `git stash` is never used — the tree carries uncommitted work.
+
+### Acceptance
+
+6 accept gates GREEN warn=0 — `lint` 10.8s, `typecheck` 4.0s, `format` 2.5s, `knip` 1.0s, `architecture` 1.1s, `suite` 355.6s (load 4.75 at start). Counting run: **2584/2584** across 160 files, 230.29s (+10 over 8e's 2574: three delivered scenarios, one the mirror rule forced, six unit tests). `SEAL: INTACT files=3 warns_open=0`.
+
+Real-Git suite cost: **28.89s for nineteen scenarios**, from 20.90s for fifteen. **12.5%** of the 230s full suite, up from 11.8%. Codex reported 10.1–11.8% against its own slower full-suite run (279.37s) — the ratio moves with machine load, so measure both halves in the same session. Still under the 15% split threshold; the next sub-layer (b) phase probably crosses it.
+
+No l10n work — this phase adds no strings. GitNexus MCP is not exposed in this session, so the mandated `detect_changes()` scope check could not be run by the orchestrator.
+
+**Shadow-mode datum: not collected, twenty-second time.** All three hash-covered files changed during verification.
+
+## Handoff — resume at Phase 8g
+
+- Branch `feat/interactive-rebase-from-here`; BASE_HEAD for 8g = the tip after this phase's two commits. Tunables unchanged; `SEAL_MODE=shadow`.
+- **Verify every claim in this handoff before scoping from it.** Five handoffs running have shipped a wrong claim.
+- **Size the proof, not just the reads** (this phase's 85%). Never ask for a repeated full-output command; name the focused suite and one full run.
+- **A mock-green mutant verdict is not a layer proof until you have checked that the mocked layer covers that surface.** Read the unit suite's `it(` list first. This phase's round 1 produced four false layer proofs from one coverage hole.
+- **Every phase whose claim is "this layer reaches past the mocks" still needs a consistent-mistake mutant** — production and the mocked fixture changed together. It is the only construction that has survived three phases of this check.
+- **The mirror rule (8d) bit again**, in a new form: `tryAcquireRebaseReservation` produces `rebase-in-progress` from Git's on-disk state *before* the pointer write, so any concurrency assertion must park the first runner *before* the Git delegation or it proves nothing about serialization.
+- Harness state: `createRebaseFixture`, `createConflictingRebaseFixture`, `createPushableRebaseFixture`, `createRemoteCollaborator`, `plantPersistedRebaseSession`, `plantOrphanedRebaseReservation`, `rewritePersistedRebaseManifest`, and `suspendInteractiveRebase(dependencies, at)` — the last one parks a real runner on either side of the `git rebase -i` delegation.
+- Remaining sub-layer (b): **operation-kind toolbar states** and **toast Dismiss** (UI layer — `UndockedViewProvider` / view providers, not the rebase module), and **conflicted multi-commit revert abort via `REVERT_HEAD`** (lives at `src/git/operations.ts:679` and `:1700`, *not* in `src/git/interactiveRebase/` — a different read set, so it is its own phase). Reconciliation, force push, serialization, and the no-upstream path are done.
+- Then PLAN steps **13** (acceptance matrix) and **14** (docs + CHANGELOG) close the build.
+- `UndockedViewProvider` toolbar state, `CommitPanelViewProvider`'s 12 positional constructor dependencies, and the missing dependency-cruiser rule against `src/**` importing `editorHelper.ts` all remain open.
+- **Run the `suite` gate with `VITEST_MAX_THREADS=3`** and `VITEST_MIN_THREADS=1`. vitest here is **1.6.1** — `--maxWorkers` and `--poolOptions.*` are not CLI flags and are silently parsed as filename filters, yielding `no tests` (and a vacuous exit 0 — the same trap that would have made a mutation arm meaningless).
+- **Do not read Codex-written files through the context cache.** Use `git show` / `git diff`.
