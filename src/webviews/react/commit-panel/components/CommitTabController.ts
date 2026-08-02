@@ -54,8 +54,8 @@ export interface CommitTabProps {
     onCancelGeneration?: () => void;
     hasCommits?: boolean;
     wholeIndexOperationInProgress?: boolean;
-    activeOperation?: "none" | "merge" | "cherry-pick" | "revert" | "rebase";
-    rebaseControl?: "owned" | "unowned" | "foreign";
+    activeOperation: "none" | "merge" | "cherry-pick" | "revert" | "rebase";
+    rebaseControl: "owned" | "unowned" | "foreign" | undefined;
     groupByDir: boolean;
     showIgnoredFiles: boolean;
     onToggleGroupBy: () => void;
@@ -117,8 +117,8 @@ export interface CommitTabController {
     expandAllSignal: number;
     collapseAllSignal: number;
     hasMergeConflicts: boolean;
-    activeOperation?: "none" | "merge" | "cherry-pick" | "revert" | "rebase";
-    rebaseControl?: "owned" | "unowned" | "foreign";
+    activeOperation: "none" | "merge" | "cherry-pick" | "revert" | "rebase";
+    rebaseControl: "owned" | "unowned" | "foreign" | undefined;
     isRefreshFeedbackActive: boolean;
     shelfDialogFocusRef: React.MutableRefObject<HTMLElement | null>;
     shelfMenuItems: MenuItem[];

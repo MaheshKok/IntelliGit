@@ -112,6 +112,8 @@ export function CommitPanelPane({
                             onCancelGeneration={onCancelGeneration}
                             hasCommits={cpState.hasCommits}
                             wholeIndexOperationInProgress={cpState.wholeIndexOperationInProgress}
+                            activeOperation={cpState.activeOperation}
+                            rebaseControl={cpState.rebaseControl}
                             onCommit={onCommit}
                             canCommit={canCommit}
                             onPush={onPush}

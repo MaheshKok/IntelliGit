@@ -5,9 +5,6 @@
 import * as path from "path";
 import * as vscode from "vscode";
 import { GitOps } from "../git/operations";
-import { resolveGitDir } from "../git/gitDirectory";
-import { deriveRebaseControl } from "../git/interactiveRebase/rebaseControl";
-import { readLiveRebaseManifest } from "../git/interactiveRebase/storage";
 import {
     CommitMessageGenerationCoordinator,
     type CommitMessageGenerationHost,
@@ -22,12 +19,12 @@ import { assertRepoRelativePath } from "../utils/fileOps";
 import { abortMergeWithConfirmation } from "./mergeAbort";
 import type {
     CommitPanelRepositorySnapshot,
-    CommitPanelOperationSnapshot,
     InboundMessage,
 } from "../webviews/protocol/commitPanelMessages";
 import type { ShelfService } from "../services/shelfService";
 import type { DiscoveredRepository } from "../services/repositoryDiscovery";
 import { CommitPanelRepositoryRuntime } from "./commitPanelRepositoryRuntime";
+import { operationSnapshotForRepository } from "./commitPanelOperationSnapshot";
 import { ShelfConflictEditorPanel } from "./ShelfConflictEditorPanel";
 import { runPublishBranchFlow } from "../services/publishService";
 import { showTimedWarningMessage } from "../utils/notifications";
@@ -605,29 +602,12 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
     }
 
     /** Derives the operation protocol from one filesystem marker snapshot without another Git process. */
-    private async operationSnapshotForRuntime(
-        runtime: CommitPanelRepositoryRuntime,
-    ): Promise<CommitPanelOperationSnapshot> {
-        const activeOperation = await runtime.gitOps.getActiveOperation();
-        if (activeOperation !== "rebase") return { activeOperation };
-        const liveManifest = await readLiveRebaseManifest(
-            this.interactiveRebaseStorageRoot,
-            runtime.repository.root,
-        );
-        const rebaseControl = await deriveRebaseControl({
-            gitDir: resolveGitDir(runtime.repository.root),
-            ...(liveManifest ? { liveManifest } : {}),
+    private async operationSnapshotForRuntime(runtime: CommitPanelRepositoryRuntime) {
+        return operationSnapshotForRepository({
+            gitOps: runtime.gitOps,
+            repositoryRoot: runtime.repository.root,
+            interactiveRebaseStorageRoot: this.interactiveRebaseStorageRoot,
         });
-        return {
-            activeOperation,
-            // `none` here means the rebase ended between the two probes. Reporting `none` as the
-            // operation would also erase any merge, cherry-pick, or revert the first probe saw
-            // underneath it and unfence the commit path, so the uncorrelated classification is
-            // reported instead: a stale rebase is corrected by the marker's own watcher event,
-            // while a dropped operation is not corrected by anything.
-            rebaseControl:
-                rebaseControl === "none" ? (liveManifest ? "foreign" : "unowned") : rebaseControl,
-        };
     }
 
     /** Reads shelf state from the runtime-scoped service without crossing repository boundaries. */

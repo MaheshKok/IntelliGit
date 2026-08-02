@@ -811,6 +811,7 @@ export async function activateRepositoryMode(
                 shelfServiceForRepository,
                 shelfRemoveOnUnshelve: shelfSettings.removeOnUnshelve,
             },
+            context.globalStorageUri?.fsPath,
         );
         undocked.setRepositoryLabel(initialUndockedRepository.label);
         undocked.setRepositories(repositories, initialUndockedRepository.root);

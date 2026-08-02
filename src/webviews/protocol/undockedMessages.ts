@@ -6,23 +6,25 @@ import type { BranchAction, CommitAction, WorktreeAction } from "./commitGraphTy
 import type { RebaseSubmissionEntry } from "../../git/interactiveRebase/types";
 import type { Branch } from "../../types";
 import type {
+    CommitPanelOperationSnapshot,
     InboundMessage as CommitPanelInbound,
     OutboundMessage as CommitPanelOutbound,
 } from "./commitPanelMessages";
 import type { CommitGraphInbound } from "./commitGraphTypes";
 
+/** The shared operation-state contract carried by undocked commit-panel updates. */
+type UndockedCommitPanelUpdate = Extract<CommitPanelInbound, { type: "update" }> &
+    CommitPanelOperationSnapshot;
+
 /** Host messages whose stale-root filtering is mandatory in the undocked webview. */
-type RootFilteredCommitPanelInbound = Extract<
-    CommitPanelInbound,
-    {
-        type:
-            | "update"
-            | "restoreCommitDraft"
-            | "lastCommitMessage"
-            | "amendBranchCommits"
-            | "committed";
-    }
-> & { repositoryRoot: string };
+type RootFilteredCommitPanelInbound =
+    | (UndockedCommitPanelUpdate & { repositoryRoot: string })
+    | (Extract<
+          CommitPanelInbound,
+          {
+              type: "restoreCommitDraft" | "lastCommitMessage" | "amendBranchCommits" | "committed";
+          }
+      > & { repositoryRoot: string });
 
 /** Commit-panel inbound surface tightened only for the root-filtering undocked webview. */
 type UndockedCommitPanelInbound =

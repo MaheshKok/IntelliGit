@@ -33,8 +33,8 @@ function menuItem(label: string): HTMLElement {
 
 function renderCommitTab({
     commitMessage = "draft shelf",
-    activeOperation,
-    rebaseControl,
+    activeOperation = "none",
+    rebaseControl = undefined,
 }: {
     commitMessage?: string;
     activeOperation?: "none" | "merge" | "cherry-pick" | "revert" | "rebase";

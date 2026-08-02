@@ -317,7 +317,7 @@ export function RepositoryAccordion({
             onCancelGeneration={handleCancelGeneration}
             hasCommits={repository.hasCommits}
             wholeIndexOperationInProgress={repository.wholeIndexOperationInProgress}
-            activeOperation={repository.activeOperation}
+            activeOperation={repository.activeOperation ?? "none"}
             rebaseControl={repository.rebaseControl}
             folderIcon={repository.folderIcon}
             folderExpandedIcon={repository.folderExpandedIcon}

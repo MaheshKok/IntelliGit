@@ -12,6 +12,7 @@ import { showCommitMessageGenerationNotification } from "../ai/commitMessageGene
 import type { ShelfService } from "../services/shelfService";
 import type { ShelfEntry, ShelfHealthWarning } from "../webviews/protocol/commitPanelMessages";
 import { IconThemeService } from "./shared/IconThemeService";
+import { operationSnapshotForRepository } from "./commitPanelOperationSnapshot";
 import { registerThemeChangeListeners, disposeAll } from "./shared/themeListeners";
 import { buildWebviewShellHtml } from "./webviewHtml";
 import { decorateShelfFiles, shelfFilePaths } from "./shelfIconDecoration";
@@ -296,6 +297,7 @@ export class UndockedViewProvider {
         hostMap: HostMap = {},
         private readonly commitChecksSettings?: CommitChecksSettings,
         options: UndockedViewProviderOptions = {},
+        private readonly interactiveRebaseStorageRoot?: string,
     ) {
         this.gitOps = gitOps;
         this.executor = options.executor;
@@ -1737,9 +1739,10 @@ export class UndockedViewProvider {
             if (!canUpdate()) return;
             // The post-await root guard prevents stale refresh data from being published.
             // react-doctor-disable-next-line react-doctor/async-defer-await
-            const [hasCommits, wholeIndexOperationInProgress] = await Promise.all([
+            const [hasCommits, wholeIndexOperationInProgress, operation] = await Promise.all([
                 rootGitOps.hasAnyCommits(),
                 rootGitOps.hasWholeIndexOperationInProgress(),
+                this.operationSnapshotFor(rootGitOps, repositoryRoot),
             ]);
             if (!canUpdate()) return;
             this.files = files;
@@ -1778,10 +1781,26 @@ export class UndockedViewProvider {
                 currentBranchUpstream: currentBranchStatus.upstream,
                 hasCommits,
                 wholeIndexOperationInProgress,
+                ...operation,
             });
         } finally {
             if (!silent && canUpdate()) this.postToWebview({ type: "refreshing", active: false });
         }
+    }
+
+    /**
+     * Derives the operation state that fences commit-toolbar controls for this repository.
+     *
+     * Takes the root its caller captured rather than reading `selectedRepositoryRoot` again: a
+     * repository switch between the two reads would correlate one repository's active operation
+     * with another's rebase manifest and Git directory.
+     */
+    private async operationSnapshotFor(rootGitOps: GitOps, repositoryRoot: string) {
+        return operationSnapshotForRepository({
+            gitOps: rootGitOps,
+            repositoryRoot,
+            interactiveRebaseStorageRoot: this.interactiveRebaseStorageRoot,
+        });
     }
     // --- Branch sending -----------------------------------------------------
     /**

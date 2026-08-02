@@ -237,6 +237,8 @@ function handleCommitPanelMessage(data: CommitPanelInboundMessage, context: Mess
                 currentBranchUpstream: data.currentBranchUpstream,
                 hasCommits: data.hasCommits,
                 wholeIndexOperationInProgress: data.wholeIndexOperationInProgress,
+                activeOperation: data.activeOperation,
+                rebaseControl: data.rebaseControl,
             });
             return;
         case "restoreCommitDraft":

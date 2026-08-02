@@ -105,6 +105,8 @@ export interface CommitPanelState {
     generation: CommitMessageGenerationState;
     hasCommits: boolean;
     wholeIndexOperationInProgress: boolean;
+    activeOperation: "none" | "merge" | "cherry-pick" | "revert" | "rebase";
+    rebaseControl: "owned" | "unowned" | "foreign" | undefined;
 }
 
 /** Reducer actions emitted by unified undocked messages and local commit-panel controls. */
@@ -131,6 +133,8 @@ export type CommitPanelAction =
           currentBranchUpstream?: string | null;
           hasCommits?: boolean;
           wholeIndexOperationInProgress?: boolean;
+          activeOperation?: "none" | "merge" | "cherry-pick" | "revert" | "rebase";
+          rebaseControl?: "owned" | "unowned" | "foreign";
       }
     | { type: "RESTORE_COMMIT_DRAFT"; message: string }
     | { type: "SET_LAST_COMMIT_MESSAGE"; message: string }
@@ -191,6 +195,8 @@ export const initialCommitPanelState: CommitPanelState = {
     generation: { status: "idle" },
     hasCommits: false,
     wholeIndexOperationInProgress: false,
+    activeOperation: "none",
+    rebaseControl: undefined,
 };
 
 /**
@@ -276,6 +282,15 @@ export function commitPanelReducer(
                 hasCommits: action.hasCommits ?? state.hasCommits,
                 wholeIndexOperationInProgress:
                     action.wholeIndexOperationInProgress ?? state.wholeIndexOperationInProgress,
+                ...(action.activeOperation === undefined
+                    ? {
+                          activeOperation: state.activeOperation,
+                          rebaseControl: state.rebaseControl,
+                      }
+                    : {
+                          activeOperation: action.activeOperation,
+                          rebaseControl: action.rebaseControl,
+                      }),
                 error: null,
             };
         case "SET_REFRESHING":

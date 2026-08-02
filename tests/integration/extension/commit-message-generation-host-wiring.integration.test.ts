@@ -122,7 +122,14 @@ vi.mock("../../../src/views/UndockedViewProvider", () => ({
         showRebaseDialog = vi.fn(() => true);
         dispose = vi.fn();
         constructor(...args: unknown[]) {
-            undockedOptions.push(args.at(-1) as Record<string, unknown>);
+            undockedOptions.push(
+                args.find(
+                    (argument): argument is Record<string, unknown> =>
+                        typeof argument === "object" &&
+                        argument !== null &&
+                        "repositories" in argument,
+                ) ?? {},
+            );
         }
     },
 }));

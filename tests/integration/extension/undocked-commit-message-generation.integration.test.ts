@@ -15,6 +15,13 @@ const commitSelectedFromPanel = vi.hoisted(() => vi.fn(async () => undefined));
 const commitOnlyFromPanel = vi.hoisted(() => vi.fn(async () => undefined));
 const commitAndPushFromPanel = vi.hoisted(() => vi.fn(async () => undefined));
 const showCommitMessageGenerationNotification = vi.hoisted(() => vi.fn(async () => undefined));
+const liveManifest = vi.hoisted(() => ({ sessionId: "extension-owned-rebase" }));
+const deriveRebaseControl = vi.hoisted(() =>
+    vi.fn(async ({ liveManifest: manifest }: { liveManifest?: unknown }) =>
+        manifest ? "owned" : "foreign",
+    ),
+);
+const readLiveRebaseManifest = vi.hoisted(() => vi.fn(async () => liveManifest));
 
 const webview = {
     html: "",
@@ -98,6 +105,14 @@ vi.mock("../../../src/ai/commitMessageGenerationNotifications", () => ({
     showCommitMessageGenerationNotification,
 }));
 
+vi.mock("../../../src/git/interactiveRebase/rebaseControl", () => ({
+    deriveRebaseControl,
+}));
+
+vi.mock("../../../src/git/interactiveRebase/storage", () => ({
+    readLiveRebaseManifest,
+}));
+
 function createDeferred<T>() {
     let resolve!: (value: T) => void;
     const promise = new Promise<T>((resolvePromise) => {
@@ -113,6 +128,12 @@ function createRootGitOps() {
         ]),
         hasAnyCommits: vi.fn(async () => true),
         hasWholeIndexOperationInProgress: vi.fn(async () => false),
+        getActiveOperation: vi.fn(async () => "none"),
+        getGitDirectories: vi.fn(async () => ({
+            root: "/repo-a",
+            gitDir: "/repo-a/.git",
+            commonDir: "/repo-a/.git",
+        })),
         getLastCommitMessage: vi.fn(async () => "feat: previous commit"),
         getAmendBranchCommits: vi.fn(async () => []),
         getBranches: vi.fn(async () => []),
@@ -184,6 +205,12 @@ async function send(message: unknown): Promise<void> {
 describe("UndockedViewProvider commit-message generation", () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        deriveRebaseControl.mockReset();
+        deriveRebaseControl.mockImplementation(async ({ liveManifest: manifest }) =>
+            manifest ? "owned" : "foreign",
+        );
+        readLiveRebaseManifest.mockReset();
+        readLiveRebaseManifest.mockResolvedValue(liveManifest);
         messageHandler = undefined;
         panelDisposeHandler = undefined;
         commitSelectedFromPanel.mockClear();
@@ -498,6 +525,84 @@ describe("UndockedViewProvider commit-message generation", () => {
         ).toMatchObject({ files: [], stashes: [], stashFiles: [] });
         provider.dispose();
     });
+
+    it("publishes the rebase operation snapshot with an undocked commit-panel update", async () => {
+        const { gitOps, provider } = await createProvider();
+        gitOps.rootGitOps.getActiveOperation.mockResolvedValueOnce("rebase");
+        (
+            provider as unknown as { interactiveRebaseStorageRoot?: string }
+        ).interactiveRebaseStorageRoot = "/storage";
+
+        await (
+            provider as unknown as { refreshCommitPanelData: () => Promise<void> }
+        ).refreshCommitPanelData();
+
+        expect(readLiveRebaseManifest).toHaveBeenCalledWith("/storage", "/repo-a");
+        expect(deriveRebaseControl).toHaveBeenCalledWith({
+            gitDir: "/repo-a/.git",
+            liveManifest,
+        });
+        expect(postMessage).toHaveBeenCalledWith(
+            expect.objectContaining({
+                type: "update",
+                activeOperation: "rebase",
+                rebaseControl: "owned",
+            }),
+        );
+        provider.dispose();
+    });
+
+    it.each([
+        ["foreign", "foreign"],
+        ["unowned", "unowned"],
+    ] as const)(
+        "preserves the undocked %s rebase classification without an owned manifest",
+        async (rebaseControl, expectedControl) => {
+            const { gitOps, provider } = await createProvider();
+            gitOps.rootGitOps.getActiveOperation.mockResolvedValueOnce("rebase");
+            readLiveRebaseManifest.mockResolvedValueOnce(undefined);
+            deriveRebaseControl.mockResolvedValueOnce(rebaseControl);
+
+            await (
+                provider as unknown as { refreshCommitPanelData: () => Promise<void> }
+            ).refreshCommitPanelData();
+
+            expect(postMessage).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    type: "update",
+                    activeOperation: "rebase",
+                    rebaseControl: expectedControl,
+                }),
+            );
+            provider.dispose();
+        },
+    );
+
+    it.each([
+        ["with a live manifest", liveManifest, "foreign"],
+        ["without a live manifest", undefined, "unowned"],
+    ] as const)(
+        "reports %s as the uncorrelated classification when rebase ends between probes",
+        async (_scenario, manifest, expectedControl) => {
+            const { gitOps, provider } = await createProvider();
+            gitOps.rootGitOps.getActiveOperation.mockResolvedValueOnce("rebase");
+            readLiveRebaseManifest.mockResolvedValueOnce(manifest);
+            deriveRebaseControl.mockResolvedValueOnce("none");
+
+            await (
+                provider as unknown as { refreshCommitPanelData: () => Promise<void> }
+            ).refreshCommitPanelData();
+
+            expect(postMessage).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    type: "update",
+                    activeOperation: "rebase",
+                    rebaseControl: expectedControl,
+                }),
+            );
+            provider.dispose();
+        },
+    );
 
     it("keeps a lease for deferred success and releases it after action rejection", async () => {
         const { coordinator, provider } = await createProvider();
