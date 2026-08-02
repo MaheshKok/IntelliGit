@@ -1362,3 +1362,76 @@ No l10n work — this phase adds no strings. GitNexus MCP is not exposed in this
 - A dependency-cruiser rule forbidding any `src/**` import of `editorHelper.ts` is still unwritten.
 - **Run the `suite` gate with `VITEST_MAX_THREADS=3`** and `VITEST_MIN_THREADS=1`. vitest here is **1.6.1** — `--maxWorkers` and `--poolOptions.*` are not CLI flags and are silently parsed as filename filters, yielding `no tests`.
 - **Do not read Codex-written files through the context cache.** Use `git show` / `git diff`.
+
+## Phase 8c — the conflict / Continue path against real Git (PLAN step 12c, sub-layer (b), part 2)
+
+BASE_HEAD `4e4f5e6c`. SID `019fc299-77b9-71d0-92b0-08d452207c39`, `gpt-5.6-terra`/`high`. Telemetry `PEAK=100709 LAST=100709 PCT=38% NONRESUMABLE=no`. Rounds: 1 build (returned BLOCKED), 0 Codex fix rounds, Claude finished deliverables 3–5 and 7. Scope: **3 files, +173 lines, test-only** — no `src/` change.
+
+### The build stopped on my mistake, not a defect
+
+Codex reported `Status: BLOCKED — real-Git tests found a production-contract defect`, naming `continueInteractiveRebase` for returning `{ status: "completed", rebasedHeadOid }` without `rebaseControl: "owned"`.
+
+There is no defect. `control.ts:45-50` deliberately omits ownership from the `completed` variant, because `completed` is reachable only from the owned path — the union carries `rebaseControl` exactly where it varies (`continued` pins the literal `"unowned"`, `aborted` and `failed` carry the real value) and `paused-conflict` documents its own omission in prose at `control.ts:61-64`. My work order's deliverable 3 said "the result is the owned completion shape, **including `rebaseControl`**". Codex wrote the assertion I specified, it failed against the real contract, and my own "STOP on a production defect, do not absorb it" rule fired.
+
+**The rule worked; the instruction was wrong.** This is the same failure as 8a defect 1 — a work order asserting a shape I had not read. Two of the three test-only phases have now lost work to me specifying an assertion instead of naming the behavior and letting the type be read. The correction is not more careful prose, it is fewer literal shapes in work orders.
+
+Because Codex did nothing wrong, this is not a fix round on the ladder — no `xhigh` retry, no escalation. I finished the remaining deliverables directly, which was cheaper than a fresh session with a corrected work order for three assertions.
+
+The replacement assertion is stronger than the one I originally asked for:
+
+```ts
+const completion = await continueInteractiveRebase(fixture.dependencies, fixture.root);
+expect(completion).toEqual({
+    status: "completed",
+    rebasedHeadOid: (await git(fixture.root, ["rev-parse", "HEAD"])).toString("utf8").trim(),
+});
+```
+
+`toEqual` pins the *absence* of `rebaseControl` rather than asserting a field that does not exist, and the OID pins that the reported head is what Git actually produced — mutant C below proves that second half is load-bearing.
+
+### I also got the conflict trace wrong, and the run corrected me
+
+The conflicting fixture makes `first`, `second`, and `third` all touch `shared.txt`; the scenarios submit the order `third, second, fourth`. I wrote a comment asserting that `third` applies cleanly and `second` conflicts against it. It is the reverse: a rebase applies each commit's patch *against its original parent*, so `third` — whose patch expects `second`'s content underneath — conflicts on the very first pick, and `second` then applies cleanly onto the resolved result. The suite passing is what exposed it: the final `git show HEAD:shared.txt` assertion only holds under the correct order. Comment fixed to match observed behavior.
+
+This is the second time this phase that a plausible reading of the code was wrong and only the real Git run settled it. That is the argument for this suite existing.
+
+### Mutation sweep — 5 mutants, 5 killed, each by the suite that owns the claim
+
+Each mutant declares its own target suite, and only that suite runs: the conflict/Continue mutants must be killed by the real-Git integration suite, the guard mutants by the guard module's own real-repository block.
+
+- **A** (`unmerged.length > 0` → `< 0`, so a stop is never classified as a conflict) — killed, all three new scenarios. Phase 8b's mutant E covered the opposite direction (always conflict); the branch is now pinned from both sides.
+- **B** (Continue runs with the pass-through editor environment, so the queued reword never reaches Git's amend) — killed by the reword scenario alone, which is exactly the claim that scenario exists to make.
+- **C** (`rev-parse HEAD` → `HEAD~1` for the reported `rebasedHeadOid`) — killed by the completion assertion above.
+- **D** (`selectedParents.length > 1` → `> 2`) — killed.
+- **E** (swallow the ancestry failure instead of rejecting it) — killed.
+
+**Honest note on D and E:** both were also killed by the *mocked* guard tests that already existed. The two real-repository cases added here are confirmation at a second layer, not sole coverage — which is what the rest of that describe block is too. They were still worth adding: the mocked cases assert against a stubbed `rev-list`/`merge-base`, and nothing else proved Git's real output shape feeds those branches correctly.
+
+All three files restored byte-identically after every round, SHA-256 verified. `git stash` is never used — the tree carries uncommitted work.
+
+### Prettier, and what `format:check` actually covers
+
+`bun run format:check` covers only `src/**/*.{ts,tsx}` and `scripts/**/*.js` — no test file is gated. Checking each file's state at `HEAD` before deciding: the two `tests/integration/rebase/` files were prettier-clean and this phase's edits broke that, so they were reformatted; `tests/unit/git/interactiveRebase/guards.test.ts` was **already** non-conforming before it was touched, so it was left alone rather than dragging an unrelated whole-file reformat into this diff.
+
+### Acceptance
+
+6 accept gates GREEN warn=0 — `lint` 9.9s, `typecheck` 3.8s, `format` 2.4s, `knip` 0.9s, `architecture` 1.0s, `suite` 304.4s. Counting run: **2565/2565** across 160 files, 170.88s (+5 over 8b's 2560: three integration scenarios and two guard cases). `SEAL: INTACT files=3 warns_open=0`.
+
+Real-Git suite cost: **8.34s for six scenarios**, up from 3.83s for three — ~1.4s per scenario, holding the estimate from the 8b record. Still ~4.9% of the 171s full suite; no separate pool needed.
+
+No l10n work — this phase adds no strings. GitNexus MCP is not exposed in this session, so the mandated `detect_changes()` scope check could not be run by the orchestrator.
+
+**Shadow-mode datum: not collected, nineteenth time.** The orchestrator changed all three hash-covered files during verification. Nineteen builds, zero data points.
+
+## Handoff — resume at Phase 8d
+
+- Branch `feat/interactive-rebase-from-here`; BASE_HEAD for 8d = the tip after this phase's two commits. Tunables unchanged; `SEAL_MODE=shadow`.
+- **Verify every claim in this handoff before scoping from it.** The 8a handoff wrongly said no real-Git harness existed; the 8b handoff wrongly listed four guard rejections as uncovered when six were already covered at `guards.test.ts:150`. Both were caught only because the next work order was written after re-reading the tree.
+- **Do not put literal result shapes in a work order.** Name the behavior and the entry point; let the builder read the union. This phase lost three deliverables to a work order that asserted a field the type does not have.
+- Harness state: `createRebaseFixture` (four commits, distinct files, nothing can conflict) and `createConflictingRebaseFixture` (five commits, `first`/`second`/`third` all on `shared.txt`) both route through one private `createFixture`. Adding a fixture means adding a commit list, not a new builder.
+- **Still no `file://` bare remote.** The three force-push scenarios (success, stale-lease rejection, source-pin rejection) need one: `git init --bare` in a second registered `mkdtemp`, `git remote add origin file://…`, `git push -u`. That is the one genuinely new piece of fixture work left in sub-layer (b), and it should be its own phase's first deliverable.
+- Remaining sub-layer (b) scenarios: the reload-reconciliation matrix branches, terminal-started rebase over a stale paused manifest including the identical-input restart, operation-kind toolbar states, same-tip branch-switch rejection, concurrent second submission, conflicted multi-commit revert abort via `REVERT_HEAD`, no-upstream manifest deletion, toast Dismiss, then the three force-push scenarios.
+- **Determinism still cuts both ways** — see the 8b record. Any assertion of a difference needs the difference made real first, plus an explicit inequality pin.
+- `UndockedViewProvider` toolbar state, `CommitPanelViewProvider`'s 12 positional constructor dependencies, and the missing dependency-cruiser rule against `src/**` importing `editorHelper.ts` all remain open.
+- **Run the `suite` gate with `VITEST_MAX_THREADS=3`** and `VITEST_MIN_THREADS=1`. vitest here is **1.6.1** — `--maxWorkers` and `--poolOptions.*` are not CLI flags and are silently parsed as filename filters, yielding `no tests`.
+- **Do not read Codex-written files through the context cache.** Use `git show` / `git diff`.
