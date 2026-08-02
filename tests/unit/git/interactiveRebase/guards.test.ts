@@ -229,6 +229,42 @@ describe("evaluateInteractiveRebaseGuards against a real repository", () => {
             reason: "range-contains-merge-commit",
         });
     });
+
+    it("rejects a selected merge commit ahead of the range it would also fail", async () => {
+        const repo = await createRepository();
+        await commit(repo, "initial");
+        const trunk = (await git(repo, ["rev-parse", "--abbrev-ref", "HEAD"])).trim();
+        await git(repo, ["checkout", "-q", "-b", "side"]);
+        await commit(repo, "side");
+        await git(repo, ["checkout", "-q", trunk]);
+        await commit(repo, "second");
+        await git(repo, ["merge", "-q", "--no-ff", "-m", "merge side", "side"]);
+        const selected = (await git(repo, ["rev-parse", "HEAD"])).trim();
+        await commit(repo, "third");
+
+        // This range contains a merge too, so both rejections apply. The selected-commit check
+        // runs first on purpose: it names the commit the user actually clicked, which is the
+        // actionable half of the message.
+        await expect(evaluateIn(repo, selected)).resolves.toEqual({
+            status: "rejected",
+            reason: "selected-merge-commit",
+        });
+    });
+
+    it("rejects a commit that is not an ancestor of HEAD", async () => {
+        const repo = await createRepository();
+        await commit(repo, "initial");
+        const trunk = (await git(repo, ["rev-parse", "--abbrev-ref", "HEAD"])).trim();
+        await git(repo, ["checkout", "-q", "-b", "side"]);
+        const selected = await commit(repo, "side");
+        await git(repo, ["checkout", "-q", trunk]);
+        await commit(repo, "second");
+
+        await expect(evaluateIn(repo, selected)).resolves.toEqual({
+            status: "rejected",
+            reason: "commit-not-ancestor",
+        });
+    });
 });
 
 async function evaluateIn(repo: string, selectedHash: string) {

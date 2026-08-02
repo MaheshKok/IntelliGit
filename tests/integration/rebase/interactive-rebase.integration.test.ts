@@ -1,11 +1,15 @@
-import { access } from "node:fs/promises";
+import { access, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
-import { abortInteractiveRebase } from "../../../src/git/interactiveRebase/control";
+import {
+    abortInteractiveRebase,
+    continueInteractiveRebase,
+} from "../../../src/git/interactiveRebase/control";
 import { runInteractiveRebaseSubmission } from "../../../src/git/interactiveRebase/run";
 import type { RebaseTodoEntry } from "../../../src/git/interactiveRebase/types";
 import {
     cleanTemporaryRepositories,
+    createConflictingRebaseFixture,
     createRebaseFixture,
     git,
     readHistory,
@@ -110,7 +114,106 @@ describe("interactive rebase real Git integration", () => {
             code: "ENOENT",
         });
     });
+
+    it("pauses a conflicting reorder with a real conflicted index", async () => {
+        const fixture = await createConflictingRebaseFixture(helperScriptPath);
+        const entries = conflictingReorderEntries(fixture);
+
+        await expect(
+            runInteractiveRebaseSubmission(fixture.dependencies, submission(fixture, entries)),
+        ).resolves.toEqual({ status: "paused-conflict" });
+
+        await expect(access(path.join(fixture.gitDir, "rebase-merge"))).resolves.toBeUndefined();
+        expect((await git(fixture.root, ["ls-files", "-u"])).toString("utf8")).not.toBe("");
+        await expect(readFile(path.join(fixture.root, "shared.txt"), "utf8")).resolves.toContain(
+            "<<<<<<<",
+        );
+    });
+
+    it("continues a resolved conflicting reorder into the submitted history", async () => {
+        const fixture = await createConflictingRebaseFixture(helperScriptPath);
+        const entries = conflictingReorderEntries(fixture);
+
+        await expect(
+            runInteractiveRebaseSubmission(fixture.dependencies, submission(fixture, entries)),
+        ).resolves.toEqual({ status: "paused-conflict" });
+        await resolveSharedFileConflict(fixture.root);
+
+        // `completed` is reachable only from the owned path, so the result union deliberately
+        // carries no `rebaseControl` here — `toEqual` pins that absence, and the OID pins that the
+        // reported head is what Git produced rather than a value captured before the continue.
+        const completion = await continueInteractiveRebase(fixture.dependencies, fixture.root);
+        expect(completion).toEqual({
+            status: "completed",
+            rebasedHeadOid: (await git(fixture.root, ["rev-parse", "HEAD"]))
+                .toString("utf8")
+                .trim(),
+        });
+        expect((await readHistory(fixture.root)).map(({ subject }) => subject)).toEqual([
+            fixture.commits[0].subject,
+            fixture.commits[1].subject,
+            fixture.commits[3].subject,
+            fixture.commits[2].subject,
+            fixture.commits[4].subject,
+        ]);
+        expect((await git(fixture.root, ["status", "--porcelain"])).toString("utf8")).toBe("");
+        await expect(access(path.join(fixture.gitDir, "rebase-merge"))).rejects.toMatchObject({
+            code: "ENOENT",
+        });
+        await expect(git(fixture.root, ["show", "HEAD:shared.txt"])).resolves.toEqual(
+            Buffer.from("one\ntwo\nthree\nfour\nsecond\nsix\nseven\neight\nnine\nresolved ten\n"),
+        );
+    });
+
+    it("keeps a queued reword message after resolving an earlier conflict", async () => {
+        const fixture = await createConflictingRebaseFixture(helperScriptPath);
+        const rebaseable = fixture.commits.slice(2);
+        // `third` is picked first and conflicts immediately: its patch is computed against
+        // `second`, which the reorder removed from beneath it. The reword is last in the todo, so
+        // Git reaches it only after the user resolves that pause — which is the whole claim here,
+        // that a message written to session storage before the run survives the interruption and
+        // is consumed by a helper spawned after it.
+        const entries: RebaseTodoEntry[] = [
+            { hash: rebaseable[1].hash, action: "pick" },
+            { hash: rebaseable[0].hash, action: "pick" },
+            { hash: rebaseable[2].hash, action: "reword", message: "reworded fourth" },
+        ];
+
+        await expect(
+            runInteractiveRebaseSubmission(fixture.dependencies, submission(fixture, entries)),
+        ).resolves.toEqual({ status: "paused-conflict" });
+        await resolveSharedFileConflict(fixture.root);
+
+        await expect(
+            continueInteractiveRebase(fixture.dependencies, fixture.root),
+        ).resolves.toMatchObject({ status: "completed" });
+        expect((await readHistory(fixture.root)).map(({ subject }) => subject)).toEqual([
+            fixture.commits[0].subject,
+            fixture.commits[1].subject,
+            fixture.commits[3].subject,
+            fixture.commits[2].subject,
+            "reworded fourth",
+        ]);
+    });
 });
+
+function conflictingReorderEntries(fixture: RebaseFixture): RebaseTodoEntry[] {
+    const rebaseable = fixture.commits.slice(2);
+    return [
+        { hash: rebaseable[1].hash, action: "pick" },
+        { hash: rebaseable[0].hash, action: "pick" },
+        { hash: rebaseable[2].hash, action: "pick" },
+    ];
+}
+
+async function resolveSharedFileConflict(repositoryRoot: string): Promise<void> {
+    await writeFile(
+        path.join(repositoryRoot, "shared.txt"),
+        "one\ntwo\nthree\nfour\nbase\nsix\nseven\neight\nnine\nresolved ten\n",
+        "utf8",
+    );
+    await git(repositoryRoot, ["add", "shared.txt"]);
+}
 
 /** Builds the immutable request snapshot the runner receives after dialog validation. */
 function submission(fixture: RebaseFixture, entries: readonly RebaseTodoEntry[]) {

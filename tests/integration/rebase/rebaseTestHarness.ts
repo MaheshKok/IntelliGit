@@ -67,6 +67,36 @@ export interface RebaseFixture {
 
 /** Creates the named four-commit main history used by every interactive-rebase integration scenario. */
 export async function createRebaseFixture(helperScriptPath: string): Promise<RebaseFixture> {
+    return createFixture(helperScriptPath, [
+        ["root", "root.txt", "root\n"],
+        ["first", "first.txt", "first\n"],
+        ["second", "second.txt", "second\n"],
+        ["third", "third.txt", "third\n"],
+    ]);
+}
+
+/** Creates a rebase fixture whose reordered second and third commits conflict on `shared.txt`. */
+export async function createConflictingRebaseFixture(
+    helperScriptPath: string,
+): Promise<RebaseFixture> {
+    return createFixture(helperScriptPath, [
+        ["root", "root.txt", "root\n"],
+        ["first", "shared.txt", "one\ntwo\nthree\nfour\nbase\nsix\nseven\neight\nnine\nten\n"],
+        ["second", "shared.txt", "one\ntwo\nthree\nfour\nsecond\nsix\nseven\neight\nnine\nten\n"],
+        [
+            "third",
+            "shared.txt",
+            "one\ntwo\nthree\nfour\nthird\nsix\nseven\neight\nnine\nthird ten\n",
+        ],
+        ["fourth", "fourth.txt", "fourth\n"],
+    ]);
+}
+
+/** Creates one isolated main history and the production dependencies used to rebase it. */
+async function createFixture(
+    helperScriptPath: string,
+    commitsToCreate: readonly (readonly [subject: string, filename: string, content: string])[],
+): Promise<RebaseFixture> {
     const root = await mkdtemp(path.join(tmpdir(), "intelligit-rebase-integration-"));
     directories.push(root);
     // Production storage is the extension's global storage directory, never the repository. Keeping
@@ -76,13 +106,8 @@ export async function createRebaseFixture(helperScriptPath: string): Promise<Reb
     directories.push(storageRoot);
     await git(root, ["init", "-b", "main"]);
 
-    for (const [subject, filename] of [
-        ["root", "root.txt"],
-        ["first", "first.txt"],
-        ["second", "second.txt"],
-        ["third", "third.txt"],
-    ] as const) {
-        await writeFile(path.join(root, filename), `${subject}\n`);
+    for (const [subject, filename, content] of commitsToCreate) {
+        await writeFile(path.join(root, filename), content);
         await git(root, ["add", filename]);
         await git(root, ["commit", "-m", subject]);
     }
