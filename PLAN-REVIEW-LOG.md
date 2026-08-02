@@ -1057,3 +1057,67 @@ The `architecture` gate is doing real work this phase rather than passing by def
 - **Run the `suite` gate with `VITEST_MAX_THREADS=3`** and `VITEST_MIN_THREADS=1`. vitest here is **1.6.1** — `--maxWorkers` and `--poolOptions.*` are not CLI flags and are silently parsed as filename filters, yielding `no tests`.
 - **Do not read Codex-written files through the context cache.** Use `git diff` / `git show`; native `Read`/`Grep` may be transparently rewritten to the cached tools, so a cross-check in a different tool is not necessarily a different source.
 
+
+## Phase 6d-2 — reload reconciliation activation surface (PLAN step 8, second half)
+
+BASE_HEAD `4550afb3`. SID `019fc206-3f89-7e33-ae6b-a17948b905d7`, `gpt-5.6-terra`/`high`. Telemetry `PEAK=192542 LAST=192542 PCT=74% NONRESUMABLE=no`. Rounds: 1 build, 0 Codex fix rounds, 1 orchestrator fix. Scope: 16 files, 2 added — a 91-line activation module and its 229-line suite — plus +12 in `repositoryMode.ts` and the two-key l10n round-trip across 12 catalogs and the review CSV.
+
+`high` rather than `xhigh`, deliberately: the engine was frozen in 6d-1 and this phase is wiring over it. The peak came in at 74% against 6d-1's 79% on a package that is a quarter the size, which says the effort rung is not what drives the number — the work order and the files it forces a read of are.
+
+### The defect the whole test suite agreed was fine
+
+`showWarningMessage` was handed `vscode.l10n.t("Discard rebase session state")` and its answer was compared against the **English** constant. The dialog echoes back the exact label it was given — the translated one — so in every non-English locale the comparison fails, nothing is discarded, no refresh fires, and the notice returns on every reload with no user action able to clear it. Deliverable 5's "choosing the action discards every ambiguous session" was dead outside English.
+
+All seven of the build's own tests passed over it, because the suite's `vscode` mock was `l10n: { t: (message) => message }`. An identity translator makes a source string and its translation the same value, which is exactly the condition under which a locale-sensitive comparison bug cannot be observed. The mock is now indirected through `mocks.l10nT`, defaulting to identity but overridable, and the regression test translates to `xx:…` so the two values differ. Fix binds the localized label once and compares against that — the house pattern already at `repositoryViewEvents.ts:580`.
+
+This is the same failure mode as 6d-1's `discardRebaseSession` defect arriving by a different route: a value that is correct on the write side and wrong on the read side, invisible because the test double collapses the distinction the production code depends on.
+
+Two further suspects were investigated and **cleared rather than "fixed"**: `console.error` at the activation boundary matches the established `[IntelliGit]` convention (`repositoryMode.ts:169`), and `void Promise.all(repositories.map(...))` at the call site cannot throw synchronously or reject — `GitExecutor`'s constructor is a bare assignment and the surface catches everything internally.
+
+### Mutation sweep — 5 mutants, 4 killed on arrival, 1 survivor on the async boundary
+
+- **A** (revert the l10n fix — compare the answer against the English source) — killed by the new regression test; it survived against the pre-fix suite, which is the point.
+- **B** (sweep before discarding, stranding a just-deleted manifest's reservation pointer) — killed.
+- **C** (one notice per ambiguous manifest instead of one per repository) — killed.
+- **D** (the discard action clears every retained session, not only the ambiguous ones) — killed.
+- **E** (`void` the ambiguous discards, then refresh without waiting for them) — **SURVIVED**.
+
+**E** is the one that mattered. The refresh reads durable state, so overlapping it with its own deletions renders the session being removed — a repaint showing a rebase the user just discarded. Worse, an unawaited `Promise.all` rejects **outside** the enclosing `try`, so a discard failure during activation becomes an unhandled rejection rather than the logged failure the catch exists to produce. Every mock in the suite resolved synchronously, so no ordering was ever observable.
+
+The added test makes the discard genuinely asynchronous (`setTimeout` before it settles) and captures whether it had settled at the moment `refresh` ran. The captured-boolean shape is deliberate: an `expect` thrown inside the `refresh` mock would be swallowed by the surface's own catch and the test would pass regardless — the same trap the fail-closed `listRebaseManifests` contract sets for anything asserting inside this module.
+
+Final: **5 mutants, 5 killed.** `rebaseReconciliation.ts` restored byte-identically after every round, SHA-256 `e01fa89a…` verified. `git stash` is never used — the tree carries uncommitted work.
+
+### Two things folded in rather than deferred
+
+`sweepOrphanedRebaseReservation` was built in phase 2, exported, unit-tested, and **called from nowhere in `src/`** for four phases. It is now wired, with its ordering against the discards pinned by a test rather than by a comment: sweeping first strands the reservation pointer of a manifest that is about to be deleted, because the stale manifest still reads as live to the sweep.
+
+The panel's `rebaseControl` derivation is marker-only while reconciliation's is metadata-checked, and that asymmetry was verified **not** to be a defect before deciding not to unify them: `PLAN.md:41` specifies the three-field sanity check under the *reload* bullet only. The work order told Codex explicitly to leave the live path alone.
+
+### l10n shipped in-phase, and Codex never opened the CSV
+
+Two host strings, 12 catalogs. Codex wrapped both in `vscode.l10n.t()` and was forbidden from touching anything under `l10n/` or the 576 KB review CSV — a host string with no bundle entry keeps every localization check green, so the build stayed green while the orchestrator owned the round-trip. `l10n:sync` added the two rows, a guarded script filled 22 cells, `l10n:import` wrote 10037 cells across 11 files, `l10n:validate` passed, `l10n:audit` reported 9 candidates, all pre-existing.
+
+The fill script earns its guards. It refuses if either target row already carries a translation, refuses unless exactly two rows change, and — the one that actually fired — parses each physical line as CSV and passes through anything that is not exactly 20 fields. Cells in this file carry embedded newlines, so a physical line is not reliably a whole record; the naive version raised `IndexError` on the first multi-line row. Translations were matched per-locale against the rebase terminology already in each catalog rather than produced fresh.
+
+### Acceptance
+
+6 accept gates GREEN warn=0 — `lint` 9.1s, `typecheck` 3.6s, `format` 2.3s, `knip` 0.9s, `architecture` 0.9s, `suite` 280.7s. Counting run: **2482/2482** across 157 files, 161.75s. The delta from the build's own 2480 is exactly the two added cases. `SEAL: INTACT files=16 warns_open=0`.
+
+`architecture:check` is again load-bearing rather than incidental: it is what holds `reconcile.ts` free of `vscode` now that a sibling module imports both it and the extension host.
+
+**Shadow-mode datum: not collected, fourteenth time.** One orchestrator fix and two added tests changed hash-covered files during verification, so the seal covers bytes the verifier itself wrote. Fourteen builds, zero data points. Redesign `SEAL_MODE` around a distinct fix stage or drop it.
+
+## Handoff — resume at Phase 7
+
+- Branch `feat/interactive-rebase-from-here`; BASE_HEAD for phase 7 = the tip after this phase's two commits. Tunables unchanged; `SEAL_MODE=shadow`.
+- Phase 7 scope: PLAN step 9 (operation fence during an active rebase, over the enumerated entry points) + step 10 (menu enablement). Step 9 is the larger half — size it against 6d-1's 79%, not 6d-2's 74%.
+- **The fence's job is to refuse, not to hide.** Menu enablement (step 10) is presentation; the fence has to hold for a command invoked from the palette, a keybinding, or a webview message that never consulted the menu.
+- **`reconcileRebaseSessionsOnActivation` swallows every failure by design.** It logs and returns. Anything in phase 7 that wants to know whether reconciliation actually ran cannot infer it from the absence of a rejection.
+- **A locale-sensitive comparison is invisible to an identity `t()` mock.** Two phases running, the same class of bug shipped green. Any new dialog whose answer is compared against a label needs the `mocks.l10nT` treatment — `tests/unit/activation/rebaseReconciliation.test.ts:13` documents why.
+- **Reconciliation still never arms a push**, and phase 7 must not change that. `pending-push-retained` is an `ambiguous` reason, not a prompt.
+- `UndockedViewProvider` still calls `hasWholeIndexOperationInProgress` directly and never sees `activeOperation` or `rebaseControl`. Four phases past the point where it started to matter: the undocked panel cannot render rebase controls, and does not show the reconciliation notice state either. If step 9's fence is derived from panel state rather than from repository state, the undocked panel will not be fenced.
+- **`CommitPanelViewProvider` still takes 12 positional constructor dependencies.** Unconverted; one positional insert away from breaking the test that pins `.at(-1)`.
+- A dependency-cruiser rule forbidding any `src/**` import of `editorHelper.ts` is still unwritten.
+- **Run the `suite` gate with `VITEST_MAX_THREADS=3`** and `VITEST_MIN_THREADS=1`. vitest here is **1.6.1** — `--maxWorkers` and `--poolOptions.*` are not CLI flags and are silently parsed as filename filters, yielding `no tests`.
+- **Do not read Codex-written files through the context cache.** Use `git diff` / `git show`; native `Read`/`Grep` may be transparently rewritten to the cached tools, so a cross-check in a different tool is not necessarily a different source.
