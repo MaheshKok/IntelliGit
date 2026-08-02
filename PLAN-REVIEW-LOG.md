@@ -1611,3 +1611,72 @@ No l10n work — this phase adds no strings. GitNexus MCP is not exposed in this
 - `UndockedViewProvider` toolbar state, `CommitPanelViewProvider`'s 12 positional constructor dependencies, and the missing dependency-cruiser rule against `src/**` importing `editorHelper.ts` all remain open.
 - **Run the `suite` gate with `VITEST_MAX_THREADS=3`** and `VITEST_MIN_THREADS=1`. vitest here is **1.6.1** — `--maxWorkers` and `--poolOptions.*` are not CLI flags and are silently parsed as filename filters, yielding `no tests` (and a vacuous exit 0 — the same trap that would have made a mutation arm meaningless).
 - **Do not read Codex-written files through the context cache.** Use `git show` / `git diff`.
+
+## Phase 8g — operation-kind fence for the undocked commit panel (PLAN step 12c, sub-layer (b), part 6)
+
+BASE_HEAD `4cd60b19`. Build SID `019fc31c-d7f7-77e3-82ec-cea912e5bf08`, `gpt-5.6-terra`/`high`, telemetry `PEAK=155584 LAST=155584 PCT=60% NONRESUMABLE=no`, DONE 6/6. Fix round 1 SID `019fc32e-7c3e-7c21-96f9-aa1f7342727d`, `high`, telemetry `PEAK=237292 LAST=40402 PCT=91% NONRESUMABLE=yes`, DONE 6/6. Scope: **14 files** (12 modified, 2 new), 179 insertions / 46 deletions.
+
+The docked commit panel has been fenced by operation kind since 6c. The undocked panel — same React components, different host — was not, so it published no `activeOperation` at all and rendered whatever the components default to.
+
+### The red claim, verified independently
+
+Codex's self-report said the new test caught the bug. Reverting **only** the production files and rerunning showed what the bug actually was: during an interactive rebase the undocked panel rendered **"Abort Merge"** — the wrong operation's destructive action, offered live. Not merely "actions stayed enabled." The distinction matters because it sets the fence's real job: the panel was not under-fenced, it was mislabelled.
+
+### What the review rejected
+
+**The build round shipped a second copy of the derivation.** `UndockedViewProvider.operationSnapshotFor` reimplemented `CommitPanelViewProvider.operationSnapshotForRuntime` and diverged three ways:
+
+1. It never read the live manifest, so it never passed `liveManifest` to `deriveRebaseControl` — and `control.ts:347` needs it to return `owned`. The undocked panel could therefore never classify a rebase this extension started as its own.
+2. It flattened the `none` coercion the docked copy is careful about: a rebase that ends between the two probes must not report `none`, because that would also erase any merge/cherry-pick/revert the first probe saw and unfence the commit path.
+3. It spent an extra `getActiveOperation` subprocess per refresh.
+
+**Each copy passed its own tests.** The new tests were written against the new copy's behaviour, so the divergence was invisible to every green suite and to Codex's own six-item self-report. *A duplicated derivation is a defect even when both copies are green* — the parity is only checkable by diffing the copies or by deleting one. Rejected to fix round 1 with "extract, don't parallel-maintain."
+
+### What fix round 1 left behind
+
+The extraction landed as `src/views/commitPanelOperationSnapshot.ts`, both providers now delegate, and the `none` coercion has one home with the reasoning in a comment. One defect survived, fixed by the orchestrator rather than spending fix round 2:
+
+`refreshCommitPanelData:1681` captures `repositoryRoot` into a local, and `canUpdate()` at `:1684` compares that capture against the live field — the function is written for a selection that can change mid-refresh. Every call in it uses the capture. The new snapshot call read **live** `this.selectedRepositoryRoot`, so a repository switch mid-refresh pairs repo A's `getActiveOperation()` with repo B's manifest and Git directory. The fix passes the captured root as a parameter, and the doc comment says why the parameter exists so the next edit does not helpfully "simplify" it back.
+
+Storage-root parity confirmed at the wiring layer: `repositoryMode.ts:308` (docked) and `:814` (undocked) both pass `context.globalStorageUri?.fsPath`.
+
+### Mutation
+
+One targeted mutant, aimed at fix round 1's core deliverable: drop `...(liveManifest ? { liveManifest } : {})` from the shared module's `deriveRebaseControl` call — exactly the divergence the review rejected.
+
+```
+MUTANT (no liveManifest): RC=1 -> Tests 1 failed | 216 passed (217)
+```
+
+Killed. The `owned` path is proven by a test, not merely implemented — which is the claim the build round could not have made, since its own tests asserted the broken behaviour. File restored byte-identically, SHA-256 verified; `git stash` is never used here.
+
+### The fix round was the expensive one
+
+The build round peaked at **60%**; the fix round at **91%**. A fix list is not automatically smaller than the build it corrects — this one had to read the whole docked derivation, a 2200-line provider, a 2000-line provider, and run the full suite to prove the extraction changed no behaviour. Size fix rounds by their read set and their proof, exactly like build rounds.
+
+### Acceptance
+
+6 accept gates GREEN warn=0 — `lint` 9.3s, `typecheck` 3.6s, `format` 2.2s, `knip` 0.9s, `architecture` 0.9s, `suite` 311.3s (load 3.59 at start). Counting run: **2591/2591** across 161 files, 206.12s (+7 over 8f's 2584). `SEAL: INTACT files=14 warns_open=0`.
+
+Real-Git suite cost: the in-suite line reads 63.07s of a 206.12s wall clock, but that is nineteen scenarios contending with 160 other files on three threads, not the standalone number. 8g adds **zero** rebase-integration tests, so the standalone measurement stands at 8f's 28.89s / 12.5%. **Do not read the 30% as a threshold crossing** — measure both halves the same way or not at all.
+
+No l10n work: the fence reuses the docked panel's existing labels, and the diff adds no `l10n.t` call and touches no `nls`/`l10n` file. GitNexus MCP is not exposed in this session, so the mandated `detect_changes()` scope check could not be run by the orchestrator.
+
+**Shadow-mode datum: not collected, twenty-third time — and the reason is structural, not bad luck.** The seal is written at the *end* of the acceptance sequence, after the review it is supposed to fast-path, so there is never a post-seal verifier pass to compare it against. Twenty-three builds of zero data is the ordering, not the file churn. Concrete fix for 8h: once the fix rounds are done and the gates are green, **write the seal before the final review pass**; findings that then land in hash-unchanged files are exactly the datum `SEAL_MODE=shadow` is asking for.
+
+## Handoff — resume at Phase 8h
+
+- Branch `feat/interactive-rebase-from-here`; BASE_HEAD for 8h = the tip after this phase's two commits. Tunables unchanged; `SEAL_MODE=shadow`.
+- **Verify every claim in this handoff before scoping from it.** Six handoffs running have shipped a wrong claim.
+- **Write the seal before the final review pass** (see above) — otherwise 8h is the twenty-fourth build with no shadow datum.
+- **Look for the second copy.** This phase's rejection was a duplicated derivation whose two copies were each green against their own tests. When a spec says "do for X what we did for Y," the deliverable is the *shared* implementation; a faithful reimplementation is a defect, and no suite will tell you.
+- **Size fix rounds like build rounds** — this one peaked at 91% against a build round's 60%.
+- **A mock-green mutant verdict is not a layer proof until you have checked that the mocked layer covers that surface** (8f). Read the unit suite's `it(` list first.
+- **Every phase claiming "this layer reaches past the mocks" still needs a consistent-mistake mutant** — production and the mocked fixture changed together. Four phases running, it is the only construction that survives the check.
+- **The mirror rule (8d, 8f):** an assertion of a *specific* refusal needs the other refusals made unreachable.
+- Shared derivation now lives at `src/views/commitPanelOperationSnapshot.ts`; both providers delegate to it. Anything that needs the operation fence goes there, not into a third copy.
+- Remaining sub-layer (b): the rebase toast's **Dismiss** action (`src/activation/repositoryViewEvents.ts:581`), and **conflicted multi-commit revert abort via `REVERT_HEAD`** (`src/git/operations.ts:679` and `:1700` — outside `src/git/interactiveRebase/`, a different read set, so its own phase). Reconciliation, force push, serialization, the no-upstream path, and the operation-kind fence in both panels are done.
+- Then PLAN steps **13** (acceptance matrix) and **14** (docs + CHANGELOG) close the build.
+- `CommitPanelViewProvider`'s 12 positional constructor dependencies and the missing dependency-cruiser rule against `src/**` importing `editorHelper.ts` remain open.
+- **Run the `suite` gate with `VITEST_MAX_THREADS=3`** and `VITEST_MIN_THREADS=1`. vitest here is **1.6.1** — `--maxWorkers` and `--poolOptions.*` are not CLI flags; they are silently parsed as filename filters and yield `no tests` with a vacuous exit 0.
+- **Do not read Codex-written files through the context cache.** Use `git show` / `git diff`.
