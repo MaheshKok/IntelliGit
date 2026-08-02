@@ -1492,3 +1492,57 @@ No l10n work — this phase adds no strings. GitNexus MCP is not exposed in this
 - `UndockedViewProvider` toolbar state, `CommitPanelViewProvider`'s 12 positional constructor dependencies, and the missing dependency-cruiser rule against `src/**` importing `editorHelper.ts` all remain open.
 - **Run the `suite` gate with `VITEST_MAX_THREADS=3`** and `VITEST_MIN_THREADS=1`. vitest here is **1.6.1** — `--maxWorkers` and `--poolOptions.*` are not CLI flags and are silently parsed as filename filters, yielding `no tests`.
 - **Do not read Codex-written files through the context cache.** Use `git show` / `git diff`.
+
+## Phase 8e — reload reconciliation against real rebase state (PLAN step 12c, sub-layer (b), part 4)
+
+BASE_HEAD `3cb7320c`. SID `019fc2d1-2dd6-7731-bc6a-2a3843766ecf`, `gpt-5.6-terra`/`high`. Telemetry `PEAK=108389 LAST=108389 PCT=41% NONRESUMABLE=no`. Rounds: 1 build (DONE 8/8), 0 fix rounds; the orchestrator added one scenario the mutation sweep proved missing. Scope: **2 files, test-only** — no `src/` change.
+
+The work order carried a new section — *why this layer exists* — because `reconcileRebaseSessions` is pure and `reconcile.test.ts` already covers its matrix against hand-built evidence. It forbade re-asserting that matrix and required every scenario to fail if `readRebaseDirectoryEvidence` misread Git's files. Codex honoured it and, asked in deliverable 8 to say what would still pass against synthetic evidence, answered honestly that the *classification* half of each scenario would. That is why each scenario also reads `head-name`, `onto`, and `orig-head` off disk itself and compares the gathered evidence against them.
+
+### The mutation sweep, and the two things it caught in my own work
+
+Seven mutants. Each ran against the real-Git suite **and** both mocked suites that already cover this code (`reconcile.test.ts`, `rebaseControl.test.ts`) — the phase-8d lesson, now standing procedure.
+
+- **A** (read `onto` and `orig-head` into each other's field) — killed by three real-Git scenarios; **also** by `reconcile.test.ts`.
+- **B** (read `head_name`, a filename Git does not write) — killed by both.
+- **C** (correlate on metadata when no marker is present) — **SURVIVED.** My mutant was wrong, not the tests: the marker is checked a *second* time at `rebaseControl.ts:124`, so relaxing only the selection changed nothing. A surviving mutant is a claim about the tests; this one turned out to be a claim about me.
+- **C2** (the faithful version — relax the selection *and* stop re-checking the marker at `:124`) — killed by both. So marker-first is genuinely covered at the unit layer; the identical-input restart scenario is confirmation, not sole coverage.
+- **D** (`matchesRebaseDirectoryMetadata` always true) — **SURVIVED the real-Git suite**, killed only by the mocked one. Real gap: every scenario exercised that comparison in the *matching* direction only, so nothing here could tell whether it happened at all. Fixed by adding a sixth scenario — the runner's own manifest, marker intact, with its recorded base drifted away from the `onto` Git wrote. D is now killed by the real-Git suite too.
+- **E** (treat any attached branch as the manifest's branch) — killed by both.
+- **G** (the consistent-mistake mutant) — **killed by the real remote layer ONLY, mocks green.**
+
+G is the one that matters. A, B, C2 and E all die to the mocked suites because `reconcile.test.ts:329-334` writes its own `.git/rebase-merge` fixture by hand and reads it back through the real gatherer — real coverage, but only against files written by whoever wrote the reader. G makes production and that hand-written fixture share the *same* wrong assumption (`head_name` in both):
+
+```
+real-Git RC=1   mocked RC=0
+MUTANT G: KILLED by real Git ONLY — mocks green. Layer proven.
+```
+
+Two phases running, the same template has been the only thing that justified the layer. It is now the first question to ask of any suite claiming to reach past its mocks.
+
+**Correction to the 8d handoff's framing:** I initially recorded that `rebaseControl.test.ts` writes only the marker file and concluded these scenarios were the first coverage of the three-metadata read. The first half is true; the conclusion was not — `reconcile.test.ts` exercises the gatherer against hand-written metadata files. The distinction that survives is hand-written versus Git-written, which is exactly what G measures.
+
+All files restored byte-identically after every round, SHA-256 verified. `git stash` is never used — the tree carries uncommitted work.
+
+### Acceptance
+
+6 accept gates GREEN warn=0 — `lint` 9.6s, `typecheck` 3.7s, `format` 2.3s, `knip` 0.9s, `architecture` 1.0s, `suite` 314.7s. Counting run: **2574/2574** across 160 files, 176.91s (+5 over 8d's 2569: four delivered scenarios plus the one the sweep forced). `SEAL: INTACT files=2 warns_open=0`.
+
+Real-Git suite cost: **20.90s for fifteen scenarios**, from 15.25s for ten. ~11.8% of the 177s full suite, up from 8.8%. The reconciliation scenarios are the cheapest yet (~1.1s each — most never finish a rebase), but the fraction is climbing and sub-layer (b) is not done. **At 15% this needs its own pool**; note it in the next work order rather than discovering it later.
+
+No l10n work — this phase adds no strings. GitNexus MCP is not exposed in this session, so the mandated `detect_changes()` scope check could not be run by the orchestrator.
+
+**Shadow-mode datum: not collected, twenty-first time.** Both hash-covered files changed during verification.
+
+## Handoff — resume at Phase 8f
+
+- Branch `feat/interactive-rebase-from-here`; BASE_HEAD for 8f = the tip after this phase's two commits. Tunables unchanged; `SEAL_MODE=shadow`.
+- **Verify every claim in this handoff before scoping from it.** Four handoffs running have shipped a wrong claim; this record contains a correction to the last one.
+- **Every phase whose claim is "this layer reaches past the mocks" must include a consistent-mistake mutant** — production and the mocked fixture changed together. Phases 8d and 8e both found that no single-file mutant could separate the layers. Mutants A–E of this phase would have reported 5/5 and proved nothing.
+- **A surviving mutant is not automatically a test gap.** Mutant C survived because it did not model the implementation it claimed to; the second check lived at `rebaseControl.ts:124`. Read the whole path before concluding the tests are at fault. Mutant D *was* a real gap and cost one extra scenario.
+- Harness state: `createRebaseFixture`, `createConflictingRebaseFixture`, `createPushableRebaseFixture`, `createRemoteCollaborator`, `plantPersistedRebaseSession` (production storage writers, never hand-written JSON), `rewritePersistedRebaseManifest` (replaces a manifest the runner wrote — `createRebaseSessionDirectory` refuses an existing directory), and `reconciliationDependencies` on every fixture.
+- Remaining sub-layer (b) scenarios: operation-kind toolbar states, concurrent second submission, conflicted multi-commit revert abort via `REVERT_HEAD`, no-upstream manifest deletion, toast Dismiss. Reconciliation and force push are done.
+- **Determinism still cuts both ways** — see the 8b record. Any assertion of a difference needs the difference made real first, plus an explicit inequality pin; any assertion of a *specific* refusal needs the other refusals made unreachable (8d).
+- `UndockedViewProvider` toolbar state, `CommitPanelViewProvider`'s 12 positional constructor dependencies, and the missing dependency-cruiser rule against `src/**` importing `editorHelper.ts` all remain open.
+- **Run the `suite` gate with `VITEST_MAX_THREADS=3`** and `VITEST_MIN_THREADS=1`. vitest here is **1.6.1** — `--maxWorkers` and `--poolOptions.*` are not CLI flags and are silently parsed as filename filters, yielding `no tests`.
+- **Do not read Codex-written files through the context cache.** Use `git show` / `git diff`.
