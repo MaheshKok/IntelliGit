@@ -86,6 +86,28 @@ function reorderAt(
         : normalizeFirstActive(next);
 }
 
+/**
+ * Finds the entry a squash folds its message into: the nearest preceding entry that owns one.
+ *
+ * `fixup` and `drop` are skipped for different reasons — a fixup discards its own message, and a
+ * dropped commit produces none. Scanned backwards in place rather than copying and reversing the
+ * accumulated entries, which made the calling loop quadratic; the offered range can be hundreds of
+ * commits, and every squash in it paid for a full copy.
+ */
+function findMessageTarget(recomputed: readonly RebaseTodoEntry[]): RebaseTodoEntry | undefined {
+    for (let index = recomputed.length - 1; index >= 0; index -= 1) {
+        const candidate = recomputed[index];
+        if (
+            candidate.action === "pick" ||
+            candidate.action === "reword" ||
+            candidate.action === "squash"
+        ) {
+            return candidate;
+        }
+    }
+    return undefined;
+}
+
 function recomputeRebaseMessages(
     entries: readonly RebaseTodoEntry[],
     commits: readonly InteractiveRebaseRangeCommit[],
@@ -106,14 +128,7 @@ function recomputeRebaseMessages(
             continue;
         }
         if (entry.action === "squash") {
-            const target = [...recomputed]
-                .reverse()
-                .find(
-                    (candidate) =>
-                        candidate.action === "pick" ||
-                        candidate.action === "reword" ||
-                        candidate.action === "squash",
-                );
+            const target = findMessageTarget(recomputed);
             const targetCommit = target ? commitsByHash.get(target.hash) : undefined;
             recomputed.push({
                 hash: entry.hash,

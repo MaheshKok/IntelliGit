@@ -1,4 +1,4 @@
-import React, { memo, useCallback, useEffect, useRef, useState } from "react";
+import React, { memo, useCallback, useRef, useState } from "react";
 import { Box, Button, Flex } from "@chakra-ui/react";
 import type {
     InteractiveRebaseRangeCommit,
@@ -36,12 +36,29 @@ export function RebaseDialog({
         createRebaseEntries(commits),
     );
     const [notice, setNotice] = useState(false);
+    const commitKey = commits.map((commit) => commit.hash).join("\0");
+    const [lastCommitKey, setLastCommitKey] = useState(commitKey);
     const entriesRef = useRef(entries);
     const commitsRef = useRef(commits);
     const editedMessageHashesRef = useRef<ReadonlySet<string>>(new Set());
     const draggedHashRef = useRef<string>();
-    const commitKey = commits.map((commit) => commit.hash).join("\0");
-    const lastCommitKeyRef = useRef(commitKey);
+
+    commitsRef.current = commits;
+    // A changed offered range reseeds during render rather than from an effect. An effect runs
+    // after the commit, so the dialog would first paint one frame of the previous range's entries
+    // against the new commit map — rows the user is no longer being offered, and a stale notice —
+    // and only then reseed. React discards this render pass and re-runs it with the new state
+    // instead of committing it, and `createRebaseEntries` is pure, so the discarded pass costs one
+    // array build.
+    if (lastCommitKey !== commitKey) {
+        const nextEntries = createRebaseEntries(commits);
+        setLastCommitKey(commitKey);
+        editedMessageHashesRef.current = new Set();
+        entriesRef.current = nextEntries;
+        setEntries(nextEntries);
+        setNotice(false);
+    }
+
     const commitsByHash = new Map(commits.map((commit) => [commit.hash, commit]));
     const firstActiveHash = entries.find((entry) => entry.action !== "drop")?.hash;
     const missingMessageEntries = entries.filter(
@@ -52,17 +69,6 @@ export function RebaseDialog({
     // Keyed rather than scanned per row: a linear `some()` inside the row map is O(n²) once a
     // large range has many blank messages, and the offered range can be hundreds of commits.
     const missingMessageHashes = new Set(missingMessageEntries.map((entry) => entry.hash));
-
-    commitsRef.current = commits;
-    useEffect(() => {
-        if (lastCommitKeyRef.current === commitKey) return;
-        const nextEntries = createRebaseEntries(commits);
-        lastCommitKeyRef.current = commitKey;
-        editedMessageHashesRef.current = new Set();
-        entriesRef.current = nextEntries;
-        setEntries(nextEntries);
-        setNotice(false);
-    }, [commitKey, commits]);
 
     const applyMutation = useCallback((mutation: RebaseEntryMutation) => {
         entriesRef.current = mutation.entries;
