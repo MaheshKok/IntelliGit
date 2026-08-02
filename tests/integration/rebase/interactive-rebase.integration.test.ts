@@ -6,7 +6,10 @@ import {
     continueInteractiveRebase,
 } from "../../../src/git/interactiveRebase/control";
 import { REBASE_SESSION_MARKER } from "../../../src/git/interactiveRebase/editorCommand";
-import { forcePushRebasedHead } from "../../../src/git/interactiveRebase/push";
+import {
+    forcePushRebasedHead,
+    readRebasePushTarget,
+} from "../../../src/git/interactiveRebase/push";
 import {
     gatherRebaseReconciliationEvidence,
     reconcileRebaseSessions,
@@ -15,6 +18,7 @@ import { runInteractiveRebaseSubmission } from "../../../src/git/interactiveReba
 import {
     getRebaseStoragePaths,
     readRebaseManifest,
+    sweepOrphanedRebaseReservation,
 } from "../../../src/git/interactiveRebase/storage";
 import type { RebaseTodoEntry } from "../../../src/git/interactiveRebase/types";
 import {
@@ -24,10 +28,12 @@ import {
     createRebaseFixture,
     createRemoteCollaborator,
     git,
+    plantOrphanedRebaseReservation,
     plantPersistedRebaseSession,
     readBareRemoteRef,
     readHistory,
     rewritePersistedRebaseManifest,
+    suspendInteractiveRebase,
     type PushableRebaseFixture,
     type RebaseFixture,
 } from "./rebaseTestHarness";
@@ -146,6 +152,134 @@ describe("interactive rebase real Git integration", () => {
         );
     });
 
+    it("refuses an overlapping submission once Git holds a live rebase directory", async () => {
+        const fixture = await createConflictingRebaseFixture(helperScriptPath);
+        const held = suspendInteractiveRebase(fixture.dependencies, "after-git");
+        const firstSubmission = runInteractiveRebaseSubmission(
+            held.dependencies,
+            submission(fixture, conflictingReorderEntries(fixture)),
+        );
+
+        try {
+            await held.waitForSuspension();
+            await expect(
+                access(path.join(fixture.gitDir, "rebase-merge")),
+            ).resolves.toBeUndefined();
+            const pausedHead = (await git(fixture.root, ["rev-parse", "HEAD"]))
+                .toString("utf8")
+                .trim();
+            const conflictedIndex = await git(fixture.root, ["ls-files", "-u"]);
+            const workingTree = await git(fixture.root, ["status", "--porcelain"]);
+            expect(conflictedIndex.toString("utf8")).not.toBe("");
+
+            // `tryAcquireRebaseReservation` checks for a rebase directory before it writes its
+            // pointer, so this refusal comes from Git's on-disk state and not from the first
+            // runner still holding the reservation — the exclusion the pointer provides is
+            // unreachable from here and is proven by the `before-git` scenario below instead.
+            await expect(
+                runInteractiveRebaseSubmission(
+                    fixture.dependencies,
+                    submission(fixture, conflictingReorderEntries(fixture)),
+                ),
+            ).resolves.toEqual({ status: "failed", reason: "rebase-in-progress" });
+
+            await expect(
+                access(path.join(fixture.gitDir, "rebase-merge")),
+            ).resolves.toBeUndefined();
+            await expect(git(fixture.root, ["rev-parse", "HEAD"])).resolves.toEqual(
+                Buffer.from(`${pausedHead}\n`),
+            );
+            await expect(git(fixture.root, ["ls-files", "-u"])).resolves.toEqual(conflictedIndex);
+            await expect(git(fixture.root, ["status", "--porcelain"])).resolves.toEqual(
+                workingTree,
+            );
+        } finally {
+            held.release();
+        }
+
+        await expect(firstSubmission).resolves.toEqual({ status: "paused-conflict" });
+    });
+
+    it("refuses a second submission that overlaps the reservation before Git starts", async () => {
+        const fixture = await createRebaseFixture(helperScriptPath);
+        const held = suspendInteractiveRebase(fixture.dependencies, "before-git");
+        const entries = [
+            { hash: fixture.commits[3].hash, action: "pick" as const },
+            { hash: fixture.commits[2].hash, action: "pick" as const },
+        ];
+        const firstSubmission = runInteractiveRebaseSubmission(
+            held.dependencies,
+            submission(fixture, entries),
+        );
+
+        try {
+            await held.waitForSuspension();
+            // Nothing on disk says "rebase" yet, so `hasGitRebaseDirectory` cannot refuse and the
+            // only exclusion left is the reservation pointer the first runner is holding. Without
+            // this direction, an exclusive-create that silently became a plain write would still
+            // pass every other scenario here.
+            await expect(access(path.join(fixture.gitDir, "rebase-merge"))).rejects.toMatchObject({
+                code: "ENOENT",
+            });
+            await expect(
+                access(path.join(fixture.gitDir, "rebase-apply")),
+            ).rejects.toMatchObject({ code: "ENOENT" });
+
+            await expect(
+                runInteractiveRebaseSubmission(
+                    fixture.dependencies,
+                    submission(fixture, entries),
+                ),
+            ).resolves.toEqual({ status: "failed", reason: "reservation-exists" });
+        } finally {
+            held.release();
+        }
+
+        await expect(firstSubmission).resolves.toMatchObject({ status: "completed" });
+    });
+
+    it("reclaims an orphaned reservation before the next real submission", async () => {
+        const fixture = await createRebaseFixture(helperScriptPath);
+        const orphanedSessionId = "00000000-0000-4000-8000-000000000009";
+        await plantOrphanedRebaseReservation(fixture, orphanedSessionId);
+        await expect(
+            readRebaseManifest(
+                fixture.reconciliationDependencies.storageRoot,
+                fixture.root,
+                orphanedSessionId,
+            ),
+        ).resolves.toEqual({ status: "missing" });
+
+        // Proving the orphan actually blocks is what gives the sweep something to undo. Without
+        // it a sweep that reclaimed nothing — or never ran — would pass this test unchanged.
+        await expect(
+            runInteractiveRebaseSubmission(
+                fixture.dependencies,
+                submission(fixture, [
+                    { hash: fixture.commits[3].hash, action: "pick" },
+                    { hash: fixture.commits[2].hash, action: "pick" },
+                ]),
+            ),
+        ).resolves.toEqual({ status: "failed", reason: "reservation-exists" });
+
+        await expect(
+            sweepOrphanedRebaseReservation({
+                storageRoot: fixture.reconciliationDependencies.storageRoot,
+                repoRoot: fixture.root,
+                gitDir: fixture.gitDir,
+            }),
+        ).resolves.toEqual({ status: "reclaimed" });
+        await expect(
+            runInteractiveRebaseSubmission(
+                fixture.dependencies,
+                submission(fixture, [
+                    { hash: fixture.commits[3].hash, action: "pick" },
+                    { hash: fixture.commits[2].hash, action: "pick" },
+                ]),
+            ),
+        ).resolves.toMatchObject({ status: "completed" });
+    });
+
     it("continues a resolved conflicting reorder into the submitted history", async () => {
         const fixture = await createConflictingRebaseFixture(helperScriptPath);
         const entries = conflictingReorderEntries(fixture);
@@ -230,6 +364,36 @@ describe("interactive rebase real Git integration", () => {
                 ),
             ),
         ).rejects.toMatchObject({ code: "ENOENT" });
+    });
+
+    it("completes pushed history without a pending push offer when main has no upstream", async () => {
+        const fixture = await createRebaseFixture(helperScriptPath);
+        const headBeforeRun = fixture.commits.at(-1)!.hash;
+        const { request, entries } = submission(fixture, [
+            { hash: fixture.commits[3].hash, action: "pick" },
+            { hash: fixture.commits[2].hash, action: "pick" },
+        ]);
+
+        await expect(git(fixture.root, ["remote"])).resolves.toEqual(Buffer.alloc(0));
+        await expect(
+            readRebasePushTarget(fixture.dependencies.executor, request.expectedBranch),
+        ).resolves.toBeUndefined();
+        const completion = await runInteractiveRebaseSubmission(fixture.dependencies, {
+            entries,
+            request: { ...request, hasPushedCommit: true },
+        });
+
+        expect(completion.status).toBe("completed");
+        expect((await git(fixture.root, ["rev-parse", "HEAD"])).toString("utf8").trim()).not.toBe(
+            headBeforeRun,
+        );
+        await expect(
+            readRebaseManifest(
+                fixture.reconciliationDependencies.storageRoot,
+                fixture.root,
+                fixture.dependencies.createSessionId!(),
+            ),
+        ).resolves.toEqual({ status: "missing" });
     });
 
     it("refuses a stale lease without moving the bare remote ref", async () => {

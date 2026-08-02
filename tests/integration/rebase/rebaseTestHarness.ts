@@ -12,6 +12,7 @@ import type { RebaseReconciliationDependencies } from "../../../src/git/interact
 import type { InteractiveRebaseRunDependencies } from "../../../src/git/interactiveRebase/run";
 import {
     createRebaseSessionDirectory,
+    tryAcquireRebaseReservation,
     writeRebaseManifest,
 } from "../../../src/git/interactiveRebase/storage";
 import type {
@@ -76,6 +77,28 @@ export interface RebaseFixture {
     readonly dependencies: InteractiveRebaseRunDependencies;
     /** Read-only dependencies for gathering reconciliation evidence from this fixture. */
     readonly reconciliationDependencies: RebaseReconciliationDependencies;
+}
+
+/**
+ * Which side of the real `git rebase -i` delegation a suspended runner is parked on.
+ *
+ * The choice decides which refusal a concurrent submission can reach, so it is the whole
+ * point of the seam rather than a convenience: `tryAcquireRebaseReservation` checks for a
+ * rebase directory *before* it writes its exclusive pointer, so a second submission parked
+ * `after-git` is refused for `rebase-in-progress` and never reaches the pointer at all.
+ * Only `before-git` — reservation written, no rebase directory yet — can exercise the
+ * exclusion the pointer itself provides.
+ */
+export type RebaseSuspensionPoint = "before-git" | "after-git";
+
+/** Coordinates a first real rebase parked at the executor seam so a second submission can overlap. */
+export interface SuspendedRebase {
+    /** Dependencies whose interactive-rebase delegation parks at the configured point. */
+    readonly dependencies: InteractiveRebaseRunDependencies;
+    /** Resolves once the runner has reached the suspension point and is parked there. */
+    waitForSuspension(): Promise<void>;
+    /** Allows the parked runner invocation to proceed to its real result. */
+    release(): void;
 }
 
 /** Caller-selected persisted state for a real storage-backed reconciliation scenario. */
@@ -202,6 +225,69 @@ export async function plantPersistedRebaseSession(
     };
     await writeRebaseManifest(storageRoot, manifest);
     return manifest;
+}
+
+/** Leaves a production-created reservation pointer without a manifest or live Git rebase for sweep tests. */
+export async function plantOrphanedRebaseReservation(
+    fixture: RebaseFixture,
+    sessionId: string,
+): Promise<void> {
+    const acquired = await tryAcquireRebaseReservation({
+        storageRoot: fixture.reconciliationDependencies.storageRoot,
+        repoRoot: fixture.root,
+        gitDir: fixture.gitDir,
+        sessionId,
+    });
+    if (acquired.status !== "acquired") {
+        throw new Error(`Expected an orphanable reservation, got "${acquired.reason}".`);
+    }
+}
+
+/**
+ * Parks the first real interactive-rebase invocation at the executor seam so a second submission
+ * can overlap the still-running runner without a timing delay or a mocked Git process.
+ *
+ * Only the `git rebase -i` delegation is wrapped; every other command the runner issues — the
+ * guard reads, the revision reads — runs untouched, so the parked runner is suspended in the
+ * real critical section rather than in a stubbed one.
+ */
+export function suspendInteractiveRebase(
+    dependencies: InteractiveRebaseRunDependencies,
+    at: RebaseSuspensionPoint,
+): SuspendedRebase {
+    let markSuspended!: () => void;
+    const suspended = new Promise<void>((resolve) => {
+        markSuspended = resolve;
+    });
+    let release!: () => void;
+    const released = new Promise<void>((resolve) => {
+        release = resolve;
+    });
+
+    return {
+        dependencies: {
+            ...dependencies,
+            executor: {
+                ...dependencies.executor,
+                runBinary: async (args, options) => {
+                    if (!(args[0] === "rebase" && args[1] === "-i")) {
+                        return dependencies.executor.runBinary(args, options);
+                    }
+                    if (at === "before-git") {
+                        markSuspended();
+                        await released;
+                        return dependencies.executor.runBinary(args, options);
+                    }
+                    const result = await dependencies.executor.runBinary(args, options);
+                    markSuspended();
+                    await released;
+                    return result;
+                },
+            },
+        },
+        waitForSuspension: () => suspended,
+        release,
+    };
 }
 
 /**

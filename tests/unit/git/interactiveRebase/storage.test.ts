@@ -8,6 +8,8 @@ import {
     listRebaseManifests,
     readLiveRebaseManifest,
     readRebaseManifest,
+    sweepOrphanedRebaseReservation,
+    tryAcquireRebaseReservation,
     writeRebaseManifest,
 } from "../../../../src/git/interactiveRebase/storage";
 import type {
@@ -52,6 +54,99 @@ async function writeReservation(storageRoot: string, contents: string): Promise<
         mode: 0o600,
     });
 }
+
+/** Creates an isolated stand-in Git directory, optionally holding one live rebase directory. */
+async function gitDirWithRebase(name?: "rebase-merge" | "rebase-apply"): Promise<string> {
+    const gitDir = await mkdtemp(path.join(os.tmpdir(), "intelligit-rebase-gitdir-"));
+    roots.push(gitDir);
+    if (name) await mkdir(path.join(gitDir, name));
+    return gitDir;
+}
+
+describe("tryAcquireRebaseReservation", () => {
+    it("refuses a second acquisition while the first pointer is still held", async () => {
+        const storageRoot = await storageWithManifest("running");
+        const gitDir = await gitDirWithRebase();
+
+        await expect(
+            tryAcquireRebaseReservation({
+                storageRoot,
+                repoRoot: REPO_ROOT,
+                gitDir,
+                sessionId: SESSION_ID,
+            }),
+        ).resolves.toMatchObject({ status: "acquired" });
+        // Exclusive creation is the whole mechanism: a pointer write that merely overwrote would
+        // hand two submissions the same repository and leave the loser's session unreleased.
+        await expect(
+            tryAcquireRebaseReservation({
+                storageRoot,
+                repoRoot: REPO_ROOT,
+                gitDir,
+                sessionId: "session-2",
+            }),
+        ).resolves.toEqual({ status: "rejected", reason: "reservation-exists" });
+    });
+
+    it.each([["rebase-merge"], ["rebase-apply"]] as const)(
+        "refuses to claim a repository while Git holds %s",
+        async (name) => {
+            const storageRoot = await storageWithManifest("running");
+            const gitDir = await gitDirWithRebase(name);
+
+            await expect(
+                tryAcquireRebaseReservation({
+                    storageRoot,
+                    repoRoot: REPO_ROOT,
+                    gitDir,
+                    sessionId: SESSION_ID,
+                }),
+            ).resolves.toEqual({ status: "rejected", reason: "rebase-in-progress" });
+            await expect(
+                stat(getRebaseStoragePaths(storageRoot, REPO_ROOT).reservationPath),
+            ).rejects.toMatchObject({ code: "ENOENT" });
+        },
+    );
+});
+
+describe("sweepOrphanedRebaseReservation", () => {
+    it("removes the pointer file it reports as reclaimed", async () => {
+        const storageRoot = await storageWithManifest("done");
+        const gitDir = await gitDirWithRebase();
+        await writeReservation(storageRoot, JSON.stringify({ sessionId: SESSION_ID }));
+
+        await expect(
+            sweepOrphanedRebaseReservation({ storageRoot, repoRoot: REPO_ROOT, gitDir }),
+        ).resolves.toEqual({ status: "reclaimed" });
+        // Asserting the status alone would pass for a sweep that reclaimed nothing.
+        await expect(
+            stat(getRebaseStoragePaths(storageRoot, REPO_ROOT).reservationPath),
+        ).rejects.toMatchObject({ code: "ENOENT" });
+    });
+
+    it("retains a pointer whose repository still has a live rebase", async () => {
+        const storageRoot = await storageWithManifest("done");
+        const gitDir = await gitDirWithRebase("rebase-merge");
+        await writeReservation(storageRoot, JSON.stringify({ sessionId: SESSION_ID }));
+
+        await expect(
+            sweepOrphanedRebaseReservation({ storageRoot, repoRoot: REPO_ROOT, gitDir }),
+        ).resolves.toEqual({ status: "retained", reason: "rebase-in-progress" });
+        await expect(
+            stat(getRebaseStoragePaths(storageRoot, REPO_ROOT).reservationPath),
+        ).resolves.toBeDefined();
+    });
+
+    it("retains a pointer whose manifest is still live", async () => {
+        const storageRoot = await storageWithManifest("paused");
+        const gitDir = await gitDirWithRebase();
+        await writeReservation(storageRoot, JSON.stringify({ sessionId: SESSION_ID }));
+
+        await expect(
+            sweepOrphanedRebaseReservation({ storageRoot, repoRoot: REPO_ROOT, gitDir }),
+        ).resolves.toEqual({ status: "retained", reason: "live-manifest" });
+    });
+});
 
 describe("readLiveRebaseManifest", () => {
     it.each([["starting"], ["running"], ["paused"]] as const)(
