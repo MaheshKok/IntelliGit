@@ -1435,3 +1435,60 @@ No l10n work — this phase adds no strings. GitNexus MCP is not exposed in this
 - `UndockedViewProvider` toolbar state, `CommitPanelViewProvider`'s 12 positional constructor dependencies, and the missing dependency-cruiser rule against `src/**` importing `editorHelper.ts` all remain open.
 - **Run the `suite` gate with `VITEST_MAX_THREADS=3`** and `VITEST_MIN_THREADS=1`. vitest here is **1.6.1** — `--maxWorkers` and `--poolOptions.*` are not CLI flags and are silently parsed as filename filters, yielding `no tests`.
 - **Do not read Codex-written files through the context cache.** Use `git show` / `git diff`.
+
+## Phase 8d — the force push against a real bare remote (PLAN step 12c, sub-layer (b), part 3)
+
+BASE_HEAD `66e90438`. SID `019fc2af-8aac-73b0-a344-73cf8ac1b36b`, `gpt-5.6-terra`/`high`. Telemetry `PEAK=124002 LAST=124002 PCT=47% NONRESUMABLE=no` — the first phase to land inside the 45–50% target band. Rounds: 1 build (DONE 8/8), 0 fix rounds; the orchestrator refactored the harness and strengthened two scenarios. Scope: **2 files, test-only** — no `src/` change.
+
+Codex delivered all eight items and reported honestly, including the timing it was asked for. Everything below is what review then found in a correct build.
+
+### The bare remote was charged to every fixture
+
+`git init --bare` + `git push` went inside the private `createFixture`, so the six scenarios that never push each paid for a remote they do not use. Measured before changing anything: **16.88s for ten scenarios**, against 8.34s for the six at 8c.
+
+Split into `PushableRebaseFixture extends RebaseFixture` and an opt-in `createPushableRebaseFixture()` that builds on `createRebaseFixture` and spreads the remote onto it. Re-measured: **15.15s**. That is 1.73s across six removed remotes — **~0.29s each, not the "roughly a second" the first draft of the TSDoc claimed.** The comment now carries the measured pair rather than an estimate, because a number in a comment is a claim like any other.
+
+### Two scenarios did not isolate the guard they named
+
+- **Switched branch.** The scenario switched branches *and* made an empty commit, so branch and HEAD both differed. `push.ts:100-101` checks branch first, so it passed — but it would equally have passed under a `head-moved` bug. Dropped the commit: `git switch -c` branches at the same commit, HEAD still equals the recorded rebased OID, and `head-moved` becomes unreachable. Now only the branch check can produce the refusal.
+- **Stale lease — the load-bearing one.** The collaborator advanced the bare remote, but nothing fetched, so the local `refs/remotes/origin/main` stayed at the pre-rebase OID. A **bare** `--force-with-lease` leases against exactly that stale tracking ref, so it would have refused too: the scenario proved a lease was sent, not that it was *pinned to the object ID the manifest recorded*. Added `git fetch origin` after the collaborator's push. VS Code autofetches by default, which makes the fetched state the realistic one and the un-fetched state the accident that was hiding the gap.
+
+### Mutation sweep — and the sweep that mattered was the sixth one
+
+Five mutants on `push.ts`, all killed, each by the scenario built for it: **A** drop the lease (→ stale-lease), **B** push `upstreamOid` instead of the rebased head, which Git reports as success (→ force-push), **C** branch guard can never fire (→ switched branch), **D** head guard can never fire (→ moved head), **E** report the offer settled without settling it (→ manifest ENOENT).
+
+**All five were also killed by the mocked `pushOffer.test.ts`.** That is not incidental. `pushOffer.test.ts:132-137` pins the push argument vector byte for byte, and this function's entire remote behavior *is* its argument vector — so **no single-file mutant on `push.ts` can distinguish the two layers.** A 5/5 kill rate here would have been evidence of nothing.
+
+The discriminating mutant has to be one both layers agree on. **Mutant F** changes production *and* the mock's expectation together: lease bare instead of pinned. That is the failure a mock-only suite structurally cannot catch — prod and mock agreeing on a string Git does not honour the way both assume. Result:
+
+```
+integration RC=1   mocked pushOffer RC=0
+MUTANT F: KILLED by the real remote ONLY — mocks green. Layer proven.
+```
+
+That single line is the entire justification for this phase's 6.8s. Without the `git fetch` added above, F would have survived both suites and there would be no justification at all.
+
+All files restored byte-identically after every round, SHA-256 verified (`push.ts` back to `befdedb2…` after all six). `git stash` is never used — the tree carries uncommitted work.
+
+### Acceptance
+
+6 accept gates GREEN warn=0 — `lint` 9.6s, `typecheck` 3.9s, `format` 2.4s, `knip` 0.9s, `architecture` 0.9s, `suite` 308.6s. Counting run: **2569/2569** across 160 files, 174.23s (+4 over 8c's 2565). `SEAL: INTACT files=2 warns_open=0`.
+
+Real-Git suite cost: **15.25s for ten scenarios**, from 8.34s for six. The four push scenarios average ~1.7s against ~1.4s for the rest — the bare remote and, in one case, a clone. Still ~8.8% of the 174s full suite; no separate pool needed, though that fraction is now worth watching.
+
+No l10n work — this phase adds no strings. GitNexus MCP is not exposed in this session, so the mandated `detect_changes()` scope check could not be run by the orchestrator.
+
+**Shadow-mode datum: not collected, twentieth time.** The orchestrator changed both hash-covered files during verification. Twenty builds, zero data points. The seal's fast-path premise — that verification leaves the reviewed files untouched — has never once held on this build.
+
+## Handoff — resume at Phase 8e
+
+- Branch `feat/interactive-rebase-from-here`; BASE_HEAD for 8e = the tip after this phase's two commits. Tunables unchanged; `SEAL_MODE=shadow`.
+- **Verify every claim in this handoff before scoping from it.** Three handoffs in a row have now shipped a wrong claim (8a: "no real-Git harness exists"; 8b: "four guard rejections uncovered" when six were); each was caught only by re-reading the tree while writing the next work order.
+- **Do not put literal result shapes in a work order** — name the behavior and the entry point. 8c lost three deliverables to this.
+- **A mutation sweep against a module whose behavior is fully determined by its argument vector proves nothing on its own** — the mocked suite already pins that vector. When the phase's claim is "this layer reaches what mocks cannot", the sweep must include a mutant that changes production *and* the mock together. See mutant F above; it is the template.
+- Harness state: `createRebaseFixture` (four commits, distinct files), `createConflictingRebaseFixture` (five commits, three on `shared.txt`), and `createPushableRebaseFixture` (the first, plus a `file://` bare origin with `main` tracking it) — all routing through one private `createFixture`. `createRemoteCollaborator` clones the bare origin for a second-writer scenario. A remote costs ~0.29s, so keep it opt-in.
+- Remaining sub-layer (b) scenarios: the reload-reconciliation matrix branches, terminal-started rebase over a stale paused manifest including the identical-input restart, operation-kind toolbar states, same-tip branch-switch rejection, concurrent second submission, conflicted multi-commit revert abort via `REVERT_HEAD`, no-upstream manifest deletion, toast Dismiss. The force-push scenarios are done.
+- **Determinism still cuts both ways** — see the 8b record. Any assertion of a difference needs the difference made real first, plus an explicit inequality pin. The 8d switched-branch fix is the mirror image: any assertion of a *specific* refusal needs the other refusals made unreachable.
+- `UndockedViewProvider` toolbar state, `CommitPanelViewProvider`'s 12 positional constructor dependencies, and the missing dependency-cruiser rule against `src/**` importing `editorHelper.ts` all remain open.
+- **Run the `suite` gate with `VITEST_MAX_THREADS=3`** and `VITEST_MIN_THREADS=1`. vitest here is **1.6.1** — `--maxWorkers` and `--poolOptions.*` are not CLI flags and are silently parsed as filename filters, yielding `no tests`.
+- **Do not read Codex-written files through the context cache.** Use `git show` / `git diff`.
