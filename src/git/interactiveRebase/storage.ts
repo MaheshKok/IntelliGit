@@ -27,6 +27,10 @@ const LIFECYCLES = new Set<RebaseSessionLifecycle>([
 ]);
 const LIVE_LIFECYCLES = new Set<RebaseSessionLifecycle>(["starting", "running", "paused"]);
 
+type LiveRebaseSessionManifest = RebaseSessionManifest & {
+    lifecycle: "starting" | "running" | "paused";
+};
+
 /** Returns the isolated storage namespace for a caller-supplied repository root. */
 export function getRebaseStoragePaths(storageRoot: string, repoRoot: string): RebaseStoragePaths {
     const repositoryKey = createHash("sha256").update(path.resolve(repoRoot)).digest("hex");
@@ -192,6 +196,37 @@ export async function readRebaseManifest(
     const validationError = validateManifest(parsed.manifest);
     if (validationError) return { status: "ambiguous", reason: "invalid-schema" };
     return { status: "valid", manifest: parsed.manifest };
+}
+
+/**
+ * Reads the one reservation-correlated live manifest, if it can be positively identified.
+ *
+ * A missing, malformed, unreadable, terminal, or racing reservation/manifest has no authority
+ * over a live rebase, so callers receive `undefined` and must classify the rebase as unowned or
+ * foreign rather than injecting helper messages.
+ */
+export async function readLiveRebaseManifest(
+    storageRoot: string | undefined,
+    repoRoot: string,
+): Promise<LiveRebaseSessionManifest | undefined> {
+    if (!storageRoot) return undefined;
+    try {
+        const reservation = await readReservation(
+            getRebaseStoragePaths(storageRoot, repoRoot).reservationPath,
+        );
+        if (reservation.status !== "valid") return undefined;
+        const manifest = await readRebaseManifest(storageRoot, repoRoot, reservation.sessionId);
+        return manifest.status === "valid" && isLiveManifest(manifest.manifest)
+            ? manifest.manifest
+            : undefined;
+    } catch {
+        return undefined;
+    }
+}
+
+/** Narrows persisted lifecycle state before it can authorize an ownership correlation. */
+function isLiveManifest(manifest: RebaseSessionManifest): manifest is LiveRebaseSessionManifest {
+    return LIVE_LIFECYCLES.has(manifest.lifecycle);
 }
 
 function validateSessionId(sessionId: string): string {

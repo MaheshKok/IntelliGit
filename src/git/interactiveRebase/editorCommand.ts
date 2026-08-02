@@ -8,6 +8,14 @@
 export type EditorRole = "message" | "sequence";
 
 /**
+ * Names the transient rebase-state marker proving that a sequence helper belongs to one session.
+ *
+ * Both the helper that writes this marker and host-side correlation checks import this value so
+ * ownership cannot silently drift when the on-disk protocol changes.
+ */
+export const REBASE_SESSION_MARKER = "intelligit-session";
+
+/**
  * Quotes one argument for the shell Git uses to execute configured editors.
  *
  * The value is normalized for POSIX/MSYS paths before it is single-quoted; apostrophes use the

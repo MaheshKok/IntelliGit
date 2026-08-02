@@ -304,6 +304,7 @@ export async function activateRepositoryMode(
         shelfServiceForRepository,
         shelfSettings.removeOnUnshelve,
         commitMessageGenerationCoordinator,
+        context.globalStorageUri?.fsPath,
     );
     const mergeConflicts = new MergeConflictsTreeProvider(gitOps, repoRootUri);
     const worktreeService = new WorktreeService(executor, () => repoRoot);

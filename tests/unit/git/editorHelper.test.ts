@@ -115,24 +115,30 @@ describe("interactive rebase editor helper", () => {
         // invalid invocation and sets the host's exit code. The builders therefore live in a
         // side-effect-free sibling. Both halves are probed in a clean child process, because the
         // property under test is what a bare import does to the process that performs it.
-        const probe = (module: string): ReturnType<typeof spawnSync> =>
+        const probe = (target: string): ReturnType<typeof spawnSync> =>
             spawnSync(
                 process.execPath,
                 [
                     "-e",
                     `require(${JSON.stringify(
-                        path.resolve(process.cwd(), "src/git/interactiveRebase", module),
+                        target,
                     )});process.stdout.write(String(process.exitCode));`,
                 ],
                 { encoding: "utf8" },
             );
 
-        const safe = probe("editorCommand.ts");
+        // The builder module is probed from source because it is the host-facing half and imports
+        // nothing at runtime, so Node's type stripping resolves it unaided.
+        const safe = probe(path.resolve(process.cwd(), "src/git/interactiveRebase/editorCommand.ts"));
+        expect(safe.status).toBe(0);
         expect(safe.stdout).toBe("undefined");
         expect(safe.stderr).toBe("");
 
-        // The CLI half must keep executing on import — that is how Git runs it as an editor.
-        const cli = probe("editorHelper.ts");
+        // The CLI half must keep executing on import — that is how Git runs it as an editor. It is
+        // probed as the bundled artifact because that is the only form Git ever loads, and because
+        // the source form imports the shared marker constant through a relative specifier that
+        // Node's type stripping does not resolve.
+        const cli = probe(HELPER_PATH);
         expect(cli.stdout).toBe("1");
         expect(cli.stderr).toContain("invalid-invocation");
     });

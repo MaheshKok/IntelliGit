@@ -5,6 +5,9 @@
 import * as path from "path";
 import * as vscode from "vscode";
 import { GitOps } from "../git/operations";
+import { resolveGitDir } from "../git/gitDirectory";
+import { deriveRebaseControl } from "../git/interactiveRebase/rebaseControl";
+import { readLiveRebaseManifest } from "../git/interactiveRebase/storage";
 import {
     CommitMessageGenerationCoordinator,
     type CommitMessageGenerationHost,
@@ -19,6 +22,7 @@ import { assertRepoRelativePath } from "../utils/fileOps";
 import { abortMergeWithConfirmation } from "./mergeAbort";
 import type {
     CommitPanelRepositorySnapshot,
+    CommitPanelOperationSnapshot,
     InboundMessage,
 } from "../webviews/protocol/commitPanelMessages";
 import type { ShelfService } from "../services/shelfService";
@@ -188,6 +192,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         ) => ShelfService | undefined,
         private readonly shelfRemoveOnUnshelve: boolean = true,
         private readonly commitMessageGenerationCoordinator?: CommitMessageGenerationCoordinator,
+        private readonly interactiveRebaseStorageRoot?: string,
     ) {
         this.iconTheme = new IconThemeService(this.extensionUri);
         this.loadStoredChangedFileCounts();
@@ -561,9 +566,9 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         runtime: CommitPanelRepositoryRuntime,
     ): Promise<CommitPanelRepositorySnapshot> {
         const { folderIcons, iconFonts } = this.iconTheme.getThemeData();
-        const [hasCommits, wholeIndexOperationInProgress] = await Promise.all([
+        const [hasCommits, operation] = await Promise.all([
             runtime.gitOps.hasAnyCommits(),
-            runtime.gitOps.hasWholeIndexOperationInProgress(),
+            this.operationSnapshotForRuntime(runtime),
         ]);
         return {
             repositoryRoot: runtime.repository.root,
@@ -571,7 +576,8 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             changedFileCount: this.countChangedFiles(runtime),
             files: runtime.files,
             hasCommits,
-            wholeIndexOperationInProgress,
+            wholeIndexOperationInProgress: operation.activeOperation !== "none",
+            ...operation,
             stashes: runtime.stashes,
             stashFiles: runtime.stashFiles,
             selectedStashIndex: runtime.selectedStashIndex,
@@ -590,6 +596,32 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             currentBranchUpstream: runtime.currentBranchUpstreamCache,
             refreshing: false,
             error: null,
+        };
+    }
+
+    /** Derives the operation protocol from one filesystem marker snapshot without another Git process. */
+    private async operationSnapshotForRuntime(
+        runtime: CommitPanelRepositoryRuntime,
+    ): Promise<CommitPanelOperationSnapshot> {
+        const activeOperation = await runtime.gitOps.getActiveOperation();
+        if (activeOperation !== "rebase") return { activeOperation };
+        const liveManifest = await readLiveRebaseManifest(
+            this.interactiveRebaseStorageRoot,
+            runtime.repository.root,
+        );
+        const rebaseControl = await deriveRebaseControl({
+            gitDir: resolveGitDir(runtime.repository.root),
+            ...(liveManifest ? { liveManifest } : {}),
+        });
+        return {
+            activeOperation,
+            // `none` here means the rebase ended between the two probes. Reporting `none` as the
+            // operation would also erase any merge, cherry-pick, or revert the first probe saw
+            // underneath it and unfence the commit path, so the uncorrelated classification is
+            // reported instead: a stale rebase is corrected by the marker's own watcher event,
+            // while a dropped operation is not corrected by anything.
+            rebaseControl:
+                rebaseControl === "none" ? (liveManifest ? "foreign" : "unowned") : rebaseControl,
         };
     }
 
@@ -1494,9 +1526,9 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                     runtime.folderIconsByName = state.folderIconsByName;
                 },
                 postUpdate: async (message) => {
-                    const [hasCommits, wholeIndexOperationInProgress] = await Promise.all([
+                    const [hasCommits, operation] = await Promise.all([
                         runtime.gitOps.hasAnyCommits(),
-                        runtime.gitOps.hasWholeIndexOperationInProgress(),
+                        this.operationSnapshotForRuntime(runtime),
                     ]);
                     this.postToWebview({
                         ...message,
@@ -1505,7 +1537,8 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                         catalogGeneration: runtime.catalogGeneration,
                         selectedShelfId: runtime.selectedShelfId,
                         hasCommits,
-                        wholeIndexOperationInProgress,
+                        wholeIndexOperationInProgress: operation.activeOperation !== "none",
+                        ...operation,
                     });
                 },
             },

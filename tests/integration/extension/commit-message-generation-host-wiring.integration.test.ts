@@ -260,7 +260,10 @@ describe("commit-message generation host wiring", () => {
             dependencies: { resolveRoot: (root: string) => Record<string, unknown> };
             dispose: ReturnType<typeof vi.fn>;
         };
-        expect(commitPanelArguments[0]?.at(-1)).toBe(coordinator);
+        // Injection is asserted by identity rather than by position: the panel's constructor takes
+        // positional dependencies, and pinning this to the last slot fails whenever an unrelated
+        // one is appended.
+        expect(commitPanelArguments[0]).toContain(coordinator);
         expect(undockedOptions[0]?.commitMessageGenerationCoordinator).toBe(coordinator);
 
         const rootContext = coordinator.dependencies.resolveRoot("/repo-b");

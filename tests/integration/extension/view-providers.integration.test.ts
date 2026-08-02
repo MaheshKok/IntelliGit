@@ -474,6 +474,7 @@ vi.mock("../../../src/git/operations", () => ({
         hasAnyCommits = vi.fn(async () => true);
         hasUncommittedChanges = vi.fn(async () => false);
         hasWholeIndexOperationInProgress = vi.fn(async () => false);
+        getActiveOperation = vi.fn(async () => "none");
         getStatus = vi.fn(async () => gitStatusByRoot.get(this.currentRoot()) ?? []);
         listStashes = vi.fn(async () => []);
         getConflictFilesDetailed = vi.fn(async () => []);
@@ -701,6 +702,10 @@ function renderedButtonActions(html: string): string[] {
 
 function makeGitOpsMock() {
     return {
+        // The commit panel reads the operation kind and derives its own fence input from it, so
+        // tests that need a busy index script this rather than the boolean predicate.
+        getActiveOperation: vi.fn(async () => "none"),
+        hasWholeIndexOperationInProgress: vi.fn(async () => false),
         // Derived per-root instances mirror the module-level MockGitOps: status comes
         // from gitStatusByRoot so multi-repo tests can script non-active repositories.
         deriveFor: vi.fn((root: string): object => ({
@@ -734,7 +739,6 @@ function makeGitOpsMock() {
         getRemoteUrl: vi.fn(async () => "https://github.com/owner/repo.git"),
         getUnpushedCommitHashes: vi.fn(async () => ["abc1234"]),
         hasAnyCommits: vi.fn(async () => true),
-        hasWholeIndexOperationInProgress: vi.fn(async () => false),
         hasUncommittedChanges: vi.fn(async () => false),
         getStatus: vi.fn(async () => [
             { path: "src/a.ts", status: "M", staged: false, additions: 1, deletions: 0 },
@@ -1347,10 +1351,10 @@ describe("view providers integration", () => {
         };
         const runtime = testProvider.runtimes.get("/repo");
         postMessageSpy.mockClear();
-        gitOps.hasWholeIndexOperationInProgress.mockResolvedValueOnce(false);
+        gitOps.getActiveOperation.mockResolvedValueOnce("none");
         gitOps.hasAnyCommits.mockResolvedValueOnce(false);
         await testProvider.postWorkingTreeSnapshot(runtime);
-        gitOps.hasWholeIndexOperationInProgress.mockResolvedValueOnce(true);
+        gitOps.getActiveOperation.mockResolvedValueOnce("merge");
         gitOps.hasAnyCommits.mockResolvedValueOnce(true);
         gitOps.getBranches.mockResolvedValueOnce([
             {
@@ -1388,6 +1392,32 @@ describe("view providers integration", () => {
             updates.every((update) => typeof update.wholeIndexOperationInProgress === "boolean"),
         ).toBe(true);
         expect(updates.every((update) => typeof update.hasCommits === "boolean")).toBe(true);
+        provider.dispose();
+    });
+
+    it("CommitPanelViewProvider keeps a rebase fenced when its state vanishes mid-snapshot", async () => {
+        // The kind probe and the ownership probe are separate filesystem reads, so a rebase that
+        // finishes between them leaves no rebase directory to classify. Reporting "none" there
+        // would also drop any merge the kind probe saw underneath it and unfence the commit path,
+        // so the snapshot keeps the operation and reports the uncorrelated control scope instead.
+        const { provider, gitOps } = await setupCommitPanelProvider();
+        const testProvider = provider as unknown as {
+            runtimes: Map<string, unknown>;
+            postWorkingTreeSnapshot(runtime: unknown): Promise<void>;
+        };
+        postMessageSpy.mockClear();
+        gitOps.getActiveOperation.mockResolvedValueOnce("rebase");
+
+        await testProvider.postWorkingTreeSnapshot(testProvider.runtimes.get("/repo"));
+
+        expect(postMessageSpy).toHaveBeenCalledWith(
+            expect.objectContaining({
+                type: "update",
+                activeOperation: "rebase",
+                rebaseControl: "unowned",
+                wholeIndexOperationInProgress: true,
+            }),
+        );
         provider.dispose();
     });
 

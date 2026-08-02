@@ -5,7 +5,7 @@
 
 import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import type { EditorRole } from "./editorCommand";
+import { REBASE_SESSION_MARKER, type EditorRole } from "./editorCommand";
 
 const ACTIONS = new Set(["pick", "reword", "squash", "fixup", "drop"]);
 const FULL_OBJECT_ID = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
@@ -85,7 +85,7 @@ function writeSequenceTodo(
     try {
         writeFileSync(editorPath, todo, "utf8");
         writeFileSync(
-            path.join(rebaseMergeDirectory, "intelligit-session"),
+            path.join(rebaseMergeDirectory, REBASE_SESSION_MARKER),
             sessionId(sessionDirectory),
             "utf8",
         );
@@ -154,7 +154,7 @@ function findRebaseMergeDirectory(editorPath: string): string | undefined {
 /** Confirms that the live rebase state belongs to this exact helper-artifact directory. */
 function hasMatchingMarker(rebaseMergeDirectory: string, expectedSessionId: string): boolean {
     return (
-        readText(path.join(rebaseMergeDirectory, "intelligit-session"))?.trim() ===
+        readText(path.join(rebaseMergeDirectory, REBASE_SESSION_MARKER))?.trim() ===
         expectedSessionId
     );
 }

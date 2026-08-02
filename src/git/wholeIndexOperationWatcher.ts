@@ -1,13 +1,24 @@
 import { watch, type FSWatcher } from "node:fs";
 import { resolveGitDir } from "./gitDirectory";
 
-const wholeIndexOperationMarkers = new Set([
+/**
+ * The Git metadata entries that make the whole index part of one in-flight operation.
+ *
+ * This watcher and the probes that classify the same state read one list so a marker can never be
+ * watched without being classified, or classified without being watched.
+ */
+export const WHOLE_INDEX_OPERATION_MARKERS = [
     "MERGE_HEAD",
     "CHERRY_PICK_HEAD",
     "REVERT_HEAD",
     "rebase-merge",
     "rebase-apply",
-]);
+] as const;
+
+/** One entry of the shared whole-index marker set. */
+export type WholeIndexOperationMarker = (typeof WHOLE_INDEX_OPERATION_MARKERS)[number];
+
+const wholeIndexOperationMarkers: ReadonlySet<string> = new Set(WHOLE_INDEX_OPERATION_MARKERS);
 
 /** Idempotently stops one request-scoped whole-index operation watcher. */
 export interface WholeIndexOperationWatcher {

@@ -89,8 +89,26 @@ interface CommitPanelRepositorySummary {
     changedFileCount: number;
 }
 
+/** A valid operation discriminator, which permits rebase control only during a rebase. */
+export type CommitPanelOperationSnapshot =
+    | {
+          /** Older producers may omit this additive state until their own protocol phase. */
+          activeOperation?: undefined;
+          rebaseControl?: never;
+      }
+    | {
+          /** No rebase control may exist unless Git's active operation is a rebase. */
+          activeOperation: "none" | "merge" | "cherry-pick" | "revert";
+          rebaseControl?: never;
+      }
+    | {
+          /** Rebase controls require ownership classification before any UI may act. */
+          activeOperation: "rebase";
+          rebaseControl: "owned" | "unowned" | "foreign";
+      };
+
 /** Full host-side snapshot for one commit-panel repository runtime. */
-export interface CommitPanelRepositorySnapshot {
+export type CommitPanelRepositorySnapshot = CommitPanelOperationSnapshot & {
     /** Absolute filesystem path to the Git repository root that produced this snapshot. */
     repositoryRoot?: string;
     /** Stable display label for repository rows. */
@@ -151,7 +169,7 @@ export interface CommitPanelRepositorySnapshot {
     refreshing?: boolean;
     /** Last repository-scoped refresh error, or `null` when the latest snapshot is healthy. */
     error?: string | null;
-}
+};
 /** Webview-safe advisory warning for observable shelf health. */
 export type ShelfHealthWarning = {
     kind: "corruptShelf" | "lockBusy" | "checksumMismatch" | "pendingRecovery" | "recoveryFull";

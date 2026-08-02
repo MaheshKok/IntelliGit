@@ -80,6 +80,7 @@ describe("GitOps", () => {
             ["MERGE_HEAD", ["merge", "--abort"]],
             ["REBASE_HEAD", ["rebase", "--abort"]],
             ["CHERRY_PICK_HEAD", ["cherry-pick", "--abort"]],
+            ["REVERT_HEAD", ["revert", "--abort"]],
         ])("uses the abort command for %s", async (activeRef, expectedCommand) => {
             const executor = {
                 run: vi.fn(async (args: string[]) => {
@@ -98,7 +99,37 @@ describe("GitOps", () => {
             expect((executor.run as ReturnType<typeof vi.fn>).mock.calls.at(-1)?.[0]).toEqual(
                 expectedCommand,
             );
+            expect(executor.run).not.toHaveBeenCalledWith(["reset", "--merge"]);
         });
+
+        it.each([
+            [["REBASE_HEAD", "MERGE_HEAD"], ["rebase", "--abort"]],
+            [["MERGE_HEAD", "CHERRY_PICK_HEAD"], ["merge", "--abort"]],
+            [["CHERRY_PICK_HEAD", "REVERT_HEAD"], ["cherry-pick", "--abort"]],
+        ])(
+            "aborts the controlling operation when %j are both present",
+            async (activeRefs, expectedCommand) => {
+                // A rebase replaying a merge commit leaves REBASE_HEAD and MERGE_HEAD together.
+                // Aborting only the merge step there would leave the rebase live, so the dispatch
+                // order must match the precedence getActiveOperation reports to the panel.
+                const executor = {
+                    run: vi.fn(async (args: string[]) => {
+                        const key = args.join(" ");
+                        if (key.startsWith("rev-parse --verify --quiet ")) {
+                            if (activeRefs.some((ref) => key.endsWith(ref))) return "";
+                            throw new Error("missing ref");
+                        }
+                        return "";
+                    }),
+                } as unknown as GitExecutor;
+
+                await new GitOps(executor).abortMerge();
+
+                expect((executor.run as ReturnType<typeof vi.fn>).mock.calls.at(-1)?.[0]).toEqual(
+                    expectedCommand,
+                );
+            },
+        );
 
         it("resets unmerged index conflicts left by stash apply", async () => {
             const executor = {
@@ -121,6 +152,25 @@ describe("GitOps", () => {
                 "reset",
                 "--merge",
             ]);
+        });
+
+        it("uses revert abort instead of reset merge for a conflicted revert", async () => {
+            const executor = {
+                run: vi.fn(async (args: string[]) => {
+                    const key = args.join(" ");
+                    if (key.startsWith("rev-parse --verify --quiet ")) {
+                        if (key.endsWith("REVERT_HEAD")) return "\n";
+                        throw new Error("missing ref");
+                    }
+                    if (key === "ls-files -u") return "100644 abc 1\tconflict.ts\n";
+                    return "";
+                }),
+            } as unknown as GitExecutor;
+
+            await new GitOps(executor).abortMerge();
+
+            expect(executor.run).toHaveBeenCalledWith(["revert", "--abort"]);
+            expect(executor.run).not.toHaveBeenCalledWith(["reset", "--merge"]);
         });
     });
     describe("getBranches", () => {
