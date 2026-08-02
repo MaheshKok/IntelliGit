@@ -2,12 +2,17 @@ import { describe, expect, it, vi } from "vitest";
 import type { GitExecutor } from "../../../../src/git/executor";
 import { createPendingRebaseDialogRequests } from "../../../../src/git/interactiveRebase/pendingRequests";
 import { createInteractiveRebaseSubmissionHandler } from "../../../../src/git/interactiveRebase/submission";
+import { MAX_INTERACTIVE_REBASE_MESSAGE_BYTES } from "../../../../src/git/interactiveRebase/todo";
 import type { RebaseSubmissionEntry } from "../../../../src/git/interactiveRebase/types";
 
 const HASH_A = "a".repeat(40);
 const HASH_B = "b".repeat(40);
 const HASH_C = "c".repeat(40);
 const BRANCH = "refs/heads/main";
+// "🎉" is 2 UTF-16 code units but 4 UTF-8 bytes: a naive `.length` cap would under-count this
+// message by half, so these fixtures prove the validator measures real UTF-8 bytes.
+const MESSAGE_AT_CAP = "\u{1F389}".repeat(MAX_INTERACTIVE_REBASE_MESSAGE_BYTES / 4);
+const MESSAGE_OVER_CAP = `${MESSAGE_AT_CAP}a`;
 
 type GitResponse = string | Error | readonly (string | Error)[];
 
@@ -121,6 +126,17 @@ describe("interactive rebase submission handler", () => {
         });
     });
 
+    it("accepts a message exactly at the byte cap", async () => {
+        const { handler, origin, requestId } = setup();
+
+        await expect(
+            handler.submit(
+                { requestId, entries: [{ hash: HASH_A, action: "pick", message: MESSAGE_AT_CAP }] },
+                origin,
+            ),
+        ).resolves.toMatchObject({ status: "accepted" });
+    });
+
     it("does not consume a request when a different provider submits it", async () => {
         const { handler, origin, requestId } = setup();
 
@@ -166,6 +182,12 @@ describe("interactive rebase submission handler", () => {
         [
             "invalid message",
             [{ hash: HASH_A, action: "pick", message: "bad\0text" }],
+            [HASH_A],
+            "invalid-message",
+        ],
+        [
+            "message exceeds the byte cap",
+            [{ hash: HASH_A, action: "pick", message: MESSAGE_OVER_CAP }],
             [HASH_A],
             "invalid-message",
         ],

@@ -2,12 +2,11 @@ import { rm } from "node:fs/promises";
 import type { GitExecutor } from "../executor";
 import type { RepositoryMutationGate } from "../repositoryMutationGate";
 import { errorMessage, readGitText } from "./gitText";
+import { REMOTE_HEAD_REF, SAFE_REMOTE_NAME } from "./remoteTarget";
 import { getRebaseStoragePaths, writeRebaseManifest } from "./storage";
 import type { RebasePushTarget, RebaseSessionManifest } from "./types";
 
 const FULL_OBJECT_ID = /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/;
-const REMOTE_HEAD_REF = /^refs\/heads\/[^^~:\\?*\[\s]+$/;
-const SAFE_REMOTE_NAME = /^(?!-)[^\s\x00-\x1f]+$/;
 
 /** Resolves untrusted upstream fields into an all-or-none force-push target. */
 export function resolveRebasePushTarget(candidate: unknown): RebasePushTarget | undefined {

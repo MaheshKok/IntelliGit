@@ -447,7 +447,7 @@ describe("interactive rebase storage", () => {
         const withoutPushTarget = manifest(repoRoot, "without-push-target");
         const withPushTarget = manifest(repoRoot, "with-push-target", {
             remoteName: "origin",
-            remoteHeadRef: "refs/remotes/origin/main",
+            remoteHeadRef: "refs/heads/main",
             upstreamOid: HASH_C,
         });
 

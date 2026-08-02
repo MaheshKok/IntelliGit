@@ -11,6 +11,9 @@ function invalid(reason: RebaseSubmissionValidationReason): RebaseSubmissionVali
     return { status: "invalid", reason };
 }
 
+/** Byte ceiling for one reword/squash message, far beyond any real commit message. */
+export const MAX_INTERACTIVE_REBASE_MESSAGE_BYTES = 1024 * 1024;
+
 const ALLOWED_ACTIONS = new Set<RebaseAction>(["pick", "reword", "squash", "fixup", "drop"]);
 const FULL_OBJECT_ID = /^(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})$/;
 
@@ -50,7 +53,9 @@ export function validateRebaseSubmission(
         }
         if (
             entry.message !== undefined &&
-            (typeof entry.message !== "string" || /\0/.test(entry.message))
+            (typeof entry.message !== "string" ||
+                /\0/.test(entry.message) ||
+                Buffer.byteLength(entry.message, "utf8") > MAX_INTERACTIVE_REBASE_MESSAGE_BYTES)
         ) {
             return invalid("invalid-message");
         }

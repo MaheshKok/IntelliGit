@@ -68,7 +68,7 @@ async function fixture(
             hasPushedCommit: options.hasPushedCommit ?? false,
             pushTarget: {
                 remoteName: "origin",
-                remoteHeadRef: "refs/remotes/origin/main",
+                remoteHeadRef: "refs/heads/main",
                 upstreamOid: BASE,
             },
             baseHash: BASE,

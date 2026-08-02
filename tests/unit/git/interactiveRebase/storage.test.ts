@@ -302,3 +302,79 @@ describe("retained rebase session storage", () => {
         expect(paths.manifestDirectory).toContain("interactive-rebase");
     });
 });
+
+describe("pushTarget schema validation", () => {
+    const VALID_PUSH_TARGET = {
+        remoteName: "origin",
+        remoteHeadRef: "refs/heads/main",
+        upstreamOid: "e".repeat(40),
+    };
+
+    /** Builds the on-disk bytes for a manifest carrying the given (possibly malformed) pushTarget. */
+    function manifestJsonWithPushTarget(pushTarget: unknown): string {
+        return JSON.stringify({
+            version: 1,
+            sessionId: SESSION_ID,
+            repoRoot: REPO_ROOT,
+            branch: "refs/heads/main",
+            hasPushedCommit: true,
+            baseHash: "c".repeat(40),
+            expectedHead: "d".repeat(40),
+            createdAt: "2026-08-02T00:00:00.000Z",
+            lifecycle: "completed-pending-push",
+            pushTarget,
+        });
+    }
+
+    it.each([
+        ["a remoteName starting with a dash", { ...VALID_PUSH_TARGET, remoteName: "-oops" }],
+        [
+            "a remoteName containing whitespace",
+            { ...VALID_PUSH_TARGET, remoteName: "origin upstream" },
+        ],
+        [
+            "a remoteHeadRef outside refs/heads/",
+            { ...VALID_PUSH_TARGET, remoteHeadRef: "refs/remotes/origin/main" },
+        ],
+    ] as const)("rejects a manifest whose pushTarget has %s", async (_name, pushTarget) => {
+        const storageRoot = await mkdtemp(path.join(os.tmpdir(), "intelligit-rebase-storage-"));
+        roots.push(storageRoot);
+        const paths = getRebaseStoragePaths(storageRoot, REPO_ROOT);
+        await mkdir(paths.manifestDirectory, { recursive: true });
+        await writeFile(
+            paths.manifestPath(SESSION_ID),
+            manifestJsonWithPushTarget(pushTarget),
+            "utf8",
+        );
+
+        await expect(readRebaseManifest(storageRoot, REPO_ROOT, SESSION_ID)).resolves.toEqual({
+            status: "ambiguous",
+            reason: "invalid-schema",
+        });
+    });
+
+    it("accepts and round-trips a valid pushTarget through a manifest write and read", async () => {
+        const storageRoot = await mkdtemp(path.join(os.tmpdir(), "intelligit-rebase-storage-"));
+        roots.push(storageRoot);
+        const manifest: RebaseSessionManifest = {
+            version: 1,
+            sessionId: SESSION_ID,
+            repoRoot: REPO_ROOT,
+            branch: "refs/heads/main",
+            hasPushedCommit: true,
+            baseHash: "c".repeat(40),
+            expectedHead: "d".repeat(40),
+            createdAt: "2026-08-02T00:00:00.000Z",
+            lifecycle: "completed-pending-push",
+            pushTarget: VALID_PUSH_TARGET,
+        };
+
+        await writeRebaseManifest(storageRoot, manifest);
+
+        await expect(readRebaseManifest(storageRoot, REPO_ROOT, SESSION_ID)).resolves.toEqual({
+            status: "valid",
+            manifest,
+        });
+    });
+});
+

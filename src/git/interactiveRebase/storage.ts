@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, open, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { REMOTE_HEAD_REF, SAFE_REMOTE_NAME } from "./remoteTarget";
 import type {
     RebaseManifestAmbiguousReason,
     RebaseManifestReadResult,
@@ -423,8 +424,10 @@ function validateManifest(manifest: RebaseSessionManifest): ManifestValidationEr
 function isPushTarget(value: unknown): value is RebasePushTarget {
     return (
         isRecord(value) &&
-        isNonEmptyString(value.remoteName) &&
-        isFullyQualifiedRef(value.remoteHeadRef) &&
+        typeof value.remoteName === "string" &&
+        SAFE_REMOTE_NAME.test(value.remoteName) &&
+        typeof value.remoteHeadRef === "string" &&
+        REMOTE_HEAD_REF.test(value.remoteHeadRef) &&
         isFullObjectId(value.upstreamOid) &&
         Object.keys(value).length === 3
     );
