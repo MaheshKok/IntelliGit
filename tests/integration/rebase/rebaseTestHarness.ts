@@ -8,8 +8,17 @@ import { GitExecutor } from "../../../src/git/executor";
 import { RepositoryMutationCoordinator } from "../../../src/git/mutationCoordinator";
 import { RepositoryLock } from "../../../src/git/repositoryLock";
 import { RepositoryMutationGate } from "../../../src/git/repositoryMutationGate";
+import type { RebaseReconciliationDependencies } from "../../../src/git/interactiveRebase/reconcile";
 import type { InteractiveRebaseRunDependencies } from "../../../src/git/interactiveRebase/run";
-import type { RebasePushTarget } from "../../../src/git/interactiveRebase/types";
+import {
+    createRebaseSessionDirectory,
+    writeRebaseManifest,
+} from "../../../src/git/interactiveRebase/storage";
+import type {
+    RebasePushTarget,
+    RebaseSessionLifecycle,
+    RebaseSessionManifest,
+} from "../../../src/git/interactiveRebase/types";
 
 const execFileAsync = promisify(execFile);
 const directories: string[] = [];
@@ -65,6 +74,17 @@ export interface RebaseFixture {
     readonly gitDir: string;
     readonly commits: readonly RebaseFixtureCommit[];
     readonly dependencies: InteractiveRebaseRunDependencies;
+    /** Read-only dependencies for gathering reconciliation evidence from this fixture. */
+    readonly reconciliationDependencies: RebaseReconciliationDependencies;
+}
+
+/** Caller-selected persisted state for a real storage-backed reconciliation scenario. */
+export interface PersistedRebaseSessionOptions {
+    readonly sessionId: string;
+    readonly lifecycle: RebaseSessionLifecycle;
+    readonly branch: string;
+    readonly baseHash: string;
+    readonly expectedHead: string;
 }
 
 /**
@@ -157,6 +177,46 @@ export async function createConflictingRebaseFixture(
     ]);
 }
 
+/**
+ * Persists one session through the production storage writers in the fixture's cleanup-managed root.
+ *
+ * The caller supplies every field that reconciliation correlates with live Git state so scenarios
+ * can model matching and mismatching restarts without hand-writing a storage-format JSON file.
+ */
+export async function plantPersistedRebaseSession(
+    fixture: RebaseFixture,
+    options: PersistedRebaseSessionOptions,
+): Promise<RebaseSessionManifest> {
+    const storageRoot = fixture.reconciliationDependencies.storageRoot;
+    await createRebaseSessionDirectory(storageRoot, fixture.root, options.sessionId);
+    const manifest: RebaseSessionManifest = {
+        version: 1,
+        sessionId: options.sessionId,
+        repoRoot: fixture.root,
+        branch: options.branch,
+        hasPushedCommit: false,
+        baseHash: options.baseHash,
+        expectedHead: options.expectedHead,
+        createdAt: "2000-01-01T00:00:00.000Z",
+        lifecycle: options.lifecycle,
+    };
+    await writeRebaseManifest(storageRoot, manifest);
+    return manifest;
+}
+
+/**
+ * Replaces one session's durable manifest without recreating its helper-artifact directory.
+ *
+ * `plantPersistedRebaseSession` cannot do this — `createRebaseSessionDirectory` refuses an
+ * existing directory — so drifting a manifest the runner itself wrote needs its own seam.
+ */
+export async function rewritePersistedRebaseManifest(
+    fixture: RebaseFixture,
+    manifest: RebaseSessionManifest,
+): Promise<void> {
+    await writeRebaseManifest(fixture.reconciliationDependencies.storageRoot, manifest);
+}
+
 /** Creates one isolated main history and the production dependencies used to rebase it. */
 async function createFixture(
     helperScriptPath: string,
@@ -200,6 +260,7 @@ async function createFixture(
             createSessionId: () => "00000000-0000-4000-8000-000000000001",
             now: () => new Date("2000-01-01T00:00:00.000Z"),
         },
+        reconciliationDependencies: { storageRoot, gitDir, executor },
     };
 }
 

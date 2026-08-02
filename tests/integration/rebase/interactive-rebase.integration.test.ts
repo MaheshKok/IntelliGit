@@ -5,9 +5,17 @@ import {
     abortInteractiveRebase,
     continueInteractiveRebase,
 } from "../../../src/git/interactiveRebase/control";
+import { REBASE_SESSION_MARKER } from "../../../src/git/interactiveRebase/editorCommand";
 import { forcePushRebasedHead } from "../../../src/git/interactiveRebase/push";
+import {
+    gatherRebaseReconciliationEvidence,
+    reconcileRebaseSessions,
+} from "../../../src/git/interactiveRebase/reconcile";
 import { runInteractiveRebaseSubmission } from "../../../src/git/interactiveRebase/run";
-import { getRebaseStoragePaths } from "../../../src/git/interactiveRebase/storage";
+import {
+    getRebaseStoragePaths,
+    readRebaseManifest,
+} from "../../../src/git/interactiveRebase/storage";
 import type { RebaseTodoEntry } from "../../../src/git/interactiveRebase/types";
 import {
     cleanTemporaryRepositories,
@@ -16,8 +24,10 @@ import {
     createRebaseFixture,
     createRemoteCollaborator,
     git,
+    plantPersistedRebaseSession,
     readBareRemoteRef,
     readHistory,
+    rewritePersistedRebaseManifest,
     type PushableRebaseFixture,
     type RebaseFixture,
 } from "./rebaseTestHarness";
@@ -284,7 +294,240 @@ describe("interactive rebase real Git integration", () => {
             readBareRemoteRef(fixture.remote.root, fixture.remote.remoteHeadRef),
         ).resolves.toBe(remoteBeforeAttempt);
     });
+
+    it("classifies an extension-driven conflicting pause as owned from Git's rebase metadata", async () => {
+        const fixture = await createConflictingRebaseFixture(helperScriptPath);
+
+        await expect(
+            runInteractiveRebaseSubmission(
+                fixture.dependencies,
+                submission(fixture, conflictingReorderEntries(fixture)),
+            ),
+        ).resolves.toEqual({ status: "paused-conflict" });
+
+        const evidence = await gatherRebaseReconciliationEvidence(
+            fixture.reconciliationDependencies,
+            fixture.root,
+        );
+        const metadata = await readLiveRebaseMetadata(fixture);
+        const sessionId = fixture.dependencies.createSessionId!();
+        expect(evidence.rebaseDirectory).toEqual({
+            status: "merge",
+            marker: sessionId,
+            ...metadata,
+        });
+        expect(metadata).toEqual({
+            headName: "refs/heads/main",
+            onto: fixture.commits[1].hash,
+            origHead: fixture.commits.at(-1)!.hash,
+        });
+        expect(reconcileRebaseSessions(evidence)).toEqual({
+            rebaseControl: "owned",
+            dispositions: [{ status: "owned", sessionId }],
+        });
+    });
+
+    it("refuses ownership when the marker answers but Git's metadata disagrees", async () => {
+        const fixture = await createConflictingRebaseFixture(helperScriptPath);
+
+        await expect(
+            runInteractiveRebaseSubmission(
+                fixture.dependencies,
+                submission(fixture, conflictingReorderEntries(fixture)),
+            ),
+        ).resolves.toEqual({ status: "paused-conflict" });
+
+        const sessionId = fixture.dependencies.createSessionId!();
+        const stored = await readRebaseManifest(
+            fixture.reconciliationDependencies.storageRoot,
+            fixture.root,
+            sessionId,
+        );
+        if (stored.status !== "valid") {
+            throw new Error(`Expected the runner's own manifest, got "${stored.status}".`);
+        }
+        // The session id is untouched, so the marker still answers for this manifest and only the
+        // recorded base drifts away from the `onto` Git wrote. Without a scenario in this
+        // direction, the three-field comparison could be a no-op and every other scenario here
+        // would still pass — the owned case only ever exercises it in the matching direction.
+        await rewritePersistedRebaseManifest(fixture, {
+            ...stored.manifest,
+            baseHash: fixture.commits[0].hash,
+        });
+
+        const evidence = await gatherRebaseReconciliationEvidence(
+            fixture.reconciliationDependencies,
+            fixture.root,
+        );
+        expect(evidence.rebaseDirectory).toMatchObject({
+            marker: sessionId,
+            onto: fixture.commits[1].hash,
+        });
+        expect(reconcileRebaseSessions(evidence)).toEqual({
+            rebaseControl: "foreign",
+            dispositions: [
+                { status: "ambiguous", sessionId, reason: "rebase-directory-correlation-failed" },
+            ],
+        });
+    });
+
+    it("retains a live manifest when an outside conflicting rebase has no IntelliGit marker", async () => {
+        const fixture = await createConflictingRebaseFixture(helperScriptPath);
+        const manifest = await plantPersistedRebaseSession(fixture, {
+            sessionId: "00000000-0000-4000-8000-000000000002",
+            lifecycle: "paused",
+            branch: "refs/heads/main",
+            baseHash: fixture.commits[1].hash,
+            expectedHead: fixture.commits.at(-1)!.hash,
+        });
+
+        await startOutsideConflictingRebase(fixture);
+
+        const evidence = await gatherRebaseReconciliationEvidence(
+            fixture.reconciliationDependencies,
+            fixture.root,
+        );
+        const metadata = await readLiveRebaseMetadata(fixture);
+        expect(evidence.rebaseDirectory).toEqual({ status: "merge", ...metadata });
+        expect(evidence.rebaseDirectory).toMatchObject({ marker: undefined });
+        await expect(
+            access(path.join(fixture.gitDir, "rebase-merge", REBASE_SESSION_MARKER)),
+        ).rejects.toMatchObject({ code: "ENOENT" });
+        expect(reconcileRebaseSessions(evidence)).toEqual({
+            rebaseControl: "foreign",
+            dispositions: [
+                {
+                    status: "ambiguous",
+                    sessionId: manifest.sessionId,
+                    reason: "rebase-directory-correlation-failed",
+                },
+            ],
+        });
+    });
+
+    it("refuses ownership for an identical-input outside restart when only the marker differs", async () => {
+        const fixture = await createConflictingRebaseFixture(helperScriptPath);
+        const manifest = await plantPersistedRebaseSession(fixture, {
+            sessionId: "00000000-0000-4000-8000-000000000003",
+            lifecycle: "paused",
+            branch: "refs/heads/main",
+            baseHash: fixture.commits[0].hash,
+            expectedHead: fixture.commits.at(-1)!.hash,
+        });
+
+        await startOutsideConflictingRebase(fixture);
+
+        const evidence = await gatherRebaseReconciliationEvidence(
+            fixture.reconciliationDependencies,
+            fixture.root,
+        );
+        const metadata = await readLiveRebaseMetadata(fixture);
+        expect(metadata).toEqual({
+            headName: manifest.branch,
+            onto: manifest.baseHash,
+            origHead: manifest.expectedHead,
+        });
+        expect(evidence.rebaseDirectory).toEqual({ status: "merge", ...metadata });
+        expect(evidence.rebaseDirectory).toMatchObject({ marker: undefined });
+        await expect(
+            access(path.join(fixture.gitDir, "rebase-merge", REBASE_SESSION_MARKER)),
+        ).rejects.toMatchObject({ code: "ENOENT" });
+        expect(reconcileRebaseSessions(evidence)).toEqual({
+            rebaseControl: "foreign",
+            dispositions: [
+                {
+                    status: "ambiguous",
+                    sessionId: manifest.sessionId,
+                    reason: "rebase-directory-correlation-failed",
+                },
+            ],
+        });
+    });
+
+    it("retains a same-tip manifest after switching to another branch", async () => {
+        const fixture = await createRebaseFixture(helperScriptPath);
+        const headBeforeRebase = fixture.commits.at(-1)!.hash;
+        const rebaseable = fixture.commits.slice(2);
+
+        await expect(
+            runInteractiveRebaseSubmission(
+                fixture.dependencies,
+                submission(fixture, [
+                    { hash: rebaseable[1].hash, action: "pick" },
+                    { hash: rebaseable[0].hash, action: "pick" },
+                ]),
+            ),
+        ).resolves.toMatchObject({ status: "completed" });
+        const rebasedHead = (await git(fixture.root, ["rev-parse", "HEAD"]))
+            .toString("utf8")
+            .trim();
+        expect(rebasedHead).not.toBe(headBeforeRebase);
+        await expect(access(path.join(fixture.gitDir, "rebase-merge"))).rejects.toMatchObject({
+            code: "ENOENT",
+        });
+        const manifest = await plantPersistedRebaseSession(fixture, {
+            sessionId: "00000000-0000-4000-8000-000000000004",
+            lifecycle: "paused",
+            branch: "refs/heads/main",
+            baseHash: fixture.commits[1].hash,
+            expectedHead: rebasedHead,
+        });
+        await git(fixture.root, ["switch", "-c", "same-tip-branch"]);
+        expect((await git(fixture.root, ["rev-parse", "HEAD"])).toString("utf8").trim()).toBe(
+            manifest.expectedHead,
+        );
+
+        const evidence = await gatherRebaseReconciliationEvidence(
+            fixture.reconciliationDependencies,
+            fixture.root,
+        );
+        expect(evidence.rebaseDirectory).toEqual({ status: "none" });
+        expect(reconcileRebaseSessions(evidence)).toEqual({
+            rebaseControl: "none",
+            dispositions: [
+                {
+                    status: "ambiguous",
+                    sessionId: manifest.sessionId,
+                    reason: "branch-unavailable-or-moved",
+                },
+            ],
+        });
+        await expect(
+            access(
+                getRebaseStoragePaths(
+                    fixture.reconciliationDependencies.storageRoot,
+                    fixture.root,
+                ).manifestPath(manifest.sessionId),
+            ),
+        ).resolves.toBeUndefined();
+    });
 });
+
+async function startOutsideConflictingRebase(fixture: RebaseFixture): Promise<void> {
+    await expect(
+        git(fixture.root, [
+            "rebase",
+            "--merge",
+            "--onto",
+            fixture.commits[0].hash,
+            fixture.commits[1].hash,
+        ]),
+    ).rejects.toMatchObject({ code: 1 });
+}
+
+async function readLiveRebaseMetadata(fixture: RebaseFixture): Promise<{
+    headName: string;
+    onto: string;
+    origHead: string;
+}> {
+    const rebaseDirectory = path.join(fixture.gitDir, "rebase-merge");
+    const [headName, onto, origHead] = await Promise.all(
+        ["head-name", "onto", "orig-head"].map(async (name) =>
+            readFile(path.join(rebaseDirectory, name), "utf8").then((value) => value.trim()),
+        ),
+    );
+    return { headName, onto, origHead };
+}
 
 function conflictingReorderEntries(fixture: RebaseFixture): RebaseTodoEntry[] {
     const rebaseable = fixture.commits.slice(2);
