@@ -56,6 +56,7 @@ function manifest(
         repoRoot,
         branch: "refs/heads/main",
         ...(pushTarget ? { pushTarget } : {}),
+        hasPushedCommit: false,
         baseHash: HASH_A,
         expectedHead: HASH_B,
         createdAt: "2026-08-01T10:00:00.000Z",
@@ -493,6 +494,7 @@ describe("interactive rebase storage", () => {
         ["a malformed object ID", { baseHash: "not-an-object-id" }],
         ["an unknown lifecycle", { lifecycle: "unknown" }],
         ["a malformed creation time", { createdAt: "not-a-date" }],
+        ["a missing pushed-history predicate", { hasPushedCommit: undefined }],
         ["an uppercase base hash", { baseHash: "A".repeat(40) }],
         ["an uppercase expected head", { expectedHead: "B".repeat(40) }],
     ])("rejects %s before an atomic manifest write", async (_name, invalidFields) => {
@@ -504,6 +506,20 @@ describe("interactive rebase storage", () => {
 
         await expect(writeRebaseManifest(storageRoot, invalid)).rejects.toMatchObject({
             code: "invalid-schema",
+        });
+    });
+
+    it("treats a version-1 manifest without the pushed-history predicate as ambiguous", async () => {
+        const { storageRoot, repoRoot } = await rebasePaths();
+        const paths = getRebaseStoragePaths(storageRoot, repoRoot);
+        const current = manifest(repoRoot, "legacy-version-one");
+        const { hasPushedCommit: _legacyPredicate, ...legacy } = current;
+        await mkdir(paths.manifestDirectory, { recursive: true });
+        await writeFile(paths.manifestPath(current.sessionId), JSON.stringify(legacy), "utf8");
+
+        await expect(readRebaseManifest(storageRoot, repoRoot, current.sessionId)).resolves.toEqual({
+            status: "ambiguous",
+            reason: "invalid-schema",
         });
     });
 

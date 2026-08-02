@@ -1,13 +1,13 @@
 import { rm } from "node:fs/promises";
 import type { GitExecutor } from "../executor";
 import type { RepositoryMutationGate } from "../repositoryMutationGate";
+import { errorMessage, readGitText } from "./gitText";
 import { getRebaseStoragePaths, writeRebaseManifest } from "./storage";
 import type { RebasePushTarget, RebaseSessionManifest } from "./types";
 
 const FULL_OBJECT_ID = /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/;
 const REMOTE_HEAD_REF = /^refs\/heads\/[^^~:\\?*\[\s]+$/;
 const SAFE_REMOTE_NAME = /^(?!-)[^\s\x00-\x1f]+$/;
-const MAX_PROBE_OUTPUT_BYTES = 4 * 1024 * 1024;
 
 /** Resolves untrusted upstream fields into an all-or-none force-push target. */
 export function resolveRebasePushTarget(candidate: unknown): RebasePushTarget | undefined {
@@ -151,22 +151,7 @@ async function completeRebasePushOffer(
     }
 }
 
-/** Reads bounded UTF-8 Git output without allowing a truncated value to become actionable state. */
-async function readGitText(
-    executor: Pick<GitExecutor, "runBinary">,
-    args: string[],
-): Promise<string> {
-    const result = await executor.runBinary(args, { maxOutputBytes: MAX_PROBE_OUTPUT_BYTES });
-    if (result.truncated) throw new Error(`Git output exceeded ${MAX_PROBE_OUTPUT_BYTES} bytes.`);
-    return result.stdout.toString("utf8").trim();
-}
-
 /** Narrows a JSON-like value to a record without trusting its keys or fields. */
 function isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-/** Turns an unknown Git or filesystem error into an honest message for the host toast. */
-function errorMessage(error: unknown): string {
-    return error instanceof Error ? error.message : String(error);
 }

@@ -27,7 +27,8 @@ const LIFECYCLES = new Set<RebaseSessionLifecycle>([
 ]);
 const LIVE_LIFECYCLES = new Set<RebaseSessionLifecycle>(["starting", "running", "paused"]);
 
-type LiveRebaseSessionManifest = RebaseSessionManifest & {
+/** A manifest whose lifecycle still controls a live rebase, as `readLiveRebaseManifest` returns. */
+export type LiveRebaseSessionManifest = RebaseSessionManifest & {
     lifecycle: "starting" | "running" | "paused";
 };
 
@@ -330,6 +331,7 @@ function validateManifest(manifest: RebaseSessionManifest): ManifestValidationEr
     if (!isNonEmptyString(manifest.repoRoot) || !isFullyQualifiedRef(manifest.branch)) {
         return "invalid-schema";
     }
+    if (typeof manifest.hasPushedCommit !== "boolean") return "invalid-schema";
     if (!isFullObjectId(manifest.baseHash) || !isFullObjectId(manifest.expectedHead))
         return "invalid-schema";
     if (manifest.rebasedHeadOid !== undefined && !isFullObjectId(manifest.rebasedHeadOid)) {

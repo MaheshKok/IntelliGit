@@ -4,6 +4,7 @@ import path from "node:path";
 import type { GitExecutor } from "../executor";
 import type { RepositoryMutationGate } from "../repositoryMutationGate";
 import { createGitEditorCommand } from "./editorCommand";
+import { errorMessage, readGitText } from "./gitText";
 import { evaluateInteractiveRebaseGuards } from "./guards";
 import { shouldOfferRebaseForcePush } from "./push";
 import { writeInteractiveRebaseSession } from "./session";
@@ -95,6 +96,7 @@ export async function runInteractiveRebaseSubmission(
             repoRoot: request.repoRoot,
             branch: request.expectedBranch,
             ...(pushTarget ? { pushTarget } : {}),
+            hasPushedCommit: request.hasPushedCommit,
             baseHash: request.baseHash,
             expectedHead: request.expectedHead,
             createdAt: (dependencies.now ?? (() => new Date()))().toISOString(),
@@ -219,21 +221,6 @@ export async function runInteractiveRebaseSubmission(
     }
 }
 
-/** Byte ceiling for the runner's own probes, so a huge conflict cannot exhaust the host. */
-const MAX_PROBE_OUTPUT_BYTES = 4 * 1024 * 1024;
-
-/** Reads a successful Git command's trimmed UTF-8 output under a fixed byte ceiling. */
-async function readGitText(
-    executor: Pick<GitExecutor, "runBinary">,
-    args: string[],
-): Promise<string> {
-    // `ls-files -u` grows with the conflict, so every probe is bounded. A truncated probe is
-    // never trimmed into a plausible-looking answer: it throws and joins the not-paused path.
-    const result = await executor.runBinary(args, { maxOutputBytes: MAX_PROBE_OUTPUT_BYTES });
-    if (result.truncated) throw new Error(`Git output exceeded ${MAX_PROBE_OUTPUT_BYTES} bytes.`);
-    return result.stdout.toString("utf8").trim();
-}
-
 /**
  * Reports whether Git verifiably left no resumable rebase behind.
  *
@@ -272,9 +259,4 @@ function isMissingPath(error: unknown): error is NodeJS.ErrnoException {
     return (
         typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT"
     );
-}
-
-/** Turns an unknown thrown value into a bounded diagnostic for the UI. */
-function errorMessage(error: unknown): string {
-    return error instanceof Error ? error.message : String(error);
 }

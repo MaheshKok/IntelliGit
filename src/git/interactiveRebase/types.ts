@@ -89,6 +89,8 @@ export interface RebaseSessionManifest {
     branch: string;
     /** Optional all-or-none remote destination for the later force-push offer. */
     pushTarget?: RebasePushTarget;
+    /** Whether the submitted rebase range included history already pushed to a remote. */
+    hasPushedCommit: boolean;
     /** Commit immediately before the selected rebase range. */
     baseHash: string;
     /** HEAD object ID that must still match when the rebase starts. */

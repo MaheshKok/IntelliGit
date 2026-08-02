@@ -32,6 +32,7 @@ async function storageWithManifest(
         sessionId,
         repoRoot: REPO_ROOT,
         branch: "refs/heads/main",
+        hasPushedCommit: false,
         baseHash: "c".repeat(40),
         expectedHead: "d".repeat(40),
         createdAt: "2026-08-02T00:00:00.000Z",

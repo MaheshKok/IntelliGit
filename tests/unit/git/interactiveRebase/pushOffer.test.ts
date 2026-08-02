@@ -56,6 +56,7 @@ async function fixture(
         sessionId: "session-1",
         repoRoot: "/fixture-repository",
         branch: BRANCH,
+        hasPushedCommit: true,
         baseHash: "c".repeat(40),
         expectedHead: "d".repeat(40),
         createdAt: "2026-08-02T00:00:00.000Z",
