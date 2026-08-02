@@ -848,3 +848,80 @@ First pass 14/24 with 9 survivors. All four remaining survivors were classified,
 - **Reload reconciliation must read `offerRetained`'s consequence.** A manifest left at `completed-pending-push` after a *successful* push is now a reachable state, not a contradiction. Reconciliation that assumes such a manifest means "push never happened" will re-offer a push that already landed; the lease makes that safe but confusing. The manifest alone cannot distinguish the two cases — decide in step 8 whether that needs a durable marker.
 - Both exhaustiveness helpers (`assertNeverInteractiveRebaseSubmissionReason`, `assertNeverForcePushResult`) are compile-time gates on their own unions. Adding a variant to either in step 8 will fail typecheck until it is handled — intended pressure, not an obstacle.
 - Fixture lessons now hold twice over: a mock more permissive than production hides classification bugs (5a), and a fixture cleaner than production hides the code that copes with production (5b). Step 8's reconciliation fixtures should reproduce partial and contradictory on-disk state, not only the tidy cases.
+
+## Phase 6b — Continue and Abort rebase operations
+
+BASE_HEAD `1b0cc122`. SID `019fc048-dcb9-7252-bcf1-aab5f322796e`, `gpt-5.6-terra`/`high`. Telemetry `PEAK=152673 LAST=152673 PCT=59% NONRESUMABLE=no`. Rounds: 1 build, 0 Codex fix rounds, 6 orchestrator fixes. Scope: 10 files touched, 3 added, +936/−37.
+
+### The self-report was truthful this time, and one sentence is why
+
+6a's handoff added a single line to the work order: *demand the pasted `Test Files …` / `Tests …` summary, not a verdict about it.* 6b's self-report carried both lines verbatim, and rerunning the suite before touching anything reproduced them exactly — `RC=0`, `Test Files 153 passed (153)`, `Tests 2434 passed (2434)`. "Deviations: none" also held: the entire diff against pre-existing modules is four lines across `run.ts`, `storage.ts`, and `types.ts`, all of them deliverable 1.
+
+That is the whole difference from 6a, where a builder reported an absent summary as success and shipped a red suite. A work order that asks for evidence gets evidence; one that asks for a conclusion gets a conclusion. Keep the sentence.
+
+### Defects found and fixed
+
+1. **An unowned rebase that stopped at the next conflict was reported as dead.** `git rebase --continue` exits 1 both when it pauses at a conflict and when it refuses to continue at all, and the unowned path read every non-zero exit as a failure. Multi-conflict rebases are the common unowned case, so the user would be told a rebase that is sitting there waiting for them had failed. The path now probes `ls-files -u` — but only under a still-live rebase, because unmerged entries left behind by a rebase Git has already ended are not a pause. `isRebaseStillLive` asks `deriveRebaseControl` without a manifest, so it answers about Git's state alone and never re-correlates ownership it does not hold.
+2. **`ownership-changed` was reported for a rebase that never changed hands.** `failOwnedIfNotLive` returned `"ownership-changed"` for every thrown Git error that left rebase state behind, including one that left *our own* rebase live and owned. Both outcomes keep the session, so nothing broke — but the caller is sent looking for a foreign rebase that is not there. Only a state that stopped answering to our marker changed hands; a fatal over a still-owned rebase is a Git failure.
+3. **`readGitText` existed three times.** `run.ts`, `push.ts`, and the new `control.ts` each carried their own `MAX_PROBE_OUTPUT_BYTES`, `readGitText`, and `errorMessage`. The bound matters — `ls-files -u` grows with the conflict — and a fix applied to one copy is not a fix. All three now import `./gitText`, where the ceiling and the never-trim-a-truncated-probe rule live once. The extracted `readGitText` throws on truncation rather than returning a plausible-looking prefix; each caller's own failure path decides what an unanswerable probe means for the state it owns.
+4. **`LiveRebaseSessionManifest` was declared twice.** `control.ts` re-derived the narrowed lifecycle type that `readLiveRebaseManifest` already returns. `storage.ts` now exports it, so the narrowing has one definition and cannot drift from the function that produces it.
+5. **An unreachable branch with no explanation.** `deriveRebaseControl` can only answer `owned` by matching a marker against a live manifest, so `continueInteractiveRebase`'s `manifest ? … : …` fallback cannot fire today. It is kept and fails closed — a future derivation that learns to claim ownership from other evidence must not run owned cleanup against a session it never read — and `ownedManifestMissing` now says so, so the next reader does not delete it as dead code.
+6. **The non-owned failure shape was written out four times.** Extracted to `passThroughFailure(control, message)`, which is the only builder that can produce a `failed` result without an owned contract. `ownedFailure` is its counterpart. Neither can construct the other's `rebaseControl`.
+
+### Seven tests on the branches that destroy state
+
+`control.test.ts` shipped with no coverage of any path that deletes an IntelliGit session, and every one of those paths is reached from a *failed* Git command — exactly where a wrong branch is least likely to be noticed. The fixture gained `stderr`, `continueThrows`, and `afterContinue` so a test can say what Git did to the rebase directory as well as what it returned, and the seven added cases cover: Continue failing with nothing left to resume (session cleared), Continue failing under a rebase that stopped answering to our marker (session kept), a thrown Continue over a still-owned rebase (`git-failed`, not `ownership-changed`), a thrown Continue that left no rebase behind (session cleared), and the three unowned outcomes — pause, Git-already-ended, and Git-refused.
+
+### Mutation sweep — 26 mutants, 26 killed, zero survivors
+
+The first clean sweep in this build. The kills that carry weight:
+
+- **M08 and M19 revert the two behavior fixes above.** Removing `expectedExitCodes` from the unowned Continue, and restoring the unconditional `"ownership-changed"`, are both caught. The fixes are pinned by tests, not by the diff.
+- **M03** routes a foreign abort through owned cleanup — killed, so the ownership fence on state deletion is real.
+- **M11/M12** invert the manifest-retention flag on the force-push handoff, the seam where 5b's offer is either preserved or destroyed.
+- **M09/M10** substitute `true` and `false` for `manifest.hasPushedCommit`, which is deliverable 1's entire reason for existing: without it the offer decision reads a value the submission never recorded.
+- **M25** drops the truncation guard from the newly extracted `readGitText`. Consolidating a helper is only safe if the consolidated copy is the one under test.
+
+M19 initially reported "anchor not found" — Prettier had reflowed the exact `return ownedFailure(...)` statement the mutation anchored on into its multi-line form. Re-anchored on the formatted bytes and rerun: killed. A mutation harness that greps for source text has to read the source as it is on disk, not as it was written.
+
+All ten files restored byte-identically after every mutation, SHA-256 verified. `git stash` is never used — the tree carries uncommitted work.
+
+### The suite thrashes itself, and it cost this phase two hours
+
+The host rebooted mid-acceptance, taking the orchestrator session, its scratchpad, and its background task records with it. The rerun went RED on the `suite` gate: 8 failures, none of them in interactive-rebase code. A second run went RED with **9** — overlapping but not identical, from byte-identical input. Varying output from fixed input is nondeterminism, not a regression, which fails the same way every time.
+
+The decisive test was a detached worktree at `1b0cc122` — the base, with no `control.ts`, no `gitText.ts`, none of this phase's bytes — running the same full suite. It failed **20 tests across 9 files**, a strict superset of the working tree's failures. The tree carrying phase 6b fails *less* than the tree without it.
+
+The first diagnosis was ambient machine load, and it was wrong. Waiting for a quiet window failed twice: a run at 1-minute load **1.79** went red, while a later run at load **6.30** went green. What actually changed was the suite's own worker count.
+
+`vitest.config.ts` already documents the mechanism — *"one test can spawn dozens of git processes"* — but caps nothing. On 10 cores vitest runs 10 workers, each of the real-repository shelf suites spawning dozens of `git` subprocesses, and they starve each other until the 30s `testTimeout` fires. Capping to three workers made the suite both reliable and **faster**:
+
+| workers | ambient load | result | wall clock |
+|---|---|---|---|
+| default (10) | 1.79 | **RED** — 8 failed | 337.8s |
+| default (10) | 5.07 | **RED** — 9 failed | 274.5s |
+| 3 | 6.30 | **GREEN** — 2441/2441 | **178.1s** |
+
+Every failure was a timing signature — a 30s timeout, a `toBeLessThan(2_000)` wall-clock assertion that measured 2,774ms, or a `RepositoryLockBusyError` where a contention test lost its retry budget. Not one was a logic assertion, and not one was in an interactive-rebase file; all 12 of those, including the new `control.test.ts`, passed in every red run.
+
+The gate was therefore run with `VITEST_MAX_THREADS=3` — the same manifest, the same commands, the same tests, with the suite no longer competing with itself. **`vitest.config.ts` was not changed.** A worker cap is a repo-wide decision that lands on CI too, where the core count and the tradeoff are different, and it belongs to whoever owns the shelf suites rather than to this phase. The measurements above are the evidence for that decision; the finding is flagged rather than acted on.
+
+### Acceptance
+
+6 accept gates GREEN warn=0. Suite **2441/2441**, 153 files — the seven added cases are the whole delta from the build's own 2434. `SEAL: INTACT files=10 warns_open=0`. Full `.githooks` pre-commit chain green through `vsce package`.
+
+**Shadow-mode datum: not collected, eleventh time.** Six orchestrator fixes and seven added tests changed hash-covered files during verification, so the seal again covers bytes the verifier itself wrote. Eleven builds, zero data points, and the seal had to be rewritten a second time within this phase after a late doc-comment correction. `SEAL_MODE` should be redesigned around a distinct fix stage or dropped; carrying it to a twelfth build collects nothing.
+
+## Handoff — resume at Phase 6c
+
+- Branch `feat/interactive-rebase-from-here`; BASE_HEAD for 6c = the tip after this phase's two commits. Tunables unchanged; `SEAL_MODE=shadow`.
+- 6c scope: Continue Rebase / Abort Rebase in the toolbar, Abort-Merge suppression while a rebase is active, wiring to `continueInteractiveRebase` / `abortInteractiveRebase`, and the l10n those labels and messages need. 6d is reload reconciliation (PLAN step 8's marker-first, once-per-repository, default-deny evidence matrix).
+- **`paused-conflict` deliberately carries no `rebaseControl`.** Owned and unowned rebases both produce it and the user's next action is identical, so a caller that needs the ownership state must re-read the snapshot rather than trust a value captured before the pause. Do not add the field back to make a switch statement tidier.
+- **`InteractiveRebaseControlResult` has nine variants and no exhaustiveness helper of its own.** 6c's host mapping is the first consumer; add an `assertNeverInteractiveRebaseControlResult` there, matching the two that already guard the submission and force-push unions, so a tenth variant fails typecheck instead of falling through to a default.
+- **`completed-pending-push` hands 5b's offer straight back.** Continue over an owned rebase whose range touched pushed history returns the retained manifest, not a completion. The toolbar must route that variant into the existing force-push offer rather than reporting "rebase finished" and dropping it.
+- **`foreign-continue-refused` needs a real message, not a disabled button.** The user is looking at a rebase IntelliGit can see but must not feed helper input to. Silence there reads as a broken button; the message has to say another tool owns the rebase.
+- `UndockedViewProvider` still calls `hasWholeIndexOperationInProgress` directly and never sees `activeOperation` or `rebaseControl` — carried forward from 6a's handoff, still unaddressed, and 6c is the phase where it starts to matter.
+- **`CommitPanelViewProvider` now takes 12 positional constructor dependencies.** 6a's fix 3 exists because a test pinned one to `.at(-1)`. 6c adds handlers; converting to an options object first is cheaper than the next positional break.
+- A dependency-cruiser rule forbidding any `src/**` import of `editorHelper.ts` is still unwritten. 5a's blocker was that module executing on import; nothing prevents a future import from reintroducing it.
+- **Run the `suite` gate with `VITEST_MAX_THREADS=3`.** Uncapped it fails nondeterministically in the shelf and real-git suites regardless of how quiet the machine is, and it is slower. Note that vitest here is **1.6.1**, where `--maxWorkers` and `--poolOptions.*` do not exist as CLI flags — passing them silently yields `no tests` because they are parsed as filename filters. The env var is the working lever.
+- **Do not diagnose a red `suite` gate from the gate alone.** `verdict.json` records pass/fail per gate and keeps no output, so a failure has to be reproduced with the suite captured to a file before it means anything. If the failures are in the shelf or real-git suites, run the same suite in a detached worktree at the phase's base before touching a line of code — at base it fails worse.
