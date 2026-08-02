@@ -1,10 +1,13 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+    discardRebaseSession,
     getRebaseStoragePaths,
+    listRebaseManifests,
     readLiveRebaseManifest,
+    readRebaseManifest,
     writeRebaseManifest,
 } from "../../../../src/git/interactiveRebase/storage";
 import type {
@@ -116,5 +119,91 @@ describe("readLiveRebaseManifest", () => {
         await writeReservation(storageRoot, JSON.stringify({ sessionId: SESSION_ID }));
 
         await expect(readLiveRebaseManifest(storageRoot, REPO_ROOT)).resolves.toBeUndefined();
+    });
+});
+
+describe("retained rebase session storage", () => {
+    it("lists every manifest result, including corrupt state", async () => {
+        const storageRoot = await storageWithManifest("paused");
+        await writeFile(
+            getRebaseStoragePaths(storageRoot, REPO_ROOT).manifestPath("corrupt-session"),
+            "{",
+            "utf8",
+        );
+
+        await expect(listRebaseManifests(storageRoot, REPO_ROOT)).resolves.toEqual([
+            {
+                sessionId: "corrupt-session",
+                result: { status: "ambiguous", reason: "truncated" },
+            },
+            {
+                sessionId: SESSION_ID,
+                result: expect.objectContaining({
+                    status: "valid",
+                    manifest: expect.objectContaining({
+                        sessionId: SESSION_ID,
+                        lifecycle: "paused",
+                    }),
+                }),
+            },
+        ]);
+    });
+
+    it("treats a missing manifest directory as an empty retained-session list", async () => {
+        const storageRoot = await mkdtemp(path.join(os.tmpdir(), "intelligit-rebase-storage-"));
+        roots.push(storageRoot);
+
+        await expect(listRebaseManifests(storageRoot, REPO_ROOT)).resolves.toEqual([]);
+    });
+
+    it("discards one manifest and its helper directory idempotently", async () => {
+        const storageRoot = await storageWithManifest("running");
+        const paths = getRebaseStoragePaths(storageRoot, REPO_ROOT);
+        await mkdir(paths.sessionDirectory(SESSION_ID), { recursive: true });
+
+        await discardRebaseSession(storageRoot, REPO_ROOT, SESSION_ID);
+        await discardRebaseSession(storageRoot, REPO_ROOT, SESSION_ID);
+
+        await expect(readRebaseManifest(storageRoot, REPO_ROOT, SESSION_ID)).resolves.toEqual({
+            status: "missing",
+        });
+        await expect(stat(paths.sessionDirectory(SESSION_ID))).rejects.toMatchObject({
+            code: "ENOENT",
+        });
+    });
+
+    it("discards a listed entry whose name this module's own writer could never produce", async () => {
+        const storageRoot = await storageWithManifest("paused");
+        const paths = getRebaseStoragePaths(storageRoot, REPO_ROOT);
+        const strayName = "not a session id";
+        const strayPath = path.join(paths.manifestDirectory, `${strayName}.json`);
+        await writeFile(strayPath, "{}", "utf8");
+
+        // The listing surfaces it by filename, so the discard action offered for it has to work.
+        // Validating the identifier here would throw and leave the entry stranded forever.
+        await expect(listRebaseManifests(storageRoot, REPO_ROOT)).resolves.toContainEqual({
+            sessionId: strayName,
+            result: { status: "ambiguous", reason: "invalid-schema" },
+        });
+
+        await expect(
+            discardRebaseSession(storageRoot, REPO_ROOT, strayName),
+        ).resolves.toBeUndefined();
+        await expect(stat(strayPath)).rejects.toMatchObject({ code: "ENOENT" });
+    });
+
+    it("refuses to delete outside the repository namespace", async () => {
+        const storageRoot = await storageWithManifest("paused");
+        const paths = getRebaseStoragePaths(storageRoot, REPO_ROOT);
+        const outside = path.join(storageRoot, "unrelated.json");
+        await writeFile(outside, "{}", "utf8");
+
+        await discardRebaseSession(storageRoot, REPO_ROOT, "../../unrelated");
+
+        await expect(stat(outside)).resolves.toBeDefined();
+        await expect(readRebaseManifest(storageRoot, REPO_ROOT, SESSION_ID)).resolves.toMatchObject(
+            { status: "valid" },
+        );
+        expect(paths.manifestDirectory).toContain("interactive-rebase");
     });
 });

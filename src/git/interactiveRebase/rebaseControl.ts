@@ -13,6 +13,24 @@ export type LiveRebaseManifest = {
     lifecycle: "starting" | "running" | "paused";
 };
 
+/**
+ * Read-only evidence from Git's transient rebase directories.
+ *
+ * `merge` is the only layout IntelliGit can own. Missing or unreadable marker and metadata
+ * files deliberately become `undefined`, because absence cannot authorize message injection.
+ */
+export type RebaseDirectoryEvidence =
+    | { status: "none" }
+    | {
+          status: "merge";
+          marker?: string;
+          headName?: string;
+          onto?: string;
+          origHead?: string;
+      }
+    | { status: "apply" }
+    | { status: "uncertain" };
+
 const REBASE_SESSION_MARKER_MAX_BYTES = 4_096;
 
 type RebaseDirectoryState = "missing" | "readable" | "uncertain";
@@ -36,20 +54,79 @@ export async function deriveRebaseControl({
     liveManifest?: LiveRebaseManifest;
 }): Promise<RebaseControl | "none"> {
     try {
-        const [mergeState, applyState] = await Promise.all([
-            inspectRebaseDirectory(path.join(gitDir, "rebase-merge")),
-            inspectRebaseDirectory(path.join(gitDir, "rebase-apply")),
-        ]);
-        if (mergeState === "missing" && applyState === "missing") return "none";
-        if (!liveManifest) return "unowned";
-        if (applyState !== "missing" || mergeState !== "readable") return "foreign";
-        const marker = await readMarker(path.join(gitDir, "rebase-merge", REBASE_SESSION_MARKER));
-        return marker === liveManifest.sessionId ? "owned" : "foreign";
+        return deriveRebaseControlFromEvidence({
+            rebaseDirectory: await readRebaseDirectoryEvidence(gitDir, false),
+            liveManifest,
+        });
     } catch {
         // A thrown filesystem error cannot prove ownership; retain the manifest but never inject.
         // Unreachable while both helpers below convert their own failures into a value, and kept
         // so that a future helper which throws fails closed rather than escaping to the caller.
         return liveManifest ? "foreign" : "unowned";
+    }
+}
+
+/**
+ * Reads one bounded snapshot of Git's rebase directory before any manifest is selected.
+ *
+ * The marker is always read before `head-name`, `onto`, and `orig-head`; callers can omit
+ * those extra fields when they only need the existing marker-only control decision.
+ */
+export async function readRebaseDirectoryEvidence(
+    gitDir: string,
+    includeMetadata: boolean = true,
+): Promise<RebaseDirectoryEvidence> {
+    const [mergeState, applyState] = await Promise.all([
+        inspectRebaseDirectory(path.join(gitDir, "rebase-merge")),
+        inspectRebaseDirectory(path.join(gitDir, "rebase-apply")),
+    ]);
+    if (mergeState === "missing" && applyState === "missing") return { status: "none" };
+    if (mergeState !== "readable" || applyState !== "missing") {
+        return mergeState === "missing" && applyState === "readable"
+            ? { status: "apply" }
+            : { status: "uncertain" };
+    }
+
+    const rebaseDirectory = path.join(gitDir, "rebase-merge");
+    const marker = await readBoundedRebaseText(path.join(rebaseDirectory, REBASE_SESSION_MARKER));
+    if (!includeMetadata) return { status: "merge", marker };
+    const [headName, onto, origHead] = await Promise.all([
+        readBoundedRebaseText(path.join(rebaseDirectory, "head-name")),
+        readBoundedRebaseText(path.join(rebaseDirectory, "onto")),
+        readBoundedRebaseText(path.join(rebaseDirectory, "orig-head")),
+    ]);
+    return { status: "merge", marker, headName, onto, origHead };
+}
+
+/**
+ * Applies the established marker correlation rule to a previously captured directory snapshot.
+ *
+ * `hasLiveManifest` distinguishes a terminal-started rebase with no live IntelliGit state from
+ * a foreign rebase that conflicts with at least one retained live manifest.
+ */
+export function deriveRebaseControlFromEvidence({
+    rebaseDirectory,
+    liveManifest,
+    hasLiveManifest = Boolean(liveManifest),
+}: {
+    /** Rebase-directory snapshot captured before manifest selection. */
+    rebaseDirectory: RebaseDirectoryEvidence;
+    /** The live manifest whose session identifier equals the captured marker, if any. */
+    liveManifest?: LiveRebaseManifest;
+    /** Whether repository storage contains any otherwise valid live manifest. */
+    hasLiveManifest?: boolean;
+}): RebaseControl | "none" {
+    switch (rebaseDirectory.status) {
+        case "none":
+            return "none";
+        case "merge":
+            if (!liveManifest) return hasLiveManifest ? "foreign" : "unowned";
+            return rebaseDirectory.marker === liveManifest.sessionId ? "owned" : "foreign";
+        case "apply":
+        case "uncertain":
+            return hasLiveManifest ? "foreign" : "unowned";
+        default:
+            return assertNeverRebaseDirectoryEvidence(rebaseDirectory);
     }
 }
 
@@ -62,11 +139,11 @@ async function inspectRebaseDirectory(directory: string): Promise<RebaseDirector
     }
 }
 
-/** Reads no more than the fixed marker budget; a longer or unreadable marker cannot authorize. */
-async function readMarker(markerPath: string): Promise<string | undefined> {
+/** Reads no more than the fixed marker budget; a longer or unreadable value cannot authorize. */
+async function readBoundedRebaseText(targetPath: string): Promise<string | undefined> {
     let handle;
     try {
-        handle = await open(markerPath, "r");
+        handle = await open(targetPath, "r");
         const bytes = Buffer.alloc(REBASE_SESSION_MARKER_MAX_BYTES + 1);
         const { bytesRead } = await handle.read(bytes, 0, bytes.length, 0);
         if (bytesRead > REBASE_SESSION_MARKER_MAX_BYTES) return undefined;
@@ -77,6 +154,12 @@ async function readMarker(markerPath: string): Promise<string | undefined> {
     } finally {
         await handle?.close().catch(() => undefined);
     }
+}
+
+/** Preserves exhaustiveness when a new physical rebase-directory state is introduced. */
+function assertNeverRebaseDirectoryEvidence(evidence: never): never {
+    void evidence;
+    throw new Error("Unhandled interactive rebase directory evidence.");
 }
 
 /** Recognizes the one filesystem error that proves a path is absent. */

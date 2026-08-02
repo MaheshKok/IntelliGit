@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { mkdir, open, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, open, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type {
     RebaseManifestAmbiguousReason,
@@ -31,6 +31,14 @@ const LIVE_LIFECYCLES = new Set<RebaseSessionLifecycle>(["starting", "running", 
 export type LiveRebaseSessionManifest = RebaseSessionManifest & {
     lifecycle: "starting" | "running" | "paused";
 };
+
+/** One manifest file retained for a repository, including fail-closed read results. */
+export interface RebaseManifestListEntry {
+    /** Session identifier derived from the manifest filename. */
+    sessionId: string;
+    /** Parsed state, or the reason it cannot safely drive recovery. */
+    result: RebaseManifestReadResult;
+}
 
 /** Returns the isolated storage namespace for a caller-supplied repository root. */
 export function getRebaseStoragePaths(storageRoot: string, repoRoot: string): RebaseStoragePaths {
@@ -184,6 +192,7 @@ export async function readRebaseManifest(
     repoRoot: string,
     sessionId: string,
 ): Promise<RebaseManifestReadResult> {
+    if (!isSafeSessionId(sessionId)) return { status: "ambiguous", reason: "invalid-schema" };
     const paths = getRebaseStoragePaths(storageRoot, repoRoot);
     let contents: string;
     try {
@@ -194,9 +203,75 @@ export async function readRebaseManifest(
     }
     const parsed = parseManifest(contents);
     if ("reason" in parsed) return { status: "ambiguous", reason: parsed.reason };
+    if (parsed.manifest.sessionId !== sessionId) {
+        return { status: "ambiguous", reason: "invalid-schema" };
+    }
     const validationError = validateManifest(parsed.manifest);
     if (validationError) return { status: "ambiguous", reason: "invalid-schema" };
     return { status: "valid", manifest: parsed.manifest };
+}
+
+/**
+ * Lists every retained manifest file for one repository without suppressing unreadable or corrupt state.
+ *
+ * A missing manifest directory is a normal empty state; every other directory-read failure is surfaced to
+ * the caller so recovery cannot silently omit durable session evidence.
+ */
+export async function listRebaseManifests(
+    storageRoot: string,
+    repoRoot: string,
+): Promise<RebaseManifestListEntry[]> {
+    const paths = getRebaseStoragePaths(storageRoot, repoRoot);
+    let entries: string[];
+    try {
+        entries = await readdir(paths.manifestDirectory);
+    } catch (error) {
+        if (isFileMissing(error)) return [];
+        throw error;
+    }
+    const sessionIds = entries
+        .filter((entry) => entry.endsWith(".json"))
+        .map((entry) => entry.slice(0, -".json".length))
+        .sort();
+    return Promise.all(
+        sessionIds.map(async (sessionId) => ({
+            sessionId,
+            result: await readRebaseManifest(storageRoot, repoRoot, sessionId),
+        })),
+    );
+}
+
+/**
+ * Removes one retained manifest and its helper artifacts after an explicit discard decision.
+ *
+ * Both removals are idempotent so a repeated user action or a partially cleaned prior action succeeds.
+ *
+ * The session identifier is confined to the repository namespace rather than validated. The listing
+ * surfaces every file it finds by name, including names this module's own writer could never
+ * produce, and discard has to be able to clear anything the listing showed — validating would throw
+ * on exactly those entries and strand them behind a notice no user action could ever clear.
+ */
+export async function discardRebaseSession(
+    storageRoot: string,
+    repoRoot: string,
+    sessionId: string,
+): Promise<void> {
+    const paths = getRebaseStoragePaths(storageRoot, repoRoot);
+    const manifestPath = confineToDirectory(paths.manifestDirectory, `${sessionId}.json`);
+    const sessionDirectory = confineToDirectory(paths.sessionsDirectory, sessionId);
+    await Promise.all([
+        manifestPath ? rm(manifestPath, { force: true }) : Promise.resolve(),
+        sessionDirectory
+            ? rm(sessionDirectory, { force: true, recursive: true })
+            : Promise.resolve(),
+    ]);
+}
+
+/** Resolves a name directly inside one directory, or nothing when it would escape it. */
+function confineToDirectory(directory: string, name: string): string | undefined {
+    const parent = path.resolve(directory);
+    const resolved = path.resolve(parent, name);
+    return path.dirname(resolved) === parent ? resolved : undefined;
 }
 
 /**

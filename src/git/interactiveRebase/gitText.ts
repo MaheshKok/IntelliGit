@@ -1,4 +1,4 @@
-import type { GitExecutor } from "../executor";
+import type { GitBinaryRunOptions, GitExecutor } from "../executor";
 
 /** Byte ceiling for every interactive-rebase probe, so one huge conflict cannot exhaust the host. */
 const MAX_PROBE_OUTPUT_BYTES = 4 * 1024 * 1024;
@@ -14,8 +14,12 @@ const MAX_PROBE_OUTPUT_BYTES = 4 * 1024 * 1024;
 export async function readGitText(
     executor: Pick<GitExecutor, "runBinary">,
     args: string[],
+    options: Pick<GitBinaryRunOptions, "expectedExitCodes"> = {},
 ): Promise<string> {
-    const result = await executor.runBinary(args, { maxOutputBytes: MAX_PROBE_OUTPUT_BYTES });
+    const result = await executor.runBinary(args, {
+        maxOutputBytes: MAX_PROBE_OUTPUT_BYTES,
+        ...options,
+    });
     if (result.truncated) throw new Error(`Git output exceeded ${MAX_PROBE_OUTPUT_BYTES} bytes.`);
     return result.stdout.toString("utf8").trim();
 }
