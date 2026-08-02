@@ -507,5 +507,7 @@
     "Force push completed.": "强制推送已完成。",
     "Force push completed, but its pending offer could not be cleared and may reappear.": "强制推送已完成，但未能清除其待处理的提示，该提示可能会再次出现。",
     "The branch moved since the rebase — push manually.": "变基后分支已移动，请手动推送。",
-    "Force push failed: {message}": "强制推送失败：{message}"
+    "Force push failed: {message}": "强制推送失败：{message}",
+    "A rebase session did not finish cleanly — verify your branch, then push manually if intended": "变基会话未正常完成——请检查您的分支，如有需要请手动推送",
+    "Discard rebase session state": "放弃变基会话状态"
 }

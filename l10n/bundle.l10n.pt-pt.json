@@ -507,5 +507,7 @@
     "Force push completed.": "O envio forçado foi concluído.",
     "Force push completed, but its pending offer could not be cleared and may reappear.": "O envio forçado foi concluído, mas não foi possível limpar a oferta pendente, que pode reaparecer.",
     "The branch moved since the rebase — push manually.": "O ramo mudou desde o rebase — envie manualmente.",
-    "Force push failed: {message}": "O envio forçado falhou: {message}"
+    "Force push failed: {message}": "O envio forçado falhou: {message}",
+    "A rebase session did not finish cleanly — verify your branch, then push manually if intended": "Uma sessão de rebase não foi concluída corretamente — verifique o seu ramo e faça push manualmente se for o caso",
+    "Discard rebase session state": "Rejeitar o estado da sessão de rebase"
 }

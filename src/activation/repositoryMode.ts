@@ -21,6 +21,7 @@ import { logShelfOperation, logShelfWarning } from "../services/shelfObservabili
 import { ShelfStore } from "../shelf/store";
 import { resolveShelfPaths } from "../shelf/paths";
 import { readShelfSettings } from "./shelfSettings";
+import { reconcileRebaseSessionsOnActivation } from "./rebaseReconciliation";
 import {
     discoverGitRepositories,
     type DiscoveredRepository,
@@ -389,6 +390,17 @@ export async function activateRepositoryMode(
     let refreshServiceWatchersRegistered = false;
     /** Returns the currently active refresh coordinator after repository switches replace it. */
     const getRefreshService = (): RefreshService => refreshService;
+    if (globalStoragePath) {
+        void Promise.all(
+            repositories.map((repository) =>
+                reconcileRebaseSessionsOnActivation(repository.root, {
+                    storageRoot: globalStoragePath,
+                    executor: new GitExecutor(repository.root, mutationGate),
+                    refresh: () => getRefreshService().refreshCommitPanels(),
+                }),
+            ),
+        );
+    }
     const registerRefreshServiceWatchers = (): void => {
         if (refreshServiceWatchersRegistered) return;
         refreshService.registerFileWatchers();

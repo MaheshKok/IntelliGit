@@ -507,5 +507,7 @@
     "Force push completed.": "Принудительная отправка завершена.",
     "Force push completed, but its pending offer could not be cleared and may reappear.": "Принудительная отправка завершена, но ожидающее предложение не удалось удалить, и оно может появиться снова.",
     "The branch moved since the rebase — push manually.": "Ветка изменилась после rebase — отправьте изменения вручную.",
-    "Force push failed: {message}": "Принудительная отправка не удалась: {message}"
+    "Force push failed: {message}": "Принудительная отправка не удалась: {message}",
+    "A rebase session did not finish cleanly — verify your branch, then push manually if intended": "Сеанс rebase завершился некорректно — проверьте ветку, затем при необходимости отправьте изменения вручную",
+    "Discard rebase session state": "Отменить состояние сеанса rebase"
 }

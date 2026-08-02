@@ -161,6 +161,8 @@
     "Force push failed: {message}": "Force push failed: {message}",
     "Rebase paused on conflict — resolve, then Continue.": "Rebase paused on conflict — resolve, then Continue.",
     "Rebase editor stopped: {message}": "Rebase editor stopped: {message}",
+    "A rebase session did not finish cleanly — verify your branch, then push manually if intended": "A rebase session did not finish cleanly — verify your branch, then push manually if intended",
+    "Discard rebase session state": "Discard rebase session state",
     "Interactive rebase failed: {message}": "Interactive rebase failed: {message}",
     "Extension storage is unavailable.": "Extension storage is unavailable.",
     "The interactive rebase editor helper is missing.": "The interactive rebase editor helper is missing.",

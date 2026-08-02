@@ -507,5 +507,7 @@
     "Force push completed.": "Wymuszone wypchnięcie zostało ukończone.",
     "Force push completed, but its pending offer could not be cleared and may reappear.": "Wymuszone wypchnięcie zostało ukończone, ale nie udało się usunąć oczekującej propozycji i może się ona pojawić ponownie.",
     "The branch moved since the rebase — push manually.": "Gałąź zmieniła się od czasu rebase — wypchnij ręcznie.",
-    "Force push failed: {message}": "Wymuszone wypchnięcie nie powiodło się: {message}"
+    "Force push failed: {message}": "Wymuszone wypchnięcie nie powiodło się: {message}",
+    "A rebase session did not finish cleanly — verify your branch, then push manually if intended": "Sesja rebase nie zakończyła się poprawnie — sprawdź gałąź, a następnie w razie potrzeby wypchnij zmiany ręcznie",
+    "Discard rebase session state": "Odrzuć stan sesji rebase"
 }

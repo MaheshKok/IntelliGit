@@ -507,5 +507,7 @@
     "Force push completed.": "Force-Push abgeschlossen.",
     "Force push completed, but its pending offer could not be cleared and may reappear.": "Force-Push abgeschlossen, das ausstehende Angebot konnte jedoch nicht entfernt werden und wird möglicherweise erneut angezeigt.",
     "The branch moved since the rebase — push manually.": "Der Branch wurde seit der Rebase verschoben — bitte manuell pushen.",
-    "Force push failed: {message}": "Force-Push fehlgeschlagen: {message}"
+    "Force push failed: {message}": "Force-Push fehlgeschlagen: {message}",
+    "A rebase session did not finish cleanly — verify your branch, then push manually if intended": "Eine Rebase-Sitzung wurde nicht sauber abgeschlossen — prüfen Sie Ihren Branch und pushen Sie bei Bedarf manuell",
+    "Discard rebase session state": "Rebase-Sitzungsstatus verwerfen"
 }

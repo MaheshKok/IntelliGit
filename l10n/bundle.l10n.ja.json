@@ -507,5 +507,7 @@
     "Force push completed.": "強制プッシュが完了しました。",
     "Force push completed, but its pending offer could not be cleared and may reappear.": "強制プッシュは完了しましたが、保留中の確認を消去できなかったため、再度表示される場合があります。",
     "The branch moved since the rebase — push manually.": "リベース後にブランチが移動しました。手動でプッシュしてください。",
-    "Force push failed: {message}": "強制プッシュに失敗しました: {message}"
+    "Force push failed: {message}": "強制プッシュに失敗しました: {message}",
+    "A rebase session did not finish cleanly — verify your branch, then push manually if intended": "リベースセッションが正常に終了しませんでした。ブランチを確認し、必要に応じて手動でプッシュしてください。",
+    "Discard rebase session state": "リベースセッションの状態を破棄"
 }
