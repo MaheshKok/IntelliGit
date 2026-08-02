@@ -2240,6 +2240,36 @@ describe("view providers integration", () => {
         });
     });
 
+    it("UndockedViewProvider returns the webview rebase-dialog delivery result", async () => {
+        const { UndockedViewProvider } = await import("../../../src/views/UndockedViewProvider");
+        const provider = new UndockedViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+            makeGitOpsMock() as unknown as object,
+            { fsPath: "/repo", path: "/repo" } as unknown as { fsPath: string; path: string },
+            makeCredentialStore() as unknown as object,
+            createMemento() as unknown as object,
+        );
+        const testProvider = provider as unknown as {
+            panel: {
+                webview: { postMessage: typeof postMessageSpy };
+                dispose: ReturnType<typeof vi.fn>;
+            };
+        };
+        testProvider.panel = { webview: { postMessage: postMessageSpy }, dispose: vi.fn() };
+        postMessageSpy.mockResolvedValueOnce(false);
+
+        await expect(
+            provider.showRebaseDialog({
+                type: "showRebaseDialog",
+                requestId: "request-1",
+                commits: [],
+                branch: "refs/heads/main",
+                hasPushed: false,
+            }),
+        ).resolves.toBe(false);
+        provider.dispose();
+    });
+
     it("UndockedViewProvider reports commit completion when draft cleanup rejects", async () => {
         const { UndockedViewProvider } = await import("../../../src/views/UndockedViewProvider");
         const gitOps = makeGitOpsMock();

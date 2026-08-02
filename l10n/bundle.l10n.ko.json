@@ -587,5 +587,6 @@
     "Merge: {file}": "병합: {file}",
     "Applying merge result for {path}...": "{path}에 대한 병합 결과를 적용하는 중...",
     "File is not in a conflicted state: {path}": "파일이 충돌 상태가 아닙니다: {path}",
-    "There are uncommitted changes, please commit or stash them first.": "커밋되지 않은 변경 사항이 있습니다. 먼저 커밋하거나 스태시하세요."
+    "There are uncommitted changes, please commit or stash them first.": "커밋되지 않은 변경 사항이 있습니다. 먼저 커밋하거나 스태시하세요.",
+    "Interactive rebase completed, but IntelliGit could not save its local completion state.": "대화형 리베이스가 완료되었지만 IntelliGit에서 로컬 완료 상태를 저장하지 못했습니다."
 }

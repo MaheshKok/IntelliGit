@@ -587,5 +587,6 @@
     "Merge: {file}": "Слияние: {file}",
     "Applying merge result for {path}...": "Применение результата слияния для {path}...",
     "File is not in a conflicted state: {path}": "Файл не находится в состоянии конфликта: {path}",
-    "There are uncommitted changes, please commit or stash them first.": "Есть незакоммиченные изменения. Сначала закоммитьте или спрячьте их."
+    "There are uncommitted changes, please commit or stash them first.": "Есть незакоммиченные изменения. Сначала закоммитьте или спрячьте их.",
+    "Interactive rebase completed, but IntelliGit could not save its local completion state.": "Интерактивный rebase завершён, но IntelliGit не удалось сохранить локальное состояние завершения."
 }

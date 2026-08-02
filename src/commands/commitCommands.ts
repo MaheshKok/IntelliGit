@@ -54,7 +54,7 @@ export async function handleCommitContextAction(params: {
     originProvider: object;
     postRebaseDialog: (
         message: Extract<CommitGraphInbound, { type: "showRebaseDialog" }>,
-    ) => boolean;
+    ) => boolean | Promise<boolean>;
     pendingRebaseDialogRequests: PendingRebaseDialogRequests;
 }): Promise<void> {
     const {

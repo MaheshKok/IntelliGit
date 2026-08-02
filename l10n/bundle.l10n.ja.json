@@ -587,5 +587,6 @@
     "Merge: {file}": "マージ: {file}",
     "Applying merge result for {path}...": "{path} のマージ結果を適用しています...",
     "File is not in a conflicted state: {path}": "ファイルは競合状態ではありません: {path}",
-    "There are uncommitted changes, please commit or stash them first.": "コミットされていない変更があります。先にコミットまたはスタッシュしてください。"
+    "There are uncommitted changes, please commit or stash them first.": "コミットされていない変更があります。先にコミットまたはスタッシュしてください。",
+    "Interactive rebase completed, but IntelliGit could not save its local completion state.": "対話的リベースは完了しましたが、IntelliGit はローカルの完了状態を保存できませんでした。"
 }

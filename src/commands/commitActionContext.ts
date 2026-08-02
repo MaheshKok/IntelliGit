@@ -29,12 +29,12 @@ export interface CommitActionContext {
     /**
      * Posts an interactive-rebase dialog payload only to the provider that dispatched this action.
      *
-     * Returns false when that provider has no live webview left to receive it, which the caller
-     * must treat as a failed handoff rather than a silent success.
+     * Returns or resolves false when that provider has no live webview left to receive it, which
+     * the caller must treat as a failed handoff rather than a silent success.
      */
     postRebaseDialog: (
         message: Extract<CommitGraphInbound, { type: "showRebaseDialog" }>,
-    ) => boolean;
+    ) => boolean | Promise<boolean>;
     /** Shared request registry that preserves single-use dialog state across all commit-list hosts. */
     pendingRebaseDialogRequests: PendingRebaseDialogRequests;
 }

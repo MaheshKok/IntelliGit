@@ -587,5 +587,6 @@
     "Merge: {file}": "合并：{file}",
     "Applying merge result for {path}...": "正在应用 {path} 的合并结果...",
     "File is not in a conflicted state: {path}": "文件未处于冲突状态：{path}",
-    "There are uncommitted changes, please commit or stash them first.": "存在未提交的更改，请先提交或贮藏。"
+    "There are uncommitted changes, please commit or stash them first.": "存在未提交的更改，请先提交或贮藏。",
+    "Interactive rebase completed, but IntelliGit could not save its local completion state.": "交互式变基已完成，但 IntelliGit 无法保存本地完成状态。"
 }

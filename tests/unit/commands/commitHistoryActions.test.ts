@@ -305,9 +305,9 @@ describe("interactiveRebaseFromHere", () => {
         },
     );
 
-    it("retracts the registered request when the originating view cannot show the dialog", async () => {
+    it("awaits and retracts the registered request when the originating view cannot show the dialog", async () => {
         const { context, originProvider, postRebaseDialog, pendingRequests } = contextFor();
-        postRebaseDialog.mockReturnValue(false);
+        postRebaseDialog.mockResolvedValue(false);
 
         await interactiveRebaseFromHere(context);
 

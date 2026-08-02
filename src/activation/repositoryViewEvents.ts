@@ -527,6 +527,14 @@ export async function showInteractiveRebaseSubmissionRunResult(
                 vscode.l10n.t("Interactive rebase completed."),
             );
             return;
+        case "completed-with-local-state-warning":
+            await refresh();
+            await vscode.window.showWarningMessage(
+                vscode.l10n.t(
+                    "Interactive rebase completed, but IntelliGit could not save its local completion state.",
+                ),
+            );
+            return;
         case "completed-pending-push": {
             await refresh();
             const forcePush = vscode.l10n.t("Force Push");
@@ -646,6 +654,14 @@ export async function showInteractiveRebaseControlResult(
                 await refreshOnce();
                 await vscode.window.showInformationMessage(
                     vscode.l10n.t("Interactive rebase completed."),
+                );
+                return;
+            case "completed-with-local-state-warning":
+                await refreshOnce();
+                await vscode.window.showWarningMessage(
+                    vscode.l10n.t(
+                        "Interactive rebase completed, but IntelliGit could not save its local completion state.",
+                    ),
                 );
                 return;
             case "completed-pending-push":

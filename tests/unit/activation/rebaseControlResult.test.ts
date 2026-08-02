@@ -128,6 +128,33 @@ describe("interactive rebase control result messages", () => {
         expect(events).toEqual(["refresh", "notification"]);
     });
 
+    it.each([
+        ["submission", showInteractiveRebaseSubmissionRunResult],
+        ["Continue", showInteractiveRebaseControlResult],
+    ] as const)(
+        "refreshes and warns about local state after a completed %s without offering a push",
+        async (_source, showResult) => {
+            const refresh = vi.fn(async () => undefined);
+            const forcePush = vi.fn();
+            const dismiss = vi.fn();
+
+            await showResult(
+                { status: "completed-with-local-state-warning", rebasedHeadOid: "c".repeat(40) },
+                refresh,
+                { forcePush, dismiss },
+            );
+
+            expect(refresh).toHaveBeenCalledTimes(1);
+            expect(vscodeMock.window.showWarningMessage).toHaveBeenCalledWith(
+                "Interactive rebase completed, but IntelliGit could not save its local completion state.",
+            );
+            expect(vscodeMock.window.showInformationMessage).not.toHaveBeenCalled();
+            expect(vscodeMock.window.showErrorMessage).not.toHaveBeenCalled();
+            expect(forcePush).not.toHaveBeenCalled();
+            expect(dismiss).not.toHaveBeenCalled();
+        },
+    );
+
     it("routes completed-pending-push through the existing force-push offer", async () => {
         await report({ status: "completed-pending-push", manifest });
         expect(vscodeMock.window.showWarningMessage).toHaveBeenCalledWith(

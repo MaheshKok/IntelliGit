@@ -16,6 +16,22 @@ import {
     writeRebaseManifest,
 } from "../../../../src/git/interactiveRebase/storage";
 
+const terminalManifestWriteFault = vi.hoisted(() => ({ enabled: false }));
+
+vi.mock("../../../../src/git/interactiveRebase/storage", async (importOriginal) => {
+    const actual = await importOriginal<typeof import("../../../../src/git/interactiveRebase/storage")>();
+    return {
+        ...actual,
+        writeRebaseManifest: async (...args: Parameters<typeof actual.writeRebaseManifest>) => {
+            if (terminalManifestWriteFault.enabled) {
+                terminalManifestWriteFault.enabled = false;
+                throw new Error("forced terminal manifest write failure");
+            }
+            return actual.writeRebaseManifest(...args);
+        },
+    };
+});
+
 const BASE = "a".repeat(40);
 const HEAD = "b".repeat(40);
 const REBASED = "c".repeat(40);
@@ -25,6 +41,7 @@ const SESSION_ID = "session-1";
 const directories: string[] = [];
 
 afterEach(async () => {
+    terminalManifestWriteFault.enabled = false;
     await Promise.all(
         directories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })),
     );
@@ -42,6 +59,8 @@ async function fixture(
         continueThrows?: string;
         /** Git state left behind by a Continue that did not succeed, observed by the second probe. */
         afterContinue?: "keep" | "end" | "steal";
+        /** Makes only the manifest write after a successful Git Continue fail. */
+        terminalManifestWriteFailure?: boolean;
     } = {},
 ) {
     const root = await mkdtemp(path.join(os.tmpdir(), "intelligit-rebase-control-"));
@@ -112,6 +131,9 @@ async function fixture(
                     );
                 }
                 if (options.continueThrows) throw new Error(options.continueThrows);
+                if (succeeded && options.terminalManifestWriteFailure) {
+                    terminalManifestWriteFault.enabled = true;
+                }
                 return binary("", options.stderr ?? "helper-stop", exitCode);
             }
             if (command === "rebase --abort") {
@@ -219,6 +241,21 @@ describe("interactive rebase control", () => {
         await Promise.all([
             expectMissing(test.paths.sessionDirectory(SESSION_ID)),
             expect(access(test.paths.manifestPath(SESSION_ID))).resolves.toBeUndefined(),
+            expectMissing(test.paths.reservationPath),
+        ]);
+    });
+
+    it("reports Git success and cleans local state when the terminal Continue manifest write fails", async () => {
+        const test = await fixture({ hasPushedCommit: true, terminalManifestWriteFailure: true });
+
+        await expect(continueInteractiveRebase(test.dependencies, REPO_ROOT)).resolves.toEqual({
+            status: "completed-with-local-state-warning",
+            rebasedHeadOid: REBASED,
+        });
+
+        await Promise.all([
+            expectMissing(test.paths.sessionDirectory(SESSION_ID)),
+            expectMissing(test.paths.manifestPath(SESSION_ID)),
             expectMissing(test.paths.reservationPath),
         ]);
     });

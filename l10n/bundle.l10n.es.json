@@ -587,5 +587,6 @@
     "Merge: {file}": "Fusión: {file}",
     "Applying merge result for {path}...": "Aplicando el resultado de la fusión para {path}...",
     "File is not in a conflicted state: {path}": "El archivo no está en un estado de conflicto: {path}",
-    "There are uncommitted changes, please commit or stash them first.": "Hay cambios sin confirmar; confírmalos o guárdalos primero."
+    "There are uncommitted changes, please commit or stash them first.": "Hay cambios sin confirmar; confírmalos o guárdalos primero.",
+    "Interactive rebase completed, but IntelliGit could not save its local completion state.": "La reorganización interactiva se completó, pero IntelliGit no pudo guardar su estado de finalización local."
 }

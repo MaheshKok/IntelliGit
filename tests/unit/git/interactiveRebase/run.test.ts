@@ -4,6 +4,21 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const cleanupFault = vi.hoisted(() => ({ manifestRemoval: false }));
+const terminalManifestWriteFault = vi.hoisted(() => ({ enabled: false }));
+
+vi.mock("../../../../src/git/interactiveRebase/storage", async (importOriginal) => {
+    const actual = await importOriginal<typeof import("../../../../src/git/interactiveRebase/storage")>();
+    return {
+        ...actual,
+        writeRebaseManifest: async (...args: Parameters<typeof actual.writeRebaseManifest>) => {
+            if (terminalManifestWriteFault.enabled) {
+                terminalManifestWriteFault.enabled = false;
+                throw new Error("forced terminal manifest write failure");
+            }
+            return actual.writeRebaseManifest(...args);
+        },
+    };
+});
 
 vi.mock("node:fs/promises", async (importOriginal) => {
     const actual = await importOriginal<typeof import("node:fs/promises")>();
@@ -31,6 +46,7 @@ const directories: string[] = [];
 
 afterEach(async () => {
     cleanupFault.manifestRemoval = false;
+    terminalManifestWriteFault.enabled = false;
     await Promise.all(
         directories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })),
     );
@@ -58,6 +74,8 @@ async function fixture(
         unreadableRebaseDirectoryBeforeThrow?: boolean;
         /** Git command whose output is reported as hitting the byte ceiling. */
         truncateProbe?: string;
+        /** Makes only the manifest write after a successful Git rebase fail. */
+        terminalManifestWriteFailure?: boolean;
     } = {},
 ) {
     const root = await mkdtemp(path.join(os.tmpdir(), "intelligit-rebase-run-"));
@@ -115,6 +133,9 @@ async function fixture(
                 }
                 if (options.createRebaseDirectory) await mkdir(path.join(gitDir, "rebase-merge"));
                 const exitCode = options.exitCode ?? 0;
+                if (exitCode === 0 && options.terminalManifestWriteFailure) {
+                    terminalManifestWriteFault.enabled = true;
+                }
                 // The real executor rejects any code outside `expectedExitCodes`; a mock that
                 // returned every code regardless would hide which codes the caller accepts.
                 if (!(runOptions?.expectedExitCodes ?? [0]).includes(exitCode)) {
@@ -248,6 +269,22 @@ describe("runInteractiveRebaseSubmission", () => {
 
         const paths = getRebaseStoragePaths(test.storageRoot, "/fixture-repository");
         await expectMissing(paths.manifestPath("session-1"));
+    });
+
+    it("reports Git success and cleans local state when the terminal manifest write fails", async () => {
+        const test = await fixture({ terminalManifestWriteFailure: true });
+
+        await expect(runInteractiveRebaseSubmission(test.dependencies, input())).resolves.toEqual({
+            status: "completed-with-local-state-warning",
+            rebasedHeadOid: REBASED,
+        });
+
+        const paths = getRebaseStoragePaths(test.storageRoot, "/fixture-repository");
+        await Promise.all([
+            expectMissing(paths.sessionDirectory("session-1")),
+            expectMissing(paths.manifestPath("session-1")),
+            expectMissing(paths.reservationPath),
+        ]);
     });
 
     it("preserves the computed result when manifest cleanup fails", async () => {

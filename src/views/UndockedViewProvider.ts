@@ -2016,13 +2016,16 @@ export class UndockedViewProvider {
     /**
      * Posts a validated rebase-dialog request only to this undocked panel instance.
      *
-     * Returns whether a live webview existed to receive it, so a caller that already registered a
-     * one-shot request can retract it instead of leaving the user with neither a dialog nor an error.
+     * Resolves to the webview delivery result, so a caller that already registered a one-shot
+     * request can retract it instead of leaving the user with neither a dialog nor an error.
      */
-    showRebaseDialog(message: Extract<UnifiedInbound, { type: "showRebaseDialog" }>): boolean {
-        if (!this.panel) return false;
-        this.postToWebview(message);
-        return true;
+    async showRebaseDialog(
+        message: Extract<UnifiedInbound, { type: "showRebaseDialog" }>,
+    ): Promise<boolean> {
+        const panel = this.panel;
+        if (!panel) return false;
+        const delivered = await panel.webview.postMessage(message);
+        return delivered;
     }
 
     private postToWebview(msg: UnifiedInbound): void {

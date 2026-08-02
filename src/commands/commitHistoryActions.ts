@@ -307,7 +307,7 @@ export async function interactiveRebaseFromHere(ctx: CommitActionContext): Promi
         expectedHead,
         expectedBranch,
     });
-    const delivered = ctx.postRebaseDialog({
+    const delivered = await ctx.postRebaseDialog({
         type: "showRebaseDialog",
         requestId,
         commits: rangeResult.commits,

@@ -49,6 +49,12 @@ export type InteractiveRebaseControlResult =
           rebasedHeadOid: string;
       }
     | {
+          /** Git completed, but IntelliGit could not persist its terminal local state. */
+          status: "completed-with-local-state-warning";
+          /** Fresh HEAD object ID observed after the completed rebase. */
+          rebasedHeadOid: string;
+      }
+    | {
           /** An owned rebase completed and retained its pending force-push offer. */
           status: "completed-pending-push";
           /** The retained manifest that pins the offered force-push target. */
