@@ -8,6 +8,8 @@ export interface GitBinaryRunOptions {
     input?: Buffer;
     expectedExitCodes?: readonly number[];
     outputFile?: string;
+    /** Environment variables merged over the parent process only for this Git invocation. */
+    env?: Record<string, string>;
     /** Stops stdout acquisition after this many bytes, retaining only the bounded prefix. */
     maxOutputBytes?: number;
 }
@@ -70,11 +72,15 @@ export class GitExecutor {
      * translate failures in workflow-specific ways. At most MAX_CONCURRENT_PROCESSES
      * spawned Git processes run concurrently per executor instance, matching the
      * previous Simple Git concurrency cap.
+     *
+     * `options.env` merges over a copy of the parent environment for this invocation
+     * only — `process.env` is never mutated — and is forwarded on both the gated
+     * (mutating) and ungated paths.
      */
-    async run(args: string[]): Promise<string> {
+    async run(args: string[], options: Pick<GitBinaryRunOptions, "env"> = {}): Promise<string> {
         await this.processSemaphore.acquire();
         try {
-            const output = await this.runGated(args);
+            const output = await this.runGated(args, options);
             notifyGitSuccessSafely(args);
             return output;
         } finally {
@@ -83,9 +89,12 @@ export class GitExecutor {
     }
 
     /** Routes mutating commands through the repository mutation gate; others run directly. */
-    private async runGated(args: string[]): Promise<string> {
+    private async runGated(
+        args: string[],
+        options: Pick<GitBinaryRunOptions, "env"> = {},
+    ): Promise<string> {
         const runText = async (): Promise<string> =>
-            (await this.runBinary(args)).stdout.toString("utf8");
+            (await this.runBinary(args, options)).stdout.toString("utf8");
         if (!this.mutationGate || !isMutatingGitCommand(args)) return await runText();
 
         const commonDir = (await this.runBinary(["rev-parse", "--git-common-dir"])).stdout.toString(
@@ -110,7 +119,11 @@ export class GitExecutor {
             );
         }
         return new Promise<GitBinaryRunResult>((resolve, reject) => {
-            const child = spawn("git", args, { cwd: this.repoRoot, stdio: "pipe" });
+            const child = spawn("git", args, {
+                cwd: this.repoRoot,
+                stdio: "pipe",
+                env: { ...process.env, ...options.env },
+            });
             const stdout: Buffer[] = [];
             const stderr: Buffer[] = [];
             const output = options.outputFile ? createWriteStream(options.outputFile) : undefined;

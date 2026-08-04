@@ -105,6 +105,9 @@ vi.mock("../../../src/views/UndockedViewProvider", () => ({
         onWorktreeAction = event();
         onDeleteBranches = event();
         onCommitAction = event();
+        onRebaseDialogSubmit = event();
+        onRebaseDialogCancel = event();
+        onRebaseControl = event();
         onOpenCommitFileDiff = event();
         onDidChangeWorkingTree = event();
         onDidChangeFileCount = event();
@@ -116,9 +119,18 @@ vi.mock("../../../src/views/UndockedViewProvider", () => ({
         refresh = vi.fn(async () => undefined);
         refreshSilent = vi.fn(async () => undefined);
         clearChecksCache = vi.fn();
+        // Mirrors the real provider's delivery contract: true only while a webview is live.
+        showRebaseDialog = vi.fn(() => true);
         dispose = vi.fn();
         constructor(...args: unknown[]) {
-            undockedOptions.push(args.at(-1) as Record<string, unknown>);
+            undockedOptions.push(
+                args.find(
+                    (argument): argument is Record<string, unknown> =>
+                        typeof argument === "object" &&
+                        argument !== null &&
+                        "repositories" in argument,
+                ) ?? {},
+            );
         }
     },
 }));
@@ -256,7 +268,10 @@ describe("commit-message generation host wiring", () => {
             dependencies: { resolveRoot: (root: string) => Record<string, unknown> };
             dispose: ReturnType<typeof vi.fn>;
         };
-        expect(commitPanelArguments[0]?.at(-1)).toBe(coordinator);
+        // Injection is asserted by identity rather than by position: the panel's constructor takes
+        // positional dependencies, and pinning this to the last slot fails whenever an unrelated
+        // one is appended.
+        expect(commitPanelArguments[0]).toContain(coordinator);
         expect(undockedOptions[0]?.commitMessageGenerationCoordinator).toBe(coordinator);
 
         const rootContext = coordinator.dependencies.resolveRoot("/repo-b");

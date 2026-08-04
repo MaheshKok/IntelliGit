@@ -41,6 +41,64 @@ afterEach(() => {
 });
 
 describe("undocked commit-message generation lifecycle", () => {
+    it("routes an interactive-rebase offer through the undocked message bridge", async () => {
+        const postMessage = vi.fn();
+        vi.doMock("../../../src/webviews/react/shared/vscodeApi", () => ({
+            getVsCodeApi: () => ({ postMessage }),
+        }));
+        const { useUnifiedMessages } =
+            await import("../../../src/webviews/react/undocked/useUnifiedMessages");
+        const onShowRebaseDialog = vi.fn();
+
+        function Harness(): null {
+            const loadingMore = useRef(false);
+            const cpStateRef = useRef(initialCommitPanelState);
+            useUnifiedMessages({
+                graphDispatch: vi.fn(),
+                cpDispatch: vi.fn(),
+                applyCommitPanelAction: vi.fn(() => initialCommitPanelState),
+                cpStateRef,
+                loadingMore,
+                selectedHash: null,
+                selectedRepositoryRoot: null,
+                setRepositories: vi.fn(),
+                setSelectedRepositoryRoot: vi.fn(),
+                markWidthsHydrated: vi.fn(),
+                setSectionWidths: vi.fn(),
+                layoutRef: { current: null },
+                setCommitPanelPosition: vi.fn(),
+                setViewVisible: vi.fn(),
+                onShowRebaseDialog,
+            });
+            return null;
+        }
+
+        await render(<Harness />);
+        const commits = [
+            {
+                hash: "a".repeat(40),
+                authorName: "Ada",
+                authoredAt: "2026-01-01",
+                body: "Subject",
+                isPushed: false,
+            },
+        ];
+        send({
+            type: "showRebaseDialog",
+            requestId: "undocked-request",
+            commits,
+            branch: "main",
+            hasPushed: false,
+        });
+        expect(onShowRebaseDialog).toHaveBeenCalledWith({
+            type: "showRebaseDialog",
+            requestId: "undocked-request",
+            commits,
+            branch: "main",
+            hasPushed: false,
+        });
+    });
+
     it("keeps only the winning request output and restores superseded or cancelled drafts", () => {
         const requested = commitPanelReducer(initialCommitPanelState, {
             type: "REQUEST_COMMIT_MESSAGE_GENERATION",

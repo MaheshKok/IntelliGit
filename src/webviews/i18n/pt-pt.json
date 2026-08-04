@@ -330,5 +330,20 @@
     "stash.fileAction.cherryPickSelectedChanges": "Fazer cherry-pick das alterações selecionadas",
     "a11y.resizeRepositoryColumn": "Redimensionar a coluna do repositório",
     "commit.message.generate": "Gerar mensagem de commit",
-    "commit.message.stopGeneration": "Parar a geração da mensagem de commit"
+    "commit.message.stopGeneration": "Parar a geração da mensagem de commit",
+    "rebase.dialog.title": "A rebasear commits",
+    "rebase.dialog.pushedWarning": "Alguns commits já foram enviados. Fazer rebase dos mesmos reescreve o histórico publicado.",
+    "rebase.dialog.firstActionCleared": "O primeiro commit restante não pode ser agrupado nem corrigido e foi alterado para pick.",
+    "rebase.dialog.action": "Ação de rebase",
+    "rebase.dialog.message": "Mensagem do commit",
+    "rebase.dialog.moveUp": "Mover commit para cima",
+    "rebase.dialog.moveDown": "Mover commit para baixo",
+    "rebase.dialog.start": "Iniciar rebase",
+    "rebase.action.pick": "Selecionar",
+    "rebase.action.reword": "Reescrever",
+    "rebase.action.squash": "Combinar",
+    "rebase.action.fixup": "Correção",
+    "rebase.action.continueRebase": "Continuar rebase",
+    "rebase.action.abortRebase": "Abortar rebase",
+    "rebase.dialog.missingMessage": "É necessária uma mensagem de commit para: {hashes}"
 }

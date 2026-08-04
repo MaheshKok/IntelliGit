@@ -1,9 +1,9 @@
 // esbuild configuration for building the extension host bundle and webview bundles.
-// Produces dist/extension.js (CJS for VS Code) and dist/webview-*.js (ESM for webviews).
+// Produces dist/extension.js (CJS for VS Code) and dist/webview-*.js (IIFE for webviews).
 
 const esbuild = require("esbuild");
 const path = require("path");
-const { WEBVIEW_CONFIGS } = require("./webviewConfigs");
+const { WEBVIEW_CONFIGS, createWebviewBuildOptions } = require("./webviewConfigs");
 
 const extensionConfig = {
     entryPoints: [path.resolve(__dirname, "../src/extension.ts")],
@@ -19,29 +19,44 @@ const extensionConfig = {
     mainFields: ["module", "main"],
 };
 
-const webviewConfigs = WEBVIEW_CONFIGS.map(({ entry, out }) => ({
-    entryPoints: [path.resolve(__dirname, `../src/webviews/${entry}.tsx`)],
+const editorHelperConfig = {
+    entryPoints: [path.resolve(__dirname, "../src/git/interactiveRebase/editorHelper.ts")],
     bundle: true,
-    outfile: path.resolve(__dirname, `../dist/${out}.js`),
-    format: "esm",
-    platform: "browser",
-    target: "es2022",
+    outfile: path.resolve(__dirname, "../dist/interactive-rebase-editor-helper.cjs"),
+    format: "cjs",
+    platform: "node",
+    target: "node20",
     sourcemap: true,
     minify: process.argv.includes("--production"),
     treeShaking: true,
-    define: {
-        "process.env.NODE_ENV": process.argv.includes("--production")
-            ? '"production"'
-            : '"development"',
-    },
-}));
+};
 
+/**
+ * Returns the seven browser webview build options for the current build mode.
+ *
+ * @param {boolean} [production] Whether to minify and define production mode.
+ * @returns {import("esbuild").BuildOptions[]} Shared IIFE options for each webview.
+ */
+function getWebviewBuildConfigs(production = process.argv.includes("--production")) {
+    return WEBVIEW_CONFIGS.map(({ entry, out }) =>
+        createWebviewBuildOptions({ entry, out, production }),
+    );
+}
+
+/**
+ * Builds the extension, editor helper, and every configured webview bundle.
+ *
+ * @returns {Promise<void>} Resolves after all available bundles are built.
+ */
 async function build() {
     try {
         await esbuild.build(extensionConfig);
         console.log("Extension bundle built.");
 
-        for (const config of webviewConfigs) {
+        await esbuild.build(editorHelperConfig);
+        console.log("Interactive rebase editor helper built.");
+
+        for (const config of getWebviewBuildConfigs()) {
             try {
                 await esbuild.build(config);
                 console.log(`Webview bundle built: ${config.outfile}`);
@@ -58,4 +73,8 @@ async function build() {
     }
 }
 
-build();
+if (require.main === module) {
+    build();
+}
+
+module.exports = { build, getWebviewBuildConfigs };

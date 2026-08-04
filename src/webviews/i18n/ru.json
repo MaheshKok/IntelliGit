@@ -337,5 +337,20 @@
     "stash.fileAction.cherryPickSelectedChanges": "Выполнить cherry-pick выбранных изменений",
     "a11y.resizeRepositoryColumn": "Изменить размер столбца репозитория",
     "commit.message.generate": "Сгенерировать сообщение коммита",
-    "commit.message.stopGeneration": "Остановить генерацию сообщения коммита"
+    "commit.message.stopGeneration": "Остановить генерацию сообщения коммита",
+    "rebase.dialog.title": "Перебазирование коммитов",
+    "rebase.dialog.pushedWarning": "Некоторые коммиты уже отправлены. Перебазирование переписывает опубликованную историю.",
+    "rebase.dialog.firstActionCleared": "Первый оставшийся коммит нельзя объединить или исправить поэтому его действие изменено на pick.",
+    "rebase.dialog.action": "Действие перебазирования",
+    "rebase.dialog.message": "Сообщение коммита",
+    "rebase.dialog.moveUp": "Переместить коммит вверх",
+    "rebase.dialog.moveDown": "Переместить коммит вниз",
+    "rebase.dialog.start": "Начать перебазирование",
+    "rebase.action.pick": "Выбрать",
+    "rebase.action.reword": "Изменить сообщение",
+    "rebase.action.squash": "Объединить",
+    "rebase.action.fixup": "Исправление",
+    "rebase.action.continueRebase": "Продолжить rebase",
+    "rebase.action.abortRebase": "Прервать rebase",
+    "rebase.dialog.missingMessage": "Для следующих коммитов требуется сообщение коммита: {hashes}"
 }

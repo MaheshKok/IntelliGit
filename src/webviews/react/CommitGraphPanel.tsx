@@ -14,6 +14,7 @@ import type {
 import type {
     BranchAction,
     CommitAction,
+    CommitGraphInbound,
     CommitGraphOutbound,
     WorktreeAction,
 } from "../protocol/commitGraphTypes";
@@ -25,6 +26,8 @@ import { JETBRAINS_UI } from "./shared/tokens";
 import { useCommitGraphMessages } from "./commit-graph/useCommitGraphMessages";
 import type { CommitGraphPanelAction } from "./commit-graph/types";
 import { t } from "./shared/i18n";
+import { RebaseDialog } from "./shared/components/RebaseDialog/RebaseDialog";
+import { useRebaseDialogController } from "./shared/hooks/useRebaseDialogController";
 
 const MIN_BRANCH_WIDTH = 80;
 const MAX_BRANCH_WIDTH = 500;
@@ -39,6 +42,8 @@ interface Props {
     stateKeyPrefix?: string;
     sendReady?: boolean;
 }
+
+type RebaseDialogMessage = Extract<CommitGraphInbound, { type: "showRebaseDialog" }>;
 
 /** Builds persisted webview-state keys without adding a leading separator. */
 function stateKey(prefix: string, key: string): string {
@@ -270,6 +275,12 @@ export function CommitGraphPanel({
     });
     const loadingMore = useRef(false);
     const [viewVisible, setViewVisible] = useState(true);
+    const {
+        rebaseDialog,
+        handleShowRebaseDialog,
+        handleRebaseDialogSubmit,
+        handleRebaseDialogCancel,
+    } = useRebaseDialogController<RebaseDialogMessage>((message) => vscode.postMessage(message));
     const currentBranch = useMemo(
         () => branches.find((branch) => branch.isCurrent && !branch.isRemote),
         [branches],
@@ -298,6 +309,7 @@ export function CommitGraphPanel({
         loadingMore,
         selectedHash,
         setViewVisible,
+        onShowRebaseDialog: handleShowRebaseDialog,
     });
 
     const handleBranchDividerKeyDown = useCallback((event: React.KeyboardEvent) => {
@@ -425,6 +437,13 @@ export function CommitGraphPanel({
     return (
         <>
             <ThemeIconFontFaces fonts={iconFonts} />
+            {rebaseDialog ? (
+                <RebaseDialog
+                    commits={rebaseDialog.commits}
+                    onSubmit={handleRebaseDialogSubmit}
+                    onCancel={handleRebaseDialogCancel}
+                />
+            ) : null}
             <div
                 style={{
                     display: "flex",

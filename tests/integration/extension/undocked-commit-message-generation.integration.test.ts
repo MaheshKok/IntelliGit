@@ -15,6 +15,13 @@ const commitSelectedFromPanel = vi.hoisted(() => vi.fn(async () => undefined));
 const commitOnlyFromPanel = vi.hoisted(() => vi.fn(async () => undefined));
 const commitAndPushFromPanel = vi.hoisted(() => vi.fn(async () => undefined));
 const showCommitMessageGenerationNotification = vi.hoisted(() => vi.fn(async () => undefined));
+const liveManifest = vi.hoisted(() => ({ sessionId: "extension-owned-rebase" }));
+const deriveRebaseControl = vi.hoisted(() =>
+    vi.fn(async ({ liveManifest: manifest }: { liveManifest?: unknown }) =>
+        manifest ? "owned" : "foreign",
+    ),
+);
+const readLiveRebaseManifest = vi.hoisted(() => vi.fn(async () => liveManifest));
 
 const webview = {
     html: "",
@@ -98,6 +105,14 @@ vi.mock("../../../src/ai/commitMessageGenerationNotifications", () => ({
     showCommitMessageGenerationNotification,
 }));
 
+vi.mock("../../../src/git/interactiveRebase/rebaseControl", () => ({
+    deriveRebaseControl,
+}));
+
+vi.mock("../../../src/git/interactiveRebase/storage", () => ({
+    readLiveRebaseManifest,
+}));
+
 function createDeferred<T>() {
     let resolve!: (value: T) => void;
     const promise = new Promise<T>((resolvePromise) => {
@@ -113,6 +128,12 @@ function createRootGitOps() {
         ]),
         hasAnyCommits: vi.fn(async () => true),
         hasWholeIndexOperationInProgress: vi.fn(async () => false),
+        getActiveOperation: vi.fn(async () => "none"),
+        getGitDirectories: vi.fn(async () => ({
+            root: "/repo-a",
+            gitDir: "/repo-a/.git",
+            commonDir: "/repo-a/.git",
+        })),
         getLastCommitMessage: vi.fn(async () => "feat: previous commit"),
         getAmendBranchCommits: vi.fn(async () => []),
         getBranches: vi.fn(async () => []),
@@ -184,6 +205,12 @@ async function send(message: unknown): Promise<void> {
 describe("UndockedViewProvider commit-message generation", () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        deriveRebaseControl.mockReset();
+        deriveRebaseControl.mockImplementation(async ({ liveManifest: manifest }) =>
+            manifest ? "owned" : "foreign",
+        );
+        readLiveRebaseManifest.mockReset();
+        readLiveRebaseManifest.mockResolvedValue(liveManifest);
         messageHandler = undefined;
         panelDisposeHandler = undefined;
         commitSelectedFromPanel.mockClear();
@@ -471,16 +498,14 @@ describe("UndockedViewProvider commit-message generation", () => {
 
     it("invalidates a selected root removed from the repository catalog", async () => {
         const { coordinator, gitOps, provider } = await createProvider();
-        const pendingWholeIndexState = createDeferred<boolean>();
-        gitOps.rootGitOps.hasWholeIndexOperationInProgress.mockImplementationOnce(
-            () => pendingWholeIndexState.promise,
-        );
+        const pendingOperation = createDeferred<"none">();
+        gitOps.rootGitOps.getActiveOperation.mockImplementationOnce(() => pendingOperation.promise);
 
         const refresh = (
             provider as unknown as { refreshCommitPanelData: () => Promise<void> }
         ).refreshCommitPanelData();
         await vi.waitFor(() =>
-            expect(gitOps.rootGitOps.hasWholeIndexOperationInProgress).toHaveBeenCalledTimes(1),
+            expect(gitOps.rootGitOps.getActiveOperation).toHaveBeenCalledTimes(1),
         );
 
         provider.setRepositories([]);
@@ -489,7 +514,7 @@ describe("UndockedViewProvider commit-message generation", () => {
             (provider as unknown as { selectedRepositoryRoot: string }).selectedRepositoryRoot,
         ).toBe("/repo-a");
 
-        pendingWholeIndexState.resolve(false);
+        pendingOperation.resolve("none");
         await refresh;
 
         expect(postMessage).not.toHaveBeenCalledWith(expect.objectContaining({ type: "update" }));
@@ -498,6 +523,84 @@ describe("UndockedViewProvider commit-message generation", () => {
         ).toMatchObject({ files: [], stashes: [], stashFiles: [] });
         provider.dispose();
     });
+
+    it("publishes the rebase operation snapshot with an undocked commit-panel update", async () => {
+        const { gitOps, provider } = await createProvider();
+        gitOps.rootGitOps.getActiveOperation.mockResolvedValueOnce("rebase");
+        (
+            provider as unknown as { interactiveRebaseStorageRoot?: string }
+        ).interactiveRebaseStorageRoot = "/storage";
+
+        await (
+            provider as unknown as { refreshCommitPanelData: () => Promise<void> }
+        ).refreshCommitPanelData();
+
+        expect(readLiveRebaseManifest).toHaveBeenCalledWith("/storage", "/repo-a");
+        expect(deriveRebaseControl).toHaveBeenCalledWith({
+            gitDir: "/repo-a/.git",
+            liveManifest,
+        });
+        expect(postMessage).toHaveBeenCalledWith(
+            expect.objectContaining({
+                type: "update",
+                activeOperation: "rebase",
+                rebaseControl: "owned",
+            }),
+        );
+        provider.dispose();
+    });
+
+    it.each([
+        ["foreign", "foreign"],
+        ["unowned", "unowned"],
+    ] as const)(
+        "preserves the undocked %s rebase classification without an owned manifest",
+        async (rebaseControl, expectedControl) => {
+            const { gitOps, provider } = await createProvider();
+            gitOps.rootGitOps.getActiveOperation.mockResolvedValueOnce("rebase");
+            readLiveRebaseManifest.mockResolvedValueOnce(undefined);
+            deriveRebaseControl.mockResolvedValueOnce(rebaseControl);
+
+            await (
+                provider as unknown as { refreshCommitPanelData: () => Promise<void> }
+            ).refreshCommitPanelData();
+
+            expect(postMessage).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    type: "update",
+                    activeOperation: "rebase",
+                    rebaseControl: expectedControl,
+                }),
+            );
+            provider.dispose();
+        },
+    );
+
+    it.each([
+        ["with a live manifest", liveManifest, "foreign"],
+        ["without a live manifest", undefined, "unowned"],
+    ] as const)(
+        "reports %s as the uncorrelated classification when rebase ends between probes",
+        async (_scenario, manifest, expectedControl) => {
+            const { gitOps, provider } = await createProvider();
+            gitOps.rootGitOps.getActiveOperation.mockResolvedValueOnce("rebase");
+            readLiveRebaseManifest.mockResolvedValueOnce(manifest);
+            deriveRebaseControl.mockResolvedValueOnce("none");
+
+            await (
+                provider as unknown as { refreshCommitPanelData: () => Promise<void> }
+            ).refreshCommitPanelData();
+
+            expect(postMessage).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    type: "update",
+                    activeOperation: "rebase",
+                    rebaseControl: expectedControl,
+                }),
+            );
+            provider.dispose();
+        },
+    );
 
     it("keeps a lease for deferred success and releases it after action rejection", async () => {
         const { coordinator, provider } = await createProvider();
@@ -583,7 +686,7 @@ describe("UndockedViewProvider commit-message generation", () => {
         repoBGitOps.listStashes.mockResolvedValue([{ index: 3 }]);
         repoBGitOps.getStashFiles.mockResolvedValue([{ path: "stash/b.ts", status: "M" }]);
         repoBGitOps.hasAnyCommits.mockResolvedValue(false);
-        repoBGitOps.hasWholeIndexOperationInProgress.mockResolvedValue(true);
+        repoBGitOps.getActiveOperation.mockResolvedValue("merge");
 
         provider.setRepositoryRootUri({ fsPath: "/repo-b", path: "/repo-b" } as never);
         await (
@@ -598,7 +701,7 @@ describe("UndockedViewProvider commit-message generation", () => {
         expect(repoBGitOps.getRemotes).toHaveBeenCalledTimes(1);
         expect(repoBGitOps.getStashFiles).toHaveBeenCalledWith(3);
         expect(repoBGitOps.hasAnyCommits).toHaveBeenCalledTimes(1);
-        expect(repoBGitOps.hasWholeIndexOperationInProgress).toHaveBeenCalledTimes(1);
+        expect(repoBGitOps.getActiveOperation).toHaveBeenCalledTimes(1);
         expect(postMessage).toHaveBeenCalledWith(
             expect.objectContaining({
                 type: "update",
@@ -626,35 +729,33 @@ describe("UndockedViewProvider commit-message generation", () => {
         provider.dispose();
     });
 
-    it("awaits whole-index state for refresh and successful stash updates, surfacing a stash predicate failure", async () => {
+    it("awaits the operation snapshot for refresh and successful stash updates, surfacing a snapshot failure", async () => {
         const { gitOps, provider } = await createProvider();
         await (
             provider as unknown as { refreshCommitPanelData: () => Promise<void> }
         ).refreshCommitPanelData();
-        expect(gitOps.rootGitOps.hasWholeIndexOperationInProgress).toHaveBeenCalledTimes(1);
+        expect(gitOps.rootGitOps.getActiveOperation).toHaveBeenCalledTimes(1);
         expect(postMessage).toHaveBeenCalledWith(
             expect.objectContaining({ type: "update", wholeIndexOperationInProgress: false }),
         );
 
         postMessage.mockClear();
-        const pendingWholeIndexState = createDeferred<boolean>();
-        gitOps.rootGitOps.hasWholeIndexOperationInProgress.mockImplementationOnce(
-            () => pendingWholeIndexState.promise,
-        );
+        const pendingOperation = createDeferred<"merge">();
+        gitOps.rootGitOps.getActiveOperation.mockImplementationOnce(() => pendingOperation.promise);
         const selectStash = send({ type: "stashSelect", index: 0 });
         await vi.waitFor(() =>
-            expect(gitOps.rootGitOps.hasWholeIndexOperationInProgress).toHaveBeenCalledTimes(1),
+            expect(gitOps.rootGitOps.getActiveOperation).toHaveBeenCalledTimes(2),
         );
         expect(postMessage).not.toHaveBeenCalledWith(
             expect.objectContaining({ type: "update", wholeIndexOperationInProgress: true }),
         );
-        pendingWholeIndexState.resolve(true);
+        pendingOperation.resolve("merge");
         await selectStash;
         expect(postMessage).toHaveBeenCalledWith(
             expect.objectContaining({ type: "update", wholeIndexOperationInProgress: true }),
         );
 
-        gitOps.rootGitOps.hasWholeIndexOperationInProgress.mockRejectedValueOnce(
+        gitOps.rootGitOps.getActiveOperation.mockRejectedValueOnce(
             new Error("whole-index failed"),
         );
         await send({ type: "stashSelect", index: 0 });
@@ -667,17 +768,15 @@ describe("UndockedViewProvider commit-message generation", () => {
     it("drops a stale stash update when the repository switches away and back mid-select", async () => {
         const { gitOps, provider } = await createProvider();
         postMessage.mockClear();
-        const pendingWholeIndexState = createDeferred<boolean>();
-        gitOps.rootGitOps.hasWholeIndexOperationInProgress.mockImplementationOnce(
-            () => pendingWholeIndexState.promise,
-        );
+        const pendingOperation = createDeferred<"none">();
+        gitOps.rootGitOps.getActiveOperation.mockImplementationOnce(() => pendingOperation.promise);
         const selectStash = send({ type: "stashSelect", index: 0 });
         await vi.waitFor(() =>
-            expect(gitOps.rootGitOps.hasWholeIndexOperationInProgress).toHaveBeenCalledTimes(1),
+            expect(gitOps.rootGitOps.getActiveOperation).toHaveBeenCalledTimes(1),
         );
         provider.setRepositoryRootUri({ fsPath: "/repo-b", path: "/repo-b" } as never);
         provider.setRepositoryRootUri({ fsPath: "/repo-a", path: "/repo-a" } as never);
-        pendingWholeIndexState.resolve(false);
+        pendingOperation.resolve("none");
         await selectStash;
         expect(postMessage).not.toHaveBeenCalledWith(expect.objectContaining({ type: "update" }));
         provider.dispose();

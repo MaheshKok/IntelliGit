@@ -1,0 +1,380 @@
+import { mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
+import {
+    discardRebaseSession,
+    getRebaseStoragePaths,
+    listRebaseManifests,
+    readLiveRebaseManifest,
+    readRebaseManifest,
+    sweepOrphanedRebaseReservation,
+    tryAcquireRebaseReservation,
+    writeRebaseManifest,
+} from "../../../../src/git/interactiveRebase/storage";
+import type {
+    RebaseSessionLifecycle,
+    RebaseSessionManifest,
+} from "../../../../src/git/interactiveRebase/types";
+
+const REPO_ROOT = "/fixture-repository";
+const SESSION_ID = "session-1";
+const roots: string[] = [];
+
+afterEach(async () => {
+    await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
+});
+
+/** Creates an isolated storage root holding one manifest at the requested lifecycle. */
+async function storageWithManifest(
+    lifecycle: RebaseSessionLifecycle,
+    sessionId: string = SESSION_ID,
+): Promise<string> {
+    const storageRoot = await mkdtemp(path.join(os.tmpdir(), "intelligit-rebase-storage-"));
+    roots.push(storageRoot);
+    const manifest: RebaseSessionManifest = {
+        version: 1,
+        sessionId,
+        repoRoot: REPO_ROOT,
+        branch: "refs/heads/main",
+        hasPushedCommit: false,
+        baseHash: "c".repeat(40),
+        expectedHead: "d".repeat(40),
+        createdAt: "2026-08-02T00:00:00.000Z",
+        lifecycle,
+    };
+    await writeRebaseManifest(storageRoot, manifest);
+    return storageRoot;
+}
+
+/** Writes the exclusive reservation pointer that correlates a manifest with the live rebase. */
+async function writeReservation(storageRoot: string, contents: string): Promise<void> {
+    await writeFile(getRebaseStoragePaths(storageRoot, REPO_ROOT).reservationPath, contents, {
+        encoding: "utf8",
+        mode: 0o600,
+    });
+}
+
+/** Creates an isolated stand-in Git directory, optionally holding one live rebase directory. */
+async function gitDirWithRebase(name?: "rebase-merge" | "rebase-apply"): Promise<string> {
+    const gitDir = await mkdtemp(path.join(os.tmpdir(), "intelligit-rebase-gitdir-"));
+    roots.push(gitDir);
+    if (name) await mkdir(path.join(gitDir, name));
+    return gitDir;
+}
+
+describe("tryAcquireRebaseReservation", () => {
+    it("refuses a second acquisition while the first pointer is still held", async () => {
+        const storageRoot = await storageWithManifest("running");
+        const gitDir = await gitDirWithRebase();
+
+        await expect(
+            tryAcquireRebaseReservation({
+                storageRoot,
+                repoRoot: REPO_ROOT,
+                gitDir,
+                sessionId: SESSION_ID,
+            }),
+        ).resolves.toMatchObject({ status: "acquired" });
+        // Exclusive creation is the whole mechanism: a pointer write that merely overwrote would
+        // hand two submissions the same repository and leave the loser's session unreleased.
+        await expect(
+            tryAcquireRebaseReservation({
+                storageRoot,
+                repoRoot: REPO_ROOT,
+                gitDir,
+                sessionId: "session-2",
+            }),
+        ).resolves.toEqual({ status: "rejected", reason: "reservation-exists" });
+    });
+
+    it.each([["rebase-merge"], ["rebase-apply"]] as const)(
+        "refuses to claim a repository while Git holds %s",
+        async (name) => {
+            const storageRoot = await storageWithManifest("running");
+            const gitDir = await gitDirWithRebase(name);
+
+            await expect(
+                tryAcquireRebaseReservation({
+                    storageRoot,
+                    repoRoot: REPO_ROOT,
+                    gitDir,
+                    sessionId: SESSION_ID,
+                }),
+            ).resolves.toEqual({ status: "rejected", reason: "rebase-in-progress" });
+            await expect(
+                stat(getRebaseStoragePaths(storageRoot, REPO_ROOT).reservationPath),
+            ).rejects.toMatchObject({ code: "ENOENT" });
+        },
+    );
+});
+
+describe("sweepOrphanedRebaseReservation", () => {
+    it("removes the pointer file it reports as reclaimed", async () => {
+        const storageRoot = await storageWithManifest("done");
+        const gitDir = await gitDirWithRebase();
+        await writeReservation(storageRoot, JSON.stringify({ sessionId: SESSION_ID }));
+
+        await expect(
+            sweepOrphanedRebaseReservation({ storageRoot, repoRoot: REPO_ROOT, gitDir }),
+        ).resolves.toEqual({ status: "reclaimed" });
+        // Asserting the status alone would pass for a sweep that reclaimed nothing.
+        await expect(
+            stat(getRebaseStoragePaths(storageRoot, REPO_ROOT).reservationPath),
+        ).rejects.toMatchObject({ code: "ENOENT" });
+    });
+
+    it("retains a pointer whose repository still has a live rebase", async () => {
+        const storageRoot = await storageWithManifest("done");
+        const gitDir = await gitDirWithRebase("rebase-merge");
+        await writeReservation(storageRoot, JSON.stringify({ sessionId: SESSION_ID }));
+
+        await expect(
+            sweepOrphanedRebaseReservation({ storageRoot, repoRoot: REPO_ROOT, gitDir }),
+        ).resolves.toEqual({ status: "retained", reason: "rebase-in-progress" });
+        await expect(
+            stat(getRebaseStoragePaths(storageRoot, REPO_ROOT).reservationPath),
+        ).resolves.toBeDefined();
+    });
+
+    it("retains a pointer whose manifest is still live", async () => {
+        const storageRoot = await storageWithManifest("paused");
+        const gitDir = await gitDirWithRebase();
+        await writeReservation(storageRoot, JSON.stringify({ sessionId: SESSION_ID }));
+
+        await expect(
+            sweepOrphanedRebaseReservation({ storageRoot, repoRoot: REPO_ROOT, gitDir }),
+        ).resolves.toEqual({ status: "retained", reason: "live-manifest" });
+    });
+});
+
+describe("readLiveRebaseManifest", () => {
+    it.each([["starting"], ["running"], ["paused"]] as const)(
+        "returns the reserved manifest at the %s lifecycle",
+        async (lifecycle) => {
+            const storageRoot = await storageWithManifest(lifecycle);
+            await writeReservation(storageRoot, JSON.stringify({ sessionId: SESSION_ID }));
+
+            await expect(readLiveRebaseManifest(storageRoot, REPO_ROOT)).resolves.toMatchObject({
+                sessionId: SESSION_ID,
+                lifecycle,
+            });
+        },
+    );
+
+    it.each([["completed-pending-push"], ["done"]] as const)(
+        "returns nothing for the terminal %s lifecycle",
+        async (lifecycle) => {
+            // A terminal session no longer controls the rebase directory, so correlating against
+            // it would authorize injection into whatever rebase is running now.
+            const storageRoot = await storageWithManifest(lifecycle);
+            await writeReservation(storageRoot, JSON.stringify({ sessionId: SESSION_ID }));
+
+            await expect(readLiveRebaseManifest(storageRoot, REPO_ROOT)).resolves.toBeUndefined();
+        },
+    );
+
+    it("returns nothing without a storage root", async () => {
+        await expect(readLiveRebaseManifest(undefined, REPO_ROOT)).resolves.toBeUndefined();
+    });
+
+    it("returns nothing when no reservation pointer exists", async () => {
+        const storageRoot = await storageWithManifest("running");
+
+        await expect(readLiveRebaseManifest(storageRoot, REPO_ROOT)).resolves.toBeUndefined();
+    });
+
+    it.each([
+        ["malformed JSON", "{"],
+        ["a missing session ID", JSON.stringify({})],
+        ["an unsafe session ID", JSON.stringify({ sessionId: "../escape" })],
+    ])("returns nothing for a reservation with %s", async (_name, contents) => {
+        const storageRoot = await storageWithManifest("running");
+        await writeReservation(storageRoot, contents);
+
+        await expect(readLiveRebaseManifest(storageRoot, REPO_ROOT)).resolves.toBeUndefined();
+    });
+
+    it("returns nothing when the reservation points at a manifest that is not there", async () => {
+        // The pointer is the correlation key: a manifest that does not answer to it cannot prove
+        // which session owns the live rebase, whatever else is stored beside it.
+        const storageRoot = await storageWithManifest("running");
+        await writeReservation(storageRoot, JSON.stringify({ sessionId: "session-2" }));
+
+        await expect(readLiveRebaseManifest(storageRoot, REPO_ROOT)).resolves.toBeUndefined();
+    });
+
+    it("returns nothing for a reserved manifest that fails validation", async () => {
+        const storageRoot = await storageWithManifest("running");
+        await writeFile(
+            getRebaseStoragePaths(storageRoot, REPO_ROOT).manifestPath(SESSION_ID),
+            JSON.stringify({ version: 1, sessionId: SESSION_ID, lifecycle: "running" }),
+            "utf8",
+        );
+        await writeReservation(storageRoot, JSON.stringify({ sessionId: SESSION_ID }));
+
+        await expect(readLiveRebaseManifest(storageRoot, REPO_ROOT)).resolves.toBeUndefined();
+    });
+});
+
+describe("retained rebase session storage", () => {
+    it("lists every manifest result, including corrupt state", async () => {
+        const storageRoot = await storageWithManifest("paused");
+        await writeFile(
+            getRebaseStoragePaths(storageRoot, REPO_ROOT).manifestPath("corrupt-session"),
+            "{",
+            "utf8",
+        );
+
+        await expect(listRebaseManifests(storageRoot, REPO_ROOT)).resolves.toEqual([
+            {
+                sessionId: "corrupt-session",
+                result: { status: "ambiguous", reason: "truncated" },
+            },
+            {
+                sessionId: SESSION_ID,
+                result: expect.objectContaining({
+                    status: "valid",
+                    manifest: expect.objectContaining({
+                        sessionId: SESSION_ID,
+                        lifecycle: "paused",
+                    }),
+                }),
+            },
+        ]);
+    });
+
+    it("treats a missing manifest directory as an empty retained-session list", async () => {
+        const storageRoot = await mkdtemp(path.join(os.tmpdir(), "intelligit-rebase-storage-"));
+        roots.push(storageRoot);
+
+        await expect(listRebaseManifests(storageRoot, REPO_ROOT)).resolves.toEqual([]);
+    });
+
+    it("discards one manifest and its helper directory idempotently", async () => {
+        const storageRoot = await storageWithManifest("running");
+        const paths = getRebaseStoragePaths(storageRoot, REPO_ROOT);
+        await mkdir(paths.sessionDirectory(SESSION_ID), { recursive: true });
+
+        await discardRebaseSession(storageRoot, REPO_ROOT, SESSION_ID);
+        await discardRebaseSession(storageRoot, REPO_ROOT, SESSION_ID);
+
+        await expect(readRebaseManifest(storageRoot, REPO_ROOT, SESSION_ID)).resolves.toEqual({
+            status: "missing",
+        });
+        await expect(stat(paths.sessionDirectory(SESSION_ID))).rejects.toMatchObject({
+            code: "ENOENT",
+        });
+    });
+
+    it("discards a listed entry whose name this module's own writer could never produce", async () => {
+        const storageRoot = await storageWithManifest("paused");
+        const paths = getRebaseStoragePaths(storageRoot, REPO_ROOT);
+        const strayName = "not a session id";
+        const strayPath = path.join(paths.manifestDirectory, `${strayName}.json`);
+        await writeFile(strayPath, "{}", "utf8");
+
+        // The listing surfaces it by filename, so the discard action offered for it has to work.
+        // Validating the identifier here would throw and leave the entry stranded forever.
+        await expect(listRebaseManifests(storageRoot, REPO_ROOT)).resolves.toContainEqual({
+            sessionId: strayName,
+            result: { status: "ambiguous", reason: "invalid-schema" },
+        });
+
+        await expect(
+            discardRebaseSession(storageRoot, REPO_ROOT, strayName),
+        ).resolves.toBeUndefined();
+        await expect(stat(strayPath)).rejects.toMatchObject({ code: "ENOENT" });
+    });
+
+    it("refuses to delete outside the repository namespace", async () => {
+        const storageRoot = await storageWithManifest("paused");
+        const paths = getRebaseStoragePaths(storageRoot, REPO_ROOT);
+        const outside = path.join(storageRoot, "unrelated.json");
+        await writeFile(outside, "{}", "utf8");
+
+        await discardRebaseSession(storageRoot, REPO_ROOT, "../../unrelated");
+
+        await expect(stat(outside)).resolves.toBeDefined();
+        await expect(readRebaseManifest(storageRoot, REPO_ROOT, SESSION_ID)).resolves.toMatchObject(
+            { status: "valid" },
+        );
+        expect(paths.manifestDirectory).toContain("interactive-rebase");
+    });
+});
+
+describe("pushTarget schema validation", () => {
+    const VALID_PUSH_TARGET = {
+        remoteName: "origin",
+        remoteHeadRef: "refs/heads/main",
+        upstreamOid: "e".repeat(40),
+    };
+
+    /** Builds the on-disk bytes for a manifest carrying the given (possibly malformed) pushTarget. */
+    function manifestJsonWithPushTarget(pushTarget: unknown): string {
+        return JSON.stringify({
+            version: 1,
+            sessionId: SESSION_ID,
+            repoRoot: REPO_ROOT,
+            branch: "refs/heads/main",
+            hasPushedCommit: true,
+            baseHash: "c".repeat(40),
+            expectedHead: "d".repeat(40),
+            createdAt: "2026-08-02T00:00:00.000Z",
+            lifecycle: "completed-pending-push",
+            pushTarget,
+        });
+    }
+
+    it.each([
+        ["a remoteName starting with a dash", { ...VALID_PUSH_TARGET, remoteName: "-oops" }],
+        [
+            "a remoteName containing whitespace",
+            { ...VALID_PUSH_TARGET, remoteName: "origin upstream" },
+        ],
+        [
+            "a remoteHeadRef outside refs/heads/",
+            { ...VALID_PUSH_TARGET, remoteHeadRef: "refs/remotes/origin/main" },
+        ],
+    ] as const)("rejects a manifest whose pushTarget has %s", async (_name, pushTarget) => {
+        const storageRoot = await mkdtemp(path.join(os.tmpdir(), "intelligit-rebase-storage-"));
+        roots.push(storageRoot);
+        const paths = getRebaseStoragePaths(storageRoot, REPO_ROOT);
+        await mkdir(paths.manifestDirectory, { recursive: true });
+        await writeFile(
+            paths.manifestPath(SESSION_ID),
+            manifestJsonWithPushTarget(pushTarget),
+            "utf8",
+        );
+
+        await expect(readRebaseManifest(storageRoot, REPO_ROOT, SESSION_ID)).resolves.toEqual({
+            status: "ambiguous",
+            reason: "invalid-schema",
+        });
+    });
+
+    it("accepts and round-trips a valid pushTarget through a manifest write and read", async () => {
+        const storageRoot = await mkdtemp(path.join(os.tmpdir(), "intelligit-rebase-storage-"));
+        roots.push(storageRoot);
+        const manifest: RebaseSessionManifest = {
+            version: 1,
+            sessionId: SESSION_ID,
+            repoRoot: REPO_ROOT,
+            branch: "refs/heads/main",
+            hasPushedCommit: true,
+            baseHash: "c".repeat(40),
+            expectedHead: "d".repeat(40),
+            createdAt: "2026-08-02T00:00:00.000Z",
+            lifecycle: "completed-pending-push",
+            pushTarget: VALID_PUSH_TARGET,
+        };
+
+        await writeRebaseManifest(storageRoot, manifest);
+
+        await expect(readRebaseManifest(storageRoot, REPO_ROOT, SESSION_ID)).resolves.toEqual({
+            status: "valid",
+            manifest,
+        });
+    });
+});
+

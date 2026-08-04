@@ -14,7 +14,11 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { GitExecutor } from "../../../src/git/executor";
-import { GitOps, type DiffForPathsResult } from "../../../src/git/operations";
+import {
+    GitOps,
+    type ActiveOperationKind,
+    type DiffForPathsResult,
+} from "../../../src/git/operations";
 import type { WorkingFile } from "../../../src/types";
 
 const execFileAsync = promisify(execFile);
@@ -168,6 +172,74 @@ describe("GitOps.hasWholeIndexOperationInProgress", () => {
         await expect(
             new GitOps(new GitExecutor(root)).hasWholeIndexOperationInProgress(),
         ).resolves.toBe(false);
+    });
+});
+
+describe("GitOps.getActiveOperation", () => {
+    it.each([
+        ["MERGE_HEAD", "merge"],
+        ["CHERRY_PICK_HEAD", "cherry-pick"],
+        ["REVERT_HEAD", "revert"],
+        ["rebase-merge", "rebase"],
+        ["rebase-apply", "rebase"],
+    ] as const satisfies readonly [string, ActiveOperationKind][]) (
+        "derives %s as %s",
+        async (marker, expected) => {
+            const root = await createGitRepository();
+            const target = path.join(root, ".git", marker);
+            if (marker.startsWith("rebase-")) await mkdir(target);
+            else await writeFile(target, "state\n");
+
+            await expect(gitOpsFor(root).getActiveOperation()).resolves.toBe(expected);
+        },
+    );
+
+    it.each([
+        [["rebase-merge", "MERGE_HEAD"], "rebase"],
+        [["rebase-apply", "CHERRY_PICK_HEAD"], "rebase"],
+        [["MERGE_HEAD", "REVERT_HEAD"], "merge"],
+        [["MERGE_HEAD", "CHERRY_PICK_HEAD"], "merge"],
+        [["CHERRY_PICK_HEAD", "REVERT_HEAD"], "cherry-pick"],
+        [
+            ["MERGE_HEAD", "CHERRY_PICK_HEAD", "REVERT_HEAD", "rebase-merge", "rebase-apply"],
+            "rebase",
+        ],
+    ] as const satisfies readonly [readonly string[], ActiveOperationKind][]) (
+        "uses documented precedence for %j",
+        async (markers, expected) => {
+            const root = await createGitRepository();
+            await Promise.all(
+                markers.map(async (marker) => {
+                    const target = path.join(root, ".git", marker);
+                    if (marker.startsWith("rebase-")) await mkdir(target);
+                    else await writeFile(target, "state\n");
+                }),
+            );
+
+            await expect(gitOpsFor(root).getActiveOperation()).resolves.toBe(expected);
+        },
+    );
+
+    it("resolves a linked worktree gitdir file before deriving the operation", async () => {
+        const root = await createGitRepository();
+        const linked = path.join(root, "linked");
+        await writeFile(path.join(root, "tracked.txt"), "base\n");
+        await git(root, ["add", "tracked.txt"]);
+        await git(root, ["commit", "-m", "base"]);
+        await git(root, ["worktree", "add", "--detach", linked]);
+        const reportedGitDir = (await git(linked, ["rev-parse", "--git-dir"])).trim();
+        const gitDir = path.isAbsolute(reportedGitDir)
+            ? reportedGitDir
+            : path.resolve(linked, reportedGitDir);
+        await writeFile(path.join(gitDir, "REVERT_HEAD"), "state\n");
+
+        await expect(gitOpsFor(linked).getActiveOperation()).resolves.toBe("revert");
+    });
+
+    it("returns none for a clean repository", async () => {
+        const root = await createGitRepository();
+
+        await expect(gitOpsFor(root).getActiveOperation()).resolves.toBe("none");
     });
 });
 

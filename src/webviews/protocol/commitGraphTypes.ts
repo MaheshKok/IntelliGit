@@ -11,6 +11,19 @@ import type {
     ThemeIconFont,
     ThemeTreeIcon,
 } from "../../types";
+import type {
+    InteractiveRebaseRangeCommit,
+    RebaseSubmissionEntry,
+} from "../../git/interactiveRebase/types";
+
+// Re-exported so the rebase dialog can share the host's todo vocabulary without importing from
+// `src/git/**` directly, which the webview architecture rule forbids. The protocol layer is the
+// sanctioned bridge between the extension host and the React webviews.
+export type {
+    InteractiveRebaseRangeCommit,
+    RebaseAction,
+    RebaseTodoEntry,
+} from "../../git/interactiveRebase/types";
 
 /**
  * Branch context-menu action discriminants accepted from graph webviews.
@@ -156,6 +169,20 @@ export type CommitGraphOutbound =
           hash: string;
       }
     | {
+          /** One-shot interactive-rebase submission from the dialog that this provider opened. */
+          type: "startInteractiveRebase";
+          /** Host-issued request ID returned unchanged by the dialog. */
+          requestId: string;
+          /** Raw dialog entries that the host validates against its recorded offer. */
+          entries: RebaseSubmissionEntry[];
+      }
+    | {
+          /** Dismisses the one-shot interactive-rebase dialog for this provider. */
+          type: "cancelRebaseDialog";
+          /** Host-issued request ID returned unchanged by the dialog. */
+          requestId: string;
+      }
+    | {
           /** Command asking the host to open a committed file diff. */
           type: "openCommitFileDiff";
           /** Full Git object ID from the rendered commit detail. */
@@ -208,6 +235,18 @@ export type CommitGraphOutbound =
  * theme cannot provide a serializable webview-safe resource or glyph payload.
  */
 export type CommitGraphInbound =
+    | {
+          /** Opens the host-validated interactive-rebase dialog for this webview instance only. */
+          type: "showRebaseDialog";
+          /** Host-issued ID that the later submission must return from this same provider. */
+          requestId: string;
+          /** Ordered range rows including the pushed-history warning state. */
+          commits: readonly InteractiveRebaseRangeCommit[];
+          /** Fully qualified branch ref captured with the offered range. */
+          branch: string;
+          /** Whether at least one offered commit is already pushed. */
+          hasPushed: boolean;
+      }
     | {
           /** Response/update containing a page of `git log` commits. */
           type: "loadCommits";

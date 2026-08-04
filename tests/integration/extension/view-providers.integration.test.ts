@@ -474,6 +474,7 @@ vi.mock("../../../src/git/operations", () => ({
         hasAnyCommits = vi.fn(async () => true);
         hasUncommittedChanges = vi.fn(async () => false);
         hasWholeIndexOperationInProgress = vi.fn(async () => false);
+        getActiveOperation = vi.fn(async () => "none");
         getStatus = vi.fn(async () => gitStatusByRoot.get(this.currentRoot()) ?? []);
         listStashes = vi.fn(async () => []);
         getConflictFilesDetailed = vi.fn(async () => []);
@@ -701,6 +702,10 @@ function renderedButtonActions(html: string): string[] {
 
 function makeGitOpsMock() {
     return {
+        // The commit panel reads the operation kind and derives its own fence input from it, so
+        // tests that need a busy index script this rather than the boolean predicate.
+        getActiveOperation: vi.fn(async () => "none"),
+        hasWholeIndexOperationInProgress: vi.fn(async () => false),
         // Derived per-root instances mirror the module-level MockGitOps: status comes
         // from gitStatusByRoot so multi-repo tests can script non-active repositories.
         deriveFor: vi.fn((root: string): object => ({
@@ -734,7 +739,6 @@ function makeGitOpsMock() {
         getRemoteUrl: vi.fn(async () => "https://github.com/owner/repo.git"),
         getUnpushedCommitHashes: vi.fn(async () => ["abc1234"]),
         hasAnyCommits: vi.fn(async () => true),
-        hasWholeIndexOperationInProgress: vi.fn(async () => false),
         hasUncommittedChanges: vi.fn(async () => false),
         getStatus: vi.fn(async () => [
             { path: "src/a.ts", status: "M", staged: false, additions: 1, deletions: 0 },
@@ -1347,10 +1351,10 @@ describe("view providers integration", () => {
         };
         const runtime = testProvider.runtimes.get("/repo");
         postMessageSpy.mockClear();
-        gitOps.hasWholeIndexOperationInProgress.mockResolvedValueOnce(false);
+        gitOps.getActiveOperation.mockResolvedValueOnce("none");
         gitOps.hasAnyCommits.mockResolvedValueOnce(false);
         await testProvider.postWorkingTreeSnapshot(runtime);
-        gitOps.hasWholeIndexOperationInProgress.mockResolvedValueOnce(true);
+        gitOps.getActiveOperation.mockResolvedValueOnce("merge");
         gitOps.hasAnyCommits.mockResolvedValueOnce(true);
         gitOps.getBranches.mockResolvedValueOnce([
             {
@@ -1388,6 +1392,32 @@ describe("view providers integration", () => {
             updates.every((update) => typeof update.wholeIndexOperationInProgress === "boolean"),
         ).toBe(true);
         expect(updates.every((update) => typeof update.hasCommits === "boolean")).toBe(true);
+        provider.dispose();
+    });
+
+    it("CommitPanelViewProvider keeps a rebase fenced when its state vanishes mid-snapshot", async () => {
+        // The kind probe and the ownership probe are separate filesystem reads, so a rebase that
+        // finishes between them leaves no rebase directory to classify. Reporting "none" there
+        // would also drop any merge the kind probe saw underneath it and unfence the commit path,
+        // so the snapshot keeps the operation and reports the uncorrelated control scope instead.
+        const { provider, gitOps } = await setupCommitPanelProvider();
+        const testProvider = provider as unknown as {
+            runtimes: Map<string, unknown>;
+            postWorkingTreeSnapshot(runtime: unknown): Promise<void>;
+        };
+        postMessageSpy.mockClear();
+        gitOps.getActiveOperation.mockResolvedValueOnce("rebase");
+
+        await testProvider.postWorkingTreeSnapshot(testProvider.runtimes.get("/repo"));
+
+        expect(postMessageSpy).toHaveBeenCalledWith(
+            expect.objectContaining({
+                type: "update",
+                activeOperation: "rebase",
+                rebaseControl: "unowned",
+                wholeIndexOperationInProgress: true,
+            }),
+        );
         provider.dispose();
     });
 
@@ -2208,6 +2238,36 @@ describe("view providers integration", () => {
             infoWidth: 300,
             commitPanelWidth: 200,
         });
+    });
+
+    it("UndockedViewProvider returns the webview rebase-dialog delivery result", async () => {
+        const { UndockedViewProvider } = await import("../../../src/views/UndockedViewProvider");
+        const provider = new UndockedViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+            makeGitOpsMock() as unknown as object,
+            { fsPath: "/repo", path: "/repo" } as unknown as { fsPath: string; path: string },
+            makeCredentialStore() as unknown as object,
+            createMemento() as unknown as object,
+        );
+        const testProvider = provider as unknown as {
+            panel: {
+                webview: { postMessage: typeof postMessageSpy };
+                dispose: ReturnType<typeof vi.fn>;
+            };
+        };
+        testProvider.panel = { webview: { postMessage: postMessageSpy }, dispose: vi.fn() };
+        postMessageSpy.mockResolvedValueOnce(false);
+
+        await expect(
+            provider.showRebaseDialog({
+                type: "showRebaseDialog",
+                requestId: "request-1",
+                commits: [],
+                branch: "refs/heads/main",
+                hasPushed: false,
+            }),
+        ).resolves.toBe(false);
+        provider.dispose();
     });
 
     it("UndockedViewProvider reports commit completion when draft cleanup rejects", async () => {
@@ -4578,6 +4638,148 @@ describe("view providers integration", () => {
         );
 
         provider.dispose();
+    });
+
+    it("dispatches only transport-shaped interactive-rebase dialog messages from every commit-list provider", async () => {
+        const { CommitGraphViewProvider } =
+            await import("../../../src/views/CommitGraphViewProvider");
+        const { CommitPanelViewProvider } =
+            await import("../../../src/views/CommitPanelViewProvider");
+        const { UndockedViewProvider } = await import("../../../src/views/UndockedViewProvider");
+        const entries = [
+            { hash: "not-validated-here", action: "not-an-action", message: "bad\nraw" },
+        ];
+
+        const graph = new CommitGraphViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+            makeGitOpsMock() as unknown as object,
+            makeCredentialStore() as unknown as object,
+        );
+        const graphWebview = createWebviewView();
+        const graphSubmit = vi.fn();
+        const graphCancel = vi.fn();
+        graph.onRebaseDialogSubmit(graphSubmit);
+        graph.onRebaseDialogCancel(graphCancel);
+        graph.resolveWebviewView(
+            graphWebview.view as unknown as object,
+            {} as unknown as object,
+            {} as unknown as object,
+        );
+        await graphWebview.send({ type: "startInteractiveRebase", requestId: "graph", entries });
+        await graphWebview.send({ type: "cancelRebaseDialog", requestId: "graph" });
+        await graphWebview.send({ type: "startInteractiveRebase", requestId: "", entries });
+        await graphWebview.send({
+            type: "startInteractiveRebase",
+            requestId: "graph",
+            entries: {},
+        });
+        expect(graphSubmit).toHaveBeenCalledTimes(1);
+        expect(graphSubmit).toHaveBeenLastCalledWith({ requestId: "graph", entries });
+        expect(graphCancel).toHaveBeenCalledTimes(1);
+        expect(graphCancel).toHaveBeenLastCalledWith({ requestId: "graph" });
+
+        const panel = new CommitPanelViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+            makeGitOpsMock() as unknown as object,
+            { fsPath: "/repo", path: "/repo" } as unknown as { fsPath: string; path: string },
+        );
+        const panelSubmit = vi.fn();
+        const panelCancel = vi.fn();
+        const panelRebaseControl = vi.fn();
+        panel.onRebaseDialogSubmit(panelSubmit);
+        panel.onRebaseDialogCancel(panelCancel);
+        panel.onRebaseControl(panelRebaseControl);
+        const panelMessages = panel as unknown as {
+            handleMessage: (message: unknown) => Promise<void>;
+        };
+        await panelMessages.handleMessage({
+            type: "startInteractiveRebase",
+            requestId: "panel",
+            entries,
+        });
+        await panelMessages.handleMessage({ type: "cancelRebaseDialog", requestId: "panel" });
+        await panelMessages.handleMessage({ type: "continueRebase", repositoryRoot: "/repo" });
+        await panelMessages.handleMessage({ type: "abortRebase", repositoryRoot: "/repo" });
+        await expect(
+            panelMessages.handleMessage({ type: "startInteractiveRebase", requestId: "", entries }),
+        ).rejects.toThrow("non-empty string");
+        await expect(
+            panelMessages.handleMessage({
+                type: "startInteractiveRebase",
+                requestId: "panel",
+                entries: {},
+            }),
+        ).rejects.toThrow("Expected array");
+        expect(panelSubmit).toHaveBeenCalledTimes(1);
+        expect(panelSubmit).toHaveBeenLastCalledWith({ requestId: "panel", entries });
+        expect(panelCancel).toHaveBeenCalledTimes(1);
+        expect(panelCancel).toHaveBeenLastCalledWith({ requestId: "panel" });
+        expect(panelRebaseControl).toHaveBeenNthCalledWith(1, {
+            action: "continue",
+            repositoryRoot: "/repo",
+        });
+        expect(panelRebaseControl).toHaveBeenNthCalledWith(2, {
+            action: "abort",
+            repositoryRoot: "/repo",
+        });
+
+        const undocked = new UndockedViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+            makeGitOpsMock() as unknown as object,
+            { fsPath: "/repo", path: "/repo" } as unknown as { fsPath: string; path: string },
+            makeCredentialStore() as unknown as object,
+            createMemento() as unknown as object,
+        );
+        const undockedSubmit = vi.fn();
+        const undockedCancel = vi.fn();
+        const undockedRebaseControl = vi.fn();
+        undocked.onRebaseDialogSubmit(undockedSubmit);
+        undocked.onRebaseDialogCancel(undockedCancel);
+        undocked.onRebaseControl(undockedRebaseControl);
+        const undockedMessages = undocked as unknown as {
+            handleMessage: (message: unknown) => Promise<void>;
+        };
+        await undockedMessages.handleMessage({
+            type: "startInteractiveRebase",
+            requestId: "undocked",
+            entries,
+        });
+        await undockedMessages.handleMessage({ type: "cancelRebaseDialog", requestId: "undocked" });
+        await undockedMessages.handleMessage({
+            type: "continueRebase",
+            repositoryRoot: "/forged",
+        });
+        await undockedMessages.handleMessage({ type: "abortRebase", repositoryRoot: "/stale" });
+        await expect(
+            undockedMessages.handleMessage({
+                type: "startInteractiveRebase",
+                requestId: "",
+                entries,
+            }),
+        ).rejects.toThrow("non-empty string");
+        await expect(
+            undockedMessages.handleMessage({
+                type: "startInteractiveRebase",
+                requestId: "undocked",
+                entries: {},
+            }),
+        ).rejects.toThrow("Expected array");
+        expect(undockedSubmit).toHaveBeenCalledTimes(1);
+        expect(undockedSubmit).toHaveBeenLastCalledWith({ requestId: "undocked", entries });
+        expect(undockedCancel).toHaveBeenCalledTimes(1);
+        expect(undockedCancel).toHaveBeenLastCalledWith({ requestId: "undocked" });
+        expect(undockedRebaseControl).toHaveBeenNthCalledWith(1, {
+            action: "continue",
+            repositoryRoot: "/repo",
+        });
+        expect(undockedRebaseControl).toHaveBeenNthCalledWith(2, {
+            action: "abort",
+            repositoryRoot: "/repo",
+        });
+
+        graph.dispose();
+        panel.dispose();
+        undocked.dispose();
     });
 
     it("CommitGraphViewProvider emits validated bulk branch delete messages", async () => {

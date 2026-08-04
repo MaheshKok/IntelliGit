@@ -20,11 +20,26 @@ export function useCommitGraphMessages(params: {
     loadingMore: React.MutableRefObject<boolean>;
     selectedHash: string | null;
     setViewVisible: (visible: boolean) => void;
+    onShowRebaseDialog: (dialog: Extract<CommitGraphInbound, { type: "showRebaseDialog" }>) => void;
 }): void {
-    const { vscode, dispatch, sendReady, loadingMore, selectedHash, setViewVisible } = params;
+    const {
+        vscode,
+        dispatch,
+        sendReady,
+        loadingMore,
+        selectedHash,
+        setViewVisible,
+        onShowRebaseDialog,
+    } = params;
     const selectedHashRef = useRef<string | null>(selectedHash);
     const selectFirstOnNextLoadRef = useRef(false);
     selectedHashRef.current = selectedHash;
+    // Held in a ref for the same reason as `selectedHashRef`: this effect owns the single
+    // `ready` post and the window subscription, so its dependency list must stay fixed. Naming
+    // the callback as a dependency would re-post `ready` and re-subscribe whenever a host
+    // re-created it.
+    const onShowRebaseDialogRef = useRef(onShowRebaseDialog);
+    onShowRebaseDialogRef.current = onShowRebaseDialog;
 
     useEffect(() => {
         if (sendReady) {
@@ -118,6 +133,9 @@ export function useCommitGraphMessages(params: {
                     break;
                 case "setViewVisibility":
                     setViewVisible(data.visible);
+                    break;
+                case "showRebaseDialog":
+                    onShowRebaseDialogRef.current(data);
                     break;
                 case "loadError":
                     selectFirstOnNextLoadRef.current = false;

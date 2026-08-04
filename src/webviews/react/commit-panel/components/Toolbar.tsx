@@ -9,6 +9,7 @@ import { ContextMenu, type MenuItem } from "../../shared/components/ContextMenu"
 import { RefreshButton } from "../../shared/components/RefreshButton";
 import { ToolbarIconButton } from "../../shared/components/ToolbarIconButton";
 import { t } from "../../shared/i18n";
+import type { CommitPanelActiveOperation, CommitPanelRebaseControl } from "./operationTypes";
 
 interface Props {
     onRefresh: () => void;
@@ -25,6 +26,10 @@ interface Props {
     onCollapseAll: () => void;
     showAbortMerge: boolean;
     onAbortMerge: () => void;
+    activeOperation?: CommitPanelActiveOperation;
+    rebaseControl?: CommitPanelRebaseControl;
+    onContinueRebase: () => void;
+    onAbortRebase: () => void;
 }
 
 /**
@@ -49,6 +54,10 @@ export function Toolbar({
     onCollapseAll,
     showAbortMerge,
     onAbortMerge,
+    activeOperation,
+    rebaseControl,
+    onContinueRebase,
+    onAbortRebase,
 }: Props): React.ReactElement {
     const [viewMenuPosition, setViewMenuPosition] = useState<{ x: number; y: number } | null>(null);
     const viewMenuItems = useMemo<MenuItem[]>(
@@ -161,7 +170,36 @@ export function Toolbar({
                     </svg>
                 }
             />
-            {showAbortMerge ? (
+            {activeOperation === "rebase" && rebaseControl ? (
+                <>
+                    <ToolbarSeparator />
+                    {rebaseControl !== "foreign" ? (
+                        <>
+                            <ToolbarButton
+                                label={t("rebase.action.continueRebase")}
+                                onClick={onContinueRebase}
+                                variant="secondary"
+                            >
+                                <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+                                    <path
+                                        fill="currentColor"
+                                        d="m4 8 3 3 5-6-1.5-1.25L7 8 5.5 6.5z"
+                                    />
+                                </svg>
+                            </ToolbarButton>
+                            <ToolbarButton
+                                label={t("rebase.action.abortRebase")}
+                                onClick={onAbortRebase}
+                            >
+                                <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+                                    <path fill="currentColor" d="M4 4h8v8H4z" />
+                                </svg>
+                            </ToolbarButton>
+                        </>
+                    ) : null}
+                </>
+            ) : null}
+            {showAbortMerge && activeOperation !== "rebase" ? (
                 <>
                     <ToolbarSeparator />
                     <ToolbarButton label={t("merge.action.abortMerge")} onClick={onAbortMerge}>
@@ -204,15 +242,17 @@ function CheckMark(): React.ReactElement {
     );
 }
 
-/** Renders the abort-merge action with a Chakra-compatible element icon. */
+/** Renders a compact toolbar action with an explicit semantic visual treatment. */
 function ToolbarButton({
     label,
     onClick,
     children,
+    variant = "danger",
 }: {
     label: string;
     onClick: (event: React.MouseEvent<HTMLButtonElement>) => void;
     children?: React.ReactElement;
+    variant?: "danger" | "secondary";
 }): React.ReactElement {
     const { hoverDelay, tooltipsEnabled } = getSettings();
     return (
@@ -224,7 +264,7 @@ function ToolbarButton({
             isDisabled={!tooltipsEnabled}
         >
             <Button
-                variant="danger"
+                variant={variant}
                 size="sm"
                 onClick={onClick}
                 leftIcon={children}

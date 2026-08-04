@@ -1,0 +1,8 @@
+.rebase-dialog-list {
+    max-height: min(50vh, 520px);
+    overflow-y: auto;
+}
+
+.rebase-dialog-row {
+    border-bottom: 1px solid var(--intelligit-pycharm-border);
+}

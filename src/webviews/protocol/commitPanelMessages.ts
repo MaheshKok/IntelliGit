@@ -10,6 +10,10 @@ import type {
     WorkingFile,
 } from "../../types";
 import type { ShelfFileEntry, ShelfMetadata } from "../../shelf/model";
+import type {
+    InteractiveRebaseRangeCommit,
+    RebaseSubmissionEntry,
+} from "../../git/interactiveRebase/types";
 
 /** A shelf manifest entry carrying the file icon its path resolves to in the active theme. */
 export interface ShelfFileView extends ShelfFileEntry {
@@ -85,8 +89,26 @@ interface CommitPanelRepositorySummary {
     changedFileCount: number;
 }
 
+/** A valid operation discriminator, which permits rebase control only during a rebase. */
+export type CommitPanelOperationSnapshot =
+    | {
+          /** Older producers may omit this additive state until their own protocol phase. */
+          activeOperation?: undefined;
+          rebaseControl?: never;
+      }
+    | {
+          /** No rebase control may exist unless Git's active operation is a rebase. */
+          activeOperation: "none" | "merge" | "cherry-pick" | "revert";
+          rebaseControl?: never;
+      }
+    | {
+          /** Rebase controls require ownership classification before any UI may act. */
+          activeOperation: "rebase";
+          rebaseControl: "owned" | "unowned" | "foreign";
+      };
+
 /** Full host-side snapshot for one commit-panel repository runtime. */
-export interface CommitPanelRepositorySnapshot {
+export type CommitPanelRepositorySnapshot = CommitPanelOperationSnapshot & {
     /** Absolute filesystem path to the Git repository root that produced this snapshot. */
     repositoryRoot?: string;
     /** Stable display label for repository rows. */
@@ -147,7 +169,7 @@ export interface CommitPanelRepositorySnapshot {
     refreshing?: boolean;
     /** Last repository-scoped refresh error, or `null` when the latest snapshot is healthy. */
     error?: string | null;
-}
+};
 /** Webview-safe advisory warning for observable shelf health. */
 export type ShelfHealthWarning = {
     kind: "corruptShelf" | "lockBusy" | "checksumMismatch" | "pendingRecovery" | "recoveryFull";
@@ -167,6 +189,20 @@ export type OutboundMessage =
           /** Lifecycle event requesting working-tree, stash, graph, and draft state. */
           type: "ready";
       }
+    | {
+          /** One-shot interactive-rebase submission from the embedded graph dialog. */
+          type: "startInteractiveRebase";
+          /** Host-issued request ID returned unchanged by the dialog. */
+          requestId: string;
+          /** Raw dialog entries that the host validates against its recorded offer. */
+          entries: RebaseSubmissionEntry[];
+      }
+    | {
+          /** Dismisses the one-shot interactive-rebase dialog for this provider. */
+          type: "cancelRebaseDialog";
+          /** Host-issued request ID returned unchanged by the dialog. */
+          requestId: string;
+      }
     | RepositoryScopedMessage<{
           /** User event requesting a fresh working-tree and stash snapshot. */
           type: "refresh";
@@ -180,6 +216,14 @@ export type OutboundMessage =
     | RepositoryScopedMessage<{
           /** Command aborting the active merge after host confirmation. */
           type: "abortMerge";
+      }>
+    | RepositoryScopedMessage<{
+          /** Command continuing the active interactive rebase under its host-derived ownership contract. */
+          type: "continueRebase";
+      }>
+    | RepositoryScopedMessage<{
+          /** Command aborting the active interactive rebase under its host-derived ownership contract. */
+          type: "abortRebase";
       }>
     | RepositoryScopedMessage<{
           /** View option controlling whether ignored files are included in working-tree snapshots. */
@@ -525,6 +569,18 @@ export type OutboundMessage =
  * data for the current view.
  */
 export type InboundMessage =
+    | {
+          /** Opens the host-validated interactive-rebase dialog for this webview instance only. */
+          type: "showRebaseDialog";
+          /** Host-issued ID that the later submission must return from this same provider. */
+          requestId: string;
+          /** Ordered range rows including the pushed-history warning state. */
+          commits: readonly InteractiveRebaseRangeCommit[];
+          /** Fully qualified branch ref captured with the offered range. */
+          branch: string;
+          /** Whether at least one offered commit is already pushed. */
+          hasPushed: boolean;
+      }
     | {
           /** Repository list hydration for host-owned multi-repository state. */
           type: "setRepositories";
