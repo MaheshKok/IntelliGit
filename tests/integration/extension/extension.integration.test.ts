@@ -509,6 +509,10 @@ class MockUndockedViewProvider {
         entries: unknown[];
     }>();
     private rebaseDialogCancelEmitter = new MockEventEmitter<{ requestId: string }>();
+    private rebaseControlEmitter = new MockEventEmitter<{
+        action: "continue" | "abort";
+        repositoryRoot?: string;
+    }>();
     private openCommitFileDiffEmitter = new MockEventEmitter<{
         commitHash: string;
         filePath: string;
@@ -518,7 +522,19 @@ class MockUndockedViewProvider {
     private dockRequestedEmitter = new MockEventEmitter<void>();
     private disposeEmitter = new MockEventEmitter<void>();
 
-    constructor(_uri: unknown, _gitOps: unknown, _repoRootUri: unknown, _credentialStore: unknown) {
+    private selectedRootChanged?: (root: string) => Promise<void> | void;
+
+    constructor(
+        _uri: unknown,
+        _gitOps: unknown,
+        _repoRootUri: unknown,
+        _credentialStore: unknown,
+        _workspaceState?: unknown,
+        _commitCheckHostMap?: unknown,
+        _commitCheckSettings?: unknown,
+        options?: { onSelectedRepositoryRootChanged?: (root: string) => Promise<void> | void },
+    ) {
+        this.selectedRootChanged = options?.onSelectedRepositoryRootChanged;
         updateLatestUndockedProvider(this);
     }
 
@@ -527,6 +543,7 @@ class MockUndockedViewProvider {
     onCommitAction = this.commitActionEmitter.event;
     onRebaseDialogSubmit = this.rebaseDialogSubmitEmitter.event;
     onRebaseDialogCancel = this.rebaseDialogCancelEmitter.event;
+    onRebaseControl = this.rebaseControlEmitter.event;
     onOpenCommitFileDiff = this.openCommitFileDiffEmitter.event;
     onDidChangeFileCount = this.fileCountEmitter.event;
     onDidChangeWorkingTree = this.workingTreeEmitter.event;
@@ -570,6 +587,14 @@ class MockUndockedViewProvider {
     /** Emits an interactive-rebase dialog cancellation from this mocked undocked provider. */
     emitRebaseDialogCancel(payload: { requestId: string }): void {
         this.rebaseDialogCancelEmitter.fire(payload);
+    }
+    /** Emits an interactive-rebase continue/abort request from the mocked undocked provider. */
+    emitRebaseControl(payload: { action: "continue" | "abort"; repositoryRoot?: string }): void {
+        this.rebaseControlEmitter.fire(payload);
+    }
+    /** Simulates the undocked webview selecting a different repository root. */
+    async changeSelectedRepositoryRoot(root: string): Promise<void> {
+        await this.selectedRootChanged?.(root);
     }
 }
 
@@ -3768,6 +3793,132 @@ describe("extension integration", () => {
         await waitForAsync();
         expect(showErrorMessage).toHaveBeenCalledWith(expect.stringContaining("no longer active"));
         expect(showInformationMessage).not.toHaveBeenCalled();
+    });
+
+    it("routes undocked rebase controls through a root-captured Git runtime", async () => {
+        const controlModule = await import("../../../src/git/interactiveRebase/control");
+        const continueSpy = vi
+            .spyOn(controlModule, "continueInteractiveRebase")
+            .mockResolvedValue({ status: "continued", rebaseControl: "unowned" });
+        const abortSpy = vi
+            .spyOn(controlModule, "abortInteractiveRebase")
+            .mockResolvedValue({ status: "aborted", rebaseControl: "foreign" });
+        const { activate } = await import("../../../src/extension");
+        const context = {
+            extensionUri: { fsPath: "/ext", path: "/ext" },
+            subscriptions: mockDisposables,
+            asAbsolutePath: (relative: string) => `/ext/${relative}`,
+        } as unknown as MockExtensionContext;
+
+        await activate(context);
+        await registeredCommands.get("intelligit.openUndocked")?.();
+        await waitForAsync();
+        const undocked = latestUndockedProvider;
+        if (!undocked) throw new Error("Expected an undocked provider.");
+
+        const controlRoot = process.cwd();
+        gitOpsState.getRepositoryRoot.mockClear();
+        showErrorMessage.mockClear();
+        showInformationMessage.mockClear();
+        try {
+            undocked.emitRebaseControl({ action: "continue", repositoryRoot: controlRoot });
+            undocked.emitRebaseControl({ action: "abort", repositoryRoot: controlRoot });
+            await waitForAsync();
+            await waitForAsync();
+
+            expect(continueSpy).toHaveBeenCalledTimes(1);
+            expect(continueSpy).toHaveBeenCalledWith(expect.anything(), controlRoot);
+            expect(abortSpy).toHaveBeenCalledTimes(1);
+            expect(abortSpy).toHaveBeenCalledWith(expect.anything(), controlRoot);
+            expect(gitOpsState.getRepositoryRoot).toHaveBeenCalledWith(controlRoot);
+            expect(
+                gitOpsState.getRepositoryRoot.mock.calls.filter(([root]) => root === controlRoot),
+            ).toHaveLength(2);
+            expect(showInformationMessage).toHaveBeenNthCalledWith(
+                1,
+                "Interactive rebase continued.",
+            );
+            expect(showInformationMessage).toHaveBeenNthCalledWith(
+                2,
+                "Interactive rebase aborted.",
+            );
+            expect(showErrorMessage).not.toHaveBeenCalled();
+        } finally {
+            continueSpy.mockRestore();
+            abortSpy.mockRestore();
+        }
+    });
+
+    it("refreshes both matching surfaces and does not refresh a newly selected undocked root", async () => {
+        const controlModule = await import("../../../src/git/interactiveRebase/control");
+        let resolveFirstControl!: (result: { status: "completed"; rebasedHeadOid: string }) => void;
+        let resolveSecondControl!: (result: {
+            status: "completed";
+            rebasedHeadOid: string;
+        }) => void;
+        const firstControl = new Promise<{ status: "completed"; rebasedHeadOid: string }>(
+            (resolve) => {
+                resolveFirstControl = resolve;
+            },
+        );
+        const secondControl = new Promise<{ status: "completed"; rebasedHeadOid: string }>(
+            (resolve) => {
+                resolveSecondControl = resolve;
+            },
+        );
+        const continueSpy = vi
+            .spyOn(controlModule, "continueInteractiveRebase")
+            .mockReturnValueOnce(firstControl)
+            .mockReturnValueOnce(secondControl);
+        try {
+            const { activate } = await import("../../../src/extension");
+            const context = {
+                extensionUri: { fsPath: "/ext", path: "/ext" },
+                subscriptions: mockDisposables,
+                asAbsolutePath: (relative: string) => `/ext/${relative}`,
+            } as unknown as MockExtensionContext;
+            await activate(context);
+            await registeredCommands.get("intelligit.openUndocked")?.();
+            await waitForAsync();
+            const undocked = latestUndockedProvider;
+            if (!undocked || !latestCommitGraphProvider || !latestCommitPanelProvider) {
+                throw new Error("Expected all repository view providers.");
+            }
+
+            latestCommitGraphProvider.refresh.mockClear();
+            latestSidebarGraphProvider?.refresh.mockClear();
+            latestCommitPanelProvider.refresh.mockClear();
+            undocked.refresh.mockClear();
+            undocked.emitRebaseControl({ action: "continue", repositoryRoot: "/repo" });
+            await waitForAsync();
+            expect(continueSpy).toHaveBeenCalledWith(expect.anything(), "/repo");
+
+            resolveFirstControl({ status: "completed", rebasedHeadOid: HEAD_OID });
+            await waitForAsync();
+            await waitForAsync();
+            expect(latestCommitGraphProvider.refresh).toHaveBeenCalled();
+            expect(latestSidebarGraphProvider?.refresh).toHaveBeenCalled();
+            expect(latestCommitPanelProvider.refresh).toHaveBeenCalled();
+            expect(undocked.refresh).toHaveBeenCalled();
+
+            latestCommitGraphProvider.refresh.mockClear();
+            latestSidebarGraphProvider?.refresh.mockClear();
+            latestCommitPanelProvider.refresh.mockClear();
+            undocked.refresh.mockClear();
+            undocked.emitRebaseControl({ action: "continue", repositoryRoot: "/repo" });
+            await waitForAsync();
+            await undocked.changeSelectedRepositoryRoot("/repo-after-switch");
+            resolveSecondControl({ status: "completed", rebasedHeadOid: HEAD_OID });
+            await waitForAsync();
+            await waitForAsync();
+
+            expect(undocked.refresh).not.toHaveBeenCalled();
+            expect(latestCommitGraphProvider.refresh).toHaveBeenCalled();
+            expect(latestSidebarGraphProvider?.refresh).toHaveBeenCalled();
+            expect(latestCommitPanelProvider.refresh).toHaveBeenCalled();
+        } finally {
+            continueSpy.mockRestore();
+        }
     });
 
     it("rejects invalid file context command paths before Git operations", async () => {

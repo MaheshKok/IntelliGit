@@ -43,19 +43,33 @@ describe("resolveRebasePushTarget", () => {
 });
 
 describe("readRebasePushTarget", () => {
-    function executorReturning(stdout: string) {
+    function executorReturning(metadata: string, oid: string | Error = TARGET.upstreamOid) {
         return {
-            runBinary: vi.fn(async () => ({
-                stdout: Buffer.from(stdout),
-                stderr: Buffer.alloc(0),
-                exitCode: 0,
-                truncated: false,
-            })),
+            runBinary: vi.fn(async (args: string[]) => {
+                if (args[0] === "for-each-ref") {
+                    return {
+                        stdout: Buffer.from(metadata),
+                        stderr: Buffer.alloc(0),
+                        exitCode: 0,
+                        truncated: false,
+                    };
+                }
+                if (args[0] === "rev-parse") {
+                    if (oid instanceof Error) throw oid;
+                    return {
+                        stdout: Buffer.from(`${oid}\n`),
+                        stderr: Buffer.alloc(0),
+                        exitCode: 0,
+                        truncated: false,
+                    };
+                }
+                throw new Error(`Unexpected Git binary command: ${args.join(" ")}`);
+            }),
         };
     }
 
     it("reads the upstream of a fully qualified branch as a pinned target", async () => {
-        const executor = executorReturning(`origin\0refs/heads/main\0${TARGET.upstreamOid}\n`);
+        const executor = executorReturning("origin\0refs/heads/main\0refs/remotes/origin/main\n");
 
         await expect(readRebasePushTarget(executor as never, "refs/heads/main")).resolves.toEqual(
             TARGET,
@@ -63,15 +77,37 @@ describe("readRebasePushTarget", () => {
         expect(executor.runBinary).toHaveBeenCalledWith(
             [
                 "for-each-ref",
-                "--format=%(upstream:remotename)%00%(upstream:remoteref)%00%(upstream:objectname)",
+                "--format=%(upstream:remotename)%00%(upstream:remoteref)%00%(upstream)",
                 "refs/heads/main",
+            ],
+            expect.anything(),
+        );
+        expect(executor.runBinary).toHaveBeenCalledWith(
+            [
+                "rev-parse",
+                "--verify",
+                "--end-of-options",
+                "refs/remotes/origin/main^{commit}",
             ],
             expect.anything(),
         );
     });
 
+    it("accepts a safe custom fetch destination returned as the local upstream ref", async () => {
+        const customUpstreamRef = "refs/custom/origin/main";
+        const executor = executorReturning(`origin\0refs/heads/main\0${customUpstreamRef}\n`);
+
+        await expect(readRebasePushTarget(executor as never, "refs/heads/main")).resolves.toEqual(
+            TARGET,
+        );
+        expect(executor.runBinary).toHaveBeenCalledWith(
+            ["rev-parse", "--verify", "--end-of-options", `${customUpstreamRef}^{commit}`],
+            expect.anything(),
+        );
+    });
+
     it("never asks Git about a branch name it has not validated", async () => {
-        const executor = executorReturning(`origin\0refs/heads/main\0${TARGET.upstreamOid}`);
+        const executor = executorReturning("origin\0refs/heads/main\0refs/remotes/origin/main");
 
         await expect(
             readRebasePushTarget(executor as never, "--upload-pack=x"),
@@ -83,13 +119,35 @@ describe("readRebasePushTarget", () => {
         ["a detached or upstream-less branch", "\0\0"],
         [
             "more fields than the format defines",
-            `origin\0refs/heads/main\0${TARGET.upstreamOid}\0x`,
+            "origin\0refs/heads/main\0refs/remotes/origin/main\0x",
         ],
         ["fewer fields than the format defines", "origin\0refs/heads/main"],
     ])("returns no target for %s", async (_name, stdout) => {
+        const executor = executorReturning(stdout);
         await expect(
-            readRebasePushTarget(executorReturning(stdout) as never, "refs/heads/main"),
+            readRebasePushTarget(executor as never, "refs/heads/main"),
         ).resolves.toBeUndefined();
+        expect(executor.runBinary).toHaveBeenCalledTimes(1);
+    });
+
+    it("fails closed when the validated upstream ref cannot resolve to an object", async () => {
+        const executor = executorReturning(
+            "origin\0refs/heads/main\0refs/remotes/origin/main\n",
+            new Error("missing tracking ref"),
+        );
+
+        await expect(readRebasePushTarget(executor as never, "refs/heads/main")).resolves.toBeUndefined();
+        expect(executor.runBinary).toHaveBeenCalledTimes(2);
+    });
+
+    it("rejects a malformed object id returned by the second lookup", async () => {
+        const executor = executorReturning(
+            "origin\0refs/heads/main\0refs/remotes/origin/main\n",
+            "not-an-object-id",
+        );
+
+        await expect(readRebasePushTarget(executor as never, "refs/heads/main")).resolves.toBeUndefined();
+        expect(executor.runBinary).toHaveBeenCalledTimes(2);
     });
 });
 

@@ -4732,8 +4732,10 @@ describe("view providers integration", () => {
         );
         const undockedSubmit = vi.fn();
         const undockedCancel = vi.fn();
+        const undockedRebaseControl = vi.fn();
         undocked.onRebaseDialogSubmit(undockedSubmit);
         undocked.onRebaseDialogCancel(undockedCancel);
+        undocked.onRebaseControl(undockedRebaseControl);
         const undockedMessages = undocked as unknown as {
             handleMessage: (message: unknown) => Promise<void>;
         };
@@ -4743,6 +4745,11 @@ describe("view providers integration", () => {
             entries,
         });
         await undockedMessages.handleMessage({ type: "cancelRebaseDialog", requestId: "undocked" });
+        await undockedMessages.handleMessage({
+            type: "continueRebase",
+            repositoryRoot: "/forged",
+        });
+        await undockedMessages.handleMessage({ type: "abortRebase", repositoryRoot: "/stale" });
         await expect(
             undockedMessages.handleMessage({
                 type: "startInteractiveRebase",
@@ -4761,6 +4768,14 @@ describe("view providers integration", () => {
         expect(undockedSubmit).toHaveBeenLastCalledWith({ requestId: "undocked", entries });
         expect(undockedCancel).toHaveBeenCalledTimes(1);
         expect(undockedCancel).toHaveBeenLastCalledWith({ requestId: "undocked" });
+        expect(undockedRebaseControl).toHaveBeenNthCalledWith(1, {
+            action: "continue",
+            repositoryRoot: "/repo",
+        });
+        expect(undockedRebaseControl).toHaveBeenNthCalledWith(2, {
+            action: "abort",
+            repositoryRoot: "/repo",
+        });
 
         graph.dispose();
         panel.dispose();

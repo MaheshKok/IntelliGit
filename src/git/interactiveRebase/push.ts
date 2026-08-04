@@ -1,6 +1,7 @@
 import { rm } from "node:fs/promises";
 import type { GitExecutor } from "../executor";
 import type { RepositoryMutationGate } from "../repositoryMutationGate";
+import { isValidBranchName } from "../../utils/gitRefs";
 import { errorMessage, readGitText } from "./gitText";
 import { isLowerCaseFullObjectId } from "./objectId";
 import { REMOTE_HEAD_REF, SAFE_REMOTE_NAME } from "./remoteTarget";
@@ -41,19 +42,34 @@ export async function readRebasePushTarget(
     try {
         const output = await readGitText(executor, [
             "for-each-ref",
-            "--format=%(upstream:remotename)%00%(upstream:remoteref)%00%(upstream:objectname)",
+            "--format=%(upstream:remotename)%00%(upstream:remoteref)%00%(upstream)",
             branch,
         ]);
         const fields = output.split("\0");
         if (fields.length !== 3) return undefined;
-        return resolveRebasePushTarget({
-            remoteName: fields[0],
-            remoteHeadRef: fields[1],
-            upstreamOid: fields[2],
-        });
+        const [remoteName, remoteHeadRef, upstreamRef] = fields;
+        if (
+            !SAFE_REMOTE_NAME.test(remoteName) ||
+            !REMOTE_HEAD_REF.test(remoteHeadRef) ||
+            !isSafeLocalUpstreamRef(upstreamRef)
+        ) {
+            return undefined;
+        }
+        const upstreamOid = await readGitText(executor, [
+            "rev-parse",
+            "--verify",
+            "--end-of-options",
+            `${upstreamRef}^{commit}`,
+        ]);
+        return resolveRebasePushTarget({ remoteName, remoteHeadRef, upstreamOid });
     } catch {
         return undefined;
     }
+}
+
+/** Keeps the second Git lookup rooted at a safe fully-qualified ref returned by Git. */
+function isSafeLocalUpstreamRef(upstreamRef: string): boolean {
+    return upstreamRef.startsWith("refs/") && isValidBranchName(upstreamRef);
 }
 
 /** Dependencies for a post-rebase force push or explicit dismissal. */

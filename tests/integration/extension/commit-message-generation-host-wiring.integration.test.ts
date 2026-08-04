@@ -107,6 +107,7 @@ vi.mock("../../../src/views/UndockedViewProvider", () => ({
         onCommitAction = event();
         onRebaseDialogSubmit = event();
         onRebaseDialogCancel = event();
+        onRebaseControl = event();
         onOpenCommitFileDiff = event();
         onDidChangeWorkingTree = event();
         onDidChangeFileCount = event();

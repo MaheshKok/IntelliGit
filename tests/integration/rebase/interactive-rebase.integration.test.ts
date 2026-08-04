@@ -855,9 +855,10 @@ function submission(fixture: RebaseFixture, entries: readonly RebaseTodoEntry[])
 }
 
 /**
- * Runs a real reorder whose submission declares pushed history and a push target, so the runner
- * stops at its pending-push outcome and yields the manifest the force push is then handed. Building
- * the manifest here rather than by hand keeps the push scenarios testing data the runner produces.
+ * Runs a real reorder whose submission declares pushed history and a production-read push target,
+ * so the runner stops at its pending-push outcome and yields the manifest the force push is then
+ * handed. Building the manifest here rather than by hand keeps the push scenarios testing data the
+ * runner produces.
  */
 async function completePendingPushRebase(fixture: PushableRebaseFixture) {
     const rebaseable = fixture.commits.slice(2);
@@ -865,9 +866,16 @@ async function completePendingPushRebase(fixture: PushableRebaseFixture) {
         { hash: rebaseable[1].hash, action: "pick" },
         { hash: rebaseable[0].hash, action: "pick" },
     ]);
+    const pushTarget = await readRebasePushTarget(
+        fixture.dependencies.executor,
+        request.expectedBranch,
+    );
+    if (!pushTarget) {
+        throw new Error("Expected the fixture branch to have a readable upstream push target.");
+    }
     const completion = await runInteractiveRebaseSubmission(fixture.dependencies, {
         entries,
-        request: { ...request, hasPushedCommit: true, pushTarget: fixture.remote.pushTarget },
+        request: { ...request, hasPushedCommit: true, pushTarget },
     });
     if (completion.status !== "completed-pending-push") {
         throw new Error(

@@ -251,6 +251,12 @@ export class UndockedViewProvider {
     readonly onRebaseDialogSubmit = this._onRebaseDialogSubmit.event;
     private readonly _onRebaseDialogCancel = new vscode.EventEmitter<{ requestId: string }>();
     readonly onRebaseDialogCancel = this._onRebaseDialogCancel.event;
+    /** Emits an interactive-rebase continue/abort request scoped to the active repository. */
+    private readonly _onRebaseControl = new vscode.EventEmitter<{
+        action: "continue" | "abort";
+        repositoryRoot: string;
+    }>();
+    readonly onRebaseControl = this._onRebaseControl.event;
     private readonly _onOpenCommitFileDiff = new vscode.EventEmitter<{
         commitHash: string;
         filePath: string;
@@ -709,6 +715,7 @@ export class UndockedViewProvider {
         this._onCommitAction.dispose();
         this._onRebaseDialogSubmit.dispose();
         this._onRebaseDialogCancel.dispose();
+        this._onRebaseControl.dispose();
         this._onOpenCommitFileDiff.dispose();
         this._onDidChangeFileCount.dispose();
         this._onDidChangeWorkingTree.dispose();
@@ -1002,6 +1009,18 @@ export class UndockedViewProvider {
                 this._onRebaseDialogCancel.fire({ requestId });
                 break;
             }
+            case "continueRebase":
+                this._onRebaseControl.fire({
+                    action: "continue",
+                    repositoryRoot: this.repoRootUri.fsPath,
+                });
+                break;
+            case "abortRebase":
+                this._onRebaseControl.fire({
+                    action: "abort",
+                    repositoryRoot: this.repoRootUri.fsPath,
+                });
+                break;
             case "openCommitFileDiff":
                 this._onOpenCommitFileDiff.fire({
                     commitHash: assertGitHash(msg.commitHash, "commitHash"),

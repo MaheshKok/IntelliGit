@@ -162,7 +162,13 @@ describe("interactive rebase submission handler", () => {
     it("captures a complete upstream target at submission time", async () => {
         const executor = executorFor();
         (executor.runBinary as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
-            stdout: Buffer.from(`origin\0refs/heads/main\0${HASH_C}`),
+            stdout: Buffer.from("origin\0refs/heads/main\0refs/remotes/origin/main"),
+            stderr: Buffer.alloc(0),
+            exitCode: 0,
+            truncated: false,
+        });
+        (executor.runBinary as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+            stdout: Buffer.from(`${HASH_C}\n`),
             stderr: Buffer.alloc(0),
             exitCode: 0,
             truncated: false,

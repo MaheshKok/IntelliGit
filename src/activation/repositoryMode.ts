@@ -8,6 +8,10 @@ import { createPendingRebaseDialogRequests } from "../git/interactiveRebase/pend
 import { createInteractiveRebaseSubmissionHandler } from "../git/interactiveRebase/submission";
 import { runInteractiveRebaseSubmission } from "../git/interactiveRebase/run";
 import { dismissRebasePushOffer, forcePushRebasedHead } from "../git/interactiveRebase/push";
+import {
+    abortInteractiveRebase,
+    continueInteractiveRebase,
+} from "../git/interactiveRebase/control";
 import { watchWholeIndexOperation } from "../git/wholeIndexOperationWatcher";
 import { CommitMessageGenerationCoordinator } from "../ai/commitMessageGenerationCoordinator";
 import { RepositoryLock } from "../git/repositoryLock";
@@ -59,6 +63,7 @@ import { registerShelfCommands } from "./shelfCommands";
 import {
     createOpenCommitFileDiffHandler,
     registerRepositoryViewEvents,
+    showInteractiveRebaseControlResult,
     showInteractiveRebaseSubmissionRejection,
     showInteractiveRebaseSubmissionRunResult,
 } from "./repositoryViewEvents";
@@ -986,6 +991,68 @@ export async function activateRepositoryMode(
                 // An already-consumed request is a benign no-op, so its boolean result is intentionally ignored.
                 rebaseSubmissionHandler.cancel({ requestId }, rebaseDialogOriginProvider);
             }),
+            undocked.onRebaseControl(async ({ action, repositoryRoot }) => {
+                // Capture a root-stable executor and GitOps before the first await; repository
+                // selection can change while Git control or notification refresh is pending.
+                const controlRoot = repositoryRoot;
+                try {
+                    const controlExecutor = new GitExecutor(controlRoot, mutationGate);
+                    const controlGitOps = new GitOps(controlExecutor);
+                    const directories = await controlGitOps.getGitDirectories();
+                    const dependencies = {
+                        executor: controlExecutor,
+                        mutationGate,
+                        storageRoot: context.globalStorageUri?.fsPath,
+                        gitDir: directories.gitDir,
+                        commonDir: directories.commonDir,
+                        helperScriptPath: context.asAbsolutePath(
+                            "dist/interactive-rebase-editor-helper.cjs",
+                        ),
+                    };
+                    const result = await (action === "continue"
+                        ? continueInteractiveRebase(dependencies, controlRoot)
+                        : abortInteractiveRebase(dependencies, controlRoot));
+                    await showInteractiveRebaseControlResult(
+                        result,
+                        async () => {
+                            if (getRepoRoot() === controlRoot) {
+                                await refreshService.refreshAll();
+                            }
+                            const panel = undocked;
+                            if (panel && getUndockedSelectedRepositoryRoot() === controlRoot) {
+                                await loadUndockedData(
+                                    () =>
+                                        undocked === panel &&
+                                        getUndockedSelectedRepositoryRoot() === controlRoot,
+                                );
+                            }
+                        },
+                        {
+                            forcePush: (manifest) =>
+                                forcePushRebasedHead(
+                                    {
+                                        executor: controlExecutor,
+                                        mutationGate,
+                                        storageRoot: context.globalStorageUri?.fsPath ?? "",
+                                        commonDir: directories.commonDir,
+                                    },
+                                    manifest,
+                                ),
+                            dismiss: (manifest) =>
+                                dismissRebasePushOffer(
+                                    context.globalStorageUri?.fsPath ?? "",
+                                    manifest,
+                                ),
+                        },
+                    );
+                } catch (error) {
+                    const message = getErrorMessage(error);
+                    console.error(`Interactive rebase ${action} failed:`, error);
+                    vscode.window.showErrorMessage(
+                        vscode.l10n.t("Interactive rebase failed: {message}", { message }),
+                    );
+                }
+            }),
             undocked.onOpenCommitFileDiff(handleOpenUndockedCommitFileDiff),
             undocked.onDidChangeWorkingTree(() => {
                 commitPanel.refreshSilent().catch((err) => {
@@ -1007,16 +1074,16 @@ export async function activateRepositoryMode(
      * Guards after awaits because the undocked panel can be disposed while Git
      * work is pending, especially while a new-window open is being completed.
      */
-    const loadUndockedData = async (): Promise<void> => {
+    const loadUndockedData = async (shouldContinue: () => boolean = () => true): Promise<void> => {
         const panel = undocked;
-        if (!panel) return;
+        if (!panel || !shouldContinue()) return;
         // The panel can be replaced while loading; commit only to the requesting instance.
         // react-doctor-disable-next-line react-doctor/async-defer-await
         const data = await loadCurrentUndockedRepositoryData();
-        if (!commitUndockedRepositoryData(panel, data)) return;
+        if (!shouldContinue() || !commitUndockedRepositoryData(panel, data)) return;
         panel.setBranches(data.branches, data.worktrees);
-        if (undocked !== panel) return;
-        await panel.refresh(() => undocked === panel);
+        if (!shouldContinue() || undocked !== panel) return;
+        await panel.refresh(() => shouldContinue() && undocked === panel);
     };
 
     /**
