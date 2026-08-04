@@ -523,6 +523,11 @@ class MockUndockedViewProvider {
     private disposeEmitter = new MockEventEmitter<void>();
 
     private selectedRootChanged?: (root: string) => Promise<void> | void;
+    private selectedRoot = "/repo";
+    private readonly executor?: { setRoot: (root: string) => void };
+    private readonly loadRepositoryData?: (
+        root: string,
+    ) => Promise<{ branches: unknown[]; worktrees?: unknown[] }>;
 
     constructor(
         _uri: unknown,
@@ -532,8 +537,16 @@ class MockUndockedViewProvider {
         _workspaceState?: unknown,
         _commitCheckHostMap?: unknown,
         _commitCheckSettings?: unknown,
-        options?: { onSelectedRepositoryRootChanged?: (root: string) => Promise<void> | void },
+        options?: {
+            executor?: { setRoot: (root: string) => void };
+            loadRepositoryData?: (
+                root: string,
+            ) => Promise<{ branches: unknown[]; worktrees?: unknown[] }>;
+            onSelectedRepositoryRootChanged?: (root: string) => Promise<void> | void;
+        },
     ) {
+        this.executor = options?.executor;
+        this.loadRepositoryData = options?.loadRepositoryData;
         this.selectedRootChanged = options?.onSelectedRepositoryRootChanged;
         updateLatestUndockedProvider(this);
     }
@@ -594,7 +607,16 @@ class MockUndockedViewProvider {
     }
     /** Simulates the undocked webview selecting a different repository root. */
     async changeSelectedRepositoryRoot(root: string): Promise<void> {
+        // The real provider retargets its injected executor before notifying activation.
+        this.selectedRoot = root;
+        this.executor?.setRoot(root);
         await this.selectedRootChanged?.(root);
+    }
+
+    /** Invokes the host data callback using the provider's current selected root. */
+    async reloadRepositoryData(): Promise<{ branches: unknown[]; worktrees?: unknown[] }> {
+        if (!this.loadRepositoryData) throw new Error("Expected a repository-data callback.");
+        return this.loadRepositoryData(this.selectedRoot);
     }
 }
 
@@ -3594,6 +3616,371 @@ describe("extension integration", () => {
             undocked.emitCommitAction({ action: "interactiveRebaseFromHere", hash: fullHash }),
         );
         expect(createTerminal).not.toHaveBeenCalled();
+    });
+
+    it("does not apply an undocked load after its repository selection switches", async () => {
+        const runModule = await import("../../../src/git/interactiveRebase/run");
+        const submissionModule = await import("../../../src/git/interactiveRebase/submission");
+        let resolveRun!: (result: { status: "completed"; rebasedHeadOid: string }) => void;
+        let resolveBranches!: (
+            branches: Awaited<ReturnType<typeof gitOpsState.getBranches>>,
+        ) => void;
+        let branchRequested = false;
+        const runResult = new Promise<{ status: "completed"; rebasedHeadOid: string }>(
+            (resolve) => {
+                resolveRun = resolve;
+            },
+        );
+        const deferredBranches = new Promise<Awaited<ReturnType<typeof gitOpsState.getBranches>>>(
+            (resolve) => {
+                resolveBranches = resolve;
+            },
+        );
+        const runSpy = vi
+            .spyOn(runModule, "runInteractiveRebaseSubmission")
+            .mockReturnValue(runResult);
+        const submissionSpy = vi
+            .spyOn(submissionModule, "createInteractiveRebaseSubmissionHandler")
+            .mockImplementation(
+                () =>
+                    ({
+                        submit: vi.fn(async () => ({
+                            status: "accepted",
+                            request: {
+                                repoRoot: "/repo-a",
+                                expectedBranch: "refs/heads/main",
+                                expectedHead: HEAD_OID,
+                                rangeHashes: [],
+                                hasPushedCommit: false,
+                                baseHash: "base",
+                            },
+                            entries: [],
+                        })),
+                        cancel: vi.fn(() => true),
+                    }) as never,
+            );
+        try {
+            const { activate } = await import("../../../src/extension");
+            const context = {
+                extensionUri: { fsPath: "/ext", path: "/ext" },
+                subscriptions: mockDisposables,
+                asAbsolutePath: (relative: string) => `/ext/${relative}`,
+            } as unknown as MockExtensionContext;
+            await activate(context);
+            await registeredCommands.get("intelligit.openUndocked")?.();
+            await waitForAsync();
+            const undocked = latestUndockedProvider;
+            if (!undocked) throw new Error("Expected an undocked provider.");
+
+            await undocked.changeSelectedRepositoryRoot("/repo-a");
+            undocked.setBranches.mockClear();
+            undocked.refresh.mockClear();
+            gitOpsState.getBranches.mockImplementationOnce(() => {
+                branchRequested = true;
+                return deferredBranches;
+            });
+            undocked.emitRebaseDialogSubmit({ requestId: "stale-request", entries: [] });
+            await waitForAsync();
+            expect(runSpy).toHaveBeenCalled();
+            resolveRun({ status: "completed", rebasedHeadOid: HEAD_OID });
+            await waitForAsync();
+            expect(branchRequested).toBe(true);
+
+            await undocked.changeSelectedRepositoryRoot("/repo-b");
+            resolveBranches([]);
+            for (let i = 0; i < 5; i++) await waitForAsync();
+
+            expect(undocked.setBranches).not.toHaveBeenCalled();
+            expect(undocked.refresh).not.toHaveBeenCalled();
+        } finally {
+            resolveRun({ status: "completed", rebasedHeadOid: HEAD_OID });
+            resolveBranches([]);
+            runSpy.mockRestore();
+            submissionSpy.mockRestore();
+        }
+    });
+
+    it("does not continue a docked-root refresh after undocked selection switches", async () => {
+        const runModule = await import("../../../src/git/interactiveRebase/run");
+        const submissionModule = await import("../../../src/git/interactiveRebase/submission");
+        let resolveRefresh!: () => void;
+        let refreshStarted = false;
+        let refreshAcceptedAfterSwitch = false;
+        const deferredRefresh = new Promise<void>((resolve) => {
+            resolveRefresh = resolve;
+        });
+        const runSpy = vi
+            .spyOn(runModule, "runInteractiveRebaseSubmission")
+            .mockResolvedValue({ status: "completed", rebasedHeadOid: HEAD_OID });
+        const submissionSpy = vi
+            .spyOn(submissionModule, "createInteractiveRebaseSubmissionHandler")
+            .mockImplementation(
+                () =>
+                    ({
+                        submit: vi.fn(async () => ({
+                            status: "accepted",
+                            request: {
+                                repoRoot: "/repo",
+                                expectedBranch: "refs/heads/main",
+                                expectedHead: HEAD_OID,
+                                rangeHashes: [],
+                                hasPushedCommit: false,
+                                baseHash: "base",
+                            },
+                            entries: [],
+                        })),
+                        cancel: vi.fn(() => true),
+                    }) as never,
+            );
+        try {
+            const { activate } = await import("../../../src/extension");
+            const context = {
+                extensionUri: { fsPath: "/ext", path: "/ext" },
+                subscriptions: mockDisposables,
+                asAbsolutePath: (relative: string) => `/ext/${relative}`,
+            } as unknown as MockExtensionContext;
+            await activate(context);
+            await registeredCommands.get("intelligit.openUndocked")?.();
+            await waitForAsync();
+            const undocked = latestUndockedProvider;
+            if (!undocked) throw new Error("Expected an undocked provider.");
+
+            undocked.refresh.mockClear();
+            undocked.refresh.mockImplementationOnce(async (shouldContinue?: () => boolean) => {
+                refreshStarted = true;
+                await deferredRefresh;
+                if (shouldContinue?.()) refreshAcceptedAfterSwitch = true;
+            });
+            undocked.emitRebaseDialogSubmit({ requestId: "docked-root-refresh", entries: [] });
+            for (let i = 0; i < 8 && !refreshStarted; i++) await waitForAsync();
+            expect(refreshStarted).toBe(true);
+
+            await undocked.changeSelectedRepositoryRoot("/repo-b");
+            resolveRefresh();
+            for (let i = 0; i < 8; i++) await waitForAsync();
+
+            expect(refreshAcceptedAfterSwitch).toBe(false);
+        } finally {
+            resolveRefresh();
+            runSpy.mockRestore();
+            submissionSpy.mockRestore();
+        }
+    });
+
+    it("keeps undocked host data rooted to the latest repository callback", async () => {
+        const commitCommands = await import("../../../src/commands/commitCommands");
+        const commitActionSpy = vi
+            .spyOn(commitCommands, "handleCommitContextAction")
+            .mockResolvedValue(undefined);
+        const branchA = [
+            {
+                name: "repo-a-branch",
+                hash: "a1b2c3d4",
+                isRemote: false,
+                isCurrent: true,
+                ahead: 0,
+                behind: 0,
+            },
+        ];
+        const branchB = [
+            {
+                name: "repo-b-branch",
+                hash: "feed1234",
+                isRemote: false,
+                isCurrent: true,
+                ahead: 0,
+                behind: 0,
+            },
+        ];
+        let resolveA!: (branches: typeof branchA) => void;
+        const deferredA = new Promise<typeof branchA>((resolve) => {
+            resolveA = resolve;
+        });
+        let branchRequestCount = 0;
+        try {
+            const { activate } = await import("../../../src/extension");
+            const context = {
+                extensionUri: { fsPath: "/ext", path: "/ext" },
+                subscriptions: mockDisposables,
+                asAbsolutePath: (relative: string) => `/ext/${relative}`,
+            } as unknown as MockExtensionContext;
+            await activate(context);
+            await registeredCommands.get("intelligit.openUndocked")?.();
+            await waitForAsync();
+            const undocked = latestUndockedProvider;
+            if (!undocked) throw new Error("Expected an undocked provider.");
+
+            await undocked.changeSelectedRepositoryRoot("/repo-a");
+            gitOpsState.getBranches
+                .mockImplementationOnce(() => {
+                    branchRequestCount += 1;
+                    return deferredA;
+                })
+                .mockImplementationOnce(async () => {
+                    branchRequestCount += 1;
+                    return branchB;
+                });
+            const loadA = undocked.reloadRepositoryData();
+            await waitForAsync();
+            expect(branchRequestCount).toBe(1);
+
+            await undocked.changeSelectedRepositoryRoot("/repo-b");
+            await undocked.reloadRepositoryData();
+            resolveA(branchA);
+            await loadA;
+            await waitForAsync();
+
+            commitActionSpy.mockClear();
+            undocked.emitCommitAction({ action: "copyRevision", hash: HEAD_OID });
+            for (let i = 0; i < 4; i++) await waitForAsync();
+
+            expect(commitActionSpy).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    currentBranches: expect.arrayContaining([
+                        expect.objectContaining({ name: "repo-b-branch" }),
+                    ]),
+                }),
+            );
+            expect(commitActionSpy).not.toHaveBeenCalledWith(
+                expect.objectContaining({
+                    currentBranches: expect.arrayContaining([
+                        expect.objectContaining({ name: "repo-a-branch" }),
+                    ]),
+                }),
+            );
+        } finally {
+            resolveA(branchA);
+            commitActionSpy.mockRestore();
+        }
+    });
+
+    it("keeps undocked rebase submission work rooted after selection switches", async () => {
+        const runModule = await import("../../../src/git/interactiveRebase/run");
+        const pushModule = await import("../../../src/git/interactiveRebase/push");
+        const submissionModule = await import("../../../src/git/interactiveRebase/submission");
+        const originalFactory = submissionModule.createInteractiveRebaseSubmissionHandler;
+        const factoryDeps: Array<{ executor: { repoRoot: string }; getRepoRoot: () => string }> =
+            [];
+        const factorySpy = vi
+            .spyOn(submissionModule, "createInteractiveRebaseSubmissionHandler")
+            .mockImplementation((deps) => {
+                factoryDeps.push(deps);
+                return originalFactory(deps);
+            });
+        const runSpy = vi.spyOn(runModule, "runInteractiveRebaseSubmission").mockResolvedValue({
+            status: "completed-pending-push",
+            manifest: {
+                version: 1,
+                sessionId: "session-a",
+                repoRoot: "/repo-a",
+                branch: "refs/heads/main",
+                pushTarget: {
+                    remoteName: "origin",
+                    remoteHeadRef: "refs/heads/main",
+                    upstreamOid: HEAD_OID,
+                },
+                hasPushedCommit: true,
+                baseHash: "base",
+                expectedHead: HEAD_OID,
+                createdAt: "2026-08-04T00:00:00.000Z",
+                lifecycle: "completed",
+                rebasedHeadOid: HEAD_OID,
+            },
+        });
+        const forcePushSpy = vi
+            .spyOn(pushModule, "forcePushRebasedHead")
+            .mockResolvedValue({ status: "pushed", offerRetained: false });
+        let resolveValidation!: (value: string) => void;
+        let validationRequested = false;
+        const deferredValidation = new Promise<string>((resolve) => {
+            resolveValidation = resolve;
+        });
+        try {
+            const { activate } = await import("../../../src/extension");
+            const context = {
+                extensionUri: { fsPath: "/ext", path: "/ext" },
+                subscriptions: mockDisposables,
+                asAbsolutePath: (relative: string) => `/ext/${relative}`,
+            } as unknown as MockExtensionContext;
+            await activate(context);
+            await registeredCommands.get("intelligit.openUndocked")?.();
+            await waitForAsync();
+            const undocked = latestUndockedProvider;
+            if (!undocked) throw new Error("Expected an undocked provider.");
+            await undocked.changeSelectedRepositoryRoot("/repo-a");
+
+            const hash = "a".repeat(40);
+            executorRunBinary.mockImplementation(async (args: string[]) => {
+                if (args[0] === "log") {
+                    return {
+                        stdout: Buffer.from(
+                            [
+                                hash,
+                                "Ada Lovelace",
+                                "2026-08-01T12:00:00.000Z",
+                                "first commit",
+                                HEAD_OID,
+                                "Grace Hopper",
+                                "2026-08-01T13:00:00.000Z",
+                                "second commit",
+                                "",
+                            ].join("\0"),
+                        ),
+                        truncated: false,
+                    };
+                }
+                return { stdout: Buffer.from(`${hash}\n${HEAD_OID}\n`), truncated: false };
+            });
+            undocked.emitCommitAction({ action: "interactiveRebaseFromHere", hash });
+            for (let i = 0; i < 4; i++) await waitForAsync();
+            const dialog = undocked.showRebaseDialog.mock.calls.at(-1)?.[0] as {
+                requestId?: string;
+                commits?: Array<{ hash: string }>;
+            };
+            if (!dialog.requestId || !dialog.commits) throw new Error("Expected a rebase dialog.");
+
+            executorRun.mockImplementation(async (args: string[]) => {
+                if (args[0] === "symbolic-ref" && !validationRequested) {
+                    validationRequested = true;
+                    return deferredValidation;
+                }
+                return defaultExecutorRunImpl(args);
+            });
+            undocked.refresh.mockClear();
+            undocked.emitRebaseDialogSubmit({
+                requestId: dialog.requestId,
+                entries: dialog.commits.map((commit) => ({ hash: commit.hash, action: "pick" })),
+            });
+            for (let i = 0; i < 4; i++) await waitForAsync();
+            expect(validationRequested).toBe(true);
+
+            await undocked.changeSelectedRepositoryRoot("/repo-b");
+            showWarningMessage.mockImplementationOnce(async () => "Force Push");
+            resolveValidation("refs/heads/main");
+            for (let i = 0; i < 8; i++) await waitForAsync();
+
+            expect(factoryDeps.at(-1)?.executor.repoRoot).toBe("/repo-a");
+            expect(factoryDeps.at(-1)?.getRepoRoot()).toBe("/repo-a");
+            expect(runSpy).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    executor: expect.objectContaining({ repoRoot: "/repo-a" }),
+                }),
+                expect.anything(),
+            );
+            expect(gitOpsState.getRepositoryRoot).toHaveBeenCalledWith("/repo-a");
+            expect(forcePushSpy).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    executor: expect.objectContaining({ repoRoot: "/repo-a" }),
+                }),
+                expect.objectContaining({ repoRoot: "/repo-a" }),
+            );
+            expect(undocked.refresh).not.toHaveBeenCalled();
+        } finally {
+            resolveValidation("refs/heads/main");
+            factorySpy.mockRestore();
+            runSpy.mockRestore();
+            forcePushSpy.mockRestore();
+        }
     });
 
     it("binds interactive-rebase dialog submission to the provider that opened the request", async () => {

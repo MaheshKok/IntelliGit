@@ -449,12 +449,14 @@ export async function activateRepositoryMode(
         };
     };
 
-    /** Stores undocked branch data only while the panel that requested it remains active. */
+    /** Stores undocked branch data only while the requesting panel and selected root still match. */
     const commitUndockedRepositoryData = (
         panel: UndockedViewProvider,
+        capturedRoot: string,
         data: { branches: Branch[]; worktrees: GitWorktree[] },
     ): boolean => {
-        if (undocked !== panel) return false;
+        if (undocked !== panel || getUndockedSelectedRepositoryRoot() !== capturedRoot)
+            return false;
         undockedBranches = data.branches;
         undockedWorktrees = data.worktrees;
         return true;
@@ -784,10 +786,10 @@ export async function activateRepositoryMode(
                 executor: undockedExecutor,
                 repositories,
                 selectedRepositoryRoot: initialUndockedRepository.root,
-                loadRepositoryData: async () => {
+                loadRepositoryData: async (capturedRoot) => {
                     const panel = undocked;
                     const data = await loadCurrentUndockedRepositoryData();
-                    if (panel) commitUndockedRepositoryData(panel, data);
+                    if (panel) commitUndockedRepositoryData(panel, capturedRoot, data);
                     return data;
                 },
                 commitChecksService,
@@ -923,8 +925,22 @@ export async function activateRepositoryMode(
                 }
             }),
             undocked.onRebaseDialogSubmit(async ({ requestId, entries }) => {
+                const submissionRoot = getUndockedSelectedRepositoryRoot();
+                const submissionPanel = undocked;
+                const submissionShouldContinue = (): boolean =>
+                    submissionPanel === undocked &&
+                    getUndockedSelectedRepositoryRoot() === submissionRoot;
+                const submissionExecutor = new GitExecutor(submissionRoot, mutationGate);
+                const submissionGitOps = new GitOps(submissionExecutor);
+                const submissionHandler = createInteractiveRebaseSubmissionHandler({
+                    executor: submissionExecutor,
+                    pendingRebaseDialogRequests,
+                    getRepoRoot: () => submissionRoot,
+                    hasWholeIndexOperationInProgress: () =>
+                        submissionGitOps.hasWholeIndexOperationInProgress(),
+                });
                 try {
-                    const result = await rebaseSubmissionHandler.submit(
+                    const result = await submissionHandler.submit(
                         { requestId, entries },
                         rebaseDialogOriginProvider,
                     );
@@ -932,19 +948,19 @@ export async function activateRepositoryMode(
                         showInteractiveRebaseSubmissionRejection(result.reason);
                         return;
                     }
-                    const directories = await undockedGitOps.getGitDirectories();
+                    const directories = await submissionGitOps.getGitDirectories();
                     const runResult = await runWithNotificationProgress(
                         vscode.l10n.t("Running interactive rebase..."),
                         async () =>
                             runInteractiveRebaseSubmission(
                                 {
-                                    executor: undockedExecutor,
+                                    executor: submissionExecutor,
                                     mutationGate,
                                     storageRoot: context.globalStorageUri?.fsPath,
                                     gitDir: directories.gitDir,
                                     commonDir: directories.commonDir,
                                     hasWholeIndexOperationInProgress: () =>
-                                        undockedGitOps.hasWholeIndexOperationInProgress(),
+                                        submissionGitOps.hasWholeIndexOperationInProgress(),
                                     helperScriptPath: context.asAbsolutePath(
                                         "dist/interactive-rebase-editor-helper.cjs",
                                     ),
@@ -955,17 +971,18 @@ export async function activateRepositoryMode(
                     await showInteractiveRebaseSubmissionRunResult(
                         runResult,
                         async () => {
-                            if (getUndockedSelectedRepositoryRoot() === repoRoot) {
-                                await refreshService.refreshAll();
+                            if (!submissionShouldContinue()) return;
+                            if (submissionRoot === repoRoot) {
+                                await refreshActiveRepositoryWithGuard(submissionShouldContinue);
                                 return;
                             }
-                            await loadUndockedData();
+                            await loadUndockedData(submissionShouldContinue);
                         },
                         {
                             forcePush: (manifest) =>
                                 forcePushRebasedHead(
                                     {
-                                        executor: undockedExecutor,
+                                        executor: submissionExecutor,
                                         mutationGate,
                                         storageRoot: context.globalStorageUri?.fsPath ?? "",
                                         commonDir: directories.commonDir,
@@ -1076,14 +1093,25 @@ export async function activateRepositoryMode(
      */
     const loadUndockedData = async (shouldContinue: () => boolean = () => true): Promise<void> => {
         const panel = undocked;
+        const capturedRoot = getUndockedSelectedRepositoryRoot();
         if (!panel || !shouldContinue()) return;
         // The panel can be replaced while loading; commit only to the requesting instance.
         // react-doctor-disable-next-line react-doctor/async-defer-await
         const data = await loadCurrentUndockedRepositoryData();
-        if (!shouldContinue() || !commitUndockedRepositoryData(panel, data)) return;
+        if (!shouldContinue() || !commitUndockedRepositoryData(panel, capturedRoot, data)) return;
         panel.setBranches(data.branches, data.worktrees);
-        if (!shouldContinue() || undocked !== panel) return;
-        await panel.refresh(() => shouldContinue() && undocked === panel);
+        if (
+            !shouldContinue() ||
+            undocked !== panel ||
+            getUndockedSelectedRepositoryRoot() !== capturedRoot
+        )
+            return;
+        await panel.refresh(
+            () =>
+                shouldContinue() &&
+                undocked === panel &&
+                getUndockedSelectedRepositoryRoot() === capturedRoot,
+        );
     };
 
     /**
