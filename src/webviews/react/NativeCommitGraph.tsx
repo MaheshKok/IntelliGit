@@ -8,17 +8,21 @@ import { CommitList } from "./CommitList";
 import type { Branch, Commit, CommitChecksSnapshot } from "../../types";
 import type {
     CommitAction,
-    CommitGraphOutbound,
     CommitGraphInbound,
+    CommitGraphOutbound,
+    RebaseTodoEntry,
 } from "../protocol/commitGraphTypes";
 import type { OutboundMessage as CommitPanelOutbound } from "./commit-panel/types";
 import type { VsCodeApi } from "./shared/vscodeApi";
+import { RebaseDialog } from "./shared/components/RebaseDialog/RebaseDialog";
 
 interface Props {
     vscode: VsCodeApi<CommitGraphOutbound | CommitPanelOutbound, Record<string, unknown>>;
     stateKeyPrefix?: string;
     sendReady?: boolean;
 }
+
+type RebaseDialogMessage = Extract<CommitGraphInbound, { type: "showRebaseDialog" }>;
 
 type CommitChecksValue = CommitChecksSnapshot | "loading";
 
@@ -138,6 +142,8 @@ export function NativeCommitGraph({
         commitChecksEnabled,
     } = state;
     const [isViewVisible, setIsViewVisible] = useState(true);
+    const [rebaseDialog, setRebaseDialog] = useState<RebaseDialogMessage | null>(null);
+    const rebaseDialogRef = useRef<RebaseDialogMessage | null>(null);
     const loadingMore = useRef(false);
     const selectedHashRef = useRef<string | null>(selectedHash);
     const selectFirstOnNextLoadRef = useRef(false);
@@ -229,6 +235,18 @@ export function NativeCommitGraph({
                 case "setViewVisibility":
                     setIsViewVisible(data.visible);
                     break;
+                case "showRebaseDialog": {
+                    const previous = rebaseDialogRef.current;
+                    if (previous) {
+                        vscode.postMessage({
+                            type: "cancelRebaseDialog",
+                            requestId: previous.requestId,
+                        });
+                    }
+                    rebaseDialogRef.current = data;
+                    setRebaseDialog(data);
+                    break;
+                }
             }
         };
 
@@ -287,28 +305,60 @@ export function NativeCommitGraph({
         },
         [vscode],
     );
+    const handleRebaseDialogSubmit = useCallback(
+        (entries: readonly RebaseTodoEntry[]) => {
+            const dialog = rebaseDialogRef.current;
+            if (!dialog) return;
+            rebaseDialogRef.current = null;
+            setRebaseDialog(null);
+            vscode.postMessage({
+                type: "startInteractiveRebase",
+                requestId: dialog.requestId,
+                entries: [...entries],
+            });
+        },
+        [vscode],
+    );
+    const handleRebaseDialogCancel = useCallback(() => {
+        const dialog = rebaseDialogRef.current;
+        if (!dialog) return;
+        rebaseDialogRef.current = null;
+        setRebaseDialog(null);
+        vscode.postMessage({ type: "cancelRebaseDialog", requestId: dialog.requestId });
+    }, [vscode]);
     return (
-        <CommitList
-            commits={commits}
-            selectedHash={selectedHash}
-            filterText={filterText}
-            hasMore={hasMore}
-            unpushedHashes={unpushedHashes}
-            selectedBranch={selectedBranch}
-            currentBranchName={currentBranchName}
-            currentBranchHeadHash={currentBranchHeadHash}
-            onSelectCommit={handleSelectCommit}
-            onFilterText={handleFilterText}
-            onLoadMore={handleLoadMore}
-            onCommitAction={handleCommitAction}
-            commitChecks={commitChecks}
-            onRequestCommitChecks={commitChecksEnabled ? handleRequestCommitChecks : undefined}
-            onOpenCommitCheckUrl={commitChecksEnabled ? handleOpenCommitCheckUrl : undefined}
-            onSignInForCommitChecks={commitChecksEnabled ? handleSignInForCommitChecks : undefined}
-            isViewVisible={isViewVisible}
-            showSearch={false}
-            showAuthorDate={false}
-            headerLabel="Graph"
-        />
+        <>
+            <CommitList
+                commits={commits}
+                selectedHash={selectedHash}
+                filterText={filterText}
+                hasMore={hasMore}
+                unpushedHashes={unpushedHashes}
+                selectedBranch={selectedBranch}
+                currentBranchName={currentBranchName}
+                currentBranchHeadHash={currentBranchHeadHash}
+                onSelectCommit={handleSelectCommit}
+                onFilterText={handleFilterText}
+                onLoadMore={handleLoadMore}
+                onCommitAction={handleCommitAction}
+                commitChecks={commitChecks}
+                onRequestCommitChecks={commitChecksEnabled ? handleRequestCommitChecks : undefined}
+                onOpenCommitCheckUrl={commitChecksEnabled ? handleOpenCommitCheckUrl : undefined}
+                onSignInForCommitChecks={
+                    commitChecksEnabled ? handleSignInForCommitChecks : undefined
+                }
+                isViewVisible={isViewVisible}
+                showSearch={false}
+                showAuthorDate={false}
+                headerLabel="Graph"
+            />
+            {rebaseDialog ? (
+                <RebaseDialog
+                    commits={rebaseDialog.commits}
+                    onSubmit={handleRebaseDialogSubmit}
+                    onCancel={handleRebaseDialogCancel}
+                />
+            ) : null}
+        </>
     );
 }

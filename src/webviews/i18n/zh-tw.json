@@ -316,5 +316,20 @@
     "stash.fileAction.cherryPickSelectedChanges": "挑選選取的變更",
     "a11y.resizeRepositoryColumn": "調整存放庫資料行大小",
     "commit.message.generate": "產生提交訊息",
-    "commit.message.stopGeneration": "停止產生提交訊息"
+    "commit.message.stopGeneration": "停止產生提交訊息",
+    "rebase.dialog.title": "正在重新定基提交",
+    "rebase.dialog.pushedWarning": "部分提交已推送。重新定基會改寫已發布的歷史記錄。",
+    "rebase.dialog.firstActionCleared": "第一個未捨棄的提交不能壓縮或修正，因此已改為 pick。",
+    "rebase.dialog.action": "重新定基動作",
+    "rebase.dialog.message": "提交訊息",
+    "rebase.dialog.moveUp": "向上移動提交",
+    "rebase.dialog.moveDown": "向下移動提交",
+    "rebase.dialog.start": "開始重新定基",
+    "rebase.action.pick": "選取",
+    "rebase.action.reword": "修改訊息",
+    "rebase.action.squash": "壓縮",
+    "rebase.action.fixup": "修正",
+    "rebase.action.continueRebase": "繼續變基",
+    "rebase.action.abortRebase": "中止變基",
+    "rebase.dialog.missingMessage": "下列提交需要提交訊息：{hashes}"
 }

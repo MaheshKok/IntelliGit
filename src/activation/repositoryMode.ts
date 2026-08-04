@@ -4,6 +4,14 @@ import { handleCommitContextAction } from "../commands/commitCommands";
 import { GitExecutor } from "../git/executor";
 import { RepositoryMutationCoordinator } from "../git/mutationCoordinator";
 import { GitOps } from "../git/operations";
+import { createPendingRebaseDialogRequests } from "../git/interactiveRebase/pendingRequests";
+import { createInteractiveRebaseSubmissionHandler } from "../git/interactiveRebase/submission";
+import { runInteractiveRebaseSubmission } from "../git/interactiveRebase/run";
+import { dismissRebasePushOffer, forcePushRebasedHead } from "../git/interactiveRebase/push";
+import {
+    abortInteractiveRebase,
+    continueInteractiveRebase,
+} from "../git/interactiveRebase/control";
 import { watchWholeIndexOperation } from "../git/wholeIndexOperationWatcher";
 import { CommitMessageGenerationCoordinator } from "../ai/commitMessageGenerationCoordinator";
 import { RepositoryLock } from "../git/repositoryLock";
@@ -17,6 +25,7 @@ import { logShelfOperation, logShelfWarning } from "../services/shelfObservabili
 import { ShelfStore } from "../shelf/store";
 import { resolveShelfPaths } from "../shelf/paths";
 import { readShelfSettings } from "./shelfSettings";
+import { reconcileRebaseSessionsOnActivation } from "./rebaseReconciliation";
 import {
     discoverGitRepositories,
     type DiscoveredRepository,
@@ -54,8 +63,11 @@ import { registerShelfCommands } from "./shelfCommands";
 import {
     createOpenCommitFileDiffHandler,
     registerRepositoryViewEvents,
+    showInteractiveRebaseControlResult,
+    showInteractiveRebaseSubmissionRejection,
+    showInteractiveRebaseSubmissionRunResult,
 } from "./repositoryViewEvents";
-import { showTimedWarningMessage } from "../utils/notifications";
+import { runWithNotificationProgress, showTimedWarningMessage } from "../utils/notifications";
 
 type BranchDeleteSelection = Array<Branch | string>;
 const UNDOCKED_SELECTED_REPOSITORY_KEY = "intelligit.undockedSelectedRepositoryRoot";
@@ -119,6 +131,7 @@ export async function activateRepositoryMode(
         new RepositoryMutationCoordinator(),
         new RepositoryLock(),
     );
+    const pendingRebaseDialogRequests = createPendingRebaseDialogRequests();
     const shelfSettings = readShelfSettings(vscode.workspace.getConfiguration("intelligit"));
     const shelfServices = new Map<string, ShelfService>();
     const globalStoragePath = context.globalStorageUri?.fsPath;
@@ -297,6 +310,7 @@ export async function activateRepositoryMode(
         shelfServiceForRepository,
         shelfSettings.removeOnUnshelve,
         commitMessageGenerationCoordinator,
+        context.globalStorageUri?.fsPath,
     );
     const mergeConflicts = new MergeConflictsTreeProvider(gitOps, repoRootUri);
     const worktreeService = new WorktreeService(executor, () => repoRoot);
@@ -381,6 +395,17 @@ export async function activateRepositoryMode(
     let refreshServiceWatchersRegistered = false;
     /** Returns the currently active refresh coordinator after repository switches replace it. */
     const getRefreshService = (): RefreshService => refreshService;
+    if (globalStoragePath) {
+        void Promise.all(
+            repositories.map((repository) =>
+                reconcileRebaseSessionsOnActivation(repository.root, {
+                    storageRoot: globalStoragePath,
+                    executor: new GitExecutor(repository.root, mutationGate),
+                    refresh: () => getRefreshService().refreshCommitPanels(),
+                }),
+            ),
+        );
+    }
     const registerRefreshServiceWatchers = (): void => {
         if (refreshServiceWatchersRegistered) return;
         refreshService.registerFileWatchers();
@@ -424,12 +449,14 @@ export async function activateRepositoryMode(
         };
     };
 
-    /** Stores undocked branch data only while the panel that requested it remains active. */
+    /** Stores undocked branch data only while the requesting panel and selected root still match. */
     const commitUndockedRepositoryData = (
         panel: UndockedViewProvider,
+        capturedRoot: string,
         data: { branches: Branch[]; worktrees: GitWorktree[] },
     ): boolean => {
-        if (undocked !== panel) return false;
+        if (undocked !== panel || getUndockedSelectedRepositoryRoot() !== capturedRoot)
+            return false;
         undockedBranches = data.branches;
         undockedWorktrees = data.worktrees;
         return true;
@@ -541,6 +568,12 @@ export async function activateRepositoryMode(
             switchSeq === repositorySwitchSeq && callerShouldContinue();
         if (!shouldContinue()) return;
 
+        if (repoRoot !== repository.root) {
+            pendingRebaseDialogRequests.cancelForOrigins(
+                [commitGraph, sidebarGraph, commitPanel],
+                repoRoot,
+            );
+        }
         activeRepository = repository;
         repoRoot = repository.root;
         repoRootUri = vscode.Uri.file(repoRoot);
@@ -733,6 +766,13 @@ export async function activateRepositoryMode(
             gitOps: undockedGitOps,
             getRepoRoot: getUndockedSelectedRepositoryRoot,
         });
+        const rebaseSubmissionHandler = createInteractiveRebaseSubmissionHandler({
+            executor: undockedExecutor,
+            pendingRebaseDialogRequests,
+            getRepoRoot: getUndockedSelectedRepositoryRoot,
+            hasWholeIndexOperationInProgress: () =>
+                undockedGitOps.hasWholeIndexOperationInProgress(),
+        });
 
         undocked = new UndockedViewProvider(
             context.extensionUri,
@@ -746,16 +786,23 @@ export async function activateRepositoryMode(
                 executor: undockedExecutor,
                 repositories,
                 selectedRepositoryRoot: initialUndockedRepository.root,
-                loadRepositoryData: async () => {
+                loadRepositoryData: async (capturedRoot) => {
                     const panel = undocked;
                     const data = await loadCurrentUndockedRepositoryData();
-                    if (panel) commitUndockedRepositoryData(panel, data);
+                    if (panel) commitUndockedRepositoryData(panel, capturedRoot, data);
                     return data;
                 },
                 commitChecksService,
                 commitChecksProviders,
                 commitMessageGenerationCoordinator,
                 onSelectedRepositoryRootChanged: async (root) => {
+                    const panel = undocked;
+                    if (panel && undockedSelectedRepositoryRoot !== root) {
+                        pendingRebaseDialogRequests.cancelForOrigins(
+                            [panel],
+                            undockedSelectedRepositoryRoot,
+                        );
+                    }
                     undockedSelectedRepositoryRoot = root;
                     undockedSelectionWrite = undockedSelectionWrite
                         .catch(() => undefined)
@@ -771,13 +818,19 @@ export async function activateRepositoryMode(
                 shelfServiceForRepository,
                 shelfRemoveOnUnshelve: shelfSettings.removeOnUnshelve,
             },
+            context.globalStorageUri?.fsPath,
         );
         undocked.setRepositoryLabel(initialUndockedRepository.label);
         undocked.setRepositories(repositories, initialUndockedRepository.root);
         context.subscriptions.push(undocked);
 
+        // Bound to the instance just constructed rather than to the mutable `undocked`, so a panel
+        // disposed after a replacement was created cancels its own requests and not the new one's.
+        const disposingPanel = undocked;
+        const rebaseDialogOriginProvider = undocked;
         context.subscriptions.push(
             undocked.onDidDispose(() => {
+                pendingRebaseDialogRequests.cancelAllForOrigin(disposingPanel);
                 undocked = undefined;
                 undockedRuntime?.worktreeService.dispose();
                 undockedRuntime = undefined;
@@ -842,6 +895,8 @@ export async function activateRepositoryMode(
                 void vscode.commands.executeCommand("intelligit.deleteBranches", { branches });
             }) ?? new vscode.Disposable(() => undefined),
             undocked.onCommitAction(async ({ action, hash }) => {
+                const originProvider = undocked;
+                if (!originProvider) return;
                 try {
                     await handleCommitContextAction({
                         action,
@@ -857,12 +912,161 @@ export async function activateRepositoryMode(
                             }
                             await loadUndockedData();
                         },
+                        originProvider,
+                        postRebaseDialog: (message) => originProvider.showRebaseDialog(message),
+                        pendingRebaseDialogRequests,
                     });
                 } catch (error) {
                     const message = getErrorMessage(error);
                     console.error(`Commit action '${action}' failed:`, error);
                     vscode.window.showErrorMessage(
                         vscode.l10n.t("Commit action failed: {message}", { message }),
+                    );
+                }
+            }),
+            undocked.onRebaseDialogSubmit(async ({ requestId, entries }) => {
+                const submissionRoot = getUndockedSelectedRepositoryRoot();
+                const submissionPanel = undocked;
+                const submissionShouldContinue = (): boolean =>
+                    submissionPanel === undocked &&
+                    getUndockedSelectedRepositoryRoot() === submissionRoot;
+                const submissionExecutor = new GitExecutor(submissionRoot, mutationGate);
+                const submissionGitOps = new GitOps(submissionExecutor);
+                const submissionHandler = createInteractiveRebaseSubmissionHandler({
+                    executor: submissionExecutor,
+                    pendingRebaseDialogRequests,
+                    getRepoRoot: () => submissionRoot,
+                    hasWholeIndexOperationInProgress: () =>
+                        submissionGitOps.hasWholeIndexOperationInProgress(),
+                });
+                try {
+                    const result = await submissionHandler.submit(
+                        { requestId, entries },
+                        rebaseDialogOriginProvider,
+                    );
+                    if (result.status === "rejected") {
+                        showInteractiveRebaseSubmissionRejection(result.reason);
+                        return;
+                    }
+                    const directories = await submissionGitOps.getGitDirectories();
+                    const runResult = await runWithNotificationProgress(
+                        vscode.l10n.t("Running interactive rebase..."),
+                        async () =>
+                            runInteractiveRebaseSubmission(
+                                {
+                                    executor: submissionExecutor,
+                                    mutationGate,
+                                    storageRoot: context.globalStorageUri?.fsPath,
+                                    gitDir: directories.gitDir,
+                                    commonDir: directories.commonDir,
+                                    hasWholeIndexOperationInProgress: () =>
+                                        submissionGitOps.hasWholeIndexOperationInProgress(),
+                                    helperScriptPath: context.asAbsolutePath(
+                                        "dist/interactive-rebase-editor-helper.cjs",
+                                    ),
+                                },
+                                result,
+                            ),
+                    );
+                    await showInteractiveRebaseSubmissionRunResult(
+                        runResult,
+                        async () => {
+                            if (!submissionShouldContinue()) return;
+                            if (submissionRoot === repoRoot) {
+                                await refreshActiveRepositoryWithGuard(submissionShouldContinue);
+                                return;
+                            }
+                            await loadUndockedData(submissionShouldContinue);
+                        },
+                        {
+                            forcePush: (manifest) =>
+                                forcePushRebasedHead(
+                                    {
+                                        executor: submissionExecutor,
+                                        mutationGate,
+                                        storageRoot: context.globalStorageUri?.fsPath ?? "",
+                                        commonDir: directories.commonDir,
+                                    },
+                                    manifest,
+                                ),
+                            dismiss: (manifest) =>
+                                dismissRebasePushOffer(
+                                    context.globalStorageUri?.fsPath ?? "",
+                                    manifest,
+                                ),
+                        },
+                    );
+                } catch (error) {
+                    const message = getErrorMessage(error);
+                    console.error("Interactive rebase submission failed:", error);
+                    vscode.window.showErrorMessage(
+                        vscode.l10n.t("Interactive rebase failed: {message}", { message }),
+                    );
+                }
+            }),
+            undocked.onRebaseDialogCancel(({ requestId }) => {
+                // An already-consumed request is a benign no-op, so its boolean result is intentionally ignored.
+                rebaseSubmissionHandler.cancel({ requestId }, rebaseDialogOriginProvider);
+            }),
+            undocked.onRebaseControl(async ({ action, repositoryRoot }) => {
+                // Capture a root-stable executor and GitOps before the first await; repository
+                // selection can change while Git control or notification refresh is pending.
+                const controlRoot = repositoryRoot;
+                try {
+                    const controlExecutor = new GitExecutor(controlRoot, mutationGate);
+                    const controlGitOps = new GitOps(controlExecutor);
+                    const directories = await controlGitOps.getGitDirectories();
+                    const dependencies = {
+                        executor: controlExecutor,
+                        mutationGate,
+                        storageRoot: context.globalStorageUri?.fsPath,
+                        gitDir: directories.gitDir,
+                        commonDir: directories.commonDir,
+                        helperScriptPath: context.asAbsolutePath(
+                            "dist/interactive-rebase-editor-helper.cjs",
+                        ),
+                    };
+                    const result = await (action === "continue"
+                        ? continueInteractiveRebase(dependencies, controlRoot)
+                        : abortInteractiveRebase(dependencies, controlRoot));
+                    await showInteractiveRebaseControlResult(
+                        result,
+                        async () => {
+                            if (getRepoRoot() === controlRoot) {
+                                await refreshService.refreshAll();
+                            }
+                            const panel = undocked;
+                            if (panel && getUndockedSelectedRepositoryRoot() === controlRoot) {
+                                await loadUndockedData(
+                                    () =>
+                                        undocked === panel &&
+                                        getUndockedSelectedRepositoryRoot() === controlRoot,
+                                );
+                            }
+                        },
+                        {
+                            forcePush: (manifest) =>
+                                forcePushRebasedHead(
+                                    {
+                                        executor: controlExecutor,
+                                        mutationGate,
+                                        storageRoot: context.globalStorageUri?.fsPath ?? "",
+                                        commonDir: directories.commonDir,
+                                    },
+                                    manifest,
+                                ),
+                            dismiss: (manifest) =>
+                                dismissRebasePushOffer(
+                                    context.globalStorageUri?.fsPath ?? "",
+                                    manifest,
+                                ),
+                        },
+                    );
+                } catch (error) {
+                    const message = getErrorMessage(error);
+                    console.error(`Interactive rebase ${action} failed:`, error);
+                    vscode.window.showErrorMessage(
+                        vscode.l10n.t("Interactive rebase failed: {message}", { message }),
                     );
                 }
             }),
@@ -887,16 +1091,27 @@ export async function activateRepositoryMode(
      * Guards after awaits because the undocked panel can be disposed while Git
      * work is pending, especially while a new-window open is being completed.
      */
-    const loadUndockedData = async (): Promise<void> => {
+    const loadUndockedData = async (shouldContinue: () => boolean = () => true): Promise<void> => {
         const panel = undocked;
-        if (!panel) return;
+        const capturedRoot = getUndockedSelectedRepositoryRoot();
+        if (!panel || !shouldContinue()) return;
         // The panel can be replaced while loading; commit only to the requesting instance.
         // react-doctor-disable-next-line react-doctor/async-defer-await
         const data = await loadCurrentUndockedRepositoryData();
-        if (!commitUndockedRepositoryData(panel, data)) return;
+        if (!shouldContinue() || !commitUndockedRepositoryData(panel, capturedRoot, data)) return;
         panel.setBranches(data.branches, data.worktrees);
-        if (undocked !== panel) return;
-        await panel.refresh(() => undocked === panel);
+        if (
+            !shouldContinue() ||
+            undocked !== panel ||
+            getUndockedSelectedRepositoryRoot() !== capturedRoot
+        )
+            return;
+        await panel.refresh(
+            () =>
+                shouldContinue() &&
+                undocked === panel &&
+                getUndockedSelectedRepositoryRoot() === capturedRoot,
+        );
     };
 
     /**
@@ -1077,6 +1292,8 @@ export async function activateRepositoryMode(
             getCurrentBranches,
             getCurrentWorktrees,
             refreshService: getRefreshService,
+            pendingRebaseDialogRequests,
+            mutationGate,
         },
         handleOpenCommitFileDiff,
     );

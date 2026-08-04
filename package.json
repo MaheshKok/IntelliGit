@@ -2,7 +2,7 @@
     "name": "intelligit",
     "displayName": "IntelliGit",
     "description": "%extension.description%",
-    "version": "0.22.0",
+    "version": "0.23.0",
     "publisher": "MaheshKok",
     "icon": "media/intelligit-icon.png",
     "license": "MIT",
@@ -11,7 +11,8 @@
         "url": "https://github.com/MaheshKok/IntelliGit"
     },
     "engines": {
-        "vscode": "^1.96.0"
+        "vscode": "^1.96.0",
+        "node": ">=22.18.0"
     },
     "categories": [
         "SCM Providers"
@@ -970,8 +971,11 @@
         "typecheck:ext": "tsc -p tsconfig.json --noEmit",
         "typecheck:webview": "tsc -p tsconfig.webview.json --noEmit",
         "typecheck": "bun run typecheck:ext && bun run typecheck:webview",
-        "test": "bun vitest run",
+        "pretest": "bun run build",
+        "pretest:coverage": "bun run build",
+        "test": "VITEST_MAX_THREADS=3 VITEST_MIN_THREADS=1 bun vitest run",
         "test:coverage": "bun vitest run --coverage",
+        "pretest:watch": "bun run build",
         "test:watch": "bun vitest",
         "package": "vsce package --no-dependencies",
         "publish": "vsce publish --no-dependencies"

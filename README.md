@@ -151,6 +151,20 @@ branch, revert, push up to that commit, undo, edit the message, squash, drop,
 start an interactive rebase, create a branch, or create a tag. Risky actions are
 guarded by context and confirmations.
 
+### Interactively Rebase from Here
+
+Right-click a commit and choose **Interactively Rebase from Here...** to rewrite
+the commits from that point through `HEAD`. The dialog lists commits in Git's
+todo order and lets you reorder them or choose `pick`, `reword`, `squash`,
+`fixup`, or `drop` before IntelliGit starts Git's native interactive rebase.
+
+If Git pauses for conflicts, resolve and stage the files, then use **Continue**;
+use **Abort Rebase** to restore the pre-rebase branch and history. IntelliGit
+warns when the selected range includes published commits and, after a successful
+rewrite, offers **Force Push** for the affected branch. See the
+[interactive rebase guide](docs/interactive-rebase/README.md) for session,
+recovery, and safety details.
+
 ### Unified IntelliGit Workbench
 
 ![IntelliGit Undock picker with editor-tab and new-window options](media/screenshots/undock-workflow.png)

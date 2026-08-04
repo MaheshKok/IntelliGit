@@ -323,5 +323,20 @@
     "mergeSession.acceptTheirs": "Accept Theirs",
     "mergeSession.merge": "Merge...",
     "mergeSession.groupByDirectory": "Group files by directory",
-    "branch.menu.deleteBranches": "Delete Branches"
+    "branch.menu.deleteBranches": "Delete Branches",
+    "rebase.dialog.title": "Rebasing Commits",
+    "rebase.dialog.pushedWarning": "Some commits have already been pushed. Rebasing them rewrites published history.",
+    "rebase.dialog.firstActionCleared": "The first remaining commit cannot be squashed or fixed up, so it was changed to pick.",
+    "rebase.dialog.action": "Rebase action",
+    "rebase.dialog.message": "Commit message",
+    "rebase.dialog.missingMessage": "A commit message is required for: {hashes}",
+    "rebase.dialog.moveUp": "Move commit up",
+    "rebase.dialog.moveDown": "Move commit down",
+    "rebase.dialog.start": "Start Rebasing",
+    "rebase.action.pick": "Pick",
+    "rebase.action.reword": "Reword",
+    "rebase.action.squash": "Squash",
+    "rebase.action.fixup": "Fixup",
+    "rebase.action.continueRebase": "Continue Rebase",
+    "rebase.action.abortRebase": "Abort Rebase"
 }

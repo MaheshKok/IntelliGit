@@ -12,6 +12,7 @@ import { showCommitMessageGenerationNotification } from "../ai/commitMessageGene
 import type { ShelfService } from "../services/shelfService";
 import type { ShelfEntry, ShelfHealthWarning } from "../webviews/protocol/commitPanelMessages";
 import { IconThemeService } from "./shared/IconThemeService";
+import { operationSnapshotForRepository } from "./commitPanelOperationSnapshot";
 import { registerThemeChangeListeners, disposeAll } from "./shared/themeListeners";
 import { buildWebviewShellHtml } from "./webviewHtml";
 import { decorateShelfFiles, shelfFilePaths } from "./shelfIconDecoration";
@@ -37,6 +38,7 @@ import type {
     CommitAction,
     WorktreeAction,
 } from "../webviews/protocol/commitGraphTypes";
+import type { RebaseSubmissionEntry } from "../git/interactiveRebase/types";
 import type {
     RepositoryViewIdentity,
     UnifiedOutbound,
@@ -242,6 +244,19 @@ export class UndockedViewProvider {
         hash: string;
     }>();
     readonly onCommitAction = this._onCommitAction.event;
+    private readonly _onRebaseDialogSubmit = new vscode.EventEmitter<{
+        requestId: string;
+        entries: RebaseSubmissionEntry[];
+    }>();
+    readonly onRebaseDialogSubmit = this._onRebaseDialogSubmit.event;
+    private readonly _onRebaseDialogCancel = new vscode.EventEmitter<{ requestId: string }>();
+    readonly onRebaseDialogCancel = this._onRebaseDialogCancel.event;
+    /** Emits an interactive-rebase continue/abort request scoped to the active repository. */
+    private readonly _onRebaseControl = new vscode.EventEmitter<{
+        action: "continue" | "abort";
+        repositoryRoot: string;
+    }>();
+    readonly onRebaseControl = this._onRebaseControl.event;
     private readonly _onOpenCommitFileDiff = new vscode.EventEmitter<{
         commitHash: string;
         filePath: string;
@@ -288,6 +303,7 @@ export class UndockedViewProvider {
         hostMap: HostMap = {},
         private readonly commitChecksSettings?: CommitChecksSettings,
         options: UndockedViewProviderOptions = {},
+        private readonly interactiveRebaseStorageRoot?: string,
     ) {
         this.gitOps = gitOps;
         this.executor = options.executor;
@@ -697,12 +713,18 @@ export class UndockedViewProvider {
         this._onDeleteBranches.dispose();
         this._onWorktreeAction.dispose();
         this._onCommitAction.dispose();
+        this._onRebaseDialogSubmit.dispose();
+        this._onRebaseDialogCancel.dispose();
+        this._onRebaseControl.dispose();
         this._onOpenCommitFileDiff.dispose();
         this._onDidChangeFileCount.dispose();
         this._onDidChangeWorkingTree.dispose();
         this._onDockRequested.dispose();
-        this._onDidDispose.dispose();
+        // Disposed last: `panel.dispose()` is what fires `_onDidDispose`, so tearing the emitter
+        // down first silently drops that event on the programmatic disposal paths (docking,
+        // extension deactivation) and leaves subscribers' cleanup unrun.
         this.panel?.dispose();
+        this._onDidDispose.dispose();
     }
     // --- Message handling --------------------------------------------------
     /**
@@ -967,6 +989,38 @@ export class UndockedViewProvider {
                     hash: assertGitHash(msg.hash, "hash"),
                 });
                 break;
+            case "startInteractiveRebase": {
+                const requestId = assertString(msg.requestId, "requestId");
+                if (requestId.length === 0) {
+                    throw new Error("Expected non-empty string for 'requestId'.");
+                }
+                if (!Array.isArray(msg.entries)) throw new Error("Expected array for 'entries'.");
+                this._onRebaseDialogSubmit.fire({
+                    requestId,
+                    entries: msg.entries,
+                });
+                break;
+            }
+            case "cancelRebaseDialog": {
+                const requestId = assertString(msg.requestId, "requestId");
+                if (requestId.length === 0) {
+                    throw new Error("Expected non-empty string for 'requestId'.");
+                }
+                this._onRebaseDialogCancel.fire({ requestId });
+                break;
+            }
+            case "continueRebase":
+                this._onRebaseControl.fire({
+                    action: "continue",
+                    repositoryRoot: this.repoRootUri.fsPath,
+                });
+                break;
+            case "abortRebase":
+                this._onRebaseControl.fire({
+                    action: "abort",
+                    repositoryRoot: this.repoRootUri.fsPath,
+                });
+                break;
             case "openCommitFileDiff":
                 this._onOpenCommitFileDiff.fire({
                     commitHash: assertGitHash(msg.commitHash, "commitHash"),
@@ -1206,9 +1260,9 @@ export class UndockedViewProvider {
                         postUpdate: async (message) => {
                             // The selected-root check after this await prevents stale updates.
                             // react-doctor-disable-next-line react-doctor/async-defer-await
-                            const [hasCommits, wholeIndexOperationInProgress] = await Promise.all([
+                            const [hasCommits, operation] = await Promise.all([
                                 stashGitOps.hasAnyCommits(),
-                                stashGitOps.hasWholeIndexOperationInProgress(),
+                                this.operationSnapshotFor(stashGitOps, stashRepositoryRoot),
                             ]);
                             if (
                                 this.selectedRepositoryRoot !== stashRepositoryRoot ||
@@ -1223,7 +1277,8 @@ export class UndockedViewProvider {
                                 catalogGeneration: this.catalogGeneration,
                                 selectedShelfId: this.selectedShelfId,
                                 hasCommits,
-                                wholeIndexOperationInProgress,
+                                wholeIndexOperationInProgress: operation.activeOperation !== "none",
+                                ...operation,
                             });
                         },
                     },
@@ -1704,9 +1759,9 @@ export class UndockedViewProvider {
             if (!canUpdate()) return;
             // The post-await root guard prevents stale refresh data from being published.
             // react-doctor-disable-next-line react-doctor/async-defer-await
-            const [hasCommits, wholeIndexOperationInProgress] = await Promise.all([
+            const [hasCommits, operation] = await Promise.all([
                 rootGitOps.hasAnyCommits(),
-                rootGitOps.hasWholeIndexOperationInProgress(),
+                this.operationSnapshotFor(rootGitOps, repositoryRoot),
             ]);
             if (!canUpdate()) return;
             this.files = files;
@@ -1744,11 +1799,27 @@ export class UndockedViewProvider {
                 currentBranchName: currentBranchStatus.name,
                 currentBranchUpstream: currentBranchStatus.upstream,
                 hasCommits,
-                wholeIndexOperationInProgress,
+                wholeIndexOperationInProgress: operation.activeOperation !== "none",
+                ...operation,
             });
         } finally {
             if (!silent && canUpdate()) this.postToWebview({ type: "refreshing", active: false });
         }
+    }
+
+    /**
+     * Derives the operation state that fences commit-toolbar controls for this repository.
+     *
+     * Takes the root its caller captured rather than reading `selectedRepositoryRoot` again: a
+     * repository switch between the two reads would correlate one repository's active operation
+     * with another's rebase manifest and Git directory.
+     */
+    private async operationSnapshotFor(rootGitOps: GitOps, repositoryRoot: string) {
+        return operationSnapshotForRepository({
+            gitOps: rootGitOps,
+            repositoryRoot,
+            interactiveRebaseStorageRoot: this.interactiveRebaseStorageRoot,
+        });
     }
     // --- Branch sending -----------------------------------------------------
     /**
@@ -1961,6 +2032,21 @@ export class UndockedViewProvider {
         disposeAll(this.themeChangeDisposables);
     }
     // --- Webview helpers ----------------------------------------------------
+    /**
+     * Posts a validated rebase-dialog request only to this undocked panel instance.
+     *
+     * Resolves to the webview delivery result, so a caller that already registered a one-shot
+     * request can retract it instead of leaving the user with neither a dialog nor an error.
+     */
+    async showRebaseDialog(
+        message: Extract<UnifiedInbound, { type: "showRebaseDialog" }>,
+    ): Promise<boolean> {
+        const panel = this.panel;
+        if (!panel) return false;
+        const delivered = await panel.webview.postMessage(message);
+        return delivered;
+    }
+
     private postToWebview(msg: UnifiedInbound): void {
         this.panel?.webview.postMessage(msg);
     }

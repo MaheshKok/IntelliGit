@@ -3,6 +3,7 @@
 // webviews into a single channel.
 
 import type { BranchAction, CommitAction, WorktreeAction } from "./commitGraphTypes";
+import type { RebaseSubmissionEntry } from "../../git/interactiveRebase/types";
 import type { Branch } from "../../types";
 import type {
     InboundMessage as CommitPanelInbound,
@@ -10,18 +11,18 @@ import type {
 } from "./commitPanelMessages";
 import type { CommitGraphInbound } from "./commitGraphTypes";
 
+/** The shared operation-state contract carried by undocked commit-panel updates. */
+type UndockedCommitPanelUpdate = Extract<CommitPanelInbound, { type: "update" }>;
+
 /** Host messages whose stale-root filtering is mandatory in the undocked webview. */
-type RootFilteredCommitPanelInbound = Extract<
-    CommitPanelInbound,
-    {
-        type:
-            | "update"
-            | "restoreCommitDraft"
-            | "lastCommitMessage"
-            | "amendBranchCommits"
-            | "committed";
-    }
-> & { repositoryRoot: string };
+type RootFilteredCommitPanelInbound =
+    | (UndockedCommitPanelUpdate & { repositoryRoot: string })
+    | (Extract<
+          CommitPanelInbound,
+          {
+              type: "restoreCommitDraft" | "lastCommitMessage" | "amendBranchCommits" | "committed";
+          }
+      > & { repositoryRoot: string });
 
 /** Commit-panel inbound surface tightened only for the root-filtering undocked webview. */
 type UndockedCommitPanelInbound =
@@ -155,6 +156,20 @@ type GraphOutbound =
           action: CommitAction;
           /** Full Git object ID for the targeted commit. */
           hash: string;
+      }
+    | {
+          /** One-shot interactive-rebase submission from the dialog this panel opened. */
+          type: "startInteractiveRebase";
+          /** Host-issued request ID returned unchanged by the dialog. */
+          requestId: string;
+          /** Raw dialog entries that the host validates against its recorded offer. */
+          entries: RebaseSubmissionEntry[];
+      }
+    | {
+          /** Dismisses the one-shot interactive-rebase dialog for this panel. */
+          type: "cancelRebaseDialog";
+          /** Host-issued request ID returned unchanged by the dialog. */
+          requestId: string;
       }
     | {
           /** Command asking the host to open a committed file diff. */

@@ -5,6 +5,24 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.23.0] - 2026-08-02
+
+### Added
+
+- Added PyCharm-style `Interactively Rebase from Here...` on commit graph entries, opening a dialog that lists the offered range oldest-first with per-commit pick, reword, squash, fixup, and drop actions, button and drag-and-drop reordering, reword and squash message prefill, a warning when the range contains pushed commits, and blocked submission while any reword or squash message is blank.
+- Added a standalone interactive-rebase editor helper shipped as `dist/interactive-rebase-editor-helper.cjs`, which Git executes as `GIT_SEQUENCE_EDITOR` and `GIT_EDITOR` to install the generated todo and inject prepared messages, consuming each message exactly once and refusing with a machine-readable reason whenever the live rebase state does not match the submitting session.
+- Added persisted rebase sessions reconciled against the repository on reload, classified as owned, discardable, or ambiguous with an explicit reason, defaulting to ambiguous whenever a Git probe fails, and leaving a rebase started outside IntelliGit visible but undriven.
+- Added a post-rebase force-push offer for branches whose pushed commits were rewritten, retained across reloads while the rewritten head is still current, and dismissible from the notification.
+
+### Changed
+
+- Aligned the docked and undocked commit panels on one shared operation snapshot, so both surfaces derive their rebase controls and operation fence from the same host-side state instead of duplicating the derivation.
+
+### Fixed
+
+- Fixed abort dispatch running the wrong Git command after a completed rebase left `REBASE_HEAD` behind. Abort now dispatches on a single classification of the active operation rather than probing markers independently, so aborting a genuine merge conflict no longer fails with `fatal: no rebase in progress` and leaves the merge unresolved.
+- Fixed 73 host-side messages that were shipping in English for every locale. They were wrapped for translation but never added to the English catalog the translation pipeline reads, so no locale ever received them; they are now catalogued and translated into all 11 supported locales.
+
 ## [0.22.0] - 2026-07-30
 
 ### Added

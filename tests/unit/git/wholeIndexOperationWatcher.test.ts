@@ -105,18 +105,19 @@ describe("watchWholeIndexOperation", () => {
             "REVERT_HEAD",
             "rebase-merge",
             "rebase-apply",
+            "sequencer",
         ]) {
             callback("rename", marker);
         }
         callback("change", null);
         callback("change", "HEAD");
 
-        expect(onDidChange).toHaveBeenCalledTimes(6);
+        expect(onDidChange).toHaveBeenCalledTimes(7);
         disposable.dispose();
         disposable.dispose();
         callback("rename", "MERGE_HEAD");
         expect(close).toHaveBeenCalledOnce();
-        expect(onDidChange).toHaveBeenCalledTimes(6);
+        expect(onDidChange).toHaveBeenCalledTimes(7);
     });
 
     it("surfaces synchronous fs.watch setup failure", async () => {

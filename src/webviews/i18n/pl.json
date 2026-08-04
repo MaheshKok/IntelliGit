@@ -337,5 +337,20 @@
     "stash.fileAction.cherryPickSelectedChanges": "Cherry-pick wybranych zmian",
     "a11y.resizeRepositoryColumn": "Zmień rozmiar kolumny repozytorium",
     "commit.message.generate": "Wygeneruj komunikat commita",
-    "commit.message.stopGeneration": "Zatrzymaj generowanie komunikatu commita"
+    "commit.message.stopGeneration": "Zatrzymaj generowanie komunikatu commita",
+    "rebase.dialog.title": "Zmienianie bazy commitów",
+    "rebase.dialog.pushedWarning": "Niektóre commity zostały już wypchnięte. Rebase przepisze opublikowaną historię.",
+    "rebase.dialog.firstActionCleared": "Pierwszego pozostałego commita nie można scalić ani poprawić dlatego zmieniono go na pick.",
+    "rebase.dialog.action": "Akcja rebase",
+    "rebase.dialog.message": "Wiadomość commita",
+    "rebase.dialog.moveUp": "Przenieś commit w górę",
+    "rebase.dialog.moveDown": "Przenieś commit w dół",
+    "rebase.dialog.start": "Rozpocznij rebase",
+    "rebase.action.pick": "Wybierz",
+    "rebase.action.reword": "Zmień opis",
+    "rebase.action.squash": "Połącz",
+    "rebase.action.fixup": "Poprawka",
+    "rebase.action.continueRebase": "Kontynuuj rebase",
+    "rebase.action.abortRebase": "Przerwij rebase",
+    "rebase.dialog.missingMessage": "Wymagany jest komunikat commita dla: {hashes}"
 }

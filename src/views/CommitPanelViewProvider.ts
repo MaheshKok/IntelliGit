@@ -24,6 +24,7 @@ import type {
 import type { ShelfService } from "../services/shelfService";
 import type { DiscoveredRepository } from "../services/repositoryDiscovery";
 import { CommitPanelRepositoryRuntime } from "./commitPanelRepositoryRuntime";
+import { operationSnapshotForRepository } from "./commitPanelOperationSnapshot";
 import { ShelfConflictEditorPanel } from "./ShelfConflictEditorPanel";
 import { runPublishBranchFlow } from "../services/publishService";
 import { showTimedWarningMessage } from "../utils/notifications";
@@ -32,6 +33,7 @@ import type {
     CommitAction,
     CommitGraphInbound,
 } from "../webviews/protocol/commitGraphTypes";
+import type { RebaseSubmissionEntry } from "../git/interactiveRebase/types";
 import { isBranchAction, isCommitAction } from "../webviews/protocol/commitGraphTypes";
 import { IconThemeService } from "./shared/IconThemeService";
 import { registerThemeChangeListeners, disposeAll } from "./shared/themeListeners";
@@ -142,6 +144,18 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         hash: string;
     }>();
     readonly onCommitAction = this._onCommitAction.event;
+    private readonly _onRebaseDialogSubmit = new vscode.EventEmitter<{
+        requestId: string;
+        entries: RebaseSubmissionEntry[];
+    }>();
+    readonly onRebaseDialogSubmit = this._onRebaseDialogSubmit.event;
+    private readonly _onRebaseDialogCancel = new vscode.EventEmitter<{ requestId: string }>();
+    readonly onRebaseDialogCancel = this._onRebaseDialogCancel.event;
+    private readonly _onRebaseControl = new vscode.EventEmitter<{
+        action: "continue" | "abort";
+        repositoryRoot?: string;
+    }>();
+    readonly onRebaseControl = this._onRebaseControl.event;
     private readonly _onOpenCommitFileDiff = new vscode.EventEmitter<{
         commitHash: string;
         filePath: string;
@@ -180,6 +194,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         ) => ShelfService | undefined,
         private readonly shelfRemoveOnUnshelve: boolean = true,
         private readonly commitMessageGenerationCoordinator?: CommitMessageGenerationCoordinator,
+        private readonly interactiveRebaseStorageRoot?: string,
     ) {
         this.iconTheme = new IconThemeService(this.extensionUri);
         this.loadStoredChangedFileCounts();
@@ -553,9 +568,9 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         runtime: CommitPanelRepositoryRuntime,
     ): Promise<CommitPanelRepositorySnapshot> {
         const { folderIcons, iconFonts } = this.iconTheme.getThemeData();
-        const [hasCommits, wholeIndexOperationInProgress] = await Promise.all([
+        const [hasCommits, operation] = await Promise.all([
             runtime.gitOps.hasAnyCommits(),
-            runtime.gitOps.hasWholeIndexOperationInProgress(),
+            this.operationSnapshotForRuntime(runtime),
         ]);
         return {
             repositoryRoot: runtime.repository.root,
@@ -563,7 +578,8 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             changedFileCount: this.countChangedFiles(runtime),
             files: runtime.files,
             hasCommits,
-            wholeIndexOperationInProgress,
+            wholeIndexOperationInProgress: operation.activeOperation !== "none",
+            ...operation,
             stashes: runtime.stashes,
             stashFiles: runtime.stashFiles,
             selectedStashIndex: runtime.selectedStashIndex,
@@ -583,6 +599,15 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             refreshing: false,
             error: null,
         };
+    }
+
+    /** Derives the operation protocol from one filesystem marker snapshot without another Git process. */
+    private async operationSnapshotForRuntime(runtime: CommitPanelRepositoryRuntime) {
+        return operationSnapshotForRepository({
+            gitOps: runtime.gitOps,
+            repositoryRoot: runtime.repository.root,
+            interactiveRebaseStorageRoot: this.interactiveRebaseStorageRoot,
+        });
     }
 
     /** Reads shelf state from the runtime-scoped service without crossing repository boundaries. */
@@ -1449,6 +1474,22 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         }
         this._onCommitAction.fire({ action: commitAction, hash: assertGitHash(hash, "hash") });
     }
+    /** Validates only the rebase-dialog transport shape before forwarding raw entries. */
+    private handleRebaseDialogSubmitMessage(requestId: unknown, entries: unknown): void {
+        const id = assertString(requestId, "requestId");
+        if (id.length === 0) throw new Error("Expected non-empty string for 'requestId'.");
+        if (!Array.isArray(entries)) throw new Error("Expected array for 'entries'.");
+        this._onRebaseDialogSubmit.fire({
+            requestId: id,
+            entries: entries as RebaseSubmissionEntry[],
+        });
+    }
+    /** Validates only the rebase-dialog cancellation transport shape before forwarding it. */
+    private handleRebaseDialogCancelMessage(requestId: unknown): void {
+        const id = assertString(requestId, "requestId");
+        if (id.length === 0) throw new Error("Expected non-empty string for 'requestId'.");
+        this._onRebaseDialogCancel.fire({ requestId: id });
+    }
     /** Loads a selected stash into the addressed runtime and publishes the resulting file state. */
     private async handleStashSelectMessage(
         runtime: CommitPanelRepositoryRuntime | undefined,
@@ -1470,9 +1511,9 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                     runtime.folderIconsByName = state.folderIconsByName;
                 },
                 postUpdate: async (message) => {
-                    const [hasCommits, wholeIndexOperationInProgress] = await Promise.all([
+                    const [hasCommits, operation] = await Promise.all([
                         runtime.gitOps.hasAnyCommits(),
-                        runtime.gitOps.hasWholeIndexOperationInProgress(),
+                        this.operationSnapshotForRuntime(runtime),
                     ]);
                     this.postToWebview({
                         ...message,
@@ -1481,7 +1522,8 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                         catalogGeneration: runtime.catalogGeneration,
                         selectedShelfId: runtime.selectedShelfId,
                         hasCommits,
-                        wholeIndexOperationInProgress,
+                        wholeIndexOperationInProgress: operation.activeOperation !== "none",
+                        ...operation,
                     });
                 },
             },
@@ -1552,6 +1594,18 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             case "abortMerge":
                 await this.abortMerge(scopedRuntime());
                 break;
+            case "continueRebase":
+                this._onRebaseControl.fire({
+                    action: "continue",
+                    repositoryRoot: scopedRuntime()?.repository.root,
+                });
+                break;
+            case "abortRebase":
+                this._onRebaseControl.fire({
+                    action: "abort",
+                    repositoryRoot: scopedRuntime()?.repository.root,
+                });
+                break;
             case "setShowIgnoredFiles":
                 await this.handleSetShowIgnoredFilesMessage(msg.showIgnoredFiles, scopedRuntime());
                 break;
@@ -1594,6 +1648,12 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 break;
             case "commitAction":
                 this.handleCommitActionMessage(msg.action, msg.hash);
+                break;
+            case "startInteractiveRebase":
+                this.handleRebaseDialogSubmitMessage(msg.requestId, msg.entries);
+                break;
+            case "cancelRebaseDialog":
+                this.handleRebaseDialogCancelMessage(msg.requestId);
                 break;
             case "openCommitFileDiff":
                 this._onOpenCommitFileDiff.fire({
@@ -1921,6 +1981,19 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             this.postGraphCommitDetailState();
         }
     }
+
+    /**
+     * Posts a validated rebase-dialog request only to this commit-panel webview instance.
+     *
+     * Returns whether a live webview existed to receive it, so a caller that already registered a
+     * one-shot request can retract it instead of leaving the user with neither a dialog nor an error.
+     */
+    showRebaseDialog(message: Extract<CommitGraphInbound, { type: "showRebaseDialog" }>): boolean {
+        if (!this.view) return false;
+        this.postToWebview(message);
+        return true;
+    }
+
     private postToWebview(msg: InboundMessage | CommitGraphInbound): void {
         this.view?.webview.postMessage(msg);
     }
@@ -1988,6 +2061,9 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         this._onBranchFilterChanged.dispose();
         this._onBranchAction.dispose();
         this._onCommitAction.dispose();
+        this._onRebaseDialogSubmit.dispose();
+        this._onRebaseDialogCancel.dispose();
+        this._onRebaseControl.dispose();
         this._onOpenCommitFileDiff.dispose();
     }
     /**
