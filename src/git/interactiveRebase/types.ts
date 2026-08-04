@@ -271,9 +271,9 @@ interface PendingRebaseDialogRequestInput {
     originProvider: object;
     /** Absolute root for the repository whose history produced the offered range. */
     repoRoot: string;
-    /** Full selected commit object ID at the start of the offered range. */
+    /** Full object ID immediately before the offered range; Git rebases onto this predecessor. */
     baseHash: string;
-    /** Full object IDs in the exact oldest-to-newest order offered to the dialog. */
+    /** Full object IDs in exact oldest-to-newest order; the first is the selected range commit. */
     rangeHashes: readonly string[];
     /** Whether the offered range already contained history reachable from a remote. */
     hasPushedCommit: boolean;

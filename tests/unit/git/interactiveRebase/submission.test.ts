@@ -107,6 +107,58 @@ describe("interactive rebase submission handler", () => {
         expect(result.entries[0]?.hash).toBe(HASH_A);
     });
 
+    it("rechecks guards against the first offered range hash rather than its predecessor base", async () => {
+        const selectedHash = HASH_C;
+        const executor = executorFor({
+            [`rev-list --parents -n 1 --end-of-options ${HASH_A}`]: new Error(
+                "predecessor is not the selected commit",
+            ),
+            [`rev-list --parents -n 1 --end-of-options ${selectedHash}`]: `${selectedHash} ${HASH_B}\n`,
+            [`merge-base --is-ancestor --end-of-options ${selectedHash} HEAD`]: "",
+            [`rev-list --parents --end-of-options ${selectedHash}^..HEAD`]: `${HASH_B} ${selectedHash}\n`,
+        });
+        const { handler, origin, requestId } = setup({
+            baseHash: HASH_A,
+            rangeHashes: [selectedHash],
+            executor,
+        });
+
+        const result = await handler.submit(
+            { requestId, entries: validEntries(selectedHash) },
+            origin,
+        );
+
+        expect(result).toMatchObject({
+            status: "accepted",
+            request: { baseHash: HASH_A, rangeHashes: [selectedHash] },
+        });
+        expect(executor.run).toHaveBeenCalledWith([
+            "rev-list",
+            "--parents",
+            "-n",
+            "1",
+            "--end-of-options",
+            selectedHash,
+        ]);
+        expect(executor.run).not.toHaveBeenCalledWith([
+            "rev-list",
+            "--parents",
+            "-n",
+            "1",
+            "--end-of-options",
+            HASH_A,
+        ]);
+    });
+
+    it("fails closed through the invalid-selected-hash guard when the offered range is empty", async () => {
+        const { handler, origin, requestId } = setup({ rangeHashes: [] });
+
+        await expect(handler.submit({ requestId, entries: [] }, origin)).resolves.toEqual({
+            status: "rejected",
+            reason: "invalid-selected-hash",
+        });
+    });
+
     it("captures a complete upstream target at submission time", async () => {
         const executor = executorFor();
         (executor.runBinary as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
@@ -271,7 +323,6 @@ describe("interactive rebase submission handler", () => {
     });
 
     it.each([
-        ["invalid selected hash", {}, "invalid-selected-hash", "not-a-hash"],
         ["operation in progress", {}, "operation-in-progress", HASH_A, async () => true],
         [
             "detached HEAD",

@@ -138,12 +138,15 @@ class MockEventEmitter<T> {
 
 /** Full object ID `git rev-parse HEAD` resolves to; the short form appears only in view payloads. */
 const HEAD_OID = "feed1234abcdef0123456789abcdef0123456789";
+/** Full object ID `git rev-parse --verify <selected>^` resolves to in command fixtures. */
+const PARENT_OID = "0123456789abcdef0123456789abcdef01234567";
 
 /** Provides deterministic Git command output for extension activation command tests. */
 const defaultExecutorRunImpl = async (args: string[]) => {
     if (args[0] === "bisect") throw new Error("not bisecting");
     if (args[0] === "symbolic-ref") return "refs/heads/main";
     if (args[0] === "rev-parse" && args[1] === "--abbrev-ref") return "main";
+    if (args[0] === "rev-parse" && args[1] === "--verify") return PARENT_OID;
     if (args[0] === "rev-parse" && args[1] === "HEAD") return HEAD_OID;
     if (args[0] === "format-patch") return "patch-content";
     if (args[0] === "status" && args[1] === "--porcelain") return "";
@@ -3543,6 +3546,8 @@ describe("extension integration", () => {
             emit();
             await waitForAsync();
             await waitForAsync();
+            await waitForAsync();
+            await waitForAsync();
             expect(showErrorMessage).not.toHaveBeenCalled();
             expect(executorRun).toHaveBeenCalled();
             expect(
@@ -3604,6 +3609,8 @@ describe("extension integration", () => {
             return { stdout: Buffer.from(`${hash}\n${HEAD_OID}\n`), truncated: false };
         });
         graph.emitCommitAction({ action: "interactiveRebaseFromHere", hash });
+        await waitForAsync();
+        await waitForAsync();
         await waitForAsync();
         await waitForAsync();
         const dialog = graph.showRebaseDialog.mock.calls.at(-1)?.[0] as {
@@ -3679,6 +3686,8 @@ describe("extension integration", () => {
         });
         const openDialog = async (emit: () => void, calls: unknown[][]) => {
             emit();
+            await waitForAsync();
+            await waitForAsync();
             await waitForAsync();
             await waitForAsync();
             const dialog = calls.at(-1)?.[0] as {

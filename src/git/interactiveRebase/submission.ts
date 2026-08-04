@@ -53,9 +53,10 @@ export function createInteractiveRebaseSubmissionHandler(deps: {
             }
             if (head !== request.expectedHead) return rejected("head-moved");
 
+            const selectedHash = request.rangeHashes[0] ?? "";
             const guards = await evaluateInteractiveRebaseGuards({
                 executor: deps.executor,
-                selectedHash: request.baseHash,
+                selectedHash,
                 hasWholeIndexOperationInProgress: deps.hasWholeIndexOperationInProgress,
             });
             if (guards.status === "rejected") return guards;

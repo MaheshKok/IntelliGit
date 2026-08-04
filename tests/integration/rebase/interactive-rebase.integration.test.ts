@@ -97,6 +97,61 @@ describe("interactive rebase real Git integration", () => {
         ]);
     });
 
+    it("squashes adjacent commits with the submitted message and preserves their file changes", async () => {
+        const fixture = await createRebaseFixture(helperScriptPath);
+        const [first, second] = fixture.commits.slice(2);
+        const combinedMessage = "combined second and third";
+        const entries = [
+            { hash: first.hash, action: "pick" as const },
+            { hash: second.hash, action: "squash" as const, message: combinedMessage },
+        ];
+
+        await expect(
+            runInteractiveRebaseSubmission(fixture.dependencies, submission(fixture, entries)),
+        ).resolves.toMatchObject({ status: "completed" });
+
+        const history = await readHistory(fixture.root);
+        expect(history).toHaveLength(3);
+        expect(history.map(({ subject }) => subject)).toEqual([
+            fixture.commits[0].subject,
+            fixture.commits[1].subject,
+            combinedMessage,
+        ]);
+        await expect(readFile(path.join(fixture.root, "second.txt"), "utf8")).resolves.toBe(
+            "second\n",
+        );
+        await expect(readFile(path.join(fixture.root, "third.txt"), "utf8")).resolves.toBe(
+            "third\n",
+        );
+    });
+
+    it("fixes up adjacent commits into the first commit while preserving its message and file changes", async () => {
+        const fixture = await createRebaseFixture(helperScriptPath);
+        const [first, second] = fixture.commits.slice(2);
+        const entries = [
+            { hash: first.hash, action: "pick" as const },
+            { hash: second.hash, action: "fixup" as const },
+        ];
+
+        await expect(
+            runInteractiveRebaseSubmission(fixture.dependencies, submission(fixture, entries)),
+        ).resolves.toMatchObject({ status: "completed" });
+
+        const history = await readHistory(fixture.root);
+        expect(history).toHaveLength(3);
+        expect(history.map(({ subject }) => subject)).toEqual([
+            fixture.commits[0].subject,
+            fixture.commits[1].subject,
+            first.subject,
+        ]);
+        await expect(readFile(path.join(fixture.root, "second.txt"), "utf8")).resolves.toBe(
+            "second\n",
+        );
+        await expect(readFile(path.join(fixture.root, "third.txt"), "utf8")).resolves.toBe(
+            "third\n",
+        );
+    });
+
     it("aborts a stopped rebase and restores the exact pre-rebase HEAD", async () => {
         const fixture = await createRebaseFixture(helperScriptPath);
         const headBeforeRun = (await git(fixture.root, ["rev-parse", "HEAD"]))

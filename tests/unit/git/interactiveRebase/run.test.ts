@@ -41,6 +41,7 @@ import type { InteractiveRebaseRunDependencies } from "../../../../src/git/inter
 const BASE = "a".repeat(40);
 const HEAD = "b".repeat(40);
 const REBASED = "c".repeat(40);
+const SELECTED = "d".repeat(40);
 const BRANCH = "refs/heads/main";
 const directories: string[] = [];
 
@@ -61,6 +62,10 @@ async function fixture(
         head?: string;
         unmerged?: string;
         createRebaseDirectory?: boolean;
+        /** Selected first range commit used to prove guards do not target the predecessor base. */
+        selectedHash?: string;
+        /** Predecessor base used by the rebase command and durable manifest. */
+        baseHash?: string;
         throwOnRebase?: boolean;
         /** Makes the in-gate guard re-check see a working tree dirtied after submission. */
         dirty?: boolean;
@@ -78,6 +83,8 @@ async function fixture(
         terminalManifestWriteFailure?: boolean;
     } = {},
 ) {
+    const selectedHash = options.selectedHash ?? BASE;
+    const baseHash = options.baseHash ?? BASE;
     const root = await mkdtemp(path.join(os.tmpdir(), "intelligit-rebase-run-"));
     directories.push(root);
     const gitDir = path.join(root, ".git");
@@ -110,7 +117,7 @@ async function fixture(
                 );
             if (command === options.truncateProbe) return binary("", "", 0, true);
             if (command === "ls-files -u") return binary(options.unmerged ?? "");
-            if (command === `rebase -i ${BASE}`) {
+            if (command === `rebase -i ${baseHash}`) {
                 // The manifest must already record the running lifecycle by the time Git is
                 // spawned; captured here because a completed run deletes it before assertions.
                 manifestAtSpawn = await readFile(
@@ -153,12 +160,12 @@ async function fixture(
         const command = args.join(" ");
         if (command === "bisect log") throw new Error("not bisecting");
         if (command === "symbolic-ref --quiet HEAD") return options.branch ?? BRANCH;
-        if (command === `rev-list --parents -n 1 --end-of-options ${BASE}`)
-            return `${BASE} ${"e".repeat(40)}\n`;
-        if (command === `merge-base --is-ancestor --end-of-options ${BASE} HEAD`) return "";
+        if (command === `rev-list --parents -n 1 --end-of-options ${selectedHash}`)
+            return `${selectedHash} ${"e".repeat(40)}\n`;
+        if (command === `merge-base --is-ancestor --end-of-options ${selectedHash} HEAD`) return "";
         if (command === "status --porcelain=v1 -z -uno") return options.dirty ? " M file\0" : "";
-        if (command === `rev-list --parents --end-of-options ${BASE}^..HEAD`)
-            return `${HEAD} ${BASE}\n`;
+        if (command === `rev-list --parents --end-of-options ${selectedHash}^..HEAD`)
+            return `${HEAD} ${selectedHash}\n`;
         throw new Error(`Unexpected Git text command: ${command}`);
     });
     const gate = {
@@ -210,20 +217,22 @@ function input(
     pushTarget:
         | { remoteName: string; remoteHeadRef: string; upstreamOid: string }
         | undefined = undefined,
+    baseHash = BASE,
+    selectedHash = baseHash,
 ) {
     return {
         request: {
             requestId: "request-1",
             originProvider: {},
             repoRoot: "/fixture-repository",
-            baseHash: BASE,
-            rangeHashes: [BASE],
+            baseHash,
+            rangeHashes: [selectedHash],
             hasPushedCommit,
             expectedHead: HEAD,
             expectedBranch: BRANCH,
             ...(pushTarget ? { pushTarget } : {}),
         },
-        entries: [{ hash: HEAD, action: "reword" as const, message: "subject\n\nbody" }],
+        entries: [{ hash: selectedHash, action: "reword" as const, message: "subject\n\nbody" }],
     };
 }
 
@@ -255,6 +264,62 @@ describe("runInteractiveRebaseSubmission", () => {
         await expectMissing(paths.sessionDirectory("session-1"));
         await expectMissing(paths.manifestPath("session-1"));
         await expectMissing(paths.reservationPath);
+    });
+
+    it("uses the predecessor base for Git while rechecking guards against the selected range commit", async () => {
+        const test = await fixture({ baseHash: BASE, selectedHash: SELECTED });
+
+        await expect(
+            runInteractiveRebaseSubmission(
+                test.dependencies,
+                input(false, undefined, BASE, SELECTED),
+            ),
+        ).resolves.toMatchObject({ status: "completed" });
+
+        const rebaseCall = test.executor.runBinary.mock.calls.find(
+            ([args]) => args[0] === "rebase",
+        );
+        expect(rebaseCall?.[0]).toEqual(["rebase", "-i", BASE]);
+        expect(test.run).toHaveBeenCalledWith([
+            "rev-list",
+            "--parents",
+            "-n",
+            "1",
+            "--end-of-options",
+            SELECTED,
+        ]);
+        expect(test.run).not.toHaveBeenCalledWith([
+            "rev-list",
+            "--parents",
+            "-n",
+            "1",
+            "--end-of-options",
+            BASE,
+        ]);
+        expect(JSON.parse(test.manifestAtSpawn() ?? "{}")).toMatchObject({ baseHash: BASE });
+    });
+
+    it("fails closed and cleans the reservation, session, and manifest for an empty offered range", async () => {
+        const test = await fixture();
+        const emptyInput = input();
+        emptyInput.request.rangeHashes = [];
+        emptyInput.entries = [];
+
+        await expect(
+            runInteractiveRebaseSubmission(test.dependencies, emptyInput),
+        ).resolves.toEqual({
+            status: "guard-rejected",
+            reason: "invalid-selected-hash",
+        });
+
+        const paths = getRebaseStoragePaths(test.storageRoot, "/fixture-repository");
+        await expectMissing(paths.sessionDirectory("session-1"));
+        await expectMissing(paths.manifestPath("session-1"));
+        await expectMissing(paths.reservationPath);
+        expect(test.executor.runBinary).not.toHaveBeenCalledWith(
+            expect.arrayContaining(["rebase", "-i"]),
+            expect.anything(),
+        );
     });
 
     it("does not retain an offer when the submission had no upstream", async () => {

@@ -36,7 +36,8 @@ vi.mock("../../../src/git/interactiveRebase/guards", () => ({
 }));
 
 vi.mock("../../../src/git/interactiveRebase/range", async (importOriginal) => {
-    const actual = await importOriginal<typeof import("../../../src/git/interactiveRebase/range")>();
+    const actual =
+        await importOriginal<typeof import("../../../src/git/interactiveRebase/range")>();
     return { ...actual, loadInteractiveRebaseRange: vi.fn() };
 });
 
@@ -96,6 +97,7 @@ function contextFor(overrides: Partial<CommitActionContext> = {}): {
     const executor = {
         run: vi.fn(async (args: readonly string[]) => {
             if (args[0] === "symbolic-ref") return "refs/heads/main\n";
+            if (args[0] === "rev-parse" && args[1] === "--verify") return `${HASH_A}\n`;
             if (args[0] === "rev-parse") return `${HASH_B}\n`;
             return "";
         }),
@@ -227,6 +229,64 @@ describe("interactiveRebaseFromHere", () => {
         });
     });
 
+    it("stores the selected commit's parent as the rebase base while preserving the selected range", async () => {
+        const selectedHash = HASH_C;
+        const parentHash = HASH_A;
+        const executor = {
+            run: vi.fn(async (args: readonly string[]) => {
+                if (args[0] === "symbolic-ref") return "refs/heads/main\n";
+                if (args[0] === "rev-parse" && args[1] === "--verify") return `${parentHash}\n`;
+                if (args[0] === "rev-parse") return `${HASH_B}\n`;
+                return "";
+            }),
+        } as unknown as GitExecutor;
+        ranges.mockResolvedValueOnce({
+            status: "ok",
+            commits: [{ ...COMMITS[0], hash: selectedHash }],
+        });
+        const { context, originProvider, postRebaseDialog, pendingRequests } = contextFor({
+            validatedHash: selectedHash,
+            executor,
+        });
+
+        await interactiveRebaseFromHere(context);
+
+        expect(executor.run).toHaveBeenCalledWith([
+            "rev-parse",
+            "--verify",
+            "--end-of-options",
+            `${selectedHash}^`,
+        ]);
+        expect(ranges).toHaveBeenCalledWith(executor, selectedHash, HASH_B);
+        const [{ requestId }] = postRebaseDialog.mock.calls[0] as [{ requestId: string }];
+        expect(pendingRequests.consume(requestId, originProvider)).toEqual({
+            status: "consumed",
+            request: expect.objectContaining({
+                baseHash: parentHash,
+                rangeHashes: [selectedHash],
+            }),
+        });
+    });
+
+    it("fails closed when the selected parent is not a lower-case full object ID", async () => {
+        const executor = {
+            run: vi.fn(async (args: readonly string[]) => {
+                if (args[0] === "symbolic-ref") return "refs/heads/main\n";
+                if (args[0] === "rev-parse" && args[1] === "--verify") return "not-a-hash\n";
+                return `${HASH_B}\n`;
+            }),
+        } as unknown as GitExecutor;
+        const { context, postRebaseDialog } = contextFor({ executor });
+
+        await interactiveRebaseFromHere(context);
+
+        expect(errors).toHaveBeenCalledWith(
+            "Interactive Rebase from Here could not inspect the repository.",
+        );
+        expect(ranges).not.toHaveBeenCalled();
+        expect(postRebaseDialog).not.toHaveBeenCalled();
+    });
+
     it("pins the range load to the resolved tip rather than a live HEAD reference", async () => {
         const { context } = contextFor();
 
@@ -290,6 +350,7 @@ describe("interactiveRebaseFromHere", () => {
         async (failing, message) => {
             const executor = {
                 run: vi.fn(async (args: readonly string[]) => {
+                    if (args[0] === "rev-parse" && args[1] === "--verify") return `${HASH_A}\n`;
                     if (args[0] === failing) throw new Error("git failed");
                     if (args[0] === "symbolic-ref") return "refs/heads/main\n";
                     return `${HASH_B}\n`;

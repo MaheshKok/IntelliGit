@@ -8,6 +8,7 @@ import {
     isHashMatch,
     isMergeCommitHash,
 } from "../services/gitHelpers";
+import { isLowerCaseFullObjectId } from "../git/interactiveRebase/objectId";
 import { evaluateInteractiveRebaseGuards } from "../git/interactiveRebase/guards";
 import {
     loadInteractiveRebaseRange,
@@ -269,6 +270,23 @@ export async function interactiveRebaseFromHere(ctx: CommitActionContext): Promi
         return;
     }
 
+    let baseHash: string;
+    try {
+        const parentHash = (
+            await ctx.executor.run([
+                "rev-parse",
+                "--verify",
+                "--end-of-options",
+                `${ctx.validatedHash}^`,
+            ])
+        ).trim();
+        if (!isLowerCaseFullObjectId(parentHash)) throw new Error("invalid parent object ID");
+        baseHash = parentHash;
+    } catch {
+        showInteractiveRebaseGuardRejection("git-error");
+        return;
+    }
+
     const tip = await resolveInteractiveRebaseTip(ctx);
     if (!tip) return;
     const { expectedHead, expectedBranch } = tip;
@@ -301,7 +319,7 @@ export async function interactiveRebaseFromHere(ctx: CommitActionContext): Promi
     const requestId = ctx.pendingRebaseDialogRequests.register({
         originProvider: ctx.originProvider,
         repoRoot: ctx.repoRoot,
-        baseHash: ctx.validatedHash,
+        baseHash,
         rangeHashes: rangeResult.commits.map((commit) => commit.hash),
         hasPushedCommit: rangeResult.commits.some((commit) => commit.isPushed),
         expectedHead,

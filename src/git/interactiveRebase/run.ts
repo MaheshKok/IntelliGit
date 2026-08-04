@@ -126,9 +126,10 @@ export async function runInteractiveRebaseSubmission(
                 // and a mutation that ran while it waited can dirty the working tree or start a
                 // bisect. Only a check inside the critical section is not separated from the
                 // spawn below by another mutation.
+                const selectedHash = request.rangeHashes[0] ?? "";
                 const guards = await evaluateInteractiveRebaseGuards({
                     executor: dependencies.executor,
-                    selectedHash: manifest.baseHash,
+                    selectedHash,
                     hasWholeIndexOperationInProgress: dependencies.hasWholeIndexOperationInProgress,
                 });
                 if (guards.status === "rejected") {
