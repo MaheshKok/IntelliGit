@@ -44,3 +44,5 @@ AGENTS.md
 .impeccable/
 
 .claudex-gates.json
+
+.codebase-memory/
