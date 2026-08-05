@@ -345,5 +345,18 @@
     "rebase.action.fixup": "Correção",
     "rebase.action.continueRebase": "Continuar rebase",
     "rebase.action.abortRebase": "Abortar rebase",
-    "rebase.dialog.missingMessage": "É necessária uma mensagem de commit para: {hashes}"
+    "rebase.dialog.missingMessage": "É necessária uma mensagem de commit para: {hashes}",
+    "review.card.title": "Está a gostar do IntelliGit?",
+    "review.card.subtitle": "Como avaliaria?",
+    "review.card.starLabel": "Avaliar {count} de 5",
+    "review.card.later": "Mais tarde",
+    "review.card.never": "Não perguntar novamente",
+    "review.card.notNow": "Agora não",
+    "review.card.happyTitle": "Obrigado!",
+    "review.card.happyBody": "Avaliar no marketplace demora um minuto e ajuda outras pessoas a encontrar o IntelliGit.",
+    "review.card.rate": "Avaliar o IntelliGit",
+    "review.card.unhappyTitle": "Lamentamos saber disso.",
+    "review.card.unhappyBody": "Diga-nos o que falta e iremos analisar.",
+    "review.card.reportIssue": "Comunicar um problema",
+    "review.card.rateAnyway": "Ou avalie no marketplace"
 }

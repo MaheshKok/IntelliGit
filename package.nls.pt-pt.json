@@ -79,5 +79,6 @@
     "command.openInVsCodeMergeEditor": "Open in VS Code Merge Editor",
     "configuration.clearLastCommit.markdownDescription": "Limpa o rascunho da mensagem de commit após um commit local bem-sucedido. Desative esta opção para manter o rascunho no painel Commit.",
     "configuration.reviewPrompt.enabled.description": "Pedir uma avaliação no marketplace depois de utilizar o IntelliGit durante algum tempo. Desative para nunca ser solicitado.",
-    "command.showReviewPrompt": "Mostrar pedido de avaliação"
+    "command.showReviewPrompt": "Mostrar pedido de avaliação",
+    "command.resetReviewPrompt": "Repor o estado do aviso de avaliação"
 }

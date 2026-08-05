@@ -592,5 +592,9 @@
     "Enjoying IntelliGit? A quick rating helps others find it.": "Podoba Ci się IntelliGit? Krótka ocena pomoże innym go znaleźć.",
     "Rate IntelliGit": "Oceń IntelliGit",
     "Later": "Później",
-    "Don't ask again": "Nie pytaj ponownie"
+    "Don't ask again": "Nie pytaj ponownie",
+    "Reset the IntelliGit rating prompt on this machine?": "Zresetować monit o ocenę IntelliGit na tym komputerze?",
+    "This deletes the record of your rating decision and the usage counters behind it. It affects this machine only, and never touches a rating you already published.": "Spowoduje to usunięcie zapisu Twojej decyzji o ocenie i powiązanych liczników użycia. Dotyczy tylko tego komputera i nigdy nie zmienia już opublikowanej oceny.",
+    "Reset to a fresh install": "Zresetuj do stanu nowej instalacji",
+    "Reset and arm the next commit": "Zresetuj i zapytaj przy następnym zatwierdzeniu"
 }

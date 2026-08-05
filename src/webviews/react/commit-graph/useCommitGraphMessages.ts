@@ -21,6 +21,7 @@ export function useCommitGraphMessages(params: {
     selectedHash: string | null;
     setViewVisible: (visible: boolean) => void;
     onShowRebaseDialog: (dialog: Extract<CommitGraphInbound, { type: "showRebaseDialog" }>) => void;
+    onShowReviewPrompt: (requestId: string) => void;
 }): void {
     const {
         vscode,
@@ -30,6 +31,7 @@ export function useCommitGraphMessages(params: {
         selectedHash,
         setViewVisible,
         onShowRebaseDialog,
+        onShowReviewPrompt,
     } = params;
     const selectedHashRef = useRef<string | null>(selectedHash);
     const selectFirstOnNextLoadRef = useRef(false);
@@ -40,6 +42,8 @@ export function useCommitGraphMessages(params: {
     // re-created it.
     const onShowRebaseDialogRef = useRef(onShowRebaseDialog);
     onShowRebaseDialogRef.current = onShowRebaseDialog;
+    const onShowReviewPromptRef = useRef(onShowReviewPrompt);
+    onShowReviewPromptRef.current = onShowReviewPrompt;
 
     useEffect(() => {
         if (sendReady) {
@@ -136,6 +140,9 @@ export function useCommitGraphMessages(params: {
                     break;
                 case "showRebaseDialog":
                     onShowRebaseDialogRef.current(data);
+                    break;
+                case "showReviewPrompt":
+                    onShowReviewPromptRef.current(data.requestId);
                     break;
                 case "loadError":
                     selectFirstOnNextLoadRef.current = false;

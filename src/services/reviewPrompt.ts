@@ -1,15 +1,24 @@
-import { access, mkdir, readFile, writeFile } from "node:fs/promises";
+import { access, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import * as vscode from "vscode";
 
 import { setGitSuccessListener } from "../git/executor";
 import { logGitOpsWarning } from "../git/operationSupport";
+import { findVisibleReviewPromptHost, type ReviewPromptResult } from "./reviewPromptHost";
 
 /** Deep link to the VS Marketplace review form; `ssr=false` is required for the anchor to resolve. */
 export const MARKETPLACE_REVIEW_URL =
     "https://marketplace.visualstudio.com/items?itemName=MaheshKok.intelligit&ssr=false#review-details";
 /** Open VSX review tab, used for every editor that is not an official VS Code build. */
 export const OPEN_VSX_REVIEW_URL = "https://open-vsx.org/extension/MaheshKok/intelligit/reviews";
+/**
+ * Where a low rating is offered a hearing.
+ *
+ * The card offers this *alongside* the review link rather than instead of it — routing an
+ * unhappy user to a fixable issue is fair; hiding the public review form from them is not.
+ */
+export const FEEDBACK_URL =
+    "https://github.com/MaheshKok/IntelliGit/issues/new?labels=feedback&title=Feedback%20on%20IntelliGit";
 
 /** Prompt body. Localized at display time; also the lookup key in the l10n bundle. */
 export const PROMPT_MESSAGE = "Enjoying IntelliGit? A quick rating helps others find it.";
@@ -21,6 +30,18 @@ export const LATER_ACTION = "Later";
 export const NEVER_ACTION = "Don't ask again";
 /** Explicit command for previewing the same notification without waiting for usage gates. */
 export const SHOW_REVIEW_PROMPT_COMMAND = "intelligit.showReviewPrompt";
+/** Explicit command for clearing this machine's rating record so the prompt can be tested again. */
+export const RESET_REVIEW_PROMPT_COMMAND = "intelligit.resetReviewPrompt";
+
+/** Confirmation title. Localized at display time; also the lookup key in the l10n bundle. */
+export const RESET_CONFIRM_MESSAGE = "Reset the IntelliGit rating prompt on this machine?";
+/** Confirmation detail, stating plainly what is destroyed and what is not. */
+export const RESET_CONFIRM_DETAIL =
+    "This deletes the record of your rating decision and the usage counters behind it. It affects this machine only, and never touches a rating you already published.";
+/** Confirmation action restoring the state a brand-new install starts from. */
+export const RESET_FRESH_ACTION = "Reset to a fresh install";
+/** Confirmation action that also seeds the counters one successful operation short of the gate. */
+export const RESET_ARM_ACTION = "Reset and arm the next commit";
 
 /** A decision the user cannot be asked about again. */
 export type TerminalStatus = "rated" | "declined";
@@ -170,14 +191,20 @@ export class ReviewPromptService {
     }
 
     /**
-     * Shows the production notification on explicit user request.
+     * Shows the prompt on explicit user request.
      *
      * This is intentionally separate from the success hook: it does not increment usage
-     * counters or spend a gated ask, but the existing Rate and Don't ask again actions
-     * still write the same durable terminal decision.
+     * counters or spend a gated ask, but the Rate and Don't ask again actions still write
+     * the same durable terminal decision.
+     *
+     * It deliberately ignores an existing decision. The command's whole purpose is to show
+     * the prompt on demand, and the never-ask-again latch would otherwise silence it
+     * permanently after the first answer — leaving no way to see the prompt again short of
+     * deleting extension storage. Answering again is harmless: the latch is write-once, so
+     * the original decision still wins.
      */
     showPromptNow(): void {
-        if (!this.ready || this.decided) return;
+        if (!this.ready) return;
         this.askedThisSession = true;
         this.showPrompt();
     }
@@ -202,6 +229,41 @@ export class ReviewPromptService {
             // worse than not asking at all.
             logGitOpsWarning("reviewPrompt.mirror", error);
         }
+    }
+
+    /**
+     * Clears this machine's rating record so the prompt can be exercised again.
+     *
+     * This is the one operation allowed to delete the terminal latch, and it exists only
+     * because the latch is otherwise permanent by design: without it there is no way to
+     * test the gated path twice on one machine, which is what the plan's acceptance run
+     * used a throwaway source patch for. It runs on the cycle queue so it cannot interleave
+     * with a counter update, and it is reachable only from an explicitly confirmed command.
+     *
+     * @param arm - Seeds the counters one successful operation short of the gate, so the
+     *   next commit or push asks, instead of restoring the 14-day fresh-install wait.
+     */
+    resetState(arm: boolean): Promise<void> {
+        const done = this.queue.then(() => this.clearState(arm));
+        this.queue = done.catch(() => undefined);
+        return done;
+    }
+
+    private async clearState(arm: boolean): Promise<void> {
+        this.decided = false;
+        this.askedThisSession = false;
+        if (this.latchPath) await rm(this.latchPath, { force: true });
+
+        const state = this.context.globalState;
+        for (const key of Object.values(KEYS)) await state.update(key, undefined);
+        if (!arm) return;
+
+        // One short of every threshold, matching the seed the gating tests use, so the
+        // very next successful commit or push crosses it.
+        await state.update(KEYS.successOps, MIN_SUCCESS_OPS - 1);
+        await state.update(KEYS.activeDays, MIN_ACTIVE_DAYS);
+        await state.update(KEYS.lastActiveDay, dayKey(this.now()));
+        await state.update(KEYS.installedAt, this.now() - MIN_INSTALL_AGE_MS - DAY_MS);
     }
 
     /** Resolves once every queued cycle and pending toast has settled. */
@@ -292,7 +354,40 @@ export class ReviewPromptService {
         );
     }
 
+    /**
+     * Presents the reserved ask on the best surface available.
+     *
+     * The centered card wins whenever a graph webview is on screen, because the ask budget is
+     * three for the lifetime of the install and a notification is easy to miss. A surface that
+     * vanished mid-request resolves `undefined` and falls through to the notification, so an
+     * ask is never spent on a display nobody saw.
+     */
     private async ask(): Promise<void> {
+        const host = findVisibleReviewPromptHost();
+        if (host) {
+            const result = await host.showReviewPrompt();
+            if (result) {
+                await this.applyResult(result);
+                return;
+            }
+        }
+        await this.askViaNotification();
+    }
+
+    /**
+     * Applies a card answer, recording the decision before opening anything.
+     *
+     * Ordering matters: `openExternal` moves focus out of the editor, and a decision that is
+     * only durable after the browser returns would be lost to a crash in between.
+     */
+    private async applyResult(result: ReviewPromptResult): Promise<void> {
+        if (result.decision !== "later") await this.recordDecision(result.decision);
+        if (!result.open) return;
+        const url = result.open === "feedback" ? FEEDBACK_URL : getReviewUrl(vscode.env.appName);
+        await vscode.env.openExternal(vscode.Uri.parse(url));
+    }
+
+    private async askViaNotification(): Promise<void> {
         // Compared by value below, so the localized labels must be the same instances
         // that were offered — the user's choice comes back translated.
         const rate = vscode.l10n.t(RATE_ACTION);
@@ -425,6 +520,24 @@ export async function registerReviewPrompt(context: vscode.ExtensionContext): Pr
             vscode.commands.registerCommand(SHOW_REVIEW_PROMPT_COMMAND, async () => {
                 await initialized;
                 if (active) service.showPromptNow();
+            }),
+        );
+        context.subscriptions.push(
+            vscode.commands.registerCommand(RESET_REVIEW_PROMPT_COMMAND, async () => {
+                await initialized;
+                if (!active) return;
+                const arm = vscode.l10n.t(RESET_ARM_ACTION);
+                const fresh = vscode.l10n.t(RESET_FRESH_ACTION);
+                // Modal: this deletes a decision the extension otherwise treats as permanent,
+                // so it must never be one stray palette entry away from happening.
+                const choice = await vscode.window.showWarningMessage(
+                    vscode.l10n.t(RESET_CONFIRM_MESSAGE),
+                    { modal: true, detail: vscode.l10n.t(RESET_CONFIRM_DETAIL) },
+                    arm,
+                    fresh,
+                );
+                if (choice !== arm && choice !== fresh) return;
+                await service.resetState(choice === arm);
             }),
         );
 

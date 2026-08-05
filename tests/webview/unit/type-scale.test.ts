@@ -37,6 +37,11 @@ const EXEMPT: ReadonlyArray<{ file: string; size: number; why: string }> = [
         size: 22.5,
         why: "`.hunk-action-glyph` draws the accept/reject marks as text. It is an icon that happens to be a character, sized to the hunk gutter, and reads as an affordance rather than as a label.",
     },
+    {
+        file: "react/shared/components/ReviewPromptCard.css",
+        size: 26,
+        why: "`.review-prompt-star` draws the rating control as ★ characters. The size is the hit target of a five-star row, not type — at any size on the scale the stars are too small to aim at.",
+    },
 ];
 
 interface Hit {

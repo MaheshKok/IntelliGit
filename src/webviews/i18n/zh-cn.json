@@ -331,5 +331,18 @@
     "rebase.action.fixup": "修正",
     "rebase.action.continueRebase": "继续变基",
     "rebase.action.abortRebase": "中止变基",
-    "rebase.dialog.missingMessage": "以下提交需要提交消息：{hashes}"
+    "rebase.dialog.missingMessage": "以下提交需要提交消息：{hashes}",
+    "review.card.title": "喜欢 IntelliGit 吗？",
+    "review.card.subtitle": "您会给它打几分？",
+    "review.card.starLabel": "5 分中的 {count} 分",
+    "review.card.later": "以后",
+    "review.card.never": "不再询问",
+    "review.card.notNow": "暂时不用",
+    "review.card.happyTitle": "谢谢！",
+    "review.card.happyBody": "在应用市场评分只需一分钟，还能帮助其他人发现 IntelliGit。",
+    "review.card.rate": "评价 IntelliGit",
+    "review.card.unhappyTitle": "很抱歉。",
+    "review.card.unhappyBody": "告诉我们缺少什么，我们会跟进。",
+    "review.card.reportIssue": "报告问题",
+    "review.card.rateAnyway": "或在应用市场评分"
 }

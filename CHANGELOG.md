@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Added `IntelliGit: Reset Review Prompt State`, which clears the recorded rating decision and the usage counters behind it on the current machine after a modal confirmation, either back to a fresh install or armed so the next successful commit asks. It never changes a rating already published to a marketplace.
+
+### Changed
+
+- The rating prompt now appears as a centered card in the commit graph rather than as a notification, with a five-star control that routes a high rating to the marketplace review page and a low one to a prefilled GitHub feedback issue — the marketplace link stays available either way. The notification is still used whenever no graph view is on screen, and the gating, the three-ask cap and the never-ask-again guarantee are unchanged.
+
 ## [0.24.0] - 2026-08-04
 
 ### Added

@@ -79,5 +79,6 @@
     "command.openInVsCodeMergeEditor": "Open in VS Code Merge Editor",
     "configuration.clearLastCommit.markdownDescription": "Czyści wersję roboczą wiadomości commitu po pomyślnym lokalnym commicie. Wyłącz tę opcję aby zachować wersję roboczą w panelu Commit.",
     "configuration.reviewPrompt.enabled.description": "Poproś o ocenę w witrynie marketplace po pewnym czasie używania IntelliGit. Wyłącz, aby nigdy nie otrzymywać takiej prośby.",
-    "command.showReviewPrompt": "Pokaż monit o recenzję"
+    "command.showReviewPrompt": "Pokaż monit o recenzję",
+    "command.resetReviewPrompt": "Zresetuj stan monitu o ocenę"
 }

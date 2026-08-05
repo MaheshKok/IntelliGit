@@ -27,6 +27,7 @@ import { useCommitGraphMessages } from "./commit-graph/useCommitGraphMessages";
 import type { CommitGraphPanelAction } from "./commit-graph/types";
 import { t } from "./shared/i18n";
 import { RebaseDialog } from "./shared/components/RebaseDialog/RebaseDialog";
+import { ReviewPromptCard, type ReviewPromptAnswer } from "./shared/components/ReviewPromptCard";
 import { useRebaseDialogController } from "./shared/hooks/useRebaseDialogController";
 
 const MIN_BRANCH_WIDTH = 80;
@@ -275,6 +276,19 @@ export function CommitGraphPanel({
     });
     const loadingMore = useRef(false);
     const [viewVisible, setViewVisible] = useState(true);
+    const [reviewPromptRequestId, setReviewPromptRequestId] = useState<string>();
+    const handleReviewPromptAnswer = useCallback(
+        (answer: ReviewPromptAnswer) => {
+            if (reviewPromptRequestId === undefined) return;
+            setReviewPromptRequestId(undefined);
+            vscode.postMessage({
+                type: "reviewPromptResult",
+                requestId: reviewPromptRequestId,
+                ...answer,
+            });
+        },
+        [reviewPromptRequestId, vscode],
+    );
     const {
         rebaseDialog,
         handleShowRebaseDialog,
@@ -310,6 +324,7 @@ export function CommitGraphPanel({
         selectedHash,
         setViewVisible,
         onShowRebaseDialog: handleShowRebaseDialog,
+        onShowReviewPrompt: setReviewPromptRequestId,
     });
 
     const handleBranchDividerKeyDown = useCallback((event: React.KeyboardEvent) => {
@@ -444,6 +459,9 @@ export function CommitGraphPanel({
                     onCancel={handleRebaseDialogCancel}
                 />
             ) : null}
+            {reviewPromptRequestId === undefined ? null : (
+                <ReviewPromptCard onAnswer={handleReviewPromptAnswer} />
+            )}
             <div
                 style={{
                     display: "flex",

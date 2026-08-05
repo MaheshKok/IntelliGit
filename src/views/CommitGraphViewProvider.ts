@@ -16,7 +16,14 @@ import {
     isBranchAction,
     isCommitAction,
     isWorktreeAction,
+    REVIEW_PROMPT_DECISION_VALUES,
+    REVIEW_PROMPT_TARGET_VALUES,
 } from "../webviews/protocol/commitGraphTypes";
+import {
+    registerReviewPromptHost,
+    type ReviewPromptHost,
+    type ReviewPromptResult,
+} from "../services/reviewPromptHost";
 import { getErrorMessage } from "../utils/errors";
 import { IconThemeService } from "./shared/IconThemeService";
 import { registerThemeChangeListeners, disposeAll } from "./shared/themeListeners";
@@ -53,7 +60,7 @@ import type { RebaseSubmissionEntry } from "../git/interactiveRebase/types";
  * allow-lists, commit hashes are validated before firing extension events, and
  * repository-relative file paths are validated before diff commands can consume them.
  */
-export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
+export class CommitGraphViewProvider implements vscode.WebviewViewProvider, ReviewPromptHost {
     public static readonly viewType = "intelligit.commitGraph";
     public static readonly sidebarViewType = "intelligit.sidebarGraph";
     private static readonly MAX_VISIBLE_COMMIT_CHECKS = 200;
@@ -78,6 +85,13 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
     private folderIconsByName: ThemeFolderIconMap = {};
     private branchFolderIconsByName: ThemeFolderIconMap = {};
     private commitDetailSeq = 0;
+    private reviewPromptSeq = 0;
+    /** The single outstanding review card, if one is on screen; answers from any other ID are stale. */
+    private pendingReviewPrompt?: {
+        requestId: string;
+        settle: (result: ReviewPromptResult | undefined) => void;
+    };
+    private unregisterReviewPromptHost?: () => void;
     private themeChangeDisposables: vscode.Disposable[] = [];
     private repositoryLabel: string | null = null;
     private readonly iconTheme: IconThemeService;
@@ -219,12 +233,20 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
         this.iconTheme.attachWebview(webviewView.webview);
         this.registerThemeChangeListeners();
 
+        this.unregisterReviewPromptHost?.();
+        this.unregisterReviewPromptHost = registerReviewPromptHost(this);
+
         webviewView.onDidDispose(() => {
             if (this.view === webviewView) {
                 this.commitCheckDemandSeq += 1;
                 this.view = undefined;
                 this.iconTheme.dispose();
                 this.disposeThemeChangeDisposables();
+                this.unregisterReviewPromptHost?.();
+                this.unregisterReviewPromptHost = undefined;
+                // A card that died with its webview was never answered; releasing it as
+                // unanswered lets the caller fall back to the notification.
+                this.settleReviewPrompt(undefined);
             }
         });
 
@@ -310,6 +332,9 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
                         this._onRebaseDialogCancel.fire({
                             requestId: this.assertNonEmptyString(msg.requestId, "requestId"),
                         });
+                        break;
+                    case "reviewPromptResult":
+                        this.handleReviewPromptResult(msg);
                         break;
                     case "openCommitFileDiff":
                         this._onOpenCommitFileDiff.fire({
@@ -597,6 +622,55 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
         if (!this.view) return false;
         this.postToWebview(message);
         return true;
+    }
+
+    /** True only while this graph view is on screen, so the card cannot be shown into a hidden tab. */
+    canShowReviewPrompt(): boolean {
+        return this.view?.visible === true;
+    }
+
+    /**
+     * Opens the centered review card and resolves with the user's answer.
+     *
+     * A second request replaces the first, which is settled as unanswered rather than left
+     * pending: the caller awaits this promise, and an abandoned one would stall its queue.
+     */
+    showReviewPrompt(): Promise<ReviewPromptResult | undefined> {
+        if (!this.canShowReviewPrompt()) return Promise.resolve(undefined);
+        this.settleReviewPrompt(undefined);
+        const requestId = `review-${++this.reviewPromptSeq}`;
+        return new Promise<ReviewPromptResult | undefined>((resolve) => {
+            this.pendingReviewPrompt = { requestId, settle: resolve };
+            this.postToWebview({ type: "showReviewPrompt", requestId });
+        });
+    }
+
+    /** Resolves the outstanding card exactly once; later calls for the same request are inert. */
+    private settleReviewPrompt(result: ReviewPromptResult | undefined): void {
+        const pending = this.pendingReviewPrompt;
+        if (!pending) return;
+        this.pendingReviewPrompt = undefined;
+        pending.settle(result);
+    }
+
+    /**
+     * Accepts a card answer only from the request this provider currently has open.
+     *
+     * The decision is terminal and unrepeatable, so a replayed or forged message from a stale
+     * webview must not be able to record one.
+     */
+    private handleReviewPromptResult(
+        msg: Extract<CommitGraphOutbound, { type: "reviewPromptResult" }>,
+    ): void {
+        const pending = this.pendingReviewPrompt;
+        if (!pending || pending.requestId !== msg.requestId) return;
+        const valid =
+            REVIEW_PROMPT_DECISION_VALUES.includes(msg.decision) &&
+            (msg.open === undefined || REVIEW_PROMPT_TARGET_VALUES.includes(msg.open));
+        // Settle before rejecting the payload: the caller is awaiting this promise, so a
+        // throw that left it pending would stall the prompt queue for the session.
+        this.settleReviewPrompt(valid ? { decision: msg.decision, open: msg.open } : undefined);
+        if (!valid) throw new Error("Unsupported review prompt answer.");
     }
 
     private postToWebview(msg: CommitGraphInbound): void {

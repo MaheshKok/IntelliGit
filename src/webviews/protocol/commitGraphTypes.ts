@@ -225,7 +225,36 @@ export type CommitGraphOutbound =
     | {
           /** Command pulling the current branch and then pushing it. */
           type: "sync";
+      }
+    | {
+          /** One-shot answer to the review card that this provider opened. */
+          type: "reviewPromptResult";
+          /** Host-issued request ID returned unchanged by the card. */
+          requestId: string;
+          /** Terminal decisions silence the prompt forever; `later` leaves the snooze in place. */
+          decision: ReviewPromptDecision;
+          /** External page the answer asked for, if any; the host resolves the actual URL. */
+          open?: ReviewPromptTarget;
       };
+
+/** How the user answered the review card. `later` is the only non-terminal outcome. */
+export type ReviewPromptDecision = "rated" | "declined" | "later";
+
+/** Where an answered review card wants the host to send the user. */
+export type ReviewPromptTarget = "marketplace" | "feedback";
+
+/** Runtime guard values for {@link ReviewPromptDecision}; the host validates before recording. */
+export const REVIEW_PROMPT_DECISION_VALUES: readonly ReviewPromptDecision[] = [
+    "rated",
+    "declined",
+    "later",
+];
+
+/** Runtime guard values for {@link ReviewPromptTarget}; the host validates before opening. */
+export const REVIEW_PROMPT_TARGET_VALUES: readonly ReviewPromptTarget[] = [
+    "marketplace",
+    "feedback",
+];
 
 /**
  * Commit graph messages sent from the extension host to graph-capable webviews.
@@ -246,6 +275,12 @@ export type CommitGraphInbound =
           branch: string;
           /** Whether at least one offered commit is already pushed. */
           hasPushed: boolean;
+      }
+    | {
+          /** Opens the centered marketplace review card for this webview instance only. */
+          type: "showReviewPrompt";
+          /** Host-issued ID that the card's answer must return from this same provider. */
+          requestId: string;
       }
     | {
           /** Response/update containing a page of `git log` commits. */

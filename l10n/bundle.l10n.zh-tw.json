@@ -592,5 +592,9 @@
     "Enjoying IntelliGit? A quick rating helps others find it.": "喜歡 IntelliGit 嗎？簡單的評分能幫助更多人發現它。",
     "Rate IntelliGit": "評價 IntelliGit",
     "Later": "稍後",
-    "Don't ask again": "不再詢問"
+    "Don't ask again": "不再詢問",
+    "Reset the IntelliGit rating prompt on this machine?": "要重設這台電腦上的 IntelliGit 評價提示嗎？",
+    "This deletes the record of your rating decision and the usage counters behind it. It affects this machine only, and never touches a rating you already published.": "這將刪除您的評價決定記錄以及相關的使用計數。僅影響這台電腦，絕不會變更您已發佈的評價。",
+    "Reset to a fresh install": "重設為全新安裝狀態",
+    "Reset and arm the next commit": "重設並在下次提交時詢問"
 }

@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -10,6 +11,7 @@ const vscodeMock = vi.hoisted(() => ({
     window: {
         createOutputChannel: vi.fn(() => ({ appendLine: vi.fn() })),
         showInformationMessage: vi.fn(),
+        showWarningMessage: vi.fn(),
     },
     workspace: {
         getConfiguration: vi.fn(() => ({ get: vi.fn(() => true) })),
@@ -29,12 +31,23 @@ vi.mock("vscode", () => vscodeMock);
 
 import { notifyGitSuccessSafely, setGitSuccessListener } from "../../../src/git/executor";
 import {
+    registerReviewPromptHost,
+    resetReviewPromptHosts,
+    type ReviewPromptResult,
+} from "../../../src/services/reviewPromptHost";
+import {
+    FEEDBACK_URL,
     LATER_ACTION,
     MARKETPLACE_REVIEW_URL,
     NEVER_ACTION,
     OPEN_VSX_REVIEW_URL,
     PROMPT_MESSAGE,
     RATE_ACTION,
+    RESET_ARM_ACTION,
+    RESET_CONFIRM_DETAIL,
+    RESET_CONFIRM_MESSAGE,
+    RESET_FRESH_ACTION,
+    RESET_REVIEW_PROMPT_COMMAND,
     ReviewPromptService,
     SHOW_REVIEW_PROMPT_COMMAND,
     countsAsSuccess,
@@ -113,6 +126,7 @@ describe("reviewPrompt", () => {
 
     afterEach(async () => {
         setGitSuccessListener(undefined);
+        resetReviewPromptHosts();
         await rm(storageDir, { recursive: true, force: true });
     });
 
@@ -602,6 +616,108 @@ describe("reviewPrompt", () => {
             expect(state.get(KEY.successOps)).toBeUndefined();
         });
 
+        it("still shows the explicit prompt after a decision, without reopening it to the gates", async () => {
+            await mkdir(path.dirname(latchPath()), { recursive: true });
+            await writeFile(
+                latchPath(),
+                JSON.stringify({ status: "rated", decidedAt: NOW - DAY_MS }),
+                "utf8",
+            );
+            const subscriptions: Array<{ dispose: () => void }> = [];
+            await registerReviewPrompt({
+                globalState: state as unknown as never,
+                globalStorageUri: { fsPath: storageDir } as unknown as never,
+                subscriptions,
+            } as never);
+
+            const registration = vscodeMock.commands.registerCommand.mock.calls.find(
+                ([command]) => command === SHOW_REVIEW_PROMPT_COMMAND,
+            );
+            (registration?.[1] as () => void)();
+
+            await vi.waitFor(() =>
+                expect(vscodeMock.window.showInformationMessage).toHaveBeenCalledTimes(1),
+            );
+            // The decision still stands for the automatic path: a success must stay silent.
+            notifyGitSuccessSafely("commit", ["commit", "-m", "msg"]);
+            await new Promise((resolve) => setTimeout(resolve, 10));
+            expect(vscodeMock.window.showInformationMessage).toHaveBeenCalledTimes(1);
+            expect(await readLatch()).toMatchObject({ status: "rated" });
+        });
+
+        it("clears the latch and the counters, and asks again on the next success when armed", async () => {
+            eligibleSeed();
+            const service = makeService();
+            await service.init();
+            service.handleGitSuccess("commit", ["commit"]);
+            await service.whenIdle();
+            await service.recordDecision("declined");
+            expect(await readLatch()).toMatchObject({ status: "declined" });
+
+            await service.resetState(true);
+
+            expect(existsSync(latchPath())).toBe(false);
+            expect(state.get(KEY.status)).toBeUndefined();
+            expect(state.get(KEY.askCount)).toBeUndefined();
+            expect(state.get(KEY.snoozedUntil)).toBeUndefined();
+
+            vscodeMock.window.showInformationMessage.mockClear();
+            service.handleGitSuccess("commit", ["commit"]);
+            await service.whenIdle();
+
+            expect(vscodeMock.window.showInformationMessage).toHaveBeenCalledTimes(1);
+        });
+
+        it("restores the fresh-install wait when the reset is not armed", async () => {
+            eligibleSeed();
+            const service = makeService();
+            await service.init();
+            await service.recordDecision("rated");
+
+            await service.resetState(false);
+
+            expect(existsSync(latchPath())).toBe(false);
+            expect(state.get(KEY.successOps)).toBeUndefined();
+            expect(state.get(KEY.installedAt)).toBeUndefined();
+
+            vscodeMock.window.showInformationMessage.mockClear();
+            service.handleGitSuccess("commit", ["commit"]);
+            await service.whenIdle();
+
+            // One operation of credit, no install age: the gate holds exactly as on day one.
+            expect(vscodeMock.window.showInformationMessage).not.toHaveBeenCalled();
+            expect(state.get(KEY.successOps)).toBe(1);
+        });
+
+        it("resets only after the modal is confirmed", async () => {
+            const subscriptions: Array<{ dispose: () => void }> = [];
+            await mkdir(path.dirname(latchPath()), { recursive: true });
+            await writeFile(latchPath(), JSON.stringify({ status: "rated" }), "utf8");
+            await registerReviewPrompt({
+                globalState: state as unknown as never,
+                globalStorageUri: { fsPath: storageDir } as unknown as never,
+                subscriptions,
+            } as never);
+            const reset = vscodeMock.commands.registerCommand.mock.calls.find(
+                ([command]) => command === RESET_REVIEW_PROMPT_COMMAND,
+            );
+            expect(reset).toBeDefined();
+
+            vscodeMock.window.showWarningMessage.mockResolvedValueOnce(undefined);
+            await (reset?.[1] as () => Promise<void>)();
+            expect(existsSync(latchPath())).toBe(true);
+
+            vscodeMock.window.showWarningMessage.mockResolvedValueOnce(RESET_FRESH_ACTION);
+            await (reset?.[1] as () => Promise<void>)();
+            expect(existsSync(latchPath())).toBe(false);
+            expect(vscodeMock.window.showWarningMessage).toHaveBeenLastCalledWith(
+                RESET_CONFIRM_MESSAGE,
+                { modal: true, detail: RESET_CONFIRM_DETAIL },
+                RESET_ARM_ACTION,
+                RESET_FRESH_ACTION,
+            );
+        });
+
         it("connects to the Git success hook and disconnects on disposal", async () => {
             const subscriptions: Array<{ dispose: () => void }> = [];
             await registerReviewPrompt({
@@ -660,6 +776,102 @@ describe("reviewPrompt", () => {
 
             await expect(service.whenIdle()).resolves.toBeUndefined();
             expect(state.get<number>(KEY.askCount)).toBe(1);
+        });
+    });
+
+    describe("card presentation", () => {
+        /** Registers a surface that answers with `result`, or reports itself off screen. */
+        const registerHost = (
+            result: ReviewPromptResult | undefined,
+            visible = true,
+        ): { shown: () => number } => {
+            let shown = 0;
+            registerReviewPromptHost({
+                canShowReviewPrompt: () => visible,
+                showReviewPrompt: async () => {
+                    shown += 1;
+                    return result;
+                },
+            });
+            return { shown: () => shown };
+        };
+
+        const ask = async (): Promise<ReviewPromptService> => {
+            eligibleSeed();
+            const service = makeService();
+            await service.init();
+            service.handleGitSuccess("commit", ["commit", "-m", "msg"]);
+            await service.whenIdle();
+            return service;
+        };
+
+        it("prefers the visible card over the notification", async () => {
+            const host = registerHost({ decision: "rated", open: "marketplace" });
+
+            await ask();
+
+            expect(host.shown()).toBe(1);
+            expect(vscodeMock.window.showInformationMessage).not.toHaveBeenCalled();
+            expect(await readLatch()).toMatchObject({ status: "rated" });
+            expect(vscodeMock.env.openExternal).toHaveBeenCalledWith(
+                expect.objectContaining({ toString: expect.any(Function) }),
+            );
+            expect(vscodeMock.env.openExternal.mock.calls[0][0].toString()).toBe(
+                MARKETPLACE_REVIEW_URL,
+            );
+        });
+
+        it("routes a low rating that chose feedback to the issue tracker", async () => {
+            registerHost({ decision: "declined", open: "feedback" });
+
+            await ask();
+
+            expect(await readLatch()).toMatchObject({ status: "declined" });
+            expect(vscodeMock.env.openExternal.mock.calls[0][0].toString()).toBe(FEEDBACK_URL);
+        });
+
+        it("still opens the review page for a low rating that asked to rate anyway", async () => {
+            registerHost({ decision: "declined", open: "marketplace" });
+
+            await ask();
+
+            expect(await readLatch()).toMatchObject({ status: "declined" });
+            expect(vscodeMock.env.openExternal.mock.calls[0][0].toString()).toBe(
+                MARKETPLACE_REVIEW_URL,
+            );
+        });
+
+        it("leaves no decision and opens nothing when the card is deferred", async () => {
+            registerHost({ decision: "later" });
+
+            await ask();
+
+            await expect(readLatch()).rejects.toThrow();
+            expect(vscodeMock.env.openExternal).not.toHaveBeenCalled();
+            expect(state.get<number>(KEY.askCount)).toBe(1);
+        });
+
+        it("falls back to the notification when no surface is on screen", async () => {
+            const host = registerHost({ decision: "rated" }, false);
+
+            await ask();
+
+            expect(host.shown()).toBe(0);
+            expect(vscodeMock.window.showInformationMessage).toHaveBeenCalledWith(
+                PROMPT_MESSAGE,
+                RATE_ACTION,
+                LATER_ACTION,
+                NEVER_ACTION,
+            );
+        });
+
+        it("falls back to the notification when the surface vanished before answering", async () => {
+            const host = registerHost(undefined);
+
+            await ask();
+
+            expect(host.shown()).toBe(1);
+            expect(vscodeMock.window.showInformationMessage).toHaveBeenCalled();
         });
     });
 });

@@ -331,5 +331,18 @@
     "rebase.action.fixup": "修正",
     "rebase.action.continueRebase": "リベースを続行",
     "rebase.action.abortRebase": "リベースを中止",
-    "rebase.dialog.missingMessage": "次のコミットにはコミットメッセージが必要です: {hashes}"
+    "rebase.dialog.missingMessage": "次のコミットにはコミットメッセージが必要です: {hashes}",
+    "review.card.title": "IntelliGit はいかがですか?",
+    "review.card.subtitle": "評価をお聞かせください。",
+    "review.card.starLabel": "5 段階中 {count}",
+    "review.card.later": "後で",
+    "review.card.never": "今後は表示しない",
+    "review.card.notNow": "今はしない",
+    "review.card.happyTitle": "ありがとうございます!",
+    "review.card.happyBody": "マーケットプレースでの評価は 1 分ほどで完了し、ほかのユーザーが IntelliGit を見つける助けになります。",
+    "review.card.rate": "IntelliGit を評価",
+    "review.card.unhappyTitle": "申し訳ありません。",
+    "review.card.unhappyBody": "不足している点をお知らせください。確認いたします。",
+    "review.card.reportIssue": "問題を報告",
+    "review.card.rateAnyway": "マーケットプレースで評価する"
 }

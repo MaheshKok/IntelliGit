@@ -79,5 +79,6 @@
     "command.openInVsCodeMergeEditor": "Open in VS Code Merge Editor",
     "configuration.clearLastCommit.markdownDescription": "本地提交成功后清除提交消息草稿。禁用此设置可在提交面板中保留草稿。",
     "configuration.reviewPrompt.enabled.description": "在使用 IntelliGit 一段时间后请求应用商店评分。禁用后将不再询问。",
-    "command.showReviewPrompt": "显示评价提示"
+    "command.showReviewPrompt": "显示评价提示",
+    "command.resetReviewPrompt": "重置评价提示状态"
 }
