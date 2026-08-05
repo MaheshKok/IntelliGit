@@ -110,13 +110,19 @@ export const GRAPH_LANE_COLORS_LIGHT = [
  * 1.5:1 on a light one. Each entry now takes its hue from a host token that
  * already ships light and dark values, then mixes in 30% of
  * `--vscode-icon-foreground` to pull the result toward whichever end of the
- * active theme is legible. That holds every entry above the 3:1 non-text
- * threshold (WCAG 1.4.11) on both, with no second hand-tuned palette. The
- * literal fallbacks are the original pastels and only render on a host that
- * defines no chart colors at all.
+ * active theme is legible. On the stock Dark+ and Light+ themes that lands
+ * every entry above the 3:1 non-text threshold (WCAG 1.4.11) with no second
+ * hand-tuned palette. It is not a floor: chart and ANSI colors are authored by
+ * the theme, so a user-authored theme can put any of them anywhere, and the mix
+ * improves the odds rather than guaranteeing a ratio. Guaranteeing one would
+ * mean measuring each accent against the resolved toolbar background at runtime
+ * and correcting it there.
  *
- * Hue here is decoration: `iconStyle: "standard"` drops it entirely, and every
- * control carries a label and its own glyph, so nothing depends on color.
+ * That trade is affordable because hue here is decoration. The `iconStyle`
+ * setting's `standard` value drops it entirely, and every control carries a
+ * label and its own glyph, so nothing depends on color. The literal fallbacks
+ * are the original pastels and only render on a host that defines no chart
+ * colors at all.
  */
 function iconAccent(token: string, fallback: string): string {
     return `color-mix(in srgb, var(${token}, ${fallback}) 70%, var(--vscode-icon-foreground, #c5c5c5))`;
