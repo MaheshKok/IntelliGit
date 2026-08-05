@@ -15,6 +15,7 @@ import {
 import { getSettings } from "../../shared/settings";
 import { DISABLED_GLYPH_COLOR } from "../../shared/components/ToolbarIconButton";
 import { t } from "../../shared/i18n";
+import { ICON_ACCENTS } from "../../shared/tokens";
 
 interface Props {
     stashCount: number;
@@ -158,7 +159,7 @@ export function TabBar({
                         <GitActionButton
                             label={t("common.sync")}
                             onClick={gitActions.onSync}
-                            color="#c8a2ff"
+                            color={ICON_ACCENTS.violet}
                         >
                             <path
                                 fill="currentColor"
@@ -168,7 +169,7 @@ export function TabBar({
                         <GitActionButton
                             label={t("common.fetch")}
                             onClick={gitActions.onFetch}
-                            color="#8fd5ff"
+                            color={ICON_ACCENTS.sky}
                         >
                             <path
                                 fill="none"
@@ -190,7 +191,7 @@ export function TabBar({
                         <GitActionButton
                             label={t("common.pull")}
                             onClick={gitActions.onPull}
-                            color="#8fd5ff"
+                            color={ICON_ACCENTS.sky}
                         >
                             <path
                                 fill="currentColor"
@@ -201,7 +202,7 @@ export function TabBar({
                         <GitActionButton
                             label={t("common.push")}
                             onClick={gitActions.onPush}
-                            color="#a6e3a1"
+                            color={ICON_ACCENTS.green}
                         >
                             <path
                                 fill="currentColor"
@@ -217,7 +218,7 @@ export function TabBar({
                             label={t("common.dockIntelliGit")}
                             title={t("common.dockIntelliGit")}
                             onClick={onDock}
-                            color="#8fd5ff"
+                            color={ICON_ACCENTS.sky}
                             standardColor="var(--vscode-button-foreground)"
                         >
                             <path

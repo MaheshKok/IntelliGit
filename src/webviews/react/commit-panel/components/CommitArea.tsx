@@ -8,6 +8,7 @@ import { VscCheckbox } from "../../shared/components/VscCheckbox";
 import { ToolbarIconButton } from "../../shared/components/ToolbarIconButton";
 import { SYSTEM_FONT_STACK } from "../../../../utils/constants";
 import { t } from "../../shared/i18n";
+import { Z_INDEX } from "../../shared/tokens";
 
 /** The host lifecycle states that fence commit-message generation controls. */
 export type CommitMessageGenerationStatus = "idle" | "requested" | "running";
@@ -159,7 +160,7 @@ export function CommitArea({
                     position="absolute"
                     top="4px"
                     right="12px"
-                    zIndex={2}
+                    zIndex={Z_INDEX.sticky}
                     // An icon button has nothing to cut, copy, or paste; without this the
                     // webview's native editing menu opens over it.
                     onContextMenu={(event) => event.preventDefault()}

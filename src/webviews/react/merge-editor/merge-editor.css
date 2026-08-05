@@ -2,31 +2,43 @@
     --merge-editor-bg: var(--vscode-editor-background, #2b3240);
     --merge-editor-fg: var(--vscode-editor-foreground, #bfc7d5);
     --merge-border: color-mix(in srgb, var(--merge-editor-fg) 14%, transparent);
-    --merge-toolbar-bg: color-mix(in srgb, var(--vscode-sideBar-background, #2b2d30) 82%, #000 18%);
-    --merge-header-bg: color-mix(
-        in srgb,
-        var(--vscode-editorGroupHeader-tabsBackground, #31343a) 88%,
-        #000 12%
-    );
+    /* Chrome surfaces take the host tokens straight. The previous 12-18% mix
+       toward black was tuned for a dark host; on a light theme it turned a
+       near-white sidebar into a heavy gray band. The host already separates
+       these surfaces from the editor in every theme it ships. */
+    --merge-toolbar-bg: var(--vscode-sideBar-background, #2b2d30);
+    --merge-header-bg: var(--vscode-editorGroupHeader-tabsBackground, #31343a);
     --merge-muted: var(--vscode-descriptionForeground, #9ca3af);
     --merge-accent: var(--vscode-textLink-foreground, #4ea1ff);
-    --merge-warning: #f2c572;
-    --merge-danger: #d86c6c;
-    --merge-ok: #79c18d;
-    /* PyCharm Darcula merge palette: the block/ribbon wash is a muted maroon
-       so it reads as a background tint, while changed-word fragments (see
-       .word-diff-change below) carry the same family at full intensity on
-       top of it. */
-    --pycharm-conflict: #4b1515;
-    --pycharm-inserted: #3d6f4e;
-    --pycharm-modified: #1c6978;
-    --pycharm-deleted: #565b62;
-    --merge-conflict-block-bg: #3a2a32;
+    /* Semantic hues come from the host, so they flip with the theme. The
+       fallbacks are the PyCharm Darcula values and only render if the host
+       defines nothing. */
+    --merge-warning: var(--vscode-editorWarning-foreground, #f2c572);
+    --merge-danger: var(--vscode-errorForeground, #d86c6c);
+    --merge-ok: var(--vscode-charts-green, #79c18d);
+    --merge-info: var(--vscode-terminal-ansiCyan, #58b5c9);
+    /* Status pills are 11px, so the hue alone cannot carry them: no host warning
+       or success token clears 4.5:1 on a light theme. Mixing toward the editor
+       foreground pulls each hue to the high-contrast end of whichever theme is
+       live, which is the correct direction in both. */
+    --merge-warning-text: color-mix(in srgb, var(--merge-warning) 55%, var(--merge-editor-fg));
+    --merge-ok-text: color-mix(in srgb, var(--merge-ok) 55%, var(--merge-editor-fg));
+    /* PyCharm Darcula merge palette, rebuilt as tints of the *live* editor
+       background instead of fixed dark hex. Hue comes from the semantic token
+       above, lightness from the host surface, so a light theme gets a pale wash
+       and a dark theme keeps the Darcula-weight band without a second palette.
+       The block wash is the faded row tint; the pycharm-* pair is the same
+       family at word-fragment strength on top of it (see .word-diff-change). */
+    --pycharm-conflict: color-mix(in srgb, var(--merge-danger) 30%, var(--merge-editor-bg));
+    --pycharm-inserted: color-mix(in srgb, var(--merge-ok) 30%, var(--merge-editor-bg));
+    --pycharm-modified: color-mix(in srgb, var(--merge-info) 30%, var(--merge-editor-bg));
+    --pycharm-deleted: color-mix(in srgb, var(--merge-muted) 30%, var(--merge-editor-bg));
+    --merge-conflict-block-bg: color-mix(in srgb, var(--merge-danger) 15%, var(--merge-editor-bg));
     --merge-conflict-ribbon-bg: var(--merge-conflict-block-bg);
-    --merge-inserted-block-bg: #264b33;
-    --merge-modified-block-bg: #13404b;
-    --merge-deleted-block-bg: #3f444b;
-    --merge-pane-boundary: color-mix(in srgb, var(--merge-editor-fg) 24%, #0d1522 76%);
+    --merge-inserted-block-bg: color-mix(in srgb, var(--merge-ok) 15%, var(--merge-editor-bg));
+    --merge-modified-block-bg: color-mix(in srgb, var(--merge-info) 15%, var(--merge-editor-bg));
+    --merge-deleted-block-bg: color-mix(in srgb, var(--merge-muted) 15%, var(--merge-editor-bg));
+    --merge-pane-boundary: color-mix(in srgb, var(--merge-editor-fg) 24%, var(--merge-editor-bg));
     --merge-hunk-boundary: color-mix(in srgb, var(--merge-border) 72%, transparent);
     --merge-hunk-boundary-width: 1px;
     --merge-line-number-gutter: 33px;
@@ -76,13 +88,11 @@
     gap: 8px;
     min-height: 30px;
     padding: 2px 8px;
-    background: linear-gradient(
-        180deg,
-        color-mix(in srgb, var(--merge-toolbar-bg) 90%, white 10%),
-        var(--merge-toolbar-bg)
-    );
+    background: var(--merge-toolbar-bg);
+    /* One seam, not two: the border already draws this edge from the theme's own
+       foreground, so the old 25%-black inset shadow only doubled it — invisible on
+       dark, a hard black hairline over a light border. */
     border-bottom: 1px solid var(--merge-border);
-    box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.25);
     flex-shrink: 0;
 }
 .toolbar-left,
@@ -179,16 +189,16 @@
     height: 20px;
     padding: 0 8px;
     border-radius: 10px;
-    border: 1px solid rgba(242, 197, 114, 0.35);
-    background: rgba(242, 197, 114, 0.08);
-    color: var(--merge-warning);
+    border: 1px solid color-mix(in srgb, var(--merge-warning) 35%, transparent);
+    background: color-mix(in srgb, var(--merge-warning) 8%, transparent);
+    color: var(--merge-warning-text);
     font-size: 11px;
     white-space: nowrap;
 }
 .toolbar-status-pill.muted {
     color: var(--merge-muted);
     border-color: color-mix(in srgb, var(--merge-border) 85%, transparent);
-    background: rgba(255, 255, 255, 0.02);
+    background: color-mix(in srgb, var(--merge-editor-fg) 3%, transparent);
 }
 .toolbar-inline-link {
     height: 20px;
@@ -201,8 +211,8 @@
     cursor: pointer;
 }
 .toolbar-inline-link:hover:not(:disabled) {
-    background: rgba(78, 161, 255, 0.08);
-    border-color: rgba(78, 161, 255, 0.18);
+    background: color-mix(in srgb, var(--merge-accent) 8%, transparent);
+    border-color: color-mix(in srgb, var(--merge-accent) 18%, transparent);
 }
 .toolbar-inline-link:disabled {
     opacity: 0.4;
@@ -251,20 +261,20 @@
     padding: 0 8px;
     border-radius: 10px;
     border: 1px solid color-mix(in srgb, var(--merge-border) 85%, transparent);
-    background: rgba(255, 255, 255, 0.02);
+    background: color-mix(in srgb, var(--merge-editor-fg) 3%, transparent);
     color: var(--merge-muted);
     font-size: 11px;
     white-space: nowrap;
 }
 .merge-stat-pill.warn {
-    color: var(--merge-warning);
-    border-color: rgba(242, 197, 114, 0.28);
-    background: rgba(242, 197, 114, 0.06);
+    color: var(--merge-warning-text);
+    border-color: color-mix(in srgb, var(--merge-warning) 28%, transparent);
+    background: color-mix(in srgb, var(--merge-warning) 6%, transparent);
 }
 .merge-stat-pill.ok {
-    color: var(--merge-ok);
-    border-color: rgba(121, 193, 141, 0.25);
-    background: rgba(121, 193, 141, 0.05);
+    color: var(--merge-ok-text);
+    border-color: color-mix(in srgb, var(--merge-ok) 25%, transparent);
+    background: color-mix(in srgb, var(--merge-ok) 5%, transparent);
 }
 
 .pane-meta-row {
@@ -327,7 +337,7 @@
 }
 .show-details:hover {
     text-decoration: underline;
-    background: rgba(78, 161, 255, 0.06);
+    background: color-mix(in srgb, var(--merge-accent) 6%, transparent);
 }
 
 .merge-content-shell {
@@ -408,20 +418,20 @@
    cross. */
 .merge-connector {
     fill: var(--merge-conflict-ribbon-bg);
-    stroke: color-mix(in srgb, var(--merge-conflict-ribbon-bg) 45%, #d86c6c 55%);
+    stroke: color-mix(in srgb, var(--merge-conflict-ribbon-bg) 45%, var(--merge-danger) 55%);
     stroke-width: 1;
 }
 .merge-connector.variant-insertion {
     fill: var(--merge-inserted-block-bg);
-    stroke: color-mix(in srgb, var(--merge-inserted-block-bg) 45%, #79c18d 55%);
+    stroke: color-mix(in srgb, var(--merge-inserted-block-bg) 45%, var(--merge-ok) 55%);
 }
 .merge-connector.variant-modification {
     fill: var(--merge-modified-block-bg);
-    stroke: color-mix(in srgb, var(--merge-modified-block-bg) 45%, #58b5c9 55%);
+    stroke: color-mix(in srgb, var(--merge-modified-block-bg) 45%, var(--merge-info) 55%);
 }
 .merge-connector.variant-deletion {
     fill: var(--merge-deleted-block-bg);
-    stroke: color-mix(in srgb, var(--merge-deleted-block-bg) 45%, #9aa3ad 55%);
+    stroke: color-mix(in srgb, var(--merge-deleted-block-bg) 45%, var(--merge-muted) 55%);
 }
 /* Settled sides (accepted / discarded) trade the filled band for PyCharm's
    dotted contour: an unfilled outline tracing the source block, the divider
@@ -431,18 +441,18 @@
    rules so fill:none wins the specificity tie. */
 .merge-connector.connector-resolved {
     fill: none;
-    stroke: color-mix(in srgb, var(--merge-conflict-ribbon-bg) 45%, #d86c6c 55%);
+    stroke: color-mix(in srgb, var(--merge-conflict-ribbon-bg) 45%, var(--merge-danger) 55%);
     stroke-width: 1;
     stroke-dasharray: 2 2;
 }
 .merge-connector.variant-insertion.connector-resolved {
-    stroke: color-mix(in srgb, var(--merge-inserted-block-bg) 45%, #79c18d 55%);
+    stroke: color-mix(in srgb, var(--merge-inserted-block-bg) 45%, var(--merge-ok) 55%);
 }
 .merge-connector.variant-modification.connector-resolved {
-    stroke: color-mix(in srgb, var(--merge-modified-block-bg) 45%, #58b5c9 55%);
+    stroke: color-mix(in srgb, var(--merge-modified-block-bg) 45%, var(--merge-info) 55%);
 }
 .merge-connector.variant-deletion.connector-resolved {
-    stroke: color-mix(in srgb, var(--merge-deleted-block-bg) 45%, #9aa3ad 55%);
+    stroke: color-mix(in srgb, var(--merge-deleted-block-bg) 45%, var(--merge-muted) 55%);
 }
 .merge-content::-webkit-scrollbar {
     width: 9px;
@@ -503,13 +513,28 @@
     position: relative;
 }
 .col-left .segment-conflict.change-conflict.unresolved .code-block.line-numbers-right .line-numbers,
-.col-middle .segment-conflict.change-conflict.unresolved .code-block.line-numbers-left .line-numbers,
-.col-right .segment-conflict.change-conflict.unresolved .code-block.line-numbers-left .line-numbers {
+.col-middle
+    .segment-conflict.change-conflict.unresolved
+    .code-block.line-numbers-left
+    .line-numbers,
+.col-right
+    .segment-conflict.change-conflict.unresolved
+    .code-block.line-numbers-left
+    .line-numbers {
     isolation: isolate;
 }
-.col-left .segment-conflict.change-conflict.unresolved .code-block.line-numbers-right .line-numbers::after,
-.col-middle .segment-conflict.change-conflict.unresolved .code-block.line-numbers-left .line-numbers::after,
-.col-right .segment-conflict.change-conflict.unresolved .code-block.line-numbers-left .line-numbers::after {
+.col-left
+    .segment-conflict.change-conflict.unresolved
+    .code-block.line-numbers-right
+    .line-numbers::after,
+.col-middle
+    .segment-conflict.change-conflict.unresolved
+    .code-block.line-numbers-left
+    .line-numbers::after,
+.col-right
+    .segment-conflict.change-conflict.unresolved
+    .code-block.line-numbers-left
+    .line-numbers::after {
     content: "";
     position: absolute;
     top: 0;
@@ -695,9 +720,12 @@
 .accept-btn {
     color: var(--merge-ok);
 }
-/* Dark red at rest like PyCharm's ×; the hover rule escalates to bright red. */
+/* Recessive at rest like PyCharm's ×; the hover rule escalates to the full error
+   color. Mixing toward the editor background is the correct direction in both
+   themes: it darkens on dark and lightens on light, either way stepping back
+   from the hover state. */
 .discard-btn {
-    color: #c02b42;
+    color: color-mix(in srgb, var(--merge-danger) 72%, var(--merge-editor-bg));
 }
 .conflict-column {
     position: relative;
@@ -771,8 +799,8 @@
     opacity: 1;
 }
 .discard-btn:hover {
-    background: rgba(216, 108, 108, 0.15);
-    color: var(--vscode-errorForeground, #f48771);
+    background: color-mix(in srgb, var(--merge-danger) 15%, transparent);
+    color: var(--merge-danger);
 }
 .action-btn.accept-btn {
     color: var(--merge-ok);
@@ -783,7 +811,7 @@
     color: var(--merge-ok);
 }
 .action-btn.discard-btn {
-    color: #c02b42;
+    color: color-mix(in srgb, var(--merge-danger) 72%, var(--merge-editor-bg));
 }
 /* Block backgrounds are row-scoped like IntelliJ/PyCharm line fragments:
    filler rows align panes but stay neutral. Code rows use a sticky background
@@ -873,7 +901,8 @@
 .segment-conflict.change-conflict.active:has(> .conflict-column.accepted),
 .segment-conflict.change-conflict.active:has(> .conflict-column.dismissed),
 .segment-conflict.change-conflict.resolved.active:has(.conflict-result.resolved) {
-    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--vscode-focusBorder, #4ea1ff) 16%, transparent);
+    box-shadow: inset 0 0 0 1px
+        color-mix(in srgb, var(--vscode-focusBorder, #4ea1ff) 16%, transparent);
 }
 /* A dismissed-only side has no resolution yet, so its wrapper is still
    .unresolved — strip the red number/gutter bands the unresolved rules paint
@@ -888,17 +917,17 @@
     cursor: text;
 }
 .result-editable:hover .code-lines {
-    box-shadow: inset 0 0 0 1px rgba(78, 161, 255, 0.25);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--merge-accent) 25%, transparent);
 }
 .code-block.editing {
-    background: color-mix(in srgb, var(--vscode-editor-background) 88%, #4ea1ff 12%);
+    background: color-mix(in srgb, var(--merge-editor-bg) 88%, var(--merge-accent) 12%);
 }
 .result-edit-textarea {
     width: 100%;
     min-height: 20px;
     padding: 0 10px;
     border: none;
-    outline: 1px solid rgba(78, 161, 255, 0.55);
+    outline: 1px solid color-mix(in srgb, var(--merge-accent) 55%, transparent);
     outline-offset: -1px;
     resize: vertical;
     background: var(--vscode-editor-background);
@@ -911,7 +940,7 @@
 }
 .conflict-result.edited .real-code-line::before,
 .conflict-result.edited .real-line-row {
-    background: color-mix(in srgb, var(--merge-inserted-block-bg) 70%, #4ea1ff 30%);
+    background: color-mix(in srgb, var(--merge-inserted-block-bg) 70%, var(--merge-accent) 30%);
 }
 
 .conflict-ours .code-line,
@@ -921,8 +950,8 @@
 }
 .segment-conflict.active .conflict-result.unresolved .code-lines {
     box-shadow:
-        inset 0 0 0 1px rgba(78, 161, 255, 0.14),
-        inset 0 0 18px rgba(78, 161, 255, 0.05);
+        inset 0 0 0 1px color-mix(in srgb, var(--merge-accent) 14%, transparent),
+        inset 0 0 18px color-mix(in srgb, var(--merge-accent) 5%, transparent);
 }
 
 .overview-rail {
@@ -957,14 +986,14 @@
     opacity: 0.68;
 }
 .overview-marker.marker-conflict.unresolved {
-    background: rgba(216, 108, 108, 0.74);
+    background: color-mix(in srgb, var(--merge-danger) 74%, transparent);
 }
 .overview-marker.marker-conflict.resolved {
-    background: rgba(121, 193, 141, 0.66);
+    background: color-mix(in srgb, var(--merge-ok) 66%, transparent);
 }
 .overview-marker.marker-ours-only,
 .overview-marker.marker-theirs-only {
-    background: rgba(91, 137, 214, 0.68);
+    background: color-mix(in srgb, var(--merge-accent) 68%, transparent);
 }
 .overview-marker.active {
     outline: 1px solid color-mix(in srgb, var(--merge-editor-fg) 48%, transparent);

@@ -8,7 +8,7 @@ import React, {
 } from "react";
 import { createPortal } from "react-dom";
 import { SYSTEM_FONT_STACK } from "../../../../utils/constants";
-import { JETBRAINS_UI } from "../tokens";
+import { JETBRAINS_UI, Z_INDEX } from "../tokens";
 
 const ITEM_HEIGHT = 28;
 const ITEM_FONT_SIZE = 13;
@@ -31,7 +31,7 @@ const CONTEXT_MENU_BASE_STYLE: React.CSSProperties = {
     position: "fixed",
     // Portal context menus must float above all VS Code webview panes/popovers.
     // react-doctor-disable-next-line react-doctor/no-z-index-9999
-    zIndex: 9999,
+    zIndex: Z_INDEX.menu,
     background: JETBRAINS_UI.color.panel,
     border: `1px solid var(--vscode-menu-border, ${JETBRAINS_UI.color.menuBorder})`,
     borderRadius: 8,

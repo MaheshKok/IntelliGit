@@ -1,6 +1,38 @@
-import { readFileSync } from "fs";
+import { existsSync, readFileSync } from "fs";
 import path from "path";
 import { describe, expect, it } from "vitest";
+import { ICON_ACCENTS } from "../../../src/webviews/react/shared/tokens";
+
+/**
+ * The light-theme counterpart of a title-bar icon, and proof it ships.
+ *
+ * VS Code paints `icon` contributions as images, not masks, so it never
+ * recolors them: a white glyph stays white on a light title bar, and a
+ * dark-tuned accent keeps its dark-tuned lightness. Every family therefore
+ * ships two files — `-white` pairs with `-ink`, `-color` with `-color-light` —
+ * and pointing both manifest entries at the same file is the bug this guards.
+ */
+function expectLightVariant(darkIcon: string): string {
+    const light = darkIcon.endsWith("-white.svg")
+        ? darkIcon.replace(/-white\.svg$/, "-ink.svg")
+        : darkIcon.replace(/-color\.svg$/, "-color-light.svg");
+    expect(light).not.toBe(darkIcon);
+    expect(existsSync(path.join(process.cwd(), light))).toBe(true);
+    return light;
+}
+
+/** WCAG 2.1 contrast ratio between two `#rrggbb` colors. */
+function contrastRatio(a: string, b: string): number {
+    const luminance = (hex: string): number => {
+        const [r, g, b2] = [1, 3, 5].map((i) => {
+            const channel = parseInt(hex.slice(i, i + 2), 16) / 255;
+            return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+        });
+        return 0.2126 * r + 0.7152 * g + 0.0722 * b2;
+    };
+    const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+    return (hi + 0.05) / (lo + 0.05);
+}
 
 type WebviewContextMenuItem = {
     command?: string;
@@ -146,8 +178,14 @@ describe("extension manifest", () => {
             );
             expect(item?.group).toBe(group);
             expect(colorItem?.group).toBe(group);
-            expect(commandContribution?.icon).toEqual({ light: icon, dark: icon });
-            expect(colorCommandContribution?.icon).toEqual({ light: colorIcon, dark: colorIcon });
+            expect(commandContribution?.icon).toEqual({
+                light: expectLightVariant(icon),
+                dark: icon,
+            });
+            expect(colorCommandContribution?.icon).toEqual({
+                light: expectLightVariant(colorIcon),
+                dark: colorIcon,
+            });
             expect(paletteItem?.when).toBe("false");
             expect(colorPaletteItem?.when).toBe("false");
         }
@@ -174,11 +212,11 @@ describe("extension manifest", () => {
         expect(indicator).toBeUndefined();
         expect(colorIndicator).toBeUndefined();
         expect(indicatorContribution?.icon).toEqual({
-            light: "media/icons/select-repository-white.svg",
+            light: "media/icons/select-repository-ink.svg",
             dark: "media/icons/select-repository-white.svg",
         });
         expect(colorIndicatorContribution?.icon).toEqual({
-            light: "media/icons/select-repository-color.svg",
+            light: "media/icons/select-repository-color-light.svg",
             dark: "media/icons/select-repository-color.svg",
         });
         expect(indicatorPalette?.when).toBe("false");
@@ -245,8 +283,14 @@ describe("extension manifest", () => {
             expect(colorItem?.when).toBe(`${baseWhen} && config.intelligit.icons == color`);
             expect(item?.group).toBe("navigation");
             expect(colorItem?.group).toBe("navigation");
-            expect(commandContribution?.icon).toEqual({ light: icon, dark: icon });
-            expect(colorCommandContribution?.icon).toEqual({ light: colorIcon, dark: colorIcon });
+            expect(commandContribution?.icon).toEqual({
+                light: expectLightVariant(icon),
+                dark: icon,
+            });
+            expect(colorCommandContribution?.icon).toEqual({
+                light: expectLightVariant(colorIcon),
+                dark: colorIcon,
+            });
             expect(colorPaletteItem?.when).toBe("false");
             expect(activationEvents).toContain(`onCommand:${command}`);
             expect(activationEvents).toContain(`onCommand:${colorCommand}`);
@@ -261,6 +305,7 @@ describe("extension manifest", () => {
         const icons = [
             {
                 name: "sync",
+                role: "violet",
                 color: "#c8a2ff",
                 paths: [
                     "M13 2v4H9l1.55-1.55A4.4 4.4 0 0 0 3.9 6.2l-.94-.34A5.4 5.4 0 0 1 11.25 3.75L13 2zM3 14v-4h4l-1.55 1.55A4.4 4.4 0 0 0 12.1 9.8l.94.34a5.4 5.4 0 0 1-8.29 2.11L3 14z",
@@ -268,6 +313,7 @@ describe("extension manifest", () => {
             },
             {
                 name: "fetch",
+                role: "sky",
                 color: "#8fd5ff",
                 paths: [
                     "M5 12.5h-.5a2.8 2.8 0 0 1-.35-5.58A4.1 4.1 0 0 1 12 5.8a2.9 2.9 0 0 1 .5 5.7H11",
@@ -276,6 +322,7 @@ describe("extension manifest", () => {
             },
             {
                 name: "pull",
+                role: "sky",
                 color: "#8fd5ff",
                 paths: [
                     "M7.5 1h1v8.1l2.15-2.15.7.7L8 11 4.65 7.65l.7-.7L7.5 9.1V1z",
@@ -284,6 +331,7 @@ describe("extension manifest", () => {
             },
             {
                 name: "push",
+                role: "green",
                 color: "#a6e3a1",
                 paths: [
                     "M8 1l3.35 3.35-.7.7L8.5 2.9V11h-1V2.9L5.35 5.05l-.7-.7L8 1z",
@@ -303,11 +351,25 @@ describe("extension manifest", () => {
                 path.join(process.cwd(), `media/icons/git-${icon.name}-color.svg`),
                 "utf8",
             );
-            expect(iconBlock).toContain(`color="${icon.color}"`);
+            const lightSvg = readFileSync(
+                path.join(process.cwd(), `media/icons/git-${icon.name}-color-light.svg`),
+                "utf8",
+            );
+            // The webview resolves its accent through a host token; the native icon is a
+            // static file and cannot. They stay in sync through the token's fallback,
+            // which is the value the dark-theme SVG paints.
+            expect(iconBlock).toContain(`color={ICON_ACCENTS.${icon.role}}`);
+            expect(ICON_ACCENTS[icon.role]).toContain(icon.color);
             expect(svg).toContain(icon.color);
+            // The light variant is a different file because a static SVG cannot follow
+            // the theme. It has to clear 3:1 (WCAG 1.4.11) on the light title bar.
+            const lightFill = lightSvg.match(/#[0-9a-f]{6}/)?.[0];
+            expect(lightFill).toBeDefined();
+            expect(contrastRatio(lightFill as string, "#f3f3f3")).toBeGreaterThanOrEqual(3);
             for (const pathData of icon.paths) {
                 expect(iconBlock).toContain(`d="${pathData}"`);
                 expect(svg).toContain(`d="${pathData}"`);
+                expect(lightSvg).toContain(`d="${pathData}"`);
             }
         }
     });

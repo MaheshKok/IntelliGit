@@ -3,6 +3,7 @@ import { Box, Button, Checkbox, Flex, Input } from "@chakra-ui/react";
 import type { ShelfEntry } from "../../../protocol/commitPanelMessages";
 import { t } from "../../shared/i18n";
 import { restoreShelfDialogFocus, useShelfDialogFocus } from "./ShelfDialogFocus";
+import { Z_INDEX } from "../../shared/tokens";
 
 interface CleanUpDialogProps {
     shelves: ShelfEntry[];
@@ -62,7 +63,7 @@ export function CleanUpDialog({
             role="presentation"
             position="fixed"
             inset={0}
-            zIndex="var(--intelligit-z-modal, 50)"
+            zIndex={Z_INDEX.modal}
             align="center"
             justify="center"
             bg="rgba(0, 0, 0, 0.45)"

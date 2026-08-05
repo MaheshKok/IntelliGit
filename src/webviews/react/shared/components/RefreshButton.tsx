@@ -5,6 +5,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { IconButton, Tooltip } from "@chakra-ui/react";
 import { VscRefresh } from "react-icons/vsc";
 import { getSettings, resolveIconColor } from "../settings";
+import { ICON_ACCENTS } from "../tokens";
 import { t } from "../i18n";
 import { SPIN_KEYFRAMES } from "./iconStyles";
 
@@ -73,7 +74,7 @@ export function RefreshButton({
     // fading to the disabled grey — a refresh in progress has to read louder than an
     // idle one, not quieter.
     const iconStyle: React.CSSProperties = {
-        color: resolveIconColor("#4ec7d6", "var(--vscode-icon-foreground)"),
+        color: resolveIconColor(ICON_ACCENTS.cyan, "var(--vscode-icon-foreground)"),
         ...(spin
             ? {
                   animation: "intelligit-spin 0.8s linear infinite",

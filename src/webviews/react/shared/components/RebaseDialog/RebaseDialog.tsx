@@ -20,6 +20,7 @@ import {
 } from "./rebaseDialogState";
 import type { RebaseDialogProps, RebaseEntryMutation } from "./types";
 import "./RebaseDialog.css";
+import { Z_INDEX } from "../../tokens";
 
 const ACTIONS: readonly RebaseAction[] = ["pick", "reword", "squash", "fixup", "drop"];
 
@@ -179,7 +180,7 @@ export function RebaseDialog({
             role="presentation"
             position="fixed"
             inset={0}
-            zIndex="var(--intelligit-z-modal, 50)"
+            zIndex={Z_INDEX.modal}
             align="center"
             justify="center"
             bg="rgba(0, 0, 0, 0.45)"

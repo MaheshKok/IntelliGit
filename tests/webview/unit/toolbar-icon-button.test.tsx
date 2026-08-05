@@ -4,6 +4,7 @@ import React, { act } from "react";
 import { ChakraProvider } from "@chakra-ui/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ToolbarIconButton } from "../../../src/webviews/react/shared/components/ToolbarIconButton";
+import { ICON_ACCENTS } from "../../../src/webviews/react/shared/tokens";
 import { ShelfToolbar } from "../../../src/webviews/react/commit-panel/components/ShelfToolbar";
 import { StashToolbar } from "../../../src/webviews/react/commit-panel/components/StashToolbar";
 import { Toolbar } from "../../../src/webviews/react/commit-panel/components/Toolbar";
@@ -128,7 +129,12 @@ describe("ToolbarIconButton", () => {
                             onContinueRebase: vi.fn(),
                             onAbortRebase: vi.fn(),
                         } as React.ComponentProps<typeof Toolbar> & {
-                            activeOperation?: "rebase" | "merge" | "cherry-pick" | "revert" | "none";
+                            activeOperation?:
+                                | "rebase"
+                                | "merge"
+                                | "cherry-pick"
+                                | "revert"
+                                | "none";
                             rebaseControl?: "owned" | "unowned" | "foreign";
                             onContinueRebase: () => void;
                             onAbortRebase: () => void;
@@ -193,11 +199,16 @@ describe("ToolbarIconButton", () => {
         expect(disabled.onClick).not.toHaveBeenCalled();
         unmount(disabled.root, disabled.container);
 
-        const disabledSpinner = renderButton({ disabled: true, spin: true, color: "#4ec7d6" });
-        const disabledSpinnerButton = disabledSpinner.container.querySelector("button") as HTMLButtonElement;
+        // #123456 is the file's stand-in for "whatever colour the caller passed"; it
+        // is deliberately not a palette value, so the assertion tests pass-through
+        // rather than pinning a design decision.
+        const disabledSpinner = renderButton({ disabled: true, spin: true, color: "#123456" });
+        const disabledSpinnerButton = disabledSpinner.container.querySelector(
+            "button",
+        ) as HTMLButtonElement;
         const disabledSpinnerIcon = disabledSpinnerButton.querySelector("svg") as SVGElement;
         expect(disabledSpinnerButton.disabled).toBe(true);
-        expect(disabledSpinnerIcon.style.color).toBe("rgb(78, 199, 214)");
+        expect(disabledSpinnerIcon.style.color).toBe("rgb(18, 52, 86)");
         expect(disabledSpinnerIcon.style.animation).toContain("intelligit-spin");
         act(() => disabledSpinnerButton.click());
         expect(disabledSpinner.onClick).not.toHaveBeenCalled();
@@ -273,25 +284,24 @@ describe("ToolbarIconButton", () => {
             </ChakraProvider>,
         );
 
-        expect(expectDirectCodicon(container, "Rollback").style.color).toBe("rgb(242, 196, 109)");
-        expect(expectDirectCodicon(container, "View Options").style.color).toBe(
-            "rgb(143, 213, 255)",
-        );
-        expect(expectDirectCodicon(container, "Stash Changes").style.color).toBe(
-            "rgb(234, 143, 179)",
-        );
+        // Each glyph names a role from the shared accent set rather than a literal
+        // hex, so the host theme resolves the hue and the icon stays legible on a
+        // light background as well as a dark one.
+        expect(expectDirectCodicon(container, "Rollback").style.color).toBe(ICON_ACCENTS.amber);
+        expect(expectDirectCodicon(container, "View Options").style.color).toBe(ICON_ACCENTS.sky);
+        expect(expectDirectCodicon(container, "Stash Changes").style.color).toBe(ICON_ACCENTS.pink);
         expect(expectDirectCodicon(container, "Shelf actions").style.color).toBe(
-            "rgb(200, 162, 255)",
+            ICON_ACCENTS.violet,
         );
         expect(expectDirectCodicon(container, "Show Diff Preview").style.color).toBe(
-            "rgb(184, 173, 255)",
-        );
-        expect(expectLegacyTreeControlGlyph(container, "Expand All", EXPAND_ALL_PATH).style.color).toBe(
-            "rgb(243, 177, 207)",
+            ICON_ACCENTS.violet,
         );
         expect(
+            expectLegacyTreeControlGlyph(container, "Expand All", EXPAND_ALL_PATH).style.color,
+        ).toBe(ICON_ACCENTS.pink);
+        expect(
             expectLegacyTreeControlGlyph(container, "Collapse All", COLLAPSE_ALL_PATH).style.color,
-        ).toBe("rgb(243, 177, 207)");
+        ).toBe(ICON_ACCENTS.pink);
 
         unmount(root, container);
     });
@@ -341,19 +351,19 @@ describe("ToolbarIconButton", () => {
         );
         expectDirectCodicon(stash.container, "Refresh");
         expect(expectDirectCodicon(stash.container, "Show Diff").style.color).toBe(
-            "rgb(184, 173, 255)",
+            ICON_ACCENTS.violet,
         );
         expect(expectDirectCodicon(stash.container, "Group by Directory").style.color).toBe(
-            "rgb(143, 213, 255)",
-        );
-        expect(expectLegacyTreeControlGlyph(stash.container, "Expand All", EXPAND_ALL_PATH).style.color).toBe(
-            "rgb(243, 177, 207)",
+            ICON_ACCENTS.sky,
         );
         expect(
-            expectLegacyTreeControlGlyph(stash.container, "Collapse All", COLLAPSE_ALL_PATH).style.color,
-        ).toBe(
-            "rgb(243, 177, 207)",
-        );
+            expectLegacyTreeControlGlyph(stash.container, "Expand All", EXPAND_ALL_PATH).style
+                .color,
+        ).toBe(ICON_ACCENTS.pink);
+        expect(
+            expectLegacyTreeControlGlyph(stash.container, "Collapse All", COLLAPSE_ALL_PATH).style
+                .color,
+        ).toBe(ICON_ACCENTS.pink);
         unmount(stash.root, stash.container);
 
         const shelf = mount(
@@ -374,16 +384,16 @@ describe("ToolbarIconButton", () => {
         );
         expectDirectCodicon(shelf.container, "Refresh");
         expect(expectDirectCodicon(shelf.container, "Group by Directory").style.color).toBe(
-            "rgb(143, 213, 255)",
-        );
-        expect(expectLegacyTreeControlGlyph(shelf.container, "Expand All", EXPAND_ALL_PATH).style.color).toBe(
-            "rgb(243, 177, 207)",
+            ICON_ACCENTS.sky,
         );
         expect(
-            expectLegacyTreeControlGlyph(shelf.container, "Collapse All", COLLAPSE_ALL_PATH).style.color,
-        ).toBe(
-            "rgb(243, 177, 207)",
-        );
+            expectLegacyTreeControlGlyph(shelf.container, "Expand All", EXPAND_ALL_PATH).style
+                .color,
+        ).toBe(ICON_ACCENTS.pink);
+        expect(
+            expectLegacyTreeControlGlyph(shelf.container, "Collapse All", COLLAPSE_ALL_PATH).style
+                .color,
+        ).toBe(ICON_ACCENTS.pink);
         expect(expectDirectCodicon(shelf.container, "More Options").style.color).toBe(
             "var(--vscode-icon-foreground)",
         );

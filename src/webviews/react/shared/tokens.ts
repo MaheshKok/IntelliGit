@@ -60,11 +60,13 @@ export const JETBRAINS_UI = {
 } as const;
 
 /**
- * Graph lane colors assigned round-robin to concurrent branches in the commit graph.
+ * Graph lane colors for dark themes, assigned round-robin to concurrent branches.
  *
  * The palette is ordered for visual contrast so adjacent lanes remain distinguishable
  * even when many branches are active. Colors are hardcoded because VS Code does not
- * provide graph-lane theming variables.
+ * provide graph-lane theming variables, which makes these the only colors the product
+ * owns outright — so both themes have to be supplied explicitly. Every entry clears
+ * 3:1 (WCAG 1.4.11, non-text) against a dark editor background.
  */
 export const GRAPH_LANE_COLORS = [
     "#7bcf6f",
@@ -78,6 +80,81 @@ export const GRAPH_LANE_COLORS = [
     "#c084d2",
     "#d0b35a",
 ];
+
+/**
+ * Graph lane colors for light themes.
+ *
+ * A single palette cannot serve both themes: clearing 3:1 against white requires a
+ * relative luminance at or below 0.175, while clearing it against the dark editor
+ * background requires 0.20 or above. Same hues as {@link GRAPH_LANE_COLORS} with
+ * lightness lowered, staggered so adjacent lanes differ in lightness as well as hue.
+ * Every entry clears 3.5:1 against `#f3f3f3` and 3.9:1 against pure white.
+ */
+export const GRAPH_LANE_COLORS_LIGHT = [
+    "#258d13",
+    "#005cbb",
+    "#7e54cc",
+    "#005f52",
+    "#b37300",
+    "#b13c42",
+    "#256700",
+    "#4374cf",
+    "#904da4",
+    "#684900",
+];
+
+/**
+ * Accent hues for the "color" toolbar-icon style.
+ *
+ * The pastels these replaced were tuned for a dark panel and fell to roughly
+ * 1.5:1 on a light one. Each entry now takes its hue from a host token that
+ * already ships light and dark values, then mixes in 30% of
+ * `--vscode-icon-foreground` to pull the result toward whichever end of the
+ * active theme is legible. That holds every entry above the 3:1 non-text
+ * threshold (WCAG 1.4.11) on both, with no second hand-tuned palette. The
+ * literal fallbacks are the original pastels and only render on a host that
+ * defines no chart colors at all.
+ *
+ * Hue here is decoration: `iconStyle: "standard"` drops it entirely, and every
+ * control carries a label and its own glyph, so nothing depends on color.
+ */
+function iconAccent(token: string, fallback: string): string {
+    return `color-mix(in srgb, var(${token}, ${fallback}) 70%, var(--vscode-icon-foreground, #c5c5c5))`;
+}
+
+export const ICON_ACCENTS = {
+    amber: iconAccent("--vscode-charts-yellow", "#f2c46d"),
+    orange: iconAccent("--vscode-charts-orange", "#ff9e64"),
+    sky: iconAccent("--vscode-charts-blue", "#8fd5ff"),
+    cyan: iconAccent("--vscode-terminal-ansiCyan", "#4ec7d6"),
+    violet: iconAccent("--vscode-charts-purple", "#c8a2ff"),
+    pink: iconAccent("--vscode-terminal-ansiMagenta", "#f3b1cf"),
+    green: iconAccent("--vscode-charts-green", "#a6e3a1"),
+    danger: iconAccent("--vscode-charts-red", "#ff4d4f"),
+} as const;
+
+/**
+ * Stacking order for layered surfaces, lowest to highest.
+ *
+ * Portalled surfaces have to out-rank in-flow content, but they only need to
+ * out-rank each other by one step; `9999` and `10000` said nothing about which
+ * surface was meant to win. The context menu sits at the top because it can be
+ * opened from any of the surfaces below it.
+ */
+export const Z_INDEX = {
+    /** In-flow content that paints over its immediate siblings. */
+    raised: 1,
+    /** Headers and rows pinned inside a scroll container. */
+    sticky: 2,
+    /** Hover surfaces that follow the cursor and take no clicks. */
+    tooltip: 30,
+    /** Dialogs and their backdrops. */
+    modal: 50,
+    /** Portalled popovers anchored to a control. */
+    popover: 60,
+    /** Portalled context menus. Always topmost. */
+    menu: 70,
+} as const;
 
 /**
  * Maps Git porcelain status codes to VS Code git-decoration theme colors.
@@ -146,14 +223,30 @@ export const FILE_TYPE_BADGES: Record<string, { label: string; bg: string; fg?: 
 };
 
 /**
- * Background and foreground colors for commit ref badges (HEAD, tags, remote/local branches).
+ * Shared surface for commit ref badges (HEAD, tags, remote/local branches).
  *
- * Mapped through `JETBRAINS_UI` tokens so badge colors stay consistent with the
- * branch column and commit graph palette.
+ * Every ref badge uses the same background/foreground pair rather than a per-type
+ * fill. VS Code guarantees these two tokens are legible together on every theme,
+ * including user-authored ones; a per-type fill cannot make that guarantee, because
+ * the fill follows the theme while the label color cannot follow it in pure CSS.
+ * Ref type is carried by {@link REF_ACCENT_COLORS} on the leading icon and by the
+ * ref name itself, so no information depends on the fill.
  */
-export const REF_BADGE_COLORS = {
-    head: { bg: JETBRAINS_UI.color.head, fg: "#fff" },
-    tag: { bg: JETBRAINS_UI.color.tag, fg: "#fff" },
-    remote: { bg: JETBRAINS_UI.color.branch, fg: "#fff" },
-    local: { bg: "#7f8ee8", fg: "#fff" },
+export const REF_BADGE_SURFACE = {
+    bg: "var(--vscode-badge-background, #4d5b78)",
+    fg: "var(--vscode-badge-foreground, #eef3ff)",
+};
+
+/**
+ * Per-type accent applied to the leading icon of a ref badge.
+ *
+ * Decorative reinforcement only: the icon glyph and the ref name already distinguish
+ * type, so these carry no information on their own and are held to the 3:1 non-text
+ * threshold rather than 4.5:1.
+ */
+export const REF_ACCENT_COLORS = {
+    head: JETBRAINS_UI.color.head,
+    tag: JETBRAINS_UI.color.tag,
+    remote: JETBRAINS_UI.color.branch,
+    local: JETBRAINS_UI.color.currentBranch,
 };

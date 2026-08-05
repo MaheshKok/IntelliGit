@@ -4,7 +4,7 @@ import { FiCheckCircle, FiMinusCircle } from "react-icons/fi";
 import { IoIosCloseCircleOutline } from "react-icons/io";
 import type { CommitChecksSnapshot, CommitCheckState } from "../../../types";
 import { t } from "../shared/i18n";
-import { JETBRAINS_UI } from "../shared/tokens";
+import { JETBRAINS_UI, Z_INDEX } from "../shared/tokens";
 
 /** Commit-check data cached by hash, including the in-flight marker used while GitHub responds. */
 export type CommitChecksValue = CommitChecksSnapshot | "loading";
@@ -353,7 +353,7 @@ const activeButtonStyle: React.CSSProperties = {
 
 const panelContainerStyle: React.CSSProperties = {
     position: "fixed",
-    zIndex: 10000,
+    zIndex: Z_INDEX.popover,
 };
 
 const panelStyle: React.CSSProperties = {

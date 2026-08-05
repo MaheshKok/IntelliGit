@@ -55,6 +55,31 @@ export function SectionHeader(props: SectionHeaderProps): React.ReactElement {
     return <CommitPanelSectionHeader {...props} />;
 }
 
+/**
+ * Heading wrapper around a section's toggle row.
+ *
+ * The APG disclosure pattern nests the control inside a heading rather than
+ * putting heading semantics on the control, so screen-reader users can move
+ * between sections with heading navigation while the row keeps its button role
+ * and expanded state. The wrapper paints nothing and inherits its typography, so
+ * the row lays out exactly as it did before.
+ */
+function SectionHeading({ children }: { children: React.ReactNode }): React.ReactElement {
+    return (
+        <Box
+            as="h3"
+            m={0}
+            color="inherit"
+            fontFamily="inherit"
+            fontSize="inherit"
+            fontWeight="inherit"
+            lineHeight="inherit"
+        >
+            {children}
+        </Box>
+    );
+}
+
 function CommitPanelSectionHeader({
     label,
     count = 0,
@@ -67,86 +92,88 @@ function CommitPanelSectionHeader({
     const checkboxVisibility = checkbox?.visibility ?? "visible";
     const isDragOver = drag?.isOver ?? false;
     return (
-        <Flex
-            align="center"
-            gap="4px"
-            px="6px"
-            py="2px"
-            mx="4px"
-            my="1px"
-            borderRadius="5px"
-            cursor="pointer"
-            userSelect="none"
-            fontWeight={600}
-            fontSize="12px"
-            fontFamily={SYSTEM_FONT_STACK}
-            lineHeight="22px"
-            position="relative"
-            color="var(--intelligit-pycharm-foreground)"
-            bg={
-                isDragOver
-                    ? "var(--intelligit-pycharm-focus-border, var(--intelligit-pycharm-blue))"
-                    : "var(--intelligit-pycharm-selected)"
-            }
-            outline={isDragOver ? "2px solid var(--intelligit-pycharm-blue)" : "none"}
-            outlineOffset="-1px"
-            tabIndex={0}
-            role="button"
-            aria-expanded={isOpen}
-            onClick={(event) => {
-                if ((event.target as HTMLElement).tagName !== "INPUT") onToggleOpen?.();
-            }}
-            onKeyDown={(event) => {
-                if ((event.target as HTMLElement).tagName === "INPUT") return;
-                if (event.key === "Enter" || event.key === " ") {
-                    if (event.key === " ") event.preventDefault();
-                    onToggleOpen?.();
+        <SectionHeading>
+            <Flex
+                align="center"
+                gap="4px"
+                px="6px"
+                py="2px"
+                mx="4px"
+                my="1px"
+                borderRadius="5px"
+                cursor="pointer"
+                userSelect="none"
+                fontWeight={600}
+                fontSize="12px"
+                fontFamily={SYSTEM_FONT_STACK}
+                lineHeight="22px"
+                position="relative"
+                color="var(--intelligit-pycharm-foreground)"
+                bg={
+                    isDragOver
+                        ? "var(--intelligit-pycharm-focus-border, var(--intelligit-pycharm-blue))"
+                        : "var(--intelligit-pycharm-selected)"
                 }
-            }}
-            onDragOver={drag?.onDragOver}
-            onDragLeave={drag?.onDragLeave}
-            onDrop={drag?.onDrop}
-        >
-            <ChevronIcon expanded={isOpen} />
-            {checkboxVisibility === "hidden" ? (
-                <Box as="span" aria-hidden="true" w="14px" h="14px" flexShrink={0} />
-            ) : checkboxVisibility === "visible" && checkbox ? (
-                <VscCheckbox
-                    isChecked={checkbox.isAllChecked}
-                    isIndeterminate={checkbox.isSomeChecked}
-                    onChange={checkbox.onToggle}
-                    ariaLabel={label}
-                />
-            ) : null}
-            <Box as="span">{label}</Box>
-            <Box
-                as="span"
-                color="var(--intelligit-pycharm-muted)"
-                opacity={0.88}
-                fontWeight="normal"
-                fontSize="11px"
+                outline={isDragOver ? "2px solid var(--intelligit-pycharm-blue)" : "none"}
+                outlineOffset="-1px"
+                tabIndex={0}
+                role="button"
+                aria-expanded={isOpen}
+                onClick={(event) => {
+                    if ((event.target as HTMLElement).tagName !== "INPUT") onToggleOpen?.();
+                }}
+                onKeyDown={(event) => {
+                    if ((event.target as HTMLElement).tagName === "INPUT") return;
+                    if (event.key === "Enter" || event.key === " ") {
+                        if (event.key === " ") event.preventDefault();
+                        onToggleOpen?.();
+                    }
+                }}
+                onDragOver={drag?.onDragOver}
+                onDragLeave={drag?.onDragLeave}
+                onDrop={drag?.onDrop}
             >
-                {t("common.fileCount", { count })}
-            </Box>
-            {stats && (stats.additions > 0 || stats.deletions > 0) ? (
-                <Box as="span" ml="auto" fontSize="11px" flexShrink={0}>
-                    {stats.additions > 0 ? (
-                        <Box
-                            as="span"
-                            color="var(--intelligit-pycharm-added)"
-                            mr={stats.deletions > 0 ? "3px" : "0"}
-                        >
-                            +{stats.additions}
-                        </Box>
-                    ) : null}
-                    {stats.deletions > 0 ? (
-                        <Box as="span" color="var(--intelligit-pycharm-deleted)">
-                            -{stats.deletions}
-                        </Box>
-                    ) : null}
+                <ChevronIcon expanded={isOpen} />
+                {checkboxVisibility === "hidden" ? (
+                    <Box as="span" aria-hidden="true" w="14px" h="14px" flexShrink={0} />
+                ) : checkboxVisibility === "visible" && checkbox ? (
+                    <VscCheckbox
+                        isChecked={checkbox.isAllChecked}
+                        isIndeterminate={checkbox.isSomeChecked}
+                        onChange={checkbox.onToggle}
+                        ariaLabel={label}
+                    />
+                ) : null}
+                <Box as="span">{label}</Box>
+                <Box
+                    as="span"
+                    color="var(--intelligit-pycharm-muted)"
+                    opacity={0.88}
+                    fontWeight="normal"
+                    fontSize="11px"
+                >
+                    {t("common.fileCount", { count })}
                 </Box>
-            ) : null}
-        </Flex>
+                {stats && (stats.additions > 0 || stats.deletions > 0) ? (
+                    <Box as="span" ml="auto" fontSize="11px" flexShrink={0}>
+                        {stats.additions > 0 ? (
+                            <Box
+                                as="span"
+                                color="var(--intelligit-pycharm-added)"
+                                mr={stats.deletions > 0 ? "3px" : "0"}
+                            >
+                                +{stats.additions}
+                            </Box>
+                        ) : null}
+                        {stats.deletions > 0 ? (
+                            <Box as="span" color="var(--intelligit-pycharm-deleted)">
+                                -{stats.deletions}
+                            </Box>
+                        ) : null}
+                    </Box>
+                ) : null}
+            </Flex>
+        </SectionHeading>
     );
 }
 
@@ -158,52 +185,54 @@ function CommitInfoSectionHeader({
     borderBottom = false,
 }: CommitInfoSectionHeaderProps): React.ReactElement {
     return (
-        <Box
-            display="flex"
-            alignItems="center"
-            px="8px"
-            py="4px"
-            fontWeight={600}
-            fontSize="12px"
-            color={JETBRAINS_UI.color.muted}
-            bg={JETBRAINS_UI.color.toolbar}
-            borderBottom={borderBottom ? `1px solid ${JETBRAINS_UI.color.border}` : undefined}
-            cursor={onToggle ? "pointer" : undefined}
-            tabIndex={onToggle ? 0 : undefined}
-            role={onToggle ? "button" : undefined}
-            aria-expanded={onToggle ? expanded : undefined}
-            onClick={onToggle}
-            onKeyDown={
-                onToggle
-                    ? (event) => {
-                          if (event.key === "Enter" || event.key === " ") {
-                              event.preventDefault();
-                              onToggle();
+        <SectionHeading>
+            <Box
+                display="flex"
+                alignItems="center"
+                px="8px"
+                py="4px"
+                fontWeight={600}
+                fontSize="12px"
+                color={JETBRAINS_UI.color.muted}
+                bg={JETBRAINS_UI.color.toolbar}
+                borderBottom={borderBottom ? `1px solid ${JETBRAINS_UI.color.border}` : undefined}
+                cursor={onToggle ? "pointer" : undefined}
+                tabIndex={onToggle ? 0 : undefined}
+                role={onToggle ? "button" : undefined}
+                aria-expanded={onToggle ? expanded : undefined}
+                onClick={onToggle}
+                onKeyDown={
+                    onToggle
+                        ? (event) => {
+                              if (event.key === "Enter" || event.key === " ") {
+                                  event.preventDefault();
+                                  onToggle();
+                              }
                           }
-                      }
-                    : undefined
-            }
-        >
-            <ChevronIcon expanded={expanded} />
-            <Box as="span">{label}</Box>
-            {stats && (stats.additions > 0 || stats.deletions > 0) && (
-                <Box as="span" ml="auto" fontSize="11px" flexShrink={0}>
-                    {stats.additions > 0 && (
-                        <Box
-                            as="span"
-                            color="var(--intelligit-pycharm-added)"
-                            mr={stats.deletions > 0 ? "4px" : "0"}
-                        >
-                            +{stats.additions}
-                        </Box>
-                    )}
-                    {stats.deletions > 0 && (
-                        <Box as="span" color="var(--intelligit-pycharm-deleted)">
-                            -{stats.deletions}
-                        </Box>
-                    )}
-                </Box>
-            )}
-        </Box>
+                        : undefined
+                }
+            >
+                <ChevronIcon expanded={expanded} />
+                <Box as="span">{label}</Box>
+                {stats && (stats.additions > 0 || stats.deletions > 0) && (
+                    <Box as="span" ml="auto" fontSize="11px" flexShrink={0}>
+                        {stats.additions > 0 && (
+                            <Box
+                                as="span"
+                                color="var(--intelligit-pycharm-added)"
+                                mr={stats.deletions > 0 ? "4px" : "0"}
+                            >
+                                +{stats.additions}
+                            </Box>
+                        )}
+                        {stats.deletions > 0 && (
+                            <Box as="span" color="var(--intelligit-pycharm-deleted)">
+                                -{stats.deletions}
+                            </Box>
+                        )}
+                    </Box>
+                )}
+            </Box>
+        </SectionHeading>
     );
 }

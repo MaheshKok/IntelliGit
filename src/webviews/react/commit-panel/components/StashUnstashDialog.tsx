@@ -4,6 +4,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { Button, Checkbox, Flex } from "@chakra-ui/react";
 import { isValidBranchName } from "../../../../utils/gitRefs";
 import { t } from "../../shared/i18n";
+import { Z_INDEX } from "../../shared/tokens";
 
 /** Props for the compact unstash dialog owned by StashTab. */
 export interface StashUnstashDialogProps {
@@ -92,7 +93,7 @@ export function StashUnstashDialog({
             role="presentation"
             position="fixed"
             inset={0}
-            zIndex="var(--intelligit-z-modal, 50)"
+            zIndex={Z_INDEX.modal}
             align="center"
             justify="center"
             bg="var(--vscode-editor-background, rgba(0, 0, 0, 0.45))"

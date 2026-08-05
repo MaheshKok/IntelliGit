@@ -13,6 +13,7 @@ import { commitHashesMatch, retryDelaysForCommitChecks } from "./commit-list/che
 import { useCommitGraphCanvas } from "./commit-list/useCommitGraphCanvas";
 import { isCommitAction, type CommitAction } from "../protocol/commitGraphTypes";
 import { JETBRAINS_UI } from "./shared/tokens";
+import { resolveLanePalette, useIsLightTheme } from "./shared/theme";
 import { t } from "./shared/i18n";
 import {
     AUTHOR_COL_WIDTH,
@@ -127,7 +128,9 @@ export function CommitList({
     // react-doctor-disable-next-line react-doctor/rerender-lazy-ref-init
     const checkRetryAttempts = useRef(new Map<string, RetryAttempt>());
 
-    const graphRows = useMemo(() => computeGraph(commits), [commits]);
+    const isLightTheme = useIsLightTheme();
+    const lanePalette = useMemo(() => resolveLanePalette(isLightTheme), [isLightTheme]);
+    const graphRows = useMemo(() => computeGraph(commits, lanePalette), [commits, lanePalette]);
     const maxCols = useMemo(
         () => graphRows.reduce((max, row) => Math.max(max, row.numColumns), 1),
         [graphRows],

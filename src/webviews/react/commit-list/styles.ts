@@ -1,6 +1,6 @@
 import type { CSSProperties } from "react";
 import { ROW_HEIGHT } from "../graph";
-import { JETBRAINS_UI } from "../shared/tokens";
+import { JETBRAINS_UI, Z_INDEX } from "../shared/tokens";
 
 export const AUTHOR_COL_WIDTH = 104;
 export const DATE_COL_WIDTH = 118;
@@ -114,7 +114,7 @@ export const CANVAS_STYLE: CSSProperties = {
     left: 0,
     top: 0,
     pointerEvents: "none",
-    zIndex: 1,
+    zIndex: Z_INDEX.raised,
 };
 
 export const LOADING_MORE_STYLE: CSSProperties = {

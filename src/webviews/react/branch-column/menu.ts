@@ -5,6 +5,7 @@ import type { BranchAction, WorktreeAction } from "../../protocol/commitGraphTyp
 import type { MenuItem } from "../shared/components/ContextMenu";
 import { t } from "../shared/i18n";
 import { resolveIconColor } from "../shared/settings";
+import { ICON_ACCENTS } from "../shared/tokens";
 
 /** Sentinel action namespace for visual separators in branch context menus. */
 type SeparatorAction = `sep-${string}`;
@@ -24,7 +25,7 @@ function pullBranchIcon() {
             height: "14",
             viewBox: "0 0 16 16",
             "aria-hidden": true,
-            style: { color: resolveIconColor("#8fd5ff", STANDARD_MENU_ICON_COLOR) },
+            style: { color: resolveIconColor(ICON_ACCENTS.sky, STANDARD_MENU_ICON_COLOR) },
         },
         createElement("path", {
             fill: "currentColor",
@@ -43,7 +44,7 @@ function pushBranchIcon() {
             height: "14",
             viewBox: "0 0 16 16",
             "aria-hidden": true,
-            style: { color: resolveIconColor("#a6e3a1", STANDARD_MENU_ICON_COLOR) },
+            style: { color: resolveIconColor(ICON_ACCENTS.green, STANDARD_MENU_ICON_COLOR) },
         },
         createElement("path", {
             fill: "currentColor",

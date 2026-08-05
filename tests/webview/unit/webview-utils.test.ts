@@ -16,6 +16,7 @@ import {
 } from "../../../src/webviews/protocol/commitGraphTypes";
 import { canCherryPickFromBranchScope } from "../../../src/webviews/react/CommitList";
 import { getCommitMenuItems } from "../../../src/webviews/react/commit-list/commitMenu";
+import { ICON_ACCENTS } from "../../../src/webviews/react/shared/tokens";
 import {
     buildFileTree,
     collectDirPaths,
@@ -327,11 +328,18 @@ describe("commit menu", () => {
             return renderToStaticMarkup(item?.icon as React.ReactElement);
         };
 
-        expect(iconMarkup("copyRevision")).toContain("color:#8fd5ff");
-        expect(iconMarkup("createPatch")).toContain("color:#c8a2ff");
-        expect(iconMarkup("cherryPick")).toContain("color:#ff4d4f");
-        expect(iconMarkup("resetCurrentToHere")).toContain("color:#ff9e64");
-        expect(iconMarkup("pushAllUpToHere")).toContain("color:#a6e3a1");
+        expect(iconMarkup("copyRevision")).toContain(ICON_ACCENTS.sky);
+        expect(iconMarkup("createPatch")).toContain(ICON_ACCENTS.violet);
+        expect(iconMarkup("cherryPick")).toContain(ICON_ACCENTS.danger);
+        expect(iconMarkup("resetCurrentToHere")).toContain(ICON_ACCENTS.orange);
+        expect(iconMarkup("pushAllUpToHere")).toContain(ICON_ACCENTS.green);
+        // Every accent resolves through a host token, so none of them ship a raw
+        // hex that a light theme would render at ~1.5:1.
+        for (const accent of Object.values(ICON_ACCENTS)) {
+            expect(accent).toMatch(
+                /^color-mix\(in srgb, var\(--vscode-[\w-]+, #[0-9a-f]{6}\) 70%,/,
+            );
+        }
     });
 
     it("only enables cherry-pick when the selected graph scope can be cherry-picked", () => {

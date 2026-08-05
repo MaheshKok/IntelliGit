@@ -9,6 +9,7 @@ import { ContextMenu, type MenuItem } from "../../shared/components/ContextMenu"
 import { RefreshButton } from "../../shared/components/RefreshButton";
 import { ToolbarIconButton } from "../../shared/components/ToolbarIconButton";
 import { t } from "../../shared/i18n";
+import { ICON_ACCENTS } from "../../shared/tokens";
 import type { CommitPanelActiveOperation, CommitPanelRebaseControl } from "./operationTypes";
 
 interface Props {
@@ -109,13 +110,13 @@ export function Toolbar({
             <ToolbarIconButton
                 label={t("common.rollback")}
                 onClick={onRollback}
-                color="#f2c46d"
+                color={ICON_ACCENTS.amber}
                 icon={<VscDiscard size={16} />}
             />
             <ToolbarIconButton
                 label={t("common.viewOptions")}
                 onClick={handleOpenViewMenu}
-                color="#8fd5ff"
+                color={ICON_ACCENTS.sky}
                 icon={<VscEye size={16} />}
             />
             {viewMenuPosition && (
@@ -132,14 +133,14 @@ export function Toolbar({
             <ToolbarIconButton
                 label={t("common.stashChanges")}
                 onClick={onStash}
-                color="#ea8fb3"
+                color={ICON_ACCENTS.pink}
                 icon={<VscArchive size={16} />}
             />
             {onOpenShelfMenu ? (
                 <ToolbarIconButton
                     label={t("shelf.action.toolbar")}
                     onClick={onOpenShelfMenu}
-                    color="#c8a2ff"
+                    color={ICON_ACCENTS.violet}
                     icon={<VscLibrary size={16} />}
                 />
             ) : null}
@@ -147,13 +148,13 @@ export function Toolbar({
             <ToolbarIconButton
                 label={t("common.showDiffPreview")}
                 onClick={onShowDiff}
-                color="#b8adff"
+                color={ICON_ACCENTS.violet}
                 icon={<VscNewFile size={16} />}
             />
             <ToolbarIconButton
                 label={t("common.expandAll")}
                 onClick={onExpandAll}
-                color="#f3b1cf"
+                color={ICON_ACCENTS.pink}
                 icon={
                     <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden>
                         <ExpandAllIconGlyph />
@@ -163,7 +164,7 @@ export function Toolbar({
             <ToolbarIconButton
                 label={t("common.collapseAll")}
                 onClick={onCollapseAll}
-                color="#f3b1cf"
+                color={ICON_ACCENTS.pink}
                 icon={
                     <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden>
                         <CollapseAllIconGlyph />

@@ -7,6 +7,7 @@ import type { Commit, CommitChecksSnapshot } from "../../../types";
 import { ROW_HEIGHT, computeGraph } from "../graph";
 import { t } from "../shared/i18n";
 import { CommitRow } from "./CommitRow";
+import { Z_INDEX } from "../shared/tokens";
 import {
     CANVAS_STYLE,
     contentContainerStyle,
@@ -77,7 +78,7 @@ export function CommitListRows({
                         left: 0,
                         right: 0,
                         top: visibleRange.start * ROW_HEIGHT,
-                        zIndex: 2,
+                        zIndex: Z_INDEX.sticky,
                     }}
                 >
                     {visibleCommits.map((commit, offset) => {

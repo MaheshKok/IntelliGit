@@ -19,6 +19,7 @@ import { canRunCommitAction } from "../commitEligibility";
 import { ChevronIcon, WorktreeSmallIcon } from "../../shared/components/Icons";
 import { t } from "../../shared/i18n";
 import type { CommitPanelAction, RepositoryCommitPanelState } from "../types";
+import { Z_INDEX } from "../../shared/tokens";
 
 interface Props {
     repository: RepositoryCommitPanelState;
@@ -566,7 +567,7 @@ export function RepositoryAccordion({
                         w="1px"
                         bg={COMMIT_PANEL_INDENT_GUIDE_COLOR}
                         pointerEvents="none"
-                        zIndex={1}
+                        zIndex={Z_INDEX.raised}
                     />
                     <Box
                         data-testid="repository-accordion-content"
