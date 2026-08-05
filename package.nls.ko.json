@@ -80,5 +80,6 @@
     "configuration.clearLastCommit.markdownDescription": "로컬 커밋에 성공한 후 커밋 메시지 초안을 지웁니다. 커밋 패널에 초안을 유지하려면 비활성화하세요.",
     "configuration.reviewPrompt.enabled.description": "IntelliGit을 얼마간 사용한 후 마켓플레이스 평가를 요청합니다. 사용하지 않으면 요청하지 않습니다.",
     "command.showReviewPrompt": "리뷰 프롬프트 표시",
-    "command.resetReviewPrompt": "리뷰 프롬프트 상태 재설정"
+    "command.resetReviewPrompt": "리뷰 프롬프트 상태 재설정",
+    "command.showReviewPromptCard": "평가 카드 표시"
 }

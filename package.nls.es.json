@@ -80,5 +80,6 @@
     "configuration.clearLastCommit.markdownDescription": "Borra el borrador del mensaje de commit después de un commit local correcto. Desactiva esta opción para conservar el borrador en el panel de commit.",
     "configuration.reviewPrompt.enabled.description": "Solicitar una valoración en el marketplace después de usar IntelliGit durante un tiempo. Desactívalo para que no se te pregunte nunca.",
     "command.showReviewPrompt": "Mostrar aviso de reseña",
-    "command.resetReviewPrompt": "Restablecer el estado del aviso de valoración"
+    "command.resetReviewPrompt": "Restablecer el estado del aviso de valoración",
+    "command.showReviewPromptCard": "Mostrar la tarjeta de valoración"
 }

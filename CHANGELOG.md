@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Added an opt-out marketplace rating prompt that appears at most three times, only after 30 successful commits or pushes across 5 active days and 14 days since install, and never again once answered. Ratings route to the VS Marketplace on official VS Code builds and to Open VSX everywhere else, controlled by `intelligit.reviewPrompt.enabled`.
+- Added `IntelliGit: Show Review Prompt Card`, which renders the rating card directly in the commit graph with no usage gating and no notification fallback, and says so plainly when no graph view is open to host it.
 - Added `IntelliGit: Reset Review Prompt State`, which clears the recorded rating decision and the usage counters behind it on the current machine after a modal confirmation, either back to a fresh install or armed so the next successful commit asks. It never changes a rating already published to a marketplace.
 
 ### Fixed

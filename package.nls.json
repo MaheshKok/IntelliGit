@@ -80,5 +80,6 @@
     "command.commitChecksSignOut": "Sign Out of Commit Checks Provider",
     "command.showReviewPrompt": "Show Review Prompt",
     "command.resetReviewPrompt": "Reset Review Prompt State",
+    "command.showReviewPromptCard": "Show Review Prompt Card",
     "configuration.reviewPrompt.enabled.description": "Ask for a marketplace rating after IntelliGit has been used for a while. Disable to never be asked."
 }

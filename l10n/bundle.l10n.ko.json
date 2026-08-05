@@ -596,5 +596,6 @@
     "Reset the IntelliGit rating prompt on this machine?": "이 컴퓨터에서 IntelliGit 평가 프롬프트를 재설정하시겠어요?",
     "This deletes the record of your rating decision and the usage counters behind it. It affects this machine only, and never touches a rating you already published.": "평가 결정 기록과 그 기반이 되는 사용 횟수가 삭제됩니다. 이 컴퓨터에만 적용되며, 이미 게시한 평가는 변경되지 않습니다.",
     "Reset to a fresh install": "새로 설치한 상태로 재설정",
-    "Reset and arm the next commit": "재설정하고 다음 커밋에서 묻기"
+    "Reset and arm the next commit": "재설정하고 다음 커밋에서 묻기",
+    "Open the IntelliGit commit graph first — the rating card renders inside it.": "먼저 IntelliGit 커밋 그래프를 여세요. 평가 카드는 그 안에 표시됩니다."
 }

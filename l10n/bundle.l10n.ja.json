@@ -596,5 +596,6 @@
     "Reset the IntelliGit rating prompt on this machine?": "このコンピューターの IntelliGit 評価通知をリセットしますか?",
     "This deletes the record of your rating decision and the usage counters behind it. It affects this machine only, and never touches a rating you already published.": "評価に関する選択の記録と、その基になる使用状況カウンターが削除されます。影響を受けるのはこのコンピューターだけで、公開済みの評価が変更されることはありません。",
     "Reset to a fresh install": "新規インストールの状態に戻す",
-    "Reset and arm the next commit": "リセットして次のコミットで確認する"
+    "Reset and arm the next commit": "リセットして次のコミットで確認する",
+    "Open the IntelliGit commit graph first — the rating card renders inside it.": "先に IntelliGit のコミットグラフを開いてください。評価カードはその中に表示されます。"
 }

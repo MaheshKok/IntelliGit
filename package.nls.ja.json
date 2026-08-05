@@ -80,5 +80,6 @@
     "configuration.clearLastCommit.markdownDescription": "ローカル コミットが成功した後にコミット メッセージの下書きを消去します。無効にするとコミット パネルに下書きが保持されます。",
     "configuration.reviewPrompt.enabled.description": "IntelliGit をしばらく使用した後にマーケットプレースでの評価を依頼します。無効にすると確認されません。",
     "command.showReviewPrompt": "レビュー プロンプトを表示",
-    "command.resetReviewPrompt": "レビュー通知の状態をリセット"
+    "command.resetReviewPrompt": "レビュー通知の状態をリセット",
+    "command.showReviewPromptCard": "評価カードを表示"
 }

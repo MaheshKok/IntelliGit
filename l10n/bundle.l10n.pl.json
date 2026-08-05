@@ -596,5 +596,6 @@
     "Reset the IntelliGit rating prompt on this machine?": "Zresetować monit o ocenę IntelliGit na tym komputerze?",
     "This deletes the record of your rating decision and the usage counters behind it. It affects this machine only, and never touches a rating you already published.": "Spowoduje to usunięcie zapisu Twojej decyzji o ocenie i powiązanych liczników użycia. Dotyczy tylko tego komputera i nigdy nie zmienia już opublikowanej oceny.",
     "Reset to a fresh install": "Zresetuj do stanu nowej instalacji",
-    "Reset and arm the next commit": "Zresetuj i zapytaj przy następnym zatwierdzeniu"
+    "Reset and arm the next commit": "Zresetuj i zapytaj przy następnym zatwierdzeniu",
+    "Open the IntelliGit commit graph first — the rating card renders inside it.": "Najpierw otwórz graf zatwierdzeń IntelliGit — karta oceny wyświetla się w jego wnętrzu."
 }

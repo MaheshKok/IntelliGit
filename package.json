@@ -67,7 +67,8 @@
         "onCommand:intelligit.commitChecks.signIn",
         "onCommand:intelligit.commitChecks.signOut",
         "onCommand:intelligit.showReviewPrompt",
-        "onCommand:intelligit.resetReviewPrompt"
+        "onCommand:intelligit.resetReviewPrompt",
+        "onCommand:intelligit.showReviewPromptCard"
     ],
     "main": "./dist/extension.js",
     "l10n": "./l10n",
@@ -520,6 +521,12 @@
             {
                 "command": "intelligit.showReviewPrompt",
                 "title": "%command.showReviewPrompt%",
+                "category": "%intelligit%",
+                "icon": "$(star-full)"
+            },
+            {
+                "command": "intelligit.showReviewPromptCard",
+                "title": "%command.showReviewPromptCard%",
                 "category": "%intelligit%",
                 "icon": "$(star-full)"
             },

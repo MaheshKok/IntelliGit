@@ -32,6 +32,12 @@ export const NEVER_ACTION = "Don't ask again";
 export const SHOW_REVIEW_PROMPT_COMMAND = "intelligit.showReviewPrompt";
 /** Explicit command for clearing this machine's rating record so the prompt can be tested again. */
 export const RESET_REVIEW_PROMPT_COMMAND = "intelligit.resetReviewPrompt";
+/** Explicit command for rendering the card itself, bypassing the surface choice. */
+export const SHOW_REVIEW_PROMPT_CARD_COMMAND = "intelligit.showReviewPromptCard";
+
+/** Shown when the card is requested with no graph view able to host it. */
+export const CARD_UNAVAILABLE_MESSAGE =
+    "Open the IntelliGit commit graph first — the rating card renders inside it.";
 
 /** Confirmation title. Localized at display time; also the lookup key in the l10n bundle. */
 export const RESET_CONFIRM_MESSAGE = "Reset the IntelliGit rating prompt on this machine?";
@@ -207,6 +213,32 @@ export class ReviewPromptService {
         if (!this.ready) return;
         this.askedThisSession = true;
         this.showPrompt();
+    }
+
+    /**
+     * Renders the card itself, with no usage gating and no notification fallback.
+     *
+     * Separate from `showPromptNow`, which answers "show me the ask on whatever surface a
+     * real user would get". This one answers "show me the card", the only useful question
+     * while the card is being worked on. It says plainly when no graph view can host it,
+     * because a silent no-op is indistinguishable from a broken build — the failure that
+     * cost the most time getting this feature working.
+     */
+    showCardNow(): void {
+        this.scheduled += 1;
+        this.prompts = this.prompts.then(() =>
+            this.askViaCard().catch((error) => logGitOpsWarning("reviewPrompt.card", error)),
+        );
+    }
+
+    private async askViaCard(): Promise<void> {
+        const host = findVisibleReviewPromptHost();
+        if (!host) {
+            await vscode.window.showWarningMessage(vscode.l10n.t(CARD_UNAVAILABLE_MESSAGE));
+            return;
+        }
+        const result = await host.showReviewPrompt();
+        if (result) await this.applyResult(result);
     }
 
     /**
@@ -520,6 +552,12 @@ export async function registerReviewPrompt(context: vscode.ExtensionContext): Pr
             vscode.commands.registerCommand(SHOW_REVIEW_PROMPT_COMMAND, async () => {
                 await initialized;
                 if (active) service.showPromptNow();
+            }),
+        );
+        context.subscriptions.push(
+            vscode.commands.registerCommand(SHOW_REVIEW_PROMPT_CARD_COMMAND, async () => {
+                await initialized;
+                if (active) service.showCardNow();
             }),
         );
         context.subscriptions.push(

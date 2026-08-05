@@ -80,5 +80,6 @@
     "configuration.clearLastCommit.markdownDescription": "Очищает черновик сообщения коммита после успешного локального коммита. Отключите этот параметр, чтобы сохранить черновик на панели коммитов.",
     "configuration.reviewPrompt.enabled.description": "Запрашивать оценку в маркетплейсе после некоторого времени использования IntelliGit. Отключите, чтобы запрос никогда не появлялся.",
     "command.showReviewPrompt": "Показать запрос на отзыв",
-    "command.resetReviewPrompt": "Сбросить состояние запроса на оценку"
+    "command.resetReviewPrompt": "Сбросить состояние запроса на оценку",
+    "command.showReviewPromptCard": "Показать карточку оценки"
 }

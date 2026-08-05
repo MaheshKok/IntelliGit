@@ -36,6 +36,7 @@ import {
     type ReviewPromptResult,
 } from "../../../src/services/reviewPromptHost";
 import {
+    CARD_UNAVAILABLE_MESSAGE,
     FEEDBACK_URL,
     LATER_ACTION,
     MARKETPLACE_REVIEW_URL,
@@ -49,6 +50,7 @@ import {
     RESET_FRESH_ACTION,
     RESET_REVIEW_PROMPT_COMMAND,
     ReviewPromptService,
+    SHOW_REVIEW_PROMPT_CARD_COMMAND,
     SHOW_REVIEW_PROMPT_COMMAND,
     countsAsSuccess,
     getReviewUrl,
@@ -639,7 +641,7 @@ describe("reviewPrompt", () => {
                 expect(vscodeMock.window.showInformationMessage).toHaveBeenCalledTimes(1),
             );
             // The decision still stands for the automatic path: a success must stay silent.
-            notifyGitSuccessSafely("commit", ["commit", "-m", "msg"]);
+            notifyGitSuccessSafely(["commit", "-m", "msg"]);
             await new Promise((resolve) => setTimeout(resolve, 10));
             expect(vscodeMock.window.showInformationMessage).toHaveBeenCalledTimes(1);
             expect(await readLatch()).toMatchObject({ status: "rated" });
@@ -827,6 +829,63 @@ describe("reviewPrompt", () => {
             await service.whenIdle();
             return service;
         };
+
+        it("forces the card on command, spending no ask and touching no counter", async () => {
+            const host = registerHost({ decision: "later" });
+            const service = makeService();
+            await service.init();
+
+            service.showCardNow();
+            await service.whenIdle();
+
+            expect(host.shown()).toBe(1);
+            expect(vscodeMock.window.showInformationMessage).not.toHaveBeenCalled();
+            expect(state.get(KEY.askCount)).toBeUndefined();
+            expect(state.get(KEY.successOps)).toBeUndefined();
+            expect(state.get(KEY.snoozedUntil)).toBeUndefined();
+        });
+
+        it("records a decision taken from the forced card", async () => {
+            registerHost({ decision: "declined" });
+            const service = makeService();
+            await service.init();
+
+            service.showCardNow();
+            await service.whenIdle();
+
+            expect(await readLatch()).toMatchObject({ status: "declined" });
+        });
+
+        it("says why nothing appeared instead of falling back to the notification", async () => {
+            const host = registerHost({ decision: "later" }, false);
+            const service = makeService();
+            await service.init();
+
+            service.showCardNow();
+            await service.whenIdle();
+
+            expect(host.shown()).toBe(0);
+            expect(vscodeMock.window.showInformationMessage).not.toHaveBeenCalled();
+            expect(vscodeMock.window.showWarningMessage).toHaveBeenCalledWith(
+                CARD_UNAVAILABLE_MESSAGE,
+            );
+        });
+
+        it("registers the card command and routes it to the service", async () => {
+            const host = registerHost({ decision: "later" });
+            await registerReviewPrompt({
+                globalState: state as unknown as never,
+                globalStorageUri: { fsPath: storageDir } as unknown as never,
+                subscriptions: [],
+            } as never);
+
+            const registration = vscodeMock.commands.registerCommand.mock.calls.find(
+                ([command]) => command === SHOW_REVIEW_PROMPT_CARD_COMMAND,
+            );
+            await (registration?.[1] as () => Promise<void>)();
+
+            await vi.waitFor(() => expect(host.shown()).toBe(1));
+        });
 
         it("prefers the visible card over the notification", async () => {
             const host = registerHost({ decision: "rated", open: "marketplace" });

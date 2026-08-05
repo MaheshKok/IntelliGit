@@ -596,5 +596,6 @@
     "Reset the IntelliGit rating prompt on this machine?": "Réinitialiser l'invite d'évaluation IntelliGit sur cet ordinateur ?",
     "This deletes the record of your rating decision and the usage counters behind it. It affects this machine only, and never touches a rating you already published.": "Cette action supprime l'enregistrement de votre décision d'évaluation et les compteurs d'utilisation associés. Elle ne concerne que cet ordinateur et ne modifie jamais une évaluation déjà publiée.",
     "Reset to a fresh install": "Réinitialiser comme une nouvelle installation",
-    "Reset and arm the next commit": "Réinitialiser et demander au prochain commit"
+    "Reset and arm the next commit": "Réinitialiser et demander au prochain commit",
+    "Open the IntelliGit commit graph first — the rating card renders inside it.": "Ouvrez d'abord le graphe des commits IntelliGit : la carte d'évaluation s'affiche à l'intérieur."
 }

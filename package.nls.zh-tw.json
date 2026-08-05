@@ -80,5 +80,6 @@
     "configuration.clearLastCommit.markdownDescription": "本機提交成功後清除提交訊息草稿。停用此設定即可在提交面板中保留草稿。",
     "configuration.reviewPrompt.enabled.description": "在使用 IntelliGit 一段時間後要求市集評分。停用後將不再詢問。",
     "command.showReviewPrompt": "顯示評價提示",
-    "command.resetReviewPrompt": "重設評價提示狀態"
+    "command.resetReviewPrompt": "重設評價提示狀態",
+    "command.showReviewPromptCard": "顯示評價卡片"
 }

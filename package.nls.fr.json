@@ -80,5 +80,6 @@
     "configuration.clearLastCommit.markdownDescription": "Efface le brouillon du message de commit après un commit local réussi. Désactivez cette option pour conserver le brouillon dans le panneau Commit.",
     "configuration.reviewPrompt.enabled.description": "Demander une évaluation sur la marketplace après une certaine période d'utilisation d'IntelliGit. Désactivez cette option pour ne jamais être sollicité.",
     "command.showReviewPrompt": "Afficher la demande d’évaluation",
-    "command.resetReviewPrompt": "Réinitialiser l'état de l'invite d'évaluation"
+    "command.resetReviewPrompt": "Réinitialiser l'état de l'invite d'évaluation",
+    "command.showReviewPromptCard": "Afficher la carte d'évaluation"
 }
