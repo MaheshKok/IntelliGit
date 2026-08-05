@@ -14,6 +14,9 @@ const vscodeMock = vi.hoisted(() => ({
     workspace: {
         getConfiguration: vi.fn(() => ({ get: vi.fn(() => true) })),
     },
+    commands: {
+        registerCommand: vi.fn(() => ({ dispose: vi.fn() })),
+    },
     env: {
         appName: "Visual Studio Code",
         openExternal: vi.fn(async () => true),
@@ -33,6 +36,7 @@ import {
     PROMPT_MESSAGE,
     RATE_ACTION,
     ReviewPromptService,
+    SHOW_REVIEW_PROMPT_COMMAND,
     countsAsSuccess,
     getReviewUrl,
     registerReviewPrompt,
@@ -551,6 +555,53 @@ describe("reviewPrompt", () => {
     });
 
     describe("registration", () => {
+        it("registers an explicit command that shows the same prompt without usage gating", async () => {
+            const subscriptions: Array<{ dispose: () => void }> = [];
+            await registerReviewPrompt({
+                globalState: state as unknown as never,
+                globalStorageUri: { fsPath: storageDir } as unknown as never,
+                subscriptions,
+            } as never);
+
+            const registration = vscodeMock.commands.registerCommand.mock.calls.find(
+                ([command]) => command === SHOW_REVIEW_PROMPT_COMMAND,
+            );
+            expect(registration).toBeDefined();
+            (registration?.[1] as () => void)();
+
+            await vi.waitFor(() =>
+                expect(vscodeMock.window.showInformationMessage).toHaveBeenCalledWith(
+                    PROMPT_MESSAGE,
+                    RATE_ACTION,
+                    LATER_ACTION,
+                    NEVER_ACTION,
+                ),
+            );
+            expect(state.get(KEY.successOps)).toBeUndefined();
+        });
+
+        it("does not spend an automatic ask or snooze when the explicit prompt is deferred", async () => {
+            vscodeMock.window.showInformationMessage.mockResolvedValue(LATER_ACTION);
+            const subscriptions: Array<{ dispose: () => void }> = [];
+            await registerReviewPrompt({
+                globalState: state as unknown as never,
+                globalStorageUri: { fsPath: storageDir } as unknown as never,
+                subscriptions,
+            } as never);
+
+            const registration = vscodeMock.commands.registerCommand.mock.calls.find(
+                ([command]) => command === SHOW_REVIEW_PROMPT_COMMAND,
+            );
+            (registration?.[1] as () => void)();
+
+            await vi.waitFor(() =>
+                expect(vscodeMock.window.showInformationMessage).toHaveBeenCalledTimes(1),
+            );
+            expect(state.get(KEY.askCount)).toBeUndefined();
+            expect(state.get(KEY.snoozedUntil)).toBeUndefined();
+            expect(state.get(KEY.successOps)).toBeUndefined();
+        });
+
         it("connects to the Git success hook and disconnects on disposal", async () => {
             const subscriptions: Array<{ dispose: () => void }> = [];
             await registerReviewPrompt({

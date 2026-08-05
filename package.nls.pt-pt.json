@@ -78,5 +78,6 @@
     "configuration.commitChecks.ciCdFilter.markdownDescription": "Substitui os nomes de verificação que contam como CI/CD para o emblema (apenas GitHub e GitLab). Introduza uma expressão regular (comparada sem distinguir maiúsculas de minúsculas com o nome e a descrição de cada verificação); deixe vazio para usar o padrão integrado. Os bots de revisão de código são sempre excluídos, independentemente deste valor. As alterações entram em vigor após recarregar a janela.",
     "command.openInVsCodeMergeEditor": "Open in VS Code Merge Editor",
     "configuration.clearLastCommit.markdownDescription": "Limpa o rascunho da mensagem de commit após um commit local bem-sucedido. Desative esta opção para manter o rascunho no painel Commit.",
-    "configuration.reviewPrompt.enabled.description": "Pedir uma avaliação no marketplace depois de utilizar o IntelliGit durante algum tempo. Desative para nunca ser solicitado."
+    "configuration.reviewPrompt.enabled.description": "Pedir uma avaliação no marketplace depois de utilizar o IntelliGit durante algum tempo. Desative para nunca ser solicitado.",
+    "command.showReviewPrompt": "Mostrar pedido de avaliação"
 }

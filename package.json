@@ -65,7 +65,8 @@
         "onCommand:intelligit.initializeRepository",
         "onCommand:intelligit.publishBranch",
         "onCommand:intelligit.commitChecks.signIn",
-        "onCommand:intelligit.commitChecks.signOut"
+        "onCommand:intelligit.commitChecks.signOut",
+        "onCommand:intelligit.showReviewPrompt"
     ],
     "main": "./dist/extension.js",
     "l10n": "./l10n",
@@ -514,6 +515,12 @@
                 "title": "%command.commitChecksSignOut%",
                 "category": "%intelligit%",
                 "icon": "$(sign-out)"
+            },
+            {
+                "command": "intelligit.showReviewPrompt",
+                "title": "%command.showReviewPrompt%",
+                "category": "%intelligit%",
+                "icon": "$(star-full)"
             },
             {
                 "command": "intelligit.shelveChanges",

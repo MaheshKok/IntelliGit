@@ -19,6 +19,8 @@ export const RATE_ACTION = "Rate IntelliGit";
 export const LATER_ACTION = "Later";
 /** Declining action: records a terminal decision, so the prompt never returns. */
 export const NEVER_ACTION = "Don't ask again";
+/** Explicit command for previewing the same notification without waiting for usage gates. */
+export const SHOW_REVIEW_PROMPT_COMMAND = "intelligit.showReviewPrompt";
 
 /** A decision the user cannot be asked about again. */
 export type TerminalStatus = "rated" | "declined";
@@ -165,6 +167,19 @@ export class ReviewPromptService {
         if (!this.ready || this.decided) return;
         if (!countsAsSuccess(subcommand, argv)) return;
         this.enqueue(() => this.runCycle());
+    }
+
+    /**
+     * Shows the production notification on explicit user request.
+     *
+     * This is intentionally separate from the success hook: it does not increment usage
+     * counters or spend a gated ask, but the existing Rate and Don't ask again actions
+     * still write the same durable terminal decision.
+     */
+    showPromptNow(): void {
+        if (!this.ready || this.decided) return;
+        this.askedThisSession = true;
+        this.showPrompt();
     }
 
     /**
@@ -398,6 +413,7 @@ export async function registerReviewPrompt(context: vscode.ExtensionContext): Pr
     try {
         const service = new ReviewPromptService(context, { now: () => Date.now() });
         let active = true;
+        const initialized = service.init();
 
         context.subscriptions.push({
             dispose: () => {
@@ -405,8 +421,14 @@ export async function registerReviewPrompt(context: vscode.ExtensionContext): Pr
                 setGitSuccessListener(undefined);
             },
         });
+        context.subscriptions.push(
+            vscode.commands.registerCommand(SHOW_REVIEW_PROMPT_COMMAND, async () => {
+                await initialized;
+                if (active) service.showPromptNow();
+            }),
+        );
 
-        await service.init();
+        await initialized;
         if (!active) return;
         setGitSuccessListener((subcommand, argv) => service.handleGitSuccess(subcommand, argv));
     } catch (error) {
