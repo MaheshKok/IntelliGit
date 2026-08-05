@@ -176,7 +176,17 @@ export class ReviewPromptService {
     async recordDecision(status: TerminalStatus): Promise<void> {
         this.decided = true;
         const winner = await this.writeLatch(status);
-        if (winner) await this.mirror(winner);
+        if (!winner) return;
+        try {
+            await this.mirror(winner);
+        } catch (error) {
+            // The mirror is the Settings Sync convenience copy; the latch already
+            // carries the decision. Letting a Memento rejection escape would strand
+            // the caller before `openExternal`, so a user who clicked Rate would be
+            // silenced forever and never reach the review page — the one outcome
+            // worse than not asking at all.
+            logGitOpsWarning("reviewPrompt.mirror", error);
+        }
     }
 
     /** Resolves once every queued cycle and pending toast has settled. */
@@ -337,6 +347,15 @@ export class ReviewPromptService {
         }
     }
 
+    /**
+     * Reads the latch, failing closed.
+     *
+     * Only `ENOENT` proves no decision was ever recorded. `EACCES`, `EIO` and the
+     * rest mean the latch is *unreadable*, which is not the same as absent — a
+     * locked-down globalStorage would otherwise re-prompt a user who already
+     * declined, the exact failure the latch exists to prevent. An unreadable latch
+     * reports the same shape as a half-written one: present, status unknown.
+     */
     private async readLatch(): Promise<{ exists: boolean; status?: TerminalStatus }> {
         try {
             const raw = await readFile(this.latchPath, "utf8");
@@ -344,16 +363,19 @@ export class ReviewPromptService {
         } catch (error) {
             if (isMissingFileError(error)) return { exists: false };
             logGitOpsWarning("reviewPrompt.readLatch", error);
-            return { exists: false };
+            return { exists: true };
         }
     }
 
+    /** Probes the latch, failing closed on anything but a confirmed absence. */
     private async latchExists(): Promise<boolean> {
         try {
             await access(this.latchPath);
             return true;
-        } catch {
-            return false;
+        } catch (error) {
+            if (isMissingFileError(error)) return false;
+            logGitOpsWarning("reviewPrompt.latchExists", error);
+            return true;
         }
     }
 
@@ -433,8 +455,17 @@ function isFileExistsError(error: unknown): boolean {
     return errorCode(error) === "EEXIST";
 }
 
+/**
+ * Whether an error proves the latch does not exist.
+ *
+ * `ENOENT` and `ENOTDIR` are the two codes that settle the question: a missing
+ * path component and a non-directory path component both mean the file cannot be
+ * there. Everything else — `EACCES`, `EIO`, `EPERM` — means the answer is unknown,
+ * and callers fail closed rather than reading "unknown" as "never decided".
+ */
 function isMissingFileError(error: unknown): boolean {
-    return errorCode(error) === "ENOENT";
+    const code = errorCode(error);
+    return code === "ENOENT" || code === "ENOTDIR";
 }
 
 function errorCode(error: unknown): string | undefined {

@@ -80,22 +80,24 @@ spacing:
 components:
   button-primary:
     backgroundColor: "{colors.action-indigo}"
-    textColor: "#ffffff"
+    textColor: "var(--vscode-button-foreground, #ffffff)"
     rounded: "{rounded.control}"
     padding: "0 10px"
     height: "24px"
     typography: "{typography.label}"
   button-primary-hover:
     backgroundColor: "{colors.action-indigo-hover}"
-    textColor: "#ffffff"
+    textColor: "var(--vscode-button-foreground, #ffffff)"
   button-secondary:
-    backgroundColor: "rgba(255,255,255,0.03)"
+    backgroundColor: "var(--vscode-button-secondaryBackground, rgba(255,255,255,0.03))"
     textColor: "{colors.foreground-mist}"
+    borderWidth: "{rounded.hairline}"
+    borderColor: "{colors.divider-steel}"
     rounded: "{rounded.control}"
     padding: "0 10px"
     height: "24px"
   button-secondary-hover:
-    backgroundColor: "rgba(255,255,255,0.08)"
+    backgroundColor: "var(--vscode-button-secondaryHoverBackground, rgba(255,255,255,0.08))"
   button-toolbar-ghost:
     backgroundColor: "transparent"
     textColor: "{colors.muted-ash}"
@@ -104,17 +106,21 @@ components:
     height: "24px"
     width: "24px"
   button-toolbar-ghost-hover:
-    backgroundColor: "rgba(255,255,255,0.06)"
+    backgroundColor: "var(--vscode-toolbar-hoverBackground, rgba(255,255,255,0.06))"
     textColor: "{colors.foreground-mist}"
   button-danger:
-    backgroundColor: "rgba(199,78,57,0.16)"
+    backgroundColor: "color-mix(in srgb, {colors.status-deleted} 16%, transparent)"
     textColor: "{colors.status-deleted}"
+    borderWidth: "{rounded.hairline}"
+    borderColor: "color-mix(in srgb, {colors.status-deleted} 60%, transparent)"
     rounded: "{rounded.control}"
     padding: "0 10px"
     height: "24px"
   input-field:
     backgroundColor: "{colors.input-well}"
     textColor: "{colors.foreground-mist}"
+    borderWidth: "{rounded.hairline}"
+    borderColor: "var(--vscode-input-border, #566176)"
     rounded: "{rounded.control}"
     height: "24px"
   row-selected:
@@ -177,7 +183,7 @@ A theme-inherited palette with one owned exception: a deliberately muted set of 
 
 ### Named Rules
 
-**The Host Wins Rule.** Every color used in the UI is written as `var(--vscode-<token>, <fallback>)`. Introducing a bare hex value into a component is prohibited. The only sanctioned exceptions are the ten graph lane colors and the file-type badge palette, both documented above, both because no host token exists for them.
+**The Host Wins Rule.** Every color used in the UI is written as `var(--vscode-<token>, <fallback>)`. Introducing a bare hex value into a component is prohibited. The one sanctioned exception is the ten graph lane colors documented above, because VS Code exposes no graph-lane theming variable. There is no second exception: a file-type badge palette of ecosystem brand colors once sat in `tokens.ts`, unreferenced, with three entries below even the 3:1 non-text floor — it was deleted rather than documented, because sanctioning it would have written a contrast failure into the system PRODUCT.md promises never to ship.
 
 **The Fallback Is Not The Design Rule.** The hex values in this document describe what renders when the host theme supplies nothing. Never tune a component by adjusting a fallback, and never review a color decision in only one theme — check it in a light theme and a high-contrast theme before calling it done.
 
@@ -186,8 +192,8 @@ A theme-inherited palette with one owned exception: a deliberately muted set of 
 ## 3. Typography
 
 **Display Font:** none. This system has no display type and should not acquire any.
-**Body Font:** system UI stack (`-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif`)
-**Label/Mono Font:** the user's editor font (`var(--vscode-editor-font-family, var(--vscode-font-family))`)
+**Body Font:** system UI stack (`-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif`) — used by Title, Body, Label, and Caption alike
+**Mono Font:** the user's editor font (`var(--vscode-editor-font-family, var(--vscode-font-family))`) — used by Mono alone
 
 **Character:** Deliberately anonymous. The body stack is whatever the operating system considers native, so IntelliGit's text renders identically to VS Code's own menus and trees — the seam between extension and editor should be invisible. The only typographic contrast in the system is sans-versus-mono, and mono carries a specific meaning: this string came from Git. Commit hashes, branch names, file paths, and diff content are mono; everything the interface says in its own voice is sans.
 

@@ -97,9 +97,13 @@ export class GitExecutor {
             (await this.runBinary(args, options)).stdout.toString("utf8");
         if (!this.mutationGate || !isMutatingGitCommand(args)) return await runText();
 
-        const commonDir = (await this.runBinary(["rev-parse", "--git-common-dir"])).stdout.toString(
-            "utf8",
-        );
+        // Same environment as the command being gated: the probe resolves which
+        // repository the gate locks, and a caller that overrode GIT_DIR or
+        // GIT_COMMON_DIR would otherwise have its mutation gated against the
+        // wrong one.
+        const commonDir = (
+            await this.runBinary(["rev-parse", "--git-common-dir"], options)
+        ).stdout.toString("utf8");
         return await this.mutationGate.run(
             this.repoRoot,
             this.mutationGate.resolveCommonDir(this.repoRoot, commonDir),

@@ -1,7 +1,10 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+/** The unreadable-storage cases rely on POSIX directory permissions. */
+const itPosix = process.platform === "win32" ? it.skip : it;
 
 const vscodeMock = vi.hoisted(() => ({
     window: {
@@ -422,6 +425,67 @@ describe("reviewPrompt", () => {
 
             expect(vscodeMock.window.showInformationMessage).not.toHaveBeenCalled();
             expect(await readFile(latchPath(), "utf8")).toBe("");
+        });
+
+        it("still opens the review page when mirroring the decision fails", async () => {
+            // The latch already carries the decision, so a Memento rejection must not
+            // escape recordDecision: the user who clicked Rate would be silenced
+            // forever and never reach the review page.
+            eligibleSeed();
+            vscodeMock.window.showInformationMessage.mockResolvedValue(RATE_ACTION);
+            const write = state.update.bind(state);
+            state.update = async (key: string, value: unknown): Promise<void> => {
+                if (key === KEY.status) throw new Error("globalState unavailable");
+                return write(key, value);
+            };
+            const service = makeService();
+            await service.init();
+
+            service.handleGitSuccess("commit", ["commit"]);
+            await service.whenIdle();
+
+            expect(await readLatch()).toMatchObject({ status: "rated" });
+            expect(state.get(KEY.status)).toBeUndefined();
+            expect(vscodeMock.env.openExternal).toHaveBeenCalledTimes(1);
+        });
+
+        itPosix("treats an unreadable latch as a decision, not a fresh start", async () => {
+            // Only ENOENT proves no decision was ever recorded. A globalStorage the
+            // process cannot descend into must not re-prompt someone who declined.
+            const latchDir = path.dirname(latchPath());
+            await mkdir(latchDir, { recursive: true });
+            await writeFile(latchPath(), JSON.stringify({ status: "declined" }), "utf8");
+            await chmod(latchDir, 0o000);
+            try {
+                eligibleSeed();
+                const service = makeService();
+                await service.init();
+
+                service.handleGitSuccess("commit", ["commit"]);
+                await service.whenIdle();
+
+                expect(vscodeMock.window.showInformationMessage).not.toHaveBeenCalled();
+            } finally {
+                await chmod(latchDir, 0o755);
+            }
+        });
+
+        itPosix("treats an unprobeable latch as a decision, not a fresh start", async () => {
+            // The same rule on the access() path: the gate runs long after init, and
+            // storage can become unreadable in between.
+            eligibleSeed();
+            const service = makeService();
+            await service.init();
+            const latchDir = path.dirname(latchPath());
+            await chmod(latchDir, 0o000);
+            try {
+                service.handleGitSuccess("commit", ["commit"]);
+                await service.whenIdle();
+
+                expect(vscodeMock.window.showInformationMessage).not.toHaveBeenCalled();
+            } finally {
+                await chmod(latchDir, 0o755);
+            }
         });
     });
 

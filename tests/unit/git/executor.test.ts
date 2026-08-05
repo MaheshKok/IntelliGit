@@ -13,10 +13,13 @@ const itPosix = process.platform === "win32" ? it.skip : it;
 interface GateProbe {
     gate: RepositoryMutationGate;
     gatedRuns: number[];
+    /** Every common directory the executor's `rev-parse` probe reported. */
+    commonDirs: string[];
 }
 
 function gateProbe(): GateProbe {
     const gatedRuns: number[] = [];
+    const commonDirs: string[] = [];
     const gate = {
         run: async <T>(
             _repoRoot: string,
@@ -26,9 +29,12 @@ function gateProbe(): GateProbe {
             gatedRuns.push(gatedRuns.length);
             return operation();
         },
-        resolveCommonDir: (_repoRoot: string, commonDir: string): string => commonDir.trim(),
+        resolveCommonDir: (_repoRoot: string, commonDir: string): string => {
+            commonDirs.push(commonDir.trim());
+            return commonDir.trim();
+        },
     } as unknown as RepositoryMutationGate;
-    return { gate, gatedRuns };
+    return { gate, gatedRuns, commonDirs };
 }
 
 /** Runs one callback against a temporary Git executable with a restored process PATH. */
@@ -143,6 +149,23 @@ describe("GitExecutor", () => {
         ).resolves.toBe("scoped");
 
         expect(gatedRuns).toHaveLength(1);
+    });
+
+    itPosix("probes the common directory with the caller's environment", async () => {
+        // The gate locks whichever repository the probe resolves. A caller that
+        // overrides GIT_DIR or GIT_COMMON_DIR would otherwise have its mutation
+        // gated against the default repository while running against another.
+        const variable = "INTELLIGIT_EXECUTOR_PROBE_ENV_TEST";
+        const { gate, commonDirs } = gateProbe();
+
+        await runFakeGitText(
+            `if [ "$1" = "rev-parse" ]; then printf '%s' "$${variable}"; else printf 'ok'; fi`,
+            ["rebase", "--continue"],
+            { env: { [variable]: "/scoped/common/dir" } },
+            gate,
+        );
+
+        expect(commonDirs).toEqual(["/scoped/common/dir"]);
     });
 
     it("returns binary stdout without decoding it", async () => {

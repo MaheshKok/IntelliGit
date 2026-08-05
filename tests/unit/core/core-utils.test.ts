@@ -2,11 +2,7 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 import type { GitOps } from "../../../src/git/operations";
 import { computeGraph } from "../../../src/webviews/react/graph";
 import { formatDateTime } from "../../../src/webviews/react/shared/date";
-import {
-    FILE_TYPE_BADGES,
-    GIT_STATUS_COLORS,
-    GIT_STATUS_LABELS,
-} from "../../../src/webviews/react/shared/tokens";
+import { GIT_STATUS_COLORS, GIT_STATUS_LABELS } from "../../../src/webviews/react/shared/tokens";
 import {
     getErrorMessage,
     isBranchNotFullyMergedError,
@@ -303,7 +299,6 @@ describe("core utilities", () => {
         expect(getChevronIconStyle(false).transform).toContain("0deg");
         expect(headerRowStyle(120).paddingLeft).toBe(120);
         expect(contentContainerStyle(5).height).toBe(120);
-        expect(FILE_TYPE_BADGES.json.label).toBe("JN");
         expect(GIT_STATUS_COLORS.M).toContain("--vscode-gitDecoration");
         expect(GIT_STATUS_LABELS["?"]).toBe("Unversioned");
     });

@@ -192,37 +192,6 @@ export const GIT_STATUS_LABELS: Record<string, string> = {
 };
 
 /**
- * File extension to badge mapping used in the file tree and commit detail panes.
- *
- * Each entry provides a short label (1–2 characters) and a background color.
- * `fg` is optional and defaults to white when omitted. Callers look up the
- * file extension (lowercase, no dot) to render a compact file-type badge.
- */
-export const FILE_TYPE_BADGES: Record<string, { label: string; bg: string; fg?: string }> = {
-    ts: { label: "TS", bg: "#3178c6" },
-    tsx: { label: "TX", bg: "#3178c6" },
-    js: { label: "JS", bg: "#f0db4f", fg: "#323330" },
-    jsx: { label: "JX", bg: "#f0db4f", fg: "#323330" },
-    json: { label: "JN", bg: "#5b5b5b" },
-    md: { label: "M", bg: "#519aba" },
-    css: { label: "CS", bg: "#563d7c" },
-    scss: { label: "SC", bg: "#c6538c" },
-    html: { label: "HT", bg: "#e44d26" },
-    svg: { label: "SV", bg: "#ffb13b", fg: "#323330" },
-    py: { label: "PY", bg: "#3572a5" },
-    rs: { label: "RS", bg: "#dea584" },
-    go: { label: "GO", bg: "#00add8" },
-    yaml: { label: "YA", bg: "#cb171e" },
-    yml: { label: "YA", bg: "#cb171e" },
-    xml: { label: "XM", bg: "#f26522" },
-    sh: { label: "SH", bg: "#4eaa25" },
-    toml: { label: "TO", bg: "#9c4221" },
-    lock: { label: "LK", bg: "#666" },
-    gitignore: { label: "GI", bg: "#f34f29" },
-    env: { label: "EN", bg: "#ecd53f", fg: "#323330" },
-};
-
-/**
  * Shared surface for commit ref badges (HEAD, tags, remote/local branches).
  *
  * Every ref badge uses the same background/foreground pair rather than a per-type
