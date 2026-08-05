@@ -9,7 +9,7 @@ import { ContextMenu, type MenuItem } from "../../shared/components/ContextMenu"
 import { RefreshButton } from "../../shared/components/RefreshButton";
 import { ToolbarIconButton } from "../../shared/components/ToolbarIconButton";
 import { t } from "../../shared/i18n";
-import { TOOLBAR_ICON_ACCENTS } from "../../shared/tokens";
+import { JETBRAINS_UI, TOOLBAR_ICON_ACCENTS } from "../../shared/tokens";
 import type { CommitPanelActiveOperation, CommitPanelRebaseControl } from "./operationTypes";
 
 interface Props {
@@ -107,7 +107,7 @@ export function Toolbar({
             align="center"
             gap="2px"
             px="6px"
-            minH="30px"
+            minH={`${JETBRAINS_UI.size.toolbarHeight}px`}
             bg="var(--intelligit-pycharm-panel)"
             borderBottom="1px solid var(--intelligit-pycharm-border)"
             flexShrink={0}

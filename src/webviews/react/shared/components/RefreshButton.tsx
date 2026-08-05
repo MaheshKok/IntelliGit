@@ -102,11 +102,6 @@ export function RefreshButton({
                     size="xs"
                     onClick={spin ? undefined : handleClick}
                     isDisabled={spin}
-                    _disabled={{
-                        bg: "rgba(255,255,255,0.03)",
-                        cursor: "default",
-                        opacity: 1,
-                    }}
                     data-refreshing={spin ? "true" : undefined}
                     icon={<VscRefresh size={16} aria-hidden focusable="false" style={iconStyle} />}
                 />

@@ -42,7 +42,7 @@ export function AmendContextSection({ commits, historyLoaded }: Props): React.Re
                     {t("commit.amendContext.title")}
                 </Box>
                 <Box
-                    fontSize="10px"
+                    fontSize="11px"
                     fontFamily={SYSTEM_FONT_STACK}
                     color="var(--vscode-descriptionForeground)"
                     mt="3px"
@@ -90,7 +90,7 @@ export function AmendContextSection({ commits, historyLoaded }: Props): React.Re
                                 as="code"
                                 flexShrink={0}
                                 color="var(--vscode-textLink-foreground)"
-                                fontSize="10px"
+                                fontSize="11px"
                             >
                                 {c.shortHash}
                             </Box>
@@ -100,7 +100,7 @@ export function AmendContextSection({ commits, historyLoaded }: Props): React.Re
                                 </Box>
                                 {c.date ? (
                                     <Box
-                                        fontSize="10px"
+                                        fontSize="11px"
                                         color="var(--vscode-descriptionForeground)"
                                         mt="1px"
                                     >

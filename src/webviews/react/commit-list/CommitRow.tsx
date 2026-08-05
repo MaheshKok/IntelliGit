@@ -3,7 +3,13 @@ import { createPortal } from "react-dom";
 import type { Commit } from "../../../types";
 import { RefTypeIcon } from "../shared/components/RefTypeIcon";
 import { formatDateTime } from "../shared/date";
-import { JETBRAINS_UI, REF_ACCENT_COLORS, REF_BADGE_SURFACE, Z_INDEX } from "../shared/tokens";
+import {
+    JETBRAINS_UI,
+    REF_ACCENT_COLORS,
+    REF_BADGE_SURFACE,
+    SHADOW,
+    Z_INDEX,
+} from "../shared/tokens";
 import { splitCommitRefs } from "../shared/utils/refs";
 import { AUTHOR_COL_WIDTH, DATE_COL_WIDTH, ROW_SIDE_PADDING } from "./styles";
 import { ROW_HEIGHT } from "../graph";
@@ -36,7 +42,7 @@ const REF_BADGE_STYLE: React.CSSProperties = {
     overflow: "hidden",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
-    borderRadius: 3,
+    borderRadius: JETBRAINS_UI.size.badgeRadius,
     padding: "1px 6px",
     fontSize: 12,
     lineHeight: "15px",
@@ -117,7 +123,10 @@ const COMMIT_TOOLTIP_BASE_STYLE: React.CSSProperties = {
     minWidth: "240px",
     zIndex: Z_INDEX.tooltip,
     pointerEvents: "none",
-    boxShadow: "0 10px 28px rgba(0,0,0,0.42)",
+    // Popover lift, not dialog. This is a hover surface that follows the cursor
+    // across a dense list; the dialog shadow it used to wear made every row
+    // hover look like a modal opening.
+    boxShadow: SHADOW.popover,
 };
 const COMMIT_TOOLTIP_MESSAGE_BASE_STYLE: React.CSSProperties = {
     display: "block",

@@ -33,6 +33,8 @@ const DEFAULT_INDENT_METRICS = Object.freeze({
     sectionGuideLeft: 16,
 });
 const CHECKBOX_SLOT_SIZE = 14;
+/** Tree rows run one step tighter than a graph row; see `size.treeRowHeight`. */
+const TREE_ROW_HEIGHT = `${JETBRAINS_UI.size.treeRowHeight}px`;
 const GUIDE_COLOR = "var(--vscode-tree-indentGuidesStroke, rgba(154, 169, 198, 0.22))";
 
 /** Host-themed guide color shared by the Commit tree and repository rail. */
@@ -175,14 +177,14 @@ const TREE_FOLDER_ROW_VARIANTS = {
         as: undefined,
         type: undefined,
         width: undefined,
-        minHeight: "22px",
+        minHeight: TREE_ROW_HEIGHT,
         border: undefined,
         background: undefined,
         textAlign: undefined,
         color: "var(--intelligit-pycharm-foreground)",
         whiteSpace: "nowrap",
         treeItem: false,
-        hoverBackground: "rgba(255,255,255,0.05)",
+        hoverBackground: JETBRAINS_UI.color.hover,
         labelMinWidth: 0,
         labelWhiteSpace: "nowrap",
         labelOpacity: 0.82,
@@ -328,7 +330,7 @@ function TreeFolderRowImpl<F extends TreeRowFile>({
             border={variant.border}
             bg={variant.background}
             textAlign={variant.textAlign}
-            lineHeight="22px"
+            lineHeight={TREE_ROW_HEIGHT}
             fontSize="13px"
             fontFamily={SYSTEM_FONT_STACK}
             color={variant.color}
@@ -610,8 +612,8 @@ function TreeFileRowImpl({
             gap="4px"
             pl={`${indentMetrics.indentBase + depth * indentMetrics.indentStep}px`}
             pr="6px"
-            minH={isCommitPanel ? "22px" : undefined}
-            lineHeight="22px"
+            minH={isCommitPanel ? TREE_ROW_HEIGHT : undefined}
+            lineHeight={TREE_ROW_HEIGHT}
             fontSize="13px"
             fontFamily={SYSTEM_FONT_STACK}
             cursor="pointer"
@@ -637,18 +639,16 @@ function TreeFileRowImpl({
                         : "var(--intelligit-pycharm-foreground)"
                     : visuals.color
             }
-            boxShadow={
-                isCommitPanel
-                    ? undefined
-                    : isSelected
-                      ? `inset 2px 0 0 ${JETBRAINS_UI.color.focus}`
-                      : undefined
-            }
+            // No selection stripe. A selected row already carries the full
+            // Selection Indigo background and its paired foreground, so the 2px
+            // inset accent that used to sit here restated a state the row had
+            // already made obvious — and DESIGN.md bans a >1px colored edge as a
+            // row accent outright.
             _hover={{
                 bg: isCommitPanel
                     ? isDragSelected
                         ? "var(--intelligit-pycharm-selected)"
-                        : "rgba(255,255,255,0.05)"
+                        : JETBRAINS_UI.color.hover
                     : visuals.hoverBackground,
             }}
             _focusVisible={

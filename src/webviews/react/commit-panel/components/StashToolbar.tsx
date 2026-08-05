@@ -7,7 +7,7 @@ import { CollapseAllIconGlyph, ExpandAllIconGlyph } from "../../shared/component
 import { RefreshButton } from "../../shared/components/RefreshButton";
 import { ToolbarIconButton } from "../../shared/components/ToolbarIconButton";
 import { t } from "../../shared/i18n";
-import { TOOLBAR_ICON_ACCENTS } from "../../shared/tokens";
+import { JETBRAINS_UI, TOOLBAR_ICON_ACCENTS } from "../../shared/tokens";
 
 /** Props for selected-stash file-pane toolbar controls. */
 export interface StashToolbarProps {
@@ -38,7 +38,7 @@ export function StashToolbar({
         <Flex
             align="center"
             gap="2px"
-            minH="30px"
+            minH={`${JETBRAINS_UI.size.toolbarHeight}px`}
             px="6px"
             bg="var(--intelligit-pycharm-panel)"
             borderBottom="1px solid var(--intelligit-pycharm-border)"

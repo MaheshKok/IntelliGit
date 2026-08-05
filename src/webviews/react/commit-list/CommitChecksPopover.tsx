@@ -4,7 +4,7 @@ import { FiCheckCircle, FiMinusCircle } from "react-icons/fi";
 import { IoIosCloseCircleOutline } from "react-icons/io";
 import type { CommitChecksSnapshot, CommitCheckState } from "../../../types";
 import { t } from "../shared/i18n";
-import { JETBRAINS_UI, Z_INDEX } from "../shared/tokens";
+import { JETBRAINS_UI, SHADOW, Z_INDEX } from "../shared/tokens";
 
 /** Commit-check data cached by hash, including the in-flight marker used while GitHub responds. */
 export type CommitChecksValue = CommitChecksSnapshot | "loading";
@@ -366,8 +366,11 @@ const panelStyle: React.CSSProperties = {
     background: JETBRAINS_UI.color.panel,
     color: JETBRAINS_UI.color.foreground,
     border: `1px solid ${JETBRAINS_UI.color.tooltipBorder}`,
-    borderRadius: 8,
-    boxShadow: "0 18px 46px rgba(0,0,0,0.5)",
+    borderRadius: JETBRAINS_UI.size.floatingRadius,
+    // Popover lift. This wore the drag shadow — the heaviest in the system, and
+    // the only one meant for a row under the pointer — on a panel that merely
+    // hangs off a status chip.
+    boxShadow: SHADOW.popover,
     position: "relative",
     zIndex: 2,
 };

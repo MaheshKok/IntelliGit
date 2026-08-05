@@ -2,6 +2,7 @@
 // Replaces Chakra's Checkbox to guarantee white borders on dark backgrounds.
 
 import React, { useEffect, useRef, useState } from "react";
+import { SHADOW } from "../tokens";
 
 interface Props {
     isChecked: boolean;
@@ -20,7 +21,12 @@ const UNCHECKED_BG = "transparent";
 const UNCHECKED_BORDER = "var(--intelligit-pycharm-checkbox-unchecked-border)";
 const CHECKED_BG = "var(--intelligit-pycharm-checkbox-checked-bg)";
 const CHECKED_BORDER = "var(--intelligit-pycharm-blue)";
-const CHECK_COLOR = "#c8ddff";
+// The tick itself, and the last bare hex in the component layer. `#c8ddff` is a
+// pale blue chosen against a dark well; on a light theme it sat on the host's
+// own light checkbox fill and the tick washed out at the exact moment the
+// control has something to say. The host's checkbox foreground follows the fill
+// it is drawn on, which is the only thing that can.
+const CHECK_COLOR = "var(--vscode-checkbox-foreground, var(--vscode-foreground, #c8ddff))";
 const CHECKBOX_CONTAINER_STYLE: React.CSSProperties = {
     position: "relative",
     display: "inline-flex",
@@ -54,7 +60,7 @@ const CHECKBOX_FILLED_STYLE: React.CSSProperties = {
     ...CHECKBOX_UNCHECKED_STYLE,
     border: `${BORDER_WIDTH}px solid ${CHECKED_BORDER}`,
     background: CHECKED_BG,
-    boxShadow: "inset 0 0 0 1px rgba(160, 189, 237, 0.14)",
+    boxShadow: SHADOW.insetHairline,
 };
 const INDETERMINATE_MARK_STYLE: React.CSSProperties = {
     width: 6,

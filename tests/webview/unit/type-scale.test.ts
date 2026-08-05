@@ -1,0 +1,108 @@
+import { readdirSync, readFileSync, statSync } from "node:fs";
+import { join } from "node:path";
+import { describe, expect, it } from "vitest";
+import { TYPE_SCALE, TYPE_SCALE_PX } from "../../../src/webviews/react/shared/tokens";
+
+/**
+ * Guards DESIGN.md §3: the webview renders four font sizes and no others.
+ *
+ * The rule was documented long before anything checked it, and it had already
+ * drifted twice by the time it was: down to 10px on the amend-context block and
+ * the status badge — below the product's own stated caption floor, on the two
+ * places that carry a commit's identity — and up to 14px on ten dialog headings.
+ * One of those was a bug and the other was the rule being wrong, which is
+ * exactly the distinction a prose rule cannot make and a test can. 14 is now in
+ * the scale for modal titles; 10 is gone.
+ *
+ * The scan is textual on purpose. Sizes are written as Chakra props
+ * (`fontSize="12px"`), style-object literals (`fontSize: "12px"`), and CSS
+ * declarations (`font-size: 12px`), so there is no single typed surface to
+ * assert against — only the source. Tokenizing every size through `TYPE_SCALE`
+ * would be the stronger fix and a much larger diff; this catches the drift the
+ * cheap way and names every offender.
+ */
+
+const WEBVIEW_ROOT = join(__dirname, "../../../src/webviews");
+const SCANNED_EXTENSIONS = [".ts", ".tsx", ".css"];
+
+/**
+ * Sizes that are glyph geometry rather than type.
+ *
+ * Listed one by one rather than skipped by pattern, so a new exemption has to be
+ * argued for here instead of quietly widening the rule.
+ */
+const EXEMPT: ReadonlyArray<{ file: string; size: number; why: string }> = [
+    {
+        file: "react/merge-editor/merge-editor.css",
+        size: 22.5,
+        why: "`.hunk-action-glyph` draws the accept/reject marks as text. It is an icon that happens to be a character, sized to the hunk gutter, and reads as an affordance rather than as a label.",
+    },
+];
+
+interface Hit {
+    file: string;
+    line: number;
+    size: number;
+    text: string;
+}
+
+function sourceFiles(dir: string, out: string[] = []): string[] {
+    for (const entry of readdirSync(dir)) {
+        const full = join(dir, entry);
+        if (statSync(full).isDirectory()) {
+            sourceFiles(full, out);
+            continue;
+        }
+        if (SCANNED_EXTENSIONS.some((ext) => entry.endsWith(ext))) out.push(full);
+    }
+    return out;
+}
+
+/** Matches `fontSize="13px"`, `fontSize: "13px"`, and `font-size: 13px`. */
+const SIZE_PATTERN = /(?:fontSize\s*[=:]\s*["']|font-size\s*:\s*)(\d+(?:\.\d+)?)px/g;
+
+function collectHits(): Hit[] {
+    const hits: Hit[] = [];
+    for (const file of sourceFiles(WEBVIEW_ROOT)) {
+        const relative = file.slice(WEBVIEW_ROOT.length + 1);
+        readFileSync(file, "utf8")
+            .split("\n")
+            .forEach((text, index) => {
+                for (const match of text.matchAll(SIZE_PATTERN)) {
+                    hits.push({
+                        file: relative,
+                        line: index + 1,
+                        size: Number(match[1]),
+                        text: text.trim(),
+                    });
+                }
+            });
+    }
+    return hits;
+}
+
+describe("type scale", () => {
+    it("exposes exactly the four documented sizes", () => {
+        expect(TYPE_SCALE).toEqual({ caption: 11, label: 12, body: 13, dialogTitle: 14 });
+        expect([...TYPE_SCALE_PX].sort((a, b) => a - b)).toEqual([11, 12, 13, 14]);
+    });
+
+    it("renders no font size outside the scale anywhere in the webview", () => {
+        const offenders = collectHits().filter(
+            (hit) =>
+                !TYPE_SCALE_PX.includes(hit.size) &&
+                !EXEMPT.some((e) => e.file === hit.file && e.size === hit.size),
+        );
+        expect(
+            offenders.map((hit) => `${hit.file}:${hit.line} → ${hit.size}px  (${hit.text})`),
+        ).toEqual([]);
+    });
+
+    it("finds the sizes it is supposed to be scanning", () => {
+        // Guards the regex itself: a pattern that silently matched nothing would
+        // make the assertion above pass forever.
+        const hits = collectHits();
+        expect(hits.length).toBeGreaterThan(50);
+        expect(new Set(hits.map((hit) => hit.size))).toContain(TYPE_SCALE.body);
+    });
+});

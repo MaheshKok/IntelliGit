@@ -100,13 +100,13 @@ function CommitPanelSectionHeader({
                 py="2px"
                 mx="4px"
                 my="1px"
-                borderRadius="5px"
+                borderRadius={`${JETBRAINS_UI.size.selectedRadius}px`}
                 cursor="pointer"
                 userSelect="none"
                 fontWeight={600}
                 fontSize="12px"
                 fontFamily={SYSTEM_FONT_STACK}
-                lineHeight="22px"
+                lineHeight={`${JETBRAINS_UI.size.treeRowHeight}px`}
                 position="relative"
                 color="var(--intelligit-pycharm-foreground)"
                 bg={

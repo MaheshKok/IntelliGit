@@ -15,7 +15,7 @@ import {
 import { getSettings } from "../../shared/settings";
 import { DISABLED_GLYPH_COLOR } from "../../shared/components/ToolbarIconButton";
 import { t } from "../../shared/i18n";
-import { TOOLBAR_ICON_ACCENTS } from "../../shared/tokens";
+import { JETBRAINS_UI, TOOLBAR_ICON_ACCENTS } from "../../shared/tokens";
 
 interface Props {
     stashCount: number;
@@ -50,7 +50,11 @@ const sharedTabStyles = {
         opacity: 1,
         borderBottomColor: "var(--intelligit-pycharm-blue)",
     },
-    _hover: { opacity: 0.9, bg: "rgba(255,255,255,0.02)" },
+    // The host's own list hover, not a fixed white wash. At 2% the old value was
+    // already the faintest feedback in the product on a dark theme, and on a
+    // light one it lightened an unselected tab toward the panel it sits on —
+    // hover made the tab harder to see, not easier.
+    _hover: { opacity: 0.9, bg: JETBRAINS_UI.color.hover },
 } as const;
 
 /**
@@ -141,11 +145,17 @@ export function TabBar({
                                     })}
                                     style={{
                                         marginLeft: 4,
-                                        borderRadius: 999,
+                                        borderRadius: JETBRAINS_UI.size.pillRadius,
                                         padding: "0 5px",
+                                        // Both validation tokens are optional in a
+                                        // VS Code theme. With no fallback, a theme
+                                        // that defines neither rendered this count
+                                        // as bare text on the tab — the one badge
+                                        // in the product whose whole job is to be
+                                        // noticed.
                                         background:
-                                            "var(--vscode-inputValidation-warningBackground)",
-                                        color: "var(--vscode-inputValidation-warningForeground)",
+                                            "var(--vscode-inputValidation-warningBackground, var(--vscode-editorWarning-foreground, #d99b38))",
+                                        color: "var(--vscode-inputValidation-warningForeground, var(--vscode-editor-background, #2b3342))",
                                     }}
                                 >
                                     {shelfWarningCount}

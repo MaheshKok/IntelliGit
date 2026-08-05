@@ -33,8 +33,12 @@ export function ShelfHealthWarningBanner({
                 px="10px"
                 py="5px"
                 fontSize="12px"
-                bg="var(--vscode-inputValidation-warningBackground)"
-                color="var(--vscode-inputValidation-warningForeground)"
+                // Same reason as the shelf tab's warning count: neither
+                // validation token is guaranteed, and a `role="alert"` band that
+                // renders as unstyled text on the panel is the one banner that
+                // cannot afford to be missed.
+                bg="var(--vscode-inputValidation-warningBackground, var(--vscode-editorWarning-foreground, #d99b38))"
+                color="var(--vscode-inputValidation-warningForeground, var(--vscode-editor-background, #2b3342))"
             >
                 {summary}
                 <Button

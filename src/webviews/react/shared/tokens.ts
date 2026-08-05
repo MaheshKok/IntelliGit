@@ -9,19 +9,32 @@
  */
 export const JETBRAINS_UI = {
     color: {
-        panel: "var(--vscode-sideBar-background, #2f3848)",
+        panel: "var(--vscode-sideBar-background, var(--vscode-editor-background, #2f3848))",
         editor: "var(--vscode-editor-background, #2b3342)",
         toolbar: "var(--vscode-editorGroupHeader-tabsBackground, #394354)",
-        border: "var(--vscode-panel-border, rgba(158, 169, 190, 0.22))",
+        sectionHeader:
+            "var(--vscode-sideBarSectionHeader-background, var(--vscode-editorGroupHeader-tabsBackground, #394354))",
+        border: "var(--vscode-panel-border, #465066)",
         divider: "var(--vscode-panel-border, #465066)",
+        sidebarBorder: "var(--vscode-sideBar-border, var(--vscode-panel-border, #465066))",
         input: "var(--vscode-input-background, #202633)",
         inputBorder: "var(--vscode-input-border, rgba(160, 174, 205, 0.28))",
         foreground: "var(--vscode-foreground, #d7dce5)",
         muted: "var(--vscode-descriptionForeground, #9ca6b8)",
+        disabled: "var(--vscode-disabledForeground, rgba(215, 220, 229, 0.55))",
         selected: "var(--vscode-list-activeSelectionBackground, #4f5f7c)",
         selectedForeground: "var(--vscode-list-activeSelectionForeground, #eef3ff)",
         hover: "var(--vscode-list-hoverBackground, rgba(111, 126, 156, 0.24))",
+        toolbarHover: "var(--vscode-toolbar-hoverBackground, rgba(111, 126, 156, 0.24))",
         focus: "var(--vscode-focusBorder, #6aa2ff)",
+        primary: "var(--vscode-button-background, #5572d9)",
+        primaryHover: "var(--vscode-button-hoverBackground, #6382eb)",
+        primaryForeground: "var(--vscode-button-foreground, #ffffff)",
+        added: "var(--vscode-gitDecoration-addedResourceForeground, #73c991)",
+        modified: "var(--vscode-gitDecoration-modifiedResourceForeground, #d19a66)",
+        deleted: "var(--vscode-gitDecoration-deletedResourceForeground, #c74e39)",
+        checkboxUncheckedBorder: "var(--vscode-button-background, rgba(206, 214, 230, 0.72))",
+        checkboxCheckedBackground: "var(--vscode-checkbox-background, rgba(106, 162, 255, 0.16))",
         branch: "var(--vscode-charts-blue, #6da7ff)",
         tag: "var(--vscode-charts-orange, #d99b38)",
         head: "var(--vscode-charts-green, #79c76d)",
@@ -40,11 +53,26 @@ export const JETBRAINS_UI = {
     },
     size: {
         icon: 14,
+        /** Commit-graph rows and every control: the product's base rhythm. */
         rowHeight: 24,
+        /**
+         * File- and branch-tree rows, two pixels tighter than a graph row.
+         *
+         * The trees are the densest surface in the product and the one most
+         * often read as a list rather than scanned as a timeline, so they run
+         * closer than the graph does. This was a `22px` literal in three places
+         * with nothing saying it was deliberate; naming it is what separates a
+         * second density from a drifted one.
+         */
+        treeRowHeight: 22,
         toolbarHeight: 32,
         splitter: 3,
+        badgeRadius: 3,
         radius: 4,
         selectedRadius: 5,
+        /** Menus, dialogs, popovers. One step softer than a control, never more. */
+        floatingRadius: 5,
+        pillRadius: 999,
         treeIndent: 18,
     },
     graph: {
@@ -226,6 +254,66 @@ export const Z_INDEX = {
 } as const;
 
 /**
+ * Every font size the webview is allowed to render, in pixels.
+ *
+ * Hierarchy in this product comes from weight, color, and position — not from
+ * scaling text up — so the scale is deliberately short. Three sizes carry the
+ * anchored UI:
+ *
+ * - `caption` (11) — timestamps, authors, counts, badges, hints. The floor.
+ * - `label` (12) — buttons, tabs, toolbar text, column headers.
+ * - `body` (13) — commit subjects, file names, row content, section titles.
+ *
+ * `dialogTitle` (14) is the one step above body, and it exists because the three
+ * anchored sizes could not do this job. A modal heading set at 13/600 is
+ * indistinguishable from the body text directly beneath it, which left every
+ * dialog in the product — shelve, unshelve, clean-up, rename, stash/unstash, and
+ * the interactive-rebase dialog — reaching for 14px anyway. Ten call sites had
+ * already voted; the rule was what was wrong, so the rule moved. It is scoped to
+ * modal headings and must not be used to emphasize anchored text.
+ *
+ * `type-scale.test.ts` enforces this list against the webview source, so a fifth
+ * size fails the suite rather than arriving quietly.
+ */
+export const TYPE_SCALE = {
+    caption: 11,
+    label: 12,
+    body: 13,
+    dialogTitle: 14,
+} as const;
+
+/** The allowed sizes as a set, for the guard test and any runtime assertion. */
+export const TYPE_SCALE_PX: readonly number[] = Object.values(TYPE_SCALE);
+
+/**
+ * The complete shadow vocabulary, lowest lift to highest.
+ *
+ * A shadow in this system carries exactly one meaning: *this layer is temporary
+ * and sits above the page.* Anchored surfaces — panels, toolbars, rows, inputs,
+ * the graph canvas — get a 1px border and a tonal step instead, never a shadow.
+ *
+ * These lived as literals at each float site, which is how four of the five
+ * surfaces ended up wearing the wrong one: the commit tooltip took the dialog
+ * shadow, the CI-status popover took the drag shadow — the heaviest in the
+ * system, on a hover surface — the unstash dialog invented a sixth value, and
+ * the drag preview took the lightest. Lift is what tells the user how far above
+ * the page a surface is, so a popover casting a drag shadow is a lie about the
+ * layer. Naming them here gives the assignment one place to be reviewed.
+ */
+export const SHADOW = {
+    /** Transient surfaces that follow the cursor: tooltips, popovers, hints. */
+    popover: "0 4px 14px rgba(0, 0, 0, 0.35)",
+    /** Context menus and dropdowns: a tight contact shadow plus an ambient one. */
+    menu: "0 8px 24px rgba(0, 0, 0, 0.45), 0 2px 8px rgba(0, 0, 0, 0.35)",
+    /** Modal dialogs. */
+    dialog: "0 10px 28px rgba(0, 0, 0, 0.42)",
+    /** The lifted state of a row under a direct-manipulation gesture. */
+    drag: "0 18px 46px rgba(0, 0, 0, 0.5)",
+    /** Not elevation: a 1px inner edge for surfaces that cannot spend layout on a border. */
+    insetHairline: "inset 0 0 0 1px rgba(160, 189, 237, 0.14)",
+} as const;
+
+/**
  * Maps Git porcelain status codes to VS Code git-decoration theme colors.
  *
  * Each entry uses a VS Code theme variable with a JetBrains-matching fallback.
@@ -233,14 +321,14 @@ export const Z_INDEX = {
  * to color file status badges and tree icons consistently with the editor theme.
  */
 export const GIT_STATUS_COLORS: Record<string, string> = {
-    M: "var(--vscode-gitDecoration-modifiedResourceForeground, #d19a66)",
-    A: "var(--vscode-gitDecoration-addedResourceForeground, #73c991)",
-    D: "var(--vscode-gitDecoration-deletedResourceForeground, #c74e39)",
+    M: JETBRAINS_UI.color.modified,
+    A: JETBRAINS_UI.color.added,
+    D: JETBRAINS_UI.color.deleted,
     R: "var(--vscode-gitDecoration-renamedResourceForeground, #a371f7)",
     U: "var(--vscode-gitDecoration-conflictingResourceForeground, #e5c07b)",
     "?": "var(--vscode-gitDecoration-untrackedResourceForeground, #73c991)",
-    C: "var(--vscode-gitDecoration-addedResourceForeground, #73c991)",
-    T: "var(--vscode-gitDecoration-modifiedResourceForeground, #d19a66)",
+    C: JETBRAINS_UI.color.added,
+    T: JETBRAINS_UI.color.modified,
 };
 
 /**

@@ -1072,7 +1072,9 @@
 }
 .footer-hint {
     color: var(--merge-muted);
-    font-size: 10px;
+    /* 11px, the caption floor. At 10px this was the smallest text in the product,
+       in muted grey, carrying the keyboard hints for the conflict resolver. */
+    font-size: 11px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;

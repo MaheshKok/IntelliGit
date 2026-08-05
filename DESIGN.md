@@ -183,7 +183,9 @@ A theme-inherited palette with one owned exception: a deliberately muted set of 
 
 ### Named Rules
 
-**The Host Wins Rule.** Every color used in the UI is written as `var(--vscode-<token>, <fallback>)`. Introducing a bare hex value into a component is prohibited. The one sanctioned exception is the ten graph lane colors documented above, because VS Code exposes no graph-lane theming variable. There is no second exception: a file-type badge palette of ecosystem brand colors once sat in `tokens.ts`, unreferenced, with three entries below even the 3:1 non-text floor — it was deleted rather than documented, because sanctioning it would have written a contrast failure into the system PRODUCT.md promises never to ship.
+**One Source Of Fallbacks Rule.** Every `--vscode-*` chain and every fallback beside it is written once, in `JETBRAINS_UI` in `shared/tokens.ts`. The `--intelligit-pycharm-*` custom properties are emitted from that object by `commit-panel/theme.ts`; they are not a second place to author a color. They were, for a while, and because both sets resolved through the same host tokens a themed editor hid it — but the fallbacks had drifted apart in ten roles (panel `#2b384e` against `#2f3848`, deleted `#f26b51` against `#c74e39`, muted, selected, input, foreground, focus, added, modified, and the border), so on a host supplying no tokens the commit panel and the commit graph rendered as two different products. The table below is the only column of fallbacks there is.
+
+**The Host Wins Rule.** Every color used in the UI is written as `var(--vscode-<token>, <fallback>)`. Introducing a bare hex value into a component is prohibited. A `var()` with *no* fallback is the same failure wearing a better disguise: the shelf warning count and the shelf-health banner both referenced `--vscode-inputValidation-warningBackground` bare, and that token is optional, so a theme that omits it rendered the product's two loudest warnings as unstyled text. The one sanctioned exception is the ten graph lane colors documented above, because VS Code exposes no graph-lane theming variable. There is no second exception: a file-type badge palette of ecosystem brand colors once sat in `tokens.ts`, unreferenced, with three entries below even the 3:1 non-text floor — it was deleted rather than documented, because sanctioning it would have written a contrast failure into the system PRODUCT.md promises never to ship.
 
 **The Fallback Is Not The Design Rule.** The hex values in this document describe what renders when the host theme supplies nothing. Never tune a component by adjusting a fallback, and never review a color decision in only one theme — check it in a light theme and a high-contrast theme before calling it done.
 
@@ -205,11 +207,16 @@ A theme-inherited palette with one owned exception: a deliberately muted set of 
 - **Body** (400, 13px, 1.4): Commit subjects, file names, row content, message text. The workhorse.
 - **Label** (500, 12px, 1.3): Buttons, tabs, toolbar text, column headers.
 - **Caption** (400, 11px, 1.3): Timestamps, author names, commit counts, badges, hints. The floor.
+- **Dialog Title** (600, 14px, 1.4): Modal headings only. The one step above Body, and the only place it is allowed.
 - **Mono** (400, 12px, 1.4): Hashes, refs, paths, diff bodies. Inherits the user's editor font and therefore their ligature and font-size preferences.
 
 ### Named Rules
 
-**The Three-Step Rule.** The entire type scale is 11px, 12px, and 13px. A fourth size is not a design decision, it is a mistake. Hierarchy comes from weight (400/500/600), color (Foreground Mist versus Muted Ash), and position — never from scaling text up.
+**The Three-Step Rule, plus one.** The anchored UI is 11px, 12px, and 13px, and a fourth size in *that* range is a mistake. Hierarchy comes from weight (400/500/600), color (Foreground Mist versus Muted Ash), and position — never from scaling text up.
+
+The single exception is **Dialog Title (600, 14px)**, and it is an exception the code argued for and won. A modal heading set at 13/600 is indistinguishable from the body text directly beneath it, so all ten dialogs — shelve, unshelve, clean-up, rename, delete-shelf, stash/unstash, the shelf-health banner, and the interactive-rebase dialog — had reached for 14px on their own. Ten call sites voting the same way against a prose rule means the rule was wrong. It is scoped to modal headings and must never be used to emphasize anchored text.
+
+The scale now lives in `TYPE_SCALE` in `shared/tokens.ts`, and `tests/webview/unit/type-scale.test.ts` scans every `.ts`, `.tsx`, and `.css` file under `src/webviews` for a size outside it. That test is what makes this rule real: before it existed the scale had already drifted in both directions, down to 10px on the amend-context block, the status badge, and the merge editor's keyboard hints — below the product's own stated caption floor, on the text carrying a commit's identity — and up to 14px on the dialogs. A prose rule cannot tell those two cases apart. The test names both, and a human decides which is the bug.
 
 **The Mono Means Git Rule.** Monospace is semantic, not decorative. If a string came out of Git — a hash, a ref, a path, a diff line — it is mono. If IntelliGit wrote it, it is sans. Never use mono for emphasis.
 
@@ -232,6 +239,8 @@ The system is **flat at rest and lifts only to float**. Anchored surfaces — pa
 **The Float-Or-Flat Rule.** A shadow means the layer is temporary. If a surface is anchored in the layout, it gets a border, not a shadow. A shadow on a toolbar or a panel header is always wrong.
 
 **The Darkness-Not-Blur Rule.** These shadows are dark and relatively tight because they sit on a dark panel. Do not soften them toward a light-UI look. If a shadow reads as a soft gray halo rather than a cast shadow, the alpha is too low and the blur is too large.
+
+**The Vocabulary Is A Token Rule.** The five values live in `SHADOW` in `shared/tokens.ts` and are referenced, never retyped. Written as literals at each float site they had no arbiter, and four of the five surfaces ended up wearing the wrong lift: the commit tooltip took Dialog, the CI-status popover took Drag — the heaviest in the system, on a surface that follows the cursor — the unstash dialog invented a sixth value, and the branch drag preview took the lightest. Lift is how the user reads distance from the page, so a popover casting a drag shadow is a false statement about the layer, not a cosmetic slip.
 
 ## 5. Components
 

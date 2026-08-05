@@ -6,7 +6,7 @@ import { CollapseAllIconGlyph, ExpandAllIconGlyph } from "../../shared/component
 import { RefreshButton } from "../../shared/components/RefreshButton";
 import { ToolbarIconButton } from "../../shared/components/ToolbarIconButton";
 import { t } from "../../shared/i18n";
-import { TOOLBAR_ICON_ACCENTS } from "../../shared/tokens";
+import { JETBRAINS_UI, TOOLBAR_ICON_ACCENTS } from "../../shared/tokens";
 
 /** Callbacks and state for the compact Shelf toolbar. */
 export interface ShelfToolbarProps {
@@ -55,7 +55,7 @@ export function ShelfToolbar({
         <Flex
             data-testid="shelf-toolbar"
             align="center"
-            minH="30px"
+            minH={`${JETBRAINS_UI.size.toolbarHeight}px`}
             px="6px"
             gap="2px"
             bg="var(--intelligit-pycharm-panel)"
