@@ -209,6 +209,37 @@ export type GitSuccessListener = (subcommand: string, argv: readonly string[]) =
  */
 const NOTIFIED_SUBCOMMANDS: ReadonlySet<string> = new Set(["commit", "push"]);
 
+/**
+ * Global options that consume the argument after them, so the subcommand scan can skip
+ * past their value instead of mistaking it for the subcommand.
+ */
+const VALUE_TAKING_GLOBAL_OPTIONS: ReadonlySet<string> = new Set([
+    "-c",
+    "-C",
+    "--git-dir",
+    "--work-tree",
+    "--namespace",
+    "--exec-path",
+    "--super-prefix",
+]);
+
+/**
+ * Finds the subcommand in an argv that may open with Git's global options.
+ *
+ * `argv[0]` is not the subcommand whenever a caller prepends a global option —
+ * `withLiteralPathspecs` does exactly that for every path-scoped command, which silently
+ * hid every panel commit from the success hook until this scan existed.
+ */
+function resolveSubcommand(argv: readonly string[]): string | undefined {
+    for (let index = 0; index < argv.length; index += 1) {
+        const arg = argv[index];
+        if (arg === undefined) return undefined;
+        if (!arg.startsWith("-")) return arg;
+        if (VALUE_TAKING_GLOBAL_OPTIONS.has(arg)) index += 1;
+    }
+    return undefined;
+}
+
 let gitSuccessListener: GitSuccessListener | undefined;
 
 /** Installs the process-wide success listener, or clears it when passed `undefined`. */
@@ -224,7 +255,7 @@ export function setGitSuccessListener(listener: GitSuccessListener | undefined):
  * that already succeeded must never be reported to the user as failed.
  */
 export function notifyGitSuccessSafely(argv: readonly string[]): void {
-    const subcommand = argv[0];
+    const subcommand = resolveSubcommand(argv);
     if (!subcommand || !NOTIFIED_SUBCOMMANDS.has(subcommand)) return;
     try {
         gitSuccessListener?.(subcommand, argv);

@@ -444,6 +444,37 @@ describe("git success hook", () => {
         expect(seen).toEqual([["commit", ["commit", "-m", "msg"]]]);
     });
 
+    itPosix("finds the subcommand behind Git's leading global options", async () => {
+        const seen: Array<[string, readonly string[]]> = [];
+        setGitSuccessListener((subcommand, argv) => seen.push([subcommand, argv]));
+
+        // The exact shape a path-scoped panel commit produces via `withLiteralPathspecs`.
+        const argv = ["--literal-pathspecs", "commit", "-m", "msg", "--only", "--", "a.ts"];
+        await runWithStubGit(argv);
+
+        expect(seen).toEqual([["commit", argv]]);
+    });
+
+    itPosix("skips the value of a global option that takes one", async () => {
+        const seen: string[] = [];
+        setGitSuccessListener((subcommand) => seen.push(subcommand));
+
+        // `user.name=push` is a value, not a subcommand: taking it as one would both
+        // miss the real commit and report a push that never happened.
+        await runWithStubGit(["-c", "user.name=push", "commit", "-m", "msg"]);
+
+        expect(seen).toEqual(["commit"]);
+    });
+
+    itPosix("stays silent when options are all there is", async () => {
+        const seen: string[] = [];
+        setGitSuccessListener((subcommand) => seen.push(subcommand));
+
+        await runWithStubGit(["--literal-pathspecs"]);
+
+        expect(seen).toEqual([]);
+    });
+
     itPosix("stays silent for subcommands outside the hook's narrow set", async () => {
         const seen: string[] = [];
         setGitSuccessListener((subcommand) => seen.push(subcommand));

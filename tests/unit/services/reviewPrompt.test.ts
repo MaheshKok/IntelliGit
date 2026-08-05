@@ -736,6 +736,29 @@ describe("reviewPrompt", () => {
             expect(state.get<number>(KEY.successOps)).toBe(1);
         });
 
+        it("counts the path-scoped commit the panel actually runs", async () => {
+            const subscriptions: Array<{ dispose: () => void }> = [];
+            await registerReviewPrompt({
+                globalState: state as unknown as never,
+                globalStorageUri: { fsPath: storageDir } as unknown as never,
+                subscriptions,
+            } as never);
+
+            // Checking files in the panel prepends a global option, which pushed the
+            // subcommand off argv[0] and hid every such commit from this hook.
+            notifyGitSuccessSafely([
+                "--literal-pathspecs",
+                "commit",
+                "-m",
+                "msg",
+                "--only",
+                "--",
+                "a.ts",
+            ]);
+
+            await vi.waitFor(() => expect(state.get<number>(KEY.successOps)).toBe(1));
+        });
+
         it("survives a context that exposes no global storage", async () => {
             await expect(
                 registerReviewPrompt({
