@@ -15,7 +15,7 @@ import {
 import { getSettings } from "../../shared/settings";
 import { DISABLED_GLYPH_COLOR } from "../../shared/components/ToolbarIconButton";
 import { t } from "../../shared/i18n";
-import { ICON_ACCENTS } from "../../shared/tokens";
+import { TOOLBAR_ICON_ACCENTS } from "../../shared/tokens";
 
 interface Props {
     stashCount: number;
@@ -159,7 +159,7 @@ export function TabBar({
                         <GitActionButton
                             label={t("common.sync")}
                             onClick={gitActions.onSync}
-                            color={ICON_ACCENTS.violet}
+                            color={TOOLBAR_ICON_ACCENTS.sync}
                         >
                             <path
                                 fill="currentColor"
@@ -169,7 +169,7 @@ export function TabBar({
                         <GitActionButton
                             label={t("common.fetch")}
                             onClick={gitActions.onFetch}
-                            color={ICON_ACCENTS.sky}
+                            color={TOOLBAR_ICON_ACCENTS.fetch}
                         >
                             <path
                                 fill="none"
@@ -191,7 +191,7 @@ export function TabBar({
                         <GitActionButton
                             label={t("common.pull")}
                             onClick={gitActions.onPull}
-                            color={ICON_ACCENTS.sky}
+                            color={TOOLBAR_ICON_ACCENTS.pull}
                         >
                             <path
                                 fill="currentColor"
@@ -202,7 +202,7 @@ export function TabBar({
                         <GitActionButton
                             label={t("common.push")}
                             onClick={gitActions.onPush}
-                            color={ICON_ACCENTS.green}
+                            color={TOOLBAR_ICON_ACCENTS.push}
                         >
                             <path
                                 fill="currentColor"
@@ -218,7 +218,7 @@ export function TabBar({
                             label={t("common.dockIntelliGit")}
                             title={t("common.dockIntelliGit")}
                             onClick={onDock}
-                            color={ICON_ACCENTS.sky}
+                            color={TOOLBAR_ICON_ACCENTS.dock}
                             standardColor="var(--vscode-button-foreground)"
                         >
                             <path

@@ -155,7 +155,15 @@ function CommitPanelSectionHeader({
                     {t("common.fileCount", { count })}
                 </Box>
                 {stats && (stats.additions > 0 || stats.deletions > 0) ? (
-                    <Box as="span" ml="auto" fontSize="11px" flexShrink={0}>
+                    // Tabular figures keep the counts a fixed width, so the +/-
+                    // pair stops jittering as a section's numbers change under it.
+                    <Box
+                        as="span"
+                        ml="auto"
+                        fontSize="11px"
+                        flexShrink={0}
+                        sx={{ fontVariantNumeric: "tabular-nums" }}
+                    >
                         {stats.additions > 0 ? (
                             <Box
                                 as="span"

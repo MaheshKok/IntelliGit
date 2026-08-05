@@ -23,6 +23,8 @@ import {
     FILTER_BAR_STYLE,
     FILTER_CLEAR_BUTTON_STYLE,
     FILTER_ICON_STYLE,
+    FILTER_INPUT_CLASS,
+    FILTER_INPUT_CLASS_CSS,
     FILTER_INPUT_STYLE,
     FILTER_INPUT_WRAP_STYLE,
     headerRowStyle,
@@ -389,10 +391,12 @@ export function CommitList({
         <div style={ROOT_STYLE}>
             {showSearch ? (
                 <div style={FILTER_BAR_STYLE}>
+                    <style>{FILTER_INPUT_CLASS_CSS}</style>
                     <SearchIcon size={16} style={FILTER_ICON_STYLE} />
                     <div style={FILTER_INPUT_WRAP_STYLE}>
                         <input
                             type="text"
+                            className={FILTER_INPUT_CLASS}
                             aria-label={t("commit.search.placeholder")}
                             placeholder={t("commit.search.placeholder")}
                             value={filterText}

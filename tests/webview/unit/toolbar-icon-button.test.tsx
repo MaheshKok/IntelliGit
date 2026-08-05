@@ -4,7 +4,7 @@ import React, { act } from "react";
 import { ChakraProvider } from "@chakra-ui/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ToolbarIconButton } from "../../../src/webviews/react/shared/components/ToolbarIconButton";
-import { ICON_ACCENTS } from "../../../src/webviews/react/shared/tokens";
+import { TOOLBAR_ICON_ACCENTS } from "../../../src/webviews/react/shared/tokens";
 import { ShelfToolbar } from "../../../src/webviews/react/commit-panel/components/ShelfToolbar";
 import { StashToolbar } from "../../../src/webviews/react/commit-panel/components/StashToolbar";
 import { Toolbar } from "../../../src/webviews/react/commit-panel/components/Toolbar";
@@ -120,6 +120,7 @@ describe("ToolbarIconButton", () => {
                             onToggleShowIgnoredFiles: vi.fn(),
                             onStash: vi.fn(),
                             onShowDiff: vi.fn(),
+                            hasFiles: true,
                             onExpandAll: vi.fn(),
                             onCollapseAll: vi.fn(),
                             showAbortMerge: true,
@@ -238,6 +239,7 @@ describe("ToolbarIconButton", () => {
                     onStash={vi.fn()}
                     onOpenShelfMenu={vi.fn()}
                     onShowDiff={vi.fn()}
+                    hasFiles
                     onExpandAll={vi.fn()}
                     onCollapseAll={vi.fn()}
                     showAbortMerge={false}
@@ -276,6 +278,7 @@ describe("ToolbarIconButton", () => {
                     onStash={vi.fn()}
                     onOpenShelfMenu={vi.fn()}
                     onShowDiff={vi.fn()}
+                    hasFiles
                     onExpandAll={vi.fn()}
                     onCollapseAll={vi.fn()}
                     showAbortMerge={false}
@@ -284,24 +287,31 @@ describe("ToolbarIconButton", () => {
             </ChakraProvider>,
         );
 
-        // Each glyph names a role from the shared accent set rather than a literal
-        // hex, so the host theme resolves the hue and the icon stays legible on a
-        // light background as well as a dark one.
-        expect(expectDirectCodicon(container, "Rollback").style.color).toBe(ICON_ACCENTS.amber);
-        expect(expectDirectCodicon(container, "View Options").style.color).toBe(ICON_ACCENTS.sky);
-        expect(expectDirectCodicon(container, "Stash Changes").style.color).toBe(ICON_ACCENTS.pink);
+        // Each glyph names its action in the shared accent map rather than a hue or
+        // a literal hex: the host theme resolves the color, and the assignment has
+        // exactly one home to change. `toolbar-icon-accents.test.tsx` then checks
+        // that the assignments in a bar stay distinct from each other.
+        expect(expectDirectCodicon(container, "Rollback").style.color).toBe(
+            TOOLBAR_ICON_ACCENTS.rollback,
+        );
+        expect(expectDirectCodicon(container, "View Options").style.color).toBe(
+            TOOLBAR_ICON_ACCENTS.viewOptions,
+        );
+        expect(expectDirectCodicon(container, "Stash Changes").style.color).toBe(
+            TOOLBAR_ICON_ACCENTS.stash,
+        );
         expect(expectDirectCodicon(container, "Shelf actions").style.color).toBe(
-            ICON_ACCENTS.violet,
+            TOOLBAR_ICON_ACCENTS.shelf,
         );
         expect(expectDirectCodicon(container, "Show Diff Preview").style.color).toBe(
-            ICON_ACCENTS.violet,
+            TOOLBAR_ICON_ACCENTS.showDiff,
         );
         expect(
             expectLegacyTreeControlGlyph(container, "Expand All", EXPAND_ALL_PATH).style.color,
-        ).toBe(ICON_ACCENTS.pink);
+        ).toBe(TOOLBAR_ICON_ACCENTS.expandCollapse);
         expect(
             expectLegacyTreeControlGlyph(container, "Collapse All", COLLAPSE_ALL_PATH).style.color,
-        ).toBe(ICON_ACCENTS.pink);
+        ).toBe(TOOLBAR_ICON_ACCENTS.expandCollapse);
 
         unmount(root, container);
     });
@@ -351,19 +361,19 @@ describe("ToolbarIconButton", () => {
         );
         expectDirectCodicon(stash.container, "Refresh");
         expect(expectDirectCodicon(stash.container, "Show Diff").style.color).toBe(
-            ICON_ACCENTS.violet,
+            TOOLBAR_ICON_ACCENTS.showDiff,
         );
         expect(expectDirectCodicon(stash.container, "Group by Directory").style.color).toBe(
-            ICON_ACCENTS.sky,
+            TOOLBAR_ICON_ACCENTS.groupBy,
         );
         expect(
             expectLegacyTreeControlGlyph(stash.container, "Expand All", EXPAND_ALL_PATH).style
                 .color,
-        ).toBe(ICON_ACCENTS.pink);
+        ).toBe(TOOLBAR_ICON_ACCENTS.expandCollapse);
         expect(
             expectLegacyTreeControlGlyph(stash.container, "Collapse All", COLLAPSE_ALL_PATH).style
                 .color,
-        ).toBe(ICON_ACCENTS.pink);
+        ).toBe(TOOLBAR_ICON_ACCENTS.expandCollapse);
         unmount(stash.root, stash.container);
 
         const shelf = mount(
@@ -384,16 +394,16 @@ describe("ToolbarIconButton", () => {
         );
         expectDirectCodicon(shelf.container, "Refresh");
         expect(expectDirectCodicon(shelf.container, "Group by Directory").style.color).toBe(
-            ICON_ACCENTS.sky,
+            TOOLBAR_ICON_ACCENTS.groupBy,
         );
         expect(
             expectLegacyTreeControlGlyph(shelf.container, "Expand All", EXPAND_ALL_PATH).style
                 .color,
-        ).toBe(ICON_ACCENTS.pink);
+        ).toBe(TOOLBAR_ICON_ACCENTS.expandCollapse);
         expect(
             expectLegacyTreeControlGlyph(shelf.container, "Collapse All", COLLAPSE_ALL_PATH).style
                 .color,
-        ).toBe(ICON_ACCENTS.pink);
+        ).toBe(TOOLBAR_ICON_ACCENTS.expandCollapse);
         expect(expectDirectCodicon(shelf.container, "More Options").style.color).toBe(
             "var(--vscode-icon-foreground)",
         );

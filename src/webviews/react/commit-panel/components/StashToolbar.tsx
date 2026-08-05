@@ -7,7 +7,7 @@ import { CollapseAllIconGlyph, ExpandAllIconGlyph } from "../../shared/component
 import { RefreshButton } from "../../shared/components/RefreshButton";
 import { ToolbarIconButton } from "../../shared/components/ToolbarIconButton";
 import { t } from "../../shared/i18n";
-import { ICON_ACCENTS } from "../../shared/tokens";
+import { TOOLBAR_ICON_ACCENTS } from "../../shared/tokens";
 
 /** Props for selected-stash file-pane toolbar controls. */
 export interface StashToolbarProps {
@@ -49,14 +49,14 @@ export function StashToolbar({
                 label={t("common.showDiff")}
                 onClick={onShowStashDiff}
                 disabled={selectedIndex === null}
-                color={ICON_ACCENTS.violet}
+                color={TOOLBAR_ICON_ACCENTS.showDiff}
                 icon={<VscNewFile size={16} />}
             />
             <ToolbarIconButton
                 label={groupByDir ? t("common.ungroupFiles") : t("common.groupByDirectory")}
                 onClick={onToggleGroupBy}
                 pressed={groupByDir}
-                color={ICON_ACCENTS.sky}
+                color={TOOLBAR_ICON_ACCENTS.groupBy}
                 icon={<VscListTree size={16} />}
             />
             <Box flex={1} />
@@ -64,7 +64,7 @@ export function StashToolbar({
                 label={t("common.expandAll")}
                 onClick={onExpandAll}
                 disabled={!canExpandOrCollapse}
-                color={ICON_ACCENTS.pink}
+                color={TOOLBAR_ICON_ACCENTS.expandCollapse}
                 icon={
                     <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden>
                         <ExpandAllIconGlyph />
@@ -75,7 +75,7 @@ export function StashToolbar({
                 label={t("common.collapseAll")}
                 onClick={onCollapseAll}
                 disabled={!canExpandOrCollapse}
-                color={ICON_ACCENTS.pink}
+                color={TOOLBAR_ICON_ACCENTS.expandCollapse}
                 icon={
                     <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden>
                         <CollapseAllIconGlyph />

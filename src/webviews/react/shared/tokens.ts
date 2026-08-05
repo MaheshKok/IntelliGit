@@ -134,6 +134,69 @@ export const ICON_ACCENTS = {
 } as const;
 
 /**
+ * The accent each toolbar action wears, and the rule that keeps them apart.
+ *
+ * Hue answers exactly one question in a toolbar — *which action is this?* — so
+ * no two actions in the same bar may share one. Picking hues at the call site
+ * had no arbiter, and three of them collided: shelf and show-diff both landed
+ * on violet, while stash, expand-all and collapse-all all landed on pink. The
+ * strip read as a rainbow and still failed to tell its buttons apart.
+ *
+ * `expandCollapse` is the one deliberate sharing. Expand and collapse are two
+ * halves of one control, and a shared hue is what makes the eye read them as a
+ * pair instead of as two unrelated buttons.
+ *
+ * Hues do repeat *across* bars — push is green in the tab bar, the
+ * expand/collapse pair is green in the toolbar below it — because a bar is the
+ * unit the eye scans. The tab bar is traffic with the remote; the panel
+ * toolbars are work on the local repository. `toolbar-icon-accents.test.tsx`
+ * enforces both halves of this rule, per bar.
+ */
+export const TOOLBAR_ICON_ACCENTS = {
+    /** Tab bar — traffic with the remote. */
+    sync: ICON_ACCENTS.violet,
+    fetch: ICON_ACCENTS.cyan,
+    pull: ICON_ACCENTS.sky,
+    push: ICON_ACCENTS.green,
+    /** Window chrome rather than Git, and the only such control in its bar. */
+    dock: ICON_ACCENTS.amber,
+
+    /** Panel toolbars — work on the local repository. */
+    refresh: ICON_ACCENTS.cyan,
+    rollback: ICON_ACCENTS.amber,
+    viewOptions: ICON_ACCENTS.sky,
+    groupBy: ICON_ACCENTS.sky,
+    stash: ICON_ACCENTS.pink,
+    shelf: ICON_ACCENTS.violet,
+    showDiff: ICON_ACCENTS.orange,
+    /** One hue, two buttons: see above. */
+    expandCollapse: ICON_ACCENTS.green,
+} as const;
+
+/**
+ * Which accents may appear together, by bar.
+ *
+ * The uniqueness rule is only meaningful per bar, so the bars have to be
+ * written down somewhere a test can read them. Keeping the roster here rather
+ * than in the test means adding a button to a toolbar and forgetting to widen
+ * its roster fails loudly instead of silently escaping the rule.
+ */
+export const TOOLBAR_ACCENT_BARS = {
+    tabBar: ["sync", "fetch", "pull", "push", "dock"],
+    commitToolbar: [
+        "refresh",
+        "rollback",
+        "viewOptions",
+        "stash",
+        "shelf",
+        "showDiff",
+        "expandCollapse",
+    ],
+    shelfToolbar: ["refresh", "groupBy", "expandCollapse"],
+    stashToolbar: ["refresh", "showDiff", "groupBy", "expandCollapse"],
+} as const satisfies Record<string, readonly (keyof typeof TOOLBAR_ICON_ACCENTS)[]>;
+
+/**
  * Stacking order for layered surfaces, lowest to highest.
  *
  * Portalled surfaces have to out-rank in-flow content, but they only need to

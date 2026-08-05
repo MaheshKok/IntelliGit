@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "fs";
 import path from "path";
 import { describe, expect, it } from "vitest";
-import { ICON_ACCENTS } from "../../../src/webviews/react/shared/tokens";
+import { TOOLBAR_ICON_ACCENTS } from "../../../src/webviews/react/shared/tokens";
 
 /**
  * The light-theme counterpart of a title-bar icon, and proof it ships.
@@ -305,7 +305,6 @@ describe("extension manifest", () => {
         const icons = [
             {
                 name: "sync",
-                role: "violet",
                 color: "#c8a2ff",
                 paths: [
                     "M13 2v4H9l1.55-1.55A4.4 4.4 0 0 0 3.9 6.2l-.94-.34A5.4 5.4 0 0 1 11.25 3.75L13 2zM3 14v-4h4l-1.55 1.55A4.4 4.4 0 0 0 12.1 9.8l.94.34a5.4 5.4 0 0 1-8.29 2.11L3 14z",
@@ -313,8 +312,7 @@ describe("extension manifest", () => {
             },
             {
                 name: "fetch",
-                role: "sky",
-                color: "#8fd5ff",
+                color: "#4ec7d6",
                 paths: [
                     "M5 12.5h-.5a2.8 2.8 0 0 1-.35-5.58A4.1 4.1 0 0 1 12 5.8a2.9 2.9 0 0 1 .5 5.7H11",
                     "M8 6.7v5.6m-2.1-2L8 12.4l2.1-2.1",
@@ -322,7 +320,6 @@ describe("extension manifest", () => {
             },
             {
                 name: "pull",
-                role: "sky",
                 color: "#8fd5ff",
                 paths: [
                     "M7.5 1h1v8.1l2.15-2.15.7.7L8 11 4.65 7.65l.7-.7L7.5 9.1V1z",
@@ -331,7 +328,6 @@ describe("extension manifest", () => {
             },
             {
                 name: "push",
-                role: "green",
                 color: "#a6e3a1",
                 paths: [
                     "M8 1l3.35 3.35-.7.7L8.5 2.9V11h-1V2.9L5.35 5.05l-.7-.7L8 1z",
@@ -357,9 +353,11 @@ describe("extension manifest", () => {
             );
             // The webview resolves its accent through a host token; the native icon is a
             // static file and cannot. They stay in sync through the token's fallback,
-            // which is the value the dark-theme SVG paints.
-            expect(iconBlock).toContain(`color={ICON_ACCENTS.${icon.role}}`);
-            expect(ICON_ACCENTS[icon.role]).toContain(icon.color);
+            // which is the value the dark-theme SVG paints. The tab bar names the
+            // *action* rather than a hue, so reassigning an accent in
+            // `TOOLBAR_ICON_ACCENTS` fails here until the native icon follows.
+            expect(iconBlock).toContain(`color={TOOLBAR_ICON_ACCENTS.${icon.name}}`);
+            expect(TOOLBAR_ICON_ACCENTS[icon.name]).toContain(icon.color);
             expect(svg).toContain(icon.color);
             // The light variant is a different file because a static SVG cannot follow
             // the theme. It has to clear 3:1 (WCAG 1.4.11) on the light title bar.

@@ -6,7 +6,7 @@ import { CollapseAllIconGlyph, ExpandAllIconGlyph } from "../../shared/component
 import { RefreshButton } from "../../shared/components/RefreshButton";
 import { ToolbarIconButton } from "../../shared/components/ToolbarIconButton";
 import { t } from "../../shared/i18n";
-import { ICON_ACCENTS } from "../../shared/tokens";
+import { TOOLBAR_ICON_ACCENTS } from "../../shared/tokens";
 
 /** Callbacks and state for the compact Shelf toolbar. */
 export interface ShelfToolbarProps {
@@ -68,7 +68,7 @@ export function ShelfToolbar({
                 icon={<VscListTree size={16} />}
                 onClick={onToggleGroupBy}
                 pressed={groupByDir}
-                color={ICON_ACCENTS.sky}
+                color={TOOLBAR_ICON_ACCENTS.groupBy}
             />
             <ToolbarIconButton
                 label={t("shelf.action.expandAll")}
@@ -79,7 +79,7 @@ export function ShelfToolbar({
                 }
                 onClick={onExpandAll}
                 disabled={!canExpandOrCollapse}
-                color={ICON_ACCENTS.pink}
+                color={TOOLBAR_ICON_ACCENTS.expandCollapse}
             />
             <ToolbarIconButton
                 label={t("shelf.action.collapseAll")}
@@ -90,7 +90,7 @@ export function ShelfToolbar({
                 }
                 onClick={onCollapseAll}
                 disabled={!canExpandOrCollapse}
-                color={ICON_ACCENTS.pink}
+                color={TOOLBAR_ICON_ACCENTS.expandCollapse}
             />
             <ToolbarIconButton
                 label={t("shelf.action.moreOptions")}

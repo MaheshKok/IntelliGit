@@ -68,7 +68,7 @@ const theme = extendTheme({
             variants: {
                 primary: {
                     bg: "var(--intelligit-pycharm-primary)",
-                    color: "#fff",
+                    color: "var(--vscode-button-foreground, #ffffff)",
                     fontWeight: 600,
                     borderRadius: "4px",
                     minH: "24px",
@@ -77,16 +77,25 @@ const theme = extendTheme({
                     _hover: { bg: "var(--intelligit-pycharm-primary-hover)" },
                 },
                 secondary: {
-                    bg: "rgba(255,255,255,0.03)",
+                    bg: "var(--vscode-button-secondaryBackground, rgba(255,255,255,0.03))",
                     color: "var(--intelligit-pycharm-foreground)",
-                    border: "1px solid rgba(176, 186, 205, 0.62)",
+                    // The fallback is the measured one: composited over the panel it
+                    // lands at 3.26:1, clearing the 3:1 that WCAG 1.4.11 asks of a
+                    // control boundary. A divider color would have read as 1.39:1 —
+                    // fine for a 1px rule between rows, not for the edge that tells
+                    // the user where a button is.
+                    border: "1px solid var(--vscode-button-border, rgba(176, 186, 205, 0.62))",
                     borderRadius: "4px",
                     minH: "24px",
                     h: "24px",
                     px: "10px",
+                    // Same reason as the ghost button below: a fixed white wash
+                    // lightens an already-light theme into invisibility. DESIGN.md's
+                    // frontmatter already specified the host token here; only the
+                    // code had drifted.
                     _hover: {
-                        bg: "rgba(255,255,255,0.08)",
-                        borderColor: "rgba(202, 212, 231, 0.7)",
+                        bg: "var(--vscode-button-secondaryHoverBackground, rgba(255,255,255,0.08))",
+                        borderColor: "var(--vscode-contrastActiveBorder, rgba(202, 212, 231, 0.7))",
                     },
                 },
                 toolbarGhost: {
@@ -96,8 +105,16 @@ const theme = extendTheme({
                     padding: "2px 4px",
                     minW: "24px",
                     h: "24px",
+                    // Hover is the only feedback a ghost button has, so it has to
+                    // survive the theme. The old `rgba(255,255,255,0.06)` lightened
+                    // an already-light toolbar into invisibility; the host's own
+                    // toolbar-hover token darkens or lightens as the theme requires.
+                    // 120ms is under the product register's 150-250ms ceiling
+                    // because a pointer sweeping a toolbar crosses several buttons.
+                    transition: "background-color 120ms cubic-bezier(0.25, 1, 0.5, 1)",
+                    "@media (prefers-reduced-motion: reduce)": { transition: "none" },
                     _hover: {
-                        bg: "rgba(255,255,255,0.06)",
+                        bg: "var(--vscode-toolbar-hoverBackground, rgba(255,255,255,0.06))",
                         color: "var(--intelligit-pycharm-foreground)",
                     },
                     _pressed: {

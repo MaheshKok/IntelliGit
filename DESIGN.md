@@ -92,7 +92,7 @@ components:
     backgroundColor: "var(--vscode-button-secondaryBackground, rgba(255,255,255,0.03))"
     textColor: "{colors.foreground-mist}"
     borderWidth: "{rounded.hairline}"
-    borderColor: "{colors.divider-steel}"
+    borderColor: "var(--vscode-button-border, rgba(176, 186, 205, 0.62))"
     rounded: "{rounded.control}"
     padding: "0 10px"
     height: "24px"
@@ -189,6 +189,8 @@ A theme-inherited palette with one owned exception: a deliberately muted set of 
 
 **The One Loud Thing Rule.** At most one Action Indigo element per surface. If a panel has two primary buttons, one of them is secondary and hasn't been told yet.
 
+**The One Hue Per Bar Rule.** In the "color" icon style, a toolbar accent answers exactly one question — *which action is this?* — so no two actions in the same bar may wear the same hue. The single sanctioned sharing is expand-all and collapse-all: they are two halves of one control, and the shared hue is what makes the eye read them as a pair. Hues do repeat *across* bars, because a bar is the unit the eye scans; the tab bar is traffic with the remote and the panel toolbars are work on the local repository. The assignment lives in `TOOLBAR_ICON_ACCENTS` in `tokens.ts` with a per-bar roster beside it, because picking hues at each call site had no arbiter and drifted into four collisions — shelf and show-diff both on violet, fetch and pull both on sky, stash and both halves of the expand pair all on pink. `tests/webview/unit/toolbar-icon-accents.test.tsx` enforces both halves of this rule against rendered output, so a call site that picks its own hue fails rather than drifting. The native sidebar icons are static SVGs that cannot resolve a token, so `manifest.test.ts` pins them to the accent's fallback and fails if a reassignment leaves them behind. None of this is load-bearing: `iconStyle: "standard"` drops every accent, and each control still carries its own glyph and label.
+
 ## 3. Typography
 
 **Display Font:** none. This system has no display type and should not acquire any.
@@ -240,8 +242,8 @@ The whole component vocabulary is **tight and instrumental**: every control read
 - **Shape:** Barely-softened corners (4px radius), fixed 24px height. Never pill-shaped, never square.
 - **Primary:** Action Indigo background, white text, 600 weight, 10px horizontal padding. One per surface.
 - **Hover / Focus:** Background shifts to Action Indigo Hover. Focus draws a Focus Azure ring. No transform, no scale, no shadow.
-- **Secondary:** A 3% white wash with a 1px light border — visible as a control, subordinate to primary.
-- **Toolbar Ghost:** Transparent at rest with Muted Ash icons, 24×24px. On hover, a 6% white wash and the icon warms to Foreground Mist. Pressed state uses a `color-mix()` tint of the host button color at 34%. This is the most-used control in the product.
+- **Secondary:** A 3% white wash with a 1px light border — visible as a control, subordinate to primary. The border is deliberately lighter than Divider Steel: composited over the panel it measures 3.26:1, which is what WCAG 1.4.11 asks of a control boundary, where Divider Steel would give 1.39:1. A rule between rows may whisper; the edge that tells the user where a button is may not.
+- **Toolbar Ghost:** Transparent at rest with Muted Ash icons, 24×24px. On hover, the host's own toolbar-hover background and the icon warms to Foreground Mist, eased over 120ms and suppressed under `prefers-reduced-motion`. Pressed state uses a `color-mix()` tint of the host button color at 34%. This is the most-used control in the product, so its hover has to survive a light theme — a fixed white wash does not.
 - **Danger:** A 16% wash of Status Deleted with a 60% border in the same hue and matching text. Destructive actions are colored, never shouted — they are visibly different without a red-filled button.
 
 ### Cards / Containers
