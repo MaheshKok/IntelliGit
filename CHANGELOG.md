@@ -5,29 +5,21 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
-
-### Added
-
-- Added `IntelliGit: Reset Review Prompt State`, which clears the recorded rating decision and the usage counters behind it on the current machine after a modal confirmation, either back to a fresh install or armed so the next successful commit asks. It never changes a rating already published to a marketplace.
-
-### Fixed
-
-- Fixed the Git success hook reading the subcommand from the first argument, so every commit made with files selected in the Changes panel — which prepends a global option — went uncounted, and the usage gating behind the rating prompt could never advance.
-
-### Changed
-
-- The rating prompt now appears as a centered card in the commit graph rather than as a notification, with a five-star control that routes a high rating to the marketplace review page and a low one to a prefilled GitHub feedback issue — the marketplace link stays available either way. The notification is still used whenever no graph view is on screen, and the gating, the three-ask cap and the never-ask-again guarantee are unchanged.
-
 ## [0.24.0] - 2026-08-04
 
 ### Added
 
 - Added an opt-out marketplace rating prompt that appears at most three times, only after 30 successful commits or pushes across 5 active days and 14 days since install, and never again once answered. Ratings route to the VS Marketplace on official VS Code builds and to Open VSX everywhere else, controlled by `intelligit.reviewPrompt.enabled`.
+- Added `IntelliGit: Reset Review Prompt State`, which clears the recorded rating decision and the usage counters behind it on the current machine after a modal confirmation, either back to a fresh install or armed so the next successful commit asks. It never changes a rating already published to a marketplace.
 
 ### Fixed
 
 - Fixed the repository lock treating an unrecognized process-liveness errno as proof that the owning window had exited, which could let a second window take over a lock that was still held.
+- Fixed the Git success hook reading the subcommand from the first argument, so every commit made with files selected in the Changes panel — which prepends a global option — went uncounted, and the usage gating behind the rating prompt could never advance.
+
+### Changed
+
+- The rating prompt now appears as a centered card in the commit graph rather than as a notification, with a five-star control that routes a high rating to the marketplace review page and a low one to a prefilled GitHub feedback issue — the marketplace link stays available either way. The notification is still used whenever no graph view is on screen, and the gating, the three-ask cap and the never-ask-again guarantee are unchanged.
 
 ## [0.23.0] - 2026-08-02
 
