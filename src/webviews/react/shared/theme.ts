@@ -65,8 +65,14 @@ export function isLightBackground(color: string): boolean {
     return 0.2126 * r + 0.7152 * g + 0.0722 * b > LIGHT_THRESHOLD;
 }
 
-/** Reads the resolved editor background and reports whether the active theme is light. */
-export function isLightTheme(): boolean {
+/**
+ * Reads the resolved editor background and reports whether the active theme is light.
+ *
+ * Module-internal: `resolveLanePalette` and `useIsLightTheme` are the surface callers
+ * use. It was exported back when a component read it directly; nothing outside this
+ * file has since `0952efe4`, and knip fails the build on an export nobody imports.
+ */
+function isLightTheme(): boolean {
     if (typeof document === "undefined") return false;
     const background = getComputedStyle(document.documentElement)
         .getPropertyValue("--vscode-editor-background")
