@@ -148,14 +148,15 @@ export function TabBar({
                                         borderRadius: JETBRAINS_UI.size.pillRadius,
                                         padding: "0 5px",
                                         // Both validation tokens are optional in a
-                                        // VS Code theme. With no fallback, a theme
-                                        // that defines neither rendered this count
-                                        // as bare text on the tab — the one badge
-                                        // in the product whose whole job is to be
-                                        // noticed.
+                                        // VS Code theme, and the fallbacks must pair
+                                        // with each other: only the foreground is
+                                        // usually missing, so falling back to the
+                                        // editor background put white text on the
+                                        // theme's pale-yellow band. See
+                                        // ShelfHealthWarningBanner for the full note.
                                         background:
-                                            "var(--vscode-inputValidation-warningBackground, var(--vscode-editorWarning-foreground, #d99b38))",
-                                        color: "var(--vscode-inputValidation-warningForeground, var(--vscode-editor-background, #2b3342))",
+                                            "var(--vscode-inputValidation-warningBackground, var(--vscode-editor-background, #2b3342))",
+                                        color: "var(--vscode-inputValidation-warningForeground, var(--vscode-editorWarning-foreground, #d99b38))",
                                     }}
                                 >
                                     {shelfWarningCount}

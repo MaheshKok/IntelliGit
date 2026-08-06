@@ -49,26 +49,21 @@ describe("ReviewPromptCard", () => {
         expect(onAnswer).not.toHaveBeenCalled();
     });
 
-    it("routes a high rating to the marketplace", () => {
+    it("opens the marketplace on the star click itself, with no confirmation step", () => {
         const { container, onAnswer } = renderCard();
 
         click(container, star(container, 5));
-        act(() => {
-            button(container, "Rate IntelliGit").click();
-        });
 
+        expect(onAnswer).toHaveBeenCalledTimes(1);
         expect(onAnswer).toHaveBeenCalledWith({ decision: "rated", open: "marketplace" });
     });
 
-    it("keeps a high rating terminal even when the user declines to post it", () => {
+    it("treats four stars as the happy branch", () => {
         const { container, onAnswer } = renderCard();
 
         click(container, star(container, 4));
-        act(() => {
-            button(container, "Not now").click();
-        });
 
-        expect(onAnswer).toHaveBeenCalledWith({ decision: "rated" });
+        expect(onAnswer).toHaveBeenCalledWith({ decision: "rated", open: "marketplace" });
     });
 
     it("leads a low rating to feedback", () => {

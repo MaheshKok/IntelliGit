@@ -33,6 +33,10 @@ export const JETBRAINS_UI = {
         added: "var(--vscode-gitDecoration-addedResourceForeground, #73c991)",
         modified: "var(--vscode-gitDecoration-modifiedResourceForeground, #d19a66)",
         deleted: "var(--vscode-gitDecoration-deletedResourceForeground, #c74e39)",
+        // Not `--vscode-checkbox-border`, however much it looks like the right token: that one
+        // outlines VS Code's native checkbox against `checkbox.background`, and on a dark theme
+        // it is `#3c3c3c` — black against this panel. The button background is the nearest
+        // token that is guaranteed to contrast with the surface these checkboxes actually sit on.
         checkboxUncheckedBorder: "var(--vscode-button-background, rgba(206, 214, 230, 0.72))",
         checkboxCheckedBackground: "var(--vscode-checkbox-background, rgba(106, 162, 255, 0.16))",
         branch: "var(--vscode-charts-blue, #6da7ff)",

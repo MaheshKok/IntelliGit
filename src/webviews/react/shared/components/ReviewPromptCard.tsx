@@ -5,7 +5,7 @@ import { t } from "../i18n";
 import { Z_INDEX } from "../tokens";
 import "./ReviewPromptCard.css";
 
-/** Ratings at or above this get the marketplace ask first; below it, the feedback ask comes first. */
+/** Ratings at or above this go straight to the marketplace; below it, the card asks what is wrong. */
 const HAPPY_THRESHOLD = 4;
 const STARS: readonly number[] = [1, 2, 3, 4, 5];
 
@@ -25,10 +25,13 @@ export interface ReviewPromptCardProps {
  * Centered rating card shown in place of the marketplace notification.
  *
  * Stars cannot be submitted to either marketplace — neither has a write API — so a star
- * click only chooses which follow-up the user sees. A low rating leads with the feedback
- * route but still offers the public review link, so no one is steered away from reviewing.
- * Every star click is terminal: an answered user is never asked again, whichever route
- * they take or abandon.
+ * click can only send the user somewhere. A happy click therefore opens the marketplace
+ * itself rather than a second button that does the same thing: the star already carried
+ * the whole answer, and a confirmation step reads as if the rating went nowhere (which,
+ * silently, it did). A low rating is the one case that still needs a question, because
+ * "what is wrong" and "post it publicly anyway" are genuinely different routes.
+ *
+ * Every star click is terminal either way: an answered user is never asked again.
  */
 export function ReviewPromptCard({ onAnswer }: ReviewPromptCardProps): React.ReactElement {
     const [rating, setRating] = useState<number>();
@@ -41,8 +44,14 @@ export function ReviewPromptCard({ onAnswer }: ReviewPromptCardProps): React.Rea
     }, []);
 
     const later = useCallback(() => onAnswer({ decision: "later" }), [onAnswer]);
-    const happy = rating !== undefined && rating >= HAPPY_THRESHOLD;
-    const decision: ReviewPromptDecision = happy ? "rated" : "declined";
+    // A set `rating` is always a low one: a happy click answers and closes the card outright.
+    const rate = useCallback(
+        (star: number) =>
+            star >= HAPPY_THRESHOLD
+                ? onAnswer({ decision: "rated", open: "marketplace" })
+                : setRating(star),
+        [onAnswer],
+    );
 
     return (
         <Flex
@@ -74,18 +83,12 @@ export function ReviewPromptCard({ onAnswer }: ReviewPromptCardProps): React.Rea
                 boxShadow="0 8px 32px rgba(0, 0, 0, 0.32)"
             >
                 <Box as="h2" id="review-prompt-title" fontSize="14px" fontWeight={600}>
-                    {rating === undefined
-                        ? t("review.card.title")
-                        : happy
-                          ? t("review.card.happyTitle")
-                          : t("review.card.unhappyTitle")}
+                    {rating === undefined ? t("review.card.title") : t("review.card.unhappyTitle")}
                 </Box>
                 <Box fontSize="12px" opacity={0.85}>
                     {rating === undefined
                         ? t("review.card.subtitle")
-                        : happy
-                          ? t("review.card.happyBody")
-                          : t("review.card.unhappyBody")}
+                        : t("review.card.unhappyBody")}
                 </Box>
 
                 <Flex
@@ -108,7 +111,7 @@ export function ReviewPromptCard({ onAnswer }: ReviewPromptCardProps): React.Rea
                                 className="review-prompt-star"
                                 data-filled={filled ? "true" : "false"}
                                 onMouseEnter={() => setHovered(star)}
-                                onClick={() => setRating(star)}
+                                onClick={() => rate(star)}
                             >
                                 {filled ? "★" : "☆"}
                             </Box>
@@ -135,33 +138,26 @@ export function ReviewPromptCard({ onAnswer }: ReviewPromptCardProps): React.Rea
                             <Button
                                 variant="secondary"
                                 size="sm"
-                                onClick={() => onAnswer({ decision })}
+                                onClick={() => onAnswer({ decision: "declined" })}
                             >
                                 {t("review.card.notNow")}
                             </Button>
                             <Button
                                 variant="primary"
                                 size="sm"
-                                onClick={() =>
-                                    onAnswer({
-                                        decision,
-                                        open: happy ? "marketplace" : "feedback",
-                                    })
-                                }
+                                onClick={() => onAnswer({ decision: "declined", open: "feedback" })}
                             >
-                                {happy ? t("review.card.rate") : t("review.card.reportIssue")}
+                                {t("review.card.reportIssue")}
                             </Button>
                         </Flex>
-                        {happy ? null : (
-                            <Box
-                                as="button"
-                                type="button"
-                                className="review-prompt-link"
-                                onClick={() => onAnswer({ decision, open: "marketplace" })}
-                            >
-                                {t("review.card.rateAnyway")}
-                            </Box>
-                        )}
+                        <Box
+                            as="button"
+                            type="button"
+                            className="review-prompt-link"
+                            onClick={() => onAnswer({ decision: "declined", open: "marketplace" })}
+                        >
+                            {t("review.card.rateAnyway")}
+                        </Box>
                     </Flex>
                 )}
             </Flex>
