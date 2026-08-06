@@ -588,5 +588,14 @@
     "Applying merge result for {path}...": "Применение результата слияния для {path}...",
     "File is not in a conflicted state: {path}": "Файл не находится в состоянии конфликта: {path}",
     "There are uncommitted changes, please commit or stash them first.": "Есть незакоммиченные изменения. Сначала закоммитьте или спрячьте их.",
-    "Interactive rebase completed, but IntelliGit could not save its local completion state.": "Интерактивный rebase завершён, но IntelliGit не удалось сохранить локальное состояние завершения."
+    "Interactive rebase completed, but IntelliGit could not save its local completion state.": "Интерактивный rebase завершён, но IntelliGit не удалось сохранить локальное состояние завершения.",
+    "Enjoying IntelliGit? A quick rating helps others find it.": "Нравится IntelliGit? Короткая оценка поможет другим его найти.",
+    "Rate IntelliGit": "Оценить IntelliGit",
+    "Later": "Позже",
+    "Don't ask again": "Больше не спрашивать",
+    "Reset the IntelliGit rating prompt on this machine?": "Сбросить запрос на оценку IntelliGit на этом компьютере?",
+    "This deletes the record of your rating decision and the usage counters behind it. It affects this machine only, and never touches a rating you already published.": "Это удалит запись о вашем решении по оценке и связанные счётчики использования. Изменения касаются только этого компьютера и никогда не затрагивают уже опубликованную оценку.",
+    "Reset to a fresh install": "Сбросить до состояния новой установки",
+    "Reset and arm the next commit": "Сбросить и спросить при следующем коммите",
+    "Open the IntelliGit graph in the bottom panel — the rating card renders there, not in the sidebar Graph view.": "Откройте граф IntelliGit на нижней панели — карточка оценки отображается там, а не в представлении «Граф» на боковой панели."
 }

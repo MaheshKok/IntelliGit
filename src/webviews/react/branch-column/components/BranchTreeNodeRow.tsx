@@ -10,7 +10,7 @@ import {
     TagRightIcon,
 } from "../../shared/components/Icons";
 import { TreeFolderIcon } from "../../shared/components/TreeIcons";
-import { JETBRAINS_UI } from "../../shared/tokens";
+import { JETBRAINS_UI, SHADOW, Z_INDEX } from "../../shared/tokens";
 import { resolveFolderIcon } from "../../shared/utils/folderIcons";
 import { getSettings } from "../../shared/settings";
 import {
@@ -38,9 +38,9 @@ const TRACKING_TOOLTIP_BASE_STYLE: React.CSSProperties = {
     lineHeight: "14px",
     padding: "3px 6px",
     whiteSpace: "nowrap",
-    zIndex: 30,
+    zIndex: Z_INDEX.tooltip,
     pointerEvents: "none",
-    boxShadow: "0 4px 14px rgba(0,0,0,0.35)",
+    boxShadow: SHADOW.popover,
 };
 const FOLDER_ICON_WRAPPER_STYLE: React.CSSProperties = {
     display: "inline-flex",

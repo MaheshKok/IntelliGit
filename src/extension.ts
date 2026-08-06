@@ -9,6 +9,7 @@ import { activateNoRepositoryMode } from "./activation/noRepositoryMode";
 import { activateNoWorkspaceMode } from "./activation/onboarding";
 import { activateRepositoryMode } from "./activation/repositoryMode";
 import { registerCommitChecksAuthCommands } from "./activation/commitChecksAuthCommands";
+import { registerReviewPrompt } from "./services/reviewPrompt";
 import {
     HAS_MERGE_CONFLICTS_CONTEXT,
     registerStaleUndockedPanelSerializer,
@@ -28,6 +29,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     registerStaleUndockedPanelSerializer(context);
     registerReadonlyDiffContentProvider(context);
     registerCommitChecksAuthCommands(context);
+    void registerReviewPrompt(context);
     void setViewContext(HAS_MERGE_CONFLICTS_CONTEXT, false);
 
     if (!vscode.workspace.workspaceFolders?.length) {

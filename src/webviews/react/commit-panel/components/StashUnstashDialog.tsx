@@ -4,6 +4,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { Button, Checkbox, Flex } from "@chakra-ui/react";
 import { isValidBranchName } from "../../../../utils/gitRefs";
 import { t } from "../../shared/i18n";
+import { JETBRAINS_UI, SHADOW, Z_INDEX } from "../../shared/tokens";
 
 /** Props for the compact unstash dialog owned by StashTab. */
 export interface StashUnstashDialogProps {
@@ -92,7 +93,7 @@ export function StashUnstashDialog({
             role="presentation"
             position="fixed"
             inset={0}
-            zIndex="var(--intelligit-z-modal, 50)"
+            zIndex={Z_INDEX.modal}
             align="center"
             justify="center"
             bg="var(--vscode-editor-background, rgba(0, 0, 0, 0.45))"
@@ -111,10 +112,10 @@ export function StashUnstashDialog({
                 w="min(390px, calc(100vw - 32px))"
                 p="16px"
                 border="1px solid var(--intelligit-pycharm-border)"
-                borderRadius="4px"
+                borderRadius={`${JETBRAINS_UI.size.floatingRadius}px`}
                 bg="var(--intelligit-pycharm-panel)"
                 color="var(--intelligit-pycharm-foreground)"
-                boxShadow="0 4px 8px rgba(0, 0, 0, 0.32)"
+                boxShadow={SHADOW.dialog}
             >
                 <Flex as="h2" id="stash-unstash-title" fontSize="14px" fontWeight={600}>
                     {t("stash.action.unstash")}

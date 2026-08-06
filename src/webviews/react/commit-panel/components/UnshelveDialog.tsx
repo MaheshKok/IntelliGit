@@ -3,6 +3,7 @@ import { Box, Button, Checkbox, Flex } from "@chakra-ui/react";
 import type { ShelfFileEntry } from "../../../../shelf/model";
 import { t } from "../../shared/i18n";
 import { restoreShelfDialogFocus, useShelfDialogFocus } from "./ShelfDialogFocus";
+import { Z_INDEX } from "../../shared/tokens";
 
 /** Whole-entry selection and remove-on-success choice for flattened unshelve. */
 export interface UnshelveDialogSubmit {
@@ -63,7 +64,7 @@ export function UnshelveDialog({
             role="presentation"
             position="fixed"
             inset={0}
-            zIndex="var(--intelligit-z-modal, 50)"
+            zIndex={Z_INDEX.modal}
             align="center"
             justify="center"
             bg="rgba(0, 0, 0, 0.45)"

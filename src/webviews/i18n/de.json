@@ -338,5 +338,15 @@
     "rebase.action.fixup": "Korrektur",
     "rebase.action.continueRebase": "Rebase fortsetzen",
     "rebase.action.abortRebase": "Rebase abbrechen",
-    "rebase.dialog.missingMessage": "Für folgende Commits ist eine Commit-Nachricht erforderlich: {hashes}"
+    "rebase.dialog.missingMessage": "Für folgende Commits ist eine Commit-Nachricht erforderlich: {hashes}",
+    "review.card.title": "Gefällt Ihnen IntelliGit?",
+    "review.card.subtitle": "Wie würden Sie es bewerten?",
+    "review.card.starLabel": "{count} von 5 bewerten",
+    "review.card.later": "Später",
+    "review.card.never": "Nicht mehr fragen",
+    "review.card.notNow": "Jetzt nicht",
+    "review.card.unhappyTitle": "Das tut uns leid.",
+    "review.card.unhappyBody": "Sagen Sie uns, was fehlt, und wir sehen es uns an.",
+    "review.card.reportIssue": "Problem melden",
+    "review.card.rateAnyway": "Oder im Marketplace bewerten"
 }

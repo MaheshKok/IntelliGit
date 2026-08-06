@@ -1,6 +1,7 @@
 import React from "react";
 import { IconButton, Tooltip } from "@chakra-ui/react";
 import { getSettings } from "../settings";
+import { JETBRAINS_UI } from "../tokens";
 
 interface ToolbarIconButtonProps {
     label: string;
@@ -21,7 +22,7 @@ interface ToolbarIconButtonProps {
  * (`#CCCCCC80` in Dark+), so it must not be dimmed a second time by an opacity
  * layer or the control disappears instead of reading as disabled.
  */
-export const DISABLED_GLYPH_COLOR = "var(--vscode-disabledForeground, rgba(214, 219, 229, 0.55))";
+export const DISABLED_GLYPH_COLOR = JETBRAINS_UI.color.disabled;
 
 /**
  * Shared 24px toolbar icon button used by the commit, stash, and shelf toolbars.
@@ -78,12 +79,6 @@ export function ToolbarIconButton({
                 size="sm"
                 onClick={disabled ? undefined : onClick}
                 isDisabled={disabled}
-                _disabled={{
-                    bg: "rgba(255,255,255,0.03)",
-                    color: DISABLED_GLYPH_COLOR,
-                    cursor: "default",
-                    opacity: 1,
-                }}
                 data-refreshing={spin ? "true" : undefined}
                 icon={renderedIcon}
             />

@@ -2,7 +2,7 @@
     "name": "intelligit",
     "displayName": "IntelliGit",
     "description": "%extension.description%",
-    "version": "0.23.0",
+    "version": "0.24.0",
     "publisher": "MaheshKok",
     "icon": "media/intelligit-icon.png",
     "license": "MIT",
@@ -65,7 +65,10 @@
         "onCommand:intelligit.initializeRepository",
         "onCommand:intelligit.publishBranch",
         "onCommand:intelligit.commitChecks.signIn",
-        "onCommand:intelligit.commitChecks.signOut"
+        "onCommand:intelligit.commitChecks.signOut",
+        "onCommand:intelligit.showReviewPrompt",
+        "onCommand:intelligit.resetReviewPrompt",
+        "onCommand:intelligit.showReviewPromptCard"
     ],
     "main": "./dist/extension.js",
     "l10n": "./l10n",
@@ -139,7 +142,7 @@
                 "title": "%command.undock%",
                 "category": "%intelligit%",
                 "icon": {
-                    "light": "media/icons/undock-white.svg",
+                    "light": "media/icons/undock-ink.svg",
                     "dark": "media/icons/undock-white.svg"
                 }
             },
@@ -148,7 +151,7 @@
                 "title": "%command.undock%",
                 "category": "%intelligit%",
                 "icon": {
-                    "light": "media/icons/undock-color.svg",
+                    "light": "media/icons/undock-color-light.svg",
                     "dark": "media/icons/undock-color.svg"
                 }
             },
@@ -163,7 +166,7 @@
                 "title": "%command.refresh%",
                 "category": "%intelligit%",
                 "icon": {
-                    "light": "media/icons/refresh-white.svg",
+                    "light": "media/icons/refresh-ink.svg",
                     "dark": "media/icons/refresh-white.svg"
                 }
             },
@@ -172,7 +175,7 @@
                 "title": "%command.refresh%",
                 "category": "%intelligit%",
                 "icon": {
-                    "light": "media/icons/refresh-color.svg",
+                    "light": "media/icons/refresh-color-light.svg",
                     "dark": "media/icons/refresh-color.svg"
                 }
             },
@@ -181,7 +184,7 @@
                 "title": "%command.sync%",
                 "category": "%intelligit%",
                 "icon": {
-                    "light": "media/icons/git-sync-white.svg",
+                    "light": "media/icons/git-sync-ink.svg",
                     "dark": "media/icons/git-sync-white.svg"
                 }
             },
@@ -190,7 +193,7 @@
                 "title": "%command.sync%",
                 "category": "%intelligit%",
                 "icon": {
-                    "light": "media/icons/git-sync-color.svg",
+                    "light": "media/icons/git-sync-color-light.svg",
                     "dark": "media/icons/git-sync-color.svg"
                 }
             },
@@ -199,7 +202,7 @@
                 "title": "%command.fetch%",
                 "category": "%intelligit%",
                 "icon": {
-                    "light": "media/icons/git-fetch-white.svg",
+                    "light": "media/icons/git-fetch-ink.svg",
                     "dark": "media/icons/git-fetch-white.svg"
                 }
             },
@@ -208,7 +211,7 @@
                 "title": "%command.fetch%",
                 "category": "%intelligit%",
                 "icon": {
-                    "light": "media/icons/git-fetch-color.svg",
+                    "light": "media/icons/git-fetch-color-light.svg",
                     "dark": "media/icons/git-fetch-color.svg"
                 }
             },
@@ -217,7 +220,7 @@
                 "title": "%command.pull%",
                 "category": "%intelligit%",
                 "icon": {
-                    "light": "media/icons/git-pull-white.svg",
+                    "light": "media/icons/git-pull-ink.svg",
                     "dark": "media/icons/git-pull-white.svg"
                 }
             },
@@ -226,7 +229,7 @@
                 "title": "%command.pull%",
                 "category": "%intelligit%",
                 "icon": {
-                    "light": "media/icons/git-pull-color.svg",
+                    "light": "media/icons/git-pull-color-light.svg",
                     "dark": "media/icons/git-pull-color.svg"
                 }
             },
@@ -235,7 +238,7 @@
                 "title": "%command.push%",
                 "category": "%intelligit%",
                 "icon": {
-                    "light": "media/icons/git-push-white.svg",
+                    "light": "media/icons/git-push-ink.svg",
                     "dark": "media/icons/git-push-white.svg"
                 }
             },
@@ -244,7 +247,7 @@
                 "title": "%command.push%",
                 "category": "%intelligit%",
                 "icon": {
-                    "light": "media/icons/git-push-color.svg",
+                    "light": "media/icons/git-push-color-light.svg",
                     "dark": "media/icons/git-push-color.svg"
                 }
             },
@@ -258,7 +261,7 @@
                 "title": "%command.selectRepository%",
                 "category": "%intelligit%",
                 "icon": {
-                    "light": "media/icons/select-repository-white.svg",
+                    "light": "media/icons/select-repository-ink.svg",
                     "dark": "media/icons/select-repository-white.svg"
                 }
             },
@@ -267,7 +270,7 @@
                 "title": "%command.selectRepository%",
                 "category": "%intelligit%",
                 "icon": {
-                    "light": "media/icons/select-repository-color.svg",
+                    "light": "media/icons/select-repository-color-light.svg",
                     "dark": "media/icons/select-repository-color.svg"
                 }
             },
@@ -276,7 +279,7 @@
                 "title": "%command.selectRepository%",
                 "category": "%intelligit%",
                 "icon": {
-                    "light": "media/icons/select-repository-white.svg",
+                    "light": "media/icons/select-repository-ink.svg",
                     "dark": "media/icons/select-repository-white.svg"
                 }
             },
@@ -285,7 +288,7 @@
                 "title": "%command.selectRepository%",
                 "category": "%intelligit%",
                 "icon": {
-                    "light": "media/icons/select-repository-color.svg",
+                    "light": "media/icons/select-repository-color-light.svg",
                     "dark": "media/icons/select-repository-color.svg"
                 }
             },
@@ -514,6 +517,24 @@
                 "title": "%command.commitChecksSignOut%",
                 "category": "%intelligit%",
                 "icon": "$(sign-out)"
+            },
+            {
+                "command": "intelligit.showReviewPrompt",
+                "title": "%command.showReviewPrompt%",
+                "category": "%intelligit%",
+                "icon": "$(star-full)"
+            },
+            {
+                "command": "intelligit.showReviewPromptCard",
+                "title": "%command.showReviewPromptCard%",
+                "category": "%intelligit%",
+                "icon": "$(star-full)"
+            },
+            {
+                "command": "intelligit.resetReviewPrompt",
+                "title": "%command.resetReviewPrompt%",
+                "category": "%intelligit%",
+                "icon": "$(discard)"
             },
             {
                 "command": "intelligit.shelveChanges",
@@ -835,6 +856,12 @@
                     "minimum": 0,
                     "scope": "window",
                     "description": "%configuration.shelf.cleanupAfterDays.description%"
+                },
+                "intelligit.reviewPrompt.enabled": {
+                    "type": "boolean",
+                    "default": true,
+                    "scope": "application",
+                    "description": "%configuration.reviewPrompt.enabled.description%"
                 },
                 "intelligit.clearLastCommit": {
                     "type": "boolean",

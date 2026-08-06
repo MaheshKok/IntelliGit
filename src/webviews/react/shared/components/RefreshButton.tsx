@@ -5,6 +5,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { IconButton, Tooltip } from "@chakra-ui/react";
 import { VscRefresh } from "react-icons/vsc";
 import { getSettings, resolveIconColor } from "../settings";
+import { TOOLBAR_ICON_ACCENTS } from "../tokens";
 import { t } from "../i18n";
 import { SPIN_KEYFRAMES } from "./iconStyles";
 
@@ -73,7 +74,7 @@ export function RefreshButton({
     // fading to the disabled grey — a refresh in progress has to read louder than an
     // idle one, not quieter.
     const iconStyle: React.CSSProperties = {
-        color: resolveIconColor("#4ec7d6", "var(--vscode-icon-foreground)"),
+        color: resolveIconColor(TOOLBAR_ICON_ACCENTS.refresh, "var(--vscode-icon-foreground)"),
         ...(spin
             ? {
                   animation: "intelligit-spin 0.8s linear infinite",
@@ -101,11 +102,6 @@ export function RefreshButton({
                     size="xs"
                     onClick={spin ? undefined : handleClick}
                     isDisabled={spin}
-                    _disabled={{
-                        bg: "rgba(255,255,255,0.03)",
-                        cursor: "default",
-                        opacity: 1,
-                    }}
                     data-refreshing={spin ? "true" : undefined}
                     icon={<VscRefresh size={16} aria-hidden focusable="false" style={iconStyle} />}
                 />

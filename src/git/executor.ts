@@ -80,22 +80,35 @@ export class GitExecutor {
     async run(args: string[], options: Pick<GitBinaryRunOptions, "env"> = {}): Promise<string> {
         await this.processSemaphore.acquire();
         try {
-            const runText = async (): Promise<string> =>
-                (await this.runBinary(args, options)).stdout.toString("utf8");
-            if (this.mutationGate && isMutatingGitCommand(args)) {
-                const commonDir = (
-                    await this.runBinary(["rev-parse", "--git-common-dir"])
-                ).stdout.toString("utf8");
-                return await this.mutationGate.run(
-                    this.repoRoot,
-                    this.mutationGate.resolveCommonDir(this.repoRoot, commonDir),
-                    runText,
-                );
-            }
-            return await runText();
+            const output = await this.runGated(args, options);
+            notifyGitSuccessSafely(args);
+            return output;
         } finally {
             this.processSemaphore.release();
         }
+    }
+
+    /** Routes mutating commands through the repository mutation gate; others run directly. */
+    private async runGated(
+        args: string[],
+        options: Pick<GitBinaryRunOptions, "env"> = {},
+    ): Promise<string> {
+        const runText = async (): Promise<string> =>
+            (await this.runBinary(args, options)).stdout.toString("utf8");
+        if (!this.mutationGate || !isMutatingGitCommand(args)) return await runText();
+
+        // Same environment as the command being gated: the probe resolves which
+        // repository the gate locks, and a caller that overrode GIT_DIR or
+        // GIT_COMMON_DIR would otherwise have its mutation gated against the
+        // wrong one.
+        const commonDir = (
+            await this.runBinary(["rev-parse", "--git-common-dir"], options)
+        ).stdout.toString("utf8");
+        return await this.mutationGate.run(
+            this.repoRoot,
+            this.mutationGate.resolveCommonDir(this.repoRoot, commonDir),
+            runText,
+        );
     }
 
     /** Runs Git without decoding stdout; output-file mode streams stdout and returns an empty buffer. */
@@ -181,6 +194,73 @@ export class GitExecutor {
             if (options.input) child.stdin.end(options.input);
             else child.stdin.end();
         });
+    }
+}
+
+/** Called after a Git command the user initiated has completed successfully. */
+export type GitSuccessListener = (subcommand: string, argv: readonly string[]) => void;
+
+/**
+ * Subcommands the success hook reports.
+ *
+ * Deliberately narrow: IntelliGit runs read-only Git commands constantly, and a hook
+ * that fired on all of them would put listener code on a hot path it has no business
+ * being on. Widen this only with a reason.
+ */
+const NOTIFIED_SUBCOMMANDS: ReadonlySet<string> = new Set(["commit", "push"]);
+
+/**
+ * Global options that consume the argument after them, so the subcommand scan can skip
+ * past their value instead of mistaking it for the subcommand.
+ */
+const VALUE_TAKING_GLOBAL_OPTIONS: ReadonlySet<string> = new Set([
+    "-c",
+    "-C",
+    "--git-dir",
+    "--work-tree",
+    "--namespace",
+    "--exec-path",
+    "--super-prefix",
+]);
+
+/**
+ * Finds the subcommand in an argv that may open with Git's global options.
+ *
+ * `argv[0]` is not the subcommand whenever a caller prepends a global option —
+ * `withLiteralPathspecs` does exactly that for every path-scoped command, which silently
+ * hid every panel commit from the success hook until this scan existed.
+ */
+function resolveSubcommand(argv: readonly string[]): string | undefined {
+    for (let index = 0; index < argv.length; index += 1) {
+        const arg = argv[index];
+        if (arg === undefined) return undefined;
+        if (!arg.startsWith("-")) return arg;
+        if (VALUE_TAKING_GLOBAL_OPTIONS.has(arg)) index += 1;
+    }
+    return undefined;
+}
+
+let gitSuccessListener: GitSuccessListener | undefined;
+
+/** Installs the process-wide success listener, or clears it when passed `undefined`. */
+export function setGitSuccessListener(listener: GitSuccessListener | undefined): void {
+    gitSuccessListener = listener;
+}
+
+/**
+ * Reports a successful Git command to the installed listener, if any.
+ *
+ * Exported because `publishService` spawns its authenticated push directly and would
+ * otherwise bypass the executor. A listener fault is swallowed on purpose: a Git command
+ * that already succeeded must never be reported to the user as failed.
+ */
+export function notifyGitSuccessSafely(argv: readonly string[]): void {
+    const subcommand = resolveSubcommand(argv);
+    if (!subcommand || !NOTIFIED_SUBCOMMANDS.has(subcommand)) return;
+    try {
+        gitSuccessListener?.(subcommand, argv);
+    } catch {
+        // Intentionally ignored — see the doc comment above.
     }
 }
 

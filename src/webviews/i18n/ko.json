@@ -331,5 +331,15 @@
     "rebase.action.fixup": "수정",
     "rebase.action.continueRebase": "리베이스 계속",
     "rebase.action.abortRebase": "리베이스 중단",
-    "rebase.dialog.missingMessage": "다음 커밋에는 커밋 메시지가 필요합니다: {hashes}"
+    "rebase.dialog.missingMessage": "다음 커밋에는 커밋 메시지가 필요합니다: {hashes}",
+    "review.card.title": "IntelliGit이 마음에 드시나요?",
+    "review.card.subtitle": "어떻게 평가하시겠어요?",
+    "review.card.starLabel": "5점 만점에 {count}점",
+    "review.card.later": "나중에",
+    "review.card.never": "다시 묻지 않음",
+    "review.card.notNow": "지금은 안 함",
+    "review.card.unhappyTitle": "불편을 드려 죄송합니다.",
+    "review.card.unhappyBody": "부족한 점을 알려 주시면 확인하겠습니다.",
+    "review.card.reportIssue": "문제 보고",
+    "review.card.rateAnyway": "또는 마켓플레이스에서 평가하기"
 }

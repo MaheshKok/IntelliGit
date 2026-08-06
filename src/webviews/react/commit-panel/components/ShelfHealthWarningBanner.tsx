@@ -3,6 +3,7 @@ import { Box, Button, Flex } from "@chakra-ui/react";
 import type { ShelfHealthWarning } from "../../../protocol/commitPanelMessages";
 import { t } from "../../shared/i18n";
 import { restoreShelfDialogFocus, useShelfDialogFocus } from "./ShelfDialogFocus";
+import { Z_INDEX } from "../../shared/tokens";
 
 /** Compact warning banner plus a details dialog for observable shelf health. */
 export function ShelfHealthWarningBanner({
@@ -32,8 +33,15 @@ export function ShelfHealthWarningBanner({
                 px="10px"
                 py="5px"
                 fontSize="12px"
-                bg="var(--vscode-inputValidation-warningBackground)"
-                color="var(--vscode-inputValidation-warningForeground)"
+                // Same reason as the shelf tab's warning count: neither validation token is
+                // guaranteed. The two fallbacks have to pair with each other, because in
+                // practice only one of them is missing — VS Code registers
+                // `inputValidation.warningForeground` with no default, so a theme supplies the
+                // band colour and not the text colour. Falling back to the editor background
+                // there put white text on a pale-yellow band; the editor warning foreground is
+                // designed to read against both the band and, if it too is absent, the panel.
+                bg="var(--vscode-inputValidation-warningBackground, var(--vscode-editor-background, #2b3342))"
+                color="var(--vscode-inputValidation-warningForeground, var(--vscode-editorWarning-foreground, #d99b38))"
             >
                 {summary}
                 <Button
@@ -51,7 +59,7 @@ export function ShelfHealthWarningBanner({
                     role="presentation"
                     position="fixed"
                     inset={0}
-                    zIndex="var(--intelligit-z-modal, 50)"
+                    zIndex={Z_INDEX.modal}
                     align="center"
                     justify="center"
                     bg="rgba(0, 0, 0, 0.45)"

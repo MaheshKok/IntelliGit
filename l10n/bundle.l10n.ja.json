@@ -588,5 +588,14 @@
     "Applying merge result for {path}...": "{path} のマージ結果を適用しています...",
     "File is not in a conflicted state: {path}": "ファイルは競合状態ではありません: {path}",
     "There are uncommitted changes, please commit or stash them first.": "コミットされていない変更があります。先にコミットまたはスタッシュしてください。",
-    "Interactive rebase completed, but IntelliGit could not save its local completion state.": "対話的リベースは完了しましたが、IntelliGit はローカルの完了状態を保存できませんでした。"
+    "Interactive rebase completed, but IntelliGit could not save its local completion state.": "対話的リベースは完了しましたが、IntelliGit はローカルの完了状態を保存できませんでした。",
+    "Enjoying IntelliGit? A quick rating helps others find it.": "IntelliGit はお役に立っていますか? 簡単な評価が他のユーザーの発見につながります。",
+    "Rate IntelliGit": "IntelliGit を評価",
+    "Later": "後で",
+    "Don't ask again": "今後は表示しない",
+    "Reset the IntelliGit rating prompt on this machine?": "このコンピューターの IntelliGit 評価通知をリセットしますか?",
+    "This deletes the record of your rating decision and the usage counters behind it. It affects this machine only, and never touches a rating you already published.": "評価に関する選択の記録と、その基になる使用状況カウンターが削除されます。影響を受けるのはこのコンピューターだけで、公開済みの評価が変更されることはありません。",
+    "Reset to a fresh install": "新規インストールの状態に戻す",
+    "Reset and arm the next commit": "リセットして次のコミットで確認する",
+    "Open the IntelliGit graph in the bottom panel — the rating card renders there, not in the sidebar Graph view.": "下部パネルで IntelliGit のグラフを開いてください。評価カードはサイドバーのグラフ ビューではなく、そちらに表示されます。"
 }

@@ -3,7 +3,13 @@ import { createPortal } from "react-dom";
 import type { Commit } from "../../../types";
 import { RefTypeIcon } from "../shared/components/RefTypeIcon";
 import { formatDateTime } from "../shared/date";
-import { JETBRAINS_UI, REF_BADGE_COLORS } from "../shared/tokens";
+import {
+    JETBRAINS_UI,
+    REF_ACCENT_COLORS,
+    REF_BADGE_SURFACE,
+    SHADOW,
+    Z_INDEX,
+} from "../shared/tokens";
 import { splitCommitRefs } from "../shared/utils/refs";
 import { AUTHOR_COL_WIDTH, DATE_COL_WIDTH, ROW_SIDE_PADDING } from "./styles";
 import { ROW_HEIGHT } from "../graph";
@@ -28,17 +34,25 @@ interface Props {
     onSignIn?: (host: string) => void;
 }
 
-const REF_BADGE_BASE_STYLE: React.CSSProperties = {
+const REF_BADGE_STYLE: React.CSSProperties = {
     display: "inline-flex",
     alignItems: "center",
+    gap: 4,
     maxWidth: 200,
     overflow: "hidden",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
-    borderRadius: 3,
+    borderRadius: JETBRAINS_UI.size.badgeRadius,
     padding: "1px 6px",
     fontSize: 12,
     lineHeight: "15px",
+    color: REF_BADGE_SURFACE.fg,
+    background: REF_BADGE_SURFACE.bg,
+};
+const REF_BADGE_ICON_STYLE: React.CSSProperties = {
+    display: "inline-flex",
+    alignItems: "center",
+    flexShrink: 0,
 };
 const TOOLTIP_REF_ROW_STYLE: React.CSSProperties = {
     display: "inline-flex",
@@ -80,7 +94,7 @@ const BRANCH_REF_COUNT_STYLE: React.CSSProperties = {
     flexShrink: 0,
     fontSize: "12px",
     opacity: 0.85,
-    color: "var(--vscode-charts-blue, #6eb3ff)",
+    color: JETBRAINS_UI.color.branch,
 };
 const TAG_REF_WRAPPER_STYLE: React.CSSProperties = {
     marginLeft: 5,
@@ -107,9 +121,12 @@ const COMMIT_TOOLTIP_BASE_STYLE: React.CSSProperties = {
     whiteSpace: "normal",
     maxWidth: "560px",
     minWidth: "240px",
-    zIndex: 30,
+    zIndex: Z_INDEX.tooltip,
     pointerEvents: "none",
-    boxShadow: "0 10px 28px rgba(0,0,0,0.42)",
+    // Popover lift, not dialog. This is a hover surface that follows the cursor
+    // across a dense list; the dialog shadow it used to wear made every row
+    // hover look like a modal opening.
+    boxShadow: SHADOW.popover,
 };
 const COMMIT_TOOLTIP_MESSAGE_BASE_STYLE: React.CSSProperties = {
     display: "block",
@@ -130,25 +147,21 @@ const COMMIT_TOOLTIP_SECTION_LIST_STYLE: React.CSSProperties = {
     gap: 3,
 };
 
-function getRefColors(kind: "branch" | "tag", name: string): { bg: string; fg: string } {
-    if (kind === "tag") return REF_BADGE_COLORS.tag;
-    if (name.includes("HEAD")) return REF_BADGE_COLORS.head;
-    if (name.startsWith("origin/")) return REF_BADGE_COLORS.remote;
-    return REF_BADGE_COLORS.local;
+/** Per-type accent for the badge icon. Reinforces the glyph; carries no information alone. */
+function getRefAccent(kind: "branch" | "tag", name: string): string {
+    if (kind === "tag") return REF_ACCENT_COLORS.tag;
+    if (name.includes("HEAD")) return REF_ACCENT_COLORS.head;
+    if (name.startsWith("origin/")) return REF_ACCENT_COLORS.remote;
+    return REF_ACCENT_COLORS.local;
 }
 
 function RefBadge({ kind, name }: { kind: "branch" | "tag"; name: string }): React.ReactElement {
-    const colors = getRefColors(kind, name);
-    const style = React.useMemo<React.CSSProperties>(
-        () => ({
-            ...REF_BADGE_BASE_STYLE,
-            color: colors.fg,
-            background: colors.bg,
-        }),
-        [colors.bg, colors.fg],
-    );
+    const accent = getRefAccent(kind, name);
     return (
-        <span style={style} title={name}>
+        <span style={REF_BADGE_STYLE} title={name}>
+            <span style={REF_BADGE_ICON_STYLE}>
+                <RefTypeIcon kind={kind} size={11} branchColor={accent} tagColor={accent} />
+            </span>
             {name}
         </span>
     );
@@ -169,7 +182,7 @@ function TooltipRefRow({
                 <RefTypeIcon
                     kind={kind}
                     size={12}
-                    tagColor={kind === "tag" ? REF_BADGE_COLORS.tag.bg : undefined}
+                    tagColor={kind === "tag" ? REF_ACCENT_COLORS.tag : undefined}
                 />
             </span>
             <span style={TOOLTIP_REF_TEXT_STYLE}>{name}</span>
@@ -305,7 +318,7 @@ function CommitMessageCell({
                     style={HIDDEN_TAG_COUNT_STYLE}
                     title={t("commit.tooltip.moreTags", { count: hiddenTagCount })}
                 >
-                    <RefTypeIcon kind="tag" size={11} tagColor={REF_BADGE_COLORS.tag.bg} />
+                    <RefTypeIcon kind="tag" size={11} tagColor={REF_ACCENT_COLORS.tag} />
                     {`+${hiddenTagCount}`}
                 </span>
             )}

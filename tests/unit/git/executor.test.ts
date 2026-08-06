@@ -2,8 +2,8 @@ import { existsSync } from "node:fs";
 import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
-import { describe, expect, it } from "vitest";
-import { GitExecutor } from "../../../src/git/executor";
+import { afterEach, describe, expect, it } from "vitest";
+import { GitExecutor, setGitSuccessListener } from "../../../src/git/executor";
 import { RepositoryMutationCoordinator } from "../../../src/git/mutationCoordinator";
 import { RepositoryLock } from "../../../src/git/repositoryLock";
 import { RepositoryMutationGate } from "../../../src/git/repositoryMutationGate";
@@ -13,10 +13,13 @@ const itPosix = process.platform === "win32" ? it.skip : it;
 interface GateProbe {
     gate: RepositoryMutationGate;
     gatedRuns: number[];
+    /** Every common directory the executor's `rev-parse` probe reported. */
+    commonDirs: string[];
 }
 
 function gateProbe(): GateProbe {
     const gatedRuns: number[] = [];
+    const commonDirs: string[] = [];
     const gate = {
         run: async <T>(
             _repoRoot: string,
@@ -26,9 +29,12 @@ function gateProbe(): GateProbe {
             gatedRuns.push(gatedRuns.length);
             return operation();
         },
-        resolveCommonDir: (_repoRoot: string, commonDir: string): string => commonDir.trim(),
+        resolveCommonDir: (_repoRoot: string, commonDir: string): string => {
+            commonDirs.push(commonDir.trim());
+            return commonDir.trim();
+        },
     } as unknown as RepositoryMutationGate;
-    return { gate, gatedRuns };
+    return { gate, gatedRuns, commonDirs };
 }
 
 /** Runs one callback against a temporary Git executable with a restored process PATH. */
@@ -93,6 +99,23 @@ async function gatedRunCount(args: string[]): Promise<number> {
     }
 }
 
+/** Runs `run()` against a stub `git`, so the success hook is observable without a repository. */
+async function runWithStubGit(args: string[], script = "exit 0"): Promise<void> {
+    const directory = await mkdtemp(join(tmpdir(), "intelligit-hook-git-"));
+    const executable = join(directory, "git");
+    const originalPath = process.env.PATH;
+    await writeFile(executable, `#!/bin/sh\n${script}\n`, "utf8");
+    await chmod(executable, 0o755);
+    process.env.PATH = `${directory}${delimiter}${originalPath ?? ""}`;
+    try {
+        await new GitExecutor(process.cwd()).run(args);
+    } finally {
+        if (originalPath === undefined) delete process.env.PATH;
+        else process.env.PATH = originalPath;
+        await rm(directory, { force: true, recursive: true });
+    }
+}
+
 describe("GitExecutor", () => {
     itPosix("merges custom environment variables without mutating process.env", async () => {
         const variable = "INTELLIGIT_EXECUTOR_ENV_TEST";
@@ -126,6 +149,23 @@ describe("GitExecutor", () => {
         ).resolves.toBe("scoped");
 
         expect(gatedRuns).toHaveLength(1);
+    });
+
+    itPosix("probes the common directory with the caller's environment", async () => {
+        // The gate locks whichever repository the probe resolves. A caller that
+        // overrides GIT_DIR or GIT_COMMON_DIR would otherwise have its mutation
+        // gated against the default repository while running against another.
+        const variable = "INTELLIGIT_EXECUTOR_PROBE_ENV_TEST";
+        const { gate, commonDirs } = gateProbe();
+
+        await runFakeGitText(
+            `if [ "$1" = "rev-parse" ]; then printf '%s' "$${variable}"; else printf 'ok'; fi`,
+            ["rebase", "--continue"],
+            { env: { [variable]: "/scoped/common/dir" } },
+            gate,
+        );
+
+        expect(commonDirs).toEqual(["/scoped/common/dir"]);
     });
 
     it("returns binary stdout without decoding it", async () => {
@@ -387,5 +427,88 @@ describe("GitExecutor", () => {
 
         expect(observedMaxConcurrency).toBeGreaterThan(1);
         expect(observedMaxConcurrency).toBeLessThanOrEqual(6);
+    });
+});
+
+describe("git success hook", () => {
+    afterEach(() => {
+        setGitSuccessListener(undefined);
+    });
+
+    itPosix("reports a successful commit with its full argument list", async () => {
+        const seen: Array<[string, readonly string[]]> = [];
+        setGitSuccessListener((subcommand, argv) => seen.push([subcommand, argv]));
+
+        await runWithStubGit(["commit", "-m", "msg"]);
+
+        expect(seen).toEqual([["commit", ["commit", "-m", "msg"]]]);
+    });
+
+    itPosix("finds the subcommand behind Git's leading global options", async () => {
+        const seen: Array<[string, readonly string[]]> = [];
+        setGitSuccessListener((subcommand, argv) => seen.push([subcommand, argv]));
+
+        // The exact shape a path-scoped panel commit produces via `withLiteralPathspecs`.
+        const argv = ["--literal-pathspecs", "commit", "-m", "msg", "--only", "--", "a.ts"];
+        await runWithStubGit(argv);
+
+        expect(seen).toEqual([["commit", argv]]);
+    });
+
+    itPosix("skips the value of a global option that takes one", async () => {
+        const seen: string[] = [];
+        setGitSuccessListener((subcommand) => seen.push(subcommand));
+
+        // `user.name=push` is a value, not a subcommand: taking it as one would both
+        // miss the real commit and report a push that never happened.
+        await runWithStubGit(["-c", "user.name=push", "commit", "-m", "msg"]);
+
+        expect(seen).toEqual(["commit"]);
+    });
+
+    itPosix("stays silent when options are all there is", async () => {
+        const seen: string[] = [];
+        setGitSuccessListener((subcommand) => seen.push(subcommand));
+
+        await runWithStubGit(["--literal-pathspecs"]);
+
+        expect(seen).toEqual([]);
+    });
+
+    itPosix("stays silent for subcommands outside the hook's narrow set", async () => {
+        const seen: string[] = [];
+        setGitSuccessListener((subcommand) => seen.push(subcommand));
+
+        await runWithStubGit(["status", "--porcelain"]);
+
+        expect(seen).toEqual([]);
+    });
+
+    itPosix("stays silent when the command fails", async () => {
+        const seen: string[] = [];
+        setGitSuccessListener((subcommand) => seen.push(subcommand));
+
+        await expect(runWithStubGit(["push"], "exit 1")).rejects.toThrow();
+
+        expect(seen).toEqual([]);
+    });
+
+    itPosix("never turns a listener fault into a failed Git command", async () => {
+        setGitSuccessListener(() => {
+            throw new Error("listener exploded");
+        });
+
+        await expect(runWithStubGit(["push"])).resolves.toBeUndefined();
+    });
+
+    itPosix("stops reporting once the listener is cleared", async () => {
+        const seen: string[] = [];
+        setGitSuccessListener((subcommand) => seen.push(subcommand));
+        await runWithStubGit(["commit"]);
+        setGitSuccessListener(undefined);
+
+        await runWithStubGit(["commit"]);
+
+        expect(seen).toEqual(["commit"]);
     });
 });

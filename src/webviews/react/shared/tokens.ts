@@ -9,19 +9,36 @@
  */
 export const JETBRAINS_UI = {
     color: {
-        panel: "var(--vscode-sideBar-background, #2f3848)",
+        panel: "var(--vscode-sideBar-background, var(--vscode-editor-background, #2f3848))",
         editor: "var(--vscode-editor-background, #2b3342)",
         toolbar: "var(--vscode-editorGroupHeader-tabsBackground, #394354)",
-        border: "var(--vscode-panel-border, rgba(158, 169, 190, 0.22))",
+        sectionHeader:
+            "var(--vscode-sideBarSectionHeader-background, var(--vscode-editorGroupHeader-tabsBackground, #394354))",
+        border: "var(--vscode-panel-border, #465066)",
         divider: "var(--vscode-panel-border, #465066)",
+        sidebarBorder: "var(--vscode-sideBar-border, var(--vscode-panel-border, #465066))",
         input: "var(--vscode-input-background, #202633)",
         inputBorder: "var(--vscode-input-border, rgba(160, 174, 205, 0.28))",
         foreground: "var(--vscode-foreground, #d7dce5)",
         muted: "var(--vscode-descriptionForeground, #9ca6b8)",
+        disabled: "var(--vscode-disabledForeground, rgba(215, 220, 229, 0.55))",
         selected: "var(--vscode-list-activeSelectionBackground, #4f5f7c)",
         selectedForeground: "var(--vscode-list-activeSelectionForeground, #eef3ff)",
         hover: "var(--vscode-list-hoverBackground, rgba(111, 126, 156, 0.24))",
+        toolbarHover: "var(--vscode-toolbar-hoverBackground, rgba(111, 126, 156, 0.24))",
         focus: "var(--vscode-focusBorder, #6aa2ff)",
+        primary: "var(--vscode-button-background, #5572d9)",
+        primaryHover: "var(--vscode-button-hoverBackground, #6382eb)",
+        primaryForeground: "var(--vscode-button-foreground, #ffffff)",
+        added: "var(--vscode-gitDecoration-addedResourceForeground, #73c991)",
+        modified: "var(--vscode-gitDecoration-modifiedResourceForeground, #d19a66)",
+        deleted: "var(--vscode-gitDecoration-deletedResourceForeground, #c74e39)",
+        // Not `--vscode-checkbox-border`, however much it looks like the right token: that one
+        // outlines VS Code's native checkbox against `checkbox.background`, and on a dark theme
+        // it is `#3c3c3c` — black against this panel. The button background is the nearest
+        // token that is guaranteed to contrast with the surface these checkboxes actually sit on.
+        checkboxUncheckedBorder: "var(--vscode-button-background, rgba(206, 214, 230, 0.72))",
+        checkboxCheckedBackground: "var(--vscode-checkbox-background, rgba(106, 162, 255, 0.16))",
         branch: "var(--vscode-charts-blue, #6da7ff)",
         tag: "var(--vscode-charts-orange, #d99b38)",
         head: "var(--vscode-charts-green, #79c76d)",
@@ -40,11 +57,26 @@ export const JETBRAINS_UI = {
     },
     size: {
         icon: 14,
+        /** Commit-graph rows and every control: the product's base rhythm. */
         rowHeight: 24,
+        /**
+         * File- and branch-tree rows, two pixels tighter than a graph row.
+         *
+         * The trees are the densest surface in the product and the one most
+         * often read as a list rather than scanned as a timeline, so they run
+         * closer than the graph does. This was a `22px` literal in three places
+         * with nothing saying it was deliberate; naming it is what separates a
+         * second density from a drifted one.
+         */
+        treeRowHeight: 22,
         toolbarHeight: 32,
         splitter: 3,
+        badgeRadius: 3,
         radius: 4,
         selectedRadius: 5,
+        /** Menus, dialogs, popovers. One step softer than a control, never more. */
+        floatingRadius: 5,
+        pillRadius: 999,
         treeIndent: 18,
     },
     graph: {
@@ -60,11 +92,13 @@ export const JETBRAINS_UI = {
 } as const;
 
 /**
- * Graph lane colors assigned round-robin to concurrent branches in the commit graph.
+ * Graph lane colors for dark themes, assigned round-robin to concurrent branches.
  *
  * The palette is ordered for visual contrast so adjacent lanes remain distinguishable
  * even when many branches are active. Colors are hardcoded because VS Code does not
- * provide graph-lane theming variables.
+ * provide graph-lane theming variables, which makes these the only colors the product
+ * owns outright — so both themes have to be supplied explicitly. Every entry clears
+ * 3:1 (WCAG 1.4.11, non-text) against a dark editor background.
  */
 export const GRAPH_LANE_COLORS = [
     "#7bcf6f",
@@ -80,6 +114,210 @@ export const GRAPH_LANE_COLORS = [
 ];
 
 /**
+ * Graph lane colors for light themes.
+ *
+ * A single palette cannot serve both themes: clearing 3:1 against white requires a
+ * relative luminance at or below 0.175, while clearing it against the dark editor
+ * background requires 0.20 or above. Same hues as {@link GRAPH_LANE_COLORS} with
+ * lightness lowered, staggered so adjacent lanes differ in lightness as well as hue.
+ * Every entry clears 3.5:1 against `#f3f3f3` and 3.9:1 against pure white.
+ */
+export const GRAPH_LANE_COLORS_LIGHT = [
+    "#258d13",
+    "#005cbb",
+    "#7e54cc",
+    "#005f52",
+    "#b37300",
+    "#b13c42",
+    "#256700",
+    "#4374cf",
+    "#904da4",
+    "#684900",
+];
+
+/**
+ * Accent hues for the "color" toolbar-icon style.
+ *
+ * The pastels these replaced were tuned for a dark panel and fell to roughly
+ * 1.5:1 on a light one. Each entry now takes its hue from a host token that
+ * already ships light and dark values, then mixes in 30% of
+ * `--vscode-icon-foreground` to pull the result toward whichever end of the
+ * active theme is legible. On the stock Dark+ and Light+ themes that lands
+ * every entry above the 3:1 non-text threshold (WCAG 1.4.11) with no second
+ * hand-tuned palette. It is not a floor: chart and ANSI colors are authored by
+ * the theme, so a user-authored theme can put any of them anywhere, and the mix
+ * improves the odds rather than guaranteeing a ratio. Guaranteeing one would
+ * mean measuring each accent against the resolved toolbar background at runtime
+ * and correcting it there.
+ *
+ * That trade is affordable because hue here is decoration. The `iconStyle`
+ * setting's `standard` value drops it entirely, and every control carries a
+ * label and its own glyph, so nothing depends on color. The literal fallbacks
+ * are the original pastels and only render on a host that defines no chart
+ * colors at all.
+ */
+function iconAccent(token: string, fallback: string): string {
+    return `color-mix(in srgb, var(${token}, ${fallback}) 70%, var(--vscode-icon-foreground, #c5c5c5))`;
+}
+
+export const ICON_ACCENTS = {
+    amber: iconAccent("--vscode-charts-yellow", "#f2c46d"),
+    orange: iconAccent("--vscode-charts-orange", "#ff9e64"),
+    sky: iconAccent("--vscode-charts-blue", "#8fd5ff"),
+    cyan: iconAccent("--vscode-terminal-ansiCyan", "#4ec7d6"),
+    violet: iconAccent("--vscode-charts-purple", "#c8a2ff"),
+    pink: iconAccent("--vscode-terminal-ansiMagenta", "#f3b1cf"),
+    green: iconAccent("--vscode-charts-green", "#a6e3a1"),
+    danger: iconAccent("--vscode-charts-red", "#ff4d4f"),
+} as const;
+
+/**
+ * The accent each toolbar action wears, and the rule that keeps them apart.
+ *
+ * Hue answers exactly one question in a toolbar — *which action is this?* — so
+ * no two actions in the same bar may share one. Picking hues at the call site
+ * had no arbiter, and three of them collided: shelf and show-diff both landed
+ * on violet, while stash, expand-all and collapse-all all landed on pink. The
+ * strip read as a rainbow and still failed to tell its buttons apart.
+ *
+ * `expandCollapse` is the one deliberate sharing. Expand and collapse are two
+ * halves of one control, and a shared hue is what makes the eye read them as a
+ * pair instead of as two unrelated buttons.
+ *
+ * Hues do repeat *across* bars — push is green in the tab bar, the
+ * expand/collapse pair is green in the toolbar below it — because a bar is the
+ * unit the eye scans. The tab bar is traffic with the remote; the panel
+ * toolbars are work on the local repository. `toolbar-icon-accents.test.tsx`
+ * enforces both halves of this rule, per bar.
+ */
+export const TOOLBAR_ICON_ACCENTS = {
+    /** Tab bar — traffic with the remote. */
+    sync: ICON_ACCENTS.violet,
+    fetch: ICON_ACCENTS.cyan,
+    pull: ICON_ACCENTS.sky,
+    push: ICON_ACCENTS.green,
+    /** Window chrome rather than Git, and the only such control in its bar. */
+    dock: ICON_ACCENTS.amber,
+
+    /** Panel toolbars — work on the local repository. */
+    refresh: ICON_ACCENTS.cyan,
+    rollback: ICON_ACCENTS.amber,
+    viewOptions: ICON_ACCENTS.sky,
+    groupBy: ICON_ACCENTS.sky,
+    stash: ICON_ACCENTS.pink,
+    shelf: ICON_ACCENTS.violet,
+    showDiff: ICON_ACCENTS.orange,
+    /** One hue, two buttons: see above. */
+    expandCollapse: ICON_ACCENTS.green,
+} as const;
+
+/**
+ * Which accents may appear together, by bar.
+ *
+ * The uniqueness rule is only meaningful per bar, so the bars have to be
+ * written down somewhere a test can read them. Keeping the roster here rather
+ * than in the test means adding a button to a toolbar and forgetting to widen
+ * its roster fails loudly instead of silently escaping the rule.
+ */
+export const TOOLBAR_ACCENT_BARS = {
+    tabBar: ["sync", "fetch", "pull", "push", "dock"],
+    commitToolbar: [
+        "refresh",
+        "rollback",
+        "viewOptions",
+        "stash",
+        "shelf",
+        "showDiff",
+        "expandCollapse",
+    ],
+    shelfToolbar: ["refresh", "groupBy", "expandCollapse"],
+    stashToolbar: ["refresh", "showDiff", "groupBy", "expandCollapse"],
+} as const satisfies Record<string, readonly (keyof typeof TOOLBAR_ICON_ACCENTS)[]>;
+
+/**
+ * Stacking order for layered surfaces, lowest to highest.
+ *
+ * Portalled surfaces have to out-rank in-flow content, but they only need to
+ * out-rank each other by one step; `9999` and `10000` said nothing about which
+ * surface was meant to win. The context menu sits at the top because it can be
+ * opened from any of the surfaces below it.
+ */
+export const Z_INDEX = {
+    /** In-flow content that paints over its immediate siblings. */
+    raised: 1,
+    /** Headers and rows pinned inside a scroll container. */
+    sticky: 2,
+    /** Hover surfaces that follow the cursor and take no clicks. */
+    tooltip: 30,
+    /** Dialogs and their backdrops. */
+    modal: 50,
+    /** Portalled popovers anchored to a control. */
+    popover: 60,
+    /** Portalled context menus. Always topmost. */
+    menu: 70,
+} as const;
+
+/**
+ * Every font size the webview is allowed to render, in pixels.
+ *
+ * Hierarchy in this product comes from weight, color, and position — not from
+ * scaling text up — so the scale is deliberately short. Three sizes carry the
+ * anchored UI:
+ *
+ * - `caption` (11) — timestamps, authors, counts, badges, hints. The floor.
+ * - `label` (12) — buttons, tabs, toolbar text, column headers.
+ * - `body` (13) — commit subjects, file names, row content, section titles.
+ *
+ * `dialogTitle` (14) is the one step above body, and it exists because the three
+ * anchored sizes could not do this job. A modal heading set at 13/600 is
+ * indistinguishable from the body text directly beneath it, which left every
+ * dialog in the product — shelve, unshelve, clean-up, rename, stash/unstash, and
+ * the interactive-rebase dialog — reaching for 14px anyway. Ten call sites had
+ * already voted; the rule was what was wrong, so the rule moved. It is scoped to
+ * modal headings and must not be used to emphasize anchored text.
+ *
+ * `type-scale.test.ts` enforces this list against the webview source, so a fifth
+ * size fails the suite rather than arriving quietly.
+ */
+export const TYPE_SCALE = {
+    caption: 11,
+    label: 12,
+    body: 13,
+    dialogTitle: 14,
+} as const;
+
+/** The allowed sizes as a set, for the guard test and any runtime assertion. */
+export const TYPE_SCALE_PX: readonly number[] = Object.values(TYPE_SCALE);
+
+/**
+ * The complete shadow vocabulary, lowest lift to highest.
+ *
+ * A shadow in this system carries exactly one meaning: *this layer is temporary
+ * and sits above the page.* Anchored surfaces — panels, toolbars, rows, inputs,
+ * the graph canvas — get a 1px border and a tonal step instead, never a shadow.
+ *
+ * These lived as literals at each float site, which is how four of the five
+ * surfaces ended up wearing the wrong one: the commit tooltip took the dialog
+ * shadow, the CI-status popover took the drag shadow — the heaviest in the
+ * system, on a hover surface — the unstash dialog invented a sixth value, and
+ * the drag preview took the lightest. Lift is what tells the user how far above
+ * the page a surface is, so a popover casting a drag shadow is a lie about the
+ * layer. Naming them here gives the assignment one place to be reviewed.
+ */
+export const SHADOW = {
+    /** Transient surfaces that follow the cursor: tooltips, popovers, hints. */
+    popover: "0 4px 14px rgba(0, 0, 0, 0.35)",
+    /** Context menus and dropdowns: a tight contact shadow plus an ambient one. */
+    menu: "0 8px 24px rgba(0, 0, 0, 0.45), 0 2px 8px rgba(0, 0, 0, 0.35)",
+    /** Modal dialogs. */
+    dialog: "0 10px 28px rgba(0, 0, 0, 0.42)",
+    /** The lifted state of a row under a direct-manipulation gesture. */
+    drag: "0 18px 46px rgba(0, 0, 0, 0.5)",
+    /** Not elevation: a 1px inner edge for surfaces that cannot spend layout on a border. */
+    insetHairline: "inset 0 0 0 1px rgba(160, 189, 237, 0.14)",
+} as const;
+
+/**
  * Maps Git porcelain status codes to VS Code git-decoration theme colors.
  *
  * Each entry uses a VS Code theme variable with a JetBrains-matching fallback.
@@ -87,14 +325,14 @@ export const GRAPH_LANE_COLORS = [
  * to color file status badges and tree icons consistently with the editor theme.
  */
 export const GIT_STATUS_COLORS: Record<string, string> = {
-    M: "var(--vscode-gitDecoration-modifiedResourceForeground, #d19a66)",
-    A: "var(--vscode-gitDecoration-addedResourceForeground, #73c991)",
-    D: "var(--vscode-gitDecoration-deletedResourceForeground, #c74e39)",
+    M: JETBRAINS_UI.color.modified,
+    A: JETBRAINS_UI.color.added,
+    D: JETBRAINS_UI.color.deleted,
     R: "var(--vscode-gitDecoration-renamedResourceForeground, #a371f7)",
     U: "var(--vscode-gitDecoration-conflictingResourceForeground, #e5c07b)",
     "?": "var(--vscode-gitDecoration-untrackedResourceForeground, #73c991)",
-    C: "var(--vscode-gitDecoration-addedResourceForeground, #73c991)",
-    T: "var(--vscode-gitDecoration-modifiedResourceForeground, #d19a66)",
+    C: JETBRAINS_UI.color.added,
+    T: JETBRAINS_UI.color.modified,
 };
 
 /**
@@ -115,45 +353,30 @@ export const GIT_STATUS_LABELS: Record<string, string> = {
 };
 
 /**
- * File extension to badge mapping used in the file tree and commit detail panes.
+ * Shared surface for commit ref badges (HEAD, tags, remote/local branches).
  *
- * Each entry provides a short label (1–2 characters) and a background color.
- * `fg` is optional and defaults to white when omitted. Callers look up the
- * file extension (lowercase, no dot) to render a compact file-type badge.
+ * Every ref badge uses the same background/foreground pair rather than a per-type
+ * fill. VS Code guarantees these two tokens are legible together on every theme,
+ * including user-authored ones; a per-type fill cannot make that guarantee, because
+ * the fill follows the theme while the label color cannot follow it in pure CSS.
+ * Ref type is carried by {@link REF_ACCENT_COLORS} on the leading icon and by the
+ * ref name itself, so no information depends on the fill.
  */
-export const FILE_TYPE_BADGES: Record<string, { label: string; bg: string; fg?: string }> = {
-    ts: { label: "TS", bg: "#3178c6" },
-    tsx: { label: "TX", bg: "#3178c6" },
-    js: { label: "JS", bg: "#f0db4f", fg: "#323330" },
-    jsx: { label: "JX", bg: "#f0db4f", fg: "#323330" },
-    json: { label: "JN", bg: "#5b5b5b" },
-    md: { label: "M", bg: "#519aba" },
-    css: { label: "CS", bg: "#563d7c" },
-    scss: { label: "SC", bg: "#c6538c" },
-    html: { label: "HT", bg: "#e44d26" },
-    svg: { label: "SV", bg: "#ffb13b", fg: "#323330" },
-    py: { label: "PY", bg: "#3572a5" },
-    rs: { label: "RS", bg: "#dea584" },
-    go: { label: "GO", bg: "#00add8" },
-    yaml: { label: "YA", bg: "#cb171e" },
-    yml: { label: "YA", bg: "#cb171e" },
-    xml: { label: "XM", bg: "#f26522" },
-    sh: { label: "SH", bg: "#4eaa25" },
-    toml: { label: "TO", bg: "#9c4221" },
-    lock: { label: "LK", bg: "#666" },
-    gitignore: { label: "GI", bg: "#f34f29" },
-    env: { label: "EN", bg: "#ecd53f", fg: "#323330" },
+export const REF_BADGE_SURFACE = {
+    bg: "var(--vscode-badge-background, #4d5b78)",
+    fg: "var(--vscode-badge-foreground, #eef3ff)",
 };
 
 /**
- * Background and foreground colors for commit ref badges (HEAD, tags, remote/local branches).
+ * Per-type accent applied to the leading icon of a ref badge.
  *
- * Mapped through `JETBRAINS_UI` tokens so badge colors stay consistent with the
- * branch column and commit graph palette.
+ * Decorative reinforcement only: the icon glyph and the ref name already distinguish
+ * type, so these carry no information on their own and are held to the 3:1 non-text
+ * threshold rather than 4.5:1.
  */
-export const REF_BADGE_COLORS = {
-    head: { bg: JETBRAINS_UI.color.head, fg: "#fff" },
-    tag: { bg: JETBRAINS_UI.color.tag, fg: "#fff" },
-    remote: { bg: JETBRAINS_UI.color.branch, fg: "#fff" },
-    local: { bg: "#7f8ee8", fg: "#fff" },
+export const REF_ACCENT_COLORS = {
+    head: JETBRAINS_UI.color.head,
+    tag: JETBRAINS_UI.color.tag,
+    remote: JETBRAINS_UI.color.branch,
+    local: JETBRAINS_UI.color.currentBranch,
 };

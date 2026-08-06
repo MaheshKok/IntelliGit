@@ -1,0 +1,38 @@
+.review-prompt-star {
+    background: none;
+    border: none;
+    padding: 0 2px;
+    font-size: 26px;
+    line-height: 1;
+    cursor: pointer;
+    color: var(--intelligit-pycharm-foreground);
+    opacity: 0.55;
+    transition: opacity 90ms ease-out;
+}
+
+.review-prompt-star[data-filled="true"] {
+    /* Warning foreground is the theme's amber; it keeps contrast in both light and dark. */
+    color: var(--vscode-editorWarning-foreground, #d9a343);
+    opacity: 1;
+}
+
+.review-prompt-star:focus-visible {
+    outline: 1px solid var(--vscode-focusBorder);
+    outline-offset: 2px;
+    border-radius: 2px;
+}
+
+.review-prompt-link {
+    background: none;
+    border: none;
+    padding: 0;
+    font-size: 11px;
+    cursor: pointer;
+    text-decoration: underline;
+    color: var(--vscode-textLink-foreground);
+}
+
+.review-prompt-link:focus-visible {
+    outline: 1px solid var(--vscode-focusBorder);
+    outline-offset: 2px;
+}

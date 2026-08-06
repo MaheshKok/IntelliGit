@@ -834,6 +834,14 @@ vi.mock("../../../src/git/executor", () => ({
         });
         deriveFor = (repoRoot: string) => new MockGitExecutor(repoRoot);
     },
+    setGitSuccessListener: vi.fn(),
+    notifyGitSuccessSafely: vi.fn(),
+}));
+
+// The review prompt owns its own suite, and the mock contexts here carry no global
+// storage for it to use; stubbing it keeps this suite focused on activation wiring.
+vi.mock("../../../src/services/reviewPrompt", () => ({
+    registerReviewPrompt: vi.fn(async () => undefined),
 }));
 
 vi.mock("../../../src/git/operations", async (importOriginal) => {

@@ -331,5 +331,15 @@
     "rebase.action.fixup": "修正",
     "rebase.action.continueRebase": "繼續變基",
     "rebase.action.abortRebase": "中止變基",
-    "rebase.dialog.missingMessage": "下列提交需要提交訊息：{hashes}"
+    "rebase.dialog.missingMessage": "下列提交需要提交訊息：{hashes}",
+    "review.card.title": "喜歡 IntelliGit 嗎？",
+    "review.card.subtitle": "您會給它幾分？",
+    "review.card.starLabel": "5 分中的 {count} 分",
+    "review.card.later": "稍後",
+    "review.card.never": "不再詢問",
+    "review.card.notNow": "暫時不用",
+    "review.card.unhappyTitle": "很抱歉。",
+    "review.card.unhappyBody": "告訴我們缺少什麼，我們會跟進。",
+    "review.card.reportIssue": "回報問題",
+    "review.card.rateAnyway": "或在市集評分"
 }

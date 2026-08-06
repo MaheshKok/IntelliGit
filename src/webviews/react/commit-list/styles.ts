@@ -1,6 +1,6 @@
 import type { CSSProperties } from "react";
 import { ROW_HEIGHT } from "../graph";
-import { JETBRAINS_UI } from "../shared/tokens";
+import { JETBRAINS_UI, Z_INDEX } from "../shared/tokens";
 
 export const AUTHOR_COL_WIDTH = 104;
 export const DATE_COL_WIDTH = 118;
@@ -38,6 +38,23 @@ export const FILTER_INPUT_WRAP_STYLE: CSSProperties = {
     maxWidth: 460,
 };
 
+/**
+ * Focus ring for the commit filter, matching the branch search input beside it.
+ *
+ * The field previously set `outline: none` and defined no focus style, so a
+ * keyboard user tabbing into the commit graph had no way to see where focus
+ * had landed — WCAG 2.4.7. The transparent outline reserves the ring's space so
+ * focusing does not shift the 20px-tall field, and `:focus-visible` only paints
+ * it for keyboard entry, never for a click.
+ */
+export const FILTER_INPUT_CLASS = "commit-filter-input";
+
+export const FILTER_INPUT_CLASS_CSS = `
+    .${FILTER_INPUT_CLASS}:focus-visible {
+        outline-color: var(--vscode-focusBorder, #007acc);
+    }
+`;
+
 export const FILTER_INPUT_STYLE: CSSProperties = {
     width: "100%",
     height: 20,
@@ -47,7 +64,8 @@ export const FILTER_INPUT_STYLE: CSSProperties = {
     border: `1px solid ${JETBRAINS_UI.color.inputBorder}`,
     borderRadius: `${JETBRAINS_UI.size.radius}px`,
     fontSize: "12px",
-    outline: "none",
+    outline: "2px solid transparent",
+    outlineOffset: "-1px",
 };
 
 export const FILTER_CLEAR_BUTTON_STYLE: CSSProperties = {
@@ -73,9 +91,13 @@ export const BRANCH_SCOPE_STYLE: CSSProperties = {
     overflow: "hidden",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
-    opacity: 0.82,
+    // No `opacity` and no `marginLeft`: this label is already painted in the muted
+    // foreground, and fading muted text a further 18% pushed it under the 4.5:1 that
+    // WCAG 1.4.3 asks of body text. The 6px margin sat on top of the filter bar's own
+    // 6px flex gap, so this one chip stood 12px off its neighbour while everything
+    // else in the row sat at 6px.
+    color: JETBRAINS_UI.color.muted,
     fontSize: "11px",
-    marginLeft: 6,
     flexShrink: 0,
 };
 
@@ -114,7 +136,7 @@ export const CANVAS_STYLE: CSSProperties = {
     left: 0,
     top: 0,
     pointerEvents: "none",
-    zIndex: 1,
+    zIndex: Z_INDEX.raised,
 };
 
 export const LOADING_MORE_STYLE: CSSProperties = {

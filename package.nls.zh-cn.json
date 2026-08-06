@@ -77,5 +77,9 @@
     "configuration.commitChecks.providers.markdownDescription": "Enable or disable commit-check badges per provider. Keys are `github`, `gitlab`, `bitbucket-cloud`, and `bitbucket-server`; set one to `false` to suppress its badges. A disabled provider that matches your origin remote yields no badge (IntelliGit does not fall through to another remote). All default to `true`. Changes take effect after a window reload.",
     "configuration.commitChecks.ciCdFilter.markdownDescription": "覆盖哪些检查名称会被视为徽章的 CI/CD（仅 GitHub 和 GitLab）。提供正则表达式（与每个检查的名称和说明进行不区分大小写的匹配）；留空则使用内置模式。无论此值如何，代码审查机器人始终会被排除。更改会在重新加载窗口后生效。",
     "command.openInVsCodeMergeEditor": "Open in VS Code Merge Editor",
-    "configuration.clearLastCommit.markdownDescription": "本地提交成功后清除提交消息草稿。禁用此设置可在提交面板中保留草稿。"
+    "configuration.clearLastCommit.markdownDescription": "本地提交成功后清除提交消息草稿。禁用此设置可在提交面板中保留草稿。",
+    "configuration.reviewPrompt.enabled.description": "在使用 IntelliGit 一段时间后请求应用商店评分。禁用后将不再询问。",
+    "command.showReviewPrompt": "显示评价提示",
+    "command.resetReviewPrompt": "重置评价提示状态",
+    "command.showReviewPromptCard": "显示评价卡片"
 }

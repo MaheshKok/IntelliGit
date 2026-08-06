@@ -5,6 +5,25 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.24.0] - 2026-08-04
+
+### Added
+
+- Added an opt-out marketplace rating prompt that appears at most three times, only after 30 successful commits or pushes across 5 active days and 14 days since install, and never again once answered. Ratings route to the VS Marketplace on official VS Code builds and to Open VSX everywhere else, controlled by `intelligit.reviewPrompt.enabled`.
+- Added `IntelliGit: Show Review Prompt Card`, which renders the rating card directly in the commit graph with no usage gating and no notification fallback, and says so plainly when no graph view is open to host it.
+- Added `IntelliGit: Reset Review Prompt State`, which clears the recorded rating decision and the usage counters behind it on the current machine after a modal confirmation, either back to a fresh install or armed so the next successful commit asks. It never changes a rating already published to a marketplace.
+
+### Fixed
+
+- Fixed the repository lock treating an unrecognized process-liveness errno as proof that the owning window had exited, which could let a second window take over a lock that was still held.
+- Fixed the shelf health banner and the shelf tab's warning count falling back to the editor background for their text colour, which rendered them as near-invisible light text on the pale warning band used by light themes.
+- Fixed the sidebar Graph view offering to host the rating card it cannot render, which swallowed the request instead of letting the notification take over.
+- Fixed the Git success hook reading the subcommand from the first argument, so every commit made with files selected in the Changes panel — which prepends a global option — went uncounted, and the usage gating behind the rating prompt could never advance.
+
+### Changed
+
+- The rating prompt now appears as a centered card in the commit graph rather than as a notification, with a five-star control that opens the marketplace review page on the star click itself for a high rating and asks a low one whether to send feedback instead — the marketplace link stays available either way. The notification is still used whenever no graph view is on screen, and the gating, the three-ask cap and the never-ask-again guarantee are unchanged.
+
 ## [0.23.0] - 2026-08-02
 
 ### Added

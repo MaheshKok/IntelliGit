@@ -588,5 +588,14 @@
     "Applying merge result for {path}...": "正在应用 {path} 的合并结果...",
     "File is not in a conflicted state: {path}": "文件未处于冲突状态：{path}",
     "There are uncommitted changes, please commit or stash them first.": "存在未提交的更改，请先提交或贮藏。",
-    "Interactive rebase completed, but IntelliGit could not save its local completion state.": "交互式变基已完成，但 IntelliGit 无法保存本地完成状态。"
+    "Interactive rebase completed, but IntelliGit could not save its local completion state.": "交互式变基已完成，但 IntelliGit 无法保存本地完成状态。",
+    "Enjoying IntelliGit? A quick rating helps others find it.": "喜欢 IntelliGit 吗？一个简单的评分能帮助更多人发现它。",
+    "Rate IntelliGit": "评价 IntelliGit",
+    "Later": "以后",
+    "Don't ask again": "不再询问",
+    "Reset the IntelliGit rating prompt on this machine?": "要重置此计算机上的 IntelliGit 评价提示吗？",
+    "This deletes the record of your rating decision and the usage counters behind it. It affects this machine only, and never touches a rating you already published.": "这将删除您的评价决定记录以及相关的使用计数。仅影响此计算机，绝不会改动您已发布的评价。",
+    "Reset to a fresh install": "重置为全新安装状态",
+    "Reset and arm the next commit": "重置并在下次提交时询问",
+    "Open the IntelliGit graph in the bottom panel — the rating card renders there, not in the sidebar Graph view.": "请在底部面板中打开 IntelliGit 图谱，评价卡片显示在那里，而不是侧边栏的“图谱”视图中。"
 }

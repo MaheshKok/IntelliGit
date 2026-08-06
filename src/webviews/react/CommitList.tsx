@@ -13,6 +13,7 @@ import { commitHashesMatch, retryDelaysForCommitChecks } from "./commit-list/che
 import { useCommitGraphCanvas } from "./commit-list/useCommitGraphCanvas";
 import { isCommitAction, type CommitAction } from "../protocol/commitGraphTypes";
 import { JETBRAINS_UI } from "./shared/tokens";
+import { resolveLanePalette, useIsLightTheme } from "./shared/theme";
 import { t } from "./shared/i18n";
 import {
     AUTHOR_COL_WIDTH,
@@ -22,6 +23,8 @@ import {
     FILTER_BAR_STYLE,
     FILTER_CLEAR_BUTTON_STYLE,
     FILTER_ICON_STYLE,
+    FILTER_INPUT_CLASS,
+    FILTER_INPUT_CLASS_CSS,
     FILTER_INPUT_STYLE,
     FILTER_INPUT_WRAP_STYLE,
     headerRowStyle,
@@ -127,7 +130,9 @@ export function CommitList({
     // react-doctor-disable-next-line react-doctor/rerender-lazy-ref-init
     const checkRetryAttempts = useRef(new Map<string, RetryAttempt>());
 
-    const graphRows = useMemo(() => computeGraph(commits), [commits]);
+    const isLightTheme = useIsLightTheme();
+    const lanePalette = useMemo(() => resolveLanePalette(isLightTheme), [isLightTheme]);
+    const graphRows = useMemo(() => computeGraph(commits, lanePalette), [commits, lanePalette]);
     const maxCols = useMemo(
         () => graphRows.reduce((max, row) => Math.max(max, row.numColumns), 1),
         [graphRows],
@@ -386,10 +391,12 @@ export function CommitList({
         <div style={ROOT_STYLE}>
             {showSearch ? (
                 <div style={FILTER_BAR_STYLE}>
+                    <style>{FILTER_INPUT_CLASS_CSS}</style>
                     <SearchIcon size={16} style={FILTER_ICON_STYLE} />
                     <div style={FILTER_INPUT_WRAP_STYLE}>
                         <input
                             type="text"
+                            className={FILTER_INPUT_CLASS}
                             aria-label={t("commit.search.placeholder")}
                             placeholder={t("commit.search.placeholder")}
                             value={filterText}

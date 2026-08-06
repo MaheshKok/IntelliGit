@@ -9,6 +9,7 @@ import { ContextMenu, type MenuItem } from "../../shared/components/ContextMenu"
 import { RefreshButton } from "../../shared/components/RefreshButton";
 import { ToolbarIconButton } from "../../shared/components/ToolbarIconButton";
 import { t } from "../../shared/i18n";
+import { JETBRAINS_UI, TOOLBAR_ICON_ACCENTS } from "../../shared/tokens";
 import type { CommitPanelActiveOperation, CommitPanelRebaseControl } from "./operationTypes";
 
 interface Props {
@@ -22,6 +23,16 @@ interface Props {
     onStash: () => void;
     onOpenShelfMenu?: (event: React.MouseEvent<HTMLButtonElement>) => void;
     onShowDiff: () => void;
+    /**
+     * Whether the file tree has anything to act on.
+     *
+     * Expand, collapse and show-diff are no-ops on an empty tree, and the
+     * commit toolbar was the only one of the three panel toolbars that left
+     * them live anyway — the shelf and stash toolbars have always gated theirs.
+     * A control that looks clickable and does nothing costs the user a click to
+     * learn that.
+     */
+    hasFiles: boolean;
     onExpandAll: () => void;
     onCollapseAll: () => void;
     showAbortMerge: boolean;
@@ -50,6 +61,7 @@ export function Toolbar({
     onStash,
     onOpenShelfMenu,
     onShowDiff,
+    hasFiles,
     onExpandAll,
     onCollapseAll,
     showAbortMerge,
@@ -95,7 +107,7 @@ export function Toolbar({
             align="center"
             gap="2px"
             px="6px"
-            minH="30px"
+            minH={`${JETBRAINS_UI.size.toolbarHeight}px`}
             bg="var(--intelligit-pycharm-panel)"
             borderBottom="1px solid var(--intelligit-pycharm-border)"
             flexShrink={0}
@@ -109,13 +121,13 @@ export function Toolbar({
             <ToolbarIconButton
                 label={t("common.rollback")}
                 onClick={onRollback}
-                color="#f2c46d"
+                color={TOOLBAR_ICON_ACCENTS.rollback}
                 icon={<VscDiscard size={16} />}
             />
             <ToolbarIconButton
                 label={t("common.viewOptions")}
                 onClick={handleOpenViewMenu}
-                color="#8fd5ff"
+                color={TOOLBAR_ICON_ACCENTS.viewOptions}
                 icon={<VscEye size={16} />}
             />
             {viewMenuPosition && (
@@ -132,14 +144,14 @@ export function Toolbar({
             <ToolbarIconButton
                 label={t("common.stashChanges")}
                 onClick={onStash}
-                color="#ea8fb3"
+                color={TOOLBAR_ICON_ACCENTS.stash}
                 icon={<VscArchive size={16} />}
             />
             {onOpenShelfMenu ? (
                 <ToolbarIconButton
                     label={t("shelf.action.toolbar")}
                     onClick={onOpenShelfMenu}
-                    color="#c8a2ff"
+                    color={TOOLBAR_ICON_ACCENTS.shelf}
                     icon={<VscLibrary size={16} />}
                 />
             ) : null}
@@ -147,13 +159,15 @@ export function Toolbar({
             <ToolbarIconButton
                 label={t("common.showDiffPreview")}
                 onClick={onShowDiff}
-                color="#b8adff"
+                disabled={!hasFiles}
+                color={TOOLBAR_ICON_ACCENTS.showDiff}
                 icon={<VscNewFile size={16} />}
             />
             <ToolbarIconButton
                 label={t("common.expandAll")}
                 onClick={onExpandAll}
-                color="#f3b1cf"
+                disabled={!hasFiles}
+                color={TOOLBAR_ICON_ACCENTS.expandCollapse}
                 icon={
                     <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden>
                         <ExpandAllIconGlyph />
@@ -163,7 +177,8 @@ export function Toolbar({
             <ToolbarIconButton
                 label={t("common.collapseAll")}
                 onClick={onCollapseAll}
-                color="#f3b1cf"
+                disabled={!hasFiles}
+                color={TOOLBAR_ICON_ACCENTS.expandCollapse}
                 icon={
                     <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden>
                         <CollapseAllIconGlyph />

@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import * as https from "https";
 import * as path from "path";
+import { notifyGitSuccessSafely } from "../git/executor";
 import { GitOps } from "../git/operations";
 import { getErrorMessage } from "../utils/errors";
 import { runGitCommandWithAskpass } from "./gitAskpass";
@@ -1049,5 +1050,8 @@ async function runGitPushWithAskpass(
     auth: { username: string; token: string },
 ): Promise<void> {
     const ref = remoteBranch === branch ? branch : `${branch}:${remoteBranch}`;
-    await runGitCommandWithAskpass(cwd, ["push", "-u", remote, ref], auth);
+    const argv = ["push", "-u", remote, ref];
+    await runGitCommandWithAskpass(cwd, argv, auth);
+    // This push bypasses GitExecutor, so it has to report its own success.
+    notifyGitSuccessSafely(argv);
 }

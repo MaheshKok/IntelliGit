@@ -6,6 +6,7 @@ import { CollapseAllIconGlyph, ExpandAllIconGlyph } from "../../shared/component
 import { RefreshButton } from "../../shared/components/RefreshButton";
 import { ToolbarIconButton } from "../../shared/components/ToolbarIconButton";
 import { t } from "../../shared/i18n";
+import { JETBRAINS_UI, TOOLBAR_ICON_ACCENTS } from "../../shared/tokens";
 
 /** Callbacks and state for the compact Shelf toolbar. */
 export interface ShelfToolbarProps {
@@ -54,7 +55,7 @@ export function ShelfToolbar({
         <Flex
             data-testid="shelf-toolbar"
             align="center"
-            minH="30px"
+            minH={`${JETBRAINS_UI.size.toolbarHeight}px`}
             px="6px"
             gap="2px"
             bg="var(--intelligit-pycharm-panel)"
@@ -67,7 +68,7 @@ export function ShelfToolbar({
                 icon={<VscListTree size={16} />}
                 onClick={onToggleGroupBy}
                 pressed={groupByDir}
-                color="#8fd5ff"
+                color={TOOLBAR_ICON_ACCENTS.groupBy}
             />
             <ToolbarIconButton
                 label={t("shelf.action.expandAll")}
@@ -78,7 +79,7 @@ export function ShelfToolbar({
                 }
                 onClick={onExpandAll}
                 disabled={!canExpandOrCollapse}
-                color="#f3b1cf"
+                color={TOOLBAR_ICON_ACCENTS.expandCollapse}
             />
             <ToolbarIconButton
                 label={t("shelf.action.collapseAll")}
@@ -89,7 +90,7 @@ export function ShelfToolbar({
                 }
                 onClick={onCollapseAll}
                 disabled={!canExpandOrCollapse}
-                color="#f3b1cf"
+                color={TOOLBAR_ICON_ACCENTS.expandCollapse}
             />
             <ToolbarIconButton
                 label={t("shelf.action.moreOptions")}

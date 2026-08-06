@@ -352,5 +352,15 @@
     "rebase.action.fixup": "Исправление",
     "rebase.action.continueRebase": "Продолжить rebase",
     "rebase.action.abortRebase": "Прервать rebase",
-    "rebase.dialog.missingMessage": "Для следующих коммитов требуется сообщение коммита: {hashes}"
+    "rebase.dialog.missingMessage": "Для следующих коммитов требуется сообщение коммита: {hashes}",
+    "review.card.title": "Нравится IntelliGit?",
+    "review.card.subtitle": "Как бы вы его оценили?",
+    "review.card.starLabel": "Оценить на {count} из 5",
+    "review.card.later": "Позже",
+    "review.card.never": "Больше не спрашивать",
+    "review.card.notNow": "Не сейчас",
+    "review.card.unhappyTitle": "Сожалеем об этом.",
+    "review.card.unhappyBody": "Расскажите, чего не хватает, и мы это рассмотрим.",
+    "review.card.reportIssue": "Сообщить о проблеме",
+    "review.card.rateAnyway": "Или оцените в маркетплейсе"
 }

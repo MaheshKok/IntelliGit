@@ -588,5 +588,14 @@
     "Applying merge result for {path}...": "Stosowanie wyniku scalania dla {path}...",
     "File is not in a conflicted state: {path}": "Plik nie jest w stanie konfliktu: {path}",
     "There are uncommitted changes, please commit or stash them first.": "Istnieją niezatwierdzone zmiany — najpierw je zatwierdź lub odłóż do schowka.",
-    "Interactive rebase completed, but IntelliGit could not save its local completion state.": "Interaktywny rebase został ukończony, ale IntelliGit nie mógł zapisać lokalnego stanu ukończenia."
+    "Interactive rebase completed, but IntelliGit could not save its local completion state.": "Interaktywny rebase został ukończony, ale IntelliGit nie mógł zapisać lokalnego stanu ukończenia.",
+    "Enjoying IntelliGit? A quick rating helps others find it.": "Podoba Ci się IntelliGit? Krótka ocena pomoże innym go znaleźć.",
+    "Rate IntelliGit": "Oceń IntelliGit",
+    "Later": "Później",
+    "Don't ask again": "Nie pytaj ponownie",
+    "Reset the IntelliGit rating prompt on this machine?": "Zresetować monit o ocenę IntelliGit na tym komputerze?",
+    "This deletes the record of your rating decision and the usage counters behind it. It affects this machine only, and never touches a rating you already published.": "Spowoduje to usunięcie zapisu Twojej decyzji o ocenie i powiązanych liczników użycia. Dotyczy tylko tego komputera i nigdy nie zmienia już opublikowanej oceny.",
+    "Reset to a fresh install": "Zresetuj do stanu nowej instalacji",
+    "Reset and arm the next commit": "Zresetuj i zapytaj przy następnym zatwierdzeniu",
+    "Open the IntelliGit graph in the bottom panel — the rating card renders there, not in the sidebar Graph view.": "Otwórz graf IntelliGit w dolnym panelu — karta oceny wyświetla się tam, a nie w widoku Graf na pasku bocznym."
 }

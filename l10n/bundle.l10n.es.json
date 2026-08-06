@@ -588,5 +588,14 @@
     "Applying merge result for {path}...": "Aplicando el resultado de la fusión para {path}...",
     "File is not in a conflicted state: {path}": "El archivo no está en un estado de conflicto: {path}",
     "There are uncommitted changes, please commit or stash them first.": "Hay cambios sin confirmar; confírmalos o guárdalos primero.",
-    "Interactive rebase completed, but IntelliGit could not save its local completion state.": "La reorganización interactiva se completó, pero IntelliGit no pudo guardar su estado de finalización local."
+    "Interactive rebase completed, but IntelliGit could not save its local completion state.": "La reorganización interactiva se completó, pero IntelliGit no pudo guardar su estado de finalización local.",
+    "Enjoying IntelliGit? A quick rating helps others find it.": "¿Te gusta IntelliGit? Una valoración rápida ayuda a otras personas a descubrirlo.",
+    "Rate IntelliGit": "Valorar IntelliGit",
+    "Later": "Más tarde",
+    "Don't ask again": "No volver a preguntar",
+    "Reset the IntelliGit rating prompt on this machine?": "¿Restablecer el aviso de valoración de IntelliGit en este equipo?",
+    "This deletes the record of your rating decision and the usage counters behind it. It affects this machine only, and never touches a rating you already published.": "Esto elimina el registro de su decisión de valoración y los contadores de uso asociados. Solo afecta a este equipo y nunca modifica una valoración que ya haya publicado.",
+    "Reset to a fresh install": "Restablecer como una instalación nueva",
+    "Reset and arm the next commit": "Restablecer y preguntar en la próxima confirmación",
+    "Open the IntelliGit graph in the bottom panel — the rating card renders there, not in the sidebar Graph view.": "Abra el gráfico de IntelliGit en el panel inferior: la tarjeta de valoración se muestra ahí, no en la vista Gráfico de la barra lateral."
 }

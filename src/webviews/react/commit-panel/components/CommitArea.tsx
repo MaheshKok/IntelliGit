@@ -8,6 +8,7 @@ import { VscCheckbox } from "../../shared/components/VscCheckbox";
 import { ToolbarIconButton } from "../../shared/components/ToolbarIconButton";
 import { SYSTEM_FONT_STACK } from "../../../../utils/constants";
 import { t } from "../../shared/i18n";
+import { JETBRAINS_UI, Z_INDEX } from "../../shared/tokens";
 
 /** The host lifecycle states that fence commit-message generation controls. */
 export type CommitMessageGenerationStatus = "idle" | "requested" | "running";
@@ -41,12 +42,19 @@ interface Props {
 
 const NOOP = (): void => undefined;
 
+// A disabled filled button keeps its shape and loses its voice: the host's own
+// disabled foreground on a transparent ground, with the border tinted from that
+// same token. The white wash and the fixed light border this replaced both
+// assumed a dark panel, so on a light theme the button read as *more* prominent
+// disabled than enabled. Opacity stays off the list because
+// `--vscode-disabledForeground` is already translucent — dimming it twice makes
+// the control vanish rather than read as unavailable.
 const disabledButtonStyles = {
-    bg: "rgba(255,255,255,0.03)",
-    color: "var(--vscode-disabledForeground)",
-    borderColor: "rgba(176, 186, 205, 0.24)",
+    bg: "transparent",
+    color: JETBRAINS_UI.color.disabled,
+    borderColor: `color-mix(in srgb, ${JETBRAINS_UI.color.disabled} 45%, transparent)`,
     cursor: "default",
-    opacity: 0.62,
+    opacity: 1,
 };
 
 /** Trims the upstream branch label used by the commit form branch indicator. */
@@ -159,7 +167,7 @@ export function CommitArea({
                     position="absolute"
                     top="4px"
                     right="12px"
-                    zIndex={2}
+                    zIndex={Z_INDEX.sticky}
                     // An icon button has nothing to cut, copy, or paste; without this the
                     // webview's native editing menu opens over it.
                     onContextMenu={(event) => event.preventDefault()}
@@ -193,17 +201,24 @@ export function CommitArea({
                     color="var(--intelligit-pycharm-foreground)"
                     border="1px solid"
                     borderColor="var(--intelligit-pycharm-input-border)"
-                    borderRadius="4px"
+                    borderRadius={`${JETBRAINS_UI.size.radius}px`}
                     p="6px 8px"
                     pr="32px"
                     aria-busy={isGenerationActive}
                     fontFamily={SYSTEM_FONT_STACK}
                     fontSize="12px"
-                    _placeholder={{ color: "rgba(214, 219, 229, 0.48)" }}
-                    _focus={{
-                        borderColor: "var(--intelligit-pycharm-blue)",
-                        boxShadow: "0 0 0 1px rgba(95, 140, 255, 0.28)",
+                    // The host owns placeholder contrast. The fixed
+                    // `rgba(214,219,229,0.48)` this replaced was a light grey
+                    // tuned for a dark well; on a light theme it left the
+                    // placeholder barely visible against the field.
+                    _placeholder={{
+                        color: "var(--vscode-input-placeholderForeground, rgba(215, 220, 229, 0.62))",
                     }}
+                    // Border only. DESIGN.md §5 gives inputs a focus border and
+                    // explicitly no glow, and the 1px blue halo that used to sit
+                    // here doubled the focus ring on every theme that already
+                    // draws one.
+                    _focus={{ borderColor: "var(--intelligit-pycharm-blue)" }}
                 />
             </Box>
             <Flex align="center" gap="8px" p="6px 8px 8px">

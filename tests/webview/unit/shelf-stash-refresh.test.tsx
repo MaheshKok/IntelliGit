@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ShelfEntry } from "../../../src/webviews/protocol/commitPanelMessages";
 import { ShelfTab } from "../../../src/webviews/react/commit-panel/components/ShelfTab";
 import { RefreshButton } from "../../../src/webviews/react/shared/components/RefreshButton";
+import { ICON_ACCENTS } from "../../../src/webviews/react/shared/tokens";
 import { StashTab } from "../../../src/webviews/react/commit-panel/components/StashTab";
 import theme from "../../../src/webviews/react/commit-panel/theme";
 import { initReactDomTestEnvironment, mount, unmount } from "../../helpers/reactDomTestUtils";
@@ -149,8 +150,8 @@ describe("shelf and stash toolbars expose the same refresh control as commit", (
             expectDirectRefreshCodicon(busy.container);
             const busyStyle = refreshGlyphStyle(busy.container);
 
-            expect(idleStyle).toMatch(/rgb\(78,\s*199,\s*214\)/);
-            expect(busyStyle).toMatch(/rgb\(78,\s*199,\s*214\)/);
+            expect(idleStyle).toContain(ICON_ACCENTS.cyan);
+            expect(busyStyle).toContain(ICON_ACCENTS.cyan);
             expect(busyStyle).not.toContain("disabledForeground");
             expect(busyStyle).toContain("intelligit-spin");
             unmount(busy.root, busy.container);

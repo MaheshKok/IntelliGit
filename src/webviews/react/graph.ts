@@ -1,7 +1,5 @@
 import { GRAPH_LANE_COLORS, JETBRAINS_UI } from "./shared/tokens";
 
-const COLORS = GRAPH_LANE_COLORS;
-
 /** Horizontal spacing between adjacent commit-graph lanes. */
 export const LANE_WIDTH = JETBRAINS_UI.graph.laneWidth;
 
@@ -26,8 +24,15 @@ export interface GraphRow {
 /**
  * Computes lane assignments for commits in display order, reusing parent lanes
  * where possible and allocating side lanes for merge parents.
+ *
+ * `palette` is supplied by the caller so lane colors can follow the active theme;
+ * it defaults to the dark palette for callers that render on a known dark surface.
  */
-export function computeGraph(commits: Array<{ hash: string; parentHashes: string[] }>): GraphRow[] {
+export function computeGraph(
+    commits: Array<{ hash: string; parentHashes: string[] }>,
+    palette: string[] = GRAPH_LANE_COLORS,
+): GraphRow[] {
+    const COLORS = palette.length > 0 ? palette : GRAPH_LANE_COLORS;
     const lanes: (string | null)[] = [];
     const rows: GraphRow[] = [];
 

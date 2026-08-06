@@ -8,7 +8,7 @@ import React, {
 } from "react";
 import { createPortal } from "react-dom";
 import { SYSTEM_FONT_STACK } from "../../../../utils/constants";
-import { JETBRAINS_UI } from "../tokens";
+import { JETBRAINS_UI, SHADOW, Z_INDEX } from "../tokens";
 
 const ITEM_HEIGHT = 28;
 const ITEM_FONT_SIZE = 13;
@@ -20,10 +20,8 @@ const CONTEXT_MENU_STYLE_RULES = `
         color: var(--vscode-menu-selectionForeground, #DFE1E5);
     }
     .intelligit-context-item[data-disabled="false"]:focus-visible {
-        outline: 1px solid var(--vscode-focusBorder, #007acc);
-        box-shadow:
-            0 0 0 1px var(--vscode-focusBorder, #007acc),
-            inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+        outline: 1px solid ${JETBRAINS_UI.color.focus};
+        box-shadow: 0 0 0 1px ${JETBRAINS_UI.color.focus};
         outline-offset: -1px;
     }
 `;
@@ -31,13 +29,16 @@ const CONTEXT_MENU_BASE_STYLE: React.CSSProperties = {
     position: "fixed",
     // Portal context menus must float above all VS Code webview panes/popovers.
     // react-doctor-disable-next-line react-doctor/no-z-index-9999
-    zIndex: 9999,
+    zIndex: Z_INDEX.menu,
     background: JETBRAINS_UI.color.panel,
     border: `1px solid var(--vscode-menu-border, ${JETBRAINS_UI.color.menuBorder})`,
-    borderRadius: 8,
+    // 5px, not 8. A menu is a floating control surface, not a card; at 8px it
+    // was the softest corner in a product whose every other edge is 4-5px, and
+    // it read as a web dropdown pasted into an IDE.
+    borderRadius: JETBRAINS_UI.size.floatingRadius,
     padding: "4px 0",
     fontFamily: SYSTEM_FONT_STACK,
-    boxShadow: "0 8px 24px rgba(0,0,0,0.45), 0 2px 8px rgba(0,0,0,0.35)",
+    boxShadow: SHADOW.menu,
 };
 const SEPARATOR_STYLE: React.CSSProperties = {
     height: 1,

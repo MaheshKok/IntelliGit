@@ -338,5 +338,15 @@
     "rebase.action.squash": "Squash",
     "rebase.action.fixup": "Fixup",
     "rebase.action.continueRebase": "Continue Rebase",
-    "rebase.action.abortRebase": "Abort Rebase"
+    "rebase.action.abortRebase": "Abort Rebase",
+    "review.card.title": "Enjoying IntelliGit?",
+    "review.card.subtitle": "How would you rate it?",
+    "review.card.starLabel": "Rate {count} out of 5",
+    "review.card.later": "Later",
+    "review.card.never": "Don't ask again",
+    "review.card.notNow": "Not now",
+    "review.card.unhappyTitle": "Sorry to hear that.",
+    "review.card.unhappyBody": "Tell us what is missing and we will look at it.",
+    "review.card.reportIssue": "Report an issue",
+    "review.card.rateAnyway": "Or rate it on the marketplace"
 }

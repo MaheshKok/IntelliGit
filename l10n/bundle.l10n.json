@@ -588,5 +588,14 @@
     "Merge: {file}": "Merge: {file}",
     "Applying merge result for {path}...": "Applying merge result for {path}...",
     "File is not in a conflicted state: {path}": "File is not in a conflicted state: {path}",
-    "There are uncommitted changes, please commit or stash them first.": "There are uncommitted changes, please commit or stash them first."
+    "There are uncommitted changes, please commit or stash them first.": "There are uncommitted changes, please commit or stash them first.",
+    "Enjoying IntelliGit? A quick rating helps others find it.": "Enjoying IntelliGit? A quick rating helps others find it.",
+    "Rate IntelliGit": "Rate IntelliGit",
+    "Later": "Later",
+    "Don't ask again": "Don't ask again",
+    "Reset the IntelliGit rating prompt on this machine?": "Reset the IntelliGit rating prompt on this machine?",
+    "This deletes the record of your rating decision and the usage counters behind it. It affects this machine only, and never touches a rating you already published.": "This deletes the record of your rating decision and the usage counters behind it. It affects this machine only, and never touches a rating you already published.",
+    "Reset to a fresh install": "Reset to a fresh install",
+    "Reset and arm the next commit": "Reset and arm the next commit",
+    "Open the IntelliGit graph in the bottom panel — the rating card renders there, not in the sidebar Graph view.": "Open the IntelliGit graph in the bottom panel — the rating card renders there, not in the sidebar Graph view."
 }

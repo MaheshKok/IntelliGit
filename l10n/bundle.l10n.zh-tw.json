@@ -588,5 +588,14 @@
     "Applying merge result for {path}...": "正在套用 {path} 的合併結果...",
     "File is not in a conflicted state: {path}": "檔案未處於衝突狀態：{path}",
     "There are uncommitted changes, please commit or stash them first.": "存在未提交的變更，請先提交或收藏。",
-    "Interactive rebase completed, but IntelliGit could not save its local completion state.": "互動式變基已完成，但 IntelliGit 無法儲存本機完成狀態。"
+    "Interactive rebase completed, but IntelliGit could not save its local completion state.": "互動式變基已完成，但 IntelliGit 無法儲存本機完成狀態。",
+    "Enjoying IntelliGit? A quick rating helps others find it.": "喜歡 IntelliGit 嗎？簡單的評分能幫助更多人發現它。",
+    "Rate IntelliGit": "評價 IntelliGit",
+    "Later": "稍後",
+    "Don't ask again": "不再詢問",
+    "Reset the IntelliGit rating prompt on this machine?": "要重設這台電腦上的 IntelliGit 評價提示嗎？",
+    "This deletes the record of your rating decision and the usage counters behind it. It affects this machine only, and never touches a rating you already published.": "這將刪除您的評價決定記錄以及相關的使用計數。僅影響這台電腦，絕不會變更您已發佈的評價。",
+    "Reset to a fresh install": "重設為全新安裝狀態",
+    "Reset and arm the next commit": "重設並在下次提交時詢問",
+    "Open the IntelliGit graph in the bottom panel — the rating card renders there, not in the sidebar Graph view.": "請在底部面板中開啟 IntelliGit 圖譜，評價卡片顯示在那裡，而不是側邊欄的「圖譜」檢視中。"
 }

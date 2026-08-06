@@ -352,5 +352,15 @@
     "rebase.action.fixup": "Poprawka",
     "rebase.action.continueRebase": "Kontynuuj rebase",
     "rebase.action.abortRebase": "Przerwij rebase",
-    "rebase.dialog.missingMessage": "Wymagany jest komunikat commita dla: {hashes}"
+    "rebase.dialog.missingMessage": "Wymagany jest komunikat commita dla: {hashes}",
+    "review.card.title": "Podoba Ci się IntelliGit?",
+    "review.card.subtitle": "Jak byś to ocenił?",
+    "review.card.starLabel": "Oceń {count} na 5",
+    "review.card.later": "Później",
+    "review.card.never": "Nie pytaj ponownie",
+    "review.card.notNow": "Nie teraz",
+    "review.card.unhappyTitle": "Przykro nam to słyszeć.",
+    "review.card.unhappyBody": "Napisz, czego brakuje, a przyjrzymy się temu.",
+    "review.card.reportIssue": "Zgłoś problem",
+    "review.card.rateAnyway": "Albo oceń w portalu marketplace"
 }

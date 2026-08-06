@@ -15,6 +15,7 @@ import {
 import { getSettings } from "../../shared/settings";
 import { DISABLED_GLYPH_COLOR } from "../../shared/components/ToolbarIconButton";
 import { t } from "../../shared/i18n";
+import { JETBRAINS_UI, TOOLBAR_ICON_ACCENTS } from "../../shared/tokens";
 
 interface Props {
     stashCount: number;
@@ -49,7 +50,11 @@ const sharedTabStyles = {
         opacity: 1,
         borderBottomColor: "var(--intelligit-pycharm-blue)",
     },
-    _hover: { opacity: 0.9, bg: "rgba(255,255,255,0.02)" },
+    // The host's own list hover, not a fixed white wash. At 2% the old value was
+    // already the faintest feedback in the product on a dark theme, and on a
+    // light one it lightened an unselected tab toward the panel it sits on —
+    // hover made the tab harder to see, not easier.
+    _hover: { opacity: 0.9, bg: JETBRAINS_UI.color.hover },
 } as const;
 
 /**
@@ -140,11 +145,18 @@ export function TabBar({
                                     })}
                                     style={{
                                         marginLeft: 4,
-                                        borderRadius: 999,
+                                        borderRadius: JETBRAINS_UI.size.pillRadius,
                                         padding: "0 5px",
+                                        // Both validation tokens are optional in a
+                                        // VS Code theme, and the fallbacks must pair
+                                        // with each other: only the foreground is
+                                        // usually missing, so falling back to the
+                                        // editor background put white text on the
+                                        // theme's pale-yellow band. See
+                                        // ShelfHealthWarningBanner for the full note.
                                         background:
-                                            "var(--vscode-inputValidation-warningBackground)",
-                                        color: "var(--vscode-inputValidation-warningForeground)",
+                                            "var(--vscode-inputValidation-warningBackground, var(--vscode-editor-background, #2b3342))",
+                                        color: "var(--vscode-inputValidation-warningForeground, var(--vscode-editorWarning-foreground, #d99b38))",
                                     }}
                                 >
                                     {shelfWarningCount}
@@ -158,7 +170,7 @@ export function TabBar({
                         <GitActionButton
                             label={t("common.sync")}
                             onClick={gitActions.onSync}
-                            color="#c8a2ff"
+                            color={TOOLBAR_ICON_ACCENTS.sync}
                         >
                             <path
                                 fill="currentColor"
@@ -168,7 +180,7 @@ export function TabBar({
                         <GitActionButton
                             label={t("common.fetch")}
                             onClick={gitActions.onFetch}
-                            color="#8fd5ff"
+                            color={TOOLBAR_ICON_ACCENTS.fetch}
                         >
                             <path
                                 fill="none"
@@ -190,7 +202,7 @@ export function TabBar({
                         <GitActionButton
                             label={t("common.pull")}
                             onClick={gitActions.onPull}
-                            color="#8fd5ff"
+                            color={TOOLBAR_ICON_ACCENTS.pull}
                         >
                             <path
                                 fill="currentColor"
@@ -201,7 +213,7 @@ export function TabBar({
                         <GitActionButton
                             label={t("common.push")}
                             onClick={gitActions.onPush}
-                            color="#a6e3a1"
+                            color={TOOLBAR_ICON_ACCENTS.push}
                         >
                             <path
                                 fill="currentColor"
@@ -217,7 +229,7 @@ export function TabBar({
                             label={t("common.dockIntelliGit")}
                             title={t("common.dockIntelliGit")}
                             onClick={onDock}
-                            color="#8fd5ff"
+                            color={TOOLBAR_ICON_ACCENTS.dock}
                             standardColor="var(--vscode-button-foreground)"
                         >
                             <path

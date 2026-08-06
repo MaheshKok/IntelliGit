@@ -4879,6 +4879,130 @@ describe("view providers integration", () => {
         provider.dispose();
     });
 
+    it("CommitGraphViewProvider answers a review prompt only from its own open request", async () => {
+        const { CommitGraphViewProvider } =
+            await import("../../../src/views/CommitGraphViewProvider");
+        const provider = new CommitGraphViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+            makeGitOpsMock() as unknown as object,
+            makeCredentialStore() as unknown as object,
+        );
+        const webview = createWebviewView();
+
+        expect(provider.canShowReviewPrompt()).toBe(false);
+        provider.resolveWebviewView(
+            webview.view as unknown as object,
+            {} as unknown as object,
+            {} as unknown as object,
+        );
+        expect(provider.canShowReviewPrompt()).toBe(true);
+
+        const answer = provider.showReviewPrompt();
+        const request = postMessageSpy.mock.calls
+            .map((call) => call[0] as { type?: string; requestId?: string })
+            .find((message) => message.type === "showReviewPrompt");
+        expect(request?.requestId).toBeTruthy();
+
+        // A replayed or forged answer carrying any other id must not record a decision.
+        await webview.send({
+            type: "reviewPromptResult",
+            requestId: "not-the-open-request",
+            decision: "rated",
+        });
+        await webview.send({
+            type: "reviewPromptResult",
+            requestId: request?.requestId,
+            decision: "declined",
+            open: "feedback",
+        });
+
+        await expect(answer).resolves.toEqual({ decision: "declined", open: "feedback" });
+        provider.dispose();
+    });
+
+    it("CommitGraphViewProvider never offers the review card from a bundle without one", async () => {
+        const { CommitGraphViewProvider } =
+            await import("../../../src/views/CommitGraphViewProvider");
+        // The sidebar registration: same class, different bundle, no ReviewPromptCard in it.
+        const provider = new CommitGraphViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+            makeGitOpsMock() as unknown as object,
+            makeCredentialStore() as unknown as object,
+            { scriptFile: "webview-compactcommitgraph.js" } as unknown as object,
+        );
+        const webview = createWebviewView();
+        provider.resolveWebviewView(
+            webview.view as unknown as object,
+            {} as unknown as object,
+            {} as unknown as object,
+        );
+
+        expect(provider.canShowReviewPrompt()).toBe(false);
+        // Asking anyway resolves instead of hanging, so the caller falls back to the toast.
+        await expect(provider.showReviewPrompt()).resolves.toBeUndefined();
+        expect(
+            postMessageSpy.mock.calls
+                .map((call) => call[0] as { type?: string })
+                .some((message) => message.type === "showReviewPrompt"),
+        ).toBe(false);
+
+        provider.dispose();
+    });
+
+    it("CommitGraphViewProvider releases an unanswered review prompt when its webview dies", async () => {
+        const { CommitGraphViewProvider } =
+            await import("../../../src/views/CommitGraphViewProvider");
+        const provider = new CommitGraphViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+            makeGitOpsMock() as unknown as object,
+            makeCredentialStore() as unknown as object,
+        );
+        const webview = createWebviewView();
+        provider.resolveWebviewView(
+            webview.view as unknown as object,
+            {} as unknown as object,
+            {} as unknown as object,
+        );
+
+        const answer = provider.showReviewPrompt();
+        webview.dispose();
+
+        await expect(answer).resolves.toBeUndefined();
+        expect(provider.canShowReviewPrompt()).toBe(false);
+        provider.dispose();
+    });
+
+    it("CommitGraphViewProvider rejects an unsupported review prompt answer without stalling", async () => {
+        const { CommitGraphViewProvider } =
+            await import("../../../src/views/CommitGraphViewProvider");
+        const provider = new CommitGraphViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+            makeGitOpsMock() as unknown as object,
+            makeCredentialStore() as unknown as object,
+        );
+        const webview = createWebviewView();
+        provider.resolveWebviewView(
+            webview.view as unknown as object,
+            {} as unknown as object,
+            {} as unknown as object,
+        );
+
+        const answer = provider.showReviewPrompt();
+        const request = postMessageSpy.mock.calls
+            .map((call) => call[0] as { type?: string; requestId?: string })
+            .find((message) => message.type === "showReviewPrompt");
+
+        await webview.send({
+            type: "reviewPromptResult",
+            requestId: request?.requestId,
+            decision: "rated",
+            open: "https://example.com",
+        });
+
+        await expect(answer).resolves.toBeUndefined();
+        provider.dispose();
+    });
+
     it("CommitInfoViewProvider rejects invalid open-file-diff payloads", async () => {
         const { CommitInfoViewProvider } =
             await import("../../../src/views/CommitInfoViewProvider");

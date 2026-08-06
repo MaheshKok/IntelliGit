@@ -68,6 +68,7 @@ function CommitTabLayout({
                 onStash={controller.handleStash}
                 onOpenShelfMenu={controller.handleOpenShelfMenu}
                 onShowDiff={controller.handleShowDiff}
+                hasFiles={props.files.length > 0}
                 onExpandAll={controller.onExpandAll}
                 onCollapseAll={controller.onCollapseAll}
                 showAbortMerge={controller.hasMergeConflicts}
