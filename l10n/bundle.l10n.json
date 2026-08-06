@@ -597,5 +597,5 @@
     "This deletes the record of your rating decision and the usage counters behind it. It affects this machine only, and never touches a rating you already published.": "This deletes the record of your rating decision and the usage counters behind it. It affects this machine only, and never touches a rating you already published.",
     "Reset to a fresh install": "Reset to a fresh install",
     "Reset and arm the next commit": "Reset and arm the next commit",
-    "Open the IntelliGit commit graph first — the rating card renders inside it.": "Open the IntelliGit commit graph first — the rating card renders inside it."
+    "Open the IntelliGit graph in the bottom panel — the rating card renders there, not in the sidebar Graph view.": "Open the IntelliGit graph in the bottom panel — the rating card renders there, not in the sidebar Graph view."
 }

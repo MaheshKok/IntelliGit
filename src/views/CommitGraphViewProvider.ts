@@ -64,6 +64,8 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
     public static readonly viewType = "intelligit.commitGraph";
     public static readonly sidebarViewType = "intelligit.sidebarGraph";
     private static readonly MAX_VISIBLE_COMMIT_CHECKS = 200;
+    /** The only bundle that renders `ReviewPromptCard`; every other one ignores the message. */
+    private static readonly CARD_SCRIPT_FILE = "webview-commitgraph.js";
 
     private view?: vscode.WebviewView;
     private currentBranch: string | null = null;
@@ -92,6 +94,11 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
         settle: (result: ReviewPromptResult | undefined) => void;
     };
     private unregisterReviewPromptHost?: () => void;
+    private readonly rendersReviewPrompt: boolean;
+    /** Webview bundle this registration loads; the sidebar and the panel use different ones. */
+    private get scriptFile(): string {
+        return this.options.scriptFile ?? CommitGraphViewProvider.CARD_SCRIPT_FILE;
+    }
     private themeChangeDisposables: vscode.Disposable[] = [];
     private repositoryLabel: string | null = null;
     private readonly iconTheme: IconThemeService;
@@ -158,6 +165,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
         } = {},
     ) {
         this.iconTheme = new IconThemeService(this.extensionUri);
+        this.rendersReviewPrompt = this.scriptFile === CommitGraphViewProvider.CARD_SCRIPT_FILE;
         const settings = options.settings;
         this.commitChecks = new CommitChecksCoordinator(
             this.gitOps,
@@ -624,9 +632,16 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
         return true;
     }
 
-    /** True only while this graph view is on screen, so the card cannot be shown into a hidden tab. */
+    /**
+     * True only while a card-capable graph view is on screen.
+     *
+     * The bundle check is not defensive nicety: the sidebar registration renders
+     * `NativeCommitGraph`, which has no card and ignores `showReviewPrompt` entirely. A host
+     * that cannot answer would leave `showReviewPrompt` pending forever, stalling the prompt
+     * queue and suppressing the notification fallback — silence with no way to diagnose it.
+     */
     canShowReviewPrompt(): boolean {
-        return this.view?.visible === true;
+        return this.view?.visible === true && this.rendersReviewPrompt;
     }
 
     /**
@@ -938,7 +953,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
         return buildWebviewShellHtml({
             extensionUri: this.extensionUri,
             webview,
-            scriptFile: this.options.scriptFile ?? "webview-commitgraph.js",
+            scriptFile: this.scriptFile,
             title: this.options.title ?? "Commit Graph",
             backgroundVar: "var(--vscode-editor-background)",
         });

@@ -35,9 +35,14 @@ export const RESET_REVIEW_PROMPT_COMMAND = "intelligit.resetReviewPrompt";
 /** Explicit command for rendering the card itself, bypassing the surface choice. */
 export const SHOW_REVIEW_PROMPT_CARD_COMMAND = "intelligit.showReviewPromptCard";
 
-/** Shown when the card is requested with no graph view able to host it. */
+/**
+ * Shown when the card is requested with no graph view able to host it.
+ *
+ * It names the bottom panel specifically because the sidebar Graph view looks like the
+ * right place and is not: that registration loads a different bundle, without the card.
+ */
 export const CARD_UNAVAILABLE_MESSAGE =
-    "Open the IntelliGit commit graph first — the rating card renders inside it.";
+    "Open the IntelliGit graph in the bottom panel — the rating card renders there, not in the sidebar Graph view.";
 
 /** Confirmation title. Localized at display time; also the lookup key in the l10n bundle. */
 export const RESET_CONFIRM_MESSAGE = "Reset the IntelliGit rating prompt on this machine?";

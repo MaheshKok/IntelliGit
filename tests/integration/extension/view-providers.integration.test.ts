@@ -4920,6 +4920,35 @@ describe("view providers integration", () => {
         provider.dispose();
     });
 
+    it("CommitGraphViewProvider never offers the review card from a bundle without one", async () => {
+        const { CommitGraphViewProvider } =
+            await import("../../../src/views/CommitGraphViewProvider");
+        // The sidebar registration: same class, different bundle, no ReviewPromptCard in it.
+        const provider = new CommitGraphViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+            makeGitOpsMock() as unknown as object,
+            makeCredentialStore() as unknown as object,
+            { scriptFile: "webview-compactcommitgraph.js" } as unknown as object,
+        );
+        const webview = createWebviewView();
+        provider.resolveWebviewView(
+            webview.view as unknown as object,
+            {} as unknown as object,
+            {} as unknown as object,
+        );
+
+        expect(provider.canShowReviewPrompt()).toBe(false);
+        // Asking anyway resolves instead of hanging, so the caller falls back to the toast.
+        await expect(provider.showReviewPrompt()).resolves.toBeUndefined();
+        expect(
+            postMessageSpy.mock.calls
+                .map((call) => call[0] as { type?: string })
+                .some((message) => message.type === "showReviewPrompt"),
+        ).toBe(false);
+
+        provider.dispose();
+    });
+
     it("CommitGraphViewProvider releases an unanswered review prompt when its webview dies", async () => {
         const { CommitGraphViewProvider } =
             await import("../../../src/views/CommitGraphViewProvider");

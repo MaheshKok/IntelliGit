@@ -597,5 +597,5 @@
     "This deletes the record of your rating decision and the usage counters behind it. It affects this machine only, and never touches a rating you already published.": "Это удалит запись о вашем решении по оценке и связанные счётчики использования. Изменения касаются только этого компьютера и никогда не затрагивают уже опубликованную оценку.",
     "Reset to a fresh install": "Сбросить до состояния новой установки",
     "Reset and arm the next commit": "Сбросить и спросить при следующем коммите",
-    "Open the IntelliGit commit graph first — the rating card renders inside it.": "Сначала откройте граф коммитов IntelliGit — карточка оценки отображается внутри него."
+    "Open the IntelliGit graph in the bottom panel — the rating card renders there, not in the sidebar Graph view.": "Откройте граф IntelliGit на нижней панели — карточка оценки отображается там, а не в представлении «Граф» на боковой панели."
 }
