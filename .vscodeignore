@@ -30,6 +30,10 @@ AGENTS.md
 PLAN*.md
 .claudex-gates.json
 
+# Build-provenance manifest: consumed by the test harness's provenance gate
+# (scripts/verifyBuildProvenance.js), not by the installed extension at runtime.
+dist/.build-manifest.json
+
 # Repository automation that has no meaning inside an installed extension
 .githooks/**
 .pre-commit-config.yaml

@@ -280,3 +280,168 @@ Round 5 was `MAX_ROUNDS`, and it returned `REVISE`, so the loop reached its boun
 Recorded risk, raised before the decision and reaffirmed after: the E2E control channel is the one component that has never passed a review round — it was introduced in Round 4 to resolve R4 #5, and both times it has been examined it returned CRITICALs. It is also the most security-adjacent piece of the harness (dev-only activation, secret handling). It is specified in full above rather than sketched, precisely because it will not get another adversarial pass before implementation.
 
 **Final tally: 5 rounds, 57 findings, 56 fixed, 1 partial reject, 1 scope limit.** Trajectory 20 → 8 → 11 → 10 → 8.
+
+---
+
+## Act 3 — Build
+
+Builder is **Sonnet 5** (subagents at high/xhigh effort) and the session root, not
+Codex — owner override at handoff: *"this time dont use codex for implementation
+use sonnet for the implementaton and rest of the workflow remains the same."*
+Everything else in the `claudex-build` contract stands unchanged: Claude reviews
+the diff, runs the deterministic gates, commits each accepted phase, and never
+lets a builder's self-report count as proof.
+
+### Resolved tunables
+
+| Var | Value |
+|-----|-------|
+| `SPEC_FILE` | `PLAN.md` |
+| `LOG_FILE` | `PLAN-REVIEW-LOG.md` (this file) |
+| `BUILD_MODEL` / `BUILD_EFFORT` | `sonnet` (Agent tool) / high–xhigh — owner override, see above |
+| `SANDBOX` | n/a (Agent-tool subagents, not `codex exec`) |
+| `MAX_FIX_ROUNDS` | 2, then root takeover |
+| `GATES_FILE` | `.claudex-gates.json` — 6 gates: lint, typecheck, format, knip, architecture, suite |
+| `PROOF_CMD` | `npm run -s test` (the `suite` accept-stage gate) |
+| `SEAL_MODE` | `shadow` |
+| `BASE_HEAD` (Phase 0) | `bc9a502c9ea3a7ec4d4df531076fac547fbd5962` |
+
+### Protocol deviation, recorded
+
+Phase 0 was built and verified **before** this log section existed. The owner
+caught it: *"make sure to commit the changes after every phase … why arent you
+followinf claudex build skill."* Both halves of that are correct — Phase 0 sat
+verified-but-uncommitted, and the round evidence was living in the session
+transcript instead of here. This section is the correction; from Phase 1 onward
+the entries are written as each round closes, and every phase commits at
+acceptance.
+
+---
+
+### Phase 0 — Feasibility spike + host-fixture capture (PLAN.md steps 1–6)
+
+**Deliverables**
+
+| # | Deliverable | State | Evidence |
+|---|---|---|---|
+| 1 | Playwright + `@vscode/test-electron` chosen over Cypress, pinned | DONE | `playwright.e2e.config.ts`; Playwright 1.62.1 driving Electron 42.7.1 / VS Code 1.132.0 (`df53daabb18cd157bdb08c7f01c34df936cf12f4`) |
+| 2 | Real VS Code launches under Playwright with the extension loaded | DONE | `tests/e2e/spike/launch.spec.ts` green, 3.0s |
+| 3 | Host theme fixtures captured from the real product, not hand-written | DONE | `tests/e2e/hostFixtures/*` + `scripts/capture-host-fixtures.ts`; 11.8s for four themes |
+| 4 | Four *distinct* fixtures (dark/light/hc-black/hc-light) | DONE | `tests/visual/fixtures/host/*.json` — 4 of 4 distinct, each ~890 `--vscode-` custom properties |
+| 5 | Capture is byte-reproducible | DONE | two independent runs diffed byte-for-byte, `ALL_IDENTICAL=1` |
+| 6 | Build provenance manifest so Layer 1 can never diff a stale bundle | DONE | `scripts/buildManifest.js`, `scripts/verifyBuildProvenance.js`, `scripts/build.js` rewrite |
+| 7 | Pinned Linux container for reproducible baseline generation | PARTIAL | `tests/e2e/docker/{Dockerfile,run.sh,base-image.txt}` authored, digest pinned to the linux/amd64 manifest, arch assertion in `run.sh`; **container never executed** — see the open gate below |
+
+**The load-bearing defect this phase actually found.** Launching VS Code with
+the sanitized scratch `HOME` from `createSanitizedGitEnv` hung every Playwright
+channel for the full timeout with the app still rendering perfectly on screen.
+Root cause: the scratch `HOME` makes VS Code's SecretStorage reach for the macOS
+keychain, raising a **modal native prompt owned by the Electron main process**.
+Playwright drives Electron *through* the main process, so `page.evaluate`,
+`page.screenshot` and `electronApp.evaluate` all die at once — and
+`page.evaluate` has no timeout in Playwright (it is not an "action", so
+`actionTimeout` does not bound it), which is why it presented as a silent
+10-minute hang rather than a failure.
+
+Fix: `--use-inmemory-secretstorage` in `buildElectronLaunchArgs`
+(`tests/e2e/hostFixtures/electronLaunchHelpers.ts`) and in the spike. This is
+**not** redundant with the `--password-store=basic` that was already there —
+that flag governs only Chromium's own password store; VS Code's SecretStorage
+is a separate path. Isolated by ablation against this exact build: bare env
+renders; `GIT_CONFIG_GLOBAL` alone renders; scratch `HOME` alone **hangs**;
+scratch `HOME` + the flag renders. Keeping it is also the right security
+posture independent of the hang — a disposable test profile must never reach
+the developer's real secret store.
+
+Two wrong diagnoses preceded it and are recorded because both are cheap to
+repeat: (a) `ps pcpu` is a **lifetime average**, not instantaneous CPU — reading
+47% as a live spin loop produced a false "standalone VS Code also hangs";
+(b) renderer logs stopping at 1.2s reads as a freeze but is exactly what an
+*idle* standalone instance does too. The decisive evidence was that a
+main-process `electronApp.evaluate` died simultaneously with the page channel,
+which proves transport death rather than a renderer stall.
+
+A second, unrelated latent trap was fixed in the same phase: Playwright's
+default `actionTimeout` is `0` — wait forever. `playwright.e2e.config.ts` now
+pins `actionTimeout: 20_000`. This did **not** fix the hang (evaluate is not an
+action) and is not claimed to have.
+
+**Proof.** Accept-stage gates via `python3 ~/.claude/skills/claudex-build/verify.py gates --base bc9a502c --stage accept` — lint, typecheck, format, knip, architecture, and the broad suite `npm run -s test`. Result recorded in the verdict entry below.
+
+**Open gate — stated plainly, not waved off.** PLAN.md step 6 gates Phase 0 on
+steps 3–5 working *on macOS local **and** in the pinned Linux container*. The
+macOS half is verified. **The container half has not been executed.** The
+pin itself is now resolved — `base-image.txt` carries a real digest instead of
+its `__PENDING_DIGEST__` placeholder — so `run.sh` will build; it simply has not
+been run yet. Phase 0 is therefore committed as **macOS-verified, Linux gate
+open**, not as fully gated. That run is the next task; if it fails, step 6's own
+instruction applies — stop and re-plan — and that re-plan lands before any
+Layer 1 baseline is committed.
+
+Two corrections were made to the pin while resolving it, both about the same
+failure mode:
+
+1. `docker inspect --format '{{index .RepoDigests 0}}'` — what the file's own
+   instructions said to use — returns the **image index** digest, which carries
+   amd64 *and* arm64 (verified: `docker manifest inspect` lists both). Pinning
+   it leaves the architecture decided by whether `--platform` was passed, and on
+   an Apple Silicon machine a direct `docker build` silently yields arm64. Since
+   font rasterization differs by architecture, that produces baselines nobody
+   else can reproduce, showing up as antialiasing noise with nothing in the diff
+   naming the cause. The pin is now the **linux/amd64 manifest digest**
+   (`sha256:c091b21d…`, not the index's `sha256:dcc5531e…`), so architecture is
+   part of the pin rather than part of the command line, and the re-resolve
+   recipe in the file was rewritten to match.
+2. A pin that cannot be checked is not an oracle. `run.sh` now asserts the built
+   image reports `amd64` and fails loudly otherwise — the pin's own claim, made
+   falsifiable.
+
+**Round 1 — accept-stage gates**
+`python3 ~/.claude/skills/claudex-build/verify.py gates --base bc9a502c --stage accept`
+
+```
+gate lint:         OK    12.6s
+gate typecheck:    OK     4.5s
+gate format:       OK     2.8s
+gate knip:         FAIL   1.4s
+gate architecture: OK     1.2s
+gate suite:        OK    84.0s
+GATES: RED warn=0
+```
+
+`knip` RED with 11 findings. Named before any rerun, per the no-unnamed-flake
+rule — and none of them was a flake:
+
+| Finding | Disposition |
+|---|---|
+| `tests/e2e/globalSetup.ts` reported as an unused **file** | **Real, fixed in `knip.json`.** Not dead code — knip's project graph could not reach it. `playwright.e2e.config.ts` is deliberately not named `playwright.config.ts` (the repo's default runner is Vitest, and the default name gets claimed by tooling that assumes otherwise), so knip's Playwright plugin no longer auto-detects it and never resolves `testDir` or `globalSetup`. Declared the path under a `playwright` plugin block. Deleting the file — the reading the raw report invites — would have removed the pre-test VS Code download and reintroduced the cold-cache timeout it exists to prevent. |
+| `hostFixtureFileName`, `vscodeCachePath`, `assertExecutableIsOutsideRepo` unused **exports** | **Real, fixed.** All three are used only inside their own module; the `export` keyword was unjustified. Dropped. Worth stating because the first read was wrong: `assertExecutableIsOutsideRepo` looked like a dead in-repo-cache guard, and it is not — it is called at `resolveVSCodeExecutable.ts:113`. The guard is wired; only its visibility was excessive. |
+| `HostFixtureProvenance`, `HostFixtureElementSnapshot`, `HostFixtureDocumentElementSnapshot`, `RawElementSnapshot` unused **types** | **Real, fixed.** Internal composition types for the two exported top-level shapes. Un-exported. Consumers reading `.provenance` are unaffected — TypeScript is structural. |
+| `createSanitizedGitEnv`, `SanitizedGitEnv`, `FixtureCommits` in `tests/fixtures/repo/seed.ts` | **Not Phase 0.** Phase 1 step 7 output, untracked and excluded from this commit. Genuinely unreferenced today because `harness.ts` (step 8) does not exist yet; they resolve at Phase 1 acceptance. |
+
+`knip.json` also gained `scripts/**/*.ts` to `project` (it previously covered
+only `scripts/**/*.js`, so `scripts/capture-host-fixtures.ts` sat outside the
+graph entirely).
+
+**Gate-teeth check.** A gate that reports nothing is indistinguishable from a
+gate that cannot see anything, so the fixed configuration was proved able to
+fail before it was trusted:
+
+- dead file dropped in `scripts/` → **flagged** (`Unused files (1) scripts/__canaryA.ts`);
+- dead file dropped in `tests/` → **flagged**;
+- dead export appended to a non-entry e2e module → **flagged**
+  (`canaryC  function  tests/e2e/hostFixtures/canonicalizeHostFixture.ts:67:17`).
+
+All three canaries removed; `git status --porcelain` confirmed clean afterwards.
+One follow-up from the same probe: `scripts/capture-host-fixtures.ts` is *not*
+export-checked, and that is correct rather than a hole — `package.json` declares
+`"capture:host-fixtures": "… bun scripts/capture-host-fixtures.ts"`, which makes
+it an entry file, and knip intentionally does not report unused exports in entry
+files without `--include-entry-exports`.
+
+### Claude's verdict — Phase 0
+
+- **HEAD gate, restated by root:** `BASE_HEAD bc9a502c9ea3a7ec4d4df531076fac547fbd5962 == HEAD bc9a502c9ea3a7ec4d4df531076fac547fbd5962`. No builder moved a ref.
+- **Findings:** 8 Phase 0 defects, all confirmed by root against the files (not accepted on report), all fixed. 3 deferred to Phase 1 with reasons above. 0 rejected.
+- **Proof:** `npm run -s test` green at 84.0s as the `suite` accept gate; `lint`, `typecheck`, `format`, `architecture` green; `knip` green on every Phase 0 path after the fixes, with the three `seed.ts` findings isolated to untracked Phase 1 work.
+- **Verdict: ACCEPT — macOS-verified, Linux container gate open.** Committed on that basis, with the open gate named in the commit message rather than left for a reader to discover.

@@ -125,6 +125,10 @@ dist
 # Stores VSCode versions used for testing VSCode extensions
 .vscode-test
 
+# Playwright run output (traces, screenshots, reports). Regenerated per run.
+test-results/
+playwright-report/
+
 # pnpm
 .pnpm-store
 

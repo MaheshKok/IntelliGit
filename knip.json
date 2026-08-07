@@ -10,6 +10,19 @@
         "src/webviews/react/merge-conflicts-session/MergeConflictSessionApp.tsx",
         "src/webviews/react/UndockedApp.tsx"
     ],
-    "project": ["src/**/*.{ts,tsx}", "scripts/**/*.js", "tests/**/*.{ts,tsx}"],
-    "ignoreFiles": ["src/webviews/react/css-modules.d.ts"]
+    "project": ["src/**/*.{ts,tsx}", "scripts/**/*.{js,ts}", "tests/**/*.{ts,tsx}"],
+    "ignoreFiles": ["src/webviews/react/css-modules.d.ts"],
+
+    // The Layer 2 config is deliberately NOT named `playwright.config.ts`: the
+    // repo already runs Vitest as its default suite, and a file with the
+    // default name would get picked up by tooling that assumes Playwright is
+    // the project's test runner. The cost of renaming it is that knip's
+    // Playwright plugin no longer auto-detects it, so the path is declared
+    // here. Without this, knip cannot see `testDir` or `globalSetup` and
+    // reports every E2E file as unreachable -- which reads as "delete this",
+    // the exact wrong conclusion.
+    "playwright": {
+        "config": ["playwright.e2e.config.ts"],
+        "entry": ["tests/e2e/**/*.spec.ts"]
+    }
 }

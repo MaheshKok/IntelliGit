@@ -1,0 +1,34 @@
+# The pinned base image for the Phase 0 gate and Layer 1 baseline generation.
+#
+# MUST be a digest reference (…@sha256:…), never a tag. `run.sh` refuses to
+# build otherwise, and that refusal is deliberate: a mutable tag means the same
+# Dockerfile can produce different font rendering after an upstream rebuild,
+# invalidating every committed pixel baseline with nothing in the diff to
+# explain it. Changing this line is how a baseline refresh gets reviewed.
+#
+# Chosen base: Microsoft's Playwright image, matched to the repo's Playwright
+# version (see `@playwright/test` in package.json). It already carries the
+# shared libraries Chromium needs, which is what the Electron inside VS Code
+# needs too, plus xvfb.
+#
+# This is the digest of the linux/amd64 MANIFEST, not of the tag's image index.
+# The distinction is load-bearing. `docker inspect --format '{{index
+# .RepoDigests 0}}'` returns the index digest — the tag's — which carries both
+# amd64 and arm64, so which one you get still depends on `--platform` being
+# passed. `run.sh` does pass it, but a `docker build` invoked directly would not,
+# and on an Apple Silicon machine that silently yields arm64. Font rasterization
+# differs between architectures, so that produces baselines nobody else can
+# reproduce, with the diff showing only antialiasing noise and no cause. Pinning
+# the platform manifest makes the architecture part of the pin instead of part
+# of the command line; `--platform` stays in run.sh as a second line of defence,
+# and run.sh additionally asserts the built image reports x86_64 — a pin that
+# cannot be checked is not an oracle.
+#
+# To re-resolve after deliberately moving to a new Playwright version, take the
+# amd64 entry's digest from the index (NOT the index's own digest):
+#   docker manifest inspect mcr.microsoft.com/playwright:<tag> \
+#     | jq -r '.manifests[] | select(.platform.architecture=="amd64") | .digest'
+# Paste it below as `mcr.microsoft.com/playwright@<that digest>`, and re-generate
+# the Layer 1 baselines in the same commit — a base-image change and a baseline
+# change belong together.
+mcr.microsoft.com/playwright@sha256:c091b21d9fae78c76e85cd4356431e9b018402f172a214fc7d7a5e9a7e29d8ac
