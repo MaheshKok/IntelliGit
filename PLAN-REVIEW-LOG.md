@@ -445,3 +445,72 @@ files without `--include-entry-exports`.
 - **Findings:** 8 Phase 0 defects, all confirmed by root against the files (not accepted on report), all fixed. 3 deferred to Phase 1 with reasons above. 0 rejected.
 - **Proof:** `npm run -s test` green at 84.0s as the `suite` accept gate; `lint`, `typecheck`, `format`, `architecture` green; `knip` green on every Phase 0 path after the fixes, with the three `seed.ts` findings isolated to untracked Phase 1 work.
 - **Verdict: ACCEPT — macOS-verified, Linux container gate open.** Committed on that basis, with the open gate named in the commit message rather than left for a reader to discover.
+
+### Phase 0 — closing step 6's Linux container gate
+
+Run against a clean clone of `df3370fd`, so the two Phase 1 lanes' in-flight
+work could not contaminate it. **`gate_rc=0`**: spike passed (`1 passed`, the
+test itself 37.0s; 20.9m wall under amd64 emulation), capture passed
+(`1 passed (1.0m)`), four fixtures written with correct and distinct theme
+kinds — `vscode-dark`, `vscode-light`, `vscode-high-contrast`,
+`vscode-high-contrast-light` — under `platform: "linux-x64"`.
+
+**PLAN.md step 6 is now satisfied on both halves.** Phase 0 is fully gated.
+
+It took three attempts, and the two failures are the entire justification for
+the plan requiring a container run rather than trusting a developer laptop:
+neither reproduces on macOS, and both would first have surfaced in CI.
+
+| # | Failure | Cause | Fix |
+|---|---|---|---|
+| 1 | `run.sh: line 73: TTY_FLAGS[@]: unbound variable` | `set -u` + an **empty** array expansion. bash before 4.4 treats an empty array's `[@]` as unset and aborts — and the array is empty exactly when there is no TTY, i.e. only in CI. An interactive run passes. macOS still ships bash 3.2 as `/bin/bash`. | `${TTY_FLAGS[@]+"${TTY_FLAGS[@]}"}`. Ablated on bash 3.2.57: old form aborts, new form runs, and a non-empty array still forwards `-i -t`. |
+| 2 | `error: bun is unable to write files: AccessDenied` | Docker creates a named volume owned by `root:root`, but the container deliberately runs unprivileged (Electron will not start its sandbox as root). The bind-mounted checkout is owned by the host uid, which is not `pwuser`'s 1000. Nothing was writable, and the error names no path — it reads like a bun bug. | Both named volumes replaced with host-owned bind mounts under one cache root; container runs `--user $(id -u):$(id -g)`, still unprivileged, so the sandbox reasoning holds; `HOME` and `INTELLIGIT_VSCODE_CACHE` redirected, since that uid has no `/etc/passwd` entry and would otherwise land on `pwuser`'s unwritable home. Smoke-tested all four mounts before re-running. |
+
+### Finding for Phase 3 (step 20) — host fixtures are *almost* platform-independent
+
+The container's fixtures were diffed property-by-property against the committed
+macOS ones (a line diff is useless here — `styleCssText` is a single ~890-entry
+line). Result across all four themes:
+
+| Fixture | props | only-darwin | only-linux | changed |
+|---|---|---|---|---|
+| dark-modern | 891 / 891 | 0 | 0 | 3 |
+| light-modern | 893 / 893 | 0 | 0 | 3 |
+| hc-black | 760 / 760 | 0 | 0 | 3 |
+| hc-light | 789 / 789 | 0 | 0 | 3 |
+
+**Every colour token is identical on both platforms.** The only differences are
+the same three font properties in every fixture, plus `provenance.platform`:
+
+- `--vscode-editor-font-family`: `Menlo, Monaco, 'Courier New', monospace` → `'Droid Sans Mono', monospace`
+- `--vscode-editor-font-size`: `12px` → `14px`
+- `--vscode-font-family`: `-apple-system, BlinkMacSystemFont, sans-serif` → `system-ui, "Ubuntu", "Droid Sans", sans-serif`
+
+This is stronger evidence for step 20's container-only baseline rule than the
+plan had. It is not merely that glyph rasterization differs between
+architectures — **the font size itself differs, 12px vs 14px**, which changes
+text metrics and therefore layout, not just antialiasing. A baseline generated
+against a macOS host fixture cannot be reproduced anywhere else, and the diff
+would show wholesale layout shift with no obvious cause.
+
+**Two consequences the plan does not yet address. Owner decision needed at
+Phase 3, deliberately not taken here:**
+
+1. **Which fixtures get committed.** Layer 1 renders bundles against a host
+   fixture inside the baseline container. If the committed fixture names `Menlo`,
+   a font absent from the container, rendering silently falls back and the
+   baseline encodes the fallback. That argues the committed fixtures should be
+   the **container-generated** (`linux-x64`) ones, not the macOS ones currently
+   in the tree.
+2. **Step 39's recapture-and-compare freshness check then cannot run on macOS.**
+   Recapturing on a developer laptop would produce `darwin-arm64` fixtures that
+   differ from the committed `linux-x64` ones in exactly these four fields, and
+   the check would go red for a reason that is not staleness. It needs to either
+   run only in the container, or compare modulo a named, explicit set of
+   platform-varying fields — and if the latter, that exclusion list is itself a
+   place false-greens can hide, so it must be registered with a known-bad fixture
+   like every other oracle in this plan.
+
+Phase 0 committed the macOS fixtures because that is what it captured and
+proved reproducible; swapping them is a Phase 3 decision with a real tradeoff,
+so it is raised here rather than made silently.

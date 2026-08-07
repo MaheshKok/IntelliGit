@@ -36,17 +36,25 @@ ENV PATH=${BUN_INSTALL}/bin:${PATH}
 RUN curl -fsSL https://bun.sh/install | bash \
     && chmod -R a+rx ${BUN_INSTALL}
 
-# Run as the image's existing unprivileged user, NOT root. Electron refuses to
-# start its sandbox as root, and the usual workaround (`--no-sandbox`) would
-# make the container diverge from how VS Code actually runs — a difference that
-# lands in the very pixels this container exists to produce. Dropping privileges
-# keeps the sandbox on and needs no launch-flag divergence at all.
+# Run unprivileged, NOT root. Electron refuses to start its sandbox as root, and
+# the usual workaround (`--no-sandbox`) would make the container diverge from how
+# VS Code actually runs — a difference that lands in the very pixels this
+# container exists to produce. Dropping privileges keeps the sandbox on and needs
+# no launch-flag divergence at all.
+#
+# `run.sh` overrides this with `--user <host uid>:<host gid>`, because the
+# container writes into a bind-mounted host checkout and must own what it writes.
+# That is still unprivileged, so the sandbox reasoning above holds either way.
+# This line is the safe default for anyone running the image without run.sh.
 USER pwuser
 
 # The VS Code download cache must live outside the repo: an in-repo build under
 # `--extensionDevelopmentPath` makes VS Code treat its own bundled themes as the
 # development extension's and overrides `workbench.colorTheme` entirely. See
 # `tests/e2e/hostFixtures/resolveVSCodeExecutable.ts`, which asserts this.
+#
+# `run.sh` overrides this too, pointing it at a host-owned bind mount — a path
+# under /home/pwuser is not writable by the uid it runs as.
 ENV INTELLIGIT_VSCODE_CACHE=/home/pwuser/.cache/intelligit-vscode-test
 
 WORKDIR /work
