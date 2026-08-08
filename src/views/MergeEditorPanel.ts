@@ -5,6 +5,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import * as vscode from "vscode";
+import { captureWebview } from "../e2e/webviewCapture";
 import { GitOps } from "../git/operations";
 import {
     detectEolMetadata,
@@ -131,7 +132,7 @@ export class MergeEditorPanel {
             return;
         }
 
-        const panel = vscode.window.createWebviewPanel(
+        const rawPanel = vscode.window.createWebviewPanel(
             "intelligit.mergeEditor",
             vscode.l10n.t("Merge: {file}", { file: path.posix.basename(safePath) }),
             vscode.ViewColumn.Active,
@@ -141,6 +142,7 @@ export class MergeEditorPanel {
                 localResourceRoots: [vscode.Uri.joinPath(options.extensionUri, "dist")],
             },
         );
+        const panel = captureWebview(rawPanel, "merge-editor");
 
         const instance = new MergeEditorPanel(
             panel,

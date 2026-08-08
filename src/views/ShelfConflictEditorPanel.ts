@@ -1,5 +1,6 @@
 import path from "node:path";
 import * as vscode from "vscode";
+import { captureWebview } from "../e2e/webviewCapture";
 import {
     detectEolMetadata,
     parseConflictVersions,
@@ -171,7 +172,7 @@ export class ShelfConflictEditorPanel {
             existing.panel.reveal(vscode.ViewColumn.Active);
             return;
         }
-        const panel = vscode.window.createWebviewPanel(
+        const rawPanel = vscode.window.createWebviewPanel(
             "intelligit.shelfConflictEditor",
             "Resolve shelf conflict",
             vscode.ViewColumn.Active,
@@ -181,6 +182,7 @@ export class ShelfConflictEditorPanel {
                 localResourceRoots: [vscode.Uri.joinPath(options.extensionUri, "dist")],
             },
         );
+        const panel = captureWebview(rawPanel, "shelf-conflict-editor");
         const instance = new ShelfConflictEditorPanel(panel, options);
         this.panels.set(key, instance);
         try {

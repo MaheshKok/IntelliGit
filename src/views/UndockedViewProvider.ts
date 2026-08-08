@@ -2,6 +2,7 @@
 // and commit panel into a single unified view. Used when the user enables
 // intelligit.undockableWindow to allow dragging to a second monitor.
 import * as vscode from "vscode";
+import { captureWebview } from "../e2e/webviewCapture";
 import type { GitExecutor } from "../git/executor";
 import { GitOps } from "../git/operations";
 import {
@@ -661,7 +662,7 @@ export class UndockedViewProvider {
             return;
         }
         this.commitCheckDemandSeq += 1;
-        this.panel = vscode.window.createWebviewPanel(
+        const rawPanel = vscode.window.createWebviewPanel(
             UndockedViewProvider.viewType,
             `IntelliGit — ${this.repositoryLabel}`,
             vscode.ViewColumn.One,
@@ -671,6 +672,7 @@ export class UndockedViewProvider {
                 localResourceRoots: [vscode.Uri.joinPath(this.extensionUri, "dist")],
             },
         );
+        this.panel = captureWebview(rawPanel, "undocked");
         this.iconTheme.attachWebview(this.panel.webview);
         this.registerThemeChangeListeners();
         this.panel.webview.html = this.getHtml(this.panel.webview);
