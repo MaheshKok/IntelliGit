@@ -117,7 +117,9 @@ export interface FixtureTemplate extends SanitizedGitEnv {
  * the Phase 1 step 8 harness to root per-test HOME/TMPDIR/TMP/TEMP beneath a FIXTURE-OWNED root
  * rather than the OS temp dir, so that per-test caller passes its own root here instead.
  */
-export async function createSanitizedGitEnv(options?: { readonly homeParent?: string }): Promise<SanitizedGitEnv> {
+export async function createSanitizedGitEnv(options?: {
+    readonly homeParent?: string;
+}): Promise<SanitizedGitEnv> {
     const homeParent = options?.homeParent ?? tmpdir();
     const home = await mkdtemp(path.join(homeParent, "intelligit-fixture-home-"));
     return {
@@ -279,9 +281,16 @@ async function initializeWorkingRepository(root: string, env: NodeJS.ProcessEnv)
         ["init.defaultBranch", FIXTURE_REFS.main],
         ["gc.auto", "0"],
         ["commit.gpgsign", "false"],
-        // Full-length SHAs everywhere: git's default abbreviation length auto-scales with object
-        // count, which would silently change as later phases add commits to this template.
-        ["core.abbrev", "40"],
+        // Pinned, and pinned to a REALISTIC width. Git's default abbreviation auto-scales with
+        // object count, so leaving it unset would let `%h` silently change as later phases add
+        // commits to this template -- that is why it is pinned at all. But pinning it to the full
+        // 40 buys determinism by making every abbreviated hash stop being abbreviated: `%h` then
+        // equals `%H`, and every recorded payload and baseline screenshot renders a 40-character
+        // string in a chip no user ever sees hold more than ~8. Later phases pixel-compare those
+        // baselines, so the unrealistic width would be baked into the truncation and layout they
+        // assert on. An explicit small width is equally deterministic and actually resembles what
+        // the extension renders.
+        ["core.abbrev", "8"],
     ];
     for (const [key, value] of repoConfig) {
         await git(root, ["config", key, value], env);

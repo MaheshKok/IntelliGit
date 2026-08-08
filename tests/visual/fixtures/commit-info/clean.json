@@ -1,0 +1,71 @@
+{
+    "schemaVersion": 1,
+    "contextId": "commit-info",
+    "scenario": "clean",
+    "messages": [
+        {
+            "contextId": "commit-info",
+            "message": {
+                "type": "clear"
+            }
+        },
+        {
+            "contextId": "commit-info",
+            "message": {
+                "type": "setCommitDetail",
+                "detail": {
+                    "hash": "b08ddf030532f359194329a212f0d9ba54bb6a02",
+                    "shortHash": "b08ddf03",
+                    "message": "Add conflict target",
+                    "body": "",
+                    "author": "IntelliGit Fixture Repo",
+                    "email": "intelligit-fixture@example.invalid",
+                    "date": "2000-01-01T01:00:00Z",
+                    "parentHashes": [
+                        "70fa528600605d9b3f1fce7aa04ec799ed494ffd"
+                    ],
+                    "refs": [],
+                    "files": [
+                        {
+                            "path": "conflict.txt",
+                            "status": "A",
+                            "additions": 3,
+                            "deletions": 0
+                        }
+                    ]
+                },
+                "folderIconsByName": {},
+                "iconFonts": []
+            }
+        },
+        {
+            "contextId": "commit-info",
+            "message": {
+                "type": "setCommitDetail",
+                "detail": {
+                    "hash": "b08ddf030532f359194329a212f0d9ba54bb6a02",
+                    "shortHash": "b08ddf03",
+                    "message": "Add conflict target",
+                    "body": "",
+                    "author": "IntelliGit Fixture Repo",
+                    "email": "intelligit-fixture@example.invalid",
+                    "date": "2000-01-01T01:00:00Z",
+                    "parentHashes": [
+                        "70fa528600605d9b3f1fce7aa04ec799ed494ffd"
+                    ],
+                    "refs": [],
+                    "files": [
+                        {
+                            "path": "conflict.txt",
+                            "status": "A",
+                            "additions": 3,
+                            "deletions": 0
+                        }
+                    ]
+                },
+                "folderIconsByName": {},
+                "iconFonts": []
+            }
+        }
+    ]
+}

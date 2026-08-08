@@ -122,7 +122,23 @@ describe("seedFixtureTemplate", () => {
             expect(await configGet("init.defaultBranch")).toBe("main");
             expect(await configGet("gc.auto")).toBe("0");
             expect(await configGet("commit.gpgsign")).toBe("false");
-            expect(await configGet("core.abbrev")).toBe("40");
+            // Pinned so `%h` cannot drift with object count, but pinned SMALL so it stays a real
+            // abbreviation. At 40 the "short" hash equals the full hash, which later phases would
+            // bake into baseline screenshots as a chip no user ever sees. See seed.ts.
+            expect(await configGet("core.abbrev")).toBe("8");
+        });
+
+        it("abbreviates %h to a real short hash, distinct from the full SHA", async () => {
+            // The assertion above pins the config value; this one pins the OBSERVABLE consequence.
+            // A future change that sets core.abbrev back to 40 -- or that lets git auto-scale --
+            // has to fail here too, not just on a config string comparison.
+            const [full, short] = await Promise.all([
+                git(templateA.root, ["rev-parse", "HEAD"], templateA.env),
+                git(templateA.root, ["log", "-1", "--format=%h"], templateA.env),
+            ]);
+            expect(full.trim()).toHaveLength(40);
+            expect(short.trim()).toHaveLength(8);
+            expect(full.trim().startsWith(short.trim())).toBe(true);
         });
     });
 
