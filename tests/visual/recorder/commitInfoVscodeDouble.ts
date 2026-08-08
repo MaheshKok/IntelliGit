@@ -33,6 +33,17 @@
  *
  * If a future scenario recorded through this module needs either, the double will throw naming
  * exactly that member -- the signal to come back and implement it deliberately, not a bug.
+ *
+ * **Phase 2c-iv-c added nothing here, and that is the finding.** `commit-panel`
+ * (`recordCommitPanelWebviewFixture.ts`) was expected to force `vscode.RelativePattern` and
+ * `vscode.workspace.createFileSystemWatcher` through `CommitPanelViewProvider`'s constructor. It
+ * does not: `registerRuntimeWatcher` (`CommitPanelViewProvider.ts:746`) is only ever called for
+ * roots in `desiredRoots`, and `syncRuntimeWatchers` (`:727-730`) filters the ACTIVE root out of
+ * that set, while `setRepositoriesInternal` (`:308-313`) makes the single root active -- so a
+ * single-repository recording constructs no watcher at all. Both members were briefly added here
+ * and then removed: nothing in production reached them, and the only test that needed them was the
+ * one written to justify them. If a future multi-repository scenario does reach that path,
+ * `throwingDouble` will say so by name -- which is exactly the signal this module exists to give.
  */
 
 import type * as vscode from "vscode";
@@ -60,6 +71,10 @@ function inertDisposable(): vscode.Disposable {
  * `CommitGraphViewProvider.ts` too, but only on branches this "clean" scenario's `ready` message
  * never reaches (a webview action message, or a caught git/theme error) -- see
  * `recordCommitGraphWebviewFixture.ts`'s own doc comment.
+ *
+ * Phase 2c-iv-c's `commit-panel` recording reuses this surface unchanged -- it forced no new
+ * member. See this module's own doc comment for why the filesystem-watcher members it was expected
+ * to need are deliberately absent.
  */
 export function createCommitInfoVscodeDouble(): typeof vscode {
     const implementation: Partial<typeof vscode> = {
@@ -263,4 +278,79 @@ export function createFakeCommitGraphWebviewView(): FakeCommitGraphWebviewView {
  * path so it can never be mistaken for one. */
 export function createFakeExtensionUri(): vscode.Uri {
     return fakeUriFile("fake-extension-root") as unknown as vscode.Uri;
+}
+
+/** Builds a fake `vscode.Uri` from an arbitrary path string. `createFakeExtensionUri()`'s fixed,
+ * deliberately-not-a-real-path value is right for `extensionUri` (never captured, see that
+ * function's own doc comment) but wrong for `repoRootUri`: `CommitPanelViewProvider`'s constructor
+ * threads `repoRootUri.fsPath` into `setRepositoriesInternal` to build its one runtime, so
+ * `recordCommitPanelWebviewFixture.ts` needs a `vscode.Uri` wrapping the REAL seeded workspace
+ * root, not a fixed placeholder. Exported so that recorder module never needs a genuine value
+ * import of `vscode` -- it stays typed against `vscode` only, exactly like
+ * `recordCommitGraphWebviewFixture.ts`. */
+export function createFakeUriFromPath(pathValue: string): vscode.Uri {
+    return fakeUriFile(pathValue) as unknown as vscode.Uri;
+}
+
+/** What {@link createFakeCommitPanelWebviewView} returns -- same contract as
+ * {@link FakeCommitGraphWebviewView}, kept as its own named type since the underlying
+ * `webviewView` double may end up implementing a different member set once a real recording run
+ * names what `CommitPanelViewProvider.resolveWebviewView` actually reaches (see that function's
+ * own doc comment). */
+export interface FakeCommitPanelWebviewView {
+    readonly webviewView: vscode.WebviewView;
+    /** Same contract as {@link FakeCommitInfoWebviewView.receiveMessage}: invokes and awaits
+     * whatever handler `onDidReceiveMessage` most recently registered. Throws if no handler was
+     * registered yet (`resolveWebviewView` must run first). */
+    receiveMessage(message: unknown): Promise<void>;
+}
+
+/**
+ * Builds one fake `vscode.WebviewView` for `CommitPanelViewProvider`
+ * (`recordCommitPanelWebviewFixture.ts`) -- wrapped in {@link throwingDouble} for the identical
+ * reason as {@link createFakeCommitInfoWebviewView}: production's real `resolveWebviewView` runs
+ * against this object, so any member it reaches for beyond what is implemented here must fail
+ * loudly rather than silently. Starts from the same member set
+ * {@link createFakeCommitGraphWebviewView} needed (`webview.*`, `onDidDispose`, `visible`,
+ * `onDidChangeVisibility`) since `CommitPanelViewProvider` is, like `CommitGraphViewProvider`, a
+ * `vscode.WebviewViewProvider` whose `ready` handler is reached the same way; a member beyond this
+ * set is added only once a real recording run throws naming it.
+ */
+export function createFakeCommitPanelWebviewView(): FakeCommitPanelWebviewView {
+    let messageHandler: ((message: unknown) => unknown) | undefined;
+
+    const rawWebview: RawWebview = {
+        options: {},
+        html: "",
+        cspSource: "vscode-webview://fake-commit-panel",
+        asWebviewUri: (uri: vscode.Uri) =>
+            fakeUriFile(`vscode-resource://fake${uri.toString()}`) as unknown as vscode.Uri,
+        onDidReceiveMessage: (listener) => {
+            messageHandler = listener;
+            return inertDisposable();
+        },
+        postMessage: () => Promise.resolve(true),
+    };
+
+    const rawWebviewView = {
+        webview: rawWebview,
+        visible: true,
+        onDidDispose: () => inertDisposable(),
+        onDidChangeVisibility: () => inertDisposable(),
+    };
+
+    const webviewView = throwingDouble<vscode.WebviewView>("webviewView", rawWebviewView);
+
+    return {
+        webviewView,
+        receiveMessage: async (message: unknown): Promise<void> => {
+            if (!messageHandler) {
+                throw new Error(
+                    "createFakeCommitPanelWebviewView.receiveMessage: no message handler was " +
+                        "registered yet -- resolveWebviewView() must run first.",
+                );
+            }
+            await messageHandler(message);
+        },
+    };
 }

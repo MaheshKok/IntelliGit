@@ -31,6 +31,10 @@ import {
     recordCommitGraphCardWebviewFixture,
     recordCommitGraphCompactWebviewFixture,
 } from "./recordCommitGraphWebviewFixture";
+import {
+    COMMIT_PANEL_DIRTY_SCENARIO,
+    recordCommitPanelWebviewFixture,
+} from "./recordCommitPanelWebviewFixture";
 import type { WebviewFixture } from "./webviewFixtureTypes";
 
 /** One registered recording: which committed fixture it produces, and how to reproduce it. */
@@ -103,6 +107,22 @@ export const WEBVIEW_FIXTURE_RECORDERS: readonly WebviewFixtureRecorderEntry[] =
             return recordCommitGraphCompactWebviewFixture({
                 repoRoot: template.root,
                 roots: { root: template.root, originRoot: template.originRoot, profileDir: "" },
+            });
+        },
+    },
+    // Phase 2c-iv-c: `commit-panel` records the `dirty` scenario, not `clean` -- see
+    // `recordCommitPanelWebviewFixture.ts`'s own doc comment. `repoRoot` is taken from
+    // `workspace.root` directly (not `template.root`) because that is the field every
+    // `ScenarioWorkspace` unconditionally carries; `requireScenarioTemplate` is still needed to
+    // reach `originRoot`, which lives only on `template`.
+    {
+        contextId: "commit-panel",
+        scenario: COMMIT_PANEL_DIRTY_SCENARIO,
+        record: (workspace) => {
+            const template = requireScenarioTemplate(workspace, "commit-panel");
+            return recordCommitPanelWebviewFixture({
+                repoRoot: workspace.root,
+                roots: { root: workspace.root, originRoot: template.originRoot, profileDir: "" },
             });
         },
     },

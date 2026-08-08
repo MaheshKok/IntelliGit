@@ -53,7 +53,6 @@ import {
 } from "../../../visual/recorder/recordCommitGraphWebviewFixture";
 import { parseWebviewFixture } from "../../../visual/recorder/validateWebviewFixture";
 import { serializeWebviewFixture } from "../../../visual/recorder/webviewFixtureFile";
-import { WEBVIEW_FIXTURE_RECORDERS } from "../../../visual/recorder/webviewFixtureRegistry";
 import type { WebviewFixture } from "../../../visual/recorder/webviewFixtureTypes";
 
 /** A real git commit hash (short or full, hex) -- what `GitOps.getLog` returns, never a
@@ -304,11 +303,9 @@ describe("commit-graph webview recorders", () => {
         });
     });
 
-    it("registers exactly the commit-info and commit-graph contexts claimed through this phase", () => {
-        const contextIds = new Set(WEBVIEW_FIXTURE_RECORDERS.map((entry) => entry.contextId));
-
-        expect(contextIds).toEqual(
-            new Set(["commit-info", "commit-graph-card", "commit-graph-compact"]),
-        );
-    });
+    // The "registers exactly the contexts claimed through this phase" registry assertion that
+    // used to live here has moved to `recordCommitPanelWebviewFixture.test.ts` (Phase 2c-iv-c),
+    // updated for the current full set. It migrates forward to the newest phase's test file each
+    // time a context is registered, rather than being duplicated and left stale in every earlier
+    // phase's file -- see that test's own doc comment.
 });
