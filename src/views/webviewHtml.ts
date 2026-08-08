@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import { getE2eWebviewRegistry, isE2eControlChannelActive } from "../e2e/activationState";
 import { SYSTEM_FONT_STACK } from "../utils/constants";
 import { getWebviewI18nPayload } from "../webviews/i18n";
 
@@ -15,6 +16,15 @@ interface WebviewShellOptions {
     styleFiles?: string[];
     title: string;
     backgroundVar?: string;
+    /**
+     * Identifies this webview *instance* to the development-only E2E control channel.
+     *
+     * Required from every host context that can have more than one live instance at a time,
+     * or that shares a `scriptFile` with another context; omitting it there makes two live
+     * webviews collide on one registry key. Singleton view-container contexts may omit it and
+     * take the `scriptFile`-derived default. See `deriveE2eViewId`.
+     */
+    e2eViewId?: string;
 }
 
 type WebviewSettings = {
@@ -38,6 +48,7 @@ export function buildWebviewShellHtml({
     styleFiles = [],
     title,
     backgroundVar = "var(--vscode-editor-background)",
+    e2eViewId,
 }: WebviewShellOptions): string {
     const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, "dist", scriptFile));
     const styleUris = styleFiles.map((styleFile) =>
@@ -57,6 +68,10 @@ export function buildWebviewShellHtml({
         commitWindowPosition,
     });
     const i18nPayloadJson = scriptSafeJson(i18nPayload);
+    const e2eBootstrapScript = buildE2eBootstrapScript(
+        webview,
+        e2eViewId ?? deriveE2eViewId(scriptFile),
+    );
 
     return `<!DOCTYPE html>
 <html lang="${escapeHtmlAttr(i18nPayload.locale)}">
@@ -90,11 +105,53 @@ ${styleLinks ? `${styleLinks}\n` : ""}
     <div id="root"></div>
     <script nonce="${nonce}">
         window.intelligitSettings = ${settingsPayload};
-        window.intelligitI18n = ${i18nPayloadJson};
+        window.intelligitI18n = ${i18nPayloadJson};${e2eBootstrapScript}
     </script>
     <script nonce="${nonce}" src="${escapeHtmlAttr(String(scriptUri))}"></script>
 </body>
 </html>`;
+}
+
+/**
+ * Derives a default E2E view id from a webview's bundled entry script.
+ *
+ * This is only correct for host contexts that are genuinely singletons -- the view-container
+ * providers, which VS Code mounts at most once. It is NOT sufficient on its own, and callers
+ * that can violate either assumption below must pass an explicit `e2eViewId`:
+ *
+ *  - *Multi-instance contexts.* `MergeEditorPanel` and `ShelfConflictEditorPanel` each keep a
+ *    static `Map` of live panels (`MergeEditorPanel.ts:69`, `ShelfConflictEditorPanel.ts:125`)
+ *    and use `createWebviewPanel`, so several instances are open at once -- one per conflicted
+ *    file or shelved change.
+ *  - *Shared bundles.* Those same two classes both render `webview-mergeeditor.js`
+ *    (`MergeEditorPanel.ts:343`, `ShelfConflictEditorPanel.ts:141`), so even one instance each
+ *    would derive the same id.
+ *
+ * A collision is not a benign duplicate: `E2eWebviewRegistry.register` replaces the previous
+ * entry, so an E2E request for that id is answered by whichever instance registered last --
+ * a wrong-target success rather than the hard failure step 10 mandates for an unaddressable
+ * view. Multi-repository data *within* one app is keyed by state-blob prefixes instead (see
+ * `WEBVIEW_STATE_ALLOWLIST`), which is a separate axis and not affected by this id.
+ */
+function deriveE2eViewId(scriptFile: string): string {
+    const basename = scriptFile.split("/").pop() ?? scriptFile;
+    return basename.replace(/\.[^./]+$/, "");
+}
+
+/**
+ * Builds the inline script fragment that bootstraps the E2E control channel's webview leg,
+ * or an empty string when the channel is not active. Registration happens here -- the single
+ * choke point every bundled webview's HTML passes through -- rather than in each of the 8
+ * view providers individually. Runtime-gated, not build-gated: this branch is present in
+ * every build, and only ever does anything when `isE2eControlChannelActive()` is true, which
+ * itself requires `ExtensionMode.Development` and the other two gates in `evaluateE2eGate`.
+ */
+function buildE2eBootstrapScript(webview: vscode.Webview, viewId: string): string {
+    if (!isE2eControlChannelActive()) {
+        return "";
+    }
+    getE2eWebviewRegistry()?.register(viewId, webview);
+    return "\n        window.intelligitE2E = true;";
 }
 
 /** Reads the webview bootstrap settings and returns safe defaults when workspace configuration is unavailable. */

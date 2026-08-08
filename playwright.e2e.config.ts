@@ -52,4 +52,34 @@ export default defineConfig({
         // diagnosable failure and a mystery.
         actionTimeout: 20_000,
     },
+
+    // PLAN.md step 8: the fixture template is built once per *run*, not once
+    // per worker. A setup project is the only mechanism Playwright offers
+    // that runs exactly once regardless of worker count — module-scoped
+    // memoization would be per worker process instead, and workers run
+    // concurrently and restart after a crashed test, so "once" would
+    // silently become "once per worker, sometimes twice". The teardown
+    // project is wired via `fixtureTemplateSetup`'s own `teardown` property
+    // (Playwright's project-dependency mechanism) so it runs once every
+    // dependent project has finished, not once per project.
+    projects: [
+        {
+            name: "fixtureTemplateSetup",
+            testMatch: /fixtureTemplate\.setup\.ts$/,
+            teardown: "fixtureTemplateTeardown",
+        },
+        {
+            name: "fixtureTemplateTeardown",
+            testMatch: /fixtureTemplate\.teardown\.ts$/,
+        },
+        {
+            // Carries forward the config's only test project today (the
+            // Phase 0 spike under tests/e2e/spike/). Depending on the setup
+            // project guarantees the template — and its published manifest
+            // — exist before any test in this project runs.
+            name: "e2e",
+            testMatch: /.*\.spec\.ts$/,
+            dependencies: ["fixtureTemplateSetup"],
+        },
+    ],
 });

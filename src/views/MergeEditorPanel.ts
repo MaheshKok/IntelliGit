@@ -343,6 +343,9 @@ export class MergeEditorPanel {
             scriptFile: "webview-mergeeditor.js",
             styleFiles: ["webview-mergeeditor.css"],
             title: vscode.l10n.t("Merge: {file}", { file: path.posix.basename(this.safePath) }),
+            // One live panel per conflicted file, and the bundle is shared with
+            // ShelfConflictEditorPanel -- the scriptFile-derived default would collide on both axes.
+            e2eViewId: `merge-editor\u0000${this.safePath}`,
         });
     }
 }
