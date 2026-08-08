@@ -26,6 +26,11 @@ import {
     COMMIT_INFO_CLEAN_SCENARIO,
     recordCommitInfoWebviewFixture,
 } from "./recordCommitInfoWebviewFixture";
+import {
+    COMMIT_GRAPH_CLEAN_SCENARIO,
+    recordCommitGraphCardWebviewFixture,
+    recordCommitGraphCompactWebviewFixture,
+} from "./recordCommitGraphWebviewFixture";
 import type { WebviewFixture } from "./webviewFixtureTypes";
 
 /** One registered recording: which committed fixture it produces, and how to reproduce it. */
@@ -71,6 +76,32 @@ export const WEBVIEW_FIXTURE_RECORDERS: readonly WebviewFixtureRecorderEntry[] =
             return recordCommitInfoWebviewFixture({
                 repoRoot: template.root,
                 commitHash: template.commits.conflictBase,
+                roots: { root: template.root, originRoot: template.originRoot, profileDir: "" },
+            });
+        },
+    },
+    // Phase 2c-iv-b: `commit-graph-card` and `commit-graph-compact` are the SAME
+    // `CommitGraphViewProvider` class constructed with a different `scriptFile` (see
+    // `recordCommitGraphWebviewFixture.ts`'s own doc comment) -- both declared here against the
+    // same `clean` scenario this module's doc comment already prepares once and reuses.
+    {
+        contextId: "commit-graph-card",
+        scenario: COMMIT_GRAPH_CLEAN_SCENARIO,
+        record: (workspace) => {
+            const template = requireScenarioTemplate(workspace, "commit-graph-card");
+            return recordCommitGraphCardWebviewFixture({
+                repoRoot: template.root,
+                roots: { root: template.root, originRoot: template.originRoot, profileDir: "" },
+            });
+        },
+    },
+    {
+        contextId: "commit-graph-compact",
+        scenario: COMMIT_GRAPH_CLEAN_SCENARIO,
+        record: (workspace) => {
+            const template = requireScenarioTemplate(workspace, "commit-graph-compact");
+            return recordCommitGraphCompactWebviewFixture({
+                repoRoot: template.root,
                 roots: { root: template.root, originRoot: template.originRoot, profileDir: "" },
             });
         },
