@@ -199,6 +199,14 @@ Vitest suites, added to the existing coverage gate. **Every oracle below gets a 
         - **Packaging** — the produced `.vsix` manifest must contain no control command.
 41. **Baseline hygiene** — every committed PNG maps to a live test name (no orphans), and every test in the matrix has all 4 baselines (no silent gaps).
 
+### Phase 7 — Security review (final gate, after every other phase)
+
+42. **The security review runs once, at the end, over the whole accumulated surface — not per phase.** The repository's Tier 1 rule ("run `security-reviewer` before any git push") still holds and is not weakened: nothing in this plan is pushed until Phase 7 passes, so the two gates coincide rather than compete. Deferring it is deliberate, and the tradeoff is stated rather than hidden:
+    - **Why defer.** The surface this plan adds is only meaningfully reviewable once it is complete. The E2E control channel (step 10) reaches Memento, SecretStorage, and webview state; the recorder (step 11) serializes real payloads from a real repository to disk; the harness server (step 17) serves bundles over HTTP; CI workflows (steps 27, 29, 31) gain new jobs and a release-gate override input. Reviewing the channel in isolation at Phase 1 cannot see what Phase 2 later writes into a committed fixture, nor what Phase 5 exposes in a workflow. One review over the assembled surface catches the cross-phase leaks that seven per-phase reviews each miss by construction.
+    - **What it costs, and the mitigation.** A defect found at Phase 7 is more expensive to fix than the same defect found at Phase 1. The mitigation is that the security-relevant invariants are already encoded as *tests* rather than left to reviewer attention: the step-40 negative matrix pins the gating truth table, allowlist rejection, and the secret-redaction contract, and step 40's packaging fixture pins the `.vsix` manifest against any control command leaking into a shipped build. Phase 7 is therefore an audit of a surface that already has its own failing-when-broken oracles, not the first time anyone looks.
+    - **Scope of the review**, enumerated so it cannot silently shrink: `src/e2e/` in full; the webview E2E bridge and its runtime gate; every path that reads secrets, Memento, or workspace state; the recorder's canonicalization, since a missed placeholder commits a real absolute path or a real remote URL into a fixture; every committed fixture and baseline, scanned for leaked paths, tokens, and identities; the harness server's route handling and file access; and all added CI workflow permissions, inputs, and the `skip_e2e_gate` override.
+    - **Gate.** Phase 7 findings are resolved before any push. A `security-reviewer` pass over the full diff `main...HEAD` is the artifact; its result is recorded in the build log like every other phase.
+
 ## Key decisions & tradeoffs
 
 | Decision | Chosen | Rejected, and why |
