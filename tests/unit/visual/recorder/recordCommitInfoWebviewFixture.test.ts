@@ -20,7 +20,7 @@
  */
 
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -40,10 +40,7 @@ import {
     recordCommitInfoWebviewFixture,
 } from "../../../visual/recorder/recordCommitInfoWebviewFixture";
 import { parseWebviewFixture } from "../../../visual/recorder/validateWebviewFixture";
-import {
-    serializeWebviewFixture,
-    webviewFixtureFilePath,
-} from "../../../visual/recorder/webviewFixtureFile";
+import { serializeWebviewFixture } from "../../../visual/recorder/webviewFixtureFile";
 
 describe("recordCommitInfoWebviewFixture", () => {
     let parentDir: string;
@@ -152,31 +149,11 @@ describe("recordCommitInfoWebviewFixture", () => {
         }
     });
 
-    it("matches the committed fixture on disk, byte for byte", async () => {
-        // PLAN.md step 13's back door: record-twice equality proves the RECORDER is deterministic,
-        // never that the COMMITTED bytes still match what the extension emits. Without this test a
-        // developer changes a payload emitter, does not re-record, and the stale-but-type-valid
-        // fixture keeps passing the validator while the pipeline pixel-tests a screen that is no
-        // longer emitted. This is that comparison for the one fixture this slice commits; Phase
-        // 2c-ii generalizes it across every context and scenario.
-        //
-        // Regenerate deliberately (the update is a reviewable diff, exactly like a baseline PNG):
-        //   UPDATE_WEBVIEW_FIXTURES=1 npx vitest run tests/unit/visual/recorder/
-        const fixture = await recordCommitInfoWebviewFixture(optionsFor(workspaceA));
-        const bytes = serializeWebviewFixture(fixture);
-        const committedPath = webviewFixtureFilePath(
-            path.resolve(__dirname, "../../../.."),
-            "commit-info",
-            COMMIT_INFO_CLEAN_SCENARIO,
-        );
-
-        if (process.env.UPDATE_WEBVIEW_FIXTURES === "1") {
-            await mkdir(path.dirname(committedPath), { recursive: true });
-            await writeFile(committedPath, bytes, "utf8");
-        }
-
-        expect(await readFile(committedPath, "utf8")).toBe(bytes);
-    });
+    // The former "matches the committed fixture on disk, byte for byte" test used to live here.
+    // It is now redundant with -- and strictly subsumed by -- `webviewFixtureGate.test.ts`'s
+    // repo-wide regenerate-and-compare gate (PLAN.md step 13), which runs this exact byte
+    // comparison for this recorder (and every other registered one) via
+    // `webviewFixtureRegistry.ts`. Removed here rather than kept as a duplicate.
 
     it("fails loudly instead of silently recording nothing when the E2E gate is inactive", async () => {
         setE2eControlChannelActive(false);
