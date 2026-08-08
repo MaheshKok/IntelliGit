@@ -9,8 +9,9 @@
  * argument below is a deliberate choice:
  *
  *  - `extensionUri` -- `createFakeExtensionUri()`, as the commit-graph recorder does.
- *  - `gitOps` -- `new GitOps(new GitExecutor(repoRoot))` against the REAL prepared `dirty`
- *    workspace.
+ *  - `gitOps` -- a real `GitOps` over the REAL prepared `dirty` workspace, its executor pinned to
+ *    the scenario's sanitized environment (`toGitEnvironment`, `recordingGitEnvironment.ts`) so the
+ *    recording cannot inherit the running developer's `~/.gitconfig`.
  *  - `repoRootUri` -- `createFakeUriFromPath(repoRoot)`. Passing it is what makes the constructor
  *    call `setRepositoriesInternal`, so the panel has a repository to render. Passing `undefined`
  *    would record an empty panel, which is not the `dirty` scenario.
@@ -59,6 +60,7 @@ import type { ShelfService } from "../../../src/services/shelfService";
 import type { CommitMessageGenerationCoordinator } from "../../../src/ai/commitMessageGenerationCoordinator";
 import type { PlaceholderRoots } from "../../fixtures/repo/placeholderCanonicalization";
 import { canonicalizeCapturedMessages } from "./canonicalizeCapturedMessages";
+import { toGitEnvironment } from "./recordingGitEnvironment";
 import {
     createFakeCommitPanelWebviewView,
     createFakeExtensionUri,
@@ -84,6 +86,11 @@ export interface RecordCommitPanelWebviewFixtureOptions {
      * `<ORIGIN>` / `<PROFILE>` (see `canonicalizeCapturedMessages.ts`). This slice never allocates
      * a VS Code profile directory, so callers pass `profileDir: ""`. */
     readonly roots: PlaceholderRoots;
+    /** The scenario's sanitized git environment (`ScenarioWorkspace.env` / `FixtureTemplate.env`).
+     * Required, not optional: a recording that inherits the host environment reads the developer's
+     * own `~/.gitconfig` and produces a fixture nobody else can reproduce -- see
+     * `recordingGitEnvironment.ts`'s own doc comment for the concrete failure. */
+    readonly env: NodeJS.ProcessEnv;
 }
 
 /** A resolve-context stand-in `CommitPanelViewProvider.resolveWebviewView` never reads -- same
@@ -202,7 +209,7 @@ export async function recordCommitPanelWebviewFixture(
     const constructorOptions = buildCommitPanelConstructorOptions();
     const provider = new CommitPanelViewProvider(
         createFakeExtensionUri(),
-        new GitOps(new GitExecutor(options.repoRoot)),
+        new GitOps(new GitExecutor(options.repoRoot, undefined, toGitEnvironment(options.env))),
         createFakeUriFromPath(options.repoRoot),
         createEmptyWorkspaceMemento(),
         createInertSecretStorage(),

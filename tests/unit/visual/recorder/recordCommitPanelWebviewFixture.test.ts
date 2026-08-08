@@ -33,7 +33,7 @@
  */
 
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -47,6 +47,7 @@ vi.mock("vscode", () => createCommitInfoVscodeDouble());
 
 import { setE2eControlChannelActive } from "../../../../src/e2e/activationState";
 import { resetE2eWebviewCaptureSinkForTests } from "../../../../src/e2e/webviewCapture";
+import { GitExecutor } from "../../../../src/git/executor";
 import { assertDirtyPostcondition } from "../../../fixtures/repo/scenarios";
 import { seedFixtureTemplate, type FixtureTemplate } from "../../../fixtures/repo/seed";
 import {
@@ -111,6 +112,7 @@ describe("commit-panel webview recorder", () => {
         return {
             repoRoot: workspace.root,
             roots: { root: workspace.root, originRoot: workspace.originRoot, profileDir: "" },
+            env: workspace.env,
         };
     }
 
@@ -189,6 +191,44 @@ describe("commit-panel webview recorder", () => {
         expect(bytes).not.toContain("/Users/");
         if (process.env.HOME) {
             expect(bytes).not.toContain(process.env.HOME);
+        }
+    });
+
+    // The env-determinism regression. `GitExecutor.runBinary` spawns with `{ ...process.env, ... }`,
+    // so before this recorder threaded the scenario's own sanitized environment through the
+    // executor, every recording read the DEVELOPER's `~/.gitconfig`. That is not theoretical for
+    // this fixture: `commit-panel/dirty.json` carries `{"path": "topic-renamed.txt", "sourcePath":
+    // "topic.txt", "status": "R"}`, and a global `diff.renames = false` splits that one rename into
+    // an add plus a delete -- `changedFileCount` goes 5 -> 6 and the committed bytes stop matching
+    // for that developer alone, on a machine where nothing in the repo changed.
+    //
+    // The control assertion is what makes this test unable to pass vacuously: it proves, in the same
+    // hostile environment, that an executor which DOES inherit the ambient environment really sees
+    // `diff.renames=false`. Without it, a future change that made the hostile config unreachable for
+    // some unrelated reason would leave this test green while proving nothing.
+    it("ignores a hostile ambient git config, so no developer's ~/.gitconfig can change the fixture", async () => {
+        const baseline = serializeWebviewFixture(
+            await recordCommitPanelWebviewFixture(optionsFor(workspaceA)),
+        );
+
+        const hostileConfig = path.join(parentDir, "hostile.gitconfig");
+        await writeFile(hostileConfig, "[diff]\n\trenames = false\n", "utf8");
+        const previous = process.env.GIT_CONFIG_GLOBAL;
+        process.env.GIT_CONFIG_GLOBAL = hostileConfig;
+        try {
+            const ambient = new GitExecutor(workspaceA.root);
+            expect((await ambient.run(["config", "--get", "diff.renames"])).trim()).toBe("false");
+
+            const underHostileConfig = serializeWebviewFixture(
+                await recordCommitPanelWebviewFixture(optionsFor(workspaceA)),
+            );
+            expect(underHostileConfig).toBe(baseline);
+        } finally {
+            if (previous === undefined) {
+                delete process.env.GIT_CONFIG_GLOBAL;
+            } else {
+                process.env.GIT_CONFIG_GLOBAL = previous;
+            }
         }
     });
 

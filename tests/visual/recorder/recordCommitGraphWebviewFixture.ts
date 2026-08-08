@@ -50,6 +50,7 @@ import { CommitGraphViewProvider } from "../../../src/views/CommitGraphViewProvi
 import { CredentialStore } from "../../../src/services/commitChecks/credentialStore";
 import type { PlaceholderRoots } from "../../fixtures/repo/placeholderCanonicalization";
 import { canonicalizeCapturedMessages } from "./canonicalizeCapturedMessages";
+import { toGitEnvironment } from "./recordingGitEnvironment";
 import { createFakeCommitGraphWebviewView, createFakeExtensionUri } from "./commitInfoVscodeDouble";
 import { throwingDouble } from "./throwingDouble";
 import { buildWebviewFixture } from "./webviewFixtureFile";
@@ -71,6 +72,11 @@ export interface RecordCommitGraphWebviewFixtureOptions {
      * `<ORIGIN>` / `<PROFILE>` (see `canonicalizeCapturedMessages.ts`). This slice never allocates a
      * VS Code profile directory, so callers pass `profileDir: ""`. */
     readonly roots: PlaceholderRoots;
+    /** The scenario's sanitized git environment (`ScenarioWorkspace.env` / `FixtureTemplate.env`).
+     * Required, not optional: a recording that inherits the host environment reads the developer's
+     * own `~/.gitconfig` and produces a fixture nobody else can reproduce -- see
+     * `recordingGitEnvironment.ts`'s own doc comment for the concrete failure. */
+    readonly env: NodeJS.ProcessEnv;
 }
 
 /** A resolve-context stand-in `CommitGraphViewProvider.resolveWebviewView` never reads (its own
@@ -163,7 +169,7 @@ async function recordCommitGraphWebviewFixture(
     const credentialStore = new CredentialStore(createInertSecretStorage());
     const provider = new CommitGraphViewProvider(
         createFakeExtensionUri(),
-        new GitOps(new GitExecutor(options.repoRoot)),
+        new GitOps(new GitExecutor(options.repoRoot, undefined, toGitEnvironment(options.env))),
         credentialStore,
         buildProviderOptions(variant),
     );

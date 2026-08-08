@@ -52,6 +52,7 @@ import { GitOps } from "../../../src/git/operations";
 import { CommitInfoViewProvider } from "../../../src/views/CommitInfoViewProvider";
 import type { PlaceholderRoots } from "../../fixtures/repo/placeholderCanonicalization";
 import { canonicalizeCapturedMessages } from "./canonicalizeCapturedMessages";
+import { toGitEnvironment } from "./recordingGitEnvironment";
 import { createFakeCommitInfoWebviewView, createFakeExtensionUri } from "./commitInfoVscodeDouble";
 import { buildWebviewFixture } from "./webviewFixtureFile";
 import type { WebviewFixture } from "./webviewFixtureTypes";
@@ -73,6 +74,11 @@ export interface RecordCommitInfoWebviewFixtureOptions {
      * VS Code profile directory, so callers pass `profileDir: ""` -- `buildPlaceholderReplacements`
      * treats an empty root as "no needles for this placeholder", never as a wildcard. */
     readonly roots: PlaceholderRoots;
+    /** The scenario's sanitized git environment (`ScenarioWorkspace.env` / `FixtureTemplate.env`).
+     * Required, not optional: a recording that inherits the host environment reads the developer's
+     * own `~/.gitconfig` and produces a fixture nobody else can reproduce -- see
+     * `recordingGitEnvironment.ts`'s own doc comment for the concrete failure. */
+    readonly env: NodeJS.ProcessEnv;
 }
 
 /** A resolve-context stand-in `CommitInfoViewProvider.resolveWebviewView` never reads (its own
@@ -129,7 +135,9 @@ export async function recordCommitInfoWebviewFixture(
     // every one of the 8 host contexts' bundled React apps follows.
     await receiveMessage({ type: "ready" });
 
-    const gitOps = new GitOps(new GitExecutor(options.repoRoot));
+    const gitOps = new GitOps(
+        new GitExecutor(options.repoRoot, undefined, toGitEnvironment(options.env)),
+    );
     const detail = await gitOps.getCommitDetail(options.commitHash);
 
     capturedProvider.setCommitDetail(detail);

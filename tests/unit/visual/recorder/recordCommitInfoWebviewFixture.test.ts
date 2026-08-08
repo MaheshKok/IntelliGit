@@ -85,6 +85,7 @@ describe("recordCommitInfoWebviewFixture", () => {
             repoRoot: workspace.root,
             commitHash: workspace.commits.conflictBase,
             roots: { root: workspace.root, originRoot: workspace.originRoot, profileDir: "" },
+            env: workspace.env,
         };
     }
 

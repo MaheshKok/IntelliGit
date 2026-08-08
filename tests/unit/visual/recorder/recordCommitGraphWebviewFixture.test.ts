@@ -120,6 +120,7 @@ describe("commit-graph webview recorders", () => {
         return {
             repoRoot: workspace.root,
             roots: { root: workspace.root, originRoot: workspace.originRoot, profileDir: "" },
+            env: workspace.env,
         };
     }
     type RecordOptions = ReturnType<typeof optionsFor>;

@@ -81,6 +81,7 @@ export const WEBVIEW_FIXTURE_RECORDERS: readonly WebviewFixtureRecorderEntry[] =
                 repoRoot: template.root,
                 commitHash: template.commits.conflictBase,
                 roots: { root: template.root, originRoot: template.originRoot, profileDir: "" },
+                env: workspace.env,
             });
         },
     },
@@ -96,6 +97,7 @@ export const WEBVIEW_FIXTURE_RECORDERS: readonly WebviewFixtureRecorderEntry[] =
             return recordCommitGraphCardWebviewFixture({
                 repoRoot: template.root,
                 roots: { root: template.root, originRoot: template.originRoot, profileDir: "" },
+                env: workspace.env,
             });
         },
     },
@@ -107,6 +109,7 @@ export const WEBVIEW_FIXTURE_RECORDERS: readonly WebviewFixtureRecorderEntry[] =
             return recordCommitGraphCompactWebviewFixture({
                 repoRoot: template.root,
                 roots: { root: template.root, originRoot: template.originRoot, profileDir: "" },
+                env: workspace.env,
             });
         },
     },
@@ -123,6 +126,7 @@ export const WEBVIEW_FIXTURE_RECORDERS: readonly WebviewFixtureRecorderEntry[] =
             return recordCommitPanelWebviewFixture({
                 repoRoot: workspace.root,
                 roots: { root: workspace.root, originRoot: template.originRoot, profileDir: "" },
+                env: workspace.env,
             });
         },
     },
