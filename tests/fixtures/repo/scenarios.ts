@@ -2,8 +2,8 @@
  * The repository scenario layer (PLAN.md:101, Phase 2c-iii). `seedFixtureTemplate` produces
  * exactly one repository state -- history, branches, tag, bare origin, stash entries, and a dirty
  * working tree. Every remaining webview recorder (Phase 2c-iv) needs to record against the other
- * seven states PLAN.md:101 lists too: `clean, dirty, conflicted, mid-rebase, detached HEAD,
- * ahead/behind, empty repo, shelf-populated`. This module builds all eight.
+ * eight states PLAN.md:101 lists too: `clean, dirty, conflicted, mid-rebase, detached HEAD,
+ * ahead/behind, empty repo, shelf-populated, shelf-conflicted`. This module builds all nine.
  *
  * Governing principle (this is the whole reason this module exists as its own layer rather than
  * inline setup in each future recorder test): a scenario builder that silently no-ops -- a merge
@@ -37,7 +37,12 @@ import { ShelfStore } from "../../../src/shelf/store";
 import { ShelfService } from "../../../src/services/shelfService";
 
 import { runGit } from "./gitRun";
-import { createSanitizedGitEnv, FIXTURE_REFS, seedFixtureTemplate, type FixtureTemplate } from "./seed";
+import {
+    createSanitizedGitEnv,
+    FIXTURE_REFS,
+    seedFixtureTemplate,
+    type FixtureTemplate,
+} from "./seed";
 
 /** Every repository state PLAN.md:101 requires a webview recorder to be able to record against. */
 export const REPOSITORY_SCENARIO_IDS = [
@@ -49,6 +54,7 @@ export const REPOSITORY_SCENARIO_IDS = [
     "ahead-behind",
     "empty-repo",
     "shelf-populated",
+    "shelf-conflicted",
 ] as const;
 
 export type RepositoryScenarioId = (typeof REPOSITORY_SCENARIO_IDS)[number];
@@ -65,6 +71,8 @@ export interface ScenarioWorkspace {
     /** The seeded template this scenario was built from. Absent ONLY for `empty-repo`, which has
      * no history to build from. */
     readonly template?: FixtureTemplate;
+    /** The shelf store root created by a shelf-backed scenario; absent for every other scenario. */
+    readonly shelfStorageRoot?: string;
 }
 
 /** One buildable repository state and the builder that produces it. */
@@ -115,8 +123,21 @@ async function ensureEmptyScenarioDestination(destination: string): Promise<void
 }
 
 /** Wraps a freshly seeded template into the shape every non-empty scenario returns. */
-function toWorkspace(id: RepositoryScenarioId, template: FixtureTemplate): ScenarioWorkspace {
-    return { id, root: template.root, env: template.env, home: template.home, template };
+function toWorkspace(
+    id: RepositoryScenarioId,
+    template: FixtureTemplate,
+    shelfStorageRoot?: string,
+): ScenarioWorkspace {
+    return shelfStorageRoot === undefined
+        ? { id, root: template.root, env: template.env, home: template.home, template }
+        : {
+              id,
+              root: template.root,
+              env: template.env,
+              home: template.home,
+              template,
+              shelfStorageRoot,
+          };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -126,7 +147,10 @@ function toWorkspace(id: RepositoryScenarioId, template: FixtureTemplate): Scena
 
 /** `clean`: no modified tracked files, no untracked files. Stash entries are deliberately outside
  * this check's scope -- `git status --porcelain` never reports `refs/stash` either. */
-export async function assertCleanPostcondition(root: string, env: NodeJS.ProcessEnv): Promise<void> {
+export async function assertCleanPostcondition(
+    root: string,
+    env: NodeJS.ProcessEnv,
+): Promise<void> {
     const status = await runGit(root, ["status", "--porcelain"], env);
     if (status.length > 0) {
         throw new Error(
@@ -137,7 +161,10 @@ export async function assertCleanPostcondition(root: string, env: NodeJS.Process
 }
 
 /** `dirty`: at least one modified tracked path AND at least one untracked path. */
-export async function assertDirtyPostcondition(root: string, env: NodeJS.ProcessEnv): Promise<void> {
+export async function assertDirtyPostcondition(
+    root: string,
+    env: NodeJS.ProcessEnv,
+): Promise<void> {
     const status = await runGit(root, ["status", "--porcelain"], env);
     const lines = status.length > 0 ? status.split("\n") : [];
     const hasUntracked = lines.some((line) => line.startsWith("??"));
@@ -256,6 +283,43 @@ export async function assertShelfPopulatedPostcondition(store: ShelfStore): Prom
     }
 }
 
+/**
+ * `shelf-conflicted`: opens the content-backed production conflict session for the shelved
+ * `mutable.txt` entry and proves its base, local, and shelved sides are all non-empty and pairwise
+ * distinct. Reading a fresh manifest and then opening through `ShelfService` is deliberate:
+ * `ShelfService.shelve()` reports an empty `entries` array even when the manifest contains a real
+ * file, and an entry-only assertion would also miss an ineligible ADD or an unchanged worktree.
+ */
+export async function assertShelfConflictedPostcondition(
+    store: ShelfStore,
+    service: Pick<ShelfService, "openShelfConflictSession">,
+): Promise<void> {
+    const { shelfIds } = await store.listShelves();
+    if (shelfIds.length !== 1) {
+        throw new Error(
+            `shelf-conflicted scenario postcondition violated: expected exactly one shelf entry ` +
+                `container, found ${shelfIds.length} shelf(s).`,
+        );
+    }
+    const shelfId = shelfIds[0];
+    const manifest = await store.readCurrentShelfManifest(shelfId);
+    const entries = manifest.files.filter((entry) => entry.worktreeBlock?.path === "mutable.txt");
+    if (entries.length !== 1) {
+        throw new Error(
+            `shelf-conflicted scenario postcondition violated: expected exactly one mutable.txt ` +
+                `shelf entry, found ${entries.length}.`,
+        );
+    }
+    const payload = await service.openShelfConflictSession(shelfId, entries[0].changeId);
+    const sides = [payload.base, payload.current, payload.patchedBase];
+    if (sides.some((side) => side.length === 0) || new Set(sides).size !== sides.length) {
+        throw new Error(
+            `shelf-conflicted scenario postcondition violated: expected non-empty, pairwise ` +
+                `distinct base/current/patchedBase sides, got ${JSON.stringify(sides)}.`,
+        );
+    }
+}
+
 // ---------------------------------------------------------------------------------------------
 // Scenario builders, in REPOSITORY_SCENARIO_IDS order.
 // ---------------------------------------------------------------------------------------------
@@ -354,7 +418,11 @@ async function prepareAheadBehind(destination: string): Promise<ScenarioWorkspac
         ["clone", "--quiet", "--branch", FIXTURE_REFS.main, originRoot, advanceClone],
         env,
     );
-    await writeFile(path.join(advanceClone, "origin-advance.txt"), "origin advanced main\n", "utf8");
+    await writeFile(
+        path.join(advanceClone, "origin-advance.txt"),
+        "origin advanced main\n",
+        "utf8",
+    );
     await runGit(advanceClone, ["add", "-A"], env);
     await runGit(advanceClone, ["commit", "--quiet", "-m", "Advance origin main"], env);
     await runGit(advanceClone, ["push", "--quiet", "origin", FIXTURE_REFS.main], env);
@@ -405,13 +473,23 @@ async function prepareEmptyRepo(destination: string): Promise<ScenarioWorkspace>
  */
 async function prepareShelfPopulated(destination: string): Promise<ScenarioWorkspace> {
     const template = await seedFixtureTemplate(destination);
-    const { root } = template;
+    const { root, env } = template;
 
     const storageRoot = path.join(destination, "shelf-storage");
-    const shelfPaths = await resolveShelfPaths({ repositoryRoot: root, globalStoragePath: storageRoot });
+    const shelfPaths = await resolveShelfPaths({
+        repositoryRoot: root,
+        globalStoragePath: storageRoot,
+    });
     const store = new ShelfStore(shelfPaths);
-    const executor = new GitExecutor(root);
-    const gate = new RepositoryMutationGate(new RepositoryMutationCoordinator(), new RepositoryLock());
+    // Third argument is the scenario's sanitized environment, not a convenience: without it this
+    // builder's git subprocesses inherit the developer's global Git configuration, the exact defect
+    // `recordingGitEnvironment.ts` documents. Added in Phase 2c-v-d alongside `shelf-conflicted`,
+    // which had it from the start -- the two shelf builders must not disagree about this.
+    const executor = new GitExecutor(root, undefined, env);
+    const gate = new RepositoryMutationGate(
+        new RepositoryMutationCoordinator(),
+        new RepositoryLock(),
+    );
     const service = new ShelfService({ repositoryRoot: root, executor, store, gate });
 
     await service.shelve({
@@ -422,7 +500,43 @@ async function prepareShelfPopulated(destination: string): Promise<ScenarioWorks
     });
 
     await assertShelfPopulatedPostcondition(store);
-    return toWorkspace("shelf-populated", template);
+    return toWorkspace("shelf-populated", template, storageRoot);
+}
+
+/**
+ * `shelf-conflicted`: captures only the seeded dirty layer's `mutable.txt` through the real
+ * `ShelfService`, then rewrites the worktree file so the production conflict-session opener sees
+ * three distinct text sides. This builder intentionally does NOT run `reset --hard` or
+ * `clean -fdx`: the dirty staged and unstaged layers are the shelf content that makes the
+ * three-way session possible. The shelf root is carried on `ScenarioWorkspace` so a recorder uses
+ * this exact store rather than reconstructing it from `path.dirname(workspace.root)`.
+ */
+async function prepareShelfConflicted(destination: string): Promise<ScenarioWorkspace> {
+    const template = await seedFixtureTemplate(destination);
+    const { root, env } = template;
+    const storageRoot = path.join(destination, "shelf-storage");
+    const shelfPaths = await resolveShelfPaths({
+        repositoryRoot: root,
+        globalStoragePath: storageRoot,
+    });
+    const store = new ShelfStore(shelfPaths);
+    const executor = new GitExecutor(root, undefined, env);
+    const gate = new RepositoryMutationGate(
+        new RepositoryMutationCoordinator(),
+        new RepositoryLock(),
+    );
+    const service = new ShelfService({ repositoryRoot: root, executor, store, gate });
+
+    await service.shelve({
+        name: "scenario-seeded-conflict-shelf",
+        paths: ["mutable.txt"],
+        silent: true,
+        keepLocal: false,
+    });
+    await writeFile(path.join(root, "mutable.txt"), "locally rewritten line\n", "utf8");
+
+    await assertShelfConflictedPostcondition(store, service);
+    return toWorkspace("shelf-conflicted", template, storageRoot);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -430,7 +544,8 @@ async function prepareShelfPopulated(destination: string): Promise<ScenarioWorks
 export const REPOSITORY_SCENARIOS: readonly RepositoryScenario[] = [
     {
         id: "clean",
-        summary: "Seeded template with the dirty layer fully reverted: no modified or untracked paths.",
+        summary:
+            "Seeded template with the dirty layer fully reverted: no modified or untracked paths.",
         prepare: prepareClean,
     },
     {
@@ -442,7 +557,8 @@ export const REPOSITORY_SCENARIOS: readonly RepositoryScenario[] = [
     },
     {
         id: "conflicted",
-        summary: "An in-progress merge of conflict/with-main into main, stopped on a real content conflict.",
+        summary:
+            "An in-progress merge of conflict/with-main into main, stopped on a real content conflict.",
         prepare: prepareConflicted,
     },
     {
@@ -473,5 +589,12 @@ export const REPOSITORY_SCENARIOS: readonly RepositoryScenario[] = [
             "Seeded template with one real IntelliGit shelf entry captured through the " +
             "production ShelfService.",
         prepare: prepareShelfPopulated,
+    },
+    {
+        id: "shelf-conflicted",
+        summary:
+            "Seeded mutable.txt shelf content plus a divergent local rewrite that opens a real " +
+            "three-way shelf conflict session.",
+        prepare: prepareShelfConflicted,
     },
 ];

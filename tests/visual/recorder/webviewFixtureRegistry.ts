@@ -47,6 +47,10 @@ import {
     recordUndockedWebviewFixture,
     UNDOCKED_MID_REBASE_SCENARIO,
 } from "./recordUndockedWebviewFixture";
+import {
+    recordShelfConflictEditorWebviewFixture,
+    SHELF_CONFLICT_EDITOR_CONFLICTED_SCENARIO,
+} from "./recordShelfConflictEditorWebviewFixture";
 import type { WebviewFixture } from "./webviewFixtureTypes";
 
 /** One registered recording: which committed fixture it produces, and how to reproduce it. */
@@ -179,6 +183,29 @@ export const WEBVIEW_FIXTURE_RECORDERS: readonly WebviewFixtureRecorderEntry[] =
             const template = requireScenarioTemplate(workspace, "undocked");
             return recordUndockedWebviewFixture({
                 repoRoot: workspace.root,
+                roots: { root: workspace.root, originRoot: template.originRoot, profileDir: "" },
+                env: workspace.env,
+            });
+        },
+    },
+    // Phase 2c-v-d: `shelf-conflict-editor` records `shelf-conflicted`, not `shelf-populated` --
+    // only the former shelves eligible mutable.txt content, rewrites the worktree, and opens a
+    // real three-way text conflict. The scenario carries its exact shelf storage root because the
+    // recorder must consume the store it wrote rather than re-derive a disposable destination.
+    {
+        contextId: "shelf-conflict-editor",
+        scenario: SHELF_CONFLICT_EDITOR_CONFLICTED_SCENARIO,
+        record: (workspace) => {
+            const template = requireScenarioTemplate(workspace, "shelf-conflict-editor");
+            if (workspace.shelfStorageRoot === undefined) {
+                throw new Error(
+                    "shelf-conflict-editor/shelf-conflicted: ScenarioWorkspace.shelfStorageRoot is undefined; " +
+                        "the scenario did not expose the shelf store it created.",
+                );
+            }
+            return recordShelfConflictEditorWebviewFixture({
+                repoRoot: workspace.root,
+                shelfStorageRoot: workspace.shelfStorageRoot,
                 roots: { root: workspace.root, originRoot: template.originRoot, profileDir: "" },
                 env: workspace.env,
             });

@@ -23,6 +23,11 @@ import { afterAll, describe, expect, it } from "vitest";
 
 import { resolveShelfPaths } from "../../../src/shelf/paths";
 import { ShelfStore } from "../../../src/shelf/store";
+import { GitExecutor } from "../../../src/git/executor";
+import { RepositoryMutationCoordinator } from "../../../src/git/mutationCoordinator";
+import { RepositoryLock } from "../../../src/git/repositoryLock";
+import { RepositoryMutationGate } from "../../../src/git/repositoryMutationGate";
+import { ShelfService } from "../../../src/services/shelfService";
 
 import {
     assertAheadBehindPostcondition,
@@ -32,6 +37,7 @@ import {
     assertDirtyPostcondition,
     assertEmptyRepoPostcondition,
     assertMidRebasePostcondition,
+    assertShelfConflictedPostcondition,
     assertShelfPopulatedPostcondition,
     REPOSITORY_SCENARIO_IDS,
     REPOSITORY_SCENARIOS,
@@ -50,7 +56,11 @@ async function git(cwd: string, args: readonly string[], env: NodeJS.ProcessEnv)
 
 /** Like `git`, but resolves `false` on a non-zero exit instead of rejecting -- used only for
  * assertions that check whether a git subcommand fails (e.g. `symbolic-ref` on a detached HEAD). */
-async function gitFails(cwd: string, args: readonly string[], env: NodeJS.ProcessEnv): Promise<boolean> {
+async function gitFails(
+    cwd: string,
+    args: readonly string[],
+    env: NodeJS.ProcessEnv,
+): Promise<boolean> {
     try {
         await git(cwd, args, env);
         return false;
@@ -72,7 +82,10 @@ async function allocateDestination(): Promise<string> {
 
 function scenarioFor(id: RepositoryScenarioId) {
     const scenario = REPOSITORY_SCENARIOS.find((candidate) => candidate.id === id);
-    if (!scenario) throw new Error(`no REPOSITORY_SCENARIOS entry for "${id}" -- fix the test, not the fixture`);
+    if (!scenario)
+        throw new Error(
+            `no REPOSITORY_SCENARIOS entry for "${id}" -- fix the test, not the fixture`,
+        );
     return scenario;
 }
 
@@ -96,7 +109,9 @@ afterAll(async () => {
 
 describe("REPOSITORY_SCENARIOS", () => {
     it("has exactly one entry per REPOSITORY_SCENARIO_IDS id, in the same order, with no duplicates", () => {
-        expect(REPOSITORY_SCENARIOS.map((scenario) => scenario.id)).toEqual([...REPOSITORY_SCENARIO_IDS]);
+        expect(REPOSITORY_SCENARIOS.map((scenario) => scenario.id)).toEqual([
+            ...REPOSITORY_SCENARIO_IDS,
+        ]);
         // Set equality, not just a length/order check: catches a duplicate id masking a missing one.
         expect(new Set(REPOSITORY_SCENARIOS.map((scenario) => scenario.id)).size).toBe(
             REPOSITORY_SCENARIO_IDS.length,
@@ -105,13 +120,16 @@ describe("REPOSITORY_SCENARIOS", () => {
 });
 
 describe("no identity leakage", () => {
-    it.each(REPOSITORY_SCENARIO_IDS)("%s routes HOME/config through the sanitized env", async (id) => {
-        const destination = await allocateDestination();
-        const workspace = await scenarioFor(id).prepare(destination);
-        scratchHomes.push(workspace.home);
+    it.each(REPOSITORY_SCENARIO_IDS)(
+        "%s routes HOME/config through the sanitized env",
+        async (id) => {
+            const destination = await allocateDestination();
+            const workspace = await scenarioFor(id).prepare(destination);
+            scratchHomes.push(workspace.home);
 
-        assertNoIdentityLeakage(workspace);
-    });
+            assertNoIdentityLeakage(workspace);
+        },
+    );
 });
 
 describe("clean", () => {
@@ -144,7 +162,9 @@ describe("dirty", () => {
         const status = await git(workspace.root, ["status", "--porcelain"], workspace.env);
         const lines = status.split("\n");
         expect(lines.some((line) => line.startsWith("??"))).toBe(true);
-        expect(lines.some((line) => !line.startsWith("??") && /M/.test(line.slice(0, 2)))).toBe(true);
+        expect(lines.some((line) => !line.startsWith("??") && /M/.test(line.slice(0, 2)))).toBe(
+            true,
+        );
     });
 
     it("can fail: a clean workspace violates the dirty postcondition", async () => {
@@ -164,7 +184,11 @@ describe("conflicted", () => {
         const workspace = await scenarioFor("conflicted").prepare(destination);
         scratchHomes.push(workspace.home);
 
-        const mergeHead = await git(workspace.root, ["rev-parse", "--verify", "MERGE_HEAD"], workspace.env);
+        const mergeHead = await git(
+            workspace.root,
+            ["rev-parse", "--verify", "MERGE_HEAD"],
+            workspace.env,
+        );
         expect(mergeHead).toHaveLength(40);
 
         const status = await git(workspace.root, ["status", "--porcelain"], workspace.env);
@@ -177,7 +201,9 @@ describe("conflicted", () => {
         scratchHomes.push(workspace.home);
 
         // Sanity check first: the postcondition genuinely holds on the freshly built scenario.
-        await expect(assertConflictedPostcondition(workspace.root, workspace.env)).resolves.toBeUndefined();
+        await expect(
+            assertConflictedPostcondition(workspace.root, workspace.env),
+        ).resolves.toBeUndefined();
 
         await git(workspace.root, ["merge", "--abort"], workspace.env);
 
@@ -203,7 +229,9 @@ describe("mid-rebase", () => {
         const workspace = await scenarioFor("mid-rebase").prepare(destination);
         scratchHomes.push(workspace.home);
 
-        await expect(assertMidRebasePostcondition(workspace.root, workspace.env)).resolves.toBeUndefined();
+        await expect(
+            assertMidRebasePostcondition(workspace.root, workspace.env),
+        ).resolves.toBeUndefined();
 
         await git(workspace.root, ["rebase", "--abort"], workspace.env);
 
@@ -219,7 +247,9 @@ describe("detached-head", () => {
         const workspace = await scenarioFor("detached-head").prepare(destination);
         scratchHomes.push(workspace.home);
 
-        expect(await gitFails(workspace.root, ["symbolic-ref", "-q", "HEAD"], workspace.env)).toBe(true);
+        expect(await gitFails(workspace.root, ["symbolic-ref", "-q", "HEAD"], workspace.env)).toBe(
+            true,
+        );
         const head = await git(workspace.root, ["rev-parse", "HEAD"], workspace.env);
         expect(head).toBe(workspace.template?.commits.featureCommit3);
     });
@@ -272,7 +302,9 @@ describe("empty-repo", () => {
         scratchHomes.push(workspace.home);
 
         expect(workspace.template).toBeUndefined();
-        expect(await gitFails(workspace.root, ["rev-parse", "--verify", "HEAD"], workspace.env)).toBe(true);
+        expect(
+            await gitFails(workspace.root, ["rev-parse", "--verify", "HEAD"], workspace.env),
+        ).toBe(true);
 
         const status = await git(workspace.root, ["status", "--porcelain"], workspace.env);
         expect(status).toBe("");
@@ -329,6 +361,111 @@ describe("shelf-populated", () => {
     });
 });
 
+describe("shelf-conflicted", () => {
+    it("opens a real text conflict session and preserves the shelf storage root", async () => {
+        const destination = await allocateDestination();
+        const workspace = await scenarioFor("shelf-conflicted").prepare(destination);
+        scratchHomes.push(workspace.home);
+
+        expect(workspace.shelfStorageRoot).toBe(join(destination, "shelf-storage"));
+        const shelfPaths = await resolveShelfPaths({
+            repositoryRoot: workspace.root,
+            globalStoragePath: workspace.shelfStorageRoot!,
+        });
+        const store = new ShelfStore(shelfPaths);
+        const executor = new GitExecutor(workspace.root, undefined, workspace.env);
+        const gate = new RepositoryMutationGate(
+            new RepositoryMutationCoordinator(),
+            new RepositoryLock(),
+        );
+        const service = new ShelfService({
+            repositoryRoot: workspace.root,
+            executor,
+            store,
+            gate,
+        });
+
+        await expect(assertShelfConflictedPostcondition(store, service)).resolves.toBeUndefined();
+        expect(await git(workspace.root, ["status", "--porcelain"], workspace.env)).toContain(
+            " M mutable.txt",
+        );
+    });
+
+    it("can fail: a populated shelf with only an ineligible path violates the real conflict-session postcondition", async () => {
+        const destination = await allocateDestination();
+        const workspace = await scenarioFor("shelf-populated").prepare(destination);
+        scratchHomes.push(workspace.home);
+
+        const shelfPaths = await resolveShelfPaths({
+            repositoryRoot: workspace.root,
+            globalStoragePath: join(destination, "shelf-storage"),
+        });
+        const store = new ShelfStore(shelfPaths);
+        const executor = new GitExecutor(workspace.root, undefined, workspace.env);
+        const gate = new RepositoryMutationGate(
+            new RepositoryMutationCoordinator(),
+            new RepositoryLock(),
+        );
+        const service = new ShelfService({
+            repositoryRoot: workspace.root,
+            executor,
+            store,
+            gate,
+        });
+
+        await expect(assertShelfConflictedPostcondition(store, service)).rejects.toThrow(
+            /shelf-conflicted scenario postcondition violated/,
+        );
+    });
+
+    /**
+     * The SIDES branch specifically, which the ineligible-path case above never reaches -- it fails
+     * earlier, on the missing mutable.txt entry.
+     *
+     * That gap was found by mutation, not by reading: deleting the pairwise-distinct check left the
+     * whole suite green, because with a correctly built scenario there is nothing for the check to
+     * catch. Yet that check is precisely what makes a no-op shelve or a missing post-shelve rewrite
+     * fail (both proven red by mutation), so leaving its own throw unproven would mean the guard
+     * that catches a degenerate scenario could itself be deleted silently.
+     *
+     * The base side is read back from the live session rather than hardcoding seed.ts's
+     * "mutable original\n": writing the worktree file back to whatever base actually is collapses
+     * current onto base by construction, so this stays honest if the seed's content ever changes.
+     */
+    it("can fail: a local rewrite that collapses onto the base side violates the postcondition", async () => {
+        const destination = await allocateDestination();
+        const workspace = await scenarioFor("shelf-conflicted").prepare(destination);
+        scratchHomes.push(workspace.home);
+
+        const shelfPaths = await resolveShelfPaths({
+            repositoryRoot: workspace.root,
+            globalStoragePath: workspace.shelfStorageRoot!,
+        });
+        const store = new ShelfStore(shelfPaths);
+        const executor = new GitExecutor(workspace.root, undefined, workspace.env);
+        const gate = new RepositoryMutationGate(
+            new RepositoryMutationCoordinator(),
+            new RepositoryLock(),
+        );
+        const service = new ShelfService({
+            repositoryRoot: workspace.root,
+            executor,
+            store,
+            gate,
+        });
+
+        const { shelfIds } = await store.listShelves();
+        const manifest = await store.readCurrentShelfManifest(shelfIds[0]);
+        const entry = manifest.files.find((file) => file.worktreeBlock?.path === "mutable.txt");
+        const payload = await service.openShelfConflictSession(shelfIds[0], entry!.changeId);
+        await writeFile(join(workspace.root, "mutable.txt"), payload.base, "utf8");
+
+        await expect(assertShelfConflictedPostcondition(store, service)).rejects.toThrow(
+            /pairwise distinct base\/current\/patchedBase sides/,
+        );
+    });
+});
+
 describe("independence", () => {
     it.each(REPOSITORY_SCENARIO_IDS)(
         "%s: two prepare() calls produce workspaces that share no path and are mutually unaffected",
@@ -348,7 +485,11 @@ describe("independence", () => {
             // (A `cat-file -e HEAD:independence-marker.txt` check would NOT: the marker is never
             // committed, so that path fails to resolve in every repository including A's own, and
             // the assertion would pass even if A and B were literally the same directory.)
-            await writeFile(join(workspaceA.root, "independence-marker.txt"), "only in A\n", "utf8");
+            await writeFile(
+                join(workspaceA.root, "independence-marker.txt"),
+                "only in A\n",
+                "utf8",
+            );
             const workingTreeStatusB = await git(
                 workspaceB.root,
                 ["status", "--porcelain=v1", "--ignored"],
