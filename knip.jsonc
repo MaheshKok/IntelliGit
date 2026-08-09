@@ -35,12 +35,17 @@
     // reports every E2E file as unreachable -- which reads as "delete this",
     // the exact wrong conclusion.
     "playwright": {
-        "config": ["playwright.e2e.config.ts"],
+        "config": ["playwright.e2e.config.ts", "playwright.visual.config.ts"],
         // `.setup.ts`/`.teardown.ts` are entry points too: the fixture-template setup and teardown
         // projects are reached through their `testMatch` regexes in the config, which knip cannot
         // resolve statically. Without them listed, knip reports both as unused files -- again the
         // exact wrong conclusion, since deleting either one silently removes the once-per-run
         // template build.
-        "entry": ["tests/e2e/**/*.spec.ts", "tests/e2e/**/*.setup.ts", "tests/e2e/**/*.teardown.ts"]
+        "entry": [
+            "tests/e2e/**/*.spec.ts",
+            "tests/e2e/**/*.setup.ts",
+            "tests/e2e/**/*.teardown.ts",
+            "tests/visual/**/*.spec.ts"
+        ]
     }
 }
