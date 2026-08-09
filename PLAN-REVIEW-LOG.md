@@ -736,3 +736,100 @@ container simulates no real user — a macOS user gets Menlo, a Linux user gets
 Droid Sans, and the container gets "Menlo requested, Droid Sans delivered."
 Proceeding on that default at step 20. It is flagged, not blocked; reversing it
 costs one four-minute regeneration.
+
+---
+
+## Phase 19-c-i — an oracle that could not fail
+
+`BASE_HEAD` = `112e8355`. Both rounds `gpt-5.6-luna` at `max`, each verified from
+its own session rollout rather than from the launch command.
+
+### Round 1 — build (SID `019fe800-3441-74e0-a122-a7308562f4d1`)
+
+The accessible-name oracle was tautological: `collectOracleInputs.ts` built
+`computedName` as `getAttribute("aria-label") ?? textContent` and `sourceText` as
+`textContent`, so for every element without an aria-label it compared a value to
+itself. All 64 `accessibleNames` arrays in the baseline were `[]` — not because
+the product was clean, but because the comparison had no second opinion.
+
+Replacement: a pure module `tests/visual/oracles/truncationSources.ts` whose
+expected value comes from OUTSIDE the DOM (the recorded fixture payload) and
+whose observed value is Playwright's own accessible-name computation. The old
+`accessibleName.ts` and its unit test were deleted (212 lines).
+
+Round 1 implemented the work order faithfully. **The work order was wrong twice,
+and both defects were the reviewer's.**
+
+### Defect 1 — the tautology became a vacuum (measured, not argued)
+
+The work order said "keep the `style.textOverflow === "ellipsis"` split exactly as
+it is", so `renderedTexts` was collected only for elements that CSS-ellipsize. But
+`text-overflow: ellipsis` is a paint-time effect — it never modifies
+`textContent`. Every string in that bucket is therefore the full untruncated text,
+`matchTruncatedRendering` hits its equality guard, and the bucket can never
+produce a finding.
+
+Probe, mounting all eight contexts at `dark-modern-narrow` and counting elements
+with direct text:
+
+| context | `text-overflow: ellipsis` | of those, containing a literal ellipsis |
+|---|---|---|
+| commit-graph-card | 26 | 0 |
+| commit-graph-compact | 13 | 0 |
+| commit-panel | 11 | 0 |
+| commit-info | 1 | 0 |
+| undocked | 33 | 0 |
+| merge-editor | 4 | 0 |
+| shelf-conflict-editor | 4 | 0 |
+| merge-conflict-session | 2 | 0 |
+
+Zero in all eight. Meanwhile `merge-conflict-session` renders `"Merge..."` — a
+real JS-truncated label — on an element WITHOUT `text-overflow: ellipsis`, so it
+landed in the `clipping` bucket and the oracle never saw the one element it
+existed to check. Fix: collect `renderedTexts` for every direct-text candidate;
+the `textOverflow` test now governs the clipping bucket only.
+
+### Defect 2 — `expect.soft` bypasses the ratchet
+
+The work order told Round 1 to use `expect.soft` "so a failure becomes a baseline
+finding key rather than an immediate throw". That is not what soft does: a soft
+failure is recorded and Playwright fails the test at teardown, so any finding
+turns the suite red regardless of the baseline — and on an ambiguous match the
+loop ran one assertion per candidate source, of which at most one can pass,
+guaranteeing recorded errors. Fix: a catchable assertion with a 250 ms timeout
+(the page is static after mount), failure turned into a finding key, the ratchet
+left as the only thing deciding red vs green.
+
+### Evidence
+
+Round 1's RED was "the module did not exist yet" — a compile error, not behavior.
+The gate for this phase is a PRODUCTION mutation.
+
+| Row | What | Expected | Result |
+|---|---|---|---|
+| M3 | host, `merge-conflict-session`, unmutated | green | 1 passed (835 ms) |
+| M4 | `MergeConflictSessionApp.tsx:181` truncated to `slice(0,4) + "..."`, rebuilt | RED naming the element | **RED** — `span.file-name (… > td:nth-of-type(1) > span:nth-of-type(1)) [ambiguous-source]` |
+| M5 | full container suite, mutation reverted | 96/96 | **96 passed (4.0m)** |
+
+M4 reported `[ambiguous-source]` rather than `[truncated-name]`: `"conf..."`
+matched more than one fixture source, so the oracle declined to guess which was
+truncated and reported the ambiguity as data. That is the designed behavior and is
+better than a confident wrong answer.
+
+Deleted-oracle check: no references to `accessibleName` remain anywhere in `src/`
+or `tests/` beyond the new local finding array.
+
+### Standing finding raised by this phase — the baseline is not a spec
+
+`knownFindings.json` currently holds **610 findings**: 388 clipping, 222 contrast,
+0 accessibleNames, 0 zeroSize. Every one is a real product defect that was
+recorded and normalized rather than fixed. The ratchet detects CHANGE, not WRONG,
+and it has been standing in for bug-fixing. Contrast severity, computed from the
+recorded ratios:
+
+- **0 of 222 pass WCAG AA.**
+- 82 fall below 3.0 — failing even the relaxed large-text / UI-component threshold.
+- The worst are 1.10:1, concentrated in `hc-light`.
+
+Per-project counts show the asymmetry: `hc-light` 34-36 contrast findings vs
+`hc-black` 11. Root-caused in the next section.

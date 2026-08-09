@@ -1,7 +1,6 @@
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 
-import { findAccessibleNameViolations } from "./oracles/accessibleName";
 import { findContrastViolations } from "./oracles/contrast";
 import {
     contrastKey,
@@ -11,6 +10,7 @@ import {
     normalizeFindingKeys,
 } from "./oracles/findingsBaseline";
 import { findClippingLosses, findZeroSizeTargets } from "./oracles/geometry";
+import { collectSourceStrings, matchTruncatedRendering } from "./oracles/truncationSources";
 import { WEBVIEW_HOST_CONTEXTS } from "./harness/hostContexts";
 import { collectOracleInputs } from "./playwright/collectOracleInputs";
 import { expect, test } from "./playwright/harnessPage";
@@ -86,6 +86,42 @@ test.describe("live-page non-pixel oracles", () => {
                 webviewFixture: HOST_CONTEXT_FIXTURES[contextId],
             });
             const inputs = await collectOracleInputs(page);
+            const fixture = JSON.parse(
+                readFileSync(
+                    resolve(__dirname, "fixtures", contextId, HOST_CONTEXT_FIXTURES[contextId]),
+                    "utf8",
+                ),
+            ) as { readonly messages: readonly unknown[] };
+            const sourceStrings = collectSourceStrings(fixture.messages);
+            const accessibleNameFindings: string[] = [];
+
+            for (const { id, oracleKey, text } of inputs.renderedTexts) {
+                const match = matchTruncatedRendering(text, sourceStrings);
+                if (match === undefined) {
+                    continue;
+                }
+
+                if (match.sources.length > 1) {
+                    accessibleNameFindings.push(`${id} [ambiguous-source]`);
+                }
+
+                let matched = false;
+                for (const source of match.sources) {
+                    try {
+                        await expect(
+                            page.locator(`[data-oracle-key="${oracleKey}"]`),
+                        ).toHaveAccessibleName(source, { timeout: 250 });
+                        matched = true;
+                        break;
+                    } catch {
+                        // A non-matching source is the finding, not a test failure --
+                        // the baseline decides whether this finding is already known.
+                    }
+                }
+                if (!matched && match.sources.length === 1) {
+                    accessibleNameFindings.push(`${id} [truncated-name]`);
+                }
+            }
 
             const observed: Record<Bucket, readonly string[]> = {
                 clipping: normalizeFindingKeys(
@@ -98,11 +134,7 @@ test.describe("live-page non-pixel oracles", () => {
                         contrastKey(finding.id, finding.ratio),
                     ),
                 ),
-                accessibleNames: normalizeFindingKeys(
-                    findAccessibleNameViolations(inputs.accessibleNames).map(
-                        (finding) => `${finding.id} [${finding.kind}]`,
-                    ),
-                ),
+                accessibleNames: normalizeFindingKeys(accessibleNameFindings),
                 zeroSize: normalizeFindingKeys(findZeroSizeTargets(inputs.interactiveTargets)),
             };
 

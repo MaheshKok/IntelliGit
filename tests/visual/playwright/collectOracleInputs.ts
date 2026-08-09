@@ -2,7 +2,6 @@ import type { Page } from "@playwright/test";
 
 import type { Box, ClippingInput, SizedTarget } from "../oracles/geometry";
 import type { ContrastSample, Rgba } from "../oracles/contrast";
-import type { AccessibleNameSample } from "../oracles/accessibleName";
 
 /** The border widths needed to inset a client rect to its content box. */
 export interface BorderWidths {
@@ -20,7 +19,12 @@ export interface CollectedOracleInputs {
         readonly input: ClippingInput;
     }[];
     readonly contrast: readonly ContrastSample[];
-    readonly accessibleNames: readonly AccessibleNameSample[];
+    /** Rendered text from each visible direct-text candidate, paired with its page locator key. */
+    readonly renderedTexts: readonly {
+        readonly id: string;
+        readonly oracleKey: string;
+        readonly text: string;
+    }[];
     readonly interactiveTargets: readonly SizedTarget[];
 }
 
@@ -248,10 +252,16 @@ export async function collectOracleInputs(page: Page): Promise<CollectedOracleIn
 
         const clipping: { id: string; input: object }[] = [];
         const contrast: ContrastSample[] = [];
-        const accessibleNames: AccessibleNameSample[] = [];
+        const renderedTexts: {
+            id: string;
+            oracleKey: string;
+            text: string;
+        }[] = [];
 
-        for (const element of candidates) {
+        for (const [index, element] of candidates.entries()) {
             const id = locatorFor(element);
+            const oracleKey = String(index);
+            element.setAttribute("data-oracle-key", oracleKey);
             const style = getComputedStyle(element);
             const range = document.createRange();
             range.selectNodeContents(element);
@@ -305,25 +315,15 @@ export async function collectOracleInputs(page: Page): Promise<CollectedOracleIn
                 backgroundLayers,
             });
 
-            if (style.textOverflow === "ellipsis") {
-                const labelledBy = element.getAttribute("aria-labelledby");
-                const computedName =
-                    labelledBy !== null
-                        ? labelledBy
-                              .split(/\s+/u)
-                              .filter((targetId) => targetId.length > 0)
-                              .map(
-                                  (targetId) =>
-                                      document.getElementById(targetId)?.textContent ?? "",
-                              )
-                              .join(" ")
-                        : (element.getAttribute("aria-label") ?? element.textContent ?? "");
-                accessibleNames.push({
-                    id,
-                    computedName,
-                    sourceText: element.textContent ?? "",
-                });
-            } else {
+            // Keep rendered text in the same normalized form as the pure source matcher; the
+            // fixture supplies the expected value, while this is the value the page produced.
+            renderedTexts.push({
+                id,
+                oracleKey,
+                text: (element.textContent ?? "").normalize("NFC").replace(/\s+/gu, " ").trim(),
+            });
+
+            if (style.textOverflow !== "ellipsis") {
                 clipping.push({
                     id,
                     input: {
@@ -355,7 +355,7 @@ export async function collectOracleInputs(page: Page): Promise<CollectedOracleIn
             candidateCount: candidates.length,
             clipping,
             contrast,
-            accessibleNames,
+            renderedTexts,
             interactiveTargets,
         };
     });
@@ -367,7 +367,7 @@ export async function collectOracleInputs(page: Page): Promise<CollectedOracleIn
             readonly input: ClippingInput;
         }[],
         contrast: collected.contrast,
-        accessibleNames: collected.accessibleNames,
+        renderedTexts: collected.renderedTexts,
         interactiveTargets: collected.interactiveTargets,
     };
 }
