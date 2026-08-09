@@ -1005,6 +1005,8 @@
         "test:coverage": "bun vitest run --coverage",
         "pretest:watch": "bun run build",
         "test:watch": "bun vitest",
+        "test:visual": "playwright test --config playwright.visual.config.ts",
+        "test:visual:container": "./tests/e2e/docker/run.sh 'bun install --frozen-lockfile && bun run build && bun run test:visual'",
         "package": "vsce package --no-dependencies",
         "publish": "vsce publish --no-dependencies"
     },

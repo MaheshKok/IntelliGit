@@ -119,8 +119,61 @@ jobs:
                   PR_BODY: ${{ github.event.pull_request.body }}
               run: node scripts/check-no-skip-ci.js
 
+    # Layer 1 visual tests (PLAN.md step 27). Runs the real webview bundles in
+    # Chromium through the Phase 3 harness.
+    #
+    # Deliberately NOT a `container:` job on the pinned image. A container job
+    # runs as root, Chromium will not keep its sandbox as root, and the usual
+    # `--no-sandbox` workaround makes CI diverge from the image that generates
+    # the committed baselines. `run.sh` already solves this: it builds the
+    # digest-pinned image from `tests/e2e/docker/`, forces linux/amd64, asserts
+    # the built image really is amd64, and runs unprivileged as the invoking
+    # uid so it can write into the checkout. Using it here means CI, a local
+    # developer run, and baseline generation are all the same image — which is
+    # the entire premise of pinning it by digest. See
+    # `tests/e2e/docker/base-image.txt` for why font rasterization makes that
+    # non-negotiable.
+    #
+    # A GitHub runner is natively amd64, so the platform pin costs nothing here;
+    # on an Apple Silicon developer machine the same command runs emulated.
+    visual:
+        runs-on: ubuntu-latest
+
+        # The suite itself takes seconds; the budget is almost entirely the base
+        # image pull and `bun install`. A bound well above that still fails far
+        # sooner than the 6-hour default if the container ever wedges.
+        timeout-minutes: 25
+
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v4
+
+            # `bun install` and `bun run build` happen INSIDE the container, not
+            # on the runner: the harness serves `dist/` bundles straight to
+            # Chromium, so they must be built by the same toolchain that renders
+            # them. Native dependencies built on the runner would also be
+            # overwritten by the container's own node_modules mount.
+            - name: Run visual suite in the pinned container
+              run: ./tests/e2e/docker/run.sh 'bun install --frozen-lockfile && bun run build && bun run test:visual'
+
+            # Traces and failure screenshots are the only way to diagnose a
+            # visual failure after the container is gone.
+            - name: Upload visual failure artifacts
+              if: failure()
+              uses: actions/upload-artifact@v4
+              with:
+                  name: visual-failures
+                  path: |
+                      playwright-report/
+                      test-results/
+                  if-no-files-found: ignore
+                  retention-days: 7
+
     release:
-        needs: build
+        # A visual regression must not reach the Marketplace. `build` alone was
+        # the gate before the visual suite existed; leaving it that way would
+        # mean the suite gates nothing on the one path that ships to users.
+        needs: [build, visual]
         runs-on: ubuntu-latest
         if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
         permissions:
