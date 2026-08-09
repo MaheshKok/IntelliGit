@@ -623,3 +623,116 @@ Stopping here is the `claudex-build` checkpoint rule, not a scope cut: this
 orchestrator session has already auto-compacted, so Phase 2 is not launched from
 it. Relaunch `/claudex-build PLAN.md` in a fresh session — the spec, this log, and
 the committed tree are the entire state.
+
+---
+
+## Phases 2–3 — backfilled from the commit log
+
+The sessions that built Phases 2 and 3 kept their state in the project memory
+files rather than here, so this section is a **reconstruction from `git log`**,
+not a contemporaneous record. Per-round verifier reports for these commits do
+not exist; the commits and their subjects are the evidence. `2ada2bad..8005a945`,
+oldest first:
+
+| Commit | Slice |
+|---|---|
+| `fed8ee25` | docs — Phase 1 acceptance + Phase 2 handoff |
+| `572b9130` | docs — security review deferred to a final Phase 7 gate |
+| `95bca586` | 2a — capture extension→webview messages at the boundary |
+| `746c8814` | 2b — deterministic canonicalization of recorded payloads |
+| `8acc8c07` | 2c-i — record a real webview payload end to end |
+| `91008597` | 2c-ii — repo-wide regenerate-and-compare gate for fixtures |
+| `28c2188f` | 2c-iii — the eight-state repository scenario layer |
+| `3d3702a3` | 2c-iv-a — scenario-aware fixture registry and gate |
+| `24b7e248` | 2c-iv-b — commit-graph card + compact recorders |
+| `85f67a1e` | 2c-iv-c — commit-panel recorder |
+| `090ce653` | fix — pin recordings to the scenario's sanitized git environment |
+| `a968d851` | 2c-v-a — WebviewPanel double + merge-conflict-session recorder |
+| `167f16e7` | 2c-v-b — merge-editor recorder |
+| `16255d30` | 2c-v-c — undocked recorder |
+| `5cfe9922` | 2c-v-d — shelf-conflict-editor recorder |
+| `f3e3e58b` | fix — localize ShelfConflictEditorPanel's user-facing strings |
+| `dd36444f` | 3-i — resolved host-context shell table + production oracle |
+| `a2161ec2` | 3-ii — harness document renderer + acquireVsCodeApi stub |
+| `c0c026c8` | 3-iii — Playwright visual config + in-process harness page |
+| `f349648f` | ci — visual suite in the pinned container, gating `release` |
+| `5c72cdb3` | 19-a — pure clipping, contrast, accessible-name oracles |
+| `8005a945` | 19-b — hc projects + live-page collectors + ratchet baseline |
+
+Standing findings carried forward: the volatile-field mechanism is still
+exercised only with `[]` across all eight recorders; and the tests-tree
+typecheck hole (step 36) still applies — `tsconfig.json` excludes `tests/`,
+`lint:strict` is `eslint src scripts`, and `format:check` covers only `src/**`
+and `scripts/**`, so nothing under `tests/` is statically gated. Test-tree
+changes are proved by running them, not by the gates.
+
+---
+
+## Phase 3 — closing the container gate — the CI `visual` job was red
+
+`BASE_HEAD` = `8005a945`. Docker was unavailable when `f349648f` wired the
+`visual` job into `publish.yml`, so `tests/e2e/docker/run.sh` had **never been
+executed** and a job that gates `release` was unproven. Running it is the first
+thing this session did.
+
+### Round 1 — the container run itself (root-direct, no Codex round)
+
+`./tests/e2e/docker/run.sh 'bun install --frozen-lockfile && bun run build && bun run test:visual'`
+
+The container path is sound end to end — amd64 image built under emulation on an
+arm64 host, `bun install --frozen-lockfile` clean, all seven webview bundles
+built, Playwright 1.62.1 resolving the base image's own browsers (the lockfile
+pins 1.62.1 exactly, matching the digest in `base-image.txt`). Result:
+**4 failed, 92 passed (4.3m)**, every failure the same shape:
+
+```
+[<theme>-narrow] undocked clipping: 1 baselined finding(s) no longer occur
+  - span.css-ej7pzn (… > label:nth-of-type(1) > span:nth-of-type(2))
+```
+
+The `✘` markers on `harnessSmoke.spec.ts:62` are `test.fail()` expected-fail
+markers; they are inside the 92 passed, not failures.
+
+This is the two-way ratchet's `resolved` direction firing exactly as designed in
+`8005a945`: the baseline claims a clip that does not happen on `linux-x64`.
+Regenerating inside the container and diffing gives the measurement:
+
+```
+tests/visual/fixtures/knownFindings.json | 12 ++++--------
+```
+
+**One finding, four narrow projects, nothing else changed.** 139 of ~140
+findings are byte-identical across `darwin-arm64` and `linux-x64`. The oracles
+are host-stable; this single element is not.
+
+### Cause, and why the fix is a lock rather than a tolerance
+
+Not glyph rasterization. The Phase 0 finding above already measured the real
+cause: the committed host fixtures name `-apple-system, BlinkMacSystemFont` at
+`12px`, the container's name `system-ui, "Ubuntu", "Droid Sans"` at `14px`. The
+harness feeds a macOS host fixture into a Linux container, so that label resolves
+to a different font and the span fits where it used to overflow. No font-family
+string is platform-neutral, so this cannot be normalized away — one platform has
+to own the file, and CI's is the one that gates releases.
+
+Fix: `UPDATE_VISUAL_BASELINE=1` now refuses to write anywhere but `linux-x64`,
+checked *before* the existing single-worker guard because it is the more
+expensive mistake — a host-side regeneration completes, looks clean, and only
+turns red later in CI.
+
+### Evidence
+
+Root's HEAD gate: `BASE_HEAD 8005a945 == HEAD 8005a945, checked by root`.
+
+| Row | What | Expected | Result |
+|---|---|---|---|
+| M1 | `UPDATE_VISUAL_BASELINE=1` on `darwin-arm64` | RED, baseline untouched | RED, rc=1; message names `linux-x64` and the exact container command; baseline md5 unchanged at `90f71731…` |
+| M2 | full suite in the container against the regenerated baseline | 96/96 | **96 passed (3.7m)**, zero failed — the four `undocked` narrow failures are gone and nothing else moved |
+
+**Owner decision, now evidence-backed rather than open** (raised at Phase 0 and
+deferred to Phase 3): the committed host fixtures should become the
+container-generated `linux-x64` ones. Rendering a macOS fixture inside the Linux
+container simulates no real user — a macOS user gets Menlo, a Linux user gets
+Droid Sans, and the container gets "Menlo requested, Droid Sans delivered."
+Proceeding on that default at step 20. It is flagged, not blocked; reversing it
+costs one four-minute regeneration.

@@ -30,6 +30,17 @@ const HOST_CONTEXT_FIXTURES = {
 const BASELINE_PATH = resolve(__dirname, "fixtures/knownFindings.json");
 const UPDATE_ENV_VAR = "UPDATE_VISUAL_BASELINE";
 
+/**
+ * The only platform allowed to rewrite the baseline.
+ *
+ * Not a preference. Regenerating this file on darwin-arm64 and on linux-x64 produces
+ * byte-identical output for every finding but one: an `undocked` span inside a label at
+ * the 320px viewport clips on darwin and fits on linux, in all four themes. A baseline
+ * written on a developer machine is therefore red in CI, and it fails naming an element
+ * rather than the platform. CI's platform is the one that gates releases, so CI's wins.
+ */
+const BASELINE_PLATFORM = "linux-x64";
+
 type Bucket = "clipping" | "contrast" | "accessibleNames" | "zeroSize";
 type ContextBaseline = Partial<Record<Bucket, readonly string[]>>;
 type Baseline = Record<string, Record<string, ContextBaseline>>;
@@ -98,6 +109,17 @@ test.describe("live-page non-pixel oracles", () => {
             const project = testInfo.project.name;
 
             if (process.env[UPDATE_ENV_VAR] === "1") {
+                // Checked before the worker count because it is the mistake that costs the
+                // most: a full regeneration completes, looks clean, and only turns red in CI.
+                expect(
+                    `${process.platform}-${process.arch}`,
+                    `${UPDATE_ENV_VAR}=1 may only write the baseline on ${BASELINE_PLATFORM}. ` +
+                        `Regenerate through the pinned container instead:\n` +
+                        `  ./tests/e2e/docker/run.sh 'bun install --frozen-lockfile && ` +
+                        `bun run build && ${UPDATE_ENV_VAR}=1 npx playwright test ` +
+                        `--config playwright.visual.config.ts --workers=1'`,
+                ).toBe(BASELINE_PLATFORM);
+
                 // A parallel regeneration silently loses slices; fail loudly instead.
                 expect(
                     testInfo.config.workers,
