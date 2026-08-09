@@ -597,5 +597,10 @@
     "This deletes the record of your rating decision and the usage counters behind it. It affects this machine only, and never touches a rating you already published.": "Isso exclui o registro da sua decisão de avaliação e os contadores de uso associados. Afeta apenas este computador e nunca altera uma avaliação já publicada.",
     "Reset to a fresh install": "Redefinir como uma instalação nova",
     "Reset and arm the next commit": "Redefinir e perguntar no próximo commit",
-    "Open the IntelliGit graph in the bottom panel — the rating card renders there, not in the sidebar Graph view.": "Abra o gráfico do IntelliGit no painel inferior — o cartão de avaliação aparece ali, não na exibição Gráfico da barra lateral."
+    "Open the IntelliGit graph in the bottom panel — the rating card renders there, not in the sidebar Graph view.": "Abra o gráfico do IntelliGit no painel inferior — o cartão de avaliação aparece ali, não na exibição Gráfico da barra lateral.",
+    "Resolve shelf conflict": "Resolver conflito da prateleira",
+    "Resolve shelf conflict: {file}": "Resolver conflito da prateleira: {file}",
+    "The shelf conflict changed while this editor was open.": "O conflito da prateleira mudou enquanto este editor estava aberto.",
+    "Keep working tree": "Manter a árvore de trabalho",
+    "Overwrite (previous content saved to recovery)": "Substituir (conteúdo anterior salvo na recuperação)"
 }

@@ -597,5 +597,10 @@
     "This deletes the record of your rating decision and the usage counters behind it. It affects this machine only, and never touches a rating you already published.": "这将删除您的评价决定记录以及相关的使用计数。仅影响此计算机，绝不会改动您已发布的评价。",
     "Reset to a fresh install": "重置为全新安装状态",
     "Reset and arm the next commit": "重置并在下次提交时询问",
-    "Open the IntelliGit graph in the bottom panel — the rating card renders there, not in the sidebar Graph view.": "请在底部面板中打开 IntelliGit 图谱，评价卡片显示在那里，而不是侧边栏的“图谱”视图中。"
+    "Open the IntelliGit graph in the bottom panel — the rating card renders there, not in the sidebar Graph view.": "请在底部面板中打开 IntelliGit 图谱，评价卡片显示在那里，而不是侧边栏的“图谱”视图中。",
+    "Resolve shelf conflict": "解决搁置冲突",
+    "Resolve shelf conflict: {file}": "解决搁置冲突：{file}",
+    "The shelf conflict changed while this editor was open.": "此编辑器打开期间，搁置冲突已发生变化。",
+    "Keep working tree": "保留工作树",
+    "Overwrite (previous content saved to recovery)": "覆盖（先前内容已保存到恢复）"
 }

@@ -597,5 +597,10 @@
     "This deletes the record of your rating decision and the usage counters behind it. It affects this machine only, and never touches a rating you already published.": "Dadurch werden die Aufzeichnung Ihrer Bewertungsentscheidung und die zugehörigen Nutzungszähler gelöscht. Dies betrifft nur diesen Computer und verändert niemals eine bereits veröffentlichte Bewertung.",
     "Reset to a fresh install": "Auf Neuinstallation zurücksetzen",
     "Reset and arm the next commit": "Zurücksetzen und beim nächsten Commit fragen",
-    "Open the IntelliGit graph in the bottom panel — the rating card renders there, not in the sidebar Graph view.": "Öffnen Sie den IntelliGit-Graphen im unteren Bereich — die Bewertungskarte wird dort angezeigt, nicht in der Seitenleistenansicht „Graph“."
+    "Open the IntelliGit graph in the bottom panel — the rating card renders there, not in the sidebar Graph view.": "Öffnen Sie den IntelliGit-Graphen im unteren Bereich — die Bewertungskarte wird dort angezeigt, nicht in der Seitenleistenansicht „Graph“.",
+    "Resolve shelf conflict": "Ablagekonflikt lösen",
+    "Resolve shelf conflict: {file}": "Ablagekonflikt lösen: {file}",
+    "The shelf conflict changed while this editor was open.": "Der Ablagekonflikt hat sich geändert, während dieser Editor geöffnet war.",
+    "Keep working tree": "Arbeitsverzeichnis behalten",
+    "Overwrite (previous content saved to recovery)": "Überschreiben (vorheriger Inhalt in Wiederherstellung gespeichert)"
 }

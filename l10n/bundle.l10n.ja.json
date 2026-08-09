@@ -597,5 +597,10 @@
     "This deletes the record of your rating decision and the usage counters behind it. It affects this machine only, and never touches a rating you already published.": "評価に関する選択の記録と、その基になる使用状況カウンターが削除されます。影響を受けるのはこのコンピューターだけで、公開済みの評価が変更されることはありません。",
     "Reset to a fresh install": "新規インストールの状態に戻す",
     "Reset and arm the next commit": "リセットして次のコミットで確認する",
-    "Open the IntelliGit graph in the bottom panel — the rating card renders there, not in the sidebar Graph view.": "下部パネルで IntelliGit のグラフを開いてください。評価カードはサイドバーのグラフ ビューではなく、そちらに表示されます。"
+    "Open the IntelliGit graph in the bottom panel — the rating card renders there, not in the sidebar Graph view.": "下部パネルで IntelliGit のグラフを開いてください。評価カードはサイドバーのグラフ ビューではなく、そちらに表示されます。",
+    "Resolve shelf conflict": "シェルフの競合を解決",
+    "Resolve shelf conflict: {file}": "シェルフの競合を解決: {file}",
+    "The shelf conflict changed while this editor was open.": "このエディターを開いている間にシェルフの競合が変更されました。",
+    "Keep working tree": "ワーキングツリーを保持",
+    "Overwrite (previous content saved to recovery)": "上書き（以前の内容はリカバリーに保存されます）"
 }

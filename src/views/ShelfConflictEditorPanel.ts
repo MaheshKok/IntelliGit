@@ -141,7 +141,9 @@ export class ShelfConflictEditorPanel {
             webview: panel.webview,
             scriptFile: "webview-mergeeditor.js",
             styleFiles: ["webview-mergeeditor.css"],
-            title: `Resolve shelf conflict: ${path.posix.basename(options.changeId)}`,
+            title: vscode.l10n.t("Resolve shelf conflict: {file}", {
+                file: path.posix.basename(options.changeId),
+            }),
             // One live panel per (repo, shelf, change), and the bundle is shared with
             // MergeEditorPanel -- the scriptFile-derived default would collide on both axes.
             e2eViewId: `shelf-conflict-editor\u0000${this.key}`,
@@ -174,7 +176,7 @@ export class ShelfConflictEditorPanel {
         }
         const rawPanel = vscode.window.createWebviewPanel(
             "intelligit.shelfConflictEditor",
-            "Resolve shelf conflict",
+            vscode.l10n.t("Resolve shelf conflict"),
             vscode.ViewColumn.Active,
             {
                 enableScripts: true,
@@ -199,7 +201,9 @@ export class ShelfConflictEditorPanel {
             this.options.changeId,
         );
         this.payload = payload;
-        this.panel.title = `Resolve shelf conflict: ${path.posix.basename(payload.path)}`;
+        this.panel.title = vscode.l10n.t("Resolve shelf conflict: {file}", {
+            file: path.posix.basename(payload.path),
+        });
         await this.postConflictData({});
     }
 
@@ -245,12 +249,17 @@ export class ShelfConflictEditorPanel {
     }
 
     private async chooseStaleResolution(): Promise<"keep" | "overwrite"> {
+        // Bound to locals rather than repeated literals: `showWarningMessage` returns the button
+        // label verbatim, so the comparison below must be the exact same localized string. Two
+        // separate `l10n.t` calls would still agree, but a future edit to one literal and not the
+        // other would silently degrade this to always-"keep".
+        const overwriteLabel = vscode.l10n.t("Overwrite (previous content saved to recovery)");
         const choice = await vscode.window.showWarningMessage(
-            "The shelf conflict changed while this editor was open.",
+            vscode.l10n.t("The shelf conflict changed while this editor was open."),
             { modal: true },
-            "Keep working tree",
-            "Overwrite (previous content saved to recovery)",
+            vscode.l10n.t("Keep working tree"),
+            overwriteLabel,
         );
-        return choice === "Overwrite (previous content saved to recovery)" ? "overwrite" : "keep";
+        return choice === overwriteLabel ? "overwrite" : "keep";
     }
 }
