@@ -22,12 +22,17 @@
  * through `buildWebviewShellHtml` (`src/views/webviewHtml.ts`) -- not guessed. Two things are
  * deliberately absent even though the classes above reference them:
  *
- *  - `vscode.workspace.getConfiguration`: every call site that reads it
+ *  - `vscode.workspace.getConfiguration`: every call site REACHED BY THE CONTEXTS RECORDED SO FAR
  *    (`FileIconThemeResolver.resolveConfiguredThemeId`, `webviewHtml.ts`'s `readWebviewSettings`)
  *    wraps the read in its own `try`/`catch` and falls back to "no configured icon theme" /
  *    default settings. Leaving it unimplemented means those fallbacks are exercised for real
  *    (proving they exist and work), rather than this double having to fake a whole VS Code
- *    configuration store no scenario here needs.
+ *    configuration store no scenario here needs. That scoping is deliberate and NOT a general claim
+ *    about the codebase: `UndockedViewProvider.ts:1987` (`undocked`) and `MergeEditorPanel.ts:54`
+ *    (`merge-editor`) both read configuration UNGUARDED, so the phase that records either context
+ *    must implement this member for real -- and `MergeEditorPanel`'s read in particular is silently
+ *    swallowed to `undefined` by its own caller, which is a value a recording has to pin and assert
+ *    rather than inherit.
  *  - `vscode.extensions`: `FileIconThemeResolver`'s constructor reads it inside its own
  *    `try`/`catch` too, for the same reason.
  *
@@ -44,10 +49,29 @@
  * and then removed: nothing in production reached them, and the only test that needed them was the
  * one written to justify them. If a future multi-repository scenario does reach that path,
  * `throwingDouble` will say so by name -- which is exactly the signal this module exists to give.
+ *
+ * **Phase 2c-v-a added `window.createWebviewPanel` and `ViewColumn`, both forced by
+ * `MergeConflictSessionPanel.open()` (`recordMergeConflictSessionWebviewFixture.ts`).**
+ * `MergeConflictSessionPanel` is a `vscode.WebviewPanel` host, the first of the four remaining
+ * resolved host contexts to be recorded -- unlike every context above it, its OWN `open()` calls
+ * `vscode.window.createWebviewPanel(...)` and `vscode.ViewColumn.Active`
+ * (`MergeConflictSessionPanel.ts:111-114`) itself, so both had to be added here rather than only in
+ * a recorder's own construction call. `window.createWebviewPanel` delegates to
+ * `webviewPanelDouble.ts`'s `createFakeWebviewPanel()` -- see that module's own doc comment for why
+ * a SEPARATE construction registry, not a value handed back to the recorder directly, is what makes
+ * a panel production creates internally reachable at all. `ViewColumn.Active` is set to `-1`,
+ * matching real VS Code's own enum value for it -- nothing here reads it as anything but an opaque
+ * value passed straight to `reveal()` and `createWebviewPanel`'s third argument, both no-ops on this
+ * double, but a wrong-shaped value would still be a needless divergence from the real API.
+ * `window.showErrorMessage` was deliberately NOT added: it is reached only on
+ * `MergeConflictSessionPanel`'s exception path (`:72`), which the `conflicted` scenario's happy path
+ * never reaches -- left absent so a future scenario that DOES reach it gets a loud, named
+ * `throwingDouble` failure instead of a silently swallowed error message.
  */
 
 import type * as vscode from "vscode";
 import { throwingDouble } from "./throwingDouble";
+import { createFakeWebviewPanel } from "./webviewPanelDouble";
 
 /** A disposable that never fires and does nothing on `dispose()` -- every listener registration
  * this double's `vscode` surface exposes is one no scenario here ever triggers. */
@@ -75,6 +99,9 @@ function inertDisposable(): vscode.Disposable {
  * Phase 2c-iv-c's `commit-panel` recording reuses this surface unchanged -- it forced no new
  * member. See this module's own doc comment for why the filesystem-watcher members it was expected
  * to need are deliberately absent.
+ *
+ * Phase 2c-v-a added `window.createWebviewPanel` and `ViewColumn` -- see this module's own top doc
+ * comment for exactly what forced them and why `window.showErrorMessage` is deliberately absent.
  */
 export function createCommitInfoVscodeDouble(): typeof vscode {
     const implementation: Partial<typeof vscode> = {
@@ -85,8 +112,17 @@ export function createCommitInfoVscodeDouble(): typeof vscode {
         } as unknown as typeof vscode.Uri,
         env: { language: "en" } as typeof vscode.env,
         l10n: { t: (message: string) => message } as typeof vscode.l10n,
+        // `ViewColumn.Active` matches real VS Code's own enum value -- see this module's own doc
+        // comment on why Phase 2c-v-a added this and `window.createWebviewPanel` together.
+        ViewColumn: { Active: -1 } as unknown as typeof vscode.ViewColumn,
         window: {
             onDidChangeActiveColorTheme: () => inertDisposable(),
+            createWebviewPanel: (
+                ..._args: unknown[]
+            ): ReturnType<typeof vscode.window.createWebviewPanel> =>
+                createFakeWebviewPanel() as unknown as ReturnType<
+                    typeof vscode.window.createWebviewPanel
+                >,
         } as unknown as typeof vscode.window,
         workspace: {
             onDidChangeConfiguration: () => inertDisposable(),

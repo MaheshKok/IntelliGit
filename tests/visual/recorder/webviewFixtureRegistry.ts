@@ -35,6 +35,10 @@ import {
     COMMIT_PANEL_DIRTY_SCENARIO,
     recordCommitPanelWebviewFixture,
 } from "./recordCommitPanelWebviewFixture";
+import {
+    MERGE_CONFLICT_SESSION_CONFLICTED_SCENARIO,
+    recordMergeConflictSessionWebviewFixture,
+} from "./recordMergeConflictSessionWebviewFixture";
 import type { WebviewFixture } from "./webviewFixtureTypes";
 
 /** One registered recording: which committed fixture it produces, and how to reproduce it. */
@@ -124,6 +128,22 @@ export const WEBVIEW_FIXTURE_RECORDERS: readonly WebviewFixtureRecorderEntry[] =
         record: (workspace) => {
             const template = requireScenarioTemplate(workspace, "commit-panel");
             return recordCommitPanelWebviewFixture({
+                repoRoot: workspace.root,
+                roots: { root: workspace.root, originRoot: template.originRoot, profileDir: "" },
+                env: workspace.env,
+            });
+        },
+    },
+    // Phase 2c-v-a: `merge-conflict-session` records the `conflicted` scenario -- see
+    // `recordMergeConflictSessionWebviewFixture.ts`'s own doc comment for why `conflicted`, not
+    // `clean`. `repoRoot` is taken from `workspace.root` directly for the same reason `commit-panel`
+    // does; `requireScenarioTemplate` is still needed to reach `originRoot`.
+    {
+        contextId: "merge-conflict-session",
+        scenario: MERGE_CONFLICT_SESSION_CONFLICTED_SCENARIO,
+        record: (workspace) => {
+            const template = requireScenarioTemplate(workspace, "merge-conflict-session");
+            return recordMergeConflictSessionWebviewFixture({
                 repoRoot: workspace.root,
                 roots: { root: workspace.root, originRoot: template.originRoot, profileDir: "" },
                 env: workspace.env,

@@ -25,11 +25,9 @@
  *    (`recordCommitGraphWebviewFixture.ts`, Phase 2c-iv-b) established for exactly this failure
  *    mode.
  *
- * Plus one registry test: the exact SET of registered context ids as of this phase, not a count.
- * This supersedes (and replaces) the equivalent assertion that previously lived in
- * `recordCommitGraphWebviewFixture.test.ts` -- see that file's own note at the removal site. The
- * invariant migrates forward to the newest phase's test file each time a context is added, rather
- * than being duplicated and left stale in every earlier phase's file.
+ * The "registers exactly the contexts claimed through this phase" registry-set assertion that used
+ * to live here has moved on to `recordMergeConflictSessionWebviewFixture.test.ts` (Phase 2c-v-a) --
+ * see the note at its removal site, below, for the migrating-forward convention.
  */
 
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
@@ -58,7 +56,6 @@ import {
 } from "../../../visual/recorder/recordCommitPanelWebviewFixture";
 import { parseWebviewFixture } from "../../../visual/recorder/validateWebviewFixture";
 import { serializeWebviewFixture } from "../../../visual/recorder/webviewFixtureFile";
-import { WEBVIEW_FIXTURE_RECORDERS } from "../../../visual/recorder/webviewFixtureRegistry";
 
 /**
  * Builds one independently prepared `dirty` scenario workspace. Mirrors `scenarios.ts`'s own
@@ -283,11 +280,9 @@ describe("commit-panel webview recorder", () => {
         });
     });
 
-    it("registers exactly the contexts claimed through Phase 2c-iv-c", () => {
-        const contextIds = new Set(WEBVIEW_FIXTURE_RECORDERS.map((entry) => entry.contextId));
-
-        expect(contextIds).toEqual(
-            new Set(["commit-info", "commit-graph-card", "commit-graph-compact", "commit-panel"]),
-        );
-    });
+    // The "registers exactly the contexts claimed through this phase" registry assertion that used
+    // to live here has moved to `recordMergeConflictSessionWebviewFixture.test.ts` (Phase 2c-v-a),
+    // updated for the current full set. It migrates forward to the newest phase's test file each
+    // time a context is registered, rather than being duplicated and left stale in every earlier
+    // phase's file -- see that test's own doc comment.
 });
