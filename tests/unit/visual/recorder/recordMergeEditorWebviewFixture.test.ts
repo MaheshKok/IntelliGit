@@ -34,7 +34,6 @@ import { toGitEnvironment } from "../../../visual/recorder/recordingGitEnvironme
 import { parseWebviewFixture } from "../../../visual/recorder/validateWebviewFixture";
 import { serializeWebviewFixture } from "../../../visual/recorder/webviewFixtureFile";
 import type { WebviewFixture } from "../../../visual/recorder/webviewFixtureTypes";
-import { WEBVIEW_FIXTURE_RECORDERS } from "../../../visual/recorder/webviewFixtureRegistry";
 import { resetE2eWebviewCaptureSinkForTests } from "../../../../src/e2e/webviewCapture";
 import {
     getCreatedWebviewPanels,
@@ -360,22 +359,7 @@ describe("merge-editor webview recorder", () => {
         });
     });
 
-    it("registers exactly the six contexts through Phase 2c-v-b", () => {
-        const contextIds = new Set(WEBVIEW_FIXTURE_RECORDERS.map((entry) => entry.contextId));
-
-        // This is the single newest-phase registry assertion; it supersedes the equivalent
-        // assertion removed from recordMergeConflictSessionWebviewFixture.test.ts.
-        expect(contextIds).toEqual(
-            new Set([
-                "commit-info",
-                "commit-graph-card",
-                "commit-graph-compact",
-                "commit-panel",
-                "merge-conflict-session",
-                "merge-editor",
-            ]),
-        );
-    });
+    // Registry-set coverage moved to the newest recorder phase's unit test.
 });
 
 describe("workspaceConfigurationDouble", () => {

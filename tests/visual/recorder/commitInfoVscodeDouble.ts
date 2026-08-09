@@ -103,6 +103,8 @@ function inertDisposable(): vscode.Disposable {
  * workspace-configuration delegate and throwing `showErrorMessage` needed by `MergeEditorPanel`.
  */
 export function createCommitInfoVscodeDouble(): typeof vscode {
+    const activeColorThemeChanges = new FakeEventEmitter<vscode.ColorTheme>();
+    const configurationChanges = new FakeEventEmitter<vscode.ConfigurationChangeEvent>();
     const implementation: Partial<typeof vscode> = {
         EventEmitter: FakeEventEmitter as unknown as typeof vscode.EventEmitter,
         Uri: {
@@ -113,9 +115,9 @@ export function createCommitInfoVscodeDouble(): typeof vscode {
         l10n: { t: (message: string) => message } as typeof vscode.l10n,
         // `ViewColumn.Active` matches real VS Code's own enum value -- see this module's own doc
         // comment on why Phase 2c-v-a added this and `window.createWebviewPanel` together.
-        ViewColumn: { Active: -1 } as unknown as typeof vscode.ViewColumn,
+        ViewColumn: { Active: -1, One: 1 } as unknown as typeof vscode.ViewColumn,
         window: {
-            onDidChangeActiveColorTheme: () => inertDisposable(),
+            onDidChangeActiveColorTheme: activeColorThemeChanges.event,
             createWebviewPanel: (
                 ..._args: unknown[]
             ): ReturnType<typeof vscode.window.createWebviewPanel> =>
@@ -133,7 +135,7 @@ export function createCommitInfoVscodeDouble(): typeof vscode {
             },
         } as unknown as typeof vscode.window,
         workspace: {
-            onDidChangeConfiguration: () => inertDisposable(),
+            onDidChangeConfiguration: configurationChanges.event,
             // `MergeEditorPanel.ts:54-59` uses the sectioned form and `webviewHtml.ts:166` uses
             // the section-less form; the recorder-installed store keeps both explicit while its
             // default-throwing behavior preserves earlier guarded fallback paths.

@@ -43,6 +43,10 @@ import {
     MERGE_EDITOR_CONFLICTED_SCENARIO,
     recordMergeEditorWebviewFixture,
 } from "./recordMergeEditorWebviewFixture";
+import {
+    recordUndockedWebviewFixture,
+    UNDOCKED_MID_REBASE_SCENARIO,
+} from "./recordUndockedWebviewFixture";
 import type { WebviewFixture } from "./webviewFixtureTypes";
 
 /** One registered recording: which committed fixture it produces, and how to reproduce it. */
@@ -161,6 +165,19 @@ export const WEBVIEW_FIXTURE_RECORDERS: readonly WebviewFixtureRecorderEntry[] =
         record: (workspace) => {
             const template = requireScenarioTemplate(workspace, "merge-editor");
             return recordMergeEditorWebviewFixture({
+                repoRoot: workspace.root,
+                roots: { root: workspace.root, originRoot: template.originRoot, profileDir: "" },
+                env: workspace.env,
+            });
+        },
+    },
+    // Phase 2c-v-c: undocked records the real in-progress rebase state, not a clean or merged tree.
+    {
+        contextId: "undocked",
+        scenario: UNDOCKED_MID_REBASE_SCENARIO,
+        record: (workspace) => {
+            const template = requireScenarioTemplate(workspace, "undocked");
+            return recordUndockedWebviewFixture({
                 repoRoot: workspace.root,
                 roots: { root: workspace.root, originRoot: template.originRoot, profileDir: "" },
                 env: workspace.env,
