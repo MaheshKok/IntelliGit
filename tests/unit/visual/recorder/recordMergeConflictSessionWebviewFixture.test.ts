@@ -36,11 +36,9 @@
  *    passes to `MergeConflictSessionPanel.open()` regress to a wrong value -- see that describe
  *    block's own comment for why no end-to-end assertion above can catch that on its own.
  *
- * Plus one registry test: the exact SET of registered context ids as of this phase, not a count.
- * This supersedes (and replaces) the equivalent assertion that used to live in
- * `recordCommitPanelWebviewFixture.test.ts` -- see that file's own note at the removal site, and
- * `recordCommitGraphWebviewFixture.test.ts`'s own note at ITS removal site, for the established
- * convention this migrates forward again.
+ * The exact registry-set assertion lives in the newest phase's test file and migrates forward as
+ * each context is registered; this file intentionally leaves that assertion to
+ * recordMergeEditorWebviewFixture.test.ts.
  */
 
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
@@ -69,7 +67,6 @@ import {
 import { parseWebviewFixture } from "../../../visual/recorder/validateWebviewFixture";
 import { serializeWebviewFixture } from "../../../visual/recorder/webviewFixtureFile";
 import type { WebviewFixture } from "../../../visual/recorder/webviewFixtureTypes";
-import { WEBVIEW_FIXTURE_RECORDERS } from "../../../visual/recorder/webviewFixtureRegistry";
 import {
     createFakeWebviewPanel,
     getCreatedWebviewPanels,
@@ -323,19 +320,9 @@ describe("merge-conflict-session webview recorder", () => {
         expect(serializeWebviewFixture(fixtureB)).toBe(serializeWebviewFixture(fixtureA));
     });
 
-    it("registers exactly the contexts claimed through Phase 2c-v-a", () => {
-        const contextIds = new Set(WEBVIEW_FIXTURE_RECORDERS.map((entry) => entry.contextId));
-
-        expect(contextIds).toEqual(
-            new Set([
-                "commit-info",
-                "commit-graph-card",
-                "commit-graph-compact",
-                "commit-panel",
-                "merge-conflict-session",
-            ]),
-        );
-    });
+    // The registry-set assertion that used to live here moved to
+    // recordMergeEditorWebviewFixture.test.ts (Phase 2c-v-b), updated for the current full set;
+    // it migrates to the newest phase rather than going stale in each earlier phase's file.
 
     /**
      * `buildMergeConflictSessionLabels` is the extracted-oracle this recorder needs

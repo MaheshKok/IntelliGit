@@ -1,0 +1,50 @@
+{
+    "schemaVersion": 1,
+    "contextId": "merge-editor",
+    "scenario": "conflicted",
+    "messages": [
+        {
+            "contextId": "merge-editor",
+            "message": {
+                "type": "setConflictData",
+                "data": {
+                    "filePath": "conflict.txt",
+                    "segments": [
+                        {
+                            "type": "common",
+                            "lines": [
+                                "one"
+                            ]
+                        },
+                        {
+                            "type": "conflict",
+                            "id": 0,
+                            "changeKind": "conflict",
+                            "oursLines": [
+                                "TWO-MAIN"
+                            ],
+                            "theirsLines": [
+                                "TWO-CONFLICT"
+                            ],
+                            "baseLines": [
+                                "two"
+                            ]
+                        },
+                        {
+                            "type": "common",
+                            "lines": [
+                                "three"
+                            ]
+                        }
+                    ],
+                    "oursLabel": "main",
+                    "theirsLabel": "conflict/with-main",
+                    "eol": "\n",
+                    "hasTrailingNewline": true,
+                    "diffOptions": {},
+                    "editorFontSize": 14
+                }
+            }
+        }
+    ]
+}

@@ -39,6 +39,10 @@ import {
     MERGE_CONFLICT_SESSION_CONFLICTED_SCENARIO,
     recordMergeConflictSessionWebviewFixture,
 } from "./recordMergeConflictSessionWebviewFixture";
+import {
+    MERGE_EDITOR_CONFLICTED_SCENARIO,
+    recordMergeEditorWebviewFixture,
+} from "./recordMergeEditorWebviewFixture";
 import type { WebviewFixture } from "./webviewFixtureTypes";
 
 /** One registered recording: which committed fixture it produces, and how to reproduce it. */
@@ -144,6 +148,19 @@ export const WEBVIEW_FIXTURE_RECORDERS: readonly WebviewFixtureRecorderEntry[] =
         record: (workspace) => {
             const template = requireScenarioTemplate(workspace, "merge-conflict-session");
             return recordMergeConflictSessionWebviewFixture({
+                repoRoot: workspace.root,
+                roots: { root: workspace.root, originRoot: template.originRoot, profileDir: "" },
+                env: workspace.env,
+            });
+        },
+    },
+    // Phase 2c-v-b: merge-editor records conflicted stage data, not clean repository data.
+    {
+        contextId: "merge-editor",
+        scenario: MERGE_EDITOR_CONFLICTED_SCENARIO,
+        record: (workspace) => {
+            const template = requireScenarioTemplate(workspace, "merge-editor");
+            return recordMergeEditorWebviewFixture({
                 repoRoot: workspace.root,
                 roots: { root: workspace.root, originRoot: template.originRoot, profileDir: "" },
                 env: workspace.env,

@@ -19,25 +19,22 @@
  * recordings exercise -- `CommitInfoViewProvider.resolveWebviewView` / `setCommitDetail`,
  * `CommitGraphViewProvider.resolveWebviewView`'s `ready` handler, through `IconThemeService` and
  * `FileIconThemeResolver` (`src/views/shared/IconThemeService.ts`, `src/utils/fileIconTheme.ts`),
- * through `buildWebviewShellHtml` (`src/views/webviewHtml.ts`) -- not guessed. Two things are
- * deliberately absent even though the classes above reference them:
+ * through `buildWebviewShellHtml` (`src/views/webviewHtml.ts`) -- not guessed. `workspace` now
+ * exposes `getConfiguration`, but its backing store is installed explicitly by the recorder that
+ * owns a configuration-dependent scenario (`workspaceConfigurationDouble.ts`). When no store is
+ * installed, `createFakeWorkspaceConfiguration` throws before returning an object, and an unpinned
+ * key still throws from `get`; those are diagnostic policies. They are not what preserves the
+ * committed clean fixture bytes: the existing guarded callers would take the same fallbacks if an
+ * uninstalled object instead returned `undefined`. The new `merge-editor` recorder pins
+ * `editor.fontSize` instead of accepting the guarded `MergeEditorPanel.ts:54-59` read's swallowed
+ * `undefined`, and the returned configuration object throws by section name for unsupported
+ * members.
  *
- *  - `vscode.workspace.getConfiguration`: every call site REACHED BY THE CONTEXTS RECORDED SO FAR
- *    (`FileIconThemeResolver.resolveConfiguredThemeId`, `webviewHtml.ts`'s `readWebviewSettings`)
- *    wraps the read in its own `try`/`catch` and falls back to "no configured icon theme" /
- *    default settings. Leaving it unimplemented means those fallbacks are exercised for real
- *    (proving they exist and work), rather than this double having to fake a whole VS Code
- *    configuration store no scenario here needs. That scoping is deliberate and NOT a general claim
- *    about the codebase: `UndockedViewProvider.ts:1987` (`undocked`) and `MergeEditorPanel.ts:54`
- *    (`merge-editor`) both read configuration UNGUARDED, so the phase that records either context
- *    must implement this member for real -- and `MergeEditorPanel`'s read in particular is silently
- *    swallowed to `undefined` by its own caller, which is a value a recording has to pin and assert
- *    rather than inherit.
- *  - `vscode.extensions`: `FileIconThemeResolver`'s constructor reads it inside its own
- *    `try`/`catch` too, for the same reason.
+ * `vscode.extensions` remains deliberately absent: `FileIconThemeResolver`'s constructor reads it
+ * inside its own `try`/`catch`, and `throwingDouble` should still announce any future unguarded use.
  *
- * If a future scenario recorded through this module needs either, the double will throw naming
- * exactly that member -- the signal to come back and implement it deliberately, not a bug.
+ * If a future scenario recorded through this module needs `vscode.extensions`, the double will
+ * throw naming that member -- the signal to come back and implement it deliberately, not a bug.
  *
  * **Phase 2c-iv-c added nothing here, and that is the finding.** `commit-panel`
  * (`recordCommitPanelWebviewFixture.ts`) was expected to force `vscode.RelativePattern` and
@@ -63,15 +60,16 @@
  * matching real VS Code's own enum value for it -- nothing here reads it as anything but an opaque
  * value passed straight to `reveal()` and `createWebviewPanel`'s third argument, both no-ops on this
  * double, but a wrong-shaped value would still be a needless divergence from the real API.
- * `window.showErrorMessage` was deliberately NOT added: it is reached only on
- * `MergeConflictSessionPanel`'s exception path (`:72`), which the `conflicted` scenario's happy path
- * never reaches -- left absent so a future scenario that DOES reach it gets a loud, named
- * `throwingDouble` failure instead of a silently swallowed error message.
+ * `window.showErrorMessage` now throws deliberately when production reaches an error path during
+ * a recording. The exception names the member and includes the message production tried to show,
+ * preserving the real failure as the diagnostic and preventing an accidental `loadError` payload
+ * from being captured.
  */
 
 import type * as vscode from "vscode";
 import { throwingDouble } from "./throwingDouble";
 import { createFakeWebviewPanel } from "./webviewPanelDouble";
+import { createFakeWorkspaceConfiguration } from "./workspaceConfigurationDouble";
 
 /** A disposable that never fires and does nothing on `dispose()` -- every listener registration
  * this double's `vscode` surface exposes is one no scenario here ever triggers. */
@@ -90,18 +88,19 @@ function inertDisposable(): vscode.Disposable {
  * `:239`), and, through the same shared `IconThemeService` / `FileIconThemeResolver` collaborator
  * `CommitInfoViewProvider` already exercises, `env.language`, `l10n.t`,
  * `window.onDidChangeActiveColorTheme`, and `workspace.onDidChangeConfiguration` -- every member
- * already implemented below. `commands.executeCommand`, `window.showErrorMessage` + `l10n.t`'s
- * error-path calls, and `Uri.parse` + `env.openExternal` are real members of
- * `CommitGraphViewProvider.ts` too, but only on branches this "clean" scenario's `ready` message
- * never reaches (a webview action message, or a caught git/theme error) -- see
- * `recordCommitGraphWebviewFixture.ts`'s own doc comment.
+ * already implemented below. `commands.executeCommand`, `Uri.parse`, and `env.openExternal` are
+ * real members of `CommitGraphViewProvider.ts` too, but only on branches this "clean" scenario's
+ * `ready` message never reaches (a webview action message, or a caught git/theme error) -- see
+ * `recordCommitGraphWebviewFixture.ts`'s own doc comment. `window.showErrorMessage` is implemented
+ * explicitly below because `MergeEditorPanel` uses it on its error path, where the recorder must
+ * preserve the production message by throwing.
  *
  * Phase 2c-iv-c's `commit-panel` recording reuses this surface unchanged -- it forced no new
  * member. See this module's own doc comment for why the filesystem-watcher members it was expected
  * to need are deliberately absent.
  *
- * Phase 2c-v-a added `window.createWebviewPanel` and `ViewColumn` -- see this module's own top doc
- * comment for exactly what forced them and why `window.showErrorMessage` is deliberately absent.
+ * Phase 2c-v-a added `window.createWebviewPanel` and `ViewColumn`; Phase 2c-v-b adds the explicit
+ * workspace-configuration delegate and throwing `showErrorMessage` needed by `MergeEditorPanel`.
  */
 export function createCommitInfoVscodeDouble(): typeof vscode {
     const implementation: Partial<typeof vscode> = {
@@ -123,9 +122,22 @@ export function createCommitInfoVscodeDouble(): typeof vscode {
                 createFakeWebviewPanel() as unknown as ReturnType<
                     typeof vscode.window.createWebviewPanel
                 >,
+            // `MergeEditorPanel.ts:88-105` must not turn an error into a captured `loadError`:
+            // throwing here preserves the underlying failure and names the production message.
+            showErrorMessage: (message: string): never => {
+                throw new Error(
+                    "vscode.window.showErrorMessage was called during a recording — production " +
+                        "reached an error path a recording must never reach. The message it tried " +
+                        `to show was: ${message}`,
+                );
+            },
         } as unknown as typeof vscode.window,
         workspace: {
             onDidChangeConfiguration: () => inertDisposable(),
+            // `MergeEditorPanel.ts:54-59` uses the sectioned form and `webviewHtml.ts:166` uses
+            // the section-less form; the recorder-installed store keeps both explicit while its
+            // default-throwing behavior preserves earlier guarded fallback paths.
+            getConfiguration: (section?: string) => createFakeWorkspaceConfiguration(section),
         } as unknown as typeof vscode.workspace,
     };
     return throwingDouble<typeof vscode>("vscode", implementation);
