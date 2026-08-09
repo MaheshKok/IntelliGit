@@ -5,7 +5,27 @@ import { JETBRAINS_UI, Z_INDEX } from "../shared/tokens";
 export const AUTHOR_COL_WIDTH = 104;
 export const DATE_COL_WIDTH = 118;
 export const CHECKS_COL_WIDTH = 28;
+/** Gap between the fixed metadata columns in rows and their header. */
+export const METADATA_COLUMN_MARGIN = 4;
+/** Minimum width reserved for readable commit-message text before metadata. */
+const MESSAGE_MIN_WIDTH = 120;
 export const ROW_SIDE_PADDING = 8;
+
+/**
+ * Chooses the metadata columns that fit beside the minimum readable commit message.
+ *
+ * The thresholds are derived from the fixed metadata widths and their shared margin,
+ * so a width change cannot silently make the message cell collapse again.
+ */
+export function visibleMetaColumns(availableWidth: number): { author: boolean; date: boolean } {
+    const authorThreshold = MESSAGE_MIN_WIDTH + AUTHOR_COL_WIDTH + METADATA_COLUMN_MARGIN;
+    const bothColumnsThreshold = authorThreshold + DATE_COL_WIDTH + METADATA_COLUMN_MARGIN;
+
+    return {
+        author: availableWidth >= authorThreshold,
+        date: availableWidth >= bothColumnsThreshold,
+    };
+}
 
 export const ROOT_STYLE: CSSProperties = {
     display: "flex",

@@ -113,9 +113,11 @@
     padding: 6px 8px;
     font-weight: 600;
     color: var(--vscode-descriptionForeground);
+    /* HC Light and HC Black omit --vscode-editorGroupHeader-tabsBackground; the dark
+       fallback paints a wrong-polarity, low-contrast group row. */
     background: color-mix(
         in srgb,
-        var(--vscode-editorGroupHeader-tabsBackground, #2a2d2e) 70%,
+        var(--vscode-editorGroupHeader-tabsBackground, var(--vscode-editor-background, #2a2d2e)) 70%,
         transparent
     );
     border-bottom: 1px solid var(--vscode-panel-border, var(--vscode-widget-border, transparent));

@@ -833,3 +833,89 @@ recorded ratios:
 
 Per-project counts show the asymmetry: `hc-light` 34-36 contrast findings vs
 `hc-black` 11. Root-caused in the next section.
+
+---
+
+## Defect-fix campaign — Round 1 (groups A + B)
+
+The baseline stops being a spec. 610 recorded findings were triaged into six
+root-cause groups (123 element-clusters), computed against a git-HEAD snapshot of
+`knownFindings.json` so a concurrent regeneration could not move the numbers:
+
+| Group | Root cause | Findings | Clusters |
+|---|---|---:|---:|
+| B | commit-row message cell collapses to 0px | 252 | 44 |
+| E | contrast below 3.0 | 100 | 17 |
+| C | 320px-viewport-only | 88 | 18 |
+| F | contrast 3.0–4.5 | 78 | 16 |
+| D | clipping at both widths | 48 | 6 |
+| A | HC theme fallback polarity | 44 | 22 |
+
+Round 1 took **A + B** — the two with a single shared cause each.
+
+### Counts — verified by independent set diff, not from the builder's report
+
+| Bucket | Before | After | Delta |
+|---|---:|---:|---:|
+| clipping | 388 | 208 | **−180** |
+| contrast | 222 | 162 | **−60** |
+| accessibleNames | 0 | 0 | 0 |
+| zeroSize | 0 | 0 | 0 |
+| **TOTAL** | **610** | **370** | **−240** |
+
+**Added keys: 0.** The two-way ratchet taxes improvement — a fix turns the suite
+red until the baseline is regenerated — so acceptance requires per-bucket counts
+to FALL with zero keys added. Both held. Removals land where the triage
+predicted: all 180 clipping removals in `undocked` + `commit-graph-card`, 48 of
+the 60 contrast removals in HC themes.
+
+### Group B — the count is the weaker evidence
+
+Direct measurement at 1200px, before vs after:
+
+- commit-row message cell: **0px → 175px**
+- zero-width text elements: **2 → 0**
+- rows overflowing their container: **202/202 → 0**
+
+Cause: a `flex: 1; min-width: 0` cell whose siblings are all `flexShrink: 0`
+absorbs 100% of any width deficit and renders at 0px — no ellipsis, no signal.
+Fix is the pure function `visibleMetaColumns` (`commit-list/styles.ts`), which
+drops the date column below 350px and the author column below 228px, plus a
+`minWidth: 48` floor on the message text. Five boundary tests
+(`tests/unit/webviews/visibleMetaColumns.test.ts`), mutation-proven RED by
+flipping `>=` to `>`.
+
+### Group A — the builder's contrast number was wrong, corrected here
+
+`rgba(15, 74, 133, 0.1)` read as opaque is dark navy; composited over `#ffffff`
+it is `rgb(231, 237, 243)`. **Both sides must be composited before a ratio means
+anything.** Recomputed ContextMenu selection pair:
+
+| Theme | Before | After |
+|---|---:|---:|
+| hc-light | **1.11 FAIL** | **12.33 PASS** |
+| hc-black | 6.44 | 9.79 |
+| light-modern | — | 6.31 |
+| dark-modern | — | 4.53 |
+
+The build report claimed 6.44:1 and checked only hc-black — it never evaluated
+hc-light, which is where the change is the large win.
+
+### Gates — re-run here, not trusted from the report
+
+`lint` rc=0 · `typecheck` rc=0 · `format:check` rc=0 · `build` rc=0 ·
+`vitest visibleMetaColumns` 5/5 · **container suite 96 passed (4.0m), rc=0**, run
+via `./tests/e2e/docker/run.sh` on the pinned image.
+
+### Two findings this round raised
+
+1. **Group C's real cause is worse than a column-width problem.** At 320px in
+   `hc-light`, the undocked commit-list pane measures **25px wide** — the panel
+   does not reflow at that viewport at all, leaving 2 collapsed text elements.
+   Rounds 3–4 must treat this as a layout defect, not a truncation defect.
+2. **`visibleMetaColumns` does not account for `CHECKS_COL_WIDTH`** (28 + 4
+   margin). With the checks column enabled the message cell can fall below its
+   120px floor — not to zero, and empirically 0 keys were added, but the
+   threshold arithmetic is incomplete. Fold into round 2.
+
+Remaining: **370 findings** — E (100), D (48), C (88), F (78).

@@ -7,7 +7,9 @@
        near-white sidebar into a heavy gray band. The host already separates
        these surfaces from the editor in every theme it ships. */
     --merge-toolbar-bg: var(--vscode-sideBar-background, #2b2d30);
-    --merge-header-bg: var(--vscode-editorGroupHeader-tabsBackground, #31343a);
+    /* HC Light and HC Black omit --vscode-editorGroupHeader-tabsBackground; the dark
+       fallback paints a wrong-polarity, low-contrast merge header. */
+    --merge-header-bg: var(--vscode-editorGroupHeader-tabsBackground, var(--vscode-editor-background, #31343a));
     --merge-muted: var(--vscode-descriptionForeground, #9ca3af);
     --merge-accent: var(--vscode-textLink-foreground, #4ea1ff);
     /* Semantic hues come from the host, so they flip with the theme. The

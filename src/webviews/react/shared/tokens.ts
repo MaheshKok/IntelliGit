@@ -11,9 +11,16 @@ export const JETBRAINS_UI = {
     color: {
         panel: "var(--vscode-sideBar-background, var(--vscode-editor-background, #2f3848))",
         editor: "var(--vscode-editor-background, #2b3342)",
-        toolbar: "var(--vscode-editorGroupHeader-tabsBackground, #394354)",
+        // HC Light and HC Black omit --vscode-editorGroupHeader-tabsBackground, so the
+        // dark fallback paints a wrong-polarity, low-contrast header surface. Chain
+        // through --vscode-editor-background to preserve the host's readable polarity.
+        toolbar:
+            "var(--vscode-editorGroupHeader-tabsBackground, var(--vscode-editor-background, #394354))",
+        // HC Light and HC Black omit --vscode-editorGroupHeader-tabsBackground, so the
+        // dark fallback paints a wrong-polarity, low-contrast section header. Chain
+        // through --vscode-editor-background to preserve the host's readable polarity.
         sectionHeader:
-            "var(--vscode-sideBarSectionHeader-background, var(--vscode-editorGroupHeader-tabsBackground, #394354))",
+            "var(--vscode-sideBarSectionHeader-background, var(--vscode-editorGroupHeader-tabsBackground, var(--vscode-editor-background, #394354)))",
         border: "var(--vscode-panel-border, #465066)",
         divider: "var(--vscode-panel-border, #465066)",
         sidebarBorder: "var(--vscode-sideBar-border, var(--vscode-panel-border, #465066))",

@@ -11,7 +11,12 @@ import {
     Z_INDEX,
 } from "../shared/tokens";
 import { splitCommitRefs } from "../shared/utils/refs";
-import { AUTHOR_COL_WIDTH, DATE_COL_WIDTH, ROW_SIDE_PADDING } from "./styles";
+import {
+    AUTHOR_COL_WIDTH,
+    DATE_COL_WIDTH,
+    METADATA_COLUMN_MARGIN,
+    ROW_SIDE_PADDING,
+} from "./styles";
 import { ROW_HEIGHT } from "../graph";
 import { getSettings } from "../shared/settings";
 import { t } from "../shared/i18n";
@@ -27,7 +32,8 @@ interface Props {
     onContextMenu: (event: React.MouseEvent, commit: Commit) => void;
     onHover?: (commit: Commit, event: React.MouseEvent) => void;
     onUnhover?: () => void;
-    showAuthorDate?: boolean;
+    showAuthor?: boolean;
+    showDate?: boolean;
     checks?: CommitChecksValue;
     onRequestChecks?: (hash: string) => void;
     onOpenCheckUrl?: (url: string) => void;
@@ -83,7 +89,8 @@ const MESSAGE_CELL_STYLE: React.CSSProperties = {
 const MESSAGE_TEXT_STYLE: React.CSSProperties = {
     overflow: "hidden",
     textOverflow: "ellipsis",
-    minWidth: 0,
+    // Keep ref badges from collapsing the commit message to zero width.
+    minWidth: 48,
     flex: 1,
 };
 const BRANCH_REF_COUNT_STYLE: React.CSSProperties = {
@@ -380,7 +387,8 @@ function CommitRowInner({
     onContextMenu,
     onHover,
     onUnhover,
-    showAuthorDate = true,
+    showAuthor = true,
+    showDate = true,
     checks,
     onRequestChecks,
     onOpenCheckUrl,
@@ -417,7 +425,7 @@ function CommitRowInner({
             overflow: "hidden",
             textOverflow: "ellipsis",
             flexShrink: 0,
-            marginLeft: 4,
+            marginLeft: METADATA_COLUMN_MARGIN,
         }),
         [isMergeCommit],
     );
@@ -427,7 +435,7 @@ function CommitRowInner({
             textAlign: "right",
             opacity: isMergeCommit ? 0.8 : 0.5,
             flexShrink: 0,
-            marginLeft: 4,
+            marginLeft: METADATA_COLUMN_MARGIN,
             fontSize: "12px",
         }),
         [isMergeCommit],
@@ -461,13 +469,9 @@ function CommitRowInner({
         >
             <CommitMessageCell message={commit.message} refs={commit.refs} />
 
-            {showAuthorDate && (
-                <>
-                    <span style={authorStyle}>{commit.author}</span>
+            {showAuthor && <span style={authorStyle}>{commit.author}</span>}
 
-                    <span style={dateStyle}>{formatDateTime(commit.date)}</span>
-                </>
-            )}
+            {showDate && <span style={dateStyle}>{formatDateTime(commit.date)}</span>}
 
             {onRequestChecks && onOpenCheckUrl ? (
                 <CommitChecksButton
@@ -494,7 +498,8 @@ function areEqual(prev: Props, next: Props): boolean {
         prev.isUnpushed === next.isUnpushed &&
         prev.laneColor === next.laneColor &&
         prev.graphWidth === next.graphWidth &&
-        prev.showAuthorDate === next.showAuthorDate &&
+        prev.showAuthor === next.showAuthor &&
+        prev.showDate === next.showDate &&
         prev.checks === next.checks &&
         prev.onRequestChecks === next.onRequestChecks &&
         prev.onOpenCheckUrl === next.onOpenCheckUrl &&
