@@ -67,6 +67,22 @@ export default defineConfig({
             name: "light-modern-wide",
             use: { viewport: { width: 1200, height: 800 } },
         },
+        {
+            name: "hc-black-narrow",
+            use: { viewport: { width: 320, height: 720 } },
+        },
+        {
+            name: "hc-black-wide",
+            use: { viewport: { width: 1200, height: 800 } },
+        },
+        {
+            name: "hc-light-narrow",
+            use: { viewport: { width: 320, height: 720 } },
+        },
+        {
+            name: "hc-light-wide",
+            use: { viewport: { width: 1200, height: 800 } },
+        },
     ],
 
     // Declare screenshot comparison policy now; Phase 3-iv will add the first

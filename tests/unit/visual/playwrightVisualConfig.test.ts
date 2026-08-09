@@ -33,6 +33,10 @@ describe("visual Playwright config", () => {
             "dark-modern-wide",
             "light-modern-narrow",
             "light-modern-wide",
+            "hc-black-narrow",
+            "hc-black-wide",
+            "hc-light-narrow",
+            "hc-light-wide",
         ]);
         expect(visualConfig.expect?.toHaveScreenshot).toEqual({
             threshold: 0.2,
@@ -73,6 +77,8 @@ describe("visual harness configuration guards", () => {
     it.each([
         ["dark-modern-narrow", "dark-modern"],
         ["light-modern-wide", "light-modern"],
+        ["hc-black-narrow", "hc-black"],
+        ["hc-light-wide", "hc-light"],
     ] as const)("resolves %s to host fixture %s", (projectName, expected) => {
         expect(hostFixtureIdForProject(projectName)).toBe(expected);
     });

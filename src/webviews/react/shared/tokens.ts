@@ -23,7 +23,14 @@ export const JETBRAINS_UI = {
         muted: "var(--vscode-descriptionForeground, #9ca6b8)",
         disabled: "var(--vscode-disabledForeground, rgba(215, 220, 229, 0.55))",
         selected: "var(--vscode-list-activeSelectionBackground, #4f5f7c)",
-        selectedForeground: "var(--vscode-list-activeSelectionForeground, #eef3ff)",
+        // Chained through --vscode-foreground on purpose. VS Code only emits a CSS variable
+        // for colors the active theme actually defines, and neither High Contrast theme
+        // defines list.activeSelectionForeground -- so a bare literal fallback here is what
+        // those themes get. #eef3ff is a near-white picked for dark backgrounds; against HC
+        // Light's white selection it renders at a 1.06:1 contrast ratio, i.e. invisible, in
+        // the theme specifically intended for users who need contrast.
+        selectedForeground:
+            "var(--vscode-list-activeSelectionForeground, var(--vscode-foreground, #eef3ff))",
         hover: "var(--vscode-list-hoverBackground, rgba(111, 126, 156, 0.24))",
         toolbarHover: "var(--vscode-toolbar-hoverBackground, rgba(111, 126, 156, 0.24))",
         focus: "var(--vscode-focusBorder, #6aa2ff)",
@@ -364,7 +371,10 @@ export const GIT_STATUS_LABELS: Record<string, string> = {
  */
 export const REF_BADGE_SURFACE = {
     bg: "var(--vscode-badge-background, #4d5b78)",
-    fg: "var(--vscode-badge-foreground, #eef3ff)",
+    // Same chained fallback as color.selectedForeground: a bare near-white literal is only
+    // correct on dark backgrounds. All four captured themes define badge.foreground, so this
+    // is defence against themes that do not rather than a fix for an observed failure.
+    fg: "var(--vscode-badge-foreground, var(--vscode-foreground, #eef3ff))",
 };
 
 /**
