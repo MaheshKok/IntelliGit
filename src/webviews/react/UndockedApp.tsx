@@ -20,6 +20,7 @@ import {
     migrateSectionWidths,
     normalizeSectionWidths,
     sectionWidthsAreClose,
+    type SectionLayout,
     type SectionWidthKey,
     type SectionWidths,
 } from "./undocked/sectionWidths";
@@ -168,9 +169,7 @@ function readInitialWidths(): SectionWidths {
     try {
         const state = vscode.getState();
         const migrated = migrateSectionWidths(state);
-        if (migrated) {
-            return normalizeSectionWidths(migrated);
-        }
+        if (migrated) return migrated;
         return computeEqualSectionWidths();
     } catch {
         return computeEqualSectionWidths();
@@ -230,10 +229,17 @@ function App(): React.ReactElement {
     );
     const { repositoryWidth, branchWidth, graphWidth, infoWidth, commitPanelWidth } = sectionWidths;
     const layoutRef = useRef<HTMLDivElement | null>(null);
+    const [sectionLayout, setSectionLayout] = useState<SectionLayout>(() =>
+        normalizeSectionWidths(initialWidths.current!),
+    );
     const sectionWidthsRef = useRef(sectionWidths);
     sectionWidthsRef.current = sectionWidths;
     const setSectionWidths = useCallback((next: SectionWidths) => {
         setSectionWidthsState(next);
+        const measuredWidth = layoutRef.current?.clientWidth;
+        const totalWidth =
+            typeof measuredWidth === "number" && measuredWidth > 0 ? measuredWidth : undefined;
+        setSectionLayout(normalizeSectionWidths(next, totalWidth));
     }, []);
 
     useEffect(() => {
@@ -242,8 +248,20 @@ function App(): React.ReactElement {
             const totalWidth =
                 typeof measuredWidth === "number" && measuredWidth > 0 ? measuredWidth : undefined;
             const normalized = normalizeSectionWidths(sectionWidthsRef.current, totalWidth);
-            if (!sectionWidthsAreClose(sectionWidthsRef.current, normalized)) {
-                setSectionWidths(normalized);
+            setSectionLayout(normalized);
+            // While every pane fits, keep the stored preferences equal to the rendered
+            // widths. A divider drag applies its delta in preference space, so if the two
+            // spaces differ by a scale factor the boundary moves further than the mouse did.
+            // Once panes are hidden the preferences are left untouched so they survive a
+            // return to a wider viewport.
+            if (normalized.hidden.length === 0) {
+                const next = {
+                    ...sectionWidthsRef.current,
+                    ...normalized.widths,
+                };
+                if (!sectionWidthsAreClose(sectionWidthsRef.current, next)) {
+                    setSectionWidths(next);
+                }
             }
         };
 
@@ -502,11 +520,12 @@ function App(): React.ReactElement {
                 cpState={cpState}
                 checkedPaths={checkedPaths}
                 commitPanelPosition={commitPanelPosition}
-                repositoryWidth={repositoryWidth}
-                commitPanelWidth={commitPanelWidth}
-                branchWidth={branchWidth}
-                graphWidth={graphWidth}
-                infoWidth={infoWidth}
+                hidden={sectionLayout.hidden}
+                repositoryWidth={sectionLayout.widths.repositoryWidth}
+                commitPanelWidth={sectionLayout.widths.commitPanelWidth}
+                branchWidth={sectionLayout.widths.branchWidth}
+                graphWidth={sectionLayout.widths.graphWidth}
+                infoWidth={sectionLayout.widths.infoWidth}
                 repositories={repositories}
                 selectedRepositoryRoot={selectedRepositoryRoot}
                 branches={branches}

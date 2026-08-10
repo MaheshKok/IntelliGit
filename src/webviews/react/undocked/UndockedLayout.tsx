@@ -25,6 +25,7 @@ import { ThemeIconFontFaces } from "../shared/components/ThemeIconFontFaces";
 import { CommitPanelPane } from "./CommitPanelPane";
 import { RepositoryColumn } from "./RepositoryColumn";
 import type { CommitChecksValue, CommitPanelState } from "./commitPanelState";
+import type { SectionWidthKey } from "./sectionWidths";
 
 /**
  * Props consumed by the stateless undocked layout renderer.
@@ -37,11 +38,12 @@ export interface UndockedLayoutProps {
     cpState: CommitPanelState;
     checkedPaths: Set<string>;
     commitPanelPosition: "left" | "right";
-    repositoryWidth: number;
-    commitPanelWidth: number;
-    branchWidth: number;
-    graphWidth: number;
-    infoWidth: number;
+    hidden: readonly SectionWidthKey[];
+    repositoryWidth?: number;
+    commitPanelWidth?: number;
+    branchWidth?: number;
+    graphWidth?: number;
+    infoWidth?: number;
     repositories: RepositoryViewIdentity[];
     selectedRepositoryRoot: string | null;
     branches: Branch[];
@@ -126,6 +128,7 @@ export function UndockedLayout(props: UndockedLayoutProps): React.ReactElement {
         cpState,
         checkedPaths,
         commitPanelPosition,
+        hidden,
         repositoryWidth,
         commitPanelWidth,
         branchWidth,
@@ -202,43 +205,48 @@ export function UndockedLayout(props: UndockedLayoutProps): React.ReactElement {
         onToggleShowIgnoredFiles,
         onDock,
     } = props;
+    const isVisible = (key: SectionWidthKey): boolean => !hidden.includes(key);
 
     return (
         <ChakraProvider theme={theme}>
             <ThemeIconFontFaces fonts={iconFonts} />
             <Box display="flex" height="100vh" overflow="hidden" flexDirection="column">
                 <Box ref={layoutRef} display="flex" flex={1} overflow="hidden" minHeight={0}>
-                    <RepositoryColumn
-                        width={repositoryWidth}
-                        repositories={repositories}
-                        selectedRepositoryRoot={selectedRepositoryRoot}
-                        onSelectRepository={handleSelectRepository}
-                    />
+                    {isVisible("repositoryWidth") && (
+                        <>
+                            <RepositoryColumn
+                                width={repositoryWidth ?? 0}
+                                repositories={repositories}
+                                selectedRepositoryRoot={selectedRepositoryRoot}
+                                onSelectRepository={handleSelectRepository}
+                            />
 
-                    <Box
-                        as="button"
-                        type="button"
-                        aria-label={t("a11y.resizeRepositoryColumn")}
-                        data-testid="undocked-repository-divider"
-                        width="4px"
-                        flexShrink={0}
-                        cursor="col-resize"
-                        bg="var(--vscode-panel-border)"
-                        border={0}
-                        p={0}
-                        onMouseDown={(e: React.MouseEvent) => {
-                            markWidthsHydrated();
-                            onRepositoryDividerMouseDown(e);
-                        }}
-                        onKeyDown={onRepositoryDividerKeyDown}
-                        _hover={{ bg: "var(--vscode-focusBorder, #007acc)" }}
-                    />
+                            <Box
+                                as="button"
+                                type="button"
+                                aria-label={t("a11y.resizeRepositoryColumn")}
+                                data-testid="undocked-repository-divider"
+                                width="4px"
+                                flexShrink={0}
+                                cursor="col-resize"
+                                bg="var(--vscode-panel-border)"
+                                border={0}
+                                p={0}
+                                onMouseDown={(e: React.MouseEvent) => {
+                                    markWidthsHydrated();
+                                    onRepositoryDividerMouseDown(e);
+                                }}
+                                onKeyDown={onRepositoryDividerKeyDown}
+                                _hover={{ bg: "var(--vscode-focusBorder, #007acc)" }}
+                            />
+                        </>
+                    )}
 
                     {/* Divider and commit panel — only on left side */}
-                    {commitPanelPosition === "left" && (
+                    {commitPanelPosition === "left" && isVisible("commitPanelWidth") && (
                         <>
                             <CommitPanelPane
-                                width={commitPanelWidth}
+                                width={commitPanelWidth ?? 0}
                                 repositoryRoot={selectedRepositoryRoot ?? undefined}
                                 cpState={cpState}
                                 checkedPaths={checkedPaths}
@@ -289,87 +297,38 @@ export function UndockedLayout(props: UndockedLayoutProps): React.ReactElement {
 
                     {/* Graph panel */}
                     <Box display="flex" overflow="hidden" flexShrink={0}>
-                        {/* react-doctor-disable-next-line react-doctor/no-static-element-interactions */}
-                        <div
-                            data-testid="undocked-branch-section"
-                            style={{ width: branchWidth, flexShrink: 0, overflow: "hidden" }}
-                        >
-                            <BranchColumn
-                                branches={branches}
-                                worktrees={worktrees}
-                                selectedBranch={selectedBranch}
-                                onSelectBranch={handleSelectBranch}
-                                onBranchAction={handleBranchAction}
-                                onDeleteBranches={handleDeleteBranches}
-                                onWorktreeAction={handleWorktreeAction}
-                                folderIcon={branchFolderIcon}
-                                folderExpandedIcon={branchFolderExpandedIcon}
-                                folderIconsByName={branchFolderIconsByName}
-                            />
-                        </div>
+                        {isVisible("branchWidth") && (
+                            <>
+                                {/* react-doctor-disable-next-line react-doctor/no-static-element-interactions */}
+                                <div
+                                    data-testid="undocked-branch-section"
+                                    style={{
+                                        width: branchWidth ?? 0,
+                                        flexShrink: 0,
+                                        overflow: "hidden",
+                                    }}
+                                >
+                                    <BranchColumn
+                                        branches={branches}
+                                        worktrees={worktrees}
+                                        selectedBranch={selectedBranch}
+                                        onSelectBranch={handleSelectBranch}
+                                        onBranchAction={handleBranchAction}
+                                        onDeleteBranches={handleDeleteBranches}
+                                        onWorktreeAction={handleWorktreeAction}
+                                        folderIcon={branchFolderIcon}
+                                        folderExpandedIcon={branchFolderExpandedIcon}
+                                        folderIconsByName={branchFolderIconsByName}
+                                    />
+                                </div>
+                            </>
+                        )}
 
-                        <button
-                            type="button"
-                            aria-label={t("a11y.resizeBranchColumn")}
-                            data-testid="undocked-branch-divider"
-                            style={{
-                                width: 4,
-                                flexShrink: 0,
-                                cursor: "col-resize",
-                                background: "var(--vscode-panel-border)",
-                                border: 0,
-                                padding: 0,
-                            }}
-                            onMouseDown={(e) => {
-                                markWidthsHydrated();
-                                onBranchDividerMouseDown(e);
-                            }}
-                            onKeyDown={onBranchDividerKeyDown}
-                        />
-
-                        <div style={{ display: "flex", overflow: "hidden", flexShrink: 0 }}>
-                            {/* react-doctor-disable-next-line react-doctor/no-static-element-interactions */}
-                            <div
-                                data-testid="undocked-graph-section"
-                                style={{
-                                    width: graphWidth,
-                                    flexShrink: 0,
-                                    overflow: "hidden",
-                                }}
-                            >
-                                <CommitList
-                                    commits={commits}
-                                    selectedHash={selectedHash}
-                                    filterText={filterText}
-                                    hasMore={hasMore}
-                                    unpushedHashes={unpushedHashes}
-                                    selectedBranch={selectedBranch}
-                                    currentBranchName={currentBranchName}
-                                    currentBranchHeadHash={currentBranchHeadHash}
-                                    onSelectCommit={handleSelectCommit}
-                                    onFilterText={handleFilterText}
-                                    onLoadMore={handleLoadMore}
-                                    onCommitAction={handleCommitAction}
-                                    commitChecks={commitChecks}
-                                    onRequestCommitChecks={
-                                        commitChecksEnabled ? handleRequestCommitChecks : undefined
-                                    }
-                                    onOpenCommitCheckUrl={
-                                        commitChecksEnabled ? handleOpenCommitCheckUrl : undefined
-                                    }
-                                    onSignInForCommitChecks={
-                                        commitChecksEnabled
-                                            ? handleSignInForCommitChecks
-                                            : undefined
-                                    }
-                                    isViewVisible={isViewVisible}
-                                />
-                            </div>
-
+                        {isVisible("branchWidth") && isVisible("graphWidth") && (
                             <button
                                 type="button"
-                                aria-label={t("a11y.resizeCommitList")}
-                                data-testid="undocked-graph-divider"
+                                aria-label={t("a11y.resizeBranchColumn")}
+                                data-testid="undocked-branch-divider"
                                 style={{
                                     width: 4,
                                     flexShrink: 0,
@@ -378,35 +337,104 @@ export function UndockedLayout(props: UndockedLayoutProps): React.ReactElement {
                                     border: 0,
                                     padding: 0,
                                 }}
-                                onMouseDown={(e: React.MouseEvent) => {
+                                onMouseDown={(e) => {
                                     markWidthsHydrated();
-                                    onGraphDividerMouseDown(e);
+                                    onBranchDividerMouseDown(e);
                                 }}
-                                onKeyDown={onGraphDividerKeyDown}
+                                onKeyDown={onBranchDividerKeyDown}
                             />
+                        )}
 
-                            <div
-                                data-testid="undocked-info-section"
-                                style={{
-                                    width: infoWidth,
-                                    flexShrink: 0,
-                                    overflow: "hidden",
-                                }}
-                            >
-                                <CommitInfoPane
-                                    detail={selectedDetail}
-                                    loading={commitDetailLoading}
-                                    folderIcon={commitFolderIcon}
-                                    folderExpandedIcon={commitFolderExpandedIcon}
-                                    folderIconsByName={commitFolderIconsByName}
-                                    onOpenDiff={handleOpenDiff}
-                                />
+                        {isVisible("graphWidth") && (
+                            <div style={{ display: "flex", overflow: "hidden", flexShrink: 0 }}>
+                                {/* react-doctor-disable-next-line react-doctor/no-static-element-interactions */}
+                                <div
+                                    data-testid="undocked-graph-section"
+                                    style={{
+                                        width: graphWidth ?? 0,
+                                        flexShrink: 0,
+                                        overflow: "hidden",
+                                    }}
+                                >
+                                    <CommitList
+                                        commits={commits}
+                                        selectedHash={selectedHash}
+                                        filterText={filterText}
+                                        hasMore={hasMore}
+                                        unpushedHashes={unpushedHashes}
+                                        selectedBranch={selectedBranch}
+                                        currentBranchName={currentBranchName}
+                                        currentBranchHeadHash={currentBranchHeadHash}
+                                        onSelectCommit={handleSelectCommit}
+                                        onFilterText={handleFilterText}
+                                        onLoadMore={handleLoadMore}
+                                        onCommitAction={handleCommitAction}
+                                        commitChecks={commitChecks}
+                                        onRequestCommitChecks={
+                                            commitChecksEnabled
+                                                ? handleRequestCommitChecks
+                                                : undefined
+                                        }
+                                        onOpenCommitCheckUrl={
+                                            commitChecksEnabled
+                                                ? handleOpenCommitCheckUrl
+                                                : undefined
+                                        }
+                                        onSignInForCommitChecks={
+                                            commitChecksEnabled
+                                                ? handleSignInForCommitChecks
+                                                : undefined
+                                        }
+                                        isViewVisible={isViewVisible}
+                                    />
+                                </div>
+
+                                {isVisible("infoWidth") && (
+                                    <button
+                                        type="button"
+                                        aria-label={t("a11y.resizeCommitList")}
+                                        data-testid="undocked-graph-divider"
+                                        style={{
+                                            width: 4,
+                                            flexShrink: 0,
+                                            cursor: "col-resize",
+                                            background: "var(--vscode-panel-border)",
+                                            border: 0,
+                                            padding: 0,
+                                        }}
+                                        onMouseDown={(e: React.MouseEvent) => {
+                                            markWidthsHydrated();
+                                            onGraphDividerMouseDown(e);
+                                        }}
+                                        onKeyDown={onGraphDividerKeyDown}
+                                    />
+                                )}
+
+                                {isVisible("infoWidth") && (
+                                    <div
+                                        data-testid="undocked-info-section"
+                                        style={{
+                                            width: infoWidth ?? 0,
+                                            flexShrink: 0,
+                                            overflow: "hidden",
+                                        }}
+                                    >
+                                        <CommitInfoPane
+                                            detail={selectedDetail}
+                                            loading={commitDetailLoading}
+                                            folderIcon={commitFolderIcon}
+                                            folderExpandedIcon={commitFolderExpandedIcon}
+                                            folderIconsByName={commitFolderIconsByName}
+                                            onOpenDiff={handleOpenDiff}
+                                        />
+                                    </div>
+                                )}
                             </div>
-                        </div>
+                        )}
                     </Box>
 
                     {/* Divider and commit panel — only on right side */}
-                    {commitPanelPosition === "right" && (
+                    {commitPanelPosition === "right" && isVisible("commitPanelWidth") && (
                         <>
                             <Box
                                 as="button"
@@ -428,7 +456,7 @@ export function UndockedLayout(props: UndockedLayoutProps): React.ReactElement {
                             />
 
                             <CommitPanelPane
-                                width={commitPanelWidth}
+                                width={commitPanelWidth ?? 0}
                                 repositoryRoot={selectedRepositoryRoot ?? undefined}
                                 cpState={cpState}
                                 checkedPaths={checkedPaths}

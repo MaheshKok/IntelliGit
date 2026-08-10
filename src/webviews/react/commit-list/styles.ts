@@ -15,10 +15,16 @@ export const ROW_SIDE_PADDING = 8;
  * Chooses the metadata columns that fit beside the minimum readable commit message.
  *
  * The thresholds are derived from the fixed metadata widths and their shared margin,
- * so a width change cannot silently make the message cell collapse again.
+ * including the optional checks column, so a width change cannot silently make
+ * the message cell collapse again.
  */
-export function visibleMetaColumns(availableWidth: number): { author: boolean; date: boolean } {
-    const authorThreshold = MESSAGE_MIN_WIDTH + AUTHOR_COL_WIDTH + METADATA_COLUMN_MARGIN;
+export function visibleMetaColumns(
+    availableWidth: number,
+    showChecks: boolean,
+): { author: boolean; date: boolean } {
+    const checksWidth = showChecks ? CHECKS_COL_WIDTH + METADATA_COLUMN_MARGIN : 0;
+    const authorThreshold =
+        MESSAGE_MIN_WIDTH + AUTHOR_COL_WIDTH + METADATA_COLUMN_MARGIN + checksWidth;
     const bothColumnsThreshold = authorThreshold + DATE_COL_WIDTH + METADATA_COLUMN_MARGIN;
 
     return {

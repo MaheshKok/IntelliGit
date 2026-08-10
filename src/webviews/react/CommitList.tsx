@@ -265,6 +265,7 @@ export function CommitList({
 
     const measuredMetaColumns = visibleMetaColumns(
         viewportWidth - graphWidth - ROW_SIDE_PADDING - 2,
+        showAuthorDate && Boolean(onRequestCommitChecks && onOpenCommitCheckUrl),
     );
     const showAuthor = showAuthorDate && measuredMetaColumns.author;
     const showDate = showAuthorDate && measuredMetaColumns.date;

@@ -1,3 +1,5 @@
+import { resolvePaneBudget, type PaneBudget } from "../shared/paneBudget";
+
 const FALLBACK_SECTION_WIDTH = 300;
 const DEFAULT_REPOSITORY_WIDTH = 168;
 const DIVIDER_WIDTH = 4;
@@ -27,6 +29,20 @@ export interface SectionWidths {
 
 /** Keys that may participate in a paired undocked divider drag. */
 export type SectionWidthKey = (typeof SECTION_WIDTH_KEYS)[number];
+
+/** Lowest-priority undocked panes, in the order they are dropped under pressure. */
+const SECTION_DROP_ORDER: readonly SectionWidthKey[] = [
+    "infoWidth",
+    "repositoryWidth",
+    "branchWidth",
+    "commitPanelWidth",
+];
+
+/** Render-time widths; hidden panes are absent rather than represented by zero. */
+export interface SectionLayout {
+    readonly widths: Readonly<Partial<Record<SectionWidthKey, number>>>;
+    readonly hidden: readonly SectionWidthKey[];
+}
 
 /**
  * Computes the default repository selector plus equal widths for the four main
@@ -74,30 +90,28 @@ function getAvailableSectionWidth(totalWidth?: number): number {
     return Math.max(0, containerWidth - TOTAL_DIVIDER_WIDTH);
 }
 
+/** Returns the full container budget; the shared resolver subtracts visible dividers. */
+function getTotalSectionWidth(totalWidth?: number): number {
+    if (typeof totalWidth === "number") return Math.max(0, totalWidth);
+    if (typeof window === "undefined") return SECTION_COUNT * FALLBACK_SECTION_WIDTH;
+    return Math.max(0, window.innerWidth);
+}
+
 /** Sums every resizable pane width, excluding the fixed divider pixels. */
 function sumWidths(widths: SectionWidths): number {
     return SECTION_WIDTH_KEYS.reduce((total, key) => total + widths[key], 0);
 }
 
-/** Returns a pane's base minimum before it is scaled for a narrow viewport. */
+/** Returns a pane's true usable minimum. */
 export function baseMinimumWidth(key: SectionWidthKey): number {
     return key === "repositoryWidth" ? MIN_REPOSITORY_WIDTH : MIN_SECTION_WIDTH;
 }
 
-/**
- * Scales the five unequal pane minima just enough to fit a narrow viewport.
- * Keeping the repository minimum independent prevents a first drag from
- * forcing it to the 220px main-pane minimum.
- */
-function sectionMinimums(available: number): Record<SectionWidthKey, number> {
-    const minimumTotal = SECTION_WIDTH_KEYS.reduce(
-        (total, key) => total + baseMinimumWidth(key),
-        0,
-    );
-    const scale = Math.min(1, available / minimumTotal);
+/** Builds the fixed minimum map consumed by the shared pane-budget resolver. */
+function sectionMinimums(): Record<SectionWidthKey, number> {
     return SECTION_WIDTH_KEYS.reduce(
         (minimums, key) => {
-            minimums[key] = baseMinimumWidth(key) * scale;
+            minimums[key] = baseMinimumWidth(key);
             return minimums;
         },
         {} as Record<SectionWidthKey, number>,
@@ -141,43 +155,37 @@ export function migrateSectionWidths(value: unknown): SectionWidths | undefined 
     };
 }
 
-/**
- * Scales section widths to the available viewport while preserving proportions
- * and enforcing the largest possible per-pane minimum, including the smaller
- * repository-selector minimum.
- */
-export function normalizeSectionWidths(widths: SectionWidths, totalWidth?: number): SectionWidths {
-    const available = getAvailableSectionWidth(totalWidth);
-    if (available <= 0) return computeEqualSectionWidths(totalWidth);
-
-    const rawTotal = sumWidths(widths);
-    if (rawTotal <= 0) return computeEqualSectionWidths(totalWidth);
-
-    const minimums = sectionMinimums(available);
-    let normalized = SECTION_WIDTH_KEYS.reduce((next, key) => {
-        next[key] = Math.max(minimums[key], widths[key] * (available / rawTotal));
-        return next;
-    }, {} as SectionWidths);
-
-    const overflow = sumWidths(normalized) - available;
-    if (overflow <= 0.01) return normalized;
-
-    const reducible = SECTION_WIDTH_KEYS.reduce(
-        (total, key) => total + Math.max(0, normalized[key] - minimums[key]),
-        0,
-    );
-    if (reducible <= 0) return computeEqualSectionWidths(totalWidth);
-
-    normalized = SECTION_WIDTH_KEYS.reduce(
+function sectionLayoutFromBudget(budget: PaneBudget): SectionLayout {
+    const visibleWidths = SECTION_WIDTH_KEYS.reduce(
         (next, key) => {
-            const excess = Math.max(0, normalized[key] - minimums[key]);
-            next[key] = Math.max(minimums[key], normalized[key] - overflow * (excess / reducible));
+            const width = budget.widths[key];
+            if (typeof width === "number") next[key] = width;
             return next;
         },
-        { ...normalized },
+        {} as Partial<Record<SectionWidthKey, number>>,
     );
+    return {
+        widths: visibleWidths,
+        hidden: budget.hidden as SectionWidthKey[],
+    };
+}
 
-    return normalized;
+/** Projects persisted preferences into a usable, possibly hidden render layout. */
+export function normalizeSectionWidths(widths: SectionWidths, totalWidth?: number): SectionLayout {
+    const available = getTotalSectionWidth(totalWidth);
+    const preferred = sumWidths(widths) > 0 ? widths : computeEqualSectionWidths(totalWidth);
+    const minimums = sectionMinimums();
+    const budget = resolvePaneBudget(
+        available,
+        SECTION_WIDTH_KEYS.map((key) => ({
+            key,
+            min: minimums[key],
+            preferred: preferred[key],
+        })),
+        SECTION_DROP_ORDER,
+        DIVIDER_WIDTH,
+    );
+    return sectionLayoutFromBudget(budget);
 }
 
 /** Compares pane widths with a sub-pixel tolerance to avoid resize loops. */

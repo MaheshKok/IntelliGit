@@ -1162,3 +1162,86 @@ not inherit a false picture:
     248 -> 208  line-number gutter: 40 real fixes (84aa2ec8)
     208 -> 208  ancestor-ellipsis oracle fix (fcc88eb6)
     208 ->  84  round 3 phase 1: 9 product fixes + scrollable-ancestor exemption
+
+## Round 3 — Phase 2 (pane budget, toolbar wrap, checks-column budget)
+
+Builder: Codex `gpt-5.6-luna` @ xhigh, fresh session
+`SID = 019feb67-311f-7030-81b1-ebb574f23633`, `BASE_HEAD = aa73ced5`.
+
+### What the build delivered, and what its own checks missed
+
+Codex reported 7/7 DONE with typecheck/lint/format green. It ran **three** test
+files — the ones it touched. The full suite had **4 failures in 2 files**, and
+the RED evidence for the new module was an import error ("collection failed
+because `paneBudget.ts` was missing"), which demonstrates nothing about the
+assertions. Root findings, all fixed here:
+
+1. **`paneBudget` tests were blind to deleting every input guard.** Mutation
+   proof over production bytes: 5 mutations, **1 stayed green** — replacing
+   `finiteNonNegative` with a passthrough. The degenerate-input test dropped its
+   non-finite pane before it could receive a width, and asserted finiteness of a
+   survivor that was `0` by construction. Added two cases (a poisoned pane that
+   stays visible; a negative viewport). Re-proof: **0/5 blind**.
+2. **Divider drag stopped tracking the mouse.** The build split persisted
+   preferences from the rendered projection but left the drag delta in preference
+   space. At `innerWidth=1800` the projection scale is `1784/1184 = 1.5068`, so a
+   20px drag moved the boundary `20 x 1.5068 = 30.13px` (observed 283.27 vs
+   expected 273.14). It had orphaned `sectionWidthsAreClose`, the guard that kept
+   the two spaces identical. Restored and re-wired, gated on
+   `hidden.length === 0` so preferences survive a narrow viewport intact.
+3. **The panel collapsed to nothing whenever width read 0.** A `0` budget means
+   "nothing fits", so an unmeasured shell hid every pane — permanently where
+   `ResizeObserver` is absent. Now: measure before the guard, `useLayoutEffect`
+   to avoid a one-frame blank, and treat `shellWidth <= 0` as "not measured yet"
+   by rendering the preferred layout. The commit list flexes rather than taking a
+   resolver width (equivalent once measured, correct before).
+4. **Two dead exports** (`sectionWidthsAreClose`, `SECTION_DROP_ORDER`) — caught
+   by knip, an accept gate the build never ran.
+5. **`visibleMetaColumns(_, false)` was untested** — every case passed `true`,
+   leaving the branch that must preserve the old 228/350 thresholds unmeasured.
+
+Out-of-spec file `useUnifiedMessages.ts` (+24/-24) reviewed and **kept**: it is a
+forced consequence of `normalizeSectionWidths` changing return type, not scope
+creep. `resizeSectionPair`'s minimum-scaling was reviewed and **left alone** — its
+pair total is genuinely over-subscribed, and it now edits preferences that the
+true-minimum resolver re-projects, so it can no longer collapse the render.
+
+### Evidence
+
+    mutation proof:   5 mutations, 0 blind (was 1/5)
+    unit+integration: 224 files / 3341 tests passed
+    accept gates:     typecheck OK 4s | lint OK 11s | format OK 2s
+                      knip OK 1s | architecture OK 1s
+    container:        UPDATE_RC=0 112 passed (4.1m)
+                      VERIFY_RC=0 112 passed (4.1m)   <- two-way ratchet
+
+### Baseline: 84 -> 0, and what that number is not
+
+**0 findings is not 84 defects repaired.** The honest split:
+
+- **8** sat in wide buckets, where no pane is ever dropped. Those can only have
+  gone away through a real fix (the toolbar wrap). Definitive.
+- **~40** are `CommitRow` message cells that still render and now have real
+  width. Previously measured at `w=0` (clipper `{left:308, right:308}`).
+- **~32** are no longer *measurable* because their pane is now intentionally
+  dropped at 320px. The clipping oracle cannot see an element absent from the
+  DOM. This is measurement loss, not repair.
+
+Consequence to state plainly: the undocked window at 320px now renders **only the
+commit graph** — repository, commit panel, branch and info panes are dropped. That
+is the specified `dropOrder` behavior and beats five unusable 60px slivers, but it
+is a real UX change, and it is why part of the delta is not a fix.
+
+The `ellipsisSelf` gap remains open and still under-reports: in the formerly
+zero-width cells the commit message was clipped too, invisible only because it
+carries `text-overflow: ellipsis`. Fixing it ADDS findings; its own change.
+
+**Ledger.**
+
+    610 -> 370  round 1 (60d84ea9)
+    370 -> 346  exemption: 24 never-defects (dd4e0d82)
+    346 -> 248  contrast tokens: 98 real fixes (4e2207b7)
+    248 -> 208  line-number gutter: 40 real fixes (84aa2ec8)
+    208 -> 208  ancestor-ellipsis oracle fix (fcc88eb6)
+    208 ->  84  round 3 phase 1: 9 product fixes + scrollable-ancestor exemption
+     84 ->   0  round 3 phase 2: ~48 real fixes + ~32 dropped-pane measurement loss

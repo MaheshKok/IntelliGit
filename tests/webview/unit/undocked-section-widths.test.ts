@@ -17,7 +17,9 @@ describe("undocked section widths", () => {
             infoWidth: 254,
             commitPanelWidth: 254,
         });
-        expect(Object.values(normalizeSectionWidths(widths, 1200)).reduce((sum, width) => sum + width, 0)).toBe(1184);
+        const normalized = normalizeSectionWidths(widths, 1200);
+        expect(Object.values(normalized.widths).reduce((sum, width) => sum + width, 0)).toBe(1184);
+        expect(normalized.hidden).toEqual([]);
     });
 
     it("migrates four-pane persisted layouts with the repository default", () => {
@@ -50,5 +52,29 @@ describe("undocked section widths", () => {
             repositoryWidth: 120,
             commitPanelWidth: 220,
         });
+    });
+
+    it("drops low-priority panes instead of scaling below their true minima", () => {
+        const normalized = normalizeSectionWidths(
+            {
+                repositoryWidth: 168,
+                branchWidth: 254,
+                graphWidth: 254,
+                infoWidth: 254,
+                commitPanelWidth: 254,
+            },
+            320,
+        );
+
+        expect(normalized.hidden).toEqual([
+            "infoWidth",
+            "repositoryWidth",
+            "branchWidth",
+            "commitPanelWidth",
+        ]);
+        expect(normalized.widths).toEqual({ graphWidth: 320 });
+        expect(Object.entries(normalized.widths).every(([key, width]) =>
+            width >= (key === "repositoryWidth" ? 120 : 220),
+        )).toBe(true);
     });
 });
