@@ -284,8 +284,21 @@ export async function collectOracleInputs(page: Page): Promise<CollectedOracleIn
                 //
                 // The literals are inline because this function is serialized into the page; a
                 // module-scope constant would be `undefined` at runtime and silently match nothing.
+                //
+                // An ancestor that declares `text-overflow: ellipsis` paints that ellipsis at
+                // its own inline clip edge, and it paints it for every descendant it truncates.
+                // `text-overflow` is not an inherited property, so the element-level check below
+                // only ever exempts the element carrying the declaration -- a `<span>` inside a
+                // truncating block computes `clip` and was measured as a defect while the user
+                // was looking at a perfectly good ellipsis. The affordance belongs to whichever
+                // element paints it, not to the text node.
+                //
+                // Inline axis only. `text-overflow` has no effect on the block axis, so a
+                // vertically clipped descendant has no affordance no matter what this ancestor
+                // declares, and that loss must still be reported.
                 const clipsX =
-                    ancestorStyle.overflowX === "hidden" || ancestorStyle.overflowX === "clip";
+                    (ancestorStyle.overflowX === "hidden" || ancestorStyle.overflowX === "clip") &&
+                    ancestorStyle.textOverflow !== "ellipsis";
                 const clipsY =
                     ancestorStyle.overflowY === "hidden" || ancestorStyle.overflowY === "clip";
                 if (clipsX || clipsY) {
