@@ -10,17 +10,13 @@
                 "span (#root > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(7) > span:nth-of-type(1) > span:nth-of-type(2))",
                 "span (#root > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(8) > span:nth-of-type(1) > span:nth-of-type(2))"
             ],
-            "contrast": [
-                "span (#root > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(7) > span:nth-of-type(1) > span:nth-of-type(1)) @3.6"
-            ],
+            "contrast": [],
             "accessibleNames": [],
             "zeroSize": []
         },
         "commit-graph-compact": {
             "clipping": [],
-            "contrast": [
-                "span (#root > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(7) > span:nth-of-type(1) > span:nth-of-type(1)) @3.6"
-            ],
+            "contrast": [],
             "accessibleNames": [],
             "zeroSize": []
         },
@@ -32,12 +28,7 @@
         },
         "commit-panel": {
             "clipping": [],
-            "contrast": [
-                "span.css-8muyys (#root > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > h3:nth-of-type(1) > div:nth-of-type(1) > span:nth-of-type(3)) @4.4",
-                "span.css-8muyys (#root > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > h3:nth-of-type(1) > div:nth-of-type(1) > span:nth-of-type(3)) @4.4",
-                "span.css-gp6z2n (#root > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2) > span:nth-of-type(6) > span:nth-of-type(2)) @3.9",
-                "span.css-gp6z2n (#root > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > h3:nth-of-type(1) > div:nth-of-type(1) > span:nth-of-type(4) > span:nth-of-type(2)) @2.6"
-            ],
+            "contrast": [],
             "accessibleNames": [],
             "zeroSize": []
         },
@@ -46,9 +37,7 @@
                 "td (#root > div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(1) > table:nth-of-type(1) > tbody:nth-of-type(1) > tr:nth-of-type(1) > td:nth-of-type(3))",
                 "th (#root > div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(1) > table:nth-of-type(1) > thead:nth-of-type(1) > tr:nth-of-type(1) > th:nth-of-type(3))"
             ],
-            "contrast": [
-                "button.action-btn.danger (#root > div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(2) > button:nth-of-type(5)) @4.4"
-            ],
+            "contrast": [],
             "accessibleNames": [],
             "zeroSize": []
         },
@@ -71,9 +60,7 @@
                 "div.line-number.line-number-primary (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1)) @3.6",
                 "div.line-number.line-number-primary (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(5) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1)) @3.6",
                 "div.line-number.line-number-primary (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(5) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1)) @3.0",
-                "div.line-number.line-number-primary (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(5) > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1)) @3.6",
-                "span.hunk-action-glyph (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2) > button:nth-of-type(1) > span:nth-of-type(1)) @3.1",
-                "span.hunk-action-glyph (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(5) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > button:nth-of-type(2) > span:nth-of-type(1)) @3.1"
+                "div.line-number.line-number-primary (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(5) > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1)) @3.6"
             ],
             "accessibleNames": [],
             "zeroSize": []
@@ -97,9 +84,7 @@
                 "div.line-number.line-number-primary (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1)) @3.0",
                 "div.line-number.line-number-primary (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1)) @3.0",
                 "div.line-number.line-number-primary (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(5) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1)) @3.0",
-                "div.line-number.line-number-primary (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(5) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1)) @3.0",
-                "span.hunk-action-glyph (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > button:nth-of-type(1) > span:nth-of-type(1)) @3.1",
-                "span.hunk-action-glyph (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(5) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > button:nth-of-type(2) > span:nth-of-type(1)) @3.1"
+                "div.line-number.line-number-primary (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(5) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1)) @3.0"
             ],
             "accessibleNames": [],
             "zeroSize": []
@@ -125,11 +110,7 @@
                 "span.css-1fza0ia (#root > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2) > span:nth-of-type(7))",
                 "span.css-8muyys (#root > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > h3:nth-of-type(1) > div:nth-of-type(1) > span:nth-of-type(3))"
             ],
-            "contrast": [
-                "button.chakra-button.css-ch61mx (#root > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > button:nth-of-type(10)) @3.3",
-                "span (#root > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(7) > span:nth-of-type(1) > span:nth-of-type(1)) @3.6",
-                "span.css-8muyys (#root > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > h3:nth-of-type(1) > div:nth-of-type(1) > span:nth-of-type(3)) @4.4"
-            ],
+            "contrast": [],
             "accessibleNames": [],
             "zeroSize": []
         }
@@ -137,19 +118,13 @@
     "dark-modern-wide": {
         "commit-graph-card": {
             "clipping": [],
-            "contrast": [
-                "span (#root > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(7) > span:nth-of-type(1) > span:nth-of-type(1)) @3.6",
-                "span (#root > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(7) > span:nth-of-type(2)) @3.6",
-                "span (#root > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(7) > span:nth-of-type(3)) @3.6"
-            ],
+            "contrast": [],
             "accessibleNames": [],
             "zeroSize": []
         },
         "commit-graph-compact": {
             "clipping": [],
-            "contrast": [
-                "span (#root > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(7) > span:nth-of-type(1) > span:nth-of-type(1)) @3.6"
-            ],
+            "contrast": [],
             "accessibleNames": [],
             "zeroSize": []
         },
@@ -161,20 +136,13 @@
         },
         "commit-panel": {
             "clipping": [],
-            "contrast": [
-                "span.css-8muyys (#root > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > h3:nth-of-type(1) > div:nth-of-type(1) > span:nth-of-type(3)) @4.4",
-                "span.css-8muyys (#root > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > h3:nth-of-type(1) > div:nth-of-type(1) > span:nth-of-type(3)) @4.4",
-                "span.css-gp6z2n (#root > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2) > span:nth-of-type(6) > span:nth-of-type(2)) @3.9",
-                "span.css-gp6z2n (#root > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > h3:nth-of-type(1) > div:nth-of-type(1) > span:nth-of-type(4) > span:nth-of-type(2)) @2.6"
-            ],
+            "contrast": [],
             "accessibleNames": [],
             "zeroSize": []
         },
         "merge-conflict-session": {
             "clipping": [],
-            "contrast": [
-                "button.action-btn.danger (#root > div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(2) > button:nth-of-type(5)) @4.4"
-            ],
+            "contrast": [],
             "accessibleNames": [],
             "zeroSize": []
         },
@@ -189,9 +157,7 @@
                 "div.line-number.line-number-primary (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1)) @3.6",
                 "div.line-number.line-number-primary (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(5) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1)) @3.6",
                 "div.line-number.line-number-primary (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(5) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1)) @3.0",
-                "div.line-number.line-number-primary (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(5) > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1)) @3.6",
-                "span.hunk-action-glyph (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2) > button:nth-of-type(1) > span:nth-of-type(1)) @3.1",
-                "span.hunk-action-glyph (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(5) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > button:nth-of-type(2) > span:nth-of-type(1)) @3.1"
+                "div.line-number.line-number-primary (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(5) > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1)) @3.6"
             ],
             "accessibleNames": [],
             "zeroSize": []
@@ -207,9 +173,7 @@
                 "div.line-number.line-number-primary (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1)) @3.0",
                 "div.line-number.line-number-primary (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1)) @3.0",
                 "div.line-number.line-number-primary (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(5) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1)) @3.0",
-                "div.line-number.line-number-primary (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(5) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1)) @3.0",
-                "span.hunk-action-glyph (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > button:nth-of-type(1) > span:nth-of-type(1)) @3.1",
-                "span.hunk-action-glyph (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(5) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > button:nth-of-type(2) > span:nth-of-type(1)) @3.1"
+                "div.line-number.line-number-primary (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(5) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1)) @3.0"
             ],
             "accessibleNames": [],
             "zeroSize": []
@@ -219,11 +183,7 @@
                 "button.chakra-button.css-1w7w0fx (#root > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > button:nth-of-type(9))",
                 "button.chakra-button.css-ch61mx (#root > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > button:nth-of-type(10))"
             ],
-            "contrast": [
-                "button.chakra-button.css-ch61mx (#root > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > button:nth-of-type(10)) @3.3",
-                "span (#root > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(7) > span:nth-of-type(1) > span:nth-of-type(1)) @3.6",
-                "span.css-8muyys (#root > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > h3:nth-of-type(1) > div:nth-of-type(1) > span:nth-of-type(3)) @4.4"
-            ],
+            "contrast": [],
             "accessibleNames": [],
             "zeroSize": []
         }
@@ -239,17 +199,13 @@
                 "span (#root > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(7) > span:nth-of-type(1) > span:nth-of-type(2))",
                 "span (#root > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(8) > span:nth-of-type(1) > span:nth-of-type(2))"
             ],
-            "contrast": [
-                "span (#root > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > span:nth-of-type(1) > span:nth-of-type(2)) @2.5"
-            ],
+            "contrast": [],
             "accessibleNames": [],
             "zeroSize": []
         },
         "commit-graph-compact": {
             "clipping": [],
-            "contrast": [
-                "span (#root > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > span:nth-of-type(1) > span:nth-of-type(2)) @2.5"
-            ],
+            "contrast": [],
             "accessibleNames": [],
             "zeroSize": []
         },
@@ -261,12 +217,7 @@
         },
         "commit-panel": {
             "clipping": [],
-            "contrast": [
-                "span.css-14pxta8 (#root > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > h3:nth-of-type(1) > div:nth-of-type(1) > span:nth-of-type(4) > span:nth-of-type(1)) @4.3",
-                "span.css-8muyys (#root > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > h3:nth-of-type(1) > div:nth-of-type(1) > span:nth-of-type(3)) @4.1",
-                "span.css-8muyys (#root > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > h3:nth-of-type(1) > div:nth-of-type(1) > span:nth-of-type(3)) @4.1",
-                "span.css-gp6z2n (#root > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > h3:nth-of-type(1) > div:nth-of-type(1) > span:nth-of-type(4) > span:nth-of-type(2)) @1.4"
-            ],
+            "contrast": [],
             "accessibleNames": [],
             "zeroSize": []
         },
@@ -333,12 +284,7 @@
                 "span.css-1fza0ia (#root > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2) > span:nth-of-type(7))",
                 "span.css-8muyys (#root > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > h3:nth-of-type(1) > div:nth-of-type(1) > span:nth-of-type(3))"
             ],
-            "contrast": [
-                "button.chakra-button.css-ch61mx (#root > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > button:nth-of-type(10)) @4.1",
-                "span (#root > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > span:nth-of-type(1) > span:nth-of-type(2)) @2.5",
-                "span.css-10e6v29 (#root > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > h3:nth-of-type(1) > div:nth-of-type(1) > span:nth-of-type(4) > span:nth-of-type(1)) @4.3",
-                "span.css-8muyys (#root > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > h3:nth-of-type(1) > div:nth-of-type(1) > span:nth-of-type(3)) @4.1"
-            ],
+            "contrast": [],
             "accessibleNames": [],
             "zeroSize": []
         }
@@ -346,17 +292,13 @@
     "hc-black-wide": {
         "commit-graph-card": {
             "clipping": [],
-            "contrast": [
-                "span (#root > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > span:nth-of-type(1) > span:nth-of-type(2)) @2.5"
-            ],
+            "contrast": [],
             "accessibleNames": [],
             "zeroSize": []
         },
         "commit-graph-compact": {
             "clipping": [],
-            "contrast": [
-                "span (#root > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > span:nth-of-type(1) > span:nth-of-type(2)) @2.5"
-            ],
+            "contrast": [],
             "accessibleNames": [],
             "zeroSize": []
         },
@@ -368,12 +310,7 @@
         },
         "commit-panel": {
             "clipping": [],
-            "contrast": [
-                "span.css-14pxta8 (#root > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > h3:nth-of-type(1) > div:nth-of-type(1) > span:nth-of-type(4) > span:nth-of-type(1)) @4.3",
-                "span.css-8muyys (#root > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > h3:nth-of-type(1) > div:nth-of-type(1) > span:nth-of-type(3)) @4.1",
-                "span.css-8muyys (#root > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > h3:nth-of-type(1) > div:nth-of-type(1) > span:nth-of-type(3)) @4.1",
-                "span.css-gp6z2n (#root > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > h3:nth-of-type(1) > div:nth-of-type(1) > span:nth-of-type(4) > span:nth-of-type(2)) @1.4"
-            ],
+            "contrast": [],
             "accessibleNames": [],
             "zeroSize": []
         },
@@ -405,12 +342,7 @@
                 "button.chakra-button.css-1w7w0fx (#root > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > button:nth-of-type(9))",
                 "button.chakra-button.css-ch61mx (#root > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > button:nth-of-type(10))"
             ],
-            "contrast": [
-                "button.chakra-button.css-ch61mx (#root > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > button:nth-of-type(10)) @4.1",
-                "span (#root > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > span:nth-of-type(1) > span:nth-of-type(2)) @2.5",
-                "span.css-10e6v29 (#root > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > h3:nth-of-type(1) > div:nth-of-type(1) > span:nth-of-type(4) > span:nth-of-type(1)) @4.3",
-                "span.css-8muyys (#root > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > h3:nth-of-type(1) > div:nth-of-type(1) > span:nth-of-type(3)) @4.1"
-            ],
+            "contrast": [],
             "accessibleNames": [],
             "zeroSize": []
         }
@@ -426,17 +358,13 @@
                 "span (#root > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(7) > span:nth-of-type(1) > span:nth-of-type(2))",
                 "span (#root > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(8) > span:nth-of-type(1) > span:nth-of-type(2))"
             ],
-            "contrast": [
-                "span (#root > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(7) > span:nth-of-type(1) > span:nth-of-type(1)) @4.0"
-            ],
+            "contrast": [],
             "accessibleNames": [],
             "zeroSize": []
         },
         "commit-graph-compact": {
             "clipping": [],
-            "contrast": [
-                "span (#root > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(7) > span:nth-of-type(1) > span:nth-of-type(1)) @4.0"
-            ],
+            "contrast": [],
             "accessibleNames": [],
             "zeroSize": []
         },
@@ -471,10 +399,7 @@
                 "span (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(5) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(1) > span:nth-of-type(1) > span:nth-of-type(1))",
                 "span (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(5) > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > span:nth-of-type(1) > span:nth-of-type(1))"
             ],
-            "contrast": [
-                "span.hunk-action-glyph (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2) > button:nth-of-type(1) > span:nth-of-type(1)) @4.0",
-                "span.hunk-action-glyph (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(5) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > button:nth-of-type(2) > span:nth-of-type(1)) @4.0"
-            ],
+            "contrast": [],
             "accessibleNames": [],
             "zeroSize": []
         },
@@ -493,10 +418,7 @@
                 "span.hunk-action-glyph (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(5) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > button:nth-of-type(1) > span:nth-of-type(1))",
                 "span.hunk-action-glyph (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(5) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > button:nth-of-type(2) > span:nth-of-type(1))"
             ],
-            "contrast": [
-                "span.hunk-action-glyph (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > button:nth-of-type(1) > span:nth-of-type(1)) @4.0",
-                "span.hunk-action-glyph (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(5) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > button:nth-of-type(2) > span:nth-of-type(1)) @4.0"
-            ],
+            "contrast": [],
             "accessibleNames": [],
             "zeroSize": []
         },
@@ -521,9 +443,7 @@
                 "span.css-1fza0ia (#root > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2) > span:nth-of-type(7))",
                 "span.css-8muyys (#root > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > h3:nth-of-type(1) > div:nth-of-type(1) > span:nth-of-type(3))"
             ],
-            "contrast": [
-                "span (#root > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(7) > span:nth-of-type(1) > span:nth-of-type(1)) @4.0"
-            ],
+            "contrast": [],
             "accessibleNames": [],
             "zeroSize": []
         }
@@ -531,19 +451,13 @@
     "hc-light-wide": {
         "commit-graph-card": {
             "clipping": [],
-            "contrast": [
-                "span (#root > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(7) > span:nth-of-type(1) > span:nth-of-type(1)) @4.0",
-                "span (#root > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(7) > span:nth-of-type(2)) @4.0",
-                "span (#root > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(7) > span:nth-of-type(3)) @4.0"
-            ],
+            "contrast": [],
             "accessibleNames": [],
             "zeroSize": []
         },
         "commit-graph-compact": {
             "clipping": [],
-            "contrast": [
-                "span (#root > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(7) > span:nth-of-type(1) > span:nth-of-type(1)) @4.0"
-            ],
+            "contrast": [],
             "accessibleNames": [],
             "zeroSize": []
         },
@@ -567,10 +481,7 @@
         },
         "merge-editor": {
             "clipping": [],
-            "contrast": [
-                "span.hunk-action-glyph (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2) > button:nth-of-type(1) > span:nth-of-type(1)) @4.0",
-                "span.hunk-action-glyph (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(5) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > button:nth-of-type(2) > span:nth-of-type(1)) @4.0"
-            ],
+            "contrast": [],
             "accessibleNames": [],
             "zeroSize": []
         },
@@ -581,10 +492,7 @@
                 "span.hunk-action-glyph (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(5) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > button:nth-of-type(1) > span:nth-of-type(1))",
                 "span.hunk-action-glyph (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(5) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > button:nth-of-type(2) > span:nth-of-type(1))"
             ],
-            "contrast": [
-                "span.hunk-action-glyph (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > button:nth-of-type(1) > span:nth-of-type(1)) @4.0",
-                "span.hunk-action-glyph (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(5) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > button:nth-of-type(2) > span:nth-of-type(1)) @4.0"
-            ],
+            "contrast": [],
             "accessibleNames": [],
             "zeroSize": []
         },
@@ -593,9 +501,7 @@
                 "button.chakra-button.css-1w7w0fx (#root > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > button:nth-of-type(9))",
                 "button.chakra-button.css-ch61mx (#root > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > button:nth-of-type(10))"
             ],
-            "contrast": [
-                "span (#root > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(7) > span:nth-of-type(1) > span:nth-of-type(1)) @4.0"
-            ],
+            "contrast": [],
             "accessibleNames": [],
             "zeroSize": []
         }
@@ -611,17 +517,13 @@
                 "span (#root > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(7) > span:nth-of-type(1) > span:nth-of-type(2))",
                 "span (#root > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(8) > span:nth-of-type(1) > span:nth-of-type(2))"
             ],
-            "contrast": [
-                "span (#root > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(7) > span:nth-of-type(1) > span:nth-of-type(1)) @2.2"
-            ],
+            "contrast": [],
             "accessibleNames": [],
             "zeroSize": []
         },
         "commit-graph-compact": {
             "clipping": [],
-            "contrast": [
-                "span (#root > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(7) > span:nth-of-type(1) > span:nth-of-type(1)) @2.2"
-            ],
+            "contrast": [],
             "accessibleNames": [],
             "zeroSize": []
         },
@@ -633,9 +535,7 @@
         },
         "commit-panel": {
             "clipping": [],
-            "contrast": [
-                "span.css-14pxta8 (#root > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > h3:nth-of-type(1) > div:nth-of-type(1) > span:nth-of-type(4) > span:nth-of-type(1)) @4.0"
-            ],
+            "contrast": [],
             "accessibleNames": [],
             "zeroSize": []
         },
@@ -644,9 +544,7 @@
                 "td (#root > div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(1) > table:nth-of-type(1) > tbody:nth-of-type(1) > tr:nth-of-type(1) > td:nth-of-type(3))",
                 "th (#root > div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(1) > table:nth-of-type(1) > thead:nth-of-type(1) > tr:nth-of-type(1) > th:nth-of-type(3))"
             ],
-            "contrast": [
-                "button.action-btn.danger (#root > div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(2) > button:nth-of-type(5)) @3.0"
-            ],
+            "contrast": [],
             "accessibleNames": [],
             "zeroSize": []
         },
@@ -661,14 +559,9 @@
                 "span (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(5) > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > span:nth-of-type(1) > span:nth-of-type(1))"
             ],
             "contrast": [
-                "button.footer-btn.danger (#root > div:nth-of-type(1) > div:nth-of-type(5) > div:nth-of-type(2) > button:nth-of-type(1)) @2.8",
                 "div.line-number.line-number-primary (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1)) @3.8",
                 "div.line-number.line-number-primary (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1)) @3.8",
-                "div.line-number.line-number-primary (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(5) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1)) @3.8",
-                "span.hunk-action-glyph (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2) > button:nth-of-type(1) > span:nth-of-type(1)) @2.5",
-                "span.hunk-action-glyph (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2) > button:nth-of-type(2) > span:nth-of-type(1)) @4.3",
-                "span.hunk-action-glyph (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(5) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > button:nth-of-type(1) > span:nth-of-type(1)) @4.3",
-                "span.hunk-action-glyph (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(5) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > button:nth-of-type(2) > span:nth-of-type(1)) @2.5"
+                "div.line-number.line-number-primary (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(5) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1)) @3.8"
             ],
             "accessibleNames": [],
             "zeroSize": []
@@ -692,11 +585,7 @@
                 "div.line-number.line-number-primary (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1)) @3.8",
                 "div.line-number.line-number-primary (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1)) @3.8",
                 "div.line-number.line-number-primary (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(5) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1)) @3.8",
-                "div.line-number.line-number-primary (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(5) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1)) @3.8",
-                "span.hunk-action-glyph (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > button:nth-of-type(1) > span:nth-of-type(1)) @2.5",
-                "span.hunk-action-glyph (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > button:nth-of-type(2) > span:nth-of-type(1)) @4.3",
-                "span.hunk-action-glyph (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(5) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > button:nth-of-type(1) > span:nth-of-type(1)) @4.3",
-                "span.hunk-action-glyph (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(5) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > button:nth-of-type(2) > span:nth-of-type(1)) @2.5"
+                "div.line-number.line-number-primary (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(5) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1)) @3.8"
             ],
             "accessibleNames": [],
             "zeroSize": []
@@ -722,10 +611,7 @@
                 "span.css-1fza0ia (#root > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2) > span:nth-of-type(7))",
                 "span.css-8muyys (#root > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > h3:nth-of-type(1) > div:nth-of-type(1) > span:nth-of-type(3))"
             ],
-            "contrast": [
-                "span (#root > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(7) > span:nth-of-type(1) > span:nth-of-type(1)) @2.2",
-                "span.css-10e6v29 (#root > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > h3:nth-of-type(1) > div:nth-of-type(1) > span:nth-of-type(4) > span:nth-of-type(1)) @4.0"
-            ],
+            "contrast": [],
             "accessibleNames": [],
             "zeroSize": []
         }
@@ -733,19 +619,13 @@
     "light-modern-wide": {
         "commit-graph-card": {
             "clipping": [],
-            "contrast": [
-                "span (#root > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(7) > span:nth-of-type(1) > span:nth-of-type(1)) @2.2",
-                "span (#root > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(7) > span:nth-of-type(2)) @2.2",
-                "span (#root > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(7) > span:nth-of-type(3)) @2.2"
-            ],
+            "contrast": [],
             "accessibleNames": [],
             "zeroSize": []
         },
         "commit-graph-compact": {
             "clipping": [],
-            "contrast": [
-                "span (#root > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(7) > span:nth-of-type(1) > span:nth-of-type(1)) @2.2"
-            ],
+            "contrast": [],
             "accessibleNames": [],
             "zeroSize": []
         },
@@ -757,31 +637,22 @@
         },
         "commit-panel": {
             "clipping": [],
-            "contrast": [
-                "span.css-14pxta8 (#root > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > h3:nth-of-type(1) > div:nth-of-type(1) > span:nth-of-type(4) > span:nth-of-type(1)) @4.0"
-            ],
+            "contrast": [],
             "accessibleNames": [],
             "zeroSize": []
         },
         "merge-conflict-session": {
             "clipping": [],
-            "contrast": [
-                "button.action-btn.danger (#root > div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(2) > button:nth-of-type(5)) @3.0"
-            ],
+            "contrast": [],
             "accessibleNames": [],
             "zeroSize": []
         },
         "merge-editor": {
             "clipping": [],
             "contrast": [
-                "button.footer-btn.danger (#root > div:nth-of-type(1) > div:nth-of-type(5) > div:nth-of-type(2) > button:nth-of-type(1)) @2.8",
                 "div.line-number.line-number-primary (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1)) @3.8",
                 "div.line-number.line-number-primary (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1)) @3.8",
-                "div.line-number.line-number-primary (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(5) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1)) @3.8",
-                "span.hunk-action-glyph (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2) > button:nth-of-type(1) > span:nth-of-type(1)) @2.5",
-                "span.hunk-action-glyph (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2) > button:nth-of-type(2) > span:nth-of-type(1)) @4.3",
-                "span.hunk-action-glyph (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(5) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > button:nth-of-type(1) > span:nth-of-type(1)) @4.3",
-                "span.hunk-action-glyph (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(5) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > button:nth-of-type(2) > span:nth-of-type(1)) @2.5"
+                "div.line-number.line-number-primary (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(5) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1)) @3.8"
             ],
             "accessibleNames": [],
             "zeroSize": []
@@ -797,11 +668,7 @@
                 "div.line-number.line-number-primary (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1)) @3.8",
                 "div.line-number.line-number-primary (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1)) @3.8",
                 "div.line-number.line-number-primary (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(5) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1)) @3.8",
-                "div.line-number.line-number-primary (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(5) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1)) @3.8",
-                "span.hunk-action-glyph (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > button:nth-of-type(1) > span:nth-of-type(1)) @2.5",
-                "span.hunk-action-glyph (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > button:nth-of-type(2) > span:nth-of-type(1)) @4.3",
-                "span.hunk-action-glyph (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(5) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > button:nth-of-type(1) > span:nth-of-type(1)) @4.3",
-                "span.hunk-action-glyph (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(5) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > button:nth-of-type(2) > span:nth-of-type(1)) @2.5"
+                "div.line-number.line-number-primary (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(5) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1)) @3.8"
             ],
             "accessibleNames": [],
             "zeroSize": []
@@ -811,10 +678,7 @@
                 "button.chakra-button.css-1w7w0fx (#root > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > button:nth-of-type(9))",
                 "button.chakra-button.css-ch61mx (#root > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > button:nth-of-type(10))"
             ],
-            "contrast": [
-                "span (#root > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(7) > span:nth-of-type(1) > span:nth-of-type(1)) @2.2",
-                "span.css-10e6v29 (#root > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > h3:nth-of-type(1) > div:nth-of-type(1) > span:nth-of-type(4) > span:nth-of-type(1)) @4.0"
-            ],
+            "contrast": [],
             "accessibleNames": [],
             "zeroSize": []
         }

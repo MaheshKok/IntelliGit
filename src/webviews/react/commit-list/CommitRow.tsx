@@ -101,7 +101,7 @@ const BRANCH_REF_COUNT_STYLE: React.CSSProperties = {
     flexShrink: 0,
     fontSize: "12px",
     opacity: 0.85,
-    color: JETBRAINS_UI.color.branch,
+    color: JETBRAINS_UI.color.branchText,
 };
 const TAG_REF_WRAPPER_STYLE: React.CSSProperties = {
     marginLeft: 5,
@@ -412,7 +412,7 @@ function CommitRowInner({
             color: isSelected
                 ? JETBRAINS_UI.color.selectedForeground
                 : isMergeCommit
-                  ? "var(--vscode-disabledForeground)"
+                  ? JETBRAINS_UI.color.mergeForeground
                   : JETBRAINS_UI.color.foreground,
         }),
         [graphWidth, isMergeCommit, isSelected, isUnpushed, laneColor],

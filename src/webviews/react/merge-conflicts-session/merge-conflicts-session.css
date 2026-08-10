@@ -174,7 +174,11 @@
 }
 
 .action-btn.danger {
-    color: var(--vscode-errorForeground, #f48771);
+    color: color-mix(
+        in srgb,
+        var(--vscode-errorForeground, #f48771) 55%,
+        var(--vscode-foreground, #d7dce5)
+    );
     border-color: color-mix(in srgb, var(--vscode-errorForeground, #f48771) 34%, transparent);
     background: color-mix(in srgb, var(--vscode-errorForeground, #f48771) 10%, transparent);
 }

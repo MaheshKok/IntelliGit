@@ -27,8 +27,30 @@ export const JETBRAINS_UI = {
         input: "var(--vscode-input-background, #202633)",
         inputBorder: "var(--vscode-input-border, rgba(160, 174, 205, 0.28))",
         foreground: "var(--vscode-foreground, #d7dce5)",
-        muted: "var(--vscode-descriptionForeground, #9ca6b8)",
+        // Pulled toward the host foreground so secondary text clears the 4.5:1 floor on
+        // selected and high-contrast rows, without erasing the semantic hue: measured
+        // across all four fixture themes the mixed value stays 28-46/255 away from plain
+        // foreground, so "muted" still reads as muted. (Light Modern is the exception, and
+        // not one this token causes -- that theme defines descriptionForeground as #3b3b3b,
+        // the same value as foreground, so muted and primary were already identical there.)
+        //
+        // The mix lives on the base token rather than a `mutedText` twin beside it. A twin
+        // only covers the consumers someone remembers to repoint: every one of these three
+        // tokens is read through two mechanisms -- the `--intelligit-pycharm-*` custom
+        // property AND a direct `JETBRAINS_UI.color.*` read -- and repointing only the
+        // custom property in theme.ts left 7 of muted's 27 consumers (branch column, commit
+        // list, checks popover) painting the old failing colour on the same surfaces. Every
+        // reachable consumer of these three paints text, so there is no second value to keep.
+        muted: "color-mix(in srgb, var(--vscode-descriptionForeground, #9ca6b8) 60%, var(--vscode-foreground, #d7dce5))",
         disabled: "var(--vscode-disabledForeground, rgba(215, 220, 229, 0.55))",
+        // The branch-count badge is already faded to 85%; keep its blue identity while
+        // bringing the resolved colour toward the host foreground for selected HC rows.
+        branchText:
+            "color-mix(in srgb, var(--vscode-charts-blue, #6da7ff) 15%, var(--vscode-foreground, #d7dce5))",
+        // Merge rows remain visibly dimmer than primary rows, but no longer inherit a
+        // half-alpha disabled foreground that becomes unreadable on a light surface.
+        mergeForeground:
+            "color-mix(in srgb, var(--vscode-disabledForeground, var(--vscode-foreground, #d7dce5)) 25%, var(--vscode-foreground, #d7dce5))",
         selected: "var(--vscode-list-activeSelectionBackground, #4f5f7c)",
         // Chained through --vscode-foreground on purpose. VS Code only emits a CSS variable
         // for colors the active theme actually defines, and neither High Contrast theme
@@ -44,9 +66,15 @@ export const JETBRAINS_UI = {
         primary: "var(--vscode-button-background, #5572d9)",
         primaryHover: "var(--vscode-button-hoverBackground, #6382eb)",
         primaryForeground: "var(--vscode-button-foreground, #ffffff)",
-        added: "var(--vscode-gitDecoration-addedResourceForeground, #73c991)",
+        // Mixed toward the foreground for the same reason as `muted` above. `deleted` is the
+        // one of the three with a non-text consumer -- theme.ts tints the danger button's
+        // background and border from it -- but those are `color-mix(... N%, transparent)`
+        // derivations of whatever this resolves to, so they follow the text value rather
+        // than needing a second one.
+        added: "color-mix(in srgb, var(--vscode-gitDecoration-addedResourceForeground, #73c991) 55%, var(--vscode-foreground, #d7dce5))",
         modified: "var(--vscode-gitDecoration-modifiedResourceForeground, #d19a66)",
-        deleted: "var(--vscode-gitDecoration-deletedResourceForeground, #c74e39)",
+        deleted:
+            "color-mix(in srgb, var(--vscode-gitDecoration-deletedResourceForeground, #c74e39) 55%, var(--vscode-foreground, #d7dce5))",
         // Not `--vscode-checkbox-border`, however much it looks like the right token: that one
         // outlines VS Code's native checkbox against `checkbox.background`, and on a dark theme
         // it is `#3c3c3c` — black against this panel. The button background is the nearest

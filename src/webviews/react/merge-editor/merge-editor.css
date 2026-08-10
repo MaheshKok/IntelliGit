@@ -25,6 +25,7 @@
        live, which is the correct direction in both. */
     --merge-warning-text: color-mix(in srgb, var(--merge-warning) 55%, var(--merge-editor-fg));
     --merge-ok-text: color-mix(in srgb, var(--merge-ok) 55%, var(--merge-editor-fg));
+    --merge-danger-text: color-mix(in srgb, var(--merge-danger) 55%, var(--merge-editor-fg));
     /* PyCharm Darcula merge palette, rebuilt as tints of the *live* editor
        background instead of fixed dark hex. Hue comes from the semantic token
        above, lightness from the host surface, so a light theme gets a pale wash
@@ -723,11 +724,10 @@
     color: var(--merge-ok);
 }
 /* Recessive at rest like PyCharm's ×; the hover rule escalates to the full error
-   color. Mixing toward the editor background is the correct direction in both
-   themes: it darkens on dark and lightens on light, either way stepping back
-   from the hover state. */
+   color. Mixing toward the editor foreground keeps the red semantic signal while
+   retaining readable text on both light and dark hosts. */
 .discard-btn {
-    color: color-mix(in srgb, var(--merge-danger) 72%, var(--merge-editor-bg));
+    color: var(--merge-danger-text);
 }
 .conflict-column {
     position: relative;
@@ -805,15 +805,15 @@
     color: var(--merge-danger);
 }
 .action-btn.accept-btn {
-    color: var(--merge-ok);
+    color: var(--merge-ok-text);
 }
 /* Append mode stacks the second side below the first; the "+" in the glyph
    carries the add-not-replace meaning. */
 .action-btn.append-btn {
-    color: var(--merge-ok);
+    color: var(--merge-ok-text);
 }
 .action-btn.discard-btn {
-    color: color-mix(in srgb, var(--merge-danger) 72%, var(--merge-editor-bg));
+    color: var(--merge-danger-text);
 }
 /* Block backgrounds are row-scoped like IntelliJ/PyCharm line fragments:
    filler rows align panes but stay neutral. Code rows use a sticky background
@@ -1067,7 +1067,7 @@
 .footer-btn.danger {
     background: color-mix(in srgb, var(--vscode-errorForeground, #f48771) 10%, transparent);
     border-color: color-mix(in srgb, var(--vscode-errorForeground, #f48771) 34%, transparent);
-    color: var(--vscode-errorForeground, #f48771);
+    color: var(--merge-danger-text);
 }
 .footer-btn.danger:hover {
     background: color-mix(in srgb, var(--vscode-errorForeground, #f48771) 18%, transparent);
