@@ -57,6 +57,7 @@ export type ContrastFailureKind = "below-floor" | "unresolved-background";
 
 export interface ContrastSample {
     readonly id: string;
+    readonly inactive: boolean;
     readonly foreground: Rgba;
     /** Background layers back-to-front; the element's own background is last. */
     readonly backgroundLayers: readonly Rgba[];
@@ -77,6 +78,10 @@ export function findContrastViolations(
     const violations: ContrastViolation[] = [];
 
     samples.forEach((sample) => {
+        if (sample.inactive) {
+            return;
+        }
+
         const background = flattenStack(sample.backgroundLayers);
         if (background.a < 1) {
             violations.push({ id: sample.id, kind: "unresolved-background" });

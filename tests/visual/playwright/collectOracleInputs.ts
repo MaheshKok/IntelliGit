@@ -300,6 +300,19 @@ export async function collectOracleInputs(page: Page): Promise<CollectedOracleIn
                 ancestor = ancestor.parentElement;
             }
 
+            let inactive = false;
+            let stateElement: Element | null = element;
+            while (stateElement !== null) {
+                if (
+                    stateElement.matches(":disabled") ||
+                    stateElement.matches('[aria-disabled="true"]')
+                ) {
+                    inactive = true;
+                    break;
+                }
+                stateElement = stateElement.parentElement;
+            }
+
             const backgroundLayers: Rgba[] = [];
             let backgroundElement: Element | null = element;
             while (backgroundElement !== null) {
@@ -311,6 +324,7 @@ export async function collectOracleInputs(page: Page): Promise<CollectedOracleIn
             backgroundLayers.reverse();
             contrast.push({
                 id,
+                inactive,
                 foreground: parseColor(style.color),
                 backgroundLayers,
             });

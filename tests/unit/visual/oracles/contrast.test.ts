@@ -14,6 +14,13 @@ const black: Rgba = { r: 0, g: 0, b: 0, a: 1 };
 const white: Rgba = { r: 255, g: 255, b: 255, a: 1 };
 
 describe("contrast colour math", () => {
+    const belowFloorSample = {
+        foreground: { r: 120, g: 120, b: 120, a: 1 } as const,
+        backgroundLayers: [{ r: 120, g: 120, b: 120, a: 1 }] as const,
+    } as const;
+    const inactiveSample = { id: "inactive", inactive: true, ...belowFloorSample };
+    const activeSample = { id: "active", inactive: false, ...belowFloorSample };
+
     it("composites source-over and flattens layers back-to-front", () => {
         const translucentRed: Rgba = { r: 255, g: 0, b: 0, a: 0.5 };
         const translucentBlue: Rgba = { r: 0, g: 0, b: 255, a: 0.5 };
@@ -51,10 +58,20 @@ describe("contrast colour math", () => {
     it("returns no violations for opaque backgrounds above the caller floor", () => {
         expect(
             findContrastViolations(
-                [{ id: "body", foreground: black, backgroundLayers: [white] }],
+                [{ id: "body", inactive: false, foreground: black, backgroundLayers: [white] }],
                 4.5,
             ),
         ).toEqual([]);
+    });
+
+    it("skips inactive samples", () => {
+        expect(findContrastViolations([inactiveSample], 4.5)).toEqual([]);
+    });
+
+    it("still reports an identical active sample below the floor", () => {
+        expect(findContrastViolations([activeSample], 4.5)).toEqual([
+            { id: "active", kind: "below-floor", ratio: 1 },
+        ]);
     });
 
     it("can fail: reports an opaque low-contrast foreground", () => {
@@ -63,7 +80,7 @@ describe("contrast colour math", () => {
 
         expect(
             findContrastViolations(
-                [{ id: "muted", foreground: grey, backgroundLayers: [grey] }],
+                [{ id: "muted", inactive: false, foreground: grey, backgroundLayers: [grey] }],
                 4.5,
             ),
         ).toEqual([{ id: "muted", kind, ratio: 1 }]);
@@ -78,6 +95,7 @@ describe("contrast colour math", () => {
             [
                 {
                     id: "disabled-label",
+                    inactive: false,
                     foreground: { r: 0, g: 0, b: 0, a: 0.15 },
                     backgroundLayers: [white],
                 },
@@ -96,6 +114,7 @@ describe("contrast colour math", () => {
                 [
                     {
                         id: "transparent-card",
+                        inactive: false,
                         foreground: black,
                         backgroundLayers: [{ r: 255, g: 255, b: 255, a: 0 }],
                     },
@@ -111,6 +130,7 @@ describe("contrast colour math", () => {
                 [
                     {
                         id: "card",
+                        inactive: false,
                         foreground: black,
                         backgroundLayers: [white, { r: 255, g: 0, b: 0, a: 0 }],
                     },
@@ -123,7 +143,14 @@ describe("contrast colour math", () => {
     it("honours the caller-supplied floor", () => {
         expect(
             findContrastViolations(
-                [{ id: "custom-floor", foreground: black, backgroundLayers: [white] }],
+                [
+                    {
+                        id: "custom-floor",
+                        inactive: false,
+                        foreground: black,
+                        backgroundLayers: [white],
+                    },
+                ],
                 22,
             ),
         ).toEqual([{ id: "custom-floor", kind: "below-floor", ratio: 21 }]);
@@ -133,6 +160,7 @@ describe("contrast colour math", () => {
         const samples = [
             {
                 id: "card",
+                inactive: false,
                 foreground: black,
                 backgroundLayers: [white, { r: 255, g: 255, b: 255, a: 0.25 }],
             },
