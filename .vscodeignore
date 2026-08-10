@@ -108,6 +108,7 @@ Thumbs.db
 .claude/**
 .claude-flow/**
 .agents/**
+.codebase-memory/**
 .codex/**
 .hermes/**
 .gitnexus/**
