@@ -82,6 +82,16 @@ describe("contrastKey", () => {
     it("does not change the key for sub-0.05 noise", () => {
         expect(contrastKey("span.foo", 3.201)).toBe(contrastKey("span.foo", 3.199));
     });
+
+    it("keys an unresolved background distinctly instead of crashing on the missing ratio", () => {
+        // `ContrastViolation` omits `ratio` for `unresolved-background`. While the parameter was
+        // typed `number`, this call reached `undefined.toFixed(1)` -- a TypeError that stayed
+        // dormant only because no fixture had yet produced an unresolved background.
+        const unresolved = contrastKey("span.foo", undefined);
+        expect(unresolved).not.toContain("undefined");
+        expect(unresolved).not.toBe(contrastKey("span.foo", 4.5));
+        expect(diffFindings([unresolved], []).regressions).toEqual([unresolved]);
+    });
 });
 
 describe("describeDiff", () => {

@@ -49,9 +49,14 @@ export function isClean(diff: FindingDiff): boolean {
  * Contrast keys carry the ratio rounded to one decimal place. Storing the bare element id
  * would let a known-bad element silently degrade further (4.4 -> 1.2) without failing;
  * storing the full float would churn the baseline on sub-pixel rendering noise.
+ *
+ * `ratio` is optional because `ContrastViolation` omits it for `unresolved-background`, where no
+ * opaque background resolved and there is no ratio to round. That case gets its own key rather
+ * than a numeric one: calling `.toFixed` on the missing ratio was a latent TypeError that only
+ * stayed dormant while no fixture produced an unresolved background.
  */
-export function contrastKey(id: string, ratio: number): string {
-    return `${id} @${ratio.toFixed(1)}`;
+export function contrastKey(id: string, ratio: number | undefined): string {
+    return ratio === undefined ? `${id} @unresolved-background` : `${id} @${ratio.toFixed(1)}`;
 }
 
 export function describeDiff(label: string, diff: FindingDiff): string {

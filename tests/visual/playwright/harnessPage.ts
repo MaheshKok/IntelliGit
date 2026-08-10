@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 
 import { test as base, expect } from "@playwright/test";
-import type { Page, Route } from "@playwright/test";
+import type { Browser, Page, Route } from "@playwright/test";
 
 import type { WebviewContextId } from "../../../src/e2e/webviewCapture";
 import type { WebviewI18nPayload } from "../../../src/webviews/i18n";
@@ -20,6 +20,7 @@ import {
     hostFixtureIdForProject,
     resolveDistAssetPath,
 } from "./visualHarnessUtils";
+import { prepareVisualEnvironment } from "./visualEnvironmentGuard";
 
 const HARNESS_ORIGIN = "http://intelligit-harness.test";
 const REPO_ROOT = path.resolve(__dirname, "../../..");
@@ -68,6 +69,15 @@ interface MountHarness {
 
 interface VisualFixtures {
     readonly mountHarness: MountHarness;
+}
+
+/**
+ * Worker-scoped fixtures live in `extend`'s SECOND type parameter. Declaring `visualEnvironment`
+ * alongside the test-scoped fixtures while passing `{ scope: "worker" }` typechecks as a
+ * test-scoped fixture value, so the scope option and the declared scope disagreed.
+ */
+interface VisualWorkerFixtures {
+    readonly visualEnvironment: void;
 }
 
 /** Reads a JSON fixture from disk with the expected runtime shape supplied by its caller. */
@@ -165,7 +175,14 @@ async function routeHarnessRequest(
 }
 
 /** Installs the in-process browser harness and exposes its recorder-backed mount operation. */
-export const test = base.extend<VisualFixtures>({
+export const test = base.extend<VisualFixtures, VisualWorkerFixtures>({
+    visualEnvironment: [
+        async ({ browser }: { browser: Browser }, use, workerInfo) => {
+            await prepareVisualEnvironment(browser, workerInfo.config.workers);
+            await use();
+        },
+        { scope: "worker", auto: true },
+    ],
     mountHarness: async ({ page }: { page: Page }, use, testInfo) => {
         let documentHtml: string | undefined;
         const networkEscapes: string[] = [];

@@ -38,11 +38,13 @@ export function parseRgba(value: string): Rgba {
         /^color\(srgb\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)(?:\s*\/\s*([\d.]+))?\s*\)$/u.exec(
             value.trim(),
         );
-    if (match === null && srgbMatch === null) {
-        throw new Error(`Unable to parse CSS colour "${value}".`);
-    }
-
     if (match === null) {
+        // Narrowed here rather than by a combined `match === null && srgbMatch === null` guard:
+        // the compound form throws for the same inputs but leaves `srgbMatch` typed as possibly
+        // null on this branch, so the destructure below was an unchecked null dereference.
+        if (srgbMatch === null) {
+            throw new Error(`Unable to parse CSS colour "${value}".`);
+        }
         const [, redText, greenText, blueText, alphaText] = srgbMatch;
         const red = Number(redText);
         const green = Number(greenText);
@@ -135,11 +137,13 @@ export async function collectOracleInputs(page: Page): Promise<CollectedOracleIn
                 /^color\(srgb\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)(?:\s*\/\s*([\d.]+))?\s*\)$/u.exec(
                     value.trim(),
                 );
-            if (match === null && srgbMatch === null) {
-                throw new Error(`Unable to parse CSS colour "${value}".`);
-            }
-
             if (match === null) {
+                // Same narrowing shape as the module-scope `parseRgba` above: this is the
+                // browser-side copy that runs inside `page.evaluate`, and it carried the same
+                // unchecked null destructure.
+                if (srgbMatch === null) {
+                    throw new Error(`Unable to parse CSS colour "${value}".`);
+                }
                 const [, redText, greenText, blueText, alphaText] = srgbMatch;
                 const red = Number(redText);
                 const green = Number(greenText);
@@ -183,7 +187,7 @@ export async function collectOracleInputs(page: Page): Promise<CollectedOracleIn
             const segments: string[] = [];
             let current: Element | null = element;
             while (current !== null && current !== root) {
-                const parent = current.parentElement;
+                const parent: Element | null = current.parentElement;
                 if (parent === null) break;
                 const sameTagSiblings = Array.from(parent.children).filter(
                     (sibling) => sibling.tagName === current?.tagName,
