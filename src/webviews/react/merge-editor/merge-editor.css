@@ -507,9 +507,27 @@
 }
 /* Transparent so ribbons drawn below the column show through non-band rows;
    band rows still paint their own row background on top. */
+/* The host's own gutter colour is too dim to use unmodified here. VS Code paints
+   its line numbers on the flat editor background; ours sit on top of the conflict
+   and deleted-block ribbons, which tint the surface and eat the remaining
+   headroom. Inverting the oracle's measured ratios recovers the real composited
+   backgrounds: Dark Modern's #6e7681 lands at 3.6:1 on a plain row and 3.0:1 over
+   a ribbon, and Light Modern's clears 4.5:1 on the flat background but drops to
+   3.8:1 over one -- which is why the finding appears in a theme whose gutter looks
+   fine in isolation.
+
+   45% of the editor foreground is the smallest mix that clears the floor in the
+   worst case (34.7% needed, rounded up for margin), and the gutter stays 3.6-3.8
+   contrast-ratio steps dimmer than the code it numbers, so it still reads as a
+   gutter. Both High Contrast themes define editorLineNumber-foreground equal to
+   editorForeground already, so there the mix resolves to the value they picked. */
 .line-numbers {
     background: transparent;
-    color: var(--vscode-editorLineNumber-foreground, var(--merge-muted));
+    color: color-mix(
+        in srgb,
+        var(--vscode-editorLineNumber-foreground, var(--merge-muted)) 55%,
+        var(--merge-editor-fg)
+    );
     box-sizing: border-box;
 }
 .segment-conflict.change-conflict.unresolved .line-numbers {
