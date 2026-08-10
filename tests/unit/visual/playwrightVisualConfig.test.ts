@@ -38,6 +38,28 @@ describe("visual Playwright config", () => {
             "hc-light-narrow",
             "hc-light-wide",
         ]);
+        const ignoringProjects =
+            visualConfig.projects?.filter((project) => project.testIgnore !== undefined) ?? [];
+
+        expect(ignoringProjects.map((project) => project.name)).toEqual([
+            "light-modern-narrow",
+            "light-modern-wide",
+            "hc-black-narrow",
+            "hc-black-wide",
+            "hc-light-narrow",
+            "hc-light-wide",
+        ]);
+        expect(visualConfig.projects?.[0].testIgnore).toBeUndefined();
+        expect(visualConfig.projects?.[1].testIgnore).toBeUndefined();
+        // Checking only that the option is set would pass for a pattern matching nothing, which
+        // silently restores the locale sweep on all eight projects, or one matching everything,
+        // which drops the other visual specs. Assert what the pattern actually selects.
+        for (const project of ignoringProjects) {
+            const ignorePattern = project.testIgnore as RegExp;
+
+            expect(ignorePattern.test("tests/visual/localeSweep.spec.ts")).toBe(true);
+            expect(ignorePattern.test("tests/visual/nonPixelOracles.spec.ts")).toBe(false);
+        }
         expect(visualConfig.expect?.toHaveScreenshot).toEqual({
             threshold: 0.2,
             maxDiffPixels: 0,

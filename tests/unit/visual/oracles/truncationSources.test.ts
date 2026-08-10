@@ -48,6 +48,28 @@ describe("matchTruncatedRendering", () => {
         expect(matchTruncatedRendering("Merge...", ["Merge", "Resolve conflict"])).toBeUndefined();
     });
 
+    it("can fail: a complete label ending in a convention ellipsis is exonerated by a DIFFERENT source", () => {
+        // The catalog spells this convention both ways, so before the whole-vocabulary membership
+        // check each entry accused the other and every locale reported a truncation that was not
+        // one. The accusing source is never the source being compared, so a per-source equality
+        // check cannot catch this.
+        expect(
+            matchTruncatedRendering("Merge...", ["Merge…", "Merge...", "Resolve conflict"]),
+        ).toBeUndefined();
+        expect(
+            matchTruncatedRendering("Merge…", ["Merge…", "Merge...", "Resolve conflict"]),
+        ).toBeUndefined();
+    });
+
+    it("still reports a real truncation whose rendering is absent from the vocabulary", () => {
+        expect(
+            matchTruncatedRendering("Änderungen fes…", ["Änderungen festschreiben", "Merge..."]),
+        ).toEqual({
+            rendered: "Änderungen fes…",
+            sources: ["Änderungen festschreiben"],
+        });
+    });
+
     it("normalizes NFC and collapsed whitespace before matching", () => {
         expect(
             matchTruncatedRendering("Cafe\u0301\tparser…", ["Café parser regression"]),

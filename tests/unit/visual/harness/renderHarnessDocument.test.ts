@@ -16,6 +16,7 @@ import {
     type ResolvedHostContext,
 } from "../../../visual/harness/hostContexts";
 import type { WebviewI18nPayload } from "../../../../src/webviews/i18n";
+import { buildWebviewI18nPayload } from "../../../../src/webviews/i18n/catalogs";
 
 const DARK_MODERN = darkModern as HostFixture;
 const HC_BLACK = hcBlack as HostFixture;
@@ -81,6 +82,26 @@ function scriptJsonAssignment(document: Document, name: string): unknown {
 }
 
 describe("renderHarnessDocument", () => {
+    it.each([
+        ["en-GB", "en"],
+        ["pt", "pt-br"],
+    ] as const)(
+        "uses the production-resolved locale in html lang for %s",
+        (requested, resolved) => {
+            const document = parseDocument(
+                renderHarnessDocument(
+                    inputFor(
+                        WEBVIEW_HOST_CONTEXTS[0],
+                        DARK_MODERN,
+                        buildWebviewI18nPayload(requested),
+                    ),
+                ),
+            );
+
+            expect(document.documentElement.lang).toBe(resolved);
+        },
+    );
+
     it.each(MATRIX_CASES)(
         "$context.contextId × $fixtureId parses the complete static shell",
         ({ context, fixture }) => {

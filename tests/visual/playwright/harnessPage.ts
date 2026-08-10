@@ -7,6 +7,7 @@ import type { Page, Route } from "@playwright/test";
 
 import type { WebviewContextId } from "../../../src/e2e/webviewCapture";
 import type { WebviewI18nPayload } from "../../../src/webviews/i18n";
+import { buildWebviewI18nPayload } from "../../../src/webviews/i18n/catalogs";
 import type { HostFixture } from "../../e2e/hostFixtures/types";
 import {
     DEFAULT_HARNESS_WEBVIEW_SETTINGS,
@@ -25,7 +26,7 @@ const REPO_ROOT = path.resolve(__dirname, "../../..");
 const VISUAL_FIXTURES_DIR = path.resolve(__dirname, "../fixtures");
 const HOST_FIXTURES_DIR = path.join(VISUAL_FIXTURES_DIR, "host");
 const DIST_DIR = path.join(REPO_ROOT, "dist");
-const EN_CATALOG_PATH = path.join(REPO_ROOT, "src/webviews/i18n/en.json");
+const DEFAULT_LOCALE = "en";
 
 interface WebviewFixtureMessage {
     readonly message: unknown;
@@ -48,8 +49,10 @@ interface HarnessWindow extends Window {
 interface MountHarness {
     (
         contextId: WebviewContextId,
-        options?: { readonly webviewFixture?: string },
+        options?: { readonly webviewFixture?: string; readonly locale?: string },
     ): Promise<{
+        readonly i18n: WebviewI18nPayload;
+        readonly locale: string;
         readonly recordedMessages: () => Promise<readonly unknown[]>;
         /**
          * Exempts one console-error pattern for the remainder of this test.
@@ -113,17 +116,6 @@ function loadWebviewFixture(
         );
     }
     return fixture;
-}
-
-/** Builds the deterministic English payload used by the production i18n lookup helper. */
-function loadHarnessI18n(): WebviewI18nPayload {
-    const catalog = readJson<WebviewI18nPayload["catalog"]>(EN_CATALOG_PATH);
-    return {
-        locale: "en-GB",
-        fallbackLocale: "en",
-        catalog,
-        fallbackCatalog: catalog,
-    };
 }
 
 /** Routes one synthetic-origin request without allowing any network fallback. */
@@ -204,7 +196,7 @@ export const test = base.extend<VisualFixtures>({
             const hostFixture = readJson<HostFixture>(
                 path.join(HOST_FIXTURES_DIR, `${hostFixtureId}.json`),
             );
-            const i18n = loadHarnessI18n();
+            const i18n = buildWebviewI18nPayload(options?.locale ?? DEFAULT_LOCALE);
             const fixture = options?.webviewFixture
                 ? loadWebviewFixture(contextId, options.webviewFixture)
                 : undefined;
@@ -250,6 +242,8 @@ export const test = base.extend<VisualFixtures>({
             }
 
             return {
+                i18n,
+                locale: i18n.locale,
                 allowConsoleError: (pattern: RegExp): void => {
                     allowedConsoleErrors.push(pattern);
                 },

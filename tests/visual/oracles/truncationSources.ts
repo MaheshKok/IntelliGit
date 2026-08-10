@@ -88,12 +88,21 @@ export function matchTruncatedRendering(
     const normalizedRendered = normalizeText(rendered);
     const matchingSources = new Set<string>();
 
+    // A rendering that appears verbatim anywhere in the source vocabulary is complete, even when it
+    // ends in an ellipsis. `Merge...` is a deliberate "opens a dialog" label, not a clipped
+    // `Merge branch xyz` -- and once catalog strings joined the source set, the catalog's two
+    // spellings of that convention (`Merge...` and `Merge…`) each looked like a truncation of the
+    // other. Checking membership only against the source currently being compared is not enough:
+    // the accusing source is always a different entry.
+    if (sources.some((source) => normalizeText(source) === normalizedRendered)) {
+        return undefined;
+    }
+
     for (const source of sources) {
         const normalizedSource = normalizeText(source);
         if (
-            normalizedRendered === normalizedSource ||
-            (!hasTailEllipsis(normalizedRendered, normalizedSource) &&
-                !hasMiddleEllipsis(normalizedRendered, normalizedSource))
+            !hasTailEllipsis(normalizedRendered, normalizedSource) &&
+            !hasMiddleEllipsis(normalizedRendered, normalizedSource)
         ) {
             continue;
         }

@@ -1,5 +1,9 @@
 import { defineConfig } from "@playwright/test";
 
+// Locale changes affect string geometry; theme changes affect colors, so keeping the sweep on the
+// two dark modern viewports avoids a 12-locale high-contrast cross-product with no new signal.
+const LOCALE_SWEEP_SPEC = /localeSweep\.spec\.ts$/;
+
 export default defineConfig({
     // Restrict discovery to the visual suite; recorder and harness helpers are
     // intentionally kept beside the specs but are not test files.
@@ -62,26 +66,32 @@ export default defineConfig({
         {
             name: "light-modern-narrow",
             use: { viewport: { width: 320, height: 720 } },
+            testIgnore: LOCALE_SWEEP_SPEC,
         },
         {
             name: "light-modern-wide",
             use: { viewport: { width: 1200, height: 800 } },
+            testIgnore: LOCALE_SWEEP_SPEC,
         },
         {
             name: "hc-black-narrow",
             use: { viewport: { width: 320, height: 720 } },
+            testIgnore: LOCALE_SWEEP_SPEC,
         },
         {
             name: "hc-black-wide",
             use: { viewport: { width: 1200, height: 800 } },
+            testIgnore: LOCALE_SWEEP_SPEC,
         },
         {
             name: "hc-light-narrow",
             use: { viewport: { width: 320, height: 720 } },
+            testIgnore: LOCALE_SWEEP_SPEC,
         },
         {
             name: "hc-light-wide",
             use: { viewport: { width: 1200, height: 800 } },
+            testIgnore: LOCALE_SWEEP_SPEC,
         },
     ],
 

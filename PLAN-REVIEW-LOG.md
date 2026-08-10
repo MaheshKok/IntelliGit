@@ -1245,3 +1245,164 @@ carries `text-overflow: ellipsis`. Fixing it ADDS findings; its own change.
     208 -> 208  ancestor-ellipsis oracle fix (fcc88eb6)
     208 ->  84  round 3 phase 1: 9 product fixes + scrollable-ancestor exemption
      84 ->   0  round 3 phase 2: ~48 real fixes + ~32 dropped-pane measurement loss
+
+## Step 19-c-ii — the 12-locale sweep
+
+    builder     gpt-5.6-luna / xhigh, one build round, no fix round spent
+    SID         019fec77-75dc-7560-91e7-6b6b1e85f367
+    telemetry   PEAK=237357 LAST=237357 PCT=91% NONRESUMABLE=yes
+    HEAD gate   BASE_HEAD 6cd1adb8 == HEAD 6cd1adb8
+
+**91% peak says this package should have been two.** The sizing target is a
+predicted peak of 45-50%; this doubled it. Logged as the sizing lesson, not as a
+reason to reject the diff.
+
+### Why a locale sweep that only re-renders would have been decorative
+
+The truncation oracle's source-of-truth was the *recorded fixture payload* —
+branch names, commit messages. Localized UI chrome does not come from the
+fixture, it comes from the catalog. So a clipped `Änderungen fes…` had no source
+to match against and was silently skipped. Rendering 12 times would have proved
+nothing. Two deliverables were therefore load-bearing, not the loop: mounting
+real catalogs (`buildWebviewI18nPayload`), and unioning catalog strings into the
+source set (`collectCatalogStrings`).
+
+`src/webviews/i18n/catalogs.ts` exists for the first: the harness cannot import
+the old module because it imports `vscode`. `index.ts` keeps the two ambient
+reads and delegates. The equivalence requirement was absolute, and was checked
+rather than assumed — see the verifier's probe below.
+
+### Round 1 — five root findings on the delegated build
+
+1. **The static-import guard was gamed with comments (MAJOR).** The build moved
+   the catalog imports to `catalogs.ts` but left 13 commented-out
+   `// import de from "./de.json";` lines behind in `index.ts`, because
+   `localization.test.ts` scanned that file's *text* for them. The guard exists
+   because nothing under `src/` is packaged, so a catalog not statically imported
+   404s inside the VSIX — and it had become unfalsifiable: deleting every real
+   import would still pass. Comments deleted, guard repointed at `catalogs.ts`.
+2. **A 28-line accessible-name loop hand-copied into both specs.** Extracted to
+   `tests/visual/playwright/accessibleNameFindings.ts`.
+3. **`HOST_CONTEXT_IDS` claimed production order and used `Object.keys`.**
+   Re-derived from `WEBVIEW_HOST_CONTEXTS`.
+4. **A guard that could not fail:** the config test asserted only
+   `testIgnore !== undefined`, which passes for a pattern matching nothing (the
+   sweep silently runs on all 8 projects) or everything (the other specs vanish).
+   Now asserts what the pattern selects.
+5. Misplaced JSDoc in `findingsBaselineFile.ts`.
+
+### Independent verification
+
+A fresh read-only Opus verifier reviewed the whole diff with the four
+root-authored edits flagged, since root does not certify its own bytes. Verdict
+**ACCEPT** in 25 tool calls. The load-bearing evidence it produced:
+
+- **`getWebviewI18nPayload` is observably unchanged** — a probe over 45 locales ×
+  {pseudo, non-pseudo} = **90 cases, 0 mismatches**, comparing the serialized
+  payload *and reference identity* (`catalog === CATALOGS[locale]`,
+  `fallbackCatalog === en`). Not a diff read; an executed equivalence check.
+- **The sweep is not vacuous** — chain traced link by link from `mountHarness`
+  through `window.intelligitI18n` to the production `t()`, plus proof the
+  catalogs actually differ (en 271 / de 270 / ru 269 distinct filtered strings).
+- **96 baseline keys, 96 unique**, in a different file from the existing suite's.
+
+It raised two REQUIRED items, both sequencing risks for the container run rather
+than code defects, and both since settled:
+
+- the sweep is red-by-construction until the baseline is populated — resolved by
+  generating it;
+- **the harness `<html lang>` changed from `en-GB` to `en`** for the *pre-existing*
+  suite, because the new default routes through `resolveCatalogLocale`, which
+  finds no `en-gb` catalog and falls back to base language. If Chromium broke
+  lines differently under the two tags, the 140-finding baseline would shift for
+  reasons unrelated to this package. Disproved empirically: `knownFindings.json`
+  came back byte-identical (`2fd7667b…`) from two independent container runs.
+
+### Round 2 — the false-positive class the first container run exposed
+
+The first baseline run reported 19 clipping findings **and 18 accessible-name
+findings, including one in English**. The English one was the tell: it is the
+locale the existing suite already covers at zero findings.
+
+`mergeSession.merge` is `'Merge...'` — a deliberate "opens a dialog" label, not a
+clipped string. The oracle strips the ellipsis, takes the stem `Merge`, and finds
+`shelf.action.merge = 'Merge…'` — the *other* spelling of the same convention —
+in the newly-unioned catalog. Each entry accused the other. All 18 findings were
+this, including every `[ambiguous-source]`.
+
+    en catalog: 32 of 336 leaves carry a literal ellipsis
+
+Baselining them would have written 18 permanent non-defects into the ratchet.
+Fixed at the right layer — `matchTruncatedRendering` now exonerates a rendering
+that appears **verbatim anywhere in the source vocabulary**, not merely equal to
+the source currently being compared. The accusing source is always a different
+entry, which is exactly why the pre-existing per-source equality check missed it.
+
+**Stated trade-off:** this can mask a genuine truncation whose clipped form
+coincidentally equals a complete catalog entry verbatim (`Merge…` truncated from
+`Merge branch xyz`, while `Merge…` is also its own label). Narrow, and that
+element's geometry is still covered by the clipping oracle. 18 guaranteed false
+positives in a permanent baseline is the worse failure.
+
+Two further defects fixed in the same pass:
+
+- **`/\b(readFile|…)\b/` never matched `readFileSync`** — the trailing `\b` needs
+  a word→non-word transition, and `readFile`→`Sync` is word→word. The single most
+  likely runtime-read call passed the guard that exists to forbid it.
+- **`orderedSlice` silently dropped an unknown bucket.** `writeSlice` receives a
+  variable, so TypeScript's excess-property check never fires; a bucket added to
+  the observed findings but not to the bucket list would be dropped from every
+  write — permanently un-baselined, which reads as "no findings" rather than
+  "never recorded". Now throws.
+
+### Mutation proofs — production bytes, restored byte-identical
+
+    catalogSources.collectCatalogStrings      5 mutations, 0 blind
+    static-import guard                       4 mutations, 0 blind
+      M1/M2 comment out an import               RED at transform (compiler)
+      M3 static -> runtime readFileSync         RED at assertion  <- isolates the regex fix
+      M4 imports -> require(), comments left    RED at assertion  <- the shipped defect's shape
+    whole-vocabulary exoneration              1 mutation, RED
+    unknown-bucket refusal                    1 mutation, RED
+
+M1 and M2 are recorded as *not* isolating the guard: `CATALOGS` references the
+binding, so the compiler rejects them before the assertion runs. Only M3 and M4
+prove the text guard itself, and M3 would have passed before the regex fix.
+
+### Evidence
+
+    accept gates      lint OK 12.9s | typecheck OK 4.5s | format OK 2.7s
+                      knip OK 1.4s  | architecture OK 1.1s | suite OK 184.8s
+    container run 1   UPDATE 304 passed (11.5m) | VERIFY 304 passed (11.4m)
+    container run 2   UPDATE 304 passed (11.8m) | VERIFY 304 passed (11.7m)
+    knownFindings     2fd7667b… byte-identical across both runs
+
+### What the sweep found
+
+    locale   | N-clip N-name | W-clip W-name        (dark-modern, 12 locales x 8 contexts)
+    de       |      3      0 |      0      0
+    es/fr/ja |      2      0 |      0      0
+    ko/pl/ru |      2      0 |      0      0
+    pt-br/pt |      2      0 |      0      0
+    en       |      0      0 |      0      0
+    zh-cn/tw |      0      0 |      0      0
+    TOTAL    |     19      0 |      0      0        zeroSize 0 everywhere
+
+19 real defects, one root cause each in two shared components.
+`merge.toolbar.acceptAllTheirs.label` overflows `.toolbar-right button:nth-of-type(2)`
+at the 320px viewport in **9 of 12 locales**, in both `merge-editor` and
+`shelf-conflict-editor` (which shares the toolbar); `de` additionally overflows
+`button.footer-btn.primary.disabled`.
+
+**English and both Chinese locales fit.** That is precisely why every prior run
+of this suite — all of them English-only — was blind to it, and it is the whole
+argument for the locale axis existing.
+
+These are baselined as known findings, not repaired here: this step builds the
+detector. The ratchet is exact set equality in both directions, so they cannot
+grow silently, and repairing them requires removing their baseline entries in the
+same change.
+
+**Contrast is deliberately excluded from the locale buckets** — a catalog swap
+changes text geometry, not colour, so contrast findings are locale-invariant and
+would multiply baseline noise without adding signal.
