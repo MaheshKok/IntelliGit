@@ -919,3 +919,246 @@ via `./tests/e2e/docker/run.sh` on the pinned image.
    threshold arithmetic is incomplete. Fold into round 2.
 
 Remaining: **370 findings** — E (100), D (48), C (88), F (78).
+
+## Act 3 — Build — Round 3 of the visual-defect campaign (clipping)
+
+**Resolved tunables.** `BUILD_MODEL=gpt-5.6-luna`, `BUILD_EFFORT=xhigh` (the
+skill's only effort; `max` deliberately unused), `SANDBOX=danger-full-access`,
+`MAX_FIX_ROUNDS=2`, `SEAL_MODE=shadow`, `GATES_FILE=.claudex-gates.json`
+(gates: lint, typecheck, format, knip, architecture, suite),
+`SPEC_FILE=<scratchpad>/SPEC-round3-clipping.md`, `LOG_FILE=PLAN-REVIEW-LOG.md`.
+`BASE_HEAD=fcc88eb6dc76041911530837da58afc33c8b8e89`.
+
+Protocol bytes pinned at kickoff:
+
+    SKILL-SHA 9961facee66f  claudex-build/SKILL.md
+    SKILL-SHA ca2ed5fd0f9e  claudex-build/helpers.py
+    SKILL-SHA db9282d4db13  claudex-build/verify.py
+
+**Mode deviation, logged.** The skill defaults to phase-lane mode at >=2 phases.
+This run uses classic in-root mode: the session-level standing instruction is not
+to spawn agents unless requested, and two phases sits at the low end of the
+phase-lane threshold. The skill-mandated phase verifier still runs — that agent
+is part of the contract the user invoked, not an optional extra.
+
+### The measurement that produced this spec
+
+The clipping baseline records only an element id per finding — no axis, no pixel
+loss, no clipping ancestor. Fixing from the baseline alone would have been a
+guess: horizontal loss means a width/shrink problem, vertical means a fixed
+height, and the two have opposite fixes. A throwaway diagnostic
+(`tests/visual/_diag.spec.ts`, deleted before launch, never committed) dumped
+axis + lostPx + clipper for every finding on `dark-modern-narrow` (320x720) and
+`dark-modern-wide` (1200x800).
+
+Two results changed the plan:
+
+1. **No finding is clipped by the viewport.** Every one has a real
+   `overflow:hidden` ancestor doing the clipping. "320px is simply too narrow"
+   was never the explanation.
+2. **Six defects reproduce at 1200px.** `span.hunk-action-glyph` loses 2.3px
+   vertically and two undocked toolbar buttons lose 98.0px and 78.0px
+   horizontally at BOTH widths — column-width bugs, not viewport squeeze.
+
+Deduplicated: 208 raw findings across 4 themes = **52 distinct defects**, every
+one present in all four themes (pure layout, never colour), collapsing to ~10
+root causes. Split into two phases by code surface — Phase 1 merge-editor family
+(25 defects), Phase 2 commit-graph + undocked (27).
+
+### Round 3.1 — Codex build, Phase 1 (gpt-5.6-luna / xhigh)
+
+**SID: 019feb03-1979-7923-989f-1d2c2a4adbd3 — INIT-HANG, killed, no bytes written.**
+
+Watcher alerted on the documented init-hang signature. Six-signal corroboration,
+all agreeing, before any kill:
+
+| Signal | Reading |
+|---|---|
+| rollout mtime | frozen 31 min (10:31 -> 11:02) |
+| rollout size | flat at 18824 bytes |
+| token events | 0 — never produced one |
+| worktree mtimes | nothing newer; `git status` clean |
+| codex CPU TIME | 0:00.04 cumulative after 31 min |
+| stderr | only the cosmetic `failed to load models cache` line |
+
+Stream stopped at 418 bytes immediately after `turn.started`. Zero token events
+means the turn never reached the API, so this was session init, not slow
+reasoning.
+
+Environment cleared by smoke test — `codex exec` at `-c
+model_reasoning_effort=low` returned `OK` in seconds, both with the full 11-server
+MCP config and with `-c mcp_servers="{}"`. So neither Codex nor MCP startup was
+broken, and the `--disable multi_agent` flag was not colliding with the
+`[features.multi_agent_v2]` table (`--disable X` maps to `-c features.X=false`,
+a different key).
+
+Remaining difference isolated to the launch pipeline: the hung attempt piped
+`--json` through `| tee "$STREAM" | grep '"type":"thread.started"'`. Relaunched
+fresh, byte-identical prompt/model/effort/sandbox, with the stream redirected
+straight to a file and the SID extracted from that file afterwards.
+
+`SID(prev) 019feb03-1979-7923-989f-1d2c2a4adbd3 -> SID(new) see below.`
+
+### Round 3.1 (relaunch) — Codex build, Phase 1 (gpt-5.6-luna / xhigh)
+
+**SID: 019feb21-7e91-7d81-95ff-452752c2113b — completed, 37-line diff.**
+
+`SID(prev) 019feb03-1979-7923-989f-1d2c2a4adbd3 -> SID(new) 019feb21-7e91-7d81-95ff-452752c2113b.`
+
+Telemetry: `PEAK=244291 LAST=71843 PCT=94% NONRESUMABLE=yes`. `LAST` under half of
+`PEAK` means the session compacted. 94% against a 45-50% target says Phase 1 was
+oversized as specified — logged so Phase 2 gets sliced smaller, not as a defect in
+the diff.
+
+**Root verdict: REJECT on one CRITICAL, accept the rest.** Root reviewed the whole
+diff rather than sampling it, which is the only reason the CRITICAL was caught:
+
+    [CRITICAL] merge-editor.css — `.code-line-content { overflow:hidden;
+    text-overflow:ellipsis }` plus `.code-line-content span { display:inline-block;
+    max-width:100%; overflow:hidden; text-overflow:ellipsis }`.
+
+This truncates source code inside a merge editor. `.code-lines` is a `max-content`
+grid with `overflow-x: auto`, scroll-synced to the synthetic
+`.merge-horizontal-scroll` bar by `MergeEditorApp.syncHorizontalScroll`
+(MergeEditorApp.tsx:321-325, 511, 531). Ellipsising the row defeats that scroller
+and strands the bar with nothing to scroll — the user loses the right-hand side of
+every long conflict line with no way to reach it. The `display: inline-block` on
+every syntax-highlight token additionally breaks inline text flow. It violated
+FORBIDDEN #2 and #3 of the spec verbatim: it made the measurement pass by hiding
+the measured content.
+
+Kept from the same diff, all genuine: `.merge-toolbar` / `.toolbar-left` /
+`.toolbar-right` wrapping, `.toolbar-btn` `height:auto; min-height:24px;
+min-width:0; white-space:normal`, `.hunk-action-glyph` `line-height: 1 -> 20px`,
+`.action-btn` `height: 20px -> 24px`, the `.conflict-table` cell ellipsis rules,
+and the `title` attribute on the theirs column.
+
+Report gaps, logged: the container check in the report ran BEFORE the glyph and
+span patches and was never rerun, so 17 of 25 findings had no container evidence
+behind the claim; an "Exact clipping oracle — 8 pass" line named no file that
+exists in the tree.
+
+### Round 3.2 — root takeover (no fix round spent)
+
+The remaining work was (a) reverting a known-bad CSS block and (b) an oracle change
+under `tests/`, which the spec forbids Codex from touching. A fix round would have
+been a ~30-minute, ~240K-token work order that reads "revert your own change and do
+nothing else", so root finished Phase 1 directly. Deviation from the skill's
+fix-round ladder, logged here rather than taken silently.
+
+**The spec was partly wrong, and the evidence says so.** Spec deliverables 4 and 5
+(9 findings on `.code-line` / `.hunk-line` spans) are oracle false positives, not
+product defects. Two independent facts:
+
+1. They vanish at 1200px — `merge-editor` on `dark-modern-wide` reported ZERO
+   findings — while the genuine defects (glyph 2.3px, chakra 98.0/78.0px) persist
+   at both widths. Width-dependence is the discriminator.
+2. `.code-lines` is a scroller. Content that overflows a scroller is reachable;
+   the outer `overflow:hidden` ancestors bound the scrollport, not its contents.
+
+The collector had no concept of a scrollable ancestor, so it counted every clipper
+above the scroller. Fixed in `collectOracleInputs.ts`: axis-scoped `scrolledX` /
+`scrolledY` flags, set as the walk crosses a scroller and evaluated AFTER that
+ancestor's own clip test (so an ancestor that scrolls X while hiding Y still clips
+Y at its own box), plus the same reasoning applied to the viewport bounds.
+
+**Mutation-proved, not asserted.** An exemption with no falsifying case is
+unfalsifiable, so `clippingCollector.spec.ts` gained three control cases and the
+production collector was mutated inside the container to check they can go red:
+
+| Case | Exemption present | Exemption disabled |
+|---|---|---|
+| `scrollerChild` (scroller inside `overflow:hidden`) | `[]` | `["horizontal"]` |
+| `noScrollerChild` (same DOM, `auto` -> `hidden`) | `["horizontal"]` | `["horizontal"]` |
+| `scrollerVerticalClip` (scrolls X, hides Y) | `["vertical"]` | `["both"]` |
+
+`noScrollerChild` is the load-bearing one: byte-identical DOM with one CSS value
+flipped, opposite verdict. Without it the exemption could have been silently
+swallowing every nested clip and still looked green.
+
+### Phase 1 evidence — one container run, three passes
+
+`./tests/e2e/docker/run.sh` on the pinned `linux/amd64` image.
+
+    PASS1_RC=0   clippingCollector.spec.ts, exemption present   -> 8/8 green
+    PASS2_RC=1   same spec, production collector mutated        -> 8/8 red
+    PASS3_RC=1   nonPixelOracles.spec.ts vs the 208 baseline    -> 20/64 red, all `resolved`
+
+PASS 2 mutated `collectOracleInputs.ts` in place (`scrolledX ||=` -> `scrolledX =
+false &&`, same for Y), reran, and restored it — the exemption's own kill switch,
+exercised against the production file rather than a copy. The failure diff named
+exactly the two intended cases and nothing else:
+
+    -   "scrollerChild": Array [],
+    +   "scrollerChild": Array [ "horizontal" ],
+    -   "scrollerVerticalClip": Array [ "vertical" ],
+    +   "scrollerVerticalClip": Array [ "both" ],
+
+`noScrollerChild`, `ellipsisSelf`, `ellipsisChild` and `verticalClip` were
+byte-identical in both passes, so the exemption is not swallowing clips in general.
+
+**PASS 3, both directions of the ratchet:**
+
+| Direction | Count |
+|---|---|
+| `regressions` (observed, not baselined) | **0** across all 64 theme x host runs |
+| `resolved` (baselined, no longer observed) | 31 per theme x 4 themes = **124** |
+
+Per theme: `undocked` 6 + `merge-editor` 7 + `shelf-conflict-editor` 12 +
+`merge-conflict-session` 2 at narrow, `shelf-conflict-editor` 4 at wide. Identical
+in all four themes, which is the same pure-layout signature the diagnostic found.
+
+**Baseline: 208 -> 84.**
+
+Attribution of the 25 distinct resolved selectors — every removal traced to a
+specific change, none unexplained:
+
+| Cause | Selectors | Kind |
+|---|---|---|
+| `.toolbar-btn` fixed height in an unwrappable row | 3 `button.toolbar-btn.subtle*` | product fix |
+| 22.5px glyph in a 20px button | 4 `span.hunk-action-glyph` | product fix |
+| `.conflict-table` theirs column at `width:22%` | `th:nth-child(3)`, `td:nth-child(3)` | product fix |
+| merge/shelf code spans inside `.code-lines` | 9 bare `span` | oracle false positive |
+| undocked header spans inside a scroller | 6 `span.css-*` | oracle false positive |
+
+**The undocked removals were not intended and were checked before being accepted.**
+Nothing in Phase 1 touched `undocked`, so the 6 there came purely from the oracle
+change. Two independent facts say they were never defects:
+
+1. All six appear ONLY in the four `*-narrow` buckets of the baseline — never in a
+   `*-wide` one. Width-dependence is the discriminator: a real layout bug survives
+   1200px, content-too-long-for-a-narrow-pane does not.
+2. `undocked` at wide stayed GREEN, so the two chakra toolbar buttons that lose
+   98.0px and 78.0px at BOTH widths are still baselined. The exemption left the
+   genuine undocked defects exactly where they were — it is discriminating, not
+   blanket. Those two remain Phase 2's work.
+
+### Gates and acceptance — Phase 1
+
+    round stage:  lint OK 12.1s | typecheck OK 4.6s | format OK 2.8s
+    accept stage: knip | architecture | suite   (see below)
+
+Phase 1 accepted and committed. What it did NOT do, stated so the next phase does
+not inherit a false picture:
+
+- The two undocked chakra toolbar buttons (98.0px / 78.0px horizontal loss at BOTH
+  widths) are untouched and still baselined. Phase 2.
+- The shared commit-row span at exactly 12.0px across `commit-graph-card` and
+  `commit-graph-compact` (10 findings, one component) is untouched. Phase 2.
+- `.toolbar-center` did not get `flex-wrap`; only `.toolbar-left` and
+  `.toolbar-right` did. Nothing in the baseline reported a clip there, so it was
+  left alone rather than changed on speculation.
+- The `ellipsisSelf` gap is still open — an element that carries
+  `text-overflow: ellipsis` is dropped from the clipping list on BOTH axes, so a
+  vertical clip on such an element is invisible to the oracle. Encoded as an
+  assertion in `clippingCollector.spec.ts`, tracked, not fixed here: fixing it
+  ADDS findings, which belongs in its own change.
+
+**Ledger.**
+
+    610 -> 370  round 1 (60d84ea9)
+    370 -> 346  exemption: 24 never-defects (dd4e0d82)
+    346 -> 248  contrast tokens: 98 real fixes (4e2207b7)
+    248 -> 208  line-number gutter: 40 real fixes (84aa2ec8)
+    208 -> 208  ancestor-ellipsis oracle fix (fcc88eb6)
+    208 ->  84  round 3 phase 1: 9 product fixes + scrollable-ancestor exemption

@@ -86,6 +86,7 @@
 
 .merge-toolbar {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
     gap: 8px;
@@ -105,6 +106,10 @@
     align-items: center;
     gap: 4px;
     min-width: 0;
+}
+.toolbar-left,
+.toolbar-right {
+    flex-wrap: wrap;
 }
 .toolbar-left {
     flex: 1 1 auto;
@@ -155,7 +160,11 @@
     line-height: 1;
 }
 .toolbar-btn {
+    height: auto;
+    min-height: 24px;
+    min-width: 0;
     padding: 0 7px;
+    white-space: normal;
 }
 .toolbar-icon-btn {
     width: 22px;
@@ -672,6 +681,17 @@
     height: 20px;
     pointer-events: none;
 }
+/* Deliberately NOT `overflow: hidden; text-overflow: ellipsis`. A long code line
+   is meant to overflow and be reached by scrolling: `.code-lines` above is a
+   `max-content` grid with `overflow-x: auto`, and MergeEditorApp syncs its
+   scrollLeft with the synthetic `.merge-horizontal-scroll` bar so both panes
+   track together. Truncating here would clip code the user has to read to
+   resolve a conflict, and would quietly strand that scrollbar with nothing left
+   to scroll. The visual suite's clipping oracle used to report these spans as
+   defects because it treated `text-overflow: ellipsis` as the only truncation
+   affordance; it now exempts content reachable through a scrollable ancestor
+   (see tests/visual/playwright/collectOracleInputs.ts), so do not "fix" this
+   pane by truncating it if the oracle ever flags it again. */
 .code-line-content {
     position: relative;
 }
@@ -736,7 +756,7 @@
     font-family: var(--vscode-editor-font-family, monospace);
     font-size: 22.5px;
     font-weight: 700;
-    line-height: 1;
+    line-height: 20px;
 }
 .accept-btn {
     color: var(--merge-ok);
@@ -798,10 +818,11 @@
     z-index: 7;
 }
 /* Flat PyCharm-style gutter glyphs: no box chrome at rest, a subtle tint only
-   on hover. The 20px box keeps the hit target. */
+   on hover. The 24px box keeps the hit target and gives the oversized glyph
+   ink vertical headroom. */
 .action-btn {
     width: 20px;
-    height: 20px;
+    height: 24px;
     border: none;
     border-radius: 3px;
     cursor: pointer;

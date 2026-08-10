@@ -269,6 +269,19 @@ export async function collectOracleInputs(page: Page): Promise<CollectedOracleIn
             range.detach();
 
             const clipBoxes: Box[] = [];
+            // Set once the walk crosses an ancestor that scrolls on that axis. Everything
+            // above a scroller bounds the SCROLLPORT, not its contents: scrolling brings any
+            // part of the content inside the scroller's own box, which is already inside
+            // those outer clippers. Counting them anyway reports every line of a long
+            // document as clipped the moment some ancestor hides its overflow -- which is
+            // how a merge editor's code panes (a `max-content` grid with `overflow-x: auto`,
+            // scroll-synced to a visible scrollbar) measured as 9 defects whose "fix" was to
+            // truncate the code. Axis-scoped, so a horizontal scroller never excuses a
+            // vertical clip. The scroller's OWN box is still measured against those outer
+            // clippers, because this walk starts at the element's parent -- so a scrollport
+            // too wide for its container is still reported.
+            let scrolledX = false;
+            let scrolledY = false;
             let ancestor: Element | null = element.parentElement;
             while (ancestor !== null) {
                 const ancestorStyle = getComputedStyle(ancestor);
@@ -297,10 +310,12 @@ export async function collectOracleInputs(page: Page): Promise<CollectedOracleIn
                 // vertically clipped descendant has no affordance no matter what this ancestor
                 // declares, and that loss must still be reported.
                 const clipsX =
+                    !scrolledX &&
                     (ancestorStyle.overflowX === "hidden" || ancestorStyle.overflowX === "clip") &&
                     ancestorStyle.textOverflow !== "ellipsis";
                 const clipsY =
-                    ancestorStyle.overflowY === "hidden" || ancestorStyle.overflowY === "clip";
+                    !scrolledY &&
+                    (ancestorStyle.overflowY === "hidden" || ancestorStyle.overflowY === "clip");
                 if (clipsX || clipsY) {
                     const bounds = contentBox(ancestor.getBoundingClientRect(), ancestorStyle);
                     clipBoxes.push({
@@ -310,6 +325,15 @@ export async function collectOracleInputs(page: Page): Promise<CollectedOracleIn
                         bottom: clipsY ? bounds.bottom : Infinity,
                     });
                 }
+                // Evaluated AFTER this ancestor's own clip test: an ancestor that both scrolls
+                // and hides on the same axis is impossible in CSS, but one that scrolls on X
+                // while hiding on Y must still clip Y at its own box.
+                scrolledX ||=
+                    (ancestorStyle.overflowX === "auto" || ancestorStyle.overflowX === "scroll") &&
+                    ancestor.scrollWidth > ancestor.clientWidth;
+                scrolledY ||=
+                    (ancestorStyle.overflowY === "auto" || ancestorStyle.overflowY === "scroll") &&
+                    ancestor.scrollHeight > ancestor.clientHeight;
                 ancestor = ancestor.parentElement;
             }
 
@@ -356,11 +380,14 @@ export async function collectOracleInputs(page: Page): Promise<CollectedOracleIn
                     input: {
                         textRects,
                         clipBoxes,
+                        // Same scrollport reasoning as the ancestor walk: content inside a
+                        // horizontal scroller may sit outside the window at scrollLeft 0 and
+                        // still be one scroll away, so a scrolled axis is unbounded here too.
                         viewport: {
-                            left: 0,
-                            top: 0,
-                            right: window.innerWidth,
-                            bottom: window.innerHeight,
+                            left: scrolledX ? -Infinity : 0,
+                            top: scrolledY ? -Infinity : 0,
+                            right: scrolledX ? Infinity : window.innerWidth,
+                            bottom: scrolledY ? Infinity : window.innerHeight,
                         },
                     },
                 });

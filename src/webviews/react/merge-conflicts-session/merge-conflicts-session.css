@@ -68,6 +68,13 @@
     border-bottom: 1px solid var(--vscode-panel-border, var(--vscode-widget-border, transparent));
 }
 
+.conflict-table thead th,
+.conflict-table .row td {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 .conflict-table thead th:first-child {
     width: 56%;
 }
