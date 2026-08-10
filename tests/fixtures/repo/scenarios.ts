@@ -458,6 +458,19 @@ async function prepareEmptyRepo(destination: string): Promise<ScenarioWorkspace>
 }
 
 /**
+ * Drops unset variables so a scenario env satisfies `GitExecutor`'s `Record<string, string>`
+ * contract. The scenario env is a `NodeJS.ProcessEnv` because it spreads `process.env`, whose
+ * values are typed `string | undefined`; every key present at runtime does hold a string, but
+ * that is a runtime guarantee the type cannot express, so it is narrowed here explicitly rather
+ * than asserted away at the call site.
+ */
+function definedEnv(env: NodeJS.ProcessEnv): Record<string, string> {
+    return Object.fromEntries(
+        Object.entries(env).filter((entry): entry is [string, string] => entry[1] !== undefined),
+    );
+}
+
+/**
  * `shelf-populated`: shelves the seeded dirty layer's untracked `untracked.txt` through the real
  * production `ShelfService` -- the same `GitExecutor` / `RepositoryMutationGate` /
  * `RepositoryLock` / `ShelfStore` collaborators `tests/integration/shelf/shelfTestHarness.ts`
@@ -485,7 +498,7 @@ async function prepareShelfPopulated(destination: string): Promise<ScenarioWorks
     // builder's git subprocesses inherit the developer's global Git configuration, the exact defect
     // `recordingGitEnvironment.ts` documents. Added in Phase 2c-v-d alongside `shelf-conflicted`,
     // which had it from the start -- the two shelf builders must not disagree about this.
-    const executor = new GitExecutor(root, undefined, env);
+    const executor = new GitExecutor(root, undefined, definedEnv(env));
     const gate = new RepositoryMutationGate(
         new RepositoryMutationCoordinator(),
         new RepositoryLock(),
@@ -520,7 +533,7 @@ async function prepareShelfConflicted(destination: string): Promise<ScenarioWork
         globalStoragePath: storageRoot,
     });
     const store = new ShelfStore(shelfPaths);
-    const executor = new GitExecutor(root, undefined, env);
+    const executor = new GitExecutor(root, undefined, definedEnv(env));
     const gate = new RepositoryMutationGate(
         new RepositoryMutationCoordinator(),
         new RepositoryLock(),
