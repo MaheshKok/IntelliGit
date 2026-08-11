@@ -60,10 +60,49 @@ describe("visual Playwright config", () => {
             expect(ignorePattern.test("tests/visual/localeSweep.spec.ts")).toBe(true);
             expect(ignorePattern.test("tests/visual/nonPixelOracles.spec.ts")).toBe(false);
         }
+
+        const pixelSpecPath = "tests/visual/pixelBaselines.spec.ts";
+        const pixelIgnoredProjects = new Set(
+            visualConfig.projects
+                ?.filter((project) =>
+                    (project.testIgnore as RegExp | undefined)?.test(pixelSpecPath),
+                )
+                .map((project) => project.name),
+        );
+        const expectedPixelIgnoredProjects = new Set([
+            "hc-black-narrow",
+            "hc-black-wide",
+            "hc-light-narrow",
+            "hc-light-wide",
+        ]);
+        expect(pixelIgnoredProjects).toEqual(expectedPixelIgnoredProjects);
+        expect(expectedPixelIgnoredProjects).toEqual(pixelIgnoredProjects);
+
+        const pixelRunningProjects = new Set(
+            visualConfig.projects
+                ?.filter(
+                    (project) => !(project.testIgnore as RegExp | undefined)?.test(pixelSpecPath),
+                )
+                .map((project) => project.name),
+        );
+        const expectedPixelRunningProjects = new Set([
+            "dark-modern-narrow",
+            "dark-modern-wide",
+            "light-modern-narrow",
+            "light-modern-wide",
+        ]);
+        expect(pixelRunningProjects).toEqual(expectedPixelRunningProjects);
+        expect(expectedPixelRunningProjects).toEqual(pixelRunningProjects);
+
         expect(visualConfig.expect?.toHaveScreenshot).toEqual({
             threshold: 0.2,
             maxDiffPixels: 0,
+            animations: "disabled",
+            snapshotPathTemplate: "{snapshotDir}/{testFileName}/{arg}-{projectName}{ext}",
         });
+        expect(visualConfig.expect?.toHaveScreenshot?.snapshotPathTemplate).toBe(
+            "{snapshotDir}/{testFileName}/{arg}-{projectName}{ext}",
+        );
         expect(visualConfig.snapshotDir).toBe("tests/visual/__screenshots__");
         expect(visualConfig.retries).toBe(0);
     });
