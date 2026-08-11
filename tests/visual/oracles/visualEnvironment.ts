@@ -79,6 +79,7 @@ function fontDifference(
 export const VISUAL_ENVIRONMENT_FIELDS = [
     {
         field: "baseImage",
+        // This value is a self-reported claim; provenance checks tie it to the reviewed pin.
         compared: true,
         normalize: (value) => value,
         difference: scalarDifference("baseImage"),

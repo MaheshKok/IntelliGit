@@ -12,7 +12,12 @@ import {
     type VisualEnvironment,
 } from "../oracles/visualEnvironment";
 import { BASELINE_PLATFORM, UPDATE_ENV_VAR, baselineFile } from "../oracles/findingsBaselineFile";
-import { assertPinnedProvenance, readPinnedBaseImage } from "../oracles/pinnedBaseImage";
+import {
+    assertPinnedProvenance,
+    checkPinnedProvenance,
+    readPinnedBaseImage,
+    type ProvenanceResult,
+} from "../oracles/pinnedBaseImage";
 import { captureVisualEnvironment } from "./captureVisualEnvironment";
 
 const ENVIRONMENT_PATH = resolve(__dirname, "../../..", BASELINE_ENVIRONMENT_FILE);
@@ -20,12 +25,18 @@ const PIN_PATH = resolve(__dirname, "../../..", "tests/e2e/docker/base-image.txt
 const CURRENT_PLATFORM = `${process.platform}-${process.arch}`;
 const EMPTY_BUCKETS = [] as const;
 
-/** The worker-captured environment state exposed to the later pixel-assertion package. */
-export type EnvironmentVerdict =
+/** The renderer agreement independent of whether the worker came from the reviewed image. */
+export type EnvironmentAgreement =
     | { readonly kind: "match" }
     | { readonly kind: "no-baseline" }
     | { readonly kind: "unreadable"; readonly message: string }
     | { readonly kind: "drift"; readonly message: string };
+
+/** The worker-captured agreement and provenance exposed to the later pixel-assertion package. */
+export interface EnvironmentVerdict {
+    readonly agreement: EnvironmentAgreement;
+    readonly provenance: ProvenanceResult;
+}
 
 type CommittedEnvironment =
     | { readonly kind: "absent" }
@@ -41,7 +52,10 @@ type EnvironmentRunInputs = {
     readonly inContainer: boolean;
 };
 
-type EnvironmentRunMode = "update" | "compare";
+/** The mode to execute and, for comparison, the non-fatal provenance result. */
+export type EnvironmentRunPlan =
+    | { readonly mode: "update" }
+    | { readonly mode: "compare"; readonly provenance: ProvenanceResult };
 type ContainmentProbe = () => boolean;
 type EnvironmentCapture = (browser: Browser) => Promise<VisualEnvironment>;
 
@@ -79,7 +93,6 @@ function assertVisualEnvironmentShape(
             `visual environment artifact field "fonts" contains a non-string value at index ${invalidFontIndex}.`,
         );
     }
-
 }
 
 function parseVisualEnvironment(value: unknown): VisualEnvironment {
@@ -163,9 +176,18 @@ function assertSingleWorker(updateRequested: boolean, workerCount: number): void
     );
 }
 
-/** Couples every update guard to the mode used by visual-environment preparation. */
-export function planEnvironmentRun(inputs: EnvironmentRunInputs): EnvironmentRunMode {
-    if (!inputs.updateRequested) return "compare";
+/** Couples every update guard to the mode and provenance used by visual-environment preparation. */
+export function planEnvironmentRun(inputs: EnvironmentRunInputs): EnvironmentRunPlan {
+    if (!inputs.updateRequested) {
+        return {
+            mode: "compare",
+            provenance: checkPinnedProvenance(
+                inputs.baseImage,
+                inputs.pinnedBaseImage,
+                inputs.inContainer,
+            ),
+        };
+    }
 
     assertUpdatePlatform(inputs.updateRequested, inputs.platform);
     assertSingleWorker(inputs.updateRequested, inputs.workerCount);
@@ -175,7 +197,7 @@ export function planEnvironmentRun(inputs: EnvironmentRunInputs): EnvironmentRun
         inputs.pinnedBaseImage,
         inputs.inContainer,
     );
-    return "update";
+    return { mode: "update" };
 }
 
 /** Enforces the pinned-container requirement for visual baseline updates. */
@@ -189,11 +211,11 @@ export function assertUpdateEnvironment(
     assertPinnedProvenance(baseImage, pinnedBaseImage, inContainer);
 }
 
-/** Converts a committed and observed environment pair into the guard verdict. */
-export function decideEnvironmentVerdict(
+/** Converts a committed and observed environment pair into an agreement result. */
+export function decideEnvironmentAgreement(
     committed: CommittedEnvironment,
     observed: VisualEnvironment,
-): EnvironmentVerdict {
+): EnvironmentAgreement {
     if (committed.kind === "absent") return { kind: "no-baseline" };
     if (committed.kind === "unreadable") {
         return {
@@ -231,7 +253,7 @@ function prepareEnvironment(
     const guards = baselineFile(environmentPath, EMPTY_BUCKETS);
     const updateRequested = guards.isUpdateRequested();
     const pinnedBaseImage = readPinnedBaseImage(pinPath);
-    const mode = planEnvironmentRun({
+    const plan = planEnvironmentRun({
         updateRequested,
         platform,
         workerCount,
@@ -242,16 +264,22 @@ function prepareEnvironment(
 
     return capture(browser).then((captured) => {
         const observed = normalizeEnvironment(captured);
-        if (mode === "update") {
+        if (plan.mode === "update") {
             writeEnvironment(environmentPath, observed, pinnedBaseImage);
-            cachedVerdict = { kind: "match" };
+            cachedVerdict = {
+                agreement: { kind: "match" },
+                provenance: { kind: "pinned" },
+            };
             return;
         }
 
-        cachedVerdict = decideEnvironmentVerdict(
-            readCommittedEnvironment(environmentPath),
-            observed,
-        );
+        cachedVerdict = {
+            agreement: decideEnvironmentAgreement(
+                readCommittedEnvironment(environmentPath),
+                observed,
+            ),
+            provenance: plan.provenance,
+        };
     });
 }
 

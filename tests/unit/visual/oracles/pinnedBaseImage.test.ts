@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import { BASELINE_PLATFORM } from "../../../visual/oracles/findingsBaselineFile";
 import {
     assertPinnedProvenance,
+    checkPinnedProvenance,
     readPinnedBaseImage,
 } from "../../../visual/oracles/pinnedBaseImage";
 
@@ -55,6 +56,31 @@ describe("pinned base image oracle", () => {
         expect(() => assertPinnedProvenance(validDigest, validDigest, false)).toThrow(
             "containment check failed",
         );
+    });
+
+    it("reports provenance failures without throwing for compare callers", () => {
+        expect(checkPinnedProvenance(undefined, validDigest, true)).toEqual({
+            kind: "unpinned",
+            reason:
+                "INTELLIGIT_BASE_IMAGE shape check failed; it must be a digest reference with 64 lowercase hex characters. " +
+                "Regenerate through ./tests/e2e/docker/run.sh.",
+        });
+        expect(checkPinnedProvenance(`repo@sha256:${"b".repeat(64)}`, validDigest, true)).toEqual({
+            kind: "unpinned",
+            reason:
+                "INTELLIGIT_BASE_IMAGE identity check failed; it does not equal the pinned base image. " +
+                "Regenerate through ./tests/e2e/docker/run.sh.",
+        });
+        expect(checkPinnedProvenance(validDigest, validDigest, false)).toEqual({
+            kind: "unpinned",
+            reason:
+                "/.dockerenv containment check failed; the update is not running in Docker. " +
+                "Regenerate through ./tests/e2e/docker/run.sh.",
+        });
+    });
+
+    it("reports pinned provenance when every fact is satisfied", () => {
+        expect(checkPinnedProvenance(validDigest, validDigest, true)).toEqual({ kind: "pinned" });
     });
 
     it("cross-checks the committed artifact against the real pin", () => {

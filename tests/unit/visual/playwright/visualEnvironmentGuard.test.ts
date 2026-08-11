@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
     CONTAINMENT_MARKER,
     assertUpdateEnvironment,
-    decideEnvironmentVerdict,
+    decideEnvironmentAgreement,
     environmentVerdict,
     planEnvironmentRun,
     prepareVisualEnvironment,
@@ -20,6 +20,8 @@ import { BASELINE_PLATFORM } from "../../../visual/oracles/findingsBaselineFile"
 import type { VisualEnvironment } from "../../../visual/oracles/visualEnvironment";
 
 const validDigest = `repo@sha256:${"a".repeat(64)}`;
+const defaultCompareBaseImage = Symbol("default compare base image");
+const unsetCompareBaseImage = Symbol("unset compare base image");
 const baseEnvironment: VisualEnvironment = {
     baseImage: validDigest,
     browserVersion: "139.0.7258.5",
@@ -75,16 +77,27 @@ async function prepareForCompare(
     environmentPath: string,
     pinPath: string,
     captured: VisualEnvironment = baseEnvironment,
+    baseImage:
+        | string
+        | typeof defaultCompareBaseImage
+        | typeof unsetCompareBaseImage = defaultCompareBaseImage,
+    inContainer = true,
 ): Promise<void> {
     vi.unstubAllEnvs();
     delete process.env.UPDATE_VISUAL_BASELINE;
-    vi.stubEnv("INTELLIGIT_BASE_IMAGE", validDigest);
+    if (baseImage === unsetCompareBaseImage) {
+        delete process.env.INTELLIGIT_BASE_IMAGE;
+    } else if (baseImage === defaultCompareBaseImage) {
+        vi.stubEnv("INTELLIGIT_BASE_IMAGE", validDigest);
+    } else {
+        vi.stubEnv("INTELLIGIT_BASE_IMAGE", baseImage);
+    }
     await prepareVisualEnvironment(
         stubBrowser,
         1,
         environmentPath,
         pinPath,
-        () => false,
+        () => inContainer,
         BASELINE_PLATFORM,
         async () => captured,
     );
@@ -107,7 +120,13 @@ describe("visual environment guard", () => {
                     pinnedBaseImage: validDigest,
                     inContainer: false,
                 }),
-            ).toBe("compare");
+            ).toEqual({
+                mode: "compare",
+                provenance: {
+                    kind: "unpinned",
+                    reason: expect.stringContaining("shape check failed"),
+                },
+            });
         });
 
         it("returns update after every update guard passes", () => {
@@ -120,7 +139,7 @@ describe("visual environment guard", () => {
                     pinnedBaseImage: validDigest,
                     inContainer: true,
                 }),
-            ).toBe("update");
+            ).toEqual({ mode: "update" });
         });
     });
 
@@ -194,21 +213,121 @@ describe("visual environment guard", () => {
     });
 
     describe("prepareVisualEnvironment compare path", () => {
-        it("completes with a no-baseline verdict when the artifact is absent", async () => {
+        it("completes with a no-baseline agreement when the artifact is absent", async () => {
             await withTemporaryEnvironmentPath(async (environmentPath, pinPath) => {
                 await prepareForCompare(environmentPath, pinPath);
 
-                expect(environmentVerdict()).toEqual({ kind: "no-baseline" });
+                expect(environmentVerdict()).toEqual({
+                    agreement: { kind: "no-baseline" },
+                    provenance: { kind: "pinned" },
+                });
             });
         });
 
-        it("completes with a match verdict when the artifact matches", async () => {
+        it("reports agreement and pinned provenance when the artifact matches", async () => {
             await withTemporaryEnvironmentPath(async (environmentPath, pinPath) => {
                 writeFileSync(environmentPath, JSON.stringify(baseEnvironment), "utf8");
 
                 await prepareForCompare(environmentPath, pinPath);
 
-                expect(environmentVerdict()).toEqual({ kind: "match" });
+                expect(environmentVerdict()).toEqual({
+                    agreement: { kind: "match" },
+                    provenance: { kind: "pinned" },
+                });
+            });
+        });
+
+        it("distinguishes a forged pinned claim from a genuine pinned run", async () => {
+            await withTemporaryEnvironmentPath(async (environmentPath, pinPath) => {
+                writeFileSync(environmentPath, JSON.stringify(baseEnvironment), "utf8");
+
+                await prepareForCompare(
+                    environmentPath,
+                    pinPath,
+                    baseEnvironment,
+                    validDigest,
+                    false,
+                );
+
+                expect(environmentVerdict()).toEqual({
+                    agreement: { kind: "match" },
+                    provenance: {
+                        kind: "unpinned",
+                        reason: expect.stringContaining("/.dockerenv containment check failed"),
+                    },
+                });
+            });
+        });
+
+        it("reports an unset image claim without throwing during comparison", async () => {
+            await withTemporaryEnvironmentPath(async (environmentPath, pinPath) => {
+                writeFileSync(environmentPath, JSON.stringify(baseEnvironment), "utf8");
+
+                await expect(
+                    prepareForCompare(
+                        environmentPath,
+                        pinPath,
+                        baseEnvironment,
+                        unsetCompareBaseImage,
+                        false,
+                    ),
+                ).resolves.toBeUndefined();
+
+                expect(environmentVerdict()).toEqual({
+                    agreement: { kind: "match" },
+                    provenance: {
+                        kind: "unpinned",
+                        reason: expect.stringContaining("shape check failed"),
+                    },
+                });
+            });
+        });
+
+        it("reports a non-digest image claim without throwing during comparison", async () => {
+            await withTemporaryEnvironmentPath(async (environmentPath, pinPath) => {
+                writeFileSync(environmentPath, JSON.stringify(baseEnvironment), "utf8");
+
+                await expect(
+                    prepareForCompare(
+                        environmentPath,
+                        pinPath,
+                        baseEnvironment,
+                        "not-a-digest",
+                        false,
+                    ),
+                ).resolves.toBeUndefined();
+
+                expect(environmentVerdict()).toEqual({
+                    agreement: { kind: "match" },
+                    provenance: {
+                        kind: "unpinned",
+                        reason: expect.stringContaining("shape check failed"),
+                    },
+                });
+            });
+        });
+
+        it("reports an image identity mismatch without throwing during comparison", async () => {
+            await withTemporaryEnvironmentPath(async (environmentPath, pinPath) => {
+                writeFileSync(environmentPath, JSON.stringify(baseEnvironment), "utf8");
+
+                await expect(
+                    prepareForCompare(
+                        environmentPath,
+                        pinPath,
+                        baseEnvironment,
+                        `repo@sha256:${"b".repeat(64)}`,
+                        true,
+                    ),
+                ).resolves.toBeUndefined();
+
+                expect(environmentVerdict()).toEqual({
+                    agreement: { kind: "match" },
+                    provenance: {
+                        kind: "unpinned",
+                        reason: expect.stringContaining("identity check failed"),
+                    },
+                });
             });
         });
 
@@ -223,8 +342,11 @@ describe("visual environment guard", () => {
                 await prepareForCompare(environmentPath, pinPath);
 
                 const verdict = environmentVerdict();
-                expect(verdict.kind).toBe("drift");
-                if (verdict.kind === "drift") expect(verdict.message).toContain("browserVersion");
+                expect(verdict.agreement.kind).toBe("drift");
+                if (verdict.agreement.kind === "drift") {
+                    expect(verdict.agreement.message).toContain("browserVersion");
+                }
+                expect(verdict.provenance).toEqual({ kind: "pinned" });
             });
         });
 
@@ -235,8 +357,11 @@ describe("visual environment guard", () => {
                 await prepareForCompare(environmentPath, pinPath);
 
                 expect(environmentVerdict()).toEqual({
-                    kind: "unreadable",
-                    message: expect.stringContaining("malformed JSON"),
+                    agreement: {
+                        kind: "unreadable",
+                        message: expect.stringContaining("malformed JSON"),
+                    },
+                    provenance: { kind: "pinned" },
                 });
             });
         });
@@ -247,15 +372,18 @@ describe("visual environment guard", () => {
             await withTemporaryEnvironmentPath(async (environmentPath, pinPath) => {
                 await prepareWithUpdate(environmentPath, pinPath, 1, BASELINE_PLATFORM);
 
-                expect(environmentVerdict()).toEqual({ kind: "match" });
+                expect(environmentVerdict()).toEqual({
+                    agreement: { kind: "match" },
+                    provenance: { kind: "pinned" },
+                });
                 expect(JSON.parse(readFileSync(environmentPath, "utf8"))).toEqual(baseEnvironment);
             });
         });
     });
 
-    describe("decideEnvironmentVerdict", () => {
+    describe("decideEnvironmentAgreement", () => {
         it("distinguishes an absent baseline from a match", () => {
-            const verdict = decideEnvironmentVerdict({ kind: "absent" }, baseEnvironment);
+            const verdict = decideEnvironmentAgreement({ kind: "absent" }, baseEnvironment);
 
             expect(verdict.kind).toBe("no-baseline");
             expect(verdict.kind).not.toBe("match");
@@ -263,7 +391,7 @@ describe("visual environment guard", () => {
 
         it("reports an unreadable baseline distinctly", () => {
             expect(
-                decideEnvironmentVerdict(
+                decideEnvironmentAgreement(
                     { kind: "unreadable", reason: "malformed JSON" },
                     baseEnvironment,
                 ),
@@ -275,7 +403,7 @@ describe("visual environment guard", () => {
 
         it("matches deeply equal environments", () => {
             expect(
-                decideEnvironmentVerdict(
+                decideEnvironmentAgreement(
                     { kind: "environment", value: baseEnvironment },
                     baseEnvironment,
                 ),
@@ -283,7 +411,7 @@ describe("visual environment guard", () => {
         });
 
         it("reports the differing field and regeneration command", () => {
-            const verdict = decideEnvironmentVerdict(
+            const verdict = decideEnvironmentAgreement(
                 { kind: "environment", value: baseEnvironment },
                 {
                     ...baseEnvironment,
@@ -302,7 +430,7 @@ describe("visual environment guard", () => {
 
         it("matches equal font sets regardless of order and duplicates", () => {
             expect(
-                decideEnvironmentVerdict(
+                decideEnvironmentAgreement(
                     {
                         kind: "environment",
                         value: { ...baseEnvironment, fonts: ["Noto Sans", "Arial", "Noto Sans"] },
