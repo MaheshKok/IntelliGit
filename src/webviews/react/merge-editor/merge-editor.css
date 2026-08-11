@@ -120,7 +120,12 @@
     gap: 6px;
 }
 .toolbar-right {
-    flex: 1 0 auto;
+    /* Shrink, don't just grow. The `flex-wrap: wrap` above can only engage once this group
+       is allowed to fall below its max-content width, so with flex-shrink 0 it was a dead
+       rule: at 320px the group kept the full width of its two labels and overflowed the
+       toolbar instead of wrapping. English fits either way, which is why this only ever
+       showed up in translation. justify-content still parks it on the right. */
+    flex: 1 1 auto;
     justify-content: flex-end;
 }
 .toolbar-nav-group {
@@ -1047,6 +1052,10 @@
 
 .merge-footer {
     display: flex;
+    /* Without wrapping there is nowhere for a long translated action label to go but
+       outside the footer; the row is short enough that wrapping costs nothing when it
+       is not needed. */
+    flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
     gap: 8px;
@@ -1067,7 +1076,9 @@
     flex: 1 1 auto;
 }
 .footer-right {
-    flex: 0 0 auto;
+    /* Same shape as .toolbar-right: the primary action must be allowed to give way at
+       narrow widths rather than push its label past the footer's edge. */
+    flex: 0 1 auto;
 }
 .footer-btn {
     min-height: 22px;

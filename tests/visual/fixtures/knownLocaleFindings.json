@@ -26,17 +26,12 @@
             "zeroSize": []
         },
         "de/merge-editor": {
-            "clipping": [
-                "button.footer-btn.primary.disabled (#root > div:nth-of-type(1) > div:nth-of-type(5) > div:nth-of-type(2) > button:nth-of-type(3))",
-                "button.toolbar-btn (#root > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > button:nth-of-type(2))"
-            ],
+            "clipping": [],
             "accessibleNames": [],
             "zeroSize": []
         },
         "de/shelf-conflict-editor": {
-            "clipping": [
-                "button.toolbar-btn (#root > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > button:nth-of-type(2))"
-            ],
+            "clipping": [],
             "accessibleNames": [],
             "zeroSize": []
         },
@@ -111,16 +106,12 @@
             "zeroSize": []
         },
         "es/merge-editor": {
-            "clipping": [
-                "button.toolbar-btn (#root > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > button:nth-of-type(2))"
-            ],
+            "clipping": [],
             "accessibleNames": [],
             "zeroSize": []
         },
         "es/shelf-conflict-editor": {
-            "clipping": [
-                "button.toolbar-btn (#root > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > button:nth-of-type(2))"
-            ],
+            "clipping": [],
             "accessibleNames": [],
             "zeroSize": []
         },
@@ -155,16 +146,12 @@
             "zeroSize": []
         },
         "fr/merge-editor": {
-            "clipping": [
-                "button.toolbar-btn (#root > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > button:nth-of-type(2))"
-            ],
+            "clipping": [],
             "accessibleNames": [],
             "zeroSize": []
         },
         "fr/shelf-conflict-editor": {
-            "clipping": [
-                "button.toolbar-btn (#root > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > button:nth-of-type(2))"
-            ],
+            "clipping": [],
             "accessibleNames": [],
             "zeroSize": []
         },
@@ -199,16 +186,12 @@
             "zeroSize": []
         },
         "ja/merge-editor": {
-            "clipping": [
-                "button.toolbar-btn (#root > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > button:nth-of-type(2))"
-            ],
+            "clipping": [],
             "accessibleNames": [],
             "zeroSize": []
         },
         "ja/shelf-conflict-editor": {
-            "clipping": [
-                "button.toolbar-btn (#root > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > button:nth-of-type(2))"
-            ],
+            "clipping": [],
             "accessibleNames": [],
             "zeroSize": []
         },
@@ -243,16 +226,12 @@
             "zeroSize": []
         },
         "ko/merge-editor": {
-            "clipping": [
-                "button.toolbar-btn (#root > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > button:nth-of-type(2))"
-            ],
+            "clipping": [],
             "accessibleNames": [],
             "zeroSize": []
         },
         "ko/shelf-conflict-editor": {
-            "clipping": [
-                "button.toolbar-btn (#root > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > button:nth-of-type(2))"
-            ],
+            "clipping": [],
             "accessibleNames": [],
             "zeroSize": []
         },
@@ -287,16 +266,12 @@
             "zeroSize": []
         },
         "pl/merge-editor": {
-            "clipping": [
-                "button.toolbar-btn (#root > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > button:nth-of-type(2))"
-            ],
+            "clipping": [],
             "accessibleNames": [],
             "zeroSize": []
         },
         "pl/shelf-conflict-editor": {
-            "clipping": [
-                "button.toolbar-btn (#root > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > button:nth-of-type(2))"
-            ],
+            "clipping": [],
             "accessibleNames": [],
             "zeroSize": []
         },
@@ -331,16 +306,12 @@
             "zeroSize": []
         },
         "pt-br/merge-editor": {
-            "clipping": [
-                "button.toolbar-btn (#root > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > button:nth-of-type(2))"
-            ],
+            "clipping": [],
             "accessibleNames": [],
             "zeroSize": []
         },
         "pt-br/shelf-conflict-editor": {
-            "clipping": [
-                "button.toolbar-btn (#root > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > button:nth-of-type(2))"
-            ],
+            "clipping": [],
             "accessibleNames": [],
             "zeroSize": []
         },
@@ -375,16 +346,12 @@
             "zeroSize": []
         },
         "pt-pt/merge-editor": {
-            "clipping": [
-                "button.toolbar-btn (#root > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > button:nth-of-type(2))"
-            ],
+            "clipping": [],
             "accessibleNames": [],
             "zeroSize": []
         },
         "pt-pt/shelf-conflict-editor": {
-            "clipping": [
-                "button.toolbar-btn (#root > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > button:nth-of-type(2))"
-            ],
+            "clipping": [],
             "accessibleNames": [],
             "zeroSize": []
         },
@@ -419,16 +386,12 @@
             "zeroSize": []
         },
         "ru/merge-editor": {
-            "clipping": [
-                "button.toolbar-btn (#root > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > button:nth-of-type(2))"
-            ],
+            "clipping": [],
             "accessibleNames": [],
             "zeroSize": []
         },
         "ru/shelf-conflict-editor": {
-            "clipping": [
-                "button.toolbar-btn (#root > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > button:nth-of-type(2))"
-            ],
+            "clipping": [],
             "accessibleNames": [],
             "zeroSize": []
         },
