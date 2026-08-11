@@ -97,17 +97,25 @@ export default defineConfig({
         },
     ],
 
-    // Declare screenshot comparison policy now; Phase 3-iv will add the first
-    // assertions after container-generated baselines exist.
+    // Screenshot comparison policy. maxDiffPixels: 0 keeps any divergence loud,
+    // which is the right direction for a baseline whose entire value is that it
+    // reproduces byte for byte.
     expect: {
         toHaveScreenshot: {
             threshold: 0.2,
             maxDiffPixels: 0,
             animations: "disabled",
-            snapshotPathTemplate: "{snapshotDir}/{testFileName}/{arg}-{projectName}{ext}",
         },
     },
 
-    // Keep future baselines separate from source fixtures and recorder output.
+    // Keep baselines separate from source fixtures and recorder output.
     snapshotDir: "tests/visual/__screenshots__",
+
+    // Top level, NOT an expect.toHaveScreenshot option: Playwright reads this key
+    // only from the config root and silently ignores it when nested, falling back
+    // to a default template that appends the platform (`-linux`). Platform is
+    // already a guarded invariant here, so that suffix is a filename axis holding
+    // exactly one legitimate value while quietly letting a `-darwin` baseline sit
+    // beside it as though both were real.
+    snapshotPathTemplate: "{snapshotDir}/{testFileName}/{arg}-{projectName}{ext}",
 });

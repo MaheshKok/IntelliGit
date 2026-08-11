@@ -94,15 +94,22 @@ describe("visual Playwright config", () => {
         expect(pixelRunningProjects).toEqual(expectedPixelRunningProjects);
         expect(expectedPixelRunningProjects).toEqual(pixelRunningProjects);
 
+        // Playwright reads snapshotPathTemplate from the config root only. Nested under
+        // toHaveScreenshot it typechecks, reads back correctly from the object literal, and
+        // does nothing -- baselines silently land at the default path with a `-linux` suffix.
+        // So assert both halves: present at the root, and absent from the nested options.
+        expect(visualConfig.snapshotPathTemplate).toBe(
+            "{snapshotDir}/{testFileName}/{arg}-{projectName}{ext}",
+        );
         expect(visualConfig.expect?.toHaveScreenshot).toEqual({
             threshold: 0.2,
             maxDiffPixels: 0,
             animations: "disabled",
-            snapshotPathTemplate: "{snapshotDir}/{testFileName}/{arg}-{projectName}{ext}",
         });
-        expect(visualConfig.expect?.toHaveScreenshot?.snapshotPathTemplate).toBe(
-            "{snapshotDir}/{testFileName}/{arg}-{projectName}{ext}",
-        );
+        expect(
+            (visualConfig.expect?.toHaveScreenshot as Record<string, unknown>)
+                .snapshotPathTemplate,
+        ).toBeUndefined();
         expect(visualConfig.snapshotDir).toBe("tests/visual/__screenshots__");
         expect(visualConfig.retries).toBe(0);
     });
