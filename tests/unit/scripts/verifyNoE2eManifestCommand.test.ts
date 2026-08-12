@@ -5,15 +5,18 @@
 // sufficient proxy. The primary case is the real repository file: this suite fails loudly if
 // a control command is ever actually added to it, not just against synthetic fixtures.
 
+import { spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
     diffCommandInventory,
     findE2eCommands,
     verifyNoE2eManifestCommand,
 } from "../../../scripts/verifyNoE2eManifestCommand.js";
+
+const SCRIPT_PATH = resolve(__dirname, "../../../scripts/verifyNoE2eManifestCommand.js");
 
 describe("verifyNoE2eManifestCommand: the real repository package.json", () => {
     it("passes against the actual checked-in package.json", () => {
@@ -38,6 +41,24 @@ describe("verifyNoE2eManifestCommand: synthetic fixtures", () => {
         writeFileSync(path, JSON.stringify({ name: "fixture", contributes }), "utf8");
         return path;
     }
+
+    it("enforces the guard when invoked as a subprocess", () => {
+        const forbiddenPackageJsonPath = seedPackageJson({
+            commands: [{ command: "intelligit.e2eControlChannel.seed", title: "Seed" }],
+        });
+        const forbiddenRun = spawnSync(
+            process.execPath,
+            [SCRIPT_PATH, forbiddenPackageJsonPath],
+            { encoding: "utf8" },
+        );
+
+        expect(forbiddenRun.status).not.toBe(0);
+        expect(forbiddenRun.stderr).toContain("packaging check failed");
+
+        const repositoryRun = spawnSync(process.execPath, [SCRIPT_PATH], { encoding: "utf8" });
+        expect(repositoryRun.status).toBe(0);
+        expect(repositoryRun.stdout).toContain("no E2E control-channel command is contributed");
+    });
 
     it("passes when contributes.commands is absent entirely", () => {
         const packageJsonPath = seedPackageJson(undefined);

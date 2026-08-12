@@ -134,12 +134,17 @@ function verifyNoE2eManifestCommand({
 
 /**
  * CLI entry point: verifies package.json and exits non-zero, with every failure reason
- * printed, if an E2E control-channel command is contributed.
+ * printed, if an E2E control-channel command is contributed. An optional first argument
+ * selects a package.json path for fixture and subprocess testing; without it, the checked-in
+ * repository manifest is used.
  *
  * @returns {void}
  */
 function main() {
-    const { ok, errors } = verifyNoE2eManifestCommand();
+    const packageJsonPath = process.argv[2];
+    const { ok, errors } = verifyNoE2eManifestCommand(
+        packageJsonPath === undefined ? {} : { packageJsonPath },
+    );
     if (!ok) {
         console.error("verifyNoE2eManifestCommand: packaging check failed:");
         for (const error of errors) {

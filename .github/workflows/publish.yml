@@ -72,6 +72,9 @@ jobs:
             - name: Check architecture boundaries
               run: bun run architecture:check
 
+            - name: Check manifest does not expose E2E control commands
+              run: bun run verify:manifest
+
             - name: Validate localization catalogs
               run: bun run l10n:validate
 

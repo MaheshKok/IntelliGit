@@ -996,6 +996,7 @@
         "deps:check": "knip --no-exit-code",
         "deps:check:strict": "knip",
         "architecture:check": "depcruise src --include-only \"^src\" --config .dependency-cruiser.cjs",
+        "verify:manifest": "node scripts/verifyNoE2eManifestCommand.js",
         "typecheck:ext": "tsc -p tsconfig.json --noEmit",
         "typecheck:webview": "tsc -p tsconfig.webview.json --noEmit",
         "typecheck:tests": "tsc -p tsconfig.tests.json --noEmit",
