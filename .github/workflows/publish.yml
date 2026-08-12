@@ -361,14 +361,27 @@ jobs:
 
             - name: Create GitHub Release and upload VSIX
               if: steps.version-check.outputs.version_changed == 'true' && steps.github-release-check.outputs.release_exists != 'true'
-              run: gh release create "v$NEW_VERSION" *.vsix --generate-notes
+              run: |
+                  release_notes=()
+                  if [ "${{ needs.e2e-full.result }}" != "success" ]; then
+                    release_notes+=(--notes "E2E gate override: this release was published with a non-successful e2e-full gate via the skip_e2e_gate override.")
+                  fi
+                  gh release create "v$NEW_VERSION" *.vsix --generate-notes "${release_notes[@]}"
               env:
                   NEW_VERSION: ${{ steps.version-check.outputs.new_version }}
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
             - name: Update GitHub Release asset
               if: steps.version-check.outputs.version_changed == 'true' && steps.github-release-check.outputs.release_exists == 'true'
-              run: gh release upload "v$NEW_VERSION" *.vsix --clobber
+              run: |
+                  gh release upload "v$NEW_VERSION" *.vsix --clobber
+                  if [ "${{ needs.e2e-full.result }}" != "success" ]; then
+                    override_notice="E2E gate override: this release was published with a non-successful e2e-full gate via the skip_e2e_gate override."
+                    current_notes="$(gh release view "v$NEW_VERSION" --json body --jq .body)"
+                    if [[ "$current_notes" != *"$override_notice"* ]]; then
+                      gh release edit "v$NEW_VERSION" --notes "${current_notes}"$'\n\n'"${override_notice}"
+                    fi
+                  fi
               env:
                   NEW_VERSION: ${{ steps.version-check.outputs.new_version }}
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

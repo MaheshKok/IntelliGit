@@ -33,6 +33,20 @@ function extractJobBlock(workflow: string, jobName: string): string {
     return workflow.slice(bodyStart, bodyEnd).replace(/(?:^ {4}#.*\n)+$/m, "");
 }
 
+/** Extracts one named step from a job so an assertion cannot be satisfied by another job. */
+function extractStepBlock(job: string, stepName: string): string {
+    const header = `            - name: ${stepName}\n`;
+    const start = job.indexOf(header);
+    if (start === -1) {
+        return "";
+    }
+
+    const bodyStart = start + header.length;
+    const nextStepOffset = job.slice(bodyStart).search(/^            - name: /m);
+    const bodyEnd = nextStepOffset === -1 ? job.length : bodyStart + nextStepOffset;
+    return job.slice(start, bodyEnd);
+}
+
 /** The nightly workflow, or an empty string when it is absent, so a missing file reads as a
  * failed assertion rather than a thrown read. */
 function readNightlyWorkflow(): string {
@@ -79,6 +93,96 @@ describe("publish visual workflow", () => {
         expect(needsLine, "release must wait for build, visual, and e2e-full").toBe(
             "needs: [build, visual, e2e-full]",
         );
+    });
+
+    it("installs Bun in the E2E image from a checksummed artifact, never a piped remote script", () => {
+        const dockerfile = readFileSync(DOCKERFILE_PATH, "utf8");
+
+        // Not an enumerated ban on the one line this finding was filed against: ANY instruction
+        // that pipes a fetch into a shell reopens it, whichever host, flags, or version argument
+        // it carries. Comment lines are excluded because the rationale above that layer quotes
+        // the very form it is banning.
+        const pipedToShell = dockerfile
+            .split("\n")
+            .filter((line) => !line.trimStart().startsWith("#"))
+            .filter((line) => /\bcurl\b/.test(line) && /\|\s*(?:ba)?sh(?:\s|$)/.test(line));
+
+        expect(pipedToShell).toEqual([]);
+        expect(dockerfile, "the archive must be pinned by checksum").toMatch(
+            /^ARG BUN_SHA256=[0-9a-f]{64}$/m,
+        );
+        expect(dockerfile, "the download URL must derive from BUN_VERSION").toMatch(
+            /bun-v\$\{BUN_VERSION\}\/bun-linux-x64\.zip/,
+        );
+        expect(dockerfile, "the checksum must be verified, not merely declared").toMatch(
+            /\|\s*sha256sum -c -/,
+        );
+        expect(dockerfile, "the extracted binary must be proven to be that version").toMatch(
+            /\[ "\$\(bun --version\)" = "\$\{BUN_VERSION\}" \]/,
+        );
+    });
+
+    it("keeps the E2E Dockerfile Bun version in agreement with the publish workflow", () => {
+        const dockerfile = readFileSync(DOCKERFILE_PATH, "utf8");
+        const workflow = readFileSync(WORKFLOW_PATH, "utf8");
+        const dockerfileVersion = dockerfile.match(/^ARG BUN_VERSION=([^\s#]+)$/m)?.[1];
+        const publishVersion = workflow.match(/^\s+BUN_VERSION:\s*["']?([^"'\s]+)["']?\s*$/m)?.[1];
+
+        expect(dockerfileVersion, "Dockerfile must declare a Bun version ARG").toBeDefined();
+        expect(publishVersion, "publish workflow must declare BUN_VERSION").toBeDefined();
+        expect(dockerfileVersion).toBe(publishVersion);
+    });
+
+    it("exposes the manifest guard as a package script", () => {
+        const packageJson = JSON.parse(readFileSync(PACKAGE_JSON_PATH, "utf8")) as {
+            scripts?: Record<string, string>;
+        };
+
+        expect(packageJson.scripts?.["verify:manifest"]).toBe(
+            "node scripts/verifyNoE2eManifestCommand.js",
+        );
+    });
+
+    it("runs the manifest guard in the build job between architecture and localization checks", () => {
+        const buildJob = extractJobBlock(readFileSync(WORKFLOW_PATH, "utf8"), "build");
+        const architectureStep = extractStepBlock(buildJob, "Check architecture boundaries");
+        const manifestStep = extractStepBlock(
+            buildJob,
+            "Check manifest does not expose E2E control commands",
+        );
+        const localizationStep = extractStepBlock(buildJob, "Validate localization catalogs");
+
+        expect(architectureStep).not.toBe("");
+        expect(manifestStep).not.toBe("");
+        expect(localizationStep).not.toBe("");
+        expect(manifestStep).toContain("run: bun run verify:manifest");
+        expect(buildJob.indexOf(manifestStep)).toBeGreaterThan(buildJob.indexOf(architectureStep));
+        expect(buildJob.indexOf(manifestStep)).toBeLessThan(buildJob.indexOf(localizationStep));
+    });
+
+    it("records a skipped E2E gate in the newly created GitHub Release", () => {
+        const releaseJob = extractJobBlock(readFileSync(WORKFLOW_PATH, "utf8"), "release");
+        const createReleaseStep = extractStepBlock(
+            releaseJob,
+            "Create GitHub Release and upload VSIX",
+        );
+        const overrideCondition = 'if [ "${{ needs.e2e-full.result }}" != "success" ]; then';
+        const conditionStart = createReleaseStep.indexOf(overrideCondition);
+        const conditionEnd = createReleaseStep.indexOf("\n                  fi", conditionStart);
+        const notesFlag = createReleaseStep.indexOf("--notes", conditionStart);
+
+        expect(createReleaseStep).not.toBe("");
+        expect(conditionStart).toBeGreaterThanOrEqual(0);
+        expect(conditionEnd).toBeGreaterThan(conditionStart);
+        expect(notesFlag).toBeGreaterThan(conditionStart);
+        expect(notesFlag).toBeLessThan(conditionEnd);
+        expect(createReleaseStep).toContain("E2E gate override");
+        expect(createReleaseStep).toContain("skip_e2e_gate");
+
+        const updateReleaseStep = extractStepBlock(releaseJob, "Update GitHub Release asset");
+        expect(updateReleaseStep).toContain(overrideCondition);
+        expect(updateReleaseStep).toContain("gh release edit");
+        expect(updateReleaseStep).toContain("E2E gate override");
     });
 
     it("reasserts every release prerequisite and limits the e2e override", () => {
