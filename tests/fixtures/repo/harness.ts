@@ -288,29 +288,50 @@ async function allocateScenarioWorkspace(
     };
 }
 
-/** Builds this workspace's `dispose()`. The `disposed` flag is checked and set synchronously, with
- * no `await` between the check and the set, so two overlapping calls (Node's single-threaded event
- * loop cannot interleave synchronous code) can never both proceed past the guard. */
+/** Builds this workspace's `dispose()`. The in-flight promise is checked and stored synchronously,
+ * with no `await` between those operations, so two overlapping calls (Node's single-threaded event
+ * loop cannot interleave synchronous code) join one cleanup operation; a rejection clears the memo
+ * so a later call can genuinely retry, while a success keeps it as the idempotent completion. */
 function createDisposer(
     ownRoot: string,
     root: string,
     env: NodeJS.ProcessEnv,
 ): () => Promise<void> {
-    let disposed = false;
-    return async () => {
-        if (disposed) return;
-        disposed = true;
-        await removeLinkedWorktrees(root, env);
-        // `ownRoot` contains the scratch HOME, and a descendant of the closing VS Code host can
-        // still be flushing into it when this rm walks the tree: a file created between readdir
-        // and rmdir surfaces as `ENOTEMPTY: directory not empty, rmdir
-        // '.../intelligit-fixture-home-*'`. Measured at roughly one run in four across two
-        // sweeps, attaching to whichever row happened to be executing -- it is a teardown race,
-        // not a row defect, which is why it moved between rows. `maxRetries`/`retryDelay` are
-        // Node's documented remedy for exactly this error class (EBUSY/EMFILE/ENFILE/ENOTEMPTY/
-        // EPERM) with linear backoff. Retrying is safe here because the directory is scratch the
-        // harness owns outright; nothing else may recreate it once disposal has begun.
-        await rm(ownRoot, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+    let disposalPromise: Promise<void> | undefined;
+    return () => {
+        if (disposalPromise !== undefined) return disposalPromise;
+
+        const operation = (async (): Promise<void> => {
+            let cleanupError: unknown;
+            try {
+                await removeLinkedWorktrees(root, env);
+            } catch (error) {
+                cleanupError = error;
+            }
+
+            // `ownRoot` contains the scratch HOME, and a descendant of the closing VS Code host can
+            // still be flushing into it when this rm walks the tree: a file created between readdir
+            // and rmdir surfaces as `ENOTEMPTY: directory not empty, rmdir
+            // '.../intelligit-fixture-home-*'`. Measured at roughly one run in four across two
+            // sweeps, attaching to whichever row happened to be executing -- it is a teardown race,
+            // not a row defect, which is why it moved between rows. `maxRetries`/`retryDelay` are
+            // Node's documented remedy for exactly this error class (EBUSY/EMFILE/ENFILE/ENOTEMPTY/
+            // EPERM) with linear backoff. Retrying is safe here because the directory is scratch the
+            // harness owns outright; nothing else may recreate it once disposal has begun.
+            try {
+                await rm(ownRoot, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+            } catch (error) {
+                cleanupError ??= error;
+            }
+
+            if (cleanupError !== undefined) throw cleanupError;
+        })();
+
+        disposalPromise = operation.catch((error: unknown) => {
+            disposalPromise = undefined;
+            throw error;
+        });
+        return disposalPromise;
     };
 }
 
