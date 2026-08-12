@@ -235,6 +235,17 @@ describe("publish visual workflow", () => {
         ).toMatch(/run: \.\/tests\/e2e\/docker\/run\.sh .*bun run test:e2e -- --shard=/);
     });
 
+    it("runs the nightly host-fixture staleness sweep through the pinned container", () => {
+        const nightlyWorkflow = readNightlyWorkflow();
+        const stalenessJob = extractJobBlock(nightlyWorkflow, "host-fixture-staleness");
+
+        expect(stalenessJob, "host-fixture staleness job must exist").not.toBe("");
+        expect(stalenessJob).toContain("tests/e2e/hostFixtures/staleness.spec.ts");
+        expect(stalenessJob).toContain("--config playwright.e2e.config.ts");
+        expect(stalenessJob).toContain("./tests/e2e/docker/run.sh");
+        expect(stalenessJob).not.toMatch(/^\s+issues: write\s*$/m);
+    });
+
     it("leaves a trace in the release log when the e2e gate was overridden", () => {
         const releaseJob = extractJobBlock(readFileSync(WORKFLOW_PATH, "utf8"), "release");
 
@@ -251,7 +262,18 @@ describe("publish visual workflow", () => {
         expect(
             extractJobBlock(nightlyWorkflow, "report-failure"),
             "reporting must aggregate the shards",
-        ).toContain("needs: e2e-nightly");
+        ).toContain("needs: [e2e-nightly, host-fixture-staleness]");
+        expect(
+            extractJobBlock(nightlyWorkflow, "host-fixture-staleness"),
+            "reporting must aggregate the host-fixture staleness sweep",
+        ).not.toBe("");
+        // A job's `if` carries GitHub's implicit `success()` gate unless it contains a status-check
+        // function, so rewriting this to a bare `needs.<job>.result == 'failure'` expression stops
+        // the notifier from ever firing -- while still reading like it aggregates both jobs.
+        expect(
+            extractJobBlock(nightlyWorkflow, "report-failure"),
+            "the reporting condition must use a status-check function, not a bare needs.* expression",
+        ).toMatch(/^\s+if: (failure\(\)|.*\b(always|cancelled)\()/m);
         expect(nightlyWorkflow, "a standing failure must reuse its open issue").toContain(
             "gh issue comment",
         );

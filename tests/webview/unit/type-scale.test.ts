@@ -34,8 +34,8 @@ const SCANNED_EXTENSIONS = [".ts", ".tsx", ".css"];
 const EXEMPT: ReadonlyArray<{ file: string; size: number; why: string }> = [
     {
         file: "react/merge-editor/merge-editor.css",
-        size: 22.5,
-        why: "`.hunk-action-glyph` draws the accept/reject marks as text. It is an icon that happens to be a character, sized to the hunk gutter, and reads as an affordance rather than as a label.",
+        size: 18,
+        why: "`.hunk-action-glyph` draws the accept/reject marks as text. It is an icon that happens to be a character, sized to the hunk gutter, and reads as an affordance rather than as a label. 18 is the ceiling, not a taste call: a text range's client rect is the FONT box (ascent+descent ≈ 1.29em), so the glyph must stay under 24px/1.29 to fit its 24px `.action-btn`. The previous 22.5 produced a 29px font box that overflowed the scrolling ancestor wherever an action row sat flush against its top edge.",
     },
     {
         file: "react/shared/components/ReviewPromptCard.css",
@@ -101,6 +101,21 @@ describe("type scale", () => {
         expect(
             offenders.map((hit) => `${hit.file}:${hit.line} → ${hit.size}px  (${hit.text})`),
         ).toEqual([]);
+    });
+
+    it("keeps every exemption pinned to exactly one declaration", () => {
+        // An exemption is keyed on file+size, so it also covers a SECOND declaration of that size
+        // in the same file, silently. That was academic while the glyph was 22.5px; at 18px --
+        // a size common enough to be typed by accident -- it is a real hole. Requiring exactly one
+        // match closes it in both directions: a second offender fails, and an exemption whose
+        // declaration was deleted or resized fails instead of rotting into a permanent licence.
+        const hits = collectHits();
+        expect(
+            EXEMPT.map((e) => {
+                const matches = hits.filter((hit) => hit.file === e.file && hit.size === e.size);
+                return `${e.file} @ ${e.size}px → ${matches.length}`;
+            }),
+        ).toEqual(EXEMPT.map((e) => `${e.file} @ ${e.size}px → 1`));
     });
 
     it("finds the sizes it is supposed to be scanning", () => {
