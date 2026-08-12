@@ -1,8 +1,19 @@
 import fs from "node:fs";
+import { readFile } from "node:fs/promises";
 import path from "node:path";
 
+import type { Route } from "@playwright/test";
 import type { HostFixtureId } from "../../e2e/hostFixtures/types";
 import type { ResolvedHostContext } from "../harness/hostContexts";
+
+/** Returns the content type needed for a deterministic in-process asset response. */
+function contentTypeFor(filePath: string): string {
+    if (filePath.endsWith(".html")) return "text/html; charset=utf-8";
+    if (filePath.endsWith(".css")) return "text/css; charset=utf-8";
+    if (filePath.endsWith(".js")) return "text/javascript; charset=utf-8";
+    if (filePath.endsWith(".map")) return "application/json; charset=utf-8";
+    return "application/octet-stream";
+}
 
 /** Returns the asset names that every registered harness context can request. */
 export function requiredDistAssets(
@@ -98,4 +109,52 @@ export function resolveDistAssetPath(distDir: string, requestPath: string): stri
         return undefined;
     }
     return candidate;
+}
+
+/** Routes one synthetic-origin request without allowing any network fallback. */
+export async function routeHarnessRequest(
+    route: Route,
+    harnessOrigin: string,
+    distDir: string,
+    documentHtml: () => string | undefined,
+    networkEscapes: string[],
+): Promise<void> {
+    const requestUrl = new URL(route.request().url());
+    if (requestUrl.origin !== harnessOrigin) {
+        networkEscapes.push(requestUrl.href);
+        await route.abort("failed");
+        return;
+    }
+
+    if (requestUrl.pathname === "/") {
+        const html = documentHtml();
+        if (html === undefined) {
+            await route.abort("failed");
+            return;
+        }
+        await route.fulfill({
+            status: 200,
+            contentType: "text/html; charset=utf-8",
+            body: html,
+        });
+        return;
+    }
+
+    if (requestUrl.pathname.startsWith("/dist/")) {
+        const filePath = resolveDistAssetPath(distDir, requestUrl.pathname);
+        if (filePath === undefined || !fs.existsSync(filePath)) {
+            // A missing or unsafe asset is a failed request, not an HTTP 404 that
+            // could leave a blank page looking like a valid visual result.
+            await route.abort("failed");
+            return;
+        }
+        await route.fulfill({
+            status: 200,
+            contentType: contentTypeFor(filePath),
+            body: await readFile(filePath),
+        });
+        return;
+    }
+
+    await route.abort("failed");
 }
