@@ -72,7 +72,6 @@ async function walk(
     const children = await readdir(absoluteDir, { withFileTypes: true });
     for (const child of children) {
         const relativePath = relativeDir ? `${relativeDir}/${child.name}` : child.name;
-        // eslint-disable-next-line no-await-in-loop -- each entry's own lstat gates whether to recurse.
         await visitEntry(absoluteRoot, relativePath, options, out);
     }
 }

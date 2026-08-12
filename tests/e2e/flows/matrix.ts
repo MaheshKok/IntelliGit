@@ -26,9 +26,12 @@ import { resolveVSCodeExecutable } from "../hostFixtures/resolveVSCodeExecutable
 import { ChangesPanel } from "../pageObjects/changesPanel";
 import { IntelliGitView } from "../pageObjects/intelliGitView";
 import { Workbench } from "../pageObjects/workbench";
-import { listFilesUnder, readDurableState } from "../oracles/durableState";
-import * as localGit from "../oracles/localGit";
-import * as origin from "../oracles/origin";
+import { oracles } from "../../oracles";
+import type { GitStatusEntry } from "../oracles/localGit";
+
+const { listFilesUnder, readDurableState } = oracles.get("durableState");
+const localGit = oracles.get("localGit");
+const origin = oracles.get("origin");
 
 const REPO_ROOT = path.resolve(__dirname, "../../..");
 const COMMITTED_PATH = DIRTY_FIXTURE.mutablePath;
@@ -79,7 +82,7 @@ interface FlowBeforeState {
     readonly head: string;
     readonly originRef: string;
     readonly originHead: string;
-    readonly status: readonly localGit.GitStatusEntry[];
+    readonly status: readonly GitStatusEntry[];
 }
 
 /** Which IntelliGit webview surfaces a row drives. Rows that assert against the graph declare it

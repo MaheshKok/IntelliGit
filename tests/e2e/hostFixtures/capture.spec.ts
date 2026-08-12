@@ -72,7 +72,6 @@ test("capture all four host fixtures (dark-modern, light-modern, hc-black, hc-li
 
     const captured: CapturedEntry[] = [];
     for (const themeConfig of HOST_FIXTURE_THEMES) {
-        // eslint-disable-next-line no-console
         console.log(
             `Capturing host fixture "${themeConfig.fixtureId}" (workbench.colorTheme="${themeConfig.colorThemeSetting}")...`,
         );
@@ -81,7 +80,6 @@ test("capture all four host fixtures (dark-modern, light-modern, hc-black, hc-li
         // instance under a fresh profile, and PLAN.md step 5 requires each
         // theme in its own fresh profile -- running four at once would only
         // race disk/CPU for no benefit this capture needs.
-        // eslint-disable-next-line no-await-in-loop
         const fixture = await captureHostFixture(themeConfig, {
             vscodeExecutablePath: executablePath,
             repoRoot: REPO_ROOT,
@@ -89,10 +87,8 @@ test("capture all four host fixtures (dark-modern, light-modern, hc-black, hc-li
         captured.push({ fixtureId: themeConfig.fixtureId, fixture });
 
         const outputPath = hostFixtureFilePath(REPO_ROOT, themeConfig.fixtureId);
-        // eslint-disable-next-line no-await-in-loop
         await writeFile(outputPath, serializeHostFixture(fixture), "utf8");
 
-        // eslint-disable-next-line no-console
         console.log(
             `  themeKind=${fixture.provenance.themeKind} ` +
                 `body.classList=[${fixture.body.classList.join(", ")}] ` +
@@ -101,6 +97,5 @@ test("capture all four host fixtures (dark-modern, light-modern, hc-black, hc-li
     }
 
     assertFixturesAreGenuinelyDistinct(captured);
-    // eslint-disable-next-line no-console
     console.log(`\nCaptured ${captured.length} host fixtures.`);
 });

@@ -3,7 +3,10 @@ import os from "node:os";
 
 import type { Browser } from "@playwright/test";
 
-import { normalizeEnvironment, type VisualEnvironment } from "../oracles/visualEnvironment";
+import { oracles } from "../../oracles";
+import type { VisualEnvironment } from "../oracles/visualEnvironment";
+
+const { normalizeEnvironment } = oracles.get("visualEnvironment");
 
 const FONT_LIST_TIMEOUT_MS = 5_000;
 

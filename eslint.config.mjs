@@ -147,6 +147,44 @@ export default defineConfig([
         ],
     },
     {
+        files: ["tests/**/*.ts"],
+        ignores: [
+            "tests/oracles.ts",
+            "tests/unit/e2e/gitEnv.test.ts",
+            "tests/unit/e2e/oracles.test.ts",
+            "tests/unit/visual/oracles/*.test.ts",
+            "tests/unit/visual/playwright/visualEnvironmentGuard.test.ts",
+        ],
+        languageOptions: {
+            parser: tseslint.parser,
+        },
+        plugins: {
+            "@typescript-eslint": tseslint.plugin,
+        },
+        rules: {
+            "@typescript-eslint/no-restricted-imports": [
+                "error",
+                {
+                    patterns: [
+                        {
+                            // Depth-agnostic on purpose. Enumerating the relative forms that
+                            // happen to exist today ("../oracles/*", "../../../visual/oracles/*",
+                            // ...) bans only the depths someone remembered, so a consumer one
+                            // directory deeper imports an oracle directly and lints clean --
+                            // which is the same "certifies only what was already remembered"
+                            // failure that PLAN.md step 40 exists to eliminate. Verified: with
+                            // the enumerated list, a file at tests/visual/playwright/deep/
+                            // importing "../../oracles/geometry" produced `lint` rc=0.
+                            group: ["**/oracles/*", "./oracles/*"],
+                            allowTypeImports: true,
+                            message: 'Import oracle namespaces through { oracles } from ".../oracles".',
+                        },
+                    ],
+                },
+            ],
+        },
+    },
+    {
         files: SCRIPT_FILES,
         ...js.configs.recommended,
         languageOptions: {

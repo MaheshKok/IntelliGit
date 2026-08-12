@@ -309,7 +309,6 @@ test.describe("Phase 0 spike: _electron reaches the IntelliGit webview", () => {
             // fallback is how a broken flag stays invisible until the day the
             // dismissal selector also breaks and CI hangs instead of failing.
             const { fired } = await dismissFirstRunDialogs(window);
-            // eslint-disable-next-line no-console
             console.log(
                 fired
                     ? "[Phase 0 spike] WARNING: first-run dialog appeared -- prevention flags regressed"

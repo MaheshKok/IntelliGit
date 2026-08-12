@@ -1,7 +1,9 @@
 import { HOST_CONTEXT_FIXTURES, HOST_CONTEXT_IDS } from "./hostContextFixtures";
 import { expect, test } from "./playwright/harnessPage";
 import { environmentVerdict } from "./playwright/visualEnvironmentGuard";
-import { planPixelAssertions } from "./oracles/pixelAssertionPlan";
+import { oracles } from "../oracles";
+
+const { planPixelAssertions } = oracles.get("pixelAssertionPlan");
 
 test.describe("pixel baseline screenshots", () => {
     for (const contextId of HOST_CONTEXT_IDS) {

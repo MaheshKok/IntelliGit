@@ -327,7 +327,6 @@ class MockCommitGraphViewProvider {
         _credentialStore: unknown,
         options?: { scriptFile?: string; title?: string },
     ) {
-        // eslint-disable-next-line @typescript-eslint/no-this-alias
         if (options?.scriptFile === "webview-compactcommitgraph.js") {
             latestSidebarGraphProvider = this;
         } else {
@@ -428,7 +427,6 @@ class MockCommitPanelViewProvider {
         filePath: string;
     }>();
     constructor(_uri: unknown, _gitOps: unknown) {
-        // eslint-disable-next-line @typescript-eslint/no-this-alias
         latestCommitPanelProvider = this;
     }
     onDidChangeFileCount = this.fileCountEmitter.event;
