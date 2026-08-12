@@ -3,6 +3,7 @@ import * as gitEnv from "./e2e/oracles/gitEnv";
 import * as localGit from "./e2e/oracles/localGit";
 import * as origin from "./e2e/oracles/origin";
 import * as accessibleNameVerdict from "./visual/oracles/accessibleNameVerdict";
+import * as baselineLayout from "./visual/oracles/baselineLayout";
 import * as catalogSources from "./visual/oracles/catalogSources";
 import * as contrast from "./visual/oracles/contrast";
 import * as findingsBaseline from "./visual/oracles/findingsBaseline";
@@ -16,6 +17,7 @@ import * as visualEnvironment from "./visual/oracles/visualEnvironment";
 // Every module in every `oracles/` directory is registered deliberately; do not curate exports.
 const ORACLES = {
     accessibleNameVerdict,
+    baselineLayout,
     catalogSources,
     contrast,
     findingsBaseline,

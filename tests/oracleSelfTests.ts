@@ -82,6 +82,7 @@ const findingsBaseline = oracles.get("findingsBaseline");
 const findingsBaselineFile = oracles.get("findingsBaselineFile");
 const pinnedBaseImage = oracles.get("pinnedBaseImage");
 const pixelAssertionPlan = oracles.get("pixelAssertionPlan");
+const baselineLayout = oracles.get("baselineLayout");
 const visualEnvironment = oracles.get("visualEnvironment");
 const durableState = oracles.get("durableState");
 const localGit = oracles.get("localGit");
@@ -340,6 +341,40 @@ export const oracleSelfTests: Record<OracleId, OracleSelfTest> = {
                 provenance: { kind: "pinned" },
             } satisfies EnvironmentVerdict);
             return plan.kind === "run" ? [] : [plan];
+        },
+    },
+    baselineLayout: {
+        detects: "orphan baseline files and matrix cells with no baseline file",
+        knownBad: () => {
+            const contextIds = ["commit-graph-card"] as const;
+            const projectNames = ["dark-modern-narrow", "light-modern-wide"] as const;
+            // One input carrying both PLAN-mandated defects at once: an unowned file present on
+            // disk, and the `contextIds[0] x projectNames[1]` cell with no file. Both halves are
+            // derived from a single call so they always describe the same world -- two calls with
+            // duplicated input literals could be edited apart and still pass, which is exactly the
+            // silent blindness this case exists to prevent.
+            const findings = baselineLayout.findBaselineLayoutFindings(contextIds, projectNames, [
+                baselineLayout.expectedBaselineName(contextIds[0], projectNames[0]),
+                "pixel-baseline-screenshots-unowned.png",
+            ]);
+            return allRequired(
+                findings.filter(({ kind }) => kind === "orphan"),
+                findings.filter(({ kind }) => kind === "gap"),
+            );
+        },
+        knownGood: () => {
+            const contextIds = ["commit-graph-card", "history-panel"] as const;
+            const projectNames = ["dark-modern-narrow", "light-modern-wide"] as const;
+            const actualFilenames = contextIds.flatMap((contextId) =>
+                projectNames.map((projectName) =>
+                    baselineLayout.expectedBaselineName(contextId, projectName),
+                ),
+            );
+            return baselineLayout.findBaselineLayoutFindings(
+                contextIds,
+                projectNames,
+                actualFilenames,
+            );
         },
     },
     visualEnvironment: {

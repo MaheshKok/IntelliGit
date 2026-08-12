@@ -17,6 +17,7 @@ const expectedDirectOracleImporters = new Set([
     "tests/unit/e2e/gitEnv.test.ts",
     "tests/unit/e2e/oracles.test.ts",
     "tests/unit/visual/oracles/accessibleNameVerdict.test.ts",
+    "tests/unit/visual/oracles/baselineLayout.test.ts",
     "tests/unit/visual/oracles/catalogSources.test.ts",
     "tests/unit/visual/oracles/contrast.test.ts",
     "tests/unit/visual/oracles/findingsBaseline.test.ts",
