@@ -31,8 +31,10 @@ const ORACLES = {
     origin,
 };
 
+export type OracleId = keyof typeof ORACLES;
+
 /** The registered oracle module basenames used by registry contract tests. */
-export const ORACLE_IDS = Object.keys(ORACLES);
+export const ORACLE_IDS: OracleId[] = Object.keys(ORACLES) as OracleId[];
 
 /** Returns the registered oracle namespace for the requested module basename. */
 function get<K extends keyof typeof ORACLES>(id: K): (typeof ORACLES)[K] {
