@@ -77,7 +77,7 @@ export const IMPLEMENTED_FLOW_IDS = [
 type ImplementedFlowId = (typeof IMPLEMENTED_FLOW_IDS)[number];
 
 /** State captured immediately before a row's action runs. */
-interface FlowBeforeState {
+export interface FlowBeforeState {
     readonly branch: string;
     readonly head: string;
     readonly originRef: string;
@@ -162,7 +162,7 @@ async function countConflictSessionFrames(page: Page): Promise<number> {
     return count;
 }
 
-async function captureBeforeState(workspace: FixtureWorkspace): Promise<FlowBeforeState> {
+export async function captureBeforeState(workspace: FixtureWorkspace): Promise<FlowBeforeState> {
     const [branch, head, status] = await Promise.all([
         localGit.currentBranch(workspace),
         localGit.headOid(workspace),
