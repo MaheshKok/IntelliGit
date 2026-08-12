@@ -35,5 +35,13 @@
     "tests/**/*.tsx",
     "src/webviews/react/css-modules.d.ts"
   ],
-  "exclude": ["node_modules", "dist", "tests/**/*.test.ts", "tests/**/*.test.tsx"]
+  "exclude": [
+    "node_modules",
+    "dist",
+    "tests/**/*.test.ts",
+    "tests/**/*.test.tsx",
+    // The negative typecheck project owns these; leaving them in the positive project would make
+    // `bun run typecheck` permanently red on fixtures that are malformed on purpose.
+    "tests/typecheck-negative/**"
+  ]
 }

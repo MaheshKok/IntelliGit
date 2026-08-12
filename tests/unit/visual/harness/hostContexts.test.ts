@@ -1,9 +1,17 @@
+import { JSDOM } from "jsdom";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { createCommitInfoVscodeDouble } from "../../../visual/recorder/commitInfoVscodeDouble";
+import type { HostFixture } from "../../../e2e/hostFixtures/types";
+import darkModern from "../../../visual/fixtures/host/dark-modern.json";
+import {
+    renderHarnessDocument,
+    type HarnessWebviewSettings,
+} from "../../../visual/harness/renderHarnessDocument";
+import type { WebviewI18nPayload } from "../../../../src/webviews/i18n";
 
 // The recorder double's `l10n.t` is identity, and identity makes `vscode.l10n.t("Graph")` and a
 // bare "Graph" produce the same captured title. That is precisely how a production edit dropping
@@ -50,8 +58,23 @@ import {
 import * as webviewHtml from "../../../../src/views/webviewHtml";
 
 const DEFAULT_BACKGROUND_VAR = "var(--vscode-editor-background)";
+const DARK_MODERN = darkModern as HostFixture;
 
 type CapturedShellOptions = Parameters<typeof webviewHtml.buildWebviewShellHtml>[0];
+
+interface NormalizedShellAsset {
+    readonly kind: "stylesheet" | "script";
+    readonly url: string;
+}
+
+interface NormalizedShell {
+    readonly bootstrapGlobals: Readonly<Record<string, unknown>>;
+    readonly rootElements: readonly string[];
+    readonly lang: string | null;
+    readonly inlineStyle: string | null;
+    readonly backgroundVariable: string | undefined;
+    readonly assets: readonly NormalizedShellAsset[];
+}
 
 function capturedFields(options: CapturedShellOptions) {
     return {
@@ -73,6 +96,89 @@ function capturedFields(options: CapturedShellOptions) {
  */
 function titleStringFor(descriptor: HostContextTitleDescriptor): string {
     return descriptor.kind === "literal" ? descriptor.value : descriptor.key;
+}
+
+/** Extracts every `window.intelligit*` assignment from the inline bootstrap scripts. */
+function bootstrapGlobals(document: Document): Readonly<Record<string, unknown>> {
+    const globals: Record<string, unknown> = {};
+    const assignmentPattern =
+        /window\.(intelligit[A-Za-z0-9_]+)\s*=\s*([\s\S]*?);(?=\s*(?:window\.|$))/g;
+
+    for (const script of document.querySelectorAll("script")) {
+        for (const match of script.textContent?.matchAll(assignmentPattern) ?? []) {
+            const [, name, serialized] = match;
+            if (name === undefined || serialized === undefined) continue;
+            globals[name] = JSON.parse(serialized);
+        }
+    }
+
+    return globals;
+}
+
+/**
+ * Removes only the host-specific prefix from an asset URL.
+ *
+ * Production uses `webview.asWebviewUri`, while the harness uses a plain browser base URL. This
+ * intentionally stops comparing the scheme/origin/prefix, so a base-URL change alone can slip
+ * through; the asset filename, kind, order, and multiplicity remain exact.
+ */
+function normalizeAssetUrl(url: string): string {
+    const distMarker = "/dist/";
+    const markerIndex = url.indexOf(distMarker);
+    return markerIndex === -1 ? url : url.slice(markerIndex + distMarker.length);
+}
+
+/**
+ * Captures the shell contract without comparing the construction-only CSP and nonce markup.
+ *
+ * VS Code's production shell must carry a CSP meta element and nonce attributes, while the plain
+ * browser harness deliberately has neither. Omitting those fields means CSP policy changes and
+ * nonce placement are outside this guard; parsing through JSDOM also treats equivalent entity
+ * escaping and attribute quoting as equal, so raw-source serialization changes are outside it.
+ * Every requested visual shell aspect is retained.
+ */
+function normalizedShell(html: string): NormalizedShell {
+    const dom = new JSDOM(html, { runScripts: "outside-only" });
+    try {
+        const document = dom.window.document;
+        const inlineStyle = document.querySelector("style")?.textContent ?? null;
+        const backgroundVariable = inlineStyle?.match(/background:\s*([^;]+);/)?.[1]?.trim();
+        const assets: NormalizedShellAsset[] = [];
+
+        for (const element of document.querySelectorAll('link[rel="stylesheet"], script[src]')) {
+            if (element.tagName.toLowerCase() === "link") {
+                const href = element.getAttribute("href");
+                if (href !== null) {
+                    assets.push({ kind: "stylesheet", url: normalizeAssetUrl(href) });
+                }
+                continue;
+            }
+
+            const src = element.getAttribute("src");
+            if (src !== null) assets.push({ kind: "script", url: normalizeAssetUrl(src) });
+        }
+
+        return {
+            bootstrapGlobals: bootstrapGlobals(document),
+            rootElements: [...document.querySelectorAll("#root")].map(
+                (element) => element.outerHTML,
+            ),
+            lang: document.documentElement.getAttribute("lang"),
+            inlineStyle,
+            backgroundVariable,
+            assets,
+        };
+    } finally {
+        dom.window.close();
+    }
+}
+
+/** Renders the real production shell from the options captured while exercising one host. */
+async function renderProductionShell(options: CapturedShellOptions): Promise<string> {
+    const actual = await vi.importActual<typeof import("../../../../src/views/webviewHtml")>(
+        "../../../../src/views/webviewHtml",
+    );
+    return actual.buildWebviewShellHtml(options);
 }
 
 describe("resolved webview host-context table", () => {
@@ -221,15 +327,35 @@ describe("resolved host-context production oracle", () => {
     });
 
     it("records one recorder per webview context id", () => {
-        expect(WEBVIEW_FIXTURE_RECORDERS).toHaveLength(WEBVIEW_CONTEXT_IDS.length);
+        const recorderContextIds = WEBVIEW_FIXTURE_RECORDERS.map((entry) => entry.contextId);
+        const recorderContextIdSet = new Set(recorderContextIds);
+        const webviewContextIdSet = new Set(WEBVIEW_CONTEXT_IDS);
+
+        expect(
+            recorderContextIdSet,
+            "recorder context IDs must include every declared webview context",
+        ).toEqual(webviewContextIdSet);
+        expect(webviewContextIdSet, "every declared webview context must have a recorder").toEqual(
+            recorderContextIdSet,
+        );
+        expect(
+            recorderContextIdSet.size,
+            "recorder table must not contain duplicate context IDs",
+        ).toBe(recorderContextIds.length);
     });
 
     // One test per context rather than one loop over all eight: in a loop the first failing context
     // masks every later one, so a single mutation would report as a single defect no matter how
     // many rows it actually broke.
-    it.each([...WEBVIEW_FIXTURE_RECORDERS])(
+    it.each([...WEBVIEW_HOST_CONTEXTS])(
         "$contextId: production reaches the shell with the recorded options",
-        async (recorder) => {
+        async (context) => {
+            const recorder = WEBVIEW_FIXTURE_RECORDERS.find(
+                (entry) => entry.contextId === context.contextId,
+            );
+            expect(recorder, `${context.contextId} recorder registration`).toBeDefined();
+            if (recorder === undefined) return;
+
             const workspace = workspaces.get(recorder.scenario);
             if (!workspace) {
                 throw new Error(
@@ -247,7 +373,7 @@ describe("resolved host-context production oracle", () => {
             expect(calls, `${recorder.contextId} recorder shell reachability`).toHaveLength(1);
 
             const captured = capturedFields(calls[0][0]);
-            const expected = hostContextFor(recorder.contextId);
+            const expected = hostContextFor(context.contextId);
 
             expect(captured).toEqual({
                 scriptFile: expected.scriptFile,
@@ -268,6 +394,39 @@ describe("resolved host-context production oracle", () => {
             expect(titleWasLocalized, `${recorder.contextId} title localization`).toBe(
                 expected.titleDescriptor.kind === "localized",
             );
+
+            // The recorder exercised the actual production host and captured its shell inputs.
+            // Disable only the E2E registration branch before rendering those inputs, because the
+            // harness intentionally has no VS Code control-channel global or nonce.
+            setE2eControlChannelActive(false);
+            const productionShell = normalizedShell(await renderProductionShell(calls[0][0]));
+            const productionSettings = productionShell.bootstrapGlobals.intelligitSettings;
+            const productionI18n = productionShell.bootstrapGlobals.intelligitI18n;
+
+            expect(
+                productionSettings,
+                `${context.contextId} production settings bootstrap global`,
+            ).toBeDefined();
+            expect(
+                productionI18n,
+                `${context.contextId} production i18n bootstrap global`,
+            ).toBeDefined();
+
+            const harnessShell = normalizedShell(
+                renderHarnessDocument({
+                    context,
+                    hostFixture: DARK_MODERN,
+                    settings: productionSettings as HarnessWebviewSettings,
+                    i18n: productionI18n as WebviewI18nPayload,
+                    assetBaseUrl: "/dist",
+                }),
+            );
+
+            expect(
+                harnessShell,
+                `${context.contextId} production and harness shell contract`,
+            ).toEqual(productionShell);
         },
+        120_000,
     );
 });
