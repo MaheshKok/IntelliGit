@@ -1,16 +1,21 @@
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
 
 import {
+    disposeSelfTestWorkspaces,
     oracleSelfTests,
     type OracleSelfTest,
-    type VisualOracleId,
-} from "../visual/oracleSelfTests";
+} from "../oracleSelfTests";
+import type { OracleId } from "../oracles";
 
-const cases = Object.entries(oracleSelfTests) as [VisualOracleId, OracleSelfTest][];
+const cases = Object.entries(oracleSelfTests) as [OracleId, OracleSelfTest][];
 
 describe("visual oracle self-tests", () => {
-    it.each(cases)("%s flags its known-bad input", (oracleId, selfTest) => {
-        const findings = selfTest.knownBad();
+    afterAll(async () => {
+        await disposeSelfTestWorkspaces();
+    });
+
+    it.each(cases)("%s flags its known-bad input", async (oracleId, selfTest) => {
+        const findings = await selfTest.knownBad();
 
         expect(
             findings,
@@ -18,8 +23,8 @@ describe("visual oracle self-tests", () => {
         ).not.toHaveLength(0);
     });
 
-    it.each(cases)("%s accepts its known-good input", (oracleId, selfTest) => {
-        const findings = selfTest.knownGood();
+    it.each(cases)("%s accepts its known-good input", async (oracleId, selfTest) => {
+        const findings = await selfTest.knownGood();
 
         expect(
             findings,
