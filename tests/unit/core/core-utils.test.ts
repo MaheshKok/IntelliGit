@@ -185,6 +185,14 @@ describe("core utilities", () => {
         expect(html).toContain("<title>Commit Graph</title>");
         expect(html).toContain("Content-Security-Policy");
         expect(html).toContain("script-src 'nonce-");
+        // `toContain("script-src 'nonce-")` is a PREFIX check: it still passes after
+        // `script-src 'nonce-x' 'unsafe-inline'`, which would undo the nonce entirely. Pin the
+        // whole directive so a loosening cannot hide behind the prefix.
+        expect(
+            html.match(/script-src ([^;]+);/)?.[1] ?? "",
+            "script-src must stay nonce-only -- no unsafe-inline, no unsafe-eval, no host source",
+        ).toMatch(/^'nonce-[A-Za-z0-9]+'$/);
+        expect(html, "the webview shell must deny by default").toContain("default-src 'none'");
         expect(html).toContain('src="webview:///dist/webview-commitgraph.js"');
         expect(html).toContain("background: #123");
         expect(html).toContain('"commitWindowPosition":"left"');

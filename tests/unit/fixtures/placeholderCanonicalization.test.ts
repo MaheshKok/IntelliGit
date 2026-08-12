@@ -24,6 +24,48 @@ import {
     type PlaceholderRoots,
 } from "../../fixtures/repo/placeholderCanonicalization";
 
+/**
+ * Every webview fixture recorder passes `profileDir: ""` -- those slices never allocate a VS Code
+ * profile directory, so there is no concrete path to rewrite. That is deliberate and documented,
+ * and it makes `spellingsFor`'s empty-root guard load-bearing for all eight entries in
+ * `webviewFixtureRegistry.ts`. Nothing else exercises it: every other case in this file passes a
+ * non-empty profileDir, so the one input the recorders actually use was the one input never tested.
+ *
+ * Delete that guard and `spellingsFor("")` yields the needle `""`, so `normalizeString` runs
+ * `value.split("").join("<PROFILE>")` -- the placeholder lands between EVERY character of every
+ * recorded payload. The corruption happens at record time, in the canonicalization pass that
+ * exists to keep real paths out of committed fixtures, and it would be committed looking normal
+ * to every gate that does not read the fixture bytes.
+ */
+describe("buildPlaceholderReplacements -- an empty root contributes no needles", () => {
+    it("emits no replacement at all for an empty profileDir", () => {
+        const replacements = buildPlaceholderReplacements({
+            root: "/scratch/empty/root",
+            originRoot: "/scratch/empty/origin",
+            profileDir: "",
+        });
+
+        expect(
+            replacements.filter(([, placeholder]) => placeholder === "<PROFILE>"),
+            "an empty profileDir must contribute zero needles",
+        ).toEqual([]);
+        expect(
+            replacements.filter(([needle]) => needle.length === 0),
+            "an empty needle matches every position and would shred every recorded string",
+        ).toEqual([]);
+    });
+
+    it("leaves a payload untouched when every root is empty", () => {
+        const replacements = buildPlaceholderReplacements({
+            root: "",
+            originRoot: "",
+            profileDir: "",
+        });
+
+        expect(normalizeString("/a/real/path", replacements)).toBe("/a/real/path");
+    });
+});
+
 describe("buildPlaceholderReplacements -- longest-needle-first ordering", () => {
     it("collapses a profileDir nested INSIDE root to <PROFILE>, not to <ROOT>/... ", () => {
         const roots: PlaceholderRoots = {

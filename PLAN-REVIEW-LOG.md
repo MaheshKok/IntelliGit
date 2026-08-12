@@ -1494,3 +1494,65 @@ passed.
 Remaining for 7b: the `event.source` check in `e2eStateBridge.ts`, the `skip_e2e_gate`
 input type pin, the inert `<PROFILE>` substitution in the webview fixture registry,
 and a unit assertion pinning the production CSP string.
+
+## Phase 7b — the remaining review items, audited before being actioned
+
+The 7b list inherited from the review had four items. Auditing them first turned two
+into non-findings, one into a deliberate no-change, and moved the real defect to a
+place the review had not looked.
+
+**Already covered — no change needed.** The `skip_e2e_gate` input type is pinned at
+`tests/unit/visual/publishWorkflow.test.ts` (`type: boolean` in the input declaration,
+and `inputs.skip_e2e_gate == true` in the release `if:`). Both halves matter together:
+`type: boolean` alone still permits a truthiness comparison, and `== true` alone still
+permits a string input. Separately, the webview bridge's runtime gate is covered in
+four cases — `undefined`, `false`, the truthy string `"true"`, and `true` — and
+`tests/unit/e2e/webviewHtmlBootstrap.test.ts` asserts the inactive channel injects
+nothing and registers nothing.
+
+**Deliberate no-change: the `event.source` check.** `installE2eStateBridge` attaches its
+listener only when `window.intelligitE2E === true`, whose single writer is
+`buildE2eBootstrapScript`, itself behind `isE2eControlChannelActive()` and its three
+gates. In a production install the listener does not exist, so an `event.source` check
+protects nothing there. In the harness, reaching the listener at all requires executing
+script inside a webview whose CSP is `default-src 'none'` with nonce-only scripts — and
+an attacker who can execute script can call the VS Code API directly, making the bridge
+redundant to them. The payload is additionally filtered by a protocol discriminator.
+Adding the check would read as hardening while changing no reachable outcome; it is
+recorded here as considered and declined rather than silently skipped.
+
+### The two real gaps, both invisible to the review's framing
+
+**The empty-root contract had no test.** Every webview fixture recorder passes
+`profileDir: ""` — deliberate, since those slices allocate no VS Code profile directory.
+That makes one line of `spellingsFor` load-bearing for all eight entries in
+`webviewFixtureRegistry.ts`: `if (root.length === 0) return [];`. Every one of the seven
+existing cases in `placeholderCanonicalization.test.ts` passed a **non-empty**
+`profileDir`, so the single input all production call sites use was the one input never
+tested. Deleting the guard makes `normalizeString` run
+`value.split("").join("<PROFILE>")`, inserting the placeholder between every character of
+every recorded payload — silent fixture corruption at record time, in the very pass that
+exists to keep real paths out of committed fixtures.
+
+**The CSP assertion was a prefix check.** `expect(html).toContain("script-src 'nonce-")`
+still passes after `script-src 'nonce-x' 'unsafe-inline'`, which undoes the nonce
+entirely. The whole directive is now pinned, along with `default-src 'none'`. The shell's
+existing `style-src … 'unsafe-inline'` is pre-existing product behaviour and is left
+alone deliberately — this pins against further loosening rather than changing what ships.
+
+### Mutation table — production mutated, never the test
+
+| # | Mutation | rc | Assertion that fired |
+|---|---|---:|---|
+| A | `if (root.length === 0) return [];` deleted | 1 | *an empty profileDir must contribute zero needles*, and `expected '/<PROFILE><<PROFILE>O<PROFILE>R<PROFI…' to be '/a/real/path'` |
+| B | `script-src` loosened with `'unsafe-inline'` | 1 | *script-src must stay nonce-only — no unsafe-inline, no unsafe-eval, no host source* |
+| C | `default-src 'none'` removed | 1 | *the webview shell must deny by default* |
+| D | unmutated control | 0 | 20 passed |
+
+Row A's second assertion is the corruption made visible: the placeholder between every
+character, with `<ROOT>` itself shredded by the empty needle.
+
+Gates: `typecheck`, `format:check`, `lint`, `lint:strict`, `knip`, `architecture:check`,
+`l10n:validate`, `verify:manifest` — all rc 0.
+
+Phase 7 is complete. Nothing here has been pushed; the branch remains local by choice.
