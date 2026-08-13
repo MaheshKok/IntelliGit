@@ -13,6 +13,7 @@ import {
     canonicalizeDataset,
     canonicalizeStyleCssText,
 } from "./canonicalizeHostFixture";
+import { ELECTRON_LAUNCH_TIMEOUT_MS, FRAME_RESOLUTION_TIMEOUT_MS } from "./captureBudget";
 import {
     buildElectronLaunchArgs,
     cleanupDirectories,
@@ -37,21 +38,7 @@ export interface CaptureHostFixtureOptions {
     readonly timeoutMs?: number;
 }
 
-const DEFAULT_TIMEOUT_MS = 45_000;
 const FRAME_POLL_INTERVAL_MS = 200;
-/**
- * Explicit timeout for `electron.launch()` itself, distinct from
- * `DEFAULT_TIMEOUT_MS` (which only bounds frame-chain resolution *after* the
- * app has launched). Playwright's Electron launch defaults to 180s, which is
- * comfortable on an otherwise-idle machine but was observed empirically to be
- * too tight under real contention -- a dev machine with other heavy
- * processes running, or a loaded CI runner -- where a full VS Code cold
- * start plus the CDP handshake can take longer. A generous, explicit value
- * here is cheap (it only extends the *ceiling*, not the typical run time) and
- * turns "launch was merely slow" into a passing run instead of a flaky
- * failure indistinguishable from a genuinely broken launch.
- */
-const ELECTRON_LAUNCH_TIMEOUT_MS = 300_000;
 const FRAME_VISIBLE_TIMEOUT_MS = 3_000;
 
 /**
@@ -95,7 +82,7 @@ async function readRawHostSnapshot(root: Locator): Promise<RawHostSnapshot> {
  */
 async function resolveHostSnapshotWithRetry(
     window: Page,
-    { timeoutMs = DEFAULT_TIMEOUT_MS }: { readonly timeoutMs?: number } = {},
+    { timeoutMs = FRAME_RESOLUTION_TIMEOUT_MS }: { readonly timeoutMs?: number } = {},
 ): Promise<RawHostSnapshot> {
     const deadline = Date.now() + timeoutMs;
     let lastError: unknown;
@@ -242,9 +229,26 @@ export async function captureHostFixture(
                 },
             };
         } finally {
-            await electronApp.close();
+            // Shutdown is non-fatal on purpose. A rejection from `close()` in a
+            // `finally` REPLACES whatever the `try` threw, and what the `try`
+            // throws here is the entire diagnostic value of this capture -- the
+            // empty-`#root` error, the theme-kind mismatch, the theme-identity
+            // mismatch. Trading one of those for "Electron failed to close"
+            // loses the only message that says what actually went wrong.
+            await electronApp.close().catch(reportNonFatalCleanupFailure);
         }
     } finally {
-        await cleanupDirectories(directoriesToClean);
+        // Same hazard, same reason: a temp directory that will not delete must
+        // not be able to overwrite the capture failure that is being reported.
+        await cleanupDirectories(directoriesToClean).catch(reportNonFatalCleanupFailure);
     }
+}
+
+/**
+ * Reports a teardown failure without letting it propagate out of a `finally`,
+ * where it would displace the error the `try` block raised.
+ */
+function reportNonFatalCleanupFailure(error: unknown): void {
+    // eslint-disable-next-line no-console
+    console.warn(`Host fixture capture: non-fatal cleanup failure: ${String(error)}`);
 }

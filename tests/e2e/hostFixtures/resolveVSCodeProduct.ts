@@ -55,17 +55,27 @@ function readProductInfo(productJsonPath: string): VSCodeProductInfo {
     const raw = readFileSync(productJsonPath, "utf8");
     const parsed: unknown = JSON.parse(raw);
 
+    const version = (parsed as { version?: unknown } | null)?.version;
+    const commit = (parsed as { commit?: unknown } | null)?.commit;
+
+    // Empty strings are rejected, not merely non-strings. `typeof "" === "string"`
+    // passes a type-only guard, and an empty `commit` then reaches
+    // `provenance.vscodeCommit` in every committed fixture. That field exists to
+    // name the exact VS Code build a fixture was captured from; a fixture whose
+    // provenance is well-formed and says nothing is worse than one that fails
+    // loudly here, because it still looks like evidence.
     if (
         typeof parsed !== "object" ||
         parsed === null ||
-        typeof (parsed as { version?: unknown }).version !== "string" ||
-        typeof (parsed as { commit?: unknown }).commit !== "string"
+        typeof version !== "string" ||
+        version.length === 0 ||
+        typeof commit !== "string" ||
+        commit.length === 0
     ) {
         throw new Error(
-            `product.json at ${productJsonPath} is missing a string "version" or "commit" field`,
+            `product.json at ${productJsonPath} is missing a non-empty string "version" or "commit" field`,
         );
     }
 
-    const product = parsed as { version: string; commit: string };
-    return { version: product.version, commit: product.commit };
+    return { version, commit };
 }

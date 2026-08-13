@@ -23,6 +23,17 @@ ENV INTELLIGIT_BASE_IMAGE=${BASE_IMAGE}
 # `git` is not a convenience: the fixture repository IS git state, so the git
 # build in this image is part of the test contract. Pin nothing else silently —
 # if a future step needs a specific git version, pin it here with a reason.
+#
+# These versions are deliberately NOT pinned, and that is a different decision
+# from the Bun install below rather than an inconsistency. apt verifies every
+# package against the distribution's signed release index before unpacking it,
+# so an unpinned `apt-get install` is authenticated even though it is not
+# reproducible; a piped installer script is neither. What version drift here
+# could still cost is pixel reproducibility — and none of these three packages
+# rasterizes anything, so they cannot move a baseline. Pinning exact versions
+# would instead break the build outright every time Ubuntu supersedes one of
+# them in the archive. If a future step needs true version reproducibility, the
+# lever is a snapshot.ubuntu.com mirror, not a version literal that expires.
 USER root
 RUN apt-get update \
     && apt-get install -y --no-install-recommends git ca-certificates unzip \
@@ -33,8 +44,31 @@ RUN apt-get update \
 # unprivileged user below can run it.
 ENV BUN_INSTALL=/usr/local/bun
 ENV PATH=${BUN_INSTALL}/bin:${PATH}
-RUN curl -fsSL https://bun.sh/install | bash \
-    && chmod -R a+rx ${BUN_INSTALL}
+#
+# Fetched as a checksummed release artifact rather than through
+# `curl https://bun.sh/install | bash`. The digest reasoning at the top of this
+# file applies here too, and more sharply: piping an installer into a shell runs
+# whatever that host serves at build time, un-versioned and un-verified, as root
+# in the image that produces this repo's test evidence — and `run.sh` then hands
+# that toolchain a read-write bind mount of the checkout and the caches. Passing
+# a version to that installer pins what an honest installer does; it does not
+# pin the installer. A checksum does, and a substituted archive cannot satisfy
+# one.
+#
+# `linux-x64` is not a new assumption — run.sh builds with `--platform=linux/amd64`.
+# Bumping BUN_VERSION without bumping BUN_SHA256 moves the URL to an archive the
+# old checksum rejects, so the two cannot drift apart; the final `bun --version`
+# comparison then proves the extracted bytes really are that release.
+ARG BUN_VERSION=1.3.5
+ARG BUN_SHA256=7051d86a924aefea3e0b96213b5fd8f79c0793f9cae6534233e627e5c3db4669
+RUN mkdir -p ${BUN_INSTALL}/bin \
+    && curl -fsSL -o /tmp/bun.zip \
+        "https://github.com/oven-sh/bun/releases/download/bun-v${BUN_VERSION}/bun-linux-x64.zip" \
+    && echo "${BUN_SHA256}  /tmp/bun.zip" | sha256sum -c - \
+    && unzip -j /tmp/bun.zip 'bun-linux-x64/bun' -d ${BUN_INSTALL}/bin \
+    && rm /tmp/bun.zip \
+    && chmod -R a+rx ${BUN_INSTALL} \
+    && [ "$(bun --version)" = "${BUN_VERSION}" ]
 
 # Run unprivileged, NOT root. Electron refuses to start its sandbox as root, and
 # the usual workaround (`--no-sandbox`) would make the container diverge from how

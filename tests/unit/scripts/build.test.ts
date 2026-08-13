@@ -12,6 +12,7 @@
  * graph and stay fast.
  */
 
+import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -156,8 +157,19 @@ describe("runBuild", () => {
             "extension.js",
             "interactive-rebase-editor-helper.cjs",
         ]);
+
+        // The hash is recomputed here from `node:crypto` rather than by calling
+        // the build's own `hashFileContents`. Reusing the production helper
+        // would make this assertion a tautology on the axis that matters: a
+        // build that switched algorithms, or hashed the source instead of the
+        // emitted bundle, would agree with itself and stay green. Every output
+        // is checked, so the loop cannot pass vacuously on an empty manifest --
+        // the path assertion above already pins the set.
         for (const file of manifest.files as { path: string; hash: string }[]) {
-            expect(existsSync(join(distDir, file.path))).toBe(true);
+            const outputPath = join(distDir, file.path);
+            expect(existsSync(outputPath)).toBe(true);
+            const actualSha256 = createHash("sha256").update(readFileSync(outputPath)).digest("hex");
+            expect(file.hash, `manifest hash for ${file.path}`).toBe(actualSha256);
         }
     });
 });

@@ -18,6 +18,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { test } from "@playwright/test";
+import { HOST_FIXTURE_CAPTURE_TIMEOUT_MS } from "./captureBudget";
 import { captureHostFixture } from "./captureHostFixture";
 import { HOST_FIXTURE_THEMES } from "./hostFixtureThemes";
 import { hostFixtureFilePath, hostFixtureOutputDir, serializeHostFixture } from "./hostFixtureFile";
@@ -58,11 +59,13 @@ function assertFixturesAreGenuinelyDistinct(captured: readonly CapturedEntry[]):
 }
 
 test("capture all four host fixtures (dark-modern, light-modern, hc-black, hc-light)", async () => {
-    // Four sequential real VS Code launches, each with its own multi-second
-    // startup/activation/frame-resolution budget -- comfortably under this
-    // but generous on purpose, matching the spike's own reasoning for a wide
-    // ceiling that only extends the failure mode of a genuinely broken run.
-    test.setTimeout(10 * 60 * 1000);
+    // Derived from the per-launch and per-frame ceilings rather than picked, so
+    // this bound can never fall BELOW the ones nested inside it. The previous
+    // hand-picked ten minutes did exactly that -- four launches at a 300s
+    // ceiling each need twenty minutes of headroom before the second one can
+    // even reach its own timeout -- which replaced every specific launch failure
+    // with a generic "Test timeout of 600000ms exceeded". See captureBudget.ts.
+    test.setTimeout(HOST_FIXTURE_CAPTURE_TIMEOUT_MS);
 
     const executablePath = await resolveVSCodeExecutable(REPO_ROOT);
     await mkdir(hostFixtureOutputDir(REPO_ROOT), { recursive: true });

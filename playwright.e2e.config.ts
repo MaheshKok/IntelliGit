@@ -1,4 +1,5 @@
 import { defineConfig } from "@playwright/test";
+import { E2E_SUITE_GLOBAL_TIMEOUT_MS } from "./tests/e2e/hostFixtures/captureBudget";
 
 /**
  * Layer 2 (real VS Code, driven through Playwright's `_electron`).
@@ -15,6 +16,13 @@ export default defineConfig({
     // otherwise a cold cache (every CI runner, every new checkout) fails the
     // first test with a timeout that is indistinguishable from a hung launch.
     globalSetup: "./tests/e2e/globalSetup.ts",
+
+    // `globalTimeout` defaults to 0 -- no limit at all. That default turns the
+    // download above into an unbounded stall: a wedged fetch blocks the E2E gate
+    // until something outside Playwright kills the job, with no failure to read.
+    // Derived, not hand-picked, so it stays above every budget it contains
+    // (see captureBudget.ts).
+    globalTimeout: E2E_SUITE_GLOBAL_TIMEOUT_MS,
 
     // Every test owns a disposable VS Code profile and launches a real Electron
     // app. Running those concurrently multiplies heavyweight instances without

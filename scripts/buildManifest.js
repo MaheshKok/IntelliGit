@@ -107,18 +107,72 @@ function readManifest(distDir) {
         throw new Error(`Build manifest at ${manifestPath} does not match the expected schema.`);
     }
 
+    // A *number* is not the schema -- it only proves the field was declared.
+    // This module exists so the writer and the reader cannot drift apart, and a
+    // reader that accepts any version at all gives that up: a future manifest
+    // whose `files` entries mean something else would be read with today's
+    // rules and reported as verified provenance. Refusing an unknown version is
+    // the whole point of recording one.
+    if (parsed.schemaVersion !== MANIFEST_SCHEMA_VERSION) {
+        throw new Error(
+            `Build manifest at ${manifestPath} declares schemaVersion ${parsed.schemaVersion}, ` +
+                `but this build understands only version ${MANIFEST_SCHEMA_VERSION}.`,
+        );
+    }
+
     for (const entry of parsed.files) {
         if (typeof entry?.path !== "string" || typeof entry?.hash !== "string") {
             throw new Error(`Build manifest at ${manifestPath} has a malformed file entry.`);
         }
-        if (path.isAbsolute(entry.path) || entry.path.split("/").includes("..")) {
-            throw new Error(
-                `Build manifest at ${manifestPath} declares an unsafe path outside dist: ${entry.path}`,
-            );
-        }
+        assertPathStaysUnderDist(entry.path, manifestPath);
     }
 
     return parsed;
+}
+
+/**
+ * Throws unless `relativePath` can only ever resolve to a location inside the
+ * dist directory, on every platform -- not merely on the one running this code.
+ *
+ * The naive form of this check (`path.isAbsolute(p) || p.split("/").includes("..")`)
+ * is POSIX-shaped and silently opens on Windows. `..\outside.js` contains no
+ * `/`, so it splits to a single segment that is not `".."`; `path.isAbsolute`
+ * is false for it under `path.win32`; and `verifyBuildProvenance` then does
+ * `path.join(distDir, ...p.split("/"))`, which on Windows joins the backslash
+ * through and lands outside dist. Splitting on BOTH separators, and rejecting
+ * drive-qualified paths that `win32.isAbsolute` treats as relative (`C:foo`),
+ * closes that without depending on which platform reads the manifest.
+ *
+ * @param {string} relativePath The dist-relative path declared by a manifest entry.
+ * @param {string} manifestPath Absolute path of the manifest, for the error message.
+ * @returns {void}
+ * @throws {Error} If the path is absolute, drive-qualified, or contains a `..`,
+ *   `.`, or empty segment under either separator convention.
+ */
+function assertPathStaysUnderDist(relativePath, manifestPath) {
+    const reject = () => {
+        throw new Error(
+            `Build manifest at ${manifestPath} declares an unsafe path outside dist: ${relativePath}`,
+        );
+    };
+
+    if (
+        path.posix.isAbsolute(relativePath) ||
+        path.win32.isAbsolute(relativePath) ||
+        // `C:foo` is drive-RELATIVE, so `win32.isAbsolute` says false, yet
+        // `win32.resolve` sends it to that drive's own working directory.
+        /^[a-zA-Z]:/.test(relativePath)
+    ) {
+        reject();
+    }
+
+    // Split on a single separator, not a run of them: `a//b` must surface its
+    // empty middle segment rather than have a `+` quantifier collapse it away.
+    for (const segment of relativePath.split(/[\\/]/)) {
+        if (segment === "" || segment === "." || segment === "..") {
+            reject();
+        }
+    }
 }
 
 module.exports = {

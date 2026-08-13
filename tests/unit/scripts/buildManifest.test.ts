@@ -50,17 +50,58 @@ describe("buildManifest", () => {
         expect(() => readManifest(distDir)).toThrow(/does not match the expected schema/);
     });
 
-    it("rejects a manifest entry whose path escapes the dist directory", () => {
+    it("rejects a manifest declaring a schema version this build does not understand", () => {
+        // A manifest that merely *has* a numeric schemaVersion tells the reader
+        // nothing. If an unknown version is accepted, a future format whose
+        // `files` entries mean something else is read with today's rules and
+        // reported as verified provenance -- which is the one outcome recording
+        // a version number exists to prevent.
+        writeManifestFile({ schemaVersion: 2, files: [] });
+
+        expect(() => readManifest(distDir)).toThrow(/declares schemaVersion 2/);
+    });
+
+    // Every one of these must be refused on every platform, because the
+    // manifest is a file on disk that another machine reads: a Windows CI
+    // runner verifying a manifest written on macOS applies `path.win32` rules
+    // to bytes that were validated under POSIX ones. `verifyBuildProvenance`
+    // resolves each entry with `path.join(distDir, ...p.split("/"))`, so an
+    // escape only has to survive THAT platform's separator handling to land
+    // outside dist. Listing the shapes is not the test -- the loop below
+    // executes each one, so a guard that stops covering any single row goes red
+    // rather than leaving a comment that used to be true.
+    const unsafePaths: readonly (readonly [label: string, declaredPath: string])[] = [
+        ["a POSIX parent-directory escape", "../../etc/passwd"],
+        ["a Windows parent-directory escape", "..\\outside.js"],
+        ["a Windows escape nested under a real segment", "nested\\..\\..\\outside.js"],
+        ["a POSIX absolute path", "/etc/passwd"],
+        ["a Windows absolute path", "C:\\Windows\\System32\\drivers\\etc\\hosts"],
+        ["a Windows drive-relative path", "C:outside.js"],
+        ["a bare current-directory segment", "./extension.js"],
+        ["an embedded current-directory segment", "nested/./extension.js"],
+        ["an empty path", ""],
+        ["an empty interior segment", "nested//extension.js"],
+    ];
+
+    for (const [label, declaredPath] of unsafePaths) {
+        it(`rejects a manifest entry whose path escapes the dist directory: ${label}`, () => {
+            writeManifestFile({ files: [{ path: declaredPath, hash: "0".repeat(64) }] });
+
+            expect(() => readManifest(distDir)).toThrow(/unsafe path outside dist/);
+        });
+    }
+
+    function writeManifestFile({
+        schemaVersion = 1,
+        files,
+    }: {
+        schemaVersion?: number;
+        files: readonly { path: string; hash: string }[];
+    }): void {
         writeFileSync(
             join(distDir, ".build-manifest.json"),
-            JSON.stringify({
-                schemaVersion: 1,
-                builtAt: new Date().toISOString(),
-                files: [{ path: "../../etc/passwd", hash: "0".repeat(64) }],
-            }),
+            JSON.stringify({ schemaVersion, builtAt: new Date().toISOString(), files }),
             "utf8",
         );
-
-        expect(() => readManifest(distDir)).toThrow(/unsafe path outside dist/);
-    });
+    }
 });
