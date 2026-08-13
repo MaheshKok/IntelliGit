@@ -7,11 +7,13 @@ node_modules/**
 # TypeScript config
 tsconfig*.json
 
-# Test files
+# Test files. The runner configs are matched by pattern rather than by name:
+# this line used to read `vitest.config.ts`, and `playwright.e2e.config.ts`
+# shipped because nobody remembered to add it when it was created.
 tests/**
 **/*.test.ts
 **/*.spec.ts
-vitest.config.ts
+**/*.config.ts
 coverage/**
 
 # Development configuration
@@ -22,7 +24,7 @@ eslint.config.*
 .editorconfig
 .dependency-cruiser.cjs
 doctor.config.*
-knip.json
+knip.json*
 .env*
 AGENTS.md
 
@@ -43,8 +45,35 @@ dist/.build-manifest.json
 .vscode/**
 .idea/**
 *.log
-*.map
 .cache/**
+
+# Source maps. This was `*.map`, which matches only the package root -- every
+# real map lives in dist/, so all eight of them shipped: 32 MB of the 54 MB
+# payload, and each one carries `sourcesContent`, i.e. the complete original
+# TypeScript of the extension and every webview. Nothing at runtime reads them.
+**/*.map
+
+# Marketplace screenshots. The README references these with repo-relative paths,
+# and vsce rewrites those to https://github.com/.../raw/HEAD/... at package time,
+# so the marketplace fetches them from GitHub and the packaged copies are never
+# read by anything. Verified by inspecting README.md inside the built .vsix.
+media/screenshots/**
+
+# Developer documentation: plans, specs, runbooks, threat models, and the
+# localization review CSV. None of it is reachable from the installed extension.
+# DESIGN.md and PRODUCT.md are the same thing at the repository root -- neither
+# is referenced by README.md or package.json, so the marketplace never renders
+# them. README.md, CHANGELOG.md, and LICENSE.txt are kept: the marketplace
+# reads all three.
+docs/**
+DESIGN.md
+PRODUCT.md
+
+# Local tool output. Both are gitignored, which is NOT enough -- vsce packages
+# the working directory, not the git index, so an ignored directory still ships
+# unless it is named here too.
+.codebase-memory/**
+test-results/**
 
 # Git files
 .git/**
