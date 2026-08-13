@@ -66,15 +66,38 @@ export const JETBRAINS_UI = {
         primary: "var(--vscode-button-background, #5572d9)",
         primaryHover: "var(--vscode-button-hoverBackground, #6382eb)",
         primaryForeground: "var(--vscode-button-foreground, #ffffff)",
-        // Mixed toward the foreground for the same reason as `muted` above. `deleted` is the
-        // one of the three with a non-text consumer -- theme.ts tints the danger button's
-        // background and border from it -- but those are `color-mix(... N%, transparent)`
-        // derivations of whatever this resolves to, so they follow the text value rather
-        // than needing a second one.
-        added: "color-mix(in srgb, var(--vscode-gitDecoration-addedResourceForeground, #73c991) 55%, var(--vscode-foreground, #d7dce5))",
+        // These three are deliberately NOT mixed toward the foreground the way `muted`
+        // above is, and the difference is not an oversight.
+        //
+        // `muted` carries no meaning beyond "less important", so trading its chroma for
+        // contrast costs nothing. These three ARE the meaning: green is added, red is
+        // deleted. Measured across the four host fixtures, a 55% mix toward the
+        // foreground shifted hue by under 1 degree while destroying 25-45% of the HSL
+        // saturation -- it did not recolour the signal, it drained it, which is the one
+        // failure mode this particular token cannot absorb.
+        //
+        // It also bought almost nothing. Of the twelve token x theme combinations on a
+        // normal row, exactly one measured under 4.5:1 -- dark-modern `deleted` at
+        // 3.87:1 -- and that value is `#c74e39`, VS Code's own stock
+        // gitDecoration-deletedResourceForeground, which Microsoft paints on the same
+        // background in the built-in SCM tree. That cell is carried in
+        // tests/visual/fixtures/knownFindings.json, whose ratchet asserts set equality
+        // in BOTH directions, so it can neither regress further nor be quietly dropped.
+        //
+        // The genuinely unreadable measurements were on SELECTED rows (hc-light reached
+        // 1.04:1), and the mix did not fix those either -- it moved that cell to 1.29:1.
+        // That is handled at the consumer instead: selected rows inherit
+        // `selectedForeground`, the same as every other piece of text on the row.
+        //
+        // Two further surfaces are not the row background at all, and are likewise
+        // resolved where they are consumed rather than by editing this token: the
+        // commit-panel section header, which paints on the selection colour
+        // unconditionally (SectionHeader.tsx), and the danger button, whose backdrop is
+        // tinted from `deleted` itself (commit-panel/theme.ts). Each carries the
+        // measurements at its own site.
+        added: "var(--vscode-gitDecoration-addedResourceForeground, #73c991)",
         modified: "var(--vscode-gitDecoration-modifiedResourceForeground, #d19a66)",
-        deleted:
-            "color-mix(in srgb, var(--vscode-gitDecoration-deletedResourceForeground, #c74e39) 55%, var(--vscode-foreground, #d7dce5))",
+        deleted: "var(--vscode-gitDecoration-deletedResourceForeground, #c74e39)",
         // Not `--vscode-checkbox-border`, however much it looks like the right token: that one
         // outlines VS Code's native checkbox against `checkbox.background`, and on a dark theme
         // it is `#3c3c3c` — black against this panel. The button background is the nearest

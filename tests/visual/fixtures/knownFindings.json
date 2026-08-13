@@ -20,7 +20,9 @@
         },
         "commit-panel": {
             "clipping": [],
-            "contrast": [],
+            "contrast": [
+                "span.css-gp6z2n (#root > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2) > span:nth-of-type(6) > span:nth-of-type(2)) @3.9"
+            ],
             "accessibleNames": [],
             "zeroSize": []
         },
@@ -70,7 +72,9 @@
         },
         "commit-panel": {
             "clipping": [],
-            "contrast": [],
+            "contrast": [
+                "span.css-gp6z2n (#root > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2) > span:nth-of-type(6) > span:nth-of-type(2)) @3.9"
+            ],
             "accessibleNames": [],
             "zeroSize": []
         },

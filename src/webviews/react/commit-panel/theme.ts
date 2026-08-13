@@ -142,7 +142,19 @@ const theme = extendTheme({
                 },
                 danger: {
                     bg: "color-mix(in srgb, var(--intelligit-pycharm-deleted) 16%, transparent)",
-                    color: "var(--intelligit-pycharm-deleted)",
+                    // The label deliberately does NOT use `deleted`, even though the
+                    // tint and border do. Tinting the backdrop with the same colour as
+                    // the text is self-defeating: the two move together, so no theme's
+                    // red can be guaranteed against it. Measured across the four host
+                    // fixtures, `deleted` lands at 3.06:1 (Dark Modern) and 4.09:1
+                    // (HC Black), and every other red VS Code exposes -- errorForeground,
+                    // charts.red, testing.iconFailed -- fails on at least one theme too.
+                    // The pane's own foreground is contrast-checked against the pane by
+                    // definition, and a <=26% tint barely moves it, so it clears 4.5:1
+                    // everywhere by construction (worst case 6.78:1, Light Modern hover).
+                    // The destructive signal still has two channels: the red wash and
+                    // the red border.
+                    color: "var(--vscode-foreground)",
                     border: "1px solid color-mix(in srgb, var(--intelligit-pycharm-deleted) 60%, transparent)",
                     borderRadius: `${size.radius}px`,
                     minW: "auto",
