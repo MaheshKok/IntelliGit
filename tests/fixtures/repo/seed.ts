@@ -116,6 +116,13 @@ export interface FixtureTemplate extends SanitizedGitEnv {
  * (defaulting to `tmpdir()`, this module's own one-time template build). PLAN.md line 92 requires
  * the Phase 1 step 8 harness to root per-test HOME/TMPDIR/TMP/TEMP beneath a FIXTURE-OWNED root
  * rather than the OS temp dir, so that per-test caller passes its own root here instead.
+ *
+ * `LC_ALL`/`LANG` are pinned to `C` for the same reason the identity and dates are: git's porcelain
+ * output is translated, and this env is what scenario postconditions run their `git status` through
+ * (`scenarios.ts`'s `assertMidRebasePostcondition` matches `/rebas/i` on that output). A developer
+ * or CI runner with a non-English locale installed would get translated text, and the postcondition
+ * would report a scenario as un-built when it built correctly. They come AFTER the `process.env`
+ * spread deliberately -- an ambient `LC_ALL` must be overridden here, not inherited.
  */
 export async function createSanitizedGitEnv(options?: {
     readonly homeParent?: string;
@@ -129,6 +136,8 @@ export async function createSanitizedGitEnv(options?: {
             HOME: home,
             GIT_CONFIG_GLOBAL: "/dev/null",
             GIT_CONFIG_SYSTEM: "/dev/null",
+            LC_ALL: "C",
+            LANG: "C",
             ...FIXTURE_GIT_IDENTITY,
             GIT_AUTHOR_DATE: EPOCH_DATE,
             GIT_COMMITTER_DATE: EPOCH_DATE,

@@ -7,6 +7,7 @@ import {
     type MergeDiffOptions,
     type MergeEditorData,
 } from "../mergeEditor/conflictParser";
+import { readEditorFontSize } from "../mergeEditor/editorFontSize";
 import type {
     ApplyShelfConflictResolutionInput,
     ApplyShelfConflictResolutionResult,
@@ -243,6 +244,12 @@ export class ShelfConflictEditorPanel {
             eol: eol.eol,
             hasTrailingNewline: eol.hasTrailingNewline,
             diffOptions,
+            // Same source as `MergeEditorPanel`'s payload: both panels render through the SAME
+            // webview and stylesheet, where an absent `editorFontSize` falls back to
+            // `--vscode-editor-font-size` -- a variable that is unitless on some VS Code builds and
+            // therefore ignored. Omitting it here made one `editor.fontSize` setting produce two
+            // different code sizes depending on which of the two editors opened the conflict.
+            editorFontSize: readEditorFontSize(),
             sessionKind: "shelf",
         };
         await this.panel.webview.postMessage({ type: "setConflictData", data });

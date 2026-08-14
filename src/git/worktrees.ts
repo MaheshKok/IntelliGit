@@ -23,12 +23,25 @@ export interface AddWorktreeOptions {
     detach?: boolean;
 }
 
-/** Parses the NUL-delimited porcelain output from `git worktree list --porcelain -z`. */
+/**
+ * Parses the NUL-delimited porcelain output from `git worktree list --porcelain -z`.
+ *
+ * `currentRoot` is matched against each record through {@link pathCandidates}, not by string
+ * equality on the normalized path. Git reports every worktree path with symlinks already resolved,
+ * while `currentRoot` arrives from the host as whatever the workspace folder's `fsPath` says --
+ * and on macOS those two spellings differ for any repository under a symlinked ancestor
+ * (`/var/folders/...` vs `/private/var/folders/...`, or a symlinked home). Comparing the two
+ * normalized strings directly left `isCurrent` false for EVERY worktree in that case, which
+ * propagates through `WorktreeService.decorateBranches` into `isCurrentWorktree` and makes the
+ * checked-out branch look like it is checked out in some OTHER worktree -- the condition
+ * `branchCommands.ts` uses to block deletion and reroute checkout. `assertWorktreePathSafe` in this
+ * same file already compares through `pathCandidates` for exactly this reason.
+ */
 export function parseWorktreeList(porcelainZ: string, currentRoot: string): GitWorktree[] {
     const records = groupWorktreeRecords(porcelainZ);
-    const normalizedCurrentRoot = normalizePath(currentRoot);
+    const currentRootCandidates = new Set(pathCandidates(currentRoot));
     return records
-        .map((record, index) => toGitWorktree(record, index, normalizedCurrentRoot))
+        .map((record, index) => toGitWorktree(record, index, currentRootCandidates))
         .filter((worktree): worktree is GitWorktree => worktree !== null);
 }
 
@@ -174,7 +187,7 @@ function applyToken(record: WorktreeRecord, token: string): void {
 function toGitWorktree(
     record: WorktreeRecord,
     index: number,
-    normalizedCurrentRoot: string,
+    currentRootCandidates: ReadonlySet<string>,
 ): GitWorktree | null {
     if (!record.path) return null;
     const isMain = index === 0;
@@ -188,7 +201,9 @@ function toGitWorktree(
         branch: record.branch ?? null,
         state: getWorktreeState(record, isMain),
         isMain,
-        isCurrent: record.path === normalizedCurrentRoot,
+        isCurrent: pathCandidates(record.path).some((candidate) =>
+            currentRootCandidates.has(candidate),
+        ),
         isLocked,
         ...(lockedReason ? { lockedReason } : {}),
         isPrunable,

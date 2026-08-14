@@ -60,6 +60,7 @@ import type { ShelfService } from "../../../src/services/shelfService";
 import type { CommitMessageGenerationCoordinator } from "../../../src/ai/commitMessageGenerationCoordinator";
 import type { PlaceholderRoots } from "../../fixtures/repo/placeholderCanonicalization";
 import { canonicalizeCapturedMessages } from "./canonicalizeCapturedMessages";
+import { loadRecordingBranches } from "./recordingBranches";
 import { toGitEnvironment } from "./recordingGitEnvironment";
 import {
     createFakeCommitPanelWebviewView,
@@ -207,9 +208,12 @@ export async function recordCommitPanelWebviewFixture(
     resetE2eWebviewCaptureSinkForTests();
 
     const constructorOptions = buildCommitPanelConstructorOptions();
+    const gitOps = new GitOps(
+        new GitExecutor(options.repoRoot, undefined, toGitEnvironment(options.env)),
+    );
     const provider = new CommitPanelViewProvider(
         createFakeExtensionUri(),
-        new GitOps(new GitExecutor(options.repoRoot, undefined, toGitEnvironment(options.env))),
+        gitOps,
         createFakeUriFromPath(options.repoRoot),
         createEmptyWorkspaceMemento(),
         createInertSecretStorage(),
@@ -219,6 +223,13 @@ export async function recordCommitPanelWebviewFixture(
         constructorOptions.interactiveRebaseStorageRoot,
     );
     const capturedProvider = captureWebviewViewProvider(provider, COMMIT_PANEL_CONTEXT_ID);
+
+    // Production's activation sequence (`repositoryMode.ts:1350`), applied BEFORE the view resolves
+    // -- see `recordingBranches.ts` for why an unpopulated provider records `"branches": []` and
+    // why this call belongs on this side of `resolveWebviewView`. `CommitPanelViewProvider` takes
+    // branches only, no worktrees, matching its own production call site.
+    const { branches } = await loadRecordingBranches(gitOps, options.repoRoot, options.env);
+    provider.setBranches(branches);
 
     const { webviewView, receiveMessage } = createFakeCommitPanelWebviewView();
     capturedProvider.resolveWebviewView(

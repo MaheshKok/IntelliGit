@@ -19,9 +19,25 @@ import { promisify } from "node:util";
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { FIXTURE_REFS, seedFixtureTemplate, type FixtureTemplate } from "../../fixtures/repo/seed";
+import {
+    createSanitizedGitEnv,
+    FIXTURE_REFS,
+    seedFixtureTemplate,
+    type FixtureTemplate,
+} from "../../fixtures/repo/seed";
 
 const execFileAsync = promisify(execFile);
+
+/** Puts one `process.env` key back exactly as it was, including having been ABSENT -- assigning
+ * `undefined` to a `process.env` key stores the string `"undefined"` in Node, which would leave the
+ * process dirtier than the test found it. */
+function restoreEnvVar(key: string, original: string | undefined): void {
+    if (original === undefined) {
+        delete process.env[key];
+        return;
+    }
+    process.env[key] = original;
+}
 
 /** Runs one git process and returns trimmed UTF-8 stdout, exactly like `seed.ts`'s own internal
  * helper -- the test verifies the fixture from the outside, through the same kind of plain git
@@ -109,6 +125,36 @@ describe("seedFixtureTemplate", () => {
             expect(templateA.env.GIT_COMMITTER_EMAIL).toBe("intelligit-fixture@example.invalid");
             expect(templateA.env.GIT_AUTHOR_DATE).toBe("2000-01-01T00:00:00 +0000");
             expect(templateA.env.GIT_COMMITTER_DATE).toBe("2000-01-01T00:00:00 +0000");
+        });
+
+        /**
+         * Locale is pinned because git's PORCELAIN output is translated, and
+         * `scenarios.ts`'s `assertMidRebasePostcondition` matches `/rebas/i` against `git status`
+         * run through this env. On a runner with a non-English locale installed, that scenario
+         * would report a correctly-built mid-rebase workspace as un-built.
+         *
+         * Asserted against a HOSTILE ambient value rather than by reading `env.LC_ALL` on its own:
+         * `createSanitizedGitEnv` spreads `process.env` first, so on a machine where `LC_ALL` is
+         * already `C` (or unset) a bare equality check passes just as happily with the pin deleted.
+         * Only a run whose ambient value DIFFERS can witness that the pin overrides rather than
+         * inherits -- the two must not share an environment, or neither can prove anything.
+         */
+        it("overrides a hostile ambient locale rather than inheriting it", async () => {
+            const ambient = { LC_ALL: process.env.LC_ALL, LANG: process.env.LANG };
+            process.env.LC_ALL = "fr_FR.UTF-8";
+            process.env.LANG = "fr_FR.UTF-8";
+            try {
+                const sanitized = await createSanitizedGitEnv();
+                try {
+                    expect(sanitized.env.LC_ALL).toBe("C");
+                    expect(sanitized.env.LANG).toBe("C");
+                } finally {
+                    await rm(sanitized.home, { recursive: true, force: true });
+                }
+            } finally {
+                restoreEnvVar("LC_ALL", ambient.LC_ALL);
+                restoreEnvVar("LANG", ambient.LANG);
+            }
         });
     });
 

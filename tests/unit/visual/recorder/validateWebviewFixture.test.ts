@@ -16,9 +16,10 @@
 import { describe, expect, it } from "vitest";
 
 import { parseWebviewFixture } from "../../../visual/recorder/validateWebviewFixture";
+import { WEBVIEW_FIXTURE_SCHEMA_VERSION } from "../../../visual/recorder/webviewFixtureTypes";
 
 const VALID_RAW = {
-    schemaVersion: 1,
+    schemaVersion: WEBVIEW_FIXTURE_SCHEMA_VERSION,
     contextId: "commit-panel",
     scenario: "clean",
     messages: [{ contextId: "commit-panel", message: { type: "state" } }],
@@ -88,5 +89,30 @@ describe("parseWebviewFixture -- rejects structurally malformed fixtures", () =>
     it("rejects a non-numeric schemaVersion", () => {
         const raw = { ...VALID_RAW, schemaVersion: "1" };
         expect(() => parseWebviewFixture(raw)).toThrow();
+    });
+
+    /**
+     * `WEBVIEW_FIXTURE_SCHEMA_VERSION` exists so a stale fixture "fails loudly instead of comparing
+     * against an incompatible shape". Type-checking the field as a number and then accepting ANY
+     * number made the constant decorative: a fixture written under one schema and read under the
+     * next passed validation and failed later as a confusing field-level mismatch, or not at all.
+     *
+     * Both neighbours are asserted, not just the older one. A validator written as
+     * `schemaVersion < CURRENT` would pass an older-only test while silently accepting a fixture
+     * from a NEWER writer -- the case where the reader is the stale side.
+     */
+    it.each([
+        ["an older", WEBVIEW_FIXTURE_SCHEMA_VERSION - 1],
+        ["a newer", WEBVIEW_FIXTURE_SCHEMA_VERSION + 1],
+    ])("rejects %s schemaVersion, naming both the found and expected version", (_label, version) => {
+        const raw = { ...VALID_RAW, schemaVersion: version };
+        expect(() => parseWebviewFixture(raw)).toThrow(
+            new RegExp(`is ${version}.*schema version ${WEBVIEW_FIXTURE_SCHEMA_VERSION}`),
+        );
+    });
+
+    it("accepts exactly the current schemaVersion", () => {
+        const raw = { ...VALID_RAW, schemaVersion: WEBVIEW_FIXTURE_SCHEMA_VERSION };
+        expect(parseWebviewFixture(raw)).toEqual(raw);
     });
 });

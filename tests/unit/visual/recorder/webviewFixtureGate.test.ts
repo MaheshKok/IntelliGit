@@ -43,7 +43,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { existsSync } from "node:fs";
+import { existsSync, realpathSync } from "node:fs";
 import { copyFile, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -59,7 +59,8 @@ import { resetE2eWebviewCaptureSinkForTests } from "../../../../src/e2e/webviewC
 import type { RepositoryScenarioId, ScenarioWorkspace } from "../../../fixtures/repo/scenarios";
 import { COMMIT_INFO_CLEAN_SCENARIO } from "../../../visual/recorder/recordCommitInfoWebviewFixture";
 import {
-    assertDisposableScenarioDestination,
+    assertDisposableScenarioPath,
+    prepareIntoScratchDestination,
     runWebviewFixtureGate,
     UPDATE_WEBVIEW_FIXTURES_ENV_VAR,
 } from "../../../visual/recorder/webviewFixtureGate";
@@ -607,7 +608,46 @@ describe("runWebviewFixtureGate", () => {
         });
     });
 
-    describe("assertDisposableScenarioDestination", () => {
+    describe("prepareIntoScratchDestination", () => {
+        it("removes the scratch destination it allocated when prepare rejects", async () => {
+            // The leak this covers is invisible to the gate's own tests: `runWebviewFixtureGate`'s
+            // `prepareScenario` option replaces this allocation entirely, so an injected rejecting
+            // scenario would exercise the TEST's mkdtemp, not the production one. Called directly,
+            // the allocated path is observable and its removal is assertable.
+            let allocated: string | undefined;
+            const failure = new Error("scenario builder blew up halfway through seeding");
+
+            await expect(
+                prepareIntoScratchDestination("clean", async (destination) => {
+                    allocated = destination;
+                    expect(existsSync(destination)).toBe(true);
+                    throw failure;
+                }),
+            ).rejects.toBe(failure);
+
+            expect(allocated).toBeDefined();
+            expect(existsSync(allocated as string)).toBe(false);
+        });
+
+        it("keeps the destination it allocated when prepare resolves", async () => {
+            // The other half of the contract: cleanup must be scoped to the FAILURE path. A
+            // version that removed the directory unconditionally would pass the test above while
+            // deleting every successfully prepared workspace out from under its own recording.
+            const workspace = await prepareIntoScratchDestination("clean", async (destination) => {
+                const root = path.join(destination, "workspace");
+                await mkdir(root, { recursive: true });
+                return { id: "clean", root, env: process.env, home: root, template: undefined };
+            });
+            try {
+                expect(existsSync(workspace.root)).toBe(true);
+                expect(existsSync(path.dirname(workspace.root))).toBe(true);
+            } finally {
+                await rm(path.dirname(workspace.root), { recursive: true, force: true });
+            }
+        });
+    });
+
+    describe("assertDisposableScenarioPath", () => {
         // Exercised directly rather than through `disposeScenarioWorkspace`, deliberately. The
         // gate derives a workspace's destination as `path.dirname(workspace.root)`, which is only
         // ever right because every scenario builder places its root at `<destination>/workspace`.
@@ -616,31 +656,85 @@ describe("runWebviewFixtureGate", () => {
         // the decision is checked where checking it is free of consequence.
 
         it("refuses the OS temp root -- what path.dirname() yields if a root sits at its destination", () => {
-            expect(() => assertDisposableScenarioDestination(tmpdir(), "clean")).toThrow(
+            expect(() => assertDisposableScenarioPath(tmpdir(), "clean", "destination")).toThrow(
                 /refusing to recursively remove/,
             );
             // The scenario is named so a failure points at the builder that broke the convention,
             // not just at the gate that caught it.
-            expect(() => assertDisposableScenarioDestination(tmpdir(), "clean")).toThrow(/clean/);
+            expect(() => assertDisposableScenarioPath(tmpdir(), "clean", "destination")).toThrow(
+                /clean/,
+            );
         });
 
         it("refuses a filesystem root", () => {
             expect(() =>
-                assertDisposableScenarioDestination(path.parse(tmpdir()).root, "dirty"),
+                assertDisposableScenarioPath(path.parse(tmpdir()).root, "dirty", "destination"),
             ).toThrow(/refusing to recursively remove/);
         });
 
-        it("allows a real mkdtemp scenario destination -- the guard must not reject the normal case", async () => {
-            const destination = await mkdtemp(
-                path.join(tmpdir(), "intelligit-webview-gate-guard-"),
-            );
-            try {
-                expect(() =>
-                    assertDisposableScenarioDestination(destination, "clean"),
-                ).not.toThrow();
-            } finally {
-                await rm(destination, { recursive: true, force: true });
-            }
+        // The case the "is it the temp root or a filesystem root?" denylist waved through, and the
+        // reason this guard is containment-based. `runWebviewFixtureGate`'s `prepareScenario` is
+        // injectable, so `workspace.root` is whatever a scenario returns; a scenario rooted inside
+        // the repository yields a `path.dirname` of a TRACKED directory, which is neither the temp
+        // root nor a filesystem root. Under the old check this passed and the recursive `rm` then
+        // deleted the working tree. Asserted for both roles, because `home` is not derived at all
+        // -- it arrives verbatim from `prepare()` and previously had no guard whatsoever.
+        it.each(["destination", "home"] as const)(
+            "refuses a repository path that is neither the temp root nor a filesystem root (%s)",
+            (role) => {
+                const insideRepo = path.resolve(__dirname, "..", "..", "..", "workspace");
+                expect(() => assertDisposableScenarioPath(insideRepo, "clean", role)).toThrow(
+                    /strictly beneath the OS temp root/,
+                );
+                expect(() => assertDisposableScenarioPath(insideRepo, "clean", role)).toThrow(
+                    new RegExp(role),
+                );
+            },
+        );
+
+        // Containment is not satisfied by a shared prefix: a sibling whose NAME merely begins with
+        // the temp root's is outside it. Without the path-segment semantics `path.relative` gives,
+        // a `startsWith` check would accept this.
+        it("refuses a sibling whose name merely shares the temp root's prefix", () => {
+            expect(() =>
+                assertDisposableScenarioPath(`${tmpdir()}-evil/workspace`, "clean", "destination"),
+            ).toThrow(/strictly beneath the OS temp root/);
         });
+
+        // `..` cannot be used to climb out of the temp root and back into tracked files, even
+        // though the string starts inside it.
+        it("refuses a path that escapes the temp root through ..", () => {
+            expect(() =>
+                assertDisposableScenarioPath(
+                    path.join(tmpdir(), "..", "..", "etc"),
+                    "clean",
+                    "destination",
+                ),
+            ).toThrow(/strictly beneath the OS temp root/);
+        });
+
+        it.each(["destination", "home"] as const)(
+            "allows a real mkdtemp path -- the guard must not reject the normal case (%s)",
+            async (role) => {
+                // Built exactly the way the gate and `createSanitizedGitEnv` build theirs, so this
+                // covers the macOS `/var` -> `/private/var` symlink duality that a naive
+                // containment check against a single spelling of `tmpdir()` would fail on.
+                const allocated = await mkdtemp(
+                    path.join(tmpdir(), "intelligit-webview-gate-guard-"),
+                );
+                try {
+                    expect(() =>
+                        assertDisposableScenarioPath(allocated, "clean", role),
+                    ).not.toThrow();
+                    // And its realpath: whichever spelling `tmpdir()` reports, the other one is what
+                    // a path that round-tripped through the filesystem comes back as.
+                    expect(() =>
+                        assertDisposableScenarioPath(realpathSync(allocated), "clean", role),
+                    ).not.toThrow();
+                } finally {
+                    await rm(allocated, { recursive: true, force: true });
+                }
+            },
+        );
     });
 });

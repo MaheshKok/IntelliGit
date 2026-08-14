@@ -13,9 +13,15 @@
  * The shelf UUID and content-derived change ID are discovered from the scenario's carried shelf
  * storage root. No path is reconstructed from `path.dirname(workspace.root)`, because the scenario
  * gate owns that disposable-destination convention and this recorder must use the exact store the
- * builder wrote. No workspace configuration store is installed or reset here: the panel's captured
- * payload does not read configuration, while `buildWebviewShellHtml()`'s guarded configuration
- * read affects only uncaptured HTML.
+ * builder wrote.
+ *
+ * A workspace configuration store IS installed, using `buildMergeEditorWorkspaceConfiguration()`
+ * unchanged. Both this panel and `MergeEditorPanel` build a `MergeEditorData` for the SAME webview
+ * and stylesheet, and both now read `editor.fontSize` through `readEditorFontSize()`
+ * (`src/mergeEditor/editorFontSize.ts`), so the captured payload carries an `editorFontSize` field.
+ * Pinning the identical value the merge-editor recorder pins is what makes the two fixtures
+ * comparable -- a different pin here would render the same conflict at a different code size and
+ * the difference would look like a product divergence rather than a recorder choice.
  */
 
 import type * as vscode from "vscode";
@@ -41,7 +47,12 @@ import {
 import type { PlaceholderRoots } from "../../fixtures/repo/placeholderCanonicalization";
 import { canonicalizeCapturedMessages } from "./canonicalizeCapturedMessages";
 import { createFakeExtensionUri } from "./commitInfoVscodeDouble";
+import { buildMergeEditorWorkspaceConfiguration } from "./recordMergeEditorWebviewFixture";
 import { toGitEnvironment } from "./recordingGitEnvironment";
+import {
+    resetFakeWorkspaceConfigurationForTests,
+    setFakeWorkspaceConfiguration,
+} from "./workspaceConfigurationDouble";
 import { throwingDouble } from "./throwingDouble";
 import { buildWebviewFixture } from "./webviewFixtureFile";
 import type { WebviewFixture } from "./webviewFixtureTypes";
@@ -196,12 +207,15 @@ export async function recordShelfConflictEditorWebviewFixture(
         );
     }
 
-    // Own only capture and panel seams here. Workspace configuration is intentionally untouched:
-    // ShelfConflictEditorPanel does not read it, and its HTML-only shell read is outside this sink.
+    // Reset before use, never after alone: a previous recording's leftovers in these process-wide
+    // seams would otherwise be indistinguishable from this run's own output.
     resetE2eWebviewCaptureSinkForTests();
     resetCreatedWebviewPanelsForTests();
+    resetFakeWorkspaceConfigurationForTests();
 
     try {
+        setFakeWorkspaceConfiguration(buildMergeEditorWorkspaceConfiguration());
+
         const { store, service } = await createShelfService(options);
         const { shelfId, changeId } = await readShelfConflictIds(store);
         const panelOptions = buildShelfConflictEditorPanelOptions({
@@ -260,5 +274,6 @@ export async function recordShelfConflictEditorWebviewFixture(
         for (const panel of getCreatedWebviewPanels()) panel.dispose();
         resetCreatedWebviewPanelsForTests();
         resetE2eWebviewCaptureSinkForTests();
+        resetFakeWorkspaceConfigurationForTests();
     }
 }

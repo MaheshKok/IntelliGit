@@ -97,6 +97,45 @@ describe("parseWorktreeList", () => {
         ]);
     });
 
+    /**
+     * Git resolves symlinks before reporting a worktree path; the host does not. VS Code hands the
+     * workspace folder's `fsPath` through unchanged, so on macOS every repository under a symlinked
+     * ancestor -- `/tmp/...`, `/var/folders/...`, a symlinked home -- arrives spelled differently
+     * from what `git worktree list` prints for the SAME directory. String equality on the
+     * normalized paths made `isCurrent` false for every worktree in that case, which
+     * `WorktreeService.decorateBranches` turns into `isCurrentWorktree: false` on the checked-out
+     * branch -- the flag `branchCommands.ts` reads to decide a branch is checked out in some other
+     * worktree and must not be deleted or checked out here.
+     *
+     * The symlink is created rather than assumed, so this covers Linux too, where `tmpdir()`
+     * happens not to be symlinked and a divergence-detecting test would silently skip.
+     *
+     * The negative case is asserted in the same test: a hard-coded `isCurrent: true` would satisfy
+     * the first assertion on its own.
+     */
+    it("matches a symlinked current root against Git's resolved worktree path", async () => {
+        const root = await realpath(await mkdtemp(path.join(tmpdir(), "intelligit-worktrees-sym-")));
+        tempRoots.push(root);
+        const repo = path.join(root, "repo");
+        const other = path.join(root, "other");
+        await mkdir(repo);
+        await mkdir(other);
+        const link = path.join(root, "link");
+        await symlink(repo, link);
+
+        const parsed = parseWorktreeList(
+            porcelain([[`worktree ${repo}`, "HEAD abc123", "branch refs/heads/main"]]),
+            link,
+        );
+        expect(parsed[0].isCurrent).toBe(true);
+
+        const unrelated = parseWorktreeList(
+            porcelain([[`worktree ${other}`, "HEAD abc123", "branch refs/heads/main"]]),
+            link,
+        );
+        expect(unrelated[0].isCurrent).toBe(false);
+    });
+
     it("parses main plus linked worktrees with short branch names", () => {
         const parsed = parseWorktreeList(
             porcelain([

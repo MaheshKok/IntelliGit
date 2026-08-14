@@ -37,6 +37,7 @@ import { UndockedViewProvider } from "../../../src/views/UndockedViewProvider";
 import type { PlaceholderRoots } from "../../fixtures/repo/placeholderCanonicalization";
 import { canonicalizeCapturedMessages } from "./canonicalizeCapturedMessages";
 import { createFakeExtensionUri, createFakeUriFromPath } from "./commitInfoVscodeDouble";
+import { loadRecordingBranches } from "./recordingBranches";
 import { toGitEnvironment } from "./recordingGitEnvironment";
 import { throwingDouble } from "./throwingDouble";
 import { buildWebviewFixture } from "./webviewFixtureFile";
@@ -229,6 +230,23 @@ export async function recordUndockedWebviewFixture(
         const provider = new UndockedViewProvider(
             ...buildUndockedProviderConstructorArguments({ repoRoot: options.repoRoot, gitOps }),
         );
+
+        // Production's host wiring (`repositoryMode.ts:1103`, inside `loadUndockedData`), applied
+        // BEFORE `open()` -- see `recordingBranches.ts` for why an unpopulated provider records
+        // `"branches": []` and why this call belongs before the panel exists: the setter caches
+        // without posting while no panel exists, so the `ready` handler's own `sendBranches` posts
+        // the populated list exactly once.
+        //
+        // This scenario's detached HEAD does not make the list empty: `mid-rebase` still carries
+        // every ref the fixture template seeded, and a detached HEAD is precisely a state where
+        // seeing the branch list matters most.
+        const { branches, worktrees } = await loadRecordingBranches(
+            gitOps,
+            options.repoRoot,
+            options.env,
+        );
+        provider.setBranches(branches, worktrees);
+
         provider.open();
 
         const createdPanels = getCreatedWebviewPanels();

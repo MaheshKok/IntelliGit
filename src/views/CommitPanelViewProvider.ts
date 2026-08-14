@@ -993,6 +993,10 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
      */
     setBranches(branches: Branch[]): void {
         this.branches = branches;
+        // Cache-only until a view exists -- see `CommitGraphViewProvider.setBranches` for why an
+        // unawaited asynchronous send still reaches a view that attaches in the meantime, and why
+        // the webview cannot have received such a post.
+        if (!this.view) return;
         const runtime = this.getActiveRuntime();
         if (!runtime) return;
         this.sendGraphBranches(runtime).catch((err) => {
@@ -1087,7 +1091,11 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             void this.postWorkingTreeSnapshot(runtime).catch(() => {});
             this.refreshAllRepositoriesWithErrorHandling(true);
         });
-        this.postRepositoryListHydration();
+        // Deliberately NOT hydrating the repository list here. `handleReadyMessage` calls
+        // `postRepositoryListHydration()` unconditionally, and `ready` always follows a resolve --
+        // it is sent by the very webview this method creates. Hydrating here posted a byte-identical
+        // `setRepositories` an instant earlier, to a webview whose script had not yet attached its
+        // message listener.
         this.updateViewCount(this.lastFileCount);
     }
     /**

@@ -21,21 +21,6 @@
         {
             "contextId": "commit-panel",
             "message": {
-                "type": "setRepositories",
-                "repositories": [
-                    {
-                        "root": "<ROOT>",
-                        "label": "workspace",
-                        "kind": "repository",
-                        "changedFileCount": 0
-                    }
-                ],
-                "activeRepositoryRoot": "<ROOT>"
-            }
-        },
-        {
-            "contextId": "commit-panel",
-            "message": {
                 "type": "update",
                 "repositoryRoot": "<ROOT>",
                 "repositoryLabel": "workspace",
@@ -191,7 +176,69 @@
             "contextId": "commit-panel",
             "message": {
                 "type": "setBranches",
-                "branches": [],
+                "branches": [
+                    {
+                        "name": "conflict/with-main",
+                        "hash": "fc4abb23",
+                        "isRemote": false,
+                        "isCurrent": false,
+                        "committerDate": 946717200,
+                        "ahead": 0,
+                        "behind": 0,
+                        "isCheckedOutInWorktree": false,
+                        "isCurrentWorktree": false
+                    },
+                    {
+                        "name": "feature/awesome",
+                        "hash": "2a1d4544",
+                        "isRemote": false,
+                        "isCurrent": false,
+                        "committerDate": 946713600,
+                        "ahead": 0,
+                        "behind": 0,
+                        "isCheckedOutInWorktree": false,
+                        "isCurrentWorktree": false
+                    },
+                    {
+                        "name": "main",
+                        "hash": "86db42e9",
+                        "isRemote": false,
+                        "isCurrent": true,
+                        "isDefault": true,
+                        "committerDate": 946702800,
+                        "upstream": "origin/main",
+                        "remote": "origin",
+                        "ahead": 0,
+                        "behind": 0,
+                        "isCheckedOutInWorktree": true,
+                        "worktreePath": "<ROOT>",
+                        "isCurrentWorktree": true
+                    },
+                    {
+                        "name": "topic/mergeable",
+                        "hash": "dc2c713d",
+                        "isRemote": false,
+                        "isCurrent": false,
+                        "committerDate": 946699200,
+                        "ahead": 0,
+                        "behind": 0,
+                        "isCheckedOutInWorktree": false,
+                        "isCurrentWorktree": false
+                    },
+                    {
+                        "name": "origin/main",
+                        "hash": "86db42e9",
+                        "isRemote": true,
+                        "isCurrent": false,
+                        "isDefault": true,
+                        "committerDate": 946702800,
+                        "remote": "origin",
+                        "ahead": 0,
+                        "behind": 0,
+                        "isCheckedOutInWorktree": false,
+                        "isCurrentWorktree": false
+                    }
+                ],
                 "repositoryLabel": "workspace",
                 "folderIconsByName": {},
                 "iconFonts": [],

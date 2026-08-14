@@ -14,8 +14,81 @@
             "contextId": "commit-graph-card",
             "message": {
                 "type": "setBranches",
-                "branches": [],
-                "worktrees": [],
+                "branches": [
+                    {
+                        "name": "conflict/with-main",
+                        "hash": "fc4abb23",
+                        "isRemote": false,
+                        "isCurrent": false,
+                        "committerDate": 946717200,
+                        "ahead": 0,
+                        "behind": 0,
+                        "isCheckedOutInWorktree": false,
+                        "isCurrentWorktree": false
+                    },
+                    {
+                        "name": "feature/awesome",
+                        "hash": "2a1d4544",
+                        "isRemote": false,
+                        "isCurrent": false,
+                        "committerDate": 946713600,
+                        "ahead": 0,
+                        "behind": 0,
+                        "isCheckedOutInWorktree": false,
+                        "isCurrentWorktree": false
+                    },
+                    {
+                        "name": "main",
+                        "hash": "86db42e9",
+                        "isRemote": false,
+                        "isCurrent": true,
+                        "isDefault": true,
+                        "committerDate": 946702800,
+                        "upstream": "origin/main",
+                        "remote": "origin",
+                        "ahead": 0,
+                        "behind": 0,
+                        "isCheckedOutInWorktree": true,
+                        "worktreePath": "<ROOT>",
+                        "isCurrentWorktree": true
+                    },
+                    {
+                        "name": "topic/mergeable",
+                        "hash": "dc2c713d",
+                        "isRemote": false,
+                        "isCurrent": false,
+                        "committerDate": 946699200,
+                        "ahead": 0,
+                        "behind": 0,
+                        "isCheckedOutInWorktree": false,
+                        "isCurrentWorktree": false
+                    },
+                    {
+                        "name": "origin/main",
+                        "hash": "86db42e9",
+                        "isRemote": true,
+                        "isCurrent": false,
+                        "isDefault": true,
+                        "committerDate": 946702800,
+                        "remote": "origin",
+                        "ahead": 0,
+                        "behind": 0,
+                        "isCheckedOutInWorktree": false,
+                        "isCurrentWorktree": false
+                    }
+                ],
+                "worktrees": [
+                    {
+                        "path": "<ROOT>",
+                        "head": "86db42e91a87811ec634e6121349479253bd7621",
+                        "branch": "main",
+                        "state": "main",
+                        "isMain": true,
+                        "isCurrent": true,
+                        "isLocked": false,
+                        "isPrunable": false
+                    }
+                ],
                 "folderIconsByName": {},
                 "iconFonts": [],
                 "commitChecksEnabled": true

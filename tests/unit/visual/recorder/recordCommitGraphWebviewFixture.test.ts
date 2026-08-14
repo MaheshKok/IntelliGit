@@ -16,9 +16,10 @@
  *    never the same root recorded twice.
  *  - "non-trivial" fails if a recorder captures zero messages, or the captured `loadCommits`
  *    payload doesn't carry real git hashes -- proof the REAL `GitOps.getLog` /
- *    `GitOps.getUnpushedCommitHashes` calls produced this, not a hand-fabricated stand-in. (The
- *    `setBranches` payload's `branches` array is legitimately empty on this recorder's minimal
- *    seam -- see the test body's own comment.)
+ *    `GitOps.getUnpushedCommitHashes` calls produced this, not a hand-fabricated stand-in.
+ *  - "records the seeded repository's real branches in every frame" fails if a recorder stops
+ *    driving the activation call that fills `this.branches`, which produced a well-formed,
+ *    reproducible, correctly canonicalized fixture carrying `"branches": []`.
  *  - "no leaked identity" fails if a future change threads an absolute path into a posted message
  *    that canonicalization does not know to rewrite.
  *  - "gate honored" fails if a recorder ever succeeds -- silently producing an empty or partial
@@ -44,7 +45,7 @@ vi.mock("vscode", () => createCommitInfoVscodeDouble());
 
 import { setE2eControlChannelActive } from "../../../../src/e2e/activationState";
 import { resetE2eWebviewCaptureSinkForTests } from "../../../../src/e2e/webviewCapture";
-import { seedFixtureTemplate, type FixtureTemplate } from "../../../fixtures/repo/seed";
+import { FIXTURE_REFS, seedFixtureTemplate, type FixtureTemplate } from "../../../fixtures/repo/seed";
 import {
     buildProviderOptions,
     COMMIT_GRAPH_CLEAN_SCENARIO,
@@ -87,24 +88,38 @@ describe("commit-graph webview recorders", () => {
     let workspaceA: FixtureTemplate;
     let workspaceB: FixtureTemplate;
 
+    // Every scratch path this file allocated, registered the moment it EXISTS rather than read back
+    // off `workspaceA`/`workspaceB` in `afterAll`. Seeding is a real `git` build and can fail: with
+    // the old shape, a rejected `beforeAll` left both workspaces unassigned, so `workspaceA.home`
+    // threw a TypeError that replaced the real seeding error in the report AND skipped `parentDir`'s
+    // removal entirely -- leaking the scratch tree in exactly the run whose failure most needed to
+    // be legible. Registering per-path also survives partial failure: if `root-a` seeds and `root-b`
+    // throws, `Promise.all` rejects with neither assigned, but A's `HOME` is already recorded here.
+    const scratchPaths: string[] = [];
+
+    async function seedTracked(destination: string): Promise<FixtureTemplate> {
+        const template = await seedFixtureTemplate(destination);
+        scratchPaths.push(template.home);
+        return template;
+    }
+
     beforeAll(async () => {
         parentDir = await mkdtemp(
             path.join(tmpdir(), "intelligit-webview-recorder-commit-graph-test-"),
         );
+        scratchPaths.push(parentDir);
         // Two INDEPENDENT seeded destinations, not the same root recorded twice -- see this
         // module's own doc comment on the byte-identical test.
         [workspaceA, workspaceB] = await Promise.all([
-            seedFixtureTemplate(path.join(parentDir, "root-a")),
-            seedFixtureTemplate(path.join(parentDir, "root-b")),
+            seedTracked(path.join(parentDir, "root-a")),
+            seedTracked(path.join(parentDir, "root-b")),
         ]);
     }, 60_000);
 
     afterAll(async () => {
-        await Promise.all([
-            rm(workspaceA.home, { recursive: true, force: true }),
-            rm(workspaceB.home, { recursive: true, force: true }),
-            rm(parentDir, { recursive: true, force: true }),
-        ]);
+        await Promise.all(
+            scratchPaths.map((scratchPath) => rm(scratchPath, { recursive: true, force: true })),
+        );
     });
 
     beforeEach(() => {
@@ -148,6 +163,61 @@ describe("commit-graph webview recorders", () => {
                 expect(reparsed.contextId).toBe(contextId);
                 expect(reparsed.scenario).toBe(COMMIT_GRAPH_CLEAN_SCENARIO);
                 expect(reparsed).toEqual(fixture);
+            });
+
+            /**
+             * The recorded `setBranches` payload must carry the seeded repository's real refs.
+             *
+             * This is the oracle for the one defect no other assertion here could see. Every
+             * provider posts `setBranches` from its own `ready` handler using `this.branches`, a
+             * field only activation's explicit `setBranches(...)` call ever fills. A recorder that
+             * resolved the view and drove `ready` without making that call produced a perfectly
+             * well-formed fixture carrying `"branches": []` -- it round-tripped through
+             * `parseWebviewFixture`, it was byte-identical across two seeded roots, and it
+             * canonicalized correctly, so every other test in this file passed while the visual
+             * suite rendered a graph with no branches at all.
+             *
+             * Asserted against `FIXTURE_REFS` -- the seed's own source of truth for what it
+             * creates -- rather than against a count, so the payload has to contain the actual
+             * branches rather than merely some non-zero number of them.
+             *
+             * EVERY `setBranches` frame is checked, not just the first. The recording holds one
+             * today, but it held two before the pre-`ready` post was removed (see
+             * `recordingBranches.ts`), and a test that read only `[0]` would stay green if a
+             * future change reintroduced a second, empty frame -- precisely the shape of the
+             * defect this oracle exists to catch. The count itself is deliberately NOT pinned
+             * here: the gate's byte comparison against the committed fixture already does that,
+             * and pinning it twice would turn one intentional change into two failures.
+             */
+            it("records the seeded repository's real branches in every frame, not an empty list", async () => {
+                const fixture = await record(optionsFor(workspaceA));
+
+                const setBranches = fixture.messages
+                    .map((captured) => captured.message as { type?: unknown; branches?: unknown })
+                    .filter((message) => message?.type === "setBranches");
+                expect(setBranches.length).toBeGreaterThan(0);
+
+                for (const [index, message] of setBranches.entries()) {
+                    const branches = message.branches as ReadonlyArray<{ name: string }>;
+                    const names = branches.map((branch) => branch.name);
+                    expect(names, `setBranches frame ${index}`).toContain(FIXTURE_REFS.main);
+                    expect(names, `setBranches frame ${index}`).toContain(FIXTURE_REFS.feature);
+                    expect(names, `setBranches frame ${index}`).toContain(FIXTURE_REFS.topic);
+                    expect(names, `setBranches frame ${index}`).toContain(FIXTURE_REFS.conflicting);
+
+                    // `WorktreeService.decorateBranches` is what stamps this, and it is not a
+                    // formality: it is the only thing that distinguishes the checked-out branch
+                    // from every other one in the rendered graph. Passing raw `getBranches()`
+                    // output would satisfy every name assertion above and still lose the
+                    // distinction.
+                    const checkedOut = branches.filter(
+                        (branch) => (branch as { isCurrentWorktree?: boolean }).isCurrentWorktree,
+                    );
+                    expect(
+                        checkedOut.map((branch) => branch.name),
+                        `setBranches frame ${index}`,
+                    ).toEqual([FIXTURE_REFS.main]);
+                }
             });
 
             it("produces byte-identical fixtures from two independently seeded temp roots", async () => {
@@ -196,13 +266,12 @@ describe("commit-graph webview recorders", () => {
 
                 expect(fixture.messages.length).toBeGreaterThan(0);
 
-                // `setBranches` IS posted (real behavior: `sendBranches()` runs unconditionally in
-                // the `ready` handler), but `branches` itself is legitimately empty here: `this.
-                // branches` is only ever populated by the provider's own public `setBranches()`
-                // method, called by host-wiring code this recorder deliberately does not drive
-                // (out of this phase's scope -- see `recordCommitGraphWebviewFixture.ts`'s own doc
-                // comment). Asserted as a real, empty array -- not asserted non-empty, which would
-                // be testing a call this recorder never makes.
+                // `setBranches` is posted, and its `branches` array is asserted non-empty by
+                // "records the seeded repository's real branches in every frame" above. This
+                // assertion used to pin `branches` to `[]` and call that "legitimately empty",
+                // which made the recorder's own blind spot the expected value: it went green on
+                // the branch-less fixture and would have gone RED the day someone populated the
+                // list. Presence is all that belongs here; the contents belong to the oracle.
                 const branchMessages = fixture.messages.filter(
                     (captured) =>
                         typeof captured.message === "object" &&
@@ -210,9 +279,6 @@ describe("commit-graph webview recorders", () => {
                         (captured.message as { type?: unknown }).type === "setBranches",
                 );
                 expect(branchMessages.length).toBeGreaterThan(0);
-                const branches = (branchMessages[0].message as { branches: unknown[] }).branches;
-                expect(Array.isArray(branches)).toBe(true);
-                expect(branches).toEqual([]);
 
                 const commitMessages = fixture.messages.filter(
                     (captured) =>

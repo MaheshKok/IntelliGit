@@ -13,6 +13,7 @@ import {
     type MergeDiffOptions,
     type MergeEditorData,
 } from "../mergeEditor/conflictParser";
+import { readEditorFontSize } from "../mergeEditor/editorFontSize";
 import { getErrorMessage } from "../utils/errors";
 import { assertRepoRelativePath } from "../utils/fileOps";
 import {
@@ -39,24 +40,6 @@ export interface MergeEditorPanelOptions {
 
 /** Maximum merged-file payload accepted from the webview, guarding runaway messages. */
 const MAX_APPLY_CONTENT_BYTES = 100 * 1024 * 1024;
-
-/**
- * Reads the effective `editor.fontSize` so the webview can render merge code at
- * the same pixel size as a normal editor.
- *
- * The `--vscode-editor-font-size` webview variable is unreliable (unitless on
- * some VS Code builds), so the host reads the authoritative setting instead.
- * Returns undefined when the value is missing or outside VS Code's own
- * [6, 100] bounds, letting the webview fall back to the CSS variable.
- */
-function readEditorFontSize(): number | undefined {
-    try {
-        const size = vscode.workspace.getConfiguration("editor").get<number>("fontSize");
-        return typeof size === "number" && size >= 6 && size <= 100 ? size : undefined;
-    } catch {
-        return undefined;
-    }
-}
 
 /**
  * Owns one native merge-editor webview panel per conflicted file path.

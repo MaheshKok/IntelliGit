@@ -47,23 +47,37 @@ describe("recordCommitInfoWebviewFixture", () => {
     let workspaceA: FixtureTemplate;
     let workspaceB: FixtureTemplate;
 
+    // Every scratch path this file allocated, registered the moment it EXISTS rather than read back
+    // off `workspaceA`/`workspaceB` in `afterAll`. Seeding is a real `git` build and can fail: with
+    // the old shape, a rejected `beforeAll` left both workspaces unassigned, so `workspaceA.home`
+    // threw a TypeError that replaced the real seeding error in the report AND skipped `parentDir`'s
+    // removal entirely -- leaking the scratch tree in exactly the run whose failure most needed to
+    // be legible. Registering per-path also survives partial failure: if `root-a` seeds and `root-b`
+    // throws, `Promise.all` rejects with neither assigned, but A's `HOME` is already recorded here.
+    const scratchPaths: string[] = [];
+
+    async function seedTracked(destination: string): Promise<FixtureTemplate> {
+        const template = await seedFixtureTemplate(destination);
+        scratchPaths.push(template.home);
+        return template;
+    }
+
     beforeAll(async () => {
         parentDir = await mkdtemp(path.join(tmpdir(), "intelligit-webview-recorder-fixture-test-"));
+        scratchPaths.push(parentDir);
         // Two INDEPENDENT seeded destinations -- not the same root recorded twice -- so the
         // byte-equality test below actually exercises canonicalization instead of vacuously
         // comparing a recording against itself.
         [workspaceA, workspaceB] = await Promise.all([
-            seedFixtureTemplate(path.join(parentDir, "root-a")),
-            seedFixtureTemplate(path.join(parentDir, "root-b")),
+            seedTracked(path.join(parentDir, "root-a")),
+            seedTracked(path.join(parentDir, "root-b")),
         ]);
     }, 60_000);
 
     afterAll(async () => {
-        await Promise.all([
-            rm(workspaceA.home, { recursive: true, force: true }),
-            rm(workspaceB.home, { recursive: true, force: true }),
-            rm(parentDir, { recursive: true, force: true }),
-        ]);
+        await Promise.all(
+            scratchPaths.map((scratchPath) => rm(scratchPath, { recursive: true, force: true })),
+        );
     });
 
     beforeEach(() => {

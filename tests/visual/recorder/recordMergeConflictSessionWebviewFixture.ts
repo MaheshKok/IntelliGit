@@ -120,8 +120,8 @@ export function buildMergeConflictSessionLabels(): {
  * Structural stand-in for `MergeConflictSessionCallbacks` (`MergeConflictSessionPanel.ts:29-32`),
  * not exported from production -- passed by structural typing rather than importing the type (the
  * spec for this phase is explicit: do not export it from production just to import it here). Every
- * member throws by name: none of `openMerge` / `acceptYours` / `acceptTheirs` / `abortMerge` is
- * ever sent by this recording -- `open()` alone posts the one `setSessionData` message this fixture
+ * member throws by name: neither `onOpenMergeConflict` nor `onConflictStateChanged` is ever
+ * invoked by this recording -- `open()` alone posts the one `setSessionData` message this fixture
  * captures (`MergeConflictSessionPanel.ts:131`) -- so a call reaching either callback means this
  * recording reached a webview message it was never meant to, which is a finding to report, not an
  * expected path.

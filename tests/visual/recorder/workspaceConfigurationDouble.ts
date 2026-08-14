@@ -31,6 +31,16 @@ export function resetFakeWorkspaceConfigurationForTests(): void {
  * fallback behavior; an installed store still throws for an unpinned resolved key so a new caller
  * cannot silently record an unrepresentative `undefined` branch. The returned object is also
  * throwingDouble-wrapped so unsupported WorkspaceConfiguration members fail by section name.
+ *
+ * The store is snapshotted into `values` at CONSTRUCTION, and `get` reads that snapshot rather than
+ * the module-level `installedValues`. Reading the module variable at call time made the check at
+ * the top of this function a lie: a configuration object built while a store was installed, then
+ * called after `resetFakeWorkspaceConfigurationForTests` (a recorder's own `afterEach`, or a
+ * `vscode.workspace.getConfiguration` reference a panel captured and used later), reached
+ * `Object.prototype.hasOwnProperty.call(undefined, key)` and died with `TypeError: Cannot convert
+ * undefined or null to object` -- swallowing the diagnostic this module exists to produce. Because
+ * `setFakeWorkspaceConfiguration` already builds a fresh object per install and never mutates it,
+ * holding the reference is a snapshot, not a live view.
  */
 export function createFakeWorkspaceConfiguration(section?: string): {
     get<T>(key: string): T | undefined;
@@ -39,7 +49,8 @@ export function createFakeWorkspaceConfiguration(section?: string): {
         section === undefined || section === ""
             ? "vscode.workspace.getConfiguration()"
             : `vscode.workspace.getConfiguration("${section}")`;
-    if (installedValues === undefined) {
+    const values = installedValues;
+    if (values === undefined) {
         throw new Error(
             `${member} was called during a recording, but no fake workspace configuration is installed.`,
         );
@@ -48,12 +59,12 @@ export function createFakeWorkspaceConfiguration(section?: string): {
     return throwingDouble(member, {
         get<T>(key: string): T | undefined {
             const resolvedKey = section ? `${section}.${key}` : key;
-            if (!Object.prototype.hasOwnProperty.call(installedValues, resolvedKey)) {
+            if (!Object.prototype.hasOwnProperty.call(values, resolvedKey)) {
                 throw new Error(
                     `${member}.get("${key}") resolved to uninstalled fake workspace configuration key "${resolvedKey}".`,
                 );
             }
-            return installedValues[resolvedKey] as T | undefined;
+            return values[resolvedKey] as T | undefined;
         },
     });
 }

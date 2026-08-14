@@ -31,6 +31,7 @@
  * behind.
  */
 
+import { realpathSync } from "node:fs";
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -143,6 +144,41 @@ async function listCommittedFixtures(
 // ---------------------------------------------------------------------------------------------
 
 /**
+ * Allocates a fresh scratch destination and runs `prepare` into it, removing the directory again if
+ * `prepare` rejects.
+ *
+ * That failure path is the whole reason this is its own exported function rather than four lines
+ * inside {@link prepareRealScenario}. `mkdtemp` creates the directory BEFORE `prepare` runs, and a
+ * rejected `prepare` never returns a `ScenarioWorkspace`, so it never reaches `scenarios.prepared`
+ * -- and `disposeAllScenarioWorkspaces` iterates only that map. Nothing else on any path would ever
+ * remove the directory, so every failed preparation leaked one scratch tree for the rest of the
+ * machine's uptime. Proving that from `runWebviewFixtureGate` is impossible: the gate's own
+ * `prepareScenario` option REPLACES this allocation wholesale, so an injected rejecting scenario
+ * exercises the caller's `mkdtemp`, not this one, and the real code path stays untested. Taking
+ * `prepare` as a parameter is what makes the failure directly reachable.
+ *
+ * Removal is best-effort (`force: true`) so a cleanup failure cannot replace the real preparation
+ * error with a misleading one -- the error the caller needs is always the one `prepare` threw. A
+ * scratch `HOME` the builder may have created before failing is NOT recoverable from here (its path
+ * is only ever reported through the `ScenarioWorkspace` that never got returned), so it is left to
+ * the OS temp reaper; only the path this function itself allocated is its to remove.
+ */
+export async function prepareIntoScratchDestination(
+    id: RepositoryScenarioId,
+    prepare: (destination: string) => Promise<ScenarioWorkspace>,
+): Promise<ScenarioWorkspace> {
+    const destination = await mkdtemp(
+        path.join(tmpdir(), `intelligit-webview-gate-scenario-${id}-`),
+    );
+    try {
+        return await prepare(destination);
+    } catch (error) {
+        await rm(destination, { recursive: true, force: true });
+        throw error;
+    }
+}
+
+/**
  * The production `prepareScenario`: looks up `id` in `REPOSITORY_SCENARIOS` and builds it into a
  * fresh scratch directory. Not exported -- `runWebviewFixtureGate`'s `prepareScenario` option is
  * the only way a caller reaches (or replaces) this.
@@ -152,10 +188,7 @@ async function prepareRealScenario(id: RepositoryScenarioId): Promise<ScenarioWo
     if (scenario === undefined) {
         throw new Error(`webviewFixtureGate: no RepositoryScenario is registered for id "${id}".`);
     }
-    const destination = await mkdtemp(
-        path.join(tmpdir(), `intelligit-webview-gate-scenario-${id}-`),
-    );
-    return scenario.prepare(destination);
+    return prepareIntoScratchDestination(id, (destination) => scenario.prepare(destination));
 }
 
 /**
@@ -168,47 +201,87 @@ async function prepareRealScenario(id: RepositoryScenarioId): Promise<ScenarioWo
  * under the OS temp root, a SIBLING of `destination`, not a child. Removing only the destination
  * would therefore leave every scratch `HOME` behind; both paths are removed explicitly here.
  *
- * Guarded by {@link assertDisposableScenarioDestination} -- see its own doc comment for why the
- * derivation is checked rather than trusted.
+ * BOTH paths are guarded by {@link assertDisposableScenarioPath} -- see its own doc comment for why
+ * the derivation is checked rather than trusted. `home` is guarded too, not just the derived
+ * destination: it arrives verbatim from `prepare()`, so it is if anything less constrained than the
+ * value this function computes itself, and it feeds the same recursive `rm`.
  */
 async function disposeScenarioWorkspace(workspace: ScenarioWorkspace): Promise<void> {
     const destination = path.dirname(workspace.root);
-    assertDisposableScenarioDestination(destination, workspace.id);
+    assertDisposableScenarioPath(destination, workspace.id, "destination");
+    assertDisposableScenarioPath(workspace.home, workspace.id, "home");
     await rm(destination, { recursive: true, force: true });
     await rm(workspace.home, { recursive: true, force: true });
 }
 
 /**
- * Throws unless `destination` is a path this gate may recursively delete.
+ * Every path prefix a scenario's disposable paths may legitimately sit under. Both are the OS temp
+ * root: `tmpdir()` as Node reports it, and its realpath. On macOS `tmpdir()` is `/var/folders/...`,
+ * a symlink to `/private/var/folders/...`; `mkdtemp` returns the UNRESOLVED form (it just joins
+ * onto `tmpdir()`) while anything that round-trips through the filesystem comes back resolved.
+ * Accepting only one of the two would make this guard reject the gate's own real destinations on
+ * that platform -- so both spellings of the one directory are accepted, and nothing else is.
+ * Resolved once at module load: this is a fixed property of the machine, and keeping the check
+ * itself free of filesystem access is what lets it be proven by direct call.
+ */
+const DISPOSABLE_TEMP_ROOTS: readonly string[] = Array.from(
+    new Set([path.resolve(tmpdir()), path.resolve(realpathSync(tmpdir()))]),
+);
+
+/** True when `child` is strictly BENEATH `parent` -- equal paths are not contained, which is what
+ * keeps the OS temp root itself from passing. Purely lexical on already-resolved paths: no `..`
+ * segment survives `path.relative` between two resolved paths except as a leading escape, and a
+ * relative result that is absolute (a different Windows drive) is not containment either. */
+function isStrictlyContainedIn(parent: string, child: string): boolean {
+    const relative = path.relative(parent, child);
+    return relative !== "" && !relative.startsWith("..") && !path.isAbsolute(relative);
+}
+
+/**
+ * Throws unless `candidate` is a path this gate may recursively delete: it must live strictly
+ * beneath the OS temp root.
  *
- * `disposeScenarioWorkspace` recovers a workspace's destination as `path.dirname(workspace.root)`,
- * which is correct only because every scenario builder places its root at `<destination>/workspace`
+ * Two different unsafe values reach `disposeScenarioWorkspace`, and containment is what covers
+ * both. The derived one: it recovers a workspace's destination as `path.dirname(workspace.root)`,
+ * correct only because every scenario builder places its root at `<destination>/workspace`
  * (`seed.ts:150`, and `scenarios.ts`'s `toWorkspace` / `prepareEmptyRepo`). That is a convention,
- * not something the type system enforces. If a future builder returns a root sitting directly AT
- * its destination, the derivation silently resolves one level too high -- to the OS temp root --
- * and the `rm(..., { recursive: true })` below it stops being a cleanup and becomes an
- * unrecoverable delete of every other process's scratch state on the machine.
+ * not something the type system enforces -- a future builder returning a root sitting directly AT
+ * its destination makes the derivation resolve one level too high, to the OS temp root, and the
+ * `rm(..., { recursive: true })` stops being a cleanup and becomes an unrecoverable delete of every
+ * other process's scratch state. The supplied one: `runWebviewFixtureGate`'s `prepareScenario`
+ * option is injectable, so `workspace.root` and `workspace.home` are whatever a scenario returns.
+ * A scenario rooted anywhere in the repository -- `<repoRoot>/tests/workspace`, say -- yielded a
+ * `path.dirname` of `<repoRoot>/tests`, which the earlier "is it the temp root or a filesystem
+ * root?" check waved through and the `rm` below then deleted, tracked files and all. Rejecting
+ * exactly two named paths is a denylist; what the `rm` needs is the allowlist, so the check is
+ * containment, not inequality.
  *
- * So the decision lives here, as a pure check, for a specific testing reason: a test that proved
- * this guard by handing the real `disposeScenarioWorkspace` a dangerous path would, on the RED run
- * where the guard is absent, actually perform that delete. A guard whose failing test is
+ * `role` names which of the two paths failed, because they are recovered differently and the fix
+ * differs accordingly -- a bad `destination` means the `<destination>/workspace` convention broke,
+ * while a bad `home` means a scenario builder returned a `HOME` it did not create under `tmpdir()`.
+ *
+ * The decision lives here, split out from the removal, for a specific testing reason: a test that
+ * proved this guard by handing the real `disposeScenarioWorkspace` a dangerous path would, on the
+ * RED run where the guard is absent, actually perform that delete. A guard whose failing test is
  * catastrophic cannot be honestly proven. Split out, it is proven by calling it directly -- it
  * either throws or it does not, and nothing is ever removed to find out.
  */
-export function assertDisposableScenarioDestination(
-    destination: string,
+export function assertDisposableScenarioPath(
+    candidate: string,
     scenarioId: RepositoryScenarioId,
+    role: "destination" | "home",
 ): void {
-    const isFilesystemRoot = destination === path.dirname(destination);
-    if (destination !== tmpdir() && !isFilesystemRoot) {
+    const resolved = path.resolve(candidate);
+    if (DISPOSABLE_TEMP_ROOTS.some((root) => isStrictlyContainedIn(root, resolved))) {
         return;
     }
     throw new Error(
-        `webviewFixtureGate: refusing to recursively remove "${destination}" while disposing the ` +
-            `"${scenarioId}" scenario -- that is the OS temp root (or a filesystem root), not a ` +
-            "scenario destination. A scenario builder must place its root at " +
-            '"<destination>/workspace"; if that changed, thread the real destination through ' +
-            "explicitly instead of deriving it with path.dirname(workspace.root).",
+        `webviewFixtureGate: refusing to recursively remove ${role} "${candidate}" while disposing ` +
+            `the "${scenarioId}" scenario -- it does not resolve to a path strictly beneath the OS ` +
+            `temp root (${DISPOSABLE_TEMP_ROOTS.join(" or ")}). A scenario must build its ` +
+            'destination and its scratch HOME under `tmpdir()`, and must place its root at ' +
+            '"<destination>/workspace" so `path.dirname(workspace.root)` recovers that destination; ' +
+            "if either changed, thread the real path through explicitly instead of deriving it.",
     );
 }
 

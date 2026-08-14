@@ -533,6 +533,10 @@ export class UndockedViewProvider {
     setBranches(branches: Branch[], worktrees: GitWorktree[] = []): void {
         this.branches = branches;
         this.worktrees = worktrees;
+        // Cache-only until a panel exists -- see `CommitGraphViewProvider.setBranches` for why an
+        // unawaited asynchronous send still reaches a panel that opens in the meantime, and why
+        // the webview cannot have received such a post.
+        if (!this.panel) return;
         this.sendBranches().catch((err) => {
             const message = getErrorMessage(err);
             vscode.window.showErrorMessage(

@@ -29,6 +29,7 @@ import { RepositoryLock } from "../../../src/git/repositoryLock";
 import { RepositoryMutationGate } from "../../../src/git/repositoryMutationGate";
 import { ShelfService } from "../../../src/services/shelfService";
 
+import { createSanitizedGitEnv } from "../../fixtures/repo/seed";
 import {
     assertAheadBehindPostcondition,
     assertCleanPostcondition,
@@ -347,7 +348,14 @@ describe("shelf-populated", () => {
         await mkdir(destination, { recursive: true });
         const repoRoot = join(destination, "empty-repo-for-shelf");
         await mkdir(repoRoot, { recursive: true });
-        await execFileAsync("git", ["init", "--quiet"], { cwd: repoRoot });
+        // Sanitized env, not the ambient one: a bare `git init` inherits the developer's real HOME
+        // and global/system config, which is exactly the leakage `assertNoIdentityLeakage` exists to
+        // forbid. `init.defaultBranch`, `init.templateDir`, or a global hook in that config can
+        // change what this repo is created as, so this negative case would be running against a
+        // different repository on a different machine.
+        const { home, env } = await createSanitizedGitEnv();
+        scratchHomes.push(home);
+        await execFileAsync("git", ["init", "--quiet"], { cwd: repoRoot, env });
 
         const shelfPaths = await resolveShelfPaths({
             repositoryRoot: repoRoot,

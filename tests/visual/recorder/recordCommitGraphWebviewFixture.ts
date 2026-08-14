@@ -50,6 +50,7 @@ import { CommitGraphViewProvider } from "../../../src/views/CommitGraphViewProvi
 import { CredentialStore } from "../../../src/services/commitChecks/credentialStore";
 import type { PlaceholderRoots } from "../../fixtures/repo/placeholderCanonicalization";
 import { canonicalizeCapturedMessages } from "./canonicalizeCapturedMessages";
+import { loadRecordingBranches } from "./recordingBranches";
 import { toGitEnvironment } from "./recordingGitEnvironment";
 import { createFakeCommitGraphWebviewView, createFakeExtensionUri } from "./commitInfoVscodeDouble";
 import { throwingDouble } from "./throwingDouble";
@@ -167,13 +168,28 @@ async function recordCommitGraphWebviewFixture(
     resetE2eWebviewCaptureSinkForTests();
 
     const credentialStore = new CredentialStore(createInertSecretStorage());
+    const gitOps = new GitOps(
+        new GitExecutor(options.repoRoot, undefined, toGitEnvironment(options.env)),
+    );
     const provider = new CommitGraphViewProvider(
         createFakeExtensionUri(),
-        new GitOps(new GitExecutor(options.repoRoot, undefined, toGitEnvironment(options.env))),
+        gitOps,
         credentialStore,
         buildProviderOptions(variant),
     );
     const capturedProvider = captureWebviewViewProvider(provider, contextId);
+
+    // Production's activation sequence, applied BEFORE the view resolves -- see
+    // `recordingBranches.ts` for why the branch list has to be populated at all (an unpopulated
+    // provider records `"branches": []`) and why the call belongs on this side of
+    // `resolveWebviewView`: the setter caches without posting while no view exists, so `ready`'s
+    // own `sendBranches` posts the populated list exactly once.
+    const { branches, worktrees } = await loadRecordingBranches(
+        gitOps,
+        options.repoRoot,
+        options.env,
+    );
+    provider.setBranches(branches, worktrees);
 
     const { webviewView, receiveMessage } = createFakeCommitGraphWebviewView();
     capturedProvider.resolveWebviewView(

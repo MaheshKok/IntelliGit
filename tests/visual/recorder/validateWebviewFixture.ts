@@ -16,7 +16,7 @@ import {
     type CapturedWebviewMessage,
     type WebviewContextId,
 } from "../../../src/e2e/webviewCapture";
-import type { WebviewFixture } from "./webviewFixtureTypes";
+import { WEBVIEW_FIXTURE_SCHEMA_VERSION, type WebviewFixture } from "./webviewFixtureTypes";
 
 function assertRecord(value: unknown, context: string): Record<string, unknown> {
     if (typeof value !== "object" || value === null || Array.isArray(value)) {
@@ -80,6 +80,19 @@ export function parseWebviewFixture(raw: unknown): WebviewFixture {
         record.schemaVersion,
         'Webview fixture field "schemaVersion"',
     );
+    // `WEBVIEW_FIXTURE_SCHEMA_VERSION` exists to make a stale fixture "fail loudly instead of
+    // comparing against an incompatible shape" (its own doc comment), which only happens if
+    // something compares. Type-checking the field as a number and then accepting any value made the
+    // constant decorative: a fixture written under schema 1 and read after a schema 2 rename would
+    // pass every check here and fail later as a confusing field-level mismatch, or not at all.
+    if (schemaVersion !== WEBVIEW_FIXTURE_SCHEMA_VERSION) {
+        throw new Error(
+            `Webview fixture field "schemaVersion" is ${schemaVersion}, but this recorder reads ` +
+                `schema version ${WEBVIEW_FIXTURE_SCHEMA_VERSION}. Regenerate the committed ` +
+                "fixtures with UPDATE_WEBVIEW_FIXTURES=1 rather than reading them under a schema " +
+                "they were not written for.",
+        );
+    }
     const contextId = assertContextId(record.contextId, 'Webview fixture field "contextId"');
     const scenario = assertString(record.scenario, 'Webview fixture field "scenario"');
 
