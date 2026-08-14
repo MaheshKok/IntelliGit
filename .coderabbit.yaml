@@ -16,6 +16,14 @@
 # 81 source/config and 16 tests. Source count is fixed, so the tests are the
 # only adjustable part. If a branch ever crosses the cap again, cut
 # `tests/unit/git/**` next (5 files), then `tests/unit/shelf/**` (11).
+#
+# The visual-testing branch crossed it: 129 changed files, 122 surviving the
+# filters below, so CodeRabbit reviewed none of them. Excluding the pixel
+# baselines brings it to 90. That is the cheapest 32 slots in the repo -- they
+# are binary PNGs, so there is no text for a reviewer to have an opinion about,
+# and a diff on one is either an intended rebaseline or a regression the visual
+# suite itself already failed on. Margin is only 10 files, so the next branch
+# to cross the cap cuts `tests/unit/git/**` as above.
 reviews:
     path_filters:
         # Translation and docs data: no logic, 12 locales of churn per string.
@@ -28,6 +36,12 @@ reviews:
         # Reviewing the review config against itself buys nothing, and the slot
         # it frees does.
         - "!.coderabbit.yaml"
+        # Playwright pixel baselines. Committed on purpose -- an absent snapshot
+        # is not a failure to Playwright, it WRITES the file and passes, even
+        # without `--update-snapshots`, so an uncommitted baseline turns the
+        # gate into a no-op that certifies whatever the first run rendered.
+        # They still cannot be reviewed: 32 binary PNGs carrying no text.
+        - "!tests/visual/__screenshots__/**"
         # DOM and host-wiring tests: breakage shows up as a red suite, not as a
         # silently-passing test, so an extra reviewer buys the least here.
         - "!tests/webview/**"

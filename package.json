@@ -2,7 +2,7 @@
     "name": "intelligit",
     "displayName": "IntelliGit",
     "description": "%extension.description%",
-    "version": "0.24.1",
+    "version": "0.24.2",
     "publisher": "MaheshKok",
     "icon": "media/intelligit-icon.png",
     "license": "MIT",
@@ -974,7 +974,7 @@
         }
     },
     "scripts": {
-        "vscode:prepublish": "bun scripts/build.js --production",
+        "vscode:prepublish": "node scripts/verifyNoE2eManifestCommand.js && bun scripts/build.js --production",
         "build": "bun scripts/build.js",
         "build:prod": "bun scripts/build.js --production",
         "preview:merge-editor": "bun run build && bun scripts/preview-merge-editor.js",

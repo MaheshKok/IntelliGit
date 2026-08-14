@@ -141,6 +141,9 @@ export class ShelfConflictEditorPanel {
             scriptFile: "webview-mergeeditor.js",
             styleFiles: ["webview-mergeeditor.css"],
             title: `Resolve shelf conflict: ${path.posix.basename(options.changeId)}`,
+            // One live panel per (repo, shelf, change), and the bundle is shared with
+            // MergeEditorPanel -- the scriptFile-derived default would collide on both axes.
+            e2eViewId: `shelf-conflict-editor\u0000${this.key}`,
         });
         panel.webview.onDidReceiveMessage(async (message) => {
             try {

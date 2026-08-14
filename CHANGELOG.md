@@ -5,6 +5,12 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.24.2] - 2026-08-14
+
+### Security
+
+- The extension bundle now carries an end-to-end control channel used only by the automated UI tests. It is inert in every published install: it activates only when all three of `ExtensionMode.Development`, `INTELLIGIT_E2E=1`, and a writable channel directory hold at once, and a released extension never runs in development mode. It answers only an explicit allowlist of keys — anything unlisted is rejected rather than passed through — and it reports secrets as presence and digest, never as values.
+
 ## [0.24.1] - 2026-08-13
 
 ### Security

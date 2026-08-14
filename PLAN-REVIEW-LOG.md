@@ -514,3 +514,112 @@ Phase 3, deliberately not taken here:**
 Phase 0 committed the macOS fixtures because that is what it captured and
 proved reproducible; swapping them is a Phase 3 decision with a real tradeoff,
 so it is raised here rather than made silently.
+
+---
+
+## Phase 1 — fixture repository + E2E control channel — ACCEPTED `2ada2bad`
+
+Builder: **Sonnet 5** subagent lanes at high effort (standing user override: Codex
+is not the builder for this build; it remains the read-only reviewer). Root
+(Opus 5) owned the spec, the review of every returned diff, and all acceptance.
+Rounds: build + 2 fix lanes + root-owned integration edits. No Codex round.
+
+**Scope delivered**
+
+- `tests/fixtures/repo/` — deterministic seed (fixed identities, incrementing
+  deterministic clock, merge/conflict/ahead-behind branches over a shared
+  multi-lane merge base, tags, pre-seeded dirty layer), per-test copy with
+  inode + symlink independence proof, on-disk origin-URL rehydration with a
+  normalized-diff assertion, manifest publish/claim, workspace snapshot +
+  normalize.
+- `src/e2e/` — development-only control channel: allowlisted keys, secrets as
+  presence + digest only, three independent gates.
+- Playwright setup/teardown projects wired in `playwright.e2e.config.ts`;
+  `tests/e2e/fixtureTemplate.setup.ts` / `.teardown.ts` are thin wrappers.
+
+**Proof (all re-run by root, not taken from the builder)**
+
+| Gate | Result |
+|---|---|
+| `bun run test` | 197 files / 3003 tests, rc=0 |
+| pre-commit hook (all nine checks) | `PRECOMMIT_RC=0` |
+| `git commit --amend` re-running the hook | `AMEND_RC=0` |
+| knip (`deps:check:strict`) | 0 findings, **0 ignores added** |
+| `architecture:check` (dependency-cruiser) | 291 modules, 0 violations |
+| tests-tree typecheck (`tests/fixtures`, `tests/unit`, `tests/e2e`) | rc=0 |
+| `vsce ls --tree` | no Playwright config / `test-results/` in the package |
+| `detect_changes` (codebase-memory) | exactly the 7 expected changed files |
+
+**Oracles proven able to fail (the governing principle of this plan)**
+
+- Webview id-collision oracle: reverting the `e2eViewId` plumbing drives it RED,
+  three instances collapsing onto one registry key.
+- `claimFixtureManifest`: 10 concurrent claimants leave exactly 1 winner;
+  substituting `existsSync` + `rename` lets 8 of 10 win. The `link(2)` version is
+  race-free by construction — the existence check and the publish are one syscall.
+- `runFixtureSetup` ordering (seed → `git fsck` workspace AND bare origin →
+  publish) means a corrupt template is never reachable through the manifest. The
+  signal is the exit code alone: plain `git fsck` on a healthy seeded template
+  exits 0 with empty output, because default fsck treats every ref's reflog as a
+  reachability root.
+
+**Four defects found during acceptance that every obvious gate missed**
+
+1. **Raw NUL bytes in three files** (`MergeEditorPanel.ts`,
+   `ShelfConflictEditorPanel.ts`, `webviewHtmlBootstrap.test.ts`) — from this
+   branch's own `e2eViewId` work. NUL-joining composite keys IS this codebase's
+   idiom, so the design was right and only the encoding was wrong: the existing
+   code writes the escape sequence, these wrote a raw `0x00`. Identical runtime
+   value, so `tsc`, eslint and all 3003 tests stayed green — the only symptom was
+   git reclassifying the files as binary and refusing a reviewable diff.
+2. **A real `TS2322` in Phase 0's `launch.spec.ts`** — `NodeJS.ProcessEnv`
+   (`string | undefined`) passed to `_electron.launch`, which requires all-string
+   values. Visible only after widening a typecheck over `tests/e2e/**`:
+   `tsconfig.json` excludes `tests/` and vitest transpiles without typechecking,
+   so type errors under `tests/` are invisible to BOTH repo gates (step 36).
+   Fixed by dropping undefined-valued keys, not by casting.
+3. **A circular dependency** `e2eStateBridge → vscodeApi → e2eStateBridge`. The
+   repo sets `tsPreCompilationDeps: true`, so a **type-only** import edge still
+   counts. Fixed structurally — `VsCodeApi` now lives in a leaf module
+   `vscodeApiTypes.ts` and is re-exported, so every import site is unchanged. No
+   config exemption.
+4. **A packaging leak** — `.vscodeignore` was shipping `playwright.e2e.config.ts`
+   and `test-results/` into the published `.vsix`; `tests/**` covers neither a
+   root-level config nor Playwright's output directory.
+
+Defects 3 and 4 were caught only because the reflexive `--no-verify` on the first
+commit was reverted and the hook was allowed to run. Under `set -e` each failure
+hid the ones behind it, so they came out one per chain run, across three runs.
+
+**Deliberate call:** knip was taken 21 → 0 findings with **zero** entries added to
+an ignore list — barrel re-exports no consumer routed through were deleted, and
+in-module-only exports were un-exported. Green-with-no-ignores is what makes the
+next dead export get caught.
+
+**Still owed before any push:** `security-reviewer` on the new `src/e2e/` secrets
+surface (Tier 1 project rule). Nothing has been pushed; `main` is 3 commits ahead
+of the remote and the tree is clean.
+
+---
+
+## Handoff — resume at Phase 2
+
+- `BASE_HEAD` = `2ada2bad` (tree clean, unpushed, `main`)
+- `SPEC_FILE` = `PLAN.md`, `LOG_FILE` = `PLAN-REVIEW-LOG.md`
+- Builder override in force: **Sonnet 5 at high/xhigh effort**, not Codex. Root
+  (Opus 5) keeps review, integration, verification, and the commit. Commit after
+  every phase. Codex stays read-only if used for review at all.
+- Phases committed so far: Phase 0 → `df3370fd` + `24a0f775`; Phase 1 → `2ada2bad`.
+- Phases remaining: 2 (recorder), 3 (visual harness), 4 (~10 E2E flows),
+  5 (nightly sweep), 6 (infra unit tests).
+- **Open owner decision, carried from Phase 0, due at Phase 3:** whether the
+  committed host fixtures become the container-generated `linux-x64` ones, and how
+  step 39's recapture-and-compare survives on macOS. See the Phase 0 section above.
+- Recurring traps for the next session: the tests-tree typecheck hole (step 36),
+  `tsPreCompilationDeps` making type-only imports real edges, and never passing
+  `--no-verify` in this repo.
+
+Stopping here is the `claudex-build` checkpoint rule, not a scope cut: this
+orchestrator session has already auto-compacted, so Phase 2 is not launched from
+it. Relaunch `/claudex-build PLAN.md` in a fresh session — the spec, this log, and
+the committed tree are the entire state.

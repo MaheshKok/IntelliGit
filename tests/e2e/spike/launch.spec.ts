@@ -86,11 +86,17 @@ test.afterAll(async () => {
  * developer's real `~/.gitconfig`, credential helper, or global ignore file
  * can never leak into what the extension or its git subprocesses see.
  */
-async function createSanitizedGitEnv(): Promise<NodeJS.ProcessEnv> {
+async function createSanitizedGitEnv(): Promise<Record<string, string>> {
     const home = await mkdtemp(path.join(tmpdir(), "intelligit-spike-home-"));
     directoriesToClean.push(home);
+    // `process.env` is typed `string | undefined` per key, but `_electron.launch`'s `env` requires
+    // every value to be a string. Dropping the undefined-valued keys is what makes the two types
+    // meet honestly -- a cast would compile and then pass `undefined` straight through to Electron.
+    const inherited = Object.fromEntries(
+        Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined),
+    );
     return {
-        ...process.env,
+        ...inherited,
         HOME: home,
         GIT_CONFIG_GLOBAL: "/dev/null",
         GIT_CONFIG_SYSTEM: "/dev/null",

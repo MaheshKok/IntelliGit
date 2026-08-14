@@ -647,6 +647,12 @@ vi.mock("vscode", () => ({
     TreeItemCollapsibleState: { None: 0, Collapsed: 1, Expanded: 2 },
     ViewColumn: { Active: -1, One: 1, Two: 2, Three: 3 },
     ProgressLocation: { Notification: 15 },
+    // None of this file's fake ExtensionContext objects set `extensionMode`, so it is
+    // `undefined` for every test here -- which correctly fails `activateE2eControlChannel`'s
+    // `extensionMode !== ExtensionMode.Development` gate check and leaves the E2E control
+    // channel inert, matching real production behavior. Only the enum itself needs to exist so
+    // that comparison doesn't throw.
+    ExtensionMode: { Production: 1, Development: 2, Test: 3 },
     Uri: {
         file: (value: string) => ({ fsPath: value, path: value }),
         parse: (value: string) => ({
