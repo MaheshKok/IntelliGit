@@ -39,14 +39,37 @@ export const FRAME_RESOLUTION_TIMEOUT_MS = 45_000;
  * before any test runs, but the capture also calls `resolveVSCodeExecutable`
  * itself, so on a cold cache it can land inside the test's own budget.
  */
-const VSCODE_DOWNLOAD_BUDGET_MS = 600_000;
+export const VSCODE_DOWNLOAD_BUDGET_MS = 600_000;
+
+/**
+ * Per-capture room for the work neither ceiling above covers: switching the
+ * theme and letting it settle, reading the DOM back out of the webview, writing
+ * the fixture JSON, `electronApp.close()`, and Playwright's own setup and
+ * teardown between the sequential captures.
+ *
+ * Without it the outer budget equals the sum of the inner ceilings EXACTLY,
+ * which quietly reintroduces the failure this whole module exists to prevent.
+ * The pre-emption does not need a launch to exceed its ceiling -- only for the
+ * earlier ones to run NEAR theirs. Four launches at 299s each plus a cold
+ * download leave the outer budget expiring part-way through the fourth launch's
+ * own 300s window, so the report reads "Test timeout of 1980000ms exceeded",
+ * naming neither the fixture nor the launch, instead of the explicit
+ * launch-timeout error 300s was chosen to produce.
+ *
+ * It is multiplied by the theme count rather than added once, because the
+ * overhead is per capture: adding a fifth fixture widens this with it, the same
+ * cannot-disagree property the rest of the file is built on.
+ */
+export const PER_CAPTURE_OVERHEAD_MS = 30_000;
 
 /**
  * Worst case for the whole four-fixture capture: every launch and every frame
- * resolution burning its full ceiling, plus one cold download.
+ * resolution burning its full ceiling, plus per-capture overhead and one cold
+ * download.
  */
 export const HOST_FIXTURE_CAPTURE_TIMEOUT_MS =
-    HOST_FIXTURE_THEMES.length * (ELECTRON_LAUNCH_TIMEOUT_MS + FRAME_RESOLUTION_TIMEOUT_MS) +
+    HOST_FIXTURE_THEMES.length *
+        (ELECTRON_LAUNCH_TIMEOUT_MS + FRAME_RESOLUTION_TIMEOUT_MS + PER_CAPTURE_OVERHEAD_MS) +
     VSCODE_DOWNLOAD_BUDGET_MS;
 
 /** Room above the capture for the rest of the suite -- the spike spec and `globalSetup`'s own download. */
