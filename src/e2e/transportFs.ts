@@ -64,6 +64,31 @@ export function writeResponseFileAtomic(channelDir: string, nonce: string, paylo
     renameSync(tempPath, finalPath);
 }
 
+/**
+ * Describes why a request file could not be read, in terms safe to write to the host log.
+ *
+ * A `JSON.parse` failure is reported without its message, because that message can contain
+ * file content. Measured against this Node's V8 rather than assumed: when the parse fails at
+ * position 0 the message quotes the input's first ten characters
+ * (`Unexpected token 'p', "placeholde"... is not valid JSON`), and only when it fails later
+ * does it report a bare position. Ten characters is a small leak but a real one, and the file
+ * it comes from is not opaque bytes -- a `secret` `seed` request carries the secret value --
+ * while this suite's host log is a CI log. The channel's presence-and-digest-never-values rule
+ * is stated without an exception for prefixes, so this honours it without one.
+ *
+ * Nothing diagnosable is lost: the nonce below names the file for anyone who wants to open it,
+ * and the reason it could not be read is the same for every shape of invalid JSON.
+ *
+ * Every other failure -- a read error, a permission error -- carries an errno and a path, not
+ * file content, so its message is kept as-is.
+ */
+function describeReadFailure(error: unknown): string {
+    if (error instanceof SyntaxError) {
+        return "request file is not valid JSON (content withheld: a request body can carry a secret value)";
+    }
+    return error instanceof Error ? error.message : String(error);
+}
+
 /** Disposer returned by {@link watchChannelDir}. */
 export interface ChannelWatcher {
     dispose(): void;
@@ -74,6 +99,21 @@ export interface ChannelWatcher {
  * with the nonce and parsed payload for each one it can read. Malformed nonces and
  * unrelated files (including this transport's own `.response.json` and `.tmp` outputs) are
  * silently ignored by the filename filter -- they are not this watcher's concern.
+ *
+ * Unreadable CONTENT is a separate matter from an unreadable name, and is handled here rather
+ * than downstream. `fs.watch` fires as soon as the request file appears, which for a writer
+ * that does not rename its file into place can be before the bytes are all there, so
+ * `readRequestFile`'s `JSON.parse` can throw a `SyntaxError` -- inside this listener, upstream
+ * of every `try`/`catch` in the caller's dispatch path, where nothing catches it and it
+ * escapes as an uncaught exception in the extension host.
+ *
+ * Such an event is dropped rather than reported to `onRequest` as a failed request, because
+ * this transport cannot tell the two causes apart from the parse error alone: a half-written
+ * file and a genuinely malformed one look identical. Dropping is right for the first (the
+ * writer's completing write fires another event for the same file) and merely quiet for the
+ * second, whereas answering would race a spurious error response against the real one. The
+ * skip is logged so a request that never gets answered has a stated reason on the host side
+ * rather than presenting to the caller as an unexplained timeout.
  */
 export function watchChannelDir(
     channelDir: string,
@@ -87,7 +127,15 @@ export function watchChannelDir(
         if (nonce === undefined) {
             return;
         }
-        const payload = readRequestFile(channelDir, nonce);
+        let payload: unknown;
+        try {
+            payload = readRequestFile(channelDir, nonce);
+        } catch (error) {
+            console.error(
+                `E2E control channel skipped an unreadable request "${nonce}": ${describeReadFailure(error)}`,
+            );
+            return;
+        }
         if (payload === undefined) {
             return;
         }

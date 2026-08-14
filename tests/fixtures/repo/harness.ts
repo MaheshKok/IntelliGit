@@ -91,7 +91,12 @@ export const DEFAULT_WORKSPACES_ROOT = path.join(tmpdir(), "intelligit-e2e-works
  *
  * Propagates whatever `readFixtureManifest`, `copyTemplate`, or `rehydrateCopy` throw, unmodified --
  * a missing/malformed manifest, a symlink-containment violation, or a rehydration failure are all
- * real construction failures this function does not paper over.
+ * real construction failures this function does not paper over. It does, however, take its own root
+ * back down before rethrowing: `dispose()` is the only thing that ever removes that root and it only
+ * exists on the handle this function returns, so a throw after `mkdtemp` would otherwise leave a
+ * full workspace copy with no owner at all. `runFixtureTeardown` removes the template directory and
+ * the manifest, never a workspace root, and `DEFAULT_WORKSPACES_ROOT` is a fixed path under the OS
+ * temp directory -- so those orphans accumulate run over run rather than being reclaimed later.
  */
 export async function createFixtureWorkspace(options?: CreateFixtureWorkspaceOptions): Promise<FixtureWorkspace> {
     const manifestPath = options?.manifestPath ?? DEFAULT_MANIFEST_PATH;
@@ -102,8 +107,18 @@ export async function createFixtureWorkspace(options?: CreateFixtureWorkspaceOpt
     await mkdir(workspacesRoot, { recursive: true });
     const ownRoot = await mkdtemp(path.join(workspacesRoot, "intelligit-e2e-workspace-"));
 
-    const { root, originRoot, profileDir, env } = await allocateWorkspace(ownRoot, manifest.templateRoot);
+    let allocated;
+    try {
+        allocated = await allocateWorkspace(ownRoot, manifest.templateRoot);
+    } catch (error) {
+        // Best-effort, and deliberately not allowed to replace the diagnosis: the caller needs
+        // to know WHY construction failed, and a cleanup error raised in its place would bury
+        // that. `force: true` already absorbs the case where nothing was created yet.
+        await rm(ownRoot, { recursive: true, force: true }).catch(() => undefined);
+        throw error;
+    }
 
+    const { root, originRoot, profileDir, env } = allocated;
     return { root, originRoot, profileDir, env, dispose: createDisposer(ownRoot, root, env) };
 }
 

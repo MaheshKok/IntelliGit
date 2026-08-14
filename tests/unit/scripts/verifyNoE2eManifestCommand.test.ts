@@ -5,11 +5,12 @@
 // sufficient proxy. The primary case is the real repository file: this suite fails loudly if
 // a control command is ever actually added to it, not just against synthetic fixtures.
 
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+    diffCommandInventory,
     findE2eCommands,
     verifyNoE2eManifestCommand,
 } from "../../../scripts/verifyNoE2eManifestCommand.js";
@@ -40,26 +41,38 @@ describe("verifyNoE2eManifestCommand: synthetic fixtures", () => {
 
     it("passes when contributes.commands is absent entirely", () => {
         const packageJsonPath = seedPackageJson(undefined);
-        expect(verifyNoE2eManifestCommand({ packageJsonPath })).toEqual({ ok: true, errors: [] });
+        expect(verifyNoE2eManifestCommand({ packageJsonPath, knownCommands: [] })).toEqual({
+            ok: true,
+            errors: [],
+        });
     });
 
     it("passes when contributes.commands is empty", () => {
         const packageJsonPath = seedPackageJson({ commands: [] });
-        expect(verifyNoE2eManifestCommand({ packageJsonPath })).toEqual({ ok: true, errors: [] });
+        expect(verifyNoE2eManifestCommand({ packageJsonPath, knownCommands: [] })).toEqual({
+            ok: true,
+            errors: [],
+        });
     });
 
-    it("passes for ordinary, unrelated commands", () => {
+    it("passes for ordinary, unrelated commands that are pinned", () => {
         const packageJsonPath = seedPackageJson({
             commands: [{ command: "intelligit.refresh", title: "Refresh" }],
         });
-        expect(verifyNoE2eManifestCommand({ packageJsonPath })).toEqual({ ok: true, errors: [] });
+        expect(
+            verifyNoE2eManifestCommand({ packageJsonPath, knownCommands: ["intelligit.refresh"] }),
+        ).toEqual({ ok: true, errors: [] });
     });
 
     it("fails when a command id names the E2E control channel", () => {
         const packageJsonPath = seedPackageJson({
             commands: [{ command: "intelligit.e2eControlChannel.seed", title: "Seed" }],
         });
-        const result = verifyNoE2eManifestCommand({ packageJsonPath });
+        // Pinned on purpose, so only the name pattern can be what fails here.
+        const result = verifyNoE2eManifestCommand({
+            packageJsonPath,
+            knownCommands: ["intelligit.e2eControlChannel.seed"],
+        });
         expect(result.ok).toBe(false);
         expect(result.errors[0]).toContain("intelligit.e2eControlChannel.seed");
     });
@@ -71,7 +84,10 @@ describe("verifyNoE2eManifestCommand: synthetic fixtures", () => {
         const packageJsonPath = seedPackageJson({
             commands: [{ command: "intelligit.controlChannel.snapshot", title: "Snapshot state" }],
         });
-        const result = verifyNoE2eManifestCommand({ packageJsonPath });
+        const result = verifyNoE2eManifestCommand({
+            packageJsonPath,
+            knownCommands: ["intelligit.controlChannel.snapshot"],
+        });
         expect(result.ok).toBe(false);
         expect(result.errors[0]).toContain("intelligit.controlChannel.snapshot");
     });
@@ -82,7 +98,10 @@ describe("verifyNoE2eManifestCommand: synthetic fixtures", () => {
         const packageJsonPath = seedPackageJson({
             commands: [{ command: "intelligit.internalDebug", title: "IntelliGit: E2E Seed State" }],
         });
-        const result = verifyNoE2eManifestCommand({ packageJsonPath });
+        const result = verifyNoE2eManifestCommand({
+            packageJsonPath,
+            knownCommands: ["intelligit.internalDebug"],
+        });
         expect(result.ok).toBe(false);
     });
 
@@ -90,14 +109,22 @@ describe("verifyNoE2eManifestCommand: synthetic fixtures", () => {
         const packageJsonPath = seedPackageJson({
             commands: [{ command: "intelligit.internalDebug", title: "Seed", category: "E2E" }],
         });
-        expect(verifyNoE2eManifestCommand({ packageJsonPath }).ok).toBe(false);
+        expect(
+            verifyNoE2eManifestCommand({
+                packageJsonPath,
+                knownCommands: ["intelligit.internalDebug"],
+            }).ok,
+        ).toBe(false);
     });
 
     it("is case-insensitive", () => {
         const packageJsonPath = seedPackageJson({
             commands: [{ command: "intelligit.E2E.reset", title: "Reset" }],
         });
-        expect(verifyNoE2eManifestCommand({ packageJsonPath }).ok).toBe(false);
+        expect(
+            verifyNoE2eManifestCommand({ packageJsonPath, knownCommands: ["intelligit.E2E.reset"] })
+                .ok,
+        ).toBe(false);
     });
 
     it("reports every offending command, not just the first", () => {
@@ -108,8 +135,116 @@ describe("verifyNoE2eManifestCommand: synthetic fixtures", () => {
                 { command: "intelligit.e2e.reset", title: "Reset" },
             ],
         });
-        const result = verifyNoE2eManifestCommand({ packageJsonPath });
+        const result = verifyNoE2eManifestCommand({
+            packageJsonPath,
+            knownCommands: ["intelligit.e2e.seed", "intelligit.ok", "intelligit.e2e.reset"],
+        });
         expect(result.errors).toHaveLength(2);
+    });
+});
+
+/**
+ * The case the name pattern cannot see. A control entry point does not have to announce
+ * itself: `intelligit.internalDebug` titled "Seed", with no category, reads as an ordinary
+ * command to any rule that classifies a command from the words its author chose, while
+ * dispatching exactly the surface this gate exists to keep out of the manifest.
+ *
+ * These tests assert both halves -- that the pattern really is blind to it, and that the gate
+ * still fails -- so the pattern's blindness is stated as a fact of the design rather than left
+ * as an assumption. Deleting the inventory rule turns the second assertion red while the first
+ * keeps passing.
+ */
+describe("verifyNoE2eManifestCommand: a control command with neutral metadata", () => {
+    let dir: string;
+
+    beforeEach(() => {
+        dir = mkdtempSync(join(tmpdir(), "intelligit-e2e-packaging-bypass-"));
+    });
+
+    afterEach(() => {
+        rmSync(dir, { recursive: true, force: true });
+    });
+
+    const NEUTRAL_COMMAND = { command: "intelligit.internalDebug", title: "Seed" };
+
+    function seedNeutralPackageJson(): string {
+        const path = join(dir, "package.json");
+        writeFileSync(
+            path,
+            JSON.stringify({ name: "fixture", contributes: { commands: [NEUTRAL_COMMAND] } }),
+            "utf8",
+        );
+        return path;
+    }
+
+    it("is invisible to the name pattern", () => {
+        expect(findE2eCommands({ contributes: { commands: [NEUTRAL_COMMAND] } })).toEqual([]);
+    });
+
+    it("still fails the gate, because it was never classified", () => {
+        const result = verifyNoE2eManifestCommand({
+            packageJsonPath: seedNeutralPackageJson(),
+            knownCommands: [],
+        });
+        expect(result.ok).toBe(false);
+        expect(result.errors[0]).toContain("intelligit.internalDebug");
+        expect(result.errors[0]).toContain("unclassified");
+    });
+
+    it("passes once it is classified, so the gate is not simply always red", () => {
+        const result = verifyNoE2eManifestCommand({
+            packageJsonPath: seedNeutralPackageJson(),
+            knownCommands: ["intelligit.internalDebug"],
+        });
+        expect(result).toEqual({ ok: true, errors: [] });
+    });
+});
+
+describe("diffCommandInventory: both directions", () => {
+    it("reports a contributed command missing from the pin", () => {
+        const diff = diffCommandInventory(
+            { contributes: { commands: [{ command: "a" }, { command: "b" }] } },
+            ["a"],
+        );
+        expect(diff).toEqual({ unpinned: ["b"], stale: [] });
+    });
+
+    /**
+     * Without this direction a rename passes silently: the old id stays pinned, vouching for a
+     * command that no longer exists, and the pin drifts out of agreement with the manifest one
+     * entry at a time until it is describing a different extension.
+     */
+    it("reports a pinned command the manifest no longer contributes", () => {
+        const diff = diffCommandInventory({ contributes: { commands: [{ command: "a" }] } }, [
+            "a",
+            "removed",
+        ]);
+        expect(diff).toEqual({ unpinned: [], stale: ["removed"] });
+    });
+
+    it("treats a missing contributes block as contributing nothing", () => {
+        expect(diffCommandInventory({}, [])).toEqual({ unpinned: [], stale: [] });
+    });
+});
+
+/**
+ * Where the gate actually runs. `vsce package` and `vsce publish` both execute
+ * `vscode:prepublish` before building the .vsix and halt on a non-zero exit, so that hook is
+ * the one place a packaging check is guaranteed to be reached -- including when someone runs
+ * `vsce package` by hand, outside CI entirely.
+ */
+describe("verifyNoE2eManifestCommand: packaging lifecycle wiring", () => {
+    it("runs from vscode:prepublish, which vsce executes before packaging or publishing", () => {
+        const packageJson = JSON.parse(
+            readFileSync(join(process.cwd(), "package.json"), "utf8"),
+        ) as { scripts?: Record<string, string> };
+
+        expect(
+            packageJson.scripts?.["vscode:prepublish"] ?? "",
+            "a packaging gate that no packaging command runs is not a gate; vsce runs " +
+                "vscode:prepublish for both `vsce package` and `vsce publish` and halts on a " +
+                "non-zero exit",
+        ).toContain("verifyNoE2eManifestCommand");
     });
 });
 

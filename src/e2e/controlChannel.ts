@@ -55,12 +55,23 @@ export function activateE2eControlChannel(
     const digestSalt = generateSecretDigestSalt();
 
     const watcher = watchChannelDir(channelDir, (nonce, payload) => {
-        void dispatchRequest(context, webviewRegistry, digestSalt, nonce, payload).then(
-            (response) => {
+        // `dispatchRequest` turns every parse and handler failure into an error response, so it
+        // never rejects -- but the callback below is not covered by that. `removeRequestFile`
+        // and `writeResponseFileAtomic` are synchronous filesystem calls that can throw (the
+        // channel directory removed by test teardown while a request was in flight, a full
+        // volume, something already occupying the response path). A throw there, with no
+        // rejection handler attached, is an unhandled promise rejection in the extension host
+        // that names no request at all -- so it is caught and reported against its own nonce.
+        dispatchRequest(context, webviewRegistry, digestSalt, nonce, payload)
+            .then((response) => {
                 removeRequestFile(channelDir, nonce);
                 writeResponseFileAtomic(channelDir, nonce, response);
-            },
-        );
+            })
+            .catch((error: unknown) => {
+                console.error(
+                    `E2E control channel failed to finalize request "${nonce}": ${getErrorMessage(error)}`,
+                );
+            });
     });
 
     return {

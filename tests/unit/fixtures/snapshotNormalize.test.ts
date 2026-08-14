@@ -21,6 +21,7 @@
  */
 
 import { cp, mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import { realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -330,6 +331,92 @@ describe("normalizeSnapshot -- comparison stays case-sensitive on recorded names
         // On a case-insensitive filesystem these two entries would be the SAME path on disk; the
         // comparison contract must still treat them as different recorded names.
         expect(normalizedLower).not.toEqual(normalizedUpper);
+    });
+});
+
+describe("normalizeSnapshot -- durableState.shelfFiles carries FsEntry digests, not opaque JSON", () => {
+    /**
+     * `DurableStateSnapshot.shelfFiles` is `readonly FsEntry[]`, so every rule the module doc
+     * comment states about an `FsEntry` applies to it: a rewritten `text` must get a recomputed
+     * `digest`, or the digest still hashes the ORIGINAL per-root bytes and two workspaces at
+     * different roots keep comparing unequal on exactly the field normalization exists to make
+     * equal.
+     *
+     * The assertion is the contract itself -- two roots normalize to an equal snapshot -- not
+     * "the digest equals the hash of the normalized text", which would only restate the fix.
+     */
+    function buildSnapshot(roots: {
+        readonly root: string;
+        readonly originRoot: string;
+        readonly profileDir: string;
+    }) {
+        const shelfText = `{"originalRepoRoot":"${roots.root}","shelvedAt":"2026-01-01T00:00:00Z"}`;
+        const shelfFile: FsEntry = {
+            relativePath: "shelf/entry-1.json",
+            type: "file",
+            mode: 0o644,
+            // The digest a real capture records: a hash of the bytes actually on disk, which
+            // embed this workspace's own absolute root.
+            digest: createHash("sha256").update(Buffer.from(shelfText, "utf8")).digest("hex"),
+            text: shelfText,
+            symlinkTarget: null,
+        };
+
+        const emptyRepo = (repoRoot: string, isBare: boolean) => ({
+            repoRoot,
+            commonDir: isBare ? repoRoot : `${repoRoot}/.git`,
+            isBare,
+            workingTree: notCaptured<readonly FsEntry[]>("not under test"),
+            index: captured([]),
+            refs: captured([]),
+            head: captured({ kind: "symbolic" as const, target: "refs/heads/main" }),
+            reflogs: captured([]),
+            worktrees: captured([]),
+            gitDirState: captured({}),
+            objectStore: captured({
+                objects: [],
+                alternates: { present: false, rawLines: [], resolvedAbsolutePaths: [] },
+            }),
+        });
+
+        return {
+            workspace: emptyRepo(roots.root, false),
+            origin: emptyRepo(roots.originRoot, true),
+            durableState: captured({
+                shelfFiles: [shelfFile],
+                memento: { global: {}, workspace: {} },
+                secrets: {},
+                configuration: {},
+                webviewState: {},
+            }),
+        };
+    }
+
+    const rootsA = {
+        root: "/tmp/intelligit-durable-a/copy/workspace",
+        originRoot: "/tmp/intelligit-durable-a/copy/origin.git",
+        profileDir: "/tmp/intelligit-durable-a/profile",
+    };
+    const rootsB = {
+        root: "/tmp/intelligit-durable-b/copy/workspace",
+        originRoot: "/tmp/intelligit-durable-b/copy/origin.git",
+        profileDir: "/tmp/intelligit-durable-b/profile",
+    };
+
+    it("normalizes two workspaces' shelf files to an equal snapshot, digest included", () => {
+        const normalizedA = normalizeSnapshot(buildSnapshot(rootsA), rootsA);
+        const normalizedB = normalizeSnapshot(buildSnapshot(rootsB), rootsB);
+
+        expect(
+            normalizedA,
+            "a shelf file's text was rewritten to <ROOT> but its digest still hashes this " +
+                "workspace's own absolute root, so the equivalence oracle reports a difference " +
+                "that does not exist",
+        ).toEqual(normalizedB);
+    });
+
+    it("the two snapshots really do differ before normalization (the assertion above is not vacuous)", () => {
+        expect(buildSnapshot(rootsA)).not.toEqual(buildSnapshot(rootsB));
     });
 });
 

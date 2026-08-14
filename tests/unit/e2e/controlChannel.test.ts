@@ -6,7 +6,7 @@
 // temp directory -- only `vscode` itself is mocked, because it has no runtime module outside
 // the Extension Development Host. Nothing about the gate or the watcher is mocked.
 
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type * as vscode from "vscode";
@@ -244,6 +244,137 @@ describe("activateE2eControlChannel: end-to-end request/response over the real t
             });
             expect(response2.ok).toBe(true);
         } finally {
+            handle.dispose();
+        }
+    });
+
+    /**
+     * A request file whose CONTENT is not JSON at all. The existing malformed-request test above
+     * writes `{"nope": true}` -- valid JSON with the wrong schema, which exercises
+     * `parseE2eRequest` and never reaches `JSON.parse`. This one reaches `JSON.parse`, which
+     * throws a `SyntaxError` synchronously inside the `fs.watch` listener, upstream of every
+     * `try`/`catch` in `dispatchRequest`. Nothing there catches it, so it escapes as an
+     * uncaught exception in the extension host.
+     *
+     * The assertion is the log line naming the nonce, not merely "the next request still works":
+     * a watcher can survive an uncaught listener throw and still leave the failure attributed to
+     * nothing at all, and a test that only checks the next request would pass in that state.
+     */
+    it("logs and skips a non-JSON request body instead of throwing inside the watcher listener", { retry: 2 }, async () => {
+        const { context } = makeContext(vscodeMock.ExtensionMode.Development);
+        const handle = activateE2eControlChannel(context);
+        const logged: string[] = [];
+        const consoleSpy = vi.spyOn(console, "error").mockImplementation((...args: unknown[]) => {
+            logged.push(args.map((arg) => String(arg)).join(" "));
+        });
+
+        try {
+            writeFileSync(join(channelDir, "not-json.request.json"), "{ not json", "utf8");
+
+            await waitFor(() =>
+                logged.some((line) => line.includes("not-json") && line.includes("unreadable")),
+            );
+
+            // Skipped, not answered: with a non-atomic writer this same failure is also how a
+            // half-written file looks, and answering it would race a spurious error response
+            // against the real one.
+            expect(existsSync(join(channelDir, "not-json.response.json"))).toBe(false);
+
+            // The watcher must still answer the next request.
+            const next = await sendAndAwait(channelDir, "after-not-json", {
+                store: "memento",
+                operation: "snapshot",
+                scope: "workspace",
+                key: ALLOWED_WORKSPACE_KEY,
+            });
+            expect(next.ok).toBe(true);
+        } finally {
+            consoleSpy.mockRestore();
+            handle.dispose();
+        }
+    });
+
+    /**
+     * The log line added for the case above must not become a way out for the thing this
+     * channel is most careful about. A request file is not opaque bytes -- a `secret` `seed`
+     * request carries the secret VALUE -- and a `JSON.parse` failure message can quote the
+     * input: measured against this Node's V8, a parse that fails at position 0 reports
+     * `Unexpected token 'p', "placeholde"... is not valid JSON`, echoing the first ten
+     * characters. (A parse that fails later reports only a position and echoes nothing, which
+     * is why the body below is arranged to fail at the very start -- a body that fails late
+     * cannot detect this defect at all, and a test using one would pass either way.)
+     *
+     * The stand-in below is deliberately NOT credential-shaped. This repository is scanned by
+     * a secret detector on every push, and a literal wearing a real token's prefix fails that
+     * scan whether or not it is real -- correctly, since a scanner cannot tell. Nothing the
+     * test measures depends on the shape: it needs a value distinctive enough that finding it
+     * in the log is unambiguous, and one that makes the parse fail at position 0.
+     *
+     * The assertion is on the leading characters V8 actually emits, so it fails when the guard
+     * is removed, and it does not depend on the wording of the replacement message.
+     */
+    it("never echoes the request body when reporting an unreadable request, because a body can carry a secret", { retry: 2 }, async () => {
+        const { context } = makeContext(vscodeMock.ExtensionMode.Development);
+        const handle = activateE2eControlChannel(context);
+        const logged: string[] = [];
+        const consoleSpy = vi.spyOn(console, "error").mockImplementation((...args: unknown[]) => {
+            logged.push(args.map((arg) => String(arg)).join(" "));
+        });
+        const secretValue = "placeholder-not-a-credential-0000";
+
+        try {
+            writeFileSync(join(channelDir, "leaky.request.json"), secretValue, "utf8");
+
+            await waitFor(() => logged.some((line) => line.includes("leaky")));
+
+            expect(
+                logged.join("\n"),
+                "the parse failure was reported with its own message, and V8 builds that message " +
+                    "by quoting the input's leading characters -- so part of a request body, which " +
+                    "for a secret seed is the secret itself, reached a log this suite writes in CI",
+            ).not.toContain(secretValue.slice(0, 10));
+        } finally {
+            consoleSpy.mockRestore();
+            handle.dispose();
+        }
+    });
+
+    /**
+     * The failure that happens AFTER `dispatchRequest` has already resolved. `dispatchRequest`
+     * turns every parse and handler failure into an error response, so it never rejects -- but
+     * the `.then` callback that finalizes the exchange calls two synchronous filesystem
+     * functions that can. A directory sitting where the response file must go makes
+     * `renameSync` throw deterministically, with no timing to lose: without a rejection handler
+     * that throw is an unhandled promise rejection in the extension host, attributed to no
+     * request at all.
+     */
+    it("reports a finalize failure against its own nonce instead of raising an unhandled rejection", { retry: 2 }, async () => {
+        const { context } = makeContext(vscodeMock.ExtensionMode.Development);
+        const handle = activateE2eControlChannel(context);
+        const logged: string[] = [];
+        const consoleSpy = vi.spyOn(console, "error").mockImplementation((...args: unknown[]) => {
+            logged.push(args.map((arg) => String(arg)).join(" "));
+        });
+
+        try {
+            mkdirSync(join(channelDir, "collide.response.json"));
+            writeFileSync(
+                join(channelDir, "collide.request.json"),
+                JSON.stringify({
+                    nonce: "collide",
+                    store: "memento",
+                    operation: "snapshot",
+                    scope: "workspace",
+                    key: ALLOWED_WORKSPACE_KEY,
+                }),
+                "utf8",
+            );
+
+            await waitFor(() =>
+                logged.some((line) => line.includes("collide") && line.includes("finalize")),
+            );
+        } finally {
+            consoleSpy.mockRestore();
             handle.dispose();
         }
     });

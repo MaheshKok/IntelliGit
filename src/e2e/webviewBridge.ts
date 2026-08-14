@@ -19,6 +19,12 @@ const BRIDGE_MESSAGE_SOURCE = "intelligitE2E";
 interface PendingCall {
     resolve(value: unknown): void;
     reject(error: Error): void;
+    /**
+     * Abandons the call without settling its promise: clears the timeout and nothing else.
+     * Needed by the one caller that gives up before anyone is awaiting the promise, where
+     * `reject` would produce an unhandled rejection instead of a handled failure.
+     */
+    cancel(): void;
 }
 
 interface RegisteredWebview {
@@ -132,6 +138,12 @@ export class E2eWebviewRegistry {
             value: "value" in request ? request.value : undefined,
         });
         if (!posted) {
+            // Cancel, never just forget. `callPromise` was created before the `postMessage`
+            // above and nothing awaits it on this path, so leaving its timer armed means the
+            // timer later rejects a promise with no handler -- an unhandled rejection in the
+            // extension host, for what is an ordinary condition here: `postMessage` is rejected
+            // every time the target webview is hidden or disposed.
+            this.pending.get(callId)?.cancel();
             this.pending.delete(callId);
             return errorResponse(
                 request.nonce,
@@ -176,6 +188,9 @@ export class E2eWebviewRegistry {
                 reject: (error) => {
                     clearTimeout(timer);
                     reject(error);
+                },
+                cancel: () => {
+                    clearTimeout(timer);
                 },
             });
         });

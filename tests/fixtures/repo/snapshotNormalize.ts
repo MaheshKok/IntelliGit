@@ -49,6 +49,7 @@ import { createHash } from "node:crypto";
 import { realpathSync } from "node:fs";
 import type {
     AlternatesInfo,
+    DurableStateSnapshot,
     FsEntry,
     GitDirStateByRoot,
     ObjectStoreSnapshot,
@@ -206,6 +207,25 @@ function normalizeRepositorySnapshot(
     };
 }
 
+/**
+ * Normalizes durable state. `shelfFiles` is typed `readonly FsEntry[]`, not provider-defined
+ * JSON, so it goes through {@link normalizeFsEntries} and gets the digest recomputation the
+ * module doc comment requires: `normalizeUnknownDeep` sees an `FsEntry` as a plain object,
+ * rewrites its `text` and leaves `digest` hashing the ORIGINAL bytes, so a shelf file embedding
+ * an absolute root would normalize to equal text and unequal digest -- a difference reported by
+ * the equivalence oracle that does not exist on disk. Every other field really is
+ * provider-defined and keeps the deep-unknown treatment.
+ */
+function normalizeDurableState(
+    durableState: DurableStateSnapshot,
+    replacements: ReadonlyArray<readonly [string, string]>,
+): DurableStateSnapshot {
+    return {
+        ...(normalizeUnknownDeep(durableState, replacements) as DurableStateSnapshot),
+        shelfFiles: normalizeFsEntries(durableState.shelfFiles, replacements),
+    };
+}
+
 /** Deeply normalizes arbitrary JSON-shaped durable-state data, whose shape is provider-defined. */
 function normalizeUnknownDeep(value: unknown, replacements: ReadonlyArray<readonly [string, string]>): unknown {
     if (typeof value === "string") return normalizeString(value, replacements);
@@ -229,7 +249,7 @@ export function normalizeSnapshot(snapshot: WorkspaceSnapshot, roots: Placeholde
         origin: normalizeRepositorySnapshot(snapshot.origin, roots),
         durableState: normalizeSection(
             snapshot.durableState,
-            (data) => normalizeUnknownDeep(data, replacements) as typeof data,
+            (data) => normalizeDurableState(data, replacements),
             replacements,
         ),
     };

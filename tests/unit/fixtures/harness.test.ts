@@ -7,7 +7,7 @@
  * module's own internal `runGit` seam), mirroring `rehydrate.test.ts`'s own discipline.
  */
 
-import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -229,6 +229,72 @@ describe("createFixtureWorkspace", () => {
 
                 await workspace.dispose();
                 expect(await exists(ownRoot)).toBe(false);
+            },
+            FIXTURE_TIMEOUT_MS,
+        );
+    });
+
+    describe("construction failure", () => {
+        /**
+         * `dispose()` is the only thing that ever removes a workspace's own root, and it only
+         * exists on a handle this function returns. A throw between `mkdtemp` and the return
+         * therefore leaves the root with no owner: `runFixtureTeardown` removes the template
+         * directory and the manifest, never a workspace root, and `DEFAULT_WORKSPACES_ROOT` is a
+         * fixed path, so the orphans accumulate run over run.
+         *
+         * The assertion counts the roots under `workspacesRoot` rather than checking one known
+         * path, because the leaked directory's name comes from `mkdtemp` and is never returned
+         * to the caller -- which is exactly why nothing can clean it up afterwards.
+         */
+        it(
+            "removes its own root when construction fails, leaving nothing behind under the workspaces root",
+            async () => {
+                const { workDir, manifestPath, workspacesRoot } = await seedTemplateAndManifest("failed-construction");
+
+                // A manifest whose templateRoot does not exist: `readFixtureManifest` accepts it
+                // (the path is a well-formed absolute string), `mkdtemp` succeeds, and
+                // `copyTemplate` then throws -- a real failure after the root is already on disk.
+                await writeFile(
+                    manifestPath,
+                    JSON.stringify({
+                        schemaVersion: MANIFEST_SCHEMA_VERSION,
+                        templateRoot: path.join(workDir, "template-that-was-never-seeded"),
+                    }),
+                    "utf8",
+                );
+
+                await expect(createFixtureWorkspace({ manifestPath, workspacesRoot })).rejects.toThrow();
+
+                const leaked = await readdir(workspacesRoot).catch(() => [] as string[]);
+                expect(
+                    leaked,
+                    "construction failed after mkdtemp, so no handle and no dispose() exists for this " +
+                        "root; whatever is listed here can never be reclaimed by anything",
+                ).toEqual([]);
+            },
+            FIXTURE_TIMEOUT_MS,
+        );
+
+        /**
+         * The other half of the ratchet. Removing the root on failure must not turn into
+         * removing it always, and must not swallow the diagnosis: the caller still needs the
+         * original error, unmodified, to know WHY construction failed.
+         */
+        it(
+            "propagates the original construction error rather than a cleanup error",
+            async () => {
+                const { workDir, manifestPath, workspacesRoot } = await seedTemplateAndManifest("failed-construction-error");
+                const missingTemplate = path.join(workDir, "template-that-was-never-seeded");
+
+                await writeFile(
+                    manifestPath,
+                    JSON.stringify({ schemaVersion: MANIFEST_SCHEMA_VERSION, templateRoot: missingTemplate }),
+                    "utf8",
+                );
+
+                await expect(createFixtureWorkspace({ manifestPath, workspacesRoot })).rejects.toThrow(
+                    new RegExp(missingTemplate.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
+                );
             },
             FIXTURE_TIMEOUT_MS,
         );

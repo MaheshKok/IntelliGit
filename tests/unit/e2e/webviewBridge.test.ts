@@ -5,7 +5,7 @@
 // which would be indistinguishable from "the webview genuinely has no state for this key".
 
 import type * as vscode from "vscode";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { E2eWebviewStateRequest } from "../../../src/e2e/protocol";
 import { E2eWebviewRegistry } from "../../../src/e2e/webviewBridge";
 
@@ -198,6 +198,44 @@ describe("E2eWebviewRegistry: hard failure on postMessage rejection", () => {
         expect(response.ok).toBe(false);
         if (!response.ok) {
             expect(response.error).toContain("postMessage");
+        }
+    });
+
+    /**
+     * The timeout timer must die with the call it belongs to. `awaitReply` arms a timer and
+     * stores its `clearTimeout` inside the resolve/reject wrappers, both reachable only through
+     * the `pending` map -- so deleting the map entry directly, which is what the rejected-
+     * postMessage path does, drops the only handle that could ever clear it.
+     *
+     * The surviving timer is not merely untidy. It later fires `reject` on a promise nobody is
+     * awaiting any more (`handleRequest` returned its error response long before), which is an
+     * unhandled rejection in the extension host -- and a rejected `postMessage` is an ORDINARY
+     * condition here, happening every time the target webview is hidden or disposed.
+     *
+     * The assertion is the live timer count rather than "no unhandled rejection fired", because
+     * the count is checkable at the instant the response is returned, with nothing to wait for
+     * and no reliance on the runner's rejection reporting.
+     */
+    it("leaves no live timer behind when postMessage is rejected", async () => {
+        vi.useFakeTimers();
+        try {
+            const registry = new E2eWebviewRegistry();
+            const fake = makeFakeWebview(false);
+            registry.register("commit-panel", fake.webview);
+
+            const response = await registry.handleRequest(snapshotRequest());
+            expect(response.ok).toBe(false);
+
+            expect(
+                vi.getTimerCount(),
+                "the correlated-call timeout outlived the call it belonged to; when it fires it " +
+                    "rejects a promise no one is awaiting, which is an unhandled rejection in the host",
+            ).toBe(0);
+
+            // Nothing left to fire: advancing well past the default timeout must be inert.
+            await vi.advanceTimersByTimeAsync(10_000);
+        } finally {
+            vi.useRealTimers();
         }
     });
 });
