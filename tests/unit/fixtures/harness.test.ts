@@ -292,8 +292,10 @@ describe("createFixtureWorkspace", () => {
                     "utf8",
                 );
 
+                // A string argument to `toThrow` is a substring check, which is what the escaped
+                // RegExp this replaced was reconstructing by hand.
                 await expect(createFixtureWorkspace({ manifestPath, workspacesRoot })).rejects.toThrow(
-                    new RegExp(missingTemplate.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
+                    missingTemplate,
                 );
             },
             FIXTURE_TIMEOUT_MS,

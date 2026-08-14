@@ -11,6 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+    describeReadFailure,
     isValidNonce,
     nonceFromRequestFilename,
     readRequestFile,
@@ -18,6 +19,57 @@ import {
     watchChannelDir,
     writeResponseFileAtomic,
 } from "../../../src/e2e/transportFs";
+
+/**
+ * `describeReadFailure` is tested here as a pure function rather than through `watchChannelDir`,
+ * because the property it carries is not observable from outside. No `readFileSync` errno
+ * message contains a credential-bearing URL, so routing the non-`SyntaxError` branch through
+ * `getErrorMessage` (and therefore `sanitizeErrorMessage`) changes nothing the watcher can be
+ * made to print today. An end-to-end test would pass identically with the redaction deleted.
+ *
+ * What the function is FOR is the day a failure does carry one -- so the oracle is the function
+ * itself, fed the message shape the redaction exists for.
+ */
+describe("describeReadFailure", () => {
+    /**
+     * The URL below carries user-info but deliberately no password, and its host is an RFC 2606
+     * reserved name. What this test needs is an input `sanitizeErrorMessage` transforms at all --
+     * that is the entire observable difference between the shared helper and a raw
+     * `error.message`, and it is what goes red when the helper is removed. A realistic
+     * `user:password@` literal would add nothing to that and would fail this repository's secret
+     * scan, which matches the shape structurally and cannot tell a fake one from a real one.
+     */
+    it("redacts URL user-info in a non-parse failure, using the channel's one redaction policy", () => {
+        const message = describeReadFailure(
+            new Error("EACCES: permission denied, open https://someone@example.invalid/o/r.git"),
+        );
+
+        expect(message).toContain("https://***@example.invalid/o/r.git");
+        expect(message).not.toContain("someone");
+        // The rest of the diagnosis survives: redaction, not truncation.
+        expect(message).toContain("EACCES");
+    });
+
+    it("withholds a parse failure's message, which V8 may build by quoting the request body", () => {
+        // The deliberate exception to the policy above. `getErrorMessage` would preserve this
+        // message, and V8 puts the input's leading characters in it.
+        let parseError: unknown;
+        try {
+            JSON.parse("placeholder-not-a-credential-0000 is not json");
+        } catch (error) {
+            parseError = error;
+        }
+
+        const message = describeReadFailure(parseError);
+
+        expect(message).not.toContain("placeholde");
+        expect(message).toContain("content withheld");
+    });
+
+    it("describes a thrown non-Error without throwing on it", () => {
+        expect(describeReadFailure("dropped a string")).toBe("dropped a string");
+    });
+});
 
 describe("isValidNonce", () => {
     it("accepts alphanumeric, dash, and underscore nonces", () => {

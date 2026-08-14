@@ -8,6 +8,8 @@ import type { FSWatcher } from "node:fs";
 import { existsSync, readFileSync, renameSync, rmSync, watch, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 
+import { getErrorMessage } from "../utils/errors";
+
 const NONCE_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
 const REQUEST_SUFFIX = ".request.json";
 const RESPONSE_SUFFIX = ".response.json";
@@ -80,13 +82,19 @@ export function writeResponseFileAtomic(channelDir: string, nonce: string, paylo
  * and the reason it could not be read is the same for every shape of invalid JSON.
  *
  * Every other failure -- a read error, a permission error -- carries an errno and a path, not
- * file content, so its message is kept as-is.
+ * file content, so its message is kept, but through `getErrorMessage` rather than raw. That is
+ * the same helper the channel's other log site uses, and it applies `sanitizeErrorMessage`;
+ * routing both through it keeps ONE redaction policy for the channel, with the `SyntaxError`
+ * branch above as its single deliberate exception. Today no `readFileSync` errno message
+ * carries a credential-bearing URL, so this changes no observable output -- which is exactly
+ * why it is tested directly below rather than through the watcher: a difference nothing can
+ * observe is a difference no end-to-end test can defend.
  */
-function describeReadFailure(error: unknown): string {
+export function describeReadFailure(error: unknown): string {
     if (error instanceof SyntaxError) {
         return "request file is not valid JSON (content withheld: a request body can carry a secret value)";
     }
-    return error instanceof Error ? error.message : String(error);
+    return getErrorMessage(error);
 }
 
 /** Disposer returned by {@link watchChannelDir}. */
