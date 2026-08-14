@@ -1,0 +1,41 @@
+// Named `.jsonc`, not `.json`, because the comments below are load-bearing and
+// this file is not strict JSON. Knip's own loader tolerates them either way, so
+// `bun run deps:check` passed under the old name -- but nothing else did:
+// `JSON.parse`, Biome, and any editor applying the JSON language service all
+// error on the same bytes. A config that only its one consumer can read is a
+// trap for every other tool that has a legitimate reason to open it.
+{
+    "$schema": "https://unpkg.com/knip@6/schema-jsonc.json",
+    "entry": [
+        "src/git/interactiveRebase/editorHelper.ts",
+        "src/webviews/react/CommitGraphApp.tsx",
+        "src/webviews/react/CompactCommitGraphApp.tsx",
+        "src/webviews/react/commit-panel/CommitPanelApp.tsx",
+        "src/webviews/react/CommitInfoApp.tsx",
+        "src/webviews/react/merge-editor/MergeEditorApp.tsx",
+        "src/webviews/react/merge-conflicts-session/MergeConflictSessionApp.tsx",
+        "src/webviews/react/UndockedApp.tsx"
+    ],
+    "project": ["src/**/*.{ts,tsx}", "scripts/**/*.{js,ts}", "tests/**/*.{ts,tsx}"],
+    "ignoreFiles": ["src/webviews/react/css-modules.d.ts"],
+
+    // Spawned by path from the shelf crash suite rather than imported, so knip
+    // has no edge to it. Declared here rather than under a `knip` key in
+    // package.json: knip picks the FIRST config source it finds and does not
+    // merge, so a root config file silently voids the package.json one -- which
+    // is exactly what had happened to this entry.
+    "ignore": ["tests/integration/shelf/shelfCrashWorker.ts"],
+
+    // The Layer 2 config is deliberately NOT named `playwright.config.ts`: the
+    // repo already runs Vitest as its default suite, and a file with the
+    // default name would get picked up by tooling that assumes Playwright is
+    // the project's test runner. The cost of renaming it is that knip's
+    // Playwright plugin no longer auto-detects it, so the path is declared
+    // here. Without this, knip cannot see `testDir` or `globalSetup` and
+    // reports every E2E file as unreachable -- which reads as "delete this",
+    // the exact wrong conclusion.
+    "playwright": {
+        "config": ["playwright.e2e.config.ts"],
+        "entry": ["tests/e2e/**/*.spec.ts"]
+    }
+}

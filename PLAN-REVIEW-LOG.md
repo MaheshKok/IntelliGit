@@ -1,252 +1,516 @@
-# Plan Review Log: Marketplace review/rating prompt
+# Plan Review Log: Visual + E2E testing on a dedicated fixture repository
 
 Act 1 (grill) complete — plan locked with the user. MAX_ROUNDS=5. Reviewer: gpt-5.6-sol (per-round effort schedule per claudex-review).
-SID (Round 1): 019fbc4c-ec0e-70e2-a8a0-210bc355f322
 
-Grill decisions (Mahesh): native notification UX; conservative trigger (30 ops / 14 days / 5 active days); 3 lifetime asks with 30-day snooze; visible setting `intelligit.reviewPrompt.enabled`; unknown forks route to Open VSX. Kickoff snapshot: worktree `.claude/worktrees/review-prompt` clean at 36e43d03 (origin/main); main checkout carries unrelated untracked PLAN.md/PLAN-REVIEW-LOG.md from the rebase feature.
+**Act 3 builder override (Mahesh, mid-Act-2):** implementation goes to an in-harness **Sonnet 5** Builder at **xhigh** reasoning, not to Codex/`claudex-build`. Stated as a one-off for this plan ("this time"), so it is not recorded as a standing preference. Acts 1 and 2 are unaffected — Codex remains the adversarial plan reviewer for every round. Claude remains spec-owner, diff reviewer, and integrator; the review loop over the Builder's diff is unchanged in kind, only the builder model differs.
+
+Kickoff snapshot: `main` clean at `4cc864c0` (== origin/main). `PLAN.md` and `PLAN-REVIEW-LOG.md` were tracked and clean at kickoff (previous cycle: marketplace review prompt, shipped in 0.24.0), so both are eligible for the Act-2→build plan-checkpoint commit.
+
+Grill decisions (Mahesh, 8 questions):
+
+1. **Test layers** — both, staged: Layer 1 webview visual regression + Layer 2 real-VS-Code E2E on a real fixture repo.
+2. **Fixture repo** — seed script → template built once → `git clone --local` per test; reset = discard clone and re-clone. (Rejected: checked-in `.bundle`; a real GitHub repo.)
+3. **"Upstream" disambiguation** — meant **baseline re-approval policy**, not the git remote. The fixture's bare `origin` is still required for push/pull/publish flows and was taken as a design detail, not a question.
+4. **Baselines** — committed PNGs, generated only inside a pinned Playwright Docker image, updated only via an explicit `test:visual:update`; CI never self-heals.
+5. **Layer 2 driver** — Playwright `_electron` on a pinned `@vscode/test-electron` binary. (Rejected: `wdio-vscode-service` = a third runner; in-host Mocha = no clicks, no screenshots.)
+6. **E2E scope** — tiered: ~10 critical mutating flows on PR, all 42 nightly + release tags, sharded. (69 contributed commands, 42 mutating — counted from `package.json`.)
+7. **Unit tests** — for the new test infrastructure itself (seed determinism, reset completeness, isolation, protocol conformance, harness drift). (Rejected: React component backfill as duplicate of Layer 1 in a weaker medium.)
+8. **Visual matrix** — dark + light × 2 viewports (narrow sidebar / wide undocked) = 4 baselines per screen; high-contrast and the 12 locales get non-pixel assertions (overflow, contrast ratio, target size).
+
+Codebase evidence gathered during the grill (Gate 2):
+
+- Webviews build to 7 IIFE bundles via [scripts/webviewConfigs.js:3](scripts/webviewConfigs.js:3).
+- All seven share one HTML shell, [webviewHtml.ts:61](src/views/webviewHtml.ts:61), which sets exactly two bootstrap globals (`window.intelligitSettings`, `window.intelligitI18n`) plus `#root` — this is what the Phase 3 harness must mirror and the Phase 6 drift guard must assert.
+- `acquireVsCodeApi` is acquired in exactly one place, [vscodeApi.ts:29](src/webviews/react/shared/vscodeApi.ts:29) — a single stub point for Layer 1.
+- [scripts/preview-merge-editor.js](scripts/preview-merge-editor.js) already serves a built webview bundle to a plain browser with a stubbed `acquireVsCodeApi` — the Layer 1 harness generalizes it rather than inventing one.
+- Deterministic-SHA git fixtures already exist at [rebaseTestHarness.ts:26](tests/integration/rebase/rebaseTestHarness.ts:26) (frozen `GIT_AUTHOR_DATE`/`GIT_COMMITTER_DATE`); Phase 1 reuses that technique.
+- Existing suite: 168 test files, vitest + jsdom, coverage floor 88.5% lines. 38 webview tests against 122 webview source files.
+- CI is a single ubuntu-latest job on bun; no display server today, so Layer 2 needs `xvfb-run`.
+
+---
 
 ## Round 1 — Codex (gpt-5.6-sol, effort ultra)
 
-Telemetry: PEAK=221538 LAST=221538 PCT=85% NONRESUMABLE=yes → Round 2 reseeds a fresh session from PLAN.md + this ledger.
+SID: `019fd631-83f4-70c2-b072-46840f1d4749`. Telemetry (rollout; the `--json` stream carried no usage events): `EVENTS=69 PEAK=200234 LAST=200234 PCT=77% NONRESUMABLE=no`.
 
-1. [CRITICAL] PLAN.md Approach steps 2–4 — Async read-modify-write updates to shared `globalState` are not serialized, so overlapping calls can lose counters or both pass gating and display duplicate prompts. Fix: Queue calls behind a module-level mutex/promise and set the session-attempt flag before the first await.
-2. [REQUIRED] PLAN.md Goal, Approach step 5, and Risks / open questions — The proposed Open VSX destination is dead because the registry currently reports `MaheshKok.intelligit` as "Extension Not Found" (https://open-vsx.org/extension/MaheshKok/intelligit/changes). Fix: Publish the Open VSX listing and verify its `/reviews` route before shipping this feature.
-3. [REQUIRED] PLAN.md Approach step 6 / src/views/commitPanelActions.ts — The line-2009 area is only publish-offer UI, while the line-1564 push dispatch misses commit-and-push, selected push, sync, graph, undocked, native-command, branch-menu, and push-up-to-here success paths. Fix: Wire a semantic push-success callback through every host-level success exit while keeping `GitExecutor` untouched.
-4. [REQUIRED] PLAN.md Approach step 6 / src/services/publishService.ts — `runPublishBranchFlow` pushes at lines 90 and 216 but represents success, failure, and cancellation as `void`, leaving no truthful completion signal for counting. Fix: Return an explicit outcome or invoke an injected callback only after the actual push resolves successfully.
-5. [REQUIRED] PLAN.md Approach steps 1 and 6 / src/views/CommitPanelViewProvider.ts / src/views/UndockedViewProvider.ts / src/activation/repositoryMode.ts — The line-794 `postCommitted` callback is sidebar-local, lacks `ExtensionContext.globalState`, and has a separate undocked counterpart at line 859, so `recordGitSuccess(context)` cannot cover commits as planned. Fix: Construct the recorder and register sync keys during activation, then inject a narrow success callback into both providers.
-6. [REQUIRED] PLAN.md Approach steps 2 and 4 — `askCount` increments only after Later or dismissal, so an extension-host restart while the notification remains open permits more than three lifetime displays. Fix: Persistently reserve the ask before showing the notification, then apply snooze or terminal status from the response.
-7. [REQUIRED] PLAN.md Approach steps 2 and 3 — Only `installedAt` has initialization behavior, so fresh-state values such as `status`, `askCount`, `snoozedUntil`, and counters are `undefined` and make the literal gates fail permanently. Fix: Define a normalized state loader with `pending` and zero defaults plus empty-state tests.
-8. [REQUIRED] PLAN.md Approach steps 1, 4, and 6 — Awaiting `recordGitSuccess` from existing success callbacks can stall refresh until the user chooses or dismisses the notification, and prompt-state errors can reject an already-successful Git operation because `showInformationMessage` resolves on response. Fix: Enqueue durable state work without rejecting the Git boundary and detach the notification-response handling.
-9. [REQUIRED] PLAN.md Approach step 5 and Risks / open questions — `startsWith("Visual Studio Code")` also classifies any unknown fork retaining that prefix as official, contradicting the locked Open VSX fallback. Fix: Use an explicit, tested allowlist of official stable and Insiders identifiers with Open VSX as the default.
-10. [REQUIRED] PLAN.md Approach steps 7, 8, and 10 — The repository uses `contributes.configuration.properties`, `%configuration.*.markdownDescription%`, 11 locale variants plus the English base, and a mandatory localization CSV that the plan miscounts or omits. Fix: Use the existing manifest key pattern, update both base catalogs and the translation CSV, run sync/import for all 11 locales, then run `l10n:validate` and `l10n:audit`.
-11. [REQUIRED] PLAN.md Approach step 9 / vitest.config.ts — A Map-backed Memento alone is insufficient because Vitest provides no global `vscode` mock and the module-level session flag persists between tests. Fix: Add a hoisted inline `vscode` mock and reset modules dynamically, or inject a resettable session guard.
-12. [REQUIRED] PLAN.md Approach step 9 — Pure service tests do not verify the complicated call-site contract, allowing combined, retried, published, failed, or undocked operations to be miscounted while every proposed test passes. Fix: Add host-layer tests proving commit-only `+1`, successful commit-and-push `+2`, commit-plus-failed-push `+1`, successful sync/retry/publish `+1`, and canceled or failed push `+0`.
+20 findings — 6 CRITICAL, 14 REQUIRED, 0 MINOR.
 
-VERDICT: REVISE
-
-### Claude's response (Round 1 triage → PLAN.md v2)
-
-- #1 FIXED — promise-queue serialization for all state work; session flag set synchronously pre-await; see also #6 reservation.
-- #2 REJECTED — Listing verified live 2026-08-01 by Claude via `https://open-vsx.org/api/MaheshKok/intelligit`: valid metadata, version 0.22.0, reviewCount 3, averageRating 5.0, reviewsUrl present. The read-only Codex sandbox has no network access; a failed fetch is not a missing listing. Settled — do not re-raise absent new checkable evidence.
-- #3 FIXED (different fix than suggested) — Counting moved to ONE post-success callback on `GitExecutor` (plain callback, no vscode import, fired fire-and-forget after exit-0 mutating commands), filtered to `commit|push` in the service. Covers all dispatch paths incl. undocked/publish/future ones. Codex's "wire every host-level success exit, keep executor untouched" was rejected as the weaker fix: ≥8 call sites today, every future path a silent miss; the executor addition is an observation point after resolution, not a change to gate/concurrency structures — the v1 reason to avoid the executor no longer outweighs the sprawl cost its avoidance creates.
-- #4 FIXED — moot under executor-callback counting; `publishService` stays untouched (its pushes flow through the executor).
-- #5 FIXED — service constructed during activation with `ExtensionContext`; `setKeysForSync` registered there; providers never touched; undocked commits covered by the executor chokepoint.
-- #6 FIXED — ask persisted (askCount+1, snoozedUntil=now+30d) BEFORE the toast is shown; response only upgrades status; restart with open toast can never yield a 4th display.
-- #7 FIXED — normalizing state loader with hard defaults; empty/fresh-state (all-undefined memento) is an explicit test case.
-- #8 FIXED — callback is fire-and-forget + try/catch at the executor; state work queued; notification response handled detached; git results can never stall on or be rejected by prompt logic.
-- #9 FIXED — exact-match allowlist {'Visual Studio Code', 'Visual Studio Code - Insiders'}; everything else → Open VSX; fork-with-prefix test case added.
-- #10 FIXED — plan now names the real mechanism: `%configuration.*.markdownDescription%` pattern, base `package.nls.json` + 11 locale files, `l10n/` bundles, CSV workflow (`l10n:sync`/`translate`/`import`), gates `l10n:validate` + `l10n:audit` (all verified present in package.json scripts).
-- #11 FIXED — per-file hoisted `vi.mock("vscode", …)` per existing repo pattern (reference: tests/unit/core/notifications.test.ts — verified); session flag resettable for tests.
-- #12 FIXED — counting-contract suite added: commit +1, push +1, commit-and-push +2, failed push +0, canceled +0, merge/checkout/stash +0, executor-hook behavior (exit-0 only, listener exceptions swallowed).
-
-Disposition: 11 FIXED, 1 REJECTED (#2, with live evidence). PLAN.md rewritten as v2.
-
-## Round 2 — Codex (gpt-5.6-sol, effort xhigh, FRESH session)
-
-SID: 019fbc62-8f4f-79a3-9091-cfdf050d05ea (reseed — R1 session non-resumable at 85% peak). Telemetry: PEAK=151817 LAST=151817 PCT=58% NONRESUMABLE=no.
-
-13. [CRITICAL] PLAN.md Approach 5–6 / Risks — The accepted cross-window analysis assumes both reservations persist, but Memento provides separate `get`/`update` operations without atomic increment, so two windows can both write `N+1`, undercount two displays, and later permit a fourth toast. Fix: serialize reservation across processes with a real lock or relax the locked lifetime cap.
-14. [REQUIRED] PLAN.md Approach 1–2 / Risks; src/git/executor.ts; src/activation/repositoryMode.ts — The one-executor/one-wiring assumption is false: `deriveFor()` drops the proposed callback and repository mode creates a separate undocked executor, so derived and undocked commit/push successes escape counting. Fix: propagate the callback through construction and `deriveFor()`, wire every activation-owned executor factory, and test derived/undocked paths.
-15. [REQUIRED] PLAN.md Approach 6 / Tests — The detached async response handler has no terminal rejection handler or required status-persistence-before-`openExternal` order, permitting unhandled rejections or loss of the never-ask-again decision during restart. Fix: await the status update before opening the URL, terminate the detached chain with `.catch(log)`, and test order plus rejection containment.
-16. [REQUIRED] PLAN.md Approach 10 / Validation 11; package.json — The plan claims coverage floors are enforced but runs only `test`, while this repository activates thresholds only through `test:coverage`. Fix: replace the final full-suite `test` gate with `test:coverage`.
-17. [REQUIRED] PLAN.md Approach 9 — The localization workflow is not executable as written because `bun run l10n:translate` requires `-- --only-missing` and performs no translation until approved CSV cells are populated manually. Fix: specify sync → populate all 11 locale columns → translate-check with `-- --only-missing` → import → validate/audit.
-18. [REQUIRED] PLAN.md Tests / Validation — Every notification and routing assertion uses a mocked `vscode`, leaving the native toast, dismissal/buttons, and external destination unverified in an Extension Development Host. Fix: add a seeded dev-host/Computer Use acceptance run covering the visible prompt and each response/routing family.
-19. [MINOR] PLAN.md Approach 3, 7 / Tests — The plan does not state that gating uses post-increment state, so an implementation may prompt on operation 31 while tests seeded at 30 still pass. Fix: specify increment → persist → gate and test the `29→30` and active-day `4→5` boundaries.
+1. [CRITICAL] Phase 1 steps 4–5 — A normal `git clone` does not reproduce the source index, tracked dirt, untracked/ignored files, local config, local branches, or all private refs, so dirty/discard tests can start clean and pass as no-ops. Fix: Deterministically hydrate and snapshot every clone after cloning, and mirror the private bare origin explicitly.
+2. [CRITICAL] Phase 6 step 26 — "Fresh clone is unaffected" tests isolation only and still passes when the fresh clone starts wrong or `dispose()` leaks the old clone, origin, profile, process, or external worktree. Fix: Assert the canonical initial snapshot and verify every allocated resource is gone after both successful and failing teardown.
+3. [CRITICAL] Phase 3 steps 11–12 / `src/views/webviewHtml.ts` — The proposed shell and drift guard omit production reset/font/background/reduced-motion CSS, `<html lang>`, per-view backgrounds, and required merge/conflict stylesheet links, allowing baselines for a non-production layout to pass. Fix: Encode every bundle's shell options and compare normalized production and harness HTML, styles, attributes, and assets.
+4. [CRITICAL] Phase 0 step 2 / Phase 3 step 13 — `document.documentElement.style.cssText` omits VS Code's body theme classes and datasets, while `shikiHighlighter.ts` reads those classes directly, so dark merge-editor baselines can silently render light syntax colors. Fix: Capture and replay root CSS plus body classes and theme datasets as one versioned fixture.
+5. [CRITICAL] Phase 6 step 28 / `tsconfig*.json` — Vitest transpiles tests without type-checking and both current TypeScript projects exclude `tests`, so interface-only protocol conformance assertions cannot fail in CI. Fix: Add a fixture-specific `tsc --noEmit` project to `typecheck` or use executable exact runtime validators.
+6. [CRITICAL] Phase 4 step 21 — UI, local-Git, and lock assertions can all pass while the private origin or shelf/rebase durable state is wrong because neither `originRoot` nor global-storage state is required as an oracle. Fix: Define per-flow oracles covering the bare origin or fresh collaborator, shelf/rebase storage, and exact `repo.lock`/`takeover-*` absence.
+7. [REQUIRED] Phase 1 steps 4 and 7 / `src/shelf/paths.ts` — A template shelf is unusable because production stores shelves under global storage keyed by a hash of each clone's absolute real path, and every test gets a fresh path and profile. Fix: Seed deterministic shelves after allocating the clone/profile into that clone's resolved production shelf path and assert they render.
+8. [REQUIRED] Phase 1 step 4 / Phase 6 step 25 — Fixed identity and dates cover seed commands only; extension- or recorder-created commits, merges, rebases, and stashes still inherit current time and user/system Git configuration, while clone-local config is regenerated. Fix: Sanitize Git configuration and dates for every Git process, reapply clone config, and compare representative post-clone mutation SHAs across hostile environments.
+9. [REQUIRED] Phase 1 step 6 — Reset enumeration omits reachable state including `FETCH_HEAD`, `ORIG_HEAD`, `REBASE_HEAD`, `AUTO_MERGE`, merge/squash messages, `sequencer/`, rerere data, `$GIT_COMMON_DIR/intelligit/*`, external worktree directories, bare-origin HEAD/reflogs, and VS Code workspace/global state. Fix: Define a domain-based canonical snapshot with an explicit exclusion rationale for every unreachable state.
+10. [REQUIRED] Phase 2 steps 8–10 — Real payloads contain random absolute roots, UUID-based shelf/session IDs, and `Date.now()` values, so re-recording can produce nondeterministic JSON and screenshots despite stable Git SHAs. Fix: Inject fixed clocks/IDs, canonicalize environment paths, and add a record-twice byte-equality test.
+11. [REQUIRED] Phase 0 step 2 / Phase 3 step 13 — The spike captures only one unspecified active theme, yet later claims both dark and light fixtures, and a version-only staleness check accepts the wrong theme or profile. Fix: Select explicit built-in theme IDs in fresh profiles and record host commit, platform, theme ID/kind, and capture schema.
+12. [REQUIRED] Phase 3 steps 13 and 16 — Only dark/light theme fixtures are defined, so high-contrast assertions have neither high-contrast tokens nor the host classes needed to exercise that axis. Fix: Capture and replay fixed high-contrast-dark and high-contrast-light host fixtures for the non-pixel suite.
+13. [REQUIRED] Phase 3 step 17 / Risk R2 / Phase 4 step 23 — A mutable `v<X>-jammy` tag plus a Linux-only assertion permits baseline updates and CI comparisons outside the intended environment. Fix: Pin one image digest and require matching image, browser, OS, and font-manifest metadata for both updates and CI comparisons.
+14. [REQUIRED] Phase 0 step 2 / Phase 4 step 23 — `dist/` is ignored and `package.json` launches `dist/extension.js`, but neither the spike nor the new parallel jobs build or download the extension/webview bundles. Fix: Add an explicit verified build step or immutable build artifact before every launch and visual-server start.
+15. [REQUIRED] Phase 4 steps 20–21 — The static seed does not establish flow-specific prerequisites such as a collaborator-created remote commit, rewritten history, a stale lease, or a live operation to abort, allowing the named action to exercise a guard or no-op instead. Fix: Add a setup/action/UI/local/origin/durable-state matrix for every PR and nightly flow.
+16. [REQUIRED] Phase 4/5 steps 20 and 24 — The "42 mutating commands" count is not encoded, includes color aliases and duplicate handlers, and excludes mutating webview actions such as commit, so nightly completeness cannot be audited or kept current. Fix: Check in a canonical command/action-to-scenario manifest with alias mapping and test it against contributions and registered handlers.
+17. [REQUIRED] Phase 5 step 24 — Layer 1 runs plain Chromium with committed fixtures and never launches VS Code, so running it "against VS Code Insiders" changes no tested input. Fix: Feed it freshly captured Insiders host artifacts or add an Insiders host compatibility probe that actually loads the bundles.
+18. [REQUIRED] Phase 5 step 24 / `.github/workflows/publish.yml` — The release job depends only on `build` and tags immediately on a main push, so a separate scheduled failure cannot block that tag. Fix: Require same-SHA nightly attestation or equivalent E2E/visual gates before tag creation.
+19. [REQUIRED] Phase 6 steps 25–31 — No test proves the overflow, size, contrast, theme-replay, or server-selection oracles reject known-bad inputs, so inverted or no-op assertion code can remain green. Fix: Add known-failing harness fixtures for clipping, overlap, transparency, zero-size targets, wrong themes, and invalid routing.
+20. [REQUIRED] Risk R3 — Masking the canvas and checking only numeric lane geometry removes coverage of actual paint, colors, scaling, clipping, and compositing. Fix: Require a deterministic targeted canvas-render oracle before permitting any mask.
 
 VERDICT: REVISE
 
-### Claude's response (Round 2 triage → PLAN.md v3)
+### Claude's response
 
-- #13 ACCEPTED-RISK (sharpened, not ignored) — No cross-process lock or atomic increment exists in the VS Code API; a `globalStorageUri` lockfile is complexity far beyond the harm. Blast radius documented precisely in v3: terminal `rated`/`declined` decisions are absolute single-key writes and can never be lost to counter races (Memento updates are per-key); only the ask CAP can soften, and only under sub-second simultaneous reservations in two windows (persisted `snoozedUntil` closes the window at the next read). Worst case: one duplicate toast, ask-count 3±1. Not relaxing the cap; documenting the tolerance.
-- #14 FIXED (stronger than suggested) — Hook made module-scoped (`GitExecutor.onCommandSuccess`, static) instead of per-instance: derived (`deriveFor()`) and undocked executors consult it structurally, zero propagation code, future factories can't drop it. Test pins derived + undocked coverage.
-- #15 FIXED — Rate handler awaits `status='rated'` persist before `openExternal`; detached chain terminates in `.catch(log)`; order + rejection-containment tests added.
-- #16 FIXED — validation gate switched to `test:coverage` (thresholds verified to activate only there); floors quoted in plan.
-- #17 FIXED — exact CSV workflow now specified: `l10n:sync` → populate 11 locale columns → `l10n:translate -- --only-missing` → `l10n:import` → `l10n:validate` + `l10n:audit`.
-- #18 FIXED — dev-host acceptance step added (seeded one-below-threshold via temporary local patch, real commit, verify toast/buttons/routing/restart-persistence); fork routing pinned by unit tests since appName is not runtime-spoofable.
-- #19 FIXED — increment → persist → gate ordering stated; `29→30` and `4→5` boundary tests explicit.
+Independent verification first — six of Codex's factual claims were checked against the repository before triage, and all six held:
 
-Disposition: 6 FIXED, 1 ACCEPTED-RISK. PLAN.md rewritten as v3. Cumulative: 17 FIXED, 1 REJECTED, 1 ACCEPTED-RISK.
+| Claim | Verified |
+|---|---|
+| #4 webviews read body theme classes | `src/webviews/react/merge-editor/shikiHighlighter.ts:68` (`classList.contains("vscode-dark")`), `src/webviews/react/shared/theme.ts:10` |
+| #5 tests are never type-checked | `tsconfig.json` `"exclude": [… "tests"]`; `tsconfig.webview.json` includes only `src/webviews/react/**` |
+| #7 shelf storage keyed by path hash | `src/shelf/paths.ts:31-32` — `realpath` → sha256 → 16-char repoId |
+| #14 `dist/` is git-ignored | `.gitignore:146` |
+| #16 command count inflated by aliases | 69 contributed, **8** `.color` aliases, 61 unique bases — the "42 mutating" figure was regex-derived and wrong |
+| #18 release cannot be gated by a schedule | `.github/workflows/publish.yml:122-123` — `release: needs: build`, tag created on main push |
 
-## Round 3 — Codex (gpt-5.6-sol, effort xhigh, resumed session 019fbc62)
+Disposition — **19 FIXED, 1 partially rejected**:
 
-Telemetry (session rollout): PEAK=187646 PCT=72% NONRESUMABLE=no. CLI note: `codex exec resume` rejects `-C` (like `-s`) — global `codex -C <dir> exec resume …` placement works; logged for future rounds.
+- **#1 FIXED, but with a different fix than proposed.** Codex proposed hydrating and snapshotting each clone after cloning. That patches the symptom and leaves the clone semantics as a permanent trap for future fixture state. The restore primitive is instead replaced outright: a **recursive byte-exact directory copy of the template** (working repo + bare origin, with the origin URL rewritten and clone-local config reapplied and asserted). This is strictly simpler and eliminates the defect class rather than compensating for it. Recorded as new risk **R6** (copy cost); the stated mitigation if it ever dominates is a smaller template, never a return to cloning.
+- **#2 FIXED** — restore fidelity now asserts the canonical initial snapshot item-by-item (step 33), and resource cleanup is a separate test covering both successful and failing teardown, including linked worktrees and spawned processes (step 34).
+- **#3 FIXED** — a checked-in table encodes all 7 bundles' real shell options; the drift guard compares normalized production vs harness HTML including `lang`, inline style block, background, and the full asset list (steps 15–16, 38).
+- **#4 FIXED** — the capture is now a "host fixture": root CSS vars **plus** `html`/`body` class lists and datasets, with provenance (steps 4–5).
+- **#5 FIXED** — `tsconfig.tests.json` added to the `typecheck` script, **plus** runtime validators, so the oracle can actually go red (step 36).
+- **#6 FIXED** — oracles are now four-way: UI, local git, bare origin (or a fresh clone of it), durable extension state including exact lock-residue absence (step 24).
+- **#7 FIXED** — shelves are seeded *after* workspace and profile allocation, into that workspace's resolved production shelf path via the real `ShelfService`, with a render assertion (step 10).
+- **#8 FIXED** — sanitized git environment (`GIT_CONFIG_GLOBAL`/`GIT_CONFIG_SYSTEM=/dev/null`, scratch `HOME`, fixed identity + dates) extended to the extension's own subprocesses and the recorder; determinism re-asserted under a hostile ambient environment (steps 7, 32).
+- **#9 FIXED** — step 9 is now a domain-based canonical snapshot naming every item Codex listed, with a written rationale for anything excluded.
+- **#10 FIXED** — injected clock and deterministic ID source, path canonicalization, record-twice byte-equality test (steps 12, 37).
+- **#11 FIXED** — explicit built-in theme IDs in fresh profiles; provenance records VS Code version **and commit**, platform, theme ID/kind, schema version (steps 5, 39).
+- **#12 FIXED** — `hc-black` and `hc-light` host fixtures captured, without which the high-contrast non-pixel assertions had nothing to assert against.
+- **#13 FIXED** — image pinned by digest; image/browser/OS/font-manifest match required on update **and** compare (step 20, R2).
+- **#14 FIXED** — verified build gate promoted to step 2, binding on every launch, CI job, and harness-server start.
+- **#15 FIXED** — flows are rows in a `setup → action → UI/local/origin/durable` matrix; setups include a collaborator commit, rewritten history, a stale lease, and an in-flight operation (step 23).
+- **#16 FIXED** — the number is removed from the plan and replaced by a checked-in coverage manifest with alias collapsing, extended to cover webview-only mutating actions, asserted exhaustive against contributions **and** registered handlers (step 28).
+- **#17 FIXED** — the claim was incoherent as written and is corrected: Insiders early-warning attaches to Layer 2; Layer 1 gets it only via freshly captured Insiders host fixtures diffed against the pinned ones (step 30).
+- **#18 FIXED** — the plan's claim that nightly red blocks the release tag was false against the actual workflow. Nightly now publishes a same-SHA attestation and the release job requires it, with a documented `workflow_dispatch` override (step 31).
+- **#19 FIXED** — every oracle gets a known-bad fixture that must fail: clipped label, overlapping control, zero-size target, transparent-on-transparent, dark bundle against light host fixture, invalid harness route (step 40). Promoted to a governing principle in the Goal.
+- **#20 PARTIALLY REJECTED.** Accepted: a bare mask silently deletes real coverage, so R3 now forbids applying one without shipping a replacement oracle in the same change. Rejected: building a deterministic canvas-render oracle *before* any flake is observed. R3 is a contingency — software rasterization is already forced — and pre-building an oracle for a problem that may not occur is speculative work. If canvas flake materializes, the oracle becomes mandatory at that moment.
 
-20. [CRITICAL] PLAN.md Risks — The "worst case ever: one duplicate" bound is false because the race can recur after each 30-day snooze and session reset at stored counts 0, 1, and 2, yielding six displays with two windows and more with additional windows. Fix: explicitly accept the true `3 × concurrently eligible windows` bound or add coordination if that violates the locked cap.
-21. [REQUIRED] PLAN.md Approach 1–3 / src/services/publishService.ts — First-time authenticated publishing calls `runGitPushWithAskpass()` through `execFile`, bypassing `GitExecutor.onCommandSuccess`, so the promised publish-flow `+1` is missing. Fix: notify the shared success observer after the askpass push succeeds and add a first-time-publish counting test.
-22. [REQUIRED] PLAN.md Approach 1–3 / src/commands/branchCommands.ts / src/services/gitHelpers.ts — The hook exposes only `"push"`, while three current paths execute `push --delete`, so remote-branch deletions increment `successOps` and can trigger the review prompt. Fix: pass sufficient argv semantics to exclude delete pushes and pin them as `+0`.
-23. [REQUIRED] PLAN.md Approach 11 — One seeded prompt cannot exercise the mutually exclusive Rate, Later, dismissal, and decline outcomes, and Later/dismiss cannot be shown re-armed without advancing the snooze and resetting the session. Fix: define independently reseeded acceptance scenarios with explicit restart/time advancement and persisted-state checks.
-24. [REQUIRED] PLAN.md Approach 11–12 — The behavior-changing temporary seed patch has no explicit removal verification before coverage and build, so test-only threshold state could survive into the shipped artifact. Fix: require reverting the seed patch and inspecting the final tracked diff before validation/build.
-25. [MINOR] PLAN.md Approach 6, 9–11 — The actual notification message is never specified or asserted, leaving the English source and its 11 translations to implementation-time invention. Fix: lock the exact toast copy and verify it in unit and dev-host acceptance.
-26. [MINOR] PLAN.md Approach 9 / Validation 12 — `l10n:audit` is advisory by default and currently exits successfully with nine findings, so merely "passing" it cannot prove this feature added none. Fix: record the current baseline and require no new `reviewPrompt` findings or candidate-count increase.
+---
 
-VERDICT: REVISE
+## Round 2 — Codex (gpt-5.6-sol, effort xhigh)
 
-### Claude's response (Round 3 triage → PLAN.md v4)
+Resumed `019fd631-83f4-70c2-b072-46840f1d4749`. Telemetry: `EVENTS=100 PEAK=206524 LAST=128142 PCT=79% NONRESUMABLE=no`.
 
-- #20 FIXED (upgraded from v3's ACCEPTED-RISK — Codex's recurrence math is right, my "one duplicate" bound was wrong) — Same-machine O_EXCL lockfile (`globalStorageUri/review-ask.lock`, 'wx', 10-min stale TTL, fail-closed skip on contention) + post-acquire fresh re-gate; `globalState.update` acks through the main process so post-release visibility is IPC-fast. Same-machine duplicates eliminated; residual cross-MACHINE sync-lag races fall under the grill-accepted per-machine semantics. Full Memento→file state migration rejected: it would sacrifice `setKeysForSync` (user-locked cross-machine no-re-ask) to fix a smaller problem.
-- #21 FIXED — askpass publish path fires the shared hook manually (`('push', argv)` after success); first-publish counting test added.
-- #22 FIXED — hook signature now `(subcommand, argv)`; service excludes `--delete`/`-d`/`:refspec`/`--dry-run` pushes as +0; all three repo delete-call-site shapes pinned by tests.
-- #23 FIXED — four independently reseeded acceptance scenarios (Rate / Later / Dismiss / Don't-ask) with restarts and snooze-past time advancement.
-- #24 FIXED — acceptance ends with seed-patch revert + `git status --porcelain` clean check on tracked files BEFORE any validation gate runs.
-- #25 FIXED — EN copy locked in plan (message + 3 buttons), asserted in unit tests and acceptance.
-- #26 FIXED — `l10n:audit` gate defined as a delta vs recorded baseline (9 advisory findings today): no new reviewPrompt-related findings, no candidate-count increase.
+8 findings — 4 CRITICAL, 4 REQUIRED, 0 MINOR (down from 20).
 
-Disposition: 7 FIXED (incl. #20 upgraded from accepted-risk to engineered fix). PLAN.md rewritten as v4. Cumulative: 24 FIXED, 1 REJECTED, 1 superseded-by-fix (#13→#20 lock).
-
-## Round 4 — Codex (gpt-5.6-sol, effort xhigh, resumed session 019fbc62)
-
-Telemetry: PEAK=200661 LAST=86780 PCT=77% → compaction detected (LAST < PEAK/2) → NONRESUMABLE=yes. Round 5 (FINAL) reseeds a fresh session; new CRITICALs this round → final round runs at ultra per schedule.
-
-27. [CRITICAL] Approach 5(c,f) — A stale owner can resume after another window unlinks and replaces its lock, then the original owner's unconditional `finally` unlink deletes the replacement lock and permits concurrent reservations. Fix: Reclaim only locks whose owner is provably dead and release only an ownership-matching lease; test A-stale/B-acquires/A-resumes.
-28. [CRITICAL] Approach 5(d) / Key decisions — The post-lock `globalState` re-read is not guaranteed fresh across extension hosts because `Memento.get()` reads a host-local cache and `$setValue()` does not await another host's `$acceptValue`, so a waiter can re-gate stale state after acquiring the lock (vscode extHostMemento.ts / mainThreadStorage.ts). Fix: Gate and reserve through a lock-protected same-machine state record, including terminal decisions, while retaining Memento as the Settings Sync mirror; add delayed cross-host propagation coverage.
-29. [REQUIRED] Approach 1 / src/services/publishService.ts — The askpass manual fire lacks the executor path's stated try/catch, so a listener throw inside the publish `try` can misreport a successful push as failed and trigger remote cleanup. Fix: Route both fire sites through one exception-swallowing dispatcher and test that an askpass-listener throw preserves publish success.
-30. [REQUIRED] Approach 2 / Risks — Awaiting `mkdir` during repository-mode activation without specified containment contradicts the fail-closed promise because a storage error can abort activation instead of merely disabling the prompt. Fix: Catch initialization failure, log it, leave the hook disabled, and continue normal extension activation.
-31. [REQUIRED] Approach 3 and 10 — Git's documented `-n` alias for `--dry-run` is absent from the exclusion and tests, so `git push -n` incorrectly counts as a successful operation. Fix: Exclude exact `-n` and add its +0 contract test.
-32. [MINOR] Approach 5(c,f) — `fs.promises.open()` returns a `FileHandle`, but the plan only unlinks the path and never specifies closing the handle, relying on unreliable automatic closure. Fix: Explicitly close the handle after exclusive creation and cover close/release failures.
-
-VERDICT: REVISE
-
-### Claude's response (Round 4 triage → PLAN.md v5)
-
-- #27 FIXED — Lock gains an ownership lease (`pid:nonce` content): release unlinks ONLY on lease match; reclaim ONLY on provable owner death (`process.kill(pid,0)` → ESRCH; EPERM = alive) or 30-min stale with unchanged content; A-stale/B-acquires/A-resumes pinned as a test.
-- #28 FIXED (adopting Codex's design) — Ask-decision record (askCount, snoozedUntil, status, lastAskAt) moves to `globalStorageUri/review-prompt-state.json`, read fresh from disk inside the lock (no extension-host cache) and written atomically (temp+rename). Memento demoted to Settings-Sync mirror only (terminal-wins/max merge on load; file absent → seed from mirror). Usage counters stay Memento-only — their race direction is annoyance-safe. This preserves the user-locked cross-machine no-re-ask (setKeysForSync) while ending the pretense that Memento is a consistency layer.
-- #29 FIXED — Both fire sites route through one exported exception-swallowing dispatcher `notifyGitSuccessSafely`; test proves an askpass-listener throw cannot misreport a succeeded publish.
-- #30 FIXED — Service init containment-wrapped: any storage/mkdir/sync-registration failure logs, leaves the hook unset (feature disabled), activation continues.
-- #31 FIXED — exact `-n` added to push exclusions with a +0 contract test.
-- #32 FIXED — FileHandle explicitly closed after exclusive create; close/release failure paths logged-not-thrown, tested.
-
-Disposition: 6 FIXED. PLAN.md rewritten as v5. Cumulative: 30 FIXED, 1 REJECTED, 1 superseded (#13→#20→#27/#28 lineage).
-
-## Round 5 — FINAL — Codex (gpt-5.6-sol, effort ultra, fresh session 019fbc87, reseeded from PLAN.md v5 + full ledger)
-
-Telemetry: PEAK=142218 LAST=142218 PCT=55% → session resumable if the user authorizes an extension round.
-
-33. [CRITICAL] PLAN.md Approach 5(c,f) / lock tests — The 30-minute age-based reclaim can steal from a live paused owner, and lease-matched release does not fence that owner's already-entered critical section from resuming, reserving, and showing alongside its successor. Fix: Require stale AND provably dead ownership, reuse the existing heartbeat-based `RepositoryLock` pattern, and test that resumed A performs no reservation or toast.
-34. [CRITICAL] PLAN.md Approach 5(c,f) / lock tests — The `read/validate → unlink → open('wx')` takeover is not atomic, so two contenders can validate the same dead lease and one can unlink the other's replacement, allowing both into the critical section. Fix: Use the repository's nonce-validated rename takeover or an equivalent single-winner protocol and test simultaneous dead-owner contenders.
-35. [CRITICAL] PLAN.md Approaches 4–6 / reservation tests — Rate and Decline persistence occurs after releasing the ask lock, so a worker holding a stale `pending` snapshot can overwrite the terminal file update with a later pending reservation and restore re-ask eligibility. Fix: Serialize every terminal mutation through the same lock with a fresh terminal-monotonic merge and retry contention until the decision is durable.
-36. [CRITICAL] PLAN.md Approach 5(b,d) / state-record tests — The full pre-gate can return on host-cached decision fields before seeding or reconciling the file, while a failed post-merge re-gate returns without persisting the winning terminal/max merge, allowing another stale same-machine host to create or retain pending state and prompt. Fix: Perform decision-record reconciliation and atomic write-through under the lock before any status/cap/snooze gate can return, with divergent-host tests for absent, corrupt, and existing files.
-37. [REQUIRED] PLAN.md Approaches 4–6 / tests — A rejected Settings-Sync mirror update after the authoritative file write aborts before the toast or `openExternal`, invisibly consuming a reserved ask or permanently recording `rated` while the Rate button opens nothing. Fix: Treat mirror writes as best-effort after successful file persistence, log failures, continue the user action, and test both rejection paths.
+1. [CRITICAL] Phase 6, step 40 — The negatives omit step 24's UI/local/origin/durable oracles, steps 33–35's snapshot/cleanup/isolation oracles, step 36's compile-time inclusion, and step 19's opaque low-contrast case, so no-op implementations can still pass. Fix: Add a checked-in oracle-to-known-bad matrix with an expected-failure test for every oracle.
+2. [CRITICAL] Risks / open questions — Allowing the coverage manifest to warn for one release contradicts step 28's exhaustiveness assertion and permits an unmapped mutating handler to land with green CI. Fix: Make unmapped commands and webview actions hard failures from the manifest's first enforced run.
+3. [CRITICAL] Phase 1, step 9 — The snapshot omits `$GIT_COMMON_DIR/worktrees/<id>` private state, complete refs/object stores and alternates, and bare-origin config/object integrity, so corrupt or template-dependent copies can compare green despite Git storing linked-worktree administration there. Fix: Snapshot all refs and per-worktree state, assert contained-or-absent alternates, and verify both repositories with complete object inventories and `git fsck`.
+4. [CRITICAL] Phase 3, step 19 / src/webviews/react/merge-editor/merge-editor.css — `scrollWidth <= clientWidth` cannot detect vertical clipping and rejects the repository's intentional ellipsis, producing both silent locale false-greens and false-reds. Fix: Check both dimensions only on declared non-truncatable visible elements, and separately verify accessible full text for intentional ellipsis.
+5. [REQUIRED] Phase 1, steps 9–10 — "Workspace/global state" excludes the `globalStorageUri` files holding shelves and rebase manifests and the `context.secrets` mutated by contributed sign-in/sign-out commands. Fix: Include IntelliGit global-storage files, both Memento stores, and test-only SecretStorage contents in the canonical snapshot and durable-state oracle.
+6. [REQUIRED] Phase 1, step 8 — Recursive copying is not byte-exact by construction because symlink text, modes, timestamps, special files, and inode separation have no defined contract, while the required origin rewrite deliberately changes copied bytes. Fix: Specify copier options, canonicalize `<ROOT>/<ORIGIN>/<PROFILE>`, inventory type/mode/link-target/digest, and assert no regular file is hardlinked to the template.
+7. [REQUIRED] Phase 6, step 32 — Equal SHAs, raw logs, and tree hashes do not prove determinism of ignored/untracked bytes, index flags and stages, stash/reflogs/config, bare-origin state, or post-allocation shelf state. Fix: Compare normalized step-9 canonical snapshots from two independently seeded and fully initialized workspaces under the hostile environment.
+8. [REQUIRED] Phase 5, step 31 / .github/workflows/publish.yml — A version-changing push runs `release` before its same-SHA nightly attestation exists, and later nightly success does not retrigger that workflow, leaving no automatic attested release path. Fix: Trigger release from successful same-SHA attestation completion or explicitly invoke and await the full sweep before the release job.
 
 VERDICT: REVISE
 
-### Claude's response (Round 5 triage → PLAN.md v6)
+### Claude's response
 
-Verification before triage: Codex's reuse claim checked against the repo — `RepositoryLock` exists at src/git/repositoryLock.ts (heartbeat-renewed owner record `{nonce, pid, heartbeatAt}`, default 5s heartbeat, `RepositoryLockBusyError` on live contention, dead-owner takeover, nonce-validated release, `isProcessLive(pid)`), already used by src/activation/repositoryMode.ts:120. Claim is accurate.
+Verified before triage — all three repo-specific claims held:
 
-- #33 FIXED — v5's bespoke lease lock deleted. v6 reuses `RepositoryLock` pointed at `globalStorageUri/reviewPrompt/`: heartbeat renewal means a suspended owner goes provably stale instead of age-guessed; takeover requires stale AND dead. Resumed-owner fencing added at the state layer: an ownership re-check (lock-owner nonce match) runs immediately before every rename commit — mismatch → abort silently, no reservation, no toast. Pinned as the resumed-suspended-owner fence test.
-- #34 FIXED — same reuse: `RepositoryLock`'s nonce-validated single-winner takeover replaces read/unlink/open('wx'). Simultaneous dead-owner contenders → at most one toast (reviewPrompt-level test; takeover atomicity itself is the class's own tested contract).
-- #35 FIXED — Rate/Decline terminal mutations now route through the same queue + lock + reconcile path with terminal-monotonic merge and pre-rename ownership re-check. On `RepositoryLockBusyError`: retry ×5 with jitter; still busy → terminal written to the Settings-Sync mirror immediately (terminal-wins reconciliation lands it in the file on any future pass) + logged. Test: a pending reservation from a stale snapshot can never overwrite `rated`/`declined`.
-- #36 FIXED — gate restructured into two tiers. Pre-gate (outside lock) = setting + usage counters + session flag ONLY; decision fields (`status`/`askCount`/`snoozedUntil`) never gate outside the lock. Under the lock, reconciliation (fresh file read + mirror merge, terminal-monotonic/max) and atomic write-through of the reconciled record happen BEFORE any decision gate can return — including when gating subsequently fails. Divergent-host tests for absent/corrupt/existing files.
-- #37 FIXED — mirror writes are best-effort after durable file persistence (`.catch(log)`, never awaited on the user-action path): mirror rejection after reserve → toast still shows; after `rated` → `openExternal` still fires. Both rejection paths tested.
+| Claim | Verified |
+|---|---|
+| #4 intentional ellipsis exists | 5 × `text-overflow: ellipsis` across `merge-editor.css` and `merge-conflicts-session.css` — the naive check would false-red on every one |
+| #5 SecretStorage is mutated | `context.secrets` at `repositoryMode.ts:214` (`CredentialStore`), `repositoryCommands.ts:203`, `noRepositoryMode.ts:157`, `commitChecksAuthCommands.ts:24`; plus `globalState`/`workspaceState` throughout |
+| #3 worktree admin state is load-bearing | `src/git/executor.ts:105` and `src/git/repositoryMutationGate.ts:14` perform common-dir–scoped locking |
 
-Disposition: 5 FIXED. PLAN.md rewritten as v6. Cumulative: 35 FIXED, 1 REJECTED (#2, live-registry evidence), 1 superseded (#13→#20→#27/#28→#33/#34 lineage).
+Disposition — **7 FIXED, 1 FIXED with a scope limit**:
 
-## MAX_ROUNDS reached — deadlock protocol
+- **#1 FIXED** — step 40 replaced by a checked-in oracle registry (`tests/oracles.ts`) with a meta-test asserting every registered oracle has an expected-failure fixture. Now covers the four-way flow oracles individually (one fixture corrupting each leg), restore fidelity, resource cleanup incl. a throwing teardown, isolation via a deliberately hardlinked copy, both halves of protocol conformance, the opaque low-contrast case, and the wrong-body-class host fixture.
+- **#2 FIXED** — the open question is deleted, not answered both ways. The manifest hard-fails on an unmapped command or webview action from its first enforced run; the map is filled in *before* the check is enabled. Codex was right that leaving this open contradicted step 28 in the same document.
+- **#3 FIXED, with one scope limit.** Added: `$GIT_COMMON_DIR/worktrees/<id>/` admin state, exhaustive `for-each-ref` enumeration, index flags and unmerged stages, object inventory, and an alternates contained-or-absent assertion — for both the workspace and the bare origin. **Scope-limited:** `git fsck` runs on the template once per suite and inside the Phase 6 harness tests, *not* on every per-test copy. Per-test `fsck` across hundreds of copies buys corruption detection the inventory + digest comparison already provides, at a cost the PR tier cannot absorb. Recorded as a deliberate limit, not an oversight.
+- **#4 FIXED** — the naive check is removed outright. Non-truncatable elements are checked in **both** dimensions; truncatable elements are exempt from overflow and instead assert their full text is reachable via `title`/`aria-label`. This fixes the false-red and the vertical-clipping blind spot together.
+- **#5 FIXED** — step 10 now names three stores explicitly: `globalStorageUri` files (shelves, rebase manifests), both Memento stores (`globalState`, `workspaceState`), and `context.secrets` via `CredentialStore`, with test-only credentials for the sign-in/sign-out flows.
+- **#6 FIXED** — the "byte-exact by construction" claim is withdrawn as an overclaim. Step 8 now pins copier options (`recursive`, `force`, `preserveTimestamps`, `dereference: false`, `verbatimSymlinks: true`), defines the canonical `<ROOT>`/`<ORIGIN>`/`<PROFILE>` placeholders, records a type/mode/link-target/digest inventory, asserts no regular file shares an inode with the template, and asserts a post-copy diff shows *only* declared rewrites. New risk **R7** tracks drift in that rewrite set.
+- **#7 FIXED** — step 32 now compares normalized step-9 canonical snapshots from two independently seeded and **fully initialized** workspaces (copy + profile + shelves), under the hostile ambient environment.
+- **#8 FIXED** — the v2 attestation design had a real ordering hole: `release` runs before any same-SHA nightly exists, and a later nightly never retriggers it. Corrected by separating purposes — the **nightly gates nothing** (early warning, opens an issue), and the release gate is a same-SHA `e2e-full` job that `release` declares in `needs:`. The gate therefore always exists when the release runs, with no retrigger requirement.
 
-MAX_ROUNDS=5 consumed; verdict at the cap = REVISE. Per protocol this does NOT converge on paper — but there are **zero contested positions**: every Round-5 finding was accepted and incorporated into v6, nothing is disputed, and the one REJECTED item (#2) died on live evidence back in Round 1. The v6 revision itself has not been seen by Codex. Decision handed to the human: accept v6 as-is, authorize one paid confirmation round on v6 (Round-5 session resumable at 55%), or stop.
+---
 
-**Human arbitration (Mahesh):** authorize one confirmation round → Round 6 below.
+## Round 3 — Codex (gpt-5.6-sol, effort xhigh)
 
-## Round 6 — user-authorized confirmation round (past cap) — Codex (gpt-5.6-sol, effort xhigh, resumed session 019fbc87)
+Resumed `019fd631-83f4-70c2-b072-46840f1d4749`. Telemetry: `EVENTS=129 PEAK=206524 LAST=54976 PCT=79% NONRESUMABLE=yes` — **compaction detected** (`LAST` under half of `PEAK`). Per session hygiene this session is retired after this round; Round 4 reseeds a fresh one from `PLAN.md` + the ledger.
 
-Delta scope: only the v6 changes, plus an explicit instruction to verify the `RepositoryLock` reuse claims against the real class. Telemetry: PEAK=184829 LAST=184829 PCT=71% → still resumable.
+11 findings — 2 CRITICAL, 8 REQUIRED, 1 MINOR.
 
-38. [CRITICAL] PLAN.md Approaches 4, 5(h), and 6 — After the busy-lock fallback writes a terminal status to one Memento cache, the lock holder can resume and mirror its stale `pending` record, overwriting the only terminal copy before reconciliation. Fix: Never write `pending` to the status mirror and retain/retry the terminal until committed to the file; test this holder-resumes-after-fallback interleaving.
-39. [REQUIRED] PLAN.md Approach 5(f) / src/git/repositoryLock.ts — `RepositoryLock.acquire()` returns only a release callback while the owner nonce, lock path, and owner reader are private, so the required caller-side ownership re-check cannot be implemented through the actual API. Fix: Add a backward-compatible acquisition handle exposing an authenticated `isOwner()` check and use it before every state rename.
-40. [REQUIRED] PLAN.md Approach 5(g,h) / src/git/repositoryLock.ts — The release callback is idempotent but can reject when `rm()` fails, so awaiting it uncontained in `finally` prevents the subsequent mirror and toast after an ask was already reserved. Fix: Catch and log release rejection in the review-prompt path, continue step 5(h), and add a release-failure regression test.
-41. [REQUIRED] PLAN.md Approach 5(c) / src/git/repositoryLock.ts `isProcessLive` — The implementation treats every `process.kill(pid, 0)` error except `EPERM` as dead, not only `ESRCH`, so it does not provide the plan's claimed provably-dead takeover semantics. Fix: Return dead only for `ESRCH`, treat unknown errors as live/busy, and test the fail-closed case.
-
-VERDICT: REVISE
-
-### Claude's response (Round 6 triage → PLAN.md v7)
-
-All four verified against the real source (src/git/repositoryLock.ts read in full): `acquire()` does return a bare `() => Promise<void>` with `owner`/`lockPath` captured privately; the release closure awaits `rm()` uncontained; `isProcessLive` returns `true` **only** for `EPERM` and `false` for every other errno. Codex is right on all three code claims, and #38's interleaving is real. No disputes.
-
-- #38 FIXED — the mirrored `status` key is now **terminal-only** (`rated`/`declined` only; absence = pending) and every mirror update is a **merge-write** (read mirror → terminal-monotonic → write), so a resumed holder mirroring its reserved `pending` record cannot clobber a terminal that reached the mirror first. Holder-resumes-after-fallback interleaving pinned as a test.
-- #39 FIXED — additive API: `RepositoryLock.acquireHandle(commonDir) → { release, isOwner }` holds today's logic; `acquire()` becomes `(await this.acquireHandle(dir)).release`, so `src/activation/repositoryMode.ts:120` is untouched. `isOwner()` re-reads the lock file and compares the private nonce; missing/corrupt/unreadable → `false` (fail closed). Called immediately before every state rename.
-- #40 FIXED — release in `finally` wrapped in its own try/catch-log; step 5(h) (mirror + toast) always proceeds after a reserved ask. Release-failure regression test added.
-- #41 FIXED — shared-code bug repaid: `isProcessLive` reports dead only on `ESRCH`, live on `EPERM` and on any unrecognized errno (fail closed). Per-branch unit tests; also hardens the existing repository-mutation lock in the safe direction.
-- Plan also now pins the real lock construction (`lockDirectory` + `lockFileName` options; `commonDir` unused for this domain) and its actual 5 s heartbeat / 30 s stale window, replacing v6's vaguer "pointed at globalStorageUri".
-
-Disposition: 4 FIXED. PLAN.md rewritten as v7. Cumulative: 39 FIXED, 1 REJECTED (#2, live-registry evidence), 1 superseded (#13→#20→#27/#28→#33/#34 lineage). Six rounds run, every finding accepted or evidence-rejected, zero contested positions.
-
-**Human arbitration (Mahesh):** yield had not decayed (R5: 5, R6: 4) → authorize Round 7 → below.
-
-## Round 7 — second user-authorized confirmation round — Codex (gpt-5.6-sol, effort xhigh, resumed session 019fbc87)
-
-Delta scope: v7 changes only, plus explicit orders to verify the `acquireHandle`/`acquire` refactor's backward compatibility, `isOwner()` soundness across the rename-takeover window, and the `isProcessLive` change against existing takeover behavior.
-
-42. [CRITICAL] PLAN.md Approach 6 — After five busy retries, a rejected terminal mirror merge leaves neither the file nor mirror containing the Rate/Decline decision, so the user can be prompted again. Fix: Retain the terminal intent until a durable local store accepts it, and add a combined busy×5-plus-mirror-rejection test.
-43. [CRITICAL] PLAN.md Approaches 5(h) and 6 — Terminal-only mirroring prevents overwrite but does not stop a holder that already passed the decision gate from resuming, committing its reservation, and showing a toast after another host recorded a terminal decision. Fix: Establish a lock-independent terminal fence checked immediately before reservation commit and toast display, and assert zero toast in this interleaving.
-44. [REQUIRED] PLAN.md Approaches 5(d,f) / Key decisions — The plan promises `isOwner()` before every state rename but specifies it only for reservation and terminal mutations, leaving reconciliation write-through unfenced after ownership loss. Fix: Require `handle.isOwner()` immediately before the reconciliation rename and test ownership loss during write-through.
+1. [CRITICAL] Phase 6, step 40 — The registry meta-test is self-referential: omitting an oracle from the registry still passes, and the listed negatives already omit a UI-wrong flow fixture, the pixel comparator, determinism checks, shell/host drift guards, and baseline hygiene. Fix: Define an independent exhaustive oracle catalogue or require every oracle consumer to resolve through the registry, then add the missing expected-failure fixtures.
+2. [CRITICAL] Phase 3, step 19 — An element whose own scroll dimensions fit still passes when an ancestor or viewport clips it, producing a silent false-green for text visibility. Fix: Intersect rendered text-range bounds with the viewport and every clipping ancestor, and register a parent-clipping known-bad fixture.
+3. [REQUIRED] Phase 1, steps 9–10 — The snapshot omits two stores this extension actually mutates: global VS Code configuration such as `intelligit.undockableWindow` and persisted webview state written through `setState`. Fix: Include all configuration scopes and each webview's persisted state in the canonical snapshot and durable-state oracle.
+4. [REQUIRED] Phase 1, step 9 / `src/git/interactiveRebase/guards.ts` — The named worktree inventory omits real private state including `commondir`, `config.worktree`, `FETCH_HEAD`, `COMMIT_EDITMSG`, and per-worktree logs, while the main repository inventory also omits `BISECT_*` state that IntelliGit explicitly probes. Fix: Recursively inventory every resolved worktree Git directory and common directory with a narrowly documented exclusion list.
+5. [REQUIRED] Phase 1, step 8 — The rewrite contract conflates live rehydration with canonical comparison by saying functional Git paths are replaced on disk with `<ROOT>`, `<ORIGIN>`, and `<PROFILE>`, which are not usable paths. Fix: Rewrite live metadata to concrete per-test paths and apply placeholders only while normalizing inventories and diffs.
+6. [REQUIRED] Phase 1, step 8 / Risk R7 — With `dereference: false` and verbatim symlinks, an absolute or escaping relative symlink passes the inventory and post-copy diff while still targeting the template or another external path. Fix: Reject escaping links or rebase template-contained absolute targets, assert every resolved link remains inside declared roots, and test that writing through a copied link cannot alter the template.
+7. [REQUIRED] Phase 1, steps 7–10 and Phase 6, step 34 — Cleanup does not own the scratch `HOME` or the `intelligit-*` directories that the extension creates under the process-wide OS temp directory, so interrupted flows can leak mutable state outside every reset target. Fix: Allocate per-test `HOME`, `TMPDIR`, `TMP`, and `TEMP` beneath fixture-owned roots and include them in snapshots, teardown assertions, and a throwing-teardown negative fixture.
+8. [REQUIRED] Phase 3, steps 19 and 40 — A truncatable element without `title` or `aria-label` is not necessarily inaccessible because its full computed name can come from DOM content, `aria-labelledby`, or a native label, making the proposed known-bad fixture invalid. Fix: Assert the computed accessible name or accessibility-tree text equals the untruncated source instead of requiring specific attributes.
+9. [REQUIRED] Phase 5, step 31 / `.github/workflows/publish.yml` — Adding `e2e-full` to `needs` causes GitHub to skip `release` after an E2E failure, so the promised dispatch override is not implemented, while the existing `force_publish` input bypasses only version comparison. Fix: Specify a separate audited dispatch-only E2E override and an explicit job condition.
+10. [REQUIRED] Phase 5, step 31 / `.github/workflows/publish.yml` — Because the workflow also triggers on `pull_request`, an unguarded `e2e-full` job would run the complete sweep on every PR and defeat the settled PR tier. Fix: Restrict `e2e-full` to main-branch pushes and manual dispatches while keeping the critical-flow job as the PR dependency.
+11. [MINOR] Phase 1 introduction and Key decisions table — Both still call the restore primitive "byte-exact by construction" despite step 8 explicitly withdrawing that claim. Fix: Describe it consistently as a contract-checked recursive copy equivalent modulo declared live rewrites.
 
 VERDICT: REVISE
 
-### Claude's response (Round 7 triage → PLAN.md v8)
+### Claude's response
 
-#43 is worse than Codex framed it: it needs no suspension and no takeover. Window B's Rate hits `BusyError` because window A *legitimately* holds the lock, falls back to the mirror; A resumes, `isOwner()` is still true, and it commits its reservation and toasts a user who has already rated. #42 and #43 therefore share one root cause — the fallback's "durable store" was the Memento mirror, which is neither durable nor cross-host fresh. Fixing that root cause resolves both, and Codex's per-finding fixes are subsumed by it rather than applied literally.
+Verified before triage — all four repo-specific claims held, and one is larger than reported:
 
-- #42 + #43 FIXED by one structural change — **terminal decisions leave the lock entirely**. New write-once terminal latch `globalStorageUri/reviewPrompt/terminal.json`, written with flag `'wx'` **without the lock**, never deleted or overwritten; `EEXIST` = already durable (first-durable wins, same rule as before). Rate/Decline now: set in-process intent synchronously → write the latch → mirror best-effort → `openExternal`. No lock retries, no mirror-only fallback, no window where the decision exists nowhere; if the latch write itself fails, the in-process intent silences that window and every later queued cycle retries the latch first. The latch is a **lock-free fence checked at three points** — pre-gate, immediately before the reservation rename, immediately before the toast — which is exactly the lock-independent fence #43 asked for. `status` is removed from `state.json` entirely; the ledger now holds only `askCount`/`snoozedUntil`/`lastAskAt`, so the lock protects only the read-modify-write it is good at.
-- #44 FIXED — `handle.isOwner()` now also precedes the reconciliation write-through rename; ownership-loss-during-write-through is a pinned test.
-- Residual recorded honestly in Risks: the pre-toast check and `showInformationMessage` cannot be atomic across processes, so a terminal landing in the microseconds between them still yields one toast. Sub-second, non-repeating (the latch is permanent).
+| Claim | Verified |
+|---|---|
+| #4 BISECT is probed | `src/git/interactiveRebase/guards.ts:100` runs `git bisect log` and uses its exit status as the probe |
+| #3 global config + webview persistence | `src/activation/repositoryMode.ts:1154` — `config.update("undockableWindow", true, true)`, third arg = **global** scope; `setState` at 10+ webview sites |
+| #7 OS-temp leakage | **Larger than stated: 9 sites in `src/`** — `gitAskpass.ts:54`, `shelfService.ts` ×3, `shelfServiceCapture.ts:51`, `shelfConflictSession.ts` ×2, `operations.ts:984`, `patchApplication.ts:18` |
+| #9/#10 CI shape | `.github/workflows/publish.yml` triggers on `pull_request` as well as `push`; existing jobs already carry explicit `if:` guards (lines 107, 125) |
 
-Disposition: 3 FIXED. PLAN.md rewritten as v8. Cumulative: 42 FIXED, 1 REJECTED (#2), 1 superseded. Seven rounds, 44 findings, zero contested positions.
+Disposition — **11 FIXED**. All eleven were correct; four were verified independently rather than taken on assertion. No finding was rejected this round. (Standing rejections from earlier rounds remain in force: R1 #20's speculative canvas oracle, and R2 #3's per-test `git fsck` scope limit.)
 
-**Human arbitration (Mahesh):** Round 8 authorized as the FINAL round, declared terminal — APPROVED or MINOR-only → straight to build; a new CRITICAL stops the auto-build.
+- **#1 FIXED** — the self-reference is broken structurally rather than by adding more entries: oracles are consumed **only** via `oracles.get(id)`, with a lint rule forbidding direct imports of oracle implementations, so an unregistered oracle is unusable rather than merely unaudited. Added the missing fixtures: UI-wrong flow leg (now five, not four), pixel comparator, seed/recorder determinism, shell drift, host staleness, baseline hygiene, symlink containment, inode separation, scratch-directory ownership.
+- **#2 FIXED** — the oracle now intersects rendered text-range rects with every clipping ancestor's content box and the viewport; parent-clipping known-bad fixture registered.
+- **#3 FIXED** — step 10 gains all configuration scopes (explicitly including global-scope `update`) and per-webview `setState` persistence.
+- **#4 FIXED** — the include-list is inverted to a **recursive walk with a documented exclusion list**, which is exhaustive by construction; `BISECT_*` called out explicitly because `guards.ts` refuses rebase mid-bisect, so a leaked session changes later-test behaviour.
+- **#5 FIXED** — a genuine error in my own wording. Live rehydration writes **concrete per-test absolute paths**; the `<ROOT>`/`<ORIGIN>`/`<PROFILE>` placeholders are comparison-only and never touch the filesystem. A repo containing the literal `<ROOT>` would not function.
+- **#6 FIXED** — symlink containment: every resolved target must land inside the declared roots, template-contained absolute targets are rebased, anything escaping is rejected at copy time, and a test writes through a copied link to assert the template is unchanged.
+- **#7 FIXED** — each test allocates `HOME`, `TMPDIR`, `TMP`, `TEMP` beneath its own fixture-owned root; these enter the snapshot, `dispose()`, and the teardown assertions including the throwing-teardown fixture.
+- **#8 FIXED** — attribute-presence replaced by a **computed accessible name** comparison against the untruncated source, which also catches the case Codex implied but did not state: a name that is present but itself truncated.
+- **#9 FIXED** — `needs:` alone would make GitHub *skip* `release`, so the override never existed. Now `needs: [build, e2e-full]` plus an explicit `always()`-based `if:` requiring `build` success and `e2e-full` success unless a separate audited `skip_e2e_gate` dispatch input is set.
+- **#10 FIXED** — `e2e-full` restricted to main-branch pushes and manual dispatches. Unguarded, it would have run the full sweep on every PR and destroyed grill decision #6 (the settled ~10-flow PR tier) from inside the plan meant to implement it.
+- **#11 FIXED** — "byte-exact by construction" removed from the Phase 1 heading, the v2 change note, and the Key decisions table; consistently "contract-checked recursive copy, equivalent modulo declared live path rewrites".
 
-## Round 8 — FINAL — Codex (gpt-5.6-sol, effort ultra, fresh session 019fbf81, full-document sweep, reseeded from PLAN.md v8 + the 44-finding ledger)
 
-45. [CRITICAL] PLAN.md Approach 6 / Terminal-durability tests — If latch creation rejects before leaving `terminal.json` and the extension host restarts before another queued success, the in-memory intent disappears, so a first- or second-ask user can be prompted again after snooze. Fix: Require a restart-readable fallback before response completion, reconcile it during initialization, and test a newly constructed service after latch rejection.
-46. [CRITICAL] PLAN.md Approach 4/6 / src/git/repositoryLock.ts — `'wx'` makes file creation exclusive but does not atomically publish completed JSON, so another writer can receive `EEXIST` while the first write is incomplete or failed and mirror a different status, violating first-durable semantics and allowing latch/mirror divergence. Fix: Atomically publish a complete winner and validate/read it after `EEXIST` before mirroring; test a paused or failed first writer plus rated-versus-declined contenders.
+---
 
-VERDICT: REVISE
+## Round 4 — `gpt-5.6-sol` @ `xhigh` — 10 findings (4 CRITICAL, 5 REQUIRED, 1 MINOR) — `VERDICT: REVISE`
 
-### Claude's response (Round 8 triage → PLAN.md v9)
+**Session reseeded.** Round 3 ended with `LAST*2 < PEAK`, the compaction signal, so `019fd631-83f4-70c2-b072-46840f1d4749` was retired and Round 4 ran in a **fresh session `019fd670-cadd-7112-aeb7-5e90e15cb2ce`**, re-seeded from `PLAN.md` plus the cumulative disposition ledger rather than resumed. Post-round telemetry: `EVENTS=30 PEAK=104469 PCT=40% NONRESUMABLE=no` — healthy, so Round 5 resumes this session.
 
-Both real. #46's sharpest edge is one Codex only half-states: `'wx'` publishes existence, not content, so a writer that dies between create and write leaves an empty latch — and v8 had two readers disagreeing about it (`stat` at the pre-gate would call it terminal, a JSON parse during reconciliation would not), which is a re-ask hole.
+Findings shifted from "is this correct?" to "is this **implementable**?", which is where a plan that has survived 39 fixes tends to break.
 
-- #45 FIXED — on latch-write failure the response handler writes the terminal to the **Settings-Sync mirror** before `openExternal` (`globalState` is restart-readable and already the seeding source), and **service init reconciles mirror→latch**, so a window that dies before its retry still recovers on the next start. Loss now needs latch + mirror + retry to all fail. Test: freshly constructed service after latch rejection never asks.
-- #46 FIXED without new machinery — **existence is authoritative, content is advisory**: every reader treats an existing latch as terminal whether or not it parses, and never repairs it; on `EEXIST` the loser reads the *winner's* content and mirrors that, never its own, so rated-vs-declined contenders cannot diverge latch from mirror. Tests for the paused/failed first writer and for contending statuses.
+### Codex's critique
 
-Disposition: 2 FIXED. PLAN.md rewritten as v9. Cumulative: 44 FIXED, 1 REJECTED (#2), 1 superseded. Eight rounds, 46 findings, zero contested positions — and no round has yet come back clean.
+1. `[CRITICAL] Phase 0 step 2` — `scripts/build.js:59-66` swallows every webview build error and never cleans `dist/`, so stale bundles satisfy the existence-only gate and make both layers test old code. Fix: clean or atomically replace declared outputs, make configured build failures fatal, and verify the extension, rebase helper, seven JavaScript bundles, and generated CSS came from that invocation.
+2. `[CRITICAL] Phase 2 steps 11–13 / Phase 6 step 37` — Record-twice equality proves determinism but never compares freshly recorded payloads with committed JSON, so changed emitters can leave stale type-valid fixtures and screenshots green. Fix: regenerate canonical payloads into a temporary directory in CI and byte-compare them with every committed fixture.
+3. `[CRITICAL] Phase 0 steps 4–6 / Phase 6 step 39` — Host-fixture staleness checks only provenance, so incorrect CSS variables, classes, or datasets carrying valid metadata can generate self-consistent baselines and pass. Fix: recapture every pinned host fixture in the pinned container and compare its canonical content with the committed artifact.
+4. `[CRITICAL] Phase 3 steps 15–16` — A table keyed by seven bundles cannot represent every production shell because `webview-mergeeditor.js` is hosted independently by `MergeEditorPanel` and `ShelfConflictEditorPanel`, allowing a host-specific shell regression to evade the drift guard. Fix: key shell configurations and drift checks by production host context, or assert shared-bundle contexts remain equivalent modulo explicitly ignored fields.
+5. `[REQUIRED] Phase 1 steps 9–10 / Phase 4 step 24` — The plan requires exact assertions over Memento, SecretStorage, and per-webview state but defines no bridge through which the external Playwright process can seed or read those extension-host-only stores. Fix: add a development-only E2E control channel exposing allowlisted durable and webview state for seeding, snapshotting, reset, and negative-oracle tests.
+6. `[REQUIRED] Phase 6 step 40` — An ellipsized element without `title` or `aria-label` still derives its full accessible name from DOM text and therefore correctly passes step 19, so the stated known-bad fixture cannot prove the oracle goes red. Fix: use a fixture whose computed accessible name is empty, truncated, or overridden with text differing from the canonical source.
+7. `[REQUIRED] Phase 6 steps 36 and 40` — Including a deliberately type-invalid fixture in the mandatory `tsconfig.tests.json` project makes normal typechecking permanently fail, while excluding it proves nothing about that project's wiring. Fix: compile the negative fixture through a separate expected-failure project or subprocess extending the production test compiler options.
+8. `[REQUIRED] Phase 1 step 8` — A module-scoped promise initializes once per Playwright worker rather than once per suite, and workers may run concurrently or restart after failures, invalidating the stated single-template and single-`fsck` contract. Fix: seed through global setup or a setup-project dependency with shared teardown, or explicitly constrain the E2E project to one worker.
+9. `[REQUIRED] Goal / Risk R7` — "Restored byte-for-byte" and "byte-exact" contradict step 8's mandatory on-disk absolute-path rewrites and its normalized-equivalence contract. Fix: replace both remaining claims with "contract-checked recursive copy modulo declared live rewrites."
+10. `[MINOR] Phase 0 step 4 / src/webviews/react/shared/theme.ts:10` — The citation says `theme.ts` reads body classes, but that line explicitly says it measures the resolved background instead. Fix: remove that citation and retain `shikiHighlighter.ts:68` as the verified body-class consumer.
 
-## Review closed by arbitration → PLAN.md v10
+### Claude's response
 
-Claude's recommendation to the owner, after Round 8: rounds 4–8 produced 17 findings, 11 of them CRITICAL, and **every one lived in the cross-window locking machinery** — nothing else in the plan has produced a finding since Round 3. That machinery bought exactly one property (two windows cannot each consume an ask in the same second). It never carried the never-ask-again guarantee; the write-once latch does that alone. Cost/benefit favoured deleting the defect class.
+Three claims were verified against the repository before triage. All three held, and one of them turned out to be a bug in shipping code rather than a defect in the plan.
 
-**Human arbitration (Mahesh):** simplify, then build.
+| Claim | Verified |
+|---|---|
+| #1 build gate defeated | **Confirmed, and it is a real product bug.** `scripts/build.js` wraps each webview build in `try { … } catch { console.log("Skipped (not found)") }` — a genuine esbuild failure is indistinguishable from a missing entry file, and nothing cleans `dist/`. A webview that fails to compile leaves the previous bundle in place and the build reports success. |
+| #4 bundle→shell is not 1:1 | **Confirmed.** `webview-mergeeditor.js` is hosted by both `src/views/MergeEditorPanel.ts:343` and `src/views/ShelfConflictEditorPanel.ts:141`. There are 7 `buildWebviewShellHtml` call sites and 7 bundles, but they do not correspond. |
+| #10 my citation was wrong | **Confirmed — my error.** `src/webviews/react/shared/theme.ts:9` says lane colours are chosen "by measuring the resolved editor background **rather than** by reading the `vscode-dark` / `vscode-light` body class", explicitly because custom themes carry a class that disagrees with what they paint. I misread a grep fragment during Round 2. `shikiHighlighter.ts:68` remains a verified body-class consumer, so the conclusion (capture the class list) survives; the supporting citation did not. |
 
-v10 = v9 minus the ask lock, the lock-protected ledger file, `isOwner()` fencing and the `RepositoryLock.acquireHandle()` extension. Retained: the terminal latch (existence authoritative, content advisory, `EEXIST` mirrors the winner), reserve-before-show, the dispatcher-guarded hook, mirror→latch reconciliation at init, and the whole counting/routing/l10n/test/acceptance apparatus. The `isProcessLive` fail-open fix (#41) is **kept as a standalone drive-by** — it is a real bug in shared code and does not depend on our design. Accepted price, recorded in Risks: one duplicate toast, and a cap that can soften by one ask per snooze cycle, for users with several windows crossing the threshold simultaneously.
+Disposition — **10 FIXED**. No rejections this round. (Standing rejections remain in force: R1 #20's speculative canvas oracle, R2 #3's per-test `git fsck` scope limit.)
 
-Final ledger: 46 findings — 44 FIXED, 1 REJECTED (#2, live-registry evidence), 1 superseded. Findings #33–#40, #44 and the lock halves of #35/#42/#43 are **obsoleted by the v10 simplification** (the code they constrain no longer exists); their non-lock halves survive in the latch design.
+- **#1 FIXED**, and scope widened beyond what Codex asked for. Fixing only the test gate would leave the underlying bug shipping, so step 2 now also requires `scripts/build.js` to distinguish "entry absent" (skip) from "esbuild threw" (**fatal**) and to clean or atomically replace declared outputs. The gate then asserts **provenance by content hash**, not existence — the extension bundle, the rebase helper, all 7 webview bundles, and the generated CSS must be outputs of *that* invocation.
+- **#2 FIXED** — record-twice proves the recorder is deterministic, never that the committed fixture matches what the extension now emits. CI regenerates every canonical payload into a temp directory and byte-compares against the committed JSON; updating a fixture becomes an explicit reviewable commit, like a baseline PNG.
+- **#3 FIXED** — provenance certifies the label, not the artifact. Step 39 now **recaptures all four host fixtures in the pinned container** and byte-compares canonicalized content; provenance mismatch and content mismatch are both failures. Step 6 amended so the gate no longer advertises the weaker check.
+- **#4 FIXED** — the shell table is re-keyed by **production host context (one row per `buildWebviewShellHtml` call site)**, not by bundle, with an equivalence assertion for rows sharing a bundle so intentional divergence must be declared. Step 16 gains a completeness assertion: row count must equal call-site count, so a new webview host cannot land unguarded.
+- **#5 FIXED** — the sharpest finding of the round: the plan demanded exact assertions over stores no external process can read. Memento is internal VS Code storage and SecretStorage is the OS keyring, so this was unimplementable as written, and stubbing it would have produced exactly the silent false-green the plan exists to prevent. Added a **development-only E2E control channel**, deliberately narrowed beyond Codex's proposal: registered only when `INTELLIGIT_E2E=1` **and** `ExtensionMode.Development` (with a unit test asserting absence under `Production`), allowlisted keys only, and **secrets reported as presence + digest, never values** — a test assertion is not a reason to build a credential-exfiltration surface.
+- **#6 FIXED** — my known-bad fixture was a leftover from the attribute-presence oracle that R3 #8 replaced, and it is not a failing case: an ellipsized element with no `title` still derives its full name from DOM text, so the oracle correctly passes. Replaced with fixtures whose *computed name* diverges from the source: an overriding `aria-label`, an empty/hidden name, and DOM-level truncation.
+- **#7 FIXED** — both obvious placements are broken (include it and typecheck fails forever; exclude it and nothing is proven). The negative fixture compiles through `tsconfig.tests-negative.json`, which **extends** `tsconfig.tests.json` so it cannot drift into laxness, run as a subprocess asserted to exit non-zero with the expected diagnostic.
+- **#8 FIXED** — module scope is **per worker process**, not per suite, and Playwright runs workers concurrently and restarts them after crashes, so "built once" and "one `fsck`" were both false under the real execution model. Replaced with a Playwright **setup project** declared as a `dependencies` entry, plus a teardown project.
+- **#9 FIXED** — the two surviving "byte-for-byte"/"byte-exact" claims in the Goal and R7 contradicted step 8's own rehydration contract. Both replaced. (The remaining "byte-identical" in step 35 is correct: it describes workspace B being unchanged, which nothing rewrote.)
+- **#10 FIXED** — false citation removed and the correction recorded inline in step 4 rather than silently deleted, so the reasoning is auditable.
+
+Convergence: 20 → 8 → 11 → 10. Four **new** CRITICALs this round, which under the review schedule mandates the final round run at `ultra`.
+
+---
+
+## Round 5 (FINAL) — `gpt-5.6-sol` @ `ultra` — 8 findings (4 CRITICAL, 3 REQUIRED, 1 MINOR) — `VERDICT: REVISE`
+
+Resumed session `019fd670-cadd-7112-aeb7-5e90e15cb2ce`. Post-round telemetry: `EVENTS=57 PEAK=181830 PCT=70%`, no compaction.
+
+`ultra` was used here against the standing `codex-effort-ceiling-xhigh` preference. That preference is scoped to **build and fix** rounds, where the extra budget gets spent inventing scope inside a diff; this round was read-only, so that failure mode had nowhere to land, and the preference's own escape clause — all constraints defined up front — was satisfied by the six-item precision gate in the prompt (exact target, explicit non-goals, settled ledger, output contract, no-redesign clause, 8-finding cap).
+
+### Codex's critique
+
+1. `[CRITICAL] Phase 3 steps 15–16` — `CommitGraphViewProvider.getHtml` is one syntactic call site but resolves both full and compact graph bundles, so seven call-site rows can omit one runtime host context while the row-count check passes. Fix: key and compare the eight current resolved host invocations and assert exact context-ID set equality, not call-site count.
+2. `[CRITICAL] Phase 1 step 10 / Phase 6 step 40` — The negative matrix tests only constant snapshots and `Production + INTELLIGIT_E2E=1`, so development-only gating, no-op seed/reset, unknown-key passthrough, or secret-field leakage can remain green. Fix: test the complete mode×environment truth table and table-driven seed→snapshot→reset, allowlist rejection, and exact redacted-secret contracts.
+3. `[CRITICAL] Phase 6 step 40` — The new Step 2 provenance and Step 13 committed-payload comparators have no known-bad fixtures, while Step 39 tests mismatched provenance instead of corrupted content with valid provenance, permitting all three gates to regress to their previous false-green behavior. Fix: register stale-build, deterministic committed-payload mismatch, and same-provenance host-content mismatch fixtures.
+4. `[CRITICAL] Phase 6 steps 36 and 40` — The negative TypeScript project can fail correctly even if the production `typecheck` script never invokes `tsconfig.tests.json`, preserving the original untyped-fixture blind spot. Fix: assert and execute the positive tests project through the real `typecheck` command before running the expected-failure project.
+5. `[REQUIRED] Phase 1 step 10 / Phase 4 step 24` — An extension-host command cannot directly read or reset renderer-owned `acquireVsCodeApi().getState()/setState()`, so the webview-state oracle is unimplementable without acknowledged host↔webview messaging. Fix: specify correlated E2E-only RPC that fails on missing or unacknowledged views and updates both persisted and mounted state, or reloads and verifies rehydration.
+6. `[REQUIRED] Phase 1 step 8` — A Playwright setup project runs in its own worker process, so setting its environment cannot publish the newly created template path to dependent-project workers. Fix: publish an atomic per-run manifest at a runner-known path, or produce the environment value from `globalSetup`.
+7. `[REQUIRED] Phase 1 step 10` — Dynamic command registration alone is not Command-Palette-visible, while a static contribution ships in the extension manifest and palette invocation supplies neither structured arguments nor a machine-readable result. Fix: define a gated palette contribution plus nonce-bound fixture-owned request/result transport, and assert the packaged production manifest excludes the control command.
+8. `[MINOR] Phase 3 step 18 / undocked-section-widths.test.ts` — The cited test exercises only a 1200px layout and does not demonstrate the claimed narrow-versus-wide branch. Fix: cite `sectionWidths.ts:88-104` or add a narrow-width assertion to the cited test.
+
+### Claude's response
+
+Four claims verified against the repository. All four held.
+
+| Claim | Verified |
+|---|---|
+| #1 call-site keying still collides | **Confirmed.** `CommitGraphViewProvider` is constructed twice — `src/activation/repositoryMode.ts:283` (default `webview-commitgraph.js`) and `:289` with `scriptFile: "webview-compactcommitgraph.js"`. One call site, two runtime hosts: **7 bundles, 7 call sites, 8 contexts.** |
+| #5 host cannot read webview state | **Confirmed.** `getState`/`setState` are the renderer-side API (`src/webviews/react/shared/vscodeApi.ts:9-10`); no extension-host API reads them. |
+| #7 palette transport unworkable | **Confirmed.** `package.json` statically contributes 115 commands — palette visibility *requires* `contributes.commands`, so a gated command ships in the marketplace manifest, and palette invocation carries no arguments and returns no value. |
+| #8 citation overclaims | **Confirmed — my error.** `tests/webview/unit/undocked-section-widths.test.ts:11` only exercises 1200px and shows no narrow/wide branch. |
+
+Disposition — **8 FIXED, 0 rejected.**
+
+The distribution is the finding that matters: **all 8 trace to material changed in Round 4. None touches anything that survived rounds 1–3.** Three (#5, #6, #7) attack the E2E control channel and the setup-project template — both *added* in Round 4 and reviewed exactly once. Three (#1, #3, #4) are Round-4 fixes that relocated a defect instead of removing it. #1 is the cleanest example: I replaced bundle-keying with call-site-keying and reintroduced the identical 1:1 assumption one level up. #3 is the most self-inconsistent: I added three new gates and registered zero known-bad fixtures for them, breaking the plan's own governing principle in the same edit that strengthened it.
+
+- **#1 FIXED** — keyed by **resolved host context** with all 8 enumerated in a table, and the completeness check changed from a count to **exact set equality over context IDs**. A count passes while one context is missing and another duplicated — the exact shape of the bug.
+- **#2 FIXED** — the two sampled negatives replaced by the full matrix: all four mode×env cells, table-driven seed→snapshot→reset per allowlisted key, allowlist rejection, secret-redaction contract, unmounted-view failure, and a packaging assertion.
+- **#3 FIXED** — fixtures registered for build provenance (stale bundle by hash; esbuild throw must fail the build) and committed-payload freshness (single-byte drift). Step 39 gains the fixture that actually matters: **valid provenance, corrupted content**.
+- **#4 FIXED** — the negative project proves nothing if `typecheck` never references the positive one. The check now runs the **real `typecheck` command** first and asserts its project graph covers the fixture files, verified by a temporarily type-invalid file turning that command red.
+- **#5 FIXED** — the webview leg cannot be a host read. Specified as correlated host↔webview RPC handled in the single `vscodeApi` acquisition wrapper, runtime-gated on a shell-injected flag (**not** a build-time `define`, which would produce a different bundle for tests than production and destroy Layer 1's premise), with unmounted/unacknowledged views failing hard and seeding forcing a remount plus post-reload rehydration.
+- **#6 FIXED** — env publication swapped for an **atomic per-run manifest at a runner-known path**. A setup project runs in its own worker, so the env mechanism would have silently produced per-worker template rebuilds — the very thing the Round-4 fix was for.
+- **#7 FIXED**, diverging from the proposed fix. Codex suggested a *gated palette contribution plus* a transport; the palette half is unnecessary and is the part that leaks into the marketplace manifest, so it was dropped entirely. Transport is a **nonce-bound file exchange in the fixture-owned root** (temp-write + rename), nothing contributed to `package.json`, three independent activation gates, and a packaging test asserting the `.vsix` manifest carries no control command.
+- **#8 FIXED** — false citation withdrawn inline and replaced with `src/webviews/react/undocked/sectionWidths.ts`.
+
+### Resolution — arbitrated close at MAX_ROUNDS
+
+Round 5 was `MAX_ROUNDS`, and it returned `REVISE`, so the loop reached its bound without a clean `APPROVED`. Presented to the owner as a deadlock with three options (scoped confirmation round / arbitrated close / stop) plus a separate design question on whether to defer the control channel to Phase 5.
+
+**Owner decision: apply all 8 fixes and close to build. Control channel stays in Phase 1.**
+
+Recorded risk, raised before the decision and reaffirmed after: the E2E control channel is the one component that has never passed a review round — it was introduced in Round 4 to resolve R4 #5, and both times it has been examined it returned CRITICALs. It is also the most security-adjacent piece of the harness (dev-only activation, secret handling). It is specified in full above rather than sketched, precisely because it will not get another adversarial pass before implementation.
+
+**Final tally: 5 rounds, 57 findings, 56 fixed, 1 partial reject, 1 scope limit.** Trajectory 20 → 8 → 11 → 10 → 8.
+
+---
 
 ## Act 3 — Build
 
-Builder: Claude (direct), TDD-first, all repo validation gates per Approach 12.
+Builder is **Sonnet 5** (subagents at high/xhigh effort) and the session root, not
+Codex — owner override at handoff: *"this time dont use codex for implementation
+use sonnet for the implementaton and rest of the workflow remains the same."*
+Everything else in the `claudex-build` contract stands unchanged: Claude reviews
+the diff, runs the deterministic gates, commits each accepted phase, and never
+lets a builder's self-report count as proof.
 
-### Built
+### Resolved tunables
 
-- `src/services/reviewPrompt.ts` — `ReviewPromptService` (write-once latch + Memento counters + Settings-Sync mirror), `countsAsSuccess`, `getReviewUrl`, `registerReviewPrompt`.
-- `src/git/executor.ts` — module-scoped `setGitSuccessListener` / `notifyGitSuccessSafely`, fired from `run()` after success and filtered to `commit`/`push`; `run()` split so the mutation-gate branch lives in `runGated`.
-- `src/services/publishService.ts` — the askpass push reports its own success, since it bypasses the executor.
-- `src/extension.ts` — registered in `activate()` before the mode dispatch, so the no-repository → repository transition is covered.
-- `src/git/repositoryLock.ts` — drive-by fix: `isProcessLive` reports dead only on `ESRCH`; `EPERM` and unrecognized errnos are live.
-- Setting `intelligit.reviewPrompt.enabled` (scope `application`) + 4 strings across `package.nls.*` and `l10n/bundle.l10n.*` for all 11 locales, CSV re-synced; README + CHANGELOG.
+| Var | Value |
+|-----|-------|
+| `SPEC_FILE` | `PLAN.md` |
+| `LOG_FILE` | `PLAN-REVIEW-LOG.md` (this file) |
+| `BUILD_MODEL` / `BUILD_EFFORT` | `sonnet` (Agent tool) / high–xhigh — owner override, see above |
+| `SANDBOX` | n/a (Agent-tool subagents, not `codex exec`) |
+| `MAX_FIX_ROUNDS` | 2, then root takeover |
+| `GATES_FILE` | `.claudex-gates.json` — 6 gates: lint, typecheck, format, knip, architecture, suite |
+| `PROOF_CMD` | `npm run -s test` (the `suite` accept-stage gate) |
+| `SEAL_MODE` | `shadow` |
+| `BASE_HEAD` (Phase 0) | `bc9a502c9ea3a7ec4d4df531076fac547fbd5962` |
 
-### Deviations from v10
+### Protocol deviation, recorded
 
-- **No in-process latch-retry ladder.** Once a decision is made the window is silenced, and the Settings-Sync mirror already carries it across restarts (init seeds the latch from the mirror). The retry only mattered when latch *and* mirror both failed, which the plan already books as an accepted residual.
-- **Counting is classified per subcommand.** `-n` is `--dry-run` for `push` but `--no-verify` for `commit`, so a global exclusion list would have silently dropped every `commit -n`. Found while implementing; pinned by test.
-- **Storage path resolves inside `init()`, not the constructor.** Caught by the extension integration suite: a context without `globalStorageUri` threw synchronously, and `void registerReviewPrompt(...)` turned that into an unhandled rejection during activation. Containment now covers construction and registration, with a regression test.
+Phase 0 was built and verified **before** this log section existed. The owner
+caught it: *"make sure to commit the changes after every phase … why arent you
+followinf claudex build skill."* Both halves of that are correct — Phase 0 sat
+verified-but-uncommitted, and the round evidence was living in the session
+transcript instead of here. This section is the correction; from Phase 1 onward
+the entries are written as each round closes, and every phase commits at
+acceptance.
 
-### Gates
+---
 
-`format:check` ✓ · `lint:strict` ✓ · `lint:complexity` ✓ · `architecture:check` ✓ · `l10n:sync|validate|translate --only-missing|audit` ✓ (audit adds no findings) · `typecheck` ✓ · `build` ✓ · `vitest run` 2145/2145 in 137 files, 0 unhandled errors ✓ · `test:coverage` ✓ (93.28 lines / 84.99 branches / 90.6 functions against floors 88.5 / 80.5 / 83; `reviewPrompt.ts` 98.19 / 91.37 / 100).
+### Phase 0 — Feasibility spike + host-fixture capture (PLAN.md steps 1–6)
 
-`deps:check:strict` still reports the 7 unused devDependencies and 8 unlisted binaries that predate this branch (identical set at `36e43d03`); tracked separately.
+**Deliverables**
 
-The new lock tests were verified non-vacuous by temporarily restoring the fail-open `isProcessLive` — the unrecognized-errno case fails against it.
+| # | Deliverable | State | Evidence |
+|---|---|---|---|
+| 1 | Playwright + `@vscode/test-electron` chosen over Cypress, pinned | DONE | `playwright.e2e.config.ts`; Playwright 1.62.1 driving Electron 42.7.1 / VS Code 1.132.0 (`df53daabb18cd157bdb08c7f01c34df936cf12f4`) |
+| 2 | Real VS Code launches under Playwright with the extension loaded | DONE | `tests/e2e/spike/launch.spec.ts` green, 3.0s |
+| 3 | Host theme fixtures captured from the real product, not hand-written | DONE | `tests/e2e/hostFixtures/*` + `scripts/capture-host-fixtures.ts`; 11.8s for four themes |
+| 4 | Four *distinct* fixtures (dark/light/hc-black/hc-light) | DONE | `tests/visual/fixtures/host/*.json` — 4 of 4 distinct, each ~890 `--vscode-` custom properties |
+| 5 | Capture is byte-reproducible | DONE | two independent runs diffed byte-for-byte, `ALL_IDENTICAL=1` |
+| 6 | Build provenance manifest so Layer 1 can never diff a stale bundle | DONE | `scripts/buildManifest.js`, `scripts/verifyBuildProvenance.js`, `scripts/build.js` rewrite |
+| 7 | Pinned Linux container for reproducible baseline generation | PARTIAL | `tests/e2e/docker/{Dockerfile,run.sh,base-image.txt}` authored, digest pinned to the linux/amd64 manifest, arch assertion in `run.sh`; **container never executed** — see the open gate below |
 
-### Not run
+**The load-bearing defect this phase actually found.** Launching VS Code with
+the sanitized scratch `HOME` from `createSanitizedGitEnv` hung every Playwright
+channel for the full timeout with the app still rendering perfectly on screen.
+Root cause: the scratch `HOME` makes VS Code's SecretStorage reach for the macOS
+keychain, raising a **modal native prompt owned by the Electron main process**.
+Playwright drives Electron *through* the main process, so `page.evaluate`,
+`page.screenshot` and `electronApp.evaluate` all die at once — and
+`page.evaluate` has no timeout in Playwright (it is not an "action", so
+`actionTimeout` does not bound it), which is why it presented as a silent
+10-minute hang rather than a failure.
 
-The four dev-host acceptance scenarios need a human `F5` in the Extension Development Host; they cannot be driven from this environment. Steps are in Approach 11.
+Fix: `--use-inmemory-secretstorage` in `buildElectronLaunchArgs`
+(`tests/e2e/hostFixtures/electronLaunchHelpers.ts`) and in the spike. This is
+**not** redundant with the `--password-store=basic` that was already there —
+that flag governs only Chromium's own password store; VS Code's SecretStorage
+is a separate path. Isolated by ablation against this exact build: bare env
+renders; `GIT_CONFIG_GLOBAL` alone renders; scratch `HOME` alone **hangs**;
+scratch `HOME` + the flag renders. Keeping it is also the right security
+posture independent of the hang — a disposable test profile must never reach
+the developer's real secret store.
+
+Two wrong diagnoses preceded it and are recorded because both are cheap to
+repeat: (a) `ps pcpu` is a **lifetime average**, not instantaneous CPU — reading
+47% as a live spin loop produced a false "standalone VS Code also hangs";
+(b) renderer logs stopping at 1.2s reads as a freeze but is exactly what an
+*idle* standalone instance does too. The decisive evidence was that a
+main-process `electronApp.evaluate` died simultaneously with the page channel,
+which proves transport death rather than a renderer stall.
+
+A second, unrelated latent trap was fixed in the same phase: Playwright's
+default `actionTimeout` is `0` — wait forever. `playwright.e2e.config.ts` now
+pins `actionTimeout: 20_000`. This did **not** fix the hang (evaluate is not an
+action) and is not claimed to have.
+
+**Proof.** Accept-stage gates via `python3 ~/.claude/skills/claudex-build/verify.py gates --base bc9a502c --stage accept` — lint, typecheck, format, knip, architecture, and the broad suite `npm run -s test`. Result recorded in the verdict entry below.
+
+**Open gate — stated plainly, not waved off.** PLAN.md step 6 gates Phase 0 on
+steps 3–5 working *on macOS local **and** in the pinned Linux container*. The
+macOS half is verified. **The container half has not been executed.** The
+pin itself is now resolved — `base-image.txt` carries a real digest instead of
+its `__PENDING_DIGEST__` placeholder — so `run.sh` will build; it simply has not
+been run yet. Phase 0 is therefore committed as **macOS-verified, Linux gate
+open**, not as fully gated. That run is the next task; if it fails, step 6's own
+instruction applies — stop and re-plan — and that re-plan lands before any
+Layer 1 baseline is committed.
+
+Two corrections were made to the pin while resolving it, both about the same
+failure mode:
+
+1. `docker inspect --format '{{index .RepoDigests 0}}'` — what the file's own
+   instructions said to use — returns the **image index** digest, which carries
+   amd64 *and* arm64 (verified: `docker manifest inspect` lists both). Pinning
+   it leaves the architecture decided by whether `--platform` was passed, and on
+   an Apple Silicon machine a direct `docker build` silently yields arm64. Since
+   font rasterization differs by architecture, that produces baselines nobody
+   else can reproduce, showing up as antialiasing noise with nothing in the diff
+   naming the cause. The pin is now the **linux/amd64 manifest digest**
+   (`sha256:c091b21d…`, not the index's `sha256:dcc5531e…`), so architecture is
+   part of the pin rather than part of the command line, and the re-resolve
+   recipe in the file was rewritten to match.
+2. A pin that cannot be checked is not an oracle. `run.sh` now asserts the built
+   image reports `amd64` and fails loudly otherwise — the pin's own claim, made
+   falsifiable.
+
+**Round 1 — accept-stage gates**
+`python3 ~/.claude/skills/claudex-build/verify.py gates --base bc9a502c --stage accept`
+
+```
+gate lint:         OK    12.6s
+gate typecheck:    OK     4.5s
+gate format:       OK     2.8s
+gate knip:         FAIL   1.4s
+gate architecture: OK     1.2s
+gate suite:        OK    84.0s
+GATES: RED warn=0
+```
+
+`knip` RED with 11 findings. Named before any rerun, per the no-unnamed-flake
+rule — and none of them was a flake:
+
+| Finding | Disposition |
+|---|---|
+| `tests/e2e/globalSetup.ts` reported as an unused **file** | **Real, fixed in `knip.json`.** Not dead code — knip's project graph could not reach it. `playwright.e2e.config.ts` is deliberately not named `playwright.config.ts` (the repo's default runner is Vitest, and the default name gets claimed by tooling that assumes otherwise), so knip's Playwright plugin no longer auto-detects it and never resolves `testDir` or `globalSetup`. Declared the path under a `playwright` plugin block. Deleting the file — the reading the raw report invites — would have removed the pre-test VS Code download and reintroduced the cold-cache timeout it exists to prevent. |
+| `hostFixtureFileName`, `vscodeCachePath`, `assertExecutableIsOutsideRepo` unused **exports** | **Real, fixed.** All three are used only inside their own module; the `export` keyword was unjustified. Dropped. Worth stating because the first read was wrong: `assertExecutableIsOutsideRepo` looked like a dead in-repo-cache guard, and it is not — it is called at `resolveVSCodeExecutable.ts:113`. The guard is wired; only its visibility was excessive. |
+| `HostFixtureProvenance`, `HostFixtureElementSnapshot`, `HostFixtureDocumentElementSnapshot`, `RawElementSnapshot` unused **types** | **Real, fixed.** Internal composition types for the two exported top-level shapes. Un-exported. Consumers reading `.provenance` are unaffected — TypeScript is structural. |
+| `createSanitizedGitEnv`, `SanitizedGitEnv`, `FixtureCommits` in `tests/fixtures/repo/seed.ts` | **Not Phase 0.** Phase 1 step 7 output, untracked and excluded from this commit. Genuinely unreferenced today because `harness.ts` (step 8) does not exist yet; they resolve at Phase 1 acceptance. |
+
+`knip.json` also gained `scripts/**/*.ts` to `project` (it previously covered
+only `scripts/**/*.js`, so `scripts/capture-host-fixtures.ts` sat outside the
+graph entirely).
+
+**Gate-teeth check.** A gate that reports nothing is indistinguishable from a
+gate that cannot see anything, so the fixed configuration was proved able to
+fail before it was trusted:
+
+- dead file dropped in `scripts/` → **flagged** (`Unused files (1) scripts/__canaryA.ts`);
+- dead file dropped in `tests/` → **flagged**;
+- dead export appended to a non-entry e2e module → **flagged**
+  (`canaryC  function  tests/e2e/hostFixtures/canonicalizeHostFixture.ts:67:17`).
+
+All three canaries removed; `git status --porcelain` confirmed clean afterwards.
+One follow-up from the same probe: `scripts/capture-host-fixtures.ts` is *not*
+export-checked, and that is correct rather than a hole — `package.json` declares
+`"capture:host-fixtures": "… bun scripts/capture-host-fixtures.ts"`, which makes
+it an entry file, and knip intentionally does not report unused exports in entry
+files without `--include-entry-exports`.
+
+### Claude's verdict — Phase 0
+
+- **HEAD gate, restated by root:** `BASE_HEAD bc9a502c9ea3a7ec4d4df531076fac547fbd5962 == HEAD bc9a502c9ea3a7ec4d4df531076fac547fbd5962`. No builder moved a ref.
+- **Findings:** 8 Phase 0 defects, all confirmed by root against the files (not accepted on report), all fixed. 3 deferred to Phase 1 with reasons above. 0 rejected.
+- **Proof:** `npm run -s test` green at 84.0s as the `suite` accept gate; `lint`, `typecheck`, `format`, `architecture` green; `knip` green on every Phase 0 path after the fixes, with the three `seed.ts` findings isolated to untracked Phase 1 work.
+- **Verdict: ACCEPT — macOS-verified, Linux container gate open.** Committed on that basis, with the open gate named in the commit message rather than left for a reader to discover.
+
+### Phase 0 — closing step 6's Linux container gate
+
+Run against a clean clone of `df3370fd`, so the two Phase 1 lanes' in-flight
+work could not contaminate it. **`gate_rc=0`**: spike passed (`1 passed`, the
+test itself 37.0s; 20.9m wall under amd64 emulation), capture passed
+(`1 passed (1.0m)`), four fixtures written with correct and distinct theme
+kinds — `vscode-dark`, `vscode-light`, `vscode-high-contrast`,
+`vscode-high-contrast-light` — under `platform: "linux-x64"`.
+
+**PLAN.md step 6 is now satisfied on both halves.** Phase 0 is fully gated.
+
+It took three attempts, and the two failures are the entire justification for
+the plan requiring a container run rather than trusting a developer laptop:
+neither reproduces on macOS, and both would first have surfaced in CI.
+
+| # | Failure | Cause | Fix |
+|---|---|---|---|
+| 1 | `run.sh: line 73: TTY_FLAGS[@]: unbound variable` | `set -u` + an **empty** array expansion. bash before 4.4 treats an empty array's `[@]` as unset and aborts — and the array is empty exactly when there is no TTY, i.e. only in CI. An interactive run passes. macOS still ships bash 3.2 as `/bin/bash`. | `${TTY_FLAGS[@]+"${TTY_FLAGS[@]}"}`. Ablated on bash 3.2.57: old form aborts, new form runs, and a non-empty array still forwards `-i -t`. |
+| 2 | `error: bun is unable to write files: AccessDenied` | Docker creates a named volume owned by `root:root`, but the container deliberately runs unprivileged (Electron will not start its sandbox as root). The bind-mounted checkout is owned by the host uid, which is not `pwuser`'s 1000. Nothing was writable, and the error names no path — it reads like a bun bug. | Both named volumes replaced with host-owned bind mounts under one cache root; container runs `--user $(id -u):$(id -g)`, still unprivileged, so the sandbox reasoning holds; `HOME` and `INTELLIGIT_VSCODE_CACHE` redirected, since that uid has no `/etc/passwd` entry and would otherwise land on `pwuser`'s unwritable home. Smoke-tested all four mounts before re-running. |
+
+### Finding for Phase 3 (step 20) — host fixtures are *almost* platform-independent
+
+The container's fixtures were diffed property-by-property against the committed
+macOS ones (a line diff is useless here — `styleCssText` is a single ~890-entry
+line). Result across all four themes:
+
+| Fixture | props | only-darwin | only-linux | changed |
+|---|---|---|---|---|
+| dark-modern | 891 / 891 | 0 | 0 | 3 |
+| light-modern | 893 / 893 | 0 | 0 | 3 |
+| hc-black | 760 / 760 | 0 | 0 | 3 |
+| hc-light | 789 / 789 | 0 | 0 | 3 |
+
+**Every colour token is identical on both platforms.** The only differences are
+the same three font properties in every fixture, plus `provenance.platform`:
+
+- `--vscode-editor-font-family`: `Menlo, Monaco, 'Courier New', monospace` → `'Droid Sans Mono', monospace`
+- `--vscode-editor-font-size`: `12px` → `14px`
+- `--vscode-font-family`: `-apple-system, BlinkMacSystemFont, sans-serif` → `system-ui, "Ubuntu", "Droid Sans", sans-serif`
+
+This is stronger evidence for step 20's container-only baseline rule than the
+plan had. It is not merely that glyph rasterization differs between
+architectures — **the font size itself differs, 12px vs 14px**, which changes
+text metrics and therefore layout, not just antialiasing. A baseline generated
+against a macOS host fixture cannot be reproduced anywhere else, and the diff
+would show wholesale layout shift with no obvious cause.
+
+**Two consequences the plan does not yet address. Owner decision needed at
+Phase 3, deliberately not taken here:**
+
+1. **Which fixtures get committed.** Layer 1 renders bundles against a host
+   fixture inside the baseline container. If the committed fixture names `Menlo`,
+   a font absent from the container, rendering silently falls back and the
+   baseline encodes the fallback. That argues the committed fixtures should be
+   the **container-generated** (`linux-x64`) ones, not the macOS ones currently
+   in the tree.
+2. **Step 39's recapture-and-compare freshness check then cannot run on macOS.**
+   Recapturing on a developer laptop would produce `darwin-arm64` fixtures that
+   differ from the committed `linux-x64` ones in exactly these four fields, and
+   the check would go red for a reason that is not staleness. It needs to either
+   run only in the container, or compare modulo a named, explicit set of
+   platform-varying fields — and if the latter, that exclusion list is itself a
+   place false-greens can hide, so it must be registered with a known-bad fixture
+   like every other oracle in this plan.
+
+Phase 0 committed the macOS fixtures because that is what it captured and
+proved reproducible; swapping them is a Phase 3 decision with a real tradeoff,
+so it is raised here rather than made silently.

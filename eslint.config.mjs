@@ -127,7 +127,24 @@ const typeScriptComplexityRules = {
 
 export default defineConfig([
     {
-        ignores: ["dist/**", "coverage/**", "node_modules/**", "*.vsix"],
+        // .vscode-test/ holds a downloaded VS Code build (Phase 0's E2E spike
+        // and host-fixture capture download real VS Code binaries into it via
+        // @vscode/test-electron); test-results/ and playwright-report/ hold
+        // generated Playwright run output. All three are already gitignored
+        // build/download artifacts, not source -- same category as dist/,
+        // coverage/, and node_modules/ below. Without this, an unscoped
+        // `eslint .` walks straight into VS Code's own bundled extension
+        // sources and fails on rule definitions this repo's config never
+        // declared.
+        ignores: [
+            "dist/**",
+            "coverage/**",
+            "node_modules/**",
+            "*.vsix",
+            ".vscode-test/**",
+            "test-results/**",
+            "playwright-report/**",
+        ],
     },
     {
         files: SCRIPT_FILES,

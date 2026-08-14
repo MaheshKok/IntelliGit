@@ -5,6 +5,12 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.24.1] - 2026-08-13
+
+### Security
+
+- The E2E container image now installs Bun from a checksummed release artifact instead of piping a remote installer into a shell. That image gates releases, and the toolchain it produces is then handed a read-write mount of the checkout and the build caches, so an unverified install script was running inside the build whose success is a precondition for publishing.
+
 ## [0.24.0] - 2026-08-04
 
 ### Added

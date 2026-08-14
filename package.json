@@ -2,7 +2,7 @@
     "name": "intelligit",
     "displayName": "IntelliGit",
     "description": "%extension.description%",
-    "version": "0.24.0",
+    "version": "0.24.1",
     "publisher": "MaheshKok",
     "icon": "media/intelligit-icon.png",
     "license": "MIT",
@@ -978,6 +978,7 @@
         "build": "bun scripts/build.js",
         "build:prod": "bun scripts/build.js --production",
         "preview:merge-editor": "bun run build && bun scripts/preview-merge-editor.js",
+        "capture:host-fixtures": "bun run build && bun scripts/capture-host-fixtures.ts",
         "watch": "bun scripts/watch.js",
         "format": "prettier --write \"src/**/*.{ts,tsx}\" \"scripts/**/*.js\"",
         "format:check": "prettier --check \"src/**/*.{ts,tsx}\" \"scripts/**/*.js\"",
@@ -1007,16 +1008,12 @@
         "package": "vsce package --no-dependencies",
         "publish": "vsce publish --no-dependencies"
     },
-    "knip": {
-        "ignore": [
-            "tests/integration/shelf/shelfCrashWorker.ts"
-        ]
-    },
     "devDependencies": {
         "@chakra-ui/react": "^2.8.2",
         "@emotion/react": "^11.11.3",
         "@emotion/styled": "^11.11.0",
         "@eslint/js": "^10.0.1",
+        "@playwright/test": "^1.62.1",
         "@shikijs/langs": "4.3.1",
         "@shikijs/themes": "4.3.1",
         "@types/node": "^20.11.0",
@@ -1024,6 +1021,7 @@
         "@types/react-dom": "^18.2.18",
         "@types/vscode": "^1.96.0",
         "@vitest/coverage-v8": "1.6.1",
+        "@vscode/test-electron": "^3.1.0",
         "@vscode/vsce": "^2.22.0",
         "dependency-cruiser": "^17.4.3",
         "esbuild": "^0.20.0",
