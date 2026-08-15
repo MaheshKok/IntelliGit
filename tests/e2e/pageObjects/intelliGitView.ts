@@ -48,7 +48,8 @@ export class IntelliGitView {
             if (match) return match;
             if (Date.now() > deadline) {
                 throw new Error(
-                    `No IntelliGit webview rendered "${marker}" within ${timeoutMs}ms.`,
+                    `No IntelliGit webview rendered "${marker}" within ${timeoutMs}ms.\n` +
+                        `  webviews present:\n  ${await this.describeWebviews()}`,
                 );
             }
             await this.page.waitForTimeout(REVEAL_POLL_INTERVAL_MS);
@@ -69,5 +70,46 @@ export class IntelliGitView {
             if (count > 0) return inner;
         }
         return undefined;
+    }
+
+    /**
+     * Summarizes every attached webview, for the timeout message only.
+     *
+     * "No webview rendered the marker" is true of a workbench that opened no webview at all, of
+     * one whose document is still loading, and of one that mounted and rendered an empty state --
+     * three different bugs that a bare not-found message reports identically. A CI-only failure
+     * with no local reproduction is diagnosed from this line or not at all, so it names what each
+     * webview actually is: whether the inner document exists, how much it rendered, and the test
+     * ids it does carry.
+     */
+    private async describeWebviews(): Promise<string> {
+        const outerFrames: Locator[] = await this.page.locator("iframe.webview").all();
+        if (outerFrames.length === 0) return "(none attached)";
+        const described = await Promise.all(
+            outerFrames.map(async (outerFrame, index) => {
+                const outer = outerFrame.contentFrame();
+                const activeFrames = await outer
+                    .locator("iframe#active-frame")
+                    .count()
+                    .catch(() => -1);
+                const summary = await outer
+                    .locator("iframe#active-frame")
+                    .contentFrame()
+                    .locator("body")
+                    .evaluate((body: HTMLElement) => ({
+                        title: body.ownerDocument.title,
+                        bodyChars: body.innerHTML.length,
+                        testIds: Array.from(body.querySelectorAll("[data-testid]"))
+                            .slice(0, 8)
+                            .map((element) => element.getAttribute("data-testid")),
+                    }))
+                    .catch(() => undefined);
+                return summary === undefined
+                    ? `#${index}: active-frame=${activeFrames} document=<unreachable>`
+                    : `#${index}: active-frame=${activeFrames} title=${JSON.stringify(summary.title)} ` +
+                      `bodyChars=${summary.bodyChars} testIds=${JSON.stringify(summary.testIds)}`;
+            }),
+        );
+        return described.join("\n  ");
     }
 }
