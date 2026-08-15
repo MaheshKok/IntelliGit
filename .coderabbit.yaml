@@ -42,6 +42,12 @@ reviews:
         # gate into a no-op that certifies whatever the first run rendered.
         # They still cannot be reviewed: 32 binary PNGs carrying no text.
         - "!tests/visual/__screenshots__/**"
+        # The README gallery, for the same reason: 9 binary PNGs plus the
+        # marketplace icon. Nothing under `media/screenshots` is text, so the
+        # slots they occupy were being spent on a reviewer that cannot open
+        # them. Kept separate from the baselines above because these change for
+        # documentation reasons rather than as visual-suite output.
+        - "!media/screenshots/**"
         # DOM and host-wiring tests: breakage shows up as a red suite, not as a
         # silently-passing test, so an extra reviewer buys the least here.
         - "!tests/webview/**"
