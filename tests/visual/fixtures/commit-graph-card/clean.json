@@ -1,0 +1,276 @@
+{
+    "schemaVersion": 1,
+    "contextId": "commit-graph-card",
+    "scenario": "clean",
+    "messages": [
+        {
+            "contextId": "commit-graph-card",
+            "message": {
+                "type": "setViewVisibility",
+                "visible": true
+            }
+        },
+        {
+            "contextId": "commit-graph-card",
+            "message": {
+                "type": "setBranches",
+                "branches": [
+                    {
+                        "name": "conflict/with-main",
+                        "hash": "fc4abb23",
+                        "isRemote": false,
+                        "isCurrent": false,
+                        "committerDate": 946717200,
+                        "ahead": 0,
+                        "behind": 0,
+                        "isCheckedOutInWorktree": false,
+                        "isCurrentWorktree": false
+                    },
+                    {
+                        "name": "feature/awesome",
+                        "hash": "2a1d4544",
+                        "isRemote": false,
+                        "isCurrent": false,
+                        "committerDate": 946713600,
+                        "ahead": 0,
+                        "behind": 0,
+                        "isCheckedOutInWorktree": false,
+                        "isCurrentWorktree": false
+                    },
+                    {
+                        "name": "main",
+                        "hash": "86db42e9",
+                        "isRemote": false,
+                        "isCurrent": true,
+                        "isDefault": true,
+                        "committerDate": 946702800,
+                        "upstream": "origin/main",
+                        "remote": "origin",
+                        "ahead": 0,
+                        "behind": 0,
+                        "isCheckedOutInWorktree": true,
+                        "worktreePath": "<ROOT>",
+                        "isCurrentWorktree": true
+                    },
+                    {
+                        "name": "topic/mergeable",
+                        "hash": "dc2c713d",
+                        "isRemote": false,
+                        "isCurrent": false,
+                        "committerDate": 946699200,
+                        "ahead": 0,
+                        "behind": 0,
+                        "isCheckedOutInWorktree": false,
+                        "isCurrentWorktree": false
+                    },
+                    {
+                        "name": "origin/main",
+                        "hash": "86db42e9",
+                        "isRemote": true,
+                        "isCurrent": false,
+                        "isDefault": true,
+                        "committerDate": 946702800,
+                        "remote": "origin",
+                        "ahead": 0,
+                        "behind": 0,
+                        "isCheckedOutInWorktree": false,
+                        "isCurrentWorktree": false
+                    }
+                ],
+                "worktrees": [
+                    {
+                        "path": "<ROOT>",
+                        "head": "86db42e91a87811ec634e6121349479253bd7621",
+                        "branch": "main",
+                        "state": "main",
+                        "isMain": true,
+                        "isCurrent": true,
+                        "isLocked": false,
+                        "isPrunable": false
+                    }
+                ],
+                "folderIconsByName": {},
+                "iconFonts": [],
+                "commitChecksEnabled": true
+            }
+        },
+        {
+            "contextId": "commit-graph-card",
+            "message": {
+                "type": "loadCommits",
+                "commits": [
+                    {
+                        "hash": "20693a234b9d7a161c24b4da347daffd9a2b3aa5",
+                        "shortHash": "20693a23",
+                        "message": "On main: stash entry two",
+                        "author": "IntelliGit Fixture Repo",
+                        "email": "intelligit-fixture@example.invalid",
+                        "date": "2000-01-01T12:00:00Z",
+                        "parentHashes": [
+                            "86db42e91a87811ec634e6121349479253bd7621",
+                            "0e6ea8e3bc9f13f760c60f1dc035902cc19e82a7"
+                        ],
+                        "refs": [
+                            "refs/stash"
+                        ]
+                    },
+                    {
+                        "hash": "0e6ea8e3bc9f13f760c60f1dc035902cc19e82a7",
+                        "shortHash": "0e6ea8e3",
+                        "message": "index on main: 86db42e9 Merge branch 'topic/mergeable'",
+                        "author": "IntelliGit Fixture Repo",
+                        "email": "intelligit-fixture@example.invalid",
+                        "date": "2000-01-01T12:00:00Z",
+                        "parentHashes": [
+                            "86db42e91a87811ec634e6121349479253bd7621"
+                        ],
+                        "refs": []
+                    },
+                    {
+                        "hash": "fc4abb23a4ab109b53d91c7d8dbea0a7622aedc1",
+                        "shortHash": "fc4abb23",
+                        "message": "Conflicting edit",
+                        "author": "IntelliGit Fixture Repo",
+                        "email": "intelligit-fixture@example.invalid",
+                        "date": "2000-01-01T09:00:00Z",
+                        "parentHashes": [
+                            "b08ddf030532f359194329a212f0d9ba54bb6a02"
+                        ],
+                        "refs": [
+                            "conflict/with-main"
+                        ]
+                    },
+                    {
+                        "hash": "2a1d4544092ad54f3cf9781fb22e334f11ff1cc0",
+                        "shortHash": "2a1d4544",
+                        "message": "Feature commit 3",
+                        "author": "IntelliGit Fixture Repo",
+                        "email": "intelligit-fixture@example.invalid",
+                        "date": "2000-01-01T08:00:00Z",
+                        "parentHashes": [
+                            "7f86e69facb8d2835f0a2d37755511219632c7c0"
+                        ],
+                        "refs": [
+                            "feature/awesome"
+                        ]
+                    },
+                    {
+                        "hash": "7f86e69facb8d2835f0a2d37755511219632c7c0",
+                        "shortHash": "7f86e69f",
+                        "message": "Feature commit 2",
+                        "author": "IntelliGit Fixture Repo",
+                        "email": "intelligit-fixture@example.invalid",
+                        "date": "2000-01-01T07:00:00Z",
+                        "parentHashes": [
+                            "9c30aeb153c067069a1273d0d19f1521813af085"
+                        ],
+                        "refs": []
+                    },
+                    {
+                        "hash": "9c30aeb153c067069a1273d0d19f1521813af085",
+                        "shortHash": "9c30aeb1",
+                        "message": "Feature commit 1",
+                        "author": "IntelliGit Fixture Repo",
+                        "email": "intelligit-fixture@example.invalid",
+                        "date": "2000-01-01T06:00:00Z",
+                        "parentHashes": [
+                            "d509188a21fe13afbfb1e4ba3969233a277bed5d"
+                        ],
+                        "refs": []
+                    },
+                    {
+                        "hash": "86db42e91a87811ec634e6121349479253bd7621",
+                        "shortHash": "86db42e9",
+                        "message": "Merge branch 'topic/mergeable'",
+                        "author": "IntelliGit Fixture Repo",
+                        "email": "intelligit-fixture@example.invalid",
+                        "date": "2000-01-01T05:00:00Z",
+                        "parentHashes": [
+                            "d509188a21fe13afbfb1e4ba3969233a277bed5d",
+                            "dc2c713d1964d3d64c0533601099b4a69ca8802c"
+                        ],
+                        "refs": [
+                            "HEAD -> main",
+                            "tag: v1.0.0",
+                            "origin/main"
+                        ]
+                    },
+                    {
+                        "hash": "dc2c713d1964d3d64c0533601099b4a69ca8802c",
+                        "shortHash": "dc2c713d",
+                        "message": "Add topic file",
+                        "author": "IntelliGit Fixture Repo",
+                        "email": "intelligit-fixture@example.invalid",
+                        "date": "2000-01-01T04:00:00Z",
+                        "parentHashes": [
+                            "d509188a21fe13afbfb1e4ba3969233a277bed5d"
+                        ],
+                        "refs": [
+                            "topic/mergeable"
+                        ]
+                    },
+                    {
+                        "hash": "d509188a21fe13afbfb1e4ba3969233a277bed5d",
+                        "shortHash": "d509188a",
+                        "message": "Add feature fork file",
+                        "author": "IntelliGit Fixture Repo",
+                        "email": "intelligit-fixture@example.invalid",
+                        "date": "2000-01-01T03:00:00Z",
+                        "parentHashes": [
+                            "60fa5a594f832a8346236f9241c851b0d4e642d8"
+                        ],
+                        "refs": []
+                    },
+                    {
+                        "hash": "60fa5a594f832a8346236f9241c851b0d4e642d8",
+                        "shortHash": "60fa5a59",
+                        "message": "Modify conflict target on main",
+                        "author": "IntelliGit Fixture Repo",
+                        "email": "intelligit-fixture@example.invalid",
+                        "date": "2000-01-01T02:00:00Z",
+                        "parentHashes": [
+                            "b08ddf030532f359194329a212f0d9ba54bb6a02"
+                        ],
+                        "refs": []
+                    },
+                    {
+                        "hash": "b08ddf030532f359194329a212f0d9ba54bb6a02",
+                        "shortHash": "b08ddf03",
+                        "message": "Add conflict target",
+                        "author": "IntelliGit Fixture Repo",
+                        "email": "intelligit-fixture@example.invalid",
+                        "date": "2000-01-01T01:00:00Z",
+                        "parentHashes": [
+                            "70fa528600605d9b3f1fce7aa04ec799ed494ffd"
+                        ],
+                        "refs": []
+                    },
+                    {
+                        "hash": "70fa528600605d9b3f1fce7aa04ec799ed494ffd",
+                        "shortHash": "70fa5286",
+                        "message": "Initial commit",
+                        "author": "IntelliGit Fixture Repo",
+                        "email": "intelligit-fixture@example.invalid",
+                        "date": "2000-01-01T00:00:00Z",
+                        "parentHashes": [],
+                        "refs": []
+                    }
+                ],
+                "hasMore": false,
+                "append": false,
+                "unpushedHashes": [
+                    "fc4abb23a4ab109b53d91c7d8dbea0a7622aedc1",
+                    "2a1d4544092ad54f3cf9781fb22e334f11ff1cc0",
+                    "7f86e69facb8d2835f0a2d37755511219632c7c0",
+                    "9c30aeb153c067069a1273d0d19f1521813af085"
+                ]
+            }
+        },
+        {
+            "contextId": "commit-graph-card",
+            "message": {
+                "type": "clearCommitDetail"
+            }
+        }
+    ]
+}

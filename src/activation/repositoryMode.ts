@@ -42,6 +42,7 @@ import { CommitChecksRequestGateRegistry } from "../services/commitChecks/reques
 import { CommitChecksService } from "../services/commitChecks/service";
 import { CommitChecksPersistentCache } from "../services/commitChecks/persistentCache";
 import type { CommitChecksProvider, ProviderId } from "../services/commitChecks/types";
+import { captureWebviewViewProvider } from "../e2e/webviewCapture";
 import { CommitGraphViewProvider } from "../views/CommitGraphViewProvider";
 import { CommitInfoViewProvider } from "../views/CommitInfoViewProvider";
 import { CommitPanelViewProvider } from "../views/CommitPanelViewProvider";
@@ -1245,35 +1246,44 @@ export async function activateRepositoryMode(
                 console.error("[IntelliGit] Undocked commit panel refresh failed:", err);
             });
         }),
-        vscode.window.registerWebviewViewProvider(CommitInfoViewProvider.viewType, commitInfo),
+        vscode.window.registerWebviewViewProvider(
+            CommitInfoViewProvider.viewType,
+            captureWebviewViewProvider(commitInfo, "commit-info"),
+        ),
     );
     if (viewProviders.commitGraph) {
-        viewProviders.commitGraph.setProvider(commitGraph);
+        viewProviders.commitGraph.setProvider(
+            captureWebviewViewProvider(commitGraph, "commit-graph-card"),
+        );
     } else {
         context.subscriptions.push(
             vscode.window.registerWebviewViewProvider(
                 CommitGraphViewProvider.viewType,
-                commitGraph,
+                captureWebviewViewProvider(commitGraph, "commit-graph-card"),
             ),
         );
     }
     if (viewProviders.sidebarGraph) {
-        viewProviders.sidebarGraph.setProvider(sidebarGraph);
+        viewProviders.sidebarGraph.setProvider(
+            captureWebviewViewProvider(sidebarGraph, "commit-graph-compact"),
+        );
     } else {
         context.subscriptions.push(
             vscode.window.registerWebviewViewProvider(
                 CommitGraphViewProvider.sidebarViewType,
-                sidebarGraph,
+                captureWebviewViewProvider(sidebarGraph, "commit-graph-compact"),
             ),
         );
     }
     if (viewProviders.commitPanel) {
-        viewProviders.commitPanel.setProvider(commitPanel);
+        viewProviders.commitPanel.setProvider(
+            captureWebviewViewProvider(commitPanel, "commit-panel"),
+        );
     } else {
         context.subscriptions.push(
             vscode.window.registerWebviewViewProvider(
                 CommitPanelViewProvider.viewType,
-                commitPanel,
+                captureWebviewViewProvider(commitPanel, "commit-panel"),
                 { webviewOptions: { retainContextWhenHidden: true } },
             ),
         );

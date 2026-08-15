@@ -1,0 +1,8 @@
+# Committed webview payload fixtures are byte-compared, not parsed-and-compared:
+# `webviewFixtureGate.ts` re-records each one and asserts the regenerated STRING equals the
+# committed file. `serializeWebviewFixture` always emits LF, so on a checkout with
+# `core.autocrlf=true` (the Windows default) the working-tree copy comes back CRLF and every
+# fixture reports drift the moment anyone runs the gate -- a false failure that no code change
+# caused and no regeneration can fix. Pinning `eol=lf` keeps the checked-out bytes the recorded
+# bytes on every platform.
+tests/visual/fixtures/**/*.json text eol=lf

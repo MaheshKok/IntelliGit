@@ -1,0 +1,25 @@
+{
+    "schemaVersion": 1,
+    "contextId": "merge-conflict-session",
+    "scenario": "conflicted",
+    "messages": [
+        {
+            "contextId": "merge-conflict-session",
+            "message": {
+                "type": "setSessionData",
+                "data": {
+                    "sourceBranch": "conflict/with-main",
+                    "targetBranch": "main",
+                    "files": [
+                        {
+                            "path": "conflict.txt",
+                            "code": "UU",
+                            "ours": "Modified",
+                            "theirs": "Modified"
+                        }
+                    ]
+                }
+            }
+        }
+    ]
+}

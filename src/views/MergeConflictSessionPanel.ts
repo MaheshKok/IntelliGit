@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import { captureWebview } from "../e2e/webviewCapture";
 import { GitOps } from "../git/operations";
 import { buildWebviewShellHtml } from "./webviewHtml";
 import { getErrorMessage } from "../utils/errors";
@@ -107,7 +108,7 @@ export class MergeConflictSessionPanel {
             return;
         }
 
-        const panel = vscode.window.createWebviewPanel(
+        const rawPanel = vscode.window.createWebviewPanel(
             "intelligit.mergeConflictSession",
             "Conflicts",
             vscode.ViewColumn.Active,
@@ -117,6 +118,7 @@ export class MergeConflictSessionPanel {
                 localResourceRoots: [vscode.Uri.joinPath(extensionUri, "dist")],
             },
         );
+        const panel = captureWebview(rawPanel, "merge-conflict-session");
 
         const instance = new MergeConflictSessionPanel(
             panel,

@@ -17,7 +17,7 @@
  */
 
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, readdir, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -116,8 +116,17 @@ export interface FixtureTemplate extends SanitizedGitEnv {
  * (defaulting to `tmpdir()`, this module's own one-time template build). PLAN.md line 92 requires
  * the Phase 1 step 8 harness to root per-test HOME/TMPDIR/TMP/TEMP beneath a FIXTURE-OWNED root
  * rather than the OS temp dir, so that per-test caller passes its own root here instead.
+ *
+ * `LC_ALL`/`LANG` are pinned to `C` for the same reason the identity and dates are: git's porcelain
+ * output is translated, and this env is what scenario postconditions run their `git status` through
+ * (`scenarios.ts`'s `assertMidRebasePostcondition` matches `/rebas/i` on that output). A developer
+ * or CI runner with a non-English locale installed would get translated text, and the postcondition
+ * would report a scenario as un-built when it built correctly. They come AFTER the `process.env`
+ * spread deliberately -- an ambient `LC_ALL` must be overridden here, not inherited.
  */
-export async function createSanitizedGitEnv(options?: { readonly homeParent?: string }): Promise<SanitizedGitEnv> {
+export async function createSanitizedGitEnv(options?: {
+    readonly homeParent?: string;
+}): Promise<SanitizedGitEnv> {
     const homeParent = options?.homeParent ?? tmpdir();
     const home = await mkdtemp(path.join(homeParent, "intelligit-fixture-home-"));
     return {
@@ -127,6 +136,8 @@ export async function createSanitizedGitEnv(options?: { readonly homeParent?: st
             HOME: home,
             GIT_CONFIG_GLOBAL: "/dev/null",
             GIT_CONFIG_SYSTEM: "/dev/null",
+            LC_ALL: "C",
+            LANG: "C",
             ...FIXTURE_GIT_IDENTITY,
             GIT_AUTHOR_DATE: EPOCH_DATE,
             GIT_COMMITTER_DATE: EPOCH_DATE,
@@ -140,44 +151,62 @@ export async function createSanitizedGitEnv(options?: { readonly homeParent?: st
  * PLAN.md Phase 1 step 7 requires, plus a bare `origin` at `<destination>/origin.git` that `main`
  * tracks. `destination` must be empty (or not yet exist) -- seeding on top of leftover files would
  * risk silently passing with stale content instead of failing loudly.
+ *
+ * `options.homeParent` is forwarded to `createSanitizedGitEnv`; it defaults to the OS temp root,
+ * which is what every production caller wants. Pass it to keep the sanitized `HOME` inside a
+ * directory the caller already owns -- the cleanup test below needs a parent it can assert is
+ * empty, and scanning the shared OS temp root cannot do that while sibling test files are seeding
+ * their own homes concurrently.
  */
-export async function seedFixtureTemplate(destination: string): Promise<FixtureTemplate> {
+export async function seedFixtureTemplate(
+    destination: string,
+    options?: { readonly homeParent?: string },
+): Promise<FixtureTemplate> {
     await ensureEmptyDestination(destination);
 
-    const { env, home } = await createSanitizedGitEnv();
-    const root = path.join(destination, "workspace");
-    await initializeWorkingRepository(root, env);
+    const { env, home } = await createSanitizedGitEnv({ homeParent: options?.homeParent });
+    try {
+        const root = path.join(destination, "workspace");
+        await initializeWorkingRepository(root, env);
 
-    const history: HistoryEnv = { root, env, nextDate: createDeterministicClock() };
-    const { initial, conflictBase, mainConflictEdit, featureBase, topicCommit, mergeCommit } =
-        await buildMainAndTopicHistory(history);
-    const featureCommit3 = await buildFeatureBranch(history, featureBase);
-    const conflictCommit = await buildConflictingBranch(history, conflictBase);
-    await createReleaseTag(history);
+        const history: HistoryEnv = { root, env, nextDate: createDeterministicClock() };
+        const { initial, conflictBase, mainConflictEdit, featureBase, topicCommit, mergeCommit } =
+            await buildMainAndTopicHistory(history);
+        const featureCommit3 = await buildFeatureBranch(history, featureBase);
+        const conflictCommit = await buildConflictingBranch(history, conflictBase);
+        await createReleaseTag(history);
 
-    const originRoot = await createBareOrigin(destination, root, env);
+        const originRoot = await createBareOrigin(destination, root, env);
 
-    // Dirty state is seeded last, after history/tag/origin are all in place on a clean `main`
-    // checkout, so nothing below has to account for it existing any earlier.
-    await seedStashEntries(history);
-    await seedDirtyWorkingTree(history);
+        // Dirty state is seeded last, after history/tag/origin are all in place on a clean `main`
+        // checkout, so nothing below has to account for it existing any earlier.
+        await seedStashEntries(history);
+        await seedDirtyWorkingTree(history);
 
-    return {
-        root,
-        originRoot,
-        env,
-        home,
-        commits: {
-            initial,
-            conflictBase,
-            mainConflictEdit,
-            featureBase,
-            topicCommit,
-            mergeCommit,
-            featureCommit3,
-            conflictCommit,
-        },
-    };
+        return {
+            root,
+            originRoot,
+            env,
+            home,
+            commits: {
+                initial,
+                conflictBase,
+                mainConflictEdit,
+                featureBase,
+                topicCommit,
+                mergeCommit,
+                featureCommit3,
+                conflictCommit,
+            },
+        };
+    } catch (error) {
+        // `home` lives OUTSIDE `destination` -- it is `mkdtemp`'d in `homeParent`, the OS temp root
+        // by default. A caller cleaning up after this rejection therefore cannot reach it, and it
+        // has not been handed the path either: the only reference dies with this frame. Remove it
+        // here or every failed seed leaks a directory for the lifetime of the machine.
+        await rm(home, { recursive: true, force: true });
+        throw error;
+    }
 }
 
 /** Threaded through every history-building helper below: where to write, which env to run git
@@ -279,9 +308,16 @@ async function initializeWorkingRepository(root: string, env: NodeJS.ProcessEnv)
         ["init.defaultBranch", FIXTURE_REFS.main],
         ["gc.auto", "0"],
         ["commit.gpgsign", "false"],
-        // Full-length SHAs everywhere: git's default abbreviation length auto-scales with object
-        // count, which would silently change as later phases add commits to this template.
-        ["core.abbrev", "40"],
+        // Pinned, and pinned to a REALISTIC width. Git's default abbreviation auto-scales with
+        // object count, so leaving it unset would let `%h` silently change as later phases add
+        // commits to this template -- that is why it is pinned at all. But pinning it to the full
+        // 40 buys determinism by making every abbreviated hash stop being abbreviated: `%h` then
+        // equals `%H`, and every recorded payload and baseline screenshot renders a 40-character
+        // string in a chip no user ever sees hold more than ~8. Later phases pixel-compare those
+        // baselines, so the unrealistic width would be baked into the truncation and layout they
+        // assert on. An explicit small width is equally deterministic and actually resembles what
+        // the extension renders.
+        ["core.abbrev", "8"],
     ];
     for (const [key, value] of repoConfig) {
         await git(root, ["config", key, value], env);

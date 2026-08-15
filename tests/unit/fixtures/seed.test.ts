@@ -12,16 +12,33 @@
  */
 
 import { execFile } from "node:child_process";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { FIXTURE_REFS, seedFixtureTemplate, type FixtureTemplate } from "../../fixtures/repo/seed";
+import {
+    createSanitizedGitEnv,
+    FIXTURE_REFS,
+    seedFixtureTemplate,
+    type FixtureTemplate,
+} from "../../fixtures/repo/seed";
+import { createScratchWorkspaces } from "./scratchWorkspaces";
 
 const execFileAsync = promisify(execFile);
+
+/** Puts one `process.env` key back exactly as it was, including having been ABSENT -- assigning
+ * `undefined` to a `process.env` key stores the string `"undefined"` in Node, which would leave the
+ * process dirtier than the test found it. */
+function restoreEnvVar(key: string, original: string | undefined): void {
+    if (original === undefined) {
+        delete process.env[key];
+        return;
+    }
+    process.env[key] = original;
+}
 
 /** Runs one git process and returns trimmed UTF-8 stdout, exactly like `seed.ts`'s own internal
  * helper -- the test verifies the fixture from the outside, through the same kind of plain git
@@ -38,23 +55,28 @@ describe("seedFixtureTemplate", () => {
     let templateA: FixtureTemplate;
     let templateB: FixtureTemplate;
 
+    // Paths are registered the moment they exist rather than read back off `templateA`/`templateB`
+    // in `afterAll`. Seeding is a real `git` build and can fail: if the SECOND seed below throws,
+    // the old `afterAll` dereferenced an unassigned `templateB`, so a `TypeError` replaced the real
+    // seeding error in the report AND skipped `workDir`'s removal entirely.
+    const scratch = createScratchWorkspaces();
+
     beforeAll(async () => {
         workDir = await mkdtemp(join(tmpdir(), "intelligit-seed-test-"));
+        scratch.register(workDir);
         destinationA = join(workDir, "a");
         destinationB = join(workDir, "b");
         // Sequential, not concurrent: this proves determinism across two independently seeded
         // destinations, which is the property PLAN.md step 7 requires. Whether two seeds can also
         // safely run concurrently is a separate question this suite does not need to answer.
         templateA = await seedFixtureTemplate(destinationA);
+        scratch.register(templateA.home);
         templateB = await seedFixtureTemplate(destinationB);
+        scratch.register(templateB.home);
     }, 60_000);
 
     afterAll(async () => {
-        await Promise.all([
-            rm(workDir, { recursive: true, force: true }),
-            rm(templateA.home, { recursive: true, force: true }),
-            rm(templateB.home, { recursive: true, force: true }),
-        ]);
+        await scratch.removeAll();
     });
 
     describe("determinism", () => {
@@ -110,6 +132,36 @@ describe("seedFixtureTemplate", () => {
             expect(templateA.env.GIT_AUTHOR_DATE).toBe("2000-01-01T00:00:00 +0000");
             expect(templateA.env.GIT_COMMITTER_DATE).toBe("2000-01-01T00:00:00 +0000");
         });
+
+        /**
+         * Locale is pinned because git's PORCELAIN output is translated, and
+         * `scenarios.ts`'s `assertMidRebasePostcondition` matches `/rebas/i` against `git status`
+         * run through this env. On a runner with a non-English locale installed, that scenario
+         * would report a correctly-built mid-rebase workspace as un-built.
+         *
+         * Asserted against a HOSTILE ambient value rather than by reading `env.LC_ALL` on its own:
+         * `createSanitizedGitEnv` spreads `process.env` first, so on a machine where `LC_ALL` is
+         * already `C` (or unset) a bare equality check passes just as happily with the pin deleted.
+         * Only a run whose ambient value DIFFERS can witness that the pin overrides rather than
+         * inherits -- the two must not share an environment, or neither can prove anything.
+         */
+        it("overrides a hostile ambient locale rather than inheriting it", async () => {
+            const ambient = { LC_ALL: process.env.LC_ALL, LANG: process.env.LANG };
+            process.env.LC_ALL = "fr_FR.UTF-8";
+            process.env.LANG = "fr_FR.UTF-8";
+            try {
+                const sanitized = await createSanitizedGitEnv();
+                try {
+                    expect(sanitized.env.LC_ALL).toBe("C");
+                    expect(sanitized.env.LANG).toBe("C");
+                } finally {
+                    await rm(sanitized.home, { recursive: true, force: true });
+                }
+            } finally {
+                restoreEnvVar("LC_ALL", ambient.LC_ALL);
+                restoreEnvVar("LANG", ambient.LANG);
+            }
+        });
     });
 
     describe("repo config", () => {
@@ -122,7 +174,23 @@ describe("seedFixtureTemplate", () => {
             expect(await configGet("init.defaultBranch")).toBe("main");
             expect(await configGet("gc.auto")).toBe("0");
             expect(await configGet("commit.gpgsign")).toBe("false");
-            expect(await configGet("core.abbrev")).toBe("40");
+            // Pinned so `%h` cannot drift with object count, but pinned SMALL so it stays a real
+            // abbreviation. At 40 the "short" hash equals the full hash, which later phases would
+            // bake into baseline screenshots as a chip no user ever sees. See seed.ts.
+            expect(await configGet("core.abbrev")).toBe("8");
+        });
+
+        it("abbreviates %h to a real short hash, distinct from the full SHA", async () => {
+            // The assertion above pins the config value; this one pins the OBSERVABLE consequence.
+            // A future change that sets core.abbrev back to 40 -- or that lets git auto-scale --
+            // has to fail here too, not just on a config string comparison.
+            const [full, short] = await Promise.all([
+                git(templateA.root, ["rev-parse", "HEAD"], templateA.env),
+                git(templateA.root, ["log", "-1", "--format=%h"], templateA.env),
+            ]);
+            expect(full.trim()).toHaveLength(40);
+            expect(short.trim()).toHaveLength(8);
+            expect(full.trim().startsWith(short.trim())).toBe(true);
         });
     });
 
@@ -317,4 +385,50 @@ describe("seedFixtureTemplate", () => {
             expect(originTag).toBe(templateA.commits.mergeCommit);
         });
     });
+});
+
+/**
+ * The seed's own failure path -- a sibling `describe` so it does not pay for the 60s double seed
+ * above, which it has no use for.
+ *
+ * Nothing in a green run reaches this path, and the directory it used to leak lives OUTSIDE the
+ * `destination` a caller cleans up: `home` is `mkdtemp`'d in the OS temp root and the only
+ * reference to it dies with the rejected frame. So the leak is invisible until a machine has
+ * accumulated thousands of them.
+ *
+ * The failure is forced by emptying `PATH`, which every `git` spawn inherits through
+ * `createSanitizedGitEnv`'s `process.env` spread -- `execFile` then cannot resolve the binary at
+ * all (ENOENT). That lands on `initializeWorkingRepository`, the FIRST git call after the home is
+ * allocated, which is exactly the window the cleanup exists to cover.
+ *
+ * `homeParent` is passed so the assertion can be "this directory the test owns is empty". Scanning
+ * the shared OS temp root instead would race every sibling test file seeding its own home.
+ */
+describe("seedFixtureTemplate failure cleanup", () => {
+    const allocated: string[] = [];
+
+    afterAll(async () => {
+        await Promise.all(
+            allocated.map((scratchPath) => rm(scratchPath, { recursive: true, force: true })),
+        );
+    });
+
+    it("removes the temporary home it allocated when seeding fails", async () => {
+        const workDir = await mkdtemp(join(tmpdir(), "intelligit-seed-failure-test-"));
+        allocated.push(workDir);
+        const homeParent = join(workDir, "homes");
+        await mkdir(homeParent);
+
+        const originalPath = process.env.PATH;
+        process.env.PATH = "";
+        try {
+            await expect(
+                seedFixtureTemplate(join(workDir, "destination"), { homeParent }),
+            ).rejects.toThrow(/ENOENT/);
+        } finally {
+            restoreEnvVar("PATH", originalPath);
+        }
+
+        expect(await readdir(homeParent)).toEqual([]);
+    }, 30_000);
 });

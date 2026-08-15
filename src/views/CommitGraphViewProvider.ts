@@ -394,6 +394,12 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
     setBranches(branches: Branch[], worktrees: GitWorktree[] = []): void {
         this.branches = branches;
         this.worktrees = worktrees;
+        // Cache-only until a view exists. `sendBranches` is asynchronous and this call does not
+        // await it, so without this guard a call made before `resolveWebviewView` still posts --
+        // the await lets the view attach first, and the `ready` handler then posts the identical
+        // list a second time. The webview cannot have received the first one: it had not yet
+        // signalled `ready`, so its listener was not attached.
+        if (!this.view) return;
         this.sendBranches().catch((err) => {
             const message = getErrorMessage(err);
             vscode.window.showErrorMessage(

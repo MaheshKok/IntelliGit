@@ -2,6 +2,7 @@
 // and commit panel into a single unified view. Used when the user enables
 // intelligit.undockableWindow to allow dragging to a second monitor.
 import * as vscode from "vscode";
+import { captureWebview } from "../e2e/webviewCapture";
 import type { GitExecutor } from "../git/executor";
 import { GitOps } from "../git/operations";
 import {
@@ -532,6 +533,10 @@ export class UndockedViewProvider {
     setBranches(branches: Branch[], worktrees: GitWorktree[] = []): void {
         this.branches = branches;
         this.worktrees = worktrees;
+        // Cache-only until a panel exists -- see `CommitGraphViewProvider.setBranches` for why an
+        // unawaited asynchronous send still reaches a panel that opens in the meantime, and why
+        // the webview cannot have received such a post.
+        if (!this.panel) return;
         this.sendBranches().catch((err) => {
             const message = getErrorMessage(err);
             vscode.window.showErrorMessage(
@@ -661,7 +666,7 @@ export class UndockedViewProvider {
             return;
         }
         this.commitCheckDemandSeq += 1;
-        this.panel = vscode.window.createWebviewPanel(
+        const rawPanel = vscode.window.createWebviewPanel(
             UndockedViewProvider.viewType,
             `IntelliGit — ${this.repositoryLabel}`,
             vscode.ViewColumn.One,
@@ -671,6 +676,7 @@ export class UndockedViewProvider {
                 localResourceRoots: [vscode.Uri.joinPath(this.extensionUri, "dist")],
             },
         );
+        this.panel = captureWebview(rawPanel, "undocked");
         this.iconTheme.attachWebview(this.panel.webview);
         this.registerThemeChangeListeners();
         this.panel.webview.html = this.getHtml(this.panel.webview);

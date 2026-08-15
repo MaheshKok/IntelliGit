@@ -1,0 +1,40 @@
+{
+    "schemaVersion": 1,
+    "contextId": "shelf-conflict-editor",
+    "scenario": "shelf-conflicted",
+    "messages": [
+        {
+            "contextId": "shelf-conflict-editor",
+            "message": {
+                "type": "setConflictData",
+                "data": {
+                    "filePath": "mutable.txt",
+                    "segments": [
+                        {
+                            "type": "conflict",
+                            "id": 0,
+                            "changeKind": "conflict",
+                            "oursLines": [
+                                "locally rewritten line"
+                            ],
+                            "theirsLines": [
+                                "staged change",
+                                "plus unstaged addition"
+                            ],
+                            "baseLines": [
+                                "mutable original"
+                            ]
+                        }
+                    ],
+                    "oursLabel": "Local",
+                    "theirsLabel": "Shelved",
+                    "eol": "\n",
+                    "hasTrailingNewline": true,
+                    "diffOptions": {},
+                    "editorFontSize": 14,
+                    "sessionKind": "shelf"
+                }
+            }
+        }
+    ]
+}

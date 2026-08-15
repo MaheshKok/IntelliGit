@@ -37,10 +37,20 @@ export class GitExecutor {
 
     /**
      * Creates an executor rooted at the repository path selected during activation.
+     *
+     * `defaultEnv` pins environment variables for every Git process this executor spawns, for
+     * callers that must not inherit whatever the host happens to have configured. Activation
+     * passes nothing and keeps inheriting the user's real environment, which is correct for a
+     * running extension. A caller that needs a repository read to be reproducible on any machine
+     * — a fixture recorder, whose output is committed and compared byte for byte — pins
+     * `GIT_CONFIG_GLOBAL`/`GIT_CONFIG_SYSTEM` here so a developer's own `~/.gitconfig` (a global
+     * `diff.renames=false` is enough) cannot change what the read returns. Per-invocation
+     * `options.env` still wins over this, and `process.env` is never mutated either way.
      */
     constructor(
         repoRoot: string,
         private readonly mutationGate?: RepositoryMutationGate,
+        private readonly defaultEnv?: Record<string, string>,
     ) {
         this.repoRoot = repoRoot;
     }
@@ -61,7 +71,7 @@ export class GitExecutor {
      * activation-owned queue and cross-process lock.
      */
     deriveFor(repoRoot: string): GitExecutor {
-        return new GitExecutor(repoRoot, this.mutationGate);
+        return new GitExecutor(repoRoot, this.mutationGate, this.defaultEnv);
     }
 
     /**
@@ -75,7 +85,8 @@ export class GitExecutor {
      *
      * `options.env` merges over a copy of the parent environment for this invocation
      * only — `process.env` is never mutated — and is forwarded on both the gated
-     * (mutating) and ungated paths.
+     * (mutating) and ungated paths. It also wins over the executor's constructor
+     * `defaultEnv`, so a per-call override still behaves as the innermost setting.
      */
     async run(args: string[], options: Pick<GitBinaryRunOptions, "env"> = {}): Promise<string> {
         await this.processSemaphore.acquire();
@@ -126,7 +137,7 @@ export class GitExecutor {
             const child = spawn("git", args, {
                 cwd: this.repoRoot,
                 stdio: "pipe",
-                env: { ...process.env, ...options.env },
+                env: { ...process.env, ...this.defaultEnv, ...options.env },
             });
             const stdout: Buffer[] = [];
             const stderr: Buffer[] = [];
