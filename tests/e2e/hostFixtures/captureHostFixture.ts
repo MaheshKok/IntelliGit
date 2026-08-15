@@ -249,6 +249,5 @@ export async function captureHostFixture(
  * where it would displace the error the `try` block raised.
  */
 function reportNonFatalCleanupFailure(error: unknown): void {
-    // eslint-disable-next-line no-console
     console.warn(`Host fixture capture: non-fatal cleanup failure: ${String(error)}`);
 }

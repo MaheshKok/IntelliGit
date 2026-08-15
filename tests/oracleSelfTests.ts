@@ -77,6 +77,8 @@ function temporaryBaselinePath(): { readonly directory: string; readonly filePat
 const geometry = oracles.get("geometry");
 const contrast = oracles.get("contrast");
 const truncationSources = oracles.get("truncationSources");
+const accessibleNameVerdict = oracles.get("accessibleNameVerdict");
+const gitEnv = oracles.get("gitEnv");
 const catalogSources = oracles.get("catalogSources");
 const findingsBaseline = oracles.get("findingsBaseline");
 const findingsBaselineFile = oracles.get("findingsBaselineFile");
@@ -224,6 +226,97 @@ export const oracleSelfTests: Record<OracleId, OracleSelfTest> = {
                     "Resolve conflict",
                 ]),
             ),
+    },
+    accessibleNameVerdict: {
+        detects:
+            "abbreviated renderings whose full text is never announced, and ones too ambiguous to clear",
+        knownBad: () => {
+            // Both finding shapes in one case, so either branch going blind empties it. The
+            // ambiguous case deliberately announces one of its sources: an oracle that cleared on
+            // "some source was announced" alone would call it fine, when what the announcement
+            // actually proves is that ONE of two candidates matched -- which settles nothing about
+            // what the other one lost.
+            const truncated = accessibleNameVerdict.classifyAccessibleName({
+                sourceCount: 1,
+                completeSourceExists: false,
+                announcesRenderedText: false,
+                announcesSomeSource: false,
+            });
+            const ambiguous = accessibleNameVerdict.classifyAccessibleName({
+                sourceCount: 2,
+                completeSourceExists: false,
+                announcesRenderedText: false,
+                announcesSomeSource: true,
+            });
+            return allRequired(asFinding(truncated), asFinding(ambiguous));
+        },
+        knownGood: () => {
+            // A convention ellipsis (`Rename...`) is a whole vocabulary entry that announces itself
+            // verbatim, and a single source the element actually announces has lost nothing. Both
+            // must clear, or every such menu label in all twelve catalogs becomes a finding.
+            const conventionEllipsis = accessibleNameVerdict.classifyAccessibleName({
+                sourceCount: 1,
+                completeSourceExists: true,
+                announcesRenderedText: true,
+                announcesSomeSource: true,
+            });
+            const announcedSingleSource = accessibleNameVerdict.classifyAccessibleName({
+                sourceCount: 1,
+                completeSourceExists: false,
+                announcesRenderedText: false,
+                announcesSomeSource: true,
+            });
+            return [...asFinding(conventionEllipsis), ...asFinding(announcedSingleSource)];
+        },
+    },
+    gitEnv: {
+        detects:
+            "ambient GIT_* variables surviving into the environment an oracle runs git in, in either case",
+        knownBad: () => {
+            // `git` reads GIT_DIR before it reads `-C` or cwd, so an inherited one silently aims an
+            // oracle at another repository. The lowercase name is not decoration: Windows env names
+            // are case-insensitive, so `set git_dir=...` is stored as written and a case-sensitive
+            // prefix test hands it straight back. Planted here rather than mocked, because the
+            // function reads `process.env` directly and that IS the surface under test.
+            const planted = {
+                GIT_DIR: "/planted/upper/.git",
+                git_dir: "/planted/lower/.git",
+            };
+            const previous = new Map(
+                Object.keys(planted).map((name) => [name, process.env[name]] as const),
+            );
+            try {
+                Object.assign(process.env, planted);
+                const sanitized = gitEnv.sanitizedGitEnv();
+                const dropped = Object.keys(planted).filter((name) => !(name in sanitized));
+                // Flagged means "the oracle removed it". Anything less than every planted name is
+                // a leak, and reporting a partial drop as success is the blindness being guarded.
+                return dropped.length === Object.keys(planted).length ? dropped : [];
+            } finally {
+                for (const [name, value] of previous) {
+                    if (value === undefined) delete process.env[name];
+                    else process.env[name] = value;
+                }
+            }
+        },
+        knownGood: () => {
+            // The other direction, and the one a blanket filter breaks: the fixture's own overlay is
+            // applied AFTER the inherited names are dropped, so a GIT_DIR the fixture passes in must
+            // survive -- otherwise every oracle loses the repository it was told to read. Unrelated
+            // inherited variables must survive too, or an oracle spawns git with no PATH.
+            const marker = "INTELLIGIT_ORACLE_SELF_TEST_MARKER";
+            const previous = process.env[marker];
+            try {
+                process.env[marker] = "inherited";
+                const sanitized = gitEnv.sanitizedGitEnv({ GIT_DIR: "/fixture/.git" });
+                return sanitized[marker] === "inherited" && sanitized.GIT_DIR === "/fixture/.git"
+                    ? []
+                    : [sanitized[marker], sanitized.GIT_DIR];
+            } finally {
+                if (previous === undefined) delete process.env[marker];
+                else process.env[marker] = previous;
+            }
+        },
     },
     catalogSources: {
         detects:
