@@ -56,6 +56,22 @@ const STAT_TOKENS = [
  * `@3.9` in `knownFindings.json`. Colouring the total therefore lands it at parity with
  * the numbers it sums rather than adding a new blind spot. Raising it means changing the
  * `deleted` token itself, which `diffStatusChroma.test.ts` constrains.
+ *
+ * Swapping the token was measured against this fixture set and does not work, because the
+ * two dark and light ends pull in opposite directions -- Dark Modern needs a LIGHTER red
+ * and Light Modern a DARKER one, and no host token is both (dark-modern / hc-black /
+ * hc-light / light-modern):
+ *
+ *   shipped `deleted`                        3.87  4.58  7.47  7.04
+ *   --vscode-charts-red                      4.97  8.55  6.61  4.46
+ *   --vscode-editorError-foreground          4.97  8.55  6.61  4.46
+ *   --vscode-errorForeground                 5.30  8.55  6.61  3.16
+ *   --vscode-debugTokenExpression-error      7.23  8.55  4.74  4.46
+ *   --vscode-testing-iconFailed              7.03    --    --  6.75   (undeclared in HC)
+ *
+ * Every candidate that lifts Dark Modern above the floor drops Light Modern below it, so
+ * the swap trades one sub-floor cell for another while also repainting every per-file row.
+ * The shipped token is the best available compromise, and this entry records the cost.
  */
 const ACCEPTED_BELOW_FLOOR = new Map<string, number>([["dark-modern:deleted", 3.87]]);
 

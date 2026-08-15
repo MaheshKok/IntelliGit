@@ -13,20 +13,34 @@
  * real behaviour -- lowercase names are dropped -- is what catches it on every platform.
  */
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { sanitizedGitEnv } from "../../e2e/oracles/gitEnv";
 
-/** Names this file writes into `process.env`, removed again after every test so a leaked
- * variable cannot silently satisfy a later assertion (or escape into the rest of the suite). */
-const TOUCHED: string[] = [];
+/**
+ * Names this file writes into `process.env`, each mapped to whatever was there beforehand.
+ *
+ * Restoring the previous value rather than deleting matters because the names under test are
+ * exactly the ones a developer shell is likely to already export: a run in a shell that has
+ * `GIT_DIR` set would otherwise delete it out from under every later test in the process. A
+ * name that was genuinely absent records `undefined` and is deleted again, so cleanup never
+ * invents a variable either.
+ *
+ * Only the FIRST write for a name is recorded, so a test that sets the same name twice still
+ * restores the ambient value rather than its own intermediate one.
+ */
+const ORIGINAL = new Map<string, string | undefined>();
 
 function setEnv(name: string, value: string): void {
-    TOUCHED.push(name);
+    if (!ORIGINAL.has(name)) ORIGINAL.set(name, process.env[name]);
     process.env[name] = value;
 }
 
 afterEach(() => {
-    for (const name of TOUCHED.splice(0)) delete process.env[name];
+    for (const [name, original] of ORIGINAL) {
+        if (original === undefined) delete process.env[name];
+        else process.env[name] = original;
+    }
+    ORIGINAL.clear();
 });
 
 describe("sanitizedGitEnv drops every inherited git pointer", () => {
@@ -82,5 +96,67 @@ describe("sanitizedGitEnv drops every inherited git pointer", () => {
             "INTELLIGIT_FIXTURE_MARKER",
             "overlay",
         );
+    });
+});
+
+/**
+ * Guards the harness above rather than the function under test.
+ *
+ * These tests overwrite the exact variable names a developer shell is most likely to already
+ * export, so a cleanup that deletes instead of restoring would silently strip the ambient
+ * environment for every test that runs after this file's first case. The damage is invisible
+ * from inside the test that causes it -- it only shows up later -- which is why the check has
+ * to span two cases.
+ */
+describe("the harness restores the environment it borrowed", () => {
+    const AMBIENT = "/ambient/repo/.git";
+
+    // Set outside `setEnv`, so only the afterEach restore can bring it back.
+    beforeAll(() => {
+        process.env.GIT_DIR = AMBIENT;
+    });
+    afterAll(() => {
+        delete process.env.GIT_DIR;
+    });
+
+    it("overwrites an ambient GIT_DIR while a test is running", () => {
+        setEnv("GIT_DIR", "/somewhere/else/.git");
+        expect(process.env.GIT_DIR).toBe("/somewhere/else/.git");
+        expect(sanitizedGitEnv()).not.toHaveProperty("GIT_DIR");
+    });
+
+    it("has put the ambient GIT_DIR back by the next test", () => {
+        expect(
+            process.env.GIT_DIR,
+            "cleanup deleted a variable the surrounding environment owned instead of restoring it",
+        ).toBe(AMBIENT);
+    });
+
+    // The first-write guard: a second write must not overwrite the recorded ambient value with
+    // the test's own intermediate one, or cleanup restores something the test invented.
+    it("overwrites the ambient GIT_DIR twice within one test", () => {
+        setEnv("GIT_DIR", "/first/.git");
+        setEnv("GIT_DIR", "/second/.git");
+        expect(process.env.GIT_DIR).toBe("/second/.git");
+    });
+
+    it("restores the ambient value rather than the intermediate one", () => {
+        expect(
+            process.env.GIT_DIR,
+            "cleanup restored a value the test itself wrote instead of the ambient one",
+        ).toBe(AMBIENT);
+    });
+
+    it("still deletes a name that was absent before the test set it", () => {
+        expect(process.env.INTELLIGIT_ABSENT_MARKER).toBeUndefined();
+        setEnv("INTELLIGIT_ABSENT_MARKER", "temporary");
+        expect(process.env.INTELLIGIT_ABSENT_MARKER).toBe("temporary");
+    });
+
+    it("has removed the previously absent name again", () => {
+        expect(
+            process.env.INTELLIGIT_ABSENT_MARKER,
+            "cleanup invented a variable that was not there before",
+        ).toBeUndefined();
     });
 });
