@@ -21,4 +21,20 @@ describe("harness page visual environment contract", () => {
         );
         expect(visualEnvironmentFixture).toContain('{ scope: "worker", auto: true }');
     });
+
+    it("keeps the fixture dispatch waiting for the render it triggers", () => {
+        // `settleRootSubtree` is unit-tested on its own, but a correct predicate nobody awaits is
+        // the same race as no predicate at all -- and deleting the one `await` leaves every other
+        // test in this repo green, because the race it closes is won on timing luck far more often
+        // than it is lost. This is the assertion that goes red for that deletion.
+        const dispatchBlock = harnessPageSource.match(
+            /if \(fixture !== undefined\) \{[\s\S]*?\n {12}\}/,
+        )?.[0];
+        expect(dispatchBlock).toBeDefined();
+        expect(dispatchBlock).toContain("await waitForRootSubtreeToSettle(page);");
+        expect(harnessPageSource).toContain(
+            'import { settleRootSubtree } from "./settleRootSubtree";',
+        );
+        expect(harnessPageSource).toContain("await page.evaluate(settleRootSubtree, {");
+    });
 });

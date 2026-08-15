@@ -21,6 +21,7 @@ import {
     resolveDistAssetPath,
 } from "./visualHarnessUtils";
 import { prepareVisualEnvironment } from "./visualEnvironmentGuard";
+import { settleRootSubtree } from "./settleRootSubtree";
 
 const HARNESS_ORIGIN = "http://intelligit-harness.test";
 const REPO_ROOT = path.resolve(__dirname, "../../..");
@@ -28,6 +29,21 @@ const VISUAL_FIXTURES_DIR = path.resolve(__dirname, "../fixtures");
 const HOST_FIXTURES_DIR = path.join(VISUAL_FIXTURES_DIR, "host");
 const DIST_DIR = path.join(REPO_ROOT, "dist");
 const DEFAULT_LOCALE = "en";
+
+// Minimum continuous quiet time under "#root" (no observed change) required before the
+// fixture-driven render is considered settled -- see `waitForRootSubtreeToSettle`. Samples are
+// taken from inside `requestAnimationFrame` callbacks, so a sample always follows a completed
+// layout pass, but the requirement itself is wall-clock rather than a raw frame count: React's
+// scheduler flushes a batched update within roughly one macrotask (nothing here waits on I/O),
+// so 100ms is a wide (~5x) multiple of the 1-2 frames that takes in practice -- chosen to absorb
+// scheduling jitter on a loaded CI box, not the minimum that happens to work locally. A 2-frame
+// (~33ms) threshold was tried first and measured to resolve in ~20ms against a synthetic render
+// deferred by 100-250ms: it was satisfied by "nothing has changed YET" as readily as by "nothing
+// will change again", which is exactly the ambiguity a settle predicate exists to resolve.
+const SETTLE_MIN_STABLE_MS = 100;
+// Generous ceiling relative to SETTLE_MIN_STABLE_MS, so a render that never settles fails loudly
+// with a clear diagnostic instead of riding the suite's 30s test timeout to an opaque error.
+const SETTLE_MAX_MS = 3000;
 
 interface WebviewFixtureMessage {
     readonly message: unknown;
@@ -174,6 +190,30 @@ async function routeHarnessRequest(
     await route.abort("failed");
 }
 
+/**
+ * Waits until `#root`'s rendered subtree stops changing for `SETTLE_MIN_STABLE_MS` of continuous
+ * wall-clock quiet time. The predicate itself lives in `settleRootSubtree.ts`, where it is
+ * unit-tested against a driven clock; this wrapper only carries it into the page.
+ *
+ * The fixture dispatch below returns as soon as `window.dispatchEvent` has run, but the
+ * "message" handlers it invokes update React state, and React 18 batches and commits that
+ * update asynchronously -- layout for the commit can land an animation frame later still.
+ * Returning immediately after dispatch let callers read `#root` before the commit, or its
+ * layout pass, had happened: a race the suite has so far won on timing luck, not a guarantee.
+ * Every sample is taken from inside a `requestAnimationFrame` callback, never from a synchronous
+ * pre-frame read -- a synchronous sample could equal the first frame's sample simply because the
+ * scheduled commit had not landed yet, which would satisfy a naive "matches last frame" check
+ * without anything having actually settled. Gating on elapsed wall-clock time (via each frame's
+ * own timestamp) rather than a raw frame count keeps the requirement meaningful regardless of
+ * the page's actual frame rate.
+ */
+async function waitForRootSubtreeToSettle(page: Page): Promise<void> {
+    await page.evaluate(settleRootSubtree, {
+        minStableMs: SETTLE_MIN_STABLE_MS,
+        maxWaitMs: SETTLE_MAX_MS,
+    });
+}
+
 /** Installs the in-process browser harness and exposes its recorder-backed mount operation. */
 export const test = base.extend<VisualFixtures, VisualWorkerFixtures>({
     visualEnvironment: [
@@ -256,6 +296,10 @@ export const test = base.extend<VisualFixtures, VisualWorkerFixtures>({
                     },
                     fixture.messages.map((entry) => entry.message),
                 );
+
+                // The dispatched messages drive a React re-render that has not necessarily
+                // committed or laid out yet -- wait for it before handing back to the caller.
+                await waitForRootSubtreeToSettle(page);
             }
 
             return {

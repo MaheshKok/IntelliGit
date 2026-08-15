@@ -167,7 +167,12 @@ export function hostContextFor(id: WebviewContextId): ResolvedHostContext {
 
 /**
  * Fails when hosts sharing one bundle diverge in a field their equivalence entry did not name, when
- * a shared bundle declares no entry at all, or when an entry claims a bundle only one host uses.
+ * a shared bundle declares no entry at all, when an entry claims a bundle only one host uses, or
+ * when an entry's `contextIds` is not exactly the set of hosts that actually use that bundle (a
+ * real member missing from `contextIds`, an id that does not belong to the bundle, or a duplicate
+ * id). That last check has to run in both directions: checking only that declared ids are real
+ * would still let an entry silently omit a real member, and an omitted member never reaches the
+ * field comparison below, so its shell fields could diverge from the rest of the group unnoticed.
  *
  * Parameterized over the table rather than closing over `WEBVIEW_HOST_CONTEXTS` so a test can run it
  * against a table built to violate it. A guard reachable only through the real (passing) table
@@ -202,6 +207,40 @@ export function assertSharedBundleEquivalence(
     }
 
     for (const equivalence of equivalences) {
+        // Membership must hold in both directions, not just "every declared id resolves to a real
+        // context" (which the lookup below already guarantees on its own). A one-way check is
+        // exactly what let an entry omit a real member of the bundle: that member would never reach
+        // the field comparison further down, so its shell fields could diverge from the rest of the
+        // group and nothing here would notice.
+        const declaredIds = new Set<WebviewContextId>();
+        for (const id of equivalence.contextIds) {
+            if (declaredIds.has(id)) {
+                throw new Error(
+                    `Shared-bundle equivalence entry for "${equivalence.scriptFile}" lists context ` +
+                        `"${id}" in contextIds more than once.`,
+                );
+            }
+            declaredIds.add(id);
+        }
+
+        const actualMembers = byScriptFile.get(equivalence.scriptFile) ?? [];
+        for (const id of declaredIds) {
+            if (!actualMembers.some((context) => context.contextId === id)) {
+                throw new Error(
+                    `Shared-bundle equivalence entry for "${equivalence.scriptFile}" lists context ` +
+                        `"${id}" in contextIds, but no host context with that id uses this bundle.`,
+                );
+            }
+        }
+        for (const member of actualMembers) {
+            if (!declaredIds.has(member.contextId)) {
+                throw new Error(
+                    `Host context "${member.contextId}" shares bundle "${equivalence.scriptFile}" ` +
+                        `but is missing from its shared-bundle equivalence entry's contextIds.`,
+                );
+            }
+        }
+
         const [first, ...rest] = equivalence.contextIds.map((id) => hostContextIn(contexts, id));
         for (const field of SHARED_BUNDLE_FIELDS) {
             if (equivalence.allowedDivergences.includes(field)) continue;

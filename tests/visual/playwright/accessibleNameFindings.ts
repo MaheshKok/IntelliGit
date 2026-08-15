@@ -1,24 +1,37 @@
 import { expect } from "@playwright/test";
-import type { Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 
+import { classifyAccessibleName } from "../oracles/accessibleNameVerdict";
 import { normalizeFindingKeys } from "../oracles/findingsBaseline";
 import { matchTruncatedRendering } from "../oracles/truncationSources";
 import type { CollectedOracleInputs } from "./collectOracleInputs";
 
 type RenderedText = CollectedOracleInputs["renderedTexts"][number];
 
+const NAME_PROBE_TIMEOUT_MS = 250;
+
+/** Resolves whether the element's computed accessible name is exactly `candidate`. */
+async function announces(target: Locator, candidate: string): Promise<boolean> {
+    try {
+        await expect(target).toHaveAccessibleName(candidate, { timeout: NAME_PROBE_TIMEOUT_MS });
+        return true;
+    } catch {
+        // A name that does not match is evidence, not a test failure -- the verdict below decides
+        // what it means, and the baseline decides whether the resulting finding is already known.
+        return false;
+    }
+}
+
 /**
  * Reports elements whose visible text abbreviates a known source string without exposing the full
  * string to assistive technology.
  *
  * Truncation itself is not the defect -- an ellipsis is a deliberate layout choice. Losing the
- * content is. So an abbreviated rendering is only a finding when no candidate source matches the
- * element's computed accessible name, which is the name a screen reader would announce whether it
- * comes from DOM content, `aria-label`, `aria-labelledby`, or a native label.
- *
- * `[ambiguous-source]` is reported separately: when several sources could have produced the same
- * abbreviation, a passing name check proves only that one of them matched, so the result cannot be
- * trusted either way and the ambiguity is what needs fixing.
+ * content is. So this collector gathers evidence about one element -- how many sources could have
+ * produced the abbreviation, whether any source equals it outright, and what the element actually
+ * announces -- and leaves the ruling to `classifyAccessibleName`, which is pure and unit-tested.
+ * The accessible name is the name a screen reader would announce, whether it comes from DOM
+ * content, `aria-label`, `aria-labelledby`, or a native label.
  */
 export async function collectAccessibleNameFindings(
     page: Page,
@@ -33,26 +46,28 @@ export async function collectAccessibleNameFindings(
             continue;
         }
 
-        if (match.sources.length > 1) {
-            findings.push(`${id} [ambiguous-source]`);
-        }
+        const target = page.locator(`[data-oracle-key="${oracleKey}"]`);
+        // Only asked when a complete source exists, because that is the only case whose ruling
+        // consults it -- and an unasked probe costs a full timeout per element.
+        const announcesRenderedText =
+            match.completeSourceExists && (await announces(target, match.rendered));
 
-        let matched = false;
+        let announcesSomeSource = false;
         for (const source of match.sources) {
-            try {
-                await expect(page.locator(`[data-oracle-key="${oracleKey}"]`)).toHaveAccessibleName(
-                    source,
-                    { timeout: 250 },
-                );
-                matched = true;
+            if (await announces(target, source)) {
+                announcesSomeSource = true;
                 break;
-            } catch {
-                // A non-matching source is the finding, not a test failure -- the baseline
-                // decides whether this finding is already known.
             }
         }
-        if (!matched && match.sources.length === 1) {
-            findings.push(`${id} [truncated-name]`);
+
+        const verdict = classifyAccessibleName({
+            sourceCount: match.sources.length,
+            completeSourceExists: match.completeSourceExists,
+            announcesRenderedText,
+            announcesSomeSource,
+        });
+        if (verdict !== undefined) {
+            findings.push(`${id} [${verdict}]`);
         }
     }
 

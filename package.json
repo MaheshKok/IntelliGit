@@ -1020,7 +1020,7 @@
         "@playwright/test": "^1.62.1",
         "@shikijs/langs": "4.3.1",
         "@shikijs/themes": "4.3.1",
-        "@types/jsdom": "^30.0.0",
+        "@types/jsdom": "^28.0.3",
         "@types/node": "^20.11.0",
         "@types/react": "^18.2.48",
         "@types/react-dom": "^18.2.18",

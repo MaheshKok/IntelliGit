@@ -23,7 +23,28 @@ export function readPinnedBaseImage(pinPath: string): string {
     return pin;
 }
 
-/** Checks the facts that tie a self-reported image claim to the reviewed Docker pin. */
+/**
+ * Checks the facts that tie a self-reported image claim to the reviewed Docker pin.
+ *
+ * What this establishes, precisely: the container DECLARES it was built from the reviewed pin. It
+ * is not an attestation and cannot become one from in here. `INTELLIGIT_BASE_IMAGE` is an ordinary
+ * environment variable, so `docker run -e INTELLIGIT_BASE_IMAGE=<the pin> <any image>` satisfies
+ * every check below, and `/.dockerenv` proves only that something is a container. Docker exposes no
+ * trustworthy image identity to the process it runs; any value re-derived inside the container is
+ * forgeable by whoever controls the container.
+ *
+ * That limit is acceptable because of what this gate is actually for: stopping baselines from being
+ * generated on the WRONG renderer by accident -- a stale image, a host-side run, a rebuild that
+ * silently moved. Against accident it is exact, because the honest paths all set the variable from
+ * the same build argument that feeds `FROM` (see tests/e2e/docker/Dockerfile) and a stale image
+ * therefore carries a stale digest and fails the identity check.
+ *
+ * It is deliberately NOT hardened against a malicious operator, because that threat model does not
+ * close: anyone able to forge this variable can also just commit poisoned baseline PNGs directly,
+ * which is strictly easier and which no in-repo check can prevent. Real attestation would have to
+ * come from a trusted boundary outside the pull request -- a protected CI workflow that resolves
+ * the image identity itself -- and would still not address the commit-the-PNGs path.
+ */
 export function checkPinnedProvenance(
     baseImage: string | undefined,
     pinnedBaseImage: string,

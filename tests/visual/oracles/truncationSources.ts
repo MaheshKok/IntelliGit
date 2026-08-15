@@ -25,46 +25,48 @@ export function collectSourceStrings(messages: readonly unknown[]): readonly str
     return [...strings].sort();
 }
 
+/**
+ * The one spelling every comparison in this file runs against.
+ *
+ * The catalog spells the "opens a dialog" convention both ways, so the boundary checks used to
+ * loop over both spellings and each entry then accused the other of truncating it. Canonicalizing
+ * in `normalizeText` instead makes the two spellings one string, which is what they always were.
+ */
+const ELLIPSIS = "…";
+
 /** Normalizes the two representations before comparing their source boundaries. */
 function normalizeText(value: string): string {
-    return value.normalize("NFC").replace(/\s+/gu, " ").trim();
+    return value
+        .normalize("NFC")
+        .replace(/\.\.\./gu, ELLIPSIS)
+        .replace(/\s+/gu, " ")
+        .trim();
 }
 
 function hasTailEllipsis(rendered: string, source: string): boolean {
-    for (const ellipsis of ["…", "..."] as const) {
-        if (!rendered.endsWith(ellipsis)) {
-            continue;
-        }
-        const prefix = rendered.slice(0, -ellipsis.length);
-        if (
-            prefix.length > 0 &&
-            prefix.length < source.length &&
-            source.startsWith(prefix)
-        ) {
-            return true;
-        }
+    if (!rendered.endsWith(ELLIPSIS)) {
+        return false;
     }
-    return false;
+    const prefix = rendered.slice(0, -ELLIPSIS.length);
+    return prefix.length > 0 && prefix.length < source.length && source.startsWith(prefix);
 }
 
 function hasMiddleEllipsis(rendered: string, source: string): boolean {
-    for (const ellipsis of ["…", "..."] as const) {
-        let ellipsisIndex = rendered.indexOf(ellipsis);
-        while (ellipsisIndex >= 0) {
-            const suffixStart = ellipsisIndex + ellipsis.length;
-            if (ellipsisIndex > 0 && suffixStart < rendered.length) {
-                const prefix = rendered.slice(0, ellipsisIndex);
-                const suffix = rendered.slice(suffixStart);
-                if (
-                    source.startsWith(prefix) &&
-                    source.endsWith(suffix) &&
-                    prefix.length + suffix.length < source.length
-                ) {
-                    return true;
-                }
+    let ellipsisIndex = rendered.indexOf(ELLIPSIS);
+    while (ellipsisIndex >= 0) {
+        const suffixStart = ellipsisIndex + ELLIPSIS.length;
+        if (ellipsisIndex > 0 && suffixStart < rendered.length) {
+            const prefix = rendered.slice(0, ellipsisIndex);
+            const suffix = rendered.slice(suffixStart);
+            if (
+                source.startsWith(prefix) &&
+                source.endsWith(suffix) &&
+                prefix.length + suffix.length < source.length
+            ) {
+                return true;
             }
-            ellipsisIndex = rendered.indexOf(ellipsis, ellipsisIndex + ellipsis.length);
         }
+        ellipsisIndex = rendered.indexOf(ELLIPSIS, ellipsisIndex + ELLIPSIS.length);
     }
     return false;
 }
@@ -78,6 +80,11 @@ function hasMiddleEllipsis(rendered: string, source: string): boolean {
 export interface TruncationMatch {
     readonly rendered: string;
     readonly sources: readonly string[];
+    /**
+     * True when the vocabulary ALSO contains this rendering verbatim, so it may be a complete
+     * label rather than a cut one and the two cases cannot be told apart from the strings alone.
+     */
+    readonly completeSourceExists: boolean;
 }
 
 /** Returns all sorted source strings that the rendered value abbreviates, or `undefined`. */
@@ -87,19 +94,22 @@ export function matchTruncatedRendering(
 ): TruncationMatch | undefined {
     const normalizedRendered = normalizeText(rendered);
     const matchingSources = new Set<string>();
-
-    // A rendering that appears verbatim anywhere in the source vocabulary is complete, even when it
-    // ends in an ellipsis. `Merge...` is a deliberate "opens a dialog" label, not a clipped
-    // `Merge branch xyz` -- and once catalog strings joined the source set, the catalog's two
-    // spellings of that convention (`Merge...` and `Merge…`) each looked like a truncation of the
-    // other. Checking membership only against the source currently being compared is not enough:
-    // the accusing source is always a different entry.
-    if (sources.some((source) => normalizeText(source) === normalizedRendered)) {
-        return undefined;
-    }
+    let completeSourceExists = false;
 
     for (const source of sources) {
         const normalizedSource = normalizeText(source);
+
+        // A source that IS the rendering cannot also be the longer string the rendering was cut
+        // from, so it is recorded and skipped rather than compared. Abandoning the whole element
+        // on this -- which is what a vocabulary-wide membership test did -- throws away the case
+        // that matters: a fixture holding both a real `Merge...` command label and a truncated
+        // `Merge branch 'feature'` has an element that could be either, and answering "complete"
+        // silently skips the accessible-name check for a name that may well be lost.
+        if (normalizedSource === normalizedRendered) {
+            completeSourceExists = true;
+            continue;
+        }
+
         if (
             !hasTailEllipsis(normalizedRendered, normalizedSource) &&
             !hasMiddleEllipsis(normalizedRendered, normalizedSource)
@@ -112,5 +122,5 @@ export function matchTruncatedRendering(
     if (matchingSources.size === 0) {
         return undefined;
     }
-    return { rendered, sources: [...matchingSources].sort() };
+    return { rendered, sources: [...matchingSources].sort(), completeSourceExists };
 }

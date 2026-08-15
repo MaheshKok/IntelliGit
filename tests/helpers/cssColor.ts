@@ -28,7 +28,9 @@ export function readFixtureVariables(fixturePath: string): Map<string, string> {
     };
     const cssText = fixture.documentElement?.styleCssText;
     if (!cssText) {
-        throw new Error(`${fixturePath} has no documentElement.styleCssText to read variables from`);
+        throw new Error(
+            `${fixturePath} has no documentElement.styleCssText to read variables from`,
+        );
     }
     const variables = new Map<string, string>();
     for (const match of cssText.matchAll(/(--[a-zA-Z0-9\\.-]+):\s*([^;]+);/g)) {
@@ -62,15 +64,32 @@ function parseLiteral(value: string): Rgba {
 
     const functional = /^rgba?\(([^)]+)\)$/i.exec(trimmed);
     if (functional) {
-        const parts = functional[1]
+        // Percentages mean different things on the two channel kinds -- 100% is 255
+        // for r/g/b but 1 for alpha -- so each token keeps its own "was this a %"
+        // flag instead of being collapsed to a plain number before that is decided.
+        const tokens = functional[1]
             .split(/[,/]/)
             .flatMap((part) => part.trim().split(/\s+/))
             .filter((part) => part.length > 0)
-            .map((part) => (part.endsWith("%") ? Number.parseFloat(part) / 100 : Number.parseFloat(part)));
-        if (parts.length >= 3 && parts.slice(0, 3).every((n) => Number.isFinite(n))) {
+            .map((part) => ({ value: Number.parseFloat(part), isPercent: part.endsWith("%") }));
+        if (
+            tokens.length >= 3 &&
+            tokens.slice(0, 3).every((token) => Number.isFinite(token.value))
+        ) {
+            const channel = (token: { value: number; isPercent: boolean }): number =>
+                token.isPercent ? (token.value * 255) / 100 : token.value;
             return {
-                rgb: [Math.round(parts[0]), Math.round(parts[1]), Math.round(parts[2])],
-                alpha: parts.length > 3 && Number.isFinite(parts[3]) ? parts[3] : 1,
+                rgb: [
+                    Math.round(channel(tokens[0])),
+                    Math.round(channel(tokens[1])),
+                    Math.round(channel(tokens[2])),
+                ],
+                alpha:
+                    tokens.length > 3 && Number.isFinite(tokens[3].value)
+                        ? tokens[3].isPercent
+                            ? tokens[3].value / 100
+                            : tokens[3].value
+                        : 1,
             };
         }
     }
@@ -127,9 +146,27 @@ export function resolveRgba(expression: string, variables: Map<string, string>):
                 weight: percent ? Number.parseFloat(percent[1]) / 100 : undefined,
             };
         });
-        const weightA =
-            parsed[0].weight ?? (parsed[1].weight !== undefined ? 1 - parsed[1].weight : 0.5);
-        const weightB = 1 - weightA;
+        let weightA: number;
+        let weightB: number;
+        // Only the both-given-and-undersubscribed branch below moves this off 1.
+        let alphaMultiplier = 1;
+        if (parsed[0].weight !== undefined && parsed[1].weight !== undefined) {
+            const sum = parsed[0].weight + parsed[1].weight;
+            if (sum === 0) {
+                throw new Error(`color-mix weights sum to 0%, which is not valid CSS: ${trimmed}`);
+            }
+            // Two explicit weights are both honoured by normalizing their ratio,
+            // rather than letting the second one silently lose to the first. A
+            // combined weight under 100% is topped up with implicit `transparent`,
+            // which is why it also scales the mixed alpha down below.
+            weightA = parsed[0].weight / sum;
+            weightB = parsed[1].weight / sum;
+            if (sum < 1) alphaMultiplier = sum;
+        } else {
+            weightA =
+                parsed[0].weight ?? (parsed[1].weight !== undefined ? 1 - parsed[1].weight : 0.5);
+            weightB = 1 - weightA;
+        }
         const a = resolveRgba(parsed[0].color, variables);
         const b = resolveRgba(parsed[1].color, variables);
 
@@ -137,10 +174,11 @@ export function resolveRgba(expression: string, variables: Map<string, string>):
         // opaque colour with `transparent` keeps the colour and only drops the
         // alpha. Averaging the raw channels instead would drag every tint toward
         // black and make a translucent overlay measure far darker than it paints.
-        const alpha = a.alpha * weightA + b.alpha * weightB;
-        if (alpha === 0) return { rgb: [0, 0, 0], alpha: 0 };
+        const mixedAlpha = a.alpha * weightA + b.alpha * weightB;
+        const alpha = mixedAlpha * alphaMultiplier;
+        if (mixedAlpha === 0) return { rgb: [0, 0, 0], alpha: 0 };
         const rgb = [0, 1, 2].map((i) =>
-            Math.round((a.rgb[i] * a.alpha * weightA + b.rgb[i] * b.alpha * weightB) / alpha),
+            Math.round((a.rgb[i] * a.alpha * weightA + b.rgb[i] * b.alpha * weightB) / mixedAlpha),
         ) as unknown as Rgb;
         return { rgb, alpha };
     }

@@ -122,6 +122,52 @@ describe("resolved webview host-context table", () => {
         ).toThrow(/only one\s+host context uses it/);
     });
 
+    // The three cases below are the two-way membership cross-check: an equivalence entry's
+    // contextIds must be exactly the set of hosts that actually use its bundle, not merely a set
+    // that happens to resolve. A one-way check (declared ids are real) still lets an entry omit a
+    // real member, which is the CodeRabbit-flagged gap this closes -- the omitted member never
+    // reached the field comparison, so its shell fields could diverge from the rest of the group
+    // without ever being caught.
+
+    it("can fail: a host that shares a bundle but is missing from contextIds reaches the throw", () => {
+        // Repoint "commit-info" onto the merge-editor bundle so three real hosts share it while the
+        // real equivalence entry still names only the original two. "commit-info" is now a real
+        // member that assertSharedBundleEquivalence must notice is absent from contextIds.
+        const contexts = WEBVIEW_HOST_CONTEXTS.map((context) =>
+            context.contextId === "commit-info"
+                ? { ...context, scriptFile: "webview-mergeeditor.js" }
+                : context,
+        );
+
+        expect(() => assertSharedBundleEquivalence(contexts, SHARED_BUNDLE_EQUIVALENCE)).toThrow(
+            /"commit-info" shares bundle "webview-mergeeditor\.js" but is missing from/,
+        );
+    });
+
+    it("can fail: a contextIds entry naming a host that does not use the bundle reaches the throw", () => {
+        expect(() =>
+            assertSharedBundleEquivalence(WEBVIEW_HOST_CONTEXTS, [
+                {
+                    scriptFile: "webview-mergeeditor.js",
+                    contextIds: ["merge-editor", "shelf-conflict-editor", "commit-info"],
+                    allowedDivergences: ["titleDescriptor"],
+                },
+            ]),
+        ).toThrow(/"commit-info" in contextIds, but no host context with that id uses this bundle/);
+    });
+
+    it("can fail: a duplicate id inside one entry's contextIds reaches the throw", () => {
+        expect(() =>
+            assertSharedBundleEquivalence(WEBVIEW_HOST_CONTEXTS, [
+                {
+                    scriptFile: "webview-mergeeditor.js",
+                    contextIds: ["merge-editor", "shelf-conflict-editor", "shelf-conflict-editor"],
+                    allowedDivergences: ["titleDescriptor"],
+                },
+            ]),
+        ).toThrow(/"shelf-conflict-editor" in contextIds more than once/);
+    });
+
     it("can fail: an unknown context lookup reaches its throwing guard", () => {
         expect(() =>
             hostContextFor("not-a-real-context" as (typeof WEBVIEW_CONTEXT_IDS)[number]),
