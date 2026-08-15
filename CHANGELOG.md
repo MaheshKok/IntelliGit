@@ -5,6 +5,12 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.25.1] - 2026-08-15
+
+### Fixed
+
+- Selecting a commit posted its detail to the webview twice: once raw, then again unconditionally once asynchronous icon-theme decoration settled. With no icon resolver attached, or whenever decoration changed nothing, that second message was byte-identical to the first and the pane re-rendered for nothing. The follow-up post is now sent only when the fully-built outgoing payload actually differs. The comparison is deliberately made on the payload rather than on the decoration result, because awaiting the icon theme can populate folder-icon and icon-font data for the first time between the two posts, and a guard keyed on "did decoration change the commit detail" would have silently dropped that legitimately new data. The first post to a given webview is always sent, so a restored view can never render empty.
+
 ## [0.25.0] - 2026-08-15
 
 ### Added
