@@ -5,6 +5,18 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.25.2] - 2026-08-15
+
+### Added
+
+- Added an end-to-end suite that exercises the mutating git operations — staging, committing, branching, shelving, conflict resolution — against a seeded fixture repository inside the same digest-pinned Linux container the visual suite uses. Each flow is checked against git itself rather than against the UI's own report, so a panel that renders the right thing after doing the wrong thing still fails. A small, high-value set runs on every pull request and gates releases; the full sweep runs nightly, sharded, with a single aggregated failure report that reuses the issue it already opened instead of filing one per shard per night.
+- Added a non-gating nightly run against VS Code Insiders, so an upcoming change to the editor surfaces here before it reaches a release.
+
+### Fixed
+
+- Fixed the extension's development-only E2E control channel losing any request that arrived before its watcher attached. Filesystem events were being relied on as the delivery guarantee rather than as an optimisation; delivery is now reconciled by polling, requests already present at activation are drained, and a readiness marker gives clients something to wait on instead of an unexplained timeout.
+- Fixed an unreadable request on that channel being discarded with nothing written to the host log, which left the caller with a timeout and no stated reason for it. The report withholds the request body, which can carry a secret value, and is emitted once per request rather than once per poll.
+
 ## [0.25.1] - 2026-08-15
 
 ### Fixed
