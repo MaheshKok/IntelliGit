@@ -808,7 +808,13 @@
 }
 .conflict-actions-left {
     position: absolute;
-    top: 1px;
+    /* The glyph's rendered ink sits taller than its 20px line box (see the
+       .hunk-action-glyph comment below), so a hunk sitting at the very top of
+       the scrollable .merge-viewport had its ink clipped by 2px against that
+       ancestor's own overflow:hidden box at top:1px. 4px gives that headroom
+       back without meaningfully changing the button's alignment against its
+       code line. */
+    top: 4px;
     right: var(--merge-line-number-gutter);
     display: flex;
     gap: 0;
@@ -816,7 +822,8 @@
 }
 .conflict-actions-right {
     position: absolute;
-    top: 1px;
+    /* See .conflict-actions-left: same top-of-viewport ink clip, same fix. */
+    top: 4px;
     left: var(--merge-line-number-gutter);
     display: flex;
     gap: 0;

@@ -161,6 +161,9 @@ export const SECTION_HEADER_STYLE: CSSProperties = {
 
 export const HEAD_LABEL_STYLE: CSSProperties = {
     opacity: 0.95,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    minWidth: 0,
 };
 
 export const NODE_LABEL_STYLE: CSSProperties = {
