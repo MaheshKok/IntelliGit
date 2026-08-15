@@ -26,6 +26,7 @@ import {
 } from "../services/reviewPromptHost";
 import { getErrorMessage } from "../utils/errors";
 import { IconThemeService } from "./shared/IconThemeService";
+import { isRedundantPost, serializeWebviewPayload } from "./shared/postedPayload";
 import { registerThemeChangeListeners, disposeAll } from "./shared/themeListeners";
 import { buildWebviewShellHtml } from "./webviewHtml";
 import { assertRepoRelativePath } from "../utils/fileOps";
@@ -87,6 +88,11 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
     private folderIconsByName: ThemeFolderIconMap = {};
     private branchFolderIconsByName: ThemeFolderIconMap = {};
     private commitDetailSeq = 0;
+    /** Serialized form of the last `setCommitDetail` payload actually posted to the CURRENT
+     * webview -- see `shared/postedPayload.ts`. Reset to `undefined` whenever a fresh webview is
+     * resolved or the commit-detail cache is cleared, so a redundant-looking repost after either
+     * is never wrongly suppressed. */
+    private lastPostedPayload: string | undefined;
     private reviewPromptSeq = 0;
     /** The single outstanding review card, if one is on screen; answers from any other ID are stale. */
     private pendingReviewPrompt?: {
@@ -232,6 +238,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
         this.disposeThemeChangeDisposables();
         this.iconTheme.dispose();
         this.view = webviewView;
+        this.lastPostedPayload = undefined;
         this.applyRepositoryDescription();
 
         webviewView.webview.options = {
@@ -277,6 +284,12 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
                         await this.iconTheme.initIconThemeData();
                         await this.sendBranches();
                         await this.loadInitial();
+                        // A fresh webview context has received nothing, so the re-post below
+                        // must never be suppressed as a duplicate of what the PREVIOUS context
+                        // was sent. `ready` fires again whenever VS Code tears this view down
+                        // while it is hidden and reloads it on show -- `resolveWebviewView` does
+                        // NOT re-run then, so its reset alone would leave the pane empty.
+                        this.lastPostedPayload = undefined;
                         this.postCommitDetailState();
                         break;
                     case "selectCommit":
@@ -485,6 +498,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
         this.selectedCommitDetail = null;
         this.commitDetailLoading = options?.loading ?? false;
         this.folderIconsByName = {};
+        this.lastPostedPayload = undefined;
         this.postCommitDetailState();
     }
 
@@ -919,16 +933,23 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
     private postCommitDetailState(): void {
         const { folderIcons, iconFonts } = this.iconTheme.getThemeData();
         if (this.selectedCommitDetail) {
-            this.postToWebview({
+            const payload: CommitGraphInbound = {
                 type: "setCommitDetail",
                 detail: this.selectedCommitDetail,
                 folderIcon: folderIcons.folderIcon,
                 folderExpandedIcon: folderIcons.folderExpandedIcon,
                 folderIconsByName: this.folderIconsByName,
                 iconFonts,
-            });
+            };
+            const serialized = serializeWebviewPayload(payload);
+            if (isRedundantPost(serialized, this.lastPostedPayload)) return;
+            // Recorded only after the post is handed over, so a payload that was never sent
+            // cannot suppress the next identical one.
+            this.postToWebview(payload);
+            this.lastPostedPayload = serialized;
             return;
         }
+        this.lastPostedPayload = undefined;
         this.postToWebview(
             this.commitDetailLoading
                 ? { type: "clearCommitDetail", loading: true }

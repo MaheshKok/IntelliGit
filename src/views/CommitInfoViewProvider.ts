@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import type { CommitDetail, ThemeFolderIconMap } from "../types";
 import type { CommitInfoInbound, CommitInfoOutbound } from "../webviews/protocol/commitInfoTypes";
 import { IconThemeService } from "./shared/IconThemeService";
+import { isRedundantPost, serializeWebviewPayload } from "./shared/postedPayload";
 import { buildWebviewShellHtml } from "./webviewHtml";
 import { getErrorMessage } from "../utils/errors";
 import { assertRepoRelativePath } from "../utils/fileOps";
@@ -23,6 +24,11 @@ export class CommitInfoViewProvider implements vscode.WebviewViewProvider {
     private ready = false;
     private folderIconsByName: ThemeFolderIconMap = {};
     private requestSeq = 0;
+    /** Serialized form of the last `setCommitDetail` payload actually posted to the CURRENT
+     * webview -- see `shared/postedPayload.ts`. Reset to `undefined` whenever a fresh webview is
+     * resolved or the cache is cleared, so a redundant-looking repost after either is never
+     * wrongly suppressed. */
+    private lastPostedPayload: string | undefined;
     private readonly iconTheme: IconThemeService;
     private readonly _onOpenCommitFileDiff = new vscode.EventEmitter<{
         commitHash: string;
@@ -55,6 +61,7 @@ export class CommitInfoViewProvider implements vscode.WebviewViewProvider {
         this.iconTheme.dispose();
         this.view = webviewView;
         this.ready = false;
+        this.lastPostedPayload = undefined;
 
         webviewView.webview.options = {
             enableScripts: true,
@@ -71,6 +78,12 @@ export class CommitInfoViewProvider implements vscode.WebviewViewProvider {
                         console.error("[IntelliGit] Failed to initialize icon theme data:", err);
                     }
                     this.ready = true;
+                    // A fresh webview context has received nothing, so the re-post below must
+                    // never be suppressed as a duplicate of what the PREVIOUS context was sent.
+                    // `ready` fires again whenever VS Code tears this view down while it is
+                    // hidden and reloads it on show -- `resolveWebviewView` does NOT re-run in
+                    // that case, so its reset alone would leave the restored pane empty.
+                    this.lastPostedPayload = undefined;
                     this.postCurrentState();
                     break;
                 case "openCommitFileDiff":
@@ -135,6 +148,7 @@ export class CommitInfoViewProvider implements vscode.WebviewViewProvider {
         this.detail = undefined;
         this.loading = options?.loading ?? false;
         this.folderIconsByName = {};
+        this.lastPostedPayload = undefined;
         if (this.ready) {
             this.postToWebview(this.loading ? { type: "clear", loading: true } : { type: "clear" });
         }
@@ -150,17 +164,24 @@ export class CommitInfoViewProvider implements vscode.WebviewViewProvider {
         if (!this.ready) return;
         const { folderIcons, iconFonts } = this.iconTheme.getThemeData();
         if (!this.detail) {
+            this.lastPostedPayload = undefined;
             this.postToWebview(this.loading ? { type: "clear", loading: true } : { type: "clear" });
             return;
         }
-        this.postToWebview({
+        const payload: CommitInfoInbound = {
             type: "setCommitDetail",
             detail: this.detail,
             folderIcon: folderIcons.folderIcon,
             folderExpandedIcon: folderIcons.folderExpandedIcon,
             folderIconsByName: this.folderIconsByName,
             iconFonts,
-        });
+        };
+        const serialized = serializeWebviewPayload(payload);
+        if (isRedundantPost(serialized, this.lastPostedPayload)) return;
+        // Recorded only after the post is handed over, so a payload that was never sent
+        // cannot suppress the next identical one.
+        this.postToWebview(payload);
+        this.lastPostedPayload = serialized;
     }
 
     private postToWebview(msg: CommitInfoInbound): void {
