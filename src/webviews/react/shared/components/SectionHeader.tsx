@@ -80,6 +80,25 @@ function SectionHeading({ children }: { children: React.ReactNode }): React.Reac
     );
 }
 
+/**
+ * The commit-panel section header's resting background.
+ *
+ * This used to be `var(--intelligit-pycharm-selected)`, which painted every section
+ * header in the *selection* colour whether or not anything was selected. That had a
+ * measurable cost beyond looking wrong: the selection background is a mid-tone
+ * (`[79,95,124]` in HC Black), and a mid-tone caps the contrast any foreground can
+ * reach against it. Measured across the four host fixtures, the diff-status colours
+ * came out at 1.40:1 (HC Black, deleted), 2.61:1 (Dark Modern, deleted), 3.98:1 and
+ * 4.33:1 for added -- so the `+N`/`-N` totals could not be coloured at all without
+ * dropping under the 4.5:1 floor `tests/visual/nonPixelOracles.spec.ts` enforces.
+ *
+ * Exported so `tests/unit/visual/sectionHeaderStatContrast.test.ts` measures the
+ * surface the totals are actually drawn on instead of restating it -- pointing this
+ * back at a mid-tone turns that oracle red rather than silently making the numbers
+ * unreadable again.
+ */
+export const COMMIT_PANEL_SECTION_HEADER_BG = "var(--intelligit-pycharm-header)";
+
 function CommitPanelSectionHeader({
     label,
     count = 0,
@@ -112,7 +131,7 @@ function CommitPanelSectionHeader({
                 bg={
                     isDragOver
                         ? "var(--intelligit-pycharm-focus-border, var(--intelligit-pycharm-blue))"
-                        : "var(--intelligit-pycharm-selected)"
+                        : COMMIT_PANEL_SECTION_HEADER_BG
                 }
                 outline={isDragOver ? "2px solid var(--intelligit-pycharm-blue)" : "none"}
                 outlineOffset="-1px"
@@ -158,16 +177,15 @@ function CommitPanelSectionHeader({
                     // Tabular figures keep the counts a fixed width, so the +/-
                     // pair stops jittering as a section's numbers change under it.
                     //
-                    // These counts deliberately carry NO diff-status colour, unlike the
-                    // per-file counts in FileTreeRows. The header row above sets
-                    // `bg="var(--intelligit-pycharm-selected)"` unconditionally -- it is
-                    // always drawn on the selection background, not only when something is
-                    // selected -- and the status colours are chosen to sit on the panel
-                    // background. Measured on that surface they came out at 1.4:1
-                    // (HC Black, deleted), 2.6:1 (Dark Modern, deleted), 4.0:1 and 4.3:1
-                    // for added. Inheriting the header's own foreground is the same
-                    // resolution used for selected file rows, and unlike desaturating the
-                    // tokens it costs nothing on the rows that are NOT on this surface.
+                    // These carry the same diff-status colours as the per-file counts in
+                    // FileTreeRows: a section total that reads `+12 -3` in the header's
+                    // own foreground while every row beneath it is green/red makes the
+                    // total look like a different kind of number than the ones it sums.
+                    // Legibility comes from the surface, not from draining the tokens --
+                    // see COMMIT_PANEL_SECTION_HEADER_BG for why the header no longer
+                    // paints itself in the selection colour, and note that
+                    // tests/unit/visual/diffStatusChroma.test.ts blocks the desaturation
+                    // shortcut these numbers would otherwise invite.
                     <Box
                         as="span"
                         ml="auto"
@@ -176,11 +194,19 @@ function CommitPanelSectionHeader({
                         sx={{ fontVariantNumeric: "tabular-nums" }}
                     >
                         {stats.additions > 0 ? (
-                            <Box as="span" mr={stats.deletions > 0 ? "3px" : "0"}>
+                            <Box
+                                as="span"
+                                color="var(--intelligit-pycharm-added)"
+                                mr={stats.deletions > 0 ? "3px" : "0"}
+                            >
                                 +{stats.additions}
                             </Box>
                         ) : null}
-                        {stats.deletions > 0 ? <Box as="span">-{stats.deletions}</Box> : null}
+                        {stats.deletions > 0 ? (
+                            <Box as="span" color="var(--intelligit-pycharm-deleted)">
+                                -{stats.deletions}
+                            </Box>
+                        ) : null}
                     </Box>
                 ) : null}
             </Flex>

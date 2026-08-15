@@ -17,8 +17,13 @@ const { color, size } = JETBRAINS_UI;
  * that supplies no tokens the commit panel and the commit graph rendered as two
  * different products. DESIGN.md documents one column of fallbacks; this is now
  * the only place that column is written down, and Chakra emits it verbatim.
+ *
+ * Exported so contrast oracles (`tests/unit/visual/sectionHeaderStatContrast.test.ts`)
+ * can resolve a `--intelligit-pycharm-*` reference through the SAME map the runtime
+ * emits. A test that instead restated "header means sectionHeader" would keep passing
+ * if this map were repointed at a different token.
  */
-const HOST_TOKENS = {
+export const HOST_TOKENS = {
     "--intelligit-pycharm-panel": color.panel,
     "--intelligit-pycharm-header": color.sectionHeader,
     "--intelligit-pycharm-border": color.sidebarBorder,
