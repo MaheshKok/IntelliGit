@@ -120,25 +120,58 @@ describe("IntelliGitView", () => {
         };
     }
 
-    /** A workbench holding the given webviews in DOM order, plus the activity-bar item. */
+    /**
+     * A workbench holding the given webviews in DOM order, plus the activity-bar item.
+     *
+     * Only the two selectors the page object is supposed to use are served, and only the exact
+     * "IntelliGit" label is accepted as the filter. A page object that goes back to clicking the
+     * labelled anchor asks for a selector this fake does not model and gets a named failure --
+     * a fake that clicked whatever it was handed would stay green through exactly the regression
+     * the click target exists to prevent.
+     */
     function workbenchPage(webviews: readonly { outer: unknown }[]): {
         page: Page;
         click: ReturnType<typeof vi.fn>;
     } {
         const click = vi.fn();
+        const intelliGitLabel = Symbol("getByLabel(IntelliGit, { exact: true })");
         const page = {
-            locator: (selector: string) =>
-                selector === "iframe.webview"
-                    ? { all: () => Promise.resolve(webviews.map((view) => view.outer)) }
-                    : {
-                          getByLabel: vi.fn().mockReturnValue({
-                              first: vi.fn().mockReturnValue({ click }),
-                          }),
-                      },
+            locator: (selector: string) => {
+                if (selector === "iframe.webview") {
+                    return { all: () => Promise.resolve(webviews.map((view) => view.outer)) };
+                }
+                if (selector === ".activitybar .action-item") {
+                    return {
+                        filter: ({ has }: { has: unknown }) => {
+                            expect(has, "activity-bar item filtered by something else").toBe(
+                                intelliGitLabel,
+                            );
+                            return { first: () => ({ click }) };
+                        },
+                    };
+                }
+                throw new Error(`page object asked for an unmodelled locator: ${selector}`);
+            },
+            getByLabel: (name: string, options?: { exact?: boolean }) => {
+                expect([name, options?.exact]).toEqual(["IntelliGit", true]);
+                return intelliGitLabel;
+            },
             waitForTimeout: vi.fn().mockResolvedValue(undefined),
         } as unknown as Page;
         return { page, click };
     }
+
+    // VS Code renders a view's badge as a sibling of the labelled anchor, overlapping it, so an
+    // anchor-targeted click dies as `<div class="badge" ...> intercepts pointer events` and burns
+    // the full timeout -- but only on a launch where the changed-file count lands before the click,
+    // which is why it read as a rare dead activity-bar item rather than a selector fault.
+    it("clicks the activity-bar item, so the view's own badge cannot intercept it", async () => {
+        const { page, click } = workbenchPage([webview([SIDEBAR_MARKER])]);
+
+        await new IntelliGitView(page).reveal();
+
+        expect(click).toHaveBeenCalledOnce();
+    });
 
     // The regression this exists for: `iframe.webview` elements are ordered by creation, so the
     // graph panel can precede the sidebar. A positional page object returns the graph document for

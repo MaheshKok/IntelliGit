@@ -11,6 +11,23 @@ const DEFAULT_REVEAL_TIMEOUT_MS = 30_000;
 /** Gap between retries while a surface is still rendering. */
 const REVEAL_POLL_INTERVAL_MS = 250;
 
+/**
+ * The activity-bar entry as a whole, rather than the labelled anchor inside it.
+ *
+ * VS Code renders a view's `badge` as a `<div class="badge">` that is a SIBLING of that anchor and
+ * overlaps it, so once IntelliGit reports a changed-file count the badge owns the anchor's centre
+ * point. Playwright then refuses to click -- the hit element is neither the target nor a descendant
+ * of it -- and retries until the timeout:
+ *
+ *     <div class="badge" aria-label="IntelliGit - 5 changed files">…</div> intercepts pointer events
+ *
+ * The badge appears only once the extension has finished counting, so an anchor-targeted click is a
+ * race against startup that reads as a dead activity-bar item when it loses. Clicking the item makes
+ * the badge a descendant of the target, which both satisfies the check and matches what a user does
+ * -- the badge is decoration inside the button, and clicking it has always opened the view.
+ */
+const ACTIVITY_BAR_ITEM = ".activitybar .action-item";
+
 /** Locates IntelliGit's webview surfaces: the activity-bar view and the full-width graph panel. */
 export class IntelliGitView {
     public constructor(private readonly page: Page) {}
@@ -18,8 +35,8 @@ export class IntelliGitView {
     /** Reveals IntelliGit in the sidebar and returns its webview document. */
     public async reveal(timeoutMs = DEFAULT_REVEAL_TIMEOUT_MS): Promise<FrameLocator> {
         await this.page
-            .locator(".activitybar")
-            .getByLabel("IntelliGit", { exact: true })
+            .locator(ACTIVITY_BAR_ITEM)
+            .filter({ has: this.page.getByLabel("IntelliGit", { exact: true }) })
             .first()
             .click();
         return this.frameOwning(SIDEBAR_MARKER, timeoutMs);
