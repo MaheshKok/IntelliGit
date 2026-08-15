@@ -36,6 +36,7 @@ import type {
 import type { RebaseSubmissionEntry } from "../git/interactiveRebase/types";
 import { isBranchAction, isCommitAction } from "../webviews/protocol/commitGraphTypes";
 import { IconThemeService } from "./shared/IconThemeService";
+import { isRedundantPost, serializeWebviewPayload } from "./shared/postedPayload";
 import { registerThemeChangeListeners, disposeAll } from "./shared/themeListeners";
 import {
     assertGitHash,
@@ -126,6 +127,11 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
     private commitDetailFolderIconsByName: ThemeFolderIconMap = {};
     private branchFolderIconsByName: ThemeFolderIconMap = {};
     private commitDetailSeq = 0;
+    /** Serialized form of the last `setCommitDetail` payload actually posted to the CURRENT
+     * webview -- see `shared/postedPayload.ts`. Reset to `undefined` whenever a fresh webview is
+     * resolved or the commit-detail cache is cleared, so a redundant-looking repost after either
+     * is never wrongly suppressed. */
+    private lastPostedPayload: string | undefined;
     private readonly _onDidChangeFileCount = new vscode.EventEmitter<number>();
     readonly onDidChangeFileCount = this._onDidChangeFileCount.event;
     private readonly _onDidChangeWorkingTree = new vscode.EventEmitter<void>();
@@ -1034,6 +1040,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         this.selectedCommitDetail = null;
         this.commitDetailLoading = options?.loading ?? false;
         this.commitDetailFolderIconsByName = {};
+        this.lastPostedPayload = undefined;
         this.postToWebview(
             this.commitDetailLoading
                 ? { type: "clearCommitDetail", loading: true }
@@ -1055,6 +1062,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         this.disposeThemeChangeDisposables();
         this.iconTheme.dispose();
         this.view = webviewView;
+        this.lastPostedPayload = undefined;
         webviewView.webview.options = {
             enableScripts: true,
             localResourceRoots: [vscode.Uri.joinPath(this.extensionUri, "dist")],
@@ -1430,6 +1438,12 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
     }
     /** Hydrates the active repository and restores its persisted commit draft after webview readiness. */
     private async handleReadyMessage(): Promise<void> {
+        // A fresh webview context has received nothing, so any commit-detail post made during
+        // this handler must never be suppressed as a duplicate of what the PREVIOUS context was
+        // sent. `ready` fires again whenever VS Code tears this view down while it is hidden and
+        // reloads it on show -- `resolveWebviewView` does NOT re-run then, so its reset alone
+        // would leave the restored changed-files pane empty.
+        this.lastPostedPayload = undefined;
         const runtime = this.getActiveRuntime();
         this.postRepositoryListHydration();
         if (runtime) {
@@ -1958,16 +1972,23 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
     private postGraphCommitDetailState(): void {
         const { folderIcons, iconFonts } = this.iconTheme.getThemeData();
         if (this.selectedCommitDetail) {
-            this.postToWebview({
+            const payload: CommitGraphInbound = {
                 type: "setCommitDetail",
                 detail: this.selectedCommitDetail,
                 folderIcon: folderIcons.folderIcon,
                 folderExpandedIcon: folderIcons.folderExpandedIcon,
                 folderIconsByName: this.commitDetailFolderIconsByName,
                 iconFonts,
-            });
+            };
+            const serialized = serializeWebviewPayload(payload);
+            if (isRedundantPost(serialized, this.lastPostedPayload)) return;
+            // Recorded only after the post is handed over, so a payload that was never sent
+            // cannot suppress the next identical one.
+            this.postToWebview(payload);
+            this.lastPostedPayload = serialized;
             return;
         }
+        this.lastPostedPayload = undefined;
         this.postToWebview(
             this.commitDetailLoading
                 ? { type: "clearCommitDetail", loading: true }

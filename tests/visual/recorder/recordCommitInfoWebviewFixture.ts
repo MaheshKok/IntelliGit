@@ -34,8 +34,17 @@
  * in this double (icon-theme resolution failing over to its declared fallback, see the module doc
  * comment on `commitInfoVscodeDouble.ts`) is already-resolved Promise chaining with no real timer or
  * I/O wait, so a single `setImmediate` tick -- which only runs after Node's microtask queue is fully
- * drained, including microtasks newly enqueued while draining -- is sufficient to observe the
- * second, decorated `setCommitDetail` post this module's own tests assert on.
+ * drained, including microtasks newly enqueued while draining -- is sufficient to let that chain
+ * settle deterministically before this function returns and reads the capture sink.
+ *
+ * This scenario's "clean" recording no longer observes a SECOND `setCommitDetail` post here: with
+ * no icon resolver attached (see above), `decorateAndStoreDetail`'s decoration pass is a byte-for-
+ * byte no-op, and `CommitInfoViewProvider.postCurrentState` now suppresses a repost that is
+ * identical to the last one actually sent (`src/views/shared/postedPayload.ts`,
+ * `CommitInfoViewProvider.ts`'s `lastPostedPayload` field). The flush is kept anyway: without it,
+ * `decorateAndStoreDetail`'s promise chain would still be in flight when this function reads the
+ * capture sink and resets it for the next recording, racing whichever call runs next against the
+ * same process-wide sink.
  */
 
 import type * as vscode from "vscode";

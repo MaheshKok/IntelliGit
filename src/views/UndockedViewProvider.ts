@@ -13,6 +13,7 @@ import { showCommitMessageGenerationNotification } from "../ai/commitMessageGene
 import type { ShelfService } from "../services/shelfService";
 import type { ShelfEntry, ShelfHealthWarning } from "../webviews/protocol/commitPanelMessages";
 import { IconThemeService } from "./shared/IconThemeService";
+import { isRedundantPost, serializeWebviewPayload } from "./shared/postedPayload";
 import { operationSnapshotForRepository } from "./commitPanelOperationSnapshot";
 import { registerThemeChangeListeners, disposeAll } from "./shared/themeListeners";
 import { buildWebviewShellHtml } from "./webviewHtml";
@@ -213,6 +214,12 @@ export class UndockedViewProvider {
     private folderIconsByName: ThemeFolderIconMap = {};
     private branchFolderIconsByName: ThemeFolderIconMap = {};
     private commitDetailSeq = 0;
+    /** Serialized form of the last `setCommitDetail` payload actually posted to the CURRENT
+     * panel webview -- see `shared/postedPayload.ts`. Reset to `undefined` whenever a fresh panel
+     * is created (`open()`'s create-panel branch, never its `reveal()` fast path) or the
+     * commit-detail cache is cleared, so a redundant-looking repost after either is never wrongly
+     * suppressed. */
+    private lastPostedPayload: string | undefined;
     private themeChangeDisposables: vscode.Disposable[] = [];
     // Commit-panel state
     private files: WorkingFile[] = [];
@@ -607,6 +614,7 @@ export class UndockedViewProvider {
         this.selectedCommitDetail = null;
         this.commitDetailLoading = options?.loading ?? false;
         this.folderIconsByName = {};
+        this.lastPostedPayload = undefined;
         this.postToWebview(
             this.commitDetailLoading
                 ? { type: "clearCommitDetail", loading: true }
@@ -677,6 +685,7 @@ export class UndockedViewProvider {
             },
         );
         this.panel = captureWebview(rawPanel, "undocked");
+        this.lastPostedPayload = undefined;
         this.iconTheme.attachWebview(this.panel.webview);
         this.registerThemeChangeListeners();
         this.panel.webview.html = this.getHtml(this.panel.webview);
@@ -920,6 +929,19 @@ export class UndockedViewProvider {
                 break;
             // Graph-side
             case "ready":
+                // A fresh webview context has received nothing, so any commit-detail post made
+                // during this handler must never be suppressed as a duplicate of what the
+                // PREVIOUS context was sent. This panel sets retainContextWhenHidden, but
+                // `ready` still fires again on a window reload, when `open()`'s create-panel
+                // reset does NOT run.
+                //
+                // The reset runs before the awaits below, not after them: those awaits yield,
+                // and a commit selected or refreshed while they run posts against this new
+                // context. Resetting afterwards would both suppress that post (it is compared
+                // against the retired context's payload) and then make the following
+                // `postCommitDetailState()` re-send what the webview already has --
+                // reintroducing the duplicate post this guard exists to remove.
+                this.lastPostedPayload = undefined;
                 this.postToWebview({
                     type: "setViewVisibility",
                     visible: this.panel?.visible ?? false,
@@ -1894,16 +1916,23 @@ export class UndockedViewProvider {
     private postCommitDetailState(): void {
         const { folderIcons, iconFonts } = this.iconTheme.getThemeData();
         if (this.selectedCommitDetail) {
-            this.postToWebview({
+            const payload: UnifiedInbound = {
                 type: "setCommitDetail",
                 detail: this.selectedCommitDetail,
                 folderIcon: folderIcons.folderIcon,
                 folderExpandedIcon: folderIcons.folderExpandedIcon,
                 folderIconsByName: this.folderIconsByName,
                 iconFonts,
-            });
+            };
+            const serialized = serializeWebviewPayload(payload);
+            if (isRedundantPost(serialized, this.lastPostedPayload)) return;
+            // Recorded only after the post is handed over, so a payload that was never sent
+            // cannot suppress the next identical one.
+            this.postToWebview(payload);
+            this.lastPostedPayload = serialized;
             return;
         }
+        this.lastPostedPayload = undefined;
         this.postToWebview(
             this.commitDetailLoading
                 ? { type: "clearCommitDetail", loading: true }
