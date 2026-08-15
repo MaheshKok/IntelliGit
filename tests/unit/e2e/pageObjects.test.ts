@@ -59,26 +59,59 @@ describe("IntelliGitView", () => {
     const SIDEBAR_MARKER = '[data-testid="commit-panel-tab-row"]';
     const GRAPH_PANEL_MARKER = '[data-testid="commit-list-viewport"]';
 
+    /** `[data-testid="x"]` -> `x`, so a fake body can carry the ids its selectors ask for. */
+    function testIdOf(selector: string): string {
+        return selector.replace('[data-testid="', "").replace('"]', "");
+    }
+
     /** One fake webview whose document answers `count()` only for the markers it renders.
      * `undefined` markers model a frame whose document is unreachable (still loading, or already
-     * disposed), which makes `count()` reject exactly as Playwright's does. */
-    function webview(markers: readonly string[] | undefined): {
+     * disposed), which makes `count()` and `evaluate()` reject exactly as Playwright's do. */
+    function webview(
+        markers: readonly string[] | undefined,
+        title = "IntelliGit",
+    ): {
         outer: unknown;
         inner: unknown;
     } {
+        const detached = (): Promise<never> => Promise.reject(new Error("frame was detached"));
         const inner = {
             locator: (selector: string) => ({
                 count: () =>
                     markers === undefined
-                        ? Promise.reject(new Error("frame was detached"))
+                        ? detached()
                         : Promise.resolve(markers.includes(selector) ? 1 : 0),
+                // The timeout report's page-side callback runs here against a body built from the
+                // same markers, rather than against a canned result. A callback that reads a
+                // property the real body does not have then fails in this suite instead of only in
+                // the CI failure it is the sole diagnosis of.
+                evaluate: (extract: (body: never) => unknown) =>
+                    markers === undefined
+                        ? detached()
+                        : Promise.resolve(
+                              extract({
+                                  ownerDocument: { title },
+                                  innerHTML: markers
+                                      .map((marker) => `<div ${marker.slice(1, -1)}></div>`)
+                                      .join(""),
+                                  querySelectorAll: () =>
+                                      markers.map((marker) => ({
+                                          getAttribute: () => testIdOf(marker),
+                                      })),
+                              } as never),
+                          ),
             }),
         };
         return {
             inner,
             outer: {
                 contentFrame: () => ({
+                    // Playwright's `Locator` answers `count()` on the outer frame too, and the
+                    // timeout report uses it to tell "the webview shell has no content iframe yet"
+                    // from "the iframe is there and its document is unreachable". A fake missing
+                    // the method turns that report into a TypeError.
                     locator: (selector: string) => ({
+                        count: () => Promise.resolve(selector === "iframe#active-frame" ? 1 : 0),
                         contentFrame: () =>
                             selector === "iframe#active-frame" ? inner : undefined,
                     }),
@@ -129,10 +162,31 @@ describe("IntelliGitView", () => {
         await expect(new IntelliGitView(page).reveal()).resolves.toBe(sidebar.inner);
     });
 
-    it("reports the marker it was waiting for when no webview ever renders it", async () => {
+    // The marker alone was the whole message once, and it is the half that cannot tell "no webview
+    // opened" from "a webview opened and rendered a different surface" -- distinct CI failures this
+    // message is the only diagnosis of, since none of them reproduce in the pinned container. Each
+    // case below pins the distinction it has to draw, so a report that degrades back to the marker
+    // goes red here rather than on the next unreproducible run.
+    it("names the marker it wanted and what the attached webview rendered instead", async () => {
         const { page } = workbenchPage([webview([SIDEBAR_MARKER])]);
 
-        await expect(new IntelliGitView(page).revealPanel(50)).rejects.toThrow(GRAPH_PANEL_MARKER);
+        await expect(new IntelliGitView(page).revealPanel(50)).rejects.toThrow(
+            /commit-list-viewport[\s\S]*active-frame=1[\s\S]*testIds=\["commit-panel-tab-row"\]/,
+        );
+    });
+
+    it("distinguishes a webview whose document never became reachable", async () => {
+        const { page } = workbenchPage([webview(undefined)]);
+
+        await expect(new IntelliGitView(page).revealPanel(50)).rejects.toThrow(
+            /active-frame=1 document=<unreachable>/,
+        );
+    });
+
+    it("distinguishes a workbench that attached no webview at all", async () => {
+        const { page } = workbenchPage([]);
+
+        await expect(new IntelliGitView(page).revealPanel(50)).rejects.toThrow("(none attached)");
     });
 });
 
