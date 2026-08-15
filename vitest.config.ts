@@ -7,6 +7,12 @@ export default defineConfig({
     test: {
         include: ["tests/**/*.test.ts", "tests/**/*.test.tsx"],
         globals: true,
+        // Deliberately NOT `restoreMocks: true`. It is the right default for a suite written
+        // against it, but not for this one: the webview tests install `window.matchMedia` and
+        // friends once per file and share them across their cases, so restoring after every test
+        // leaves the second case onward reading `undefined` (~60 failures, `Cannot read properties
+        // of undefined (reading 'matches')`). Files that spy on shared globals restore their own
+        // spies instead -- see `tests/unit/e2e/pageObjects.test.ts`.
         // The shelf suites drive a real repository, so one test can spawn dozens of
         // git processes. Vitest's 5s default is comfortable until v8 coverage
         // instrumentation is layered on top, at which point the slowest of them time

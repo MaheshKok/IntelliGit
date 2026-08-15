@@ -51,18 +51,25 @@ export class Workbench {
 
     /** Checks out a visible local branch through IntelliGit's branch webview menu. */
     public async checkoutBranch(frame: FrameLocator, branchName: string): Promise<void> {
-        const [folderName, leafName] = branchName.split("/");
-        if (folderName === undefined || leafName === undefined) {
-            throw new Error(`Expected a folder-qualified branch name, got "${branchName}".`);
+        // Split at the first separator only. `"a/b/c".split("/")` destructures to folder `a` and
+        // leaf `b`, which satisfies a presence check and then right-clicks a branch nobody named --
+        // a wrong checkout reported as a passing flow. The menu this drives renders exactly one
+        // folder level, so a deeper name is unsupported and has to say so rather than be truncated
+        // into a name that happens to exist.
+        const separatorIndex = branchName.indexOf("/");
+        const folderName = branchName.slice(0, separatorIndex);
+        const leafName = branchName.slice(separatorIndex + 1);
+        if (separatorIndex <= 0 || leafName === "" || leafName.includes("/")) {
+            throw new Error(
+                `Expected a branch name of the form "folder/leaf", got "${branchName}".`,
+            );
         }
 
         const folder = frame.getByRole("button", { name: folderName, exact: true });
         if ((await folder.getAttribute("aria-expanded")) !== "true") {
             await folder.click();
         }
-        await frame
-            .getByRole("button", { name: leafName, exact: true })
-            .click({ button: "right" });
+        await frame.getByRole("button", { name: leafName, exact: true }).click({ button: "right" });
         // Named, never `.first()`: the checkout entry only happens to top this menu while the
         // worktree items above it are empty (`branch-column/menu.ts`). Should one ever appear and
         // also check the branch out, `.first()` would go green without exercising checkout at all.

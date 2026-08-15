@@ -36,20 +36,22 @@ jobs:
 
         steps:
             - name: Checkout code
-              uses: actions/checkout@v4
+              uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+              with:
+                  persist-credentials: false
 
             - name: Setup Node.js
-              uses: actions/setup-node@v4
+              uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
               with:
                   node-version: "22"
 
             - name: Setup Bun
-              uses: oven-sh/setup-bun@v1
+              uses: oven-sh/setup-bun@f4d14e03ff726c06358e5557344e1da148b56cf7 # v1.2.2
               with:
                   bun-version: ${{ env.BUN_VERSION }}
 
             - name: Cache Bun
-              uses: actions/cache@v4
+              uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
               with:
                   path: |
                       ~/.bun/install/cache
@@ -98,7 +100,7 @@ jobs:
               run: bunx vsce package --no-dependencies
 
             - name: Upload VSIX artifact
-              uses: actions/upload-artifact@v4
+              uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
               with:
                   name: extension-vsix
                   path: "*.vsix"
@@ -114,8 +116,9 @@ jobs:
         if: github.event_name == 'pull_request'
         steps:
             - name: Checkout code
-              uses: actions/checkout@v4
+              uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
               with:
+                  persist-credentials: false
                   fetch-depth: 0
 
             - name: Reject CI-skip directives in PR commits and metadata
@@ -153,7 +156,9 @@ jobs:
 
         steps:
             - name: Checkout code
-              uses: actions/checkout@v4
+              uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+              with:
+                  persist-credentials: false
 
             # `bun install` and `bun run build` happen INSIDE the container, not
             # on the runner: the harness serves `dist/` bundles straight to
@@ -167,7 +172,7 @@ jobs:
             # visual failure after the container is gone.
             - name: Upload visual failure artifacts
               if: failure()
-              uses: actions/upload-artifact@v4
+              uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
               with:
                   name: visual-failures
                   path: |
@@ -186,10 +191,12 @@ jobs:
 
         steps:
             - name: Checkout code
-              uses: actions/checkout@v4
+              uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+              with:
+                  persist-credentials: false
 
             - name: Cache the pinned VS Code build
-              uses: actions/cache@v4
+              uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
               with:
                   path: ~/.cache/intelligit-e2e-container/vscode
                   key: ${{ runner.os }}-vscode-${{ hashFiles('tests/e2e/hostFixtures/vscodeVersion.ts') }}
@@ -201,7 +208,7 @@ jobs:
 
             - name: Upload full E2E failure artifacts
               if: failure()
-              uses: actions/upload-artifact@v4
+              uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
               with:
                   name: e2e-full-failures
                   path: |
@@ -229,7 +236,7 @@ jobs:
               run: echo "::warning::Published with a non-successful e2e-full gate via the skip_e2e_gate override."
 
             - name: Checkout code
-              uses: actions/checkout@v4
+              uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
               with:
                   fetch-depth: 0
 
@@ -274,13 +281,13 @@ jobs:
 
             - name: Setup Node.js
               if: steps.version-check.outputs.version_changed == 'true'
-              uses: actions/setup-node@v4
+              uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
               with:
                   node-version: "22"
 
             - name: Setup Bun
               if: steps.version-check.outputs.version_changed == 'true'
-              uses: oven-sh/setup-bun@v1
+              uses: oven-sh/setup-bun@f4d14e03ff726c06358e5557344e1da148b56cf7 # v1.2.2
               with:
                   bun-version: ${{ env.BUN_VERSION }}
 
@@ -295,7 +302,7 @@ jobs:
 
             - name: Download VSIX artifact
               if: steps.version-check.outputs.version_changed == 'true'
-              uses: actions/download-artifact@v4
+              uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
               with:
                   name: extension-vsix
 

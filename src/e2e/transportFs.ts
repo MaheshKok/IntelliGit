@@ -4,15 +4,7 @@
 // reader polling for it can never observe a partial write (PLAN.md Phase 1 step 10).
 
 import { randomBytes } from "node:crypto";
-import {
-    existsSync,
-    readdirSync,
-    readFileSync,
-    renameSync,
-    rmSync,
-    statSync,
-    writeFileSync,
-} from "node:fs";
+import { existsSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { getErrorMessage } from "../utils/errors";
@@ -121,16 +113,6 @@ export function writeResponseFileAtomic(channelDir: string, nonce: string, paylo
         rmSync(tempPath, { force: true });
         throw error;
     }
-}
-
-/**
- * True once `<nonce>.response.json` is in place as a regular file, i.e. the request has been
- * answered. Mere existence is not the question: anything else occupying that path -- a directory,
- * most obviously -- is precisely the state in which the response could not be written.
- */
-export function hasResponseFile(channelDir: string, nonce: string): boolean {
-    const path = join(channelDir, `${nonce}${RESPONSE_SUFFIX}`);
-    return statSync(path, { throwIfNoEntry: false })?.isFile() === true;
 }
 
 /**

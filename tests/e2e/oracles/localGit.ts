@@ -2,6 +2,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
 import type { FixtureWorkspace } from "../../fixtures/repo/harness";
+import { sanitizedGitEnv } from "./gitEnv";
 
 const execFileAsync = promisify(execFile);
 
@@ -47,7 +48,7 @@ export function parseStatusPorcelain(output: string): readonly GitStatusEntry[] 
 async function runGit(workspace: LocalGitWorkspace, args: readonly string[]): Promise<string> {
     const result = await execFileAsync("git", [...args], {
         cwd: workspace.root,
-        env: { ...process.env, ...workspace.env },
+        env: sanitizedGitEnv(workspace.env),
         maxBuffer: 1024 * 1024,
     });
     return result.stdout;

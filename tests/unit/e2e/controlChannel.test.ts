@@ -564,7 +564,7 @@ describe("activateE2eControlChannel: end-to-end request/response over the real t
             );
 
             await waitFor(() =>
-                logged.some((line) => line.includes("collide") && line.includes("finalize")),
+                logged.some((line) => line.includes("collide") && line.includes("deliver")),
             );
         } finally {
             consoleSpy.mockRestore();

@@ -23,7 +23,9 @@ jobs:
 
         steps:
             - name: Checkout code
-              uses: actions/checkout@v4
+              uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+              with:
+                  persist-credentials: false
 
             # No download cache here, deliberately. Insiders moves daily, and every cache key
             # available to a workflow is derived from the repo, which does not change daily --
@@ -37,7 +39,7 @@ jobs:
 
             - name: Upload Insiders failure artifacts
               if: failure()
-              uses: actions/upload-artifact@v4
+              uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
               with:
                   name: e2e-insiders-failures-shard-${{ matrix.shard }}
                   path: |
@@ -57,7 +59,9 @@ jobs:
 
         steps:
             - name: Checkout code
-              uses: actions/checkout@v4
+              uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+              with:
+                  persist-credentials: false
 
             # No download cache here for the same reason as the flow job above: Insiders moves
             # daily, and a repo-derived cache key restores a build the resolver then replaces.
@@ -66,7 +70,7 @@ jobs:
 
             - name: Upload Insiders host-fixture failure artifacts
               if: failure()
-              uses: actions/upload-artifact@v4
+              uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
               with:
                   name: e2e-insiders-host-fixture-failures
                   path: |

@@ -1,9 +1,20 @@
 import type { FrameLocator, Locator, Page } from "@playwright/test";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ChangesPanel } from "../../e2e/pageObjects/changesPanel";
 import { IntelliGitView } from "../../e2e/pageObjects/intelliGitView";
 import { Workbench } from "../../e2e/pageObjects/workbench";
+
+/** Captured at import time, before any test has had a chance to spy on the getter. */
+const REAL_PLATFORM = process.platform;
+
+// `process` belongs to the whole worker, not to this file, so a `vi.spyOn(process, "platform")`
+// left standing decides what every later file sees -- and only when the run order happens to put
+// one downstream. Restored here rather than through the config's `restoreMocks`, which the webview
+// suites cannot take: they install their DOM spies once per file and share them across cases.
+afterEach(() => {
+    vi.restoreAllMocks();
+});
 
 describe("Workbench", () => {
     it.each([
@@ -52,6 +63,65 @@ describe("Workbench", () => {
         await expect(new Workbench(page).runCommand("View: Show IntelliGit")).rejects.toBe(timeout);
         expect(keyboard.press).toHaveBeenCalledTimes(5);
         expect(commandInput.fill).not.toHaveBeenCalled();
+    });
+
+    // Declared after the tests that mock the platform getter, which is the only position from
+    // which it can observe a spy outliving its own test. `process` is shared by every file a
+    // worker runs, so an unrestored getter is not confined to this suite -- it decides what a
+    // later, unrelated file sees, and only when the run order happens to place it downstream.
+    it("leaves the real platform in place for the tests that follow", () => {
+        expect(process.platform).toBe(REAL_PLATFORM);
+    });
+
+    describe("checkoutBranch", () => {
+        /** A branch menu that answers only the names a `folder/leaf` checkout is allowed to ask for. */
+        function branchMenu(): {
+            frame: FrameLocator;
+            folder: { click: ReturnType<typeof vi.fn> };
+            leaf: { click: ReturnType<typeof vi.fn> };
+            menuItem: { click: ReturnType<typeof vi.fn> };
+        } {
+            const folder = { click: vi.fn(), getAttribute: vi.fn().mockResolvedValue("true") };
+            const leaf = { click: vi.fn() };
+            const menuItem = { click: vi.fn() };
+            const getByRole = vi.fn((role: string, options: { name: string }) => {
+                if (role === "menuitem") return menuItem;
+                if (options.name === "folder") return folder;
+                if (options.name === "leaf") return leaf;
+                throw new Error(
+                    `the page object asked for an unmodelled branch item: ${options.name}`,
+                );
+            });
+            return { frame: { getByRole } as unknown as FrameLocator, folder, leaf, menuItem };
+        }
+
+        it("opens the checkout menu on the leaf of a folder-qualified branch", async () => {
+            const { frame, leaf, menuItem } = branchMenu();
+
+            await new Workbench({} as unknown as Page).checkoutBranch(frame, "folder/leaf");
+
+            expect(leaf.click).toHaveBeenCalledWith({ button: "right" });
+            expect(menuItem.click).toHaveBeenCalledOnce();
+        });
+
+        // "a/b/c" is the case that motivates this: a plain destructure takes folder "a" and leaf
+        // "b", the guard sees two defined strings, and the flow right-clicks a branch the caller
+        // never named. Every rejection is asserted to have driven no UI at all, because throwing
+        // after the wrong branch was already clicked is the same defect wearing an error message.
+        it.each([["a/b/c"], ["leaf"], ["/leaf"], ["folder/"], [""]])(
+            "refuses %o rather than checking out a truncation of it",
+            async (branchName) => {
+                const { frame, folder, leaf, menuItem } = branchMenu();
+
+                await expect(
+                    new Workbench({} as unknown as Page).checkoutBranch(frame, branchName),
+                ).rejects.toThrow(/folder\/leaf/);
+
+                expect(folder.click).not.toHaveBeenCalled();
+                expect(leaf.click).not.toHaveBeenCalled();
+                expect(menuItem.click).not.toHaveBeenCalled();
+            },
+        );
     });
 });
 

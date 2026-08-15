@@ -2,13 +2,14 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
 import type { FixtureWorkspace } from "../../fixtures/repo/harness";
+import { sanitizedGitEnv } from "./gitEnv";
 
 const execFileAsync = promisify(execFile);
 type OriginWorkspace = Pick<FixtureWorkspace, "originRoot" | "env">;
 
 async function runOriginGit(workspace: OriginWorkspace, args: readonly string[]): Promise<string> {
     const result = await execFileAsync("git", ["-C", workspace.originRoot, ...args], {
-        env: { ...process.env, ...workspace.env },
+        env: sanitizedGitEnv(workspace.env),
         maxBuffer: 1024 * 1024,
     });
     return result.stdout;
