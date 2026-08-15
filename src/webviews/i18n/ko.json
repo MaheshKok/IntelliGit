@@ -341,5 +341,12 @@
     "review.card.unhappyTitle": "불편을 드려 죄송합니다.",
     "review.card.unhappyBody": "부족한 점을 알려 주시면 확인하겠습니다.",
     "review.card.reportIssue": "문제 보고",
-    "review.card.rateAnyway": "또는 마켓플레이스에서 평가하기"
+    "review.card.rateAnyway": "또는 마켓플레이스에서 평가하기",
+    "branch.tracking.incoming": {
+        "other": "수신 커밋 {count}개"
+    },
+    "branch.tracking.outgoing": {
+        "other": "발신 커밋 {count}개"
+    },
+    "branch.tracking.combined": "{incoming}, {outgoing}"
 }

@@ -362,5 +362,18 @@
     "review.card.unhappyTitle": "Сожалеем об этом.",
     "review.card.unhappyBody": "Расскажите, чего не хватает, и мы это рассмотрим.",
     "review.card.reportIssue": "Сообщить о проблеме",
-    "review.card.rateAnyway": "Или оцените в маркетплейсе"
+    "review.card.rateAnyway": "Или оцените в маркетплейсе",
+    "branch.tracking.incoming": {
+        "one": "{count} входящий коммит",
+        "few": "{count} входящих коммита",
+        "many": "{count} входящих коммитов",
+        "other": "{count} входящего коммита"
+    },
+    "branch.tracking.outgoing": {
+        "one": "{count} исходящий коммит",
+        "few": "{count} исходящих коммита",
+        "many": "{count} исходящих коммитов",
+        "other": "{count} исходящего коммита"
+    },
+    "branch.tracking.combined": "{incoming} и {outgoing}"
 }

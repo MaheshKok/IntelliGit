@@ -348,5 +348,14 @@
     "review.card.unhappyTitle": "Sorry to hear that.",
     "review.card.unhappyBody": "Tell us what is missing and we will look at it.",
     "review.card.reportIssue": "Report an issue",
-    "review.card.rateAnyway": "Or rate it on the marketplace"
+    "review.card.rateAnyway": "Or rate it on the marketplace",
+    "branch.tracking.incoming": {
+        "one": "{count} incoming commit",
+        "other": "{count} incoming commits"
+    },
+    "branch.tracking.outgoing": {
+        "one": "{count} outgoing commit",
+        "other": "{count} outgoing commits"
+    },
+    "branch.tracking.combined": "{incoming} and {outgoing}"
 }
