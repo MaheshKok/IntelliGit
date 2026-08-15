@@ -27,7 +27,8 @@ interface CommitListRowsProps {
     unpushedHashes: Set<string>;
     isUnpushedCommit: (hash: string) => boolean;
     hasMore: boolean;
-    showAuthorDate: boolean;
+    showAuthor: boolean;
+    showDate: boolean;
     commitChecks?: ReadonlyMap<string, CommitChecksSnapshot | "loading">;
     onSelectCommit: (hash: string) => void;
     onRequestCommitChecks?: (hash: string) => void;
@@ -51,7 +52,8 @@ export function CommitListRows({
     selectedHash,
     isUnpushedCommit,
     hasMore,
-    showAuthorDate,
+    showAuthor,
+    showDate,
     commitChecks,
     onSelectCommit,
     onRequestCommitChecks,
@@ -95,7 +97,8 @@ export function CommitListRows({
                                 onContextMenu={onRowContextMenu}
                                 onHover={onCommitHover}
                                 onUnhover={onCommitUnhover}
-                                showAuthorDate={showAuthorDate}
+                                showAuthor={showAuthor}
+                                showDate={showDate}
                                 checks={commitChecks?.get(commit.hash)}
                                 onRequestChecks={onRequestCommitChecks}
                                 onOpenCheckUrl={onOpenCommitCheckUrl}

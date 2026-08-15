@@ -540,35 +540,60 @@ function TreeFileLabel({
 function TreeFileStats({
     file,
     rowVariant = "default",
+    rowOverridesForeground = false,
 }: {
     file: TreeRowFile;
     rowVariant?: "default" | "commit-panel";
+    /**
+     * True when the enclosing row paints a selection background -- selection and
+     * drag-selection both do. These counts then inherit the row's foreground instead
+     * of forcing a diff-status colour on top of it.
+     *
+     * That combination is where the contrast actually fails: the status colours are
+     * chosen to sit on the panel background, and against
+     * `list.activeSelectionBackground` they measured as low as 1.04:1 in HC Light.
+     * Draining the colours themselves was tried and rejected -- it cost 25-45% of
+     * their saturation across every row in the tree and still left that cell at
+     * 1.29:1, because the problem was never the colour, it was painting it on a
+     * surface it was not chosen for.
+     *
+     * Inheriting also collapses this into a case the oracle already covers: the
+     * counts end up with whatever foreground the row gives its file name, so they
+     * are readable exactly when the file name is, and there is no second
+     * combination to measure.
+     *
+     * Keyed off `treeFileVisuals().background` rather than `.color`, because the
+     * background is what makes the diff colour wrong. The commit-panel variant
+     * deliberately keeps `--intelligit-pycharm-foreground` on a selected row and
+     * changes only the background, so `.color` would not describe the condition
+     * this prop exists for even though it happens to be true for the same rows.
+     */
+    rowOverridesForeground?: boolean;
 }): React.ReactElement | null {
     if (file.additions <= 0 && file.deletions <= 0) return null;
+    const addedColor = rowOverridesForeground
+        ? undefined
+        : rowVariant === "commit-panel"
+          ? "var(--intelligit-pycharm-added)"
+          : "var(--vscode-gitDecoration-addedResourceForeground, #8bcf7b)";
+    const deletedColor = rowOverridesForeground
+        ? undefined
+        : rowVariant === "commit-panel"
+          ? "var(--intelligit-pycharm-deleted)"
+          : "var(--vscode-gitDecoration-deletedResourceForeground, #d76f6f)";
     return (
         <Box as="span" ml="auto" fontSize="11px" flexShrink={0}>
             {file.additions > 0 ? (
                 <Box
                     as="span"
-                    color={
-                        rowVariant === "commit-panel"
-                            ? "var(--intelligit-pycharm-added)"
-                            : "var(--vscode-gitDecoration-addedResourceForeground, #8bcf7b)"
-                    }
+                    color={addedColor}
                     mr={rowVariant === "commit-panel" ? "3px" : "4px"}
                 >
                     +{file.additions}
                 </Box>
             ) : null}
             {file.deletions > 0 ? (
-                <Box
-                    as="span"
-                    color={
-                        rowVariant === "commit-panel"
-                            ? "var(--intelligit-pycharm-deleted)"
-                            : "var(--vscode-gitDecoration-deletedResourceForeground, #d76f6f)"
-                    }
-                >
+                <Box as="span" color={deletedColor}>
                     -{file.deletions}
                 </Box>
             ) : null}
@@ -682,8 +707,12 @@ function TreeFileRowImpl({
             <TreeFileCheckbox file={file} wiring={wiring} />
             <TreeFileIcon status={file.status} icon={file.icon} />
             <TreeFileLabel file={file} parentPath={parentPath} showParentPath={showParentPath} />
-            <TreeFileStats file={file} rowVariant={rowVariant} />
-            <StatusBadge status={file.status} />
+            <TreeFileStats
+                file={file}
+                rowVariant={rowVariant}
+                rowOverridesForeground={visuals.background !== undefined}
+            />
+            <StatusBadge status={file.status} inheritColor={visuals.background !== undefined} />
         </Flex>
     );
 }

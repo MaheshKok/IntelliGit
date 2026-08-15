@@ -181,8 +181,8 @@ function App() {
                     <span className="file-name">{fileName(file.path)}</span>
                     <span className="file-path">{directoryName(file.path)}</span>
                 </td>
-                <td>{file.ours}</td>
-                <td>{file.theirs}</td>
+                <td title={file.ours}>{file.ours}</td>
+                <td title={file.theirs}>{file.theirs}</td>
             </tr>
         );
     };
@@ -207,9 +207,15 @@ function App() {
                     <table className="conflict-table">
                         <thead>
                             <tr>
-                                <th>{t("mergeSession.col.name")}</th>
-                                <th>{t("mergeSession.col.yours", { branch: targetBranch })}</th>
-                                <th>{t("mergeSession.col.theirs", { branch: sourceBranch })}</th>
+                                <th title={t("mergeSession.col.name")}>
+                                    {t("mergeSession.col.name")}
+                                </th>
+                                <th title={t("mergeSession.col.yours", { branch: targetBranch })}>
+                                    {t("mergeSession.col.yours", { branch: targetBranch })}
+                                </th>
+                                <th title={t("mergeSession.col.theirs", { branch: sourceBranch })}>
+                                    {t("mergeSession.col.theirs", { branch: sourceBranch })}
+                                </th>
                             </tr>
                         </thead>
                         <tbody>

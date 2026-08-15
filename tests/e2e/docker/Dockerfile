@@ -50,7 +50,9 @@ ENV PATH=${BUN_INSTALL}/bin:${PATH}
 # file applies here too, and more sharply: piping an installer into a shell runs
 # whatever that host serves at build time, un-versioned and un-verified, as root
 # in the image that produces this repo's test evidence — and `run.sh` then hands
-# that toolchain a read-write bind mount of the checkout and the caches. Passing
+# that toolchain a read-write bind mount of the checkout and the caches. It is
+# also the image whose green E2E run is a `needs:` of the `release` job in
+# publish.yml, so a substituted toolchain reaches the published artifact. Passing
 # a version to that installer pins what an honest installer does; it does not
 # pin the installer. A checksum does, and a substituted archive cannot satisfy
 # one.

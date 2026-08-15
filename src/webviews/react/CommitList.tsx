@@ -2,7 +2,7 @@
 // Layout: [Graph lanes] [Commit message + inline ref badges] [Author] [Date].
 // Includes a text search filter bar. Branch filtering is handled by the sidebar.
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { Commit, CommitChecksSnapshot } from "../../types";
 import { computeGraph, LANE_WIDTH, ROW_HEIGHT } from "./graph";
 import { ContextMenu } from "./shared/components/ContextMenu";
@@ -28,7 +28,10 @@ import {
     FILTER_INPUT_STYLE,
     FILTER_INPUT_WRAP_STYLE,
     headerRowStyle,
+    METADATA_COLUMN_MARGIN,
     ROOT_STYLE,
+    ROW_SIDE_PADDING,
+    visibleMetaColumns,
 } from "./commit-list/styles";
 
 const MIN_PREFIX_LENGTH = 7;
@@ -122,6 +125,7 @@ export function CommitList({
     );
     const [scrollTop, setScrollTop] = useState(0);
     const [viewportHeight, setViewportHeight] = useState(0);
+    const [viewportWidth, setViewportWidth] = useState(0);
     const isLoadingMoreRef = useRef(false);
     const retryTimerRef = useRef<number | null>(null);
     // Keep cleanup wired to the latest callback without turning callback replacement into an event.
@@ -152,12 +156,21 @@ export function CommitList({
         viewportRef.current = node;
         if (!node) return;
 
-        const updateHeight = () => setViewportHeight(node.clientHeight);
-        updateHeight();
+        const updateViewport = () => {
+            setViewportHeight(node.clientHeight);
+            setViewportWidth(node.getBoundingClientRect().width);
+        };
+        setViewportHeight(node.clientHeight);
 
-        const observer = new ResizeObserver(updateHeight);
+        const observer = new ResizeObserver(updateViewport);
         observer.observe(node);
         viewportResizeObserverRef.current = observer;
+    }, []);
+
+    useLayoutEffect(() => {
+        const node = viewportRef.current;
+        if (!node) return;
+        setViewportWidth(node.getBoundingClientRect().width);
     }, []);
 
     useEffect(() => () => viewportResizeObserverRef.current?.disconnect(), []);
@@ -249,6 +262,14 @@ export function CommitList({
             end: Math.min(commits.length, Math.ceil((scrollTop + effectiveHeight) / ROW_HEIGHT)),
         };
     }, [commits.length, scrollTop, viewportHeight]);
+
+    const measuredMetaColumns = visibleMetaColumns(
+        viewportWidth - graphWidth - ROW_SIDE_PADDING - 2,
+        showAuthorDate && Boolean(onRequestCommitChecks && onOpenCommitCheckUrl),
+    );
+    const showAuthor = showAuthorDate && measuredMetaColumns.author;
+    const showDate = showAuthorDate && measuredMetaColumns.date;
+
     const requestedCommitHashes = useMemo(
         () =>
             Array.from(
@@ -424,21 +445,27 @@ export function CommitList({
             {headerLabel ? null : (
                 <div style={headerRowStyle(graphWidth)}>
                     <span style={{ flex: 1 }}>{t("commit.list.header.commit")}</span>
-                    {showAuthorDate && (
-                        <>
-                            <span style={{ width: AUTHOR_COL_WIDTH, textAlign: "right" }}>
-                                {t("commit.list.header.author")}
-                            </span>
-                            <span
-                                style={{ width: DATE_COL_WIDTH, textAlign: "right", marginLeft: 4 }}
-                            >
-                                {t("commit.list.header.date")}
-                            </span>
-                            {onRequestCommitChecks && onOpenCommitCheckUrl ? (
-                                <span style={{ width: CHECKS_COL_WIDTH, marginLeft: 4 }} />
-                            ) : null}
-                        </>
+                    {showAuthor && (
+                        <span style={{ width: AUTHOR_COL_WIDTH, textAlign: "right" }}>
+                            {t("commit.list.header.author")}
+                        </span>
                     )}
+                    {showDate && (
+                        <span
+                            style={{
+                                width: DATE_COL_WIDTH,
+                                textAlign: "right",
+                                marginLeft: METADATA_COLUMN_MARGIN,
+                            }}
+                        >
+                            {t("commit.list.header.date")}
+                        </span>
+                    )}
+                    {showAuthorDate && onRequestCommitChecks && onOpenCommitCheckUrl ? (
+                        <span
+                            style={{ width: CHECKS_COL_WIDTH, marginLeft: METADATA_COLUMN_MARGIN }}
+                        />
+                    ) : null}
                 </div>
             )}
 
@@ -454,7 +481,8 @@ export function CommitList({
                 unpushedHashes={unpushedHashes}
                 isUnpushedCommit={isUnpushedCommit}
                 hasMore={hasMore}
-                showAuthorDate={showAuthorDate}
+                showAuthor={showAuthor}
+                showDate={showDate}
                 commitChecks={commitChecks}
                 onSelectCommit={onSelectCommit}
                 onRequestCommitChecks={

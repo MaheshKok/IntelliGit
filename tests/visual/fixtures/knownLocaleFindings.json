@@ -1,0 +1,966 @@
+{
+    "dark-modern-narrow": {
+        "de/commit-graph-card": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "de/commit-graph-compact": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "de/commit-info": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "de/commit-panel": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "de/merge-conflict-session": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "de/merge-editor": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "de/shelf-conflict-editor": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "de/undocked": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "en/commit-graph-card": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "en/commit-graph-compact": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "en/commit-info": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "en/commit-panel": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "en/merge-conflict-session": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "en/merge-editor": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "en/shelf-conflict-editor": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "en/undocked": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "es/commit-graph-card": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "es/commit-graph-compact": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "es/commit-info": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "es/commit-panel": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "es/merge-conflict-session": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "es/merge-editor": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "es/shelf-conflict-editor": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "es/undocked": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "fr/commit-graph-card": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "fr/commit-graph-compact": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "fr/commit-info": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "fr/commit-panel": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "fr/merge-conflict-session": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "fr/merge-editor": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "fr/shelf-conflict-editor": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "fr/undocked": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "ja/commit-graph-card": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "ja/commit-graph-compact": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "ja/commit-info": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "ja/commit-panel": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "ja/merge-conflict-session": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "ja/merge-editor": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "ja/shelf-conflict-editor": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "ja/undocked": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "ko/commit-graph-card": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "ko/commit-graph-compact": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "ko/commit-info": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "ko/commit-panel": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "ko/merge-conflict-session": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "ko/merge-editor": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "ko/shelf-conflict-editor": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "ko/undocked": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "pl/commit-graph-card": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "pl/commit-graph-compact": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "pl/commit-info": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "pl/commit-panel": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "pl/merge-conflict-session": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "pl/merge-editor": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "pl/shelf-conflict-editor": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "pl/undocked": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "pt-br/commit-graph-card": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "pt-br/commit-graph-compact": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "pt-br/commit-info": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "pt-br/commit-panel": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "pt-br/merge-conflict-session": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "pt-br/merge-editor": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "pt-br/shelf-conflict-editor": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "pt-br/undocked": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "pt-pt/commit-graph-card": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "pt-pt/commit-graph-compact": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "pt-pt/commit-info": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "pt-pt/commit-panel": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "pt-pt/merge-conflict-session": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "pt-pt/merge-editor": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "pt-pt/shelf-conflict-editor": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "pt-pt/undocked": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "ru/commit-graph-card": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "ru/commit-graph-compact": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "ru/commit-info": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "ru/commit-panel": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "ru/merge-conflict-session": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "ru/merge-editor": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "ru/shelf-conflict-editor": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "ru/undocked": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "zh-cn/commit-graph-card": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "zh-cn/commit-graph-compact": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "zh-cn/commit-info": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "zh-cn/commit-panel": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "zh-cn/merge-conflict-session": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "zh-cn/merge-editor": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "zh-cn/shelf-conflict-editor": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "zh-cn/undocked": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "zh-tw/commit-graph-card": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "zh-tw/commit-graph-compact": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "zh-tw/commit-info": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "zh-tw/commit-panel": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "zh-tw/merge-conflict-session": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "zh-tw/merge-editor": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "zh-tw/shelf-conflict-editor": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "zh-tw/undocked": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        }
+    },
+    "dark-modern-wide": {
+        "de/commit-graph-card": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "de/commit-graph-compact": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "de/commit-info": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "de/commit-panel": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "de/merge-conflict-session": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "de/merge-editor": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "de/shelf-conflict-editor": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "de/undocked": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "en/commit-graph-card": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "en/commit-graph-compact": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "en/commit-info": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "en/commit-panel": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "en/merge-conflict-session": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "en/merge-editor": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "en/shelf-conflict-editor": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "en/undocked": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "es/commit-graph-card": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "es/commit-graph-compact": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "es/commit-info": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "es/commit-panel": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "es/merge-conflict-session": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "es/merge-editor": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "es/shelf-conflict-editor": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "es/undocked": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "fr/commit-graph-card": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "fr/commit-graph-compact": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "fr/commit-info": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "fr/commit-panel": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "fr/merge-conflict-session": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "fr/merge-editor": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "fr/shelf-conflict-editor": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "fr/undocked": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "ja/commit-graph-card": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "ja/commit-graph-compact": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "ja/commit-info": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "ja/commit-panel": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "ja/merge-conflict-session": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "ja/merge-editor": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "ja/shelf-conflict-editor": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "ja/undocked": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "ko/commit-graph-card": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "ko/commit-graph-compact": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "ko/commit-info": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "ko/commit-panel": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "ko/merge-conflict-session": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "ko/merge-editor": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "ko/shelf-conflict-editor": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "ko/undocked": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "pl/commit-graph-card": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "pl/commit-graph-compact": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "pl/commit-info": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "pl/commit-panel": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "pl/merge-conflict-session": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "pl/merge-editor": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "pl/shelf-conflict-editor": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "pl/undocked": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "pt-br/commit-graph-card": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "pt-br/commit-graph-compact": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "pt-br/commit-info": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "pt-br/commit-panel": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "pt-br/merge-conflict-session": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "pt-br/merge-editor": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "pt-br/shelf-conflict-editor": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "pt-br/undocked": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "pt-pt/commit-graph-card": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "pt-pt/commit-graph-compact": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "pt-pt/commit-info": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "pt-pt/commit-panel": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "pt-pt/merge-conflict-session": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "pt-pt/merge-editor": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "pt-pt/shelf-conflict-editor": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "pt-pt/undocked": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "ru/commit-graph-card": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "ru/commit-graph-compact": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "ru/commit-info": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "ru/commit-panel": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "ru/merge-conflict-session": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "ru/merge-editor": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "ru/shelf-conflict-editor": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "ru/undocked": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "zh-cn/commit-graph-card": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "zh-cn/commit-graph-compact": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "zh-cn/commit-info": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "zh-cn/commit-panel": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "zh-cn/merge-conflict-session": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "zh-cn/merge-editor": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "zh-cn/shelf-conflict-editor": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "zh-cn/undocked": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "zh-tw/commit-graph-card": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "zh-tw/commit-graph-compact": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "zh-tw/commit-info": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "zh-tw/commit-panel": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "zh-tw/merge-conflict-session": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "zh-tw/merge-editor": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "zh-tw/shelf-conflict-editor": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "zh-tw/undocked": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        }
+    }
+}

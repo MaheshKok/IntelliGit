@@ -188,4 +188,8 @@ AGENTS.md
 .memory/
 .codebase-memory/
 .gitnexus
+# GitNexus writes its analysis here, NOT under .gitnexus/ -- 9 MB of graph.json,
+# caches, and signed label files. Untracked and unignored, it also reached the
+# .vsix, because vsce packages the working directory (see .vscodeignore).
+graphify-out/
 .mcp.json

@@ -47,6 +47,7 @@ import { isE2eControlChannelActive } from "../../../src/e2e/activationState";
 import { GitExecutor } from "../../../src/git/executor";
 import { GitOps } from "../../../src/git/operations";
 import { CommitGraphViewProvider } from "../../../src/views/CommitGraphViewProvider";
+import { compactCommitGraphViewOptions } from "../../../src/views/commitGraphHostOptions";
 import { CredentialStore } from "../../../src/services/commitChecks/credentialStore";
 import type { PlaceholderRoots } from "../../fixtures/repo/placeholderCanonicalization";
 import { canonicalizeCapturedMessages } from "./canonicalizeCapturedMessages";
@@ -127,10 +128,14 @@ export function buildProviderOptions(
     if (variant === "compact") {
         return {
             ...inert,
-            scriptFile: "webview-compactcommitgraph.js",
-            // Production passes `vscode.l10n.t("Graph")`; the double's `l10n.t` returns its
-            // argument unchanged, so `"Graph"` is the real recorded value, not a stand-in.
-            title: "Graph",
+            // The SHARED production definition, not a hand-copy of it. This recorder previously
+            // duplicated `scriptFile` and a bare `title: "Graph"` literal where production calls
+            // `vscode.l10n.t("Graph")`. The recorded bytes are identical either way -- which is
+            // exactly the problem: a production edit dropping `l10n.t` (the defect fixed in
+            // `ShelfConflictEditorPanel`) changed no fixture and no assertion, so it was invisible
+            // to every recorder-backed oracle by construction. Calling production's own factory is
+            // what lets `tests/unit/visual/harness/hostContexts.test.ts` witness that regression.
+            ...compactCommitGraphViewOptions(),
             // Production: `repositories.length > 1`. Recorded against a single-repository seeded
             // workspace, where the real call site would also resolve to `false`.
             showRepositoryLabel: false,

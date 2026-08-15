@@ -68,6 +68,13 @@
     border-bottom: 1px solid var(--vscode-panel-border, var(--vscode-widget-border, transparent));
 }
 
+.conflict-table thead th,
+.conflict-table .row td {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 .conflict-table thead th:first-child {
     width: 56%;
 }
@@ -113,9 +120,11 @@
     padding: 6px 8px;
     font-weight: 600;
     color: var(--vscode-descriptionForeground);
+    /* HC Light and HC Black omit --vscode-editorGroupHeader-tabsBackground; the dark
+       fallback paints a wrong-polarity, low-contrast group row. */
     background: color-mix(
         in srgb,
-        var(--vscode-editorGroupHeader-tabsBackground, #2a2d2e) 70%,
+        var(--vscode-editorGroupHeader-tabsBackground, var(--vscode-editor-background, #2a2d2e)) 70%,
         transparent
     );
     border-bottom: 1px solid var(--vscode-panel-border, var(--vscode-widget-border, transparent));
@@ -172,7 +181,11 @@
 }
 
 .action-btn.danger {
-    color: var(--vscode-errorForeground, #f48771);
+    color: color-mix(
+        in srgb,
+        var(--vscode-errorForeground, #f48771) 55%,
+        var(--vscode-foreground, #d7dce5)
+    );
     border-color: color-mix(in srgb, var(--vscode-errorForeground, #f48771) 34%, transparent);
     background: color-mix(in srgb, var(--vscode-errorForeground, #f48771) 10%, transparent);
 }

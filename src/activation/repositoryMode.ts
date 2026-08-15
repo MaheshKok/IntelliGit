@@ -44,6 +44,7 @@ import { CommitChecksPersistentCache } from "../services/commitChecks/persistent
 import type { CommitChecksProvider, ProviderId } from "../services/commitChecks/types";
 import { captureWebviewViewProvider } from "../e2e/webviewCapture";
 import { CommitGraphViewProvider } from "../views/CommitGraphViewProvider";
+import { compactCommitGraphViewOptions } from "../views/commitGraphHostOptions";
 import { CommitInfoViewProvider } from "../views/CommitInfoViewProvider";
 import { CommitPanelViewProvider } from "../views/CommitPanelViewProvider";
 import { MergeConflictSessionPanel } from "../views/MergeConflictSessionPanel";
@@ -292,8 +293,7 @@ export async function activateRepositoryMode(
         gitOps,
         credentialStore,
         {
-            scriptFile: "webview-compactcommitgraph.js",
-            title: vscode.l10n.t("Graph"),
+            ...compactCommitGraphViewOptions(),
             showRepositoryLabel: repositories.length > 1,
             hostMap: commitCheckHostMap,
             settings: commitCheckSettings,

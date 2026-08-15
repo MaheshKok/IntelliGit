@@ -7,7 +7,12 @@
        near-white sidebar into a heavy gray band. The host already separates
        these surfaces from the editor in every theme it ships. */
     --merge-toolbar-bg: var(--vscode-sideBar-background, #2b2d30);
-    --merge-header-bg: var(--vscode-editorGroupHeader-tabsBackground, #31343a);
+    /* HC Light and HC Black omit --vscode-editorGroupHeader-tabsBackground; the dark
+       fallback paints a wrong-polarity, low-contrast merge header. */
+    --merge-header-bg: var(
+        --vscode-editorGroupHeader-tabsBackground,
+        var(--vscode-editor-background, #31343a)
+    );
     --merge-muted: var(--vscode-descriptionForeground, #9ca3af);
     --merge-accent: var(--vscode-textLink-foreground, #4ea1ff);
     /* Semantic hues come from the host, so they flip with the theme. The
@@ -23,6 +28,7 @@
        live, which is the correct direction in both. */
     --merge-warning-text: color-mix(in srgb, var(--merge-warning) 55%, var(--merge-editor-fg));
     --merge-ok-text: color-mix(in srgb, var(--merge-ok) 55%, var(--merge-editor-fg));
+    --merge-danger-text: color-mix(in srgb, var(--merge-danger) 55%, var(--merge-editor-fg));
     /* PyCharm Darcula merge palette, rebuilt as tints of the *live* editor
        background instead of fixed dark hex. Hue comes from the semantic token
        above, lightness from the host surface, so a light theme gets a pale wash
@@ -83,6 +89,7 @@
 
 .merge-toolbar {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
     gap: 8px;
@@ -103,6 +110,10 @@
     gap: 4px;
     min-width: 0;
 }
+.toolbar-left,
+.toolbar-right {
+    flex-wrap: wrap;
+}
 .toolbar-left {
     flex: 1 1 auto;
 }
@@ -112,7 +123,12 @@
     gap: 6px;
 }
 .toolbar-right {
-    flex: 1 0 auto;
+    /* Shrink, don't just grow. The `flex-wrap: wrap` above can only engage once this group
+       is allowed to fall below its max-content width, so with flex-shrink 0 it was a dead
+       rule: at 320px the group kept the full width of its two labels and overflowed the
+       toolbar instead of wrapping. English fits either way, which is why this only ever
+       showed up in translation. justify-content still parks it on the right. */
+    flex: 1 1 auto;
     justify-content: flex-end;
 }
 .toolbar-nav-group {
@@ -152,7 +168,11 @@
     line-height: 1;
 }
 .toolbar-btn {
+    height: auto;
+    min-height: 24px;
+    min-width: 0;
     padding: 0 7px;
+    white-space: normal;
 }
 .toolbar-icon-btn {
     width: 22px;
@@ -504,9 +524,27 @@
 }
 /* Transparent so ribbons drawn below the column show through non-band rows;
    band rows still paint their own row background on top. */
+/* The host's own gutter colour is too dim to use unmodified here. VS Code paints
+   its line numbers on the flat editor background; ours sit on top of the conflict
+   and deleted-block ribbons, which tint the surface and eat the remaining
+   headroom. Inverting the oracle's measured ratios recovers the real composited
+   backgrounds: Dark Modern's #6e7681 lands at 3.6:1 on a plain row and 3.0:1 over
+   a ribbon, and Light Modern's clears 4.5:1 on the flat background but drops to
+   3.8:1 over one -- which is why the finding appears in a theme whose gutter looks
+   fine in isolation.
+
+   45% of the editor foreground is the smallest mix that clears the floor in the
+   worst case (34.7% needed, rounded up for margin), and the gutter stays 3.6-3.8
+   contrast-ratio steps dimmer than the code it numbers, so it still reads as a
+   gutter. Both High Contrast themes define editorLineNumber-foreground equal to
+   editorForeground already, so there the mix resolves to the value they picked. */
 .line-numbers {
     background: transparent;
-    color: var(--vscode-editorLineNumber-foreground, var(--merge-muted));
+    color: color-mix(
+        in srgb,
+        var(--vscode-editorLineNumber-foreground, var(--merge-muted)) 55%,
+        var(--merge-editor-fg)
+    );
     box-sizing: border-box;
 }
 .segment-conflict.change-conflict.unresolved .line-numbers {
@@ -651,6 +689,17 @@
     height: 20px;
     pointer-events: none;
 }
+/* Deliberately NOT `overflow: hidden; text-overflow: ellipsis`. A long code line
+   is meant to overflow and be reached by scrolling: `.code-lines` above is a
+   `max-content` grid with `overflow-x: auto`, and MergeEditorApp syncs its
+   scrollLeft with the synthetic `.merge-horizontal-scroll` bar so both panes
+   track together. Truncating here would clip code the user has to read to
+   resolve a conflict, and would quietly strand that scrollbar with nothing left
+   to scroll. The visual suite's clipping oracle used to report these spans as
+   defects because it treated `text-overflow: ellipsis` as the only truncation
+   affordance; it now exempts content reachable through a scrollable ancestor
+   (see tests/visual/playwright/collectOracleInputs.ts), so do not "fix" this
+   pane by truncating it if the oracle ever flags it again. */
 .code-line-content {
     position: relative;
 }
@@ -715,17 +764,16 @@
     font-family: var(--vscode-editor-font-family, monospace);
     font-size: 22.5px;
     font-weight: 700;
-    line-height: 1;
+    line-height: 20px;
 }
 .accept-btn {
     color: var(--merge-ok);
 }
 /* Recessive at rest like PyCharm's ×; the hover rule escalates to the full error
-   color. Mixing toward the editor background is the correct direction in both
-   themes: it darkens on dark and lightens on light, either way stepping back
-   from the hover state. */
+   color. Mixing toward the editor foreground keeps the red semantic signal while
+   retaining readable text on both light and dark hosts. */
 .discard-btn {
-    color: color-mix(in srgb, var(--merge-danger) 72%, var(--merge-editor-bg));
+    color: var(--merge-danger-text);
 }
 .conflict-column {
     position: relative;
@@ -763,7 +811,13 @@
 }
 .conflict-actions-left {
     position: absolute;
-    top: 1px;
+    /* The glyph's rendered ink sits taller than its 20px line box (see the
+       .hunk-action-glyph comment below), so a hunk sitting at the very top of
+       the scrollable .merge-viewport had its ink clipped by 2px against that
+       ancestor's own overflow:hidden box at top:1px. 4px gives that headroom
+       back without meaningfully changing the button's alignment against its
+       code line. */
+    top: 4px;
     right: var(--merge-line-number-gutter);
     display: flex;
     gap: 0;
@@ -771,17 +825,19 @@
 }
 .conflict-actions-right {
     position: absolute;
-    top: 1px;
+    /* See .conflict-actions-left: same top-of-viewport ink clip, same fix. */
+    top: 4px;
     left: var(--merge-line-number-gutter);
     display: flex;
     gap: 0;
     z-index: 7;
 }
 /* Flat PyCharm-style gutter glyphs: no box chrome at rest, a subtle tint only
-   on hover. The 20px box keeps the hit target. */
+   on hover. The 24px box keeps the hit target and gives the oversized glyph
+   ink vertical headroom. */
 .action-btn {
     width: 20px;
-    height: 20px;
+    height: 24px;
     border: none;
     border-radius: 3px;
     cursor: pointer;
@@ -803,15 +859,15 @@
     color: var(--merge-danger);
 }
 .action-btn.accept-btn {
-    color: var(--merge-ok);
+    color: var(--merge-ok-text);
 }
 /* Append mode stacks the second side below the first; the "+" in the glyph
    carries the add-not-replace meaning. */
 .action-btn.append-btn {
-    color: var(--merge-ok);
+    color: var(--merge-ok-text);
 }
 .action-btn.discard-btn {
-    color: color-mix(in srgb, var(--merge-danger) 72%, var(--merge-editor-bg));
+    color: var(--merge-danger-text);
 }
 /* Block backgrounds are row-scoped like IntelliJ/PyCharm line fragments:
    filler rows align panes but stay neutral. Code rows use a sticky background
@@ -1006,6 +1062,10 @@
 
 .merge-footer {
     display: flex;
+    /* Without wrapping there is nowhere for a long translated action label to go but
+       outside the footer; the row is short enough that wrapping costs nothing when it
+       is not needed. */
+    flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
     gap: 8px;
@@ -1026,7 +1086,9 @@
     flex: 1 1 auto;
 }
 .footer-right {
-    flex: 0 0 auto;
+    /* Same shape as .toolbar-right: the primary action must be allowed to give way at
+       narrow widths rather than push its label past the footer's edge. */
+    flex: 0 1 auto;
 }
 .footer-btn {
     min-height: 22px;
@@ -1036,6 +1098,14 @@
     cursor: pointer;
     font-size: 11px;
     line-height: 20px;
+    /* `.footer-right` wrapping only moves .footer-left and .footer-right relative to each
+       other -- it does nothing for a single over-long button, which is a flex item here and
+       so keeps its automatic minimum size, and which a user agent stylesheet keeps on one
+       line. Both have to be released explicitly or a long translated label pushes past the
+       footer edge instead of wrapping inside its own button. `min-height` rather than
+       `height` is what lets the wrapped second line have somewhere to go. */
+    min-width: 0;
+    white-space: normal;
 }
 .footer-btn.primary {
     background: var(--vscode-button-background);
@@ -1065,7 +1135,7 @@
 .footer-btn.danger {
     background: color-mix(in srgb, var(--vscode-errorForeground, #f48771) 10%, transparent);
     border-color: color-mix(in srgb, var(--vscode-errorForeground, #f48771) 34%, transparent);
-    color: var(--vscode-errorForeground, #f48771);
+    color: var(--merge-danger-text);
 }
 .footer-btn.danger:hover {
     background: color-mix(in srgb, var(--vscode-errorForeground, #f48771) 18%, transparent);

@@ -4,7 +4,7 @@ export function interpolateL10n(
 ): string {
     if (!args) return message;
     if (Array.isArray(args)) {
-        return args.reduce(
+        return args.reduce<string>(
             (current, value, index) =>
                 current.replace(new RegExp(`\\{${index}\\}`, "g"), String(value)),
             message,

@@ -10,7 +10,7 @@ import type {
     UnifiedOutbound,
 } from "../../protocol/undockedMessages";
 import { getVsCodeApi } from "../shared/vscodeApi";
-import { normalizeSectionWidths, type SectionWidths } from "./sectionWidths";
+import type { SectionWidths } from "./sectionWidths";
 import type { CommitPanelAction, CommitPanelState, GraphAction } from "./commitPanelState";
 
 const vscode = getVsCodeApi<UnifiedOutbound, Record<string, unknown>>();
@@ -318,21 +318,13 @@ function handleLayoutMessage(
         return;
     }
     context.markWidthsHydrated();
-    const measuredWidth = context.layoutRef.current?.clientWidth;
-    const totalWidth =
-        typeof measuredWidth === "number" && measuredWidth > 0 ? measuredWidth : undefined;
-    context.setSectionWidths(
-        normalizeSectionWidths(
-            {
-                repositoryWidth: data.repositoryWidth,
-                branchWidth: data.branchWidth,
-                graphWidth: data.graphWidth,
-                infoWidth: data.infoWidth,
-                commitPanelWidth: data.commitPanelWidth,
-            },
-            totalWidth,
-        ),
-    );
+    context.setSectionWidths({
+        repositoryWidth: data.repositoryWidth,
+        branchWidth: data.branchWidth,
+        graphWidth: data.graphWidth,
+        infoWidth: data.infoWidth,
+        commitPanelWidth: data.commitPanelWidth,
+    });
 }
 
 /**

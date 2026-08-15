@@ -321,12 +321,25 @@ describe("localization packaging", () => {
         }
         expect([...files].some((file) => file.startsWith("src/"))).toBe(false);
 
-        const webviewLoader = readText("src/webviews/i18n/index.ts");
-        expect(webviewLoader).toContain('import en from "./en.json"');
+        // Nothing under src/ is packaged (asserted above), so every catalog must be statically
+        // imported for the bundler to inline it -- a runtime read would 404 inside the VSIX. The
+        // assertion has to name the module that actually holds the imports, and it has to read
+        // past comments: this guard was once satisfied by a block of commented-out imports left
+        // behind after the real ones moved to another module, which made it unfalsifiable.
+        const webviewCatalogs = withoutCommentedOutCode(readText("src/webviews/i18n/catalogs.ts"));
+        expect(webviewCatalogs).toContain('import en from "./en.json"');
         for (const locale of runtimeLocales) {
-            expect(webviewLoader).toContain(`from "./${locale}.json"`);
+            expect(webviewCatalogs).toContain(`from "./${locale}.json"`);
         }
-        expect(webviewLoader).not.toMatch(/\b(readFile|workspace\.fs|joinPath)\b/);
+        // Unanchored on the RIGHT on purpose: a trailing \b would not match `readFileSync`, which
+        // is the call a runtime catalog read would actually use. The leading \b stays -- without it
+        // an ordinary identifier such as `prefetch(` or `threadFiles` trips a guard about runtime
+        // reads. Trailing comments survive the strip below, so do not write one naming these calls.
+        for (const modulePath of ["src/webviews/i18n/catalogs.ts", "src/webviews/i18n/index.ts"]) {
+            expect(withoutCommentedOutCode(readText(modulePath))).not.toMatch(
+                /\b(readFile|workspace\.fs|joinPath|fetch\(|await import\()/,
+            );
+        }
     });
 });
 
@@ -472,6 +485,18 @@ function readJson<T>(relativePath: string): T {
 
 function readText(relativePath: string): string {
     return readFileSync(path.join(repoRoot, relativePath), "utf8");
+}
+
+/**
+ * Drops block comments and whole-line `//` comments so a source-text assertion cannot be satisfied
+ * by code that was commented out rather than written.
+ *
+ * Trailing comments on a code line are deliberately left in place: stripping them means finding
+ * `//` inside string literals too, and a commented-out import -- the shape that actually defeated
+ * this guard -- always occupies its own line.
+ */
+function withoutCommentedOutCode(source: string): string {
+    return source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^[ \t]*\/\/.*$/gm, "");
 }
 
 function parseCsvRows(input: string): string[][] {

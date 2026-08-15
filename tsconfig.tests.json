@@ -1,0 +1,39 @@
+{
+  // Typechecks the test tree, which no other tsconfig covers: `tsconfig.json` excludes `tests`
+  // outright, eslint ignores it, and vitest transpiles through esbuild without typechecking. A
+  // compile-time assertion written in a test helper -- `satisfies`, an `asserts x is T` signature,
+  // an `extends never ? true : never` coverage constant -- was therefore never evaluated by
+  // anything, so it could not fail.
+  //
+  // Spec files are excluded FOR NOW: enabling this config surfaced 649 pre-existing type errors in
+  // 75 spec files (371 of them in the two `tests/integration/extension` suites, mostly mock objects
+  // that do not satisfy the interfaces they stand in for). Gating on those today would make the
+  // whole `typecheck` script permanently red, which gates nothing. The helper/oracle/fixture layer
+  // below is green and enforced; the spec backlog is tracked separately.
+  "compilerOptions": {
+    "module": "ESNext",
+    "target": "ES2022",
+    // `Promise.withResolvers` / `Array.fromAsync` are used by tests and exist in the runtime
+    // vitest actually runs on; ES2022 would report them as errors that are not defects.
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "moduleResolution": "bundler",
+    // Tests import `scripts/*.js` directly. Without this they resolve to `any`, which is strictly
+    // less checking than letting tsc infer their types from the JavaScript source.
+    "allowJs": true,
+    "checkJs": false,
+    "types": ["node"],
+    "noEmit": true
+  },
+  "include": [
+    "tests/**/*.ts",
+    "tests/**/*.tsx",
+    "src/webviews/react/css-modules.d.ts"
+  ],
+  "exclude": ["node_modules", "dist", "tests/**/*.test.ts", "tests/**/*.test.tsx"]
+}

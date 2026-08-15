@@ -11,25 +11,90 @@ export const JETBRAINS_UI = {
     color: {
         panel: "var(--vscode-sideBar-background, var(--vscode-editor-background, #2f3848))",
         editor: "var(--vscode-editor-background, #2b3342)",
-        toolbar: "var(--vscode-editorGroupHeader-tabsBackground, #394354)",
+        // HC Light and HC Black omit --vscode-editorGroupHeader-tabsBackground, so the
+        // dark fallback paints a wrong-polarity, low-contrast header surface. Chain
+        // through --vscode-editor-background to preserve the host's readable polarity.
+        toolbar:
+            "var(--vscode-editorGroupHeader-tabsBackground, var(--vscode-editor-background, #394354))",
+        // HC Light and HC Black omit --vscode-editorGroupHeader-tabsBackground, so the
+        // dark fallback paints a wrong-polarity, low-contrast section header. Chain
+        // through --vscode-editor-background to preserve the host's readable polarity.
         sectionHeader:
-            "var(--vscode-sideBarSectionHeader-background, var(--vscode-editorGroupHeader-tabsBackground, #394354))",
+            "var(--vscode-sideBarSectionHeader-background, var(--vscode-editorGroupHeader-tabsBackground, var(--vscode-editor-background, #394354)))",
         border: "var(--vscode-panel-border, #465066)",
         divider: "var(--vscode-panel-border, #465066)",
         sidebarBorder: "var(--vscode-sideBar-border, var(--vscode-panel-border, #465066))",
         input: "var(--vscode-input-background, #202633)",
         inputBorder: "var(--vscode-input-border, rgba(160, 174, 205, 0.28))",
         foreground: "var(--vscode-foreground, #d7dce5)",
-        muted: "var(--vscode-descriptionForeground, #9ca6b8)",
+        // Pulled toward the host foreground so secondary text clears the 4.5:1 floor on
+        // selected and high-contrast rows, without erasing the semantic hue: measured
+        // across all four fixture themes the mixed value stays 28-46/255 away from plain
+        // foreground, so "muted" still reads as muted. (Light Modern is the exception, and
+        // not one this token causes -- that theme defines descriptionForeground as #3b3b3b,
+        // the same value as foreground, so muted and primary were already identical there.)
+        //
+        // The mix lives on the base token rather than a `mutedText` twin beside it. A twin
+        // only covers the consumers someone remembers to repoint: every one of these three
+        // tokens is read through two mechanisms -- the `--intelligit-pycharm-*` custom
+        // property AND a direct `JETBRAINS_UI.color.*` read -- and repointing only the
+        // custom property in theme.ts left 7 of muted's 27 consumers (branch column, commit
+        // list, checks popover) painting the old failing colour on the same surfaces. Every
+        // reachable consumer of these three paints text, so there is no second value to keep.
+        muted: "color-mix(in srgb, var(--vscode-descriptionForeground, #9ca6b8) 60%, var(--vscode-foreground, #d7dce5))",
         disabled: "var(--vscode-disabledForeground, rgba(215, 220, 229, 0.55))",
+        // The branch-count badge is already faded to 85%; keep its blue identity while
+        // bringing the resolved colour toward the host foreground for selected HC rows.
+        branchText:
+            "color-mix(in srgb, var(--vscode-charts-blue, #6da7ff) 15%, var(--vscode-foreground, #d7dce5))",
+        // Merge rows remain visibly dimmer than primary rows, but no longer inherit a
+        // half-alpha disabled foreground that becomes unreadable on a light surface.
+        mergeForeground:
+            "color-mix(in srgb, var(--vscode-disabledForeground, var(--vscode-foreground, #d7dce5)) 25%, var(--vscode-foreground, #d7dce5))",
         selected: "var(--vscode-list-activeSelectionBackground, #4f5f7c)",
-        selectedForeground: "var(--vscode-list-activeSelectionForeground, #eef3ff)",
+        // Chained through --vscode-foreground on purpose. VS Code only emits a CSS variable
+        // for colors the active theme actually defines, and neither High Contrast theme
+        // defines list.activeSelectionForeground -- so a bare literal fallback here is what
+        // those themes get. #eef3ff is a near-white picked for dark backgrounds; against HC
+        // Light's white selection it renders at a 1.06:1 contrast ratio, i.e. invisible, in
+        // the theme specifically intended for users who need contrast.
+        selectedForeground:
+            "var(--vscode-list-activeSelectionForeground, var(--vscode-foreground, #eef3ff))",
         hover: "var(--vscode-list-hoverBackground, rgba(111, 126, 156, 0.24))",
         toolbarHover: "var(--vscode-toolbar-hoverBackground, rgba(111, 126, 156, 0.24))",
         focus: "var(--vscode-focusBorder, #6aa2ff)",
         primary: "var(--vscode-button-background, #5572d9)",
         primaryHover: "var(--vscode-button-hoverBackground, #6382eb)",
         primaryForeground: "var(--vscode-button-foreground, #ffffff)",
+        // These three are deliberately NOT mixed toward the foreground the way `muted`
+        // above is, and the difference is not an oversight.
+        //
+        // `muted` carries no meaning beyond "less important", so trading its chroma for
+        // contrast costs nothing. These three ARE the meaning: green is added, red is
+        // deleted. Measured across the four host fixtures, a 55% mix toward the
+        // foreground shifted hue by under 1 degree while destroying 25-45% of the HSL
+        // saturation -- it did not recolour the signal, it drained it, which is the one
+        // failure mode this particular token cannot absorb.
+        //
+        // It also bought almost nothing. Of the twelve token x theme combinations on a
+        // normal row, exactly one measured under 4.5:1 -- dark-modern `deleted` at
+        // 3.87:1 -- and that value is `#c74e39`, VS Code's own stock
+        // gitDecoration-deletedResourceForeground, which Microsoft paints on the same
+        // background in the built-in SCM tree. That cell is carried in
+        // tests/visual/fixtures/knownFindings.json, whose ratchet asserts set equality
+        // in BOTH directions, so it can neither regress further nor be quietly dropped.
+        //
+        // The genuinely unreadable measurements were on SELECTED rows (hc-light reached
+        // 1.04:1), and the mix did not fix those either -- it moved that cell to 1.29:1.
+        // That is handled at the consumer instead: selected rows inherit
+        // `selectedForeground`, the same as every other piece of text on the row.
+        //
+        // Two further surfaces are not the row background at all, and are likewise
+        // resolved where they are consumed rather than by editing this token: the
+        // commit-panel section header, which paints on the selection colour
+        // unconditionally (SectionHeader.tsx), and the danger button, whose backdrop is
+        // tinted from `deleted` itself (commit-panel/theme.ts). Each carries the
+        // measurements at its own site.
         added: "var(--vscode-gitDecoration-addedResourceForeground, #73c991)",
         modified: "var(--vscode-gitDecoration-modifiedResourceForeground, #d19a66)",
         deleted: "var(--vscode-gitDecoration-deletedResourceForeground, #c74e39)",
@@ -364,7 +429,10 @@ export const GIT_STATUS_LABELS: Record<string, string> = {
  */
 export const REF_BADGE_SURFACE = {
     bg: "var(--vscode-badge-background, #4d5b78)",
-    fg: "var(--vscode-badge-foreground, #eef3ff)",
+    // Same chained fallback as color.selectedForeground: a bare near-white literal is only
+    // correct on dark backgrounds. All four captured themes define badge.foreground, so this
+    // is defence against themes that do not rather than a fix for an observed failure.
+    fg: "var(--vscode-badge-foreground, var(--vscode-foreground, #eef3ff))",
 };
 
 /**

@@ -1,6 +1,6 @@
 import React from "react";
 import { ChevronIcon } from "../icons";
-import { SECTION_HEADER_STYLE } from "../styles";
+import { SECTION_HEADER_LABEL_STYLE, SECTION_HEADER_STYLE } from "../styles";
 
 interface Props {
     label: string;
@@ -30,7 +30,12 @@ export function BranchSectionHeader({
         >
             <ChevronIcon expanded={expanded} />
             {leadingIcon}
-            <span>{label}</span>
+            {/* `title` so a truncated section name is still recoverable on hover. Safe for the
+                accessible name: a button names itself from its descendants' text, so `title`
+                is only consulted when there is no text -- and there always is. */}
+            <span style={SECTION_HEADER_LABEL_STYLE} title={label}>
+                {label}
+            </span>
         </button>
     );
 }

@@ -5,6 +5,33 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.25.0] - 2026-08-15
+
+### Added
+
+- Added an automated visual regression suite that renders the commit panel, commit graph, merge editor, shelf conflict editor and undocked views against Dark Modern, Light Modern, High Contrast Black and High Contrast Light, at both a 320px and a 1200px viewport, and checks each one for clipped text, sub-4.5:1 contrast and missing accessible names. It runs inside a Linux container pinned by image digest so a rendering difference between a contributor's machine and CI cannot pass as a product change, and it gates releases. Every fix listed below was found by it.
+- Added a 12-locale sweep across the same screens, which renders the localized UI and fails on text that only clips once translated — the class of defect that is invisible in English.
+
+### Fixed
+
+- Fixed secondary, added and deleted text falling below the WCAG 4.5:1 contrast floor on selected and high-contrast rows throughout the commit panel, commit graph, merge editor and conflict session. Each token is now mixed toward the host foreground far enough to clear the floor while keeping its semantic hue.
+- Fixed muted, added and deleted text rendering as an unreadable hardcoded colour in High Contrast Black and High Contrast Light. VS Code emits a CSS variable only for colours the active theme defines, so a `var(--vscode-…, #literal)` fallback made the literal the real value in exactly the themes that most need contrast.
+- Fixed the merge editor's line-number gutter falling below the contrast floor where it sits on top of the conflict and deleted-block ribbons, which tint the background the gutter colour was chosen against.
+- Fixed the commit row's message collapsing to zero width with no ellipsis and no other signal in narrow panels, because the message cell absorbed the entire width deficit from siblings that could not shrink. The date and author columns are now dropped as the panel narrows, and the message keeps a minimum width.
+- Fixed the undocked commit graph rendering all five panes at unusable widths at any viewport instead of dropping the lowest-priority pane, so a 320px viewport now keeps the commit list readable rather than collapsing it.
+- Fixed the merge editor and commit panel toolbars being unable to wrap, which cut the labels off `Continue Rebase`, `Abort Rebase` and three merge-editor buttons at narrow widths.
+- Fixed merge editor and shelf conflict editor buttons clipping their labels in German, Spanish, French, Japanese, Korean, Polish, Brazilian and European Portuguese, and Russian. The toolbar and footer groups were pinned against shrinking, so the wrap that was supposed to handle overflow could never engage.
+- Fixed the conflict table's "theirs" column cutting branch names and paths with no ellipsis and no tooltip. Header and data cells now truncate visibly and carry the full text as a tooltip.
+- Fixed the hunk action arrow being clipped at the top and bottom in every theme, where a 22.5px glyph was rendered inside a 20px-tall button.
+- Fixed the pane divider moving further than the pointer on scaled displays, because the drag delta was applied in preference space while the user drags in rendered space.
+- Fixed the branch sidebar's section headers cutting their names off with no ellipsis and no tooltip in Spanish, Polish, Brazilian and European Portuguese, and Russian, where `Worktrees` becomes a name two to three times its English length. The header label could not shrink at all, so the branch column narrowing on a 320px viewport removed the end of the word outright; it now truncates visibly and carries the full name as a tooltip.
+- Fixed the published extension shipping the `.codebase-memory` directory, removing about 1 MB from the package.
+- Fixed the published extension shipping GitNexus's `graphify-out` analysis directory. Version 0.24.3 carried 12 of its files, `graph.json` alone being 8.7 MB, which took the unpacked package from 6.3 MB to 15.8 MB.
+
+### Security
+
+- The packaging guard that keeps E2E control-channel commands out of the published manifest is now actually run in CI, as the `verify:manifest` build step. It previously existed with no callers.
+
 ## [0.24.3] - 2026-08-14
 
 ### Fixed

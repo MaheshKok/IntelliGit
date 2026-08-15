@@ -111,6 +111,7 @@ export function Toolbar({
             bg="var(--intelligit-pycharm-panel)"
             borderBottom="1px solid var(--intelligit-pycharm-border)"
             flexShrink={0}
+            flexWrap="wrap"
             w="100%"
         >
             <RefreshButton
@@ -284,7 +285,8 @@ function ToolbarButton({
                 onClick={onClick}
                 leftIcon={children}
                 minW="auto"
-                h="24px"
+                h="auto"
+                minH="24px"
                 px="8px"
                 fontSize="12px"
                 fontWeight={600}

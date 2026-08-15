@@ -157,6 +157,17 @@ function CommitPanelSectionHeader({
                 {stats && (stats.additions > 0 || stats.deletions > 0) ? (
                     // Tabular figures keep the counts a fixed width, so the +/-
                     // pair stops jittering as a section's numbers change under it.
+                    //
+                    // These counts deliberately carry NO diff-status colour, unlike the
+                    // per-file counts in FileTreeRows. The header row above sets
+                    // `bg="var(--intelligit-pycharm-selected)"` unconditionally -- it is
+                    // always drawn on the selection background, not only when something is
+                    // selected -- and the status colours are chosen to sit on the panel
+                    // background. Measured on that surface they came out at 1.4:1
+                    // (HC Black, deleted), 2.6:1 (Dark Modern, deleted), 4.0:1 and 4.3:1
+                    // for added. Inheriting the header's own foreground is the same
+                    // resolution used for selected file rows, and unlike desaturating the
+                    // tokens it costs nothing on the rows that are NOT on this surface.
                     <Box
                         as="span"
                         ml="auto"
@@ -165,19 +176,11 @@ function CommitPanelSectionHeader({
                         sx={{ fontVariantNumeric: "tabular-nums" }}
                     >
                         {stats.additions > 0 ? (
-                            <Box
-                                as="span"
-                                color="var(--intelligit-pycharm-added)"
-                                mr={stats.deletions > 0 ? "3px" : "0"}
-                            >
+                            <Box as="span" mr={stats.deletions > 0 ? "3px" : "0"}>
                                 +{stats.additions}
                             </Box>
                         ) : null}
-                        {stats.deletions > 0 ? (
-                            <Box as="span" color="var(--intelligit-pycharm-deleted)">
-                                -{stats.deletions}
-                            </Box>
-                        ) : null}
+                        {stats.deletions > 0 ? <Box as="span">-{stats.deletions}</Box> : null}
                     </Box>
                 ) : null}
             </Flex>

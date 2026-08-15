@@ -1,4 +1,12 @@
-import React, { useState, useEffect, useCallback, useMemo, useRef, useReducer } from "react";
+import React, {
+    useState,
+    useEffect,
+    useLayoutEffect,
+    useCallback,
+    useMemo,
+    useRef,
+    useReducer,
+} from "react";
 import { BranchColumn } from "./BranchColumn";
 import { CommitList } from "./CommitList";
 import type {
@@ -29,6 +37,7 @@ import { t } from "./shared/i18n";
 import { RebaseDialog } from "./shared/components/RebaseDialog/RebaseDialog";
 import { ReviewPromptCard, type ReviewPromptAnswer } from "./shared/components/ReviewPromptCard";
 import { useRebaseDialogController } from "./shared/hooks/useRebaseDialogController";
+import { resolvePaneBudget } from "./shared/paneBudget";
 
 const MIN_BRANCH_WIDTH = 80;
 const MAX_BRANCH_WIDTH = 500;
@@ -274,6 +283,43 @@ export function CommitGraphPanel({
             return DEFAULT_INFO_WIDTH;
         }
     });
+    const shellRef = useRef<HTMLDivElement | null>(null);
+    const [shellWidth, setShellWidth] = useState(0);
+    // Measures before paint, and unconditionally: the pane budget treats width 0 as
+    // "nothing fits", so a shell that never reports its width renders an empty panel.
+    useLayoutEffect(() => {
+        const node = shellRef.current;
+        if (!node) return;
+        const updateWidth = () => setShellWidth(node.getBoundingClientRect().width);
+        updateWidth();
+        if (typeof ResizeObserver === "undefined") return;
+        const observer = new ResizeObserver(updateWidth);
+        observer.observe(node);
+        return () => observer.disconnect();
+    }, []);
+    const paneBudget = useMemo(
+        () =>
+            // A zero width means "not measured yet", not "nothing fits" — feeding it to the
+            // resolver would hide every pane, so render the preferred layout until a real
+            // measurement arrives. Environments without layout (jsdom) stay on this branch.
+            shellWidth <= 0
+                ? { widths: { branch: branchWidth, info: infoWidth }, hidden: [] }
+                : resolvePaneBudget(
+                      shellWidth,
+                      [
+                          { key: "branch", min: MIN_BRANCH_WIDTH, preferred: branchWidth },
+                          {
+                              key: "list",
+                              min: 200,
+                              preferred: Math.max(0, shellWidth - branchWidth - infoWidth - 8),
+                          },
+                          { key: "info", min: MIN_INFO_WIDTH, preferred: infoWidth },
+                      ],
+                      ["info", "branch"],
+                      4,
+                  ),
+        [branchWidth, infoWidth, shellWidth],
+    );
     const loadingMore = useRef(false);
     const [viewVisible, setViewVisible] = useState(true);
     const [reviewPromptRequestId, setReviewPromptRequestId] = useState<string>();
@@ -463,6 +509,7 @@ export function CommitGraphPanel({
                 <ReviewPromptCard onAnswer={handleReviewPromptAnswer} />
             )}
             <div
+                ref={shellRef}
                 style={{
                     display: "flex",
                     height: "100%",
@@ -471,65 +518,84 @@ export function CommitGraphPanel({
                     color: JETBRAINS_UI.color.foreground,
                 }}
             >
-                <div style={{ width: branchWidth, flexShrink: 0, overflow: "hidden" }}>
-                    <BranchColumn
-                        branches={branches}
-                        worktrees={worktrees}
+                {!paneBudget.hidden.includes("branch") && (
+                    <div
+                        style={{
+                            width: paneBudget.widths.branch ?? 0,
+                            flexShrink: 0,
+                            overflow: "hidden",
+                        }}
+                    >
+                        <BranchColumn
+                            branches={branches}
+                            worktrees={worktrees}
+                            selectedBranch={selectedBranch}
+                            onSelectBranch={handleSelectBranch}
+                            onBranchAction={handleBranchAction}
+                            onDeleteBranches={handleDeleteBranches}
+                            onWorktreeAction={handleWorktreeAction}
+                            folderIcon={branchFolderIcon}
+                            folderExpandedIcon={branchFolderExpandedIcon}
+                            folderIconsByName={branchFolderIconsByName}
+                        />
+                    </div>
+                )}
+
+                {!paneBudget.hidden.includes("branch") && (
+                    <button
+                        type="button"
+                        aria-label={t("a11y.resizeBranchColumn")}
+                        data-testid="commit-graph-divider"
+                        onMouseDown={onDividerMouseDown}
+                        onKeyDown={handleBranchDividerKeyDown}
+                        style={{
+                            width: 4,
+                            flexShrink: 0,
+                            cursor: "col-resize",
+                            background: JETBRAINS_UI.color.divider,
+                            border: 0,
+                            padding: 0,
+                        }}
+                    />
+                )}
+
+                <div
+                    style={{
+                        // The resolver already sizes the list as the leftover, so flexing to
+                        // fill is equivalent once measured and still correct before that.
+                        flex: 1,
+                        overflow: "hidden",
+                        minWidth: 0,
+                    }}
+                >
+                    <CommitList
+                        commits={commits}
+                        selectedHash={selectedHash}
+                        filterText={filterText}
+                        hasMore={hasMore}
+                        unpushedHashes={unpushedHashes}
                         selectedBranch={selectedBranch}
-                        onSelectBranch={handleSelectBranch}
-                        onBranchAction={handleBranchAction}
-                        onDeleteBranches={handleDeleteBranches}
-                        onWorktreeAction={handleWorktreeAction}
-                        folderIcon={branchFolderIcon}
-                        folderExpandedIcon={branchFolderExpandedIcon}
-                        folderIconsByName={branchFolderIconsByName}
+                        currentBranchName={currentBranchName}
+                        currentBranchHeadHash={currentBranchHeadHash}
+                        onSelectCommit={handleSelectCommit}
+                        onFilterText={handleFilterText}
+                        onLoadMore={handleLoadMore}
+                        onCommitAction={handleCommitAction}
+                        commitChecks={commitChecks}
+                        onRequestCommitChecks={
+                            commitChecksEnabled ? handleRequestCommitChecks : undefined
+                        }
+                        onOpenCommitCheckUrl={
+                            commitChecksEnabled ? handleOpenCommitCheckUrl : undefined
+                        }
+                        onSignInForCommitChecks={
+                            commitChecksEnabled ? handleSignInForCommitChecks : undefined
+                        }
+                        isViewVisible={viewVisible}
                     />
                 </div>
 
-                <button
-                    type="button"
-                    aria-label={t("a11y.resizeBranchColumn")}
-                    data-testid="commit-graph-divider"
-                    onMouseDown={onDividerMouseDown}
-                    onKeyDown={handleBranchDividerKeyDown}
-                    style={{
-                        width: 4,
-                        flexShrink: 0,
-                        cursor: "col-resize",
-                        background: JETBRAINS_UI.color.divider,
-                        border: 0,
-                        padding: 0,
-                    }}
-                />
-
-                <div style={{ flex: 1, overflow: "hidden", display: "flex", minWidth: 0 }}>
-                    <div style={{ flex: 1, overflow: "hidden", minWidth: 0 }}>
-                        <CommitList
-                            commits={commits}
-                            selectedHash={selectedHash}
-                            filterText={filterText}
-                            hasMore={hasMore}
-                            unpushedHashes={unpushedHashes}
-                            selectedBranch={selectedBranch}
-                            currentBranchName={currentBranchName}
-                            currentBranchHeadHash={currentBranchHeadHash}
-                            onSelectCommit={handleSelectCommit}
-                            onFilterText={handleFilterText}
-                            onLoadMore={handleLoadMore}
-                            onCommitAction={handleCommitAction}
-                            commitChecks={commitChecks}
-                            onRequestCommitChecks={
-                                commitChecksEnabled ? handleRequestCommitChecks : undefined
-                            }
-                            onOpenCommitCheckUrl={
-                                commitChecksEnabled ? handleOpenCommitCheckUrl : undefined
-                            }
-                            onSignInForCommitChecks={
-                                commitChecksEnabled ? handleSignInForCommitChecks : undefined
-                            }
-                            isViewVisible={viewVisible}
-                        />
-                    </div>
+                {!paneBudget.hidden.includes("info") && (
                     <button
                         type="button"
                         aria-label={t("a11y.resizeCommitDetailsPane")}
@@ -545,9 +611,12 @@ export function CommitGraphPanel({
                             padding: 0,
                         }}
                     />
+                )}
+
+                {!paneBudget.hidden.includes("info") && (
                     <div
                         style={{
-                            width: infoWidth,
+                            width: paneBudget.widths.info ?? 0,
                             flexShrink: 0,
                             overflow: "hidden",
                         }}
@@ -561,7 +630,7 @@ export function CommitGraphPanel({
                             onOpenDiff={handleOpenDiff}
                         />
                     </div>
-                </div>
+                )}
             </div>
         </>
     );

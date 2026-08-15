@@ -17,7 +17,9 @@ const CONTEXT_MENU_STYLE_RULES = `
     .intelligit-context-item[data-disabled="false"]:hover,
     .intelligit-context-item[data-disabled="false"]:focus-visible {
         background: var(--vscode-menu-selectionBackground, ${JETBRAINS_UI.color.menuSelection});
-        color: var(--vscode-menu-selectionForeground, #DFE1E5);
+        /* HC Light and HC Black omit --vscode-menu-selectionForeground; the
+           light fallback reverses selection polarity and lowers contrast. */
+        color: var(--vscode-menu-selectionForeground, var(--vscode-foreground, #DFE1E5));
     }
     .intelligit-context-item[data-disabled="false"]:focus-visible {
         outline: 1px solid ${JETBRAINS_UI.color.focus};
