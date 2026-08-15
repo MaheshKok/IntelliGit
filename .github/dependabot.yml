@@ -1,0 +1,14 @@
+# A SHA-pinned action never moves, which is the point -- and also the risk: a pin left alone keeps
+# running whatever that commit contained, including a vulnerability fixed upstream months ago.
+# Dependabot is the half that makes pinning safe, proposing each bump as a reviewable PR that
+# rewrites both the SHA and the `# vX.Y.Z` comment beside it.
+version: 2
+updates:
+    - package-ecosystem: github-actions
+      directory: /
+      schedule:
+          interval: monthly
+      commit-message:
+          prefix: "chore(ci)"
+      labels:
+          - dependencies

@@ -105,6 +105,7 @@ exec docker run --rm ${TTY_FLAGS[@]+"${TTY_FLAGS[@]}"} \
     --user "$(id -u):$(id -g)" \
     -e HOME=/cache/home \
     -e INTELLIGIT_VSCODE_CACHE=/cache/vscode \
+    -e INTELLIGIT_VSCODE_VERSION \
     -v "${REPO_ROOT}:/work" \
     -v "${CACHE_ROOT}/node_modules:/work/node_modules" \
     -v "${CACHE_ROOT}/vscode:/cache/vscode" \

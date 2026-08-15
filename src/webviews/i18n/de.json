@@ -348,5 +348,14 @@
     "review.card.unhappyTitle": "Das tut uns leid.",
     "review.card.unhappyBody": "Sagen Sie uns, was fehlt, und wir sehen es uns an.",
     "review.card.reportIssue": "Problem melden",
-    "review.card.rateAnyway": "Oder im Marketplace bewerten"
+    "review.card.rateAnyway": "Oder im Marketplace bewerten",
+    "branch.tracking.incoming": {
+        "one": "{count} eingehender Commit",
+        "other": "{count} eingehende Commits"
+    },
+    "branch.tracking.outgoing": {
+        "one": "{count} ausgehender Commit",
+        "other": "{count} ausgehende Commits"
+    },
+    "branch.tracking.combined": "{incoming} und {outgoing}"
 }

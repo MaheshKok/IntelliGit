@@ -355,5 +355,16 @@
     "review.card.unhappyTitle": "Lamentamos saber disso.",
     "review.card.unhappyBody": "Diga-nos o que falta e iremos analisar.",
     "review.card.reportIssue": "Comunicar um problema",
-    "review.card.rateAnyway": "Ou avalie no marketplace"
+    "review.card.rateAnyway": "Ou avalie no marketplace",
+    "branch.tracking.incoming": {
+        "one": "{count} commit recebido",
+        "many": "{count} commits recebidos",
+        "other": "{count} commits recebidos"
+    },
+    "branch.tracking.outgoing": {
+        "one": "{count} commit enviado",
+        "many": "{count} commits enviados",
+        "other": "{count} commits enviados"
+    },
+    "branch.tracking.combined": "{incoming} e {outgoing}"
 }

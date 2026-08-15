@@ -45,6 +45,10 @@ import { copyTemplate } from "./copyTemplate";
 import { runGit } from "./gitRun";
 import { DEFAULT_MANIFEST_PATH, readFixtureManifest } from "./manifest";
 import { rehydrateCopy } from "./rehydrate";
+import {
+    REPOSITORY_SCENARIOS,
+    type RepositoryScenarioId,
+} from "./scenarios";
 import { createSanitizedGitEnv } from "./seed";
 
 /** What `createFixtureWorkspace()` returns -- matches PLAN.md line 60's stated shape
@@ -58,6 +62,8 @@ export interface FixtureWorkspace {
     readonly originRoot: string;
     /** Absolute path to this workspace's own, empty VS Code profile directory. */
     readonly profileDir: string;
+    /** Absolute path to the scenario's shelf storage root, when the scenario creates one. */
+    readonly shelfStorageRoot?: string;
     /** Sanitized git env whose `HOME`, `TMPDIR`, `TMP`, and `TEMP` all resolve beneath this
      * workspace's own fixture-owned root (PLAN.md line 92). Pass this as `env` to every git
      * subprocess this test spawns, and to the `_electron.launch` child process, so anything either
@@ -71,23 +77,66 @@ export interface FixtureWorkspace {
 export interface CreateFixtureWorkspaceOptions {
     /** Where to read the atomic per-run manifest from. Defaults to {@link DEFAULT_MANIFEST_PATH}. */
     readonly manifestPath?: string;
+    /** Repository scenario to prepare instead of reading the default manifest. */
+    readonly scenario?: FixtureScenarioId;
     /** The parent directory this call's own fixture-owned root is allocated under (via `mkdtemp`,
      * so concurrent calls never collide). Defaults to {@link DEFAULT_WORKSPACES_ROOT}. */
     readonly workspacesRoot?: string;
 }
 
-/** The runner-known default parent for every workspace's own fixture-owned root, when a caller does
- * not supply `workspacesRoot` explicitly. A fixed location under the OS temp directory, exactly
- * like `manifest.ts`'s `DEFAULT_MANIFEST_PATH` -- every worker process in the same run agrees on it
- * without needing an environment variable. */
-export const DEFAULT_WORKSPACES_ROOT = path.join(tmpdir(), "intelligit-e2e-workspaces");
+/** Scenario IDs valid for a `FixtureWorkspace`; `empty-repo` has no origin and is excluded. */
+export type FixtureScenarioId = Exclude<RepositoryScenarioId, "empty-repo">;
+
+const WORKSPACE_ROOT_PREFIX = "ig-XXXXXX";
+const WORKSPACE_PROFILE_DIR = "profile";
+const VSCODE_MAIN_SOCKET_NAME = "1.13-main.sock";
+const SHORT_WORKSPACES_ROOT_NAME = "i";
 
 /**
- * Builds one independent, fully-functional per-test fixture workspace: reads the manifest, copies
- * the template it names, rehydrates the copy, allocates this workspace's own scratch directories,
- * and returns a handle. Every call -- including two calls in the same process -- produces a wholly
- * independent workspace: independent copy (its own inodes, per `copyTemplate.ts`'s own contract),
- * independent origin, independent `HOME`/`TMPDIR`/`TMP`/`TEMP`, independent profile directory.
+ * Derives a workspace parent that leaves room for VS Code's main-process Unix socket. The
+ * calculation is pure so a macOS-shaped temp path is tested on every platform; the shortened
+ * sibling remains the parent of the same dispose-owned root, so HOME, temp, copy, and profile
+ * cleanup retain one ownership boundary.
+ */
+export function deriveWorkspacesRoot(candidateParent: string, socketPathLimit: number): string {
+    if (!Number.isInteger(socketPathLimit) || socketPathLimit <= 0) {
+        throw new RangeError(`socketPathLimit must be a positive integer, got ${socketPathLimit}`);
+    }
+
+    const fits = (parent: string): boolean =>
+        path.join(parent, WORKSPACE_ROOT_PREFIX, WORKSPACE_PROFILE_DIR, VSCODE_MAIN_SOCKET_NAME)
+            .length <= socketPathLimit;
+    if (fits(candidateParent)) {
+        return candidateParent;
+    }
+
+    const shortenedSibling = path.join(path.dirname(candidateParent), SHORT_WORKSPACES_ROOT_NAME);
+    if (fits(shortenedSibling)) {
+        return shortenedSibling;
+    }
+
+    const shortestPath = path.join(path.parse(candidateParent).root, SHORT_WORKSPACES_ROOT_NAME);
+    throw new RangeError(
+        `Cannot derive a creatable workspaces root for candidateParent "${candidateParent}" with socketPathLimit ${socketPathLimit}; shortest path attempted was "${shortestPath}".`,
+    );
+}
+
+/** The runner-known default parent for every workspace's own fixture-owned root, when a caller does
+ * not supply `workspacesRoot`. A fixed location under the OS temp directory, exactly like
+ * `manifest.ts`'s `DEFAULT_MANIFEST_PATH`; macOS gets the short sibling required by `sun_path`,
+ * while Linux keeps the readable temp-rooted path because it already fits its socket budget. */
+export const DEFAULT_WORKSPACES_ROOT = deriveWorkspacesRoot(
+    path.join(tmpdir(), "intelligit-e2e-workspaces"),
+    process.platform === "darwin" ? 104 : 108,
+);
+
+/**
+ * Builds one independent, fully-functional per-test fixture workspace: the default path reads the
+ * manifest and copies the template it names, while a selected scenario prepares its own repository;
+ * both paths allocate this workspace's own scratch directories and return the same handle shape.
+ * Every call -- including two calls in the same process -- produces a wholly independent workspace:
+ * independent copy (its own inodes, per `copyTemplate.ts`'s own contract), independent origin,
+ * independent `HOME`/`TMPDIR`/`TMP`/`TEMP`, independent profile directory.
  *
  * Propagates whatever `readFixtureManifest`, `copyTemplate`, or `rehydrateCopy` throw, unmodified --
  * a missing/malformed manifest, a symlink-containment violation, or a rehydration failure are all
@@ -98,18 +147,46 @@ export const DEFAULT_WORKSPACES_ROOT = path.join(tmpdir(), "intelligit-e2e-works
  * the manifest, never a workspace root, and `DEFAULT_WORKSPACES_ROOT` is a fixed path under the OS
  * temp directory -- so those orphans accumulate run over run rather than being reclaimed later.
  */
-export async function createFixtureWorkspace(options?: CreateFixtureWorkspaceOptions): Promise<FixtureWorkspace> {
-    const manifestPath = options?.manifestPath ?? DEFAULT_MANIFEST_PATH;
+export async function createFixtureWorkspace(
+    options?: CreateFixtureWorkspaceOptions,
+): Promise<FixtureWorkspace> {
     const workspacesRoot = options?.workspacesRoot ?? DEFAULT_WORKSPACES_ROOT;
 
-    const manifest = await readFixtureManifest(manifestPath);
+    if (options?.scenario === undefined) {
+        const manifestPath = options?.manifestPath ?? DEFAULT_MANIFEST_PATH;
+        const manifest = await readFixtureManifest(manifestPath);
+
+        await mkdir(workspacesRoot, { recursive: true });
+        const ownRoot = await mkdtemp(path.join(workspacesRoot, "ig-"));
+        try {
+            const { root, originRoot, profileDir, env } = await allocateWorkspace(
+                ownRoot,
+                manifest.templateRoot,
+            );
+
+            return { root, originRoot, profileDir, env, dispose: createDisposer(ownRoot, root, env) };
+        } catch (error) {
+            // Best-effort, and deliberately not allowed to replace the diagnosis: the caller needs
+            // to know WHY construction failed, and a cleanup error raised in its place would bury
+            // that. `force: true` already absorbs the case where nothing was created yet.
+            await rm(ownRoot, { recursive: true, force: true }).catch(() => undefined);
+            throw error;
+        }
+    }
 
     await mkdir(workspacesRoot, { recursive: true });
-    const ownRoot = await mkdtemp(path.join(workspacesRoot, "intelligit-e2e-workspace-"));
-
-    let allocated;
+    const ownRoot = await mkdtemp(path.join(workspacesRoot, "ig-"));
     try {
-        allocated = await allocateWorkspace(ownRoot, manifest.templateRoot);
+        const { root, originRoot, profileDir, env, shelfStorageRoot } =
+            await allocateScenarioWorkspace(ownRoot, options.scenario);
+        return {
+            root,
+            originRoot,
+            profileDir,
+            env,
+            shelfStorageRoot,
+            dispose: createDisposer(ownRoot, root, env),
+        };
     } catch (error) {
         // Best-effort, and deliberately not allowed to replace the diagnosis: the caller needs
         // to know WHY construction failed, and a cleanup error raised in its place would bury
@@ -117,9 +194,6 @@ export async function createFixtureWorkspace(options?: CreateFixtureWorkspaceOpt
         await rm(ownRoot, { recursive: true, force: true }).catch(() => undefined);
         throw error;
     }
-
-    const { root, originRoot, profileDir, env } = allocated;
-    return { root, originRoot, profileDir, env, dispose: createDisposer(ownRoot, root, env) };
 }
 
 /** The construction half of {@link createFixtureWorkspace}, split out so the function above stays a
@@ -136,7 +210,10 @@ async function allocateWorkspace(
 }> {
     const scratchTmpDir = path.join(ownRoot, "tmp");
     const profileDir = path.join(ownRoot, "profile");
-    await Promise.all([mkdir(scratchTmpDir, { recursive: true }), mkdir(profileDir, { recursive: true })]);
+    await Promise.all([
+        mkdir(scratchTmpDir, { recursive: true }),
+        mkdir(profileDir, { recursive: true }),
+    ]);
 
     // `homeParent: ownRoot` is the exact hook `createSanitizedGitEnv`'s own doc comment says PLAN.md
     // line 92 exists to use: without it, `HOME` would land directly under the shared OS temp
@@ -161,16 +238,79 @@ async function allocateWorkspace(
     };
 }
 
+/** Builds a selected non-empty repository scenario inside the caller-owned root and adds the
+ * profile and temporary directories that the returned fixture process tree must also own. */
+async function allocateScenarioWorkspace(
+    ownRoot: string,
+    scenarioId: FixtureScenarioId,
+): Promise<{
+    readonly root: string;
+    readonly originRoot: string;
+    readonly profileDir: string;
+    readonly env: NodeJS.ProcessEnv;
+    readonly shelfStorageRoot?: string;
+}> {
+    const scenario = REPOSITORY_SCENARIOS.find(({ id }) => id === scenarioId);
+    if (scenario === undefined || scenario.id === "empty-repo") {
+        throw new Error(
+            `createFixtureWorkspace: scenario "${scenarioId}" is not a valid origin-backed fixture scenario.`,
+        );
+    }
+
+    const scratchTmpDir = path.join(ownRoot, "tmp");
+    const profileDir = path.join(ownRoot, WORKSPACE_PROFILE_DIR);
+    await Promise.all([
+        mkdir(scratchTmpDir, { recursive: true }),
+        mkdir(profileDir, { recursive: true }),
+    ]);
+
+    const scenarioWorkspace = await scenario.prepare(path.join(ownRoot, "copy"), {
+        homeParent: ownRoot,
+    });
+    if (scenarioWorkspace.template === undefined) {
+        throw new Error(
+            `createFixtureWorkspace: scenario "${scenarioId}" did not provide an origin-backed template.`,
+        );
+    }
+
+    const env: NodeJS.ProcessEnv = {
+        ...scenarioWorkspace.env,
+        TMPDIR: scratchTmpDir,
+        TMP: scratchTmpDir,
+        TEMP: scratchTmpDir,
+    };
+    return {
+        root: scenarioWorkspace.root,
+        originRoot: scenarioWorkspace.template.originRoot,
+        profileDir,
+        env,
+        shelfStorageRoot: scenarioWorkspace.shelfStorageRoot,
+    };
+}
+
 /** Builds this workspace's `dispose()`. The `disposed` flag is checked and set synchronously, with
  * no `await` between the check and the set, so two overlapping calls (Node's single-threaded event
  * loop cannot interleave synchronous code) can never both proceed past the guard. */
-function createDisposer(ownRoot: string, root: string, env: NodeJS.ProcessEnv): () => Promise<void> {
+function createDisposer(
+    ownRoot: string,
+    root: string,
+    env: NodeJS.ProcessEnv,
+): () => Promise<void> {
     let disposed = false;
     return async () => {
         if (disposed) return;
         disposed = true;
         await removeLinkedWorktrees(root, env);
-        await rm(ownRoot, { recursive: true, force: true });
+        // `ownRoot` contains the scratch HOME, and a descendant of the closing VS Code host can
+        // still be flushing into it when this rm walks the tree: a file created between readdir
+        // and rmdir surfaces as `ENOTEMPTY: directory not empty, rmdir
+        // '.../intelligit-fixture-home-*'`. Measured at roughly one run in four across two
+        // sweeps, attaching to whichever row happened to be executing -- it is a teardown race,
+        // not a row defect, which is why it moved between rows. `maxRetries`/`retryDelay` are
+        // Node's documented remedy for exactly this error class (EBUSY/EMFILE/ENFILE/ENOTEMPTY/
+        // EPERM) with linear backoff. Retrying is safe here because the directory is scratch the
+        // harness owns outright; nothing else may recreate it once disposal has begun.
+        await rm(ownRoot, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
     };
 }
 
@@ -202,7 +342,11 @@ async function removeLinkedWorktrees(root: string, env: NodeJS.ProcessEnv): Prom
         .map(extractWorktreePath)
         .filter((worktreePath): worktreePath is string => worktreePath !== null);
 
-    await Promise.all(linkedWorktreePaths.map((worktreePath) => rm(worktreePath, { recursive: true, force: true })));
+    await Promise.all(
+        linkedWorktreePaths.map((worktreePath) =>
+            rm(worktreePath, { recursive: true, force: true }),
+        ),
+    );
 }
 
 /** Pulls the `worktree <path>` field out of one `git worktree list --porcelain` block -- the field

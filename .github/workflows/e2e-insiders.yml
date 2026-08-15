@@ -1,0 +1,111 @@
+name: E2E Flow Suite - VS Code Insiders
+
+on:
+    schedule:
+        - cron: "30 2 * * *"
+    workflow_dispatch:
+
+# Early warning only: Insiders is expected to be red sometimes for reasons upstream owns, not
+# IntelliGit. This workflow intentionally gates nothing.
+permissions:
+    contents: read
+
+jobs:
+    e2e-insiders:
+        env:
+            INTELLIGIT_VSCODE_VERSION: insiders
+        strategy:
+            fail-fast: false
+            matrix:
+                shard: [1, 2, 3, 4]
+        runs-on: ubuntu-latest
+        timeout-minutes: 45
+
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+              with:
+                  persist-credentials: false
+
+            # No download cache here, deliberately. Insiders moves daily, and every cache key
+            # available to a workflow is derived from the repo, which does not change daily --
+            # `actions/cache` never overwrites an existing key, so a key that does not rotate
+            # restores a build that `@vscode/test-electron` then discards and re-downloads anyway
+            # (it compares the latest Insiders hash and replaces a stale build itself). Caching
+            # would add restore time and save nothing. The pinned workflows cache because their
+            # build is pinned; this one must not, and must not share their key.
+            - name: Run Insiders flow shard in the container
+              run: ./tests/e2e/docker/run.sh 'bun install --frozen-lockfile && bun run build && xvfb-run -a bun run test:e2e -- --shard=${{ matrix.shard }}/4'
+
+            - name: Upload Insiders failure artifacts
+              if: failure()
+              uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+              with:
+                  name: e2e-insiders-failures-shard-${{ matrix.shard }}
+                  path: |
+                      playwright-report/
+                      test-results/
+                  if-no-files-found: ignore
+                  retention-days: 7
+
+    # Keep the host-fixture warning separate from the flow matrix: one launch sequence exercises
+    # the four theme payloads, while the flow shards retain their existing coverage and shape.
+    host-fixture-compare:
+        runs-on: ubuntu-latest
+        # globalSetup downloads pinned; compare.spec.ts resolves Insiders once and then runs eight
+        # sequential launches (two builds x four themes), so this non-gating warning gets a wide
+        # ceiling rather than turning a slow cold runner into a fake upstream difference.
+        timeout-minutes: 120
+
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+              with:
+                  persist-credentials: false
+
+            # No download cache here for the same reason as the flow job above: Insiders moves
+            # daily, and a repo-derived cache key restores a build the resolver then replaces.
+            - name: Run Insiders host-fixture comparison in the container
+              run: ./tests/e2e/docker/run.sh 'bun install --frozen-lockfile && bun run build && xvfb-run -a ./node_modules/.bin/playwright test --config playwright.e2e.config.ts tests/e2e/hostFixtures/compare.spec.ts --reporter=list'
+
+            - name: Upload Insiders host-fixture failure artifacts
+              if: failure()
+              uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+              with:
+                  name: e2e-insiders-host-fixture-failures
+                  path: |
+                      playwright-report/
+                      test-results/
+                  if-no-files-found: ignore
+                  retention-days: 7
+
+    # Aggregate the flow matrix and host-fixture warning before reporting so one upstream change
+    # produces one standing issue rather than one issue per failing job or shard.
+    report-failure:
+        needs: [e2e-insiders, host-fixture-compare]
+        if: failure()
+        runs-on: ubuntu-latest
+        permissions:
+            contents: read
+            issues: write
+
+        steps:
+            - name: Report the failing Insiders run
+              env:
+                  GH_TOKEN: ${{ github.token }}
+                  GH_REPO: ${{ github.repository }}
+                  TITLE: "VS Code Insiders E2E flow suite is failing"
+                  RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+              run: |
+                  set -euo pipefail
+                  BODY="The VS Code Insiders flow suite or host-fixture comparison failed. Inspect the run: ${RUN_URL}"
+                  # `env.TITLE` is read by jq itself, so the title never passes through shell
+                  # interpolation into the jq program.
+                  EXISTING=$(gh issue list --state open --search "${TITLE} in:title" \
+                      --json number,title --jq '[.[] | select(.title == env.TITLE)][0].number // empty')
+
+                  if [ -n "${EXISTING}" ]; then
+                      gh issue comment "${EXISTING}" --body "${BODY}"
+                  else
+                      gh issue create --title "${TITLE}" --body "${BODY}"
+                  fi

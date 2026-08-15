@@ -4,15 +4,18 @@
 // reader polling for it can never observe a partial write (PLAN.md Phase 1 step 10).
 
 import { randomBytes } from "node:crypto";
-import type { FSWatcher } from "node:fs";
-import { existsSync, readFileSync, renameSync, rmSync, watch, writeFileSync } from "node:fs";
-import { basename, join } from "node:path";
+import { existsSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 
 import { getErrorMessage } from "../utils/errors";
 
 const NONCE_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
 const REQUEST_SUFFIX = ".request.json";
 const RESPONSE_SUFFIX = ".response.json";
+const RECONCILIATION_INTERVAL_MS = 50;
+
+/** Filename written after the gate, watcher, and activation drain are ready for client traffic. */
+export const E2E_CHANNEL_READY_MARKER = ".e2e-channel-ready";
 
 /**
  * Validates a nonce extracted from a filename. The nonce is the sole namespacing key for
@@ -45,7 +48,46 @@ export function readRequestFile(channelDir: string, nonce: string): unknown {
     if (!existsSync(path)) {
         return undefined;
     }
-    return JSON.parse(readFileSync(path, "utf8"));
+    let raw: string;
+    try {
+        raw = readFileSync(path, "utf8");
+    } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+            return undefined;
+        }
+        throw error;
+    }
+    // A truncated or hand-written request must not terminate service for every later request --
+    // but it is reported rather than swallowed here, because a request that is never answered
+    // otherwise presents to the caller as an unexplained timeout with nothing on the host side
+    // naming it. Both callers (`watchChannelDir`'s reconciliation loop and the activation drain
+    // in `controlChannel.ts`) skip the nonce and keep serving; only they can log against it,
+    // since only they know which nonce is being read.
+    return JSON.parse(raw);
+}
+
+/** Lists request nonces currently present in the channel directory. */
+export function listRequestNonces(channelDir: string): readonly string[] {
+    return readdirSync(channelDir)
+        .map((filename) => nonceFromRequestFilename(filename))
+        .filter((nonce): nonce is string => nonce !== undefined);
+}
+
+/** Publishes the one non-traffic marker clients use to distinguish a live channel from a timeout. */
+export function writeChannelReadyMarker(channelDir: string): void {
+    const markerPath = join(channelDir, E2E_CHANNEL_READY_MARKER);
+    try {
+        writeFileSync(markerPath, "ready\n", { encoding: "utf8", flag: "wx" });
+    } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "EEXIST") {
+            throw error;
+        }
+    }
+}
+
+/** Removes the activation marker; disposing twice or after external cleanup is harmless. */
+export function removeChannelReadyMarker(channelDir: string): void {
+    rmSync(join(channelDir, E2E_CHANNEL_READY_MARKER), { force: true });
 }
 
 /** Deletes a consumed `<nonce>.request.json` file so the watcher never reprocesses it. */
@@ -63,7 +105,14 @@ export function writeResponseFileAtomic(channelDir: string, nonce: string, paylo
     const finalPath = join(channelDir, `${nonce}${RESPONSE_SUFFIX}`);
     const tempPath = join(channelDir, `.${nonce}.${randomBytes(6).toString("hex")}.tmp`);
     writeFileSync(tempPath, JSON.stringify(payload), "utf8");
-    renameSync(tempPath, finalPath);
+    try {
+        renameSync(tempPath, finalPath);
+    } catch (error) {
+        // A failed rename must not strand its temp file: the channel directory is reported
+        // verbatim in the client's timeout diagnostic, where stray files read as noise.
+        rmSync(tempPath, { force: true });
+        throw error;
+    }
 }
 
 /**
@@ -103,51 +152,62 @@ export interface ChannelWatcher {
 }
 
 /**
- * Starts watching `channelDir` for new `<nonce>.request.json` files, invoking `onRequest`
- * with the nonce and parsed payload for each one it can read. Malformed nonces and
- * unrelated files (including this transport's own `.response.json` and `.tmp` outputs) are
- * silently ignored by the filename filter -- they are not this watcher's concern.
+ * Reconciles `channelDir` for new `<nonce>.request.json` files, invoking `onRequest` with the
+ * nonce and parsed payload for each one it can read. Polling is intentional: filesystem events
+ * are only an optimisation and cannot be the delivery guarantee for control-channel requests.
+ * Malformed nonces and unrelated files (including this transport's own `.response.json` and
+ * `.tmp` outputs) are silently ignored by the filename filter.
  *
  * Unreadable CONTENT is a separate matter from an unreadable name, and is handled here rather
- * than downstream. `fs.watch` fires as soon as the request file appears, which for a writer
- * that does not rename its file into place can be before the bytes are all there, so
- * `readRequestFile`'s `JSON.parse` can throw a `SyntaxError` -- inside this listener, upstream
- * of every `try`/`catch` in the caller's dispatch path, where nothing catches it and it
- * escapes as an uncaught exception in the extension host.
+ * than downstream. A request file can be observed before all of its bytes are there, so
+ * `readRequestFile`'s `JSON.parse` can throw a `SyntaxError` -- inside this loop, upstream of
+ * every `try`/`catch` in the caller's dispatch path, where nothing catches it and it escapes
+ * as an uncaught exception in the extension host.
  *
- * Such an event is dropped rather than reported to `onRequest` as a failed request, because
- * this transport cannot tell the two causes apart from the parse error alone: a half-written
- * file and a genuinely malformed one look identical. Dropping is right for the first (the
- * writer's completing write fires another event for the same file) and merely quiet for the
- * second, whereas answering would race a spurious error response against the real one. The
- * skip is logged so a request that never gets answered has a stated reason on the host side
- * rather than presenting to the caller as an unexplained timeout.
+ * Such a read is skipped rather than reported to `onRequest` as a failed request, because this
+ * transport cannot tell the two causes apart from the parse error alone: a half-written file
+ * and a genuinely malformed one look identical. Skipping is right for the first -- the next
+ * reconciliation tick re-reads the now-complete file -- and merely quiet for the second,
+ * whereas answering would race a spurious error response against the real one. The skip is
+ * logged so a request that never gets answered has a stated reason on the host side rather
+ * than presenting to the caller as an unexplained timeout, but only ONCE per nonce: a
+ * genuinely malformed request is never consumed, so it is re-read on every tick and an
+ * unconditional log would bury the host output at the reconciliation interval.
  */
 export function watchChannelDir(
     channelDir: string,
     onRequest: (nonce: string, payload: unknown) => void,
 ): ChannelWatcher {
-    const watcher: FSWatcher = watch(channelDir, { persistent: false }, (_eventType, filename) => {
-        if (filename === null) {
-            return;
-        }
-        const nonce = nonceFromRequestFilename(basename(filename.toString()));
-        if (nonce === undefined) {
-            return;
-        }
-        let payload: unknown;
+    const loggedUnreadableNonces = new Set<string>();
+    const reconcile = (): void => {
+        let nonces: readonly string[];
         try {
-            payload = readRequestFile(channelDir, nonce);
-        } catch (error) {
-            console.error(
-                `E2E control channel skipped an unreadable request "${nonce}": ${describeReadFailure(error)}`,
-            );
+            nonces = listRequestNonces(channelDir);
+        } catch {
             return;
         }
-        if (payload === undefined) {
-            return;
+
+        for (const nonce of nonces) {
+            let payload: unknown;
+            try {
+                payload = readRequestFile(channelDir, nonce);
+            } catch (error) {
+                if (!loggedUnreadableNonces.has(nonce)) {
+                    loggedUnreadableNonces.add(nonce);
+                    console.error(
+                        `E2E control channel skipped an unreadable request "${nonce}": ${describeReadFailure(error)}`,
+                    );
+                }
+                continue;
+            }
+            if (payload !== undefined) {
+                onRequest(nonce, payload);
+            }
         }
-        onRequest(nonce, payload);
-    });
-    return { dispose: () => watcher.close() };
+    };
+    const reconciliationTimer = setInterval(reconcile, RECONCILIATION_INTERVAL_MS);
+    // Mirrors the `{ persistent: false }` of the fs.watch this replaced: the channel must never be
+    // the reason an extension host or a test worker stays alive.
+    reconciliationTimer.unref();
+    return { dispose: () => clearInterval(reconciliationTimer) };
 }

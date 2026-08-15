@@ -341,5 +341,12 @@
     "review.card.unhappyTitle": "申し訳ありません。",
     "review.card.unhappyBody": "不足している点をお知らせください。確認いたします。",
     "review.card.reportIssue": "問題を報告",
-    "review.card.rateAnyway": "マーケットプレースで評価する"
+    "review.card.rateAnyway": "マーケットプレースで評価する",
+    "branch.tracking.incoming": {
+        "other": "受信コミット {count} 件"
+    },
+    "branch.tracking.outgoing": {
+        "other": "送信コミット {count} 件"
+    },
+    "branch.tracking.combined": "{incoming}、{outgoing}"
 }

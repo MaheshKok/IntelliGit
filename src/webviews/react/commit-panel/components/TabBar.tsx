@@ -25,6 +25,16 @@ interface Props {
     onFetch?: () => void;
     onPull?: () => void;
     onPush?: () => void;
+    /**
+     * Commits the current branch is behind its upstream, rendered beside the Pull action.
+     *
+     * The push side of this pair has always had a renderer -- `↑N` on the Commit tab's Push
+     * button -- while this value was computed, cached, posted and reduced into state without any
+     * component ever reading it, so the panel could not answer "how many commits do I need to
+     * pull". Note the count only moves after a fetch: Git derives it from `refs/remotes/*`, which
+     * nothing advances on its own, so an unfetched repository legitimately reports zero.
+     */
+    currentBranchBehind?: number;
     /** Optional undocked-only action that returns IntelliGit to the docked views. */
     onDock?: () => void;
     commitContent: React.ReactNode;
@@ -71,6 +81,7 @@ export function TabBar({
     onFetch,
     onPull,
     onPush,
+    currentBranchBehind = 0,
     onDock,
     commitContent,
     stashContent,
@@ -210,6 +221,22 @@ export function TabBar({
                             />
                             <path fill="currentColor" d="M3 13h10v1H3v-1z" />
                         </GitActionButton>
+                        {currentBranchBehind > 0 ? (
+                            // Deliberately an inline sibling rather than an overlay badge: a
+                            // decoration positioned on top of a toolbar action intercepts the
+                            // pointer and makes the action itself unclickable.
+                            <span
+                                data-testid="pull-behind-count"
+                                style={{
+                                    marginLeft: -2,
+                                    marginRight: 2,
+                                    fontSize: 11,
+                                    color: "var(--intelligit-pycharm-foreground)",
+                                }}
+                            >
+                                ↓{currentBranchBehind}
+                            </span>
+                        ) : null}
                         <GitActionButton
                             label={t("common.push")}
                             onClick={gitActions.onPush}

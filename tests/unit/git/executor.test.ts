@@ -1,7 +1,8 @@
 import { existsSync } from "node:fs";
-import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, open, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { GitExecutor, setGitSuccessListener } from "../../../src/git/executor";
 import { RepositoryMutationCoordinator } from "../../../src/git/mutationCoordinator";
@@ -37,6 +38,37 @@ function gateProbe(): GateProbe {
     return { gate, gatedRuns, commonDirs };
 }
 
+/** The checked-in `git` stand-in every fake-git test puts on PATH. */
+const FAKE_GIT_TRAMPOLINE = fileURLToPath(new URL("../../fixtures/bin/git", import.meta.url));
+
+/**
+ * Puts a fake `git` running `script` on PATH inside `directory`, and returns the undo.
+ *
+ * The executable on PATH is a symlink to a checked-in trampoline, never a file this process
+ * just wrote. `execve` refuses a target that any process still holds open for writing and
+ * reports ETXTBSY, and vitest's `threads` pool shares one file-descriptor table across the
+ * test files running concurrently -- so a sibling file forking mid-write can hold our
+ * descriptor past the exec. That is a real race, not a theoretical one: it took down CI as
+ * `spawn ETXTBSY` in whichever test lost, while every local macOS run stayed green because
+ * macOS does not enforce ETXTBSY here. The generated script is only ever read, by the `sh`
+ * the trampoline execs, and reading is never refused.
+ */
+async function installFakeGit(directory: string, script: string): Promise<() => void> {
+    const scriptPath = join(directory, "fake-git.sh");
+    await writeFile(scriptPath, `${script}\n`, "utf8");
+    await symlink(FAKE_GIT_TRAMPOLINE, join(directory, "git"));
+    const originalPath = process.env.PATH;
+    const originalScript = process.env.INTELLIGIT_FAKE_GIT_SCRIPT;
+    process.env.PATH = `${directory}${delimiter}${originalPath ?? ""}`;
+    process.env.INTELLIGIT_FAKE_GIT_SCRIPT = scriptPath;
+    return () => {
+        if (originalPath === undefined) delete process.env.PATH;
+        else process.env.PATH = originalPath;
+        if (originalScript === undefined) delete process.env.INTELLIGIT_FAKE_GIT_SCRIPT;
+        else process.env.INTELLIGIT_FAKE_GIT_SCRIPT = originalScript;
+    };
+}
+
 /** Runs one callback against a temporary Git executable with a restored process PATH. */
 async function withFakeGit<T>(
     script: string,
@@ -44,16 +76,11 @@ async function withFakeGit<T>(
     gate?: RepositoryMutationGate,
 ): Promise<T> {
     const directory = await mkdtemp(join(tmpdir(), "intelligit-fake-git-"));
-    const executable = join(directory, "git");
-    const originalPath = process.env.PATH;
-    await writeFile(executable, `#!/bin/sh\n${script}\n`, "utf8");
-    await chmod(executable, 0o755);
-    process.env.PATH = `${directory}${delimiter}${originalPath ?? ""}`;
+    const restoreEnv = await installFakeGit(directory, script);
     try {
         return await run(new GitExecutor(process.cwd(), gate));
     } finally {
-        if (originalPath === undefined) delete process.env.PATH;
-        else process.env.PATH = originalPath;
+        restoreEnv();
         await rm(directory, { force: true, recursive: true });
     }
 }
@@ -83,18 +110,13 @@ async function runFakeGitText(
  */
 async function gatedRunCount(args: string[]): Promise<number> {
     const directory = await mkdtemp(join(tmpdir(), "intelligit-classify-git-"));
-    const executable = join(directory, "git");
-    const originalPath = process.env.PATH;
-    await writeFile(executable, "#!/bin/sh\nexit 0\n", "utf8");
-    await chmod(executable, 0o755);
-    process.env.PATH = `${directory}${delimiter}${originalPath ?? ""}`;
+    const restoreEnv = await installFakeGit(directory, "exit 0");
     try {
         const { gate, gatedRuns } = gateProbe();
         await new GitExecutor(process.cwd(), gate).run(args);
         return gatedRuns.length;
     } finally {
-        if (originalPath === undefined) delete process.env.PATH;
-        else process.env.PATH = originalPath;
+        restoreEnv();
         await rm(directory, { force: true, recursive: true });
     }
 }
@@ -102,16 +124,11 @@ async function gatedRunCount(args: string[]): Promise<number> {
 /** Runs `run()` against a stub `git`, so the success hook is observable without a repository. */
 async function runWithStubGit(args: string[], script = "exit 0"): Promise<void> {
     const directory = await mkdtemp(join(tmpdir(), "intelligit-hook-git-"));
-    const executable = join(directory, "git");
-    const originalPath = process.env.PATH;
-    await writeFile(executable, `#!/bin/sh\n${script}\n`, "utf8");
-    await chmod(executable, 0o755);
-    process.env.PATH = `${directory}${delimiter}${originalPath ?? ""}`;
+    const restoreEnv = await installFakeGit(directory, script);
     try {
         await new GitExecutor(process.cwd()).run(args);
     } finally {
-        if (originalPath === undefined) delete process.env.PATH;
-        else process.env.PATH = originalPath;
+        restoreEnv();
         await rm(directory, { force: true, recursive: true });
     }
 }
@@ -339,14 +356,10 @@ describe("GitExecutor", () => {
         const directory = await mkdtemp(join(tmpdir(), "intelligit-blocking-git-"));
         const started = join(directory, "push-started");
         const release = join(directory, "push-release");
-        const originalPath = process.env.PATH;
-        await writeFile(
-            join(directory, "git"),
-            `#!/bin/sh\nif [ "$1" = "push" ]; then\n  : > "${started}"\n  while [ ! -f "${release}" ]; do sleep 0.05; done\nfi\nexit 0\n`,
-            "utf8",
+        const restoreEnv = await installFakeGit(
+            directory,
+            `if [ "$1" = "push" ]; then\n  : > "${started}"\n  while [ ! -f "${release}" ]; do sleep 0.05; done\nfi\nexit 0`,
         );
-        await chmod(join(directory, "git"), 0o755);
-        process.env.PATH = `${directory}${delimiter}${originalPath ?? ""}`;
         const executor = new GitExecutor(
             directory,
             new RepositoryMutationGate(new RepositoryMutationCoordinator(), new RepositoryLock()),
@@ -370,8 +383,7 @@ describe("GitExecutor", () => {
         } finally {
             await writeFile(release, "", "utf8");
             await push.catch(() => undefined);
-            if (originalPath === undefined) delete process.env.PATH;
-            else process.env.PATH = originalPath;
+            restoreEnv();
             await rm(directory, { force: true, recursive: true });
         }
     });
@@ -387,7 +399,6 @@ describe("GitExecutor", () => {
 
     itPosix("caps concurrent spawned processes at 6 per executor instance", async () => {
         const directory = await mkdtemp(join(tmpdir(), "intelligit-fake-git-concurrency-"));
-        const executable = join(directory, "git");
         const activeDir = join(directory, "active");
         const resultsDir = join(directory, "results");
         await mkdir(activeDir);
@@ -401,11 +412,8 @@ describe("GitExecutor", () => {
             `sleep 1`,
             `rm -f "${activeDir}/$id"`,
         ].join("\n");
-        await writeFile(executable, `#!/bin/sh\n${script}\n`, "utf8");
-        await chmod(executable, 0o755);
+        const restoreEnv = await installFakeGit(directory, script);
 
-        const originalPath = process.env.PATH;
-        process.env.PATH = `${directory}${delimiter}${originalPath ?? ""}`;
         const commandCount = 10;
         try {
             const executor = new GitExecutor(process.cwd());
@@ -413,8 +421,7 @@ describe("GitExecutor", () => {
                 Array.from({ length: commandCount }, (_, index) => executor.run([String(index)])),
             );
         } finally {
-            if (originalPath === undefined) delete process.env.PATH;
-            else process.env.PATH = originalPath;
+            restoreEnv();
         }
 
         const counts = await Promise.all(
@@ -427,6 +434,31 @@ describe("GitExecutor", () => {
 
         expect(observedMaxConcurrency).toBeGreaterThan(1);
         expect(observedMaxConcurrency).toBeLessThanOrEqual(6);
+    });
+
+    itPosix("runs a fake git whose script is still held open for writing", async () => {
+        // The reproduction of a CI-only `spawn ETXTBSY`. `execve` refuses any target a
+        // process still holds open for writing, and vitest's `threads` pool shares one
+        // file-descriptor table across concurrent test files -- so a sibling file forking
+        // mid-write kept a freshly written stub open past this exec, and whichever test
+        // lost that race died with `spawn ETXTBSY`. Holding the descriptor open here makes
+        // that condition deterministic instead of rare.
+        //
+        // Only Linux can fail this: macOS does not enforce ETXTBSY for these execs, which
+        // is exactly why the original defect was green on every developer machine.
+        const directory = await mkdtemp(join(tmpdir(), "intelligit-fake-git-busy-"));
+        const restoreEnv = await installFakeGit(directory, "echo held-open-ok");
+        const scriptPath = process.env.INTELLIGIT_FAKE_GIT_SCRIPT;
+        if (scriptPath === undefined) throw new Error("installFakeGit named no script");
+        const writer = await open(scriptPath, "r+");
+        try {
+            const output = await new GitExecutor(process.cwd()).run(["status"]);
+            expect(output).toContain("held-open-ok");
+        } finally {
+            await writer.close();
+            restoreEnv();
+            await rm(directory, { force: true, recursive: true });
+        }
     });
 });
 

@@ -423,6 +423,7 @@ export function RepositoryAccordion({
                     onFetch={() => postRepositoryCommand("fetch")}
                     onPull={() => postRepositoryCommand("pull")}
                     onPush={handlePush}
+                    currentBranchBehind={repository.currentBranchBehind}
                     commitContent={commitContent}
                     stashContent={stashContent}
                     shelfContent={shelfContent}
@@ -586,6 +587,7 @@ export function RepositoryAccordion({
                             onFetch={() => postRepositoryCommand("fetch")}
                             onPull={() => postRepositoryCommand("pull")}
                             onPush={handlePush}
+                            currentBranchBehind={repository.currentBranchBehind}
                             commitContent={commitContent}
                             stashContent={stashContent}
                             shelfContent={shelfContent}

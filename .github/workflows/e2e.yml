@@ -1,0 +1,72 @@
+name: E2E Flow Suite
+
+on:
+    push:
+        branches:
+            - main
+    pull_request:
+
+concurrency:
+    group: e2e-${{ github.event_name }}-${{ github.ref }}
+    cancel-in-progress: true
+
+permissions:
+    contents: read
+
+jobs:
+    # Layer 2 flow suite (PLAN.md step 21): real VS Code driven through Playwright's `_electron`.
+    #
+    # Runs through the digest-pinned container rather than natively on the runner, for the same
+    # reason `publish.yml`'s `visual` job does — one environment, everywhere. This suite launches a
+    # real Electron app under Xvfb, and that is exactly the surface where the two paths diverge: the
+    # round that added this workflow found four rows failing on Linux only, because
+    # `_electron.firstWindow()` can return before the window owns focus under Xvfb. A CI path that
+    # is not the local reproduction path turns a finding like that into one nobody can reproduce.
+    #
+    # The container also already carries Electron's system libraries; a bare runner would need its
+    # own install step, maintained separately and drifting from the image the developer runs.
+    # A GitHub runner is natively amd64, so `run.sh`'s platform pin costs nothing here — on an
+    # Apple Silicon developer machine the identical command runs emulated.
+    e2e:
+        runs-on: ubuntu-latest
+
+        # Ten flows, each launching and tearing down a real VS Code. The suite's own budget is
+        # 180s per test; the rest is the base image pull, `bun install`, and the VS Code download
+        # on a cold cache. Well above the observed cost, still far below the 6-hour default.
+        timeout-minutes: 45
+
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+              with:
+                  persist-credentials: false
+
+            # Keyed on the pin itself, so bumping `VSCODE_VERSION` invalidates the cache instead of
+            # silently testing the previous build. This is the container's own cache root
+            # (`run.sh` bind-mounts it to /cache/vscode), not a runner-side path.
+            - name: Cache the pinned VS Code build
+              uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+              with:
+                  path: ~/.cache/intelligit-e2e-container/vscode
+                  key: ${{ runner.os }}-vscode-${{ hashFiles('tests/e2e/hostFixtures/vscodeVersion.ts') }}
+                  restore-keys: |
+                      ${{ runner.os }}-vscode-
+
+            # `bun install` and `bun run build` run INSIDE the container: the repo is bind-mounted
+            # and native dependencies are platform-specific, so building on the runner would be
+            # overwritten by the container's own node_modules mount.
+            - name: Run the flow suite in the pinned container
+              run: ./tests/e2e/docker/run.sh 'bun install --frozen-lockfile && bun run build && xvfb-run -a bun run test:e2e'
+
+            # Traces and failure screenshots are the only way to diagnose a flow failure once the
+            # container is gone.
+            - name: Upload E2E failure artifacts
+              if: failure()
+              uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+              with:
+                  name: e2e-failures
+                  path: |
+                      playwright-report/
+                      test-results/
+                  if-no-files-found: ignore
+                  retention-days: 7

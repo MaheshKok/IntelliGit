@@ -14,7 +14,15 @@ import { handleSecretRequest } from "./handlers/secretHandler";
 import type { E2eRequest, E2eResponse } from "./protocol";
 import { errorResponse, parseE2eRequest } from "./protocol";
 import { generateSecretDigestSalt } from "./secretDigest";
-import { removeRequestFile, watchChannelDir, writeResponseFileAtomic } from "./transportFs";
+import {
+    listRequestNonces,
+    readRequestFile,
+    removeChannelReadyMarker,
+    removeRequestFile,
+    watchChannelDir,
+    writeChannelReadyMarker,
+    writeResponseFileAtomic,
+} from "./transportFs";
 import { E2eWebviewRegistry } from "./webviewBridge";
 
 /**
@@ -27,6 +35,20 @@ export interface E2eControlChannelHandle {
     readonly webviewRegistry: E2eWebviewRegistry;
     dispose(): void;
 }
+
+/**
+ * How long an answered request may keep having its response re-written before the channel gives up
+ * on it.
+ *
+ * Bounded in time rather than in attempts, because the useful bound is "someone is still waiting":
+ * the client abandons a request after 30s (`DEFAULT_RESPONSE_TIMEOUT_MS` in
+ * `tests/e2e/controlChannelClient.ts`), and a write that lands after that is delivered to nobody.
+ * An attempt count would instead encode the reconciliation tick rate -- three attempts is 150ms,
+ * which abandons a response path that was merely occupied for a moment, exactly the transient
+ * worth retrying. Past this window the request is dropped, so a durable failure such as a full
+ * volume costs a bounded burst rather than one failed write per tick for the life of the host.
+ */
+const DELIVERY_RETRY_WINDOW_MS = 30_000;
 
 /**
  * Activates the development-only E2E control channel when, and only when, all three gates
@@ -54,31 +76,95 @@ export function activateE2eControlChannel(
     const channelDir = gateResult.channelDir;
     const digestSalt = generateSecretDigestSalt();
 
-    const watcher = watchChannelDir(channelDir, (nonce, payload) => {
+    const dispatchedNonces = new Set<string>();
+    /**
+     * Answered requests whose response could not be written, with the delivery attempts spent so
+     * far. Retrying from here is what keeps a failed write from re-running the handler: the
+     * request file survives an undelivered response, so reconciliation offers the same nonce
+     * back, and re-dispatching it would seed a memento or store a secret a second time.
+     */
+    const pendingDeliveries = new Map<string, { response: E2eResponse; expiresAt: number }>();
+
+    /**
+     * Writes the response and consumes the request, keeping the response for another attempt when
+     * the write fails and the retry window has not closed. Never throws -- it is the tail of a
+     * floating promise, and what retries is the reconciliation loop, not a rejection handler.
+     */
+    const deliver = (nonce: string, response: E2eResponse, expiresAt: number): void => {
+        try {
+            // Response before removal: a request consumed ahead of its response is lost outright
+            // when the write fails, and leaves the client's timeout diagnostic blaming a watcher
+            // that did observe the request.
+            writeResponseFileAtomic(channelDir, nonce, response);
+            removeRequestFile(channelDir, nonce);
+            pendingDeliveries.delete(nonce);
+        } catch (error) {
+            console.error(
+                `E2E control channel failed to deliver the response to request "${nonce}": ${getErrorMessage(error)}`,
+            );
+            if (Date.now() >= expiresAt) {
+                // Dropping the cached response while keeping the nonce claimed makes every later
+                // reconciliation tick a no-op for this request -- it is neither re-answered nor
+                // re-delivered. Nothing is lost that was not already lost: the client stopped
+                // waiting when its own timeout elapsed.
+                pendingDeliveries.delete(nonce);
+                return;
+            }
+            pendingDeliveries.set(nonce, { response, expiresAt });
+        }
+    };
+
+    const dispatchOnce = (nonce: string, payload: unknown): void => {
+        if (dispatchedNonces.has(nonce)) {
+            // Already answered. A cached response means only the write failed, so this offer is
+            // the surviving request coming back -- retry the delivery alone, never the handler.
+            const pending = pendingDeliveries.get(nonce);
+            if (pending !== undefined) {
+                deliver(nonce, pending.response, pending.expiresAt);
+            }
+            return;
+        }
+        dispatchedNonces.add(nonce);
         // `dispatchRequest` turns every parse and handler failure into an error response, so it
-        // never rejects -- but the callback below is not covered by that. `removeRequestFile`
-        // and `writeResponseFileAtomic` are synchronous filesystem calls that can throw (the
-        // channel directory removed by test teardown while a request was in flight, a full
-        // volume, something already occupying the response path). A throw there, with no
-        // rejection handler attached, is an unhandled promise rejection in the extension host
-        // that names no request at all -- so it is caught and reported against its own nonce.
-        dispatchRequest(context, webviewRegistry, digestSalt, nonce, payload)
-            .then((response) => {
-                removeRequestFile(channelDir, nonce);
-                writeResponseFileAtomic(channelDir, nonce, response);
-            })
+        // never rejects, and `deliver` swallows its own filesystem failures. The rejection
+        // handler is the backstop for anything neither of them anticipated: without it, a throw
+        // on this floating promise is an unhandled rejection in the extension host that names no
+        // request at all.
+        void dispatchRequest(context, webviewRegistry, digestSalt, nonce, payload)
+            .then((response) => deliver(nonce, response, Date.now() + DELIVERY_RETRY_WINDOW_MS))
             .catch((error: unknown) => {
                 console.error(
-                    `E2E control channel failed to finalize request "${nonce}": ${getErrorMessage(error)}`,
+                    `E2E control channel failed to answer request "${nonce}": ${getErrorMessage(error)}`,
                 );
             });
-    });
+    };
+
+    // The watcher must exist before the scan: a file created between scan and watch would
+    // otherwise recreate the exact activation race this drain is fixing. `dispatchOnce`
+    // makes the overlap safe when both paths observe the same nonce.
+    const watcher = watchChannelDir(channelDir, dispatchOnce);
+    for (const nonce of listRequestNonces(channelDir)) {
+        let payload: unknown;
+        try {
+            payload = readRequestFile(channelDir, nonce);
+        } catch {
+            // Unreadable at drain time. Skipped silently rather than logged: the reconciliation
+            // loop started above reaches the same file on its next tick and reports it there,
+            // and logging here as well would name one nonce twice for a single bad request.
+            continue;
+        }
+        if (payload !== undefined) {
+            dispatchOnce(nonce, payload);
+        }
+    }
+    writeChannelReadyMarker(channelDir);
 
     return {
         active: true,
         webviewRegistry,
         dispose: () => {
             watcher.dispose();
+            removeChannelReadyMarker(channelDir);
             webviewRegistry.disposeAll();
             setE2eControlChannelActive(false);
         },

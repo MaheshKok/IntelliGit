@@ -32,14 +32,20 @@ import { ShelfService } from "../../../src/services/shelfService";
 import { createSanitizedGitEnv } from "../../fixtures/repo/seed";
 import {
     assertAheadBehindPostcondition,
+    assertAheadOnlyPostcondition,
     assertCleanPostcondition,
     assertConflictedPostcondition,
     assertDetachedHeadPostcondition,
     assertDirtyPostcondition,
     assertEmptyRepoPostcondition,
     assertMidRebasePostcondition,
+    assertPushedTipPostcondition,
+    assertRewrittenHistoryPostcondition,
     assertShelfConflictedPostcondition,
     assertShelfPopulatedPostcondition,
+    assertStaleLeasePostcondition,
+    DIRTY_FIXTURE,
+    PUSHED_TIP_FIXTURE,
     REPOSITORY_SCENARIO_IDS,
     REPOSITORY_SCENARIOS,
     type RepositoryScenarioId,
@@ -168,6 +174,34 @@ describe("dirty", () => {
         );
     });
 
+    it("exposes the exact status paths the dirty scenario creates, including rename source metadata", async () => {
+        const destination = await allocateDestination();
+        const workspace = await scenarioFor("dirty").prepare(destination);
+        scratchHomes.push(workspace.home);
+
+        const status = await git(
+            workspace.root,
+            ["status", "--porcelain=v1", "-z", "--untracked-files=all"],
+            workspace.env,
+        );
+        const records = status.split("\0").filter(Boolean);
+
+        // Porcelain -z emits the rename destination and source as separate records; the panel only
+        // renders the destination, so both records are checked to keep the fixture and oracle honest.
+        expect(records).toEqual(
+            expect.arrayContaining([
+                `A  ${DIRTY_FIXTURE.binaryPath}`,
+                `MM ${DIRTY_FIXTURE.mutablePath}`,
+                `R  ${DIRTY_FIXTURE.renamePath}`,
+                DIRTY_FIXTURE.renameFromPath,
+                `?? ${DIRTY_FIXTURE.crlfPath}`,
+                `?? ${DIRTY_FIXTURE.untrackedPath}`,
+            ]),
+        );
+        expect(records).toHaveLength(DIRTY_FIXTURE.visiblePaths.length + 1);
+        expect(records).not.toContain(`?? ${DIRTY_FIXTURE.ignoredPath}`);
+    });
+
     it("can fail: a clean workspace violates the dirty postcondition", async () => {
         const destination = await allocateDestination();
         const workspace = await scenarioFor("clean").prepare(destination);
@@ -293,6 +327,268 @@ describe("ahead-behind", () => {
         await expect(assertAheadBehindPostcondition(workspace.root, workspace.env)).rejects.toThrow(
             /ahead-behind scenario postcondition violated/,
         );
+    });
+});
+
+describe("ahead-only", () => {
+    it("puts local main exactly one commit ahead of its upstream without moving origin/main", async () => {
+        const destination = await allocateDestination();
+        const workspace = await scenarioFor("ahead-only").prepare(destination);
+        scratchHomes.push(workspace.home);
+
+        const counts = await git(
+            workspace.root,
+            ["rev-list", "--left-right", "--count", "main...@{upstream}"],
+            workspace.env,
+        );
+        expect(counts.split(/\s+/).map(Number)).toEqual([1, 0]);
+        expect(await git(workspace.root, ["status", "--porcelain"], workspace.env)).toBe("");
+
+        const localRemoteTracking = await git(
+            workspace.root,
+            ["rev-parse", "refs/remotes/origin/main"],
+            workspace.env,
+        );
+        const originHead = await git(
+            workspace.template!.originRoot,
+            ["rev-parse", "refs/heads/main"],
+            workspace.env,
+        );
+        expect(originHead).toBe(localRemoteTracking);
+    });
+
+    it("can fail: a clean zero-ahead state violates the ahead-only postcondition", async () => {
+        const destination = await allocateDestination();
+        const workspace = await scenarioFor("clean").prepare(destination);
+        scratchHomes.push(workspace.home);
+
+        await expect(
+            assertAheadOnlyPostcondition(workspace.root, workspace.template!.originRoot, workspace.env),
+        ).rejects.toThrow(/ahead-only scenario postcondition violated/);
+    });
+});
+
+describe("pushed-tip", () => {
+    it("puts a clean non-merge main tip on origin/main with no ahead/behind delta", async () => {
+        const destination = await allocateDestination();
+        const workspace = await scenarioFor("pushed-tip").prepare(destination);
+        scratchHomes.push(workspace.home);
+
+        const [counts, status, subject, parents, localRemoteTracking, originHead] = await Promise.all([
+            git(
+                workspace.root,
+                ["rev-list", "--left-right", "--count", "main...@{upstream}"],
+                workspace.env,
+            ),
+            git(workspace.root, ["status", "--porcelain"], workspace.env),
+            git(workspace.root, ["show", "-s", "--format=%s", "HEAD"], workspace.env),
+            git(workspace.root, ["show", "-s", "--format=%P", "HEAD"], workspace.env),
+            git(workspace.root, ["rev-parse", "refs/remotes/origin/main"], workspace.env),
+            git(workspace.template!.originRoot, ["rev-parse", "refs/heads/main"], workspace.env),
+        ]);
+
+        expect(counts.split(/\s+/).map(Number)).toEqual([0, 0]);
+        expect(status).toBe("");
+        expect(subject).toBe(PUSHED_TIP_FIXTURE.subject);
+        expect(parents.split(/\s+/)).toHaveLength(1);
+        expect(localRemoteTracking).toBe(originHead);
+        await expect(
+            assertPushedTipPostcondition(workspace.root, workspace.template!.originRoot, workspace.env),
+        ).resolves.toBeUndefined();
+    });
+
+    it("can fail: the unpushed ahead-only state violates the pushed-tip postcondition", async () => {
+        const destination = await allocateDestination();
+        const workspace = await scenarioFor("ahead-only").prepare(destination);
+        scratchHomes.push(workspace.home);
+
+        await expect(
+            assertPushedTipPostcondition(workspace.root, workspace.template!.originRoot, workspace.env),
+        ).rejects.toThrow(/pushed-tip scenario postcondition violated/);
+    });
+});
+
+describe("rewritten-history", () => {
+    it("rewrites origin/main to a real non-descendant commit without fetching locally", async () => {
+        const destination = await allocateDestination();
+        const workspace = await scenarioFor("rewritten-history").prepare(destination);
+        scratchHomes.push(workspace.home);
+
+        const localHead = await git(workspace.root, ["rev-parse", "HEAD"], workspace.env);
+        const localRemoteTracking = await git(
+            workspace.root,
+            ["rev-parse", "refs/remotes/origin/main"],
+            workspace.env,
+        );
+        const rewrittenOriginHead = await git(
+            workspace.template!.originRoot,
+            ["rev-parse", "refs/heads/main"],
+            workspace.env,
+        );
+
+        expect(localRemoteTracking).toBe(localHead);
+        expect(rewrittenOriginHead).not.toBe(localHead);
+        expect(
+            await gitFails(
+                workspace.template!.originRoot,
+                ["merge-base", "--is-ancestor", localHead, rewrittenOriginHead],
+                workspace.env,
+            ),
+        ).toBe(true);
+        await expect(
+            assertRewrittenHistoryPostcondition(
+                workspace.root,
+                workspace.template!.originRoot,
+                workspace.env,
+            ),
+        ).resolves.toBeUndefined();
+    });
+
+    it("can fail: an unrevised origin violates the rewritten-history postcondition", async () => {
+        const destination = await allocateDestination();
+        const workspace = await scenarioFor("dirty").prepare(destination);
+        scratchHomes.push(workspace.home);
+
+        await expect(
+            assertRewrittenHistoryPostcondition(
+                workspace.root,
+                workspace.template!.originRoot,
+                workspace.env,
+            ),
+        ).rejects.toThrow(/rewritten-history scenario postcondition violated/);
+    });
+
+    it("can fail: a normal descendant origin commit violates the non-fast-forward postcondition", async () => {
+        const destination = await allocateDestination();
+        const workspace = await scenarioFor("dirty").prepare(destination);
+        scratchHomes.push(workspace.home);
+        await git(workspace.root, ["reset", "--hard", "HEAD"], workspace.env);
+        await git(workspace.root, ["clean", "-fdx", "--quiet"], workspace.env);
+
+        const collaboratorClone = join(destination, "rewritten-history-descendant");
+        await git(
+            destination,
+            [
+                "clone",
+                "--quiet",
+                "--branch",
+                "main",
+                workspace.template!.originRoot,
+                collaboratorClone,
+            ],
+            workspace.env,
+        );
+        await writeFile(join(collaboratorClone, "normal-origin-advance.txt"), "advance\n", "utf8");
+        await git(collaboratorClone, ["add", "normal-origin-advance.txt"], workspace.env);
+        await git(
+            collaboratorClone,
+            ["commit", "--quiet", "-m", "Normal origin advance"],
+            workspace.env,
+        );
+        await git(collaboratorClone, ["push", "--quiet", "origin", "main"], workspace.env);
+        await rm(collaboratorClone, { recursive: true, force: true });
+
+        await expect(
+            assertRewrittenHistoryPostcondition(
+                workspace.root,
+                workspace.template!.originRoot,
+                workspace.env,
+            ),
+        ).rejects.toThrow(/rewritten-history scenario postcondition violated/);
+    });
+});
+
+describe("stale-lease", () => {
+    it("leaves a local rewrite and a collaborator commit beyond the last fetched lease", async () => {
+        const destination = await allocateDestination();
+        const workspace = await scenarioFor("stale-lease").prepare(destination);
+        scratchHomes.push(workspace.home);
+
+        const localHead = await git(workspace.root, ["rev-parse", "HEAD"], workspace.env);
+        const lastFetched = await git(
+            workspace.root,
+            ["rev-parse", "refs/remotes/origin/main"],
+            workspace.env,
+        );
+        const collaboratorHead = await git(
+            workspace.template!.originRoot,
+            ["rev-parse", "refs/heads/main"],
+            workspace.env,
+        );
+
+        expect(localHead).not.toBe(lastFetched);
+        expect(collaboratorHead).not.toBe(lastFetched);
+        expect(
+            await gitFails(
+                workspace.template!.originRoot,
+                ["merge-base", "--is-ancestor", lastFetched, collaboratorHead],
+                workspace.env,
+            ),
+        ).toBe(false);
+        await expect(
+            assertStaleLeasePostcondition(
+                workspace.root,
+                workspace.template!.originRoot,
+                workspace.env,
+            ),
+        ).resolves.toBeUndefined();
+    });
+
+    it("can fail: a rewritten origin without a collaborator descendant violates the stale lease postcondition", async () => {
+        const destination = await allocateDestination();
+        const workspace = await scenarioFor("rewritten-history").prepare(destination);
+        scratchHomes.push(workspace.home);
+
+        await expect(
+            assertStaleLeasePostcondition(
+                workspace.root,
+                workspace.template!.originRoot,
+                workspace.env,
+            ),
+        ).rejects.toThrow(/stale-lease scenario postcondition violated/);
+    });
+
+    it("can fail: a rewritten origin without an ancestor lease violates the stale lease postcondition", async () => {
+        const destination = await allocateDestination();
+        const workspace = await scenarioFor("dirty").prepare(destination);
+        scratchHomes.push(workspace.home);
+        await git(workspace.root, ["reset", "--hard", "HEAD"], workspace.env);
+        await git(workspace.root, ["clean", "-fdx", "--quiet"], workspace.env);
+
+        await writeFile(join(workspace.root, "local-lease-rewrite.txt"), "local rewrite\n", "utf8");
+        await git(workspace.root, ["add", "local-lease-rewrite.txt"], workspace.env);
+        await git(workspace.root, ["commit", "--quiet", "--amend", "--no-edit"], workspace.env);
+
+        const collaboratorClone = join(destination, "stale-lease-rewrite");
+        await git(
+            destination,
+            [
+                "clone",
+                "--quiet",
+                "--branch",
+                "main",
+                workspace.template!.originRoot,
+                collaboratorClone,
+            ],
+            workspace.env,
+        );
+        await writeFile(join(collaboratorClone, "rewritten-origin.txt"), "rewritten\n", "utf8");
+        await git(collaboratorClone, ["add", "rewritten-origin.txt"], workspace.env);
+        await git(collaboratorClone, ["commit", "--quiet", "--amend", "--no-edit"], workspace.env);
+        await git(
+            collaboratorClone,
+            ["push", "--quiet", "--force", "origin", "main"],
+            workspace.env,
+        );
+        await rm(collaboratorClone, { recursive: true, force: true });
+
+        await expect(
+            assertStaleLeasePostcondition(
+                workspace.root,
+                workspace.template!.originRoot,
+                workspace.env,
+            ),
+        ).rejects.toThrow(/stale-lease scenario postcondition violated/);
     });
 });
 

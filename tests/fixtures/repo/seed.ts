@@ -55,6 +55,32 @@ export const FIXTURE_REFS = {
     remote: "origin",
 } as const;
 
+const DIRTY_MUTABLE_PATH = "mutable.txt";
+const DIRTY_UNTRACKED_PATH = "untracked.txt";
+const DIRTY_BINARY_PATH = "binary.bin";
+const DIRTY_CRLF_PATH = "crlf.txt";
+const DIRTY_RENAME_FROM_PATH = "topic.txt";
+const DIRTY_RENAME_PATH = "topic-renamed.txt";
+const DIRTY_IGNORED_PATH = "ignored/build.log";
+
+/** The repository-relative paths the dirty fixture creates, including the panel-visible subset. */
+export const DIRTY_FIXTURE = {
+    mutablePath: DIRTY_MUTABLE_PATH,
+    untrackedPath: DIRTY_UNTRACKED_PATH,
+    binaryPath: DIRTY_BINARY_PATH,
+    crlfPath: DIRTY_CRLF_PATH,
+    renameFromPath: DIRTY_RENAME_FROM_PATH,
+    renamePath: DIRTY_RENAME_PATH,
+    ignoredPath: DIRTY_IGNORED_PATH,
+    visiblePaths: [
+        DIRTY_MUTABLE_PATH,
+        DIRTY_UNTRACKED_PATH,
+        DIRTY_BINARY_PATH,
+        DIRTY_CRLF_PATH,
+        DIRTY_RENAME_PATH,
+    ] as const,
+} as const;
+
 /** Bytes 0-255 in order: guarantees a NUL byte, which is git's own binary-content heuristic, without
  * depending on a real image or archive fixture. */
 const BINARY_FIXTURE_CONTENT = Buffer.from(Array.from({ length: 256 }, (_, byte) => byte));
@@ -97,6 +123,12 @@ export interface FixtureTemplate extends SanitizedGitEnv {
     readonly originRoot: string;
     /** Named commit SHAs; see {@link FixtureCommits}. */
     readonly commits: FixtureCommits;
+}
+
+/** Optional ownership context for a seeded repository's scratch HOME. */
+export interface SeedFixtureTemplateOptions {
+    /** Parent directory under which the seed creates its scratch HOME. */
+    readonly homeParent?: string;
 }
 
 /**
@@ -186,11 +218,11 @@ export async function cleanUpThenRethrow(scratchPath: string, error: unknown): P
  */
 export async function seedFixtureTemplate(
     destination: string,
-    options?: { readonly homeParent?: string },
+    options?: SeedFixtureTemplateOptions,
 ): Promise<FixtureTemplate> {
     await ensureEmptyDestination(destination);
 
-    const { env, home } = await createSanitizedGitEnv({ homeParent: options?.homeParent });
+    const { env, home } = await createSanitizedGitEnv(options);
     try {
         const root = path.join(destination, "workspace");
         await initializeWorkingRepository(root, env);
@@ -492,26 +524,34 @@ async function seedDirtyWorkingTree(history: HistoryEnv): Promise<void> {
     const { root, env } = history;
 
     // Ignored: matches the `ignored/` pattern committed in `.gitignore` during `Initial commit`.
-    await writeTrackedFile(root, "ignored/build.log", "throwaway build output\n");
+    await writeTrackedFile(root, DIRTY_FIXTURE.ignoredPath, "throwaway build output\n");
 
     // Untracked: new, not ignore-matched, never staged.
-    await writeTrackedFile(root, "untracked.txt", "untracked content\n");
+    await writeTrackedFile(root, DIRTY_FIXTURE.untrackedPath, "untracked content\n");
 
     // Staged-and-unstaged: one `git add` captures the first edit; a further edit on top is left
     // unstaged, so `git status --porcelain` reports `MM`.
-    await writeTrackedFile(root, "mutable.txt", "staged change\n");
-    await git(root, ["add", "mutable.txt"], env);
-    await writeTrackedFile(root, "mutable.txt", "staged change\nplus unstaged addition\n");
+    await writeTrackedFile(root, DIRTY_FIXTURE.mutablePath, "staged change\n");
+    await git(root, ["add", DIRTY_FIXTURE.mutablePath], env);
+    await writeTrackedFile(
+        root,
+        DIRTY_FIXTURE.mutablePath,
+        "staged change\nplus unstaged addition\n",
+    );
 
     // Binary: staged as a new file, never committed.
-    await writeBinaryFile(root, "binary.bin", BINARY_FIXTURE_CONTENT);
-    await git(root, ["add", "binary.bin"], env);
+    await writeBinaryFile(root, DIRTY_FIXTURE.binaryPath, BINARY_FIXTURE_CONTENT);
+    await git(root, ["add", DIRTY_FIXTURE.binaryPath], env);
 
     // CRLF: written with literal `\r\n` and left untracked, so nothing -- `core.autocrlf` is
     // pinned off regardless -- can normalize it before a test reads the raw bytes back off disk.
-    await writeTrackedFile(root, "crlf.txt", "first line\r\nsecond line\r\nthird line\r\n");
+    await writeTrackedFile(
+        root,
+        DIRTY_FIXTURE.crlfPath,
+        "first line\r\nsecond line\r\nthird line\r\n",
+    );
 
     // Renamed: `topic.txt` reached `main` through the topic-branch merge above, so this rename is
     // staged against real tracked history rather than a same-commit synthetic file.
-    await git(root, ["mv", "topic.txt", "topic-renamed.txt"], env);
+    await git(root, ["mv", DIRTY_FIXTURE.renameFromPath, DIRTY_FIXTURE.renamePath], env);
 }

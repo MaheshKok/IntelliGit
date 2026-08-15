@@ -39,6 +39,7 @@ type TabBarMockProps = {
     onFetch?: () => void;
     onPull?: () => void;
     onPush?: () => void;
+    currentBranchBehind?: number;
 };
 
 let postMessage: ReturnType<typeof vi.fn>;
@@ -223,6 +224,10 @@ async function renderApp(): Promise<void> {
                     <button aria-label="common.pull" onClick={props.onPull} />
                     <button aria-label="common.push" onClick={props.onPush} />
                 </div>
+                {/* Renders the raw prop -- including the "unset" sentinel -- so that dropping
+                    `currentBranchBehind` from the accordion's TabBar call is a visible failure
+                    rather than a value that quietly defaults to zero. */}
+                <div data-testid="tabbar-behind">{props.currentBranchBehind ?? "unset"}</div>
                 <div>{props.commitContent}</div>
                 <div>{props.stashContent}</div>
                 <div>{props.shelfContent}</div>
@@ -410,6 +415,25 @@ describe("commit panel multi-repository view", () => {
         expect(document.querySelectorAll('[data-testid="repository-accordion"]')).toHaveLength(2);
         expect(row("/repo-a").textContent).toContain("Repo A");
         expect(row("/repo-b").textContent).toContain("Repo B");
+    });
+
+    // Covers the seam, not the leaf: `TabBar` renders whatever behind count it is handed, so the
+    // remaining way to lose the pull count is for the accordion to stop handing it over. That
+    // deletion is invisible to a test that passes the prop to `TabBar` directly.
+    it("hands each repository's behind count to its own tab bar", async () => {
+        await renderApp();
+        await hydrateTwoRepositories();
+        await sendHostMessage({ ...snapshot("/repo-a", "Repo A", "src/a.ts"), currentBranchBehind: 5 });
+
+        const behindCounts = Array.from(
+            document.querySelectorAll('[data-testid="tabbar-behind"]'),
+        ).map((node) => node.textContent);
+        // Only the expanded repository mounts a tab bar, so this is the one that must carry the
+        // count. "unset" here would mean the prop was dropped; "0" would mean the accordion
+        // forwarded a stale or hardcoded value instead of the snapshot's.
+        expect(behindCounts, "the accordion must forward currentBranchBehind to TabBar").toEqual([
+            "5",
+        ]);
     });
 
     it("renders a worktree's short name before its local branch", async () => {

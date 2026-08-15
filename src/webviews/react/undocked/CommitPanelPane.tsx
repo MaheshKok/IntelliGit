@@ -90,6 +90,7 @@ export function CommitPanelPane({
                     onFetch={onFetch}
                     onPull={onPull}
                     onPush={onPush}
+                    currentBranchBehind={cpState.currentBranchBehind}
                     onDock={onDock}
                     commitContent={
                         <CommitTab

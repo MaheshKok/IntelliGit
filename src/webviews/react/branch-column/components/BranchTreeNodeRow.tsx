@@ -13,6 +13,7 @@ import { TreeFolderIcon } from "../../shared/components/TreeIcons";
 import { JETBRAINS_UI, SHADOW, Z_INDEX } from "../../shared/tokens";
 import { resolveFolderIcon } from "../../shared/utils/folderIcons";
 import { getSettings } from "../../shared/settings";
+import { t } from "../../shared/i18n";
 import {
     BRANCH_TREE_GUIDE_BASE,
     BRANCH_TREE_INDENT_BASE,
@@ -98,14 +99,17 @@ function TrackingBadge({ branch }: { branch: Branch }): React.ReactElement | nul
     React.useEffect(() => clearTooltipTimer, [clearTooltipTimer]);
 
     if (branch.ahead <= 0 && branch.behind <= 0) return null;
-    const tooltipParts: string[] = [];
-    if (branch.behind > 0) {
-        tooltipParts.push(`${branch.behind} incoming commit${branch.behind === 1 ? "" : "s"}`);
-    }
-    if (branch.ahead > 0) {
-        tooltipParts.push(`${branch.ahead} outgoing commit${branch.ahead === 1 ? "" : "s"}`);
-    }
-    const tooltipText = tooltipParts.join(" and ");
+    // Each direction is its own pluralized key so a locale picks its own categories --
+    // Russian and Polish need `few`/`many`, which an English `=== 1 ? "" : "s"` rule
+    // cannot express. The two-direction case goes through a third key rather than a
+    // literal joiner, because " and " is word order as much as it is a word.
+    const incoming =
+        branch.behind > 0 ? t("branch.tracking.incoming", { count: branch.behind }) : "";
+    const outgoing = branch.ahead > 0 ? t("branch.tracking.outgoing", { count: branch.ahead }) : "";
+    const tooltipText =
+        incoming && outgoing
+            ? t("branch.tracking.combined", { incoming, outgoing })
+            : incoming || outgoing;
 
     /** Delays tooltip display using current settings while keeping pointer fallback positioning stable. */
     const showTooltip = (event: React.PointerEvent<HTMLElement>): void => {

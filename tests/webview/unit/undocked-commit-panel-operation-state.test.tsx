@@ -145,4 +145,19 @@ describe("undocked commit-panel operation state", () => {
         expect(mounted.container.textContent).not.toContain("Continue Rebase");
         unmount(mounted.root, mounted.container);
     });
+
+    // The undocked half of the same seam the accordion covers: `TabBar` renders whatever behind
+    // count it is given, so the way to lose the pull count here is for this pane to stop reading
+    // it off `cpState`. Rendering the real `TabBar` is what makes that deletion visible.
+    it("hands the undocked pane's behind count to the pull button", () => {
+        const cpState = {
+            ...initialCommitPanelState,
+            currentBranchBehind: 6,
+        } as unknown as CommitPanelState;
+        const mounted = renderPane(cpState);
+
+        const badge = mounted.container.querySelector('[data-testid="pull-behind-count"]');
+        expect(badge?.textContent, "the undocked pane must forward currentBranchBehind").toBe("↓6");
+        unmount(mounted.root, mounted.container);
+    });
 });

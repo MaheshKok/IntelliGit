@@ -341,5 +341,12 @@
     "review.card.unhappyTitle": "很抱歉。",
     "review.card.unhappyBody": "告诉我们缺少什么，我们会跟进。",
     "review.card.reportIssue": "报告问题",
-    "review.card.rateAnyway": "或在应用市场评分"
+    "review.card.rateAnyway": "或在应用市场评分",
+    "branch.tracking.incoming": {
+        "other": "{count} 个传入提交"
+    },
+    "branch.tracking.outgoing": {
+        "other": "{count} 个传出提交"
+    },
+    "branch.tracking.combined": "{incoming}，{outgoing}"
 }

@@ -15,6 +15,7 @@ import {
     isValidNonce,
     nonceFromRequestFilename,
     readRequestFile,
+    removeChannelReadyMarker,
     removeRequestFile,
     watchChannelDir,
     writeResponseFileAtomic,
@@ -167,12 +168,48 @@ describe("readRequestFile / removeRequestFile", () => {
         expect(readRequestFile(channelDir, "missing")).toBeUndefined();
     });
 
+    // The two failures below must stay distinguishable, and that distinction is the whole
+    // contract: "the file is gone" is a routine race with a prior tick that already consumed it,
+    // while "the file is here and unreadable" is a request that will never be answered. Both
+    // callers -- the reconciliation loop and the activation drain -- skip the nonce either way,
+    // so the ONLY thing that separates a logged, diagnosable failure from silence is which of
+    // these two shapes `readRequestFile` produces. Collapsing the parse failure into `undefined`
+    // deletes the caller's ability to report it, and the caller cannot recover the distinction:
+    // by the time it holds `undefined` the reason is already gone.
+    it("distinguishes an unreadable request from an absent one, so only the former can be reported", () => {
+        writeFileSync(join(channelDir, "malformed.request.json"), '{"nonce":', "utf8");
+
+        expect(() => readRequestFile(channelDir, "malformed")).toThrow(SyntaxError);
+        expect(readRequestFile(channelDir, "absent")).toBeUndefined();
+    });
+
     it("removeRequestFile deletes the file and is a no-op when it is already gone", () => {
         const path = join(channelDir, "n1.request.json");
         writeFileSync(path, "{}", "utf8");
         removeRequestFile(channelDir, "n1");
         expect(existsSync(path)).toBe(false);
         expect(() => removeRequestFile(channelDir, "n1")).not.toThrow();
+    });
+});
+
+describe("removeChannelReadyMarker", () => {
+    let channelDir: string;
+
+    beforeEach(() => {
+        channelDir = mkdtempSync(join(tmpdir(), "intelligit-e2e-transport-test-"));
+    });
+
+    afterEach(() => {
+        rmSync(channelDir, { recursive: true, force: true });
+    });
+
+    it("removes the marker and tolerates a missing marker", () => {
+        const markerPath = join(channelDir, ".e2e-channel-ready");
+        writeFileSync(markerPath, "ready\n", "utf8");
+
+        removeChannelReadyMarker(channelDir);
+        expect(existsSync(markerPath)).toBe(false);
+        expect(() => removeChannelReadyMarker(channelDir)).not.toThrow();
     });
 });
 
@@ -235,5 +272,31 @@ describe("watchChannelDir", () => {
         await new Promise((resolve) => setTimeout(resolve, 200));
 
         expect(onRequest).not.toHaveBeenCalled();
+    });
+
+    // Reconciliation is a poll, not an event, and a genuinely malformed request is never
+    // consumed -- so this file is re-read on every tick for as long as the channel is up. That
+    // makes the log's DEDUPLICATION load-bearing rather than cosmetic: reporting per read buries
+    // the host output at the reconciliation interval, which is where the real diagnostic for
+    // every other failure also lands. The window below spans several ticks precisely so an
+    // undeduplicated log cannot pass by being fast enough to only fire once.
+    it("reports a persistently unreadable request once, not once per reconciliation tick", async () => {
+        const errors = vi.spyOn(console, "error").mockImplementation(() => undefined);
+        const onRequest = vi.fn();
+        writeFileSync(join(channelDir, "stuck.request.json"), '{"nonce":', "utf8");
+
+        const watcher = watchChannelDir(channelDir, onRequest);
+        await new Promise((resolve) => setTimeout(resolve, 400));
+        watcher.dispose();
+
+        const stuckReports = errors.mock.calls.filter(
+            (call) => typeof call[0] === "string" && call[0].includes('"stuck"'),
+        );
+        errors.mockRestore();
+
+        // Counted, never matched against a quoted expectation: the assertion's own diff prints
+        // the message, so presence proves nothing about how many times it was emitted.
+        expect(stuckReports).toHaveLength(1);
+        expect(onRequest, "an unreadable request must never be dispatched").not.toHaveBeenCalled();
     });
 });

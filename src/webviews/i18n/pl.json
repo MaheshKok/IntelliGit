@@ -362,5 +362,18 @@
     "review.card.unhappyTitle": "Przykro nam to słyszeć.",
     "review.card.unhappyBody": "Napisz, czego brakuje, a przyjrzymy się temu.",
     "review.card.reportIssue": "Zgłoś problem",
-    "review.card.rateAnyway": "Albo oceń w portalu marketplace"
+    "review.card.rateAnyway": "Albo oceń w portalu marketplace",
+    "branch.tracking.incoming": {
+        "one": "{count} przychodzący commit",
+        "few": "{count} przychodzące commity",
+        "many": "{count} przychodzących commitów",
+        "other": "{count} przychodzących commitów"
+    },
+    "branch.tracking.outgoing": {
+        "one": "{count} wychodzący commit",
+        "few": "{count} wychodzące commity",
+        "many": "{count} wychodzących commitów",
+        "other": "{count} wychodzących commitów"
+    },
+    "branch.tracking.combined": "{incoming} i {outgoing}"
 }
