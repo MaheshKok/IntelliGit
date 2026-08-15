@@ -991,7 +991,7 @@
         "lint:strict": "eslint src scripts --max-warnings=0",
         "lint:complexity": "eslint \"src/**/*.{ts,tsx}\" --max-warnings=0",
         "react-doctor": "react-doctor -y",
-        "hooks:install": "git config core.hooksPath .githooks",
+        "hooks:install": "git config core.hooksPath .githooks || echo 'hooks:install: skipped -- no reachable git directory'",
         "postinstall": "npm run hooks:install",
         "deps:check": "knip --no-exit-code",
         "deps:check:strict": "knip",

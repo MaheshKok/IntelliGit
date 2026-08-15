@@ -77,10 +77,13 @@ docs/**
 DESIGN.md
 PRODUCT.md
 
-# Local tool output. Both are gitignored, which is NOT enough -- vsce packages
-# the working directory, not the git index, so an ignored directory still ships
-# unless it is named here too.
+# Local tool output. All three are gitignored, which is NOT enough -- vsce
+# packages the working directory, not the git index, so an ignored directory
+# still ships unless it is named here too. `graphify-out/` is GitNexus's
+# analysis output (it does NOT live under the already-listed `.gitnexus/**`):
+# 9 MB of graph.json plus caches, and it was reaching the .vsix.
 .codebase-memory/**
+graphify-out/**
 test-results/**
 
 # Git files
