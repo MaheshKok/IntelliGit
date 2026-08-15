@@ -143,6 +143,61 @@ describe("settleRootSubtree", () => {
         expect(page.elapsed()).toBeGreaterThanOrEqual(MAX_WAIT_MS);
     });
 
+    it("can fail: a quiet frame arriving past the budget rejects instead of resolving", async () => {
+        // Quiet time is inferred from two samples, so a single stalled frame satisfies it from
+        // evidence that is merely stale rather than settled. Consulting quiet before the deadline
+        // therefore lets that one frame resolve at any elapsed time at all -- 3s, 30s, whatever the
+        // jank was -- which leaves `maxWaitMs` bounding nothing while its message still quotes it.
+        const page = fakePage();
+        let outcome: string | undefined;
+        let resolved = false;
+        void settleRootSubtree({ minStableMs: MIN_STABLE_MS, maxWaitMs: MAX_WAIT_MS }).then(
+            () => {
+                resolved = true;
+            },
+            (error: Error) => {
+                outcome = error.message;
+            },
+        );
+
+        page.frame(1); // first frame: always counts as a change, starts the quiet period
+        await Promise.resolve();
+        expect(resolved).toBe(false);
+
+        // One stalled frame, markup untouched across it. Both conditions now hold at once.
+        page.frame(MAX_WAIT_MS);
+        await Promise.resolve();
+
+        expect(resolved).toBe(false);
+        expect(outcome).toMatch(/did not settle under "#root" within 3000ms/);
+    });
+
+    it("can fail: a quiet frame arriving inside the budget still resolves", async () => {
+        // The far side of the same boundary, so the deadline cannot be "tightened" into rejecting
+        // everything: one millisecond earlier, the identical stalled frame must settle. Without
+        // this the every-other test sits within 210ms of the start and a deadline mutated to half
+        // the budget would go unnoticed.
+        const page = fakePage();
+        let outcome: string | undefined;
+        let resolved = false;
+        void settleRootSubtree({ minStableMs: MIN_STABLE_MS, maxWaitMs: MAX_WAIT_MS }).then(
+            () => {
+                resolved = true;
+            },
+            (error: Error) => {
+                outcome = error.message;
+            },
+        );
+
+        page.frame(1);
+        await Promise.resolve();
+        page.frame(MAX_WAIT_MS - 2); // lands at 2999ms -- one millisecond inside the budget
+        await Promise.resolve();
+
+        expect(outcome).toBeUndefined();
+        expect(resolved).toBe(true);
+    });
+
     it("stops scheduling frames once it has settled", async () => {
         const page = fakePage();
         let resolved = false;

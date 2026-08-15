@@ -25,6 +25,11 @@ export interface SettleOptions {
  *   measured resolving in ~20ms against renders deferred by 100-250ms: it was satisfied by
  *   "nothing has changed yet" as readily as by "nothing will change again". Gating on each
  *   frame's own timestamp keeps the requirement meaningful whatever the page's frame rate.
+ * - **The deadline is checked before the quiet period, and that order is load-bearing.** Quiet
+ *   time is inferred from two samples, so a single stalled frame -- one long jank, one throttled
+ *   tab -- can satisfy `minStableMs` from evidence that is merely stale, and checking it first
+ *   would let the promise resolve at any elapsed time whatsoever. `maxWaitMs` would then bound
+ *   nothing while the rejection message went on quoting it.
  */
 export function settleRootSubtree({ minStableMs, maxWaitMs }: SettleOptions): Promise<void> {
     return new Promise<void>((resolve, reject) => {
@@ -41,16 +46,16 @@ export function settleRootSubtree({ minStableMs, maxWaitMs }: SettleOptions): Pr
                 lastChangeTime = now;
             }
 
-            if (now - lastChangeTime >= minStableMs) {
-                resolve();
-                return;
-            }
             if (now - startTime >= maxWaitMs) {
                 reject(
                     new Error(
                         `Visual harness fixture render did not settle under "#root" within ${maxWaitMs}ms.`,
                     ),
                 );
+                return;
+            }
+            if (now - lastChangeTime >= minStableMs) {
+                resolve();
                 return;
             }
             requestAnimationFrame(tick);
