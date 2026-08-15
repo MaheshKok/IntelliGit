@@ -146,6 +146,32 @@ export async function createSanitizedGitEnv(options?: {
 }
 
 /**
+ * Removes a scratch path allocated before a failure, then rethrows that failure.
+ *
+ * The rethrow is the whole point, and the `try` around the removal is what protects it. `rm` can
+ * reject on its own account -- a path the filesystem refuses, a permission change, a busy handle --
+ * and a bare `await rm(...)` inside a `catch` block lets that rejection REPLACE the error being
+ * handled. The caller is then told the cleanup failed and never learns why the seed failed, which
+ * is precisely the defect the recorder tests' teardown used to have: a `TypeError` thrown while
+ * removing directories displaced the seeding error it existed to report. A cleanup failure is
+ * strictly less informative than the failure that caused it, so it is reported on the side and
+ * never propagated.
+ */
+export async function cleanUpThenRethrow(scratchPath: string, error: unknown): Promise<never> {
+    try {
+        await rm(scratchPath, { recursive: true, force: true });
+    } catch (cleanupError) {
+        // Reported, not swallowed: a leaked scratch directory is worth knowing about, but not at
+        // the cost of the error below, which is the one that explains the failure.
+        console.warn(
+            `Failed to remove the scratch path ${scratchPath} after an error; ` +
+                `it has been leaked. Cleanup failure: ${String(cleanupError)}`,
+        );
+    }
+    throw error;
+}
+
+/**
  * Builds the fixture repository template into `destination`: a working-tree repository at
  * `<destination>/workspace` with the history, branches, tag, dirty working tree, and stash entries
  * PLAN.md Phase 1 step 7 requires, plus a bare `origin` at `<destination>/origin.git` that `main`
@@ -204,8 +230,7 @@ export async function seedFixtureTemplate(
         // by default. A caller cleaning up after this rejection therefore cannot reach it, and it
         // has not been handed the path either: the only reference dies with this frame. Remove it
         // here or every failed seed leaks a directory for the lifetime of the machine.
-        await rm(home, { recursive: true, force: true });
-        throw error;
+        return await cleanUpThenRethrow(home, error);
     }
 }
 

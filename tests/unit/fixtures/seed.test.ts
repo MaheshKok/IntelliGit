@@ -17,9 +17,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import {
+    cleanUpThenRethrow,
     createSanitizedGitEnv,
     FIXTURE_REFS,
     seedFixtureTemplate,
@@ -431,4 +432,60 @@ describe("seedFixtureTemplate failure cleanup", () => {
 
         expect(await readdir(homeParent)).toEqual([]);
     }, 30_000);
+});
+
+/**
+ * The cleanup path's own failure mode, which the test above cannot reach: it drives a SUCCESSFUL
+ * removal, so nothing there would notice if a failed removal replaced the error being reported.
+ *
+ * `rm` failing is not hypothetical -- a busy handle, a revoked permission, a path the filesystem
+ * refuses -- and a bare `await rm(...)` in a `catch` block propagates that rejection instead of the
+ * error it was handling. The caller then learns that cleanup failed and never learns why the seed
+ * did, which is the same displacement the recorder tests' teardown used to suffer.
+ *
+ * The injector is a 300-character path segment. `NAME_MAX` is 255 on macOS and Linux alike, so the
+ * filesystem itself rejects it with `ENAMETOOLONG` for root and non-root alike -- unlike a
+ * chmod-based injector, which a container's root user ignores outright. Verified that `force: true`
+ * does not absorb it: `force` only ignores a path that does not exist.
+ */
+describe("cleanUpThenRethrow", () => {
+    const allocatedScratchRoots: string[] = [];
+
+    afterAll(async () => {
+        await Promise.all(
+            allocatedScratchRoots.map((scratchPath) =>
+                rm(scratchPath, { recursive: true, force: true }),
+            ),
+        );
+    });
+
+    it("reports a failed removal without letting it replace the original error", async () => {
+        const unremovable = join(tmpdir(), "n".repeat(300));
+        const seedingFailure = new Error("git init exploded");
+        const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+        try {
+            // Identity, not message matching: a rejection carrying the ENAMETOOLONG error would
+            // still be "an Error", and asserting the exact instance is what makes displacement
+            // detectable.
+            await expect(cleanUpThenRethrow(unremovable, seedingFailure)).rejects.toBe(
+                seedingFailure,
+            );
+            expect(warn).toHaveBeenCalledTimes(1);
+            expect(String(warn.mock.calls[0]?.[0])).toContain("ENAMETOOLONG");
+        } finally {
+            warn.mockRestore();
+        }
+    });
+
+    it("removes the path before rethrowing", async () => {
+        const workDir = await mkdtemp(join(tmpdir(), "intelligit-cleanup-rethrow-test-"));
+        allocatedScratchRoots.push(workDir);
+        const scratchPath = join(workDir, "scratch");
+        await mkdir(scratchPath);
+
+        await expect(cleanUpThenRethrow(scratchPath, new Error("boom"))).rejects.toThrow("boom");
+
+        expect(await readdir(workDir)).toEqual([]);
+    });
 });
