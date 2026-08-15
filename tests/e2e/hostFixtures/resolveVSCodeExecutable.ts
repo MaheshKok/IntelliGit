@@ -75,6 +75,19 @@ function vscodeCachePath(): string {
 }
 
 /**
+ * Resolves the VS Code build requested by the caller without changing the pinned default.
+ * Empty and whitespace-only overrides are treated as unset so a blank CI variable cannot select an
+ * invalid build or turn a gating run into an implicit latest-version run.
+ */
+export function resolveVSCodeVersion(environment: NodeJS.ProcessEnv = process.env): string {
+    // The TRIMMED value is what gets returned, not the raw one: a CI variable carrying a trailing
+    // space would otherwise be judged non-empty here and then handed to the downloader verbatim,
+    // which resolves no build at all.
+    const requestedVersion = environment.INTELLIGIT_VSCODE_VERSION?.trim();
+    return requestedVersion ? requestedVersion : VSCODE_VERSION;
+}
+
+/**
  * Fails loudly if `executablePath` is inside `repoRoot`. Without this the
  * only symptom of a regression is a fixture full of the wrong theme's
  * colours under the right theme's name -- which is precisely the silent
@@ -100,14 +113,18 @@ function assertExecutableIsOutsideRepo(executablePath: string, repoRoot: string)
 }
 
 /**
- * Resolves the pinned VS Code executable, downloading it on first use, and
- * verifies it is outside `repoRoot` before returning it.
+ * Resolves the requested VS Code executable, downloading it on first use, and verifies it is
+ * outside `repoRoot` before returning it. Omitting `version` preserves the pinned-build default
+ * used by existing callers; comparison checks pass an explicit version for each side.
  */
-export async function resolveVSCodeExecutable(repoRoot: string): Promise<string> {
+export async function resolveVSCodeExecutable(
+    repoRoot: string,
+    version = resolveVSCodeVersion(),
+): Promise<string> {
     const cachePath = vscodeCachePath();
     await excludeFromSpotlight(cachePath);
     const executablePath = await downloadAndUnzipVSCode({
-        version: VSCODE_VERSION,
+        version,
         cachePath,
     });
     assertExecutableIsOutsideRepo(executablePath, repoRoot);

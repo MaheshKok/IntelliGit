@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
@@ -6,6 +6,9 @@ import { describe, expect, it } from "vitest";
 const WORKFLOW_PATH = resolve(__dirname, "../../../.github/workflows/publish.yml");
 const DOCKERFILE_PATH = resolve(__dirname, "../../../tests/e2e/docker/Dockerfile");
 const PACKAGE_JSON_PATH = resolve(__dirname, "../../../package.json");
+const NIGHTLY_WORKFLOW_PATH = resolve(__dirname, "../../../.github/workflows/e2e-nightly.yml");
+const WORKFLOWS_DIRECTORY = resolve(__dirname, "../../../.github/workflows");
+const INSIDERS_WORKFLOW_PATH = resolve(WORKFLOWS_DIRECTORY, "e2e-insiders.yml");
 
 /**
  * Extracts one top-level job from a workflow so assertions cannot be satisfied by another job.
@@ -28,6 +31,12 @@ function extractJobBlock(workflow: string, jobName: string): string {
     // the job above it -- which is a false pass waiting to happen, since a comment can say
     // anything an assertion looks for.
     return workflow.slice(bodyStart, bodyEnd).replace(/(?:^ {4}#.*\n)+$/m, "");
+}
+
+/** The nightly workflow, or an empty string when it is absent, so a missing file reads as a
+ * failed assertion rather than a thrown read. */
+function readNightlyWorkflow(): string {
+    return existsSync(NIGHTLY_WORKFLOW_PATH) ? readFileSync(NIGHTLY_WORKFLOW_PATH, "utf8") : "";
 }
 
 /** Extracts one named step from a job so an assertion cannot be satisfied by another job. */
@@ -61,6 +70,198 @@ describe("publish visual workflow", () => {
 
         expect(visualCommandLines).toHaveLength(1);
         expect(visualCommandLines[0]).toContain("./tests/e2e/docker/run.sh");
+    });
+
+    it("waits for build, visual, and e2e-full before release", () => {
+        const releaseJob = extractJobBlock(readFileSync(WORKFLOW_PATH, "utf8"), "release");
+        const needsLine = releaseJob.match(/^\s+needs:.*$/m)?.[0].trim() ?? "";
+
+        expect(needsLine, "release must wait for build, visual, and e2e-full").toBe(
+            "needs: [build, visual, e2e-full]",
+        );
+    });
+
+    it("reasserts every release prerequisite and limits the e2e override", () => {
+        const releaseJob = extractJobBlock(readFileSync(WORKFLOW_PATH, "utf8"), "release");
+        const releaseIf = releaseJob.match(/^\s+if:.*$/m)?.[0] ?? "";
+
+        expect(releaseIf, "release must not publish after cancellation").toContain("!cancelled()");
+        expect(releaseIf, "release must reassert build success").toContain(
+            "needs.build.result == 'success'",
+        );
+        expect(releaseIf, "release must reassert visual success").toContain(
+            "needs.visual.result == 'success'",
+        );
+        expect(releaseIf, "release must require e2e-full or the explicit override").toContain(
+            "needs.e2e-full.result == 'success'",
+        );
+        expect(releaseIf, "only skip_e2e_gate may override e2e-full").toContain(
+            "inputs.skip_e2e_gate == true",
+        );
+    });
+
+    it("keeps force_publish independent from the e2e override", () => {
+        const workflow = readFileSync(WORKFLOW_PATH, "utf8");
+
+        expect(workflow).toContain(
+            "FORCE_PUBLISH: ${{ github.event_name == 'workflow_dispatch' && inputs.force_publish == true }}",
+        );
+        expect(workflow).toMatch(/skip_e2e_gate:\n\s+description:.*\n\s+type: boolean/);
+    });
+
+    it("runs e2e-full only for main pushes and manual dispatches", () => {
+        const e2eFullJob = extractJobBlock(readFileSync(WORKFLOW_PATH, "utf8"), "e2e-full");
+
+        expect(e2eFullJob, "publish.yml must define e2e-full").not.toBe("");
+        expect(e2eFullJob, "e2e-full must be guarded off pull_request").toContain(
+            "if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')",
+        );
+    });
+
+    it("keeps the scheduled nightly workflow non-gating", () => {
+        const publishWorkflow = readFileSync(WORKFLOW_PATH, "utf8");
+        const releaseJob = extractJobBlock(publishWorkflow, "release");
+        const nightlyWorkflow = existsSync(NIGHTLY_WORKFLOW_PATH)
+            ? readFileSync(NIGHTLY_WORKFLOW_PATH, "utf8")
+            : "";
+
+        expect(releaseJob, "release must not reference the nightly workflow").not.toMatch(
+            /nightly/i,
+        );
+        expect(nightlyWorkflow, "nightly workflow must exist").not.toBe("");
+        expect(nightlyWorkflow).toContain("issues: write");
+        expect(nightlyWorkflow).toContain("shard: [1, 2, 3, 4]");
+        expect(nightlyWorkflow).toContain("--shard=${{ matrix.shard }}/4");
+        expect(nightlyWorkflow).toContain("gh issue create");
+    });
+
+    it("sets the VS Code version override only in the Insiders workflow", () => {
+        const setters = new Set(
+            readdirSync(WORKFLOWS_DIRECTORY)
+                .filter((entry) => entry.endsWith(".yml") || entry.endsWith(".yaml"))
+                .filter((entry) =>
+                    readFileSync(resolve(WORKFLOWS_DIRECTORY, entry), "utf8").match(
+                        /^\s+INTELLIGIT_VSCODE_VERSION\s*:/m,
+                    ),
+                ),
+        );
+        const insidersWorkflow = existsSync(INSIDERS_WORKFLOW_PATH)
+            ? readFileSync(INSIDERS_WORKFLOW_PATH, "utf8")
+            : "";
+
+        expect(setters, "only e2e-insiders.yml may set the version override").toEqual(
+            new Set(["e2e-insiders.yml"]),
+        );
+        expect(insidersWorkflow).toMatch(/^\s+INTELLIGIT_VSCODE_VERSION\s*:\s*insiders\s*$/m);
+    });
+
+    it("runs the non-gating Insiders flow shards without caching a daily build", () => {
+        const insidersWorkflow = existsSync(INSIDERS_WORKFLOW_PATH)
+            ? readFileSync(INSIDERS_WORKFLOW_PATH, "utf8")
+            : "";
+        const insidersJob = extractJobBlock(insidersWorkflow, "e2e-insiders");
+
+        expect(insidersWorkflow).toContain("schedule:");
+        expect(insidersWorkflow).toContain("workflow_dispatch:");
+        expect(insidersWorkflow).toContain("expected to be red sometimes");
+        expect(insidersJob, "Insiders workflow must define its matrix job").not.toBe("");
+        expect(insidersJob).toContain("shard: [1, 2, 3, 4]");
+        expect(insidersJob).toMatch(
+            /run: \.\/tests\/e2e\/docker\/run\.sh .*bun run test:e2e -- --shard=/,
+        );
+
+        // Every cache key a workflow can build is derived from the repo, which does not change
+        // daily -- and `actions/cache` never overwrites an existing key. So any key for a
+        // daily-moving build restores something `@vscode/test-electron` immediately discards and
+        // re-downloads. Naming the VS Code cache path rather than `actions/cache` keeps this
+        // assertion about the build that must stay fresh, not about caching in general.
+        expect(
+            insidersJob,
+            "the daily Insiders build must not be restored from a non-rotating cache key",
+        ).not.toContain("intelligit-e2e-container/vscode");
+
+        const releaseJob = extractJobBlock(readFileSync(WORKFLOW_PATH, "utf8"), "release");
+        expect(releaseJob).not.toMatch(/insiders/i);
+    });
+
+    it("aggregates and reuses the Insiders failure issue without granting runner write access", () => {
+        const insidersWorkflow = existsSync(INSIDERS_WORKFLOW_PATH)
+            ? readFileSync(INSIDERS_WORKFLOW_PATH, "utf8")
+            : "";
+        const insidersJob = extractJobBlock(insidersWorkflow, "e2e-insiders");
+        const reportJob = extractJobBlock(insidersWorkflow, "report-failure");
+
+        expect(reportJob, "Insiders reporting must aggregate flows and host fixtures").toContain(
+            "needs: [e2e-insiders, host-fixture-compare]",
+        );
+        expect(reportJob).toContain("gh issue list");
+        expect(reportJob).toContain("gh issue comment");
+        expect(reportJob).toContain("gh issue create");
+        expect(reportJob).toContain('TITLE: "VS Code Insiders E2E flow suite is failing"');
+        expect(insidersJob).not.toMatch(/^\s+issues: write\s*$/m);
+    });
+
+    it("runs the Insiders host-fixture comparison through Playwright without cache or runner write access", () => {
+        const insidersWorkflow = existsSync(INSIDERS_WORKFLOW_PATH)
+            ? readFileSync(INSIDERS_WORKFLOW_PATH, "utf8")
+            : "";
+        const comparisonJob = extractJobBlock(insidersWorkflow, "host-fixture-compare");
+
+        expect(comparisonJob, "Insiders host-fixture comparison job must exist").not.toBe("");
+        expect(comparisonJob).not.toContain("INTELLIGIT_VSCODE_VERSION");
+        expect(comparisonJob).toContain("--config playwright.e2e.config.ts");
+        expect(comparisonJob).toContain("tests/e2e/hostFixtures/compare.spec.ts");
+        expect(comparisonJob).toContain("./tests/e2e/docker/run.sh");
+        expect(comparisonJob).not.toContain("intelligit-e2e-container/vscode");
+        expect(comparisonJob).not.toMatch(/^\s+issues: write\s*$/m);
+    });
+
+    it("gates the release on a job that actually runs the flow suite", () => {
+        const e2eFullJob = extractJobBlock(readFileSync(WORKFLOW_PATH, "utf8"), "e2e-full");
+
+        // Without this the gate is a shape rather than a check: swapping the command for `echo ok`
+        // leaves every other assertion in this file green while `release` waits on a job that
+        // exercises nothing.
+        expect(
+            e2eFullJob,
+            "e2e-full must run the flow suite through the container wrapper",
+        ).toMatch(/run: \.\/tests\/e2e\/docker\/run\.sh .*bun run test:e2e/);
+    });
+
+    it("runs the nightly shards through the same container wrapper", () => {
+        expect(
+            readNightlyWorkflow(),
+            "the nightly must run the sharded flow suite through the wrapper",
+        ).toMatch(/run: \.\/tests\/e2e\/docker\/run\.sh .*bun run test:e2e -- --shard=/);
+    });
+
+    it("leaves a trace in the release log when the e2e gate was overridden", () => {
+        const releaseJob = extractJobBlock(readFileSync(WORKFLOW_PATH, "utf8"), "release");
+
+        expect(releaseJob, "an override must not publish silently").toContain(
+            "if: needs.e2e-full.result != 'success'",
+        );
+    });
+
+    it("reports a failing nightly once per run and reuses the issue it already opened", () => {
+        const nightlyWorkflow = readNightlyWorkflow();
+
+        // Reporting per shard would file up to four issues a night, and a nightly that stays
+        // broken would file four more every night after that -- noise, not early warning.
+        expect(
+            extractJobBlock(nightlyWorkflow, "report-failure"),
+            "reporting must aggregate the shards",
+        ).toContain("needs: e2e-nightly");
+        expect(nightlyWorkflow, "a standing failure must reuse its open issue").toContain(
+            "gh issue comment",
+        );
+        // Anchored to a whole line so this asserts the YAML key and not the phrase: the job
+        // comments discuss `issues: write` in prose, and a substring check cannot tell the two
+        // apart.
+        expect(
+            extractJobBlock(nightlyWorkflow, "e2e-nightly"),
+            "the jobs that execute the suite must not be granted issues: write",
+        ).not.toMatch(/^\s+issues: write\s*$/m);
     });
 
     it("installs Bun in the E2E image from a checksummed artifact, never a piped remote script", () => {

@@ -13,6 +13,10 @@ on:
                 description: "Publish the current package.json version even if it is unchanged from the previous commit (use to recover a deploy that GitHub skipped)."
                 type: boolean
                 default: false
+            skip_e2e_gate:
+                description: "Allow a manual main-branch release to proceed when the same-SHA full E2E gate fails; use only after auditing the failure."
+                type: boolean
+                default: false
 
 # Keyed by event so a manual workflow_dispatch on main cannot cancel an
 # in-flight push-triggered release run (they target the same ref).
@@ -172,17 +176,58 @@ jobs:
                   if-no-files-found: ignore
                   retention-days: 7
 
+    # Same-SHA release gate for the complete flow suite. This is deliberately
+    # restricted to main pushes and manual dispatches so pull requests keep the
+    # settled PR tier in `.github/workflows/e2e.yml`.
+    e2e-full:
+        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+        runs-on: ubuntu-latest
+        timeout-minutes: 45
+
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v4
+
+            - name: Cache the pinned VS Code build
+              uses: actions/cache@v4
+              with:
+                  path: ~/.cache/intelligit-e2e-container/vscode
+                  key: ${{ runner.os }}-vscode-${{ hashFiles('tests/e2e/hostFixtures/vscodeVersion.ts') }}
+                  restore-keys: |
+                      ${{ runner.os }}-vscode-
+
+            - name: Run the full flow suite in the pinned container
+              run: ./tests/e2e/docker/run.sh 'bun install --frozen-lockfile && bun run build && xvfb-run -a bun run test:e2e'
+
+            - name: Upload full E2E failure artifacts
+              if: failure()
+              uses: actions/upload-artifact@v4
+              with:
+                  name: e2e-full-failures
+                  path: |
+                      playwright-report/
+                      test-results/
+                  if-no-files-found: ignore
+                  retention-days: 7
+
     release:
         # A visual regression must not reach the Marketplace. `build` alone was
         # the gate before the visual suite existed; leaving it that way would
         # mean the suite gates nothing on the one path that ships to users.
-        needs: [build, visual]
+        needs: [build, visual, e2e-full]
         runs-on: ubuntu-latest
-        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+        if: ${{ !cancelled() && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.build.result == 'success' && needs.visual.result == 'success' && (needs.e2e-full.result == 'success' || (github.event_name == 'workflow_dispatch' && inputs.skip_e2e_gate == true)) }}
         permissions:
             contents: write
 
         steps:
+            # Without this the bypass is invisible: the release log would show a successful publish
+            # next to a red `e2e-full` and give no reason, leaving whoever audits it to go dig the
+            # dispatch inputs out of the run summary.
+            - name: Record that the E2E gate was overridden
+              if: needs.e2e-full.result != 'success'
+              run: echo "::warning::Published with a non-successful e2e-full gate via the skip_e2e_gate override."
+
             - name: Checkout code
               uses: actions/checkout@v4
               with:

@@ -1,0 +1,88 @@
+name: E2E Flow Suite - Nightly
+
+on:
+    schedule:
+        - cron: "0 2 * * *"
+    # A scheduled-only workflow can never be exercised before its first firing, which means the
+    # first proof it works arrives at 2am on a day nobody is watching. Manual dispatch makes it
+    # testable on demand; it still gates nothing either way.
+    workflow_dispatch:
+
+# Early warning only: this workflow is intentionally not connected to release.
+permissions:
+    contents: read
+
+jobs:
+    e2e-nightly:
+        # Four shards currently mean four container builds and four VS Code downloads. With ten
+        # rows, that almost certainly costs more wall-clock than one run; the matrix is
+        # infrastructure for when the suite grows, not a present-day speedup. The suite it runs is
+        # also the same one the PR tier runs today -- `test:e2e` is the ten implemented flows, and
+        # the other 77 mutating surfaces in `tests/e2e/coverage-manifest.ts` are still `notCovered`.
+        strategy:
+            fail-fast: false
+            matrix:
+                shard: [1, 2, 3, 4]
+        runs-on: ubuntu-latest
+        timeout-minutes: 45
+
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v4
+
+            - name: Cache the pinned VS Code build
+              uses: actions/cache@v4
+              with:
+                  path: ~/.cache/intelligit-e2e-container/vscode
+                  key: ${{ runner.os }}-vscode-${{ hashFiles('tests/e2e/hostFixtures/vscodeVersion.ts') }}
+                  restore-keys: |
+                      ${{ runner.os }}-vscode-
+
+            - name: Run nightly flow shard in the pinned container
+              run: ./tests/e2e/docker/run.sh 'bun install --frozen-lockfile && bun run build && xvfb-run -a bun run test:e2e -- --shard=${{ matrix.shard }}/4'
+
+            - name: Upload nightly failure artifacts
+              if: failure()
+              uses: actions/upload-artifact@v4
+              with:
+                  name: e2e-nightly-failures-shard-${{ matrix.shard }}
+                  path: |
+                      playwright-report/
+                      test-results/
+                  if-no-files-found: ignore
+                  retention-days: 7
+
+    # Reporting is a separate job for two reasons. It collapses four shards into ONE notification --
+    # per-shard reporting would file up to four issues a night -- and it keeps `issues: write` off
+    # the jobs that execute the suite, so only this job can write to the tracker.
+    report-failure:
+        needs: e2e-nightly
+        if: failure()
+        runs-on: ubuntu-latest
+        permissions:
+            contents: read
+            issues: write
+
+        steps:
+            # A nightly that stays broken must not file a new issue every night: that is not early
+            # warning, it is noise that trains everyone to ignore the tracker. Comment on the open
+            # issue when one already exists, and only open a new one when there is none.
+            - name: Report the failing nightly run
+              env:
+                  GH_TOKEN: ${{ github.token }}
+                  GH_REPO: ${{ github.repository }}
+                  TITLE: "Nightly E2E flow suite is failing"
+                  RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+              run: |
+                  set -euo pipefail
+                  BODY="At least one shard of the nightly flow suite failed. Inspect the run: ${RUN_URL}"
+                  # `env.TITLE` is read by jq itself, so the title never passes through shell
+                  # interpolation into the jq program.
+                  EXISTING=$(gh issue list --state open --search "${TITLE} in:title" \
+                      --json number,title --jq '[.[] | select(.title == env.TITLE)][0].number // empty')
+
+                  if [ -n "${EXISTING}" ]; then
+                      gh issue comment "${EXISTING}" --body "${BODY}"
+                  else
+                      gh issue create --title "${TITLE}" --body "${BODY}"
+                  fi
