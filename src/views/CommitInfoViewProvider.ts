@@ -72,18 +72,26 @@ export class CommitInfoViewProvider implements vscode.WebviewViewProvider {
         webviewView.webview.onDidReceiveMessage(async (msg: CommitInfoOutbound) => {
             switch (msg.type) {
                 case "ready":
+                    // A fresh webview context has received nothing, so any commit-detail post
+                    // made during this handler must never be suppressed as a duplicate of what
+                    // the PREVIOUS context was sent. `ready` fires again whenever VS Code tears
+                    // this view down while it is hidden and reloads it on show --
+                    // `resolveWebviewView` does NOT re-run in that case, so its reset alone
+                    // would leave the restored pane empty.
+                    //
+                    // The reset runs before the await below, not after it: that await yields,
+                    // and a commit selected or refreshed while it runs posts against this new
+                    // context. Resetting afterwards would both suppress that post (it is
+                    // compared against the retired context's payload) and then make the
+                    // following `postCurrentState()` re-send what the webview already has --
+                    // reintroducing the duplicate post this guard exists to remove.
+                    this.lastPostedPayload = undefined;
                     try {
                         await this.iconTheme.initIconThemeData();
                     } catch (err) {
                         console.error("[IntelliGit] Failed to initialize icon theme data:", err);
                     }
                     this.ready = true;
-                    // A fresh webview context has received nothing, so the re-post below must
-                    // never be suppressed as a duplicate of what the PREVIOUS context was sent.
-                    // `ready` fires again whenever VS Code tears this view down while it is
-                    // hidden and reloads it on show -- `resolveWebviewView` does NOT re-run in
-                    // that case, so its reset alone would leave the restored pane empty.
-                    this.lastPostedPayload = undefined;
                     this.postCurrentState();
                     break;
                 case "openCommitFileDiff":

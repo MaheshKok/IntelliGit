@@ -277,6 +277,20 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
             try {
                 switch (msg.type) {
                     case "ready":
+                        // A fresh webview context has received nothing, so any commit-detail
+                        // post made during this handler must never be suppressed as a duplicate
+                        // of what the PREVIOUS context was sent. `ready` fires again whenever VS
+                        // Code tears this view down while it is hidden and reloads it on show --
+                        // `resolveWebviewView` does NOT re-run then, so its reset alone would
+                        // leave the pane empty.
+                        //
+                        // The reset runs before the awaits below, not after them: those awaits
+                        // yield, and a commit selected or refreshed while they run posts against
+                        // this new context. Resetting afterwards would both suppress that post
+                        // (it is compared against the retired context's payload) and then make
+                        // the final `postCommitDetailState()` re-send what the webview already
+                        // has -- reintroducing the duplicate post this guard exists to remove.
+                        this.lastPostedPayload = undefined;
                         this.postToWebview({
                             type: "setViewVisibility",
                             visible: webviewView.visible,
@@ -284,12 +298,6 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
                         await this.iconTheme.initIconThemeData();
                         await this.sendBranches();
                         await this.loadInitial();
-                        // A fresh webview context has received nothing, so the re-post below
-                        // must never be suppressed as a duplicate of what the PREVIOUS context
-                        // was sent. `ready` fires again whenever VS Code tears this view down
-                        // while it is hidden and reloads it on show -- `resolveWebviewView` does
-                        // NOT re-run then, so its reset alone would leave the pane empty.
-                        this.lastPostedPayload = undefined;
                         this.postCommitDetailState();
                         break;
                     case "selectCommit":

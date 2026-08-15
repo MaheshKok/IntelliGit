@@ -115,6 +115,23 @@ function sampleDetail(): CommitDetail {
     };
 }
 
+/** A second, distinguishable commit -- the mid-`ready` selection in the ordering test below. Its
+ * hash is `sampleDetail()`'s parent, so the pair reads as two commits from one real history. */
+function otherDetail(): CommitDetail {
+    return {
+        hash: "70fa528600605d9b3f1fce7aa04ec799ed494ffd",
+        shortHash: "70fa5286",
+        message: "Seed the fixture repository",
+        body: "",
+        author: "IntelliGit Fixture Repo",
+        email: "intelligit-fixture@example.invalid",
+        date: "2000-01-01T00:00:00Z",
+        parentHashes: [],
+        refs: [],
+        files: [{ path: "README.md", status: "A", additions: 1, deletions: 0 }],
+    };
+}
+
 function setDetailMessages(posted: readonly unknown[]): Record<string, unknown>[] {
     return posted.filter(
         (message): message is Record<string, unknown> =>
@@ -205,6 +222,62 @@ describe("CommitInfoViewProvider redundant setCommitDetail post", () => {
                 "the reloaded webview must receive the detail again, byte-identical or not",
             ).toHaveLength(2);
             expect(messages[1]).toEqual(messages[0]);
+        },
+    );
+
+    /**
+     * The `ready` handler's `lastPostedPayload` reset must run BEFORE its `await`, not after.
+     *
+     * That await yields, and on a reload `this.ready` is already true from the first `ready` --
+     * so a commit selected or refreshed during the window posts for real, against the context
+     * that is currently live. Resetting afterwards discards the record of that post, and the
+     * handler's closing `postCurrentState()` then re-sends what the webview already has.
+     *
+     * The two details must DIFFER for this to be detectable. With an identical one, the
+     * post-await reset merely relocates which of the two calls is suppressed and the webview
+     * ends up with the same message either way -- a test using one payload passes on the broken
+     * ordering. Selecting a different commit mid-window separates them: the correct ordering
+     * sends `X` then `Y`; the broken one sends `X`, `Y`, `Y`.
+     */
+    it(
+        "does not re-post a detail that arrived while the ready handler was still awaiting",
+        async () => {
+            const provider = new CommitInfoViewProvider(createFakeExtensionUri());
+            const { webviewView, posted, receiveMessage } = createInspectableFakeWebviewView();
+
+            provider.resolveWebviewView(webviewView, INERT_CONTEXT, INERT_TOKEN);
+            await receiveMessage({ type: "ready" });
+
+            provider.setCommitDetail(sampleDetail());
+            await flushMicrotasks();
+            expect(setDetailMessages(posted)).toHaveLength(1);
+
+            // The reload's `ready`. `initIconThemeData` is where that handler yields, so driving
+            // the selection from inside it puts the post exactly in the window under test.
+            //
+            // The guard is load-bearing, not defensive: `setCommitDetail` starts
+            // `decorateAndStoreDetail`, which awaits this very method again. Without it the
+            // stand-in re-enters itself and the test dies of heap exhaustion rather than
+            // reporting on the ordering.
+            const iconTheme = (provider as unknown as { iconTheme: IconThemeService }).iconTheme;
+            let selectedMidWindow = false;
+            vi.spyOn(iconTheme, "initIconThemeData").mockImplementation(async () => {
+                if (selectedMidWindow) return;
+                selectedMidWindow = true;
+                provider.setCommitDetail(otherDetail());
+                await flushMicrotasks();
+            });
+
+            await receiveMessage({ type: "ready" });
+            await flushMicrotasks();
+
+            const messages = setDetailMessages(posted);
+            expect(
+                messages.map((message) => (message.detail as CommitDetail).shortHash),
+                "the second commit must reach the webview exactly once: the reset belongs before " +
+                    "the await, so the mid-window post is the one recorded and the handler's " +
+                    "closing post is suppressed as the duplicate it is",
+            ).toEqual(["b08ddf03", "70fa5286"]);
         },
     );
 });
