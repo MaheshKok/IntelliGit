@@ -14,7 +14,16 @@ import { handleSecretRequest } from "./handlers/secretHandler";
 import type { E2eRequest, E2eResponse } from "./protocol";
 import { errorResponse, parseE2eRequest } from "./protocol";
 import { generateSecretDigestSalt } from "./secretDigest";
-import { removeRequestFile, watchChannelDir, writeResponseFileAtomic } from "./transportFs";
+import {
+    hasResponseFile,
+    listRequestNonces,
+    readRequestFile,
+    removeChannelReadyMarker,
+    removeRequestFile,
+    watchChannelDir,
+    writeChannelReadyMarker,
+    writeResponseFileAtomic,
+} from "./transportFs";
 import { E2eWebviewRegistry } from "./webviewBridge";
 
 /**
@@ -54,7 +63,12 @@ export function activateE2eControlChannel(
     const channelDir = gateResult.channelDir;
     const digestSalt = generateSecretDigestSalt();
 
-    const watcher = watchChannelDir(channelDir, (nonce, payload) => {
+    const dispatchedNonces = new Set<string>();
+    const dispatchOnce = (nonce: string, payload: unknown): void => {
+        if (dispatchedNonces.has(nonce)) {
+            return;
+        }
+        dispatchedNonces.add(nonce);
         // `dispatchRequest` turns every parse and handler failure into an error response, so it
         // never rejects -- but the callback below is not covered by that. `removeRequestFile`
         // and `writeResponseFileAtomic` are synchronous filesystem calls that can throw (the
@@ -62,23 +76,53 @@ export function activateE2eControlChannel(
         // volume, something already occupying the response path). A throw there, with no
         // rejection handler attached, is an unhandled promise rejection in the extension host
         // that names no request at all -- so it is caught and reported against its own nonce.
-        dispatchRequest(context, webviewRegistry, digestSalt, nonce, payload)
+        void dispatchRequest(context, webviewRegistry, digestSalt, nonce, payload)
             .then((response) => {
-                removeRequestFile(channelDir, nonce);
+                // Response before removal: a request consumed ahead of its response is lost
+                // outright when the write fails, and leaves the client's timeout diagnostic
+                // blaming a watcher that did observe the request.
                 writeResponseFileAtomic(channelDir, nonce, response);
+                removeRequestFile(channelDir, nonce);
             })
             .catch((error: unknown) => {
                 console.error(
                     `E2E control channel failed to finalize request "${nonce}": ${getErrorMessage(error)}`,
                 );
+                // Delivery failed. Release the nonce so reconciliation retries the surviving
+                // request -- but never once a response exists, since re-dispatching an answered
+                // request would run its handler's side effects a second time.
+                if (!hasResponseFile(channelDir, nonce)) {
+                    dispatchedNonces.delete(nonce);
+                }
             });
-    });
+    };
+
+    // The watcher must exist before the scan: a file created between scan and watch would
+    // otherwise recreate the exact activation race this drain is fixing. `dispatchOnce`
+    // makes the overlap safe when both paths observe the same nonce.
+    const watcher = watchChannelDir(channelDir, dispatchOnce);
+    for (const nonce of listRequestNonces(channelDir)) {
+        let payload: unknown;
+        try {
+            payload = readRequestFile(channelDir, nonce);
+        } catch {
+            // Unreadable at drain time. Skipped silently rather than logged: the reconciliation
+            // loop started above reaches the same file on its next tick and reports it there,
+            // and logging here as well would name one nonce twice for a single bad request.
+            continue;
+        }
+        if (payload !== undefined) {
+            dispatchOnce(nonce, payload);
+        }
+    }
+    writeChannelReadyMarker(channelDir);
 
     return {
         active: true,
         webviewRegistry,
         dispose: () => {
             watcher.dispose();
+            removeChannelReadyMarker(channelDir);
             webviewRegistry.disposeAll();
             setE2eControlChannelActive(false);
         },

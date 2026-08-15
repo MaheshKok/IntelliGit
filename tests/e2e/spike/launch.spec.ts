@@ -34,6 +34,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { test, expect, _electron as electron } from "@playwright/test";
+import { toElectronLaunchEnv } from "../hostFixtures/electronLaunchHelpers";
 import { resolveVSCodeExecutable } from "../hostFixtures/resolveVSCodeExecutable";
 
 const execFileAsync = promisify(execFile);
@@ -89,12 +90,9 @@ test.afterAll(async () => {
 async function createSanitizedGitEnv(): Promise<Record<string, string>> {
     const home = await mkdtemp(path.join(tmpdir(), "intelligit-spike-home-"));
     directoriesToClean.push(home);
-    // `process.env` is typed `string | undefined` per key, but `_electron.launch`'s `env` requires
-    // every value to be a string. Dropping the undefined-valued keys is what makes the two types
-    // meet honestly -- a cast would compile and then pass `undefined` straight through to Electron.
-    const inherited = Object.fromEntries(
-        Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined),
-    );
+    // `toElectronLaunchEnv` drops undefined-valued process keys before Electron sees them; a cast
+    // would compile and then pass an actual undefined through the child-process boundary.
+    const inherited = toElectronLaunchEnv(process.env);
     return {
         ...inherited,
         HOME: home,

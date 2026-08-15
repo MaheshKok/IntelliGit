@@ -6,7 +6,16 @@
 // temp directory -- only `vscode` itself is mocked, because it has no runtime module outside
 // the Extension Development Host. Nothing about the gate or the watcher is mocked.
 
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+    existsSync,
+    mkdirSync,
+    mkdtempSync,
+    readdirSync,
+    readFileSync,
+    rmSync,
+    unlinkSync,
+    writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type * as vscode from "vscode";
@@ -19,23 +28,28 @@ vi.mock("vscode", () => ({
 import * as vscodeMock from "vscode";
 import { activateE2eControlChannel } from "../../../src/e2e/controlChannel";
 import { isE2eControlChannelActive } from "../../../src/e2e/activationState";
+import { E2E_CHANNEL_READY_MARKER } from "../../../src/e2e/transportFs";
 
 const ALLOWED_WORKSPACE_KEY = "intelligit.selectedRepositoryRoot";
 
 /** Builds a minimal fake `vscode.ExtensionContext` sufficient for `activateE2eControlChannel`. */
-function makeContext(
-    extensionMode: vscode.ExtensionMode,
-): { context: vscode.ExtensionContext; workspaceMap: Map<string, unknown>; secretsMap: Map<string, string> } {
+function makeContext(extensionMode: vscode.ExtensionMode): {
+    context: vscode.ExtensionContext;
+    workspaceMap: Map<string, unknown>;
+    secretsMap: Map<string, string>;
+    workspaceUpdate: ReturnType<typeof vi.fn>;
+} {
     const workspaceMap = new Map<string, unknown>();
     const secretsMap = new Map<string, string>();
 
+    const workspaceUpdate = vi.fn(async (key: string, value: unknown) => {
+        if (value === undefined) workspaceMap.delete(key);
+        else workspaceMap.set(key, value);
+    });
     const workspaceState = {
         get: (key: string, defaultValue?: unknown) =>
             workspaceMap.has(key) ? workspaceMap.get(key) : defaultValue,
-        update: async (key: string, value: unknown) => {
-            if (value === undefined) workspaceMap.delete(key);
-            else workspaceMap.set(key, value);
-        },
+        update: workspaceUpdate,
     };
     const globalState = {
         get: (key: string, defaultValue?: unknown) => defaultValue,
@@ -58,7 +72,7 @@ function makeContext(
         secrets,
     } as unknown as vscode.ExtensionContext;
 
-    return { context, workspaceMap, secretsMap };
+    return { context, workspaceMap, secretsMap, workspaceUpdate };
 }
 
 /**
@@ -136,9 +150,48 @@ describe("activateE2eControlChannel: the watcher does not start outside Developm
         try {
             expect(handle.active).toBe(true);
             expect(isE2eControlChannelActive()).toBe(true);
+            expect(existsSync(join(channelDir, E2E_CHANNEL_READY_MARKER))).toBe(true);
         } finally {
             handle.dispose();
             expect(isE2eControlChannelActive()).toBe(false);
+            expect(existsSync(join(channelDir, E2E_CHANNEL_READY_MARKER))).toBe(false);
+        }
+    });
+
+    it.each([
+        ["Development + INTELLIGIT_E2E=1", vscodeMock.ExtensionMode.Development, "1", true],
+        [
+            "Development + INTELLIGIT_E2E unset",
+            vscodeMock.ExtensionMode.Development,
+            undefined,
+            false,
+        ],
+        ["Production + INTELLIGIT_E2E=1", vscodeMock.ExtensionMode.Production, "1", false],
+        [
+            "Production + INTELLIGIT_E2E unset",
+            vscodeMock.ExtensionMode.Production,
+            undefined,
+            false,
+        ],
+    ])("publishes readiness only for %s", (_label, extensionMode, e2eValue, expectedReady) => {
+        const matrixChannelDir = mkdtempSync(
+            join(tmpdir(), "intelligit-e2e-controlchannel-matrix-"),
+        );
+        if (e2eValue === undefined) delete process.env.INTELLIGIT_E2E;
+        else process.env.INTELLIGIT_E2E = e2eValue;
+        process.env.INTELLIGIT_E2E_CHANNEL_DIR = matrixChannelDir;
+        const { context } = makeContext(extensionMode);
+        const handle = activateE2eControlChannel(context);
+
+        try {
+            expect(existsSync(join(matrixChannelDir, E2E_CHANNEL_READY_MARKER))).toBe(
+                expectedReady,
+            );
+        } finally {
+            handle.dispose();
+            delete process.env.INTELLIGIT_E2E;
+            delete process.env.INTELLIGIT_E2E_CHANNEL_DIR;
+            rmSync(matrixChannelDir, { recursive: true, force: true });
         }
     });
 });
@@ -158,55 +211,102 @@ describe("activateE2eControlChannel: end-to-end request/response over the real t
         rmSync(channelDir, { recursive: true, force: true });
     });
 
-    it("seed -> snapshot -> reset -> snapshot round-trips a memento key through real request/response files", { retry: 2 }, async () => {
-        const { context, workspaceMap } = makeContext(vscodeMock.ExtensionMode.Development);
-        const handle = activateE2eControlChannel(context);
+    it(
+        "seed -> snapshot -> reset -> snapshot round-trips a memento key through real request/response files",
+        { retry: 2 },
+        async () => {
+            const { context, workspaceMap } = makeContext(vscodeMock.ExtensionMode.Development);
+            const handle = activateE2eControlChannel(context);
 
-        try {
-            await sendAndAwait(channelDir, "seed-1", {
+            try {
+                await sendAndAwait(channelDir, "seed-1", {
+                    store: "memento",
+                    operation: "seed",
+                    scope: "workspace",
+                    key: ALLOWED_WORKSPACE_KEY,
+                    value: "/repo/from/e2e",
+                });
+                expect(workspaceMap.get(ALLOWED_WORKSPACE_KEY)).toBe("/repo/from/e2e");
+
+                const snapshotAfterSeed = await sendAndAwait(channelDir, "snap-1", {
+                    store: "memento",
+                    operation: "snapshot",
+                    scope: "workspace",
+                    key: ALLOWED_WORKSPACE_KEY,
+                });
+                expect(snapshotAfterSeed).toEqual({
+                    nonce: "snap-1",
+                    ok: true,
+                    result: { kind: "value", value: "/repo/from/e2e" },
+                });
+
+                await sendAndAwait(channelDir, "reset-1", {
+                    store: "memento",
+                    operation: "reset",
+                    scope: "workspace",
+                    key: ALLOWED_WORKSPACE_KEY,
+                });
+                expect(workspaceMap.has(ALLOWED_WORKSPACE_KEY)).toBe(false);
+
+                const snapshotAfterReset = await sendAndAwait(channelDir, "snap-2", {
+                    store: "memento",
+                    operation: "snapshot",
+                    scope: "workspace",
+                    key: ALLOWED_WORKSPACE_KEY,
+                });
+                expect(snapshotAfterReset).toEqual({
+                    nonce: "snap-2",
+                    ok: true,
+                    result: { kind: "value", value: null },
+                });
+            } finally {
+                handle.dispose();
+            }
+        },
+    );
+
+    it(
+        "drains a request written before activation and dispatches a nonce only once",
+        { retry: 2 },
+        async () => {
+            const request = {
+                nonce: "preactivation",
                 store: "memento",
                 operation: "seed",
                 scope: "workspace",
                 key: ALLOWED_WORKSPACE_KEY,
-                value: "/repo/from/e2e",
-            });
-            expect(workspaceMap.get(ALLOWED_WORKSPACE_KEY)).toBe("/repo/from/e2e");
+                value: "/repo/preactivated",
+            };
+            writeFileSync(
+                join(channelDir, "preactivation.request.json"),
+                JSON.stringify(request),
+                "utf8",
+            );
+            // Let the preactivation filesystem event settle before the watcher exists; otherwise an
+            // OS may deliver the old event to a watcher registered moments later and mask the drain.
+            await new Promise((resolve) => setTimeout(resolve, 100));
+            const { context, workspaceUpdate } = makeContext(vscodeMock.ExtensionMode.Development);
+            const handle = activateE2eControlChannel(context);
 
-            const snapshotAfterSeed = await sendAndAwait(channelDir, "snap-1", {
-                store: "memento",
-                operation: "snapshot",
-                scope: "workspace",
-                key: ALLOWED_WORKSPACE_KEY,
-            });
-            expect(snapshotAfterSeed).toEqual({
-                nonce: "snap-1",
-                ok: true,
-                result: { kind: "value", value: "/repo/from/e2e" },
-            });
+            try {
+                await waitFor(() => existsSync(join(channelDir, "preactivation.response.json")));
+                expect(workspaceUpdate).toHaveBeenCalledTimes(1);
 
-            await sendAndAwait(channelDir, "reset-1", {
-                store: "memento",
-                operation: "reset",
-                scope: "workspace",
-                key: ALLOWED_WORKSPACE_KEY,
-            });
-            expect(workspaceMap.has(ALLOWED_WORKSPACE_KEY)).toBe(false);
-
-            const snapshotAfterReset = await sendAndAwait(channelDir, "snap-2", {
-                store: "memento",
-                operation: "snapshot",
-                scope: "workspace",
-                key: ALLOWED_WORKSPACE_KEY,
-            });
-            expect(snapshotAfterReset).toEqual({
-                nonce: "snap-2",
-                ok: true,
-                result: { kind: "value", value: null },
-            });
-        } finally {
-            handle.dispose();
-        }
-    });
+                // Reusing the nonce forces the same file through the live watcher after the drain;
+                // the per-activation nonce set must prevent a second handler invocation.
+                unlinkSync(join(channelDir, "preactivation.response.json"));
+                writeFileSync(
+                    join(channelDir, "preactivation.request.json"),
+                    JSON.stringify(request),
+                    "utf8",
+                );
+                await new Promise((resolve) => setTimeout(resolve, 250));
+                expect(workspaceUpdate).toHaveBeenCalledTimes(1);
+            } finally {
+                handle.dispose();
+            }
+        },
+    );
 
     it("rejects an unlisted memento key over the real transport", { retry: 2 }, async () => {
         const { context } = makeContext(vscodeMock.ExtensionMode.Development);
@@ -219,40 +319,133 @@ describe("activateE2eControlChannel: end-to-end request/response over the real t
                 scope: "workspace",
                 key: "intelligit.notAllowlisted",
             });
-            expect(response).toMatchObject({ ok: false, error: expect.stringContaining("not allowlisted") });
-        } finally {
-            handle.dispose();
-        }
-    });
-
-    it("rejects a structurally malformed request file rather than crashing the watcher", { retry: 2 }, async () => {
-        const { context } = makeContext(vscodeMock.ExtensionMode.Development);
-        const handle = activateE2eControlChannel(context);
-
-        try {
-            writeFileSync(join(channelDir, "malformed.request.json"), JSON.stringify({ nope: true }), "utf8");
-            await waitFor(() => existsSync(join(channelDir, "malformed.response.json")));
-            const response = JSON.parse(readFileSync(join(channelDir, "malformed.response.json"), "utf8"));
-            expect(response.ok).toBe(false);
-
-            // The watcher must still be alive for the next request after a malformed one.
-            const response2 = await sendAndAwait(channelDir, "after-malformed", {
-                store: "memento",
-                operation: "snapshot",
-                scope: "workspace",
-                key: ALLOWED_WORKSPACE_KEY,
+            expect(response).toMatchObject({
+                ok: false,
+                error: expect.stringContaining("not allowlisted"),
             });
-            expect(response2.ok).toBe(true);
         } finally {
             handle.dispose();
         }
     });
+
+    it(
+        "rejects a structurally malformed request file rather than crashing the watcher",
+        { retry: 2 },
+        async () => {
+            const { context } = makeContext(vscodeMock.ExtensionMode.Development);
+            const handle = activateE2eControlChannel(context);
+
+            try {
+                writeFileSync(
+                    join(channelDir, "malformed.request.json"),
+                    JSON.stringify({ nope: true }),
+                    "utf8",
+                );
+                await waitFor(() => existsSync(join(channelDir, "malformed.response.json")));
+                const response = JSON.parse(
+                    readFileSync(join(channelDir, "malformed.response.json"), "utf8"),
+                );
+                expect(response.ok).toBe(false);
+
+                // The watcher must still be alive for the next request after a malformed one.
+                const response2 = await sendAndAwait(channelDir, "after-malformed", {
+                    store: "memento",
+                    operation: "snapshot",
+                    scope: "workspace",
+                    key: ALLOWED_WORKSPACE_KEY,
+                });
+                expect(response2.ok).toBe(true);
+            } finally {
+                handle.dispose();
+            }
+        },
+    );
+
+    it(
+        "continues serving valid requests after a truncated request file",
+        { retry: 2 },
+        async () => {
+            const { context } = makeContext(vscodeMock.ExtensionMode.Development);
+            const handle = activateE2eControlChannel(context);
+
+            try {
+                writeFileSync(join(channelDir, "truncated.request.json"), '{"nonce":', "utf8");
+                const response = await sendAndAwait(channelDir, "after-truncated", {
+                    store: "memento",
+                    operation: "snapshot",
+                    scope: "workspace",
+                    key: ALLOWED_WORKSPACE_KEY,
+                });
+                expect(response.ok).toBe(true);
+            } finally {
+                handle.dispose();
+            }
+        },
+    );
+
+    it(
+        "retries a request whose response write failed, stranding no temp file and no unhandled rejection",
+        { retry: 2 },
+        async () => {
+            const { context, workspaceMap } = makeContext(vscodeMock.ExtensionMode.Development);
+            const nonce = "blocked-response";
+            const requestPath = join(channelDir, `${nonce}.request.json`);
+            const responsePath = join(channelDir, `${nonce}.response.json`);
+
+            // Block the write at the filesystem layer rather than by mocking the transport:
+            // renaming onto an existing directory fails exactly the way a channel torn down
+            // mid-flight fails an in-flight response, so the real error path runs end to end.
+            mkdirSync(responsePath);
+
+            const rejections: unknown[] = [];
+            const recordRejection = (reason: unknown): void => {
+                rejections.push(reason);
+            };
+            process.on("unhandledRejection", recordRejection);
+            const handle = activateE2eControlChannel(context);
+
+            try {
+                writeFileSync(
+                    requestPath,
+                    JSON.stringify({
+                        nonce,
+                        store: "memento",
+                        operation: "seed",
+                        scope: "workspace",
+                        key: ALLOWED_WORKSPACE_KEY,
+                        value: "/repo/after/retry",
+                    }),
+                    "utf8",
+                );
+
+                // The handler runs, then delivery fails. A failed delivery must leave the request
+                // in place: that surviving file is both what reconciliation retries from, and what
+                // makes the client's timeout diagnostic name the true failure instead of blaming
+                // a watcher that did observe the request.
+                await waitFor(() => workspaceMap.has(ALLOWED_WORKSPACE_KEY));
+                await new Promise((resolve) => setTimeout(resolve, 200));
+                expect(existsSync(requestPath)).toBe(true);
+                expect(rejections).toEqual([]);
+
+                // Unblocking alone must be enough -- no new request file is written here, so only
+                // reconciliation retrying the surviving one can produce a response.
+                rmSync(responsePath, { recursive: true, force: true });
+                await waitFor(() => existsSync(responsePath));
+                expect(JSON.parse(readFileSync(responsePath, "utf8")).ok).toBe(true);
+                expect(existsSync(requestPath)).toBe(false);
+                expect(readdirSync(channelDir).filter((name) => name.endsWith(".tmp"))).toEqual([]);
+            } finally {
+                process.off("unhandledRejection", recordRejection);
+                handle.dispose();
+            }
+        },
+    );
 
     /**
      * A request file whose CONTENT is not JSON at all. The existing malformed-request test above
      * writes `{"nope": true}` -- valid JSON with the wrong schema, which exercises
      * `parseE2eRequest` and never reaches `JSON.parse`. This one reaches `JSON.parse`, which
-     * throws a `SyntaxError` synchronously inside the `fs.watch` listener, upstream of every
+     * throws a `SyntaxError` synchronously inside the reconciliation loop, upstream of every
      * `try`/`catch` in `dispatchRequest`. Nothing there catches it, so it escapes as an
      * uncaught exception in the extension host.
      *
@@ -385,7 +578,11 @@ describe("activateE2eControlChannel: end-to-end request/response over the real t
         nonce: string,
         body: Record<string, unknown>,
     ): Promise<{ nonce: string; ok: boolean; [key: string]: unknown }> {
-        writeFileSync(join(dir, `${nonce}.request.json`), JSON.stringify({ nonce, ...body }), "utf8");
+        writeFileSync(
+            join(dir, `${nonce}.request.json`),
+            JSON.stringify({ nonce, ...body }),
+            "utf8",
+        );
         const responsePath = join(dir, `${nonce}.response.json`);
         await waitFor(() => existsSync(responsePath));
         return JSON.parse(readFileSync(responsePath, "utf8"));

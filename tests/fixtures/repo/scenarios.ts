@@ -39,10 +39,13 @@ import { ShelfService } from "../../../src/services/shelfService";
 import { runGit } from "./gitRun";
 import {
     createSanitizedGitEnv,
+    DIRTY_FIXTURE,
     FIXTURE_REFS,
     seedFixtureTemplate,
     type FixtureTemplate,
 } from "./seed";
+
+export { DIRTY_FIXTURE };
 
 /** Every repository state PLAN.md:101 requires a webview recorder to be able to record against. */
 export const REPOSITORY_SCENARIO_IDS = [
@@ -52,12 +55,41 @@ export const REPOSITORY_SCENARIO_IDS = [
     "mid-rebase",
     "detached-head",
     "ahead-behind",
+    "ahead-only",
+    "pushed-tip",
+    "rewritten-history",
+    "stale-lease",
     "empty-repo",
     "shelf-populated",
     "shelf-conflicted",
 ] as const;
 
 export type RepositoryScenarioId = (typeof REPOSITORY_SCENARIO_IDS)[number];
+
+/** The paths and commit subjects the divergence scenarios (`ahead-behind`, `ahead-only`) create.
+ * Exported so consumers assert against the fixture's own source of truth: an oracle that hand-copies
+ * "Advance origin main" keeps passing after a builder below renames it, and then asserts a string no
+ * scenario produces any more. */
+export const DIVERGENCE_FIXTURE = {
+    localAheadPath: "local-ahead.txt",
+    localOnlySubject: "Local-only commit",
+    rewordedSubject: "Local-only commit (rewritten)",
+    originAdvancePath: "origin-advance.txt",
+    originAdvanceSubject: "Advance origin main",
+} as const;
+
+/** The path and subjects used by the pushed non-merge tip scenario and its reworded result. */
+export const PUSHED_TIP_FIXTURE = {
+    path: "pushed-tip.txt",
+    subject: "Pushed tip commit",
+    rewordedSubject: "Pushed tip commit (rewritten)",
+} as const;
+
+/** Optional ownership context passed from the fixture harness to a scenario builder. */
+interface ScenarioPreparationOptions {
+    /** Parent directory under which the scenario creates its scratch HOME. */
+    readonly homeParent?: string;
+}
 
 /** What one `prepare()` call built, and what a caller needs to drive or dispose of it. */
 export interface ScenarioWorkspace {
@@ -82,7 +114,10 @@ export interface RepositoryScenario {
     readonly summary: string;
     /** Builds this scenario into `destination` (must be empty or non-existent). THROWS if the
      * resulting repository does not satisfy this scenario's defining postcondition. */
-    prepare(destination: string): Promise<ScenarioWorkspace>;
+    prepare(
+        destination: string,
+        options?: ScenarioPreparationOptions,
+    ): Promise<ScenarioWorkspace>;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -255,6 +290,188 @@ export async function assertAheadBehindPostcondition(
     }
 }
 
+/** `ahead-only`: local `main` is exactly one commit ahead of its upstream, not behind, clean, and
+ * still points at the same origin/main commit recorded by the local remote-tracking ref. */
+export async function assertAheadOnlyPostcondition(
+    root: string,
+    originRoot: string,
+    env: NodeJS.ProcessEnv,
+): Promise<void> {
+    try {
+        const [headRef, counts, status, localRemoteTracking, originHead] = await Promise.all([
+            runGit(root, ["symbolic-ref", "--quiet", "HEAD"], env),
+            runGit(
+                root,
+                ["rev-list", "--left-right", "--count", `${FIXTURE_REFS.main}...@{upstream}`],
+                env,
+            ),
+            runGit(root, ["status", "--porcelain"], env),
+            runGit(
+                root,
+                ["rev-parse", `refs/remotes/${FIXTURE_REFS.remote}/${FIXTURE_REFS.main}`],
+                env,
+            ),
+            runGit(originRoot, ["rev-parse", `refs/heads/${FIXTURE_REFS.main}`], env),
+        ]);
+        const [ahead, behind] = counts.split(/\s+/).map(Number);
+        if (
+            headRef !== `refs/heads/${FIXTURE_REFS.main}` ||
+            ahead !== 1 ||
+            behind !== 0 ||
+            status.length > 0 ||
+            localRemoteTracking !== originHead
+        ) {
+            throw new Error(
+                `head=${headRef}, ahead=${ahead}, behind=${behind}, status=${status || "(empty)"}, ` +
+                    `local remote-tracking origin/main=${localRemoteTracking}, bare origin/main=${originHead}.`,
+            );
+        }
+    } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error);
+        throw new Error(`ahead-only scenario postcondition violated: ${detail}`, { cause: error });
+    }
+}
+
+/** `pushed-tip`: clean `main` points at a single-parent commit whose exact tip is published to
+ * origin/main, so the local branch has a valid upstream with no ahead/behind delta. */
+export async function assertPushedTipPostcondition(
+    root: string,
+    originRoot: string,
+    env: NodeJS.ProcessEnv,
+): Promise<void> {
+    try {
+        const [headRef, counts, status, localHead, parentLine, subject, changedPaths, localRemoteTracking, originHead] =
+            await Promise.all([
+                runGit(root, ["symbolic-ref", "--quiet", "HEAD"], env),
+                runGit(
+                    root,
+                    ["rev-list", "--left-right", "--count", `${FIXTURE_REFS.main}...@{upstream}`],
+                    env,
+                ),
+                runGit(root, ["status", "--porcelain"], env),
+                runGit(root, ["rev-parse", "HEAD"], env),
+                runGit(root, ["show", "-s", "--format=%P", "HEAD"], env),
+                runGit(root, ["show", "-s", "--format=%s", "HEAD"], env),
+                runGit(
+                    root,
+                    ["diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD", "--", PUSHED_TIP_FIXTURE.path],
+                    env,
+                ),
+                runGit(
+                    root,
+                    ["rev-parse", `refs/remotes/${FIXTURE_REFS.remote}/${FIXTURE_REFS.main}`],
+                    env,
+                ),
+                runGit(originRoot, ["rev-parse", `refs/heads/${FIXTURE_REFS.main}`], env),
+            ]);
+        const [ahead, behind] = counts.split(/\s+/).map(Number);
+        const parentCount = parentLine.length === 0 ? 0 : parentLine.split(/\s+/).length;
+        const tipContainsExpectedPath = changedPaths.split(/\s+/).includes(PUSHED_TIP_FIXTURE.path);
+        if (
+            headRef !== `refs/heads/${FIXTURE_REFS.main}` ||
+            ahead !== 0 ||
+            behind !== 0 ||
+            status.length > 0 ||
+            parentCount !== 1 ||
+            subject !== PUSHED_TIP_FIXTURE.subject ||
+            !tipContainsExpectedPath ||
+            localHead !== localRemoteTracking ||
+            localHead !== originHead
+        ) {
+            throw new Error(
+                `head=${headRef}, ahead=${ahead}, behind=${behind}, status=${status || "(empty)"}, ` +
+                    `parent count=${parentCount}, subject=${subject}, tip path present=${tipContainsExpectedPath}, ` +
+                    `local HEAD=${localHead}, local remote-tracking origin/main=${localRemoteTracking}, ` +
+                    `bare origin/main=${originHead}.`,
+            );
+        }
+    } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error);
+        throw new Error(`pushed-tip scenario postcondition violated: ${detail}`, { cause: error });
+    }
+}
+
+/** `rewritten-history`: local `main` still points at the last fetched commit, while bare origin's
+ * `main` is a real amended commit that is not descended from that local commit. */
+export async function assertRewrittenHistoryPostcondition(
+    root: string,
+    originRoot: string,
+    env: NodeJS.ProcessEnv,
+): Promise<void> {
+    const [localHead, lastFetched, originHead] = await Promise.all([
+        runGit(root, ["rev-parse", "HEAD"], env),
+        runGit(
+            root,
+            ["rev-parse", `refs/remotes/${FIXTURE_REFS.remote}/${FIXTURE_REFS.main}`],
+            env,
+        ),
+        runGit(originRoot, ["rev-parse", `refs/heads/${FIXTURE_REFS.main}`], env),
+    ]);
+    const originCommitExists = await gitSucceeds(
+        originRoot,
+        ["cat-file", "-e", `${originHead}^{commit}`],
+        env,
+    );
+    const localHeadIsAncestor = await gitSucceeds(
+        originRoot,
+        ["merge-base", "--is-ancestor", localHead, originHead],
+        env,
+    );
+    if (
+        localHead !== lastFetched ||
+        localHead === originHead ||
+        !originCommitExists ||
+        localHeadIsAncestor
+    ) {
+        throw new Error(
+            `rewritten-history scenario postcondition violated: local HEAD=${localHead}, ` +
+                `last fetched=${lastFetched}, origin/main=${originHead}, origin commit exists=` +
+                `${originCommitExists}, local HEAD is ancestor=${localHeadIsAncestor}.`,
+        );
+    }
+}
+
+/** `stale-lease`: local `main` was rewritten from the last fetched lease, and a collaborator then
+ * advanced bare origin's `main` from that lease without the local clone fetching the new commit. */
+export async function assertStaleLeasePostcondition(
+    root: string,
+    originRoot: string,
+    env: NodeJS.ProcessEnv,
+): Promise<void> {
+    const [localHead, lastFetched, originHead] = await Promise.all([
+        runGit(root, ["rev-parse", "HEAD"], env),
+        runGit(
+            root,
+            ["rev-parse", `refs/remotes/${FIXTURE_REFS.remote}/${FIXTURE_REFS.main}`],
+            env,
+        ),
+        runGit(originRoot, ["rev-parse", `refs/heads/${FIXTURE_REFS.main}`], env),
+    ]);
+    const originCommitExists = await gitSucceeds(
+        originRoot,
+        ["cat-file", "-e", `${originHead}^{commit}`],
+        env,
+    );
+    const originAdvancedFromLease = await gitSucceeds(
+        originRoot,
+        ["merge-base", "--is-ancestor", lastFetched, originHead],
+        env,
+    );
+    if (
+        localHead === lastFetched ||
+        originHead === lastFetched ||
+        localHead === originHead ||
+        !originCommitExists ||
+        !originAdvancedFromLease
+    ) {
+        throw new Error(
+            `stale-lease scenario postcondition violated: local HEAD=${localHead}, last fetched=` +
+                `${lastFetched}, origin/main=${originHead}, origin commit exists=${originCommitExists}, ` +
+                `origin advanced from lease=${originAdvancedFromLease}.`,
+        );
+    }
+}
+
 /** `empty-repo`: `git rev-parse --verify HEAD` fails (no commits) AND `git status --porcelain` is
  * empty (nothing to report on a repository with no history and no files). */
 export async function assertEmptyRepoPostcondition(
@@ -327,8 +544,11 @@ export async function assertShelfConflictedPostcondition(
 /** `clean`: reverts the seeded dirty layer -- `reset --hard` discards every staged/unstaged
  * tracked change (including the staged rename and the staged binary file, neither of which are in
  * HEAD), then `clean -fdx` removes every untracked AND ignored path the dirty layer left behind. */
-async function prepareClean(destination: string): Promise<ScenarioWorkspace> {
-    const template = await seedFixtureTemplate(destination);
+async function prepareClean(
+    destination: string,
+    options?: ScenarioPreparationOptions,
+): Promise<ScenarioWorkspace> {
+    const template = await seedFixtureTemplate(destination, options);
     const { root, env } = template;
     await runGit(root, ["reset", "--hard", "HEAD"], env);
     await runGit(root, ["clean", "-fdx", "--quiet"], env);
@@ -338,8 +558,11 @@ async function prepareClean(destination: string): Promise<ScenarioWorkspace> {
 
 /** `dirty`: the template exactly as seeded -- `seedFixtureTemplate` already builds this state, so
  * this builder's only job is to assert it actually holds. */
-async function prepareDirty(destination: string): Promise<ScenarioWorkspace> {
-    const template = await seedFixtureTemplate(destination);
+async function prepareDirty(
+    destination: string,
+    options?: ScenarioPreparationOptions,
+): Promise<ScenarioWorkspace> {
+    const template = await seedFixtureTemplate(destination, options);
     await assertDirtyPostcondition(template.root, template.env);
     return toWorkspace("dirty", template);
 }
@@ -355,8 +578,11 @@ async function prepareDirty(destination: string): Promise<ScenarioWorkspace> {
  * conflict on it. `--no-edit` and a `GIT_EDITOR=true` override are both belt-and-suspenders
  * against a merge that unexpectedly succeeds and would otherwise try to open an editor for a
  * merge commit message. */
-async function prepareConflicted(destination: string): Promise<ScenarioWorkspace> {
-    const template = await seedFixtureTemplate(destination);
+async function prepareConflicted(
+    destination: string,
+    options?: ScenarioPreparationOptions,
+): Promise<ScenarioWorkspace> {
+    const template = await seedFixtureTemplate(destination, options);
     const { root, env } = template;
     await runGit(root, ["reset", "--hard", "HEAD"], env);
     await runGit(root, ["clean", "-fdx", "--quiet"], env);
@@ -372,8 +598,11 @@ async function prepareConflicted(destination: string): Promise<ScenarioWorkspace
  * Cleaned first for the same reason `prepareConflicted` cleans first: `git rebase` refuses to
  * start while the seeded dirty layer's staged rename and binary file sit in the index, regardless
  * of `conflict.txt` itself being untouched by that layer. */
-async function prepareMidRebase(destination: string): Promise<ScenarioWorkspace> {
-    const template = await seedFixtureTemplate(destination);
+async function prepareMidRebase(
+    destination: string,
+    options?: ScenarioPreparationOptions,
+): Promise<ScenarioWorkspace> {
+    const template = await seedFixtureTemplate(destination, options);
     const { root, env } = template;
     await runGit(root, ["reset", "--hard", "HEAD"], env);
     await runGit(root, ["clean", "-fdx", "--quiet"], env);
@@ -386,8 +615,11 @@ async function prepareMidRebase(destination: string): Promise<ScenarioWorkspace>
 
 /** `detached-head`: detaches at `feature/awesome`'s third commit -- a real commit off every branch
  * tip, not the tip of whatever branch happened to be checked out already. */
-async function prepareDetachedHead(destination: string): Promise<ScenarioWorkspace> {
-    const template = await seedFixtureTemplate(destination);
+async function prepareDetachedHead(
+    destination: string,
+    options?: ScenarioPreparationOptions,
+): Promise<ScenarioWorkspace> {
+    const template = await seedFixtureTemplate(destination, options);
     const { root, env, commits } = template;
     await runGit(root, ["checkout", "--quiet", "--detach", commits.featureCommit3], env);
     await assertDetachedHeadPostcondition(root, env, commits.featureCommit3);
@@ -406,8 +638,11 @@ async function prepareDetachedHead(destination: string): Promise<ScenarioWorkspa
  * rename and binary file into it, making the commit an arbitrary grab-bag and leaving a working
  * tree that is clean only as a side effect nobody declared. Every non-`dirty` scenario in this
  * module therefore starts from a clean tree, and this one asserts that it ends on one too. */
-async function prepareAheadBehind(destination: string): Promise<ScenarioWorkspace> {
-    const template = await seedFixtureTemplate(destination);
+async function prepareAheadBehind(
+    destination: string,
+    options?: ScenarioPreparationOptions,
+): Promise<ScenarioWorkspace> {
+    const template = await seedFixtureTemplate(destination, options);
     const { root, env, originRoot } = template;
     await runGit(root, ["reset", "--hard", "HEAD"], env);
     await runGit(root, ["clean", "-fdx", "--quiet"], env);
@@ -419,25 +654,155 @@ async function prepareAheadBehind(destination: string): Promise<ScenarioWorkspac
         env,
     );
     await writeFile(
-        path.join(advanceClone, "origin-advance.txt"),
+        path.join(advanceClone, DIVERGENCE_FIXTURE.originAdvancePath),
         "origin advanced main\n",
         "utf8",
     );
     await runGit(advanceClone, ["add", "-A"], env);
-    await runGit(advanceClone, ["commit", "--quiet", "-m", "Advance origin main"], env);
+    await runGit(
+        advanceClone,
+        ["commit", "--quiet", "-m", DIVERGENCE_FIXTURE.originAdvanceSubject],
+        env,
+    );
     await runGit(advanceClone, ["push", "--quiet", "origin", FIXTURE_REFS.main], env);
     await rm(advanceClone, { recursive: true, force: true });
 
     // Fetches (never merges) origin's new commit: local `main` stays put, so it becomes "behind".
     await runGit(root, ["fetch", "--quiet", FIXTURE_REFS.remote, FIXTURE_REFS.main], env);
 
-    await writeFile(path.join(root, "local-ahead.txt"), "local main advanced\n", "utf8");
-    await runGit(root, ["add", "local-ahead.txt"], env);
-    await runGit(root, ["commit", "--quiet", "-m", "Local-only commit"], env);
+    await writeFile(
+        path.join(root, DIVERGENCE_FIXTURE.localAheadPath),
+        "local main advanced\n",
+        "utf8",
+    );
+    await runGit(root, ["add", DIVERGENCE_FIXTURE.localAheadPath], env);
+    await runGit(root, ["commit", "--quiet", "-m", DIVERGENCE_FIXTURE.localOnlySubject], env);
 
     await assertCleanPostcondition(root, env);
     await assertAheadBehindPostcondition(root, env);
     return toWorkspace("ahead-behind", template);
+}
+
+/** `ahead-only`: preserves the seeded origin/main, then adds exactly one local commit on main.
+ * The working tree is cleaned before the named file is committed, so the resulting state is
+ * fast-forwardable and contains no unrelated staged or untracked changes. */
+async function prepareAheadOnly(
+    destination: string,
+    options?: ScenarioPreparationOptions,
+): Promise<ScenarioWorkspace> {
+    const template = await seedFixtureTemplate(destination, options);
+    const { root, env, originRoot } = template;
+    await runGit(root, ["reset", "--hard", "HEAD"], env);
+    await runGit(root, ["clean", "-fdx", "--quiet"], env);
+
+    await writeFile(
+        path.join(root, DIVERGENCE_FIXTURE.localAheadPath),
+        "local main advanced\n",
+        "utf8",
+    );
+    await runGit(root, ["add", DIVERGENCE_FIXTURE.localAheadPath], env);
+    await runGit(root, ["commit", "--quiet", "-m", DIVERGENCE_FIXTURE.localOnlySubject], env);
+
+    await assertCleanPostcondition(root, env);
+    await assertAheadOnlyPostcondition(root, originRoot, env);
+    return toWorkspace("ahead-only", template);
+}
+
+/** `pushed-tip`: cleans the seed, creates one single-parent commit on `main`, and pushes it to the
+ * fixture's bare origin so local `main`, origin/main, and the upstream agree on the published tip. */
+async function preparePushedTip(
+    destination: string,
+    options?: ScenarioPreparationOptions,
+): Promise<ScenarioWorkspace> {
+    const template = await seedFixtureTemplate(destination, options);
+    const { root, env, originRoot } = template;
+    await runGit(root, ["reset", "--hard", "HEAD"], env);
+    await runGit(root, ["clean", "-fdx", "--quiet"], env);
+
+    await writeFile(path.join(root, PUSHED_TIP_FIXTURE.path), "pushed tip\n", "utf8");
+    await runGit(root, ["add", PUSHED_TIP_FIXTURE.path], env);
+    await runGit(root, ["commit", "--quiet", "-m", PUSHED_TIP_FIXTURE.subject], env);
+    await runGit(root, ["push", "--quiet", FIXTURE_REFS.remote, FIXTURE_REFS.main], env);
+
+    await assertCleanPostcondition(root, env);
+    await assertPushedTipPostcondition(root, originRoot, env);
+    return toWorkspace("pushed-tip", template);
+}
+
+/** `rewritten-history`: cleans the seed, amends the collaborator clone's real tip, and force-pushes
+ * that rewritten object to bare origin while local `main` and its remote-tracking ref stay stale. */
+async function prepareRewrittenHistory(
+    destination: string,
+    options?: ScenarioPreparationOptions,
+): Promise<ScenarioWorkspace> {
+    const template = await seedFixtureTemplate(destination, options);
+    const { root, env, originRoot } = template;
+    await runGit(root, ["reset", "--hard", "HEAD"], env);
+    await runGit(root, ["clean", "-fdx", "--quiet"], env);
+
+    const collaboratorClone = path.join(destination, "rewritten-history-collaborator");
+    await runGit(
+        destination,
+        ["clone", "--quiet", "--branch", FIXTURE_REFS.main, originRoot, collaboratorClone],
+        env,
+    );
+    await writeFile(
+        path.join(collaboratorClone, "rewritten-history.txt"),
+        "origin main was rewritten\n",
+        "utf8",
+    );
+    await runGit(collaboratorClone, ["add", "rewritten-history.txt"], env);
+    await runGit(collaboratorClone, ["commit", "--quiet", "--amend", "--no-edit"], env);
+    await runGit(
+        collaboratorClone,
+        ["push", "--quiet", "--force", FIXTURE_REFS.remote, FIXTURE_REFS.main],
+        env,
+    );
+    await rm(collaboratorClone, { recursive: true, force: true });
+
+    await assertCleanPostcondition(root, env);
+    await assertRewrittenHistoryPostcondition(root, originRoot, env);
+    return toWorkspace("rewritten-history", template);
+}
+
+/** `stale-lease`: rewrites local `main`, then lets a real collaborator advance origin after the
+ * local clone's last fetch so a default force-with-lease must reject its stale expected OID. */
+async function prepareStaleLease(
+    destination: string,
+    options?: ScenarioPreparationOptions,
+): Promise<ScenarioWorkspace> {
+    const template = await seedFixtureTemplate(destination, options);
+    const { root, env, originRoot } = template;
+    await runGit(root, ["reset", "--hard", "HEAD"], env);
+    await runGit(root, ["clean", "-fdx", "--quiet"], env);
+
+    await writeFile(path.join(root, "local-lease-rewrite.txt"), "local rewritten main\n", "utf8");
+    await runGit(root, ["add", "local-lease-rewrite.txt"], env);
+    await runGit(root, ["commit", "--quiet", "--amend", "--no-edit"], env);
+
+    const collaboratorClone = path.join(destination, "stale-lease-collaborator");
+    await runGit(
+        destination,
+        ["clone", "--quiet", "--branch", FIXTURE_REFS.main, originRoot, collaboratorClone],
+        env,
+    );
+    await writeFile(
+        path.join(collaboratorClone, "collaborator-advance.txt"),
+        "collaborator advanced origin main\n",
+        "utf8",
+    );
+    await runGit(collaboratorClone, ["add", "collaborator-advance.txt"], env);
+    await runGit(collaboratorClone, ["commit", "--quiet", "-m", "Collaborator advances main"], env);
+    await runGit(
+        collaboratorClone,
+        ["push", "--quiet", FIXTURE_REFS.remote, FIXTURE_REFS.main],
+        env,
+    );
+    await rm(collaboratorClone, { recursive: true, force: true });
+
+    await assertCleanPostcondition(root, env);
+    await assertStaleLeasePostcondition(root, originRoot, env);
+    return toWorkspace("stale-lease", template);
 }
 
 /**
@@ -447,9 +812,12 @@ async function prepareAheadBehind(destination: string): Promise<ScenarioWorkspac
  * `env`/`home` shape every other scenario has, with `template` left `undefined` (the interface
  * already types it optional for exactly this case).
  */
-async function prepareEmptyRepo(destination: string): Promise<ScenarioWorkspace> {
+async function prepareEmptyRepo(
+    destination: string,
+    options?: ScenarioPreparationOptions,
+): Promise<ScenarioWorkspace> {
     await ensureEmptyScenarioDestination(destination);
-    const { env, home } = await createSanitizedGitEnv();
+    const { env, home } = await createSanitizedGitEnv({ homeParent: options?.homeParent });
     const root = path.join(destination, "workspace");
     await mkdir(root, { recursive: true });
     await runGit(root, ["init", "--quiet", "-b", FIXTURE_REFS.main], env);
@@ -484,8 +852,11 @@ function definedEnv(env: NodeJS.ProcessEnv): Record<string, string> {
  * (`<destination>/shelf-storage`), mirroring where the real extension keeps it -- host-global
  * storage, never inside the repository working tree, so it never shows up in `git status`.
  */
-async function prepareShelfPopulated(destination: string): Promise<ScenarioWorkspace> {
-    const template = await seedFixtureTemplate(destination);
+async function prepareShelfPopulated(
+    destination: string,
+    options?: ScenarioPreparationOptions,
+): Promise<ScenarioWorkspace> {
+    const template = await seedFixtureTemplate(destination, options);
     const { root, env } = template;
 
     const storageRoot = path.join(destination, "shelf-storage");
@@ -524,8 +895,11 @@ async function prepareShelfPopulated(destination: string): Promise<ScenarioWorks
  * three-way session possible. The shelf root is carried on `ScenarioWorkspace` so a recorder uses
  * this exact store rather than reconstructing it from `path.dirname(workspace.root)`.
  */
-async function prepareShelfConflicted(destination: string): Promise<ScenarioWorkspace> {
-    const template = await seedFixtureTemplate(destination);
+async function prepareShelfConflicted(
+    destination: string,
+    options?: ScenarioPreparationOptions,
+): Promise<ScenarioWorkspace> {
+    const template = await seedFixtureTemplate(destination, options);
     const { root, env } = template;
     const storageRoot = path.join(destination, "shelf-storage");
     const shelfPaths = await resolveShelfPaths({
@@ -590,6 +964,32 @@ export const REPOSITORY_SCENARIOS: readonly RepositoryScenario[] = [
             "Clean tree, with local main both ahead of and behind origin/main by one real, " +
             "unpushed/unfetched commit each.",
         prepare: prepareAheadBehind,
+    },
+    {
+        id: "ahead-only",
+        summary: "Clean tree, with local main exactly one commit ahead of an unchanged origin/main.",
+        prepare: prepareAheadOnly,
+    },
+    {
+        id: "pushed-tip",
+        summary:
+            "Clean main with one single-parent commit pushed to origin/main, so local and upstream " +
+            "tips agree on the published non-merge tip.",
+        prepare: preparePushedTip,
+    },
+    {
+        id: "rewritten-history",
+        summary:
+            "Clean local main whose last-fetched tip is replaced by a real amended origin/main " +
+            "commit, so a normal push is non-fast-forward.",
+        prepare: prepareRewrittenHistory,
+    },
+    {
+        id: "stale-lease",
+        summary:
+            "Local main is rewritten while a real collaborator advances origin/main after the " +
+            "local clone's last fetch, so force-with-lease must refuse.",
+        prepare: prepareStaleLease,
     },
     {
         id: "empty-repo",

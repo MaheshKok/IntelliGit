@@ -11,7 +11,9 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
-import type { Page } from "@playwright/test";
+import { _electron as electron, type ElectronApplication, type Page } from "@playwright/test";
+
+import type { FixtureWorkspace } from "../../fixtures/repo/harness";
 
 const execFileAsync = promisify(execFile);
 
@@ -94,23 +96,35 @@ export async function createThrowawayGitRepo(
  */
 export async function seedProfileSettings(
     userDataDir: string,
-    colorThemeSetting: string,
+    colorThemeSetting?: string,
+    shelfStoragePath?: string,
 ): Promise<void> {
     const userDir = path.join(userDataDir, "User");
     await mkdir(userDir, { recursive: true });
+    const settings: Record<string, string | boolean> = {
+        "workbench.startupEditor": "none",
+        "workbench.welcomePage.walkthroughs.openOnInstall": false,
+        "update.showReleaseNotes": false,
+        "telemetry.telemetryLevel": "off",
+        // Load-bearing for every flow that confirms through a modal, not cosmetic. VS Code's
+        // default `window.dialogStyle` on macOS is "native", which renders `showWarningMessage(...,
+        // { modal: true })` as an OS sheet: Playwright can neither see nor click it, so a row whose
+        // action needs the confirmation silently never confirms and the repository stays untouched.
+        // The failure reads as "the button did nothing" -- no dialog, no notification, no error --
+        // which is indistinguishable from a broken product path. Isolated by ablation against this
+        // build: with the default, `.monaco-dialog-box` count is 0 after clicking Rollback; with
+        // "custom" it is 1, reading "Rollback all changes?" with buttons ["Cancel", "Rollback"].
+        "window.dialogStyle": "custom",
+    };
+    if (colorThemeSetting !== undefined) {
+        settings["workbench.colorTheme"] = colorThemeSetting;
+    }
+    if (shelfStoragePath !== undefined) {
+        settings["intelligit.shelf.path"] = shelfStoragePath;
+    }
     await writeFile(
         path.join(userDir, "settings.json"),
-        `${JSON.stringify(
-            {
-                "workbench.colorTheme": colorThemeSetting,
-                "workbench.startupEditor": "none",
-                "workbench.welcomePage.walkthroughs.openOnInstall": false,
-                "update.showReleaseNotes": false,
-                "telemetry.telemetryLevel": "off",
-            },
-            null,
-            4,
-        )}\n`,
+        `${JSON.stringify(settings, null, 4)}\n`,
         "utf8",
     );
 }
@@ -215,6 +229,50 @@ export function buildElectronLaunchArgs(options: {
         `--extensions-dir=${extensionsDir}`,
         workspacePath,
     ];
+}
+
+/**
+ * Launches VS Code for a fixture-backed E2E test with every isolation and activation input in one
+ * place. The profile, extensions directory, and channel directory are all children of the
+ * `FixtureWorkspace`'s dispose-owned root; keeping them together prevents a failed Electron test
+ * from leaking a process-owned scratch directory outside the harness cleanup boundary.
+ */
+export async function launchFixtureWorkspace(options: {
+    readonly executablePath: string;
+    readonly repoRoot: string;
+    readonly workspace: FixtureWorkspace;
+    readonly channelDir: string;
+    readonly timeout?: number;
+}): Promise<ElectronApplication> {
+    const { executablePath, repoRoot, workspace, channelDir, timeout } = options;
+    const extensionsDir = path.join(path.dirname(workspace.profileDir), "extensions");
+    await mkdir(extensionsDir, { recursive: true });
+    const shelfStoragePath =
+        workspace.shelfStorageRoot === undefined
+            ? undefined
+            : path.join(workspace.shelfStorageRoot, "shelves");
+    await seedProfileSettings(workspace.profileDir, undefined, shelfStoragePath);
+
+    return electron.launch({
+        executablePath,
+        args: [
+            ...buildElectronLaunchArgs({
+                repoRoot,
+                userDataDir: workspace.profileDir,
+                extensionsDir,
+                workspacePath: workspace.root,
+            }),
+        ],
+        // `NodeJS.ProcessEnv` permits undefined values, but Electron's env contract does not;
+        // this shared narrowing also prevents an absent inherited variable from being forwarded
+        // as a real undefined value that makes the child exit before opening a window.
+        env: {
+            ...toElectronLaunchEnv(workspace.env),
+            INTELLIGIT_E2E: "1",
+            INTELLIGIT_E2E_CHANNEL_DIR: channelDir,
+        },
+        timeout,
+    });
 }
 
 /**

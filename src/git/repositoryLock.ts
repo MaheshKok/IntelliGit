@@ -107,18 +107,27 @@ export class RepositoryLock {
 
     private releaseCallback(lockPath: string, owner: LockOwner): () => Promise<void> {
         let released = false;
+        // Each heartbeat write is chained onto the previous one and kept, never fired and
+        // forgotten: `clearInterval` stops future ticks but cannot recall the write a tick has
+        // already started. An untracked write that lands after the `rm` below recreates the lock
+        // file with a FRESH `heartbeatAt`, so the next acquirer reads it as held and throws
+        // `RepositoryLockBusyError` -- a repository that reports itself busy with no owner and
+        // self-heals only after `staleAfterMs`. Chaining (rather than tracking the latest write)
+        // also means release awaits every owed write, not just the last one started.
+        let pendingWrite: Promise<void> = Promise.resolve();
         const heartbeat = setInterval(() => {
             owner.heartbeatAt = Date.now();
-            void writeFile(lockPath, JSON.stringify(owner), {
-                encoding: "utf8",
-                mode: 0o600,
-            }).catch(() => undefined);
+            const snapshot = JSON.stringify(owner);
+            pendingWrite = pendingWrite
+                .then(() => writeFile(lockPath, snapshot, { encoding: "utf8", mode: 0o600 }))
+                .catch(() => undefined);
         }, this.heartbeatIntervalMs);
         heartbeat.unref();
         return async () => {
             if (released) return;
             released = true;
             clearInterval(heartbeat);
+            await pendingWrite;
             const existing = await readOwner(lockPath);
             // A read-compare-rm race remains only after a takeover contender has restored this owner;
             // rename-based takeover prevents it from deleting a fresh lock before this check.

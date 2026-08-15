@@ -4,6 +4,30 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { RepositoryLock, RepositoryLockBusyError } from "../../../src/git/repositoryLock";
 
+/** Delay applied to heartbeat writes only, so "the write is still in flight when release runs" is
+ * a controlled fact rather than a race the test hopes to win. Zero for every other test here. */
+const heartbeatWrite = vi.hoisted(() => ({ delayMs: 0 }));
+
+// Node's built-in `node:fs/promises` exports non-configurable properties, so `vi.spyOn` cannot wrap
+// them; `vi.mock` with a pass-through factory is vitest's standard workaround. Only the heartbeat's
+// write is slowed: `acquire` creates the lock with an exclusive-create `flag`, the heartbeat never
+// does, so the absence of `flag` identifies it without reaching into the implementation.
+vi.mock("node:fs/promises", async (importOriginal) => {
+    const actual = await importOriginal<typeof import("node:fs/promises")>();
+    const writeFileWithHeartbeatDelay: typeof actual.writeFile = async (file, data, options) => {
+        const isHeartbeatWrite =
+            heartbeatWrite.delayMs > 0 &&
+            typeof options === "object" &&
+            options !== null &&
+            !("flag" in options);
+        if (isHeartbeatWrite) {
+            await new Promise((resolve) => setTimeout(resolve, heartbeatWrite.delayMs));
+        }
+        return actual.writeFile(file, data, options);
+    };
+    return { ...actual, writeFile: writeFileWithHeartbeatDelay };
+});
+
 const directories: string[] = [];
 
 afterEach(async () => {
@@ -24,6 +48,32 @@ describe("RepositoryLock", () => {
 
         await expect(lock.acquire(common)).rejects.toBeInstanceOf(RepositoryLockBusyError);
         await release();
+    });
+
+    it("does not let an in-flight heartbeat write resurrect the lock it just released", async () => {
+        const common = await commonDir();
+        const lockPath = path.join(common, "intelligit", "repo.lock");
+        // Ticks every 10ms; each write takes 300ms. Release therefore runs while at least one
+        // heartbeat write is genuinely outstanding -- `clearInterval` stops the next tick but
+        // cannot recall the write a previous tick already started.
+        heartbeatWrite.delayMs = 300;
+        try {
+            const release = await new RepositoryLock({ heartbeatIntervalMs: 10 }).acquire(common);
+            await new Promise((resolve) => setTimeout(resolve, 40));
+            await release();
+            // Every write still owed to the released lock lands inside this window.
+            await new Promise((resolve) => setTimeout(resolve, heartbeatWrite.delayMs * 2));
+
+            const lockAfterRelease = await readFile(lockPath, "utf8").catch(() => undefined);
+            expect(lockAfterRelease).toBeUndefined();
+            // The product symptom, asserted independently of the file check: a resurrected lock
+            // carries a FRESH `heartbeatAt`, so the next acquirer reads it as held and reports the
+            // repository busy -- with no owner, and self-healing only after `staleAfterMs`.
+            const releaseNext = await new RepositoryLock().acquire(common);
+            await releaseNext();
+        } finally {
+            heartbeatWrite.delayMs = 0;
+        }
     });
 
     it("does not take over a stale lock while its PID is still live", async () => {
