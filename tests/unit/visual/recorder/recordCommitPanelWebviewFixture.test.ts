@@ -31,7 +31,7 @@
  */
 
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -56,16 +56,15 @@ import {
 } from "../../../visual/recorder/recordCommitPanelWebviewFixture";
 import { parseWebviewFixture } from "../../../visual/recorder/validateWebviewFixture";
 import { serializeWebviewFixture } from "../../../visual/recorder/webviewFixtureFile";
+import { createScratchWorkspaces } from "../../fixtures/scratchWorkspaces";
 
-// Every scratch path this file allocated, registered the moment it EXISTS rather than read back off
-// `workspaceA`/`workspaceB` in `afterAll`. Seeding is a real `git` build and can fail: with the old
-// shape, a rejected `beforeAll` left both workspaces unassigned, so `workspaceA.home` threw a
-// TypeError that replaced the real seeding error in the report AND skipped `parentDir`'s removal
-// entirely -- leaking the scratch tree in exactly the run whose failure most needed to be legible.
-// It lives at module scope so `prepareDirtyWorkspace` can register a scratch `HOME` between seeding
-// it and asserting the postcondition: a FAILED postcondition is the likeliest rejection here, and
-// by then the `HOME` very much exists.
-const scratchPaths: string[] = [];
+// Scratch-path bookkeeping and the settle-before-propagating seed live in one shared helper -- see
+// `scratchWorkspaces.ts` for the two directory leaks the obvious shapes here both cause. This one
+// lives at module scope so `prepareDirtyWorkspace` can register a scratch `HOME` between seeding it
+// and asserting the postcondition: a FAILED postcondition is the likeliest rejection here, and by
+// then the `HOME` very much exists. `seedPair` registering the same home again on success is the
+// duplicate registration `removeAll` collapses.
+const scratch = createScratchWorkspaces();
 
 /**
  * Builds one independently prepared `dirty` scenario workspace. Mirrors `scenarios.ts`'s own
@@ -77,7 +76,7 @@ const scratchPaths: string[] = [];
  */
 async function prepareDirtyWorkspace(destination: string): Promise<FixtureTemplate> {
     const template = await seedFixtureTemplate(destination);
-    scratchPaths.push(template.home);
+    scratch.register(template.home);
     await assertDirtyPostcondition(template.root, template.env);
     return template;
 }
@@ -91,19 +90,17 @@ describe("commit-panel webview recorder", () => {
         parentDir = await mkdtemp(
             path.join(tmpdir(), "intelligit-webview-recorder-commit-panel-test-"),
         );
-        scratchPaths.push(parentDir);
+        scratch.register(parentDir);
         // Two INDEPENDENT seeded-and-asserted destinations, not the same root recorded twice --
         // see this module's own doc comment on the byte-identical test.
-        [workspaceA, workspaceB] = await Promise.all([
-            prepareDirtyWorkspace(path.join(parentDir, "root-a")),
-            prepareDirtyWorkspace(path.join(parentDir, "root-b")),
-        ]);
+        [workspaceA, workspaceB] = await scratch.seedPair(
+            () => prepareDirtyWorkspace(path.join(parentDir, "root-a")),
+            () => prepareDirtyWorkspace(path.join(parentDir, "root-b")),
+        );
     }, 60_000);
 
     afterAll(async () => {
-        await Promise.all(
-            scratchPaths.map((scratchPath) => rm(scratchPath, { recursive: true, force: true })),
-        );
+        await scratch.removeAll();
     });
 
     beforeEach(() => {

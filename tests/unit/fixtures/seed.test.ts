@@ -12,7 +12,7 @@
  */
 
 import { execFile } from "node:child_process";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -25,6 +25,7 @@ import {
     seedFixtureTemplate,
     type FixtureTemplate,
 } from "../../fixtures/repo/seed";
+import { createScratchWorkspaces } from "./scratchWorkspaces";
 
 const execFileAsync = promisify(execFile);
 
@@ -54,23 +55,28 @@ describe("seedFixtureTemplate", () => {
     let templateA: FixtureTemplate;
     let templateB: FixtureTemplate;
 
+    // Paths are registered the moment they exist rather than read back off `templateA`/`templateB`
+    // in `afterAll`. Seeding is a real `git` build and can fail: if the SECOND seed below throws,
+    // the old `afterAll` dereferenced an unassigned `templateB`, so a `TypeError` replaced the real
+    // seeding error in the report AND skipped `workDir`'s removal entirely.
+    const scratch = createScratchWorkspaces();
+
     beforeAll(async () => {
         workDir = await mkdtemp(join(tmpdir(), "intelligit-seed-test-"));
+        scratch.register(workDir);
         destinationA = join(workDir, "a");
         destinationB = join(workDir, "b");
         // Sequential, not concurrent: this proves determinism across two independently seeded
         // destinations, which is the property PLAN.md step 7 requires. Whether two seeds can also
         // safely run concurrently is a separate question this suite does not need to answer.
         templateA = await seedFixtureTemplate(destinationA);
+        scratch.register(templateA.home);
         templateB = await seedFixtureTemplate(destinationB);
+        scratch.register(templateB.home);
     }, 60_000);
 
     afterAll(async () => {
-        await Promise.all([
-            rm(workDir, { recursive: true, force: true }),
-            rm(templateA.home, { recursive: true, force: true }),
-            rm(templateB.home, { recursive: true, force: true }),
-        ]);
+        await scratch.removeAll();
     });
 
     describe("determinism", () => {
@@ -379,4 +385,50 @@ describe("seedFixtureTemplate", () => {
             expect(originTag).toBe(templateA.commits.mergeCommit);
         });
     });
+});
+
+/**
+ * The seed's own failure path -- a sibling `describe` so it does not pay for the 60s double seed
+ * above, which it has no use for.
+ *
+ * Nothing in a green run reaches this path, and the directory it used to leak lives OUTSIDE the
+ * `destination` a caller cleans up: `home` is `mkdtemp`'d in the OS temp root and the only
+ * reference to it dies with the rejected frame. So the leak is invisible until a machine has
+ * accumulated thousands of them.
+ *
+ * The failure is forced by emptying `PATH`, which every `git` spawn inherits through
+ * `createSanitizedGitEnv`'s `process.env` spread -- `execFile` then cannot resolve the binary at
+ * all (ENOENT). That lands on `initializeWorkingRepository`, the FIRST git call after the home is
+ * allocated, which is exactly the window the cleanup exists to cover.
+ *
+ * `homeParent` is passed so the assertion can be "this directory the test owns is empty". Scanning
+ * the shared OS temp root instead would race every sibling test file seeding its own home.
+ */
+describe("seedFixtureTemplate failure cleanup", () => {
+    const allocated: string[] = [];
+
+    afterAll(async () => {
+        await Promise.all(
+            allocated.map((scratchPath) => rm(scratchPath, { recursive: true, force: true })),
+        );
+    });
+
+    it("removes the temporary home it allocated when seeding fails", async () => {
+        const workDir = await mkdtemp(join(tmpdir(), "intelligit-seed-failure-test-"));
+        allocated.push(workDir);
+        const homeParent = join(workDir, "homes");
+        await mkdir(homeParent);
+
+        const originalPath = process.env.PATH;
+        process.env.PATH = "";
+        try {
+            await expect(
+                seedFixtureTemplate(join(workDir, "destination"), { homeParent }),
+            ).rejects.toThrow(/ENOENT/);
+        } finally {
+            restoreEnvVar("PATH", originalPath);
+        }
+
+        expect(await readdir(homeParent)).toEqual([]);
+    }, 30_000);
 });

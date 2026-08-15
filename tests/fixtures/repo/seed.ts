@@ -17,7 +17,7 @@
  */
 
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, readdir, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -151,44 +151,62 @@ export async function createSanitizedGitEnv(options?: {
  * PLAN.md Phase 1 step 7 requires, plus a bare `origin` at `<destination>/origin.git` that `main`
  * tracks. `destination` must be empty (or not yet exist) -- seeding on top of leftover files would
  * risk silently passing with stale content instead of failing loudly.
+ *
+ * `options.homeParent` is forwarded to `createSanitizedGitEnv`; it defaults to the OS temp root,
+ * which is what every production caller wants. Pass it to keep the sanitized `HOME` inside a
+ * directory the caller already owns -- the cleanup test below needs a parent it can assert is
+ * empty, and scanning the shared OS temp root cannot do that while sibling test files are seeding
+ * their own homes concurrently.
  */
-export async function seedFixtureTemplate(destination: string): Promise<FixtureTemplate> {
+export async function seedFixtureTemplate(
+    destination: string,
+    options?: { readonly homeParent?: string },
+): Promise<FixtureTemplate> {
     await ensureEmptyDestination(destination);
 
-    const { env, home } = await createSanitizedGitEnv();
-    const root = path.join(destination, "workspace");
-    await initializeWorkingRepository(root, env);
+    const { env, home } = await createSanitizedGitEnv({ homeParent: options?.homeParent });
+    try {
+        const root = path.join(destination, "workspace");
+        await initializeWorkingRepository(root, env);
 
-    const history: HistoryEnv = { root, env, nextDate: createDeterministicClock() };
-    const { initial, conflictBase, mainConflictEdit, featureBase, topicCommit, mergeCommit } =
-        await buildMainAndTopicHistory(history);
-    const featureCommit3 = await buildFeatureBranch(history, featureBase);
-    const conflictCommit = await buildConflictingBranch(history, conflictBase);
-    await createReleaseTag(history);
+        const history: HistoryEnv = { root, env, nextDate: createDeterministicClock() };
+        const { initial, conflictBase, mainConflictEdit, featureBase, topicCommit, mergeCommit } =
+            await buildMainAndTopicHistory(history);
+        const featureCommit3 = await buildFeatureBranch(history, featureBase);
+        const conflictCommit = await buildConflictingBranch(history, conflictBase);
+        await createReleaseTag(history);
 
-    const originRoot = await createBareOrigin(destination, root, env);
+        const originRoot = await createBareOrigin(destination, root, env);
 
-    // Dirty state is seeded last, after history/tag/origin are all in place on a clean `main`
-    // checkout, so nothing below has to account for it existing any earlier.
-    await seedStashEntries(history);
-    await seedDirtyWorkingTree(history);
+        // Dirty state is seeded last, after history/tag/origin are all in place on a clean `main`
+        // checkout, so nothing below has to account for it existing any earlier.
+        await seedStashEntries(history);
+        await seedDirtyWorkingTree(history);
 
-    return {
-        root,
-        originRoot,
-        env,
-        home,
-        commits: {
-            initial,
-            conflictBase,
-            mainConflictEdit,
-            featureBase,
-            topicCommit,
-            mergeCommit,
-            featureCommit3,
-            conflictCommit,
-        },
-    };
+        return {
+            root,
+            originRoot,
+            env,
+            home,
+            commits: {
+                initial,
+                conflictBase,
+                mainConflictEdit,
+                featureBase,
+                topicCommit,
+                mergeCommit,
+                featureCommit3,
+                conflictCommit,
+            },
+        };
+    } catch (error) {
+        // `home` lives OUTSIDE `destination` -- it is `mkdtemp`'d in `homeParent`, the OS temp root
+        // by default. A caller cleaning up after this rejection therefore cannot reach it, and it
+        // has not been handed the path either: the only reference dies with this frame. Remove it
+        // here or every failed seed leaks a directory for the lifetime of the machine.
+        await rm(home, { recursive: true, force: true });
+        throw error;
+    }
 }
 
 /** Threaded through every history-building helper below: where to write, which env to run git

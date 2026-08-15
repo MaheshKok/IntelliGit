@@ -53,6 +53,7 @@ import {
     setFakeWorkspaceConfiguration,
 } from "../../../visual/recorder/workspaceConfigurationDouble";
 import { REPOSITORY_SCENARIOS, type ScenarioWorkspace } from "../../../fixtures/repo/scenarios";
+import { createScratchWorkspaces } from "../../fixtures/scratchWorkspaces";
 
 const execFileAsync = promisify(execFile);
 
@@ -167,22 +168,23 @@ describe("shelf-conflict-editor webview recorder", () => {
     let workspaceA: ScenarioWorkspace;
     let workspaceB: ScenarioWorkspace;
 
+    // Scratch-path bookkeeping and the settle-before-propagating seed live in one shared helper --
+    // see `scratchWorkspaces.ts` for the two directory leaks the obvious shapes here both cause.
+    const scratch = createScratchWorkspaces();
+
     beforeAll(async () => {
         parentDir = await mkdtemp(
             path.join(tmpdir(), "intelligit-webview-recorder-shelf-conflict-test-"),
         );
-        [workspaceA, workspaceB] = await Promise.all([
-            SHELF_CONFLICTED_SCENARIO.prepare(path.join(parentDir, "root-a")),
-            SHELF_CONFLICTED_SCENARIO.prepare(path.join(parentDir, "root-b")),
-        ]);
+        scratch.register(parentDir);
+        [workspaceA, workspaceB] = await scratch.seedPair(
+            () => SHELF_CONFLICTED_SCENARIO.prepare(path.join(parentDir, "root-a")),
+            () => SHELF_CONFLICTED_SCENARIO.prepare(path.join(parentDir, "root-b")),
+        );
     }, 60_000);
 
     afterAll(async () => {
-        await Promise.all([
-            rm(workspaceA.home, { recursive: true, force: true }),
-            rm(workspaceB.home, { recursive: true, force: true }),
-            rm(parentDir, { recursive: true, force: true }),
-        ]);
+        await scratch.removeAll();
     });
 
     beforeEach(() => setE2eControlChannelActive(true));

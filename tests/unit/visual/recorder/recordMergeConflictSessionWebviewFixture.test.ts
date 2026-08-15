@@ -42,7 +42,7 @@
  */
 
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -72,6 +72,7 @@ import {
     getCreatedWebviewPanels,
     resetCreatedWebviewPanelsForTests,
 } from "../../../visual/recorder/webviewPanelDouble";
+import { createScratchWorkspaces } from "../../fixtures/scratchWorkspaces";
 
 /** The real, exported `conflicted` `RepositoryScenario` -- reused directly rather than re-derived:
  * unlike `dirty` (the seeded template exactly as built, a two-line postcondition check),
@@ -130,24 +131,25 @@ describe("merge-conflict-session webview recorder", () => {
     let workspaceA: ScenarioWorkspace;
     let workspaceB: ScenarioWorkspace;
 
+    // Scratch-path bookkeeping and the settle-before-propagating seed live in one shared helper --
+    // see `scratchWorkspaces.ts` for the two directory leaks the obvious shapes here both cause.
+    const scratch = createScratchWorkspaces();
+
     beforeAll(async () => {
         parentDir = await mkdtemp(
             path.join(tmpdir(), "intelligit-webview-recorder-merge-conflict-session-test-"),
         );
+        scratch.register(parentDir);
         // Two INDEPENDENT seeded-and-asserted destinations, not the same root recorded twice --
         // see this module's own doc comment on the byte-identical test.
-        [workspaceA, workspaceB] = await Promise.all([
-            prepareConflictedWorkspace(path.join(parentDir, "root-a")),
-            prepareConflictedWorkspace(path.join(parentDir, "root-b")),
-        ]);
+        [workspaceA, workspaceB] = await scratch.seedPair(
+            () => prepareConflictedWorkspace(path.join(parentDir, "root-a")),
+            () => prepareConflictedWorkspace(path.join(parentDir, "root-b")),
+        );
     }, 60_000);
 
     afterAll(async () => {
-        await Promise.all([
-            rm(workspaceA.home, { recursive: true, force: true }),
-            rm(workspaceB.home, { recursive: true, force: true }),
-            rm(parentDir, { recursive: true, force: true }),
-        ]);
+        await scratch.removeAll();
     });
 
     beforeEach(() => {
