@@ -5,6 +5,21 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.25.3] - 2026-08-16
+
+### Fixed
+
+- Fixed the merge editor's and shelf conflict editor's hunk action arrow still clipping at the top and bottom, where an action row sits flush against the top of a scrolling area. Raising the button to 24px in 0.25.0 was not enough: a text range's client rectangle is the font box, not the line box, so a 22.5px glyph measured 29px tall and kept overhanging its button. The glyph is now sized so its font box fits inside the button on any font. The recurrence was invisible until the test fixtures were pinned to the container platform — `--vscode-editor-font-family` resolves to Menlo on macOS and Droid Sans Mono on Linux, and the two platforms' row metrics differ enough to hide it.
+
+### Added
+
+- Added a nightly staleness sweep over the committed VS Code host fixtures, one pinned editor launch per fixture, so drift in what those fixtures record surfaces on its own rather than as an unexplained failure somewhere downstream. It reports through the same single aggregated nightly issue.
+
+### Security
+
+- A release published through the `skip_e2e_gate` override now records that override on the GitHub Release itself, on both the create and the update path. It was previously recorded only as a workflow annotation, which expires with log retention and left nothing to say which shipped version was un-gated.
+- Every GitHub Actions reference in every workflow is now held to a full commit SHA, and a checkout may leave the workflow token in `.git/config` only in the job that pushes the release tag, by a guard that reads the workflow directory rather than a list of remembered files. The nightly staleness job above had reintroduced both — a floating tag and a persisted credential — because the controls were applied by sweep and nothing enforced them.
+
 ## [0.25.2] - 2026-08-15
 
 ### Added
