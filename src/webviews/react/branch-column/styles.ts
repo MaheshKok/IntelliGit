@@ -159,6 +159,17 @@ export const SECTION_HEADER_STYLE: CSSProperties = {
     marginBottom: 0,
 };
 
+// The section header is a flex row, so its label needs `minWidth: 0` to be allowed to shrink at
+// all -- without it the label keeps its full content width, overflows the button, and is cut by
+// the button's own `overflow: hidden` with no ellipsis. Invisible in English, where every section
+// name is short; the branch column only gets narrow enough to lose text once "Worktrees" is
+// "Árvores de trabalho" or "Рабочие деревья".
+export const SECTION_HEADER_LABEL_STYLE: CSSProperties = {
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    minWidth: 0,
+};
+
 export const HEAD_LABEL_STYLE: CSSProperties = {
     opacity: 0.95,
     overflow: "hidden",

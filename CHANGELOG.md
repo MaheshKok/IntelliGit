@@ -24,7 +24,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fixed the conflict table's "theirs" column cutting branch names and paths with no ellipsis and no tooltip. Header and data cells now truncate visibly and carry the full text as a tooltip.
 - Fixed the hunk action arrow being clipped at the top and bottom in every theme, where a 22.5px glyph was rendered inside a 20px-tall button.
 - Fixed the pane divider moving further than the pointer on scaled displays, because the drag delta was applied in preference space while the user drags in rendered space.
+- Fixed the branch sidebar's section headers cutting their names off with no ellipsis and no tooltip in Spanish, Polish, Brazilian and European Portuguese, and Russian, where `Worktrees` becomes a name two to three times its English length. The header label could not shrink at all, so the branch column narrowing on a 320px viewport removed the end of the word outright; it now truncates visibly and carries the full name as a tooltip.
 - Fixed the published extension shipping the `.codebase-memory` directory, removing about 1 MB from the package.
+- Fixed the published extension shipping GitNexus's `graphify-out` analysis directory. Version 0.24.3 carried 12 of its files, `graph.json` alone being 8.7 MB, which took the unpacked package from 6.3 MB to 15.8 MB.
 
 ### Security
 
