@@ -1,0 +1,20 @@
+#!/bin/sh
+# The `git` that unit tests put on PATH. It runs the per-test script named by
+# INTELLIGIT_FAKE_GIT_SCRIPT, passing every argument straight through.
+#
+# The indirection is the point. `execve` refuses a file that any process still
+# holds open for writing and reports ETXTBSY, and vitest's `threads` pool shares
+# one file-descriptor table across the test files running concurrently -- so a
+# sibling file's `spawn` can fork while a freshly written stub is still open and
+# hold that descriptor past our exec. Writing an executable and immediately
+# running it is therefore a race, and it only bites on Linux (macOS does not
+# enforce ETXTBSY here), which is why it surfaced as a `spawn ETXTBSY` failure in
+# CI alone, landing on whichever test happened to lose.
+#
+# This file is checked in, so no test ever writes it. The generated script is
+# only ever READ, by the `sh` below, and reading is never refused.
+if [ -z "${INTELLIGIT_FAKE_GIT_SCRIPT:-}" ]; then
+    echo "fake git: INTELLIGIT_FAKE_GIT_SCRIPT is unset" >&2
+    exit 127
+fi
+exec /bin/sh "$INTELLIGIT_FAKE_GIT_SCRIPT" "$@"
