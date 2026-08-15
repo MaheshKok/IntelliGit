@@ -1241,6 +1241,48 @@ describe("webview ui smoke", () => {
         expect(refreshingToolbarHtml).toContain("intelligit-spin");
     });
 
+    // The push side of this pair has rendered `↑N` on the Commit tab's Push button since it
+    // shipped; the pull side had no renderer at all. `currentBranchBehind` was computed by
+    // `currentBranchStatus()`, cached on the runtime, posted over the protocol and reduced into
+    // webview state -- and then read by nothing, so "how many commits do I need to pull" was
+    // unanswerable in the UI no matter how far behind the branch was. These assertions are
+    // written against the toolbar because that is where the Pull action lives.
+    it("shows the behind count on the pull toolbar button", () => {
+        const noop = vi.fn();
+        const behindHtml = renderUi(
+            <TabBar
+                stashCount={0}
+                onSync={noop}
+                onFetch={noop}
+                onPull={noop}
+                onPush={noop}
+                currentBranchBehind={4}
+                commitContent={<div>Commit tab</div>}
+                stashContent={<div>Stash tab</div>}
+            />,
+        );
+        expect(behindHtml).toContain('data-testid="pull-behind-count"');
+        expect(behindHtml, "the pull button must report how many commits are waiting").toContain(
+            "↓4",
+        );
+
+        // The other direction: an in-sync branch must not render a bare arrow or a zero.
+        const syncedHtml = renderUi(
+            <TabBar
+                stashCount={0}
+                onSync={noop}
+                onFetch={noop}
+                onPull={noop}
+                onPush={noop}
+                currentBranchBehind={0}
+                commitContent={<div>Commit tab</div>}
+                stashContent={<div>Stash tab</div>}
+            />,
+        );
+        expect(syncedHtml).not.toContain('data-testid="pull-behind-count"');
+        expect(syncedHtml).not.toContain("↓");
+    });
+
     it("shows aggregate change counts in file section headers", () => {
         const noop = vi.fn();
         const files: WorkingFile[] = [
