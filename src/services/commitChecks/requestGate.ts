@@ -11,6 +11,19 @@ const REQUEST_WINDOW_MS = 60 * 60 * 1000;
 // learns its real limit and remaining count, only the reserve-based cooldown and 429/Retry-After
 // handling govern it; see ProviderRequestGate.hasObservedQuota.
 const MAX_AUTOMATIC_REQUESTS_PER_WINDOW = 300;
+/**
+ * Absolute ceiling for a bucket that does report a usable quota.
+ *
+ * The server's advertised limit governs below this; the constant only stops a server that
+ * advertises an implausible one from removing the client-side bound altogether.
+ */
+export const MAX_OBSERVED_REQUESTS_PER_WINDOW = 5_000;
+// How far ahead a reset may sit and still be believed as this bucket's quota window. No provider's
+// window runs longer than an hour, so a day of slack absorbs clock skew while still rejecting a
+// value that would hold an earned cap bypass open forever: `seconds * 1000` overflows to Infinity
+// for an absurd header, and every `> now()` test accepts Infinity. Cooldowns deliberately do not
+// use this horizon -- see clampCooldown for why they must fail the other way.
+const MAX_RESET_HORIZON_MS = 24 * 60 * 60 * 1000;
 const MAX_CONCURRENT_REQUESTS = 4;
 const MIN_PRIMARY_RESERVE = 100;
 const PRIMARY_RESERVE_RATIO = 0.1;
@@ -185,9 +198,15 @@ class ProviderRequestGate {
     // a boolean near-limit signal) can never set this, so they stay on the static fallback cap.
     //
     // The reset is part of the bargain, not a detail: surrendering the fallback cap leaves the
-    // reserve cooldown as the sole guard, and that cooldown cannot arm without a future reset. Re-
-    // evaluated on every observation rather than latched, so a server that stops reporting a usable
-    // quota drops the bucket back to the cap instead of stranding it unguarded.
+    // reserve cooldown as the sole guard, and that cooldown cannot arm without a future reset. A
+    // reset beyond MAX_RESET_HORIZON_MS does not count as usable, because an out-of-horizon value
+    // stays in the future forever.
+    //
+    // This flag alone does not bound the bypass, and must not be read as if it did. It is
+    // re-evaluated per observation, but only when an observation arrives: a header-less response
+    // leaves the sticky GitHub quota triple untouched, and a bucket whose requests all fail at the
+    // transport layer is never observed at all. Liveness is therefore re-derived where it is used,
+    // in automaticRequestCeiling, rather than trusted from here.
     private hasObservedQuota = false;
 
     constructor(
@@ -268,7 +287,10 @@ class ProviderRequestGate {
         if (limit !== undefined) this.rateLimit = limit;
         const remaining = readNonNegativeHeader(metadata.headers, "x-ratelimit-remaining");
         if (remaining !== undefined) this.rateRemaining = remaining;
-        const resetAt = readProviderResetAt(metadata.headers, "github");
+        const resetAt = withinResetHorizon(
+            readProviderResetAt(metadata.headers, "github"),
+            this.now(),
+        );
         if (resetAt > 0) this.rateResetAt = resetAt;
         this.hasObservedQuota =
             this.rateLimit > 0 && this.rateRemaining !== undefined && this.rateResetAt > this.now();
@@ -282,14 +304,23 @@ class ProviderRequestGate {
             this.rateRemaining <= reserve &&
             this.rateResetAt > this.now()
         ) {
-            this.activateGenericCooldown(this.rateResetAt);
+            this.activateGenericCooldown(clampCooldown(this.rateResetAt, this.now()));
         }
     }
 
     private observeGitLabResponse(metadata: HttpResponseMetadata): void {
+        // Limit and reset are stored rather than kept local because automaticRequestCeiling reads
+        // both to decide whether this bucket still holds a live quota; a provider that left either
+        // unwritten would be judged against a field it never set. Remaining stays local: the
+        // reserve check below is its only reader on this path.
         const limit = readNonNegativeHeader(metadata.headers, "ratelimit-limit");
+        if (limit !== undefined) this.rateLimit = limit;
         const remaining = readNonNegativeHeader(metadata.headers, "ratelimit-remaining");
-        const resetAt = readProviderResetAt(metadata.headers, "gitlab");
+        const resetAt = withinResetHorizon(
+            readProviderResetAt(metadata.headers, "gitlab"),
+            this.now(),
+        );
+        if (resetAt > 0) this.rateResetAt = resetAt;
         this.hasObservedQuota =
             limit !== undefined && limit > 0 && remaining !== undefined && resetAt > this.now();
         if (
@@ -298,7 +329,7 @@ class ProviderRequestGate {
             remaining <= Math.max(1, Math.ceil(limit * PRIMARY_RESERVE_RATIO)) &&
             resetAt > this.now()
         ) {
-            this.activateGenericCooldown(resetAt);
+            this.activateGenericCooldown(clampCooldown(resetAt, this.now()));
         }
     }
 
@@ -345,10 +376,38 @@ class ProviderRequestGate {
     }
 
     private throwIfRequestBudgetExhausted(): void {
-        if (this.hasObservedQuota) return;
-        if (this.startedAt.length < MAX_AUTOMATIC_REQUESTS_PER_WINDOW) return;
+        if (this.startedAt.length < this.automaticRequestCeiling()) return;
         this.activateGenericCooldown(this.startedAt[0] + REQUEST_WINDOW_MS);
         this.throwIfCoolingDown();
+    }
+
+    /**
+     * Requests this bucket may start per rolling window.
+     *
+     * A bucket reporting a live quota is governed by the reserve cooldown rather than the static
+     * fallback, so its ceiling follows the advertised limit. It keeps a ceiling either way: that
+     * cooldown is driven entirely by server-supplied numbers, so a server reporting plenty would
+     * otherwise leave no client-side bound at all.
+     *
+     * Liveness is re-derived here rather than taken from hasObservedQuota, which only changes when
+     * a response is observed. The cases most worth bounding are the ones where responses stop
+     * arriving -- a connection that fails at the transport layer never reaches the observer -- so
+     * reading the flag alone would let a bucket keep a raised ceiling for as long as it stayed
+     * broken.
+     *
+     * The advertised limit can only raise the ceiling, never lower it. A provider whose window is
+     * shorter than REQUEST_WINDOW_MS advertises a number smaller than this window's budget, and
+     * honouring that literally would throttle a bucket below the fallback that governs one which
+     * reported no quota at all.
+     */
+    private automaticRequestCeiling(): number {
+        if (!this.hasObservedQuota || this.rateResetAt <= this.now()) {
+            return MAX_AUTOMATIC_REQUESTS_PER_WINDOW;
+        }
+        return Math.max(
+            MAX_AUTOMATIC_REQUESTS_PER_WINDOW,
+            Math.min(this.rateLimit, MAX_OBSERVED_REQUESTS_PER_WINDOW),
+        );
     }
 
     private activateGenericCooldown(until: number): void {
@@ -370,10 +429,13 @@ function readCooldownUntil(
     providerId: ProviderId,
     now: number,
 ): number {
-    const retryAfter = readRetryAfter(headerValue(metadata.headers, "retry-after"), now);
+    const retryAfter = clampCooldown(
+        readRetryAfter(headerValue(metadata.headers, "retry-after"), now),
+        now,
+    );
     if (retryAfter > now) return retryAfter;
 
-    const resetAt = readProviderResetAt(metadata.headers, providerId);
+    const resetAt = clampCooldown(readProviderResetAt(metadata.headers, providerId), now);
     if (
         resetAt > now &&
         (metadata.statusCode === 429 ||
@@ -384,6 +446,12 @@ function readCooldownUntil(
     return metadata.statusCode === 429 ? now + 60_000 : 0;
 }
 
+/**
+ * Parses a provider reset header into an absolute instant, or 0 when it carries no usable value.
+ *
+ * The instant is returned unbounded, Infinity included: callers decide what an implausible value
+ * means, and the two callers need opposite answers.
+ */
 function readProviderResetAt(headers: HttpHeaders, providerId: ProviderId): number {
     const name = providerId === "gitlab" ? "ratelimit-reset" : "x-ratelimit-reset";
     const value = headerValue(headers, name);
@@ -393,6 +461,30 @@ function readProviderResetAt(headers: HttpHeaders, providerId: ProviderId): numb
     if (Number.isFinite(seconds) && seconds >= 0) return seconds * 1000;
     const dateMs = Date.parse(value);
     return Number.isFinite(dateMs) ? dateMs : 0;
+}
+
+/**
+ * Returns an instant only when it could be a real provider reset, and 0 otherwise.
+ *
+ * For decisions an out-of-horizon value should *withhold*: the cap bypass requires a future reset,
+ * so discarding the value denies the bypass. Cooldowns need the opposite; see clampCooldown.
+ */
+function withinResetHorizon(instant: number, now: number): number {
+    return Number.isFinite(instant) && instant <= now + MAX_RESET_HORIZON_MS ? instant : 0;
+}
+
+/**
+ * Bounds a server-directed cooldown to one request window.
+ *
+ * Cooldowns cannot share withinResetHorizon, because they fail safe in the opposite direction.
+ * Discarding an out-of-horizon value withholds a permission there; here it would discard the
+ * backoff itself, drop to the 60-second fallback, and resume knocking on a server that asked for a
+ * day. Clamping instead honours as much of the demand as any real window can justify, and a
+ * provider that still wants more re-arms this from its next response.
+ */
+function clampCooldown(instant: number, now: number): number {
+    if (Number.isNaN(instant) || instant <= now) return 0;
+    return Math.min(instant, now + REQUEST_WINDOW_MS);
 }
 
 function headerValue(headers: HttpHeaders, name: string): string | undefined {
