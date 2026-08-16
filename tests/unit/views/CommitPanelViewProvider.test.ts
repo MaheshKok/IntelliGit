@@ -136,9 +136,13 @@ function createInspectableCommitPanelWebviewView(): {
 }
 
 function setCommitDetailMessages(posted: readonly unknown[]): Record<string, unknown>[] {
+    return messagesOfType(posted, "setCommitDetail");
+}
+
+function messagesOfType(posted: readonly unknown[], type: string): Record<string, unknown>[] {
     return posted.filter(
         (message): message is Record<string, unknown> =>
-            isRecord(message) && message.type === "setCommitDetail",
+            isRecord(message) && message.type === type,
     );
 }
 
@@ -236,6 +240,158 @@ describe("CommitPanelViewProvider reload re-post", () => {
                 "the re-post to the reloaded webview must be byte-identical to what the dead " +
                     "context received -- byte-identical is the whole point of this regression",
             ).toEqual(beforeReload[beforeReload.length - 1]);
+        },
+        30_000,
+    );
+});
+
+/**
+ * The panel's only route to content is the host's answer to `ready`, and nothing about that
+ * exchange is acknowledged -- VS Code's `postMessage` resolves `false` for a webview that is not
+ * live, and its contract says even a `true` does not mean the message was received. So the webview
+ * re-asks while it is still unhydrated (`useExtensionMessages.ts`), and it used to stop after
+ * fifteen tries: each re-ask cost the host a full Git refresh, so an unbounded retry would have
+ * been a stampede. Stopping is what turned one dropped message into a permanently blank pane, which
+ * is what CI run 31964819068 captured -- a mounted React app that had rendered
+ * `commit-panel-awaiting-hydration` and nothing else, beside a host whose badge read "5 changed
+ * files" and whose graph webview had rendered every commit.
+ *
+ * `attempt` is what makes the retry affordable, so this pins the two halves that have to hold at
+ * once: a re-ask is still ANSWERED with everything the host already holds (otherwise the retry
+ * cannot recover the panel and the whole mechanism is decorative), and it does NOT repeat the Git
+ * reads (otherwise the retry cannot be unbounded). `refreshing` is the observable for the second
+ * half: `postRefreshing` brackets the full-refresh branch and nothing else posts it.
+ */
+describe("CommitPanelViewProvider hydration re-ask", () => {
+    afterEach(async () => {
+        await scratch.removeAll();
+    });
+
+    it(
+        "answers a re-ask from state it already holds, without repeating the startup Git reads",
+        async () => {
+            const parentDir = await mkdtemp(
+                path.join(tmpdir(), "intelligit-commit-panel-reask-test-"),
+            );
+            scratch.register(parentDir);
+            const workspace = await prepareDirtyWorkspace(path.join(parentDir, "root"));
+
+            const constructorOptions = buildCommitPanelConstructorOptions();
+            const gitOps = new GitOps(
+                new GitExecutor(workspace.root, undefined, toGitEnvironment(workspace.env)),
+            );
+            const provider = new CommitPanelViewProvider(
+                createFakeExtensionUri(),
+                gitOps,
+                createFakeUriFromPath(workspace.root),
+                createEmptyWorkspaceMemento(),
+                undefined, // secrets -- nothing on this path reads a secret.
+                constructorOptions.shelfServiceForRepository,
+                constructorOptions.shelfRemoveOnUnshelve,
+                constructorOptions.commitMessageGenerationCoordinator,
+                constructorOptions.interactiveRebaseStorageRoot,
+            );
+
+            const { webviewView, posted, receiveMessage } =
+                createInspectableCommitPanelWebviewView();
+            provider.resolveWebviewView(webviewView, INERT_CONTEXT, INERT_TOKEN);
+
+            await receiveMessage({ type: "ready", attempt: 1 });
+            await flushMicrotasks();
+            const afterFirst = posted.length;
+            expect(
+                messagesOfType(posted, "setRepositories").length,
+                "a first announcement must be hydrated",
+            ).toBeGreaterThanOrEqual(1);
+            expect(
+                messagesOfType(posted, "refreshing").length,
+                "a first announcement must run the startup refresh -- otherwise the assertion " +
+                    "below proves nothing, because `refreshing` would be absent either way",
+            ).toBeGreaterThan(0);
+
+            const hydrationsBeforeReAsk = messagesOfType(posted, "setRepositories").length;
+            const refreshesBeforeReAsk = messagesOfType(posted, "refreshing").length;
+
+            // The webview is still mounted and still empty: it never received the answer above.
+            await receiveMessage({ type: "ready", attempt: 2 });
+            await flushMicrotasks();
+
+            expect(
+                messagesOfType(posted, "setRepositories").length,
+                "a re-ask must be answered -- the panel is unhydrated precisely because the " +
+                    "previous answer never arrived, so withholding this one strands it forever",
+            ).toBeGreaterThan(hydrationsBeforeReAsk);
+            expect(
+                messagesOfType(posted, "refreshing").length,
+                "a re-ask must NOT repeat the startup Git refresh; the webview re-asks on a " +
+                    "timer, so paying full price per attempt is the cost that forced the retry " +
+                    "to give up and leave the panel blank",
+            ).toBe(refreshesBeforeReAsk);
+            expect(
+                posted.length,
+                "a re-ask must still deliver the host's cached working-tree state, not the " +
+                    "repository list alone -- the dropped answer took the file list with it",
+            ).toBeGreaterThan(afterFirst + 1);
+        },
+        30_000,
+    );
+
+    /**
+     * The other direction of the same drop, and the one that makes "answer a re-ask from cache" a
+     * trap rather than an optimization. A `ready` can be lost on the way IN, and then the host never
+     * ran the startup read at all -- so its working-tree cache is still the empty one the runtime
+     * was constructed with (`snapshotForRuntime` serves `runtime.files` verbatim). Answering that
+     * re-ask from cache posts a repository with zero changed files to a panel that would then render
+     * a confident, wrong "nothing to commit" over a dirty tree. Silently wrong beats visibly blank
+     * only from the host's side of the wire.
+     *
+     * So the skip is conditioned on the read having actually happened, not on the attempt number
+     * alone. The assertion is on the delivered file list rather than on any internal marker: an
+     * unhydrated panel's whole problem is what it did or did not receive.
+     */
+    it(
+        "does the full startup read for a re-ask when the first attempt never reached the host",
+        async () => {
+            const parentDir = await mkdtemp(
+                path.join(tmpdir(), "intelligit-commit-panel-cold-reask-test-"),
+            );
+            scratch.register(parentDir);
+            const workspace = await prepareDirtyWorkspace(path.join(parentDir, "root"));
+
+            const constructorOptions = buildCommitPanelConstructorOptions();
+            const gitOps = new GitOps(
+                new GitExecutor(workspace.root, undefined, toGitEnvironment(workspace.env)),
+            );
+            const provider = new CommitPanelViewProvider(
+                createFakeExtensionUri(),
+                gitOps,
+                createFakeUriFromPath(workspace.root),
+                createEmptyWorkspaceMemento(),
+                undefined, // secrets -- nothing on this path reads a secret.
+                constructorOptions.shelfServiceForRepository,
+                constructorOptions.shelfRemoveOnUnshelve,
+                constructorOptions.commitMessageGenerationCoordinator,
+                constructorOptions.interactiveRebaseStorageRoot,
+            );
+
+            const { webviewView, posted, receiveMessage } =
+                createInspectableCommitPanelWebviewView();
+            provider.resolveWebviewView(webviewView, INERT_CONTEXT, INERT_TOKEN);
+
+            // No attempt 1 anywhere: this is what a `ready` lost on the way in looks like from the
+            // host's side -- the panel is on its second try and the host is hearing from it first.
+            await receiveMessage({ type: "ready", attempt: 2 });
+            await flushMicrotasks();
+
+            const deliveredFileCounts = messagesOfType(posted, "update").map((message) =>
+                Array.isArray(message.files) ? message.files.length : -1,
+            );
+            expect(
+                Math.max(-1, ...deliveredFileCounts),
+                "the workspace is dirty, so at least one delivered snapshot must carry files; " +
+                    "skipping the startup read here posts an empty tree the panel cannot tell " +
+                    "apart from a clean one",
+            ).toBeGreaterThan(0);
         },
         30_000,
     );

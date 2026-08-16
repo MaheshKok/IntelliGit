@@ -188,6 +188,17 @@ export type OutboundMessage =
     | {
           /** Lifecycle event requesting working-tree, stash, graph, and draft state. */
           type: "ready";
+          /**
+           * 1 when a freshly mounted webview announces itself, higher for each re-ask from a panel
+           * the host has not answered yet. Optional so a producer that predates the field is read
+           * as a first announcement rather than as a re-ask.
+           *
+           * The host answers every attempt with everything it already holds, but repeats the Git
+           * reads only for attempt 1: a re-ask means the ANSWER was lost, not that the host's data
+           * is stale. That distinction is what makes an unbounded retry affordable, and an
+           * unbounded retry is what stops one dropped message leaving the panel blank forever.
+           */
+          attempt?: number;
       }
     | {
           /** One-shot interactive-rebase submission from the embedded graph dialog. */
