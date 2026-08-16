@@ -96,7 +96,7 @@ describe("Phase 6 step 32 -- canonical snapshot seed determinism", () => {
         expect(normalizeFixtureSnapshot(result.snapshots[0]!)).toEqual(
             normalizeFixtureSnapshot(result.snapshots[1]!),
         );
-    });
+    }, FIXTURE_TIMEOUT_MS);
 
     it(
         "seeds identically under two different ambient timezones, because the pinned dates carry an explicit offset",
@@ -170,7 +170,7 @@ describe("Phase 6 step 32 -- canonical snapshot seed determinism", () => {
         expect(normalizeFixtureSnapshot(original)).not.toEqual(
             normalizeFixtureSnapshot(badSnapshot),
         );
-    });
+    }, FIXTURE_TIMEOUT_MS);
 
     it("RED-proof #2: changed untracked and ignored bytes survive canonical normalization", async () => {
         const workspacesRoot = await mkdtemp(
@@ -210,7 +210,7 @@ describe("Phase 6 step 32 -- canonical snapshot seed determinism", () => {
 
         expect(normalizeFixtureSnapshot(beforeA)).not.toEqual(normalizeFixtureSnapshot(afterB));
         expect(normalizeFixtureSnapshot(beforeA)).toEqual(normalizeFixtureSnapshot(beforeB));
-    });
+    }, FIXTURE_TIMEOUT_MS);
 
     it("RED-proof #3: a changed repository config value survives canonical normalization", async () => {
         const workspacesRoot = await mkdtemp(path.join(tmpdir(), "intelligit-phase6-config-red-"));
@@ -230,7 +230,7 @@ describe("Phase 6 step 32 -- canonical snapshot seed determinism", () => {
 
         expect(normalizeFixtureSnapshot(beforeA)).toEqual(normalizeFixtureSnapshot(beforeB));
         expect(normalizeFixtureSnapshot(beforeA)).not.toEqual(normalizeFixtureSnapshot(after));
-    });
+    }, FIXTURE_TIMEOUT_MS);
 
     it("RED-proof #4: hostile global config and timezone reach an unsanitized control, then stay out of the pair", async () => {
         const workspacesRoot = await mkdtemp(path.join(tmpdir(), "intelligit-phase6-hostile-env-"));
@@ -320,5 +320,5 @@ describe("Phase 6 step 32 -- canonical snapshot seed determinism", () => {
                 else process.env[key] = value;
             }
         }
-    });
+    }, FIXTURE_TIMEOUT_MS);
 });

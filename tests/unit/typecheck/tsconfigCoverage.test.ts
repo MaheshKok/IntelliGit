@@ -28,6 +28,11 @@ function runTypeScript(configFile: string, ...arguments_: string[]): CompilerRun
             cwd: repoRoot,
             encoding: "utf8",
             timeout: compilerTimeoutMs,
+            // `tsc --listFiles` prints every source and `.d.ts` path the project pulls in, including
+            // `node_modules` typings, which passes Node's 1 MiB default on a full checkout. Overflow
+            // is not a truncated list: Node sets `error` to ENOBUFS and `status` to null, so the run
+            // fails with a buffer message instead of the coverage failure this file exists to report.
+            maxBuffer: 64 * 1024 * 1024,
         },
     );
 
@@ -127,7 +132,11 @@ describe("tsconfig.tests.json coverage", () => {
             expect(
                 negativeCompilation.status,
                 "the negative project must fail because its fixtures are deliberately malformed",
-            ).not.toBe(0);
+                // `not.toBe(0)` is also satisfied by `null`, which is what `runTypeScript` reports
+                // when the compiler is killed by the timeout or by a signal -- so a hung or crashed
+                // run would read as the deliberate failure this asserts. A real compiler rejection
+                // is a positive exit status.
+            ).toBeGreaterThan(0);
             expect(
                 sortDiagnostics(parseDiagnostics(negativeCompilation.output)),
                 `negative compiler diagnostics must match exactly; output:\n${negativeCompilation.output}`,

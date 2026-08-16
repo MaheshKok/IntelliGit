@@ -107,11 +107,23 @@ function selfTestWorkspace(scenario: SelfTestScenario): Promise<FixtureWorkspace
 
 /** Disposes every workspace allocated by the oracle self-tests and their shared root. */
 export async function disposeSelfTestWorkspaces(): Promise<void> {
-    await Promise.all(
-        [...selfTestWorkspaces.values()].map(async (workspace) => (await workspace).dispose()),
-    );
-    selfTestWorkspaces.clear();
-    rmSync(selfTestWorkspacesRoot, { recursive: true, force: true });
+    // `Promise.all` would reject on the first failed disposal and skip the removal below, leaving
+    // the shared root and every workspace under it on disk -- in exactly the run that already went
+    // wrong. The disposals are settled so one failure cannot hide the others, the root is removed
+    // in `finally` so cleanup happens either way, and the first reason is rethrown so a failed
+    // disposal still reaches the caller instead of being swallowed by the cleanup.
+    try {
+        const outcomes = await Promise.allSettled(
+            [...selfTestWorkspaces.values()].map(async (workspace) => (await workspace).dispose()),
+        );
+        const rejected = outcomes.find(
+            (outcome): outcome is PromiseRejectedResult => outcome.status === "rejected",
+        );
+        if (rejected !== undefined) throw rejected.reason;
+    } finally {
+        selfTestWorkspaces.clear();
+        rmSync(selfTestWorkspacesRoot, { recursive: true, force: true });
+    }
 }
 
 const baseEnvironment: VisualEnvironment = {

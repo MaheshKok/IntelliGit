@@ -152,6 +152,14 @@ it("proves missing, matching, and mismatching screenshot baselines", async () =>
 
         const firstRun = await runComparator(configPath);
         expect(firstRun.exitCode).toBeGreaterThan(0);
+        // Checked before the snapshot assertions because a missing browser fails all of them, and
+        // it fails them as a twenty-line diff of Playwright's install banner against
+        // /A snapshot doesn't exist/ -- which reads as a comparator defect rather than as an
+        // environment that cannot run this proof at all.
+        expect(
+            firstRun.output,
+            "Playwright's browsers are not installed, so this proof did not run: `bunx playwright install chromium`",
+        ).not.toMatch(/Executable doesn't exist/);
         expect(firstRun.output).toMatch(/A snapshot doesn't exist/i);
         expect(firstRun.output).toMatch(/writing actual/i);
 

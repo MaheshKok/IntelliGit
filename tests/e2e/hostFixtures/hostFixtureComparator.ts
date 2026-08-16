@@ -250,7 +250,28 @@ export function compareHostFixtureStaleness(
         typeof committedBytes === "string"
             ? committedBytes
             : new TextDecoder().decode(committedBytes);
-    const committedFixture = JSON.parse(committedText) as HostFixture;
+    // A truncated or non-object artifact must arrive as a named difference, not as a `SyntaxError`
+    // from the parse or a `TypeError` from the first `.provenance` dereference. The nightly sweep
+    // formats differences; a raw throw reaches it as a stack trace that names this file rather than
+    // the artifact that is actually broken. The parse itself is guarded too -- shape-checking the
+    // result cannot help when `JSON.parse` never returns.
+    const parsed: unknown = ((): unknown => {
+        try {
+            return JSON.parse(committedText);
+        } catch {
+            return undefined;
+        }
+    })();
+    if (typeof parsed !== "object" || parsed === null || !("provenance" in parsed)) {
+        return [
+            {
+                field: "committedFixture.shape",
+                committedValue: committedText,
+                capturedValue: serializeHostFixture(capturedFixture),
+            },
+        ];
+    }
+    const committedFixture = parsed as HostFixture;
     const differences: HostFixtureDifference[] = [];
 
     recordDifference(

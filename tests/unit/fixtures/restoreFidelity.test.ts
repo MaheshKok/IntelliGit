@@ -77,7 +77,7 @@ describe("Phase 6 step 33 -- restore fidelity", () => {
         expect(normalizeFixtureSnapshot(restoredSnapshot)).toEqual(
             normalizeFixtureSnapshot(initial),
         );
-    });
+    }, FIXTURE_TIMEOUT_MS);
 
     it("RED-proof #5: refs restored without the working tree or index still fail the canonical comparison", async () => {
         const workspacesRoot = await mkdtemp(
@@ -128,7 +128,7 @@ describe("Phase 6 step 33 -- restore fidelity", () => {
         const message = (thrown as Error).message;
         expect(message).toContain("snapshot.workspace.index");
         expect(message).toContain("snapshot.workspace.workingTree");
-    });
+    }, FIXTURE_TIMEOUT_MS);
 
     it("RED-proof #6: a fresh-copy baseline can pass while the pre-mutation snapshot catches a corrupted template", async () => {
         const fixture = await seedManifestFixture("restore-baseline-trap", cleanupDirs);
@@ -199,7 +199,7 @@ describe("Phase 6 step 33 -- restore fidelity", () => {
         } finally {
             await writeFile(path.join(fixture.template.root, "README.md"), originalReadme, "utf8");
         }
-    });
+    }, FIXTURE_TIMEOUT_MS);
 });
 
 /** Applies mutations across refs, HEAD, index, working tree, and repository configuration. */

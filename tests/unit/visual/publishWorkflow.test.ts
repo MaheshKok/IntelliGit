@@ -334,6 +334,14 @@ describe("publish visual workflow", () => {
         expect(stalenessJob).toContain("--config playwright.e2e.config.ts");
         expect(stalenessJob).toContain("./tests/e2e/docker/run.sh");
         expect(stalenessJob).not.toMatch(/^\s+issues: write\s*$/m);
+        // A job with no `permissions:` block of its own inherits the workflow-level grant, so the
+        // absence of `issues: write` inside the job body proves nothing on its own -- adding it at
+        // the top of the file would hand this job the write scope while the assertion above stayed
+        // green. The workflow-level block is the other half of the effective permission.
+        expect(
+            nightlyWorkflow.slice(0, nightlyWorkflow.indexOf("\njobs:")),
+            "the workflow-level permissions must not grant issues: write to every job",
+        ).not.toMatch(/^\s*issues: write\s*$/m);
     });
 
     it("leaves a trace in the release log when the e2e gate was overridden", () => {

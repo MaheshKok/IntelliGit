@@ -56,12 +56,22 @@ jobs:
                   path: |
                       ~/.bun/install/cache
                       node_modules
+                      ~/.cache/ms-playwright
                   key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
                   restore-keys: |
                       ${{ runner.os }}-bun-
 
             - name: Install dependencies
               run: bun install --frozen-lockfile
+
+            # `test:coverage` below is the only place vitest runs, and one of its specs
+            # (tests/unit/visual/screenshotComparatorMeta.test.ts) spawns a real Playwright run to
+            # prove the pixel comparator rejects a mismatched baseline. Without a browser that spec
+            # cannot execute at all, so the assertion it makes would be a prediction rather than a
+            # result. Only chromium is installed: it is the sole browser any spec in this job uses.
+            # The Playwright version lives in bun.lock, so the cache key above already scopes this.
+            - name: Install the Playwright browser the comparator proof runs against
+              run: bunx playwright install --with-deps chromium
 
             - name: Check formatting
               run: bun run format:check

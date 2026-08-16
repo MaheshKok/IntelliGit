@@ -52,7 +52,25 @@ describe("published package excludes root test-runner configuration", () => {
     // -- an enumerated pattern gates only the names someone remembered, and the sibling Playwright
     // entry had already been widened to a glob for exactly this reason (see .vscodeignore).
     it.each(rootConfigFiles())("excludes %s from the published extension", (basename) => {
-        const matched = ignorePatterns().filter((pattern) => rootPatternMatcher(pattern)(basename));
+        const patterns = ignorePatterns();
+
+        // `.vscodeignore` supports negation: a later `!vitest.config.ts` re-includes what an earlier
+        // pattern excluded. `rootPatternMatcher` compiles the leading `!` as a literal character, so
+        // a negated entry matches no basename at all -- the broad pattern above it would still be
+        // found, this test would still pass, and vsce would still package the file. The negations
+        // are therefore matched on their unprefixed form and checked first.
+        const reincluded = patterns
+            .filter((pattern) => pattern.startsWith("!"))
+            .filter((pattern) => rootPatternMatcher(pattern.slice(1))(basename));
+        expect(
+            reincluded,
+            `${basename} is re-included by a .vscodeignore negation entry and would be packaged ` +
+                `into the .vsix despite an earlier pattern excluding it`,
+        ).toEqual([]);
+
+        const matched = patterns
+            .filter((pattern) => !pattern.startsWith("!"))
+            .filter((pattern) => rootPatternMatcher(pattern)(basename));
         expect(
             matched,
             `${basename} is at the repository root and would be packaged into the .vsix; ` +

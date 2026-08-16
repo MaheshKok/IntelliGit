@@ -64,7 +64,18 @@ function actionReferences(): readonly StepReference[] {
             const next = jobStarts.find((job) => job.index > startIndex.index);
             return {
                 name: startIndex.name,
-                body: lines.slice(startIndex.index, next?.index ?? lines.length).join("\n"),
+                // Comments are stripped because `GIT_WRITE` is matched against this body to decide
+                // whether the job legitimately needs a persisted credential. A prose line such as
+                // `# this job does not git push` would otherwise mark the job as a pusher and
+                // silently exempt EVERY checkout in it from `persist-credentials: false` -- the
+                // guard would keep passing while enforcing nothing. Only whole-line comments and
+                // ` # ` trailing comments are removed, so shell forms that carry a bare `#`
+                // (`${VERSION#v}`) survive intact.
+                body: lines
+                    .slice(startIndex.index, next?.index ?? lines.length)
+                    .filter((candidate) => !candidate.trimStart().startsWith("#"))
+                    .map((candidate) => candidate.replace(/\s+#\s.*$/, ""))
+                    .join("\n"),
             };
         };
 
