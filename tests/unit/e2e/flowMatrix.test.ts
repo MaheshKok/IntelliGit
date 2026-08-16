@@ -67,6 +67,42 @@ describe("E2E flow matrix completeness", () => {
         }
     });
 
+    // The race this pins, measured on CI run 31942358546: `branch-checkout` opened the command
+    // palette, typed `>IntelliGit: Show Git Log` verbatim, and VS Code answered with its
+    // zero-exact-match "similar commands" list. The window had loaded; the extension had not
+    // activated, so the command did not exist yet. A loaded window is not an activated extension,
+    // and the palette answers either way -- which is why this read as a dead command rather than a
+    // race. Every flow therefore has to wait for the extension's own readiness marker before it
+    // touches any IntelliGit surface. Source order is the only place a unit test can see this:
+    // `runFlow` needs a real Electron host to execute.
+    it("waits for the extension to activate before any flow touches IntelliGit", () => {
+        const source = readFileSync(path.resolve(__dirname, "../../e2e/flows/matrix.ts"), "utf8");
+        const bodyStart = source.indexOf("export async function runFlow");
+        expect(
+            bodyStart,
+            "runFlow is no longer declared where this guard reads it",
+        ).toBeGreaterThan(-1);
+        const body = source.slice(bodyStart, source.indexOf("\n}", bodyStart));
+
+        const readyAt = body.indexOf("await waitForE2eChannelReady(");
+        expect(
+            readyAt,
+            "runFlow must wait for the extension's readiness marker before driving its UI",
+        ).toBeGreaterThan(-1);
+
+        // Both surfaces, because they are separate entry points into the same race: the palette
+        // reaches IntelliGit by command name, the activity bar by view container, and a wait that
+        // covers only one leaves the other racing.
+        for (const interaction of ["runCommand(", "intelliGitView.reveal"]) {
+            const interactionAt = body.indexOf(interaction);
+            expect(interactionAt, `runFlow no longer contains ${interaction}`).toBeGreaterThan(-1);
+            expect(
+                readyAt,
+                `runFlow reaches ${interaction} before waiting for the extension to activate`,
+            ).toBeLessThan(interactionAt);
+        }
+    });
+
     it("binds each rebase row to the fixture that makes its branch reachable", () => {
         expect(FLOW_MATRIX.find((flow) => flow.id === "interactive-rebase")).toMatchObject({
             scenario: "ahead-only",

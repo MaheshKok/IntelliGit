@@ -65,6 +65,85 @@ describe("Workbench", () => {
         expect(commandInput.fill).not.toHaveBeenCalled();
     });
 
+    describe("pickQuickPick", () => {
+        /**
+         * A palette whose named lookup always times out, and whose unnamed lookup reports the
+         * entries actually on screen. `entries: "unreadable"` models the frame going away while
+         * the failure message is being built.
+         */
+        function palette(entries: readonly string[] | "unreadable"): Page {
+            const timeout = new Error("locator.click: Timeout 30000ms exceeded");
+            const getByRole = vi.fn((role: string, options?: { name: string }) => {
+                expect(role, "pickQuickPick must look up quick-pick entries by role").toBe(
+                    "option",
+                );
+                if (options !== undefined) return { click: vi.fn().mockRejectedValue(timeout) };
+                return {
+                    allTextContents:
+                        entries === "unreadable"
+                            ? vi.fn().mockRejectedValue(new Error("frame was detached"))
+                            : vi.fn().mockResolvedValue([...entries]),
+                };
+            });
+            return { getByRole } as unknown as Page;
+        }
+
+        // The failure this exists for: `IntelliGit: Show Git Log` timed out on CI while the
+        // palette was open, filtered, and showing VS Code's zero-exact-match "similar commands"
+        // list -- the extension had not registered its commands yet. A message naming only the
+        // locator cannot tell that from a label this page object spelled wrong, and the two have
+        // opposite fixes, so the entries on screen are the diagnosis and have to be in the text.
+        it("names what the palette did offer, not only the label it wanted", async () => {
+            const page = palette(["Developer: Open Log...", "Developer: Show Window Log"]);
+
+            await expect(
+                new Workbench(page).pickQuickPick("IntelliGit: Show Git Log"),
+            ).rejects.toThrow(/"Developer: Open Log\.\.\.", "Developer: Show Window Log"/);
+        });
+
+        // The original timeout is the finding; the offered list is context for it. A message that
+        // replaces one with the other loses which locator and which timeout actually expired.
+        it("keeps the original timeout inside the message it adds context to", async () => {
+            await expect(new Workbench(palette([])).pickQuickPick("Anything")).rejects.toThrow(
+                /Timeout 30000ms exceeded/,
+            );
+        });
+
+        // An empty palette and a palette full of the wrong commands are different failures: the
+        // first says the quick pick never populated, the second says the label does not match.
+        // Rendering the empty case as an empty string collapses them back into one.
+        it("says so explicitly when the palette offered nothing at all", async () => {
+            await expect(new Workbench(palette([])).pickQuickPick("Anything")).rejects.toThrow(
+                /It offered: <no options>/,
+            );
+        });
+
+        // Reading the palette is best-effort by construction: this path is already failing, and a
+        // detached frame here must not become the error the run reports instead of the timeout.
+        it("reports an unreadable palette rather than throwing over the timeout", async () => {
+            const rejection = new Workbench(palette("unreadable")).pickQuickPick("Anything");
+
+            await expect(rejection).rejects.toThrow(/<unreadable: frame was detached>/);
+            await expect(rejection).rejects.toThrow(/Timeout 30000ms exceeded/);
+        });
+
+        // VS Code's palette holds hundreds of commands. An uncapped dump buries the timeout it is
+        // attached to, so the count has to stand in for the tail rather than the tail being lost.
+        it("caps the listed entries and counts the rest", async () => {
+            const entries = Array.from({ length: 20 }, (_, index) => `Command ${index}`);
+
+            const message = await new Workbench(palette(entries)).pickQuickPick("Anything").then(
+                () => "pickQuickPick resolved instead of reporting the timeout",
+                (error: unknown) => (error as Error).message,
+            );
+
+            expect(message).toContain('"Command 7" (+12 more)');
+            expect(message, "an uncapped dump buries the timeout it is attached to").not.toContain(
+                '"Command 8"',
+            );
+        });
+    });
+
     // Declared after the tests that mock the platform getter, which is the only position from
     // which it can observe a spy outliving its own test. `process` is shared by every file a
     // worker runs, so an unrestored getter is not confined to this suite -- it decides what a

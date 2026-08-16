@@ -6,6 +6,9 @@ import enCatalog from "../../../src/webviews/i18n/en.json";
 const PALETTE_ATTEMPTS = 5;
 const PALETTE_TIMEOUT_MS = 3_000;
 
+/** How many quick-pick entries a failure message lists before summarising the rest as a count. */
+const QUICK_PICK_REPORT_LIMIT = 8;
+
 /** Workbench-level actions shared by the flow page objects. */
 export class Workbench {
     public constructor(private readonly page: Page) {}
@@ -46,7 +49,42 @@ export class Workbench {
 
     /** Selects a visible command-palette quick-pick item by its accessible name. */
     public async pickQuickPick(label: string): Promise<void> {
-        await this.page.getByRole("option", { name: label }).click();
+        try {
+            await this.page.getByRole("option", { name: label }).click();
+        } catch (error) {
+            // A bare `waiting for getByRole('option')` timeout cannot separate the two causes,
+            // and they have opposite fixes: a label this page object spelled wrong, versus a
+            // command VS Code does not know yet. What the palette IS offering says which --
+            // its own entries mean the label is wrong, while VS Code's zero-match "similar
+            // commands" fallback means the contribution has not registered. Measured on CI run
+            // 31942358546, where the bare timeout named only the locator and cost two
+            // diagnosis passes that had to go to the screenshot for what this line now says.
+            throw new Error(
+                `Command palette never offered "${label}". It offered: ` +
+                    `${await this.describeQuickPickOptions()}. Original failure: ` +
+                    `${error instanceof Error ? error.message : String(error)}`,
+            );
+        }
+    }
+
+    /**
+     * Lists the quick-pick entries currently on screen, for a failure message.
+     *
+     * Never throws: this runs only on a path that is already failing, and a second failure here
+     * would replace the timeout that is the actual finding with an unrelated one.
+     */
+    private async describeQuickPickOptions(): Promise<string> {
+        try {
+            const labels = await this.page.getByRole("option").allTextContents();
+            if (labels.length === 0) return "<no options>";
+            const shown = labels
+                .slice(0, QUICK_PICK_REPORT_LIMIT)
+                .map((text) => `"${text.trim()}"`);
+            const omitted = labels.length - shown.length;
+            return omitted > 0 ? `${shown.join(", ")} (+${omitted} more)` : shown.join(", ");
+        } catch (error) {
+            return `<unreadable: ${error instanceof Error ? error.message : String(error)}>`;
+        }
     }
 
     /** Checks out a visible local branch through IntelliGit's branch webview menu. */
