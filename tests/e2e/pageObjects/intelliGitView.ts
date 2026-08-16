@@ -98,6 +98,15 @@ export class IntelliGitView {
      * with no local reproduction is diagnosed from this line or not at all, so it names what each
      * webview actually is: whether the inner document exists, how much it rendered, and the test
      * ids it does carry.
+     *
+     * `bodyChars` alone could not separate the two failures that matter most here. The shell HTML
+     * is ~31KB of inline i18n bootstrap on its own, so "the bundle never executed" and "the bundle
+     * mounted and rendered nothing identifiable" both report a five-digit `bodyChars` and an empty
+     * `testIds`, and telling them apart took measuring the empty shell in a separate unit test.
+     * `root` and `bootstrap` answer it in the failure message itself: `bootstrap` is the inline
+     * script the shell always emits, and `root` is what the React bundle put under `#root`, so
+     * `bootstrap=yes root=<children:0 …>` is a bundle that never ran while `children:2` with no
+     * test ids is an app that mounted and was never given anything to show.
      */
     private async describeWebviews(): Promise<string> {
         const outerFrames: Locator[] = await this.page.locator("iframe.webview").all();
@@ -113,18 +122,31 @@ export class IntelliGitView {
                     .locator("iframe#active-frame")
                     .contentFrame()
                     .locator("body")
-                    .evaluate((body: HTMLElement) => ({
-                        title: body.ownerDocument.title,
-                        bodyChars: body.innerHTML.length,
-                        testIds: Array.from(body.querySelectorAll("[data-testid]"))
-                            .slice(0, 8)
-                            .map((element) => element.getAttribute("data-testid")),
-                    }))
+                    .evaluate((body: HTMLElement) => {
+                        const document = body.ownerDocument;
+                        const shellGlobals = document.defaultView as
+                            | (Window & { intelligitI18n?: unknown })
+                            | null;
+                        const root = document.getElementById("root");
+                        return {
+                            title: document.title,
+                            bodyChars: body.innerHTML.length,
+                            rootChildren: root?.childElementCount ?? -1,
+                            rootChars: root?.innerHTML.length ?? -1,
+                            bootstrapped: shellGlobals?.intelligitI18n !== undefined,
+                            testIds: Array.from(body.querySelectorAll("[data-testid]"))
+                                .slice(0, 8)
+                                .map((element) => element.getAttribute("data-testid")),
+                        };
+                    })
                     .catch(() => undefined);
                 return summary === undefined
                     ? `#${index}: active-frame=${activeFrames} document=<unreachable>`
                     : `#${index}: active-frame=${activeFrames} title=${JSON.stringify(summary.title)} ` +
-                      `bodyChars=${summary.bodyChars} testIds=${JSON.stringify(summary.testIds)}`;
+                          `bodyChars=${summary.bodyChars} ` +
+                          `bootstrap=${summary.bootstrapped ? "yes" : "no"} ` +
+                          `root=<children:${summary.rootChildren} chars:${summary.rootChars}> ` +
+                          `testIds=${JSON.stringify(summary.testIds)}`;
             }),
         );
         return described.join("\n  ");

@@ -155,21 +155,32 @@ describe("IntelliGitView", () => {
                 // same markers, rather than against a canned result. A callback that reads a
                 // property the real body does not have then fails in this suite instead of only in
                 // the CI failure it is the sole diagnosis of.
-                evaluate: (extract: (body: never) => unknown) =>
-                    markers === undefined
-                        ? detached()
-                        : Promise.resolve(
-                              extract({
-                                  ownerDocument: { title },
-                                  innerHTML: markers
-                                      .map((marker) => `<div ${marker.slice(1, -1)}></div>`)
-                                      .join(""),
-                                  querySelectorAll: () =>
-                                      markers.map((marker) => ({
-                                          getAttribute: () => testIdOf(marker),
-                                      })),
-                              } as never),
-                          ),
+                evaluate: (extract: (body: never) => unknown) => {
+                    if (markers === undefined) return detached();
+                    const rendered = markers
+                        .map((marker) => `<div ${marker.slice(1, -1)}></div>`)
+                        .join("");
+                    // The real document is the shell's: a `#root` div the React bundle mounts
+                    // into, plus the inline bootstrap globals the shell always emits -- present
+                    // whether or not the bundle then ran. Modelling both is what lets the report
+                    // separate "the bundle never executed" from "it mounted and was given
+                    // nothing", which `bodyChars` alone cannot, the shell being ~31KB by itself.
+                    const root = { childElementCount: markers.length, innerHTML: rendered };
+                    return Promise.resolve(
+                        extract({
+                            ownerDocument: {
+                                title,
+                                defaultView: { intelligitI18n: {} },
+                                getElementById: (id: string) => (id === "root" ? root : null),
+                            },
+                            innerHTML: `<div id="root">${rendered}</div>`,
+                            querySelectorAll: () =>
+                                markers.map((marker) => ({
+                                    getAttribute: () => testIdOf(marker),
+                                })),
+                        } as never),
+                    );
+                },
             }),
         };
         return {
@@ -274,7 +285,20 @@ describe("IntelliGitView", () => {
         const { page } = workbenchPage([webview([SIDEBAR_MARKER])]);
 
         await expect(new IntelliGitView(page).revealPanel(50)).rejects.toThrow(
-            /commit-list-viewport[\s\S]*active-frame=1[\s\S]*testIds=\["commit-panel-tab-row"\]/,
+            /commit-list-viewport[\s\S]*active-frame=1[\s\S]*bootstrap=yes[\s\S]*root=<children:1 [\s\S]*testIds=\["commit-panel-tab-row"\]/,
+        );
+    });
+
+    // The CI failure this whole report exists for: a webview that mounted React and rendered
+    // nothing. It is indistinguishable from a bundle that never executed if the message carries
+    // only `bodyChars` and `testIds` -- the shell's inline i18n bootstrap is ~31KB on its own, so
+    // both report five digits and an empty id list, and telling them apart once took a separate
+    // measurement of the empty shell. `bootstrap=yes root=<children:0` says it in the message.
+    it("distinguishes a mounted app that rendered nothing from a bundle that never ran", async () => {
+        const { page } = workbenchPage([webview([])]);
+
+        await expect(new IntelliGitView(page).revealPanel(50)).rejects.toThrow(
+            /bootstrap=yes root=<children:0 chars:0> testIds=\[\]/,
         );
     });
 

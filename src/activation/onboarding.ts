@@ -69,6 +69,11 @@ function registerNoWorkspaceViews(context: vscode.ExtensionContext): void {
                 "no-workspace",
                 vscode.l10n.t("Commit"),
             ),
+            // The option belongs to the view id, not to whichever provider happens to serve it
+            // first, and it can only ever be set here. This page is static guidance, so retaining
+            // it costs almost nothing; carving it out would instead leave the rule depending on
+            // "no-workspace mode can never hand over in-process", which nothing re-checks.
+            { webviewOptions: { retainContextWhenHidden: true } },
         ),
     );
 }
