@@ -81,6 +81,81 @@ describe("publish visual workflow", () => {
         );
     });
 
+    it("never cancels an in-flight release run on main", () => {
+        const workflow = readFileSync(WORKFLOW_PATH, "utf8");
+        const cancelLine = workflow.match(/^\s*cancel-in-progress:\s*(.+)$/m)?.[1]?.trim() ?? "";
+
+        expect(cancelLine, "the workflow must declare a concurrency cancellation policy").not.toBe(
+            "",
+        );
+
+        // The concurrency group keys on event and ref, so two merges to main share it exactly.
+        // Under `cancel-in-progress: true` the second merge kills the first one's release
+        // mid-flight -- and a cancelled run reports no failure, shows no red X and notifies nobody,
+        // so the version it was publishing is simply never released and nothing says so. Measured:
+        // v0.25.3's release run died this way. Cancelling a superseded pull-request run is still
+        // wanted, so the policy has to discriminate on the ref rather than being switched off.
+        expect(
+            cancelLine,
+            "a main-branch release run must never be cancelled by a later push",
+        ).not.toBe("true");
+        expect(
+            cancelLine,
+            "cancellation must be decided by the ref, so pull-request runs still supersede",
+        ).toContain("refs/heads/main");
+    });
+
+    it("decides the release from whether this version shipped, not from the previous commit", () => {
+        const releaseJob = extractJobBlock(readFileSync(WORKFLOW_PATH, "utf8"), "release");
+        const gateBlock = extractStepBlock(
+            releaseJob,
+            "Check whether this version still needs releasing",
+        );
+
+        expect(gateBlock, "the release job must carry a version gate step").not.toBe("");
+
+        // Assert against what the shell executes, never the prose around it. The comment inside
+        // this step explains the HEAD~1 failure it replaced, and a raw text match would read that
+        // explanation as the defect itself -- a false red that gets "fixed" by deleting the
+        // reasoning. Dropping comment lines keeps the assertion pointed at the code.
+        const gate = gateBlock
+            .split("\n")
+            .filter((line) => !line.trimStart().startsWith("#"))
+            .join("\n");
+
+        // Reading `package.json` at HEAD~1 asks "did THIS commit bump the version". No later run
+        // can act on that answer: when the bumping commit's own run is cancelled or fails before
+        // reaching this job, the bump is orphaned, every subsequent commit reports "unchanged", and
+        // that version can never publish -- with no failure anywhere to say so. Measured on this
+        // repository: 0.25.2 (e2e-full failed) and 0.25.3 (run cancelled) were both stranded
+        // exactly this way, and main could not publish either one afterwards.
+        expect(
+            gate,
+            "the release gate must not decide from the previous commit's package.json",
+        ).not.toMatch(/HEAD~1/);
+
+        // The replacement must be idempotent state rather than an event: the absence of the GitHub
+        // Release for the CURRENT version, which is the last artifact this job creates.
+        expect(
+            gate,
+            "the release gate must ask whether the current version already has a GitHub Release",
+        ).toMatch(/gh release view "v\$CURRENT_VERSION"/);
+
+        // Re-running is only safe because every publishing step guards itself. Remove one of these
+        // guards and the self-healing gate above becomes a double-publish, so they are asserted
+        // here, next to the gate whose safety depends on them, rather than trusted.
+        expect(
+            extractStepBlock(releaseJob, "Create git tag"),
+            "tagging must be a no-op when the tag already exists",
+        ).toMatch(/already exists, skipping/);
+        expect(releaseJob, "a live marketplace version must not be published twice").toContain(
+            "steps.publish-status.outputs.vsce_published != 'true'",
+        );
+        expect(releaseJob, "an existing GitHub Release must be updated, not recreated").toContain(
+            "steps.github-release-check.outputs.release_exists != 'true'",
+        );
+    });
+
     it("installs Bun in the E2E image from a checksummed artifact, never a piped remote script", () => {
         const dockerfile = readFileSync(DOCKERFILE_PATH, "utf8");
 

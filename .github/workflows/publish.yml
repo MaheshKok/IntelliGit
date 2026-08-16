@@ -10,7 +10,7 @@ on:
     workflow_dispatch:
         inputs:
             force_publish:
-                description: "Publish the current package.json version even if it is unchanged from the previous commit (use to recover a deploy that GitHub skipped)."
+                description: "Publish the current package.json version even if it already has a GitHub Release (use to recover a marketplace upload that did not land)."
                 type: boolean
                 default: false
             skip_e2e_gate:
@@ -22,7 +22,13 @@ on:
 # in-flight push-triggered release run (they target the same ref).
 concurrency:
     group: build-release-${{ github.event_name }}-${{ github.ref }}
-    cancel-in-progress: true
+    # A superseded pull-request run is waste worth cancelling; a superseded main run is a lost
+    # release. Two merges land in the same group -- same event (`push`), same ref
+    # (`refs/heads/main`) -- so merging again while a release is in flight cancels it, and a
+    # cancelled run reports no failure, shows no red X, and notifies nobody. Measured: v0.25.3's
+    # release run was cancelled by the merge that followed it minutes later, and the release was
+    # silently lost. Main pushes therefore queue instead of cancelling.
+    cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 permissions:
     contents: read
@@ -250,43 +256,46 @@ jobs:
               with:
                   fetch-depth: 0
 
-            - name: Check if version changed
+            - name: Check whether this version still needs releasing
               id: version-check
               env:
                   FORCE_PUBLISH: ${{ github.event_name == 'workflow_dispatch' && inputs.force_publish == true }}
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
               run: |
                   CURRENT_VERSION=$(node -p "require('./package.json').version")
                   echo "Current version: $CURRENT_VERSION"
 
-                  # force_publish is a recovery lever for when GitHub silently
-                  # skipped a push-to-main deploy (e.g. a CI-skip token reached
-                  # the merge commit). It only bypasses the version-change gate;
-                  # the publish-status guard (check-extension-publish-status.js)
-                  # still prevents re-publishing an already-live version, so a
-                  # forced re-run of the same version is safe. workflow_dispatch
-                  # itself requires repo write access, which gates who can use it.
+                  # force_publish covers the one case the state gate below cannot see: the GitHub
+                  # Release exists but a marketplace upload did not land. It only bypasses this
+                  # gate; the publish-status guard (check-extension-publish-status.js) still
+                  # prevents re-publishing an already-live version, so a forced re-run of the same
+                  # version is safe. workflow_dispatch itself requires repo write access, which
+                  # gates who can use it.
                   if [ "$FORCE_PUBLISH" = "true" ]; then
-                    echo "Force publish requested via workflow_dispatch; bypassing version comparison."
+                    echo "Force publish requested via workflow_dispatch; bypassing the release-state gate."
                     echo "version_changed=true" >> $GITHUB_OUTPUT
                     echo "new_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
                     exit 0
                   fi
 
-                  if git rev-parse --verify HEAD~1 >/dev/null 2>&1; then
-                    git checkout HEAD~1 -- package.json
-                    PREVIOUS_VERSION=$(node -p "require('./package.json').version")
-                    git checkout HEAD -- package.json
+                  # State, not diff. Comparing package.json against HEAD~1 asks "did THIS commit
+                  # bump the version", which can never recover from a run that failed to reach this
+                  # job: the bump is orphaned, and every later commit reports "unchanged" and skips
+                  # forever. Measured -- 0.25.2's run failed at e2e-full and 0.25.3's run was
+                  # cancelled, after which main could publish neither, with no failure anywhere to
+                  # say so. The GitHub Release is the last artifact this job creates, so its absence
+                  # is the honest answer to "has this version shipped". Asking that is idempotent:
+                  # it publishes a bump, it skips an already-released version, and it self-heals a
+                  # missed run on the next push. Every step below was already written to be
+                  # re-runnable (publish-status guards, the tag-exists guard, create-or-update
+                  # release) -- this gate was the only part that was not.
+                  if gh release view "v$CURRENT_VERSION" >/dev/null 2>&1; then
+                    echo "v$CURRENT_VERSION already has a GitHub Release; nothing to publish."
+                    echo "version_changed=false" >> $GITHUB_OUTPUT
                   else
-                    PREVIOUS_VERSION="0.0.0"
-                  fi
-
-                  echo "Previous version: $PREVIOUS_VERSION"
-
-                  if [ "$CURRENT_VERSION" != "$PREVIOUS_VERSION" ]; then
+                    echo "v$CURRENT_VERSION has no GitHub Release yet; publishing."
                     echo "version_changed=true" >> $GITHUB_OUTPUT
                     echo "new_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
-                  else
-                    echo "version_changed=false" >> $GITHUB_OUTPUT
                   fi
 
             - name: Setup Node.js
