@@ -5,6 +5,7 @@ import { isExactGhApiNotFound } from "../../../scripts/verifyGhApiNotFound.js";
 describe("verifyGhApiNotFound", () => {
     it("accepts only the exact missing-resource diagnostic emitted by gh api", () => {
         expect(isExactGhApiNotFound("gh: Not Found (HTTP 404)\n")).toBe(true);
+        expect(isExactGhApiNotFound("gh: Not Found (HTTP 404)")).toBe(true);
     });
 
     it.each([

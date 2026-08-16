@@ -141,6 +141,31 @@ describe("CI quality hardening workflows", () => {
         expect(releaseJob).not.toMatch(/gh release (?:create|upload)[^\n]*\*\.vsix/);
     });
 
+    it("passes the verified VSIX path through each marketplace step environment", () => {
+        const releaseJob = extractJobBlock(readRepositoryFile(".github/workflows/publish.yml"), "release");
+        const marketplaceContracts = [
+            {
+                name: "Publish to VS Code Marketplace",
+                command: 'run: bunx vsce publish --packagePath "$VSIX_PATH" -p "$VSCE_PAT"',
+                token: "VSCE_PAT: ${{ secrets.VSCE_PAT }}",
+            },
+            {
+                name: "Publish to Open VSX",
+                command: 'run: bunx ovsx publish -p "$OVSX_PAT" "$VSIX_PATH"',
+                token: "OVSX_PAT: ${{ secrets.OVSX_PAT }}",
+            },
+        ];
+
+        for (const contract of marketplaceContracts) {
+            const step = extractStepBlock(releaseJob, contract.name);
+            expect(step, `${contract.name} step must exist`).not.toBe("");
+            expect(step).toContain("VSIX_PATH: ${{ steps.release-artifact.outputs.vsix_path }}");
+            expect(step).toContain(contract.command);
+            expect(step).toContain(contract.token);
+            expect(step).not.toMatch(/^\s+run:.*\$\{\{ steps\.release-artifact\.outputs\.vsix_path \}\}/m);
+        }
+    });
+
     it("keeps the static analysis and dependency-review grants narrowly scoped", () => {
         const codeql = readRepositoryFile(".github/workflows/codeql.yml");
         const dependencyReview = readRepositoryFile(".github/workflows/dependency-review.yml");

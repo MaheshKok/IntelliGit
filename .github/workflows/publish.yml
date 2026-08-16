@@ -473,13 +473,15 @@ jobs:
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
             - name: Publish to VS Code Marketplace
-              run: bunx vsce publish --packagePath "${{ steps.release-artifact.outputs.vsix_path }}" -p "$VSCE_PAT"
+              run: bunx vsce publish --packagePath "$VSIX_PATH" -p "$VSCE_PAT"
               env:
+                  VSIX_PATH: ${{ steps.release-artifact.outputs.vsix_path }}
                   VSCE_PAT: ${{ secrets.VSCE_PAT }}
 
             - name: Publish to Open VSX
-              run: bunx ovsx publish -p "$OVSX_PAT" "${{ steps.release-artifact.outputs.vsix_path }}"
+              run: bunx ovsx publish -p "$OVSX_PAT" "$VSIX_PATH"
               env:
+                  VSIX_PATH: ${{ steps.release-artifact.outputs.vsix_path }}
                   OVSX_PAT: ${{ secrets.OVSX_PAT }}
 
             - name: Create GitHub Release and upload artifacts

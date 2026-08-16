@@ -249,17 +249,20 @@ describe("verifyVsixPackage", () => {
         );
     });
 
-    it("requires both top-level VSIX metadata entries", async () => {
-        const entries = extensionEntries(REQUIRED_FILES).filter(
-            (entry) => entry.path !== "extension.vsixmanifest",
-        );
-        const { result } = await verifyFixture(entries);
+    it.each(["extension.vsixmanifest", "[Content_Types].xml"])(
+        "rejects a missing required top-level VSIX metadata entry: %s",
+        async (missingMetadata) => {
+            const entries = extensionEntries(REQUIRED_FILES).filter(
+                (entry) => entry.path !== missingMetadata,
+            );
+            const { result } = await verifyFixture(entries);
 
-        expect(result.ok).toBe(false);
-        expect(result.errors.join("\n")).toContain(
-            "Missing required top-level VSIX metadata: extension.vsixmanifest",
-        );
-    });
+            expect(result.ok).toBe(false);
+            expect(result.errors.join("\n")).toContain(
+                `Missing required top-level VSIX metadata: ${missingMetadata}`,
+            );
+        },
+    );
 
     it.each(["/absolute.txt", "extension\\unsafe.txt", "extension/../escape.txt"])(
         "rejects unsafe archive path %s",
