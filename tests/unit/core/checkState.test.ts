@@ -9,7 +9,12 @@ import {
     type CommitCheckState,
     type CommitChecksSnapshot,
 } from "../../../src/types";
-import { shouldRequestCommitChecks } from "../../../src/webviews/react/commit-list/checksRefresh";
+import {
+    HEAD_NONE_CHECK_RETRY_DELAYS_MS,
+    PENDING_CHECK_RETRY_DELAYS_MS,
+    retryDelaysForCommitChecks,
+    shouldRequestCommitChecks,
+} from "../../../src/webviews/react/commit-list/checksRefresh";
 
 const ALL_STATES: CommitCheckState[] = [
     "success",
@@ -76,6 +81,92 @@ describe("shouldRequestCommitChecks", () => {
         const terminal = ALL_STATES.filter((state) => !REQUESTABLE.includes(state));
         for (const state of terminal) {
             expect(shouldRequestCommitChecks(snapshot(state))).toBe(false);
+        }
+    });
+});
+
+describe("retry ladder shape", () => {
+    function isNonDecreasing(delays: readonly number[]): boolean {
+        return delays.every((delay, index) => index === 0 || delay >= delays[index - 1]);
+    }
+
+    it("starts the pending ladder within 5 seconds so a fresh push becomes visible almost immediately", () => {
+        expect(PENDING_CHECK_RETRY_DELAYS_MS[0]).toBeLessThanOrEqual(5_000);
+    });
+
+    it("starts the head-none ladder within 5 seconds so a fresh push becomes visible almost immediately", () => {
+        expect(HEAD_NONE_CHECK_RETRY_DELAYS_MS[0]).toBeLessThanOrEqual(5_000);
+    });
+
+    it("keeps the pending ladder non-decreasing", () => {
+        expect(isNonDecreasing(PENDING_CHECK_RETRY_DELAYS_MS)).toBe(true);
+    });
+
+    it("keeps the head-none ladder non-decreasing", () => {
+        expect(isNonDecreasing(HEAD_NONE_CHECK_RETRY_DELAYS_MS)).toBe(true);
+    });
+
+    it("keeps the pending ladder's total coverage at or above a real CI run", () => {
+        const totalCoverageMs = PENDING_CHECK_RETRY_DELAYS_MS.reduce((sum, delay) => sum + delay, 0);
+        expect(totalCoverageMs).toBeGreaterThanOrEqual(240_000);
+    });
+});
+
+describe("retryDelaysForCommitChecks", () => {
+    it("schedules the pending ladder for a pending snapshot regardless of branch position", () => {
+        // isCurrentHead: false and isUnpushed: true is the most adverse combination: proves
+        // "pending" wins outright rather than merely happening to pass under a lenient default.
+        const delays = retryDelaysForCommitChecks(snapshot("pending"), {
+            isCurrentHead: false,
+            isUnpushed: true,
+        });
+        expect(delays).toEqual(PENDING_CHECK_RETRY_DELAYS_MS);
+    });
+
+    it("schedules the head-none ladder for a none snapshot on the pushed current HEAD", () => {
+        const delays = retryDelaysForCommitChecks(snapshot("none"), {
+            isCurrentHead: true,
+            isUnpushed: false,
+        });
+        expect(delays).toEqual(HEAD_NONE_CHECK_RETRY_DELAYS_MS);
+    });
+
+    it("returns no automatic retries for a none snapshot that is not the current HEAD", () => {
+        const delays = retryDelaysForCommitChecks(snapshot("none"), {
+            isCurrentHead: false,
+            isUnpushed: false,
+        });
+        expect(delays).toEqual([]);
+    });
+
+    it("returns no automatic retries for a none snapshot on an unpushed current HEAD", () => {
+        const delays = retryDelaysForCommitChecks(snapshot("none"), {
+            isCurrentHead: true,
+            isUnpushed: true,
+        });
+        expect(delays).toEqual([]);
+    });
+
+    it("returns no automatic retries for an unavailable snapshot", () => {
+        const delays = retryDelaysForCommitChecks(snapshot("unavailable"), {
+            isCurrentHead: true,
+            isUnpushed: false,
+        });
+        expect(delays).toEqual([]);
+    });
+
+    it("returns no automatic retries for any terminal snapshot", () => {
+        // Derived from ALL_STATES rather than re-typed so a new CommitCheckState is covered
+        // automatically instead of silently slipping past an enumerated list.
+        const terminal = ALL_STATES.filter(
+            (state) => !NON_TERMINAL.includes(state) && state !== "unavailable",
+        );
+        for (const state of terminal) {
+            const delays = retryDelaysForCommitChecks(snapshot(state), {
+                isCurrentHead: true,
+                isUnpushed: false,
+            });
+            expect(delays).toEqual([]);
         }
     });
 });

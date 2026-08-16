@@ -3,10 +3,12 @@ import { isPendingCheckState, type CommitChecksSnapshot } from "../../../types";
 const MIN_GIT_ABBREVIATION_LENGTH = 7;
 
 /** Cumulative retry intervals while a visible commit's CI remains pending. */
-export const PENDING_CHECK_RETRY_DELAYS_MS = [30_000, 60_000, 120_000] as const;
+export const PENDING_CHECK_RETRY_DELAYS_MS = [
+    3_000, 5_000, 10_000, 20_000, 30_000, 60_000, 60_000, 120_000,
+] as const;
 
 /** Cumulative retry intervals while a pushed current HEAD has no registered checks. */
-export const HEAD_NONE_CHECK_RETRY_DELAYS_MS = [30_000, 60_000] as const;
+export const HEAD_NONE_CHECK_RETRY_DELAYS_MS = [3_000, 5_000, 10_000, 30_000] as const;
 
 /**
  * Compares full or Git-produced abbreviated commit hashes.

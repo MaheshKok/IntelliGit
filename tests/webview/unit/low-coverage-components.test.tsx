@@ -780,7 +780,7 @@ describe("low coverage components", () => {
         />
     );
 
-    it("CommitList emits automatic current-HEAD none retry protocol over three idle minutes", async () => {
+    it("CommitList emits automatic current-HEAD none retry protocol across the bounded retry ladder", async () => {
         vi.useFakeTimers();
         const commits = Array.from({ length: 12 }, (_, index) => ({
             ...retryCommit,
@@ -852,18 +852,15 @@ describe("low coverage components", () => {
             );
             await settleRequests();
 
-            act(() => vi.advanceTimersByTime(30_000));
-            await settleRequests();
-            act(() => vi.advanceTimersByTime(60_000));
-            await settleRequests();
-            act(() => vi.advanceTimersByTime(90_000));
-            await settleRequests();
+            for (const delay of HEAD_NONE_CHECK_RETRY_DELAYS_MS) {
+                act(() => vi.advanceTimersByTime(delay));
+                await settleRequests();
+            }
 
             expect(onRequestCommitChecks.mock.calls).toEqual([
                 [[head], false],
                 [commits.map((commit) => commit.hash), false],
-                [[head], true],
-                [[head], true],
+                ...HEAD_NONE_CHECK_RETRY_DELAYS_MS.map(() => [[head], true]),
             ]);
             // This relay consumes the emitted protocol only. GitHub provider/HTTP totals are
             // asserted by the paired extension-host composition test.
@@ -948,11 +945,9 @@ describe("low coverage components", () => {
             }
 
             expect(PENDING_CHECK_RETRY_DELAYS_MS.at(-1)).toBe(120_000);
-            expect(onRequestCommitChecks.mock.calls.filter(([, force]) => force === true)).toEqual([
-                [commits.map((commit) => commit.hash), true],
-                [commits.map((commit) => commit.hash), true],
-                [commits.map((commit) => commit.hash), true],
-            ]);
+            expect(onRequestCommitChecks.mock.calls.filter(([, force]) => force === true)).toEqual(
+                PENDING_CHECK_RETRY_DELAYS_MS.map(() => [commits.map((commit) => commit.hash), true]),
+            );
             expect(vi.getTimerCount()).toBe(0);
 
             const callsAfterFinalRetry = onRequestCommitChecks.mock.calls.length;
@@ -972,7 +967,6 @@ describe("low coverage components", () => {
         const onRequestCommitChecks = vi.fn();
         let mounted: ReturnType<typeof mount> | undefined;
         try {
-            expect(PENDING_CHECK_RETRY_DELAYS_MS).toEqual([30_000, 60_000, 120_000]);
             mounted = mount(
                 renderRetryCommitList({
                     snapshots: [checksSnapshot(retryCommit.hash, "pending")],
@@ -982,25 +976,18 @@ describe("low coverage components", () => {
             await flush();
             onRequestCommitChecks.mockClear();
 
-            act(() => vi.advanceTimersByTime(30_000));
-            expect(onRequestCommitChecks.mock.calls).toEqual([[[retryCommit.hash], true]]);
-
-            act(() => vi.advanceTimersByTime(60_000));
-            expect(onRequestCommitChecks.mock.calls).toEqual([
-                [[retryCommit.hash], true],
-                [[retryCommit.hash], true],
-            ]);
-
-            act(() => vi.advanceTimersByTime(120_000));
-            expect(onRequestCommitChecks.mock.calls).toEqual([
-                [[retryCommit.hash], true],
-                [[retryCommit.hash], true],
-                [[retryCommit.hash], true],
-            ]);
+            let cumulativeCalls = 0;
+            for (const delay of PENDING_CHECK_RETRY_DELAYS_MS) {
+                act(() => vi.advanceTimersByTime(delay));
+                cumulativeCalls += 1;
+                expect(onRequestCommitChecks.mock.calls).toEqual(
+                    Array.from({ length: cumulativeCalls }, () => [[retryCommit.hash], true]),
+                );
+            }
             expect(vi.getTimerCount()).toBe(0);
 
             act(() => vi.advanceTimersByTime(60 * 60 * 1_000));
-            expect(onRequestCommitChecks).toHaveBeenCalledTimes(3);
+            expect(onRequestCommitChecks).toHaveBeenCalledTimes(PENDING_CHECK_RETRY_DELAYS_MS.length);
         } finally {
             if (mounted) unmount(mounted.root, mounted.container);
             act(() => vi.runOnlyPendingTimers());
@@ -1106,7 +1093,6 @@ describe("low coverage components", () => {
         const onRequestCommitChecks = vi.fn();
         let mounted: ReturnType<typeof mount> | undefined;
         try {
-            expect(HEAD_NONE_CHECK_RETRY_DELAYS_MS).toEqual([30_000, 60_000]);
             mounted = mount(
                 renderRetryCommitList({
                     snapshots: [checksSnapshot(retryCommit.hash, "none")],
@@ -1117,18 +1103,18 @@ describe("low coverage components", () => {
             await flush();
             onRequestCommitChecks.mockClear();
 
-            act(() => vi.advanceTimersByTime(30_000));
-            expect(onRequestCommitChecks.mock.calls).toEqual([[[retryCommit.hash], true]]);
-
-            act(() => vi.advanceTimersByTime(60_000));
-            expect(onRequestCommitChecks.mock.calls).toEqual([
-                [[retryCommit.hash], true],
-                [[retryCommit.hash], true],
-            ]);
+            let cumulativeCalls = 0;
+            for (const delay of HEAD_NONE_CHECK_RETRY_DELAYS_MS) {
+                act(() => vi.advanceTimersByTime(delay));
+                cumulativeCalls += 1;
+                expect(onRequestCommitChecks.mock.calls).toEqual(
+                    Array.from({ length: cumulativeCalls }, () => [[retryCommit.hash], true]),
+                );
+            }
             expect(vi.getTimerCount()).toBe(0);
 
             act(() => vi.advanceTimersByTime(60 * 60 * 1_000));
-            expect(onRequestCommitChecks).toHaveBeenCalledTimes(2);
+            expect(onRequestCommitChecks).toHaveBeenCalledTimes(HEAD_NONE_CHECK_RETRY_DELAYS_MS.length);
         } finally {
             if (mounted) unmount(mounted.root, mounted.container);
             act(() => vi.runOnlyPendingTimers());
@@ -1155,14 +1141,14 @@ describe("low coverage components", () => {
             await flush();
             onRequestCommitChecks.mockClear();
 
-            act(() => vi.advanceTimersByTime(30_000));
-            expect(onRequestCommitChecks.mock.calls).toEqual([[[fullHash], true]]);
-
-            act(() => vi.advanceTimersByTime(60_000));
-            expect(onRequestCommitChecks.mock.calls).toEqual([
-                [[fullHash], true],
-                [[fullHash], true],
-            ]);
+            let cumulativeCalls = 0;
+            for (const delay of HEAD_NONE_CHECK_RETRY_DELAYS_MS) {
+                act(() => vi.advanceTimersByTime(delay));
+                cumulativeCalls += 1;
+                expect(onRequestCommitChecks.mock.calls).toEqual(
+                    Array.from({ length: cumulativeCalls }, () => [[fullHash], true]),
+                );
+            }
             expect(vi.getTimerCount()).toBe(0);
         } finally {
             if (mounted) unmount(mounted.root, mounted.container);
