@@ -73,6 +73,12 @@ export default defineConfig({
             testMatch: /fixtureTemplate\.teardown\.ts$/,
         },
         {
+            // The package smoke owns its own Git repository, profile, and extension install; it must
+            // not depend on the development-fixture setup project or enable its control channel.
+            name: "package-smoke",
+            testMatch: /packageSmoke\.spec\.ts$/,
+        },
+        {
             // Carries forward the config's only test project today (the
             // Phase 0 spike under tests/e2e/spike/). Depending on the setup
             // project guarantees the template — and its published manifest

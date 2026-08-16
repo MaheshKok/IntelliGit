@@ -13,11 +13,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Added release-package verification, SHA-256 artifacts, dual-version installed-package smoke coverage, and a weekly cross-platform installed-package portability sweep.
 - Added a nightly staleness sweep over the committed VS Code host fixtures, one pinned editor launch per fixture, so drift in what those fixtures record surfaces on its own rather than as an unexplained failure somewhere downstream. It reports through the same single aggregated nightly issue.
 
 ### Security
 
-- A release published through the `skip_e2e_gate` override now records that override on the GitHub Release itself, on both the create and the update path. It was previously recorded only as a workflow annotation, which expires with log retention and left nothing to say which shipped version was un-gated.
+- Added least-privilege CodeQL and dependency-review workflows, provenance attestation for the exact release VSIX, and Dependabot coverage for root Bun dependencies.
+- A release published through the `skip_e2e_gate` override now records that override on the created GitHub Release itself. Recovery refuses to replace an existing release or marketplace version with rebuilt bytes, preventing one version from naming different packages across destinations.
 - Every GitHub Actions reference in every workflow is now held to a full commit SHA, and a checkout may leave the workflow token in `.git/config` only in the job that pushes the release tag, by a guard that reads the workflow directory rather than a list of remembered files. The nightly staleness job above had reintroduced both — a floating tag and a persisted credential — because the controls were applied by sweep and nothing enforced them.
 
 ## [0.25.2] - 2026-08-15

@@ -33,6 +33,7 @@ env:
 jobs:
     build:
         runs-on: ubuntu-latest
+        timeout-minutes: 45
 
         steps:
             - name: Checkout code
@@ -64,12 +65,9 @@ jobs:
             - name: Install dependencies
               run: bun install --frozen-lockfile
 
-            # `test:coverage` below is the only place vitest runs, and one of its specs
-            # (tests/unit/visual/screenshotComparatorMeta.test.ts) spawns a real Playwright run to
-            # prove the pixel comparator rejects a mismatched baseline. Without a browser that spec
-            # cannot execute at all, so the assertion it makes would be a prediction rather than a
-            # result. Only chromium is installed: it is the sole browser any spec in this job uses.
-            # The Playwright version lives in bun.lock, so the cache key above already scopes this.
+            # The coverage suite includes a real Chromium proof for the visual
+            # comparator, so this browser is a test dependency rather than a cache
+            # optimisation.
             - name: Install the Playwright browser the comparator proof runs against
               run: bunx playwright install --with-deps chromium
 
@@ -107,22 +105,38 @@ jobs:
               run: bun run build
 
             - name: Package extension
-              run: bunx vsce package --no-dependencies
+              run: bun run package
 
-            - name: Upload VSIX artifact
+            - name: Resolve packaged VSIX and create checksum
+              id: package-artifact
+              shell: bash
+              run: |
+                  shopt -s nullglob
+                  vsix_files=(*.vsix)
+                  if [ "${#vsix_files[@]}" -ne 1 ]; then
+                    echo "Expected exactly one packaged VSIX, found ${#vsix_files[@]}." >&2
+                    exit 1
+                  fi
+                  VSIX_PATH="${vsix_files[0]}"
+                  CHECKSUM_PATH="${VSIX_PATH}.sha256"
+                  sha256sum "$VSIX_PATH" > "$CHECKSUM_PATH"
+                  echo "vsix_path=$VSIX_PATH" >> "$GITHUB_OUTPUT"
+                  echo "checksum_path=$CHECKSUM_PATH" >> "$GITHUB_OUTPUT"
+
+            - name: Upload release artifacts
               uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
               with:
                   name: extension-vsix
-                  path: "*.vsix"
+                  path: |
+                      *.vsix
+                      *.vsix.sha256
+                  if-no-files-found: error
+                  retention-days: 30
 
     # Blocks a PR from carrying a CI-skip token into main via squash merge.
-    # GitHub creates zero workflow runs for a push whose commit message contains
-    # such a token, so a skipped deploy cannot be detected after the fact -- it
-    # must be prevented before merge. This job ONLY protects the repo when it is
-    # marked as a required status check on the main branch ruleset AND direct
-    # pushes to main are disallowed (both configured on ruleset 12862467).
     guard-no-skip-ci:
         runs-on: ubuntu-latest
+        timeout-minutes: 10
         if: github.event_name == 'pull_request'
         steps:
             - name: Checkout code
@@ -139,29 +153,11 @@ jobs:
                   PR_BODY: ${{ github.event.pull_request.body }}
               run: node scripts/check-no-skip-ci.js
 
-    # Layer 1 visual tests (PLAN.md step 27). Runs the real webview bundles in
-    # Chromium through the Phase 3 harness.
-    #
-    # Deliberately NOT a `container:` job on the pinned image. A container job
-    # runs as root, Chromium will not keep its sandbox as root, and the usual
-    # `--no-sandbox` workaround makes CI diverge from the image that generates
-    # the committed baselines. `run.sh` already solves this: it builds the
-    # digest-pinned image from `tests/e2e/docker/`, forces linux/amd64, asserts
-    # the built image really is amd64, and runs unprivileged as the invoking
-    # uid so it can write into the checkout. Using it here means CI, a local
-    # developer run, and baseline generation are all the same image — which is
-    # the entire premise of pinning it by digest. See
-    # `tests/e2e/docker/base-image.txt` for why font rasterization makes that
-    # non-negotiable.
-    #
-    # A GitHub runner is natively amd64, so the platform pin costs nothing here;
-    # on an Apple Silicon developer machine the same command runs emulated.
+    # The visual suite executes in the same digest-pinned Linux image that
+    # maintains its baselines. Container jobs run as root and make Chromium
+    # diverge, so the wrapper runs the image unprivileged instead.
     visual:
         runs-on: ubuntu-latest
-
-        # The suite itself takes seconds; the budget is almost entirely the base
-        # image pull and `bun install`. A bound well above that still fails far
-        # sooner than the 6-hour default if the container ever wedges.
         timeout-minutes: 25
 
         steps:
@@ -170,16 +166,9 @@ jobs:
               with:
                   persist-credentials: false
 
-            # `bun install` and `bun run build` happen INSIDE the container, not
-            # on the runner: the harness serves `dist/` bundles straight to
-            # Chromium, so they must be built by the same toolchain that renders
-            # them. Native dependencies built on the runner would also be
-            # overwritten by the container's own node_modules mount.
             - name: Run visual suite in the pinned container
               run: ./tests/e2e/docker/run.sh 'bun install --frozen-lockfile && bun run build && bun run test:visual'
 
-            # Traces and failure screenshots are the only way to diagnose a
-            # visual failure after the container is gone.
             - name: Upload visual failure artifacts
               if: failure()
               uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -191,9 +180,8 @@ jobs:
                   if-no-files-found: ignore
                   retention-days: 7
 
-    # Same-SHA release gate for the complete flow suite. This is deliberately
-    # restricted to main pushes and manual dispatches so pull requests keep the
-    # settled PR tier in `.github/workflows/e2e.yml`.
+    # Same-SHA release gate for the complete flow suite. Pull requests retain
+    # the settled PR E2E tier in `.github/workflows/e2e.yml`.
     e2e-full:
         if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
         runs-on: ubuntu-latest
@@ -227,20 +215,161 @@ jobs:
                   if-no-files-found: ignore
                   retention-days: 7
 
-    release:
-        # A visual regression must not reach the Marketplace. `build` alone was
-        # the gate before the visual suite existed; leaving it that way would
-        # mean the suite gates nothing on the one path that ships to users.
-        needs: [build, visual, e2e-full]
+    package-smoke:
+        needs: build
         runs-on: ubuntu-latest
-        if: ${{ !cancelled() && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.build.result == 'success' && needs.visual.result == 'success' && (needs.e2e-full.result == 'success' || (github.event_name == 'workflow_dispatch' && inputs.skip_e2e_gate == true)) }}
+        timeout-minutes: 45
+        strategy:
+            fail-fast: false
+            matrix:
+                vscode_version: ["1.96.0", "1.132.0"]
+
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+              with:
+                  persist-credentials: false
+
+            - name: Download packaged VSIX
+              uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+              with:
+                  name: extension-vsix
+
+            - name: Cache the package-smoke VS Code build
+              uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+              with:
+                  path: ~/.cache/intelligit-e2e-container/vscode
+                  key: ${{ runner.os }}-package-smoke-vscode-${{ matrix.vscode_version }}
+
+            - name: Verify downloaded VSIX and checksum
+              shell: bash
+              run: |
+                  shopt -s nullglob
+                  vsix_files=(*.vsix)
+                  checksum_files=(*.vsix.sha256)
+                  if [ "${#vsix_files[@]}" -ne 1 ] || [ "${#checksum_files[@]}" -ne 1 ]; then
+                    echo "Expected one VSIX and one checksum artifact." >&2
+                    exit 1
+                  fi
+                  if [ "${checksum_files[0]}" != "${vsix_files[0]}.sha256" ]; then
+                    echo "Checksum artifact does not belong to the downloaded VSIX." >&2
+                    exit 1
+                  fi
+                  sha256sum --check "${checksum_files[0]}"
+
+            - name: Run installed package smoke in the pinned container
+              run: ./tests/e2e/docker/run.sh 'bun install --frozen-lockfile && bun run build && INTELLIGIT_VSCODE_VERSION=${{ matrix.vscode_version }} xvfb-run -a bun run test:package-smoke'
+
+    # Eligibility has no production environment or secrets. It is deliberately
+    # split from the publishing job so a same-version change never instantiates
+    # a job that can access Marketplace credentials.
+    release-eligibility:
+        needs: [build, visual, e2e-full, package-smoke]
+        runs-on: ubuntu-latest
+        timeout-minutes: 10
+        if: ${{ !cancelled() && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.build.result == 'success' && needs.visual.result == 'success' && needs.package-smoke.result == 'success' && (needs.e2e-full.result == 'success' || (github.event_name == 'workflow_dispatch' && inputs.skip_e2e_gate == true)) }}
+        outputs:
+            version_changed: ${{ steps.version-check.outputs.version_changed }}
+            new_version: ${{ steps.version-check.outputs.new_version }}
+
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+              with:
+                  persist-credentials: false
+                  fetch-depth: 0
+
+            - name: Check if version changed
+              id: version-check
+              env:
+                  FORCE_PUBLISH: ${{ github.event_name == 'workflow_dispatch' && inputs.force_publish == true }}
+                  PUSH_BEFORE_SHA: ${{ github.event_name == 'push' && github.event.before || '' }}
+              shell: bash
+              run: |
+                  CURRENT_VERSION=$(node -p "require('./package.json').version")
+                  echo "Current version: $CURRENT_VERSION"
+
+                  if [ -n "$PUSH_BEFORE_SHA" ] && [ "$PUSH_BEFORE_SHA" != "0000000000000000000000000000000000000000" ]; then
+                    PREVIOUS_VERSION=$(git show "$PUSH_BEFORE_SHA:package.json" | node -p "JSON.parse(require('fs').readFileSync(0, 'utf8')).version")
+                  elif git rev-parse --verify HEAD~1 >/dev/null 2>&1; then
+                    PREVIOUS_VERSION=$(git show HEAD~1:package.json | node -p "JSON.parse(require('fs').readFileSync(0, 'utf8')).version")
+                  else
+                    PREVIOUS_VERSION="0.0.0"
+                  fi
+
+                  echo "Previous version: $PREVIOUS_VERSION"
+                  if [ "$FORCE_PUBLISH" = "true" ]; then
+                    node scripts/verifyReleaseVersion.js --require-equal "$PREVIOUS_VERSION" "$CURRENT_VERSION"
+                    echo "Force publish recovery accepted for unchanged version $CURRENT_VERSION."
+                    echo "version_changed=true" >> "$GITHUB_OUTPUT"
+                    echo "new_version=$CURRENT_VERSION" >> "$GITHUB_OUTPUT"
+                    exit 0
+                  fi
+
+                  if [ "$CURRENT_VERSION" = "$PREVIOUS_VERSION" ]; then
+                    echo "Version is unchanged; release jobs will remain skipped."
+                    echo "version_changed=false" >> "$GITHUB_OUTPUT"
+                    echo "new_version=$CURRENT_VERSION" >> "$GITHUB_OUTPUT"
+                    exit 0
+                  fi
+
+                  node scripts/verifyReleaseVersion.js "$PREVIOUS_VERSION" "$CURRENT_VERSION"
+                  echo "version_changed=true" >> "$GITHUB_OUTPUT"
+                  echo "new_version=$CURRENT_VERSION" >> "$GITHUB_OUTPUT"
+
+    attest:
+        needs: [build, release-eligibility]
+        runs-on: ubuntu-latest
+        timeout-minutes: 15
+        if: ${{ !cancelled() && github.ref == 'refs/heads/main' && needs.build.result == 'success' && needs.release-eligibility.result == 'success' && needs.release-eligibility.outputs.version_changed == 'true' }}
+        permissions:
+            contents: read
+            id-token: write
+            attestations: write
+
+        steps:
+            - name: Download packaged VSIX
+              uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+              with:
+                  name: extension-vsix
+
+            - name: Resolve and verify attestation subject
+              id: release-artifact
+              shell: bash
+              run: |
+                  shopt -s nullglob
+                  vsix_files=(*.vsix)
+                  checksum_files=(*.vsix.sha256)
+                  if [ "${#vsix_files[@]}" -ne 1 ] || [ "${#checksum_files[@]}" -ne 1 ]; then
+                    echo "Expected one VSIX and one checksum artifact." >&2
+                    exit 1
+                  fi
+                  VSIX_PATH="${vsix_files[0]}"
+                  CHECKSUM_PATH="${VSIX_PATH}.sha256"
+                  if [ "${checksum_files[0]}" != "$CHECKSUM_PATH" ]; then
+                    echo "Checksum artifact does not belong to the downloaded VSIX." >&2
+                    exit 1
+                  fi
+                  sha256sum --check "$CHECKSUM_PATH"
+                  echo "vsix_path=$VSIX_PATH" >> "$GITHUB_OUTPUT"
+
+            - name: Attest packaged VSIX provenance
+              uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+              with:
+                  subject-path: ${{ steps.release-artifact.outputs.vsix_path }}
+
+    release:
+        needs: [build, visual, e2e-full, package-smoke, release-eligibility, attest]
+        runs-on: ubuntu-latest
+        timeout-minutes: 30
+        environment: marketplace-production
+        if: ${{ !cancelled() && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.build.result == 'success' && needs.visual.result == 'success' && needs.package-smoke.result == 'success' && (needs.e2e-full.result == 'success' || (github.event_name == 'workflow_dispatch' && inputs.skip_e2e_gate == true)) && needs.release-eligibility.result == 'success' && needs.release-eligibility.outputs.version_changed == 'true' && needs.attest.result == 'success' }}
         permissions:
             contents: write
 
         steps:
-            # Without this the bypass is invisible: the release log would show a successful publish
-            # next to a red `e2e-full` and give no reason, leaving whoever audits it to go dig the
-            # dispatch inputs out of the run summary.
+            # Without this the bypass is invisible in the release history: the
+            # job annotation expires with logs while the release must stay auditable.
             - name: Record that the E2E gate was overridden
               if: needs.e2e-full.result != 'success'
               run: echo "::warning::Published with a non-successful e2e-full gate via the skip_e2e_gate override."
@@ -248,150 +377,123 @@ jobs:
             - name: Checkout code
               uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
               with:
+                  persist-credentials: false
                   fetch-depth: 0
 
-            - name: Check if version changed
-              id: version-check
-              env:
-                  FORCE_PUBLISH: ${{ github.event_name == 'workflow_dispatch' && inputs.force_publish == true }}
-              run: |
-                  CURRENT_VERSION=$(node -p "require('./package.json').version")
-                  echo "Current version: $CURRENT_VERSION"
-
-                  # force_publish is a recovery lever for when GitHub silently
-                  # skipped a push-to-main deploy (e.g. a CI-skip token reached
-                  # the merge commit). It only bypasses the version-change gate;
-                  # the publish-status guard (check-extension-publish-status.js)
-                  # still prevents re-publishing an already-live version, so a
-                  # forced re-run of the same version is safe. workflow_dispatch
-                  # itself requires repo write access, which gates who can use it.
-                  if [ "$FORCE_PUBLISH" = "true" ]; then
-                    echo "Force publish requested via workflow_dispatch; bypassing version comparison."
-                    echo "version_changed=true" >> $GITHUB_OUTPUT
-                    echo "new_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
-                    exit 0
-                  fi
-
-                  if git rev-parse --verify HEAD~1 >/dev/null 2>&1; then
-                    git checkout HEAD~1 -- package.json
-                    PREVIOUS_VERSION=$(node -p "require('./package.json').version")
-                    git checkout HEAD -- package.json
-                  else
-                    PREVIOUS_VERSION="0.0.0"
-                  fi
-
-                  echo "Previous version: $PREVIOUS_VERSION"
-
-                  if [ "$CURRENT_VERSION" != "$PREVIOUS_VERSION" ]; then
-                    echo "version_changed=true" >> $GITHUB_OUTPUT
-                    echo "new_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
-                  else
-                    echo "version_changed=false" >> $GITHUB_OUTPUT
-                  fi
-
             - name: Setup Node.js
-              if: steps.version-check.outputs.version_changed == 'true'
               uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
               with:
                   node-version: "22"
 
             - name: Setup Bun
-              if: steps.version-check.outputs.version_changed == 'true'
               uses: oven-sh/setup-bun@f4d14e03ff726c06358e5557344e1da148b56cf7 # v1.2.2
               with:
                   bun-version: ${{ env.BUN_VERSION }}
 
             - name: Install release dependencies
-              if: steps.version-check.outputs.version_changed == 'true'
               run: bun install --frozen-lockfile
 
             - name: Check publish status
-              if: steps.version-check.outputs.version_changed == 'true'
               id: publish-status
               run: node scripts/check-extension-publish-status.js
 
-            - name: Download VSIX artifact
-              if: steps.version-check.outputs.version_changed == 'true'
+            - name: Refuse rebuilt-artifact recovery for a published version
+              shell: bash
+              run: |
+                  if [ "$VSCE_PUBLISHED" = "true" ] || [ "$OVSX_PUBLISHED" = "true" ]; then
+                    echo "A published version must be recovered from its original artifact; refusing to publish rebuilt bytes for the same version." >&2
+                    exit 1
+                  fi
+                  RELEASE_ERROR=$(mktemp)
+                  if gh api "repos/$GITHUB_REPOSITORY/releases/tags/v$NEW_VERSION" --silent 2>"$RELEASE_ERROR"; then
+                    echo "A GitHub release already exists for v$NEW_VERSION; refusing to replace its assets with rebuilt bytes." >&2
+                    exit 1
+                  fi
+                  if ! node scripts/verifyGhApiNotFound.js "$RELEASE_ERROR"; then
+                    echo "Unable to determine whether the GitHub release exists; failing closed." >&2
+                    exit 1
+                  fi
+              env:
+                  VSCE_PUBLISHED: ${{ steps.publish-status.outputs.vsce_published }}
+                  OVSX_PUBLISHED: ${{ steps.publish-status.outputs.ovsx_published }}
+                  NEW_VERSION: ${{ needs.release-eligibility.outputs.new_version }}
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+            - name: Download packaged VSIX
               uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
               with:
                   name: extension-vsix
 
-            - name: Publish to VS Code Marketplace
-              if: steps.version-check.outputs.version_changed == 'true' && steps.publish-status.outputs.vsce_published != 'true'
+            - name: Resolve and verify release artifact
+              id: release-artifact
+              shell: bash
               run: |
-                  VSIX_PATH=$(ls *.vsix | head -n 1)
-                  bunx vsce publish --packagePath "$VSIX_PATH" -p "$VSCE_PAT"
-              env:
-                  VSCE_PAT: ${{ secrets.VSCE_PAT }}
+                  shopt -s nullglob
+                  vsix_files=(*.vsix)
+                  checksum_files=(*.vsix.sha256)
+                  if [ "${#vsix_files[@]}" -ne 1 ] || [ "${#checksum_files[@]}" -ne 1 ]; then
+                    echo "Expected one VSIX and one checksum artifact." >&2
+                    exit 1
+                  fi
+                  VSIX_PATH="${vsix_files[0]}"
+                  CHECKSUM_PATH="${VSIX_PATH}.sha256"
+                  if [ "${checksum_files[0]}" != "$CHECKSUM_PATH" ]; then
+                    echo "Checksum artifact does not belong to the downloaded VSIX." >&2
+                    exit 1
+                  fi
+                  sha256sum --check "$CHECKSUM_PATH"
+                  echo "vsix_path=$VSIX_PATH" >> "$GITHUB_OUTPUT"
+                  echo "checksum_path=$CHECKSUM_PATH" >> "$GITHUB_OUTPUT"
 
-            - name: Skip VS Code Marketplace publish
-              if: steps.version-check.outputs.version_changed == 'true' && steps.publish-status.outputs.vsce_published == 'true'
-              run: echo "Version ${{ steps.version-check.outputs.new_version }} is already published to VS Code Marketplace. Skipping."
-
-            - name: Publish to Open VSX
-              if: steps.version-check.outputs.version_changed == 'true' && steps.publish-status.outputs.ovsx_published != 'true'
-              run: |
-                  VSIX_PATH=$(ls *.vsix | head -n 1)
-                  bunx ovsx publish -p "$OVSX_PAT" "$VSIX_PATH"
-              env:
-                  OVSX_PAT: ${{ secrets.OVSX_PAT }}
-
-            - name: Skip Open VSX publish
-              if: steps.version-check.outputs.version_changed == 'true' && steps.publish-status.outputs.ovsx_published == 'true'
-              run: echo "Version ${{ steps.version-check.outputs.new_version }} is already published to Open VSX. Skipping."
-
-            - name: Create git tag
-              if: steps.version-check.outputs.version_changed == 'true'
+            - name: Validate and create release tag
+              shell: bash
               run: |
                   VERSION="v$NEW_VERSION"
-                  if git rev-parse "$VERSION" >/dev/null 2>&1; then
-                    echo "Tag $VERSION already exists, skipping tag creation."
-                    exit 0
+                  TAG_ERROR=$(mktemp)
+                  if ! TAG_REF=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$VERSION" --jq '[.object.type, .object.sha] | @tsv' 2>"$TAG_ERROR"); then
+                    if ! grep -q '(HTTP 404)' "$TAG_ERROR"; then
+                      cat "$TAG_ERROR" >&2
+                      echo "Unable to read the live release tag; failing closed." >&2
+                      exit 1
+                    fi
+                    gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" \
+                      -f ref="refs/tags/$VERSION" \
+                      -f sha="$EXPECTED_SHA" >/dev/null
+                    TAG_REF=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$VERSION" --jq '[.object.type, .object.sha] | @tsv')
                   fi
-                  git config user.name "github-actions[bot]"
-                  git config user.email "github-actions[bot]@users.noreply.github.com"
-                  git tag "$VERSION"
-                  git push origin "$VERSION"
-              env:
-                  NEW_VERSION: ${{ steps.version-check.outputs.new_version }}
-
-            - name: Check if GitHub release exists
-              if: steps.version-check.outputs.version_changed == 'true'
-              id: github-release-check
-              run: |
-                  VERSION="v$NEW_VERSION"
-                  if gh release view "$VERSION" >/dev/null 2>&1; then
-                    echo "release_exists=true" >> "$GITHUB_OUTPUT"
-                  else
-                    echo "release_exists=false" >> "$GITHUB_OUTPUT"
+                  IFS=$'\t' read -r TAG_TYPE TAG_SHA <<< "$TAG_REF"
+                  if [ "$TAG_TYPE" != "commit" ] || [ "$TAG_SHA" != "$EXPECTED_SHA" ]; then
+                    echo "Live tag $VERSION resolves to $TAG_TYPE $TAG_SHA, expected commit $EXPECTED_SHA." >&2
+                    exit 1
                   fi
+                  echo "Live tag $VERSION resolves to the current release SHA."
               env:
-                  NEW_VERSION: ${{ steps.version-check.outputs.new_version }}
+                  NEW_VERSION: ${{ needs.release-eligibility.outputs.new_version }}
+                  EXPECTED_SHA: ${{ github.sha }}
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-            - name: Create GitHub Release and upload VSIX
-              if: steps.version-check.outputs.version_changed == 'true' && steps.github-release-check.outputs.release_exists != 'true'
+            - name: Publish to VS Code Marketplace
+              run: bunx vsce publish --packagePath "$VSIX_PATH" -p "$VSCE_PAT"
+              env:
+                  VSIX_PATH: ${{ steps.release-artifact.outputs.vsix_path }}
+                  VSCE_PAT: ${{ secrets.VSCE_PAT }}
+
+            - name: Publish to Open VSX
+              run: bunx ovsx publish -p "$OVSX_PAT" "$VSIX_PATH"
+              env:
+                  VSIX_PATH: ${{ steps.release-artifact.outputs.vsix_path }}
+                  OVSX_PAT: ${{ secrets.OVSX_PAT }}
+
+            - name: Create GitHub Release and upload artifacts
+              shell: bash
               run: |
                   release_notes=()
                   if [ "${{ needs.e2e-full.result }}" != "success" ]; then
                     release_notes+=(--notes "E2E gate override: this release was published with a non-successful e2e-full gate via the skip_e2e_gate override.")
                   fi
-                  gh release create "v$NEW_VERSION" *.vsix --generate-notes "${release_notes[@]}"
+                  gh release create "v$NEW_VERSION" "$VSIX_PATH" "$CHECKSUM_PATH" --generate-notes "${release_notes[@]}"
               env:
-                  NEW_VERSION: ${{ steps.version-check.outputs.new_version }}
-                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-            - name: Update GitHub Release asset
-              if: steps.version-check.outputs.version_changed == 'true' && steps.github-release-check.outputs.release_exists == 'true'
-              run: |
-                  gh release upload "v$NEW_VERSION" *.vsix --clobber
-                  if [ "${{ needs.e2e-full.result }}" != "success" ]; then
-                    override_notice="E2E gate override: this release was published with a non-successful e2e-full gate via the skip_e2e_gate override."
-                    current_notes="$(gh release view "v$NEW_VERSION" --json body --jq .body)"
-                    if [[ "$current_notes" != *"$override_notice"* ]]; then
-                      gh release edit "v$NEW_VERSION" --notes "${current_notes}"$'\n\n'"${override_notice}"
-                    fi
-                  fi
-              env:
-                  NEW_VERSION: ${{ steps.version-check.outputs.new_version }}
+                  NEW_VERSION: ${{ needs.release-eligibility.outputs.new_version }}
+                  VSIX_PATH: ${{ steps.release-artifact.outputs.vsix_path }}
+                  CHECKSUM_PATH: ${{ steps.release-artifact.outputs.checksum_path }}
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
