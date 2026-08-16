@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
@@ -33,6 +33,21 @@ function extractStepBlock(job: string, stepName: string): string {
     const bodyStart = start + header.length;
     const nextStepOffset = job.slice(bodyStart).search(/^            - name: /m);
     return job.slice(start, nextStepOffset === -1 ? job.length : bodyStart + nextStepOffset);
+}
+
+/**
+ * Returns the pinned refs a workflow uses for one action path, in file order.
+ *
+ * Deliberately returns the refs rather than comparing them to an expected constant. An exact SHA
+ * written into a test is a value that only Dependabot ever changes, and Dependabot cannot edit the
+ * test in the same pull request -- so every action bump arrives permanently red, and the cheapest
+ * way out is to stop bumping. That is the opposite of what pinning is for. `workflowActionPinning`
+ * already proves every reference in the directory is a full commit SHA, without enumerating any of
+ * them, so what is left worth asserting here is the RELATIONSHIP between refs.
+ */
+function pinnedRefsFor(workflow: string, actionPath: string): readonly string[] {
+    const pattern = new RegExp(`uses:\\s*${actionPath.replace(/[/.]/g, "\\$&")}@([0-9a-f]{40})\\b`, "g");
+    return [...workflow.matchAll(pattern)].map((match) => match[1]);
 }
 
 /** Returns the complete job-local permission map as rendered in a workflow. */
@@ -190,8 +205,19 @@ describe("CI quality hardening workflows", () => {
             "contents: read",
             "security-events: write",
         ]);
-        expect(codeql).toContain("github/codeql-action/init@bb16b9baa2ec4010b29f5c606d57d01190139edd # v4.37.1");
-        expect(codeql).toContain("github/codeql-action/analyze@bb16b9baa2ec4010b29f5c606d57d01190139edd # v4.37.1");
+        // `init` and `analyze` are two halves of one scan and share an on-disk database format.
+        // Bumping one without the other is the realistic way this breaks -- and the one thing an
+        // exact-SHA assertion could never catch, because it goes red for a correct bump and a split
+        // bump alike. Asserting they MATCH catches the split and stays quiet for the bump.
+        const initRefs = pinnedRefsFor(codeql, "github/codeql-action/init");
+        const analyzeRefs = pinnedRefsFor(codeql, "github/codeql-action/analyze");
+        expect(initRefs.length, "codeql.yml must run codeql-action/init").toBeGreaterThan(0);
+        expect(analyzeRefs.length, "codeql.yml must run codeql-action/analyze").toBeGreaterThan(0);
+        expect(
+            [...new Set([...initRefs, ...analyzeRefs])].length,
+            "codeql-action/init and /analyze must be pinned to the SAME commit; a split bump " +
+                "pairs two versions of one scan against a shared database format",
+        ).toBe(1);
         expect(codeql).toContain("build-mode: none");
         expect(codeql).not.toContain("build-mode: manual");
         expect(codeql).toMatch(/timeout-minutes: \d+/);
@@ -199,9 +225,10 @@ describe("CI quality hardening workflows", () => {
         expect(jobPermissionEntries(extractJobBlock(dependencyReview, "dependency-review"))).toEqual([
             "contents: read",
         ]);
-        expect(dependencyReview).toContain(
-            "actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0",
-        );
+        expect(
+            pinnedRefsFor(dependencyReview, "actions/dependency-review-action").length,
+            "dependency-review.yml must run dependency-review-action, SHA-pinned",
+        ).toBe(1);
         expect(dependencyReview).toContain("fail-on-severity: high");
     });
 
@@ -223,9 +250,44 @@ describe("CI quality hardening workflows", () => {
         expect(compatibility).toContain("xvfb-run -a bun run test:package-smoke");
         expect(compatibility).toMatch(/INTELLIGIT_VSCODE_VERSION=1\.132\.0 bun run test:package-smoke/);
         expect(dependabot).toContain("package-ecosystem: github-actions");
-        expect(dependabot).toContain("package-ecosystem: npm");
         expect(dependabot).toContain("dependency-type: development");
         expect(dependabot).toContain('update-types: ["minor", "patch"]');
         expect(dependabot).not.toContain("package-ecosystem: docker");
+
+        // The JavaScript ecosystem is derived from the lockfile on disk rather than restated as a
+        // constant, because the failure this guards against is the two DISAGREEING. Declaring `npm`
+        // against a `bun.lock` produced five pull requests that each edited `package.json`, left the
+        // lockfile untouched, and died on `bun install --frozen-lockfile` (asserted above) before a
+        // single test ran. Pinning the string `bun` here would go green on that same repository the
+        // day someone swapped the lockfile back; pairing them cannot.
+        const lockfileEcosystems = [
+            { lockfile: "bun.lock", ecosystem: "bun" },
+            { lockfile: "package-lock.json", ecosystem: "npm" },
+            { lockfile: "pnpm-lock.yaml", ecosystem: "pnpm" },
+            { lockfile: "yarn.lock", ecosystem: "yarn" },
+        ] as const;
+        const present = lockfileEcosystems.filter((candidate) =>
+            existsSync(resolve(REPOSITORY_ROOT, candidate.lockfile)),
+        );
+        expect(
+            present.map((candidate) => candidate.lockfile),
+            "exactly one JavaScript lockfile must exist; two would make the ecosystem ambiguous " +
+                "and let Dependabot maintain the one CI does not install from",
+        ).toHaveLength(1);
+        const declared = [...dependabot.matchAll(/package-ecosystem:\s*(\S+)/g)].map((match) => match[1]);
+        expect(
+            declared,
+            `the repository installs from ${present[0]?.lockfile}, so Dependabot must update it via ` +
+                `the '${present[0]?.ecosystem}' ecosystem; any other JavaScript ecosystem edits ` +
+                "package.json without writing that lockfile and every proposal arrives unmergeable",
+        ).toContain(present[0]?.ecosystem);
+        expect(
+            declared.filter((ecosystem) =>
+                lockfileEcosystems.some(
+                    (candidate) => candidate.ecosystem === ecosystem && ecosystem !== present[0]?.ecosystem,
+                ),
+            ),
+            "no second JavaScript ecosystem may be declared alongside it",
+        ).toEqual([]);
     });
 });
