@@ -50,6 +50,12 @@ export class CommitChecksCoordinator {
     private resolvedProvider = false;
     private providerMatch: ProviderMatch | null = null;
     private providerGeneration = 0;
+    // Shared by concurrent callers (the bounded viewport fan-out can start several
+    // resolutions before the first settles) so only one findProviderMatch() search runs.
+    // clearProviderResolution() must null this too, or a caller arriving after a
+    // repository switch could be handed the PREVIOUS repository's still-settling search —
+    // the exact staleness the generation guard below exists to prevent.
+    private resolutionInFlight: Promise<ProviderMatch | null> | null = null;
 
     /**
      * Builds a coordinator over an ordered provider registry for one repository.
@@ -83,6 +89,10 @@ export class CommitChecksCoordinator {
         this.providerGeneration += 1;
         this.resolvedProvider = false;
         this.providerMatch = null;
+        // Must drop the in-flight promise too: otherwise a caller arriving after this
+        // switch would be handed the PREVIOUS repository's still-settling resolution
+        // instead of starting a fresh one under the new generation.
+        this.resolutionInFlight = null;
     }
 
     /**
@@ -158,6 +168,26 @@ export class CommitChecksCoordinator {
 
     private async resolveProvider(): Promise<ProviderMatch | null> {
         if (this.resolvedProvider) return this.providerMatch;
+        if (this.resolutionInFlight) return this.resolutionInFlight;
+        const generation = this.providerGeneration;
+        const pending = this.findProviderMatch();
+        this.resolutionInFlight = pending;
+        try {
+            const match = await pending;
+            // A generation bump while the search above was in flight means the repository
+            // changed mid-resolution: return this stale match to the caller (fetchFresh
+            // already discards it) but do not memoize it as the current repository's answer.
+            if (generation !== this.providerGeneration) return match;
+            this.providerMatch = match;
+            this.resolvedProvider = true;
+            return match;
+        } finally {
+            if (this.resolutionInFlight === pending) this.resolutionInFlight = null;
+        }
+    }
+
+    /** Origin-first, first-match remote search; no side effects — resolveProvider owns memoization. */
+    private async findProviderMatch(): Promise<ProviderMatch | null> {
         const remotes = await this.gitOps.getRemotes();
         const ordered = remotes.includes("origin")
             ? ["origin", ...remotes.filter((remote) => remote !== "origin")]
@@ -169,15 +199,9 @@ export class CommitChecksCoordinator {
             if (!url) continue;
             for (const provider of this.providers) {
                 const ref = provider.match(url, this.hostMap);
-                if (ref) {
-                    this.providerMatch = { provider, ref };
-                    this.resolvedProvider = true;
-                    return this.providerMatch;
-                }
+                if (ref) return { provider, ref };
             }
         }
-        this.providerMatch = null;
-        this.resolvedProvider = true;
         return null;
     }
 }

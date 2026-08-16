@@ -236,14 +236,19 @@ describe("CommitChecksCoordinator", () => {
         const remoteUrlRequest = new Promise<void>((resolve) => {
             remoteUrlRequested = resolve;
         });
-        const gitOps = {
-            getRemotes: vi.fn(async () => ["origin"]),
-            getRemoteUrl: vi.fn(() => {
+        const getRemoteUrl = vi
+            .fn(async () => "git@github.com:owner/repo.git")
+            // Only the FIRST call suspends; the fix makes the later getChecks() call
+            // below re-resolve for real, so a second call must not hang forever too.
+            .mockImplementationOnce(() => {
                 remoteUrlRequested();
                 return new Promise<string>((resolve) => {
                     resolveRemoteUrl = resolve;
                 });
-            }),
+            });
+        const gitOps = {
+            getRemotes: vi.fn(async () => ["origin"]),
+            getRemoteUrl,
         } as unknown as GitOps;
         const coordinator = new CommitChecksCoordinator(gitOps, [provider]);
 
@@ -257,6 +262,146 @@ describe("CommitChecksCoordinator", () => {
 
         await coordinator.getChecks("abc1234");
         expect(getChecks).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not memoize a stale match when clearProviderResolution races a suspended resolveProvider", async () => {
+        const repoAChecks = vi.fn(async () => snapshot("success"));
+        const repoBChecks = vi.fn(async () => snapshot("failure"));
+        // Two providers keyed off different URL substrings so the assertions below can tell,
+        // unambiguously, which repository's provider a later fetch actually used.
+        const providerA = makeProvider("github", "repo-a.example.com", repoAChecks);
+        const providerB = makeProvider("gitlab", "repo-b.example.com", repoBChecks);
+
+        let resolveUrlA!: (url: string) => void;
+        let urlARequested!: () => void;
+        const urlARequest = new Promise<void>((resolve) => {
+            urlARequested = resolve;
+        });
+        const urlADeferred = new Promise<string>((resolve) => {
+            resolveUrlA = resolve;
+        });
+        const getRemoteUrl = vi
+            .fn()
+            .mockImplementationOnce(() => {
+                urlARequested();
+                return urlADeferred;
+            })
+            .mockImplementationOnce(async () => "https://repo-b.example.com/owner/repo.git");
+        const gitOps = {
+            getRemotes: vi.fn(async () => ["origin"]),
+            getRemoteUrl,
+        } as unknown as GitOps;
+        const coordinator = new CommitChecksCoordinator(gitOps, [providerA, providerB]);
+
+        // Repository A: the fetch suspends inside resolveProvider on the getRemoteUrl() await.
+        const staleRequest = coordinator.getChecks("aaa1111");
+        await urlARequest;
+
+        // The panel switches repository while that resolution is still in flight.
+        coordinator.clearProviderResolution();
+
+        // Only now does the stale getRemoteUrl() call resolve, completing the suspended
+        // resolution with repository A's data.
+        resolveUrlA("https://repo-a.example.com/owner/repo.git");
+        await staleRequest;
+
+        // A later fetch must re-resolve against the current repository (B), not reuse
+        // whatever the stale, already-cleared resolution wrote.
+        const freshResult = await coordinator.getChecks("bbb2222");
+
+        expect(getRemoteUrl).toHaveBeenCalledTimes(2);
+        expect(repoBChecks).toHaveBeenCalledTimes(1);
+        expect(repoAChecks).not.toHaveBeenCalled();
+        expect(freshResult.state).toBe("failure"); // repo B's provider, not repo A's
+    });
+
+    it("dedupes concurrent getChecks() calls for different hashes into a single provider resolution", async () => {
+        const getChecks = vi.fn(async () => snapshot("success"));
+        const provider = makeProvider("github", "github.com", getChecks);
+
+        let resolveRemotes!: (remotes: string[]) => void;
+        const remotesDeferred = new Promise<string[]>((resolve) => {
+            resolveRemotes = resolve;
+        });
+        // Every call returns the SAME pending promise (never a fresh one per invocation), so
+        // resolving it once unblocks every caller no matter how many times a non-deduped
+        // resolveProvider() invoked getRemotes() — the assertion below is what tells them apart.
+        const getRemotes = vi.fn(() => remotesDeferred);
+        const getRemoteUrl = vi.fn(async () => "git@github.com:owner/repo.git");
+        const gitOps = { getRemotes, getRemoteUrl } as unknown as GitOps;
+        const coordinator = new CommitChecksCoordinator(gitOps, [provider]);
+
+        // Issued back-to-back with no await between them, so all four calls reach the
+        // suspended getRemotes() await (or the resolutionInFlight short-circuit) before the
+        // deferred remotes promise below ever resolves — the overlap is real, not accidentally
+        // serialized by the test.
+        const requests = ["aaa1111", "bbb2222", "ccc3333", "ddd4444"].map((hash) =>
+            coordinator.getChecks(hash),
+        );
+        resolveRemotes(["origin"]);
+        const results = await Promise.all(requests);
+
+        expect(getRemotes).toHaveBeenCalledTimes(1);
+        expect(getRemoteUrl).toHaveBeenCalledTimes(1); // one remote (origin) → one lookup, not four
+        for (const result of results) {
+            expect(result.state).toBe("success");
+        }
+    });
+
+    it("does not reuse a stale in-flight resolution when clearProviderResolution races a suspended resolveProvider", async () => {
+        const repoAChecks = vi.fn(async () => snapshot("success"));
+        const repoBChecks = vi.fn(async () => snapshot("failure"));
+        // Two providers keyed off different URL substrings so the assertions below can tell,
+        // unambiguously, which repository's provider a later fetch actually used.
+        const providerA = makeProvider("github", "repo-a.example.com", repoAChecks);
+        const providerB = makeProvider("gitlab", "repo-b.example.com", repoBChecks);
+
+        let resolveUrlA!: (url: string) => void;
+        let urlARequested!: () => void;
+        const urlARequest = new Promise<void>((resolve) => {
+            urlARequested = resolve;
+        });
+        const urlADeferred = new Promise<string>((resolve) => {
+            resolveUrlA = resolve;
+        });
+        const getRemoteUrl = vi
+            .fn()
+            .mockImplementationOnce(() => {
+                urlARequested();
+                return urlADeferred;
+            })
+            .mockImplementationOnce(async () => "https://repo-b.example.com/owner/repo.git");
+        const gitOps = {
+            getRemotes: vi.fn(async () => ["origin"]),
+            getRemoteUrl,
+        } as unknown as GitOps;
+        const coordinator = new CommitChecksCoordinator(gitOps, [providerA, providerB]);
+
+        // Repository A: the fetch suspends inside resolveProvider on the getRemoteUrl() await —
+        // the same place resolveProvider stashes the in-flight promise for concurrent callers.
+        const staleRequest = coordinator.getChecks("aaa1111");
+        await urlARequest;
+
+        // The panel switches repository while that resolution is still in flight.
+        coordinator.clearProviderResolution();
+
+        // A second caller arrives for the NEW repository before the stale resolution settles.
+        // If clearProviderResolution() failed to drop the in-flight promise, this call would
+        // reuse repository A's still-pending resolution instead of starting its own.
+        const freshRequest = coordinator.getChecks("bbb2222");
+
+        // Only now does the stale getRemoteUrl() call resolve, completing the suspended
+        // resolution with repository A's data.
+        resolveUrlA("https://repo-a.example.com/owner/repo.git");
+
+        const [, freshResult] = await Promise.all([staleRequest, freshRequest]);
+
+        // Two distinct remote lookups: one for the stale A resolution, one for the fresh B
+        // resolution — never a reused/shared one.
+        expect(getRemoteUrl).toHaveBeenCalledTimes(2);
+        expect(repoBChecks).toHaveBeenCalledTimes(1);
+        expect(repoAChecks).not.toHaveBeenCalled(); // hash "bbb2222" must never resolve via A's provider
+        expect(freshResult.state).toBe("failure"); // repo B's provider ran, not repo A's leaked match
     });
 
     it("shares in-flight fetches across coordinators backed by one service", async () => {
@@ -382,6 +527,30 @@ describe("CommitChecksCoordinator", () => {
         expect(result.state).toBe("unavailable");
         expect(result.error).toBe("git remotes failed");
         expect(provider.getChecks).not.toHaveBeenCalled();
+    });
+
+    it("retries resolution after one fails instead of serving the rejection forever", async () => {
+        // Sharing the in-flight promise means a rejected resolution is shareable too.
+        // Holding onto it would hand the same failure to every later caller, so one
+        // transient git error would disable commit checks for this repository until the
+        // window reloaded -- a strictly worse outcome than the duplicate work being saved.
+        const getChecks = vi.fn(async () => snapshot("success"));
+        const provider = makeProvider("github", "github.com", getChecks);
+        let attempts = 0;
+        const getRemotes = vi.fn(async () => {
+            attempts += 1;
+            if (attempts === 1) throw new Error("git remotes failed");
+            return ["origin"];
+        });
+        const gitOps = {
+            getRemotes,
+            getRemoteUrl: vi.fn(async () => "git@github.com:owner/repo.git"),
+        } as unknown as GitOps;
+        const coordinator = new CommitChecksCoordinator(gitOps, [provider]);
+
+        expect((await coordinator.getChecks("abc1234")).state).toBe("unavailable");
+        expect((await coordinator.getChecks("abc1234")).state).toBe("success");
+        expect(getRemotes).toHaveBeenCalledTimes(2);
     });
 });
 
