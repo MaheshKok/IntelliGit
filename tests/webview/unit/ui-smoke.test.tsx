@@ -163,7 +163,13 @@ describe("webview ui smoke", () => {
         );
         expect(folderHtml).toContain("<mark");
         const highlighted = renderToStaticMarkup(<>{renderHighlightedLabel("features", "fea")}</>);
-        const plainText = highlighted.replace(/<[^>]*>/g, "");
+        // Parsed rather than tag-stripped by regex. `<[^>]*>` removes markup but leaves ENTITIES,
+        // so a branch named `feat&ure` renders as `feat&amp;ure` and the assertion below would be
+        // comparing against text the user never sees -- the oracle would be measuring the escaped
+        // spelling instead of the visible label. `DOMParser` with `text/html` builds an inert
+        // document (no script execution, no resource loads) and yields the rendered text directly.
+        const plainText =
+            new DOMParser().parseFromString(highlighted, "text/html").body.textContent ?? "";
         expect(plainText).toContain("features");
         expect(highlighted.toLowerCase()).toContain(">fea<");
 
