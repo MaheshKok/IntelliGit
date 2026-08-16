@@ -126,7 +126,7 @@ describe("workflow action pinning", () => {
         expect(floating).toEqual([]);
     });
 
-    it("leaves the workflow token on disk only where the job pushes to the remote", () => {
+    it("never leaves the workflow token in checkout git configuration", () => {
         const checkouts = actionReferences().filter(({ action }) => action === "actions/checkout");
 
         // `persist-credentials: true` is the action's default, so a checkout that says nothing
@@ -134,12 +134,7 @@ describe("workflow action pinning", () => {
         // container runs -- can read. Silence is the defect, which is why the assertion is on the
         // step body rather than on the absence of an explicit `true`.
         //
-        // The release job is exempted by what it does, not by its name: it runs `git push` for the
-        // version tag, so the credential is the point. Deriving the exemption from the job body
-        // means a job that stops pushing stops being exempt, and a new pushing job never has to be
-        // remembered and added here.
         const persisting = checkouts
-            .filter(({ jobWritesToRemote }) => !jobWritesToRemote)
             .filter(({ body }) => !/^\s+persist-credentials:\s*false\s*$/m.test(body))
             .map(({ file, line, job }) => `${file}:${line} (${job})`);
 
@@ -149,8 +144,7 @@ describe("workflow action pinning", () => {
     it("can fail: the sweep reads workflows, actions, jobs, and checkout steps", () => {
         // Every assertion above is `toEqual([])`, which a sweep that found nothing satisfies
         // perfectly. A renamed directory, a changed extension, or a parser that stopped matching
-        // `uses:` would turn this file into a guard that passes because it is blind. The exemption
-        // needs the same treatment: a job matcher that never matched would exempt every checkout.
+        // `uses:` would turn this file into a guard that passes because it is blind.
         const references = actionReferences();
         const checkouts = references.filter(({ action }) => action === "actions/checkout");
 
@@ -158,7 +152,10 @@ describe("workflow action pinning", () => {
         expect(references.length).toBeGreaterThan(0);
         expect(checkouts.length).toBeGreaterThan(0);
         expect(references.every(({ job }) => job !== "")).toBe(true);
-        expect(checkouts.some(({ jobWritesToRemote }) => jobWritesToRemote)).toBe(true);
-        expect(checkouts.some(({ jobWritesToRemote }) => !jobWritesToRemote)).toBe(true);
+        expect(
+            checkouts.every(({ body }) =>
+                /^\s+persist-credentials:\s*false\s*$/m.test(body),
+            ),
+        ).toBe(true);
     });
 });

@@ -72,12 +72,12 @@ describe("publish visual workflow", () => {
         expect(visualCommandLines[0]).toContain("./tests/e2e/docker/run.sh");
     });
 
-    it("waits for build, visual, and e2e-full before release", () => {
+    it("waits for every build, validation, eligibility, and attestation gate before release", () => {
         const releaseJob = extractJobBlock(readFileSync(WORKFLOW_PATH, "utf8"), "release");
         const needsLine = releaseJob.match(/^\s+needs:.*$/m)?.[0].trim() ?? "";
 
-        expect(needsLine, "release must wait for build, visual, and e2e-full").toBe(
-            "needs: [build, visual, e2e-full]",
+        expect(needsLine, "release must wait for build, validation, eligibility, and attestation").toBe(
+            "needs: [build, visual, e2e-full, package-smoke, release-eligibility, attest]",
         );
     });
 
@@ -150,7 +150,7 @@ describe("publish visual workflow", () => {
         const releaseJob = extractJobBlock(readFileSync(WORKFLOW_PATH, "utf8"), "release");
         const createReleaseStep = extractStepBlock(
             releaseJob,
-            "Create GitHub Release and upload VSIX",
+            "Create GitHub Release and upload artifacts",
         );
         const overrideCondition = 'if [ "${{ needs.e2e-full.result }}" != "success" ]; then';
         const conditionStart = createReleaseStep.indexOf(overrideCondition);
@@ -165,10 +165,11 @@ describe("publish visual workflow", () => {
         expect(createReleaseStep).toContain("E2E gate override");
         expect(createReleaseStep).toContain("skip_e2e_gate");
 
-        const updateReleaseStep = extractStepBlock(releaseJob, "Update GitHub Release asset");
-        expect(updateReleaseStep).toContain(overrideCondition);
-        expect(updateReleaseStep).toContain("gh release edit");
-        expect(updateReleaseStep).toContain("E2E gate override");
+        expect(
+            extractStepBlock(releaseJob, "Update GitHub Release assets"),
+            "recovery must not clobber an existing release with rebuilt bytes",
+        ).toBe("");
+        expect(releaseJob).not.toContain("gh release upload");
     });
 
     it("reasserts every release prerequisite and limits the e2e override", () => {
