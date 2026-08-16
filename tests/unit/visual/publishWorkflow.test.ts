@@ -1,5 +1,6 @@
 import { spawnSync } from "node:child_process";
 import {
+    copyFileSync,
     existsSync,
     mkdirSync,
     mkdtempSync,
@@ -17,6 +18,7 @@ import { oracles } from "../../oracles";
 
 const { sanitizedGitEnv } = oracles.get("gitEnv");
 
+const REPOSITORY_ROOT = resolve(__dirname, "../../..");
 const WORKFLOW_PATH = resolve(__dirname, "../../../.github/workflows/publish.yml");
 const DOCKERFILE_PATH = resolve(__dirname, "../../../tests/e2e/docker/Dockerfile");
 const PACKAGE_JSON_PATH = resolve(__dirname, "../../../package.json");
@@ -118,12 +120,30 @@ interface VersionGateOptions {
     /** Defaults to true, taking the early-exit branch and never reaching `gh`. */
     readonly forcePublish?: boolean;
     readonly gh?: GhStub;
+    /**
+     * The version in `package.json` one commit back, which the step reads out of git.
+     *
+     * Defaults to `version`. An unchanged version is the orphaned-bump case the state gate exists
+     * for, and it is the only shape the force-publish recovery branch accepts -- so it is also the
+     * default that lets a caller say nothing and still exercise a coherent scenario.
+     */
+    readonly previousVersion?: string;
     /** Extra step inputs, for run scripts that read something other than package.json. */
     readonly env?: Readonly<Record<string, string>>;
 }
 
 /**
- * Runs the release job's version gate against a crafted `package.json`, in a throwaway workspace.
+ * Runs one release-workflow shell step against a crafted repository, in a throwaway workspace.
+ *
+ * The step reads the previous version out of git rather than being told it, so the workspace is a
+ * real two-commit repository: a fake cannot stand in for `git show HEAD~1:package.json`, and the
+ * fallback that fires when git answers nothing is a different branch of the step. The whole thing
+ * runs under `sanitizedGitEnv` for the reason spelled out in `runTagStep` -- an inherited `GIT_DIR`
+ * outranks `cwd`, and the gate would then read a version out of whichever repository that names.
+ *
+ * `scripts/` is copied in rather than reached for through a relative path: the step runs with the
+ * workspace as its working directory, exactly as it does on a runner checkout, so `node
+ * scripts/verifyReleaseVersion.js` has to resolve from there or the validation silently never runs.
  *
  * `FORCE_PUBLISH=true` takes the early-exit branch, so the gate never reaches `gh` and the test
  * needs no network, no token, and no GitHub. That branch is also the strictest place to test input
@@ -141,7 +161,41 @@ function runVersionGate(script: string, version: string, options: VersionGateOpt
     try {
         const outputPath = join(workspace, "github-output");
         const ghArgsPath = join(workspace, "gh-args");
-        writeFileSync(join(workspace, "package.json"), JSON.stringify({ version }));
+        const packageJsonPath = join(workspace, "package.json");
+
+        const gitEnv = sanitizedGitEnv({
+            GIT_CONFIG_GLOBAL: "/dev/null",
+            GIT_CONFIG_SYSTEM: "/dev/null",
+            HOME: workspace,
+        });
+        const git = (...args: readonly string[]) => {
+            const result = spawnSync("git", args, { cwd: workspace, encoding: "utf8", env: gitEnv });
+            if (result.status !== 0) {
+                throw new Error(
+                    `git ${args.join(" ")} failed with status ${result.status}: ${result.stderr ?? ""}`,
+                );
+            }
+        };
+        git("init", "--initial-branch=main");
+        git("config", "user.email", "test@example.invalid");
+        git("config", "user.name", "Test");
+        writeFileSync(packageJsonPath, JSON.stringify({ version: options.previousVersion ?? version }));
+        git("add", "package.json");
+        git("commit", "-m", "previous");
+        writeFileSync(packageJsonPath, JSON.stringify({ version }));
+        git("add", "package.json");
+        // `--allow-empty` because the default scenario is a version that did NOT change, which is
+        // precisely the state the gate has to resolve over the API instead of from the diff.
+        git("commit", "--allow-empty", "-m", "current");
+
+        mkdirSync(join(workspace, "scripts"));
+        for (const scriptName of ["verifyReleaseVersion.js", "verifyGhApiNotFound.js"]) {
+            copyFileSync(
+                join(REPOSITORY_ROOT, "scripts", scriptName),
+                join(workspace, "scripts", scriptName),
+            );
+        }
+
         writeFileSync(join(workspace, "gate.sh"), script);
         writeFileSync(outputPath, "");
 
@@ -176,7 +230,7 @@ function runVersionGate(script: string, version: string, options: VersionGateOpt
             cwd: workspace,
             encoding: "utf8",
             env: {
-                ...process.env,
+                ...gitEnv,
                 GITHUB_OUTPUT: outputPath,
                 FORCE_PUBLISH: String(options.forcePublish ?? true),
                 PATH: path.join(":"),
@@ -202,106 +256,85 @@ function runVersionGate(script: string, version: string, options: VersionGateOpt
     }
 }
 
+/** The commit this release run publishes, and the one an earlier run's tag was left naming. */
+const RELEASE_SHA = "1111111111111111111111111111111111111111";
+const STRANDED_SHA = "2222222222222222222222222222222222222222";
+
 /**
- * Runs the `Create git tag` step against a real repository whose tag placement the test chooses.
+ * Runs the release tag step against a stubbed GitHub whose tag state the test chooses.
  *
- * The step's decision is about commit identity, so a fake cannot stand in for git here -- the
- * whole question is what `rev-parse` resolves an existing tag to. `origin` is a local bare repo so
- * the create-and-push path is exercised for real rather than skipped.
+ * The step reads and writes the LIVE tag over the API, not through git: the release job checks out
+ * with `persist-credentials: false`, so a local `git push` has no credentials to push with and a
+ * git fixture would be testing a mechanism the runner does not have. The API stub is therefore the
+ * faithful stand-in, and it is stateful on purpose -- the create path re-reads the ref it just
+ * wrote, so a stub that answered 404 twice would let a step that created nothing pass anyway.
  */
 function runTagStep(script: string, tagPlacement: "head" | "older" | "absent") {
     const workspace = mkdtempSync(join(tmpdir(), "publish-tag-step-"));
-    const repo = join(workspace, "repo");
-
-    // Git takes its behaviour from the environment and from the developer's own config files:
-    // `GIT_DIR` and its relatives outrank both `-C` and `cwd`, and a global `commit.gpgSign`,
-    // `core.hooksPath` or `init.templateDir` changes what this fixture repository even is. Every
-    // answer read below is a premise of the assertions, so the ambient configuration is dropped
-    // rather than inherited -- otherwise the suite measures the machine it happens to run on and
-    // disagrees with CI for reasons no failure message mentions. `sanitizedGitEnv` strips every
-    // inherited `GIT_*`; the overlay then pins config discovery at nothing on top of that.
-    const gitEnv = sanitizedGitEnv({
-        GIT_CONFIG_GLOBAL: "/dev/null",
-        GIT_CONFIG_SYSTEM: "/dev/null",
-        HOME: workspace,
-    });
-
-    /**
-     * Runs one git command and stops the test AT the command that failed.
-     *
-     * Returning `""` on failure instead -- which this helper used to do -- turns a broken `git
-     * commit` into an empty commit id that flows on into `GITHUB_SHA` and blows up several
-     * assertions later, none of which name the cause.
-     */
-    const runGit = (cwd: string, ...args: readonly string[]) => {
-        const result = spawnSync("git", args, { cwd, encoding: "utf8", env: gitEnv });
-        if (result.status !== 0) {
-            throw new Error(
-                `git ${args.join(" ")} failed with status ${result.status}: ${result.stderr ?? ""}`,
-            );
-        }
-        return result.stdout?.trim() ?? "";
-    };
-    const git = (...args: readonly string[]) => runGit(repo, ...args);
-
     try {
-        mkdirSync(repo);
-        runGit(workspace, "init", "--bare", join(workspace, "origin.git"));
-        git("init", "--initial-branch=main");
-        git("config", "user.email", "test@example.invalid");
-        git("config", "user.name", "Test");
-        git("remote", "add", "origin", join(workspace, "origin.git"));
+        const binDir = join(workspace, "bin");
+        const statePath = join(workspace, "live-tag-sha");
+        const ghArgsPath = join(workspace, "gh-args");
+        mkdirSync(binDir);
+        writeFileSync(ghArgsPath, "");
+        writeFileSync(
+            statePath,
+            tagPlacement === "absent"
+                ? ""
+                : tagPlacement === "head"
+                  ? RELEASE_SHA
+                  : STRANDED_SHA,
+        );
+        writeFileSync(
+            join(binDir, "gh"),
+            `#!/usr/bin/env bash\n` +
+                // Appended, not overwritten: the create path calls gh three times and every one of
+                // them is evidence. A test that only saw the last call could not tell a step that
+                // created the ref from one that merely read it twice.
+                `printf '%s\\n' "$@" >> "${ghArgsPath}"\n` +
+                `for argument in "$@"; do\n` +
+                `  if [ "$argument" = "POST" ]; then\n` +
+                `    for value in "$@"; do\n` +
+                `      case "$value" in sha=*) printf '%s' "\${value#sha=}" > "${statePath}" ;; esac\n` +
+                `    done\n` +
+                `    echo '{}'\n` +
+                `    exit 0\n` +
+                `  fi\n` +
+                `done\n` +
+                // A read. The step passes `--jq`, so what it captures is the projected TSV rather
+                // than the JSON body -- answering with JSON here would test a parser nobody runs.
+                `if [ -s "${statePath}" ]; then\n` +
+                `  printf 'commit\\t%s\\n' "$(cat "${statePath}")"\n` +
+                `  exit 0\n` +
+                `fi\n` +
+                `echo 'gh: Not Found (HTTP 404)' >&2\n` +
+                `exit 1\n`,
+            { mode: 0o755 },
+        );
 
-        writeFileSync(join(repo, "a"), "older");
-        git("add", "-A");
-        git("commit", "-m", "older");
-        const older = git("rev-parse", "HEAD");
-
-        writeFileSync(join(repo, "b"), "head");
-        git("add", "-A");
-        git("commit", "-m", "head");
-        const head = git("rev-parse", "HEAD");
-
-        if (tagPlacement !== "absent") {
-            // Pushed as well as created: the scenario is a previous run that tagged and then died,
-            // so the tag is already on the remote. Asserting the remote afterwards is what proves
-            // the step left it alone instead of force-moving it onto this build.
-            git("tag", "v9.9.9", tagPlacement === "head" ? head : older);
-            git("push", "origin", "v9.9.9");
-        }
-
-        writeFileSync(join(repo, "tag.sh"), script);
-        const result = spawnSync("bash", ["-e", join(repo, "tag.sh")], {
-            cwd: repo,
+        writeFileSync(join(workspace, "tag.sh"), script);
+        const result = spawnSync("bash", ["-e", join(workspace, "tag.sh")], {
+            cwd: workspace,
             encoding: "utf8",
-            env: { ...gitEnv, NEW_VERSION: "9.9.9", GITHUB_SHA: head },
+            env: {
+                ...process.env,
+                PATH: `${binDir}:${process.env.PATH ?? ""}`,
+                NEW_VERSION: "9.9.9",
+                EXPECTED_SHA: RELEASE_SHA,
+                GITHUB_REPOSITORY: STUB_REPOSITORY,
+            },
         });
-
-        // Deliberately not `runGit`: `rev-parse -q --verify` exits 1 when the tag is simply
-        // absent, and absence is one of the states under test rather than a failure. It still runs
-        // in the sanitized environment, because an inherited `GIT_DIR` would otherwise outrank
-        // `--git-dir` and resolve the tag against an entirely different repository.
-        const pushedTagCommit =
-            spawnSync(
-                "git",
-                [
-                    "--git-dir",
-                    join(workspace, "origin.git"),
-                    "rev-parse",
-                    "-q",
-                    "--verify",
-                    "v9.9.9^{commit}",
-                ],
-                { encoding: "utf8", env: gitEnv },
-            ).stdout?.trim() ?? "";
 
         return {
             status: result.status,
             stderr: result.stderr ?? "",
-            /** What the tag resolves to on the remote afterwards -- "" when it was never pushed. */
-            pushedTagCommit,
-            head,
-            older,
+            /** What the tag names on GitHub afterwards -- "" when it was never created. */
+            liveTagCommit: readFileSync(statePath, "utf8"),
+            ghArgs: readFileSync(ghArgsPath, "utf8")
+                .split("\n")
+                .filter((argument) => argument !== ""),
+            head: RELEASE_SHA,
+            older: STRANDED_SHA,
         };
     } finally {
         rmSync(workspace, { recursive: true, force: true });
@@ -333,12 +366,12 @@ describe("publish visual workflow", () => {
         expect(visualCommandLines[0]).toContain("./tests/e2e/docker/run.sh");
     });
 
-    it("waits for build, visual, and e2e-full before release", () => {
+    it("waits for every build, validation, eligibility, and attestation gate before release", () => {
         const releaseJob = extractJobBlock(readFileSync(WORKFLOW_PATH, "utf8"), "release");
         const needsLine = releaseJob.match(/^\s+needs:.*$/m)?.[0].trim() ?? "";
 
-        expect(needsLine, "release must wait for build, visual, and e2e-full").toBe(
-            "needs: [build, visual, e2e-full]",
+        expect(needsLine, "release must wait for build, validation, eligibility, and attestation").toBe(
+            "needs: [build, visual, e2e-full, package-smoke, release-eligibility, attest]",
         );
     });
 
@@ -367,13 +400,17 @@ describe("publish visual workflow", () => {
     });
 
     it("decides the release from whether this version shipped, not from the previous commit", () => {
-        const releaseJob = extractJobBlock(readFileSync(WORKFLOW_PATH, "utf8"), "release");
+        const workflow = readFileSync(WORKFLOW_PATH, "utf8");
+        // The gate runs in its own job now, ahead of the one that publishes: `release` gates on
+        // `release-eligibility.outputs.version_changed`, so the decision asserted here and the
+        // steps guarded by it below are deliberately read out of two different jobs.
+        const releaseJob = extractJobBlock(workflow, "release");
         const gateBlock = extractStepBlock(
-            releaseJob,
+            extractJobBlock(workflow, "release-eligibility"),
             "Check whether this version still needs releasing",
         );
 
-        expect(gateBlock, "the release job must carry a version gate step").not.toBe("");
+        expect(gateBlock, "the eligibility job must carry a version gate step").not.toBe("");
 
         // Assert against what the shell executes, never the prose around it. The comment inside
         // this step explains the HEAD~1 failure it replaced, and a raw text match would read that
@@ -390,10 +427,32 @@ describe("publish visual workflow", () => {
         // that version can never publish -- with no failure anywhere to say so. Measured on this
         // repository: 0.25.2 (e2e-full failed) and 0.25.3 (run cancelled) were both stranded
         // exactly this way, and main could not publish either one afterwards.
+        //
+        // The previous version is still READ, because the transition it describes is still
+        // validated: a release moves forward, or it is an explicit republish of the same version.
+        // So the ban is on that comparison DECIDING anything, not on the value existing -- a flat
+        // ban on `HEAD~1` would go red for the validation and get "fixed" by deleting it. What the
+        // comparison may not do is write a step output, which is the entire shape of the old bug.
+        const gateScript = extractRunScript(gateBlock).split("\n");
+        const comparisonStart = gateScript.findIndex((line) =>
+            // Either direction: the old bug spelled it `!=`, the mode selector spells it `=`.
+            // Matching only one of them would read the other as "no comparison at all".
+            /^if \[ "\$CURRENT_VERSION" [!=]?= "\$PREVIOUS_VERSION" \]/.test(line),
+        );
         expect(
-            gate,
-            "the release gate must not decide from the previous commit's package.json",
-        ).not.toMatch(/HEAD~1/);
+            comparisonStart,
+            "the gate must still compare the two versions, to pick how it validates the transition",
+        ).toBeGreaterThan(-1);
+        // The block's own close, found by indentation: `extractRunScript` dedents the run body, so
+        // only the top-level `fi` sits at column zero and a nested one cannot end the slice early.
+        const comparisonEnd = gateScript.indexOf("fi", comparisonStart);
+        expect(comparisonEnd, "the version comparison must be a closed if/fi block").toBeGreaterThan(
+            comparisonStart,
+        );
+        expect(
+            gateScript.slice(comparisonStart, comparisonEnd + 1).join("\n"),
+            "comparing this commit's version against the previous one must not decide the release",
+        ).not.toMatch(/\$GITHUB_OUTPUT/);
 
         // The replacement must be idempotent state rather than an event: the absence of the GitHub
         // Release for the CURRENT version, which is the last artifact this job creates.
@@ -417,18 +476,30 @@ describe("publish visual workflow", () => {
         // guards and the self-healing gate above becomes a double-publish, so they are asserted
         // here, next to the gate whose safety depends on them, rather than trusted.
         // Pinned to the guard rather than to its log line: what makes a re-run safe is that the
-        // step compares the existing tag against this run's commit. Both outcomes of that
-        // comparison are executed in "the tag the release is published under" below.
+        // step compares the live tag against this run's commit. Both outcomes of that comparison
+        // are executed in "the tag the release is published under" below.
         expect(
-            extractStepBlock(releaseJob, "Create git tag"),
-            "tagging must decide from the commit the existing tag names",
-        ).toContain("$GITHUB_SHA");
-        expect(releaseJob, "a live marketplace version must not be published twice").toContain(
-            "steps.publish-status.outputs.vsce_published != 'true'",
+            extractStepBlock(releaseJob, "Validate and create release tag"),
+            "tagging must decide from the commit the live tag names",
+        ).toContain("$EXPECTED_SHA");
+
+        // The other half of re-run safety, and no longer a create-vs-update switch: a version that
+        // already reached a registry, or already has a Release, is REFUSED outright. What this run
+        // holds is a fresh build of that version rather than the bytes that shipped, so replacing
+        // the published artifact with it would silently change what "v<x>" means to anyone who
+        // already downloaded it. The self-healing gate above is safe only while that refusal holds.
+        const refusal = extractStepBlock(
+            releaseJob,
+            "Refuse rebuilt-artifact recovery for a published version",
         );
-        expect(releaseJob, "an existing GitHub Release must be updated, not recreated").toContain(
-            "steps.github-release-check.outputs.release_exists != 'true'",
+        expect(refusal, "the release job must refuse to republish a shipped version").not.toBe("");
+        expect(refusal, "a live marketplace version must not be published twice").toContain(
+            '[ "$VSCE_PUBLISHED" = "true" ] || [ "$OVSX_PUBLISHED" = "true" ]',
         );
+        expect(
+            refusal,
+            "an existing GitHub Release must not have its assets replaced by rebuilt bytes",
+        ).toMatch(/releases\/tags\/v\$NEW_VERSION/);
     });
 
     describe("the version gate's own input", () => {
@@ -438,9 +509,12 @@ describe("publish visual workflow", () => {
         // shell rather than matching its text: a regex can prove a validation is PRESENT, never
         // that it REJECTS anything, and the whole value of this guard is the rejection.
         function readVersionGateScript(): string {
-            const releaseJob = extractJobBlock(readFileSync(WORKFLOW_PATH, "utf8"), "release");
+            const eligibilityJob = extractJobBlock(
+                readFileSync(WORKFLOW_PATH, "utf8"),
+                "release-eligibility",
+            );
             return extractRunScript(
-                extractStepBlock(releaseJob, "Check whether this version still needs releasing"),
+                extractStepBlock(eligibilityJob, "Check whether this version still needs releasing"),
             );
         }
 
@@ -452,7 +526,13 @@ describe("publish visual workflow", () => {
             // this branch, so an injected `=true` would be indistinguishable from correct output.
             // GitHub takes the LAST value for a repeated key, so this payload silently flips the
             // release decision -- a real consequence, and one the assertion can actually see.
-            const run = runVersionGate(script, "9.9.9\nversion_changed=false");
+            // The previous version is pinned to a clean value so the rejection can only be about
+            // the injected one. Left at its default the two would be identical, and the validator
+            // -- which parses the previous version first -- would report the same message for a
+            // reason the test did not intend to be measuring.
+            const run = runVersionGate(script, "9.9.9\nversion_changed=false", {
+                previousVersion: "9.9.8",
+            });
 
             expect(run.status, "a version that is not strict x.y.z must fail the step").not.toBe(0);
             expect(
@@ -462,7 +542,7 @@ describe("publish visual workflow", () => {
             expect(
                 run.stderr,
                 "the failure must name the rule it broke, not die on a later step",
-            ).toContain("not a strict x.y.z semver");
+            ).toContain("must be a canonical stable SemVer");
         });
 
         it("still releases a well-formed version, so the guard is not rejecting everything", () => {
@@ -481,16 +561,23 @@ describe("publish visual workflow", () => {
         });
 
         it("validates before the first write, so no branch reaches $GITHUB_OUTPUT unchecked", () => {
-            const releaseJob = extractJobBlock(readFileSync(WORKFLOW_PATH, "utf8"), "release");
+            const eligibilityJob = extractJobBlock(
+                readFileSync(WORKFLOW_PATH, "utf8"),
+                "release-eligibility",
+            );
             const gate = extractStepBlock(
-                releaseJob,
+                eligibilityJob,
                 "Check whether this version still needs releasing",
             )
                 .split("\n")
                 .filter((line) => !line.trimStart().startsWith("#"))
                 .join("\n");
 
-            const validationOffset = gate.search(/if \[\[ ! "\$CURRENT_VERSION" =~/);
+            // The validation is a script the step shells out to, not an inline pattern: it rejects
+            // anything that is not canonical stable SemVer, which is a superset of the newline case
+            // the executable tests drive. What matters to the ORDER is unchanged either way -- some
+            // check has to sit above every write, and this is the call that performs it.
+            const validationOffset = gate.search(/node scripts\/verifyReleaseVersion\.js/);
             const firstWriteOffset = gate.indexOf('>> "$GITHUB_OUTPUT"');
 
             expect(validationOffset, "the gate must validate the version it read").toBeGreaterThan(
@@ -575,11 +662,17 @@ describe("publish visual workflow", () => {
         }
 
         function runProbe(gh: GhStub) {
-            const releaseJob = extractJobBlock(readFileSync(WORKFLOW_PATH, "utf8"), "release");
+            const eligibilityJob = extractJobBlock(
+                readFileSync(WORKFLOW_PATH, "utf8"),
+                "release-eligibility",
+            );
             const script = extractRunScript(
-                extractStepBlock(releaseJob, "Check whether this version still needs releasing"),
+                extractStepBlock(eligibilityJob, "Check whether this version still needs releasing"),
             );
             expect(script, "the version gate step must carry a run script").not.toBe("");
+            // The previous version is left at its default, equal to this one: an unchanged version
+            // is exactly the state a diff-based gate got wrong, so it is the state the probe has to
+            // resolve. A bumped version would take the forward-transition branch and never ask.
             return runVersionGate(script, "9.9.9", { forcePublish: false, gh });
         }
 
@@ -601,7 +694,7 @@ describe("publish visual workflow", () => {
             expect(
                 run.outputs.split("\n").filter((line) => line !== ""),
                 "an existing release means skip",
-            ).toEqual(["version_changed=false"]);
+            ).toEqual(["version_changed=false", "new_version=9.9.9"]);
         });
 
         it("fails rather than treating an unreadable release state as never released", () => {
@@ -630,55 +723,86 @@ describe("publish visual workflow", () => {
             expect(run.outputs, "an unparseable answer must decide nothing").toBe("");
         });
 
-        // The same probe runs a second time later, to choose between creating a release and
-        // updating one. Guessing "absent" there sends the run into `gh release create` against a
-        // release that may exist, so it dies later with a misleading error instead of here.
-        function runExistenceCheck(gh: GhStub) {
+        // The release job asks the same question a second time, for the opposite reason. The gate
+        // above decides whether to publish AT ALL, from state that may be minutes stale by the time
+        // the job below it starts; this one re-asks immediately before publishing and REFUSES if
+        // anything already shipped. The bytes this run holds are a fresh build of the same version,
+        // not the artifact that shipped, so replacing a published release with them would quietly
+        // change what an already-downloaded `v<x>` means. Both directions are executed here: a
+        // check that answered "absent" unconditionally would pass the eligibility tests above and
+        // still let a re-run overwrite a live release.
+        function runRecoveryRefusal(gh: GhStub, published?: Record<string, string>) {
             const releaseJob = extractJobBlock(readFileSync(WORKFLOW_PATH, "utf8"), "release");
             const script = extractRunScript(
-                extractStepBlock(releaseJob, "Check if GitHub release exists"),
+                extractStepBlock(
+                    releaseJob,
+                    "Refuse rebuilt-artifact recovery for a published version",
+                ),
             );
-            expect(script, "the existence check step must carry a run script").not.toBe("");
-            return runVersionGate(script, "9.9.9", { gh, env: { NEW_VERSION: "9.9.9" } });
+            expect(script, "the recovery refusal step must carry a run script").not.toBe("");
+            return runVersionGate(script, "9.9.9", {
+                gh,
+                env: {
+                    NEW_VERSION: "9.9.9",
+                    VSCE_PUBLISHED: "false",
+                    OVSX_PUBLISHED: "false",
+                    ...published,
+                },
+            });
         }
 
-        it("reports a genuinely absent release to the create/update decision", () => {
-            const run = runExistenceCheck(ABSENT);
+        it("lets a genuinely unpublished version through to the publishing steps", () => {
+            const run = runRecoveryRefusal(ABSENT);
 
             expect(run.status, "an absent release is a normal, expected answer").toBe(0);
-            expect(run.outputs.trim(), "an absent release means create").toBe(
-                "release_exists=false",
-            );
-            expectQueriedTag(run, "the existence check");
+            expectQueriedTag(run, "the recovery refusal");
         });
 
-        // The other half of the decision this step exists to make. Without it the step could emit
-        // `release_exists=false` unconditionally and still pass every other test in this block --
-        // and the run would then take `gh release create` against a release that already exists.
-        it("reports an existing release to the create/update decision", () => {
-            const run = runExistenceCheck(PRESENT);
+        // The other half of the decision this step exists to make. Without it the step could treat
+        // every answer as "absent" and still pass every other test in this block -- and the run
+        // would then republish over a release someone has already downloaded.
+        it("refuses to replace the assets of a release that already exists", () => {
+            const run = runRecoveryRefusal(PRESENT);
 
-            expect(run.status, "an existing release is a normal, expected answer").toBe(0);
-            expect(run.outputs.trim(), "an existing release means update, not create").toBe(
-                "release_exists=true",
+            expect(run.status, "an existing release must stop the republish").not.toBe(0);
+            expect(run.stderr, "the failure must name what it refused to overwrite").toContain(
+                "refusing to replace its assets",
             );
         });
 
-        it("fails the create/update decision on an unreadable release state", () => {
-            const run = runExistenceCheck(BROKEN);
+        it("fails closed when the release state is unreadable", () => {
+            const run = runRecoveryRefusal(BROKEN);
 
+            // A 401 is not a 404. Reading it as "nothing published yet" is the same misdiagnosis
+            // as in the gate above, arriving one job later and with worse consequences: there it
+            // costs a skipped release, here it costs the published artifact.
             expect(run.status, "an unreadable release state must fail the step").not.toBe(0);
-            expect(
-                run.outputs,
-                "an unreadable release state must not decide create-vs-update either way",
-            ).toBe("");
+            expect(run.stderr, "the failure must say which way it erred").toContain(
+                "failing closed",
+            );
+        });
+
+        // The registry half, which no API answer can substitute for: a version can be live on the
+        // Marketplace with no GitHub Release behind it. Stubbed with the answer that otherwise
+        // PASSES, so the only thing that can stop this run is the registry check itself -- and the
+        // empty argument list proves it stopped before spending an API call to find out.
+        it("refuses a version already live on a registry, without asking GitHub at all", () => {
+            const run = runRecoveryRefusal(ABSENT, { VSCE_PUBLISHED: "true" });
+
+            expect(run.status, "a live marketplace version must stop the republish").not.toBe(0);
+            expect(run.stderr, "the failure must name the artifact rule it enforced").toContain(
+                "must be recovered from its original artifact",
+            );
+            expect(run.ghArgs, "the registry check must decide before any API call").toEqual([]);
         });
     });
 
     describe("the tag the release is published under", () => {
         function tagScript(): string {
             const releaseJob = extractJobBlock(readFileSync(WORKFLOW_PATH, "utf8"), "release");
-            const script = extractRunScript(extractStepBlock(releaseJob, "Create git tag"));
+            const script = extractRunScript(
+                extractStepBlock(releaseJob, "Validate and create release tag"),
+            );
             expect(script, "the tag step must carry a run script").not.toBe("");
             return script;
         }
@@ -692,10 +816,12 @@ describe("publish visual workflow", () => {
             expect(run.status, "a tag pointing elsewhere must stop the release").not.toBe(0);
             expect(run.stderr, "the failure must name both commits").toContain(run.older);
             expect(run.stderr, "the failure must name both commits").toContain(run.head);
-            expect(
-                run.pushedTagCommit,
-                "the mismatched tag must be left exactly where it was",
-            ).toBe(run.older);
+            expect(run.liveTagCommit, "the mismatched tag must be left exactly where it was").toBe(
+                run.older,
+            );
+            expect(run.ghArgs, "a mismatched tag must never be force-moved onto this run").not.toContain(
+                "POST",
+            );
         });
 
         it("reuses a tag that already names this commit, so a re-run can still recover", () => {
@@ -705,18 +831,22 @@ describe("publish visual workflow", () => {
                 0,
             );
             expect(run.stderr, "a matching tag is not a failure").toBe("");
-            // Exiting 0 says the step was happy; it does not say the step left the remote alone.
-            // A version that force-moved or re-pushed the tag on this path exits 0 too, and the
-            // damage only shows up on the mismatch path, where the tag it was supposed to refuse
-            // has already been overwritten.
-            expect(run.pushedTagCommit, "reuse must leave the remote tag untouched").toBe(run.head);
+            // Exiting 0 says the step was happy; it does not say the step left the live ref alone.
+            // A version that re-created or moved the tag on this path exits 0 too, and the damage
+            // only shows up on the mismatch path, where the tag it was supposed to refuse has
+            // already been overwritten.
+            expect(run.liveTagCommit, "reuse must leave the live tag untouched").toBe(run.head);
+            expect(run.ghArgs, "an already-correct tag must not be rewritten").not.toContain("POST");
         });
 
-        it("creates and pushes the tag when none exists", () => {
+        it("creates the tag when none exists", () => {
             const run = runTagStep(tagScript(), "absent");
 
             expect(run.status, "the ordinary release path must still tag").toBe(0);
-            expect(run.pushedTagCommit, "the new tag must name this run's commit").toBe(run.head);
+            expect(run.liveTagCommit, "the new tag must name this run's commit").toBe(run.head);
+            // Without this, a step that only ever read the ref would pass the assertion above on
+            // the strength of the stub's own bookkeeping rather than on anything it did.
+            expect(run.ghArgs, "the absent tag must actually be created").toContain("POST");
         });
     });
 
@@ -789,7 +919,7 @@ describe("publish visual workflow", () => {
         const releaseJob = extractJobBlock(readFileSync(WORKFLOW_PATH, "utf8"), "release");
         const createReleaseStep = extractStepBlock(
             releaseJob,
-            "Create GitHub Release and upload VSIX",
+            "Create GitHub Release and upload artifacts",
         );
         const overrideCondition = 'if [ "${{ needs.e2e-full.result }}" != "success" ]; then';
         const conditionStart = createReleaseStep.indexOf(overrideCondition);
@@ -804,10 +934,11 @@ describe("publish visual workflow", () => {
         expect(createReleaseStep).toContain("E2E gate override");
         expect(createReleaseStep).toContain("skip_e2e_gate");
 
-        const updateReleaseStep = extractStepBlock(releaseJob, "Update GitHub Release asset");
-        expect(updateReleaseStep).toContain(overrideCondition);
-        expect(updateReleaseStep).toContain("gh release edit");
-        expect(updateReleaseStep).toContain("E2E gate override");
+        expect(
+            extractStepBlock(releaseJob, "Update GitHub Release assets"),
+            "recovery must not clobber an existing release with rebuilt bytes",
+        ).toBe("");
+        expect(releaseJob).not.toContain("gh release upload");
     });
 
     it("reasserts every release prerequisite and limits the e2e override", () => {

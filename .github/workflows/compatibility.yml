@@ -1,0 +1,66 @@
+name: Installed-package portability
+
+on:
+    schedule:
+        - cron: "43 3 * * 0"
+    workflow_dispatch:
+
+permissions:
+    contents: read
+
+jobs:
+    compatibility:
+        name: Installed package smoke (${{ matrix.os }})
+        runs-on: ${{ matrix.os }}
+        timeout-minutes: 90
+        strategy:
+            fail-fast: false
+            matrix:
+                os: [ubuntu-latest, macos-latest, windows-latest]
+
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+              with:
+                  persist-credentials: false
+
+            - name: Setup Node.js
+              uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+              with:
+                  node-version: "22"
+
+            - name: Setup Bun
+              uses: oven-sh/setup-bun@f4d14e03ff726c06358e5557344e1da148b56cf7 # v1.2.2
+              with:
+                  bun-version: "1.3.5"
+
+            - name: Install dependencies
+              run: bun install --frozen-lockfile
+
+            - name: Check formatting
+              run: bun run format:check
+
+            - name: Run ESLint
+              run: bun run lint
+
+            - name: Run type check
+              run: bun run typecheck
+
+            - name: Build extension
+              run: bun run build
+
+            - name: Run tests
+              run: bun run test
+
+            - name: Package extension
+              run: bun run package
+
+            - name: Smoke test the installed package on Linux
+              if: matrix.os == 'ubuntu-latest'
+              shell: bash
+              run: INTELLIGIT_VSCODE_VERSION=1.132.0 xvfb-run -a bun run test:package-smoke
+
+            - name: Smoke test the installed package on macOS and Windows
+              if: matrix.os != 'ubuntu-latest'
+              shell: bash
+              run: INTELLIGIT_VSCODE_VERSION=1.132.0 bun run test:package-smoke

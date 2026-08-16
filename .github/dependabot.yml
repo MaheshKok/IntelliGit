@@ -12,3 +12,15 @@ updates:
           prefix: "chore(ci)"
       labels:
           - dependencies
+    - package-ecosystem: npm
+      directory: /
+      schedule:
+          interval: monthly
+      commit-message:
+          prefix: "chore(deps)"
+      labels:
+          - dependencies
+      groups:
+          safe-development-dependencies:
+              dependency-type: development
+              update-types: ["minor", "patch"]
