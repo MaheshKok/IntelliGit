@@ -1032,7 +1032,7 @@
         "@vitest/coverage-v8": "1.6.1",
         "@vscode/test-electron": "^3.1.0",
         "@vscode/vsce": "^2.22.0",
-        "dependency-cruiser": "^17.4.3",
+        "dependency-cruiser": "^18.2.0",
         "esbuild": "^0.20.0",
         "eslint": "^10.0.0",
         "eslint-plugin-jsdoc": "^63.0.2",
