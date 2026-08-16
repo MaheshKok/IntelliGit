@@ -54,11 +54,51 @@ jobs:
                   if-no-files-found: ignore
                   retention-days: 7
 
+    # One pinned VS Code launch per fixture catches content and serialization drift in the
+    # committed artifacts; it is deliberately separate from the flow matrix so one stale theme
+    # cannot mask the other three.
+    host-fixture-staleness:
+        runs-on: ubuntu-latest
+        timeout-minutes: 120
+
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+              with:
+                  persist-credentials: false
+
+            - name: Cache the pinned VS Code build
+              uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+              with:
+                  path: ~/.cache/intelligit-e2e-container/vscode
+                  key: ${{ runner.os }}-vscode-${{ hashFiles('tests/e2e/hostFixtures/vscodeVersion.ts') }}
+                  restore-keys: |
+                      ${{ runner.os }}-vscode-
+
+            - name: Run pinned host-fixture staleness sweep in the container
+              run: ./tests/e2e/docker/run.sh 'bun install --frozen-lockfile && bun run build && xvfb-run -a ./node_modules/.bin/playwright test --config playwright.e2e.config.ts tests/e2e/hostFixtures/staleness.spec.ts --reporter=list'
+
+            - name: Upload host-fixture staleness failure artifacts
+              if: failure()
+              uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+              with:
+                  name: e2e-nightly-host-fixture-staleness-failures
+                  path: |
+                      playwright-report/
+                      test-results/
+                  if-no-files-found: ignore
+                  retention-days: 7
+
     # Reporting is a separate job for two reasons. It collapses four shards into ONE notification --
     # per-shard reporting would file up to four issues a night -- and it keeps `issues: write` off
     # the jobs that execute the suite, so only this job can write to the tracker.
     report-failure:
-        needs: e2e-nightly
+        needs: [e2e-nightly, host-fixture-staleness]
+        # `failure()` is load-bearing, not stylistic. A job whose `if` contains no status-check
+        # function still carries GitHub's implicit `success()` gate, so a bare
+        # `needs.<job>.result == 'failure'` expression can never be true when that job failed --
+        # the notifier would silently stop firing. `failure()` is true when ANY need failed, which
+        # is exactly the aggregation wanted, and matches `e2e-insiders.yml`'s identical job.
         if: failure()
         runs-on: ubuntu-latest
         permissions:
@@ -77,7 +117,7 @@ jobs:
                   RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
               run: |
                   set -euo pipefail
-                  BODY="At least one shard of the nightly flow suite failed. Inspect the run: ${RUN_URL}"
+                  BODY="The nightly flow suite or host-fixture staleness sweep failed. Inspect the run: ${RUN_URL}"
                   # `env.TITLE` is read by jq itself, so the title never passes through shell
                   # interpolation into the jq program.
                   EXISTING=$(gh issue list --state open --search "${TITLE} in:title" \

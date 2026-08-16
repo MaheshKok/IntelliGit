@@ -37,4 +37,18 @@ describe("harness page visual environment contract", () => {
         );
         expect(harnessPageSource).toContain("await page.evaluate(settleRootSubtree, {");
     });
+
+    it("keeps route interception delegated to the shared harness utility", () => {
+        expect(harnessPageSource).toMatch(
+            /import\s*\{[\s\S]*routeHarnessRequest[\s\S]*\}\s*from "\.\/visualHarnessUtils";/,
+        );
+
+        const routeRegistration = harnessPageSource.match(
+            /await page\.route\("\*\*\/\*",[\s\S]*?\);/,
+        )?.[0];
+        expect(routeRegistration).toBeDefined();
+        expect(routeRegistration).toContain(
+            "routeHarnessRequest(route, HARNESS_ORIGIN, DIST_DIR, () => documentHtml, networkEscapes)",
+        );
+    });
 });

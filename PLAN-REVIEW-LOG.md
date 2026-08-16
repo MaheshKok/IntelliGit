@@ -1406,3 +1406,153 @@ same change.
 **Contrast is deliberately excluded from the locale buckets** — a catalog swap
 changes text geometry, not colour, so contrast findings are locale-invariant and
 would multiply baseline noise without adding signal.
+
+## Phase 7a — the three gating security findings
+
+The Phase 7 `security-reviewer` pass over `origin/main..HEAD` (75 commits) found no
+CRITICAL, and confirmed all five design invariants hold against the shipped `dist/`
+bytes rather than the sources. It returned three gating findings, each the same
+shape: **a control that cannot fire.**
+
+| # | Severity | Finding |
+|---|---|---|
+| 1 | HIGH | `tests/e2e/docker/Dockerfile` fetched and executed `https://bun.sh/install` inside the digest-pinned release-gate image |
+| 2 | MEDIUM | `scripts/verifyNoE2eManifestCommand.js` had **zero callers** — no npm script, no workflow step, no hook |
+| 3 | MEDIUM | the `skip_e2e_gate` override recorded only a `::warning::`, which dies with log retention |
+
+Findings 2 and 3 were delegated and accepted as written. The manifest guard is now a
+`verify:manifest` script invoked by publish.yml's shared `build` job, and — the part
+that matters — it is proven by **spawning the real script as a subprocess** against a
+manifest containing a forbidden command, not by asserting a string exists in
+package.json. The two wiring halves are separate tests, so neither can vouch for the
+other. The override notice is attached to the GitHub Release itself, on both the
+create and the pre-existing-release path, so the record outlives log retention.
+
+### Finding 1 was fixed at the wrong layer first — by the spec, not the builder
+
+The work order asked for a version pin: `| bash -s "bun-v${BUN_VERSION}"`. That is
+**not a fix for this finding.** It pins what an *honest* installer does. The script
+itself is still fetched unversioned and unverified from a third-party host at build
+time, and a substituted installer is free to ignore its argument entirely. The
+Dockerfile's own header spends six lines explaining why the base image is a digest
+and not a tag — a tag is mutable, a digest cannot move — and line 37 violated that
+stated doctrine. The spec was wrong; the builder implemented it faithfully.
+
+Replaced with a checksummed release artifact: `curl -o` the pinned GitHub release
+zip, `sha256sum -c -` **before** anything executes, extract, then assert
+`[ "$(bun --version)" = "${BUN_VERSION}" ]`. Version and checksum cannot drift —
+bumping `BUN_VERSION` moves the URL to an archive the old checksum rejects.
+
+### Proof at the artifact layer, not the regex layer
+
+A test that reads the Dockerfile as text proves only that the text matches. The image
+was built for real against the pinned base:
+
+| Build | Result |
+|---|---|
+| first attempt | **FAILED** — `unzip -d` creates one directory level, and `/usr/local/bun` did not exist |
+| after `mkdir -p` | rc 0; image contains bun 1.3.5 at `/usr/local/bun/bin/bun` |
+| `--build-arg BUN_SHA256=000...0` | rc 1 — `sha256sum: WARNING: 1 computed checksum did NOT match` |
+| `BUN_VERSION=1.3.4` + 1.3.5's checksum | rc 1 — same rejection; the drift case |
+| unmutated | rc 0 |
+
+The first row is the argument for this section existing: no text assertion would have
+caught it. The checksum gate is proven to **reject**, not merely to accept.
+
+### Mutation table — 8 mutations, every run unfiltered
+
+| # | Mutation | rc | Named test that went red |
+|---|---|---:|---|
+| 1 | Dockerfile reverted to the piped `bun.sh` installer | 1 | ...never a piped remote script |
+| 2 | `BUN_VERSION` 1.3.5 to 1.3.6 | 1 | ...Bun version in agreement with the publish workflow |
+| 3 | `verify:manifest` removed from package.json | 1 | exposes the manifest guard as a package script |
+| 4 | `verify:manifest` step removed from publish.yml | 1 | runs the manifest guard in the build job... |
+| 5 | override notice removed from release-create | 1 | records a skipped E2E gate in the newly created GitHub Release |
+| 6 | `ARG BUN_SHA256` deleted | 1 | ...never a piped remote script |
+| 7 | `sha256sum -c -` deleted | 1 | ...never a piped remote script |
+| 8 | unmutated control | 0 | (none) — 3647 passed |
+
+Every mutated run was exactly `1 failed | 3646 passed`: no collateral. Mutations 3
+and 4 red **independently**, so neither wiring half covers for the other.
+
+Mutations 1, 6 and 7 share a test *name*, which is precisely how one over-broad
+assertion disguises itself as three guards — so each was re-run file-scoped to name
+the assertion that actually fired: `expected [ Array(1) ] to deeply equal []` (the
+pipe-to-shell scan), *the archive must be pinned by checksum*, and *the checksum must
+be verified, not merely declared*. Three distinct guards, observed rather than
+assumed.
+
+The pipe-to-shell scan is a **property**, not an enumerated ban on the one line this
+finding was filed against: any instruction pairing a fetch with a pipe into a shell
+reds it, whichever host or flags it carries. Comment lines are excluded because the
+rationale above that layer quotes the very form it bans.
+
+Gates: `typecheck`, `format:check`, `lint`, `lint:strict`, `knip`,
+`architecture:check`, `l10n:validate`, `verify:manifest` — all rc 0. Full suite 3647
+passed.
+
+Remaining for 7b: the `event.source` check in `e2eStateBridge.ts`, the `skip_e2e_gate`
+input type pin, the inert `<PROFILE>` substitution in the webview fixture registry,
+and a unit assertion pinning the production CSP string.
+
+## Phase 7b — the remaining review items, audited before being actioned
+
+The 7b list inherited from the review had four items. Auditing them first turned two
+into non-findings, one into a deliberate no-change, and moved the real defect to a
+place the review had not looked.
+
+**Already covered — no change needed.** The `skip_e2e_gate` input type is pinned at
+`tests/unit/visual/publishWorkflow.test.ts` (`type: boolean` in the input declaration,
+and `inputs.skip_e2e_gate == true` in the release `if:`). Both halves matter together:
+`type: boolean` alone still permits a truthiness comparison, and `== true` alone still
+permits a string input. Separately, the webview bridge's runtime gate is covered in
+four cases — `undefined`, `false`, the truthy string `"true"`, and `true` — and
+`tests/unit/e2e/webviewHtmlBootstrap.test.ts` asserts the inactive channel injects
+nothing and registers nothing.
+
+**Deliberate no-change: the `event.source` check.** `installE2eStateBridge` attaches its
+listener only when `window.intelligitE2E === true`, whose single writer is
+`buildE2eBootstrapScript`, itself behind `isE2eControlChannelActive()` and its three
+gates. In a production install the listener does not exist, so an `event.source` check
+protects nothing there. In the harness, reaching the listener at all requires executing
+script inside a webview whose CSP is `default-src 'none'` with nonce-only scripts — and
+an attacker who can execute script can call the VS Code API directly, making the bridge
+redundant to them. The payload is additionally filtered by a protocol discriminator.
+Adding the check would read as hardening while changing no reachable outcome; it is
+recorded here as considered and declined rather than silently skipped.
+
+### The two real gaps, both invisible to the review's framing
+
+**The empty-root contract had no test.** Every webview fixture recorder passes
+`profileDir: ""` — deliberate, since those slices allocate no VS Code profile directory.
+That makes one line of `spellingsFor` load-bearing for all eight entries in
+`webviewFixtureRegistry.ts`: `if (root.length === 0) return [];`. Every one of the seven
+existing cases in `placeholderCanonicalization.test.ts` passed a **non-empty**
+`profileDir`, so the single input all production call sites use was the one input never
+tested. Deleting the guard makes `normalizeString` run
+`value.split("").join("<PROFILE>")`, inserting the placeholder between every character of
+every recorded payload — silent fixture corruption at record time, in the very pass that
+exists to keep real paths out of committed fixtures.
+
+**The CSP assertion was a prefix check.** `expect(html).toContain("script-src 'nonce-")`
+still passes after `script-src 'nonce-x' 'unsafe-inline'`, which undoes the nonce
+entirely. The whole directive is now pinned, along with `default-src 'none'`. The shell's
+existing `style-src … 'unsafe-inline'` is pre-existing product behaviour and is left
+alone deliberately — this pins against further loosening rather than changing what ships.
+
+### Mutation table — production mutated, never the test
+
+| # | Mutation | rc | Assertion that fired |
+|---|---|---:|---|
+| A | `if (root.length === 0) return [];` deleted | 1 | *an empty profileDir must contribute zero needles*, and `expected '/<PROFILE><<PROFILE>O<PROFILE>R<PROFI…' to be '/a/real/path'` |
+| B | `script-src` loosened with `'unsafe-inline'` | 1 | *script-src must stay nonce-only — no unsafe-inline, no unsafe-eval, no host source* |
+| C | `default-src 'none'` removed | 1 | *the webview shell must deny by default* |
+| D | unmutated control | 0 | 20 passed |
+
+Row A's second assertion is the corruption made visible: the placeholder between every
+character, with `<ROOT>` itself shredded by the empty needle.
+
+Gates: `typecheck`, `format:check`, `lint`, `lint:strict`, `knip`, `architecture:check`,
+`l10n:validate`, `verify:manifest` — all rc 0.
+
+Phase 7 is complete. Nothing here has been pushed; the branch remains local by choice.

@@ -3,6 +3,7 @@ import path from "node:path";
 
 import {
     expect,
+    test,
     type FrameLocator,
     type Page,
 } from "@playwright/test";
@@ -26,9 +27,12 @@ import { resolveVSCodeExecutable } from "../hostFixtures/resolveVSCodeExecutable
 import { ChangesPanel } from "../pageObjects/changesPanel";
 import { IntelliGitView } from "../pageObjects/intelliGitView";
 import { Workbench } from "../pageObjects/workbench";
-import { listFilesUnder, readDurableState } from "../oracles/durableState";
-import * as localGit from "../oracles/localGit";
-import * as origin from "../oracles/origin";
+import { oracles } from "../../oracles";
+import type { GitStatusEntry } from "../oracles/localGit";
+
+const { listFilesUnder, readDurableState } = oracles.get("durableState");
+const localGit = oracles.get("localGit");
+const origin = oracles.get("origin");
 
 const REPO_ROOT = path.resolve(__dirname, "../../..");
 const COMMITTED_PATH = DIRTY_FIXTURE.mutablePath;
@@ -74,12 +78,12 @@ export const IMPLEMENTED_FLOW_IDS = [
 type ImplementedFlowId = (typeof IMPLEMENTED_FLOW_IDS)[number];
 
 /** State captured immediately before a row's action runs. */
-interface FlowBeforeState {
+export interface FlowBeforeState {
     readonly branch: string;
     readonly head: string;
     readonly originRef: string;
     readonly originHead: string;
-    readonly status: readonly localGit.GitStatusEntry[];
+    readonly status: readonly GitStatusEntry[];
 }
 
 /** Which IntelliGit webview surfaces a row drives. Rows that assert against the graph declare it
@@ -159,7 +163,7 @@ async function countConflictSessionFrames(page: Page): Promise<number> {
     return count;
 }
 
-async function captureBeforeState(workspace: FixtureWorkspace): Promise<FlowBeforeState> {
+export async function captureBeforeState(workspace: FixtureWorkspace): Promise<FlowBeforeState> {
     const [branch, head, status] = await Promise.all([
         localGit.currentBranch(workspace),
         localGit.headOid(workspace),
@@ -263,6 +267,56 @@ async function assertShelfApplyDurableState(context: FlowContext): Promise<void>
     expect.soft(durableState.takeoverPaths).toEqual([]);
 }
 
+const UI_PROBE_TIMEOUT_MS = 20_000;
+const UI_PROBE_RETRY_INTERVAL_MS = 500;
+
+/**
+ * Requires the row's `uiOracle` to FAIL against the un-acted-on fixture, which is the only thing
+ * proving it discriminates this row's effect. Without it a leg that asserts nothing -- or asserts
+ * only an absence, which an unrendered webview satisfies just as well as a completed action --
+ * keeps the UI column of the whole matrix green.
+ *
+ * Retried to a deadline rather than sampled once. The webview's chrome paints before its
+ * lazily-populated content, so a single early sample catches an empty tree and every absence
+ * assertion passes for the wrong reason -- measured: it reported `commit`, `push`, and
+ * `discard-changes` as vacuous when only their content had yet to render. A row whose oracle still
+ * passes at the deadline is genuinely vacuous and fails here by name.
+ *
+ * The expected failure must not survive into the row's real result: Playwright's soft assertions
+ * append to `testInfo.errors` AND flip `testInfo.status`, so both are restored on every attempt.
+ */
+async function assertUiOracleRejectsPreActionState(
+    flow: FlowRow,
+    context: FlowContext,
+): Promise<void> {
+    const testInfo = test.info();
+    const deadline = Date.now() + UI_PROBE_TIMEOUT_MS;
+    let attempts = 0;
+    for (;;) {
+        attempts += 1;
+        const errorsBefore = testInfo.errors.length;
+        const statusBefore = testInfo.status;
+        let threw = false;
+        try {
+            await flow.uiOracle(context);
+        } catch {
+            threw = true;
+        }
+        const injected = testInfo.errors.length - errorsBefore;
+        if (injected > 0) testInfo.errors.splice(errorsBefore, injected);
+        testInfo.status = statusBefore;
+        if (threw || injected > 0) return;
+        if (Date.now() >= deadline) {
+            throw new Error(
+                `Matrix row ${flow.id}: uiOracle passed against the pre-action fixture after ` +
+                    `${attempts} attempts over ${UI_PROBE_TIMEOUT_MS}ms, so it cannot tell this ` +
+                    `row's effect apart from the UI never changing at all.`,
+            );
+        }
+        await context.page.waitForTimeout(UI_PROBE_RETRY_INTERVAL_MS);
+    }
+}
+
 /** Runs one oracle leg without allowing a runtime assertion error to suppress later legs. */
 async function runOracleLeg(label: string, oracle: FlowStep, context: FlowContext): Promise<void> {
     try {
@@ -316,6 +370,8 @@ export async function runFlow(flow: FlowRow, fixture: FixtureWorkspaceFixture): 
             before: await captureBeforeState(fixtureWorkspace),
         };
 
+        await assertUiOracleRejectsPreActionState(flow, context);
+
         let actionError: unknown;
         try {
             await flow.action(context);
@@ -352,6 +408,16 @@ export const FLOW_MATRIX: readonly FlowRow[] = [
             await changesPanel.commit();
         },
         uiOracle: async ({ changesPanel }) => {
+            // The committed row disappearing is the result, but an unrendered tree satisfies that
+            // just as well, so the dirty paths the commit did NOT take are asserted as the positive
+            // evidence that the tree rendered at all. `localGitOracle` below pins their porcelain
+            // status as unchanged, so they are still dirty and still listed. Asserting them first
+            // also lets their auto-retry absorb the tree's render latency.
+            for (const repositoryPath of DIRTY_VISIBLE_PATHS.filter(
+                (entry) => entry !== COMMITTED_PATH,
+            )) {
+                await expect.soft(changesPanel.changedFileRow(repositoryPath)).toBeVisible();
+            }
             await expect.soft(changesPanel.changedFileRow(COMMITTED_PATH)).toHaveCount(0);
         },
         localGitOracle: async ({ fixtureWorkspace, before }) => {

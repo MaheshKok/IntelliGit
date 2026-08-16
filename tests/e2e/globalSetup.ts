@@ -20,6 +20,5 @@ const REPO_ROOT = path.resolve(__dirname, "..", "..");
 
 export default async function globalSetup(): Promise<void> {
     const executablePath = await resolveVSCodeExecutable(REPO_ROOT);
-    // eslint-disable-next-line no-console
     console.log(`[e2e globalSetup] VS Code ready at ${executablePath}`);
 }

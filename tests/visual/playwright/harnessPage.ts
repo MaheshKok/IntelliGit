@@ -1,9 +1,8 @@
 import fs from "node:fs";
-import { readFile } from "node:fs/promises";
 import path from "node:path";
 
 import { test as base, expect } from "@playwright/test";
-import type { Browser, Page, Route } from "@playwright/test";
+import type { Browser, Page } from "@playwright/test";
 
 import type { WebviewContextId } from "../../../src/e2e/webviewCapture";
 import type { WebviewI18nPayload } from "../../../src/webviews/i18n";
@@ -18,7 +17,7 @@ import { installAcquireVsCodeApiStub } from "../harness/acquireVsCodeApiStub";
 import {
     assertNoNetworkEscapes,
     hostFixtureIdForProject,
-    resolveDistAssetPath,
+    routeHarnessRequest,
 } from "./visualHarnessUtils";
 import { prepareVisualEnvironment } from "./visualEnvironmentGuard";
 import { settleRootSubtree } from "./settleRootSubtree";
@@ -101,15 +100,6 @@ function readJson<T>(filePath: string): T {
     return JSON.parse(fs.readFileSync(filePath, "utf8")) as T;
 }
 
-/** Returns the content type needed for a deterministic in-process asset response. */
-function contentTypeFor(filePath: string): string {
-    if (filePath.endsWith(".html")) return "text/html; charset=utf-8";
-    if (filePath.endsWith(".css")) return "text/css; charset=utf-8";
-    if (filePath.endsWith(".js")) return "text/javascript; charset=utf-8";
-    if (filePath.endsWith(".map")) return "application/json; charset=utf-8";
-    return "application/octet-stream";
-}
-
 /** Creates the browser init script from the single Phase 3-ii stub implementation. */
 function acquireVsCodeApiInitScript(): string {
     const stubSource = installAcquireVsCodeApiStub.toString();
@@ -142,52 +132,6 @@ function loadWebviewFixture(
         );
     }
     return fixture;
-}
-
-/** Routes one synthetic-origin request without allowing any network fallback. */
-async function routeHarnessRequest(
-    route: Route,
-    documentHtml: () => string | undefined,
-    networkEscapes: string[],
-): Promise<void> {
-    const requestUrl = new URL(route.request().url());
-    if (requestUrl.origin !== HARNESS_ORIGIN) {
-        networkEscapes.push(requestUrl.href);
-        await route.abort("failed");
-        return;
-    }
-
-    if (requestUrl.pathname === "/") {
-        const html = documentHtml();
-        if (html === undefined) {
-            await route.abort("failed");
-            return;
-        }
-        await route.fulfill({
-            status: 200,
-            contentType: "text/html; charset=utf-8",
-            body: html,
-        });
-        return;
-    }
-
-    if (requestUrl.pathname.startsWith("/dist/")) {
-        const filePath = resolveDistAssetPath(DIST_DIR, requestUrl.pathname);
-        if (filePath === undefined || !fs.existsSync(filePath)) {
-            // A missing or unsafe asset is a failed request, not an HTTP 404 that
-            // could leave a blank page looking like a valid visual result.
-            await route.abort("failed");
-            return;
-        }
-        await route.fulfill({
-            status: 200,
-            contentType: contentTypeFor(filePath),
-            body: await readFile(filePath),
-        });
-        return;
-    }
-
-    await route.abort("failed");
 }
 
 /**
@@ -239,7 +183,7 @@ export const test = base.extend<VisualFixtures, VisualWorkerFixtures>({
             pageExceptions.push(error.stack ?? error.message);
         });
         await page.route("**/*", (route) =>
-            routeHarnessRequest(route, () => documentHtml, networkEscapes),
+            routeHarnessRequest(route, HARNESS_ORIGIN, DIST_DIR, () => documentHtml, networkEscapes),
         );
 
         // This runs before every navigation and delegates the implementation to

@@ -6,20 +6,18 @@ import type { Page } from "@playwright/test";
 import type { WebviewCatalog } from "../../src/webviews/i18n/catalogs";
 import { WEBVIEW_CATALOG_LOCALES } from "../../src/webviews/i18n/catalogs";
 import { HOST_CONTEXT_FIXTURES, HOST_CONTEXT_IDS } from "./hostContextFixtures";
-import {
-    describeDiff,
-    diffFindings,
-    isClean,
-    normalizeFindingKeys,
-} from "./oracles/findingsBaseline";
-import { baselineFile } from "./oracles/findingsBaselineFile";
-import { collectCatalogStrings } from "./oracles/catalogSources";
-import { findClippingLosses, findZeroSizeTargets } from "./oracles/geometry";
-import { collectSourceStrings } from "./oracles/truncationSources";
+import { oracles } from "../oracles";
 import { collectAccessibleNameFindings } from "./playwright/accessibleNameFindings";
 import type { CollectedOracleInputs } from "./playwright/collectOracleInputs";
 import { collectOracleInputs } from "./playwright/collectOracleInputs";
 import { expect, test } from "./playwright/harnessPage";
+
+const { describeDiff, diffFindings, isClean, normalizeFindingKeys } =
+    oracles.get("findingsBaseline");
+const { baselineFile } = oracles.get("findingsBaselineFile");
+const { collectCatalogStrings } = oracles.get("catalogSources");
+const { findClippingLosses, findZeroSizeTargets } = oracles.get("geometry");
+const { collectSourceStrings } = oracles.get("truncationSources");
 
 const FIXTURES_DIRECTORY = resolve(__dirname, "fixtures");
 // Contrast is intentionally excluded: catalog swaps change text geometry, not colors, so the

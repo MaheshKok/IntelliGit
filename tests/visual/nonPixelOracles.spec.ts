@@ -1,21 +1,18 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-import { findContrastViolations } from "./oracles/contrast";
-import {
-    contrastKey,
-    describeDiff,
-    diffFindings,
-    isClean,
-    normalizeFindingKeys,
-} from "./oracles/findingsBaseline";
-import { baselineFile } from "./oracles/findingsBaselineFile";
-import { findClippingLosses, findZeroSizeTargets } from "./oracles/geometry";
-import { collectSourceStrings } from "./oracles/truncationSources";
+import { oracles } from "../oracles";
 import { HOST_CONTEXT_FIXTURES, HOST_CONTEXT_IDS } from "./hostContextFixtures";
 import { collectAccessibleNameFindings } from "./playwright/accessibleNameFindings";
 import { collectOracleInputs } from "./playwright/collectOracleInputs";
 import { expect, test } from "./playwright/harnessPage";
+
+const { findContrastViolations } = oracles.get("contrast");
+const { contrastKey, describeDiff, diffFindings, isClean, normalizeFindingKeys } =
+    oracles.get("findingsBaseline");
+const { baselineFile } = oracles.get("findingsBaselineFile");
+const { findClippingLosses, findZeroSizeTargets } = oracles.get("geometry");
+const { collectSourceStrings } = oracles.get("truncationSources");
 
 type Bucket = "clipping" | "contrast" | "accessibleNames" | "zeroSize";
 const BUCKETS: readonly Bucket[] = ["clipping", "contrast", "accessibleNames", "zeroSize"];

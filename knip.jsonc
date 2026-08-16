@@ -14,7 +14,12 @@
         "src/webviews/react/CommitInfoApp.tsx",
         "src/webviews/react/merge-editor/MergeEditorApp.tsx",
         "src/webviews/react/merge-conflicts-session/MergeConflictSessionApp.tsx",
-        "src/webviews/react/UndockedApp.tsx"
+        "src/webviews/react/UndockedApp.tsx",
+        // The negative TypeScript project invokes these fixtures directly; without an entry,
+        // Knip mistakes intentionally standalone malformed inputs for dead files.
+        "tests/typecheck-negative/fixtures/**/*.ts",
+        "tests/e2e/flows/negative/leg.negative.ts",
+        "tests/visual/negative/screenshotComparator.negative.ts"
     ],
     "project": ["src/**/*.{ts,tsx}", "scripts/**/*.{js,ts}", "tests/**/*.{ts,tsx}"],
     "ignoreFiles": ["src/webviews/react/css-modules.d.ts"],

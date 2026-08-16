@@ -57,7 +57,6 @@ export async function enforceSymlinkContainment(
     // Applied only after every symlink passed the audit above -- a partially rebased copy left
     // behind by a thrown error would be a worse state than an untouched, fully verbatim one.
     for (const rebase of rebases) {
-        // eslint-disable-next-line no-await-in-loop -- each rebase replaces one symlink; sequential keeps a failure attributable to a specific link.
         await rebaseSymlink(rebase.linkPath, rebase.newTarget);
     }
     return rebases.map((rebase) => rebase.relativePath);

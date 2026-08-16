@@ -1,4 +1,5 @@
 import type { HostFixture } from "./types";
+import { serializeHostFixture } from "./hostFixtureFile";
 
 type ComparableValue = string | number | readonly string[] | Readonly<Record<string, string>>;
 
@@ -10,6 +11,10 @@ export const HOST_FIXTURE_FIELD_INVENTORY = {
     topLevel: {
         compared: ["provenance", "documentElement", "body"],
         excluded: [],
+        staleness: {
+            compared: ["provenance", "documentElement", "body"],
+            excluded: [],
+        },
     },
     provenance: {
         compared: [
@@ -21,6 +26,19 @@ export const HOST_FIXTURE_FIELD_INVENTORY = {
             "themeKind",
         ],
         excluded: ["vscodeVersion", "vscodeCommit"],
+        staleness: {
+            compared: [
+                "captureSchemaVersion",
+                "vscodeVersion",
+                "vscodeCommit",
+                "platform",
+                "themeId",
+                "themeName",
+                "requestedTheme",
+                "themeKind",
+            ],
+            excluded: [],
+        },
     },
     // The payload sections are inventoried for the same reason as the rest: a top-level ratchet
     // only sees `provenance`/`documentElement`/`body`, so a NEW sub-field here -- which is where an
@@ -29,10 +47,18 @@ export const HOST_FIXTURE_FIELD_INVENTORY = {
     documentElement: {
         compared: ["classList", "dataset", "styleCssText"],
         excluded: [],
+        staleness: {
+            compared: ["classList", "dataset", "styleCssText"],
+            excluded: [],
+        },
     },
     body: {
         compared: ["classList", "dataset"],
         excluded: [],
+        staleness: {
+            compared: ["classList", "dataset"],
+            excluded: [],
+        },
     },
 } as const;
 
@@ -195,6 +221,146 @@ export function compareHostFixtures(
     // `vscodeVersion` is excluded because the pinned and Insiders captures are expected to resolve
     // different builds, even when the host payload is unchanged.
     // `vscodeCommit` is excluded because those builds necessarily have different upstream commits.
+
+    return differences;
+}
+
+function utf8Bytes(value: string | Uint8Array): Uint8Array {
+    return typeof value === "string" ? new TextEncoder().encode(value) : value;
+}
+
+function bytesEqual(left: Uint8Array, right: Uint8Array): boolean {
+    return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
+/**
+ * Compares a committed artifact's bytes with a freshly recaptured fixture.
+ *
+ * This is deliberately separate from `compareHostFixtures`: the pinned-vs-Insiders check is
+ * expected to ignore build provenance, while a staleness recapture uses the same pinned build as
+ * the artifact and must report `vscodeVersion` and `vscodeCommit` drift. The serialized bytes are
+ * checked after the parsed fields so indentation, key order, and the trailing newline cannot drift
+ * without a named failure.
+ */
+export function compareHostFixtureStaleness(
+    committedBytes: string | Uint8Array,
+    capturedFixture: HostFixture,
+): readonly HostFixtureDifference[] {
+    const committedText =
+        typeof committedBytes === "string"
+            ? committedBytes
+            : new TextDecoder().decode(committedBytes);
+    // A truncated or non-object artifact must arrive as a named difference, not as a `SyntaxError`
+    // from the parse or a `TypeError` from the first `.provenance` dereference. The nightly sweep
+    // formats differences; a raw throw reaches it as a stack trace that names this file rather than
+    // the artifact that is actually broken. The parse itself is guarded too -- shape-checking the
+    // result cannot help when `JSON.parse` never returns.
+    const parsed: unknown = ((): unknown => {
+        try {
+            return JSON.parse(committedText);
+        } catch {
+            return undefined;
+        }
+    })();
+    if (typeof parsed !== "object" || parsed === null || !("provenance" in parsed)) {
+        return [
+            {
+                field: "committedFixture.shape",
+                committedValue: committedText,
+                capturedValue: serializeHostFixture(capturedFixture),
+            },
+        ];
+    }
+    const committedFixture = parsed as HostFixture;
+    const differences: HostFixtureDifference[] = [];
+
+    recordDifference(
+        differences,
+        "provenance.captureSchemaVersion",
+        committedFixture.provenance.captureSchemaVersion,
+        capturedFixture.provenance.captureSchemaVersion,
+    );
+    recordDifference(
+        differences,
+        "provenance.vscodeVersion",
+        committedFixture.provenance.vscodeVersion,
+        capturedFixture.provenance.vscodeVersion,
+    );
+    recordDifference(
+        differences,
+        "provenance.vscodeCommit",
+        committedFixture.provenance.vscodeCommit,
+        capturedFixture.provenance.vscodeCommit,
+    );
+    recordDifference(
+        differences,
+        "provenance.platform",
+        committedFixture.provenance.platform,
+        capturedFixture.provenance.platform,
+    );
+    recordDifference(
+        differences,
+        "provenance.themeId",
+        committedFixture.provenance.themeId,
+        capturedFixture.provenance.themeId,
+    );
+    recordDifference(
+        differences,
+        "provenance.themeName",
+        committedFixture.provenance.themeName,
+        capturedFixture.provenance.themeName,
+    );
+    recordDifference(
+        differences,
+        "provenance.requestedTheme",
+        committedFixture.provenance.requestedTheme,
+        capturedFixture.provenance.requestedTheme,
+    );
+    recordDifference(
+        differences,
+        "provenance.themeKind",
+        committedFixture.provenance.themeKind,
+        capturedFixture.provenance.themeKind,
+    );
+    recordDifference(
+        differences,
+        "documentElement.classList",
+        committedFixture.documentElement.classList,
+        capturedFixture.documentElement.classList,
+    );
+    recordDifference(
+        differences,
+        "documentElement.dataset",
+        committedFixture.documentElement.dataset,
+        capturedFixture.documentElement.dataset,
+    );
+    recordDifference(
+        differences,
+        "documentElement.styleCssText",
+        committedFixture.documentElement.styleCssText,
+        capturedFixture.documentElement.styleCssText,
+    );
+    recordDifference(
+        differences,
+        "body.classList",
+        committedFixture.body.classList,
+        capturedFixture.body.classList,
+    );
+    recordDifference(
+        differences,
+        "body.dataset",
+        committedFixture.body.dataset,
+        capturedFixture.body.dataset,
+    );
+
+    const serializedCapturedFixture = serializeHostFixture(capturedFixture);
+    if (!bytesEqual(utf8Bytes(committedBytes), utf8Bytes(serializedCapturedFixture))) {
+        differences.push({
+            field: "serializedBytes",
+            committedValue: committedText,
+            capturedValue: serializedCapturedFixture,
+        });
+    }
 
     return differences;
 }

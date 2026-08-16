@@ -3,22 +3,21 @@ import { dirname, resolve } from "node:path";
 
 import type { Browser } from "@playwright/test";
 
-import {
+import { oracles } from "../../oracles";
+import type { ProvenanceResult } from "../oracles/pinnedBaseImage";
+import type { VisualEnvironment } from "../oracles/visualEnvironment";
+import { captureVisualEnvironment } from "./captureVisualEnvironment";
+
+const {
     BASELINE_ENVIRONMENT_FILE,
     VISUAL_ENVIRONMENT_SCALAR_FIELDS,
     describeEnvironmentDrift,
     diffEnvironment,
     normalizeEnvironment,
-    type VisualEnvironment,
-} from "../oracles/visualEnvironment";
-import { BASELINE_PLATFORM, UPDATE_ENV_VAR, baselineFile } from "../oracles/findingsBaselineFile";
-import {
-    assertPinnedProvenance,
-    checkPinnedProvenance,
-    readPinnedBaseImage,
-    type ProvenanceResult,
-} from "../oracles/pinnedBaseImage";
-import { captureVisualEnvironment } from "./captureVisualEnvironment";
+} = oracles.get("visualEnvironment");
+const { BASELINE_PLATFORM, UPDATE_ENV_VAR, baselineFile } = oracles.get("findingsBaselineFile");
+const { assertPinnedProvenance, checkPinnedProvenance, readPinnedBaseImage } =
+    oracles.get("pinnedBaseImage");
 
 const ENVIRONMENT_PATH = resolve(__dirname, "../../..", BASELINE_ENVIRONMENT_FILE);
 const PIN_PATH = resolve(__dirname, "../../..", "tests/e2e/docker/base-image.txt");

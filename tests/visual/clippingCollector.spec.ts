@@ -1,7 +1,9 @@
 import { expect, test } from "./playwright/harnessPage";
 import { collectOracleInputs } from "./playwright/collectOracleInputs";
-import { findClippingLosses } from "./oracles/geometry";
+import { oracles } from "../oracles";
 import type { ClippingInput } from "./oracles/geometry";
+
+const { findClippingLosses } = oracles.get("geometry");
 
 /**
  * `text-overflow` is not an inherited property, so the collector's `textOverflow !== "ellipsis"`

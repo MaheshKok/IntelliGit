@@ -40,7 +40,6 @@ export async function snapshotWorktrees(
         // The primary worktree's admin directory is the common directory, already walked
         // separately; only linked worktrees (every block after the first) get their own resolved
         // git-dir and their own entry in the private-state map.
-        // eslint-disable-next-line no-await-in-loop -- each linked worktree's own git-dir resolution is independent and small in count.
         const gitDir = index === 0 ? commonDir : await resolveGitDir(worktreePath, env);
         if (index > 0) linkedGitDirs.set(worktreePath, gitDir);
         infos.push(buildWorktreeInfo(worktreePath, gitDir, fields));

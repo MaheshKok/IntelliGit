@@ -760,9 +760,18 @@
         inset 0 calc(-1 * var(--merge-hunk-boundary-width)) 0 0 var(--merge-hunk-boundary),
         inset 0 0 0 1px color-mix(in srgb, var(--vscode-focusBorder, #4ea1ff) 16%, transparent);
 }
+/* Sized so the glyph's FONT box fits the 24px .action-btn, not just its line box. A text range's
+   client rect is the font box (ascent+descent), never `line-height` -- measured at 29px for a
+   22.5px glyph, i.e. 5px above and 4px below a 20px line box. Where an action row sits flush
+   against a scrolling ancestor's top edge, as the shelf-conflict editor's first hunk does, that
+   overhang leaves the container and is real clipping. It survived review only because the
+   fixtures were captured on macOS: `--vscode-editor-font-family` resolves to Menlo there and
+   'Droid Sans Mono' on Linux, and the platforms' row metrics differ enough to hide it.
+   18px keeps the font box (~23.2px) inside the button on any font, which is an invariant rather
+   than a number tuned against one platform's metrics. */
 .hunk-action-glyph {
     font-family: var(--vscode-editor-font-family, monospace);
-    font-size: 22.5px;
+    font-size: 18px;
     font-weight: 700;
     line-height: 20px;
 }

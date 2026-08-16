@@ -1,10 +1,12 @@
 import { expect } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
 
-import { classifyAccessibleName } from "../oracles/accessibleNameVerdict";
-import { normalizeFindingKeys } from "../oracles/findingsBaseline";
-import { matchTruncatedRendering } from "../oracles/truncationSources";
+import { oracles } from "../../oracles";
 import type { CollectedOracleInputs } from "./collectOracleInputs";
+
+const { classifyAccessibleName } = oracles.get("accessibleNameVerdict");
+const { normalizeFindingKeys } = oracles.get("findingsBaseline");
+const { matchTruncatedRendering } = oracles.get("truncationSources");
 
 type RenderedText = CollectedOracleInputs["renderedTexts"][number];
 

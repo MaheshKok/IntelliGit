@@ -56,12 +56,22 @@ jobs:
                   path: |
                       ~/.bun/install/cache
                       node_modules
+                      ~/.cache/ms-playwright
                   key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
                   restore-keys: |
                       ${{ runner.os }}-bun-
 
             - name: Install dependencies
               run: bun install --frozen-lockfile
+
+            # `test:coverage` below is the only place vitest runs, and one of its specs
+            # (tests/unit/visual/screenshotComparatorMeta.test.ts) spawns a real Playwright run to
+            # prove the pixel comparator rejects a mismatched baseline. Without a browser that spec
+            # cannot execute at all, so the assertion it makes would be a prediction rather than a
+            # result. Only chromium is installed: it is the sole browser any spec in this job uses.
+            # The Playwright version lives in bun.lock, so the cache key above already scopes this.
+            - name: Install the Playwright browser the comparator proof runs against
+              run: bunx playwright install --with-deps chromium
 
             - name: Check formatting
               run: bun run format:check
@@ -361,14 +371,27 @@ jobs:
 
             - name: Create GitHub Release and upload VSIX
               if: steps.version-check.outputs.version_changed == 'true' && steps.github-release-check.outputs.release_exists != 'true'
-              run: gh release create "v$NEW_VERSION" *.vsix --generate-notes
+              run: |
+                  release_notes=()
+                  if [ "${{ needs.e2e-full.result }}" != "success" ]; then
+                    release_notes+=(--notes "E2E gate override: this release was published with a non-successful e2e-full gate via the skip_e2e_gate override.")
+                  fi
+                  gh release create "v$NEW_VERSION" *.vsix --generate-notes "${release_notes[@]}"
               env:
                   NEW_VERSION: ${{ steps.version-check.outputs.new_version }}
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
             - name: Update GitHub Release asset
               if: steps.version-check.outputs.version_changed == 'true' && steps.github-release-check.outputs.release_exists == 'true'
-              run: gh release upload "v$NEW_VERSION" *.vsix --clobber
+              run: |
+                  gh release upload "v$NEW_VERSION" *.vsix --clobber
+                  if [ "${{ needs.e2e-full.result }}" != "success" ]; then
+                    override_notice="E2E gate override: this release was published with a non-successful e2e-full gate via the skip_e2e_gate override."
+                    current_notes="$(gh release view "v$NEW_VERSION" --json body --jq .body)"
+                    if [[ "$current_notes" != *"$override_notice"* ]]; then
+                      gh release edit "v$NEW_VERSION" --notes "${current_notes}"$'\n\n'"${override_notice}"
+                    fi
+                  fi
               env:
                   NEW_VERSION: ${{ steps.version-check.outputs.new_version }}
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
