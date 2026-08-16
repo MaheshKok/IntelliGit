@@ -45,13 +45,17 @@ export default defineConfig({
             // metrics down and one up is an instrument change; lost coverage
             // does not improve a metric. 286 of 286 files pass either way.
             //
-            // `functions` deliberately stays at its old floor rather than
-            // following the observed 85.95 up: that would be an increase, and
-            // the rule above requires a CI run before taking one. Ratchet it
-            // once this branch's `build` job reports its number.
+            // `functions` is now ratcheted on that CI number rather than on the
+            // local one. PR #188's `build` job reported 84.98 / 78.31 / 85.90 /
+            // 87.65 (stmts / branch / funcs / lines) against local 85.01 /
+            // 78.42 / 85.98 / 87.67, so CI is the lower side on all four and is
+            // what the floors are set from. 85.90 - 0.8 puts `functions` at
+            // 85.1, restoring the same margin the other three already carry
+            // (0.68, 0.61, 0.65) instead of the 2.9pp of slack it inherited
+            // from the pre-upgrade instrument.
             thresholds: {
                 lines: 87.0,
-                functions: 83.0,
+                functions: 85.1,
                 branches: 77.7,
                 statements: 84.3,
             },

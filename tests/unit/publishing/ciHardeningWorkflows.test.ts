@@ -46,7 +46,13 @@ function extractStepBlock(job: string, stepName: string): string {
  * them, so what is left worth asserting here is the RELATIONSHIP between refs.
  */
 function pinnedRefsFor(workflow: string, actionPath: string): readonly string[] {
-    const pattern = new RegExp(`uses:\\s*${actionPath.replace(/[/.]/g, "\\$&")}@([0-9a-f]{40})\\b`, "g");
+    // Escapes every regex metacharacter, not the two an action path happens to contain today.
+    // The earlier `[/.]` class left `\` among others live, which CodeQL flagged as incomplete
+    // sanitization -- and the practical failure is worse than a crash: an unescaped quantifier
+    // silently matches a DIFFERENT action, so the helper answers confidently about a line the
+    // workflow never had.
+    const escapedPath = actionPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const pattern = new RegExp(`uses:\\s*${escapedPath}@([0-9a-f]{40})\\b`, "g");
     return [...workflow.matchAll(pattern)].map((match) => match[1]);
 }
 
@@ -57,6 +63,39 @@ function jobPermissionEntries(job: string): readonly string[] {
 }
 
 describe("CI quality hardening workflows", () => {
+    it("counts only the action it was asked about, whatever characters the path contains", () => {
+        // `pinnedRefsFor` interpolates its argument into a regular expression, so any regex
+        // metacharacter left unescaped stops being a literal. The dangerous direction is not the
+        // crash -- it is the silent FALSE POSITIVE below, where `a+b` compiles to "one or more `a`
+        // then `b`" and happily matches a `aaab` that no workflow ever mentioned. Every caller in
+        // this file passes a literal today, so nothing is currently mis-measured; this pins the
+        // helper's contract rather than today's luck, because the day someone asks it about an
+        // action whose name carries a `.` or a `+`, a wrong answer here reads as a passing gate.
+        // The two refs carry DIFFERENT shas deliberately. Sharing one would make matching the
+        // decoy and matching the real line produce an identical array, and the case would pass
+        // against the bug it is here to catch.
+        const decoySha = "a".repeat(40);
+        const realSha = "b".repeat(40);
+        const workflow = `      - uses: aaab@${decoySha}\n      - uses: a+b@${realSha}\n`;
+
+        expect(
+            pinnedRefsFor(workflow, "a+b"),
+            "a metacharacter in the requested path must match literally, not as a quantifier",
+        ).toEqual([realSha]);
+
+        // Backslash is asserted by name because it is the character the alert named, and the
+        // escape above is an ENUMERATED class -- a later trim of it would go green on the `+`
+        // case alone and quietly reopen the same finding. Unescaped, `a\b` is a word-boundary
+        // assertion, so it matches the bare `a@...` decoy that follows no `b` at all.
+        const boundaryDecoy = "c".repeat(40);
+        const boundaryWorkflow = `      - uses: a@${boundaryDecoy}\n      - uses: a\\b@${realSha}\n`;
+
+        expect(
+            pinnedRefsFor(boundaryWorkflow, "a\\b"),
+            "a backslash must match literally, not compile to a word-boundary assertion",
+        ).toEqual([realSha]);
+    });
+
     it("packages one verified VSIX and checksum before publishing the build artifact", () => {
         const buildJob = extractJobBlock(readRepositoryFile(".github/workflows/publish.yml"), "build");
         const packageStep = extractStepBlock(buildJob, "Package extension");
