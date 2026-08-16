@@ -277,6 +277,22 @@ describe("GitHubProvider", () => {
         expect(snapshot.error).toBe("network down");
     });
 
+    it("redacts the session token from the error it posts when both endpoints reject", async () => {
+        // HttpError embeds the first 200 bytes of the response body, so an intercepting proxy
+        // whose error page echoes the request headers puts the token straight into the snapshot.
+        const provider = new GitHubProvider(
+            vi.fn(async () => {
+                throw new Error("HTTP 502: upstream echoed the request headers, sent=gh-token");
+            }),
+        );
+
+        const snapshot = await provider.getChecks(githubRef, "abc1234");
+
+        expect(snapshot.state).toBe("unavailable");
+        expect(snapshot.error).not.toContain("gh-token");
+        expect(snapshot.error).toContain("***");
+    });
+
     it("still normalizes when only one endpoint rejects", async () => {
         const fetchJson: FetchJson = vi.fn(async (url: string) => {
             if (url.includes("/statuses")) throw new Error("statuses 500");

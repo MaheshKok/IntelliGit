@@ -12,6 +12,7 @@ import {
     compactText,
     isCiCdCheckItem,
     readString,
+    redactSecret,
     summaryForState,
     summaryForItems,
     unavailableSnapshot,
@@ -141,7 +142,10 @@ export class GitHubProvider implements CommitChecksProvider {
         ]);
 
         if (checkRunsResult.status === "rejected" && statusesResult.status === "rejected") {
-            return unavailableSnapshot(hash, getErrorMessage(checkRunsResult.reason));
+            // getErrorMessage redacts URL-embedded credentials; redactSecret strips the
+            // session token in case a transport error echoed the Authorization header.
+            const message = getErrorMessage(checkRunsResult.reason);
+            return unavailableSnapshot(hash, redactSecret(message, session.accessToken));
         }
 
         return normalizeGithubChecks(
