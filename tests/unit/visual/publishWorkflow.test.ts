@@ -969,13 +969,54 @@ describe("publish visual workflow", () => {
         expect(workflow).toMatch(/skip_e2e_gate:\n\s+description:.*\n\s+type: boolean/);
     });
 
-    it("runs e2e-full only for main pushes and manual dispatches", () => {
-        const e2eFullJob = extractJobBlock(readFileSync(WORKFLOW_PATH, "utf8"), "e2e-full");
+    // The hole this closes, measured: 0.25.4's push to main went red in `e2e-full` behind a pull
+    // request that had been green, because the job carried
+    // `if: github.ref == 'refs/heads/main' && (...)` and so reported `skipping` on every pull
+    // request. A gate that first runs after the merge cannot stop the merge -- and no assertion in
+    // this file noticed, because every one of them read the job's steps rather than when it runs.
+    it("runs the release gate on pull requests against main, not only after the merge", () => {
+        const workflow = readFileSync(WORKFLOW_PATH, "utf8");
+        const e2eFullJob = extractJobBlock(workflow, "e2e-full");
 
         expect(e2eFullJob, "publish.yml must define e2e-full").not.toBe("");
-        expect(e2eFullJob, "e2e-full must be guarded off pull_request").toContain(
-            "if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')",
+        expect(workflow, "publish.yml must run on pull requests against main").toMatch(
+            /\n {4}pull_request:\n {8}branches:\n {12}- main\n/,
         );
+        // Job-level keys sit at eight spaces; a step's own `if: failure()` sits deeper. Matching
+        // the shallow one keeps this about when the JOB runs, which is the whole finding.
+        expect(
+            e2eFullJob.match(/^ {8}if:.*$/m)?.[0] ?? "",
+            "no condition on e2e-full may narrow it away from pull requests again",
+        ).toBe("");
+    });
+
+    // The second half of the same guarantee. `e2e-full` gating pull requests is only worth
+    // anything if the identical suite is not ALSO running as a second, non-gating job: that was
+    // the arrangement this replaced, where a 45-minute container ran twice per push to main and
+    // the green one nobody gated on sat next to the red one nobody saw before merging.
+    it("runs the flow suite in exactly one workflow per event", () => {
+        const unshardedRunners = readdirSync(WORKFLOWS_DIRECTORY)
+            .filter((entry) => entry.endsWith(".yml") || entry.endsWith(".yaml"))
+            .filter((entry) =>
+                /run: \.\/tests\/e2e\/docker\/run\.sh .*bun run test:e2e(?! -- --shard=)/.test(
+                    readFileSync(resolve(WORKFLOWS_DIRECTORY, entry), "utf8"),
+                ),
+            );
+
+        expect(
+            new Set(unshardedRunners),
+            "a third workflow running the unsharded suite is a third answer to which one gates",
+        ).toEqual(new Set(["publish.yml", "e2e.yml"]));
+
+        const prTier = readFileSync(resolve(WORKFLOWS_DIRECTORY, "e2e.yml"), "utf8");
+        expect(
+            prTier,
+            "the non-gating tier must exclude the base publish.yml already gates",
+        ).toMatch(/\n {4}pull_request:\n {8}branches-ignore:\n {12}- main\n/);
+        expect(
+            prTier,
+            "a push to main is already the gating run, so this tier must not repeat it",
+        ).not.toMatch(/^ {4}push:/m);
     });
 
     it("keeps the scheduled nightly workflow non-gating", () => {

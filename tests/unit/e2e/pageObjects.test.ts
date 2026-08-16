@@ -47,9 +47,83 @@ describe("Workbench", () => {
         // presses is the assertion -- checking only that *a* press happened stays green through it.
         expect(keyboard.press).toHaveBeenCalledTimes(2);
         expect(keyboard.press).toHaveBeenCalledWith(expectedShortcut);
-        expect(commandInput.fill).toHaveBeenCalledWith(">View: Show IntelliGit");
+        // The explicit bound is half the payload: on Playwright's 30s default, a step that runs
+        // after the palette has closed burns the whole budget on a dead element instead of failing
+        // fast enough for the next attempt to re-open the palette and get on with it.
+        expect(commandInput.fill).toHaveBeenCalledWith(
+            ">View: Show IntelliGit",
+            expect.objectContaining({ timeout: expect.any(Number) }),
+        );
         expect(option.click).toHaveBeenCalledOnce();
         await expect(workbench.readVisibleNotifications()).resolves.toEqual(["Committed"]);
+    });
+
+    /**
+     * A palette that always opens on the chord, and whose `step` then rejects `vanishings` times
+     * before settling -- the widget going away under an operation already in flight. Modelled as a
+     * count rather than a single rejection because the finding is what the NEXT attempt does, which
+     * one rejection cannot show.
+     */
+    function closingPalette(
+        step: "fill" | "click",
+        vanishings: number,
+    ): {
+        page: Page;
+        keyboard: { press: ReturnType<typeof vi.fn> };
+        commandInput: { fill: ReturnType<typeof vi.fn> };
+        option: { click: ReturnType<typeof vi.fn> };
+    } {
+        let remaining = vanishings;
+        const closes = (): Promise<void> =>
+            remaining-- > 0
+                ? Promise.reject(new Error(`locator.${step}: Timeout 3000ms exceeded`))
+                : Promise.resolve();
+        const settles = (): Promise<void> => Promise.resolve();
+        const keyboard = { press: vi.fn() };
+        const commandInput = {
+            waitFor: vi.fn().mockResolvedValue(undefined),
+            fill: vi.fn(step === "fill" ? closes : settles),
+        };
+        const option = {
+            click: vi.fn(step === "click" ? closes : settles),
+            allTextContents: vi.fn().mockResolvedValue([]),
+        };
+        const getByRole = vi.fn((role: string) => (role === "textbox" ? commandInput : option));
+        return { page: { keyboard, getByRole } as unknown as Page, keyboard, commandInput, option };
+    }
+
+    // The container failure this exists for, measured on runs 31962801742 and 31962801586 -- both
+    // at `matrix.ts:421`, the `View: Toggle Panel` that follows the one which opened the panel.
+    // Opening the panel starts a terminal, bash attaches a beat later and takes focus, and VS Code
+    // dismisses the quick input on blur. The palette therefore disappears mid-sequence, and the
+    // step already in flight spends its entire timeout on an element that is still attached and no
+    // longer visible -- which is why the run reported `It offered: <no options>` about a list that
+    // had been on screen moments earlier. Both instants are asserted, because recovering from one
+    // does not imply recovering from the other: the e2e job died in `fill`, e2e-full in `click`.
+    it.each([["typing into it", "fill"] as const, ["selecting from it", "click"] as const])(
+        "re-opens the palette when it closes while %s",
+        async (_symptom, step) => {
+            const { page, keyboard, commandInput, option } = closingPalette(step, 1);
+
+            await new Workbench(page).runCommand("View: Toggle Panel");
+
+            // The second chord is the finding. Retrying only the failed step would keep driving the
+            // widget that already went away, which is the timeout this fixes.
+            expect(keyboard.press, "a closed palette has to be re-opened, not re-driven").toHaveBeenCalledTimes(2);
+            expect(commandInput.fill, "the re-opened palette has to be typed into again").toHaveBeenCalledTimes(2);
+            expect(option.click).toHaveBeenCalledTimes(step === "click" ? 2 : 1);
+        },
+    );
+
+    // Recovery must not become an unbounded loop: a palette that never settles has to reach a real
+    // failure inside the flow's own budget, still carrying the diagnosis of what it was offering.
+    it("gives up after the same bounded number of chords when the palette keeps closing", async () => {
+        const { page, keyboard } = closingPalette("click", Number.POSITIVE_INFINITY);
+
+        await expect(new Workbench(page).runCommand("View: Toggle Panel")).rejects.toThrow(
+            /Failed to select "View: Toggle Panel"/,
+        );
+        expect(keyboard.press).toHaveBeenCalledTimes(5);
     });
 
     it("gives up after a bounded number of chords and rethrows Playwright's own error", async () => {

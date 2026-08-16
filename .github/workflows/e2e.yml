@@ -1,10 +1,15 @@
 name: E2E Flow Suite
 
 on:
-    push:
-        branches:
-            - main
+    # Everything targeting main -- pull requests against it and pushes to it --
+    # is covered by `publish.yml`'s `e2e-full`, which runs the identical suite
+    # and is the job the release chain gates on. Running it here as well would
+    # execute the same 45-minute container twice per event while gating on
+    # neither, so this workflow covers exactly the events that one does not:
+    # stacked pull requests whose base is another feature branch.
     pull_request:
+        branches-ignore:
+            - main
 
 concurrency:
     group: e2e-${{ github.event_name }}-${{ github.ref }}

@@ -2,7 +2,11 @@ import type { FrameLocator, Page } from "@playwright/test";
 
 import enCatalog from "../../../src/webviews/i18n/en.json";
 
-/** How many times the command-palette chord is sent before giving up, and how long each wait is. */
+/**
+ * How many times the whole open-type-select sequence is attempted, and how long each of its steps
+ * waits. Every step is bounded far below Playwright's 30s default on purpose: once the palette has
+ * gone, no length of wait brings it back, and the only recovery is a fresh chord.
+ */
 const PALETTE_ATTEMPTS = 5;
 const PALETTE_TIMEOUT_MS = 3_000;
 
@@ -16,14 +20,25 @@ export class Workbench {
     /**
      * Opens the keyboard-driven command palette and executes the item with the given label.
      *
-     * The chord is re-sent until the palette answers, because VS Code drops the very first one on a
-     * cold window. Measured in the pinned Linux container: the palette does not open on press #1 and
-     * does on press #2, while `document.hasFocus()` already reports `true` before press #1 -- so
-     * this is the workbench's keybinding dispatch not being live yet, not the window lacking focus,
-     * and neither `page.bringToFront()` nor a main-process `win.focus()` changes it. macOS is fast
-     * enough to hide the window entirely; under Xvfb on emulated amd64 it cost four flow rows.
-     * Re-sending is safe: the chord runs "Show All Commands", which re-opens an open palette rather
-     * than toggling it shut.
+     * The whole sequence is retried, not just the opening chord, because the palette can vanish at
+     * any point in it. Two causes, both measured in the pinned Linux container:
+     *
+     * - VS Code drops the very first chord on a cold window. The palette does not open on press #1
+     *   and does on press #2, while `document.hasFocus()` already reports `true` before press #1 --
+     *   so this is the workbench's keybinding dispatch not being live yet, not the window lacking
+     *   focus, and neither `page.bringToFront()` nor a main-process `win.focus()` changes it. macOS
+     *   is fast enough to hide it; under Xvfb on emulated amd64 it cost four flow rows.
+     * - Anything that takes focus asynchronously closes an *already open* palette, because VS Code
+     *   dismisses the quick input on blur. The commit flow toggles the panel open, bash attaches to
+     *   the terminal a beat later and takes focus, and the palette closes with its filtered option
+     *   list already rendered. The step in flight then spends its entire timeout on an element that
+     *   is still attached and no longer visible. Runs 31962801742 and 31962801586 both died on that
+     *   at the same line, the terminal holding focus in each failure snapshot, one in `fill` and
+     *   one in the selecting click -- so recovering from a closed palette cannot be attached to
+     *   whichever step happened to notice it.
+     *
+     * Re-sending the chord is safe: it runs "Show All Commands", which re-opens an open palette
+     * rather than toggling it shut, and `fill` replaces whatever a previous attempt typed.
      */
     public async runCommand(label: string): Promise<void> {
         const modifier = process.platform === "darwin" ? "Meta" : "Control";
@@ -32,25 +47,24 @@ export class Workbench {
         });
 
         for (let attempt = 1; ; attempt++) {
-            await this.page.keyboard.press(`${modifier}+Shift+P`);
             try {
+                await this.page.keyboard.press(`${modifier}+Shift+P`);
                 await commandInput.waitFor({ state: "visible", timeout: PALETTE_TIMEOUT_MS });
-                break;
+                await commandInput.fill(`>${label}`, { timeout: PALETTE_TIMEOUT_MS });
+                await this.pickQuickPick(label, PALETTE_TIMEOUT_MS);
+                return;
             } catch (error) {
-                // Rethrow Playwright's own error on the last attempt: it names the locator it was
-                // waiting for, which a hand-written message would throw away.
+                // Rethrow the last attempt's own error: whichever step it came from, it names the
+                // locator or the palette contents, which a hand-written message would throw away.
                 if (attempt === PALETTE_ATTEMPTS) throw error;
             }
         }
-
-        await commandInput.fill(`>${label}`);
-        await this.pickQuickPick(label);
     }
 
     /** Selects a visible command-palette quick-pick item by its accessible name. */
-    public async pickQuickPick(label: string): Promise<void> {
+    public async pickQuickPick(label: string, timeoutMs?: number): Promise<void> {
         try {
-            await this.page.getByRole("option", { name: label }).click();
+            await this.page.getByRole("option", { name: label }).click({ timeout: timeoutMs });
         } catch (error) {
             // A bare `waiting for getByRole('option')` timeout cannot separate the causes, and
             // they have opposite fixes: a label this page object spelled wrong, versus a command
