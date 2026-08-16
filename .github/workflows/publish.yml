@@ -258,7 +258,7 @@ jobs:
                   sha256sum --check "${checksum_files[0]}"
 
             - name: Run installed package smoke in the pinned container
-              run: ./tests/e2e/docker/run.sh 'bun install --frozen-lockfile && INTELLIGIT_VSCODE_VERSION=${{ matrix.vscode_version }} xvfb-run -a bun run test:package-smoke'
+              run: ./tests/e2e/docker/run.sh 'bun install --frozen-lockfile && bun run build && INTELLIGIT_VSCODE_VERSION=${{ matrix.vscode_version }} xvfb-run -a bun run test:package-smoke'
 
     # Eligibility has no production environment or secrets. It is deliberately
     # split from the publishing job so a same-version change never instantiates

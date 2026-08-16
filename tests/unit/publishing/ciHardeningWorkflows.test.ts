@@ -82,6 +82,9 @@ describe("CI quality hardening workflows", () => {
         expect(packageSmokeJob).toMatch(
             /INTELLIGIT_VSCODE_VERSION=\$\{\{ matrix\.vscode_version \}\} xvfb-run -a bun run test:package-smoke/,
         );
+        expect(packageSmokeJob).toContain(
+            "bun install --frozen-lockfile && bun run build && INTELLIGIT_VSCODE_VERSION=${{ matrix.vscode_version }} xvfb-run -a bun run test:package-smoke",
+        );
         expect(eligibilityJob).toContain("version_changed");
         expect(eligibilityJob).toContain("new_version");
         expect(eligibilityJob).toContain("FORCE_PUBLISH");
