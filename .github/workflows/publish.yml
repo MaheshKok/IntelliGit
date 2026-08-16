@@ -186,10 +186,19 @@ jobs:
                   if-no-files-found: ignore
                   retention-days: 7
 
-    # Same-SHA release gate for the complete flow suite. Pull requests retain
-    # the settled PR E2E tier in `.github/workflows/e2e.yml`.
+    # The flow suite, and the same-SHA gate the release chain below waits on.
+    #
+    # It carries no `if:` on purpose. It used to be guarded to main pushes and
+    # dispatches, which meant the job the release gate names reported `skipping`
+    # on every pull request -- so the suite first ran after the merge, where it
+    # can no longer stop one. Measured: 0.25.4's push to main went red here
+    # behind a pull request that had been green without ever running this job.
+    #
+    # `.github/workflows/e2e.yml` runs the byte-identical suite for the pull
+    # requests this workflow does not see (those based on anything but main), so
+    # exactly one job executes it per event -- pinned by the duplication check in
+    # tests/unit/visual/publishWorkflow.test.ts.
     e2e-full:
-        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
         runs-on: ubuntu-latest
         timeout-minutes: 45
 

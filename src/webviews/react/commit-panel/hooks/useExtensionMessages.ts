@@ -27,14 +27,29 @@ const LEGACY_REPOSITORY_ROOT = "";
 const HYDRATION_RETRY_INTERVAL_MS = 1_000;
 
 /**
- * How long to keep asking before accepting that the host is not going to answer.
+ * How long the opening burst lasts before the retry drops to {@link HYDRATION_HEARTBEAT_MS}.
  *
- * Bounded in time rather than in attempts, because the delay being ridden out is the host's, and a
- * fixed attempt count silently becomes a much shorter deadline whenever the interval shrinks. The
- * budget only ever elapses while the panel is unhydrated -- the host answers `ready` by posting the
- * repository list before it awaits anything -- so a healthy startup spends none of it.
+ * Expressed in time rather than in attempts, because the delay being ridden out is the host's, and
+ * a fixed attempt count silently becomes a much shorter deadline whenever the interval shrinks.
  */
-const HYDRATION_RETRY_BUDGET_MS = 15_000;
+const HYDRATION_BURST_MS = 15_000;
+
+/**
+ * How often to keep asking once the opening burst has gone unanswered.
+ *
+ * The retry does NOT stop. It used to, after this same fifteen seconds, and that was the whole
+ * defect: an unhydrated panel has no other route to content -- `onDidChangeVisibility` re-posts the
+ * working-tree snapshot but never the repository list, and `SET_FILES_AND_STASHES` deliberately
+ * refuses to set `hydrated` -- so giving up turned one dropped message into a pane that stays blank
+ * for as long as the editor is open. CI caught it as a commit panel that had mounted React,
+ * rendered its placeholder, and fallen silent beside a fully populated host.
+ *
+ * Stopping was never the safeguard; the COST was. Every re-ask used to buy a full Git refresh,
+ * which is unaffordable once per second forever. Numbering the attempts lets the host answer a
+ * re-ask from state it already holds, and a slow heartbeat against that costs a message every few
+ * seconds -- cheap enough that there is no longer any reason to abandon the panel.
+ */
+const HYDRATION_HEARTBEAT_MS = 5_000;
 
 function createRepositoryState(
     root: string,
@@ -575,27 +590,37 @@ export function useExtensionMessages(): [
         };
 
         window.addEventListener("message", handler);
-        vscode.postMessage({ type: "ready" });
+        let attempt = 1;
+        let elapsed = 0;
+        vscode.postMessage({ type: "ready", attempt });
 
-        // Re-asking is safe to repeat: the host's `ready` handler posts the repository list and
-        // refreshes, both idempotent, and it costs nothing on a healthy startup because the answer
-        // lands long before the first tick.
+        // Re-asking is safe to repeat: the host's `ready` handler posts the repository list and its
+        // cached working-tree state, both idempotent, and it costs nothing on a healthy startup
+        // because the answer lands long before the first tick.
         // `state.hydrated` rather than a flag private to this effect: the retry and the render must
         // agree on what "answered" means, and the host answers unconditionally, so an empty
         // repository list is an answer and stops the retry.
-        const retry = setInterval(() => {
-            if (stateRef.current.hydrated) {
-                clearInterval(retry);
-                return;
-            }
-            vscode.postMessage({ type: "ready" });
-        }, HYDRATION_RETRY_INTERVAL_MS);
-        const giveUp = setTimeout(() => clearInterval(retry), HYDRATION_RETRY_BUDGET_MS);
+        // A self-rescheduling timeout rather than an interval, because the cadence changes once the
+        // opening burst is spent -- and it never schedules past an answer, so a hydrated panel goes
+        // quiet on its own without needing a second timer to cancel the first.
+        let retry: ReturnType<typeof setTimeout> | undefined;
+        const askAgain = (): void => {
+            if (stateRef.current.hydrated) return;
+            attempt += 1;
+            vscode.postMessage({ type: "ready", attempt });
+            scheduleRetry();
+        };
+        function scheduleRetry(): void {
+            const delay =
+                elapsed < HYDRATION_BURST_MS ? HYDRATION_RETRY_INTERVAL_MS : HYDRATION_HEARTBEAT_MS;
+            elapsed += delay;
+            retry = setTimeout(askAgain, delay);
+        }
+        scheduleRetry();
 
         return () => {
             window.removeEventListener("message", handler);
-            clearInterval(retry);
-            clearTimeout(giveUp);
+            if (retry !== undefined) clearTimeout(retry);
         };
     }, [applyAction]);
 

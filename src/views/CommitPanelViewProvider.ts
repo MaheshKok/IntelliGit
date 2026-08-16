@@ -94,6 +94,18 @@ interface StoredChangedFileCountsPayload {
 }
 
 /**
+ * Whether a `ready` message is a panel re-asking rather than a webview announcing itself.
+ *
+ * The count is untrusted webview input, so anything that is not a number above 1 -- a missing
+ * field from a producer that predates it, a string, a hand-crafted payload -- is read as a first
+ * announcement. Failing that way round is the safe one: it costs a redundant refresh, where the
+ * opposite would withhold the startup read from a panel that genuinely needs it.
+ */
+function isHydrationReAsk(attempt: unknown): boolean {
+    return typeof attempt === "number" && attempt > 1;
+}
+
+/**
  * Hosts the sidebar Changes webview and its embedded commit graph protocol.
  *
  * The provider owns working-tree, stash, commit-draft, branch-filter, pagination, and commit
@@ -132,6 +144,10 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
      * resolved or the commit-detail cache is cleared, so a redundant-looking repost after either
      * is never wrongly suppressed. */
     private lastPostedPayload: string | undefined;
+    /** Whether `handleReadyMessage` has ever completed its full Git read, which is what fills the
+     * runtime caches a re-ask is answered from. Never reset: a later mount that re-asks is served
+     * from those same caches, so what matters is that SOME attempt filled them, not which one. */
+    private startupReadCompleted = false;
     private readonly _onDidChangeFileCount = new vscode.EventEmitter<number>();
     readonly onDidChangeFileCount = this._onDidChangeFileCount.event;
     private readonly _onDidChangeWorkingTree = new vscode.EventEmitter<void>();
@@ -1436,8 +1452,20 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         this.postToWebview({ type: "setFilterText", text });
         await this.loadInitialGraphCommits(runtime);
     }
-    /** Hydrates the active repository and restores its persisted commit draft after webview readiness. */
-    private async handleReadyMessage(): Promise<void> {
+    /**
+     * Hydrates the active repository and restores its persisted commit draft after webview readiness.
+     *
+     * `attempt` is the webview's own count of how many times it has asked (see
+     * `useExtensionMessages.ts`). Anything above 1 is a panel re-asking because it never received
+     * the previous answer -- it is still mounted, still empty, and still waiting. Such a panel needs
+     * everything this host already holds, so the repository list, the cached working-tree snapshot
+     * and the stored draft are all posted for every attempt. What a re-ask does NOT need is the
+     * startup Git read repeated: nothing about the host's data went stale, only the delivery
+     * failed. That distinction is load-bearing rather than an optimization -- the webview re-asks
+     * on a timer, and paying full price per attempt is exactly the cost that used to force it to
+     * stop asking after fifteen tries and leave the panel blank for the rest of the session.
+     */
+    private async handleReadyMessage(attempt?: unknown): Promise<void> {
         // A fresh webview context has received nothing, so any commit-detail post made during
         // this handler must never be suppressed as a duplicate of what the PREVIOUS context was
         // sent. `ready` fires again whenever VS Code tears this view down while it is hidden and
@@ -1454,13 +1482,25 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             // the flag is posted around it — the toolbar already holds the spin long
             // enough to be seen, so this path skips the minimum-visible padding, which
             // would delay the restored commit draft by more than half a second.
-            this.postRefreshing(runtime, true);
-            try {
-                await this.refreshAllRepositories(true);
-            } finally {
-                this.postRefreshing(runtime, false);
+            //
+            // Skipped for a re-ask, but only once this read has actually completed: then the
+            // caches above hold the same working tree the refresh would re-read, and its
+            // results reach the panel through the ordinary post path.
+            //
+            // The attempt number alone is not enough, because a `ready` can be lost on the way
+            // IN. The host then never ran this read, `runtime.files` is still empty, and
+            // answering the re-ask from cache would post a confident "no changes" over a dirty
+            // tree -- a wrong panel in place of a blank one.
+            if (!isHydrationReAsk(attempt) || !this.startupReadCompleted) {
+                this.postRefreshing(runtime, true);
+                try {
+                    await this.refreshAllRepositories(true);
+                } finally {
+                    this.postRefreshing(runtime, false);
+                }
+                await this.refreshGraphData(runtime);
+                this.startupReadCompleted = true;
             }
-            await this.refreshGraphData(runtime);
         }
         this.postToWebview({
             type: "restoreCommitDraft",
@@ -1575,7 +1615,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         const scopedRuntime = () => this.runtimeForMessage(msg);
         switch (msg.type) {
             case "ready":
-                await this.handleReadyMessage();
+                await this.handleReadyMessage(msg.attempt);
                 break;
             case "refresh":
                 await this.refreshFromUserAction(scopedRuntime());

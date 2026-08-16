@@ -35,7 +35,14 @@ afterEach(() => {
 
 /** How many times the app has asked the host to hydrate it. */
 function readyCount(): number {
-    return postMessage.mock.calls.filter(([msg]) => msg?.type === "ready").length;
+    return readyMessages().length;
+}
+
+/** Every hydration request the app has posted, in order. */
+function readyMessages(): { type: string; attempt?: number }[] {
+    return postMessage.mock.calls
+        .map(([msg]) => msg as { type: string; attempt?: number })
+        .filter((msg) => msg?.type === "ready");
 }
 
 async function mountHarness(): Promise<{ root: Root; host: HTMLDivElement }> {
@@ -109,7 +116,22 @@ describe("commit-panel hydration handshake", () => {
         }
     });
 
-    it("gives up retrying once the recovery budget is spent", async () => {
+    /**
+     * This replaces a test that asserted the opposite -- that retrying stops once a fixed budget is
+     * spent. That budget was the defect, not a safeguard. A panel that stops asking has no route
+     * back to content: `onDidChangeVisibility` re-posts the working-tree snapshot but never the
+     * repository list, and the reducer deliberately refuses to set `hydrated` from a snapshot, so
+     * the ONLY producer of a hydrated panel is an answer to `ready`. Giving up therefore converted
+     * any single dropped message into a permanently blank pane, which is how it reached CI: run
+     * 31964819068 timed out against a webview that had mounted React, rendered its placeholder, and
+     * stopped asking fifteen seconds earlier while the host sat alive and fully populated beside it.
+     *
+     * The budget existed for a real reason -- each re-ask cost the host a full Git refresh -- so the
+     * cost is what changed. `attempt` lets the host answer a re-ask from what it already holds
+     * (asserted host-side in `tests/unit/views/CommitPanelViewProvider.test.ts`), which makes a slow
+     * heartbeat affordable and removes the only argument for ever stopping.
+     */
+    it("keeps asking after the initial burst rather than giving up on the host", async () => {
         const { root, host } = await mountHarness();
         try {
             await advance(60_000);
@@ -117,8 +139,59 @@ describe("commit-panel hydration handshake", () => {
             await advance(600_000);
             expect(
                 readyCount(),
-                "retrying must be bounded in time; a host that never answers is not coming back",
-            ).toBe(settled);
+                "an unhydrated panel must never stop asking; stopping is what makes a blank " +
+                    "panel permanent, and the host has no other way to reach it",
+            ).toBeGreaterThan(settled);
+        } finally {
+            await act(async () => root.unmount());
+            host.remove();
+        }
+    });
+
+    /**
+     * Two windows of the SAME length, counting retries against retries. The mount announcement is
+     * subtracted deliberately: it is not a retry, and leaving it in the first window's total makes
+     * the comparison pass for an implementation with no backoff at all -- 15 retries in the second
+     * window still reads as "fewer than 16" in the first. Verified by mutation: dropping the
+     * backoff to a flat interval left this test green until the announcement came out of the count.
+     */
+    it("keeps the heartbeat slower than the opening burst", async () => {
+        const { root, host } = await mountHarness();
+        try {
+            await advance(15_000);
+            const burstRetries = readyCount() - 1;
+            await advance(15_000);
+            const heartbeatRetries = readyCount() - 1 - burstRetries;
+            expect(
+                heartbeatRetries,
+                "a panel nobody has answered in fifteen seconds is waiting on something slow; " +
+                    "asking at the opening rate forever is a busy-wait, not a recovery",
+            ).toBeLessThan(burstRetries);
+            expect(heartbeatRetries, "the heartbeat must still be a heartbeat").toBeGreaterThan(0);
+        } finally {
+            await act(async () => root.unmount());
+            host.remove();
+        }
+    });
+
+    it("numbers each attempt so the host can tell a re-ask from a fresh panel", async () => {
+        const { root, host } = await mountHarness();
+        try {
+            await advance(5_000);
+            const attempts = readyMessages().map((msg) => msg.attempt);
+            expect(
+                attempts[0],
+                "a freshly mounted panel is attempt 1; the host owes it the full startup read",
+            ).toBe(1);
+            expect(
+                attempts.slice(1),
+                "every re-ask must be numbered above 1, or the host cannot answer it cheaply " +
+                    "and the unbounded retry above becomes a refresh stampede",
+            ).not.toContain(1);
+            expect(
+                [...attempts].sort((a, b) => (a ?? 0) - (b ?? 0)),
+                "attempts must ascend so the host reads them as one panel re-asking",
+            ).toEqual(attempts);
         } finally {
             await act(async () => root.unmount());
             host.remove();

@@ -129,7 +129,10 @@ describe("CommitPanelApp integration", () => {
 
         await import("../../../src/webviews/react/commit-panel/CommitPanelApp");
         await flush();
-        expect(vscode.postMessage).toHaveBeenCalledWith({ type: "ready" });
+        // A freshly mounted panel announces itself as attempt 1, and that number is what tells the
+        // host to do the full startup read instead of answering from cache. The re-ask numbering
+        // built on it is asserted in tests/webview/unit/commit-panel-hydration-handshake.test.tsx.
+        expect(vscode.postMessage).toHaveBeenCalledWith({ type: "ready", attempt: 1 });
 
         act(() => {
             window.dispatchEvent(
