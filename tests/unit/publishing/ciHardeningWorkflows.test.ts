@@ -89,7 +89,13 @@ describe("CI quality hardening workflows", () => {
         expect(eligibilityJob).toContain("new_version");
         expect(eligibilityJob).toContain("FORCE_PUBLISH");
         expect(eligibilityJob).not.toMatch(/^\s+(environment|secrets):/m);
-        expect(eligibilityJob).not.toContain("secrets.");
+        // Eligibility reads the release state over the API, so it needs the automatic per-run
+        // token -- and nothing else. A blanket "no secrets." ban would have to be deleted whole to
+        // let that through, taking the part that matters with it: the publishing credentials and
+        // the marketplace environment stay in the release job, behind every gate above it.
+        expect([...eligibilityJob.matchAll(/secrets\.([A-Z_]+)/g)].map(([, name]) => name)).toEqual([
+            "GITHUB_TOKEN",
+        ]);
         expect(attestJob).toContain("needs: [build, release-eligibility]");
         expect(jobPermissionEntries(attestJob)).toEqual([
             "contents: read",
@@ -134,8 +140,16 @@ describe("CI quality hardening workflows", () => {
         expect(eligibilityJob).toContain("github.event.before");
         expect(eligibilityJob).toContain("--require-equal");
         expect(eligibilityJob).toContain("fetch-depth: 0");
-        expect(eligibilityJob).toContain('if [ "$CURRENT_VERSION" = "$PREVIOUS_VERSION" ]; then');
-        expect(eligibilityJob).toContain('echo "version_changed=false" >> "$GITHUB_OUTPUT"');
+        // These two lines used to assert that an unchanged version decides `version_changed=false`.
+        // Both strings still appear in the step -- the comparison now only picks which validation
+        // mode to run, and the `false` write now belongs to the HTTP 200 branch -- so pinning them
+        // would keep passing while meaning something else entirely. What the job must actually do
+        // is decide from the release state, so that is what is asserted.
+        expect(eligibilityJob).toMatch(/releases\/tags\/v\$CURRENT_VERSION/);
+        expect(
+            eligibilityJob,
+            "eligibility must not decide publication from a version comparison",
+        ).not.toMatch(/if \[ "\$CURRENT_VERSION" != "\$PREVIOUS_VERSION" \]/);
         expect(releaseJob).not.toMatch(/\bls\b[^\n]*\.vsix/);
         expect(releaseJob).not.toMatch(/(?:vsce|ovsx) publish[^\n]*\*\.vsix/);
         expect(releaseJob).not.toMatch(/gh release (?:create|upload)[^\n]*\*\.vsix/);

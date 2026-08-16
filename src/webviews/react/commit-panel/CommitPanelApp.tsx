@@ -54,6 +54,13 @@ function App(): React.ReactElement {
             h="100%"
             overflow="hidden"
             bg="var(--intelligit-pycharm-panel)"
+            // A panel with no repositories renders nothing identifiable, which made "the host never
+            // answered" and "the host answered with nothing" the same blank pane in a CI failure
+            // report. Naming the handshake state separates them without adding a user-visible
+            // string, so the next occurrence says which of the two it is.
+            data-testid={
+                state.hydrated ? "commit-panel-hydrated" : "commit-panel-awaiting-hydration"
+            }
         >
             <ThemeIconFontFaces fonts={iconFonts} />
             <Box flex={1} minH={0} overflowY="auto" display="flex" flexDirection="column">

@@ -10,7 +10,7 @@ on:
     workflow_dispatch:
         inputs:
             force_publish:
-                description: "Publish the current package.json version even if it is unchanged from the previous commit (use to recover a deploy that GitHub skipped)."
+                description: "Publish the current package.json version even if it already has a GitHub Release (use to recover a marketplace upload that did not land)."
                 type: boolean
                 default: false
             skip_e2e_gate:
@@ -22,7 +22,13 @@ on:
 # in-flight push-triggered release run (they target the same ref).
 concurrency:
     group: build-release-${{ github.event_name }}-${{ github.ref }}
-    cancel-in-progress: true
+    # A superseded pull-request run is waste worth cancelling; a superseded main run is a lost
+    # release. Two merges land in the same group -- same event (`push`), same ref
+    # (`refs/heads/main`) -- so merging again while a release is in flight cancels it, and a
+    # cancelled run reports no failure, shows no red X, and notifies nobody. Measured: v0.25.3's
+    # release run was cancelled by the merge that followed it minutes later, and the release was
+    # silently lost. Main pushes therefore queue instead of cancelling.
+    cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 permissions:
     contents: read
@@ -279,11 +285,12 @@ jobs:
                   persist-credentials: false
                   fetch-depth: 0
 
-            - name: Check if version changed
+            - name: Check whether this version still needs releasing
               id: version-check
               env:
                   FORCE_PUBLISH: ${{ github.event_name == 'workflow_dispatch' && inputs.force_publish == true }}
                   PUSH_BEFORE_SHA: ${{ github.event_name == 'push' && github.event.before || '' }}
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
               shell: bash
               run: |
                   CURRENT_VERSION=$(node -p "require('./package.json').version")
@@ -306,16 +313,64 @@ jobs:
                     exit 0
                   fi
 
+                  # The version transition is validated on its own terms, separately from the decision
+                  # to publish. `verifyReleaseVersion.js` rejects anything that is not canonical stable
+                  # SemVer -- leading zeros, prerelease and build metadata included -- which also keeps
+                  # a value carrying a newline out of $GITHUB_OUTPUT, where `echo "k=$v"` would append
+                  # step outputs of its own choosing, `version_changed` among them.
+                  #
+                  # The forward check runs only when the version actually moved. Requiring
+                  # current > previous unconditionally would reject the recovery case below, where an
+                  # orphaned bump is republished from a LATER commit that did not touch the version.
+                  # An unchanged version is instead asserted equal, which validates the shape of both
+                  # values without asserting an ordering that did not happen.
                   if [ "$CURRENT_VERSION" = "$PREVIOUS_VERSION" ]; then
-                    echo "Version is unchanged; release jobs will remain skipped."
-                    echo "version_changed=false" >> "$GITHUB_OUTPUT"
-                    echo "new_version=$CURRENT_VERSION" >> "$GITHUB_OUTPUT"
-                    exit 0
+                    node scripts/verifyReleaseVersion.js --require-equal "$PREVIOUS_VERSION" "$CURRENT_VERSION"
+                  else
+                    node scripts/verifyReleaseVersion.js "$PREVIOUS_VERSION" "$CURRENT_VERSION"
                   fi
 
-                  node scripts/verifyReleaseVersion.js "$PREVIOUS_VERSION" "$CURRENT_VERSION"
-                  echo "version_changed=true" >> "$GITHUB_OUTPUT"
-                  echo "new_version=$CURRENT_VERSION" >> "$GITHUB_OUTPUT"
+                  # State, not diff. Comparing package.json against the previous commit asks "did THIS
+                  # push bump the version", which can never recover from a run that failed to reach the
+                  # release job: the bump is orphaned, and every later commit reports "unchanged" and
+                  # skips forever. Measured -- 0.25.2's run failed at e2e-full and 0.25.3's run was
+                  # cancelled, after which main could publish neither, with no failure anywhere to say
+                  # so. The GitHub Release is the last artifact the release job creates, so its absence
+                  # is the honest answer to "has this version shipped". Asking that is idempotent: it
+                  # publishes a bump, it skips an already-released version, and it self-heals a missed
+                  # run on the next push.
+                  #
+                  # Only an HTTP status counts as an answer. Every way of asking exits 1 for a missing
+                  # release AND for auth, rate-limit and network failures, so the exit code alone can
+                  # never decide this -- and `gh release view`'s messages, which used to decide it, are
+                  # human-readable prose GitHub is free to reword under us. The release-by-tag REST
+                  # endpoint answers the same question as a status code: 200 is present, 404 is absent,
+                  # anything else is an unknown state.
+                  #
+                  # Measured on gh 2.87.3: `-i` prints the status line as the FIRST line of stdout for
+                  # 200, 404 and 401 alike, while gh's own prose goes to stderr. So stdout is parsed
+                  # for the decision and stderr is left unredirected, where it lands in the step log as
+                  # the diagnostic. A gh that cannot run at all prints no status line, which parses to
+                  # empty and falls through to the failure branch.
+                  #
+                  # Reading any of that as "never released" would republish on a transient blip and
+                  # would report a broken token as "this version has not shipped" -- the exact
+                  # misdiagnosis that left 0.25.2 and 0.25.3 unreleased. Failing instead costs nothing
+                  # now that the gate reads state: the next push simply asks again.
+                  RELEASE_PROBE=$(gh api -i "repos/$GITHUB_REPOSITORY/releases/tags/v$CURRENT_VERSION" || true)
+                  HTTP_STATUS=$(printf '%s\n' "$RELEASE_PROBE" | awk 'NR == 1 { print $2 }')
+                  if [ "$HTTP_STATUS" = "200" ]; then
+                    echo "v$CURRENT_VERSION already has a GitHub Release; nothing to publish."
+                    echo "version_changed=false" >> "$GITHUB_OUTPUT"
+                    echo "new_version=$CURRENT_VERSION" >> "$GITHUB_OUTPUT"
+                  elif [ "$HTTP_STATUS" = "404" ]; then
+                    echo "v$CURRENT_VERSION has no GitHub Release yet; publishing."
+                    echo "version_changed=true" >> "$GITHUB_OUTPUT"
+                    echo "new_version=$CURRENT_VERSION" >> "$GITHUB_OUTPUT"
+                  else
+                    echo "Could not read the release state of v$CURRENT_VERSION (HTTP ${HTTP_STATUS:-none})." >&2
+                    exit 1
+                  fi
 
     attest:
         needs: [build, release-eligibility]

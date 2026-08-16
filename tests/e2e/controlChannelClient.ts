@@ -30,7 +30,7 @@ export interface E2eControlChannelClientOptions {
  * The marker is deliberately checked before any request file is created, so an activated
  * watcher cannot miss the request during its startup drain.
  */
-async function waitForE2eChannelReady(
+export async function waitForE2eChannelReady(
     channelDir: string,
     timeoutMs = DEFAULT_READINESS_TIMEOUT_MS,
     pollIntervalMs = DEFAULT_POLL_INTERVAL_MS,

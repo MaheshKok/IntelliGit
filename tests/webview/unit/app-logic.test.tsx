@@ -54,6 +54,7 @@ function makeCommitPanelState(
         repositories: [repository],
         activeRepositoryRoot: root,
         expandedRepositoryRoots: [root],
+        hydrated: true,
     };
 }
 
@@ -84,6 +85,48 @@ beforeEach(() => {
 });
 
 describe("app logic coverage", () => {
+    // A commit panel with no repositories renders its two nested boxes and nothing else, which is
+    // byte-identical whether the host never answered the `ready` handshake or answered with an
+    // empty list. Measured in a container reproduction of the CI failure: the pane reported
+    // `root=<children:2 chars:101>` against the healthy graph pane's `children:2 chars:16427`, and
+    // no test id at all -- so the report could not name which of the two had happened. The panel
+    // now says so in the DOM, without a user-visible string that would need translating.
+    it.each([
+        [false, "commit-panel-awaiting-hydration"],
+        [true, "commit-panel-hydrated"],
+    ])("marks the handshake state when hydrated=%s", async (hydrated, expectedTestId) => {
+        vi.doMock("../../../src/webviews/react/commit-panel/hooks/useExtensionMessages", () => ({
+            useExtensionMessages: () => [
+                {
+                    repositories: [],
+                    activeRepositoryRoot: null,
+                    expandedRepositoryRoots: [],
+                    hydrated,
+                },
+                vi.fn(),
+            ],
+        }));
+        vi.doMock("../../../src/webviews/react/commit-panel/hooks/useVsCodeApi", () => ({
+            getVsCodeApi: () => ({ postMessage: vi.fn(), getState: () => ({}), setState: vi.fn() }),
+        }));
+
+        await import("../../../src/webviews/react/commit-panel/CommitPanelApp");
+        await flush();
+
+        const marked = document.querySelector(`[data-testid="${expectedTestId}"]`);
+        expect(marked, `the panel must report handshake state ${expectedTestId}`).not.toBeNull();
+        // The two are mutually exclusive, so a marker that hardcodes one value satisfies half this
+        // table and still tells the failure report nothing.
+        const other =
+            expectedTestId === "commit-panel-hydrated"
+                ? "commit-panel-awaiting-hydration"
+                : "commit-panel-hydrated";
+        expect(
+            document.querySelector(`[data-testid="${other}"]`),
+            "the panel must not report both handshake states at once",
+        ).toBeNull();
+    });
+
     it("CommitGraphApp handles callback and drag branches", async () => {
         const postMessage = vi.fn();
         type BranchColumnMockProps = {

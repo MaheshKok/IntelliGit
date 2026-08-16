@@ -18,6 +18,7 @@ import {
     PUSHED_TIP_FIXTURE,
 } from "../../fixtures/repo/scenarios";
 import { FIXTURE_REFS } from "../../fixtures/repo/seed";
+import { waitForE2eChannelReady } from "../controlChannelClient";
 import type { FixtureWorkspaceFixture } from "../fixtureWorkspace";
 import {
     dismissFirstRunDialogs,
@@ -343,6 +344,23 @@ export async function runFlow(flow: FlowRow, fixture: FixtureWorkspaceFixture): 
         const page = await electronApp.firstWindow();
         await page.waitForLoadState("domcontentloaded");
         await dismissFirstRunDialogs(page);
+        // Nothing above this line touches IntelliGit; everything below it does. A window that has
+        // finished loading is not a window whose extensions VS Code has taken up, and the palette
+        // answers either way -- so the first IntelliGit interaction raced the extension host and
+        // lost intermittently. Measured on CI run 31942358546: the palette opened, took
+        // `>IntelliGit: Show Git Log` verbatim, and VS Code answered with its zero-exact-match
+        // "similar commands" list, so the command did not exist under that name at that moment.
+        //
+        // The marker is what makes that checkable. `activateE2eControlChannel` publishes
+        // `.e2e-channel-ready` from the first statement of `activate()`, and VS Code publishes an
+        // extension's `contributes` -- commands, their NLS-resolved titles, the view container --
+        // before it ever activates that extension. So the marker existing proves the palette knows
+        // this command, which is the weaker fact the flows actually need, and it proves it without
+        // depending on how far into activation any particular registration sits. Cheap to rely on:
+        // `launchFixtureWorkspace` sets INTELLIGIT_E2E and the channel dir for every flow,
+        // `workspaceContains:.git` activates on the fixture repo without needing the command
+        // itself, and the dir is per-test, so no previous run's marker can be read as this one's.
+        await waitForE2eChannelReady(fixture.channelDir);
         const workbench = new Workbench(page);
         const intelliGitView = new IntelliGitView(page);
         const surface = flow.surface ?? "sidebar";

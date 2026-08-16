@@ -5,6 +5,17 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.25.4] - 2026-08-16
+
+This release also carries everything listed under 0.25.2 and 0.25.3, neither of which ever reached the marketplace — the release-pipeline defect fixed below is the reason, and it would have swallowed this release too.
+
+### Fixed
+
+- Fixed the release pipeline silently skipping every publish. Two defects compounded. Runs were grouped so that a push to `main` cancelled the release still in flight from the previous merge, and a cancelled run reports no failure, shows no red cross and notifies nobody; `main` pushes now queue, while pull-request runs still supersede each other. Worse, the gate that decided whether to release compared `package.json` against the previous commit, which asks "did this commit bump the version" — a question that can never recover from a run that failed to reach it. Once 0.25.2's run failed and 0.25.3's run was cancelled, both bumps were orphaned and every later commit correctly reported "unchanged" and skipped, permanently and silently. The gate now asks whether the current version already has a GitHub Release, so a missed run is repaired by the next commit to land rather than stranding the release for good.
+- Hardened that same self-healing path against republishing a version that already shipped. A run that reached a marketplace but died before creating its GitHub Release looks, to the gate above, exactly like one that never published at all — and the repair would then upload freshly rebuilt bytes under a version someone has already installed. Publishing now refuses that case and says which half already shipped, so a partial release fails loudly and is recovered from its original artifact instead of being quietly replaced.
+- Fixed the commit panel intermittently rendering nothing at all. The panel's only route to content is a single `ready` message answered by a single repository list, and neither leg is acknowledged — VS Code drops messages to a webview that is not live, and its API contract states that even a successful send does not mean the message was received. One dropped message in either direction therefore left the panel permanently blank: React mounted, no repositories, no empty state, no error and nothing to retry it. The request is now repeated while it stays unanswered, bounded in time, and stops the moment the host replies — including when the reply is an empty repository list.
+- Fixed the commit panel losing its state every time it was hidden, for workspaces that gained their first repository after startup. `retainContextWhenHidden` is fixed when a view is registered and cannot be added afterwards, and only one of the activation paths that register the panel was passing it.
+
 ## [0.25.3] - 2026-08-16
 
 ### Fixed

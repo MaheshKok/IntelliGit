@@ -138,6 +138,12 @@ export function activateNoRepositoryMode(
         vscode.window.registerWebviewViewProvider(
             CommitPanelViewProvider.viewType,
             commitPanelProvider,
+            // This path registers the real commit panel and can hand over to repository mode
+            // in-process, so the panel it leaves behind is the stateful one. `retainContextWhenHidden`
+            // is fixed at registration and cannot be added by the later handover, so omitting it
+            // here made the panel rebuild from scratch on every hide -- for exactly the workspaces
+            // that gained their first repository after startup, and nowhere else.
+            { webviewOptions: { retainContextWhenHidden: true } },
         ),
     );
     registerNoRepositoryDisposable(emptyMergeConflictsView);

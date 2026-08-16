@@ -65,6 +65,122 @@ describe("Workbench", () => {
         expect(commandInput.fill).not.toHaveBeenCalled();
     });
 
+    describe("pickQuickPick", () => {
+        /**
+         * A palette whose named lookup always times out, and whose unnamed lookup reports the
+         * entries actually on screen. `entries: "unreadable"` models the frame going away while
+         * the failure message is being built.
+         */
+        function palette(entries: readonly string[] | "unreadable"): Page {
+            const timeout = new Error("locator.click: Timeout 30000ms exceeded");
+            const getByRole = vi.fn((role: string, options?: { name: string }) => {
+                expect(role, "pickQuickPick must look up quick-pick entries by role").toBe(
+                    "option",
+                );
+                if (options !== undefined) return { click: vi.fn().mockRejectedValue(timeout) };
+                return {
+                    allTextContents:
+                        entries === "unreadable"
+                            ? vi.fn().mockRejectedValue(new Error("frame was detached"))
+                            : vi.fn().mockResolvedValue([...entries]),
+                };
+            });
+            return { getByRole } as unknown as Page;
+        }
+
+        // The failure this exists for: `IntelliGit: Show Git Log` timed out on CI while the
+        // palette was open, filtered, and showing VS Code's zero-exact-match "similar commands"
+        // list -- the extension had not registered its commands yet. A message naming only the
+        // locator cannot tell that from a label this page object spelled wrong, and the two have
+        // opposite fixes, so the entries on screen are the diagnosis and have to be in the text.
+        it("names what the palette did offer, not only the label it wanted", async () => {
+            const page = palette(["Developer: Open Log...", "Developer: Show Window Log"]);
+
+            await expect(
+                new Workbench(page).pickQuickPick("IntelliGit: Show Git Log"),
+            ).rejects.toThrow(/"Developer: Open Log\.\.\.", "Developer: Show Window Log"/);
+        });
+
+        // The click can fail with the entry right there on screen: an overlaying decoration makes
+        // Playwright refuse it outright. So this catch cannot know whether the entry was absent,
+        // and a message asserting it was is contradicted two clauses later by the list it prints.
+        // Not a wording pin -- the assertion is that the message never states a cause the same
+        // message disproves.
+        it("does not claim the entry was absent while it is listing that entry", async () => {
+            const page = palette(["IntelliGit: Show Git Log", "Developer: Open Log..."]);
+
+            const message = await new Workbench(page)
+                .pickQuickPick("IntelliGit: Show Git Log")
+                .then(
+                    () => "pickQuickPick resolved instead of reporting the failure",
+                    (error: unknown) => (error as Error).message,
+                );
+
+            expect(message, "the offered list is what contradicts a claim of absence").toContain(
+                '"IntelliGit: Show Git Log"',
+            );
+            expect(
+                message,
+                "a click can fail with the entry present, so absence is not knowable here",
+            ).not.toMatch(/never offered|did not offer|no such command/i);
+        });
+
+        // The original rejection is the finding; the offered list is context for it. It goes in
+        // `cause` rather than being flattened into the text, which keeps its stack and lets
+        // Playwright's reporter print the chain. Asserted on the chain rather than on the message
+        // for exactly that reason: a version that dropped the rejection entirely would still
+        // produce a perfectly readable message.
+        it("keeps the original rejection as the new error's cause", async () => {
+            const cause = await new Workbench(palette([])).pickQuickPick("Anything").then(
+                () => undefined,
+                (error: unknown) => (error as Error).cause,
+            );
+
+            expect(cause, "the rejection that actually failed must survive").toBeInstanceOf(Error);
+            expect((cause as Error).message).toContain("Timeout 30000ms exceeded");
+        });
+
+        // An empty palette and a palette full of the wrong commands are different failures: the
+        // first says the quick pick never populated, the second says the label does not match.
+        // Rendering the empty case as an empty string collapses them back into one.
+        it("says so explicitly when the palette offered nothing at all", async () => {
+            await expect(new Workbench(palette([])).pickQuickPick("Anything")).rejects.toThrow(
+                /It offered: <no options>/,
+            );
+        });
+
+        // Reading the palette is best-effort by construction: this path is already failing, and a
+        // detached frame here must not become the error the run reports instead of the timeout.
+        it("reports an unreadable palette rather than throwing over the timeout", async () => {
+            const error = await new Workbench(palette("unreadable")).pickQuickPick("Anything").then(
+                () => undefined,
+                (rejection: unknown) => rejection as Error,
+            );
+
+            expect(error?.message).toMatch(/<unreadable: frame was detached>/);
+            expect(
+                (error?.cause as Error | undefined)?.message,
+                "the detached frame must not displace the timeout that is the actual finding",
+            ).toContain("Timeout 30000ms exceeded");
+        });
+
+        // VS Code's palette holds hundreds of commands. An uncapped dump buries the timeout it is
+        // attached to, so the count has to stand in for the tail rather than the tail being lost.
+        it("caps the listed entries and counts the rest", async () => {
+            const entries = Array.from({ length: 20 }, (_, index) => `Command ${index}`);
+
+            const message = await new Workbench(palette(entries)).pickQuickPick("Anything").then(
+                () => "pickQuickPick resolved instead of reporting the timeout",
+                (error: unknown) => (error as Error).message,
+            );
+
+            expect(message).toContain('"Command 7" (+12 more)');
+            expect(message, "an uncapped dump buries the timeout it is attached to").not.toContain(
+                '"Command 8"',
+            );
+        });
+    });
+
     // Declared after the tests that mock the platform getter, which is the only position from
     // which it can observe a spy outliving its own test. `process` is shared by every file a
     // worker runs, so an unrestored getter is not confined to this suite -- it decides what a
@@ -155,21 +271,32 @@ describe("IntelliGitView", () => {
                 // same markers, rather than against a canned result. A callback that reads a
                 // property the real body does not have then fails in this suite instead of only in
                 // the CI failure it is the sole diagnosis of.
-                evaluate: (extract: (body: never) => unknown) =>
-                    markers === undefined
-                        ? detached()
-                        : Promise.resolve(
-                              extract({
-                                  ownerDocument: { title },
-                                  innerHTML: markers
-                                      .map((marker) => `<div ${marker.slice(1, -1)}></div>`)
-                                      .join(""),
-                                  querySelectorAll: () =>
-                                      markers.map((marker) => ({
-                                          getAttribute: () => testIdOf(marker),
-                                      })),
-                              } as never),
-                          ),
+                evaluate: (extract: (body: never) => unknown) => {
+                    if (markers === undefined) return detached();
+                    const rendered = markers
+                        .map((marker) => `<div ${marker.slice(1, -1)}></div>`)
+                        .join("");
+                    // The real document is the shell's: a `#root` div the React bundle mounts
+                    // into, plus the inline bootstrap globals the shell always emits -- present
+                    // whether or not the bundle then ran. Modelling both is what lets the report
+                    // separate "the bundle never executed" from "it mounted and was given
+                    // nothing", which `bodyChars` alone cannot, the shell being ~31KB by itself.
+                    const root = { childElementCount: markers.length, innerHTML: rendered };
+                    return Promise.resolve(
+                        extract({
+                            ownerDocument: {
+                                title,
+                                defaultView: { intelligitI18n: {} },
+                                getElementById: (id: string) => (id === "root" ? root : null),
+                            },
+                            innerHTML: `<div id="root">${rendered}</div>`,
+                            querySelectorAll: () =>
+                                markers.map((marker) => ({
+                                    getAttribute: () => testIdOf(marker),
+                                })),
+                        } as never),
+                    );
+                },
             }),
         };
         return {
@@ -274,7 +401,20 @@ describe("IntelliGitView", () => {
         const { page } = workbenchPage([webview([SIDEBAR_MARKER])]);
 
         await expect(new IntelliGitView(page).revealPanel(50)).rejects.toThrow(
-            /commit-list-viewport[\s\S]*active-frame=1[\s\S]*testIds=\["commit-panel-tab-row"\]/,
+            /commit-list-viewport[\s\S]*active-frame=1[\s\S]*bootstrap=yes[\s\S]*root=<children:1 [\s\S]*testIds=\["commit-panel-tab-row"\]/,
+        );
+    });
+
+    // The CI failure this whole report exists for: a webview that mounted React and rendered
+    // nothing. It is indistinguishable from a bundle that never executed if the message carries
+    // only `bodyChars` and `testIds` -- the shell's inline i18n bootstrap is ~31KB on its own, so
+    // both report five digits and an empty id list, and telling them apart once took a separate
+    // measurement of the empty shell. `bootstrap=yes root=<children:0` says it in the message.
+    it("distinguishes a mounted app that rendered nothing from a bundle that never ran", async () => {
+        const { page } = workbenchPage([webview([])]);
+
+        await expect(new IntelliGitView(page).revealPanel(50)).rejects.toThrow(
+            /bootstrap=yes root=<children:0 chars:0> testIds=\[\]/,
         );
     });
 

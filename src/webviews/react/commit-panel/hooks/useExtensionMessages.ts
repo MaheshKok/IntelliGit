@@ -14,6 +14,28 @@ import { commitMessageGenerationPrefix } from "../../shared/commitMessageDraft";
 
 const LEGACY_REPOSITORY_ROOT = "";
 
+/**
+ * How long to wait for the host's answer before asking to be hydrated again.
+ *
+ * The panel's only route to content is the `ready` handshake, and neither leg of it is
+ * acknowledged: VS Code's `postMessage` resolves `false` for a webview that is not live, and its
+ * contract states that even a `true` does not mean the message was received. A one-shot request
+ * therefore turns any single dropped message into a permanently blank panel -- React mounted, no
+ * repositories, no empty state, nothing to retry it. That reached CI as an intermittently blank
+ * commit panel.
+ */
+const HYDRATION_RETRY_INTERVAL_MS = 1_000;
+
+/**
+ * How long to keep asking before accepting that the host is not going to answer.
+ *
+ * Bounded in time rather than in attempts, because the delay being ridden out is the host's, and a
+ * fixed attempt count silently becomes a much shorter deadline whenever the interval shrinks. The
+ * budget only ever elapses while the panel is unhydrated -- the host answers `ready` by posting the
+ * repository list before it awaits anything -- so a healthy startup spends none of it.
+ */
+const HYDRATION_RETRY_BUDGET_MS = 15_000;
+
 function createRepositoryState(
     root: string,
     label: string,
@@ -61,6 +83,7 @@ const initialState: MultiRepositoryCommitPanelState = {
     repositories: [],
     activeRepositoryRoot: null,
     expandedRepositoryRoots: [],
+    hydrated: false,
 };
 
 function countChangedFiles(files: WorkingFile[]): number {
@@ -118,7 +141,10 @@ function updateRepository(
             : state.repositories.length > 0
               ? []
               : [root];
-    return { repositories, activeRepositoryRoot, expandedRepositoryRoots };
+    // `hydrated` carries through rather than being set here: it means the repository LIST arrived,
+    // which is the thing the retry is waiting for. A per-repository update is a different message
+    // and answers a different question.
+    return { ...state, repositories, activeRepositoryRoot, expandedRepositoryRoots };
 }
 
 /**
@@ -210,6 +236,7 @@ function reducer(
                     ? action.activeRepositoryRoot
                     : (action.repositories[0]?.root ?? null);
             return {
+                hydrated: true,
                 repositories: action.repositories.map((summary) => {
                     const existing = state.repositories.find(
                         (repository) => repository.root === summary.root,
@@ -550,7 +577,26 @@ export function useExtensionMessages(): [
         window.addEventListener("message", handler);
         vscode.postMessage({ type: "ready" });
 
-        return () => window.removeEventListener("message", handler);
+        // Re-asking is safe to repeat: the host's `ready` handler posts the repository list and
+        // refreshes, both idempotent, and it costs nothing on a healthy startup because the answer
+        // lands long before the first tick.
+        // `state.hydrated` rather than a flag private to this effect: the retry and the render must
+        // agree on what "answered" means, and the host answers unconditionally, so an empty
+        // repository list is an answer and stops the retry.
+        const retry = setInterval(() => {
+            if (stateRef.current.hydrated) {
+                clearInterval(retry);
+                return;
+            }
+            vscode.postMessage({ type: "ready" });
+        }, HYDRATION_RETRY_INTERVAL_MS);
+        const giveUp = setTimeout(() => clearInterval(retry), HYDRATION_RETRY_BUDGET_MS);
+
+        return () => {
+            window.removeEventListener("message", handler);
+            clearInterval(retry);
+            clearTimeout(giveUp);
+        };
     }, [applyAction]);
 
     return [state, dispatch];

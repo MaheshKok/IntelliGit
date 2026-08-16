@@ -107,6 +107,14 @@ export interface MultiRepositoryCommitPanelState {
     repositories: RepositoryCommitPanelState[];
     activeRepositoryRoot: string | null;
     expandedRepositoryRoots: string[];
+    /**
+     * Whether the host has answered this webview's `ready` request at all.
+     *
+     * Distinct from `repositories.length > 0`: the host answers unconditionally, so an empty list
+     * is an answer. Keeping the two apart is what separates "the handshake was lost" from "the
+     * host really has nothing" -- a blank panel that looks identical either way, and did.
+     */
+    hydrated: boolean;
 }
 
 /**
