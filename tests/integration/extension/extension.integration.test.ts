@@ -910,20 +910,28 @@ vi.mock("../../../src/utils/fileOps", async () => {
     };
 });
 
-/** Drains microtasks and mocked timers used by async extension activation handlers. */
+/**
+ * Drains microtasks and mocked timers used by async extension activation handlers.
+ *
+ * Only some cases in this file install fake timers, so the timer drain has to be conditional. It
+ * asks whether they are installed rather than calling and recognising the resulting error by its
+ * text: that text is Vitest's to reword, and it did -- "Timers are not mocked" became "the timers
+ * APIs are not mocked" in Vitest 4, which slipped past the substring list and failed 32 cases that
+ * were only ever meant to skip a drain they did not need.
+ */
 async function waitForAsync(): Promise<void> {
     const maxPasses = 8;
     for (let i = 0; i < maxPasses; i++) {
         await Promise.resolve();
-        try {
+        if (vi.isFakeTimers()) {
             await vi.advanceTimersByTimeAsync(0);
-        } catch (error) {
-            const message = error instanceof Error ? error.message : String(error);
-            const isExpectedTimerError =
-                message.includes("Timers are not mocked") ||
-                message.includes("Cannot call") ||
-                message.includes("runAllTimers");
-            if (!isExpectedTimerError) throw error;
+        } else {
+            // Real timers still need a yield per pass, and it has to be at least as strong as the
+            // one this replaced: awaiting the old call's REJECTION was itself a microtask tick, so
+            // simply skipping the call drains half as far and leaves activation chains unfinished.
+            // A macrotask turn is the honest version -- it drains the whole microtask queue behind
+            // it rather than counting ticks.
+            await new Promise<void>((resolve) => setTimeout(resolve, 0));
         }
     }
     await Promise.resolve();

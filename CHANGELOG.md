@@ -5,6 +5,14 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.25.5] - 2026-08-16
+
+### Security
+
+- Updated Vitest to 4.1.10 and esbuild to 0.25.12, closing two advisories that stood against the versions this project had pinned: a critical one where a listening Vitest UI server could be made to read and execute arbitrary files, and one where any website could issue requests to an esbuild development server. Both are development-time only and neither reaches a published extension, but both had been open with no proposal able to fix them — see below for why.
+- Fixed Dependabot being unable to propose any dependency update this repository could merge. It was configured for the `npm` ecosystem while every job installs from `bun.lock` with a frozen lockfile, and the npm ecosystem edits `package.json` without writing that lockfile — so each proposal arrived with the two out of step and failed the install before a single test ran. Five open proposals, none of them mergeable by anyone, including the ones that would have closed the advisories above. It now uses the `bun` ecosystem, which updates the manifest and the lockfile together.
+- Fixed every GitHub Actions version bump arriving permanently red. A test asserted the exact commit SHAs it was bumping, and Dependabot cannot edit that test in the same pull request, so the cheapest route to a green branch was to stop bumping — the opposite of what pinning is for. The pinning guarantee itself was never what those lines proved and is unchanged: a separate sweep still requires every action reference in the workflow directory to be a full commit SHA. What replaced them asserts instead that `codeql-action/init` and `analyze` remain on one commit, which is the failure an exact SHA could never tell apart from a correct bump.
+
 ## [0.25.4] - 2026-08-16
 
 This release also carries everything listed under 0.25.2 and 0.25.3, neither of which ever reached the marketplace — the release-pipeline defect fixed below is the reason, and it would have swallowed this release too.

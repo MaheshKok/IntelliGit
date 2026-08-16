@@ -15,7 +15,10 @@ async function loadLanguageAssociations(allExtensions?: unknown[]) {
 describe("createLanguageAssociations", () => {
     beforeEach(() => {
         vi.restoreAllMocks();
-        vi.unmock("vscode");
+        // `doUnmock`, not `unmock`: the hoisted form is lifted out of this hook and runs once
+        // before any test, so it could never undo the `doMock` each case installs. Vitest 4 warns
+        // on it and will make it an error.
+        vi.doUnmock("vscode");
     });
 
     it("returns empty associations when VS Code extension metadata is unavailable", async () => {

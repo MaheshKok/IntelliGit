@@ -81,7 +81,12 @@ function paramsFor(action: CommitAction) {
 }
 
 beforeEach(() => {
-    vi.clearAllMocks();
+    // `reset`, not `clear`: the unfenced cases below queue `mockResolvedValueOnce("rebase")` on a
+    // probe the fence deliberately never calls for those actions -- that is what they assert. The
+    // queued value therefore survives the test unconsumed, and only `reset` empties that queue.
+    // Under Vitest 1 `clear` emptied it too, so the leak was invisible; the first five fenced cases
+    // in the next block silently drew a stale "rebase" and refused an action nothing was blocking.
+    vi.resetAllMocks();
     mocks.l10nT.mockImplementation((message: string) => `xx:${message}`);
     mocks.getActiveOperation.mockResolvedValue("none");
 });

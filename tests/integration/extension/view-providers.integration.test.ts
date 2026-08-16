@@ -5258,9 +5258,13 @@ describe("view providers integration", () => {
             { path: "src/c.ts", status: "A", staged: false, additions: 0, deletions: 0 },
             { path: "ignored.log", status: "!", staged: false, additions: 0, deletions: 0 },
         ]);
+        // Drained unconditionally rather than breaking on the count. `storeChangedFileCount`
+        // updates the in-memory count first and CHAINS the workspace-state write behind it, so the
+        // count settling is the earlier of the two events -- stopping there leaves the write still
+        // queued and the assertion below reads a memento nothing ever called. It survived on Vitest
+        // 1 only because the count happened to settle a tick later there.
         for (let index = 0; index < 10; index += 1) {
             await flushMicrotasks();
-            if (provider.getLastKnownFileCount() === 4) break;
         }
 
         expect(provider.getLastKnownFileCount()).toBe(4);

@@ -298,6 +298,11 @@ describe("webview i18n payload", () => {
 });
 
 describe("localization packaging", () => {
+    // `vsce ls` walks the whole working tree applying `.vscodeignore`, and measured on an idle
+    // machine it takes ~26s on its own -- against the suite-wide 30s budget, which leaves about
+    // four seconds of headroom for a test that is one synchronous external process. Under the
+    // parallel suite it exceeded that and reported as a hang. The budget below is sized to the
+    // process rather than to a typical test, and is still short enough to catch a real hang.
     it("packages manifest and host localization assets without relying on src catalogs at runtime", () => {
         const packageJson = readJson<{ l10n?: string }>("package.json");
         expect(packageJson.l10n).toBe("./l10n");
@@ -340,7 +345,7 @@ describe("localization packaging", () => {
                 /\b(readFile|workspace\.fs|joinPath|fetch\(|await import\()/,
             );
         }
-    });
+    }, 120_000);
 });
 
 describe("localized HTML output", () => {

@@ -33,11 +33,27 @@ export default defineConfig({
             // pinned to the exact local numbers with zero headroom. CI is the
             // gate, so validate any increase against a CI run, not just local,
             // and keep the margin when ratcheting up.
+            //
+            // Re-baselined for `@vitest/coverage-v8` 4, and NOT comparable with
+            // the floors that stood before it. That release maps V8's raw byte
+            // ranges back through the source AST (`ast-v8-to-istanbul`) instead
+            // of scoring the transpiled output, so the same fully-green suite
+            // is now measured differently rather than measured worse. Measured
+            // under it: statements 84.99, lines 87.65, branches 78.43 -- all
+            // below floors the suite used to clear -- and functions 85.95,
+            // which is ABOVE its old floor of 83.0. A change that moves two
+            // metrics down and one up is an instrument change; lost coverage
+            // does not improve a metric. 286 of 286 files pass either way.
+            //
+            // `functions` deliberately stays at its old floor rather than
+            // following the observed 85.95 up: that would be an increase, and
+            // the rule above requires a CI run before taking one. Ratchet it
+            // once this branch's `build` job reports its number.
             thresholds: {
-                lines: 88.5,
+                lines: 87.0,
                 functions: 83.0,
-                branches: 80.5,
-                statements: 88.5,
+                branches: 77.7,
+                statements: 84.3,
             },
         },
     },
