@@ -1029,7 +1029,7 @@
         "@types/react": "^18.2.48",
         "@types/react-dom": "^18.2.18",
         "@types/vscode": "^1.96.0",
-        "@vitest/coverage-v8": "1.6.1",
+        "@vitest/coverage-v8": "4.1.10",
         "@vscode/test-electron": "^3.1.0",
         "@vscode/vsce": "^2.22.0",
         "dependency-cruiser": "^17.4.3",
