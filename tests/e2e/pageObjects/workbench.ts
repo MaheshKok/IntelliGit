@@ -52,17 +52,27 @@ export class Workbench {
         try {
             await this.page.getByRole("option", { name: label }).click();
         } catch (error) {
-            // A bare `waiting for getByRole('option')` timeout cannot separate the two causes,
-            // and they have opposite fixes: a label this page object spelled wrong, versus a
-            // command VS Code does not know yet. What the palette IS offering says which --
-            // its own entries mean the label is wrong, while VS Code's zero-match "similar
-            // commands" fallback means the contribution has not registered. Measured on CI run
-            // 31942358546, where the bare timeout named only the locator and cost two
-            // diagnosis passes that had to go to the screenshot for what this line now says.
+            // A bare `waiting for getByRole('option')` timeout cannot separate the causes, and
+            // they have opposite fixes: a label this page object spelled wrong, versus a command
+            // VS Code does not know yet. What the palette IS offering says which -- its own
+            // entries mean the label is wrong, while VS Code's zero-match "similar commands"
+            // fallback means the contribution has not registered. Measured on CI run 31942358546,
+            // where the bare timeout named only the locator and cost two diagnosis passes that had
+            // to go to the screenshot for what this line now says.
+            //
+            // The wording stays neutral about WHICH of them it was, because this catch cannot
+            // know. `.click()` also fails with the entry right there on screen -- an overlaying
+            // decoration makes Playwright refuse the click outright -- so "never offered" would
+            // state as fact something the listed options can contradict two lines later.
+            //
+            // The original rejection goes in `cause` rather than being flattened into the text:
+            // it keeps the timeout and its stack as a structured value instead of a string, and
+            // Playwright's reporter walks the chain (`runner/index.js` prints `[cause]:`), so
+            // nothing that was visible in the CI log before is lost by moving it.
             throw new Error(
-                `Command palette never offered "${label}". It offered: ` +
-                    `${await this.describeQuickPickOptions()}. Original failure: ` +
-                    `${error instanceof Error ? error.message : String(error)}`,
+                `Failed to select "${label}" from the command palette. It offered: ` +
+                    `${await this.describeQuickPickOptions()}.`,
+                { cause: error },
             );
         }
     }

@@ -101,12 +101,43 @@ describe("Workbench", () => {
             ).rejects.toThrow(/"Developer: Open Log\.\.\.", "Developer: Show Window Log"/);
         });
 
-        // The original timeout is the finding; the offered list is context for it. A message that
-        // replaces one with the other loses which locator and which timeout actually expired.
-        it("keeps the original timeout inside the message it adds context to", async () => {
-            await expect(new Workbench(palette([])).pickQuickPick("Anything")).rejects.toThrow(
-                /Timeout 30000ms exceeded/,
+        // The click can fail with the entry right there on screen: an overlaying decoration makes
+        // Playwright refuse it outright. So this catch cannot know whether the entry was absent,
+        // and a message asserting it was is contradicted two clauses later by the list it prints.
+        // Not a wording pin -- the assertion is that the message never states a cause the same
+        // message disproves.
+        it("does not claim the entry was absent while it is listing that entry", async () => {
+            const page = palette(["IntelliGit: Show Git Log", "Developer: Open Log..."]);
+
+            const message = await new Workbench(page)
+                .pickQuickPick("IntelliGit: Show Git Log")
+                .then(
+                    () => "pickQuickPick resolved instead of reporting the failure",
+                    (error: unknown) => (error as Error).message,
+                );
+
+            expect(message, "the offered list is what contradicts a claim of absence").toContain(
+                '"IntelliGit: Show Git Log"',
             );
+            expect(
+                message,
+                "a click can fail with the entry present, so absence is not knowable here",
+            ).not.toMatch(/never offered|did not offer|no such command/i);
+        });
+
+        // The original rejection is the finding; the offered list is context for it. It goes in
+        // `cause` rather than being flattened into the text, which keeps its stack and lets
+        // Playwright's reporter print the chain. Asserted on the chain rather than on the message
+        // for exactly that reason: a version that dropped the rejection entirely would still
+        // produce a perfectly readable message.
+        it("keeps the original rejection as the new error's cause", async () => {
+            const cause = await new Workbench(palette([])).pickQuickPick("Anything").then(
+                () => undefined,
+                (error: unknown) => (error as Error).cause,
+            );
+
+            expect(cause, "the rejection that actually failed must survive").toBeInstanceOf(Error);
+            expect((cause as Error).message).toContain("Timeout 30000ms exceeded");
         });
 
         // An empty palette and a palette full of the wrong commands are different failures: the
@@ -121,10 +152,16 @@ describe("Workbench", () => {
         // Reading the palette is best-effort by construction: this path is already failing, and a
         // detached frame here must not become the error the run reports instead of the timeout.
         it("reports an unreadable palette rather than throwing over the timeout", async () => {
-            const rejection = new Workbench(palette("unreadable")).pickQuickPick("Anything");
+            const error = await new Workbench(palette("unreadable")).pickQuickPick("Anything").then(
+                () => undefined,
+                (rejection: unknown) => rejection as Error,
+            );
 
-            await expect(rejection).rejects.toThrow(/<unreadable: frame was detached>/);
-            await expect(rejection).rejects.toThrow(/Timeout 30000ms exceeded/);
+            expect(error?.message).toMatch(/<unreadable: frame was detached>/);
+            expect(
+                (error?.cause as Error | undefined)?.message,
+                "the detached frame must not displace the timeout that is the actual finding",
+            ).toContain("Timeout 30000ms exceeded");
         });
 
         // VS Code's palette holds hundreds of commands. An uncapped dump buries the timeout it is

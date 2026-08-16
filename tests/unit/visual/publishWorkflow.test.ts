@@ -13,6 +13,10 @@ import { join, resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
+import { oracles } from "../../oracles";
+
+const { sanitizedGitEnv } = oracles.get("gitEnv");
+
 const WORKFLOW_PATH = resolve(__dirname, "../../../.github/workflows/publish.yml");
 const DOCKERFILE_PATH = resolve(__dirname, "../../../tests/e2e/docker/Dockerfile");
 const PACKAGE_JSON_PATH = resolve(__dirname, "../../../package.json");
@@ -86,18 +90,28 @@ function extractRunScript(step: string): string {
     return script.join("\n");
 }
 
+/** The repository slug the stubbed steps are made to ask about, and asserted against. */
+const STUB_REPOSITORY = "test-owner/test-repo";
+
 /** What one execution of the version gate did: its exit status and what it appended to the outputs file. */
 interface VersionGateRun {
     readonly status: number | null;
     readonly outputs: string;
     readonly stderr: string;
+    /** Every argument the stubbed `gh` was invoked with, one per element. Empty when unstubbed. */
+    readonly ghArgs: readonly string[];
 }
 
-/** How the stubbed `gh release view` should answer, when the gate is allowed to reach it. */
+/** How the stubbed `gh` should answer, when the gate is allowed to reach it. */
 interface GhStub {
     readonly status: number;
-    /** Combined output. Sent to stderr on failure and stdout on success, as the real gh does. */
-    readonly output: string;
+    /**
+     * What `gh api -i` writes to stdout: the HTTP status line first, then headers and body. The
+     * step reads only that first line, so this is what decides the branch under test.
+     */
+    readonly stdout: string;
+    /** gh's own prose, which the real binary writes to stderr alongside the response. */
+    readonly stderr?: string;
 }
 
 interface VersionGateOptions {
@@ -111,20 +125,22 @@ interface VersionGateOptions {
 /**
  * Runs the release job's version gate against a crafted `package.json`, in a throwaway workspace.
  *
- * `FORCE_PUBLISH=true` takes the early-exit branch, so the gate never reaches `gh release view`
- * and the test needs no network, no token, and no GitHub. That branch is also the strictest place
- * to test input validation from: it writes to `$GITHUB_OUTPUT` and exits before the release-state
- * check, so a validation placed anywhere later would not protect it.
+ * `FORCE_PUBLISH=true` takes the early-exit branch, so the gate never reaches `gh` and the test
+ * needs no network, no token, and no GitHub. That branch is also the strictest place to test input
+ * validation from: it writes to `$GITHUB_OUTPUT` and exits before the release-state check, so a
+ * validation placed anywhere later would not protect it.
  *
  * Passing `gh` instead puts a stub earlier on PATH than the real binary and lets the gate run all
  * the way through the release-state check, so the branch that decides whether to publish is
- * executed rather than pattern-matched. The stub's exit status and message are the ones measured
- * from gh 2.87.3, which is the only thing separating "no such release" from "the API is broken".
+ * executed rather than pattern-matched. The stub answers exactly as gh 2.87.3 was measured to --
+ * status line on stdout, prose on stderr -- because that split is the only thing separating "no
+ * such release" from "the API is broken".
  */
 function runVersionGate(script: string, version: string, options: VersionGateOptions = {}) {
     const workspace = mkdtempSync(join(tmpdir(), "publish-version-gate-"));
     try {
         const outputPath = join(workspace, "github-output");
+        const ghArgsPath = join(workspace, "gh-args");
         writeFileSync(join(workspace, "package.json"), JSON.stringify({ version }));
         writeFileSync(join(workspace, "gate.sh"), script);
         writeFileSync(outputPath, "");
@@ -133,13 +149,23 @@ function runVersionGate(script: string, version: string, options: VersionGateOpt
         if (options.gh) {
             const binDir = join(workspace, "bin");
             mkdirSync(binDir);
-            // The message goes in its own file so no amount of quoting in it can break the stub.
-            writeFileSync(join(binDir, "gh-output"), options.gh.output);
+            // Each stream gets its own file, so no amount of quoting in either can break the stub
+            // and the split between them stays faithful to the real binary: measured on gh 2.87.3,
+            // `-i` prints the status line on STDOUT for 200, 404 and 401 alike while gh's own
+            // prose goes to stderr. Parsing one and logging the other is exactly what the step
+            // under test relies on, so a stub that merged them would not exercise it.
+            writeFileSync(join(binDir, "gh-stdout"), options.gh.stdout);
+            writeFileSync(join(binDir, "gh-stderr"), options.gh.stderr ?? "");
+            writeFileSync(ghArgsPath, "");
             writeFileSync(
                 join(binDir, "gh"),
                 `#!/usr/bin/env bash\n` +
-                    `if [ ${options.gh.status} -eq 0 ]; then cat "${binDir}/gh-output"; ` +
-                    `else cat "${binDir}/gh-output" >&2; fi\n` +
+                    // One argument per line, so a test can assert WHAT was asked rather than only
+                    // what the canned answer produced. A step that queried the wrong tag -- a
+                    // dropped "v" prefix, say -- satisfies every assertion about the outputs.
+                    `printf '%s\\n' "$@" > "${ghArgsPath}"\n` +
+                    `cat "${binDir}/gh-stdout"\n` +
+                    `cat "${binDir}/gh-stderr" >&2\n` +
                     `exit ${options.gh.status}\n`,
                 { mode: 0o755 },
             );
@@ -155,6 +181,9 @@ function runVersionGate(script: string, version: string, options: VersionGateOpt
                 FORCE_PUBLISH: String(options.forcePublish ?? true),
                 PATH: path.join(":"),
                 ...options.env,
+                // Last on purpose: the recorded arguments are asserted against this exact slug, so
+                // neither a caller's overlay nor an ambient GITHUB_REPOSITORY may redirect it.
+                GITHUB_REPOSITORY: STUB_REPOSITORY,
             },
         });
 
@@ -162,6 +191,11 @@ function runVersionGate(script: string, version: string, options: VersionGateOpt
             status: result.status,
             outputs: readFileSync(outputPath, "utf8"),
             stderr: result.stderr ?? "",
+            ghArgs: options.gh
+                ? readFileSync(ghArgsPath, "utf8")
+                      .split("\n")
+                      .filter((argument) => argument !== "")
+                : [],
         } satisfies VersionGateRun;
     } finally {
         rmSync(workspace, { recursive: true, force: true });
@@ -178,11 +212,41 @@ function runVersionGate(script: string, version: string, options: VersionGateOpt
 function runTagStep(script: string, tagPlacement: "head" | "older" | "absent") {
     const workspace = mkdtempSync(join(tmpdir(), "publish-tag-step-"));
     const repo = join(workspace, "repo");
-    const git = (...args: readonly string[]) =>
-        spawnSync("git", args, { cwd: repo, encoding: "utf8" }).stdout?.trim() ?? "";
+
+    // Git takes its behaviour from the environment and from the developer's own config files:
+    // `GIT_DIR` and its relatives outrank both `-C` and `cwd`, and a global `commit.gpgSign`,
+    // `core.hooksPath` or `init.templateDir` changes what this fixture repository even is. Every
+    // answer read below is a premise of the assertions, so the ambient configuration is dropped
+    // rather than inherited -- otherwise the suite measures the machine it happens to run on and
+    // disagrees with CI for reasons no failure message mentions. `sanitizedGitEnv` strips every
+    // inherited `GIT_*`; the overlay then pins config discovery at nothing on top of that.
+    const gitEnv = sanitizedGitEnv({
+        GIT_CONFIG_GLOBAL: "/dev/null",
+        GIT_CONFIG_SYSTEM: "/dev/null",
+        HOME: workspace,
+    });
+
+    /**
+     * Runs one git command and stops the test AT the command that failed.
+     *
+     * Returning `""` on failure instead -- which this helper used to do -- turns a broken `git
+     * commit` into an empty commit id that flows on into `GITHUB_SHA` and blows up several
+     * assertions later, none of which name the cause.
+     */
+    const runGit = (cwd: string, ...args: readonly string[]) => {
+        const result = spawnSync("git", args, { cwd, encoding: "utf8", env: gitEnv });
+        if (result.status !== 0) {
+            throw new Error(
+                `git ${args.join(" ")} failed with status ${result.status}: ${result.stderr ?? ""}`,
+            );
+        }
+        return result.stdout?.trim() ?? "";
+    };
+    const git = (...args: readonly string[]) => runGit(repo, ...args);
+
     try {
         mkdirSync(repo);
-        spawnSync("git", ["init", "--bare", join(workspace, "origin.git")], { encoding: "utf8" });
+        runGit(workspace, "init", "--bare", join(workspace, "origin.git"));
         git("init", "--initial-branch=main");
         git("config", "user.email", "test@example.invalid");
         git("config", "user.name", "Test");
@@ -210,26 +274,32 @@ function runTagStep(script: string, tagPlacement: "head" | "older" | "absent") {
         const result = spawnSync("bash", ["-e", join(repo, "tag.sh")], {
             cwd: repo,
             encoding: "utf8",
-            env: { ...process.env, NEW_VERSION: "9.9.9", GITHUB_SHA: head },
+            env: { ...gitEnv, NEW_VERSION: "9.9.9", GITHUB_SHA: head },
         });
+
+        // Deliberately not `runGit`: `rev-parse -q --verify` exits 1 when the tag is simply
+        // absent, and absence is one of the states under test rather than a failure. It still runs
+        // in the sanitized environment, because an inherited `GIT_DIR` would otherwise outrank
+        // `--git-dir` and resolve the tag against an entirely different repository.
+        const pushedTagCommit =
+            spawnSync(
+                "git",
+                [
+                    "--git-dir",
+                    join(workspace, "origin.git"),
+                    "rev-parse",
+                    "-q",
+                    "--verify",
+                    "v9.9.9^{commit}",
+                ],
+                { encoding: "utf8", env: gitEnv },
+            ).stdout?.trim() ?? "";
 
         return {
             status: result.status,
             stderr: result.stderr ?? "",
             /** What the tag resolves to on the remote afterwards -- "" when it was never pushed. */
-            pushedTagCommit:
-                spawnSync(
-                    "git",
-                    [
-                        "--git-dir",
-                        join(workspace, "origin.git"),
-                        "rev-parse",
-                        "-q",
-                        "--verify",
-                        "v9.9.9^{commit}",
-                    ],
-                    { encoding: "utf8" },
-                ).stdout?.trim() ?? "",
+            pushedTagCommit,
             head,
             older,
         };
@@ -330,7 +400,18 @@ describe("publish visual workflow", () => {
         expect(
             gate,
             "the release gate must ask whether the current version already has a GitHub Release",
-        ).toMatch(/gh release view "v\$CURRENT_VERSION"/);
+        ).toMatch(/releases\/tags\/v\$CURRENT_VERSION/);
+
+        // It used to ask that through `gh release view` and read the answer out of the message
+        // text. That worked, and it made the release depend on prose GitHub is free to reword --
+        // where the reworded case reads as "unknown state" and silently blocks every release,
+        // which is the failure this whole job was rewritten to stop having. The executable cases
+        // in "the release-state probe" prove what it does now; this pins what it must not go back
+        // to, which no behavioural test can see because both forms behave identically today.
+        expect(
+            gate,
+            "the release gate must not decide a release from a human-readable message",
+        ).not.toMatch(/release not found/);
 
         // Re-running is only safe because every publishing step guards itself. Remove one of these
         // guards and the self-healing gate above becomes a double-publish, so they are asserted
@@ -447,14 +528,51 @@ describe("publish visual workflow", () => {
     });
 
     describe("the release-state probe", () => {
-        // Exit statuses and messages measured against gh 2.87.3: an absent release and a bad token
-        // BOTH exit 1, and only the message tells them apart. So each case here runs the gate with
-        // a `gh` that answers exactly as the real one does.
-        const ABSENT = { status: 1, output: "release not found" };
-        const BROKEN = {
+        // Measured against gh 2.87.3 on the release-by-tag endpoint. An absent release and a bad
+        // token BOTH exit 1, so the exit code can never decide this; what separates them is the
+        // status line, which `-i` prints as the first line of stdout in every case while gh's own
+        // prose goes to stderr. Each case here answers exactly that way, so the step has to draw
+        // the distinction itself rather than being handed it.
+        const ABSENT: GhStub = {
             status: 1,
-            output: 'non-200 OK status code: 401 Unauthorized body: "{\\"message\\":\\"Bad credentials\\"}"',
+            stdout: 'HTTP/2.0 404 Not Found\r\n\r\n{"message":"Not Found","status":"404"}',
+            stderr: "gh: Not Found (HTTP 404)",
         };
+        const PRESENT: GhStub = {
+            status: 0,
+            stdout: 'HTTP/2.0 200 OK\r\n\r\n{"tag_name":"v9.9.9"}',
+        };
+        const BROKEN: GhStub = {
+            status: 1,
+            stdout: 'HTTP/2.0 401 Unauthorized\r\n\r\n{"message":"Bad credentials"}',
+            stderr: "gh: Bad credentials (HTTP 401)",
+        };
+        // gh never reached the API at all -- no binary, no network, no token to send. There is no
+        // status line to read, which the old message-matching form could not even express, and it
+        // is the case that must never be mistaken for "this version has not shipped".
+        const SILENT: GhStub = {
+            status: 1,
+            stdout: "",
+            stderr: "gh: could not resolve host: api.github.com",
+        };
+
+        /**
+         * Asserts what the step actually asked GitHub, not merely what it did with the answer.
+         *
+         * A step that queried the wrong tag -- the bare `9.9.9` rather than the `v9.9.9` every
+         * release here is published under -- gets a 404 from a real GitHub and satisfies every
+         * assertion about the outputs while deciding the release from a question nobody asked.
+         */
+        function expectQueriedTag(run: VersionGateRun, step: string) {
+            expect(
+                run.ghArgs,
+                `${step} must ask over the API, where the answer is a status code`,
+            ).toContain("api");
+            expect(
+                run.ghArgs,
+                `${step} must query the v-prefixed tag on the release-by-tag endpoint`,
+            ).toContain(`repos/${STUB_REPOSITORY}/releases/tags/v9.9.9`);
+        }
 
         function runProbe(gh: GhStub) {
             const releaseJob = extractJobBlock(readFileSync(WORKFLOW_PATH, "utf8"), "release");
@@ -473,10 +591,11 @@ describe("publish visual workflow", () => {
                 run.outputs.split("\n").filter((line) => line !== ""),
                 "an absent release means publish",
             ).toEqual(["version_changed=true", "new_version=9.9.9"]);
+            expectQueriedTag(run, "the version gate");
         });
 
         it("skips when the release already exists", () => {
-            const run = runProbe({ status: 0, output: '{"tagName":"v9.9.9"}' });
+            const run = runProbe(PRESENT);
 
             expect(run.status, "an existing release is a normal, expected answer").toBe(0);
             expect(
@@ -496,7 +615,19 @@ describe("publish visual workflow", () => {
                 run.outputs,
                 "an unreadable release state must not decide the release either way",
             ).toBe("");
-            expect(run.stderr, "the failure must carry gh's own reason").toContain("401");
+            expect(run.stderr, "the failure must name the status it could not act on").toContain(
+                "HTTP 401",
+            );
+        });
+
+        // The adversarial case for a status-code gate: there is no status code. A gate that
+        // defaults an unparseable answer to "absent" republishes every time gh cannot start,
+        // which is the same misdiagnosis as the 401 arriving through a quieter door.
+        it("fails when gh answered without a status line at all", () => {
+            const run = runProbe(SILENT);
+
+            expect(run.status, "an answer with no status is not an absent release").not.toBe(0);
+            expect(run.outputs, "an unparseable answer must decide nothing").toBe("");
         });
 
         // The same probe runs a second time later, to choose between creating a release and
@@ -517,6 +648,19 @@ describe("publish visual workflow", () => {
             expect(run.status, "an absent release is a normal, expected answer").toBe(0);
             expect(run.outputs.trim(), "an absent release means create").toBe(
                 "release_exists=false",
+            );
+            expectQueriedTag(run, "the existence check");
+        });
+
+        // The other half of the decision this step exists to make. Without it the step could emit
+        // `release_exists=false` unconditionally and still pass every other test in this block --
+        // and the run would then take `gh release create` against a release that already exists.
+        it("reports an existing release to the create/update decision", () => {
+            const run = runExistenceCheck(PRESENT);
+
+            expect(run.status, "an existing release is a normal, expected answer").toBe(0);
+            expect(run.outputs.trim(), "an existing release means update, not create").toBe(
+                "release_exists=true",
             );
         });
 
@@ -561,6 +705,11 @@ describe("publish visual workflow", () => {
                 0,
             );
             expect(run.stderr, "a matching tag is not a failure").toBe("");
+            // Exiting 0 says the step was happy; it does not say the step left the remote alone.
+            // A version that force-moved or re-pushed the tag on this path exits 0 too, and the
+            // damage only shows up on the mismatch path, where the tag it was supposed to refuse
+            // has already been overwritten.
+            expect(run.pushedTagCommit, "reuse must leave the remote tag untouched").toBe(run.head);
         });
 
         it("creates and pushes the tag when none exists", () => {

@@ -306,23 +306,34 @@ jobs:
                   # re-runnable (publish-status guards, the tag-provenance guard, create-or-update
                   # release) -- this gate was the only part that was not.
                   #
-                  # Only a recognized "not found" counts as absent. `gh release view` exits 1 for a
-                  # missing release AND for auth, rate-limit and network failures -- measured on gh
-                  # 2.87.3: absence prints `release not found`, a bad token prints `non-200 OK
-                  # status code: 401 Unauthorized`. Treating every nonzero as "never released"
-                  # would republish on a transient blip and would report a broken token as "this
-                  # version has not shipped" -- the exact misdiagnosis that left 0.25.2 and 0.25.3
-                  # unreleased. Anything unrecognized fails the step instead, which costs nothing
-                  # now that the gate reads state: the next push simply asks again.
-                  if RELEASE_PROBE=$(gh release view "v$CURRENT_VERSION" 2>&1); then
+                  # Only an HTTP status counts as an answer. Every way of asking exits 1 for a
+                  # missing release AND for auth, rate-limit and network failures, so the exit code
+                  # alone can never decide this -- and `gh release view`'s messages, which used to
+                  # decide it here, are human-readable prose GitHub is free to reword under us. The
+                  # release-by-tag REST endpoint answers the same question as a status code: 200 is
+                  # present, 404 is absent, anything else is an unknown state.
+                  #
+                  # Measured on gh 2.87.3: `-i` prints the status line as the FIRST line of stdout
+                  # for 200, 404 and 401 alike, while gh's own prose goes to stderr. So stdout is
+                  # parsed for the decision and stderr is left unredirected, where it lands in the
+                  # step log as the diagnostic. A gh that cannot run at all prints no status line,
+                  # which parses to empty and falls through to the failure branch.
+                  #
+                  # Reading any of that as "never released" would republish on a transient blip and
+                  # would report a broken token as "this version has not shipped" -- the exact
+                  # misdiagnosis that left 0.25.2 and 0.25.3 unreleased. Failing instead costs
+                  # nothing now that the gate reads state: the next push simply asks again.
+                  RELEASE_PROBE=$(gh api -i "repos/$GITHUB_REPOSITORY/releases/tags/v$CURRENT_VERSION" || true)
+                  HTTP_STATUS=$(printf '%s\n' "$RELEASE_PROBE" | awk 'NR == 1 { print $2 }')
+                  if [ "$HTTP_STATUS" = "200" ]; then
                     echo "v$CURRENT_VERSION already has a GitHub Release; nothing to publish."
                     echo "version_changed=false" >> "$GITHUB_OUTPUT"
-                  elif [[ "$RELEASE_PROBE" == *"release not found"* ]]; then
+                  elif [ "$HTTP_STATUS" = "404" ]; then
                     echo "v$CURRENT_VERSION has no GitHub Release yet; publishing."
                     echo "version_changed=true" >> "$GITHUB_OUTPUT"
                     echo "new_version=$CURRENT_VERSION" >> "$GITHUB_OUTPUT"
                   else
-                    echo "Could not read the release state of v$CURRENT_VERSION: $RELEASE_PROBE" >&2
+                    echo "Could not read the release state of v$CURRENT_VERSION (HTTP ${HTTP_STATUS:-none})." >&2
                     exit 1
                   fi
 
@@ -409,17 +420,19 @@ jobs:
               id: github-release-check
               run: |
                   VERSION="v$NEW_VERSION"
-                  # Same three-way split as the version gate: a nonzero `gh release view` that is
-                  # not the recognized absence message is an unknown state, not an absent release.
-                  # Guessing "false" here sends the run into `gh release create` against a release
-                  # that may well exist, so the run dies later with a misleading error instead of
-                  # here with the real one.
-                  if RELEASE_PROBE=$(gh release view "$VERSION" 2>&1); then
+                  # Same status-code split as the version gate, and for the same reason: a status
+                  # that is neither 200 nor 404 is an unknown state, not an absent release. Guessing
+                  # "false" here sends the run into `gh release create` against a release that may
+                  # well exist, so the run dies later with a misleading error instead of here with
+                  # the real one.
+                  RELEASE_PROBE=$(gh api -i "repos/$GITHUB_REPOSITORY/releases/tags/$VERSION" || true)
+                  HTTP_STATUS=$(printf '%s\n' "$RELEASE_PROBE" | awk 'NR == 1 { print $2 }')
+                  if [ "$HTTP_STATUS" = "200" ]; then
                     echo "release_exists=true" >> "$GITHUB_OUTPUT"
-                  elif [[ "$RELEASE_PROBE" == *"release not found"* ]]; then
+                  elif [ "$HTTP_STATUS" = "404" ]; then
                     echo "release_exists=false" >> "$GITHUB_OUTPUT"
                   else
-                    echo "Could not read the release state of $VERSION: $RELEASE_PROBE" >&2
+                    echo "Could not read the release state of $VERSION (HTTP ${HTTP_STATUS:-none})." >&2
                     exit 1
                   fi
               env:
