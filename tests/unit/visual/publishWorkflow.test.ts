@@ -1,5 +1,15 @@
-import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { spawnSync } from "node:child_process";
+import {
+    existsSync,
+    mkdirSync,
+    mkdtempSync,
+    readdirSync,
+    readFileSync,
+    rmSync,
+    writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
@@ -45,6 +55,187 @@ function extractStepBlock(job: string, stepName: string): string {
     const nextStepOffset = job.slice(bodyStart).search(/^            - name: /m);
     const bodyEnd = nextStepOffset === -1 ? job.length : bodyStart + nextStepOffset;
     return job.slice(start, bodyEnd);
+}
+
+/** Indent of a step's `run: |` body: `- name:` sits at 12, its keys at 14, the block scalar at 18. */
+const RUN_BODY_INDENT = " ".repeat(18);
+
+/**
+ * Extracts a step's `run: |` script and dedents it, so a test can EXECUTE what CI executes
+ * instead of pattern-matching the YAML around it. A regex over the workflow text can only ever
+ * prove that some characters are present; it cannot prove the shell they form rejects anything.
+ */
+function extractRunScript(step: string): string {
+    const marker = `\n${" ".repeat(14)}run: |\n`;
+    const start = step.indexOf(marker);
+    if (start === -1) {
+        return "";
+    }
+
+    const script: string[] = [];
+    for (const line of step.slice(start + marker.length).split("\n")) {
+        if (line.trim() === "") {
+            script.push("");
+            continue;
+        }
+        if (!line.startsWith(RUN_BODY_INDENT)) {
+            break;
+        }
+        script.push(line.slice(RUN_BODY_INDENT.length));
+    }
+    return script.join("\n");
+}
+
+/** What one execution of the version gate did: its exit status and what it appended to the outputs file. */
+interface VersionGateRun {
+    readonly status: number | null;
+    readonly outputs: string;
+    readonly stderr: string;
+}
+
+/** How the stubbed `gh release view` should answer, when the gate is allowed to reach it. */
+interface GhStub {
+    readonly status: number;
+    /** Combined output. Sent to stderr on failure and stdout on success, as the real gh does. */
+    readonly output: string;
+}
+
+interface VersionGateOptions {
+    /** Defaults to true, taking the early-exit branch and never reaching `gh`. */
+    readonly forcePublish?: boolean;
+    readonly gh?: GhStub;
+    /** Extra step inputs, for run scripts that read something other than package.json. */
+    readonly env?: Readonly<Record<string, string>>;
+}
+
+/**
+ * Runs the release job's version gate against a crafted `package.json`, in a throwaway workspace.
+ *
+ * `FORCE_PUBLISH=true` takes the early-exit branch, so the gate never reaches `gh release view`
+ * and the test needs no network, no token, and no GitHub. That branch is also the strictest place
+ * to test input validation from: it writes to `$GITHUB_OUTPUT` and exits before the release-state
+ * check, so a validation placed anywhere later would not protect it.
+ *
+ * Passing `gh` instead puts a stub earlier on PATH than the real binary and lets the gate run all
+ * the way through the release-state check, so the branch that decides whether to publish is
+ * executed rather than pattern-matched. The stub's exit status and message are the ones measured
+ * from gh 2.87.3, which is the only thing separating "no such release" from "the API is broken".
+ */
+function runVersionGate(script: string, version: string, options: VersionGateOptions = {}) {
+    const workspace = mkdtempSync(join(tmpdir(), "publish-version-gate-"));
+    try {
+        const outputPath = join(workspace, "github-output");
+        writeFileSync(join(workspace, "package.json"), JSON.stringify({ version }));
+        writeFileSync(join(workspace, "gate.sh"), script);
+        writeFileSync(outputPath, "");
+
+        const path = [process.env.PATH ?? ""];
+        if (options.gh) {
+            const binDir = join(workspace, "bin");
+            mkdirSync(binDir);
+            // The message goes in its own file so no amount of quoting in it can break the stub.
+            writeFileSync(join(binDir, "gh-output"), options.gh.output);
+            writeFileSync(
+                join(binDir, "gh"),
+                `#!/usr/bin/env bash\n` +
+                    `if [ ${options.gh.status} -eq 0 ]; then cat "${binDir}/gh-output"; ` +
+                    `else cat "${binDir}/gh-output" >&2; fi\n` +
+                    `exit ${options.gh.status}\n`,
+                { mode: 0o755 },
+            );
+            path.unshift(binDir);
+        }
+
+        const result = spawnSync("bash", ["-e", join(workspace, "gate.sh")], {
+            cwd: workspace,
+            encoding: "utf8",
+            env: {
+                ...process.env,
+                GITHUB_OUTPUT: outputPath,
+                FORCE_PUBLISH: String(options.forcePublish ?? true),
+                PATH: path.join(":"),
+                ...options.env,
+            },
+        });
+
+        return {
+            status: result.status,
+            outputs: readFileSync(outputPath, "utf8"),
+            stderr: result.stderr ?? "",
+        } satisfies VersionGateRun;
+    } finally {
+        rmSync(workspace, { recursive: true, force: true });
+    }
+}
+
+/**
+ * Runs the `Create git tag` step against a real repository whose tag placement the test chooses.
+ *
+ * The step's decision is about commit identity, so a fake cannot stand in for git here -- the
+ * whole question is what `rev-parse` resolves an existing tag to. `origin` is a local bare repo so
+ * the create-and-push path is exercised for real rather than skipped.
+ */
+function runTagStep(script: string, tagPlacement: "head" | "older" | "absent") {
+    const workspace = mkdtempSync(join(tmpdir(), "publish-tag-step-"));
+    const repo = join(workspace, "repo");
+    const git = (...args: readonly string[]) =>
+        spawnSync("git", args, { cwd: repo, encoding: "utf8" }).stdout?.trim() ?? "";
+    try {
+        mkdirSync(repo);
+        spawnSync("git", ["init", "--bare", join(workspace, "origin.git")], { encoding: "utf8" });
+        git("init", "--initial-branch=main");
+        git("config", "user.email", "test@example.invalid");
+        git("config", "user.name", "Test");
+        git("remote", "add", "origin", join(workspace, "origin.git"));
+
+        writeFileSync(join(repo, "a"), "older");
+        git("add", "-A");
+        git("commit", "-m", "older");
+        const older = git("rev-parse", "HEAD");
+
+        writeFileSync(join(repo, "b"), "head");
+        git("add", "-A");
+        git("commit", "-m", "head");
+        const head = git("rev-parse", "HEAD");
+
+        if (tagPlacement !== "absent") {
+            // Pushed as well as created: the scenario is a previous run that tagged and then died,
+            // so the tag is already on the remote. Asserting the remote afterwards is what proves
+            // the step left it alone instead of force-moving it onto this build.
+            git("tag", "v9.9.9", tagPlacement === "head" ? head : older);
+            git("push", "origin", "v9.9.9");
+        }
+
+        writeFileSync(join(repo, "tag.sh"), script);
+        const result = spawnSync("bash", ["-e", join(repo, "tag.sh")], {
+            cwd: repo,
+            encoding: "utf8",
+            env: { ...process.env, NEW_VERSION: "9.9.9", GITHUB_SHA: head },
+        });
+
+        return {
+            status: result.status,
+            stderr: result.stderr ?? "",
+            /** What the tag resolves to on the remote afterwards -- "" when it was never pushed. */
+            pushedTagCommit:
+                spawnSync(
+                    "git",
+                    [
+                        "--git-dir",
+                        join(workspace, "origin.git"),
+                        "rev-parse",
+                        "-q",
+                        "--verify",
+                        "v9.9.9^{commit}",
+                    ],
+                    { encoding: "utf8" },
+                ).stdout?.trim() ?? "",
+            head,
+            older,
+        };
+    } finally {
+        rmSync(workspace, { recursive: true, force: true });
+    }
 }
 
 /** The nightly workflow, or an empty string when it is absent, so a missing file reads as a
@@ -95,14 +286,14 @@ describe("publish visual workflow", () => {
         // so the version it was publishing is simply never released and nothing says so. Measured:
         // v0.25.3's release run died this way. Cancelling a superseded pull-request run is still
         // wanted, so the policy has to discriminate on the ref rather than being switched off.
+        // The whole comparison, not its parts. `!= "true"` plus `contains "refs/heads/main"` is
+        // satisfied by `github.ref == 'refs/heads/main'` -- the exact inversion, which cancels
+        // release runs and never supersedes a pull-request run. Whitespace is normalized so the
+        // assertion survives reformatting without loosening into that hole again.
         expect(
-            cancelLine,
-            "a main-branch release run must never be cancelled by a later push",
-        ).not.toBe("true");
-        expect(
-            cancelLine,
-            "cancellation must be decided by the ref, so pull-request runs still supersede",
-        ).toContain("refs/heads/main");
+            cancelLine.replace(/\s+/g, ""),
+            "cancellation must be `github.ref != refs/heads/main`: main runs survive, PR runs supersede",
+        ).toContain("github.ref!='refs/heads/main'");
     });
 
     it("decides the release from whether this version shipped, not from the previous commit", () => {
@@ -144,16 +335,240 @@ describe("publish visual workflow", () => {
         // Re-running is only safe because every publishing step guards itself. Remove one of these
         // guards and the self-healing gate above becomes a double-publish, so they are asserted
         // here, next to the gate whose safety depends on them, rather than trusted.
+        // Pinned to the guard rather than to its log line: what makes a re-run safe is that the
+        // step compares the existing tag against this run's commit. Both outcomes of that
+        // comparison are executed in "the tag the release is published under" below.
         expect(
             extractStepBlock(releaseJob, "Create git tag"),
-            "tagging must be a no-op when the tag already exists",
-        ).toMatch(/already exists, skipping/);
+            "tagging must decide from the commit the existing tag names",
+        ).toContain("$GITHUB_SHA");
         expect(releaseJob, "a live marketplace version must not be published twice").toContain(
             "steps.publish-status.outputs.vsce_published != 'true'",
         );
         expect(releaseJob, "an existing GitHub Release must be updated, not recreated").toContain(
             "steps.github-release-check.outputs.release_exists != 'true'",
         );
+    });
+
+    describe("the version gate's own input", () => {
+        // `echo "k=$v" >> $GITHUB_OUTPUT` writes one LINE PER NEWLINE in the value. A version
+        // carrying a newline therefore appends step outputs of its own choosing, including
+        // `version_changed`, which every publishing step below reads. These run the gate's real
+        // shell rather than matching its text: a regex can prove a validation is PRESENT, never
+        // that it REJECTS anything, and the whole value of this guard is the rejection.
+        function readVersionGateScript(): string {
+            const releaseJob = extractJobBlock(readFileSync(WORKFLOW_PATH, "utf8"), "release");
+            return extractRunScript(
+                extractStepBlock(releaseJob, "Check whether this version still needs releasing"),
+            );
+        }
+
+        it("refuses a version whose newline would append extra step outputs", () => {
+            const script = readVersionGateScript();
+            expect(script, "the version gate step must carry a run script").not.toBe("");
+
+            // `version_changed=false` rather than `=true`: the gate legitimately writes `=true` on
+            // this branch, so an injected `=true` would be indistinguishable from correct output.
+            // GitHub takes the LAST value for a repeated key, so this payload silently flips the
+            // release decision -- a real consequence, and one the assertion can actually see.
+            const run = runVersionGate(script, "9.9.9\nversion_changed=false");
+
+            expect(run.status, "a version that is not strict x.y.z must fail the step").not.toBe(0);
+            expect(
+                run.outputs,
+                "a rejected version must reach $GITHUB_OUTPUT not at all, not merely quoted",
+            ).toBe("");
+            expect(
+                run.stderr,
+                "the failure must name the rule it broke, not die on a later step",
+            ).toContain("not a strict x.y.z semver");
+        });
+
+        it("still releases a well-formed version, so the guard is not rejecting everything", () => {
+            const script = readVersionGateScript();
+            expect(script, "the version gate step must carry a run script").not.toBe("");
+
+            const run = runVersionGate(script, "9.9.9");
+
+            expect(run.status, "a well-formed version must still pass the gate").toBe(0);
+            // The exact line list, not a `toContain`: an injected third line is the entire defect,
+            // and a containment check would pass with it present.
+            expect(
+                run.outputs.split("\n").filter((line) => line !== ""),
+                "the gate must write exactly the two outputs it echoes",
+            ).toEqual(["version_changed=true", "new_version=9.9.9"]);
+        });
+
+        it("validates before the first write, so no branch reaches $GITHUB_OUTPUT unchecked", () => {
+            const releaseJob = extractJobBlock(readFileSync(WORKFLOW_PATH, "utf8"), "release");
+            const gate = extractStepBlock(
+                releaseJob,
+                "Check whether this version still needs releasing",
+            )
+                .split("\n")
+                .filter((line) => !line.trimStart().startsWith("#"))
+                .join("\n");
+
+            const validationOffset = gate.search(/if \[\[ ! "\$CURRENT_VERSION" =~/);
+            const firstWriteOffset = gate.indexOf('>> "$GITHUB_OUTPUT"');
+
+            expect(validationOffset, "the gate must validate the version it read").toBeGreaterThan(
+                -1,
+            );
+            expect(firstWriteOffset, "the gate must write step outputs").toBeGreaterThan(-1);
+            // The two executable tests above can only drive the force_publish branch -- the
+            // release-state branch needs a GitHub token and network. This is what ties the
+            // validation to THAT branch's writes too, and to any branch added later above them.
+            expect(
+                validationOffset,
+                "every $GITHUB_OUTPUT write must sit below the validation",
+            ).toBeLessThan(firstWriteOffset);
+        });
+
+        it("quotes every $GITHUB_OUTPUT redirection in the workflow", () => {
+            // Comment lines are stripped first: the gate's own comment quotes the unquoted form to
+            // explain the defect, and a scan that counted prose would be red before the fix landed.
+            const workflow = readFileSync(WORKFLOW_PATH, "utf8")
+                .split("\n")
+                .filter((line) => !line.trimStart().startsWith("#"))
+                .join("\n");
+            const redirections = workflow.match(/>>\s*"?\$GITHUB_OUTPUT"?/g) ?? [];
+
+            expect(redirections.length, "the workflow must write step outputs").toBeGreaterThan(0);
+            // The redirection target is a runner-controlled path, so leaving it bare relies on that
+            // path never containing a space or a glob character. Scanned across the whole file
+            // rather than the gate alone: this is the half of the hardening the executable tests
+            // above cannot see, since they only ever run one step.
+            expect(
+                redirections.filter((redirection) => !redirection.includes('"$GITHUB_OUTPUT"')),
+                "an unquoted redirection target word-splits and globs",
+            ).toEqual([]);
+        });
+    });
+
+    describe("the release-state probe", () => {
+        // Exit statuses and messages measured against gh 2.87.3: an absent release and a bad token
+        // BOTH exit 1, and only the message tells them apart. So each case here runs the gate with
+        // a `gh` that answers exactly as the real one does.
+        const ABSENT = { status: 1, output: "release not found" };
+        const BROKEN = {
+            status: 1,
+            output: 'non-200 OK status code: 401 Unauthorized body: "{\\"message\\":\\"Bad credentials\\"}"',
+        };
+
+        function runProbe(gh: GhStub) {
+            const releaseJob = extractJobBlock(readFileSync(WORKFLOW_PATH, "utf8"), "release");
+            const script = extractRunScript(
+                extractStepBlock(releaseJob, "Check whether this version still needs releasing"),
+            );
+            expect(script, "the version gate step must carry a run script").not.toBe("");
+            return runVersionGate(script, "9.9.9", { forcePublish: false, gh });
+        }
+
+        it("publishes when the release is genuinely absent", () => {
+            const run = runProbe(ABSENT);
+
+            expect(run.status, "an absent release is a normal, expected answer").toBe(0);
+            expect(
+                run.outputs.split("\n").filter((line) => line !== ""),
+                "an absent release means publish",
+            ).toEqual(["version_changed=true", "new_version=9.9.9"]);
+        });
+
+        it("skips when the release already exists", () => {
+            const run = runProbe({ status: 0, output: '{"tagName":"v9.9.9"}' });
+
+            expect(run.status, "an existing release is a normal, expected answer").toBe(0);
+            expect(
+                run.outputs.split("\n").filter((line) => line !== ""),
+                "an existing release means skip",
+            ).toEqual(["version_changed=false"]);
+        });
+
+        it("fails rather than treating an unreadable release state as never released", () => {
+            const run = runProbe(BROKEN);
+
+            // The failure direction is the point. Reading a 401 as "absent" republishes on a
+            // transient blip and reports a broken token as "this version has not shipped" -- which
+            // is the misdiagnosis that left 0.25.2 and 0.25.3 sitting on main unreleased.
+            expect(run.status, "an unreadable release state must fail the step").not.toBe(0);
+            expect(
+                run.outputs,
+                "an unreadable release state must not decide the release either way",
+            ).toBe("");
+            expect(run.stderr, "the failure must carry gh's own reason").toContain("401");
+        });
+
+        // The same probe runs a second time later, to choose between creating a release and
+        // updating one. Guessing "absent" there sends the run into `gh release create` against a
+        // release that may exist, so it dies later with a misleading error instead of here.
+        function runExistenceCheck(gh: GhStub) {
+            const releaseJob = extractJobBlock(readFileSync(WORKFLOW_PATH, "utf8"), "release");
+            const script = extractRunScript(
+                extractStepBlock(releaseJob, "Check if GitHub release exists"),
+            );
+            expect(script, "the existence check step must carry a run script").not.toBe("");
+            return runVersionGate(script, "9.9.9", { gh, env: { NEW_VERSION: "9.9.9" } });
+        }
+
+        it("reports a genuinely absent release to the create/update decision", () => {
+            const run = runExistenceCheck(ABSENT);
+
+            expect(run.status, "an absent release is a normal, expected answer").toBe(0);
+            expect(run.outputs.trim(), "an absent release means create").toBe(
+                "release_exists=false",
+            );
+        });
+
+        it("fails the create/update decision on an unreadable release state", () => {
+            const run = runExistenceCheck(BROKEN);
+
+            expect(run.status, "an unreadable release state must fail the step").not.toBe(0);
+            expect(
+                run.outputs,
+                "an unreadable release state must not decide create-vs-update either way",
+            ).toBe("");
+        });
+    });
+
+    describe("the tag the release is published under", () => {
+        function tagScript(): string {
+            const releaseJob = extractJobBlock(readFileSync(WORKFLOW_PATH, "utf8"), "release");
+            const script = extractRunScript(extractStepBlock(releaseJob, "Create git tag"));
+            expect(script, "the tag step must carry a run script").not.toBe("");
+            return script;
+        }
+
+        it("refuses to publish under a tag that names a different commit", () => {
+            const run = runTagStep(tagScript(), "older");
+
+            // The state gate asks whether the version has a Release, so a run that tagged and then
+            // died before creating one leaves the next push saying "publish" with the tag still on
+            // the older commit. Skipping silently there ships this build under that tag.
+            expect(run.status, "a tag pointing elsewhere must stop the release").not.toBe(0);
+            expect(run.stderr, "the failure must name both commits").toContain(run.older);
+            expect(run.stderr, "the failure must name both commits").toContain(run.head);
+            expect(
+                run.pushedTagCommit,
+                "the mismatched tag must be left exactly where it was",
+            ).toBe(run.older);
+        });
+
+        it("reuses a tag that already names this commit, so a re-run can still recover", () => {
+            const run = runTagStep(tagScript(), "head");
+
+            expect(run.status, "re-running the same commit must not be treated as a mismatch").toBe(
+                0,
+            );
+            expect(run.stderr, "a matching tag is not a failure").toBe("");
+        });
+
+        it("creates and pushes the tag when none exists", () => {
+            const run = runTagStep(tagScript(), "absent");
+
+            expect(run.status, "the ordinary release path must still tag").toBe(0);
+            expect(run.pushedTagCommit, "the new tag must name this run's commit").toBe(run.head);
+        });
     });
 
     it("installs Bun in the E2E image from a checksummed artifact, never a piped remote script", () => {

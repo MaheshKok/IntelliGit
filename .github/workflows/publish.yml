@@ -263,6 +263,22 @@ jobs:
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
               run: |
                   CURRENT_VERSION=$(node -p "require('./package.json').version")
+
+                  # Validated before the value can reach $GITHUB_OUTPUT. `echo "k=$v" >> $GITHUB_OUTPUT`
+                  # writes one LINE PER NEWLINE in the value, so a version carrying a newline appends
+                  # step outputs of its own choosing -- including `version_changed`, which every
+                  # publishing step below gates on. Quoting the redirections does not help with that:
+                  # the newline is in the value, not in the path. Validating once here does, and it
+                  # covers all three writes across both branches plus any branch added later. A
+                  # version that is not strict x.y.z is also simply invalid for a VS Code extension,
+                  # so failing here costs a correct release nothing. %q renders the offending value
+                  # with its newlines visible, because the whole point is a value whose shape does
+                  # not survive being echoed.
+                  if [[ ! "$CURRENT_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+                    echo "package.json version is not a strict x.y.z semver: $(printf '%q' "$CURRENT_VERSION")" >&2
+                    exit 1
+                  fi
+
                   echo "Current version: $CURRENT_VERSION"
 
                   # force_publish covers the one case the state gate below cannot see: the GitHub
@@ -273,8 +289,8 @@ jobs:
                   # gates who can use it.
                   if [ "$FORCE_PUBLISH" = "true" ]; then
                     echo "Force publish requested via workflow_dispatch; bypassing the release-state gate."
-                    echo "version_changed=true" >> $GITHUB_OUTPUT
-                    echo "new_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+                    echo "version_changed=true" >> "$GITHUB_OUTPUT"
+                    echo "new_version=$CURRENT_VERSION" >> "$GITHUB_OUTPUT"
                     exit 0
                   fi
 
@@ -287,15 +303,27 @@ jobs:
                   # is the honest answer to "has this version shipped". Asking that is idempotent:
                   # it publishes a bump, it skips an already-released version, and it self-heals a
                   # missed run on the next push. Every step below was already written to be
-                  # re-runnable (publish-status guards, the tag-exists guard, create-or-update
+                  # re-runnable (publish-status guards, the tag-provenance guard, create-or-update
                   # release) -- this gate was the only part that was not.
-                  if gh release view "v$CURRENT_VERSION" >/dev/null 2>&1; then
+                  #
+                  # Only a recognized "not found" counts as absent. `gh release view` exits 1 for a
+                  # missing release AND for auth, rate-limit and network failures -- measured on gh
+                  # 2.87.3: absence prints `release not found`, a bad token prints `non-200 OK
+                  # status code: 401 Unauthorized`. Treating every nonzero as "never released"
+                  # would republish on a transient blip and would report a broken token as "this
+                  # version has not shipped" -- the exact misdiagnosis that left 0.25.2 and 0.25.3
+                  # unreleased. Anything unrecognized fails the step instead, which costs nothing
+                  # now that the gate reads state: the next push simply asks again.
+                  if RELEASE_PROBE=$(gh release view "v$CURRENT_VERSION" 2>&1); then
                     echo "v$CURRENT_VERSION already has a GitHub Release; nothing to publish."
-                    echo "version_changed=false" >> $GITHUB_OUTPUT
-                  else
+                    echo "version_changed=false" >> "$GITHUB_OUTPUT"
+                  elif [[ "$RELEASE_PROBE" == *"release not found"* ]]; then
                     echo "v$CURRENT_VERSION has no GitHub Release yet; publishing."
-                    echo "version_changed=true" >> $GITHUB_OUTPUT
-                    echo "new_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+                    echo "version_changed=true" >> "$GITHUB_OUTPUT"
+                    echo "new_version=$CURRENT_VERSION" >> "$GITHUB_OUTPUT"
+                  else
+                    echo "Could not read the release state of v$CURRENT_VERSION: $RELEASE_PROBE" >&2
+                    exit 1
                   fi
 
             - name: Setup Node.js
@@ -353,8 +381,20 @@ jobs:
               if: steps.version-check.outputs.version_changed == 'true'
               run: |
                   VERSION="v$NEW_VERSION"
-                  if git rev-parse "$VERSION" >/dev/null 2>&1; then
-                    echo "Tag $VERSION already exists, skipping tag creation."
+                  # An existing tag is only safe to reuse when it names THIS commit. The gate above
+                  # asks whether the version has a Release, so a run that tagged and then died
+                  # before creating one leaves the next push saying "publish" while the tag still
+                  # points at the older commit -- and this step used to skip silently and ship the
+                  # new build under the old tag. `^{commit}` peels annotated tags; checkout uses
+                  # fetch-depth 0, so remote tags are present to resolve.
+                  EXISTING_COMMIT=$(git rev-parse -q --verify "$VERSION^{commit}" 2>/dev/null || true)
+                  if [ -n "$EXISTING_COMMIT" ]; then
+                    if [ "$EXISTING_COMMIT" != "$GITHUB_SHA" ]; then
+                      echo "Tag $VERSION already points at $EXISTING_COMMIT, not this run's commit $GITHUB_SHA." >&2
+                      echo "Publishing here would ship an artifact the tag does not name. Bump the version instead." >&2
+                      exit 1
+                    fi
+                    echo "Tag $VERSION already points at this commit, skipping tag creation."
                     exit 0
                   fi
                   git config user.name "github-actions[bot]"
@@ -369,10 +409,18 @@ jobs:
               id: github-release-check
               run: |
                   VERSION="v$NEW_VERSION"
-                  if gh release view "$VERSION" >/dev/null 2>&1; then
+                  # Same three-way split as the version gate: a nonzero `gh release view` that is
+                  # not the recognized absence message is an unknown state, not an absent release.
+                  # Guessing "false" here sends the run into `gh release create` against a release
+                  # that may well exist, so the run dies later with a misleading error instead of
+                  # here with the real one.
+                  if RELEASE_PROBE=$(gh release view "$VERSION" 2>&1); then
                     echo "release_exists=true" >> "$GITHUB_OUTPUT"
-                  else
+                  elif [[ "$RELEASE_PROBE" == *"release not found"* ]]; then
                     echo "release_exists=false" >> "$GITHUB_OUTPUT"
+                  else
+                    echo "Could not read the release state of $VERSION: $RELEASE_PROBE" >&2
+                    exit 1
                   fi
               env:
                   NEW_VERSION: ${{ steps.version-check.outputs.new_version }}
