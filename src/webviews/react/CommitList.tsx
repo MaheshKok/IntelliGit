@@ -9,7 +9,11 @@ import { ContextMenu } from "./shared/components/ContextMenu";
 import { ClearIcon, SearchIcon } from "./shared/components/Icons";
 import { getCommitMenuItems } from "./commit-list/commitMenu";
 import { CommitListRows } from "./commit-list/CommitListRows";
-import { commitHashesMatch, retryDelaysForCommitChecks } from "./commit-list/checksRefresh";
+import {
+    commitHashesMatch,
+    MAX_COMMIT_CHECK_RETRIES_PER_HASH,
+    retryDelaysForCommitChecks,
+} from "./commit-list/checksRefresh";
 import { useCommitGraphCanvas } from "./commit-list/useCommitGraphCanvas";
 import { isCommitAction, type CommitAction } from "../protocol/commitGraphTypes";
 import { JETBRAINS_UI } from "./shared/tokens";
@@ -82,7 +86,12 @@ interface Props {
     isViewVisible?: boolean;
 }
 
-type RetryAttempt = { state: CommitChecksSnapshot["state"]; attempt: number };
+type RetryAttempt = {
+    state: CommitChecksSnapshot["state"];
+    attempt: number;
+    /** Cumulative fires across ladder resets; survives a state flap so retries still stop. */
+    total: number;
+};
 
 /**
  * Renders a virtualized commit list with an aligned canvas lane graph, optional
@@ -337,8 +346,17 @@ export function CommitList({
                 const attempt =
                     previous?.state === snapshot.state
                         ? previous
-                        : { state: snapshot.state, attempt: 0 };
+                        : {
+                              state: snapshot.state,
+                              attempt: 0,
+                              // A flapping state (pending -> none -> pending) must not
+                              // re-arm rung 0 forever: carry the total across ladder resets.
+                              total: previous?.total ?? 0,
+                          };
                 checkRetryAttempts.current.set(hash, attempt);
+                // Exhausted: keep the entry (so a later flap can't reset `total` back to
+                // 0 and re-arm the loop) but stop contributing a delay for this hash.
+                if (attempt.total >= MAX_COMMIT_CHECK_RETRIES_PER_HASH) continue;
                 const delay = schedule[attempt.attempt];
                 if (delay !== undefined && (nextDelay === undefined || delay < nextDelay)) {
                     nextDelay = delay;
@@ -356,6 +374,10 @@ export function CommitList({
                     if (!snapshot || snapshot === "loading") continue;
                     const attempt = checkRetryAttempts.current.get(hash);
                     if (!attempt || attempt.state !== snapshot.state) continue;
+                    // Mirrors the exhaustion check in scheduleNextRetry: without it, a
+                    // hash exhausted by one ladder could still fire here if its stale
+                    // rung happened to share `dueDelay` with a different hash's rung.
+                    if (attempt.total >= MAX_COMMIT_CHECK_RETRIES_PER_HASH) continue;
                     const schedule = retryDelaysForCommitChecks(snapshot, {
                         isCurrentHead:
                             currentBranchHeadHash !== null &&
@@ -367,6 +389,7 @@ export function CommitList({
                     checkRetryAttempts.current.set(hash, {
                         state: snapshot.state,
                         attempt: attempt.attempt + 1,
+                        total: attempt.total + 1,
                     });
                     dueHashes.push(hash);
                 }

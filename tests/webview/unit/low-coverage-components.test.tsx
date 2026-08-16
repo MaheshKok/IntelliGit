@@ -12,6 +12,7 @@ import { CommitInfoPane } from "../../../src/webviews/react/commit-info/CommitIn
 import {
     commitHashesMatch,
     HEAD_NONE_CHECK_RETRY_DELAYS_MS,
+    MAX_COMMIT_CHECK_RETRIES_PER_HASH,
     PENDING_CHECK_RETRY_DELAYS_MS,
 } from "../../../src/webviews/react/commit-list/checksRefresh";
 import { useDragResize } from "../../../src/webviews/react/commit-panel/hooks/useDragResize";
@@ -990,6 +991,152 @@ describe("low coverage components", () => {
             expect(onRequestCommitChecks).toHaveBeenCalledTimes(PENDING_CHECK_RETRY_DELAYS_MS.length);
         } finally {
             if (mounted) unmount(mounted.root, mounted.container);
+            act(() => vi.runOnlyPendingTimers());
+            vi.useRealTimers();
+        }
+    });
+
+    it("CommitList bounds automatic retries per hash across a repeated pending/none state flap", async () => {
+        // Reproduces the unbounded-polling defect: aggregateState can flap pending -> none
+        // -> pending forever (e.g. one GitHub endpoint intermittently failing empties
+        // `items` for a single poll), and both ladders in checksRefresh.ts open at rung 0.
+        // A per-state attempt counter that resets on every flap re-arms rung 0 forever;
+        // MAX_COMMIT_CHECK_RETRIES_PER_HASH must survive the resets and cut it off.
+        vi.useFakeTimers();
+        const onRequestCommitChecks = vi.fn();
+        const renderFlap = (state: CommitChecksSnapshot["state"]): React.ReactElement =>
+            renderRetryCommitList({
+                snapshots: [checksSnapshot(retryCommit.hash, state)],
+                currentBranchHeadHash: retryCommit.hash,
+                onRequestCommitChecks,
+            });
+        try {
+            const { root, container } = mount(renderFlap("pending"));
+            await flush();
+            onRequestCommitChecks.mockClear();
+            // Captured while a retry rung IS armed, so the exhaustion check below measures
+            // the rung rather than whatever else the component happens to have scheduled.
+            const timersWhileArmed = vi.getTimerCount();
+
+            let state: CommitChecksSnapshot["state"] = "pending";
+            // Drive well past the retry budget. Each round fires whatever retry is
+            // currently armed, then flips the snapshot the way an intermittently
+            // failing endpoint does, which is exactly the input that re-armed rung 0
+            // forever pre-fix.
+            const flapRounds = MAX_COMMIT_CHECK_RETRIES_PER_HASH + 5;
+            for (let i = 0; i < flapRounds; i++) {
+                const delay =
+                    state === "pending"
+                        ? PENDING_CHECK_RETRY_DELAYS_MS[0]
+                        : HEAD_NONE_CHECK_RETRY_DELAYS_MS[0];
+                act(() => vi.advanceTimersByTime(delay));
+                state = state === "pending" ? "none" : "pending";
+                act(() => {
+                    root.render(renderFlap(state));
+                });
+            }
+
+            const retryCallsForHash = onRequestCommitChecks.mock.calls.filter(
+                ([hashes, force]) => force === true && hashes.includes(retryCommit.hash),
+            );
+            expect(retryCallsForHash).toHaveLength(MAX_COMMIT_CHECK_RETRIES_PER_HASH);
+
+            // Advancing well past the last rung, through more flaps, must not re-arm
+            // the loop: total survives the state resets, so the hash stays exhausted.
+            onRequestCommitChecks.mockClear();
+            for (let i = 0; i < 5; i++) {
+                act(() => vi.advanceTimersByTime(60 * 60 * 1_000));
+                state = state === "pending" ? "none" : "pending";
+                act(() => {
+                    root.render(renderFlap(state));
+                });
+            }
+
+            expect(
+                onRequestCommitChecks.mock.calls.filter(
+                    ([hashes, force]) => force === true && hashes.includes(retryCommit.hash),
+                ),
+            ).toHaveLength(0);
+
+            // Pins the scheduling half of the bound, which suppressing the request alone
+            // does not: an exhausted hash that still contributes its rung to nextDelay
+            // leaves the component waking every three seconds forever with nothing to do.
+            // Quieter than the original defect, but the same loop.
+            expect(vi.getTimerCount()).toBe(timersWhileArmed - 1);
+
+            unmount(root, container);
+        } finally {
+            act(() => vi.runOnlyPendingTimers());
+            vi.useRealTimers();
+        }
+    });
+
+    it("CommitList does not re-fire an exhausted hash riding another commit's retry rung", async () => {
+        // The scheduler-loop exhaustion check only stops an exhausted hash from ARMING a
+        // timer. Any other commit's rung still fires, and the fire loop selects on
+        // `schedule[attempt.attempt] === dueDelay` -- so since both ladders open at the
+        // same delay, an exhausted hash rides along on every coincidence unless the fire
+        // loop checks exhaustion too. In a viewport of many commits that is most of them.
+        vi.useFakeTimers();
+        const onRequestCommitChecks = vi.fn();
+        const other: Commit = { ...retryCommit, hash: "cc33dd44", shortHash: "cc33dd44" };
+        const renderPair = (
+            headState: CommitChecksSnapshot["state"],
+            withOther: boolean,
+        ): React.ReactElement =>
+            renderRetryCommitList({
+                commits: withOther ? [retryCommit, other] : [retryCommit],
+                snapshots: withOther
+                    ? [
+                          checksSnapshot(retryCommit.hash, headState),
+                          checksSnapshot(other.hash, "pending"),
+                      ]
+                    : [checksSnapshot(retryCommit.hash, headState)],
+                currentBranchHeadHash: retryCommit.hash,
+                onRequestCommitChecks,
+            });
+        // jsdom reports clientHeight 0, which leaves the virtualizer with a viewport that
+        // never reaches the second row -- so without this the other commit is never
+        // requested at all and the test proves nothing.
+        const clientHeight = vi
+            .spyOn(HTMLElement.prototype, "clientHeight", "get")
+            .mockReturnValue(ROW_HEIGHT * 2);
+        try {
+            const { root, container } = mount(renderPair("pending", false));
+            await flush();
+
+            // Spend the HEAD commit's whole budget through the pending/none flap.
+            let state: CommitChecksSnapshot["state"] = "pending";
+            for (let round = 0; round < MAX_COMMIT_CHECK_RETRIES_PER_HASH; round++) {
+                const delay =
+                    state === "pending"
+                        ? PENDING_CHECK_RETRY_DELAYS_MS[0]
+                        : HEAD_NONE_CHECK_RETRY_DELAYS_MS[0];
+                act(() => vi.advanceTimersByTime(delay));
+                state = state === "pending" ? "none" : "pending";
+                act(() => {
+                    root.render(renderPair(state, false));
+                });
+            }
+            onRequestCommitChecks.mockClear();
+
+            // A second commit scrolls into the viewport and arms the opening rung that the
+            // exhausted commit is no longer allowed to arm for itself.
+            act(() => {
+                root.render(renderPair(state, true));
+            });
+            await flush();
+            onRequestCommitChecks.mockClear();
+            act(() => vi.advanceTimersByTime(PENDING_CHECK_RETRY_DELAYS_MS[0]));
+
+            const firedHashes = onRequestCommitChecks.mock.calls
+                .filter(([, force]) => force === true)
+                .flatMap(([hashes]) => hashes as string[]);
+            expect(firedHashes).toEqual([other.hash]);
+
+            unmount(root, container);
+        } finally {
+            clientHeight.mockRestore();
             act(() => vi.runOnlyPendingTimers());
             vi.useRealTimers();
         }
