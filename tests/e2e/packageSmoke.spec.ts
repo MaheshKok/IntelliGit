@@ -80,7 +80,11 @@ test.describe("installed VSIX package smoke", () => {
             ) as PackageManifest;
             const expectedExtensionVersion = `${packageManifest.publisher}.${packageManifest.name}@${packageManifest.version}`;
             const vsixPath = selectSoleVsix(REPO_ROOT);
-            const packageVerification = await verifyVsixPackage({ cwd: REPO_ROOT, vsixPath });
+            const packageVerification = await verifyVsixPackage({
+                cwd: REPO_ROOT,
+                vsixPath,
+                skipVsceSelection: true,
+            });
             if (!packageVerification.ok) {
                 throw new Error(
                     `Root VSIX failed package verification:\n${packageVerification.errors.join("\n")}`,

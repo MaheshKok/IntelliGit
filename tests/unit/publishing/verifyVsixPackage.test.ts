@@ -1,6 +1,6 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 
 import JSZip from "jszip";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -27,6 +27,7 @@ const REQUIRED_FILES = [
     "package.nls.json",
     "media/intelligit.svg",
 ];
+const PACKAGE_SMOKE_PATH = resolve(__dirname, "../../e2e/packageSmoke.spec.ts");
 
 type ArchiveEntry = {
     path: string;
@@ -193,6 +194,49 @@ describe("verifyVsixPackage", () => {
 
         expect(result.ok).toBe(false);
         expect(result.errors.join("\n")).toContain("VSCE expected but VSIX omitted");
+    });
+
+    it("can verify a downloaded artifact without recomputing its source-checkout VSCE selection", async () => {
+        const checkoutSelection = ["package.json", "README.md", "CHANGELOG.md", "LICENSE"];
+        const defaultVerification = await verifyFixture(
+            extensionEntries(REQUIRED_FILES),
+            checkoutSelection,
+        );
+
+        expect(defaultVerification.result.ok).toBe(false);
+        expect(defaultVerification.result.errors.join("\n")).toContain(
+            "VSIX contains file not selected by VSCE: dist/extension.js",
+        );
+        expect(defaultVerification.listFiles).toHaveBeenCalledOnce();
+
+        const downloadedArtifactVerification = await verifyFixture(
+            extensionEntries(REQUIRED_FILES),
+            checkoutSelection,
+            { skipVsceSelection: true },
+        );
+
+        expect(downloadedArtifactVerification.result.ok).toBe(true);
+        expect(downloadedArtifactVerification.result.errors).toEqual([]);
+        expect(downloadedArtifactVerification.listFiles).not.toHaveBeenCalled();
+
+        const disallowedArtifactVerification = await verifyFixture(
+            extensionEntries([...REQUIRED_FILES, "config.prod.yaml"]),
+            checkoutSelection,
+            { skipVsceSelection: true },
+        );
+        expect(disallowedArtifactVerification.result.errors.join("\n")).toContain(
+            "Unexpected VSIX payload outside runtime allowlist: config.prod.yaml",
+        );
+    });
+
+    it("uses the VSCE-selection opt-out only for the downloaded package smoke artifact", () => {
+        const packageSmoke = readFileSync(PACKAGE_SMOKE_PATH, "utf8");
+        const verificationCall = packageSmoke.match(
+            /const packageVerification = await verifyVsixPackage\(\{([\s\S]*?)\}\);/,
+        )?.[1];
+
+        expect(verificationCall).toContain("vsixPath,");
+        expect(verificationCall).toContain("skipVsceSelection: true,");
     });
 
     it("rejects payload outside the explicit runtime allowlist", async () => {

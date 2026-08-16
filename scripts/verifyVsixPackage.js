@@ -320,6 +320,7 @@ function selectSoleVsix(cwd = DEFAULT_CWD) {
  * @param {string} [input.cwd] Repository root passed to VSCE.
  * @param {string} [input.vsixPath] VSIX to inspect; defaults to the sole root VSIX.
  * @param {(options: object) => Promise<string[]>} [input.listFiles] VSCE listFiles implementation, injectable for focused tests.
+ * @param {boolean} [input.skipVsceSelection] Skips only VSCE source-checkout file selection comparison for an already-built downloaded artifact.
  * @param {{maxCompressedBytes?: number, maxUncompressedBytes?: number, maxEntryUncompressedBytes?: number}} [input.limits] Test-only budget overrides.
  * @returns {Promise<{ok: boolean, errors: string[], archive: {compressedBytes: number, uncompressedBytes: number, entryCount: number}}>} Verification result.
  */
@@ -327,6 +328,7 @@ async function verifyVsixPackage({
     cwd = DEFAULT_CWD,
     vsixPath = selectSoleVsix(cwd),
     listFiles = vsceListFiles,
+    skipVsceSelection = false,
     limits = {},
 } = {}) {
     const budget = {
@@ -370,25 +372,27 @@ async function verifyVsixPackage({
         );
     }
 
-    let expectedFiles;
-    try {
-        expectedFiles = new Set(
-            (await listFiles({ cwd, packageManager: PackageManager.None })).map(
-                normalizeExpectedPath,
-            ),
-        );
-    } catch (error) {
-        errors.push(`Unable to obtain VSCE package file list: ${error.message}`);
-        expectedFiles = new Set();
-    }
-    for (const expected of expectedFiles) {
-        if (!archivePayload.has(expected)) {
-            errors.push(`VSCE expected but VSIX omitted: ${expected}`);
+    if (!skipVsceSelection) {
+        let expectedFiles;
+        try {
+            expectedFiles = new Set(
+                (await listFiles({ cwd, packageManager: PackageManager.None })).map(
+                    normalizeExpectedPath,
+                ),
+            );
+        } catch (error) {
+            errors.push(`Unable to obtain VSCE package file list: ${error.message}`);
+            expectedFiles = new Set();
         }
-    }
-    for (const actual of archivePayload) {
-        if (!expectedFiles.has(actual)) {
-            errors.push(`VSIX contains file not selected by VSCE: ${actual}`);
+        for (const expected of expectedFiles) {
+            if (!archivePayload.has(expected)) {
+                errors.push(`VSCE expected but VSIX omitted: ${expected}`);
+            }
+        }
+        for (const actual of archivePayload) {
+            if (!expectedFiles.has(actual)) {
+                errors.push(`VSIX contains file not selected by VSCE: ${actual}`);
+            }
         }
     }
     const allowedPayload = requiredPayload(cwd);
