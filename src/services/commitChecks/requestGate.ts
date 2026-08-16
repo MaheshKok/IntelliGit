@@ -7,6 +7,9 @@ import type { ProviderId } from "./types";
 
 type HttpHeaders = Record<string, string | string[] | undefined>;
 const REQUEST_WINDOW_MS = 60 * 60 * 1000;
+// Fallback ceiling for a bucket that has never observed a usable server quota pair. Once a bucket
+// learns its real limit and remaining count, only the reserve-based cooldown and 429/Retry-After
+// handling govern it; see ProviderRequestGate.hasObservedQuota.
 const MAX_AUTOMATIC_REQUESTS_PER_WINDOW = 300;
 const MAX_CONCURRENT_REQUESTS = 4;
 const MIN_PRIMARY_RESERVE = 100;
@@ -177,6 +180,15 @@ class ProviderRequestGate {
     private rateLimit = 0;
     private rateRemaining: number | undefined;
     private rateResetAt = 0;
+    // Earned only by parsing a usable limit+remaining pair AND a future reset for this provider;
+    // never granted by provider identity or by default. Providers that parse no such pair (or only
+    // a boolean near-limit signal) can never set this, so they stay on the static fallback cap.
+    //
+    // The reset is part of the bargain, not a detail: surrendering the fallback cap leaves the
+    // reserve cooldown as the sole guard, and that cooldown cannot arm without a future reset. Re-
+    // evaluated on every observation rather than latched, so a server that stops reporting a usable
+    // quota drops the bucket back to the cap instead of stranding it unguarded.
+    private hasObservedQuota = false;
 
     constructor(
         private readonly providerId: ProviderId,
@@ -241,6 +253,7 @@ class ProviderRequestGate {
         this.rateLimit = 0;
         this.rateRemaining = undefined;
         this.rateResetAt = 0;
+        this.hasObservedQuota = false;
         this.cooldownUntil = 0;
         this.cooldownError = "";
     }
@@ -257,6 +270,8 @@ class ProviderRequestGate {
         if (remaining !== undefined) this.rateRemaining = remaining;
         const resetAt = readProviderResetAt(metadata.headers, "github");
         if (resetAt > 0) this.rateResetAt = resetAt;
+        this.hasObservedQuota =
+            this.rateLimit > 0 && this.rateRemaining !== undefined && this.rateResetAt > this.now();
 
         const reserve = Math.max(
             MIN_PRIMARY_RESERVE,
@@ -275,6 +290,8 @@ class ProviderRequestGate {
         const limit = readNonNegativeHeader(metadata.headers, "ratelimit-limit");
         const remaining = readNonNegativeHeader(metadata.headers, "ratelimit-remaining");
         const resetAt = readProviderResetAt(metadata.headers, "gitlab");
+        this.hasObservedQuota =
+            limit !== undefined && limit > 0 && remaining !== undefined && resetAt > this.now();
         if (
             limit !== undefined &&
             remaining !== undefined &&
@@ -328,6 +345,7 @@ class ProviderRequestGate {
     }
 
     private throwIfRequestBudgetExhausted(): void {
+        if (this.hasObservedQuota) return;
         if (this.startedAt.length < MAX_AUTOMATIC_REQUESTS_PER_WINDOW) return;
         this.activateGenericCooldown(this.startedAt[0] + REQUEST_WINDOW_MS);
         this.throwIfCoolingDown();

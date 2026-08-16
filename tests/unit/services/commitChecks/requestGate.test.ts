@@ -134,8 +134,10 @@ describe("GitHubRequestGate", () => {
             url: GITHUB_API_URL,
             statusCode: 200,
             headers: {
-                "x-ratelimit-limit": "5000",
-                "x-ratelimit-remaining": "500",
+                // No x-ratelimit-limit observed: this bucket stays in the fallback state, so the
+                // default MIN_PRIMARY_RESERVE (100) cooldown threshold applies, and it must not
+                // earn the local cap bypass tested separately below.
+                "x-ratelimit-remaining": "50",
                 "x-ratelimit-reset": "3600",
             },
         });
@@ -437,5 +439,262 @@ describe("CommitChecksRequestGateRegistry", () => {
         const postResetTask = vi.fn(async () => "ok");
         await expect(registry.run("gitlab", url, postResetTask)).resolves.toBe("ok");
         expect(postResetTask).toHaveBeenCalledTimes(1);
+    });
+
+    it("runs every request once a github bucket has earned the local cap bypass from a usable quota pair", async () => {
+        const registry = new CommitChecksRequestGateRegistry(COOLDOWN_MESSAGE, () => 1_000);
+        registry.observeResponse("github", {
+            url: GITHUB_API_URL,
+            statusCode: 200,
+            headers: {
+                "x-ratelimit-limit": "5000",
+                "x-ratelimit-remaining": "4900",
+                "x-ratelimit-reset": "3600",
+            },
+        });
+        const task = vi.fn(async () => "ok");
+
+        for (let index = 0; index < 400; index += 1) {
+            await expect(registry.run("github", GITHUB_API_URL, task)).resolves.toBe("ok");
+        }
+        expect(task).toHaveBeenCalledTimes(400);
+    });
+
+    it("still rejects request 301 in a rolling hour when no quota has ever been observed", async () => {
+        const registry = new CommitChecksRequestGateRegistry(COOLDOWN_MESSAGE, () => 1_000);
+        const task = vi.fn(async () => "ok");
+
+        for (let index = 0; index < 300; index += 1) {
+            await expect(registry.run("github", GITHUB_API_URL, task)).resolves.toBe("ok");
+        }
+        await expect(registry.run("github", GITHUB_API_URL, task)).rejects.toMatchObject({
+            statusCode: 429,
+            message: COOLDOWN_MESSAGE,
+        });
+        expect(task).toHaveBeenCalledTimes(300);
+    });
+
+    it("keeps a bitbucket-server bucket capped at 300 even after 400 successful responses are observed", async () => {
+        const registry = new CommitChecksRequestGateRegistry(COOLDOWN_MESSAGE, () => 1_000);
+        const url = "https://bitbucket.example.test/rest/build-status/1.0/commits/main";
+        const task = vi.fn(async () => "ok");
+
+        for (let index = 0; index < 300; index += 1) {
+            await expect(registry.run("bitbucket-server", url, task)).resolves.toBe("ok");
+            registry.observeResponse("bitbucket-server", { url, statusCode: 200, headers: {} });
+        }
+        for (let index = 0; index < 100; index += 1) {
+            registry.observeResponse("bitbucket-server", { url, statusCode: 200, headers: {} });
+        }
+
+        await expect(registry.run("bitbucket-server", url, task)).rejects.toMatchObject({
+            statusCode: 429,
+            message: COOLDOWN_MESSAGE,
+        });
+        expect(task).toHaveBeenCalledTimes(300);
+    });
+
+    it("keeps a bitbucket-cloud bucket capped at 300 even after 400 successful responses are observed", async () => {
+        const registry = new CommitChecksRequestGateRegistry(COOLDOWN_MESSAGE, () => 1_000);
+        const url = "https://api.bitbucket.org/2.0/repositories/acme/repo/commit/main/statuses";
+        const task = vi.fn(async () => "ok");
+
+        for (let index = 0; index < 300; index += 1) {
+            await expect(registry.run("bitbucket-cloud", url, task)).resolves.toBe("ok");
+            registry.observeResponse("bitbucket-cloud", { url, statusCode: 200, headers: {} });
+        }
+        for (let index = 0; index < 100; index += 1) {
+            registry.observeResponse("bitbucket-cloud", { url, statusCode: 200, headers: {} });
+        }
+
+        await expect(registry.run("bitbucket-cloud", url, task)).rejects.toMatchObject({
+            statusCode: 429,
+            message: COOLDOWN_MESSAGE,
+        });
+        expect(task).toHaveBeenCalledTimes(300);
+    });
+
+    it("still cools down on low reserve after a github bucket has earned the local cap bypass", async () => {
+        const registry = new CommitChecksRequestGateRegistry(COOLDOWN_MESSAGE, () => 1_000);
+        registry.observeResponse("github", {
+            url: GITHUB_API_URL,
+            statusCode: 200,
+            headers: {
+                "x-ratelimit-limit": "5000",
+                "x-ratelimit-remaining": "4900",
+                "x-ratelimit-reset": "3600",
+            },
+        });
+        const task = vi.fn(async () => "ok");
+        for (let index = 0; index < 400; index += 1) {
+            await expect(registry.run("github", GITHUB_API_URL, task)).resolves.toBe("ok");
+        }
+
+        registry.observeResponse("github", {
+            url: GITHUB_API_URL,
+            statusCode: 200,
+            headers: {
+                "x-ratelimit-limit": "5000",
+                "x-ratelimit-remaining": "90",
+                "x-ratelimit-reset": "3600",
+            },
+        });
+        await expect(registry.run("github", GITHUB_API_URL, task)).rejects.toMatchObject({
+            statusCode: 429,
+            message: COOLDOWN_MESSAGE,
+        });
+        expect(task).toHaveBeenCalledTimes(400);
+    });
+
+    it("re-arms the local cap fallback for a github bucket after reset clears an earned bypass", async () => {
+        const registry = new CommitChecksRequestGateRegistry(COOLDOWN_MESSAGE, () => 1_000);
+        registry.observeResponse("github", {
+            url: GITHUB_API_URL,
+            statusCode: 200,
+            headers: {
+                "x-ratelimit-limit": "5000",
+                "x-ratelimit-remaining": "4900",
+                "x-ratelimit-reset": "3600",
+            },
+        });
+        const task = vi.fn(async () => "ok");
+        for (let index = 0; index < 400; index += 1) {
+            await expect(registry.run("github", GITHUB_API_URL, task)).resolves.toBe("ok");
+        }
+
+        registry.reset();
+
+        for (let index = 0; index < 300; index += 1) {
+            await expect(registry.run("github", GITHUB_API_URL, task)).resolves.toBe("ok");
+        }
+        await expect(registry.run("github", GITHUB_API_URL, task)).rejects.toMatchObject({
+            statusCode: 429,
+            message: COOLDOWN_MESSAGE,
+        });
+        expect(task).toHaveBeenCalledTimes(700);
+    });
+
+    it("runs every request once a gitlab bucket has earned the local cap bypass from a usable quota pair", async () => {
+        const registry = new CommitChecksRequestGateRegistry(COOLDOWN_MESSAGE, () => 1_000);
+        const url = "https://gitlab.example.test/api/v4/projects/1/statuses/main";
+        registry.observeResponse("gitlab", {
+            url,
+            statusCode: 200,
+            headers: {
+                "ratelimit-limit": "2000",
+                "ratelimit-remaining": "1900",
+                "ratelimit-reset": "3600",
+            },
+        });
+        const task = vi.fn(async () => "ok");
+
+        for (let index = 0; index < 400; index += 1) {
+            await expect(registry.run("gitlab", url, task)).resolves.toBe("ok");
+        }
+        expect(task).toHaveBeenCalledTimes(400);
+    });
+
+    it("keeps a github bucket on the fallback cap when quota headers carry no usable reset", async () => {
+        const registry = new CommitChecksRequestGateRegistry(COOLDOWN_MESSAGE, () => 1_000);
+        registry.observeResponse("github", {
+            url: GITHUB_API_URL,
+            statusCode: 200,
+            headers: {
+                // Limit and remaining without a reset: the reserve cooldown can never arm, so
+                // surrendering the fallback cap here would leave the bucket wholly unguarded.
+                "x-ratelimit-limit": "5000",
+                "x-ratelimit-remaining": "4900",
+            },
+        });
+        const task = vi.fn(async () => "ok");
+
+        for (let index = 0; index < 300; index += 1) {
+            await expect(registry.run("github", GITHUB_API_URL, task)).resolves.toBe("ok");
+        }
+        await expect(registry.run("github", GITHUB_API_URL, task)).rejects.toMatchObject({
+            statusCode: 429,
+            message: COOLDOWN_MESSAGE,
+        });
+        expect(task).toHaveBeenCalledTimes(300);
+    });
+
+    it("keeps a github bucket on the fallback cap when the observed reset is already in the past", async () => {
+        const registry = new CommitChecksRequestGateRegistry(COOLDOWN_MESSAGE, () => 5_000_000);
+        registry.observeResponse("github", {
+            url: GITHUB_API_URL,
+            statusCode: 200,
+            headers: {
+                "x-ratelimit-limit": "5000",
+                "x-ratelimit-remaining": "4900",
+                "x-ratelimit-reset": "3600",
+            },
+        });
+        const task = vi.fn(async () => "ok");
+
+        for (let index = 0; index < 300; index += 1) {
+            await expect(registry.run("github", GITHUB_API_URL, task)).resolves.toBe("ok");
+        }
+        await expect(registry.run("github", GITHUB_API_URL, task)).rejects.toMatchObject({
+            statusCode: 429,
+            message: COOLDOWN_MESSAGE,
+        });
+        expect(task).toHaveBeenCalledTimes(300);
+    });
+
+    it("revokes an earned github bypass once its observed reset has gone stale", async () => {
+        let clock = 1_000;
+        const registry = new CommitChecksRequestGateRegistry(COOLDOWN_MESSAGE, () => clock);
+        registry.observeResponse("github", {
+            url: GITHUB_API_URL,
+            statusCode: 200,
+            headers: {
+                "x-ratelimit-limit": "5000",
+                "x-ratelimit-remaining": "4900",
+                "x-ratelimit-reset": "3600",
+            },
+        });
+
+        // Past the observed reset, with the server no longer publishing a new one. The stored
+        // reset can no longer arm the reserve cooldown, so a latched bypass would leave this
+        // bucket with no guard at all; it must fall back to the cap instead.
+        clock = 3_600_001;
+        registry.observeResponse("github", {
+            url: GITHUB_API_URL,
+            statusCode: 200,
+            headers: { "x-ratelimit-limit": "5000", "x-ratelimit-remaining": "4900" },
+        });
+
+        const task = vi.fn(async () => "ok");
+        for (let index = 0; index < 300; index += 1) {
+            await expect(registry.run("github", GITHUB_API_URL, task)).resolves.toBe("ok");
+        }
+        await expect(registry.run("github", GITHUB_API_URL, task)).rejects.toMatchObject({
+            statusCode: 429,
+            message: COOLDOWN_MESSAGE,
+        });
+        expect(task).toHaveBeenCalledTimes(300);
+    });
+
+    it("keeps a gitlab bucket on the fallback cap when quota headers carry no usable reset", async () => {
+        const registry = new CommitChecksRequestGateRegistry(COOLDOWN_MESSAGE, () => 1_000);
+        const url = "https://gitlab.example.test/api/v4/projects/1/statuses/main";
+        registry.observeResponse("gitlab", {
+            url,
+            statusCode: 200,
+            headers: {
+                "ratelimit-limit": "2000",
+                "ratelimit-remaining": "1900",
+            },
+        });
+        const task = vi.fn(async () => "ok");
+
+        for (let index = 0; index < 300; index += 1) {
+            await expect(registry.run("gitlab", url, task)).resolves.toBe("ok");
+        }
+        await expect(registry.run("gitlab", url, task)).rejects.toMatchObject({
+            statusCode: 429,
+            message: COOLDOWN_MESSAGE,
+        });
+        expect(task).toHaveBeenCalledTimes(300);
     });
 });
