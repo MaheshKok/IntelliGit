@@ -86,15 +86,21 @@ async function signIn(store: CredentialStore, presetHost?: string): Promise<void
 /**
  * Re-authorizes the built-in VS Code GitHub session instead of prompting for a token.
  *
- * `createIfNone` surfaces VS Code's own consent flow; declining it rejects, which is a
- * user choice rather than a failure worth reporting. The badge refresh is not redundant
- * with the `onDidChangeSessions` listener repository mode installs: when the session was
- * already valid, VS Code returns it without firing a change event, and the user who just
- * clicked "Sign in" still expects the badge to retry.
+ * `forceNewSession` rather than `createIfNone`, because every route to this function is a
+ * recovery: the badge offers "Sign in" only once GitHub has rejected the stored session, and
+ * `createIfNone` would hand that same rejected session straight back without prompting, then
+ * report a sign-in that changed nothing -- the exact false success routing this host to the
+ * token store would have produced. VS Code rejects the two options together, so this is a
+ * replacement rather than an addition. Declining the consent prompt rejects, which is a user
+ * choice rather than a failure worth reporting.
+ *
+ * The badge refresh afterwards does not depend on the `onDidChangeSessions` listener that
+ * repository mode installs: whether re-authorizing the same account counts as a change is
+ * VS Code's decision, and the user who just clicked "Sign in" expects a retry either way.
  */
 async function signInToGitHub(): Promise<void> {
     try {
-        await vscode.authentication.getSession("github", ["repo"], { createIfNone: true });
+        await vscode.authentication.getSession("github", ["repo"], { forceNewSession: true });
     } catch {
         return;
     }

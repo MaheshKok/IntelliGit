@@ -163,7 +163,14 @@ describe("signIn", () => {
 
         await mocks.commandHandlers.get(SIGN_IN)!("github.com");
 
-        expect(mocks.getSession).toHaveBeenCalledWith("github", ["repo"], { createIfNone: true });
+        // forceNewSession, not createIfNone: this command is reached when GitHub has already
+        // rejected the stored session, and createIfNone would hand that same dead session back
+        // without prompting -- reporting a sign-in that changed nothing. VS Code rejects the two
+        // options together, so the absence of createIfNone is asserted rather than implied.
+        expect(mocks.getSession).toHaveBeenCalledWith("github", ["repo"], {
+            forceNewSession: true,
+        });
+        expect(mocks.getSession.mock.calls[0][2]).not.toHaveProperty("createIfNone");
         expect(mocks.showInputBox).not.toHaveBeenCalled();
         expect(store).not.toHaveBeenCalled();
         expect(map.size).toBe(0);
