@@ -10,8 +10,11 @@ const PACKAGE_PATH = resolve(__dirname, "../../../package.json");
  * Ecosystems that honour `dependency-type` inside a group, per the Dependabot options reference:
  * "Supported by: bundler, composer, mix, maven, npm, and pip."
  *
- * `bun` is deliberately absent. Selecting on it there is not a validation error that shows up
- * anywhere -- the key is simply not honoured -- so the group silently stops meaning what it says.
+ * `bun` is deliberately absent. Whether Dependabot rejects the key there or quietly ignores it is
+ * not something this repository can observe: its one runtime dependency is already at the newest
+ * published version, so no grouped proposal has ever had the chance to show the selector either
+ * including or excluding it. That is the reason to ban it rather than trust it -- an undocumented
+ * selector whose effect cannot be measured is not one to build a production/development split on.
  */
 const ECOSYSTEMS_SUPPORTING_DEPENDENCY_TYPE = new Set([
     "bundler",
