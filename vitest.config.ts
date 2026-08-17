@@ -33,11 +33,31 @@ export default defineConfig({
             // pinned to the exact local numbers with zero headroom. CI is the
             // gate, so validate any increase against a CI run, not just local,
             // and keep the margin when ratcheting up.
+            //
+            // Re-baselined for `@vitest/coverage-v8` 4, and NOT comparable with
+            // the floors that stood before it. That release maps V8's raw byte
+            // ranges back through the source AST (`ast-v8-to-istanbul`) instead
+            // of scoring the transpiled output, so the same fully-green suite
+            // is now measured differently rather than measured worse. Measured
+            // under it: statements 84.99, lines 87.65, branches 78.43 -- all
+            // below floors the suite used to clear -- and functions 85.95,
+            // which is ABOVE its old floor of 83.0. A change that moves two
+            // metrics down and one up is an instrument change; lost coverage
+            // does not improve a metric. 286 of 286 files pass either way.
+            //
+            // `functions` is now ratcheted on that CI number rather than on the
+            // local one. PR #188's `build` job reported 84.98 / 78.31 / 85.90 /
+            // 87.65 (stmts / branch / funcs / lines) against local 85.01 /
+            // 78.42 / 85.98 / 87.67, so CI is the lower side on all four and is
+            // what the floors are set from. 85.90 - 0.8 puts `functions` at
+            // 85.1, restoring the same margin the other three already carry
+            // (0.68, 0.61, 0.65) instead of the 2.9pp of slack it inherited
+            // from the pre-upgrade instrument.
             thresholds: {
-                lines: 88.5,
-                functions: 83.0,
-                branches: 80.5,
-                statements: 88.5,
+                lines: 87.0,
+                functions: 85.1,
+                branches: 77.7,
+                statements: 84.3,
             },
         },
     },

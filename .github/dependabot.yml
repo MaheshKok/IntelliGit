@@ -12,7 +12,18 @@ updates:
           prefix: "chore(ci)"
       labels:
           - dependencies
-    - package-ecosystem: npm
+    # `bun`, not `npm`, because this repository's lockfile is `bun.lock` and every job installs with
+    # `bun install --frozen-lockfile`. The npm ecosystem edits `package.json` and cannot write that
+    # lockfile, so each proposal arrived with the two out of step and died on the install step
+    # before a single test ran -- five open pull requests, all red with
+    # `error: lockfile had changes, but lockfile is frozen`, none of them merge-able by anyone.
+    #
+    # The documented cost is that the bun ecosystem does not raise SECURITY updates, only version
+    # updates. That cost is smaller than it reads: an npm-ecosystem security proposal would have
+    # failed the same frozen install, so what was lost was a red pull request rather than a fix.
+    # Dependabot ALERTS are produced by the dependency graph and keep arriving either way, which is
+    # what actually surfaces a vulnerable version; acting on one is a hand-written bump.
+    - package-ecosystem: bun
       directory: /
       schedule:
           interval: monthly

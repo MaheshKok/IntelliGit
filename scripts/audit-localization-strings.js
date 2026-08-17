@@ -57,49 +57,60 @@ const catalogs = {
 const findings = [];
 const uncatalogued = [];
 
-for (const filePath of sourceFiles(path.join(repoRoot, "src"))) {
-    if (skippedPathParts.some((part) => filePath.includes(part))) continue;
-    auditFile(filePath);
-}
-
-const report = renderReport(findings);
-if (reportPath) {
-    fs.mkdirSync(path.dirname(reportPath), { recursive: true });
-    fs.writeFileSync(reportPath, report, "utf8");
-}
-
-console.log(
-    `Hardcoded localization audit: ${findings.length} candidate${findings.length === 1 ? "" : "s"} found.`,
-);
-if (reportPath) console.log(`Report written to ${path.relative(repoRoot, reportPath)}.`);
-if (!reportPath && findings.length > 0) console.log(report);
-
-console.log(
-    `Localization catalog coverage: ${uncatalogued.length} localized string${
-        uncatalogued.length === 1 ? "" : "s"
-    } missing from an English catalog.`,
-);
-if (uncatalogued.length > 0) {
-    for (const item of uncatalogued) {
-        console.log(`  ${item.file}:${item.line} -> ${item.catalog}: ${item.text}`);
+// Guarded so the audit runs when this file is the entry point and stays inert when it is
+// imported, which is what lets `escapeMarkdown` below be tested at all. Without it, a test
+// importing this module would execute the whole `src` sweep and could `process.exit(1)` the
+// test runner -- and would go red whenever the audit found something unrelated. Matches the
+// shape `scripts/verifyVsixPackage.js` already uses; verified under `bun` as well as `node`,
+// since `l10n:audit` runs this one through bun.
+// `findings` and `uncatalogued` stay at module scope on purpose: `auditFile` closes over them.
+if (require.main === module) {
+    for (const filePath of sourceFiles(path.join(repoRoot, "src"))) {
+        if (skippedPathParts.some((part) => filePath.includes(part))) continue;
+        auditFile(filePath);
     }
+
+    const report = renderReport(findings);
+    if (reportPath) {
+        fs.mkdirSync(path.dirname(reportPath), { recursive: true });
+        fs.writeFileSync(reportPath, report, "utf8");
+    }
+
     console.log(
-        [
-            "",
-            "Each string above is localized in code but absent from the English catalog that feeds",
-            "docs/localization/localization_translation_review.csv, so it is never translated and",
-            "ships in English for all 11 locales.",
-            "",
-            "Fix: add the English text to the catalog, then run",
-            "  bun run l10n:sync      # adds the CSV rows",
-            "  <fill every current_<locale> cell from an approved translation source>",
-            "  bun run l10n:import    # writes the locale catalogs",
-            "  bun run l10n:validate",
-        ].join("\n"),
+        `Hardcoded localization audit: ${findings.length} candidate${findings.length === 1 ? "" : "s"} found.`,
     );
+    if (reportPath) console.log(`Report written to ${path.relative(repoRoot, reportPath)}.`);
+    if (!reportPath && findings.length > 0) console.log(report);
+
+    console.log(
+        `Localization catalog coverage: ${uncatalogued.length} localized string${
+            uncatalogued.length === 1 ? "" : "s"
+        } missing from an English catalog.`,
+    );
+    if (uncatalogued.length > 0) {
+        for (const item of uncatalogued) {
+            console.log(`  ${item.file}:${item.line} -> ${item.catalog}: ${item.text}`);
+        }
+        console.log(
+            [
+                "",
+                "Each string above is localized in code but absent from the English catalog that feeds",
+                "docs/localization/localization_translation_review.csv, so it is never translated and",
+                "ships in English for all 11 locales.",
+                "",
+                "Fix: add the English text to the catalog, then run",
+                "  bun run l10n:sync      # adds the CSV rows",
+                "  <fill every current_<locale> cell from an approved translation source>",
+                "  bun run l10n:import    # writes the locale catalogs",
+                "  bun run l10n:validate",
+            ].join("\n"),
+        );
+    }
+
+    if (uncatalogued.length > 0 || (strict && findings.length > 0)) process.exit(1);
 }
 
-if (uncatalogued.length > 0 || (strict && findings.length > 0)) process.exit(1);
+module.exports = { escapeMarkdown };
 
 function auditFile(filePath) {
     const text = fs.readFileSync(filePath, "utf8");
@@ -373,7 +384,13 @@ function renderReport(items) {
 }
 
 function escapeMarkdown(text) {
-    return text.replace(/\|/g, "\\|").replace(/`/g, "\\`");
+    // Backslash first, and the order is the whole fix. Escaping works by PREFIXING a backslash,
+    // so a backslash already in the source is itself a metacharacter. Escaping the pipe first
+    // wrote `\|` directly behind a source `\`, giving `\\|` -- which Markdown reads as an escaped
+    // backslash followed by a LIVE pipe, ending the table cell early and shifting every column
+    // after it. Doubling backslashes up front means each later escape lands on a character that
+    // can no longer be absorbed by the one before it.
+    return text.replace(/\\/g, "\\\\").replace(/\|/g, "\\|").replace(/`/g, "\\`");
 }
 
 function sourceFiles(directory) {
