@@ -196,6 +196,20 @@ describe("GitExecutor", () => {
         expect(output.stdout.toString("utf8")).toMatch(/^[a-f0-9]{40}\n$/);
     });
 
+    itPosix("settles from the child's exit when a large input breaks the stdin pipe", async () => {
+        // The fake git exits without ever reading stdin, and an input far larger than the OS
+        // pipe buffer cannot be absorbed by it, so closing stdin fails with EPIPE once the
+        // child is gone. `child.once("error")` listens on the process, not on the stdin
+        // stream, and an unhandled stream error is an uncatchable crash rather than a
+        // rejected promise: it turned a CI run red while all 4023 tests in it passed.
+        // The close handler already reports the real outcome, which is what this asserts.
+        const output = await runFakeGit("exit 0", ["hash-object", "--stdin"], {
+            input: Buffer.alloc(1024 * 1024, 0x61),
+        });
+
+        expect(output.exitCode).toBe(0);
+    });
+
     it("accepts an explicitly expected non-zero Git exit code", async () => {
         const executor = new GitExecutor(process.cwd());
 
