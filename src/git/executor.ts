@@ -202,6 +202,13 @@ export class GitExecutor {
             child.once("close", (exitCode, signal) => {
                 void finish(exitCode, signal);
             });
+            // A child that exits without draining stdin breaks the pipe, so this end() fails
+            // with EPIPE on the stream -- not on the process, which is all the handler above
+            // listens to. An unhandled stream error is an uncatchable crash rather than a
+            // rejected promise, so it takes a whole run down while every test in it passes.
+            // The close handler already reports the real outcome, so a write that lost the
+            // race to the child's exit carries nothing the caller does not already get.
+            child.stdin.once("error", () => undefined);
             if (options.input) child.stdin.end(options.input);
             else child.stdin.end();
         });
