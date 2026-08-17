@@ -28,9 +28,47 @@ const REVEAL_POLL_INTERVAL_MS = 250;
  */
 const ACTIVITY_BAR_ITEM = ".activitybar .action-item";
 
+/** How many console lines the timeout message may carry. The workbench is chatty, so keeping every
+ * message would evict the interesting one long before the failure; the trail keeps errors and
+ * warnings only, and `consoleSeen` accounts for the rest. */
+const CONSOLE_TRAIL_LIMIT = 25;
+
+/** How much of one console line survives into the message. A stack trace pasted whole would push
+ * every other line out of a bounded trail. */
+const CONSOLE_LINE_LIMIT = 300;
+
+/** Webview documents are served from this scheme, so a console message's source URL says whether it
+ * came from a webview or from the workbench shell around it. */
+const WEBVIEW_URL_SCHEME = "vscode-webview://";
+
 /** Locates IntelliGit's webview surfaces: the activity-bar view and the full-width graph panel. */
 export class IntelliGitView {
-    public constructor(private readonly page: Page) {}
+    /** Errors and warnings the page emitted, newest last. See `describeConsole`. */
+    private consoleTrail: readonly string[] = [];
+
+    /** How many console messages arrived at all, and how many of those came from a webview
+     * document. These are the instrument's own proof -- see `describeConsole`. */
+    private consoleSeen = 0;
+    private webviewConsoleSeen = 0;
+
+    public constructor(private readonly page: Page) {
+        page.on("console", (message) => {
+            const fromWebview = message.location().url.startsWith(WEBVIEW_URL_SCHEME);
+            this.consoleSeen += 1;
+            if (fromWebview) this.webviewConsoleSeen += 1;
+            const type = message.type();
+            if (type !== "error" && type !== "warning") return;
+            this.record(`${type}${fromWebview ? "(webview)" : ""}: ${message.text()}`);
+        });
+        page.on("pageerror", (error) => this.record(`pageerror: ${error.message}`));
+    }
+
+    /** Appends `line` to the trail, keeping the newest `CONSOLE_TRAIL_LIMIT` entries. */
+    private record(line: string): void {
+        const bounded =
+            line.length > CONSOLE_LINE_LIMIT ? `${line.slice(0, CONSOLE_LINE_LIMIT)}…` : line;
+        this.consoleTrail = [...this.consoleTrail, bounded].slice(-CONSOLE_TRAIL_LIMIT);
+    }
 
     /** Reveals IntelliGit in the sidebar and returns its webview document. */
     public async reveal(timeoutMs = DEFAULT_REVEAL_TIMEOUT_MS): Promise<FrameLocator> {
@@ -66,7 +104,8 @@ export class IntelliGitView {
             if (Date.now() > deadline) {
                 throw new Error(
                     `No IntelliGit webview rendered "${marker}" within ${timeoutMs}ms.\n` +
-                        `  webviews present:\n  ${await this.describeWebviews()}`,
+                        `  webviews present:\n  ${await this.describeWebviews()}\n` +
+                        `  console: ${this.describeConsole()}`,
                 );
             }
             await this.page.waitForTimeout(REVEAL_POLL_INTERVAL_MS);
@@ -150,5 +189,28 @@ export class IntelliGitView {
             }),
         );
         return described.join("\n  ");
+    }
+
+    /**
+     * Reports what the page logged, for the timeout message only.
+     *
+     * The commit panel fails this way while its document renders `commit-panel-awaiting-hydration`,
+     * which is React's FIRST render -- so React mounted, and what did not finish is the effect that
+     * acquires the VS Code API and posts `ready`. If that effect threw, the reason is a console
+     * error and nothing else in the harness can see it: the retained Playwright trace carries action
+     * events only, with no console stream at all.
+     *
+     * The counts are here because a blind listener and a quiet page produce the same empty list, and
+     * a clean console is the finding that would send the next instrument elsewhere -- so it has to
+     * be worth believing. `seen` proves the listener was attached and receiving; `from webviews`
+     * proves it was receiving from webview documents specifically, rather than only from the
+     * workbench shell around them. `from webviews: 0` means this line answers nothing.
+     */
+    private describeConsole(): string {
+        const counts = `${this.consoleSeen} seen (${this.webviewConsoleSeen} from webviews)`;
+        return this.consoleTrail.length === 0
+            ? `${counts}; no errors or warnings`
+            : `${counts}; ${this.consoleTrail.length} error/warning:\n    ` +
+                  this.consoleTrail.join("\n    ");
     }
 }
