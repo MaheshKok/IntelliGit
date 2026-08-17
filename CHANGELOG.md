@@ -5,9 +5,9 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.25.6] - 2026-08-17
+## [0.25.7] - 2026-08-17
 
-This release also carries everything listed under 0.25.5, which never reached the marketplace.
+This release also carries everything listed under 0.25.5 and 0.25.6.
 
 ### Security
 
@@ -32,6 +32,12 @@ This release also carries everything listed under 0.25.5, which never reached th
 - Fixed the GitHub quota bypass being granted on a quota no server ever advertised. The limit, remaining and reset fields are each remembered independently, so a response carrying only a limit and a later one carrying only a remaining and a reset combined into a tuple that lifted the automatic ceiling from 300 requests an hour to the full advertised 5000. The bypass is now judged on a single response's own headers. The reserve cooldown deliberately still reads the remembered fields, because a raised ceiling is a permission and has to be earned outright, while a cooldown is a brake — withholding one from a response that proves the quota is nearly spent, merely because that response omitted the limit header, would fail in the unsafe direction.
 - Fixed signing in to a rejected GitHub session reporting success while changing nothing. The recovery asked for an existing session, which returns the very session GitHub had just rejected without prompting, so the user saw "Signed in to github.com." and a badge that failed again for the same reason. It now forces a fresh consent flow.
 - Fixed an unread standard-input pipe being able to take down the extension host. Every Git invocation closes the child's standard input, and a child that exits without draining it breaks the pipe — but the only error handler was on the process, and a stream error with no handler of its own is an uncatchable crash rather than a reported failure. That race is now absorbed, since the child's exit code and standard error already say everything about it. Every other write failure is reported instead: those mean Git is still running and received a truncated input, and a truncated input can still exit successfully, which would turn a failed write into a confident answer over bytes that were never delivered.
+## [0.25.6] - 2026-08-17
+
+### Fixed
+
+- Fixed all four webview views throwing away the result of every message they send. VS Code answers a send three ways — delivered, accepted but not delivered, and failed outright — and each view discarded the answer, so a view that never received what it was sent looked, from the extension's side, exactly like one that did. This is the missing half of the blank commit panel addressed in 0.25.4: that release made the panel keep asking until it gets an answer, but when an answer never came there was no record anywhere of which direction the message was lost in, and the report left behind by a failed run could say only that the panel was empty. A send that does not land is now recorded with the view that sent it and the message that was lost.
+- Fixed a failed send to a closed view surfacing as an unhandled promise rejection inside the extension host — a crash report about a message the user never needed to know had a promise behind it. The same send failing on the spot rather than asynchronously could also interrupt whatever the extension was doing at the time, including displacing an error that was in the middle of being reported.
 
 ## [0.25.5] - 2026-08-16
 

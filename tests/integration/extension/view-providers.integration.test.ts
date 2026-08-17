@@ -114,7 +114,10 @@ const showTextDocument = vi.fn(async () => undefined);
 const executeCommand = vi.fn(async () => undefined);
 const openExternal = vi.fn(async () => true);
 const openTextDocument = vi.fn(async () => ({ getText: () => "local file contents" }));
-const postMessageSpy = vi.fn();
+// Resolves `true` because that is what a live `vscode.Webview.postMessage` returns; a bare
+// `vi.fn()` hands back `undefined`, which the host now correctly reads as "the view never got it"
+// and reports. Every provider in this file would otherwise log an undelivered message per post.
+const postMessageSpy = vi.fn().mockResolvedValue(true);
 const fileSystemWatchers: FakeFileSystemWatcher[] = [];
 const createdWebviewPanels: Array<{
     panel: Record<string, unknown>;

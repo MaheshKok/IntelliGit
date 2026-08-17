@@ -109,8 +109,14 @@ describe("Workbench", () => {
 
             // The second chord is the finding. Retrying only the failed step would keep driving the
             // widget that already went away, which is the timeout this fixes.
-            expect(keyboard.press, "a closed palette has to be re-opened, not re-driven").toHaveBeenCalledTimes(2);
-            expect(commandInput.fill, "the re-opened palette has to be typed into again").toHaveBeenCalledTimes(2);
+            expect(
+                keyboard.press,
+                "a closed palette has to be re-opened, not re-driven",
+            ).toHaveBeenCalledTimes(2);
+            expect(
+                commandInput.fill,
+                "the re-opened palette has to be typed into again",
+            ).toHaveBeenCalledTimes(2);
             expect(option.click).toHaveBeenCalledTimes(step === "click" ? 2 : 1);
         },
     );
@@ -319,6 +325,9 @@ describe("IntelliGitView", () => {
     const SIDEBAR_MARKER = '[data-testid="commit-panel-tab-row"]';
     const GRAPH_PANEL_MARKER = '[data-testid="commit-list-viewport"]';
 
+    /** Source URL of a console message that came from a webview document rather than the shell. */
+    const WEBVIEW_URL = "vscode-webview://0x1/index.html";
+
     /** `[data-testid="x"]` -> `x`, so a fake body can carry the ids its selectors ask for. */
     function testIdOf(selector: string): string {
         return selector.replace('[data-testid="', "").replace('"]', "");
@@ -403,8 +412,14 @@ describe("IntelliGitView", () => {
     function workbenchPage(webviews: readonly { outer: unknown }[]): {
         page: Page;
         click: ReturnType<typeof vi.fn>;
+        emitConsole: (type: string, text: string, url: string) => void;
     } {
         const click = vi.fn();
+        // The page object attaches `console`/`pageerror` listeners in its constructor. Modelling
+        // `on` as a real registry rather than a no-op is what lets the tests below DRIVE the
+        // console instrument; a no-op fake would merely tolerate it, and an instrument nothing
+        // feeds is the one thing a report about a silent page must not be.
+        const listeners = new Map<string, ((payload: never) => void)[]>();
         const intelliGitLabel = Symbol("getByLabel(IntelliGit, { exact: true })");
         const page = {
             locator: (selector: string) => {
@@ -428,8 +443,20 @@ describe("IntelliGitView", () => {
                 return intelliGitLabel;
             },
             waitForTimeout: vi.fn().mockResolvedValue(undefined),
+            on: (event: string, listener: (payload: never) => void) => {
+                listeners.set(event, [...(listeners.get(event) ?? []), listener]);
+            },
         } as unknown as Page;
-        return { page, click };
+        const emitConsole = (type: string, text: string, url: string): void => {
+            for (const listener of listeners.get("console") ?? []) {
+                (listener as unknown as (message: unknown) => void)({
+                    type: () => type,
+                    text: () => text,
+                    location: () => ({ url }),
+                });
+            }
+        };
+        return { page, click, emitConsole };
     }
 
     // VS Code renders a view's badge as a sibling of the labelled anchor, overlapping it, so an
@@ -504,6 +531,55 @@ describe("IntelliGitView", () => {
         const { page } = workbenchPage([]);
 
         await expect(new IntelliGitView(page).revealPanel(50)).rejects.toThrow("(none attached)");
+    });
+
+    // The panel fails while rendering `commit-panel-awaiting-hydration` -- React's FIRST render --
+    // so what did not finish is the effect that acquires the VS Code API and posts `ready`. If that
+    // effect threw, the reason is a console error, and the retained Playwright trace carries action
+    // events only: no console stream at all. A report that drops the console drops the one place
+    // the cause could still be.
+    it("carries the page's errors and warnings into the timeout message", async () => {
+        const { page, emitConsole } = workbenchPage([webview([])]);
+        const view = new IntelliGitView(page);
+
+        emitConsole("error", "Uncaught TypeError: acquireVsCodeApi is not a function", WEBVIEW_URL);
+        emitConsole("log", "ordinary chatter nobody needs", WEBVIEW_URL);
+
+        await expect(view.revealPanel(50)).rejects.toThrow(
+            /console: 2 seen \(2 from webviews\); 1 error\/warning:\s+error\(webview\): Uncaught TypeError/,
+        );
+    });
+
+    /**
+     * The counts are the instrument's own proof, and this is the case that needs them: a listener
+     * that was never attached and a page that logged nothing produce the same empty trail. Without
+     * `seen`, "no errors or warnings" is the most misleading line in the report -- it is the finding
+     * that would send the next investigation somewhere else entirely.
+     */
+    it("shows a quiet page was heard, not merely unlistened-to", async () => {
+        const { page, emitConsole } = workbenchPage([webview([])]);
+        const view = new IntelliGitView(page);
+
+        emitConsole("log", "ordinary chatter nobody needs", WEBVIEW_URL);
+
+        await expect(view.revealPanel(50)).rejects.toThrow(
+            /console: 1 seen \(1 from webviews\); no errors or warnings/,
+        );
+    });
+
+    // Webview documents and the workbench shell around them both log here, and only the first kind
+    // can explain an unhydrated panel. A count that lumps them together reads as evidence about the
+    // webview when it may be entirely about the shell.
+    it("separates workbench-shell console output from webview output", async () => {
+        const { page, emitConsole } = workbenchPage([webview([])]);
+        const view = new IntelliGitView(page);
+
+        emitConsole("warning", "shell warning", "vscode-file://vscode-app/workbench.html");
+        emitConsole("warning", "webview warning", WEBVIEW_URL);
+
+        await expect(view.revealPanel(50)).rejects.toThrow(
+            /console: 2 seen \(1 from webviews\); 2 error\/warning/,
+        );
     });
 });
 

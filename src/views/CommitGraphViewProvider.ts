@@ -4,6 +4,7 @@
 
 import * as vscode from "vscode";
 import { GitOps } from "../git/operations";
+import { postWebviewMessage } from "./webviewDelivery";
 import type { Branch, Commit, CommitDetail, GitWorktree, ThemeFolderIconMap } from "../types";
 import type {
     BranchAction,
@@ -717,8 +718,14 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
         if (!valid) throw new Error("Unsupported review prompt answer.");
     }
 
+    /**
+     * A missing view is deliberately silent -- a closed graph is an ordinary state, not a fault.
+     * A message the view refuses or rejects is not; see {@link postWebviewMessage}.
+     */
     private postToWebview(msg: CommitGraphInbound): void {
-        this.view?.webview.postMessage(msg);
+        const view = this.view;
+        if (!view) return;
+        postWebviewMessage(view.webview, msg, "Commit graph");
     }
 
     /**
