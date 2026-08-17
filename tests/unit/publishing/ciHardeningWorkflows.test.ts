@@ -21,7 +21,10 @@ function extractJobBlock(workflow: string, jobName: string): string {
 
     const bodyStart = start + header.length;
     const nextJobOffset = workflow.slice(bodyStart).search(/^    [a-z0-9-]+:\n/m);
-    return workflow.slice(bodyStart, nextJobOffset === -1 ? workflow.length : bodyStart + nextJobOffset);
+    return workflow.slice(
+        bodyStart,
+        nextJobOffset === -1 ? workflow.length : bodyStart + nextJobOffset,
+    );
 }
 
 /** Extracts one named workflow step so its inputs cannot be supplied by a neighbouring step. */
@@ -58,8 +61,15 @@ function pinnedRefsFor(workflow: string, actionPath: string): readonly string[] 
 
 /** Returns the complete job-local permission map as rendered in a workflow. */
 function jobPermissionEntries(job: string): readonly string[] {
-    const permissions = job.match(/^        permissions:\n((?:^            [a-z-]+: [a-z-]+\n)+)/m)?.[1];
-    return permissions?.trim().split("\n").map((line) => line.trim()) ?? [];
+    const permissions = job.match(
+        /^        permissions:\n((?:^            [a-z-]+: [a-z-]+\n)+)/m,
+    )?.[1];
+    return (
+        permissions
+            ?.trim()
+            .split("\n")
+            .map((line) => line.trim()) ?? []
+    );
 }
 
 describe("CI quality hardening workflows", () => {
@@ -97,7 +107,10 @@ describe("CI quality hardening workflows", () => {
     });
 
     it("packages one verified VSIX and checksum before publishing the build artifact", () => {
-        const buildJob = extractJobBlock(readRepositoryFile(".github/workflows/publish.yml"), "build");
+        const buildJob = extractJobBlock(
+            readRepositoryFile(".github/workflows/publish.yml"),
+            "build",
+        );
         const packageStep = extractStepBlock(buildJob, "Package extension");
         const uploadStep = extractStepBlock(buildJob, "Upload release artifacts");
 
@@ -114,7 +127,8 @@ describe("CI quality hardening workflows", () => {
         const jobsSection = publish.slice(publish.indexOf("\njobs:\n") + "\njobs:\n".length);
         const jobNames = [...jobsSection.matchAll(/^    ([a-z0-9-]+):$/gm)].map(([, name]) => name);
         const jobsMissingTimeouts = jobNames.filter(
-            (jobName) => !extractJobBlock(publish, jobName).match(/^        timeout-minutes: \d+$/m),
+            (jobName) =>
+                !extractJobBlock(publish, jobName).match(/^        timeout-minutes: \d+$/m),
         );
         expect(jobsMissingTimeouts).toEqual([]);
     });
@@ -145,11 +159,11 @@ describe("CI quality hardening workflows", () => {
         expect(eligibilityJob).not.toMatch(/^\s+(environment|secrets):/m);
         // Eligibility reads the release state over the API, so it needs the automatic per-run
         // token -- and nothing else. A blanket "no secrets." ban would have to be deleted whole to
-        // let that through, taking the part that matters with it: the publishing credentials and
-        // the marketplace environment stay in the release job, behind every gate above it.
-        expect([...eligibilityJob.matchAll(/secrets\.([A-Z_]+)/g)].map(([, name]) => name)).toEqual([
-            "GITHUB_TOKEN",
-        ]);
+        // let that through, taking the part that matters with it: the publishing credentials stay
+        // in the release job, behind every gate above it.
+        expect([...eligibilityJob.matchAll(/secrets\.([A-Z_]+)/g)].map(([, name]) => name)).toEqual(
+            ["GITHUB_TOKEN"],
+        );
         expect(attestJob).toContain("needs: [build, release-eligibility]");
         expect(jobPermissionEntries(attestJob)).toEqual([
             "contents: read",
@@ -160,19 +174,25 @@ describe("CI quality hardening workflows", () => {
             "actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2",
         );
         expect(attestJob).not.toContain("attest-build-provenance");
-        expect(attestJob).toContain("subject-path: ${{ steps.release-artifact.outputs.vsix_path }}");
+        expect(attestJob).toContain(
+            "subject-path: ${{ steps.release-artifact.outputs.vsix_path }}",
+        );
         expect(releaseJob).toContain(
             "needs: [build, visual, e2e-full, package-smoke, release-eligibility, attest]",
         );
-        expect(releaseJob).toContain("environment: marketplace-production");
-        expect(releaseJob).toContain(
-            "needs.release-eligibility.outputs.version_changed == 'true'",
-        );
+        // The publishing gates are the `if:` conditions and the jobs in `needs:`, all of which run
+        // unattended. A deployment environment used to sit here too and is deliberately gone; the
+        // ban and its reasoning live in `releaseNeverBlocksCi.test.ts`, which scans every job
+        // rather than this one.
+        expect(releaseJob).not.toMatch(/^\s+environment:/m);
+        expect(releaseJob).toContain("needs.release-eligibility.outputs.version_changed == 'true'");
         expect(releaseJob).toContain("steps.release-artifact.outputs.vsix_path");
         expect(releaseJob).toContain("steps.release-artifact.outputs.checksum_path");
         expect(releaseJob).toContain("persist-credentials: false");
         expect(releaseJob).toContain("Refuse rebuilt-artifact recovery for a published version");
-        expect(releaseJob).toContain("A published version must be recovered from its original artifact");
+        expect(releaseJob).toContain(
+            "A published version must be recovered from its original artifact",
+        );
         const recoveryStep = extractStepBlock(
             releaseJob,
             "Refuse rebuilt-artifact recovery for a published version",
@@ -210,7 +230,10 @@ describe("CI quality hardening workflows", () => {
     });
 
     it("passes the verified VSIX path through each marketplace step environment", () => {
-        const releaseJob = extractJobBlock(readRepositoryFile(".github/workflows/publish.yml"), "release");
+        const releaseJob = extractJobBlock(
+            readRepositoryFile(".github/workflows/publish.yml"),
+            "release",
+        );
         const marketplaceContracts = [
             {
                 name: "Publish to VS Code Marketplace",
@@ -230,7 +253,9 @@ describe("CI quality hardening workflows", () => {
             expect(step).toContain("VSIX_PATH: ${{ steps.release-artifact.outputs.vsix_path }}");
             expect(step).toContain(contract.command);
             expect(step).toContain(contract.token);
-            expect(step).not.toMatch(/^\s+run:.*\$\{\{ steps\.release-artifact\.outputs\.vsix_path \}\}/m);
+            expect(step).not.toMatch(
+                /^\s+run:.*\$\{\{ steps\.release-artifact\.outputs\.vsix_path \}\}/m,
+            );
         }
     });
 
@@ -261,9 +286,9 @@ describe("CI quality hardening workflows", () => {
         expect(codeql).not.toContain("build-mode: manual");
         expect(codeql).toMatch(/timeout-minutes: \d+/);
         expect(dependencyReview).toContain("pull_request:");
-        expect(jobPermissionEntries(extractJobBlock(dependencyReview, "dependency-review"))).toEqual([
-            "contents: read",
-        ]);
+        expect(
+            jobPermissionEntries(extractJobBlock(dependencyReview, "dependency-review")),
+        ).toEqual(["contents: read"]);
         expect(
             pinnedRefsFor(dependencyReview, "actions/dependency-review-action").length,
             "dependency-review.yml must run dependency-review-action, SHA-pinned",
@@ -287,7 +312,9 @@ describe("CI quality hardening workflows", () => {
         expect(compatibility).toContain("bun run test");
         expect(compatibility).toContain("bun run package");
         expect(compatibility).toContain("xvfb-run -a bun run test:package-smoke");
-        expect(compatibility).toMatch(/INTELLIGIT_VSCODE_VERSION=1\.132\.0 bun run test:package-smoke/);
+        expect(compatibility).toMatch(
+            /INTELLIGIT_VSCODE_VERSION=1\.132\.0 bun run test:package-smoke/,
+        );
         expect(dependabot).toContain("package-ecosystem: github-actions");
         expect(dependabot).toContain("dependency-type: development");
         expect(dependabot).toContain('update-types: ["minor", "patch"]');
@@ -313,7 +340,9 @@ describe("CI quality hardening workflows", () => {
             "exactly one JavaScript lockfile must exist; two would make the ecosystem ambiguous " +
                 "and let Dependabot maintain the one CI does not install from",
         ).toHaveLength(1);
-        const declared = [...dependabot.matchAll(/package-ecosystem:\s*(\S+)/g)].map((match) => match[1]);
+        const declared = [...dependabot.matchAll(/package-ecosystem:\s*(\S+)/g)].map(
+            (match) => match[1],
+        );
         expect(
             declared,
             `the repository installs from ${present[0]?.lockfile}, so Dependabot must update it via ` +
@@ -323,7 +352,8 @@ describe("CI quality hardening workflows", () => {
         expect(
             declared.filter((ecosystem) =>
                 lockfileEcosystems.some(
-                    (candidate) => candidate.ecosystem === ecosystem && ecosystem !== present[0]?.ecosystem,
+                    (candidate) =>
+                        candidate.ecosystem === ecosystem && ecosystem !== present[0]?.ecosystem,
                 ),
             ),
             "no second JavaScript ecosystem may be declared alongside it",
