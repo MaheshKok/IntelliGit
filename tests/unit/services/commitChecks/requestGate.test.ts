@@ -156,6 +156,34 @@ describe("GitHubRequestGate", () => {
         await expect(gate.run(task)).rejects.toThrow("GitHub rate limit cooldown is active.");
     });
 
+    it("keeps the fallback cap when a quota tuple is spread across two responses", async () => {
+        const gate = new GitHubRequestGate(4, () => 1_000);
+        // Neither response advertises a usable quota by itself: the first names a limit with no
+        // remaining or reset, the second a remaining and reset with no limit. Because each field
+        // is sticky, the pair can look like one coherent 5000/hour budget that no response ever
+        // stated. Raising the ceiling is a permission, so it has to be earned by a single
+        // response -- which is what observeGitLabResponse already requires.
+        gate.observeResponse({
+            url: GITHUB_API_URL,
+            statusCode: 200,
+            headers: { "x-ratelimit-limit": "5000" },
+        });
+        gate.observeResponse({
+            url: GITHUB_API_URL,
+            statusCode: 200,
+            // Well clear of the 500 reserve for a 5000 limit, so a reserve cooldown cannot be
+            // what stops the run below and counterfeit the cap.
+            headers: { "x-ratelimit-remaining": "4000", "x-ratelimit-reset": "3600" },
+        });
+        const task = vi.fn(async () => "ok");
+
+        for (let index = 0; index < 300; index += 1) {
+            await expect(gate.run(task)).resolves.toBe("ok");
+        }
+        await expect(gate.run(task)).rejects.toThrow("GitHub rate limit cooldown is active.");
+        expect(task).toHaveBeenCalledTimes(300);
+    });
+
     it("reset clears observed quota and rolling request starts", async () => {
         const gate = new GitHubRequestGate(4, () => 1_000);
         gate.observeResponse({

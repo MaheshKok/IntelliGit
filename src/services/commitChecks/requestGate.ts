@@ -292,8 +292,17 @@ class ProviderRequestGate {
             this.now(),
         );
         if (resetAt > 0) this.rateResetAt = resetAt;
+        // Judged on this response's own headers rather than the sticky fields, so a limit left
+        // by one response cannot pair with a remaining and reset left by another into a budget
+        // no server ever advertised -- which would lift the ceiling from the fallback cap to the
+        // full advertised quota. observeGitLabResponse already reads its locals here.
+        //
+        // The reserve cooldown below keeps reading the sticky fields on purpose. A raised ceiling
+        // is a permission and has to be earned outright; a cooldown is a brake, and a response
+        // proving the quota is nearly spent must still be able to engage one even when it omits
+        // the limit header.
         this.hasObservedQuota =
-            this.rateLimit > 0 && this.rateRemaining !== undefined && this.rateResetAt > this.now();
+            limit !== undefined && limit > 0 && remaining !== undefined && resetAt > this.now();
 
         const reserve = Math.max(
             MIN_PRIMARY_RESERVE,
