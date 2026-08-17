@@ -5,6 +5,13 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.25.6] - 2026-08-17
+
+### Fixed
+
+- Fixed all four webview views throwing away the result of every message they send. VS Code answers a send three ways — delivered, accepted but not delivered, and failed outright — and each view discarded the answer, so a view that never received what it was sent looked, from the extension's side, exactly like one that did. This is the missing half of the blank commit panel addressed in 0.25.4: that release made the panel keep asking until it gets an answer, but when an answer never came there was no record anywhere of which direction the message was lost in, and the report left behind by a failed run could say only that the panel was empty. A send that does not land is now recorded with the view that sent it and the message that was lost.
+- Fixed a failed send to a closed view surfacing as an unhandled promise rejection inside the extension host — a crash report about a message the user never needed to know had a promise behind it. The same send failing on the spot rather than asynchronously could also interrupt whatever the extension was doing at the time, including displacing an error that was in the middle of being reported.
+
 ## [0.25.5] - 2026-08-16
 
 ### Security

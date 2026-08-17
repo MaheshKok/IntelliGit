@@ -14,6 +14,7 @@ import type { Branch, CommitDetail, ThemeFolderIconMap } from "../types";
 import { buildWebviewShellHtml } from "./webviewHtml";
 import { decorateShelfFiles, shelfFilePaths } from "./shelfIconDecoration";
 import { getErrorMessage } from "../utils/errors";
+import { postWebviewMessage } from "./webviewDelivery";
 import { mapWithConcurrency } from "../utils/concurrency";
 import { assertRepoRelativePath } from "../utils/fileOps";
 import { abortMergeWithConfirmation } from "./mergeAbort";
@@ -2063,8 +2064,14 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         return true;
     }
 
+    /**
+     * A missing view is deliberately silent -- a closed panel is an ordinary state, not a fault.
+     * A message the view refuses or rejects is not; see {@link postWebviewMessage}.
+     */
     private postToWebview(msg: InboundMessage | CommitGraphInbound): void {
-        this.view?.webview.postMessage(msg);
+        const view = this.view;
+        if (!view) return;
+        postWebviewMessage(view.webview, msg, "Commit panel");
     }
     /**
      * Resolves the repository root used by file actions in the active panel.

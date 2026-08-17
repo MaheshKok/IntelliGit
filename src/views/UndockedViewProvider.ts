@@ -19,6 +19,7 @@ import { registerThemeChangeListeners, disposeAll } from "./shared/themeListener
 import { buildWebviewShellHtml } from "./webviewHtml";
 import { decorateShelfFiles, shelfFilePaths } from "./shelfIconDecoration";
 import { getErrorMessage } from "../utils/errors";
+import { postWebviewMessage } from "./webviewDelivery";
 import { assertRepoRelativePath } from "../utils/fileOps";
 import { assertValidBranchName } from "../utils/gitRefs";
 import {
@@ -2082,7 +2083,13 @@ export class UndockedViewProvider {
         return delivered;
     }
 
+    /**
+     * A missing panel is deliberately silent -- a closed panel is an ordinary state, not a fault.
+     * A message the panel refuses or rejects is not; see {@link postWebviewMessage}.
+     */
     private postToWebview(msg: UnifiedInbound): void {
-        this.panel?.webview.postMessage(msg);
+        const panel = this.panel;
+        if (!panel) return;
+        postWebviewMessage(panel.webview, msg, "Undocked panel");
     }
 }

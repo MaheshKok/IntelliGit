@@ -5,6 +5,7 @@ import { IconThemeService } from "./shared/IconThemeService";
 import { isRedundantPost, serializeWebviewPayload } from "./shared/postedPayload";
 import { buildWebviewShellHtml } from "./webviewHtml";
 import { getErrorMessage } from "../utils/errors";
+import { postWebviewMessage } from "./webviewDelivery";
 import { assertRepoRelativePath } from "../utils/fileOps";
 import { isValidGitHash } from "../services/gitHelpers";
 
@@ -192,8 +193,14 @@ export class CommitInfoViewProvider implements vscode.WebviewViewProvider {
         this.lastPostedPayload = serialized;
     }
 
+    /**
+     * A missing view is deliberately silent -- a closed view is an ordinary state, not a fault.
+     * A message the view refuses or rejects is not; see {@link postWebviewMessage}.
+     */
     private postToWebview(msg: CommitInfoInbound): void {
-        this.view?.webview.postMessage(msg);
+        const view = this.view;
+        if (!view) return;
+        postWebviewMessage(view.webview, msg, "Commit info");
     }
 
     /**

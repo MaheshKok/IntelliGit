@@ -62,6 +62,7 @@ import { assertDirtyPostcondition } from "../../fixtures/repo/scenarios";
 import { seedFixtureTemplate, type FixtureTemplate } from "../../fixtures/repo/seed";
 import { createScratchWorkspaces } from "../fixtures/scratchWorkspaces";
 import type { CommitDetail } from "../../../src/types";
+import type { CommitGraphInbound } from "../../../src/webviews/protocol/commitGraphTypes";
 
 /** A resolve-context/token stand-in `resolveWebviewView` never reads -- same reasoning as
  * `recordCommitPanelWebviewFixture.ts`'s own `INERT_RESOLVE_CONTEXT`/`INERT_CANCELLATION_TOKEN`. */
@@ -90,7 +91,15 @@ function isRecord(value: unknown): value is Record<string, unknown> {
  * `webview.*`, `onDidDispose`, `visible`, `onDidChangeVisibility` -- rather than the narrower set
  * `CommitInfoViewProvider.test.ts`'s own inspectable double needs.
  */
-function createInspectableCommitPanelWebviewView(): {
+/**
+ * The three answers a real VS Code host gives `webview.postMessage`. `"refused"` is a resolved
+ * `false` -- the host took the call and did not deliver it -- and `"rejected"` is the promise
+ * failing outright. Both are indistinguishable from `"delivered"` to a caller that drops the
+ * returned promise, which is what the delivery-failure block at the bottom of this file pins down.
+ */
+type DeliveryOutcome = "delivered" | "refused" | "rejected";
+
+function createInspectableCommitPanelWebviewView(outcome: DeliveryOutcome = "delivered"): {
     readonly webviewView: vscode.WebviewView;
     readonly posted: unknown[];
     receiveMessage(message: unknown): Promise<void>;
@@ -109,7 +118,10 @@ function createInspectableCommitPanelWebviewView(): {
         },
         postMessage: (message: unknown) => {
             posted.push(message);
-            return Promise.resolve(true);
+            if (outcome === "rejected") {
+                return Promise.reject(new Error("Webview is disposed"));
+            }
+            return Promise.resolve(outcome === "delivered");
         },
     };
 
@@ -141,8 +153,7 @@ function setCommitDetailMessages(posted: readonly unknown[]): Record<string, unk
 
 function messagesOfType(posted: readonly unknown[], type: string): Record<string, unknown>[] {
     return posted.filter(
-        (message): message is Record<string, unknown> =>
-            isRecord(message) && message.type === type,
+        (message): message is Record<string, unknown> => isRecord(message) && message.type === type,
     );
 }
 
@@ -267,74 +278,67 @@ describe("CommitPanelViewProvider hydration re-ask", () => {
         await scratch.removeAll();
     });
 
-    it(
-        "answers a re-ask from state it already holds, without repeating the startup Git reads",
-        async () => {
-            const parentDir = await mkdtemp(
-                path.join(tmpdir(), "intelligit-commit-panel-reask-test-"),
-            );
-            scratch.register(parentDir);
-            const workspace = await prepareDirtyWorkspace(path.join(parentDir, "root"));
+    it("answers a re-ask from state it already holds, without repeating the startup Git reads", async () => {
+        const parentDir = await mkdtemp(path.join(tmpdir(), "intelligit-commit-panel-reask-test-"));
+        scratch.register(parentDir);
+        const workspace = await prepareDirtyWorkspace(path.join(parentDir, "root"));
 
-            const constructorOptions = buildCommitPanelConstructorOptions();
-            const gitOps = new GitOps(
-                new GitExecutor(workspace.root, undefined, toGitEnvironment(workspace.env)),
-            );
-            const provider = new CommitPanelViewProvider(
-                createFakeExtensionUri(),
-                gitOps,
-                createFakeUriFromPath(workspace.root),
-                createEmptyWorkspaceMemento(),
-                undefined, // secrets -- nothing on this path reads a secret.
-                constructorOptions.shelfServiceForRepository,
-                constructorOptions.shelfRemoveOnUnshelve,
-                constructorOptions.commitMessageGenerationCoordinator,
-                constructorOptions.interactiveRebaseStorageRoot,
-            );
+        const constructorOptions = buildCommitPanelConstructorOptions();
+        const gitOps = new GitOps(
+            new GitExecutor(workspace.root, undefined, toGitEnvironment(workspace.env)),
+        );
+        const provider = new CommitPanelViewProvider(
+            createFakeExtensionUri(),
+            gitOps,
+            createFakeUriFromPath(workspace.root),
+            createEmptyWorkspaceMemento(),
+            undefined, // secrets -- nothing on this path reads a secret.
+            constructorOptions.shelfServiceForRepository,
+            constructorOptions.shelfRemoveOnUnshelve,
+            constructorOptions.commitMessageGenerationCoordinator,
+            constructorOptions.interactiveRebaseStorageRoot,
+        );
 
-            const { webviewView, posted, receiveMessage } =
-                createInspectableCommitPanelWebviewView();
-            provider.resolveWebviewView(webviewView, INERT_CONTEXT, INERT_TOKEN);
+        const { webviewView, posted, receiveMessage } = createInspectableCommitPanelWebviewView();
+        provider.resolveWebviewView(webviewView, INERT_CONTEXT, INERT_TOKEN);
 
-            await receiveMessage({ type: "ready", attempt: 1 });
-            await flushMicrotasks();
-            const afterFirst = posted.length;
-            expect(
-                messagesOfType(posted, "setRepositories").length,
-                "a first announcement must be hydrated",
-            ).toBeGreaterThanOrEqual(1);
-            expect(
-                messagesOfType(posted, "refreshing").length,
-                "a first announcement must run the startup refresh -- otherwise the assertion " +
-                    "below proves nothing, because `refreshing` would be absent either way",
-            ).toBeGreaterThan(0);
+        await receiveMessage({ type: "ready", attempt: 1 });
+        await flushMicrotasks();
+        const afterFirst = posted.length;
+        expect(
+            messagesOfType(posted, "setRepositories").length,
+            "a first announcement must be hydrated",
+        ).toBeGreaterThanOrEqual(1);
+        expect(
+            messagesOfType(posted, "refreshing").length,
+            "a first announcement must run the startup refresh -- otherwise the assertion " +
+                "below proves nothing, because `refreshing` would be absent either way",
+        ).toBeGreaterThan(0);
 
-            const hydrationsBeforeReAsk = messagesOfType(posted, "setRepositories").length;
-            const refreshesBeforeReAsk = messagesOfType(posted, "refreshing").length;
+        const hydrationsBeforeReAsk = messagesOfType(posted, "setRepositories").length;
+        const refreshesBeforeReAsk = messagesOfType(posted, "refreshing").length;
 
-            // The webview is still mounted and still empty: it never received the answer above.
-            await receiveMessage({ type: "ready", attempt: 2 });
-            await flushMicrotasks();
+        // The webview is still mounted and still empty: it never received the answer above.
+        await receiveMessage({ type: "ready", attempt: 2 });
+        await flushMicrotasks();
 
-            expect(
-                messagesOfType(posted, "setRepositories").length,
-                "a re-ask must be answered -- the panel is unhydrated precisely because the " +
-                    "previous answer never arrived, so withholding this one strands it forever",
-            ).toBeGreaterThan(hydrationsBeforeReAsk);
-            expect(
-                messagesOfType(posted, "refreshing").length,
-                "a re-ask must NOT repeat the startup Git refresh; the webview re-asks on a " +
-                    "timer, so paying full price per attempt is the cost that forced the retry " +
-                    "to give up and leave the panel blank",
-            ).toBe(refreshesBeforeReAsk);
-            expect(
-                posted.length,
-                "a re-ask must still deliver the host's cached working-tree state, not the " +
-                    "repository list alone -- the dropped answer took the file list with it",
-            ).toBeGreaterThan(afterFirst + 1);
-        },
-        30_000,
-    );
+        expect(
+            messagesOfType(posted, "setRepositories").length,
+            "a re-ask must be answered -- the panel is unhydrated precisely because the " +
+                "previous answer never arrived, so withholding this one strands it forever",
+        ).toBeGreaterThan(hydrationsBeforeReAsk);
+        expect(
+            messagesOfType(posted, "refreshing").length,
+            "a re-ask must NOT repeat the startup Git refresh; the webview re-asks on a " +
+                "timer, so paying full price per attempt is the cost that forced the retry " +
+                "to give up and leave the panel blank",
+        ).toBe(refreshesBeforeReAsk);
+        expect(
+            posted.length,
+            "a re-ask must still deliver the host's cached working-tree state, not the " +
+                "repository list alone -- the dropped answer took the file list with it",
+        ).toBeGreaterThan(afterFirst + 1);
+    }, 30_000);
 
     /**
      * The other direction of the same drop, and the one that makes "answer a re-ask from cache" a
@@ -349,50 +353,158 @@ describe("CommitPanelViewProvider hydration re-ask", () => {
      * alone. The assertion is on the delivered file list rather than on any internal marker: an
      * unhydrated panel's whole problem is what it did or did not receive.
      */
-    it(
-        "does the full startup read for a re-ask when the first attempt never reached the host",
-        async () => {
-            const parentDir = await mkdtemp(
-                path.join(tmpdir(), "intelligit-commit-panel-cold-reask-test-"),
-            );
-            scratch.register(parentDir);
-            const workspace = await prepareDirtyWorkspace(path.join(parentDir, "root"));
+    it("does the full startup read for a re-ask when the first attempt never reached the host", async () => {
+        const parentDir = await mkdtemp(
+            path.join(tmpdir(), "intelligit-commit-panel-cold-reask-test-"),
+        );
+        scratch.register(parentDir);
+        const workspace = await prepareDirtyWorkspace(path.join(parentDir, "root"));
 
-            const constructorOptions = buildCommitPanelConstructorOptions();
-            const gitOps = new GitOps(
-                new GitExecutor(workspace.root, undefined, toGitEnvironment(workspace.env)),
-            );
-            const provider = new CommitPanelViewProvider(
-                createFakeExtensionUri(),
-                gitOps,
-                createFakeUriFromPath(workspace.root),
-                createEmptyWorkspaceMemento(),
-                undefined, // secrets -- nothing on this path reads a secret.
-                constructorOptions.shelfServiceForRepository,
-                constructorOptions.shelfRemoveOnUnshelve,
-                constructorOptions.commitMessageGenerationCoordinator,
-                constructorOptions.interactiveRebaseStorageRoot,
-            );
+        const constructorOptions = buildCommitPanelConstructorOptions();
+        const gitOps = new GitOps(
+            new GitExecutor(workspace.root, undefined, toGitEnvironment(workspace.env)),
+        );
+        const provider = new CommitPanelViewProvider(
+            createFakeExtensionUri(),
+            gitOps,
+            createFakeUriFromPath(workspace.root),
+            createEmptyWorkspaceMemento(),
+            undefined, // secrets -- nothing on this path reads a secret.
+            constructorOptions.shelfServiceForRepository,
+            constructorOptions.shelfRemoveOnUnshelve,
+            constructorOptions.commitMessageGenerationCoordinator,
+            constructorOptions.interactiveRebaseStorageRoot,
+        );
 
-            const { webviewView, posted, receiveMessage } =
-                createInspectableCommitPanelWebviewView();
-            provider.resolveWebviewView(webviewView, INERT_CONTEXT, INERT_TOKEN);
+        const { webviewView, posted, receiveMessage } = createInspectableCommitPanelWebviewView();
+        provider.resolveWebviewView(webviewView, INERT_CONTEXT, INERT_TOKEN);
 
-            // No attempt 1 anywhere: this is what a `ready` lost on the way in looks like from the
-            // host's side -- the panel is on its second try and the host is hearing from it first.
-            await receiveMessage({ type: "ready", attempt: 2 });
-            await flushMicrotasks();
+        // No attempt 1 anywhere: this is what a `ready` lost on the way in looks like from the
+        // host's side -- the panel is on its second try and the host is hearing from it first.
+        await receiveMessage({ type: "ready", attempt: 2 });
+        await flushMicrotasks();
 
-            const deliveredFileCounts = messagesOfType(posted, "update").map((message) =>
-                Array.isArray(message.files) ? message.files.length : -1,
-            );
-            expect(
-                Math.max(-1, ...deliveredFileCounts),
-                "the workspace is dirty, so at least one delivered snapshot must carry files; " +
-                    "skipping the startup read here posts an empty tree the panel cannot tell " +
-                    "apart from a clean one",
-            ).toBeGreaterThan(0);
-        },
-        30_000,
-    );
+        const deliveredFileCounts = messagesOfType(posted, "update").map((message) =>
+            Array.isArray(message.files) ? message.files.length : -1,
+        );
+        expect(
+            Math.max(-1, ...deliveredFileCounts),
+            "the workspace is dirty, so at least one delivered snapshot must carry files; " +
+                "skipping the startup read here posts an empty tree the panel cannot tell " +
+                "apart from a clean one",
+        ).toBeGreaterThan(0);
+    }, 30_000);
+});
+
+/**
+ * `postMessage` is the only wire the panel has, and VS Code answers it three ways: delivered,
+ * accepted-but-not-delivered (a resolved `false`), and rejected. The host used to treat all three
+ * as success -- `this.view?.webview.postMessage(msg)`, promise dropped -- so a panel that never
+ * received its hydration looked, from the extension's side, exactly like one that did. That is the
+ * shape of the intermittent blank commit panel in CI: the panel sits at `awaiting-hydration`
+ * through every retry while the host believes it answered each one.
+ *
+ * These tests are about the DIAGNOSTIC, not about recovery. Nothing here can make a dead webview
+ * accept a message; what it can do is stop a failure from being indistinguishable from a success.
+ * The assertion is on `console.error` specifically because that is the channel the E2E harness
+ * reads -- `tests/e2e/pageObjects/intelliGitView.ts` folds the extension host's console into its
+ * failure message -- so the next CI red names which leg dropped the message instead of only
+ * reporting that the panel came up blank.
+ *
+ * The rejection case carries a second defect: the old code left the returned promise floating, so
+ * a rejecting `postMessage` surfaced in the host as an unhandled rejection. Asserting the reason
+ * reaches the log proves a rejection handler is attached, which is what prevents it.
+ *
+ * `showRebaseDialog` is the vehicle because it is the one public method that reaches
+ * `postToWebview` in a single call with no git I/O behind it -- the wire is the subject here, not
+ * whatever payload happens to be travelling on it.
+ */
+describe("CommitPanelViewProvider webview delivery failures", () => {
+    let restoreConsole: (() => void) | undefined;
+
+    afterEach(() => {
+        restoreConsole?.();
+        restoreConsole = undefined;
+    });
+
+    function captureConsoleErrors(): string[] {
+        const lines: string[] = [];
+        const spy = vi.spyOn(console, "error").mockImplementation((...args: unknown[]) => {
+            lines.push(args.map((arg) => String(arg)).join(" "));
+        });
+        restoreConsole = () => spy.mockRestore();
+        return lines;
+    }
+
+    /** No disk is touched on this path: nothing between construction and `postToWebview` runs git. */
+    function resolveProviderWith(outcome: DeliveryOutcome): {
+        provider: CommitPanelViewProvider;
+        posted: unknown[];
+    } {
+        const repoRoot = path.join(tmpdir(), "intelligit-delivery-failure-no-io");
+        const constructorOptions = buildCommitPanelConstructorOptions();
+        const provider = new CommitPanelViewProvider(
+            createFakeExtensionUri(),
+            new GitOps(new GitExecutor(repoRoot)),
+            createFakeUriFromPath(repoRoot),
+            createEmptyWorkspaceMemento(),
+            undefined, // secrets -- nothing on this path reads a secret.
+            constructorOptions.shelfServiceForRepository,
+            constructorOptions.shelfRemoveOnUnshelve,
+            constructorOptions.commitMessageGenerationCoordinator,
+            constructorOptions.interactiveRebaseStorageRoot,
+        );
+        const { webviewView, posted } = createInspectableCommitPanelWebviewView(outcome);
+        provider.resolveWebviewView(webviewView, INERT_CONTEXT, INERT_TOKEN);
+        return { provider, posted };
+    }
+
+    function rebaseDialogMessage(): Extract<CommitGraphInbound, { type: "showRebaseDialog" }> {
+        return {
+            type: "showRebaseDialog",
+            requestId: "delivery-failure-test",
+            commits: [],
+            branch: "refs/heads/main",
+            hasPushed: false,
+        };
+    }
+
+    it("reports a message the webview accepted and never delivered", async () => {
+        const errors = captureConsoleErrors();
+        const { provider, posted } = resolveProviderWith("refused");
+
+        provider.showRebaseDialog(rebaseDialogMessage());
+        await flushMicrotasks();
+
+        expect(
+            messagesOfType(posted, "showRebaseDialog"),
+            "the message must still be handed to VS Code -- this is about the answer, not the send",
+        ).toHaveLength(1);
+        expect(
+            errors.join("\n"),
+            "a resolved `false` means the panel never got the message; saying nothing about it " +
+                "leaves an unhydrated panel indistinguishable from a hydrated one, which is " +
+                "precisely why the blank-panel failures in CI carry no host-side evidence",
+        ).toContain("showRebaseDialog");
+    });
+
+    it("reports a message postMessage rejected, and keeps the reason", async () => {
+        const errors = captureConsoleErrors();
+        const { provider } = resolveProviderWith("rejected");
+
+        provider.showRebaseDialog(rebaseDialogMessage());
+        await flushMicrotasks();
+
+        const reported = errors.join("\n");
+        expect(
+            reported,
+            "a rejected postMessage was dropped on an un-awaited promise, which both hid the " +
+                "failure and raised an unhandled rejection in the extension host",
+        ).toContain("showRebaseDialog");
+        expect(
+            reported,
+            "reporting that a post failed without the reason leaves the next reader exactly " +
+                "where the silent version did -- the cause is the whole payload",
+        ).toContain("Webview is disposed");
+    });
 });
