@@ -316,7 +316,11 @@ describe("CI quality hardening workflows", () => {
             /INTELLIGIT_VSCODE_VERSION=1\.132\.0 bun run test:package-smoke/,
         );
         expect(dependabot).toContain("package-ecosystem: github-actions");
-        expect(dependabot).toContain("dependency-type: development");
+        // A `dependency-type: development` assertion used to sit here and was pinning the defect in
+        // place: it required the presence of a selector the `bun` ecosystem does not honour, so the
+        // grouping it named silently matched nothing. Asserting a string is not asserting a
+        // behaviour. `dependabotGroups.test.ts` now resolves the groups and checks which
+        // dependencies each one actually claims, and bans that selector where it is ignored.
         expect(dependabot).toContain('update-types: ["minor", "patch"]');
         expect(dependabot).not.toContain("package-ecosystem: docker");
 
