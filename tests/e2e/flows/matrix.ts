@@ -211,6 +211,7 @@ async function assertDurableStateClean(context: FlowContext): Promise<void> {
     await expect
         .poll(async () => (await readDurableState(context.fixtureWorkspace)).repoLockPresent, {
             message: "repository lock must be released, not leaked, after the flow",
+            timeout: FLOW_COMPLETION_TIMEOUT_MS,
         })
         .toBe(false);
     expect.soft(durableState.takeoverPaths).toEqual([]);
@@ -222,6 +223,7 @@ async function assertDurableStateClean(context: FlowContext): Promise<void> {
     await expect
         .poll(async () => (await listFilesUnder(durableState.shelfLockDirectory)).length, {
             message: "shelf store lock must be released, not leaked, after the flow",
+            timeout: FLOW_COMPLETION_TIMEOUT_MS,
         })
         .toBe(0);
 }
@@ -262,7 +264,10 @@ async function assertShelfApplyDurableState(context: FlowContext): Promise<void>
                         globalStoragePath: shelfStorageRoot,
                     })
                 ).repoLockPresent,
-            { message: "repository lock must be released, not leaked, after the flow" },
+            {
+                message: "repository lock must be released, not leaked, after the flow",
+                timeout: FLOW_COMPLETION_TIMEOUT_MS,
+            },
         )
         .toBe(false);
     expect.soft(durableState.takeoverPaths).toEqual([]);
@@ -270,6 +275,28 @@ async function assertShelfApplyDurableState(context: FlowContext): Promise<void>
 
 const UI_PROBE_TIMEOUT_MS = 20_000;
 const UI_PROBE_RETRY_INTERVAL_MS = 500;
+
+/**
+ * How long a row waits for a real operation it has just started to report completion.
+ *
+ * These polls sit after a click that runs Git for real and then reports back through the extension
+ * host -- a ref moving, a file appearing in the worktree, a workbench notification rendering. Every
+ * one of them ran on Playwright's `expect` default of 5s, which is not a budget anyone chose for
+ * this suite: the config deliberately sets `actionTimeout` and this file deliberately sets
+ * `UI_PROBE_TIMEOUT_MS`, but the poll default was simply never touched.
+ *
+ * 5s is the tightest budget in the file, so it is the first thing to break when the container is
+ * slow, and it breaks on whichever row is unlucky rather than on a row with a defect. Measured
+ * locally: a loaded run inflated every row (`pull` 27.8s -> 38.0s, `push` 24.9s -> 43.2s,
+ * `discard-changes` 43.8s -> 1.2m) and took `interactive-rebase` red on this assertion -- with the
+ * failure screenshot showing "Interactive rebase completed." already on screen. The operation had
+ * succeeded; only the assertion had stopped waiting.
+ *
+ * 20s matches `UI_PROBE_TIMEOUT_MS` and the config's `actionTimeout`, so the suite has one scale for
+ * "a UI signal produced by real work" rather than three. It does not weaken any assertion: a row
+ * that is genuinely broken produces no signal and still fails, 15s later.
+ */
+const FLOW_COMPLETION_TIMEOUT_MS = 20_000;
 
 /**
  * Requires the row's `uiOracle` to FAIL against the un-acted-on fixture, which is the only thing
@@ -507,7 +534,9 @@ export const FLOW_MATRIX: readonly FlowRow[] = [
                 .getByRole("button", { name: "Pull", exact: true })
                 .click();
             await expect
-                .poll(() => localGit.headOid(fixtureWorkspace))
+                .poll(() => localGit.headOid(fixtureWorkspace), {
+                    timeout: FLOW_COMPLETION_TIMEOUT_MS,
+                })
                 .not.toBe(before.head);
         },
         uiOracle: async ({ frame, graphFrame }) => {
@@ -566,7 +595,9 @@ export const FLOW_MATRIX: readonly FlowRow[] = [
                 .getByRole("button", { name: "Push", exact: true })
                 .click();
             await expect
-                .poll(() => origin.refOid(fixtureWorkspace, before.originRef))
+                .poll(() => origin.refOid(fixtureWorkspace, before.originRef), {
+                    timeout: FLOW_COMPLETION_TIMEOUT_MS,
+                })
                 .not.toBe(before.originHead);
         },
         uiOracle: async ({ frame }) => {
@@ -634,11 +665,13 @@ export const FLOW_MATRIX: readonly FlowRow[] = [
                 .getByRole("button", { name: "Start Rebasing", exact: true })
                 .click();
             await expect
-                .poll(() =>
-                    page
-                        .getByRole("alert")
-                        .filter({ hasText: "Interactive rebase completed." })
-                        .count(),
+                .poll(
+                    () =>
+                        page
+                            .getByRole("alert")
+                            .filter({ hasText: "Interactive rebase completed." })
+                            .count(),
+                    { timeout: FLOW_COMPLETION_TIMEOUT_MS },
                 )
                 .toBe(1);
         },
@@ -771,8 +804,12 @@ export const FLOW_MATRIX: readonly FlowRow[] = [
             ).toBeChecked();
             await unshelveDialog.getByRole("button", { name: "Unshelve", exact: true }).click();
             await expect
-                .poll(() =>
-                    readFile(path.join(fixtureWorkspace.root, SHELFED_PATH), "utf8").catch(() => null),
+                .poll(
+                    () =>
+                        readFile(path.join(fixtureWorkspace.root, SHELFED_PATH), "utf8").catch(
+                            () => null,
+                        ),
+                    { timeout: FLOW_COMPLETION_TIMEOUT_MS },
                 )
                 .toBe(SHELFED_CONTENT);
 
@@ -902,11 +939,13 @@ export const FLOW_MATRIX: readonly FlowRow[] = [
             await expect(acceptYours).toBeEnabled();
             await acceptYours.click();
             await expect
-                .poll(() =>
-                    page
-                        .getByRole("alert")
-                        .filter({ hasText: "All merge conflicts are resolved." })
-                        .count(),
+                .poll(
+                    () =>
+                        page
+                            .getByRole("alert")
+                            .filter({ hasText: "All merge conflicts are resolved." })
+                            .count(),
+                    { timeout: FLOW_COMPLETION_TIMEOUT_MS },
                 )
                 .toBe(1);
         },
@@ -1032,8 +1071,10 @@ export const FLOW_MATRIX: readonly FlowRow[] = [
             );
             await notification.getByRole("button", { name: "Force Push", exact: true }).click();
             await expect
-                .poll(() =>
-                    page.getByRole("alert").filter({ hasText: "Force push completed." }).count(),
+                .poll(
+                    () =>
+                        page.getByRole("alert").filter({ hasText: "Force push completed." }).count(),
+                    { timeout: FLOW_COMPLETION_TIMEOUT_MS },
                 )
                 .toBe(1);
         },
