@@ -90,12 +90,16 @@ describe("retry ladder shape", () => {
         return delays.every((delay, index) => index === 0 || delay >= delays[index - 1]);
     }
 
-    it("starts the pending ladder within 5 seconds so a fresh push becomes visible almost immediately", () => {
-        expect(PENDING_CHECK_RETRY_DELAYS_MS[0]).toBeLessThanOrEqual(5_000);
+    // Bounded at the three seconds this change actually ships rather than a looser "feels fast"
+    // number: at 5s a regression to four could not be told apart from the intended behaviour, and
+    // the commit message's claim would quietly stop being true. The rungs after the first stay
+    // free to move -- only the non-decreasing and total-coverage properties below constrain them.
+    it("starts the pending ladder within 3 seconds so a fresh push becomes visible almost immediately", () => {
+        expect(PENDING_CHECK_RETRY_DELAYS_MS[0]).toBeLessThanOrEqual(3_000);
     });
 
-    it("starts the head-none ladder within 5 seconds so a fresh push becomes visible almost immediately", () => {
-        expect(HEAD_NONE_CHECK_RETRY_DELAYS_MS[0]).toBeLessThanOrEqual(5_000);
+    it("starts the head-none ladder within 3 seconds so a fresh push becomes visible almost immediately", () => {
+        expect(HEAD_NONE_CHECK_RETRY_DELAYS_MS[0]).toBeLessThanOrEqual(3_000);
     });
 
     it("keeps the pending ladder non-decreasing", () => {
