@@ -5,6 +5,34 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.25.6] - 2026-08-17
+
+This release also carries everything listed under 0.25.5, which never reached the marketplace.
+
+### Security
+
+- Stopped the GitHub commit-check path posting an unredacted error into webview state. The three other providers already strip their stored token from error text before it reaches a snapshot, for the reason their shared normalizer documents: a transport, proxy, or SDK error may echo a request header verbatim, and the error type carries the first 200 bytes of the response body. GitHub did not, so an intercepting proxy whose error page reflects the request would put the user's token into the snapshot and from there into webview state.
+
+### Added
+
+- Added the commit-check badge refresh to the Command Palette. The command was registered but never contributed, which is invisible from the outside — the palette simply does not list it, and nothing fails. It is the only recovery a stuck badge has short of reloading the window, since it drops both the cached snapshots and the per-origin rate-limit buckets. It is now listed in every activation mode, so opening it without a repository explains itself instead of answering "command not found".
+- Added a "Sign in" action to a GitHub badge whose session has been rejected. The other three providers already offered one; GitHub posted a bare error, so a revoked session, or a token an organization never authorized for SSO, left a dead-end badge whose only recovery was reloading the window. Sign-out for github.com also stops claiming it cleared a token — deleting a key that was never written succeeds, so the confirmation used to report a sign-out that had not happened while the built-in session stayed live.
+
+### Changed
+
+- Commit-check badges now appear about ten times sooner after a push. Both retry ladders opened at 30 seconds, so a commit whose CI was still pending — the common case immediately after a push — showed nothing for half a minute. They now open at 3 seconds and back off from there, and the pending ladder gained rungs so its total coverage still spans a real CI run.
+- A viewport's commit checks are now fetched concurrently. The per-viewport loop awaited each hash in turn, so a 30-row viewport serialized 30 round trips and could never use the shared gate's existing allowance of four concurrent requests per provider origin.
+- Providers that advertise their own rate limit are no longer held to the fallback cap of 300 automatic requests an hour. On GitHub that is roughly 6% of a 5000/hour budget, and since each commit costs two REST calls, a few repositories open at once exhausted the self-imposed cap and surfaced a cooldown the real quota was nowhere near. Bitbucket Server parses no quota at all and Bitbucket Cloud reports only a near-limit flag, so for those the cap remains the only guard.
+
+### Fixed
+
+- Fixed a repository switch pinning commit checks to the previous forge. A provider resolution suspended across the switch would complete afterwards and record the previous repository's provider and ref, and because that write also set the resolved flag, every later fetch reused it — querying the old forge with the new repository's commit hashes and caching the answers under the wrong key. Fetching a viewport concurrently is what made this routine rather than rare, since a coordinator previously had at most one resolution in flight at a time.
+- Fixed a commit alternating between states polling forever. Per-hash retry bookkeeping reset its attempt counter whenever the snapshot state changed, so a commit flipping between pending and none re-armed the first rung on every transition: a sustained three-second poll, two HTTP calls per tick on GitHub, for as long as the alternation lasted. Reaching it needs no attacker — an intermittently failing GitHub endpoint empties the item list, and the aggregate then reads none for one poll and pending the next.
+- Fixed a server's own numbers being able to unbound or park a rate-limit bucket. A reset header of `1e306` seconds is finite but overflows to Infinity once converted to milliseconds, and satisfied "the reset is in the future" forever; a bucket exempt from the cap had no request ceiling at all, leaving a cooldown computed entirely from server-supplied numbers as its only quantity guard; and a cooldown taken literally could park a bucket for a full day. Granting the bypass now requires a reset inside a day, cooldowns clamp to one request window and re-arm from the next response if the provider still wants more, and an exempt bucket's ceiling follows the advertised limit.
+- Fixed the GitHub quota bypass being granted on a quota no server ever advertised. The limit, remaining and reset fields are each remembered independently, so a response carrying only a limit and a later one carrying only a remaining and a reset combined into a tuple that lifted the automatic ceiling from 300 requests an hour to the full advertised 5000. The bypass is now judged on a single response's own headers. The reserve cooldown deliberately still reads the remembered fields, because a raised ceiling is a permission and has to be earned outright, while a cooldown is a brake — withholding one from a response that proves the quota is nearly spent, merely because that response omitted the limit header, would fail in the unsafe direction.
+- Fixed signing in to a rejected GitHub session reporting success while changing nothing. The recovery asked for an existing session, which returns the very session GitHub had just rejected without prompting, so the user saw "Signed in to github.com." and a badge that failed again for the same reason. It now forces a fresh consent flow.
+- Fixed an unread standard-input pipe being able to take down the extension host. Every Git invocation closes the child's standard input, and a child that exits without draining it breaks the pipe — but the only error handler was on the process, and a stream error with no handler of its own is an uncatchable crash rather than a reported failure. That race is now absorbed, since the child's exit code and standard error already say everything about it. Every other write failure is reported instead: those mean Git is still running and received a truncated input, and a truncated input can still exit successfully, which would turn a failed write into a confident answer over bytes that were never delivered.
+
 ## [0.25.5] - 2026-08-16
 
 ### Security
