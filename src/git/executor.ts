@@ -27,7 +27,7 @@ export interface GitBinaryRunOptions {
  * `hash-object --stdin` would return a confident hash of bytes the caller never sent. Those
  * have to reach the caller rather than being absorbed into an allowed exit code.
  */
-export function isChildGoneStdinError(error: NodeJS.ErrnoException): boolean {
+function isChildGoneStdinError(error: NodeJS.ErrnoException): boolean {
     return error.code === "EPIPE" || error.code === "ERR_STREAM_DESTROYED";
 }
 
