@@ -81,5 +81,6 @@
     "configuration.reviewPrompt.enabled.description": "Solicitar una valoración en el marketplace después de usar IntelliGit durante un tiempo. Desactívalo para que no se te pregunte nunca.",
     "command.showReviewPrompt": "Mostrar aviso de reseña",
     "command.resetReviewPrompt": "Restablecer el estado del aviso de valoración",
-    "command.showReviewPromptCard": "Mostrar la tarjeta de valoración"
+    "command.showReviewPromptCard": "Mostrar la tarjeta de valoración",
+    "command.commitChecksRefreshBadges": "Actualizar insignias de comprobaciones de commits"
 }

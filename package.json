@@ -519,6 +519,12 @@
                 "icon": "$(sign-out)"
             },
             {
+                "command": "intelligit.commitChecks.refreshBadges",
+                "title": "%command.commitChecksRefreshBadges%",
+                "category": "%intelligit%",
+                "icon": "$(refresh)"
+            },
+            {
                 "command": "intelligit.showReviewPrompt",
                 "title": "%command.showReviewPrompt%",
                 "category": "%intelligit%",

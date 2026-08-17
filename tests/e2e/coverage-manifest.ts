@@ -280,6 +280,9 @@ const COMMAND_ENTRIES = [
         mutating: true,
         notCovered: COMMAND_NOT_COVERED,
     },
+    // Non-mutating like intelligit.refresh: it drops cached snapshots and rate-limit
+    // buckets and re-renders, leaving no repository or credential state behind.
+    { kind: "command", id: "intelligit.commitChecks.refreshBadges", mutating: false },
     { kind: "command", id: "intelligit.showReviewPrompt", mutating: false },
     { kind: "command", id: "intelligit.showReviewPromptCard", mutating: false },
     {

@@ -81,5 +81,6 @@
     "configuration.reviewPrompt.enabled.description": "在使用 IntelliGit 一段時間後要求市集評分。停用後將不再詢問。",
     "command.showReviewPrompt": "顯示評價提示",
     "command.resetReviewPrompt": "重設評價提示狀態",
-    "command.showReviewPromptCard": "顯示評價卡片"
+    "command.showReviewPromptCard": "顯示評價卡片",
+    "command.commitChecksRefreshBadges": "重新整理提交檢查徽章"
 }

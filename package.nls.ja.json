@@ -81,5 +81,6 @@
     "configuration.reviewPrompt.enabled.description": "IntelliGit をしばらく使用した後にマーケットプレースでの評価を依頼します。無効にすると確認されません。",
     "command.showReviewPrompt": "レビュー プロンプトを表示",
     "command.resetReviewPrompt": "レビュー通知の状態をリセット",
-    "command.showReviewPromptCard": "評価カードを表示"
+    "command.showReviewPromptCard": "評価カードを表示",
+    "command.commitChecksRefreshBadges": "コミットチェックバッジを更新"
 }

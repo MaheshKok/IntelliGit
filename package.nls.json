@@ -78,6 +78,7 @@
     "configuration.commitChecks.ciCdFilter.markdownDescription": "Override which check names count as CI/CD for the badge (GitHub and GitLab only). Provide a regular expression (matched case-insensitively against each check's name and description); leave empty to use the built-in pattern. Code-review bots are always excluded regardless of this value. Changes take effect after a window reload.",
     "command.commitChecksSignIn": "Sign In to Commit Checks Provider",
     "command.commitChecksSignOut": "Sign Out of Commit Checks Provider",
+    "command.commitChecksRefreshBadges": "Refresh Commit Check Badges",
     "command.showReviewPrompt": "Show Review Prompt",
     "command.resetReviewPrompt": "Reset Review Prompt State",
     "command.showReviewPromptCard": "Show Review Prompt Card",

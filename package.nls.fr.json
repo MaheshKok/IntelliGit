@@ -81,5 +81,6 @@
     "configuration.reviewPrompt.enabled.description": "Demander une évaluation sur la marketplace après une certaine période d'utilisation d'IntelliGit. Désactivez cette option pour ne jamais être sollicité.",
     "command.showReviewPrompt": "Afficher la demande d’évaluation",
     "command.resetReviewPrompt": "Réinitialiser l'état de l'invite d'évaluation",
-    "command.showReviewPromptCard": "Afficher la carte d'évaluation"
+    "command.showReviewPromptCard": "Afficher la carte d'évaluation",
+    "command.commitChecksRefreshBadges": "Actualiser les badges de vérifications de commits"
 }

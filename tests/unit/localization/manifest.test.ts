@@ -464,6 +464,46 @@ describe("extension manifest", () => {
         expect(nls["configuration.commitChecks.enabled.markdownDescription"]).toMatch(/reload/i);
     });
 
+    it("keeps the commit-check badge refresh reachable from the Command Palette", () => {
+        // The badge popover's only other recovery path is a window reload: refreshBadges
+        // clears the coordinator cache and the per-origin rate-limit buckets, so a bucket
+        // parked by a bad provider response is unstuck from here. It was registered but
+        // never contributed, which is invisible -- the palette simply does not list it.
+        //
+        // Targeted rather than derived: "registered" and "contributed" are deliberately
+        // different sets (the `.color` duplicates are contributed and hidden; plenty of
+        // internal ids are registered and never shown), so no general rule separates them.
+        const manifest = JSON.parse(
+            readFileSync(path.join(process.cwd(), "package.json"), "utf8"),
+        ) as ExtensionManifest;
+        const nls = JSON.parse(
+            readFileSync(path.join(process.cwd(), "package.nls.json"), "utf8"),
+        ) as Record<string, string>;
+        const id = "intelligit.commitChecks.refreshBadges";
+
+        const contributed = (manifest.contributes?.commands ?? []).find(
+            (entry) => entry.command === id,
+        );
+        expect(contributed?.title).toBe("%command.commitChecksRefreshBadges%");
+        expect(nls["command.commitChecksRefreshBadges"]).toBeTruthy();
+        expect(
+            (manifest.contributes?.menus?.commandPalette ?? []).find(
+                (entry) => entry.command === id,
+            ),
+        ).toBeUndefined();
+
+        // Listing it in the palette means it can be invoked in every activation mode, so
+        // each mode must own a handler. Without the two placeholders VS Code answers the
+        // palette entry with "command not found" whenever no repository is open.
+        for (const file of [
+            "src/activation/repositoryMode.ts",
+            "src/activation/onboarding.ts",
+            "src/activation/noRepositoryMode.ts",
+        ]) {
+            expect(readFileSync(path.join(process.cwd(), file), "utf8")).toContain(`"${id}"`);
+        }
+    });
+
     it("gates the undock view title button with a visible-by-default setting", () => {
         const manifest = JSON.parse(
             readFileSync(path.join(process.cwd(), "package.json"), "utf8"),
