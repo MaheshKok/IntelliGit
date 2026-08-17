@@ -24,8 +24,20 @@ afterEach(async () => {
     else process.env.GIT_CONFIG_GLOBAL = originalGitConfigGlobal;
     if (originalGitConfigNoSystem === undefined) delete process.env.GIT_CONFIG_NOSYSTEM;
     else process.env.GIT_CONFIG_NOSYSTEM = originalGitConfigNoSystem;
+    // Git keeps writing into `.git/objects/pack` after the command that triggered it has
+    // returned, so a file can appear between this rm's readdir and its rmdir and surface as
+    // `ENOTEMPTY: directory not empty, rmdir '.../.git/objects/pack'`. It failed CI on a row
+    // whose own assertions had all passed, which is the signature of a teardown race rather
+    // than a defect in the row. `maxRetries`/`retryDelay` are Node's documented remedy for
+    // exactly this error class, and `tests/fixtures/repo/harness.ts` already carries the same
+    // fix for the same error. Retrying is safe because these directories are scratch this file
+    // created and nothing recreates them once teardown has begun.
     await Promise.all(
-        directories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })),
+        directories
+            .splice(0)
+            .map((directory) =>
+                rm(directory, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 }),
+            ),
     );
 });
 
