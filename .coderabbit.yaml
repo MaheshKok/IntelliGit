@@ -58,3 +58,17 @@ reviews:
         - "!tests/unit/activation/**"
         - "!tests/unit/localization/**"
         - "!tests/unit/services/**"
+    # Dependabot pull requests. CodeRabbit already skips them today -- zero
+    # review comments across all 17 dependabot PRs this repo has opened, against
+    # 1-18 on every human PR in the same window -- but that skip comes from a
+    # default we neither control nor can see from the repository. Pinning it
+    # here makes the behaviour explicit and keeps it if that default ever
+    # changes. What gates a dependency bump is CI, not a reviewer's opinion of a
+    # version string.
+    #
+    # The match is exact, and the raw login is `dependabot[bot]`. The `gh` CLI
+    # renders the same actor as `app/dependabot`, which is a rendering of a
+    # GitHub App rather than a username and would silently never match.
+    auto_review:
+        ignore_usernames:
+            - "dependabot[bot]"
