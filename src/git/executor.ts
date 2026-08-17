@@ -14,6 +14,23 @@ export interface GitBinaryRunOptions {
     maxOutputBytes?: number;
 }
 
+/**
+ * Whether a stdin stream failure is only the child having exited before draining its input.
+ *
+ * EPIPE is the write losing a race to the child's exit, and ERR_STREAM_DESTROYED is that same
+ * race caught one layer higher up. Both are answered by the child's own exit code and stderr,
+ * which the close handler already reports, so neither carries anything the caller does not
+ * already get.
+ *
+ * Every other stream failure -- a full disk, a revoked descriptor -- means Git was handed a
+ * TRUNCATED input while still running happily, and a truncated input can still exit 0:
+ * `hash-object --stdin` would return a confident hash of bytes the caller never sent. Those
+ * have to reach the caller rather than being absorbed into an allowed exit code.
+ */
+export function isChildGoneStdinError(error: NodeJS.ErrnoException): boolean {
+    return error.code === "EPIPE" || error.code === "ERR_STREAM_DESTROYED";
+}
+
 /** Raw process result for a binary Git invocation; streamed stdout is empty. */
 export interface GitBinaryRunResult {
     stdout: Buffer;
@@ -206,9 +223,16 @@ export class GitExecutor {
             // with EPIPE on the stream -- not on the process, which is all the handler above
             // listens to. An unhandled stream error is an uncatchable crash rather than a
             // rejected promise, so it takes a whole run down while every test in it passes.
-            // The close handler already reports the real outcome, so a write that lost the
-            // race to the child's exit carries nothing the caller does not already get.
-            child.stdin.once("error", () => undefined);
+            //
+            // Only that race is absorbed. A listener is still required for every other stream
+            // failure, or the crash returns, but those are reported instead of dropped: see
+            // `isChildGoneStdinError`. Rejecting straight from here rather than recording it for
+            // the close handler is safe because `close` fires only once the stdio streams have
+            // closed too, so a stdin error always arrives first and wins the promise.
+            child.stdin.once("error", (error: NodeJS.ErrnoException) => {
+                if (isChildGoneStdinError(error)) return;
+                reject(error);
+            });
             if (options.input) child.stdin.end(options.input);
             else child.stdin.end();
         });
