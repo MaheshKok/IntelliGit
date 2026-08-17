@@ -20,6 +20,7 @@ const mocks = vi.hoisted(() => {
         showInputBox: vi.fn(),
         showInformationMessage: vi.fn(),
         showErrorMessage: vi.fn(),
+        getSession: vi.fn(),
         commandHandlers,
         registerCommand: vi.fn((id: string, handler: (...args: unknown[]) => Promise<void>) => {
             commandHandlers.set(id, handler);
@@ -42,6 +43,7 @@ vi.mock("vscode", () => ({
         showErrorMessage: mocks.showErrorMessage,
     },
     commands: { registerCommand: mocks.registerCommand, executeCommand: mocks.executeCommand },
+    authentication: { getSession: mocks.getSession },
     l10n: { t: interpolateL10n },
 }));
 
@@ -90,6 +92,11 @@ beforeEach(() => {
     mocks.showInputBox.mockReset();
     mocks.showInformationMessage.mockReset();
     mocks.showErrorMessage.mockReset();
+    mocks.getSession.mockReset();
+    // mockClear, not mockReset: the rejecting implementation is the point of this double.
+    // Without the clear, calls accumulate across tests and a "did it refresh the badges?"
+    // assertion passes on an earlier test's call no matter what this one did.
+    mocks.executeCommand.mockClear();
     mocks.registerCommand.mockClear();
     mocks.commandHandlers.clear();
 });
@@ -144,6 +151,54 @@ describe("signIn", () => {
 
         expect(map.get(`${KEY_PREFIX}gitlab.example.com`)).toBe("tok");
         expect(map.has(`${KEY_PREFIX}GitLab.Example.com`)).toBe(false);
+    });
+
+    it("routes github.com to the built-in VS Code session instead of the token store", async () => {
+        // GitHubProvider reads vscode.authentication and never the credential store, so a
+        // token prompt here would save a value nothing reads and then report success while
+        // the badge stayed broken. The badge's own "Sign in" action passes this preset host.
+        const { context, map, store } = makeContext();
+        registerCommitChecksAuthCommands(context);
+        mocks.getSession.mockResolvedValueOnce({ accessToken: "gh-token" });
+
+        await mocks.commandHandlers.get(SIGN_IN)!("github.com");
+
+        expect(mocks.getSession).toHaveBeenCalledWith("github", ["repo"], { createIfNone: true });
+        expect(mocks.showInputBox).not.toHaveBeenCalled();
+        expect(store).not.toHaveBeenCalled();
+        expect(map.size).toBe(0);
+        expect(mocks.showInformationMessage).toHaveBeenCalledWith("Signed in to github.com.");
+        // getSession resolves an already-valid session without firing onDidChangeSessions,
+        // so repository mode's listener cannot be the thing that retries the badge here.
+        expect(mocks.executeCommand).toHaveBeenCalledWith(
+            "intelligit.commitChecks.refreshBadges",
+        );
+    });
+
+    it("routes a hand-typed GitHub host to the built-in session too", async () => {
+        // The picker offers only GitLab and Bitbucket, so github.com can only arrive through
+        // "Other host...". That path must not fall back to the token prompt either.
+        const { context, store } = makeContext();
+        registerCommitChecksAuthCommands(context);
+        pickOther();
+        mocks.showInputBox.mockResolvedValueOnce("GitHub.com");
+        mocks.getSession.mockResolvedValueOnce({ accessToken: "gh-token" });
+
+        await mocks.commandHandlers.get(SIGN_IN)!();
+
+        expect(mocks.getSession).toHaveBeenCalledTimes(1);
+        expect(store).not.toHaveBeenCalled();
+    });
+
+    it("confirms nothing when the GitHub consent prompt is declined", async () => {
+        const { context } = makeContext();
+        registerCommitChecksAuthCommands(context);
+        mocks.getSession.mockRejectedValueOnce(new Error("User did not consent to login."));
+
+        await mocks.commandHandlers.get(SIGN_IN)!("github.com");
+
+        expect(mocks.showInformationMessage).not.toHaveBeenCalled();
+        expect(mocks.showErrorMessage).not.toHaveBeenCalled();
     });
 
     it("does nothing when the host pick is cancelled", async () => {
@@ -306,6 +361,23 @@ describe("signOut", () => {
             "Cleared the saved token for gitlab.com.",
         );
         expect(mocks.showErrorMessage).not.toHaveBeenCalled();
+    });
+
+    it("points a github.com sign-out at VS Code instead of claiming it cleared a token", async () => {
+        // Nothing was ever stored under github.com, so deleting succeeds trivially and the
+        // stock message would report a sign-out that did not happen while the built-in
+        // session stayed live. VS Code owns that credential; say so.
+        const { context, del } = makeContext();
+        registerCommitChecksAuthCommands(context);
+        pickOther();
+        mocks.showInputBox.mockResolvedValueOnce("github.com");
+
+        await mocks.commandHandlers.get(SIGN_OUT)!();
+
+        expect(del).not.toHaveBeenCalled();
+        expect(mocks.showInformationMessage).toHaveBeenCalledWith(
+            "Manage the GitHub sign-in from the VS Code Accounts menu.",
+        );
     });
 
     it("does nothing when the host pick is cancelled", async () => {

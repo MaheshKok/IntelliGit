@@ -502,6 +502,7 @@
     "Enter your access token for {host}": "Enter your access token for {host}",
     "Host is required": "Host is required",
     "Invalid intelligit.commitChecks.ciCdFilter pattern; using the default filter.": "Invalid intelligit.commitChecks.ciCdFilter pattern; using the default filter.",
+    "Manage the GitHub sign-in from the VS Code Accounts menu.": "Manage the GitHub sign-in from the VS Code Accounts menu.",
     "Select a provider to sign in to": "Select a provider to sign in to",
     "Select a provider to sign out of": "Select a provider to sign out of",
     "Signed in to {host}.": "Signed in to {host}.",

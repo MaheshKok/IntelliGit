@@ -602,5 +602,6 @@
     "Resolve shelf conflict: {file}": "解决搁置冲突：{file}",
     "The shelf conflict changed while this editor was open.": "此编辑器打开期间，搁置冲突已发生变化。",
     "Keep working tree": "保留工作树",
-    "Overwrite (previous content saved to recovery)": "覆盖（先前内容已保存到恢复）"
+    "Overwrite (previous content saved to recovery)": "覆盖（先前内容已保存到恢复）",
+    "Manage the GitHub sign-in from the VS Code Accounts menu.": "请在 VS Code 的帐户菜单中管理 GitHub 登录。"
 }

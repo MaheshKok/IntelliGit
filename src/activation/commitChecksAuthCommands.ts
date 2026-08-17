@@ -12,6 +12,16 @@ interface HostPick extends vscode.QuickPickItem {
 }
 
 /**
+ * The one host whose credential lives in VS Code's built-in session, not the token store.
+ *
+ * `GitHubProvider` reads `vscode.authentication` and never `CredentialStore`, so a token
+ * stored under this key would be written and never read. The picker offers only GitLab and
+ * Bitbucket, but the badge's "Sign in" action passes whatever host the failing snapshot
+ * named, and "Other host..." accepts anything, so both entry points route through here.
+ */
+const GITHUB_HOST = "github.com";
+
+/**
  * Registers the commit-check sign-in and sign-out commands as global disposables.
  *
  * Both commands are available in every activation mode. The credential store is a
@@ -50,6 +60,10 @@ async function signIn(store: CredentialStore, presetHost?: string): Promise<void
             ? presetHost.trim()
             : await pickHost(vscode.l10n.t("Select a provider to sign in to"));
     if (!host) return;
+    if (host.toLowerCase() === GITHUB_HOST) {
+        await signInToGitHub();
+        return;
+    }
 
     const token = await vscode.window.showInputBox({
         prompt: vscode.l10n.t("Enter your access token for {host}", { host }),
@@ -70,6 +84,27 @@ async function signIn(store: CredentialStore, presetHost?: string): Promise<void
 }
 
 /**
+ * Re-authorizes the built-in VS Code GitHub session instead of prompting for a token.
+ *
+ * `createIfNone` surfaces VS Code's own consent flow; declining it rejects, which is a
+ * user choice rather than a failure worth reporting. The badge refresh is not redundant
+ * with the `onDidChangeSessions` listener repository mode installs: when the session was
+ * already valid, VS Code returns it without firing a change event, and the user who just
+ * clicked "Sign in" still expects the badge to retry.
+ */
+async function signInToGitHub(): Promise<void> {
+    try {
+        await vscode.authentication.getSession("github", ["repo"], { createIfNone: true });
+    } catch {
+        return;
+    }
+    await refreshCommitCheckBadges();
+    vscode.window.showInformationMessage(
+        vscode.l10n.t("Signed in to {host}.", { host: GITHUB_HOST }),
+    );
+}
+
+/**
  * Prompts for a host and clears any token stored for it.
  *
  * @param store - The credential store whose token is removed.
@@ -77,6 +112,14 @@ async function signIn(store: CredentialStore, presetHost?: string): Promise<void
 async function signOut(store: CredentialStore): Promise<void> {
     const host = await pickHost(vscode.l10n.t("Select a provider to sign out of"));
     if (!host) return;
+    if (host.toLowerCase() === GITHUB_HOST) {
+        // Deleting a key that was never written succeeds, so the stock confirmation would
+        // report a sign-out that did not happen while the built-in session stayed live.
+        vscode.window.showInformationMessage(
+            vscode.l10n.t("Manage the GitHub sign-in from the VS Code Accounts menu."),
+        );
+        return;
+    }
 
     try {
         await store.delete(host);
@@ -93,10 +136,11 @@ async function signOut(store: CredentialStore): Promise<void> {
 /**
  * Asks repository mode to re-render commit-check badges after a credential change.
  *
- * The `intelligit.commitChecks.refreshBadges` command is only registered while a
- * repository is open, so its absence in no-repository mode is expected; the rejection
- * is swallowed. Refreshing clears the coordinator cache, letting a freshly signed-in
- * (or signed-out) host re-fetch its badge without a window reload.
+ * Every activation mode registers `intelligit.commitChecks.refreshBadges` — repository
+ * mode with the real handler, the other two with a placeholder — so the rejection here
+ * is defence against a genuine failure (a mode mid-handover), not the expected case it
+ * once was. Refreshing clears the coordinator cache, letting a freshly signed-in (or
+ * signed-out) host re-fetch its badge without a window reload.
  */
 async function refreshCommitCheckBadges(): Promise<void> {
     await vscode.commands

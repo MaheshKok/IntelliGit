@@ -602,5 +602,6 @@
     "Resolve shelf conflict: {file}": "Resolver conflito da prateleira: {file}",
     "The shelf conflict changed while this editor was open.": "O conflito da prateleira mudou enquanto este editor estava aberto.",
     "Keep working tree": "Manter a árvore de trabalho",
-    "Overwrite (previous content saved to recovery)": "Substituir (conteúdo anterior salvo na recuperação)"
+    "Overwrite (previous content saved to recovery)": "Substituir (conteúdo anterior salvo na recuperação)",
+    "Manage the GitHub sign-in from the VS Code Accounts menu.": "Gerencie o login do GitHub pelo menu Contas do VS Code."
 }
