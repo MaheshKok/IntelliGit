@@ -3,6 +3,7 @@ import * as os from "os";
 import * as path from "path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { interpolateL10n } from "../../helpers/l10nTestHelper";
+import { removeScratchDirectories } from "../../helpers/scratchDirectories";
 
 /** Command callback shape captured by the VS Code command-registration mock. */
 type CommandHandler = (...args: unknown[]) => unknown;
@@ -1493,7 +1494,7 @@ describe("extension integration", () => {
             path.join(worktreeParent, "feature-created"),
             "feature-local",
         ]);
-        await fs.rm(worktreeParent, { recursive: true, force: true });
+        await removeScratchDirectories(worktreeParent);
         executeCommandFallback.mockClear();
         executorRun.mockClear();
         await getCommand("intelligit.openWorktree")({
@@ -3322,7 +3323,7 @@ describe("extension integration", () => {
             expect(latestCommitPanelProvider!.setRepositoryLabel).toHaveBeenCalledWith("app");
             expect(gitOpsState.getBranches).toHaveBeenCalled();
         } finally {
-            await fs.rm(workspace, { recursive: true, force: true });
+            await removeScratchDirectories(workspace);
         }
     });
 
@@ -3377,7 +3378,7 @@ describe("extension integration", () => {
                 expect.objectContaining({ fsPath: firstRepo }),
             );
         } finally {
-            await fs.rm(workspace, { recursive: true, force: true });
+            await removeScratchDirectories(workspace);
         }
     });
 

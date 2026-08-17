@@ -130,6 +130,7 @@ vi.mock("../../../src/utils/notifications", () => ({
     showTimedWarningMessage: mocks.showWarningMessage,
 }));
 
+import { removeScratchDirectories } from "../../helpers/scratchDirectories";
 import { GitExecutor } from "../../../src/git/executor";
 import { GitOps } from "../../../src/git/operations";
 import {
@@ -243,7 +244,7 @@ afterEach(async () => {
             await fireMessage(panel, { type: "close" });
         }
     }
-    await fs.rm(repoRoot, { recursive: true, force: true });
+    await removeScratchDirectories(repoRoot);
 });
 
 describe("MergeEditorPanel end-to-end merge flow", () => {

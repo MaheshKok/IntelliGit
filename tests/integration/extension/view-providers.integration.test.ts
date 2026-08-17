@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { removeScratchDirectories } from "../../helpers/scratchDirectories";
 import { COMMIT_CHECK_FANOUT_LIMIT } from "../../../src/views/commitCheckFanout";
 
 type MessageHandler = (message: unknown) => void | Promise<void>;
@@ -1537,8 +1538,7 @@ describe("view providers integration", () => {
         } finally {
             resumePendingRecovery.mockRestore();
             consoleError.mockRestore();
-            await rm(repositoryRoot, { recursive: true, force: true });
-            await rm(globalStoragePath, { recursive: true, force: true });
+            await removeScratchDirectories(repositoryRoot, globalStoragePath);
         }
     });
 
