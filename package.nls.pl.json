@@ -81,5 +81,6 @@
     "configuration.reviewPrompt.enabled.description": "Poproś o ocenę w witrynie marketplace po pewnym czasie używania IntelliGit. Wyłącz, aby nigdy nie otrzymywać takiej prośby.",
     "command.showReviewPrompt": "Pokaż monit o recenzję",
     "command.resetReviewPrompt": "Zresetuj stan monitu o ocenę",
-    "command.showReviewPromptCard": "Pokaż kartę oceny"
+    "command.showReviewPromptCard": "Pokaż kartę oceny",
+    "command.commitChecksRefreshBadges": "Odśwież odznaki sprawdzeń commitów"
 }

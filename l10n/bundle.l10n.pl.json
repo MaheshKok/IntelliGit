@@ -602,5 +602,6 @@
     "Resolve shelf conflict: {file}": "Rozwiąż konflikt półki: {file}",
     "The shelf conflict changed while this editor was open.": "Konflikt półki zmienił się, gdy ten edytor był otwarty.",
     "Keep working tree": "Zachowaj drzewo robocze",
-    "Overwrite (previous content saved to recovery)": "Nadpisz (poprzednia zawartość zapisana w odzyskiwaniu)"
+    "Overwrite (previous content saved to recovery)": "Nadpisz (poprzednia zawartość zapisana w odzyskiwaniu)",
+    "Manage the GitHub sign-in from the VS Code Accounts menu.": "Zarządzaj logowaniem do GitHub w menu Konta w VS Code."
 }

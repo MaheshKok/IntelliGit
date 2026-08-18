@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { interpolateL10n } from "../../../helpers/l10nTestHelper";
-import type { FetchJson } from "../../../../src/services/commitChecks/http";
+import { HttpError, type FetchJson } from "../../../../src/services/commitChecks/http";
 import type { ProviderRepoRef } from "../../../../src/services/commitChecks/types";
 
 const mocks = vi.hoisted(() => ({
@@ -275,6 +275,99 @@ describe("GitHubProvider", () => {
 
         expect(snapshot.state).toBe("unavailable");
         expect(snapshot.error).toBe("network down");
+    });
+
+    it("redacts the session token from the error it posts when both endpoints reject", async () => {
+        // HttpError embeds the first 200 bytes of the response body, so an intercepting proxy
+        // whose error page echoes the request headers puts the token straight into the snapshot.
+        const provider = new GitHubProvider(
+            vi.fn(async () => {
+                throw new Error("HTTP 502: upstream echoed the request headers, sent=gh-token");
+            }),
+        );
+
+        const snapshot = await provider.getChecks(githubRef, "abc1234");
+
+        expect(snapshot.state).toBe("unavailable");
+        expect(snapshot.error).not.toContain("gh-token");
+        expect(snapshot.error).toContain("***");
+    });
+
+    it("offers a sign-in recovery badge when the session token is rejected", async () => {
+        // Parity with GitLab and both Bitbucket providers: a rejected credential yields a
+        // snapshot carrying signInHost, which is the only thing that renders the popover's
+        // "Sign in" button. Without it a revoked GitHub session is a dead-end error badge.
+        const provider = new GitHubProvider(
+            vi.fn(async () => {
+                throw new HttpError(401, "HTTP 401: Bad credentials", {});
+            }),
+        );
+
+        const snapshot = await provider.getChecks(githubRef, "abc1234");
+
+        expect(snapshot.state).toBe("unavailable");
+        expect(snapshot.signInHost).toBe("github.com");
+    });
+
+    it("offers sign-in for a 403 that is a missing scope rather than an exhausted quota", async () => {
+        const provider = new GitHubProvider(
+            vi.fn(async () => {
+                throw new HttpError(403, "HTTP 403: Resource not accessible", {
+                    "x-ratelimit-remaining": "4321",
+                });
+            }),
+        );
+
+        const snapshot = await provider.getChecks(githubRef, "abc1234");
+
+        expect(snapshot.signInHost).toBe("github.com");
+    });
+
+    it("does not offer sign-in when a 403 is an exhausted rate limit", async () => {
+        // GitHub answers a spent primary quota with 403 and x-ratelimit-remaining: 0 -- the
+        // same pair requestGate keys its backoff on. Signing in again does not refill a
+        // quota, so a "Sign in" button here sends the user somewhere that cannot help.
+        const provider = new GitHubProvider(
+            vi.fn(async () => {
+                throw new HttpError(403, "HTTP 403: API rate limit exceeded", {
+                    "x-ratelimit-remaining": "0",
+                });
+            }),
+        );
+
+        const snapshot = await provider.getChecks(githubRef, "abc1234");
+
+        expect(snapshot.state).toBe("unavailable");
+        expect(snapshot.signInHost).toBeUndefined();
+        expect(snapshot.error).toContain("rate limit exceeded");
+    });
+
+    it("offers sign-in when only one of the two endpoints reports a rejected credential", async () => {
+        // The two endpoints settle independently, so a 401 can arrive on either side while
+        // the other fails for an unrelated reason. Reading only the first would report the
+        // transport error and hide the actionable one.
+        const provider = new GitHubProvider(
+            vi.fn(async (url: string) => {
+                if (url.includes("/statuses")) throw new HttpError(401, "HTTP 401: Bad", {});
+                throw new Error("HTTP request timed out");
+            }),
+        );
+
+        const snapshot = await provider.getChecks(githubRef, "abc1234");
+
+        expect(snapshot.signInHost).toBe("github.com");
+    });
+
+    it("does not offer sign-in for a transport failure that carries no status", async () => {
+        const provider = new GitHubProvider(
+            vi.fn(async () => {
+                throw new Error("HTTP request timed out");
+            }),
+        );
+
+        const snapshot = await provider.getChecks(githubRef, "abc1234");
+
+        expect(snapshot.signInHost).toBeUndefined();
     });
 
     it("still normalizes when only one endpoint rejects", async () => {

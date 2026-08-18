@@ -2,7 +2,7 @@
     "name": "intelligit",
     "displayName": "IntelliGit",
     "description": "%extension.description%",
-    "version": "0.25.11",
+    "version": "0.25.12",
     "publisher": "MaheshKok",
     "icon": "media/intelligit-icon.png",
     "license": "MIT",
@@ -517,6 +517,12 @@
                 "title": "%command.commitChecksSignOut%",
                 "category": "%intelligit%",
                 "icon": "$(sign-out)"
+            },
+            {
+                "command": "intelligit.commitChecks.refreshBadges",
+                "title": "%command.commitChecksRefreshBadges%",
+                "category": "%intelligit%",
+                "icon": "$(refresh)"
             },
             {
                 "command": "intelligit.showReviewPrompt",

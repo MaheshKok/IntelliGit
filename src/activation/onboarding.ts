@@ -33,6 +33,10 @@ function registerOnboardingCommands(context: vscode.ExtensionContext): void {
         vscode.commands.registerCommand("intelligit.dockWindow", showUnavailableMessage),
         vscode.commands.registerCommand("intelligit.toggleUndocked", showUnavailableMessage),
         vscode.commands.registerCommand("intelligit.publishBranch", showUnavailableMessage),
+        vscode.commands.registerCommand(
+            "intelligit.commitChecks.refreshBadges",
+            showUnavailableMessage,
+        ),
     );
 }
 

@@ -5,6 +5,7 @@
         "intelligit.checkoutAndRebase",
         "intelligit.cleanUpShelf",
         "intelligit.cloneRepository",
+        "intelligit.commitChecks.refreshBadges",
         "intelligit.commitChecks.signIn",
         "intelligit.commitChecks.signOut",
         "intelligit.commitFileCherryPickChange",

@@ -1,9 +1,10 @@
 import { execFile } from "node:child_process";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
+import { removeScratchDirectories } from "../../helpers/scratchDirectories";
 import { GitExecutor } from "../../../src/git/executor";
 import { RepositoryMutationCoordinator } from "../../../src/git/mutationCoordinator";
 import { RepositoryLock } from "../../../src/git/repositoryLock";
@@ -35,9 +36,7 @@ const deterministicGitEnvironment = {
 
 /** Removes every temporary directory registered by the current integration test file. */
 export async function cleanTemporaryRepositories(): Promise<void> {
-    await Promise.all(
-        directories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })),
-    );
+    await removeScratchDirectories(...directories.splice(0));
 }
 
 /** Runs Git against an isolated fixture with a deterministic identity and commit timestamps. */

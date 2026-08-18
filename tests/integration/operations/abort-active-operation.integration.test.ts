@@ -1,9 +1,10 @@
 import { execFile } from "node:child_process";
-import { access, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { access, mkdtemp, writeFile } from "node:fs/promises";
 import { devNull, tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { removeScratchDirectories } from "../../helpers/scratchDirectories";
 import { GitExecutor } from "../../../src/git/executor";
 import { GitOps } from "../../../src/git/operations";
 
@@ -24,9 +25,7 @@ afterEach(async () => {
     else process.env.GIT_CONFIG_GLOBAL = originalGitConfigGlobal;
     if (originalGitConfigNoSystem === undefined) delete process.env.GIT_CONFIG_NOSYSTEM;
     else process.env.GIT_CONFIG_NOSYSTEM = originalGitConfigNoSystem;
-    await Promise.all(
-        directories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })),
-    );
+    await removeScratchDirectories(...directories.splice(0));
 });
 
 describe("GitOps.abortMerge active operation dispatch", () => {

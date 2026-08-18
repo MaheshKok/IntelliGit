@@ -1,7 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { removeScratchDirectories } from "../../helpers/scratchDirectories";
+import { COMMIT_CHECK_FANOUT_LIMIT } from "../../../src/views/commitCheckFanout";
 
 type MessageHandler = (message: unknown) => void | Promise<void>;
 type CommandHandler = (...args: unknown[]) => unknown;
@@ -1549,17 +1551,17 @@ describe("view providers integration", () => {
             expect(resumePendingRecovery).toHaveBeenCalledOnce();
             await flushMicrotasks();
             expect(showErrorMessage).toHaveBeenCalledWith("resume failed");
-            // Waits out the in-flight catalog read rather than deleting the storage root from under
-            // it, and keeps the stub above honest: if activation stops reading the catalog the stub
-            // is no longer intercepting anything, and whatever replaced it is free to write here
-            // unobserved.
+            // Not a synchronisation barrier: the stub above resolves without touching disk, so no
+            // catalog read is left in flight to wait out. This is a tripwire on the stub's
+            // relevance -- if activation ever reaches the catalog by some route this spy no longer
+            // intercepts, the stub stops removing the writer, and this line times out red rather
+            // than letting a real `.store-lock` write race the cleanup below unobserved.
             await vi.waitFor(() => expect(listShelves).toHaveBeenCalled());
         } finally {
             resumePendingRecovery.mockRestore();
             listShelves.mockRestore();
             consoleError.mockRestore();
-            await rm(repositoryRoot, { recursive: true, force: true });
-            await rm(globalStoragePath, { recursive: true, force: true });
+            await removeScratchDirectories(repositoryRoot, globalStoragePath);
         }
     });
 
@@ -3273,43 +3275,142 @@ describe("view providers integration", () => {
             webview: { postMessage: postMessageSpy },
             dispose: vi.fn(),
         };
-        let resolveFirst!: (snapshot: {
-            hash: string;
-            state: "success";
-            summary: string;
-            items: never[];
-        }) => void;
+        // One more hash than the fan-out's concurrency limit: every call hangs until resolved
+        // below, so the last hash can only be left unstarted by the newer (empty) demand racing
+        // it — not by running out of mocked responses.
+        const hashes = ["aaa1111", "bbb2222", "ccc3333", "ddd4444", "eee5555"];
+        expect(hashes.length).toBe(COMMIT_CHECK_FANOUT_LIMIT + 1);
+        const resolvers: Array<() => void> = [];
         providerGetChecks.mockReset();
-        providerGetChecks.mockImplementationOnce(
-            () =>
+        providerGetChecks.mockImplementation(
+            (hash: string) =>
                 new Promise((resolve) => {
-                    resolveFirst = resolve;
+                    resolvers.push(() =>
+                        resolve({
+                            hash,
+                            state: "success",
+                            summary: "All checks passed",
+                            items: [],
+                        }),
+                    );
                 }),
         );
         postMessageSpy.mockClear();
 
         const firstDemand = testProvider.handleMessage.call(provider, {
             type: "requestVisibleCommitChecks",
-            hashes: ["aaa1111", "bbb2222", "ccc3333"],
+            hashes,
         });
-        await vi.waitFor(() => expect(providerGetChecks).toHaveBeenCalledWith("aaa1111"));
+        await vi.waitFor(() =>
+            expect(providerGetChecks).toHaveBeenCalledTimes(COMMIT_CHECK_FANOUT_LIMIT),
+        );
         await testProvider.handleMessage.call(provider, {
             type: "requestVisibleCommitChecks",
             hashes: [],
         });
-        resolveFirst({
-            hash: "aaa1111",
-            state: "success",
-            summary: "All checks passed",
-            items: [],
-        });
+        // Drain until the workers stop registering deferreds, not once: freeing a worker lets it
+        // claim another hash several awaits later. Quiescence is the signal rather than a fixed
+        // tick count, so an implementation that wrongly keeps claiming fails the count assertion
+        // below instead of hanging this test on a deferred nobody ever resolves.
+        for (let round = 0, quiet = 0; round < 400 && quiet < 20; round += 1) {
+            const pending = resolvers.splice(0);
+            for (const resolve of pending) resolve();
+            quiet = pending.length === 0 ? quiet + 1 : 0;
+            await Promise.resolve();
+        }
         await firstDemand;
 
-        expect(providerGetChecks).toHaveBeenCalledTimes(1);
+        // Exactly the concurrency limit started; the newer (empty) demand cancelled the
+        // (limit + 1)th hash before any worker claimed it, and every in-flight reply lost its
+        // generation by the time it resolved, so none of them reach the webview.
+        expect(providerGetChecks).toHaveBeenCalledTimes(COMMIT_CHECK_FANOUT_LIMIT);
+        expect(providerGetChecks).not.toHaveBeenCalledWith("eee5555");
         expect(postMessageSpy).not.toHaveBeenCalledWith(
+            expect.objectContaining({ type: "setCommitChecks" }),
+        );
+        provider.dispose();
+    });
+
+    it("UndockedViewProvider keeps outstanding viewport demand alive across a force retry", async () => {
+        const { UndockedViewProvider } = await import("../../../src/views/UndockedViewProvider");
+        const provider = new UndockedViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+            makeGitOpsMock() as unknown as object,
+            { fsPath: "/repo", path: "/repo" } as unknown as { fsPath: string; path: string },
+            makeCredentialStore() as unknown as object,
+            createMemento() as unknown as object,
+        );
+        const testProvider = provider as unknown as {
+            panel: {
+                webview: { postMessage: typeof postMessageSpy };
+                dispose: ReturnType<typeof vi.fn>;
+            };
+            handleMessage: (msg: unknown) => Promise<void>;
+        };
+        testProvider.panel = {
+            webview: { postMessage: postMessageSpy },
+            dispose: vi.fn(),
+        };
+        // A force retry is always a SUBSET of the viewport already demanded: CommitList's ladder
+        // re-requests only the hashes whose snapshot has come due. Treating it as a newer viewport
+        // would cancel every hash it does not name, and nothing re-requests those — the viewport
+        // effect re-posts only when the hash list or visibility changes, and the retry scheduler
+        // skips "loading" entries. Those badges would sit on the spinner until the user scrolled.
+        const hashes = ["aaa1111", "bbb2222", "ccc3333", "ddd4444", "eee5555"];
+        expect(hashes.length).toBe(COMMIT_CHECK_FANOUT_LIMIT + 1);
+        const resolvers: Array<() => void> = [];
+        providerGetChecks.mockReset();
+        providerGetChecks.mockImplementation(
+            (hash: string) =>
+                new Promise((resolve) => {
+                    resolvers.push(() =>
+                        resolve({
+                            hash,
+                            state: "success",
+                            summary: "All checks passed",
+                            items: [],
+                        }),
+                    );
+                }),
+        );
+        postMessageSpy.mockClear();
+
+        let viewportSettled = false;
+        const viewportDemand = testProvider.handleMessage
+            .call(provider, { type: "requestVisibleCommitChecks", hashes })
+            .then(() => {
+                viewportSettled = true;
+            });
+        await vi.waitFor(() =>
+            expect(providerGetChecks).toHaveBeenCalledTimes(COMMIT_CHECK_FANOUT_LIMIT),
+        );
+
+        // Exactly what the ladder emits: one due hash, forced, while the rest are still in flight.
+        let retrySettled = false;
+        const retryDemand = testProvider.handleMessage
+            .call(provider, {
+                type: "requestVisibleCommitChecks",
+                hashes: [hashes[0]],
+                force: true,
+            })
+            .then(() => {
+                retrySettled = true;
+            });
+
+        // Freeing a worker lets it claim the next hash and register a new resolver, so drain in
+        // rounds. Bounded, so a regression fails on the assertion below rather than by hanging.
+        for (let round = 0; round < 20 && !(viewportSettled && retrySettled); round += 1) {
+            for (const resolve of resolvers.splice(0)) resolve();
+            await Promise.resolve();
+        }
+        await viewportDemand;
+        await retryDemand;
+
+        expect(providerGetChecks).toHaveBeenCalledWith("eee5555");
+        expect(postMessageSpy).toHaveBeenCalledWith(
             expect.objectContaining({
                 type: "setCommitChecks",
-                snapshot: expect.objectContaining({ hash: "aaa1111" }),
+                snapshot: expect.objectContaining({ hash: "eee5555" }),
             }),
         );
         provider.dispose();
@@ -3333,42 +3434,52 @@ describe("view providers integration", () => {
         provider.open();
         const panel = createdWebviewPanels.at(-1);
         expect(panel).toBeDefined();
-        let resolveFirst!: (snapshot: {
-            hash: string;
-            state: "success";
-            summary: string;
-            items: never[];
-        }) => void;
+        // One more hash than the fan-out's concurrency limit: every call hangs until resolved
+        // below, so the last hash can only be left unstarted by disposal racing it — not by
+        // running out of mocked responses.
+        const hashes = ["aaa1111", "bbb2222", "ccc3333", "ddd4444", "eee5555"];
+        expect(hashes.length).toBe(COMMIT_CHECK_FANOUT_LIMIT + 1);
+        const resolvers: Array<() => void> = [];
         providerGetChecks.mockReset();
-        providerGetChecks.mockImplementationOnce(
-            () =>
+        providerGetChecks.mockImplementation(
+            (hash: string) =>
                 new Promise((resolve) => {
-                    resolveFirst = resolve;
+                    resolvers.push(() =>
+                        resolve({
+                            hash,
+                            state: "success",
+                            summary: "All checks passed",
+                            items: [],
+                        }),
+                    );
                 }),
         );
         postMessageSpy.mockClear();
 
         const demand = panel!.send({
             type: "requestVisibleCommitChecks",
-            hashes: ["aaa1111", "bbb2222"],
+            hashes,
         });
-        await vi.waitFor(() => expect(providerGetChecks).toHaveBeenCalledWith("aaa1111"));
+        await vi.waitFor(() =>
+            expect(providerGetChecks).toHaveBeenCalledTimes(COMMIT_CHECK_FANOUT_LIMIT),
+        );
         panel!.dispose();
-        resolveFirst({
-            hash: "aaa1111",
-            state: "success",
-            summary: "All checks passed",
-            items: [],
-        });
+        // Drain until the workers stop registering deferreds, not once: freeing a worker lets it
+        // claim another hash several awaits later. Quiescence is the signal rather than a fixed
+        // tick count, so an implementation that wrongly keeps claiming fails the count assertion
+        // below instead of hanging this test on a deferred nobody ever resolves.
+        for (let round = 0, quiet = 0; round < 400 && quiet < 20; round += 1) {
+            const pending = resolvers.splice(0);
+            for (const resolve of pending) resolve();
+            quiet = pending.length === 0 ? quiet + 1 : 0;
+            await Promise.resolve();
+        }
         await demand;
 
-        expect(providerGetChecks).toHaveBeenCalledTimes(1);
-        expect(providerGetChecks).not.toHaveBeenCalledWith("bbb2222");
+        expect(providerGetChecks).toHaveBeenCalledTimes(COMMIT_CHECK_FANOUT_LIMIT);
+        expect(providerGetChecks).not.toHaveBeenCalledWith("eee5555");
         expect(postMessageSpy).not.toHaveBeenCalledWith(
-            expect.objectContaining({
-                type: "setCommitChecks",
-                snapshot: expect.objectContaining({ hash: "aaa1111" }),
-            }),
+            expect.objectContaining({ type: "setCommitChecks" }),
         );
         provider.dispose();
     });
@@ -3467,7 +3578,10 @@ describe("view providers integration", () => {
         resolveFilteredLog([loadedCommits[1]]);
         await filterChange;
 
-        expect(providerGetChecks).toHaveBeenCalledTimes(1);
+        // Both hashes fit within the fan-out's concurrency limit, so bbb2222 starts alongside
+        // aaa1111 instead of waiting behind it; the filter's newer generation still discards
+        // aaa1111's stale reply before it reaches the webview.
+        expect(providerGetChecks).toHaveBeenCalledTimes(2);
         expect(postMessageSpy).not.toHaveBeenCalledWith(
             expect.objectContaining({
                 type: "setCommitChecks",
@@ -4278,40 +4392,129 @@ describe("view providers integration", () => {
             {} as unknown as object,
             {} as unknown as object,
         );
-        let resolveFirst!: (snapshot: {
-            hash: string;
-            state: "success";
-            summary: string;
-            items: never[];
-        }) => void;
+        // One more hash than the fan-out's concurrency limit: every call hangs until resolved
+        // below, so the last hash can only be left unstarted by the newer (empty) demand racing
+        // it — not by running out of mocked responses.
+        const hashes = ["aaa1111", "bbb2222", "ccc3333", "ddd4444", "eee5555"];
+        expect(hashes.length).toBe(COMMIT_CHECK_FANOUT_LIMIT + 1);
+        const resolvers: Array<() => void> = [];
         providerGetChecks.mockReset();
-        providerGetChecks.mockImplementationOnce(
-            () =>
+        providerGetChecks.mockImplementation(
+            (hash: string) =>
                 new Promise((resolve) => {
-                    resolveFirst = resolve;
+                    resolvers.push(() =>
+                        resolve({
+                            hash,
+                            state: "success",
+                            summary: "All checks passed",
+                            items: [],
+                        }),
+                    );
                 }),
         );
         postMessageSpy.mockClear();
 
         const firstDemand = webview.send({
             type: "requestVisibleCommitChecks",
-            hashes: ["aaa1111", "bbb2222", "ccc3333"],
+            hashes,
         });
-        await vi.waitFor(() => expect(providerGetChecks).toHaveBeenCalledWith("aaa1111"));
+        await vi.waitFor(() =>
+            expect(providerGetChecks).toHaveBeenCalledTimes(COMMIT_CHECK_FANOUT_LIMIT),
+        );
         await webview.send({ type: "requestVisibleCommitChecks", hashes: [] });
-        resolveFirst({
-            hash: "aaa1111",
-            state: "success",
-            summary: "All checks passed",
-            items: [],
-        });
+        // Drain until the workers stop registering deferreds, not once: freeing a worker lets it
+        // claim another hash several awaits later. Quiescence is the signal rather than a fixed
+        // tick count, so an implementation that wrongly keeps claiming fails the count assertion
+        // below instead of hanging this test on a deferred nobody ever resolves.
+        for (let round = 0, quiet = 0; round < 400 && quiet < 20; round += 1) {
+            const pending = resolvers.splice(0);
+            for (const resolve of pending) resolve();
+            quiet = pending.length === 0 ? quiet + 1 : 0;
+            await Promise.resolve();
+        }
         await firstDemand;
 
-        expect(providerGetChecks).toHaveBeenCalledTimes(1);
+        // Exactly the concurrency limit started; the newer (empty) demand cancelled the
+        // (limit + 1)th hash before any worker claimed it, and every in-flight reply lost its
+        // generation by the time it resolved, so none of them reach the webview.
+        expect(providerGetChecks).toHaveBeenCalledTimes(COMMIT_CHECK_FANOUT_LIMIT);
+        expect(providerGetChecks).not.toHaveBeenCalledWith("eee5555");
         expect(postMessageSpy).not.toHaveBeenCalledWith(
+            expect.objectContaining({ type: "setCommitChecks" }),
+        );
+        provider.dispose();
+    });
+
+    it("CommitGraphViewProvider keeps outstanding viewport demand alive across a force retry", async () => {
+        const { CommitGraphViewProvider } =
+            await import("../../../src/views/CommitGraphViewProvider");
+        const provider = new CommitGraphViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+            makeGitOpsMock() as unknown as object,
+            makeCredentialStore() as unknown as object,
+        );
+        const webview = createWebviewView();
+        provider.resolveWebviewView(
+            webview.view as unknown as object,
+            {} as unknown as object,
+            {} as unknown as object,
+        );
+        // A force retry is always a SUBSET of the viewport already demanded: CommitList's ladder
+        // re-requests only the hashes whose snapshot has come due. Treating it as a newer viewport
+        // would cancel every hash it does not name, and nothing re-requests those — the viewport
+        // effect re-posts only when the hash list or visibility changes, and the retry scheduler
+        // skips "loading" entries. Those badges would sit on the spinner until the user scrolled.
+        const hashes = ["aaa1111", "bbb2222", "ccc3333", "ddd4444", "eee5555"];
+        expect(hashes.length).toBe(COMMIT_CHECK_FANOUT_LIMIT + 1);
+        const resolvers: Array<() => void> = [];
+        providerGetChecks.mockReset();
+        providerGetChecks.mockImplementation(
+            (hash: string) =>
+                new Promise((resolve) => {
+                    resolvers.push(() =>
+                        resolve({
+                            hash,
+                            state: "success",
+                            summary: "All checks passed",
+                            items: [],
+                        }),
+                    );
+                }),
+        );
+        postMessageSpy.mockClear();
+
+        let viewportSettled = false;
+        const viewportDemand = webview
+            .send({ type: "requestVisibleCommitChecks", hashes })
+            .then(() => {
+                viewportSettled = true;
+            });
+        await vi.waitFor(() =>
+            expect(providerGetChecks).toHaveBeenCalledTimes(COMMIT_CHECK_FANOUT_LIMIT),
+        );
+
+        // Exactly what the ladder emits: one due hash, forced, while the rest are still in flight.
+        let retrySettled = false;
+        const retryDemand = webview
+            .send({ type: "requestVisibleCommitChecks", hashes: [hashes[0]], force: true })
+            .then(() => {
+                retrySettled = true;
+            });
+
+        // Freeing a worker lets it claim the next hash and register a new resolver, so drain in
+        // rounds. Bounded, so a regression fails on the assertion below rather than by hanging.
+        for (let round = 0; round < 20 && !(viewportSettled && retrySettled); round += 1) {
+            for (const resolve of resolvers.splice(0)) resolve();
+            await Promise.resolve();
+        }
+        await viewportDemand;
+        await retryDemand;
+
+        expect(providerGetChecks).toHaveBeenCalledWith("eee5555");
+        expect(postMessageSpy).toHaveBeenCalledWith(
             expect.objectContaining({
                 type: "setCommitChecks",
-                snapshot: expect.objectContaining({ hash: "aaa1111" }),
+                snapshot: expect.objectContaining({ hash: "eee5555" }),
             }),
         );
         provider.dispose();
@@ -4335,42 +4538,52 @@ describe("view providers integration", () => {
             {} as Parameters<typeof provider.resolveWebviewView>[1],
             {} as unknown as Parameters<typeof provider.resolveWebviewView>[2],
         );
-        let resolveFirst!: (snapshot: {
-            hash: string;
-            state: "success";
-            summary: string;
-            items: never[];
-        }) => void;
+        // One more hash than the fan-out's concurrency limit: every call hangs until resolved
+        // below, so the last hash can only be left unstarted by disposal racing it — not by
+        // running out of mocked responses.
+        const hashes = ["aaa1111", "bbb2222", "ccc3333", "ddd4444", "eee5555"];
+        expect(hashes.length).toBe(COMMIT_CHECK_FANOUT_LIMIT + 1);
+        const resolvers: Array<() => void> = [];
         providerGetChecks.mockReset();
-        providerGetChecks.mockImplementationOnce(
-            () =>
+        providerGetChecks.mockImplementation(
+            (hash: string) =>
                 new Promise((resolve) => {
-                    resolveFirst = resolve;
+                    resolvers.push(() =>
+                        resolve({
+                            hash,
+                            state: "success",
+                            summary: "All checks passed",
+                            items: [],
+                        }),
+                    );
                 }),
         );
         postMessageSpy.mockClear();
 
         const demand = webview.send({
             type: "requestVisibleCommitChecks",
-            hashes: ["aaa1111", "bbb2222"],
+            hashes,
         });
-        await vi.waitFor(() => expect(providerGetChecks).toHaveBeenCalledWith("aaa1111"));
+        await vi.waitFor(() =>
+            expect(providerGetChecks).toHaveBeenCalledTimes(COMMIT_CHECK_FANOUT_LIMIT),
+        );
         webview.dispose();
-        resolveFirst({
-            hash: "aaa1111",
-            state: "success",
-            summary: "All checks passed",
-            items: [],
-        });
+        // Drain until the workers stop registering deferreds, not once: freeing a worker lets it
+        // claim another hash several awaits later. Quiescence is the signal rather than a fixed
+        // tick count, so an implementation that wrongly keeps claiming fails the count assertion
+        // below instead of hanging this test on a deferred nobody ever resolves.
+        for (let round = 0, quiet = 0; round < 400 && quiet < 20; round += 1) {
+            const pending = resolvers.splice(0);
+            for (const resolve of pending) resolve();
+            quiet = pending.length === 0 ? quiet + 1 : 0;
+            await Promise.resolve();
+        }
         await demand;
 
-        expect(providerGetChecks).toHaveBeenCalledTimes(1);
-        expect(providerGetChecks).not.toHaveBeenCalledWith("bbb2222");
+        expect(providerGetChecks).toHaveBeenCalledTimes(COMMIT_CHECK_FANOUT_LIMIT);
+        expect(providerGetChecks).not.toHaveBeenCalledWith("eee5555");
         expect(postMessageSpy).not.toHaveBeenCalledWith(
-            expect.objectContaining({
-                type: "setCommitChecks",
-                snapshot: expect.objectContaining({ hash: "aaa1111" }),
-            }),
+            expect.objectContaining({ type: "setCommitChecks" }),
         );
         provider.dispose();
     });
@@ -4460,7 +4673,10 @@ describe("view providers integration", () => {
         resolveFilteredLog([loadedCommits[1]]);
         await filterChange;
 
-        expect(providerGetChecks).toHaveBeenCalledTimes(1);
+        // Both hashes fit within the fan-out's concurrency limit, so bbb2222 starts alongside
+        // aaa1111 instead of waiting behind it; the filter's newer generation still discards
+        // aaa1111's stale reply before it reaches the webview.
+        expect(providerGetChecks).toHaveBeenCalledTimes(2);
         expect(postMessageSpy).not.toHaveBeenCalledWith(
             expect.objectContaining({
                 type: "setCommitChecks",

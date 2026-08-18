@@ -81,5 +81,6 @@
     "configuration.reviewPrompt.enabled.description": "Nach einer Weile der Nutzung von IntelliGit nach einer Bewertung im Marketplace fragen. Deaktivieren, um nie gefragt zu werden.",
     "command.showReviewPrompt": "Review-Aufforderung anzeigen",
     "command.resetReviewPrompt": "Status der Review-Aufforderung zurücksetzen",
-    "command.showReviewPromptCard": "Bewertungskarte anzeigen"
+    "command.showReviewPromptCard": "Bewertungskarte anzeigen",
+    "command.commitChecksRefreshBadges": "Commit-Prüfungsabzeichen aktualisieren"
 }

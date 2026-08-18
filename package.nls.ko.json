@@ -81,5 +81,6 @@
     "configuration.reviewPrompt.enabled.description": "IntelliGit을 얼마간 사용한 후 마켓플레이스 평가를 요청합니다. 사용하지 않으면 요청하지 않습니다.",
     "command.showReviewPrompt": "리뷰 프롬프트 표시",
     "command.resetReviewPrompt": "리뷰 프롬프트 상태 재설정",
-    "command.showReviewPromptCard": "평가 카드 표시"
+    "command.showReviewPromptCard": "평가 카드 표시",
+    "command.commitChecksRefreshBadges": "커밋 검사 배지 새로 고침"
 }

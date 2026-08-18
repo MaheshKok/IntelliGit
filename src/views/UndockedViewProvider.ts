@@ -17,6 +17,7 @@ import { isRedundantPost, serializeWebviewPayload } from "./shared/postedPayload
 import { operationSnapshotForRepository } from "./commitPanelOperationSnapshot";
 import { registerThemeChangeListeners, disposeAll } from "./shared/themeListeners";
 import { buildWebviewShellHtml } from "./webviewHtml";
+import { runBoundedFanout, COMMIT_CHECK_FANOUT_LIMIT } from "./commitCheckFanout";
 import { decorateShelfFiles, shelfFilePaths } from "./shelfIconDecoration";
 import { getErrorMessage } from "../utils/errors";
 import { postWebviewMessage } from "./webviewDelivery";
@@ -1559,22 +1560,31 @@ export class UndockedViewProvider {
     }
 
     /**
-     * Replaces prior viewport demand and processes its validated hashes sequentially.
+     * Replaces prior viewport demand and fans its validated hashes out with bounded concurrency.
      *
-     * Sequential processing lets a later viewport stop hashes that have not started while the
-     * shared coordinator gate continues to coalesce work across independent view surfaces.
+     * A later viewport still cancels hashes that have not started; hashes already in flight are
+     * left to settle because {@link sendCommitChecks} and {@link sendCommitChecksIfCheckable}
+     * gate their own webview posts on the current demand generation. The shared coordinator gate
+     * continues to coalesce work across independent view surfaces.
+     *
+     * A forced request joins the current generation instead of opening a new one. Force means "a
+     * retry for hashes already on screen" — the webview's ladder re-requests only the subset whose
+     * snapshots have come due — so opening a generation would cancel every hash the retry omits,
+     * and nothing would ask for them again: the webview re-posts its viewport only when the hash
+     * list or visibility changes, and its retry scheduler skips entries still marked loading.
      */
     private async sendVisibleCommitChecksRequest(
         msg: Extract<UnifiedOutbound, { type: "requestVisibleCommitChecks" }>,
     ): Promise<void> {
-        const generation = ++this.commitCheckDemandSeq;
+        const generation =
+            msg.force === true ? this.commitCheckDemandSeq : ++this.commitCheckDemandSeq;
         const hashes = this.assertVisibleCommitCheckHashes(msg);
-        for (const hash of hashes) {
-            if (generation !== this.commitCheckDemandSeq) return;
-            // Sequential work lets a newer viewport cancel hashes that have not started.
-            // react-doctor-disable-next-line react-doctor/async-await-in-loop
-            await this.sendCommitChecksIfCheckable(hash, generation, msg.force === true);
-        }
+        await runBoundedFanout(
+            hashes,
+            COMMIT_CHECK_FANOUT_LIMIT,
+            () => generation === this.commitCheckDemandSeq,
+            (hash) => this.sendCommitChecksIfCheckable(hash, generation, msg.force === true),
+        );
     }
 
     /**

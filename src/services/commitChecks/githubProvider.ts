@@ -6,12 +6,13 @@
 import * as vscode from "vscode";
 import type { CommitCheckItem, CommitChecksSnapshot, CommitCheckState } from "../../types";
 import { getErrorMessage } from "../../utils/errors";
-import { httpGetJson, type FetchJson } from "./http";
+import { HttpError, httpGetJson, type FetchJson } from "./http";
 import {
     aggregateState,
     compactText,
     isCiCdCheckItem,
     readString,
+    redactSecret,
     summaryForState,
     summaryForItems,
     unavailableSnapshot,
@@ -106,7 +107,7 @@ export class GitHubProvider implements CommitChecksProvider {
 
     /** Authenticates, fetches check-runs + statuses in parallel, and normalizes them. */
     async getChecks(ref: ProviderRepoRef, hash: string): Promise<CommitChecksSnapshot> {
-        const { owner, repo } = ref as GitHubRepoRef;
+        const { host, owner, repo } = ref as GitHubRepoRef;
 
         let session: vscode.AuthenticationSession | undefined;
         try {
@@ -141,7 +142,26 @@ export class GitHubProvider implements CommitChecksProvider {
         ]);
 
         if (checkRunsResult.status === "rejected" && statusesResult.status === "rejected") {
-            return unavailableSnapshot(hash, getErrorMessage(checkRunsResult.reason));
+            if (
+                isCredentialRejection(checkRunsResult.reason) ||
+                isCredentialRejection(statusesResult.reason)
+            ) {
+                // Parity with GitLab and both Bitbucket providers: a rejected credential
+                // yields a badge carrying signInHost, which is what renders the popover's
+                // "Sign in" action. Without it a revoked session is a dead-end error badge
+                // whose only recovery is a window reload. The sign-in command routes
+                // github.com to VS Code's own session prompt rather than the token store,
+                // which this provider never reads.
+                return unavailableSnapshot(
+                    hash,
+                    vscode.l10n.t("Sign in to {host} to view commit checks.", { host }),
+                    host,
+                );
+            }
+            // getErrorMessage redacts URL-embedded credentials; redactSecret strips the
+            // session token in case a transport error echoed the Authorization header.
+            const message = getErrorMessage(checkRunsResult.reason);
+            return unavailableSnapshot(hash, redactSecret(message, session.accessToken));
         }
 
         return normalizeGithubChecks(
@@ -151,6 +171,28 @@ export class GitHubProvider implements CommitChecksProvider {
             this.ciCdPattern,
         );
     }
+}
+
+/**
+ * Reports whether a rejected request failed because the session credential was refused.
+ *
+ * The other three providers pattern-match `HTTP 401|403` on the message text; GitHub's
+ * rejections arrive as the typed `HttpError`, so the status is read directly. 403 needs
+ * one carve-out the siblings do not: GitHub answers an exhausted primary quota with 403
+ * and `x-ratelimit-remaining: 0` -- the same pair `readCooldownUntil` keys its backoff on
+ * -- and signing in again does not refill a quota, so offering that action would send the
+ * user somewhere that cannot help. Any other 403 (a missing `repo` scope, an org that has
+ * not authorized the token for SSO) is fixed by re-authorizing.
+ *
+ * @param reason - The settled rejection reason from one of the two endpoint requests.
+ * @returns True when re-authorizing is the action that would fix the failure.
+ */
+function isCredentialRejection(reason: unknown): boolean {
+    if (!(reason instanceof HttpError)) return false;
+    if (reason.statusCode === 401) return true;
+    if (reason.statusCode !== 403) return false;
+    const remaining = reason.headers["x-ratelimit-remaining"];
+    return (Array.isArray(remaining) ? remaining[0] : remaining) !== "0";
 }
 
 function cleanRepoRef(owner: string, repo: string): GitHubRepoRef | null {
