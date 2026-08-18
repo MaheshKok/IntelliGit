@@ -93,7 +93,7 @@ export interface ShelfJournalShelfLink {
 /** Test seams for atomic current-pointer replacement, and store-lock wait tuning. */
 export interface ShelfStoreOptions {
     readonly beforeCurrentPointerRename?: () => Promise<void>;
-    /** How long a busy store lock is retried before the caller sees busy. Defaults to 5s. */
+    /** How long a busy store lock is retried before the caller sees busy. Defaults to 1s. */
     readonly acquireTimeoutMs?: number;
     /** Delay between attempts while the store lock is busy. Defaults to 150ms. */
     readonly acquireRetryDelayMs?: number;
@@ -181,9 +181,18 @@ export class ShelfStore {
      * another window makes the panel's own read fail rather than queue behind it --
      * and the panel falls back to cached shelves, showing stale state with no error.
      * A persistent owner still surfaces busy once the window is spent.
+     *
+     * The window is deliberately shorter than the repository gate's 5s. That gate
+     * guards a mutation the user just asked for, where waiting is the expected cost.
+     * This one is reached from the commit panel's aggregate refresh, which acquires
+     * twice per pass and runs alongside working-tree status, stashes and ahead/behind
+     * -- so its wait is a stall on unrelated data. A second covers the shelf mutations
+     * that actually caused this (hundreds of milliseconds); anything slower was always
+     * going to land on the panel's cached-shelf fallback, and reaching it sooner beats
+     * holding the whole refresh to find out.
      */
     private async acquireWithBriefWait(): Promise<() => Promise<void>> {
-        const deadline = Date.now() + (this.options.acquireTimeoutMs ?? 5_000);
+        const deadline = Date.now() + (this.options.acquireTimeoutMs ?? 1_000);
         for (;;) {
             try {
                 // react-doctor-disable-next-line react-doctor/async-await-in-loop -- Ordered retries prevent a later acquire from overtaking an earlier store request.

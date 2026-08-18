@@ -202,12 +202,30 @@ describe("GitExecutor", () => {
         // child is gone. `child.once("error")` listens on the process, not on the stdin
         // stream, and an unhandled stream error is an uncatchable crash rather than a
         // rejected promise: it turned a CI run red while all 4023 tests in it passed.
-        // The close handler already reports the real outcome, which is what this asserts.
-        const output = await runFakeGit("exit 0", ["hash-object", "--stdin"], {
-            input: Buffer.alloc(1024 * 1024, 0x61),
-        });
+        //
+        // Which is exactly why the exit code cannot be the oracle here -- it is 0 whether or
+        // not the stream error is handled, because the crash is asynchronous and takes the
+        // RUN down rather than this test. Observing it needs a listener of our own: attaching
+        // one also suppresses the default crash, so an unhandled EPIPE lands in `uncaught`
+        // instead of aborting the process, and the assertion below can name it.
+        const uncaught: Error[] = [];
+        const collect = (error: Error): void => void uncaught.push(error);
+        process.on("uncaughtException", collect);
+        try {
+            const output = await runFakeGit("exit 0", ["hash-object", "--stdin"], {
+                input: Buffer.alloc(1024 * 1024, 0x61),
+            });
+            // The write races the child's exit, so the failure can land after `close` resolves.
+            await new Promise<void>((resolve) => setTimeout(resolve, 50));
 
-        expect(output.exitCode).toBe(0);
+            expect(output.exitCode).toBe(0);
+            expect(
+                uncaught.map((error) => (error as NodeJS.ErrnoException).code ?? error.message),
+                "a broken stdin pipe must not escape as an uncaught exception",
+            ).toEqual([]);
+        } finally {
+            process.off("uncaughtException", collect);
+        }
     });
 
     it("accepts an explicitly expected non-zero Git exit code", async () => {
