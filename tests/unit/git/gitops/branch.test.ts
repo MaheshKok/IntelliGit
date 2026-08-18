@@ -137,7 +137,9 @@ describe("GitOps", () => {
 
             await ops.push();
 
-            const calls = (executor.run as ReturnType<typeof vi.fn>).mock.calls.map((call) => call[0]);
+            const calls = (executor.run as ReturnType<typeof vi.fn>).mock.calls.map(
+                (call) => call[0],
+            );
             expect(calls).toEqual([
                 ["rev-parse", "--abbrev-ref", "HEAD"],
                 ["rev-parse", "--abbrev-ref", "@{upstream}"],

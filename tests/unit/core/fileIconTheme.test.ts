@@ -11,14 +11,17 @@ interface VscodeState {
     extensionDisposeCount: number;
 }
 
-async function loadResolver(state: VscodeState): Promise<
-    typeof import("../../../src/utils/fileIconTheme")
-> {
+async function loadResolver(
+    state: VscodeState,
+): Promise<typeof import("../../../src/utils/fileIconTheme")> {
     class FakeUri {
         readonly path: string;
         readonly scheme: string;
 
-        constructor(public readonly fsPath: string, scheme = "file") {
+        constructor(
+            public readonly fsPath: string,
+            scheme = "file",
+        ) {
             this.scheme = scheme;
             this.path = fsPath;
         }
@@ -164,7 +167,11 @@ describe("FileIconThemeResolver", () => {
                         contributes: {
                             iconThemes: [{ id: "test-theme", path: "themes/theme.json" }],
                             languages: [
-                                { id: "typescriptreact", extensions: [".tsx"], filenames: ["Dockerfile"] },
+                                {
+                                    id: "typescriptreact",
+                                    extensions: [".tsx"],
+                                    filenames: ["Dockerfile"],
+                                },
                             ],
                         },
                     },
@@ -196,7 +203,9 @@ describe("FileIconThemeResolver", () => {
                 folderIcon: expect.objectContaining({ glyph: "" }),
                 folderExpandedIcon: expect.objectContaining({ glyph: "" }),
             });
-            await expect(resolver.getFolderIconsByName(["src", "repo", "nested / components", ""])).resolves.toEqual(
+            await expect(
+                resolver.getFolderIconsByName(["src", "repo", "nested / components", ""]),
+            ).resolves.toEqual(
                 expect.objectContaining({
                     src: {
                         collapsed: expect.objectContaining({ glyph: "" }),

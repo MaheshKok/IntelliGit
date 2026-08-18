@@ -168,7 +168,9 @@ describe("runBuild", () => {
         for (const file of manifest.files as { path: string; hash: string }[]) {
             const outputPath = join(distDir, file.path);
             expect(existsSync(outputPath)).toBe(true);
-            const actualSha256 = createHash("sha256").update(readFileSync(outputPath)).digest("hex");
+            const actualSha256 = createHash("sha256")
+                .update(readFileSync(outputPath))
+                .digest("hex");
             expect(file.hash, `manifest hash for ${file.path}`).toBe(actualSha256);
         }
     });

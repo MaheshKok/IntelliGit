@@ -27,7 +27,13 @@ describe("RepositoryMutationCoordinator", () => {
     it("allows different repositories to run concurrently", async () => {
         const coordinator = new RepositoryMutationCoordinator();
         let release: (() => void) | undefined;
-        const first = coordinator.run("/one", () => new Promise<void>((resolve) => { release = resolve; }));
+        const first = coordinator.run(
+            "/one",
+            () =>
+                new Promise<void>((resolve) => {
+                    release = resolve;
+                }),
+        );
         const second = coordinator.run("/two", async () => "parallel");
 
         await expect(second).resolves.toBe("parallel");
@@ -39,7 +45,13 @@ describe("RepositoryMutationCoordinator", () => {
         const coordinator = new RepositoryMutationCoordinator();
         const tails = (coordinator as unknown as { tails: Map<string, Promise<void>> }).tails;
         let releaseFirst: (() => void) | undefined;
-        const first = coordinator.run("/repo", () => new Promise<void>((resolve) => { releaseFirst = resolve; }));
+        const first = coordinator.run(
+            "/repo",
+            () =>
+                new Promise<void>((resolve) => {
+                    releaseFirst = resolve;
+                }),
+        );
         const literalKey = coordinator.run("/repo/.", async () => "completed");
 
         await expect(literalKey).resolves.toBe("completed");

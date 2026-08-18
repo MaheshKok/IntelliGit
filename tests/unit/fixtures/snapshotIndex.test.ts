@@ -68,7 +68,9 @@ describe("snapshotIndex", () => {
             await writeRepoFile(conflictRepo.root, "shared.txt", "one\nMAIN\nthree\n");
             await commitAll(conflictRepo.root, conflictRepo.env, "main edit");
 
-            await git(conflictRepo.root, ["merge", "other"], conflictRepo.env).catch(() => undefined);
+            await git(conflictRepo.root, ["merge", "other"], conflictRepo.env).catch(
+                () => undefined,
+            );
             return conflictRepo;
         }
 
@@ -95,7 +97,9 @@ describe("snapshotIndex", () => {
             expect(cleanSection.status).toBe("captured");
             const cleanStages =
                 cleanSection.status === "captured"
-                    ? cleanSection.data.filter((entry) => entry.path === "shared.txt").map((entry) => entry.stage)
+                    ? cleanSection.data
+                          .filter((entry) => entry.path === "shared.txt")
+                          .map((entry) => entry.stage)
                     : [];
             expect(cleanStages).toEqual([0]);
             await clean.dispose();

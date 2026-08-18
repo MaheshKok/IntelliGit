@@ -24,7 +24,11 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { assertWorkspaceEquivalentToTemplate } from "../../fixtures/repo/assertWorkspaceEquivalence";
 import { copyTemplate } from "../../fixtures/repo/copyTemplate";
-import { createSanitizedGitEnv, seedFixtureTemplate, type FixtureTemplate } from "../../fixtures/repo/seed";
+import {
+    createSanitizedGitEnv,
+    seedFixtureTemplate,
+    type FixtureTemplate,
+} from "../../fixtures/repo/seed";
 import { DECLARED_REWRITES, rehydrateCopy } from "../../fixtures/repo/rehydrate";
 import { snapshotWorkspace, type PlaceholderRoots } from "../../fixtures/repo/snapshot";
 import { git } from "./gitTestHelpers";
@@ -35,9 +39,13 @@ const FIXTURE_TIMEOUT_MS = 30_000;
 /** `grep -rIl` over `root` for the literal `needle`, tolerating grep's "no match" exit code (1)
  * as an empty result rather than a thrown error -- independent of any production code under test. */
 async function grepLiteral(needle: string, root: string): Promise<string> {
-    const { stdout } = await execFileAsync("grep", ["-rIl", "--fixed-strings", "--", needle, root]).catch(
-        (error: unknown) => ({ stdout: (error as { stdout?: string }).stdout ?? "" }),
-    );
+    const { stdout } = await execFileAsync("grep", [
+        "-rIl",
+        "--fixed-strings",
+        "--",
+        needle,
+        root,
+    ]).catch((error: unknown) => ({ stdout: (error as { stdout?: string }).stdout ?? "" }));
     return stdout.trim();
 }
 
@@ -92,7 +100,11 @@ describe("rehydrateCopy / assertWorkspaceEquivalentToTemplate", () => {
             "before rehydration the copy's origin silently resolves into the TEMPLATE -- the hazard this step closes",
             async () => {
                 const { copyRoot, template } = await seedAndCopy("before");
-                const url = await git(copyRoot, ["config", "--get", "remote.origin.url"], template.env);
+                const url = await git(
+                    copyRoot,
+                    ["config", "--get", "remote.origin.url"],
+                    template.env,
+                );
                 expect(url).toBe(pathToFileURL(template.originRoot).href);
             },
             FIXTURE_TIMEOUT_MS,
@@ -101,19 +113,31 @@ describe("rehydrateCopy / assertWorkspaceEquivalentToTemplate", () => {
         it(
             "rewrites the copy's origin remote URL to its own origin.git, and the copy becomes independently functional",
             async () => {
-                const { destination, template, copyRoot, copyOriginRoot } = await seedAndCopy("functional");
+                const { destination, template, copyRoot, copyOriginRoot } =
+                    await seedAndCopy("functional");
 
                 const result = await rehydrateCopy(destination, template.env);
                 expect(result.rewrites).toEqual([
-                    { id: "workspace-origin-remote-url", newValue: pathToFileURL(copyOriginRoot).href },
+                    {
+                        id: "workspace-origin-remote-url",
+                        newValue: pathToFileURL(copyOriginRoot).href,
+                    },
                 ]);
 
-                const urlAfter = await git(copyRoot, ["config", "--get", "remote.origin.url"], template.env);
+                const urlAfter = await git(
+                    copyRoot,
+                    ["config", "--get", "remote.origin.url"],
+                    template.env,
+                );
                 expect(urlAfter).toBe(pathToFileURL(copyOriginRoot).href);
 
                 // Real functional proof: `git ls-remote` and `git fetch` against the copy succeed
                 // and report the copy's own origin, not a stale/failed lookup.
-                const lsRemoteUrl = await git(copyRoot, ["ls-remote", "--get-url", "origin"], template.env);
+                const lsRemoteUrl = await git(
+                    copyRoot,
+                    ["ls-remote", "--get-url", "origin"],
+                    template.env,
+                );
                 expect(lsRemoteUrl).toBe(pathToFileURL(copyOriginRoot).href);
                 await git(copyRoot, ["fetch", "--quiet", "origin"], template.env);
             },
@@ -128,9 +152,17 @@ describe("rehydrateCopy / assertWorkspaceEquivalentToTemplate", () => {
 
                 // Push state to the TEMPLATE's origin only, after the copy was already rehydrated.
                 await git(template.root, ["tag", "template-only-tag"], template.env);
-                await git(template.root, ["push", "--quiet", "origin", "template-only-tag"], template.env);
+                await git(
+                    template.root,
+                    ["push", "--quiet", "origin", "template-only-tag"],
+                    template.env,
+                );
 
-                const copyRemoteTags = await git(copyRoot, ["ls-remote", "--tags", "origin"], template.env);
+                const copyRemoteTags = await git(
+                    copyRoot,
+                    ["ls-remote", "--tags", "origin"],
+                    template.env,
+                );
                 expect(copyRemoteTags).not.toContain("template-only-tag");
             },
             FIXTURE_TIMEOUT_MS,
@@ -139,7 +171,9 @@ describe("rehydrateCopy / assertWorkspaceEquivalentToTemplate", () => {
         it(
             "THROWS when the copy is not a real git repository -- fails loudly rather than leaving a broken copy",
             async () => {
-                const workDir = await mkdtemp(path.join(tmpdir(), "intelligit-rehydrate-malformed-"));
+                const workDir = await mkdtemp(
+                    path.join(tmpdir(), "intelligit-rehydrate-malformed-"),
+                );
                 cleanupDirs.push(workDir);
                 const destination = path.join(workDir, "destination");
                 await mkdir(path.join(destination, "workspace"), { recursive: true });
@@ -159,7 +193,9 @@ describe("rehydrateCopy / assertWorkspaceEquivalentToTemplate", () => {
                 const { destination, template, copyRoot } = await seedAndCopy("alternates");
                 await rehydrateCopy(destination, template.env); // succeeds the first time
 
-                const outside = await mkdtemp(path.join(tmpdir(), "intelligit-rehydrate-alternates-outside-"));
+                const outside = await mkdtemp(
+                    path.join(tmpdir(), "intelligit-rehydrate-alternates-outside-"),
+                );
                 cleanupDirs.push(outside);
                 const infoDir = path.join(copyRoot, ".git", "objects", "info");
                 await mkdir(infoDir, { recursive: true });
@@ -212,7 +248,8 @@ describe("rehydrateCopy / assertWorkspaceEquivalentToTemplate", () => {
         it(
             "passes for a correctly rehydrated copy -- the normalized diff is empty",
             async () => {
-                const { destination, template, copyRoot, copyOriginRoot } = await seedAndCopy("equivalence-pass");
+                const { destination, template, copyRoot, copyOriginRoot } =
+                    await seedAndCopy("equivalence-pass");
                 await rehydrateCopy(destination, template.env);
 
                 const templateRoots = rootsFor(destination, template.root, template.originRoot);
@@ -223,7 +260,12 @@ describe("rehydrateCopy / assertWorkspaceEquivalentToTemplate", () => {
                 ]);
 
                 expect(() =>
-                    assertWorkspaceEquivalentToTemplate(templateSnapshot, templateRoots, copySnapshot, copyRoots),
+                    assertWorkspaceEquivalentToTemplate(
+                        templateSnapshot,
+                        templateRoots,
+                        copySnapshot,
+                        copyRoots,
+                    ),
                 ).not.toThrow();
             },
             FIXTURE_TIMEOUT_MS,
@@ -232,20 +274,36 @@ describe("rehydrateCopy / assertWorkspaceEquivalentToTemplate", () => {
         it(
             "THE TEETH TEST: THROWS naming the offending file when an undeclared mutation is planted in the copy",
             async () => {
-                const { destination, template, copyRoot, copyOriginRoot } = await seedAndCopy("equivalence-fail");
+                const { destination, template, copyRoot, copyOriginRoot } =
+                    await seedAndCopy("equivalence-fail");
                 await rehydrateCopy(destination, template.env);
 
                 const templateRoots = rootsFor(destination, template.root, template.originRoot);
                 const copyRoots = rootsFor(destination, copyRoot, copyOriginRoot);
-                const templateSnapshot = await snapshotWorkspace({ ...templateRoots, env: template.env });
+                const templateSnapshot = await snapshotWorkspace({
+                    ...templateRoots,
+                    env: template.env,
+                });
 
                 // Undeclared mutation: nothing in DECLARED_REWRITES touches README.md.
-                await writeFile(path.join(copyRoot, "README.md"), "mutated by a test, not a declared rewrite\n", "utf8");
-                const mutatedCopySnapshot = await snapshotWorkspace({ ...copyRoots, env: template.env });
+                await writeFile(
+                    path.join(copyRoot, "README.md"),
+                    "mutated by a test, not a declared rewrite\n",
+                    "utf8",
+                );
+                const mutatedCopySnapshot = await snapshotWorkspace({
+                    ...copyRoots,
+                    env: template.env,
+                });
 
                 let thrown: unknown;
                 try {
-                    assertWorkspaceEquivalentToTemplate(templateSnapshot, templateRoots, mutatedCopySnapshot, copyRoots);
+                    assertWorkspaceEquivalentToTemplate(
+                        templateSnapshot,
+                        templateRoots,
+                        mutatedCopySnapshot,
+                        copyRoots,
+                    );
                 } catch (error) {
                     thrown = error;
                 }
@@ -261,7 +319,8 @@ describe("rehydrateCopy / assertWorkspaceEquivalentToTemplate", () => {
         it(
             "sanity: the exact same snapshot compared against itself never throws -- the failure above was the mutation, not a bug in the assertion",
             async () => {
-                const { destination, template, copyRoot, copyOriginRoot } = await seedAndCopy("equivalence-sanity");
+                const { destination, template, copyRoot, copyOriginRoot } =
+                    await seedAndCopy("equivalence-sanity");
                 await rehydrateCopy(destination, template.env);
 
                 const copyRoots = rootsFor(destination, copyRoot, copyOriginRoot);

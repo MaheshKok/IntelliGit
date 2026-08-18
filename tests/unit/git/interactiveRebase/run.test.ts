@@ -7,7 +7,8 @@ const cleanupFault = vi.hoisted(() => ({ manifestRemoval: false }));
 const terminalManifestWriteFault = vi.hoisted(() => ({ enabled: false }));
 
 vi.mock("../../../../src/git/interactiveRebase/storage", async (importOriginal) => {
-    const actual = await importOriginal<typeof import("../../../../src/git/interactiveRebase/storage")>();
+    const actual =
+        await importOriginal<typeof import("../../../../src/git/interactiveRebase/storage")>();
     return {
         ...actual,
         writeRebaseManifest: async (...args: Parameters<typeof actual.writeRebaseManifest>) => {

@@ -25,7 +25,9 @@ function makeSecretStorage(seed: Record<string, string> = {}): vscode.SecretStor
         delete: async (key: string) => {
             map.delete(key);
         },
-        onDidChange: (() => ({ dispose: () => undefined })) as unknown as vscode.SecretStorage["onDidChange"],
+        onDidChange: (() => ({
+            dispose: () => undefined,
+        })) as unknown as vscode.SecretStorage["onDidChange"],
     };
 }
 

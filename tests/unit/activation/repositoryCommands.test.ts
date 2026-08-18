@@ -175,23 +175,20 @@ describe("registerRepositoryCommands", () => {
         ]);
     });
 
-    it.each(FENCED_BRANCH_COMMAND_IDS)(
-        "refuses %s while a rebase is active",
-        async (commandId) => {
-            const gitOps = makeGitOps();
-            gitOps.getActiveOperation = vi.fn(async () => "rebase");
-            registerRepositoryCommands(makeDeps(gitOps));
+    it.each(FENCED_BRANCH_COMMAND_IDS)("refuses %s while a rebase is active", async (commandId) => {
+        const gitOps = makeGitOps();
+        gitOps.getActiveOperation = vi.fn(async () => "rebase");
+        registerRepositoryCommands(makeDeps(gitOps));
 
-            await mocks.commands.get(commandId)?.({ branch: { name: "feature/fenced" } });
+        await mocks.commands.get(commandId)?.({ branch: { name: "feature/fenced" } });
 
-            expect(mocks.branchHandlers.get(commandId)).not.toHaveBeenCalled();
-            expect(mocks.showErrorMessage).toHaveBeenCalledTimes(1);
-            // Naming the blocking operation is the user-visible contract, not merely refusing.
-            expect(mocks.showErrorMessage).toHaveBeenCalledWith(
-                "xx:A rebase is in progress — continue or abort it first.",
-            );
-        },
-    );
+        expect(mocks.branchHandlers.get(commandId)).not.toHaveBeenCalled();
+        expect(mocks.showErrorMessage).toHaveBeenCalledTimes(1);
+        // Naming the blocking operation is the user-visible contract, not merely refusing.
+        expect(mocks.showErrorMessage).toHaveBeenCalledWith(
+            "xx:A rebase is in progress — continue or abort it first.",
+        );
+    });
 
     it.each(UNFENCED_BRANCH_COMMAND_IDS)(
         "keeps %s available while a rebase is active",

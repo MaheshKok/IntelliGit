@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, open, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -80,21 +80,41 @@ describe("RepositoryLock", () => {
         const common = await commonDir();
         const lockPath = path.join(common, "intelligit", "repo.lock");
         const release = await new RepositoryLock({ heartbeatIntervalMs: 10 }).acquire(common);
+        // Rewriting in place is what makes a live owner briefly indistinguishable from
+        // abandoned residue: `writeFile` truncates at open and writes the bytes as a separate
+        // step, so an owner whose thread stalls between the two leaves an empty file --
+        // unparseable, and with no pid left in it for the liveness probe to rescue the owner
+        // with. Publishing by rename is the difference, and a reader already holding the file
+        // open is what witnesses it: the rename leaves that reader's file untouched, while an
+        // in-place rewrite truncates the very bytes it is holding. Reading the PATH instead
+        // would pass either way, because both forms do update the record found there.
+        //
+        // The held-open handle is also the only thing that makes this decidable. Inode numbers
+        // cannot answer it: `publishLockRecord` renames one fixed temporary path per owner, so
+        // each heartbeat frees the inode the previous one published and the allocator hands it
+        // straight back. Measured on ext4, eight publishes cycled between exactly two inodes,
+        // returning to the starting one on every even heartbeat -- so an inode comparison here
+        // is a coin flip that lands on the count of heartbeats that happened to fit in the
+        // wait. Holding the file open pins its inode, which can then be neither reused nor
+        // rewritten behind this assertion.
         try {
-            // Rewriting in place is what makes a live owner briefly indistinguishable from
-            // abandoned residue: `writeFile` truncates at open and writes the bytes as a
-            // separate step, so an owner whose thread stalls between the two leaves an empty
-            // file -- unparseable, and with no pid left in it for the liveness probe to rescue
-            // the owner with. Publishing by rename is the difference, and file identity at the
-            // path is what witnesses it: comparing contents would pass either way, because both
-            // forms do update the record.
-            const claimed = await stat(lockPath, { bigint: true });
-            await new Promise<void>((resolve) => setTimeout(resolve, 40));
+            const reader = await open(lockPath, "r");
+            try {
+                const claimed = await readFile(lockPath, "utf8");
+                // Wait for a heartbeat to land rather than for a duration: until one record
+                // has been published there is nothing for the two forms to differ about, and
+                // a fixed sleep decides how many landed by how loaded the machine is.
+                await vi.waitFor(async () => {
+                    expect(await readFile(lockPath, "utf8")).not.toBe(claimed);
+                });
 
-            expect(
-                (await stat(lockPath, { bigint: true })).ino,
-                "each heartbeat must publish a new file, never rewrite the one in place",
-            ).not.toBe(claimed.ino);
+                expect(
+                    await reader.readFile({ encoding: "utf8" }),
+                    "each heartbeat must publish a new file, never rewrite the one already open",
+                ).toBe(claimed);
+            } finally {
+                await reader.close();
+            }
         } finally {
             await release();
         }
@@ -233,14 +253,17 @@ describe("RepositoryLock", () => {
 
         const outcomes = await Promise.allSettled([contender(), contender()]);
         const winners = outcomes.filter(
-            (outcome): outcome is PromiseFulfilledResult<() => Promise<void>> => outcome.status === "fulfilled",
+            (outcome): outcome is PromiseFulfilledResult<() => Promise<void>> =>
+                outcome.status === "fulfilled",
         );
         const losers = outcomes.filter((outcome) => outcome.status === "rejected");
 
         expect(winners).toHaveLength(1);
         expect(losers).toHaveLength(1);
         expect(losers[0].reason).toBeInstanceOf(RepositoryLockBusyError);
-        expect(JSON.parse(await readFile(path.join(lockDir, "repo.lock"), "utf8"))).not.toMatchObject({
+        expect(
+            JSON.parse(await readFile(path.join(lockDir, "repo.lock"), "utf8")),
+        ).not.toMatchObject({
             nonce: "dead-owner",
         });
         await winners[0].value();

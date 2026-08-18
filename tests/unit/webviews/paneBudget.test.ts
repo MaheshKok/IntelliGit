@@ -63,9 +63,11 @@ describe("resolvePaneBudget", () => {
         );
 
         expect(Object.values(result.widths).every((width) => width >= 0)).toBe(true);
-        expect(Object.entries(result.widths).every(([key, width]) => width >= ({ a: 80, b: 120, c: 60 }[key] ?? 0))).toBe(
-            true,
-        );
+        expect(
+            Object.entries(result.widths).every(
+                ([key, width]) => width >= ({ a: 80, b: 120, c: 60 }[key] ?? 0),
+            ),
+        ).toBe(true);
         expect(visibleTotal(result.widths, 4)).toBeCloseTo(320);
     });
 
@@ -79,7 +81,9 @@ describe("resolvePaneBudget", () => {
         const second = resolvePaneBudget(0, panes, dropOrder, -4);
 
         expect(first).toEqual(second);
-        expect(Object.values(first.widths).every((width) => Number.isFinite(width) && width >= 0)).toBe(true);
+        expect(
+            Object.values(first.widths).every((width) => Number.isFinite(width) && width >= 0),
+        ).toBe(true);
         expect(panes).toEqual(beforePanes);
         expect(dropOrder).toEqual(beforeDropOrder);
     });
@@ -101,11 +105,16 @@ describe("resolvePaneBudget", () => {
     });
 
     it("never emits a negative width for a negative viewport", () => {
-        const result = resolvePaneBudget(-500, [pane("a", 100, 200), pane("b", 100, 200)], ["b"], 4);
-
-        expect(Object.values(result.widths).every((width) => Number.isFinite(width) && width >= 0)).toBe(
-            true,
+        const result = resolvePaneBudget(
+            -500,
+            [pane("a", 100, 200), pane("b", 100, 200)],
+            ["b"],
+            4,
         );
+
+        expect(
+            Object.values(result.widths).every((width) => Number.isFinite(width) && width >= 0),
+        ).toBe(true);
     });
 
     it("keeps the commit list visible at the measured 320px graph width", () => {

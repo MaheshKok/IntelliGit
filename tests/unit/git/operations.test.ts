@@ -182,7 +182,7 @@ describe("GitOps.getActiveOperation", () => {
         ["REVERT_HEAD", "revert"],
         ["rebase-merge", "rebase"],
         ["rebase-apply", "rebase"],
-    ] as const satisfies readonly [string, ActiveOperationKind][]) (
+    ] as const satisfies readonly [string, ActiveOperationKind][])(
         "derives %s as %s",
         async (marker, expected) => {
             const root = await createGitRepository();
@@ -204,7 +204,7 @@ describe("GitOps.getActiveOperation", () => {
             ["MERGE_HEAD", "CHERRY_PICK_HEAD", "REVERT_HEAD", "rebase-merge", "rebase-apply"],
             "rebase",
         ],
-    ] as const satisfies readonly [readonly string[], ActiveOperationKind][]) (
+    ] as const satisfies readonly [readonly string[], ActiveOperationKind][])(
         "uses documented precedence for %j",
         async (markers, expected) => {
             const root = await createGitRepository();
@@ -658,7 +658,13 @@ describe("GitOps.getDiffForPaths", () => {
 
     it("does not charge discarded truncated bytes against later patch budget", async () => {
         const root = await createGitRepository();
-        const paths = ["truncated.txt", "middle-one.txt", "middle-two.txt", "middle-three.txt", "later.txt"];
+        const paths = [
+            "truncated.txt",
+            "middle-one.txt",
+            "middle-two.txt",
+            "middle-three.txt",
+            "later.txt",
+        ];
         for (const filePath of paths) {
             await commitFile(root, filePath, "before\\n");
             await writeFile(path.join(root, filePath), "after\\n");
@@ -666,7 +672,9 @@ describe("GitOps.getDiffForPaths", () => {
         const gitOps = gitOpsFor(root);
         const executor = (gitOps as unknown as { executor: GitExecutor }).executor;
         const runBinary = executor.runBinary.bind(executor);
-        const laterPatch = Buffer.from(`diff --git a/later.txt b/later.txt\\n${"x".repeat(60_000)}`);
+        const laterPatch = Buffer.from(
+            `diff --git a/later.txt b/later.txt\\n${"x".repeat(60_000)}`,
+        );
         executor.runBinary = async (args, options) => {
             if (
                 args[0] === "--literal-pathspecs" &&

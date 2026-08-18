@@ -5,6 +5,18 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.25.11] - 2026-08-18
+
+### Fixed
+
+- Fixed the Commit panel coming up permanently blank while the Graph beside it filled in normally. When the panel loads it announces itself, IntelliGit answers with the list of repositories, and the panel keeps re-asking until that answer arrives. IntelliGit sent the answer to whichever panel it had recorded last, rather than to the panel that had just asked. It forgets that record when the view is closed, and the panel can be reloaded without IntelliGit being told — so once the two disagreed, every answer went nowhere. Nothing reported it, because sending to a panel that is not open is an ordinary thing to do and is not treated as a fault, so the panel re-asked for as long as the window stayed open and stayed empty throughout. A panel that has just sent a message is by definition there, so IntelliGit now treats it as the panel to answer whenever it is holding no record of one — while leaving an existing record untouched, so a panel that has since been replaced cannot take answers meant for the one actually on screen.
+
+## [0.25.10] - 2026-08-18
+
+### Fixed
+
+- Published 0.25.9, which was built and then never released. A test covering how IntelliGit writes the marker that names the window currently changing a repository was checking the wrong thing: it identified the marker file by a number the operating system is free to hand out again once a file is gone, and every renewal of the marker releases the previous one. On Linux that number came straight back, so the test's verdict depended on how many renewals happened to fit in the moment it waited — it passed twice and then failed, which stopped the release. It now holds the file open and checks that the renewal leaves it untouched, which is the behaviour that actually matters. Nothing in the extension itself changed between the two versions.
+
 ## [0.25.9] - 2026-08-18
 
 ### Fixed

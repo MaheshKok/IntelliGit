@@ -1,6 +1,15 @@
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, readFile, readdir, rename, rm, symlink, writeFile } from "node:fs/promises";
+import {
+    mkdir,
+    mkdtemp,
+    readFile,
+    readdir,
+    rename,
+    rm,
+    symlink,
+    writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -78,7 +87,11 @@ describe("ShelfReverter per-path rollback index guards", () => {
         const { repositoryRoot, gitOps, reverter } = await createReverter();
         const outside = await mkdtemp(path.join(tmpdir(), "intelligit-shelf-recovery-outside-"));
         directories.push(outside);
-        const recoveryRoot = path.join((await gitOps.getGitDirectories()).gitDir, "intelligit", "recovery");
+        const recoveryRoot = path.join(
+            (await gitOps.getGitDirectories()).gitDir,
+            "intelligit",
+            "recovery",
+        );
         await mkdir(path.dirname(recoveryRoot), { recursive: true });
         await symlink(outside, recoveryRoot);
 
@@ -119,10 +132,16 @@ describe("ShelfReverter per-path rollback index guards", () => {
             },
         });
 
-        expect(await reverter.resumePending()).toEqual({ rolledBackIds: [], retainedIds: [transactionId] });
+        expect(await reverter.resumePending()).toEqual({
+            rolledBackIds: [],
+            retainedIds: [transactionId],
+        });
         expect(await readFile(target, "utf8")).toBe("change\n");
         expect(await readdir(outside)).toEqual([]);
-        expect((await store.readJournals())[0]).toMatchObject({ id: transactionId, state: "ghost" });
+        expect((await store.readJournals())[0]).toMatchObject({
+            id: transactionId,
+            state: "ghost",
+        });
     });
 
     it("resumes a planned-only pending path as an idempotent no-op", async () => {
@@ -151,7 +170,10 @@ describe("ShelfReverter per-path rollback index guards", () => {
             },
         });
 
-        expect(await reverter.resumePending()).toEqual({ rolledBackIds: [transactionId], retainedIds: [] });
+        expect(await reverter.resumePending()).toEqual({
+            rolledBackIds: [transactionId],
+            retainedIds: [],
+        });
         expect(await reverter.resumePending()).toEqual({ rolledBackIds: [], retainedIds: [] });
         expect(await readFile(target, "utf8")).toBe("change\n");
         expect(await store.readJournals()).toEqual([]);
@@ -193,7 +215,10 @@ describe("ShelfReverter per-path rollback index guards", () => {
         await mkdir(path.dirname(recoveryPath), { recursive: true });
         await rename(target, recoveryPath);
 
-        expect(await reverter.resumePending()).toEqual({ rolledBackIds: [transactionId], retainedIds: [] });
+        expect(await reverter.resumePending()).toEqual({
+            rolledBackIds: [transactionId],
+            retainedIds: [],
+        });
         expect(await readFile(target, "utf8")).toBe("change\n");
         await expect(readFile(recoveryPath, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
         expect(await reverter.resumePending()).toEqual({ rolledBackIds: [], retainedIds: [] });
@@ -236,10 +261,16 @@ describe("ShelfReverter per-path rollback index guards", () => {
         await rename(target, recoveryPath);
         await writeFile(target, "third party\n");
 
-        expect(await reverter.resumePending()).toEqual({ rolledBackIds: [], retainedIds: [transactionId] });
+        expect(await reverter.resumePending()).toEqual({
+            rolledBackIds: [],
+            retainedIds: [transactionId],
+        });
         expect(await readFile(target, "utf8")).toBe("third party\n");
         expect(await readFile(recoveryPath, "utf8")).toBe("change\n");
-        expect((await store.readJournals())[0]).toMatchObject({ id: transactionId, state: "ghost" });
+        expect((await store.readJournals())[0]).toMatchObject({
+            id: transactionId,
+            state: "ghost",
+        });
     });
 
     it("retains an impossible planned no-original recovery copy", async () => {
@@ -272,9 +303,15 @@ describe("ShelfReverter per-path rollback index guards", () => {
         await mkdir(path.dirname(recoveryPath), { recursive: true });
         await writeFile(recoveryPath, "unexpected recovery copy\n");
 
-        expect(await reverter.resumePending()).toEqual({ rolledBackIds: [], retainedIds: [transactionId] });
+        expect(await reverter.resumePending()).toEqual({
+            rolledBackIds: [],
+            retainedIds: [transactionId],
+        });
         expect(await readFile(recoveryPath, "utf8")).toBe("unexpected recovery copy\n");
-        expect((await store.readJournals())[0]).toMatchObject({ id: transactionId, state: "ghost" });
+        expect((await store.readJournals())[0]).toMatchObject({
+            id: transactionId,
+            state: "ghost",
+        });
     });
 
     it("restores transaction paths without overwriting an unrelated third-party index entry", async () => {

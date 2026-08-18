@@ -103,8 +103,10 @@ function createInspectableCommitPanelWebviewView(outcome: DeliveryOutcome = "del
     readonly webviewView: vscode.WebviewView;
     readonly posted: unknown[];
     receiveMessage(message: unknown): Promise<void>;
+    disposeView(): void;
 } {
     let messageHandler: ((message: unknown) => unknown) | undefined;
+    let disposeHandler: (() => void) | undefined;
     const posted: unknown[] = [];
 
     const webview = {
@@ -128,7 +130,10 @@ function createInspectableCommitPanelWebviewView(outcome: DeliveryOutcome = "del
     const webviewView = {
         webview,
         visible: true,
-        onDidDispose: () => inertDisposable(),
+        onDidDispose: (listener: () => void) => {
+            disposeHandler = listener;
+            return inertDisposable();
+        },
         onDidChangeVisibility: () => inertDisposable(),
     } as unknown as vscode.WebviewView;
 
@@ -143,6 +148,15 @@ function createInspectableCommitPanelWebviewView(outcome: DeliveryOutcome = "del
                 );
             }
             await messageHandler(message);
+        },
+        disposeView: (): void => {
+            if (!disposeHandler) {
+                throw new Error(
+                    "createInspectableCommitPanelWebviewView.disposeView: no dispose handler was " +
+                        "registered yet -- resolveWebviewView() must run first.",
+                );
+            }
+            disposeHandler();
         },
     };
 }
@@ -506,5 +520,123 @@ describe("CommitPanelViewProvider webview delivery failures", () => {
             "reporting that a post failed without the reason leaves the next reader exactly " +
                 "where the silent version did -- the cause is the whole payload",
         ).toContain("Webview is disposed");
+    });
+});
+
+/**
+ * The panel's only hydration path is the host's answer to `ready`, and `postToWebview` answers
+ * through the provider's cached `this.view` rather than through the webview that actually asked.
+ * Those are not the same thing. `onDidDispose` clears `this.view`, and `handleReadyMessage`'s own
+ * comment records that VS Code tears a hidden view's context down and reloads it on show WITHOUT
+ * re-running `resolveWebviewView` -- so a `ready` can arrive while the record is empty. It is then
+ * answered to nothing, and `postToWebview`'s `if (!view) return` is the single path in the entire
+ * delivery layer that logs nothing at all: every other outcome goes through `postWebviewMessage`,
+ * which reports refusals and rejections. The pane stays blank for the rest of the session with no
+ * host-side evidence.
+ *
+ * That is exactly the signature CI keeps capturing on `e2e-full`: a mounted React app rendering
+ * `commit-panel-awaiting-hydration` -- which `SET_REPOSITORIES` would have cleared unconditionally,
+ * even for an empty list, so it proves zero hydrations were applied -- beside a clean extension-host
+ * console, next to a fully populated graph webview.
+ *
+ * The invariant pinned here is the protocol one, not a repair recipe: a request that arrives from a
+ * live webview must be answered TO that webview. A webview that just posted a message is alive by
+ * construction, whatever the provider's own record happens to say.
+ */
+describe("CommitPanelViewProvider hydration answers the webview that asked", () => {
+    afterEach(async () => {
+        await scratch.removeAll();
+    });
+
+    it("answers a `ready` from a live webview whose view record was already cleared", async () => {
+        // A REAL seeded working tree, not a bare path: `handleReadyMessage` runs git behind
+        // `postRepositoryListHydration`, and against a non-existent root it throws `spawn git
+        // ENOENT` -- which fails this test through the error path instead of through its own
+        // assertion, and so would prove nothing about hydration either way.
+        const parentDir = await mkdtemp(
+            path.join(tmpdir(), "intelligit-ready-after-view-record-loss-"),
+        );
+        scratch.register(parentDir);
+        const workspace = await prepareDirtyWorkspace(path.join(parentDir, "root"));
+
+        const constructorOptions = buildCommitPanelConstructorOptions();
+        const provider = new CommitPanelViewProvider(
+            createFakeExtensionUri(),
+            new GitOps(new GitExecutor(workspace.root, undefined, toGitEnvironment(workspace.env))),
+            createFakeUriFromPath(workspace.root),
+            createEmptyWorkspaceMemento(),
+            undefined, // secrets -- nothing on this path reads a secret.
+            constructorOptions.shelfServiceForRepository,
+            constructorOptions.shelfRemoveOnUnshelve,
+            constructorOptions.commitMessageGenerationCoordinator,
+            constructorOptions.interactiveRebaseStorageRoot,
+        );
+
+        const { webviewView, posted, receiveMessage, disposeView } =
+            createInspectableCommitPanelWebviewView();
+        provider.resolveWebviewView(webviewView, INERT_CONTEXT, INERT_TOKEN);
+        const hydrationsBefore = messagesOfType(posted, "setRepositories").length;
+
+        // VS Code disposes the WebviewView when the container is hidden. The webview document can
+        // outlive that record and re-announce itself without `resolveWebviewView` running again --
+        // the case `handleReadyMessage`'s own comment already describes. No re-resolve here is the
+        // entire point: a test that resolved again would restore `this.view` and prove nothing.
+        disposeView();
+        await receiveMessage({ type: "ready", attempt: 2 });
+        await flushMicrotasks();
+
+        expect(
+            messagesOfType(posted, "setRepositories").length,
+            "a `ready` from a webview that is provably live -- it just posted this very message " +
+                "-- must be answered to that webview. Answering through a cleared `this.view` " +
+                "drops the reply in silence and strands the pane on " +
+                "commit-panel-awaiting-hydration for the rest of the session, however many times " +
+                "the webview re-asks",
+        ).toBeGreaterThan(hydrationsBefore);
+    });
+
+    it("keeps answering the view on screen when a replaced view posts a late message", async () => {
+        const parentDir = await mkdtemp(path.join(tmpdir(), "intelligit-stale-sender-"));
+        scratch.register(parentDir);
+        const workspace = await prepareDirtyWorkspace(path.join(parentDir, "root"));
+
+        const constructorOptions = buildCommitPanelConstructorOptions();
+        const provider = new CommitPanelViewProvider(
+            createFakeExtensionUri(),
+            new GitOps(new GitExecutor(workspace.root, undefined, toGitEnvironment(workspace.env))),
+            createFakeUriFromPath(workspace.root),
+            createEmptyWorkspaceMemento(),
+            undefined, // secrets -- nothing on this path reads a secret.
+            constructorOptions.shelfServiceForRepository,
+            constructorOptions.shelfRemoveOnUnshelve,
+            constructorOptions.commitMessageGenerationCoordinator,
+            constructorOptions.interactiveRebaseStorageRoot,
+        );
+
+        // VS Code replaced the view: a second resolve, so `this.view` is the NEW one and is not
+        // empty. The old document can still post -- a retained context, or a message already in
+        // flight when the replacement landed.
+        const replaced = createInspectableCommitPanelWebviewView();
+        provider.resolveWebviewView(replaced.webviewView, INERT_CONTEXT, INERT_TOKEN);
+        const onScreen = createInspectableCommitPanelWebviewView();
+        provider.resolveWebviewView(onScreen.webviewView, INERT_CONTEXT, INERT_TOKEN);
+
+        const replacedBefore = messagesOfType(replaced.posted, "setRepositories").length;
+        const onScreenBefore = messagesOfType(onScreen.posted, "setRepositories").length;
+
+        await replaced.receiveMessage({ type: "ready", attempt: 2 });
+        await flushMicrotasks();
+
+        expect(
+            messagesOfType(onScreen.posted, "setRepositories").length,
+            "the reply must go to the view actually on screen -- adopting every sender would " +
+                "hand the record back to a view VS Code already replaced, and blank the live " +
+                "pane to un-blank a dead one",
+        ).toBeGreaterThan(onScreenBefore);
+        expect(
+            messagesOfType(replaced.posted, "setRepositories").length,
+            "a replaced view must not capture the provider's view record just by posting: the " +
+                "empty-record guard is what keeps adoption a recovery rather than a hijack",
+        ).toBe(replacedBefore);
     });
 });

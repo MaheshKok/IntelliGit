@@ -84,7 +84,11 @@ describe("discoverGitRepositories", () => {
         const resolveGitRepository = vi.fn(async (candidateRoot: string) => {
             const root = path.resolve(candidateRoot);
             if (root === submodule) {
-                return { root, gitDir: path.join(root, ".git"), commonDir: path.join(root, ".git") };
+                return {
+                    root,
+                    gitDir: path.join(root, ".git"),
+                    commonDir: path.join(root, ".git"),
+                };
             }
             if (root === linkedWorktree) {
                 return {

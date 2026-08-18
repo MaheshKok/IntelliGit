@@ -159,7 +159,12 @@ describe("parseE2eRequest: structural rejections", () => {
 
     it("rejects a missing nonce", () => {
         expect(() =>
-            parseE2eRequest({ store: "memento", operation: "snapshot", scope: "workspace", key: "k" }),
+            parseE2eRequest({
+                store: "memento",
+                operation: "snapshot",
+                scope: "workspace",
+                key: "k",
+            }),
         ).toThrow(/nonce/);
     });
 
@@ -177,7 +182,12 @@ describe("parseE2eRequest: structural rejections", () => {
 
     it("rejects an unknown store", () => {
         expect(() =>
-            parseE2eRequest({ nonce: "n1", store: "configuration", operation: "snapshot", key: "k" }),
+            parseE2eRequest({
+                nonce: "n1",
+                store: "configuration",
+                operation: "snapshot",
+                key: "k",
+            }),
         ).toThrow(/store/);
     });
 });
