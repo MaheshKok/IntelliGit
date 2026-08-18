@@ -88,11 +88,11 @@ describe("RepositoryLock", () => {
             // the owner with. Publishing by rename is the difference, and file identity at the
             // path is what witnesses it: comparing contents would pass either way, because both
             // forms do update the record.
-            const claimed = await stat(lockPath);
+            const claimed = await stat(lockPath, { bigint: true });
             await new Promise<void>((resolve) => setTimeout(resolve, 40));
 
             expect(
-                (await stat(lockPath)).ino,
+                (await stat(lockPath, { bigint: true })).ino,
                 "each heartbeat must publish a new file, never rewrite the one in place",
             ).not.toBe(claimed.ino);
         } finally {
@@ -244,6 +244,38 @@ describe("RepositoryLock", () => {
             nonce: "dead-owner",
         });
         await winners[0].value();
+    });
+
+    it("declines a takeover of an owner that heartbeated after being judged stale", async () => {
+        // The takeover decision is made on a record read before the rename, and the identity
+        // check on the renamed file is the only thing between that decision and overwriting a
+        // live owner. A nonce cannot carry that check alone: an owner keeps its nonce for life,
+        // so a record it rewrote after being judged stale still matches while no longer being
+        // the record the decision was made about. The gap is reachable whenever the liveness
+        // probe is wrong -- a lock on a network share, an owner alive on another host whose pid
+        // means nothing here -- and a fresh heartbeat is the evidence that it was wrong. Only
+        // the heartbeat discriminates, so the decoy keeps the nonce it was judged under.
+        const common = await commonDir();
+        const lockPath = path.join(common, "intelligit", "repo.lock");
+        await mkdir(path.dirname(lockPath), { recursive: true });
+        const owner = { nonce: "still-alive", pid: process.pid, heartbeatAt: 0 };
+        await writeFile(lockPath, JSON.stringify(owner));
+
+        await expect(
+            new RepositoryLock({
+                staleAfterMs: 0,
+                livenessProbe: async () => false,
+                beforeTakeover: async () => {
+                    const heartbeat = { ...owner, heartbeatAt: Date.now() };
+                    await writeFile(lockPath, JSON.stringify(heartbeat));
+                },
+            }).acquire(common),
+        ).rejects.toBeInstanceOf(RepositoryLockBusyError);
+
+        expect(
+            JSON.parse(await readFile(lockPath, "utf8")),
+            "an owner that proved itself alive mid-takeover must keep the lock it holds",
+        ).toMatchObject({ nonce: "still-alive" });
     });
 
     describe("a lock file that exists but cannot be parsed", () => {

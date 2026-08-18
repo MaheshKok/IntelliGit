@@ -232,7 +232,16 @@ async function publishLockRecord(
 /** Whether the renamed file is still the one the takeover decision was made about. */
 function isSameLockFile(moved: LockFileState, expected: LockFileState): boolean {
     if (expected.kind === "owned") {
-        return moved.kind === "owned" && moved.owner.nonce === expected.owner.nonce;
+        // The heartbeat has to match as well as the nonce. An owner keeps one nonce for its
+        // whole life, so a nonce-only check reads a record its owner rewrote after being judged
+        // stale as unchanged -- and rewriting it is exactly how an owner the liveness probe got
+        // wrong announces that it is still alive. A changed heartbeat can only have come from
+        // that owner, because within a single acquire nobody else writes this record.
+        return (
+            moved.kind === "owned" &&
+            moved.owner.nonce === expected.owner.nonce &&
+            moved.owner.heartbeatAt === expected.owner.heartbeatAt
+        );
     }
     // An unreadable lock carries no nonce to match on, so "unchanged" can only mean still
     // unreadable. Anything parseable now is a fresh owner that arrived during the rename and
