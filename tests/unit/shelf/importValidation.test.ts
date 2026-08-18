@@ -15,7 +15,9 @@ const temporaryDirectories: string[] = [];
 
 afterEach(async () => {
     await Promise.all(
-        temporaryDirectories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })),
+        temporaryDirectories
+            .splice(0)
+            .map((directory) => rm(directory, { recursive: true, force: true })),
     );
 });
 
@@ -65,7 +67,9 @@ describe("shelf import validation", () => {
         const patch = textPatch("src/file.txt");
 
         await expect(
-            validateImportedPatchStream([patch.subarray(0, 13), patch.subarray(13)], { stripLevel: 1 }),
+            validateImportedPatchStream([patch.subarray(0, 13), patch.subarray(13)], {
+                stripLevel: 1,
+            }),
         ).resolves.toMatchObject({
             files: [
                 {
@@ -117,15 +121,30 @@ describe("shelf import validation", () => {
             "a/\\\\server/share.txt",
             "/absolute.txt",
         ]) {
-            expect(() => normalizeImportedPatchPath(value, 0)).toThrow(
-                ShelfImportValidationError,
-            );
+            expect(() => normalizeImportedPatchPath(value, 0)).toThrow(ShelfImportValidationError);
         }
-        for (const value of ["../outside.txt", ".GIT/config", "x:stream", "COM1.txt", "C:/drive.txt", "\\\\host\\share\\x"]) {
+        for (const value of [
+            "../outside.txt",
+            ".GIT/config",
+            "x:stream",
+            "COM1.txt",
+            "C:/drive.txt",
+            "\\\\host\\share\\x",
+        ]) {
             expect(() => validateShelfManifestPath(value)).toThrow(ShelfImportValidationError);
         }
-        for (const file of ["../outside.txt", ".git/hooks/pre-commit", ".GiT/config", "x:stream", "CON", "C:/drive.txt", "\\\\host\\share.txt"]) {
-            expect(() => validateImportedPatch(textPatch(file))).toThrow(ShelfImportValidationError);
+        for (const file of [
+            "../outside.txt",
+            ".git/hooks/pre-commit",
+            ".GiT/config",
+            "x:stream",
+            "CON",
+            "C:/drive.txt",
+            "\\\\host\\share.txt",
+        ]) {
+            expect(() => validateImportedPatch(textPatch(file))).toThrow(
+                ShelfImportValidationError,
+            );
         }
         expect(() =>
             validateImportedPatch(
@@ -169,7 +188,7 @@ describe("shelf import validation", () => {
                         "",
                     ].join("\n"),
                 ),
-        ).files[0]?.declaredResultBytes,
+            ).files[0]?.declaredResultBytes,
         ).toBe(1);
         expect(
             validateImportedPatch(
@@ -241,21 +260,24 @@ describe("shelf import validation", () => {
                 { limits: { maxDeclaredResultBytes: 8 } },
             ),
         ).toThrow(ShelfImportValidationError);
-        expect(() => validateImportedPatch(twoHunkPatch(), { limits: { maxHunksPerFile: 1 } })).toThrow(
-            ShelfImportValidationError,
-        );
-        expect(() => validateImportedPatch(textPatch(), { limits: { maxLinesPerFile: 1 } })).toThrow(
-            ShelfImportValidationError,
-        );
+        expect(() =>
+            validateImportedPatch(twoHunkPatch(), { limits: { maxHunksPerFile: 1 } }),
+        ).toThrow(ShelfImportValidationError);
+        expect(() =>
+            validateImportedPatch(textPatch(), { limits: { maxLinesPerFile: 1 } }),
+        ).toThrow(ShelfImportValidationError);
         expect(() =>
             validateImportedPatch(textPatch("file.txt", "long decoded output"), {
                 limits: { maxDecodedBytesPerFile: 4 },
             }),
         ).toThrow(ShelfImportValidationError);
         expect(() =>
-            validateImportedPatch(Buffer.concat([textPatch("one.txt", "a"), textPatch("two.txt", "b")]), {
-                limits: { maxDecodedBytesTotal: 3 },
-            }),
+            validateImportedPatch(
+                Buffer.concat([textPatch("one.txt", "a"), textPatch("two.txt", "b")]),
+                {
+                    limits: { maxDecodedBytesTotal: 3 },
+                },
+            ),
         ).toThrow(ShelfImportValidationError);
     });
 

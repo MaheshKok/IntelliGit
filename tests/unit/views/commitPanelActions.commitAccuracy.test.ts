@@ -366,7 +366,9 @@ describe("commitSelectedFromPanel commit accuracy", () => {
 
         await commitSelected(repo, { message: "merge", paths: ["feature.txt"] });
 
-        expect(await git(repo, ["ls-tree", "-r", "--name-only", "HEAD"])).toContain("feature.txt\n");
+        expect(await git(repo, ["ls-tree", "-r", "--name-only", "HEAD"])).toContain(
+            "feature.txt\n",
+        );
     });
 
     it("keeps a revert-conflict commit as a bare whole-index commit", async () => {

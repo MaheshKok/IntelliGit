@@ -55,13 +55,16 @@ describe("snapshotRefs / snapshotHead / snapshotReflogs", () => {
         await git(repo.root, ["stash", "push", "--quiet", "-m", "will be dropped"], repo.env);
 
         const before = await snapshotRefs(repo.root, repo.env);
-        const hasStashBefore = before.status === "captured" && before.data.some((entry) => entry.name === "refs/stash");
+        const hasStashBefore =
+            before.status === "captured" &&
+            before.data.some((entry) => entry.name === "refs/stash");
         expect(hasStashBefore).toBe(true);
 
         await git(repo.root, ["stash", "drop"], repo.env);
 
         const after = await snapshotRefs(repo.root, repo.env);
-        const hasStashAfter = after.status === "captured" && after.data.some((entry) => entry.name === "refs/stash");
+        const hasStashAfter =
+            after.status === "captured" && after.data.some((entry) => entry.name === "refs/stash");
         // Same assertion shape as `hasStashBefore`; the deliberate break (dropping the stash)
         // flips it to `false`, proving the section is not tautologically "always has refs/stash".
         expect(hasStashAfter).toBe(false);
@@ -74,7 +77,10 @@ describe("snapshotRefs / snapshotHead / snapshotReflogs", () => {
 
         const gitDir = path.join(repo.root, ".git");
         const symbolic = await snapshotHead(gitDir);
-        expect(symbolic).toEqual({ status: "captured", data: { kind: "symbolic", target: "refs/heads/main" } });
+        expect(symbolic).toEqual({
+            status: "captured",
+            data: { kind: "symbolic", target: "refs/heads/main" },
+        });
 
         await git(repo.root, ["checkout", "--quiet", "--detach", sha], repo.env);
         const detached = await snapshotHead(gitDir);
@@ -130,7 +136,11 @@ describe("snapshotWorktrees", () => {
         await commitAll(repo.root, repo.env, "c1");
 
         const linkedPath = path.join(path.dirname(repo.root), `${path.basename(repo.root)}-linked`);
-        await git(repo.root, ["worktree", "add", "--quiet", "-b", "linked-branch", linkedPath, "main"], repo.env);
+        await git(
+            repo.root,
+            ["worktree", "add", "--quiet", "-b", "linked-branch", linkedPath, "main"],
+            repo.env,
+        );
 
         const commonDir = path.join(repo.root, ".git");
         const result = await snapshotWorktrees(repo.root, commonDir, repo.env);
@@ -148,11 +158,16 @@ describe("snapshotWorktrees", () => {
         // `commonDir` here is built from the literal, non-realpath'd `repo.root`.
         const { realpath } = await import("node:fs/promises");
         const [[, linkedGitDir]] = [...result.linkedGitDirs.entries()];
-        const [realLinkedGitDir, realCommonDir] = await Promise.all([realpath(linkedGitDir), realpath(commonDir)]);
+        const [realLinkedGitDir, realCommonDir] = await Promise.all([
+            realpath(linkedGitDir),
+            realpath(commonDir),
+        ]);
         expect(realLinkedGitDir).not.toBe(realCommonDir);
         expect(realLinkedGitDir.startsWith(path.join(realCommonDir, "worktrees"))).toBe(true);
 
-        await git(repo.root, ["worktree", "remove", "--force", linkedPath], repo.env).catch(() => undefined);
+        await git(repo.root, ["worktree", "remove", "--force", linkedPath], repo.env).catch(
+            () => undefined,
+        );
     });
 });
 
@@ -205,7 +220,9 @@ describe("snapshotGitDirState -- per-worktree and common-directory private state
             const before = await snapshotGitDirState(commonDir, new Map());
             const bisectFilesBefore =
                 before.status === "captured"
-                    ? (before.data.common ?? []).filter((entry) => entry.relativePath.startsWith("BISECT"))
+                    ? (before.data.common ?? []).filter((entry) =>
+                          entry.relativePath.startsWith("BISECT"),
+                      )
                     : [];
             expect(bisectFilesBefore).toEqual([]);
 
@@ -217,9 +234,13 @@ describe("snapshotGitDirState -- per-worktree and common-directory private state
             expect(during.status).toBe("captured");
             const bisectFilesDuring =
                 during.status === "captured"
-                    ? (during.data.common ?? []).filter((entry) => entry.relativePath.startsWith("BISECT"))
+                    ? (during.data.common ?? []).filter((entry) =>
+                          entry.relativePath.startsWith("BISECT"),
+                      )
                     : [];
-            expect(bisectFilesDuring.map((entry) => entry.relativePath).sort()).toContain("BISECT_LOG");
+            expect(bisectFilesDuring.map((entry) => entry.relativePath).sort()).toContain(
+                "BISECT_LOG",
+            );
             expect(bisectFilesDuring.length).toBeGreaterThan(0);
 
             // RED-proof completes the loop: `git bisect reset` removes them again, and the same
@@ -229,7 +250,9 @@ describe("snapshotGitDirState -- per-worktree and common-directory private state
             const after = await snapshotGitDirState(commonDir, new Map());
             const bisectFilesAfter =
                 after.status === "captured"
-                    ? (after.data.common ?? []).filter((entry) => entry.relativePath.startsWith("BISECT"))
+                    ? (after.data.common ?? []).filter((entry) =>
+                          entry.relativePath.startsWith("BISECT"),
+                      )
                     : [];
             expect(bisectFilesAfter).toEqual([]);
         });
@@ -241,8 +264,15 @@ describe("snapshotGitDirState -- per-worktree and common-directory private state
             await writeRepoFile(repo.root, "a.txt", "one\n");
             await commitAll(repo.root, repo.env, "primary commit");
 
-            const linkedPath = path.join(path.dirname(repo.root), `${path.basename(repo.root)}-linked`);
-            await git(repo.root, ["worktree", "add", "--quiet", "-b", "linked-branch", linkedPath, "main"], repo.env);
+            const linkedPath = path.join(
+                path.dirname(repo.root),
+                `${path.basename(repo.root)}-linked`,
+            );
+            await git(
+                repo.root,
+                ["worktree", "add", "--quiet", "-b", "linked-branch", linkedPath, "main"],
+                repo.env,
+            );
             await writeRepoFile(linkedPath, "b.txt", "from linked worktree\n");
             await commitAll(linkedPath, repo.env, "linked commit");
 
@@ -254,7 +284,9 @@ describe("snapshotGitDirState -- per-worktree and common-directory private state
             // temp root (e.g. macOS `/var` -> `/private/var`), and the snapshot's own gitDirState
             // key must match that exactly for the lookup below to mean anything.
             const linkedWorktreeInfo =
-                worktreesResult.section.status === "captured" ? worktreesResult.section.data[1] : undefined;
+                worktreesResult.section.status === "captured"
+                    ? worktreesResult.section.data[1]
+                    : undefined;
             expect(linkedWorktreeInfo).toBeDefined();
 
             const gitDirState = await snapshotGitDirState(commonDir, worktreesResult.linkedGitDirs);

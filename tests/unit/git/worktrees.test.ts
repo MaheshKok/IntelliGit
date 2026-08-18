@@ -114,7 +114,9 @@ describe("parseWorktreeList", () => {
      * the first assertion on its own.
      */
     it("matches a symlinked current root against Git's resolved worktree path", async () => {
-        const root = await realpath(await mkdtemp(path.join(tmpdir(), "intelligit-worktrees-sym-")));
+        const root = await realpath(
+            await mkdtemp(path.join(tmpdir(), "intelligit-worktrees-sym-")),
+        );
         tempRoots.push(root);
         const repo = path.join(root, "repo");
         const other = path.join(root, "other");
@@ -269,11 +271,9 @@ describe("listWorktrees", () => {
         const worktrees = await listWorktrees(new RealGitExecutor(repo) as GitExecutor, repo);
 
         expect(worktrees).toHaveLength(3);
-        expect(worktrees.map((worktree) => worktree.branch).sort()).toEqual([
-            defaultBranch,
-            "feature/x",
-            "feature/y",
-        ].sort());
+        expect(worktrees.map((worktree) => worktree.branch).sort()).toEqual(
+            [defaultBranch, "feature/x", "feature/y"].sort(),
+        );
         expect(worktrees.find((worktree) => worktree.path === repo)).toMatchObject({
             isMain: true,
             isCurrent: true,
@@ -295,9 +295,9 @@ describe("assertWorktreePathSafe", () => {
         await mkdir(path.join(repo, "src"), { recursive: true });
         await mkdir(linked);
 
-        expect(() =>
-            assertWorktreePathSafe(path.join(repo, "src", "nested"), repo, []),
-        ).toThrow("inside the current repository");
+        expect(() => assertWorktreePathSafe(path.join(repo, "src", "nested"), repo, [])).toThrow(
+            "inside the current repository",
+        );
         expect(() =>
             assertWorktreePathSafe(path.join(linked, "child"), repo, [
                 {

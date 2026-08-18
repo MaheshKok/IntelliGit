@@ -76,9 +76,7 @@ describe("diffLinesFair — important-line anchoring", () => {
             "  return 2;",
             "}",
         ];
-        expect(diffLinesFair(lines1, lines2)).toEqual([
-            { start1: 2, end1: 6, start2: 2, end2: 6 },
-        ]);
+        expect(diffLinesFair(lines1, lines2)).toEqual([{ start1: 2, end1: 6, start2: 2, end2: 6 }]);
     });
 
     it("prefers the high-information line when two anchor candidates cross", () => {
@@ -86,18 +84,14 @@ describe("diffLinesFair — important-line anchoring", () => {
         // The information-rich statement must win over structural noise.
         const lines1 = ["database: {", "middle aaa bbb", "return this.config;"];
         const lines2 = ["return this.config;", "middle ccc ddd", "database: {"];
-        expect(diffLinesFair(lines1, lines2)).toEqual([
-            { start1: 2, end1: 3, start2: 0, end2: 1 },
-        ]);
+        expect(diffLinesFair(lines1, lines2)).toEqual([{ start1: 2, end1: 3, start2: 0, end2: 1 }]);
     });
 
     it("still matches unimportant lines when no important anchors exist", () => {
         // Inside a single gap, standalone unimportant runs may match.
         const lines1 = ["first aaa", "}", "second bbb"];
         const lines2 = ["third ccc", "}", "fourth ddd"];
-        expect(diffLinesFair(lines1, lines2)).toEqual([
-            { start1: 1, end1: 2, start2: 1, end2: 2 },
-        ]);
+        expect(diffLinesFair(lines1, lines2)).toEqual([{ start1: 1, end1: 2, start2: 1, end2: 2 }]);
     });
 
     it("matches all-blank files by position", () => {
@@ -139,9 +133,7 @@ describe("diffLinesFair — gap correction", () => {
         assertValidRanges(result, lines1, lines2);
         // "const kept" must be matched (1 -> 2) despite surrounding edits.
         expect(
-            result.some(
-                (r) => r.start1 <= 1 && r.end1 > 1 && r.start2 + (1 - r.start1) === 2,
-            ),
+            result.some((r) => r.start1 <= 1 && r.end1 > 1 && r.start2 + (1 - r.start1) === 2),
         ).toBe(true);
         // "return kept;" and "}" stay matched positionally.
         expect(result[result.length - 1]).toEqual({ start1: 3, end1: 5, start2: 3, end2: 5 });

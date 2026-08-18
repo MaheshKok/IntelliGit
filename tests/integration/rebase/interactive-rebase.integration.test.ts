@@ -277,15 +277,12 @@ describe("interactive rebase real Git integration", () => {
             await expect(access(path.join(fixture.gitDir, "rebase-merge"))).rejects.toMatchObject({
                 code: "ENOENT",
             });
-            await expect(
-                access(path.join(fixture.gitDir, "rebase-apply")),
-            ).rejects.toMatchObject({ code: "ENOENT" });
+            await expect(access(path.join(fixture.gitDir, "rebase-apply"))).rejects.toMatchObject({
+                code: "ENOENT",
+            });
 
             await expect(
-                runInteractiveRebaseSubmission(
-                    fixture.dependencies,
-                    submission(fixture, entries),
-                ),
+                runInteractiveRebaseSubmission(fixture.dependencies, submission(fixture, entries)),
             ).resolves.toEqual({ status: "failed", reason: "reservation-exists" });
         } finally {
             held.release();

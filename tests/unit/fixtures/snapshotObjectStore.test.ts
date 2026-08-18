@@ -15,7 +15,10 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { assertAlternatesContained, snapshotObjectStore } from "../../fixtures/repo/snapshotObjectStore";
+import {
+    assertAlternatesContained,
+    snapshotObjectStore,
+} from "../../fixtures/repo/snapshotObjectStore";
 import type { ScratchRepo } from "./gitTestHelpers";
 import { commitAll, createScratchRepo, writeRepoFile } from "./gitTestHelpers";
 
@@ -55,18 +58,28 @@ describe("snapshotObjectStore", () => {
             const small = await createScratchRepo("objectstore-small");
             await writeRepoFile(small.root, "a.txt", "hello\n");
             await commitAll(small.root, small.env, "one commit");
-            const smallSection = await snapshotObjectStore(small.root, path.join(small.root, ".git"), small.env);
+            const smallSection = await snapshotObjectStore(
+                small.root,
+                path.join(small.root, ".git"),
+                small.env,
+            );
             expect(smallSection.status).toBe("captured");
-            const smallCount = smallSection.status === "captured" ? smallSection.data.objects.length : -1;
+            const smallCount =
+                smallSection.status === "captured" ? smallSection.data.objects.length : -1;
 
             const large = await createScratchRepo("objectstore-large");
             await writeRepoFile(large.root, "a.txt", "hello\n");
             await commitAll(large.root, large.env, "one commit");
             await writeRepoFile(large.root, "b.txt", "world\n");
             await commitAll(large.root, large.env, "two commits");
-            const largeSection = await snapshotObjectStore(large.root, path.join(large.root, ".git"), large.env);
+            const largeSection = await snapshotObjectStore(
+                large.root,
+                path.join(large.root, ".git"),
+                large.env,
+            );
             expect(largeSection.status).toBe("captured");
-            const largeCount = largeSection.status === "captured" ? largeSection.data.objects.length : -1;
+            const largeCount =
+                largeSection.status === "captured" ? largeSection.data.objects.length : -1;
 
             expect(largeCount).toBeGreaterThan(smallCount);
 
@@ -80,10 +93,18 @@ describe("snapshotObjectStore", () => {
             await writeRepoFile(repo.root, "a.txt", "hello\n");
             await commitAll(repo.root, repo.env, "c1");
 
-            const section = await snapshotObjectStore(repo.root, path.join(repo.root, ".git"), repo.env);
+            const section = await snapshotObjectStore(
+                repo.root,
+                path.join(repo.root, ".git"),
+                repo.env,
+            );
             expect(section.status).toBe("captured");
             if (section.status !== "captured") return;
-            expect(section.data.alternates).toEqual({ present: false, rawLines: [], resolvedAbsolutePaths: [] });
+            expect(section.data.alternates).toEqual({
+                present: false,
+                rawLines: [],
+                resolvedAbsolutePaths: [],
+            });
         });
 
         it("reports present with resolved absolute paths when an alternates file exists", async () => {
@@ -96,7 +117,11 @@ describe("snapshotObjectStore", () => {
             const insideObjectsDir = path.join(repo.root, ".git", "objects");
             await writeFile(path.join(infoDir, "alternates"), `${insideObjectsDir}\n`);
 
-            const section = await snapshotObjectStore(repo.root, path.join(repo.root, ".git"), repo.env);
+            const section = await snapshotObjectStore(
+                repo.root,
+                path.join(repo.root, ".git"),
+                repo.env,
+            );
             expect(section.status).toBe("captured");
             if (section.status !== "captured") return;
             expect(section.data.alternates.present).toBe(true);
@@ -108,14 +133,21 @@ describe("snapshotObjectStore", () => {
     describe("assertAlternatesContained -- the RED-proof this bullet exists for", () => {
         it("does not throw when alternates is absent", () => {
             expect(() =>
-                assertAlternatesContained({ present: false, rawLines: [], resolvedAbsolutePaths: [] }, ["/allowed"]),
+                assertAlternatesContained(
+                    { present: false, rawLines: [], resolvedAbsolutePaths: [] },
+                    ["/allowed"],
+                ),
             ).not.toThrow();
         });
 
         it("does not throw when every alternates path resolves inside an allowed root", () => {
             expect(() =>
                 assertAlternatesContained(
-                    { present: true, rawLines: ["x"], resolvedAbsolutePaths: ["/allowed/root/objects"] },
+                    {
+                        present: true,
+                        rawLines: ["x"],
+                        resolvedAbsolutePaths: ["/allowed/root/objects"],
+                    },
                     ["/allowed/root"],
                 ),
             ).not.toThrow();
@@ -135,7 +167,11 @@ describe("snapshotObjectStore", () => {
             await mkdir(infoDir, { recursive: true });
             await writeFile(path.join(infoDir, "alternates"), `${outside.root}\n`);
 
-            const section = await snapshotObjectStore(repo.root, path.join(repo.root, ".git"), repo.env);
+            const section = await snapshotObjectStore(
+                repo.root,
+                path.join(repo.root, ".git"),
+                repo.env,
+            );
             expect(section.status).toBe("captured");
             if (section.status !== "captured") return;
 

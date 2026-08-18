@@ -21,8 +21,15 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { DEFAULT_TEXT_CAPTURE_LIMIT_BYTES, inventoryDirectory } from "../../fixtures/repo/fsInventory";
-import { createSanitizedGitEnv, seedFixtureTemplate, type FixtureTemplate } from "../../fixtures/repo/seed";
+import {
+    DEFAULT_TEXT_CAPTURE_LIMIT_BYTES,
+    inventoryDirectory,
+} from "../../fixtures/repo/fsInventory";
+import {
+    createSanitizedGitEnv,
+    seedFixtureTemplate,
+    type FixtureTemplate,
+} from "../../fixtures/repo/seed";
 // Imported through the public barrel (`snapshot.ts`), not the internal `snapshotTypes.ts`/
 // `snapshotDurableState.ts` modules: this file exercises `snapshotWorkspace()`'s own public
 // contract -- the same surface step 8's `harness.ts` will consume -- rather than one internal
@@ -37,7 +44,9 @@ import {
 const FIXTURE_TIMEOUT_MS = 30_000;
 const UNUSED_PROFILE_DIR = "/nonexistent/profile";
 
-function buildDurableStateSnapshot(overrides: Partial<DurableStateSnapshot> = {}): DurableStateSnapshot {
+function buildDurableStateSnapshot(
+    overrides: Partial<DurableStateSnapshot> = {},
+): DurableStateSnapshot {
     return {
         shelfFiles: [],
         memento: { global: {}, workspace: {} },
@@ -63,73 +72,87 @@ describe("snapshotWorkspace -- captures the full restorable domain for both repo
         scratchDest = undefined;
     }, FIXTURE_TIMEOUT_MS);
 
-    it("captures real seeded state for the workspace and reports the origin as bare with no working tree", async () => {
-        scratchDest = await mkdtemp(path.join(tmpdir(), "intelligit-snapshotworkspace-"));
-        template = await seedFixtureTemplate(scratchDest);
+    it(
+        "captures real seeded state for the workspace and reports the origin as bare with no working tree",
+        async () => {
+            scratchDest = await mkdtemp(path.join(tmpdir(), "intelligit-snapshotworkspace-"));
+            template = await seedFixtureTemplate(scratchDest);
 
-        const snapshot = await snapshotWorkspace({
-            root: template.root,
-            originRoot: template.originRoot,
-            profileDir: UNUSED_PROFILE_DIR,
-            env: template.env,
-        });
-
-        expect(snapshot.workspace.isBare).toBe(false);
-        expect(snapshot.workspace.workingTree.status).toBe("captured");
-        if (snapshot.workspace.workingTree.status === "captured") {
-            const paths = snapshot.workspace.workingTree.data.map((entry) => entry.relativePath);
-            expect(paths).toContain("README.md"); // committed history
-            expect(paths).toContain("untracked.txt"); // dirty layer: untracked
-            expect(paths).toContain("ignored/build.log"); // dirty layer: ignored
-        }
-
-        expect(snapshot.workspace.index.status).toBe("captured");
-        if (snapshot.workspace.index.status === "captured") {
-            const mutableEntries = snapshot.workspace.index.data.filter((entry) => entry.path === "mutable.txt");
-            expect(mutableEntries.length).toBeGreaterThan(0); // dirty layer: staged-and-unstaged
-        }
-
-        expect(snapshot.workspace.refs.status).toBe("captured");
-        if (snapshot.workspace.refs.status === "captured") {
-            const names = snapshot.workspace.refs.data.map((entry) => entry.name);
-            expect(names).toContain("refs/stash"); // pre-seeded stash entries
-            expect(names).toContain("refs/heads/feature/awesome");
-        }
-
-        // The bare origin has no working tree at all -- `not-captured` here is a correct,
-        // reasoned absence (PLAN.md's binary Section contract), never a bug to paper over.
-        expect(snapshot.origin.isBare).toBe(true);
-        expect(snapshot.origin.workingTree.status).toBe("not-captured");
-        expect(snapshot.origin.refs.status).toBe("captured");
-        if (snapshot.origin.refs.status === "captured") {
-            const names = snapshot.origin.refs.data.map((entry) => entry.name);
-            expect(names).toContain("refs/heads/main");
-            expect(names).toContain("refs/tags/v1.0.0");
-        }
-    }, FIXTURE_TIMEOUT_MS);
-
-    it("REJECTS rather than returning an empty captured section when a root is not a git repository at all", async () => {
-        // The governing principle's sharpest edge, verified directly: a total read failure must
-        // propagate as a rejection, never collapse into a silently empty (but structurally
-        // "captured") section -- confirmed empirically that a bare `git rev-parse` against a
-        // non-repository directory exits 128 and rejects the promisified subprocess call, which
-        // every snapshot* module lets propagate rather than swallowing in a `catch {}`.
-        const sanitized = await createSanitizedGitEnv();
-        scratchDest = await mkdtemp(path.join(tmpdir(), "intelligit-snapshotworkspace-notrepo-"));
-        const notARepo = path.join(scratchDest, "not-a-repo");
-        await mkdir(notARepo, { recursive: true });
-
-        await expect(
-            snapshotWorkspace({
-                root: notARepo,
-                originRoot: notARepo,
+            const snapshot = await snapshotWorkspace({
+                root: template.root,
+                originRoot: template.originRoot,
                 profileDir: UNUSED_PROFILE_DIR,
-                env: sanitized.env,
-            }),
-        ).rejects.toThrow();
+                env: template.env,
+            });
 
-        await rm(sanitized.home, { recursive: true, force: true });
-    }, FIXTURE_TIMEOUT_MS);
+            expect(snapshot.workspace.isBare).toBe(false);
+            expect(snapshot.workspace.workingTree.status).toBe("captured");
+            if (snapshot.workspace.workingTree.status === "captured") {
+                const paths = snapshot.workspace.workingTree.data.map(
+                    (entry) => entry.relativePath,
+                );
+                expect(paths).toContain("README.md"); // committed history
+                expect(paths).toContain("untracked.txt"); // dirty layer: untracked
+                expect(paths).toContain("ignored/build.log"); // dirty layer: ignored
+            }
+
+            expect(snapshot.workspace.index.status).toBe("captured");
+            if (snapshot.workspace.index.status === "captured") {
+                const mutableEntries = snapshot.workspace.index.data.filter(
+                    (entry) => entry.path === "mutable.txt",
+                );
+                expect(mutableEntries.length).toBeGreaterThan(0); // dirty layer: staged-and-unstaged
+            }
+
+            expect(snapshot.workspace.refs.status).toBe("captured");
+            if (snapshot.workspace.refs.status === "captured") {
+                const names = snapshot.workspace.refs.data.map((entry) => entry.name);
+                expect(names).toContain("refs/stash"); // pre-seeded stash entries
+                expect(names).toContain("refs/heads/feature/awesome");
+            }
+
+            // The bare origin has no working tree at all -- `not-captured` here is a correct,
+            // reasoned absence (PLAN.md's binary Section contract), never a bug to paper over.
+            expect(snapshot.origin.isBare).toBe(true);
+            expect(snapshot.origin.workingTree.status).toBe("not-captured");
+            expect(snapshot.origin.refs.status).toBe("captured");
+            if (snapshot.origin.refs.status === "captured") {
+                const names = snapshot.origin.refs.data.map((entry) => entry.name);
+                expect(names).toContain("refs/heads/main");
+                expect(names).toContain("refs/tags/v1.0.0");
+            }
+        },
+        FIXTURE_TIMEOUT_MS,
+    );
+
+    it(
+        "REJECTS rather than returning an empty captured section when a root is not a git repository at all",
+        async () => {
+            // The governing principle's sharpest edge, verified directly: a total read failure must
+            // propagate as a rejection, never collapse into a silently empty (but structurally
+            // "captured") section -- confirmed empirically that a bare `git rev-parse` against a
+            // non-repository directory exits 128 and rejects the promisified subprocess call, which
+            // every snapshot* module lets propagate rather than swallowing in a `catch {}`.
+            const sanitized = await createSanitizedGitEnv();
+            scratchDest = await mkdtemp(
+                path.join(tmpdir(), "intelligit-snapshotworkspace-notrepo-"),
+            );
+            const notARepo = path.join(scratchDest, "not-a-repo");
+            await mkdir(notARepo, { recursive: true });
+
+            await expect(
+                snapshotWorkspace({
+                    root: notARepo,
+                    originRoot: notARepo,
+                    profileDir: UNUSED_PROFILE_DIR,
+                    env: sanitized.env,
+                }),
+            ).rejects.toThrow();
+
+            await rm(sanitized.home, { recursive: true, force: true });
+        },
+        FIXTURE_TIMEOUT_MS,
+    );
 });
 
 describe("snapshotWorkspace -- durable VS Code state seam (PLAN.md step 10)", () => {
@@ -149,91 +172,111 @@ describe("snapshotWorkspace -- durable VS Code state seam (PLAN.md step 10)", ()
         return template;
     }
 
-    it("is not-captured, with a non-empty reason, when no provider is supplied", async () => {
-        const tpl = await seedMinimalTemplate("intelligit-durable-noprovider-");
-        const snapshot = await snapshotWorkspace({
-            root: tpl.root,
-            originRoot: tpl.originRoot,
-            profileDir: UNUSED_PROFILE_DIR,
-            env: tpl.env,
-        });
-        expect(snapshot.durableState.status).toBe("not-captured");
-        if (snapshot.durableState.status !== "not-captured") return;
-        expect(snapshot.durableState.reason.length).toBeGreaterThan(0);
-    }, FIXTURE_TIMEOUT_MS);
-
-    it("is captured, wired through to the provider's real data, when a provider IS supplied", async () => {
-        const tpl = await seedMinimalTemplate("intelligit-durable-withprovider-");
-        const providerData = buildDurableStateSnapshot({
-            secrets: { commitChecks: { present: true, digest: "abc123" } },
-        });
-        const provider = buildProvider(providerData);
-
-        const snapshot = await snapshotWorkspace({
-            root: tpl.root,
-            originRoot: tpl.originRoot,
-            profileDir: UNUSED_PROFILE_DIR,
-            env: tpl.env,
-            durableState: provider,
-        });
-
-        expect(provider.snapshotDurableState).toHaveBeenCalledTimes(1);
-        expect(snapshot.durableState).toEqual(captured(providerData));
-    }, FIXTURE_TIMEOUT_MS);
-
-    it("RED-proof: the not-captured seam and the captured seam never compare equal -- Phase 6's actual defence", async () => {
-        const tpl = await seedMinimalTemplate("intelligit-durable-redproof-");
-
-        const withoutProvider = await snapshotWorkspace({
-            root: tpl.root,
-            originRoot: tpl.originRoot,
-            profileDir: UNUSED_PROFILE_DIR,
-            env: tpl.env,
-        });
-        const withProvider = await snapshotWorkspace({
-            root: tpl.root,
-            originRoot: tpl.originRoot,
-            profileDir: UNUSED_PROFILE_DIR,
-            env: tpl.env,
-            durableState: buildProvider(buildDurableStateSnapshot()),
-        });
-
-        // The literal claim PLAN.md's work order asks to be proven: a `not-captured` durable
-        // section must not compare equal to a `captured` one, even when the captured payload is
-        // itself empty -- otherwise a Phase 6 comparison against a template snapshot taken WITH a
-        // live host (captured) could pass against a later copy snapshotted WITHOUT one
-        // (not-captured), and a real regression in durable state would never be caught.
-        expect(withoutProvider.durableState).not.toEqual(withProvider.durableState);
-        expect(withoutProvider).not.toEqual(withProvider);
-    }, FIXTURE_TIMEOUT_MS);
-
-    it("RED-proof: the provider's actual data flows through unmangled, not a hardcoded constant", async () => {
-        const tpl = await seedMinimalTemplate("intelligit-durable-datadiffers-");
-
-        const [snapA, snapB] = await Promise.all([
-            snapshotWorkspace({
+    it(
+        "is not-captured, with a non-empty reason, when no provider is supplied",
+        async () => {
+            const tpl = await seedMinimalTemplate("intelligit-durable-noprovider-");
+            const snapshot = await snapshotWorkspace({
                 root: tpl.root,
                 originRoot: tpl.originRoot,
                 profileDir: UNUSED_PROFILE_DIR,
                 env: tpl.env,
-                durableState: buildProvider(buildDurableStateSnapshot({ configuration: { undockableWindow: true } })),
-            }),
-            snapshotWorkspace({
+            });
+            expect(snapshot.durableState.status).toBe("not-captured");
+            if (snapshot.durableState.status !== "not-captured") return;
+            expect(snapshot.durableState.reason.length).toBeGreaterThan(0);
+        },
+        FIXTURE_TIMEOUT_MS,
+    );
+
+    it(
+        "is captured, wired through to the provider's real data, when a provider IS supplied",
+        async () => {
+            const tpl = await seedMinimalTemplate("intelligit-durable-withprovider-");
+            const providerData = buildDurableStateSnapshot({
+                secrets: { commitChecks: { present: true, digest: "abc123" } },
+            });
+            const provider = buildProvider(providerData);
+
+            const snapshot = await snapshotWorkspace({
                 root: tpl.root,
                 originRoot: tpl.originRoot,
                 profileDir: UNUSED_PROFILE_DIR,
                 env: tpl.env,
-                durableState: buildProvider(buildDurableStateSnapshot({ configuration: { undockableWindow: false } })),
-            }),
-        ]);
+                durableState: provider,
+            });
 
-        expect(snapA.durableState.status).toBe("captured");
-        expect(snapB.durableState.status).toBe("captured");
-        // Same comparison shape as the RED-proof above; it distinguishes two DIFFERENT captured
-        // payloads too, not just captured-vs-not-captured -- proving this seam is not short-
-        // circuited to a single constant result regardless of what the provider returns.
-        expect(snapA.durableState).not.toEqual(snapB.durableState);
-    }, FIXTURE_TIMEOUT_MS);
+            expect(provider.snapshotDurableState).toHaveBeenCalledTimes(1);
+            expect(snapshot.durableState).toEqual(captured(providerData));
+        },
+        FIXTURE_TIMEOUT_MS,
+    );
+
+    it(
+        "RED-proof: the not-captured seam and the captured seam never compare equal -- Phase 6's actual defence",
+        async () => {
+            const tpl = await seedMinimalTemplate("intelligit-durable-redproof-");
+
+            const withoutProvider = await snapshotWorkspace({
+                root: tpl.root,
+                originRoot: tpl.originRoot,
+                profileDir: UNUSED_PROFILE_DIR,
+                env: tpl.env,
+            });
+            const withProvider = await snapshotWorkspace({
+                root: tpl.root,
+                originRoot: tpl.originRoot,
+                profileDir: UNUSED_PROFILE_DIR,
+                env: tpl.env,
+                durableState: buildProvider(buildDurableStateSnapshot()),
+            });
+
+            // The literal claim PLAN.md's work order asks to be proven: a `not-captured` durable
+            // section must not compare equal to a `captured` one, even when the captured payload is
+            // itself empty -- otherwise a Phase 6 comparison against a template snapshot taken WITH a
+            // live host (captured) could pass against a later copy snapshotted WITHOUT one
+            // (not-captured), and a real regression in durable state would never be caught.
+            expect(withoutProvider.durableState).not.toEqual(withProvider.durableState);
+            expect(withoutProvider).not.toEqual(withProvider);
+        },
+        FIXTURE_TIMEOUT_MS,
+    );
+
+    it(
+        "RED-proof: the provider's actual data flows through unmangled, not a hardcoded constant",
+        async () => {
+            const tpl = await seedMinimalTemplate("intelligit-durable-datadiffers-");
+
+            const [snapA, snapB] = await Promise.all([
+                snapshotWorkspace({
+                    root: tpl.root,
+                    originRoot: tpl.originRoot,
+                    profileDir: UNUSED_PROFILE_DIR,
+                    env: tpl.env,
+                    durableState: buildProvider(
+                        buildDurableStateSnapshot({ configuration: { undockableWindow: true } }),
+                    ),
+                }),
+                snapshotWorkspace({
+                    root: tpl.root,
+                    originRoot: tpl.originRoot,
+                    profileDir: UNUSED_PROFILE_DIR,
+                    env: tpl.env,
+                    durableState: buildProvider(
+                        buildDurableStateSnapshot({ configuration: { undockableWindow: false } }),
+                    ),
+                }),
+            ]);
+
+            expect(snapA.durableState.status).toBe("captured");
+            expect(snapB.durableState.status).toBe("captured");
+            // Same comparison shape as the RED-proof above; it distinguishes two DIFFERENT captured
+            // payloads too, not just captured-vs-not-captured -- proving this seam is not short-
+            // circuited to a single constant result regardless of what the provider returns.
+            expect(snapA.durableState).not.toEqual(snapB.durableState);
+        },
+        FIXTURE_TIMEOUT_MS,
+    );
 });
 
 describe("inventoryDirectory -- text capture limit boundary (fsInventory.ts)", () => {
@@ -246,8 +289,14 @@ describe("inventoryDirectory -- text capture limit boundary (fsInventory.ts)", (
 
     it("captures decoded text for a file at the default limit, and withholds it for one byte over -- digest is captured either way", async () => {
         scratch = await mkdtemp(path.join(tmpdir(), "intelligit-textcapture-"));
-        await writeFile(path.join(scratch, "at-limit.txt"), "a".repeat(DEFAULT_TEXT_CAPTURE_LIMIT_BYTES));
-        await writeFile(path.join(scratch, "over-limit.txt"), "a".repeat(DEFAULT_TEXT_CAPTURE_LIMIT_BYTES + 1));
+        await writeFile(
+            path.join(scratch, "at-limit.txt"),
+            "a".repeat(DEFAULT_TEXT_CAPTURE_LIMIT_BYTES),
+        );
+        await writeFile(
+            path.join(scratch, "over-limit.txt"),
+            "a".repeat(DEFAULT_TEXT_CAPTURE_LIMIT_BYTES + 1),
+        );
 
         const entries = await inventoryDirectory({ root: scratch });
         const byPath = new Map(entries.map((entry) => [entry.relativePath, entry]));

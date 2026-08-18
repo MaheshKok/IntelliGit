@@ -116,7 +116,11 @@ export async function rehydrateCopy(
  * `git config` itself (not a raw file read), so a git-version quirk in how `config` writes the
  * file cannot silently defeat this check.
  */
-async function verifyOriginRewrite(copyRoot: string, expectedUrl: string, env: NodeJS.ProcessEnv): Promise<void> {
+async function verifyOriginRewrite(
+    copyRoot: string,
+    expectedUrl: string,
+    env: NodeJS.ProcessEnv,
+): Promise<void> {
     const readBack = await runGit(copyRoot, ["config", "--get", "remote.origin.url"], env);
     if (readBack !== expectedUrl) {
         throw new Error(
@@ -133,7 +137,11 @@ async function verifyOriginRewrite(copyRoot: string, expectedUrl: string, env: N
  * despite PLAN.md step 9's own "fsck does not run per copy" cost concern, which is about a much
  * heavier operation (`fsck` walks and verifies every object's content).
  */
-async function verifyAlternatesContained(copyRoot: string, copyOriginRoot: string, env: NodeJS.ProcessEnv): Promise<void> {
+async function verifyAlternatesContained(
+    copyRoot: string,
+    copyOriginRoot: string,
+    env: NodeJS.ProcessEnv,
+): Promise<void> {
     const [workspaceCommonDir, originCommonDir] = await Promise.all([
         resolveCommonDir(copyRoot, env),
         resolveCommonDir(copyOriginRoot, env),

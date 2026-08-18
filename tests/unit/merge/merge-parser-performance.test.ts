@@ -77,7 +77,8 @@ describe("conflict parser performance", () => {
         // Both sides collide on every 120th line (lcm of 40 and 60), so the
         // parser must emit exactly that many true conflicts.
         const trueConflicts = segments.filter(
-            (seg): seg is ConflictSegment => seg.type === "conflict" && seg.changeKind === "conflict",
+            (seg): seg is ConflictSegment =>
+                seg.type === "conflict" && seg.changeKind === "conflict",
         );
         expect(trueConflicts).toHaveLength(TOTAL_LINES / 120);
 

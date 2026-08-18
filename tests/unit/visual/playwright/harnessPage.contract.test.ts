@@ -47,8 +47,13 @@ describe("harness page visual environment contract", () => {
             /await page\.route\("\*\*\/\*",[\s\S]*?\);/,
         )?.[0];
         expect(routeRegistration).toBeDefined();
-        expect(routeRegistration).toContain(
-            "routeHarnessRequest(route, HARNESS_ORIGIN, DIST_DIR, () => documentHtml, networkEscapes)",
+        // Prettier reflows this call across lines whenever the argument list crosses the print
+        // width, so matching the source layout would make the formatter -- not a behaviour change
+        // -- the thing that turns this red. Collapsing whitespace and the trailing comma leaves the
+        // assertion policing what it means to police: the delegation and its exact argument list.
+        const withoutLayout = (source: string) => source.replace(/\s+/g, "").replace(/,\)/g, ")");
+        expect(withoutLayout(routeRegistration ?? "")).toContain(
+            "routeHarnessRequest(route,HARNESS_ORIGIN,DIST_DIR,()=>documentHtml,networkEscapes)",
         );
     });
 });

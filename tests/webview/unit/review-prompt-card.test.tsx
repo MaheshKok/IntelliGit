@@ -108,9 +108,7 @@ describe("ReviewPromptCard", () => {
 
         const backdrop = container.querySelector<HTMLElement>('[role="presentation"]');
         act(() => {
-            backdrop?.dispatchEvent(
-                new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
-            );
+            backdrop?.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
         });
         expect(onAnswer).toHaveBeenLastCalledWith({ decision: "later" });
     });

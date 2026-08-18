@@ -56,7 +56,9 @@ import { handleCommitContextAction } from "../../../src/commands/commitCommands"
 const HASH = "a".repeat(40);
 // Derived from the production decision map rather than restated: a new protocol action lands in
 // whichever matrix its own declared decision puts it in, instead of quietly in neither.
-const fencedActions = COMMIT_ACTION_VALUES.filter((action) => COMMIT_ACTION_FENCE_DECISIONS[action]);
+const fencedActions = COMMIT_ACTION_VALUES.filter(
+    (action) => COMMIT_ACTION_FENCE_DECISIONS[action],
+);
 const unfencedActions = COMMIT_ACTION_VALUES.filter(
     (action) => !COMMIT_ACTION_FENCE_DECISIONS[action],
 );

@@ -55,8 +55,16 @@ describe("normalizeSnapshot -- two raw copies of one seed compare equal (step 8'
         await rm(copy1Dest, { recursive: true, force: true });
         await rm(copy2Dest, { recursive: true, force: true });
         scratchDirs.push(copy1Dest, copy2Dest);
-        await cp(seedDest, copy1Dest, { recursive: true, preserveTimestamps: true, verbatimSymlinks: true });
-        await cp(seedDest, copy2Dest, { recursive: true, preserveTimestamps: true, verbatimSymlinks: true });
+        await cp(seedDest, copy1Dest, {
+            recursive: true,
+            preserveTimestamps: true,
+            verbatimSymlinks: true,
+        });
+        await cp(seedDest, copy2Dest, {
+            recursive: true,
+            preserveTimestamps: true,
+            verbatimSymlinks: true,
+        });
 
         const roots1 = {
             root: path.join(copy1Dest, "workspace"),
@@ -93,11 +101,23 @@ describe("normalizeSnapshot -- two raw copies of one seed compare equal (step 8'
         await rm(copy1Dest, { recursive: true, force: true });
         await rm(copy2Dest, { recursive: true, force: true });
         scratchDirs.push(copy1Dest, copy2Dest);
-        await cp(seedDest, copy1Dest, { recursive: true, preserveTimestamps: true, verbatimSymlinks: true });
-        await cp(seedDest, copy2Dest, { recursive: true, preserveTimestamps: true, verbatimSymlinks: true });
+        await cp(seedDest, copy1Dest, {
+            recursive: true,
+            preserveTimestamps: true,
+            verbatimSymlinks: true,
+        });
+        await cp(seedDest, copy2Dest, {
+            recursive: true,
+            preserveTimestamps: true,
+            verbatimSymlinks: true,
+        });
 
         // Deliberately break copy2: add an extra untracked file that copy1 never gets.
-        await writeFile(path.join(copy2Dest, "workspace", "only-in-copy2.txt"), "divergence\n", "utf8");
+        await writeFile(
+            path.join(copy2Dest, "workspace", "only-in-copy2.txt"),
+            "divergence\n",
+            "utf8",
+        );
 
         const roots1 = {
             root: path.join(copy1Dest, "workspace"),
@@ -125,7 +145,11 @@ describe("normalizeSnapshot -- two raw copies of one seed compare equal (step 8'
 
 describe("normalizeSnapshot -- placeholder rewriting", () => {
     it("rewrites repoRoot, commonDir, and nested fs-entry text to <ROOT>/<ORIGIN>/<PROFILE>", () => {
-        const roots = { root: "/tmp/fakeworkspace", originRoot: "/tmp/fakeorigin.git", profileDir: "/tmp/fakeprofile" };
+        const roots = {
+            root: "/tmp/fakeworkspace",
+            originRoot: "/tmp/fakeorigin.git",
+            profileDir: "/tmp/fakeprofile",
+        };
         const fakeEntry: FsEntry = {
             relativePath: ".git/config",
             type: "file",
@@ -146,7 +170,10 @@ describe("normalizeSnapshot -- placeholder rewriting", () => {
                 reflogs: captured([]),
                 worktrees: captured([]),
                 gitDirState: captured({}),
-                objectStore: captured({ objects: [], alternates: { present: false, rawLines: [], resolvedAbsolutePaths: [] } }),
+                objectStore: captured({
+                    objects: [],
+                    alternates: { present: false, rawLines: [], resolvedAbsolutePaths: [] },
+                }),
             },
             origin: {
                 repoRoot: roots.originRoot,
@@ -159,7 +186,10 @@ describe("normalizeSnapshot -- placeholder rewriting", () => {
                 reflogs: captured([]),
                 worktrees: captured([]),
                 gitDirState: captured({}),
-                objectStore: captured({ objects: [], alternates: { present: false, rawLines: [], resolvedAbsolutePaths: [] } }),
+                objectStore: captured({
+                    objects: [],
+                    alternates: { present: false, rawLines: [], resolvedAbsolutePaths: [] },
+                }),
             },
             durableState: notCaptured<never>("no provider"),
         };
@@ -169,7 +199,9 @@ describe("normalizeSnapshot -- placeholder rewriting", () => {
         expect(normalized.workspace.repoRoot).toBe("<ROOT>");
         expect(normalized.workspace.commonDir).toBe("<ROOT>/.git");
         expect(normalized.origin.repoRoot).toBe("<ORIGIN>");
-        const rewrittenEntry = (normalized.workspace.workingTree as { status: "captured"; data: readonly FsEntry[] }).data[0];
+        const rewrittenEntry = (
+            normalized.workspace.workingTree as { status: "captured"; data: readonly FsEntry[] }
+        ).data[0];
         expect(rewrittenEntry?.text).toBe('[remote "origin"]\n\turl = file://<ORIGIN>\n');
         // Digest must be recomputed from the NEW text, not left pointing at stale bytes.
         expect(rewrittenEntry?.digest).not.toBe("original-digest-before-rewrite");
@@ -180,7 +212,11 @@ describe("normalizeSnapshot -- placeholder rewriting", () => {
     });
 
     it("never touches the filesystem: normalizing a snapshot for a profileDir that does not exist does not throw", () => {
-        const roots = { root: "/tmp/whatever", originRoot: "/tmp/whatever-origin", profileDir: "/definitely/not/a/real/path" };
+        const roots = {
+            root: "/tmp/whatever",
+            originRoot: "/tmp/whatever-origin",
+            profileDir: "/definitely/not/a/real/path",
+        };
         const snapshot = {
             workspace: {
                 repoRoot: roots.root,
@@ -193,7 +229,10 @@ describe("normalizeSnapshot -- placeholder rewriting", () => {
                 reflogs: captured([]),
                 worktrees: captured([]),
                 gitDirState: captured({}),
-                objectStore: captured({ objects: [], alternates: { present: false, rawLines: [], resolvedAbsolutePaths: [] } }),
+                objectStore: captured({
+                    objects: [],
+                    alternates: { present: false, rawLines: [], resolvedAbsolutePaths: [] },
+                }),
             },
             origin: {
                 repoRoot: roots.originRoot,
@@ -206,7 +245,10 @@ describe("normalizeSnapshot -- placeholder rewriting", () => {
                 reflogs: captured([]),
                 worktrees: captured([]),
                 gitDirState: captured({}),
-                objectStore: captured({ objects: [], alternates: { present: false, rawLines: [], resolvedAbsolutePaths: [] } }),
+                objectStore: captured({
+                    objects: [],
+                    alternates: { present: false, rawLines: [], resolvedAbsolutePaths: [] },
+                }),
             },
             durableState: notCaptured<never>("no provider"),
         };
@@ -256,7 +298,10 @@ describe("normalizeSnapshot -- realpath duality", () => {
                 reflogs: captured([]),
                 worktrees: captured([]),
                 gitDirState: captured({ common: [entryWithRealpathSpelling] }),
-                objectStore: captured({ objects: [], alternates: { present: false, rawLines: [], resolvedAbsolutePaths: [] } }),
+                objectStore: captured({
+                    objects: [],
+                    alternates: { present: false, rawLines: [], resolvedAbsolutePaths: [] },
+                }),
             },
             origin: {
                 repoRoot: "/tmp/unused-origin",
@@ -269,7 +314,10 @@ describe("normalizeSnapshot -- realpath duality", () => {
                 reflogs: captured([]),
                 worktrees: captured([]),
                 gitDirState: captured({}),
-                objectStore: captured({ objects: [], alternates: { present: false, rawLines: [], resolvedAbsolutePaths: [] } }),
+                objectStore: captured({
+                    objects: [],
+                    alternates: { present: false, rawLines: [], resolvedAbsolutePaths: [] },
+                }),
             },
             durableState: notCaptured<never>("no provider"),
         };
@@ -281,8 +329,12 @@ describe("normalizeSnapshot -- realpath duality", () => {
         });
 
         expect(normalized.workspace.repoRoot).toBe("<ROOT>");
-        const rewritten = (normalized.workspace.gitDirState as { status: "captured"; data: Record<string, readonly FsEntry[]> })
-            .data.common?.[0];
+        const rewritten = (
+            normalized.workspace.gitDirState as {
+                status: "captured";
+                data: Record<string, readonly FsEntry[]>;
+            }
+        ).data.common?.[0];
         // The entry's `text` used the REALPATH'd spelling, which is not the literal root string,
         // yet still collapses to the placeholder.
         expect(rewritten?.text).toBe("<ROOT>/.git\n");
@@ -291,9 +343,27 @@ describe("normalizeSnapshot -- realpath duality", () => {
 
 describe("normalizeSnapshot -- comparison stays case-sensitive on recorded names", () => {
     it("does not fold the case of a relativePath, so two entries differing only in case remain distinct", () => {
-        const roots = { root: "/tmp/case-test", originRoot: "/tmp/case-test-origin", profileDir: "/tmp/case-test-profile" };
-        const lower: FsEntry = { relativePath: "file.txt", type: "file", mode: 0o644, digest: "d1", text: null, symlinkTarget: null };
-        const upper: FsEntry = { relativePath: "FILE.txt", type: "file", mode: 0o644, digest: "d2", text: null, symlinkTarget: null };
+        const roots = {
+            root: "/tmp/case-test",
+            originRoot: "/tmp/case-test-origin",
+            profileDir: "/tmp/case-test-profile",
+        };
+        const lower: FsEntry = {
+            relativePath: "file.txt",
+            type: "file",
+            mode: 0o644,
+            digest: "d1",
+            text: null,
+            symlinkTarget: null,
+        };
+        const upper: FsEntry = {
+            relativePath: "FILE.txt",
+            type: "file",
+            mode: 0o644,
+            digest: "d2",
+            text: null,
+            symlinkTarget: null,
+        };
 
         const buildSnapshot = (entries: readonly FsEntry[]) => ({
             workspace: {
@@ -307,7 +377,10 @@ describe("normalizeSnapshot -- comparison stays case-sensitive on recorded names
                 reflogs: captured([]),
                 worktrees: captured([]),
                 gitDirState: captured({}),
-                objectStore: captured({ objects: [], alternates: { present: false, rawLines: [], resolvedAbsolutePaths: [] } }),
+                objectStore: captured({
+                    objects: [],
+                    alternates: { present: false, rawLines: [], resolvedAbsolutePaths: [] },
+                }),
             },
             origin: {
                 repoRoot: roots.originRoot,
@@ -320,7 +393,10 @@ describe("normalizeSnapshot -- comparison stays case-sensitive on recorded names
                 reflogs: captured([]),
                 worktrees: captured([]),
                 gitDirState: captured({}),
-                objectStore: captured({ objects: [], alternates: { present: false, rawLines: [], resolvedAbsolutePaths: [] } }),
+                objectStore: captured({
+                    objects: [],
+                    alternates: { present: false, rawLines: [], resolvedAbsolutePaths: [] },
+                }),
             },
             durableState: notCaptured<never>("no provider"),
         });

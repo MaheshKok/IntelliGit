@@ -755,9 +755,7 @@ describe("UndockedViewProvider commit-message generation", () => {
             expect.objectContaining({ type: "update", wholeIndexOperationInProgress: true }),
         );
 
-        gitOps.rootGitOps.getActiveOperation.mockRejectedValueOnce(
-            new Error("whole-index failed"),
-        );
+        gitOps.rootGitOps.getActiveOperation.mockRejectedValueOnce(new Error("whole-index failed"));
         await send({ type: "stashSelect", index: 0 });
         expect(postMessage).toHaveBeenCalledWith(
             expect.objectContaining({ type: "error", message: "whole-index failed" }),

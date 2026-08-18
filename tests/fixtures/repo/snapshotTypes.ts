@@ -145,7 +145,9 @@ export interface DurableStateSnapshot {
         readonly global: Readonly<Record<string, unknown>>;
         readonly workspace: Readonly<Record<string, unknown>>;
     };
-    readonly secrets: Readonly<Record<string, { readonly present: boolean; readonly digest?: string }>>;
+    readonly secrets: Readonly<
+        Record<string, { readonly present: boolean; readonly digest?: string }>
+    >;
     readonly configuration: Readonly<Record<string, unknown>>;
     readonly webviewState: Readonly<Record<string, Readonly<Record<string, unknown>>>>;
 }

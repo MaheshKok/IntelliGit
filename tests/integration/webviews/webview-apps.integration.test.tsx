@@ -1112,21 +1112,16 @@ describe("UndockedApp integration", () => {
               }
             | undefined;
 
-        expect(
-            widthOf("undocked-branch-section") + widthOf("undocked-graph-section"),
-        ).toBeCloseTo(initialBranchGraphTotal, 5);
+        expect(widthOf("undocked-branch-section") + widthOf("undocked-graph-section")).toBeCloseTo(
+            initialBranchGraphTotal,
+            5,
+        );
         expect(columnWidthMessage?.repositoryWidth).toBeCloseTo(
             widthOf("undocked-repository-section"),
             5,
         );
-        expect(columnWidthMessage?.branchWidth).toBeCloseTo(
-            widthOf("undocked-branch-section"),
-            5,
-        );
-        expect(columnWidthMessage?.graphWidth).toBeCloseTo(
-            widthOf("undocked-graph-section"),
-            5,
-        );
+        expect(columnWidthMessage?.branchWidth).toBeCloseTo(widthOf("undocked-branch-section"), 5);
+        expect(columnWidthMessage?.graphWidth).toBeCloseTo(widthOf("undocked-graph-section"), 5);
         expect(columnWidthMessage?.infoWidth).toBeCloseTo(widthOf("undocked-info-section"), 5);
         expect(columnWidthMessage?.commitPanelWidth).toBeCloseTo(
             widthOf("undocked-commit-panel-section"),

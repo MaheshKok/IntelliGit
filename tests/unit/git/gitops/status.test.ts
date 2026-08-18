@@ -264,7 +264,9 @@ describe("GitOps", () => {
             const ops = new GitOps(executor);
             const branches = await ops.getBranches();
 
-            expect(branches.find((branch) => branch.name === "upstream/trunk")?.isDefault).toBeUndefined();
+            expect(
+                branches.find((branch) => branch.name === "upstream/trunk")?.isDefault,
+            ).toBeUndefined();
         });
     });
 

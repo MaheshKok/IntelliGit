@@ -72,18 +72,18 @@ describe("operation fence", () => {
     ] as const)("shows the translated %s rejection", async (operation, message) => {
         mocks.getActiveOperation.mockResolvedValueOnce(operation);
 
-        await expect(rejectCommitActionWhenOperationInProgress("dropCommit", gitOps())).resolves.toBe(
-            true,
-        );
+        await expect(
+            rejectCommitActionWhenOperationInProgress("dropCommit", gitOps()),
+        ).resolves.toBe(true);
 
         expect(mocks.l10nT).toHaveBeenCalledWith(message);
         expect(mocks.showErrorMessage).toHaveBeenCalledWith(`xx:${message}`);
     });
 
     it("allows a fenced action when no whole-index operation is active", async () => {
-        await expect(rejectCommitActionWhenOperationInProgress("dropCommit", gitOps())).resolves.toBe(
-            false,
-        );
+        await expect(
+            rejectCommitActionWhenOperationInProgress("dropCommit", gitOps()),
+        ).resolves.toBe(false);
 
         expect(mocks.showErrorMessage).not.toHaveBeenCalled();
     });
@@ -121,9 +121,9 @@ describe("operation fence", () => {
     it("fails closed when the operation probe cannot be completed", async () => {
         mocks.getActiveOperation.mockRejectedValueOnce(new Error("EACCES"));
 
-        await expect(rejectCommitActionWhenOperationInProgress("dropCommit", gitOps())).resolves.toBe(
-            true,
-        );
+        await expect(
+            rejectCommitActionWhenOperationInProgress("dropCommit", gitOps()),
+        ).resolves.toBe(true);
 
         expect(mocks.showErrorMessage).toHaveBeenCalledWith(
             "xx:Unable to check whether a Git operation is in progress. Try again before changing history.",

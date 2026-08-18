@@ -15,12 +15,16 @@ describe("mapWithConcurrency", () => {
     it("never exceeds the concurrency limit", async () => {
         let active = 0;
         let peak = 0;
-        await mapWithConcurrency(Array.from({ length: 20 }, (_, i) => i), 3, async () => {
-            active += 1;
-            peak = Math.max(peak, active);
-            await new Promise((resolve) => setTimeout(resolve, 5));
-            active -= 1;
-        });
+        await mapWithConcurrency(
+            Array.from({ length: 20 }, (_, i) => i),
+            3,
+            async () => {
+                active += 1;
+                peak = Math.max(peak, active);
+                await new Promise((resolve) => setTimeout(resolve, 5));
+                active -= 1;
+            },
+        );
         expect(peak).toBeLessThanOrEqual(3);
         expect(peak).toBeGreaterThan(1);
     });
@@ -28,10 +32,14 @@ describe("mapWithConcurrency", () => {
     it("processes every item exactly once", async () => {
         const seen = new Set<number>();
         let calls = 0;
-        await mapWithConcurrency(Array.from({ length: 50 }, (_, i) => i), 7, async (item) => {
-            calls += 1;
-            seen.add(item);
-        });
+        await mapWithConcurrency(
+            Array.from({ length: 50 }, (_, i) => i),
+            7,
+            async (item) => {
+                calls += 1;
+                seen.add(item);
+            },
+        );
         expect(calls).toBe(50);
         expect(seen.size).toBe(50);
     });

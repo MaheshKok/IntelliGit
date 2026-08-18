@@ -114,10 +114,7 @@ export interface RepositoryScenario {
     readonly summary: string;
     /** Builds this scenario into `destination` (must be empty or non-existent). THROWS if the
      * resulting repository does not satisfy this scenario's defining postcondition. */
-    prepare(
-        destination: string,
-        options?: ScenarioPreparationOptions,
-    ): Promise<ScenarioWorkspace>;
+    prepare(destination: string, options?: ScenarioPreparationOptions): Promise<ScenarioWorkspace>;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -340,30 +337,47 @@ export async function assertPushedTipPostcondition(
     env: NodeJS.ProcessEnv,
 ): Promise<void> {
     try {
-        const [headRef, counts, status, localHead, parentLine, subject, changedPaths, localRemoteTracking, originHead] =
-            await Promise.all([
-                runGit(root, ["symbolic-ref", "--quiet", "HEAD"], env),
-                runGit(
-                    root,
-                    ["rev-list", "--left-right", "--count", `${FIXTURE_REFS.main}...@{upstream}`],
-                    env,
-                ),
-                runGit(root, ["status", "--porcelain"], env),
-                runGit(root, ["rev-parse", "HEAD"], env),
-                runGit(root, ["show", "-s", "--format=%P", "HEAD"], env),
-                runGit(root, ["show", "-s", "--format=%s", "HEAD"], env),
-                runGit(
-                    root,
-                    ["diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD", "--", PUSHED_TIP_FIXTURE.path],
-                    env,
-                ),
-                runGit(
-                    root,
-                    ["rev-parse", `refs/remotes/${FIXTURE_REFS.remote}/${FIXTURE_REFS.main}`],
-                    env,
-                ),
-                runGit(originRoot, ["rev-parse", `refs/heads/${FIXTURE_REFS.main}`], env),
-            ]);
+        const [
+            headRef,
+            counts,
+            status,
+            localHead,
+            parentLine,
+            subject,
+            changedPaths,
+            localRemoteTracking,
+            originHead,
+        ] = await Promise.all([
+            runGit(root, ["symbolic-ref", "--quiet", "HEAD"], env),
+            runGit(
+                root,
+                ["rev-list", "--left-right", "--count", `${FIXTURE_REFS.main}...@{upstream}`],
+                env,
+            ),
+            runGit(root, ["status", "--porcelain"], env),
+            runGit(root, ["rev-parse", "HEAD"], env),
+            runGit(root, ["show", "-s", "--format=%P", "HEAD"], env),
+            runGit(root, ["show", "-s", "--format=%s", "HEAD"], env),
+            runGit(
+                root,
+                [
+                    "diff-tree",
+                    "--no-commit-id",
+                    "--name-only",
+                    "-r",
+                    "HEAD",
+                    "--",
+                    PUSHED_TIP_FIXTURE.path,
+                ],
+                env,
+            ),
+            runGit(
+                root,
+                ["rev-parse", `refs/remotes/${FIXTURE_REFS.remote}/${FIXTURE_REFS.main}`],
+                env,
+            ),
+            runGit(originRoot, ["rev-parse", `refs/heads/${FIXTURE_REFS.main}`], env),
+        ]);
         const [ahead, behind] = counts.split(/\s+/).map(Number);
         const parentCount = parentLine.length === 0 ? 0 : parentLine.split(/\s+/).length;
         const tipContainsExpectedPath = changedPaths.split(/\s+/).includes(PUSHED_TIP_FIXTURE.path);
@@ -967,7 +981,8 @@ export const REPOSITORY_SCENARIOS: readonly RepositoryScenario[] = [
     },
     {
         id: "ahead-only",
-        summary: "Clean tree, with local main exactly one commit ahead of an unchanged origin/main.",
+        summary:
+            "Clean tree, with local main exactly one commit ahead of an unchanged origin/main.",
         prepare: prepareAheadOnly,
     },
     {
