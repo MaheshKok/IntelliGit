@@ -5,6 +5,12 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.25.9] - 2026-08-18
+
+### Fixed
+
+- Fixed shelf and repository actions refusing to run — permanently — after a crash left a damaged marker file behind. IntelliGit marks a repository as busy while it is changing it, and clears the mark when it finishes. If the extension died at the exact moment that mark was being rewritten, what it left behind could no longer be read. A mark that cannot be read names no owner, and IntelliGit treated that the same as one belonging to a process still working, so it waited for an owner that was never coming: every later shelf action reported the repository as busy, and no amount of waiting, retrying or reopening the window cleared it. Only deleting the file by hand did. An unreadable mark is now judged by when it was last written, exactly as a readable one is judged by its owner's last sign of life, and is cleared once nothing has touched it for thirty seconds. A mark that has only just appeared is left alone, so this never interrupts a window that has just started working.
+- Fixed two windows being able to change the same repository at the same time when one of them stalled. IntelliGit refreshes its busy mark every few seconds, and it used to do that by emptying the file and then writing the new mark into it. A window frozen between those two steps — by a long operation, or by the machine being under load — left the mark empty for as long as the freeze lasted; an empty mark names no owner, so a second window could conclude the first was gone and take the repository over while it was still working. The mark is now written elsewhere and swapped into place complete, so it can never be seen half-written: a stalled window is still recognised as the owner and is left alone. A window that is interrupted before its own mark lands now checks the mark back before it starts, so it cannot go on believing it holds a repository that has since been handed to someone else.
 ## [0.25.8] - 2026-08-18
 
 ### Fixed
