@@ -5,6 +5,12 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.25.10] - 2026-08-18
+
+### Fixed
+
+- Published 0.25.9, which was built and then never released. A test covering how IntelliGit writes the marker that names the window currently changing a repository was checking the wrong thing: it identified the marker file by a number the operating system is free to hand out again once a file is gone, and every renewal of the marker releases the previous one. On Linux that number came straight back, so the test's verdict depended on how many renewals happened to fit in the moment it waited — it passed twice and then failed, which stopped the release. It now holds the file open and checks that the renewal leaves it untouched, which is the behaviour that actually matters. Nothing in the extension itself changed between the two versions.
+
 ## [0.25.9] - 2026-08-18
 
 ### Fixed
