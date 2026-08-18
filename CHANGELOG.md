@@ -5,6 +5,13 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.25.8] - 2026-08-18
+
+### Fixed
+
+- Fixed the extension stopping altogether when a Git command finishes before it has been given all of its input. Only the command itself was watched for failure, never the channel used to feed it, and a failure on that channel is not one the surrounding code is able to catch — so rather than that single command reporting a problem, everything came to a halt. Nothing is lost by ignoring that particular failure: the command's own exit status and error output already describe what happened. Any other failure to hand over the input is still reported, because a Git command finishes successfully on however much of its input it managed to read — so ignoring those too would have turned a command that ran on half its input into one that appears to have worked.
+- Fixed the list of shelves failing outright instead of waiting whenever a shelf operation was already under way. Reading the list does not pass through the queue that shelf changes pass through, so it met a change in progress head-on and gave up at once, and the commit panel quietly showed the shelves it had last seen instead — stale contents, with nothing reported as wrong. A read now waits up to a second for the change to finish instead of giving up at once, and reports the store as busy only if it is still held after that. The wait is kept short on purpose: this read runs as part of the commit panel's periodic refresh, alongside the working-tree status and branch information, so a longer one would hold up everything else on the panel to little benefit.
+
 ## [0.25.7] - 2026-08-17
 
 ### Fixed
