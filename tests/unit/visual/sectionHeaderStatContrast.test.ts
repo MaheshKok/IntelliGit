@@ -83,10 +83,9 @@ const fixtureFiles = readdirSync(FIXTURE_DIR).filter((name) => name.endsWith(".j
 describe("commit-panel section header totals stay legible", () => {
     it("finds the host fixtures to measure against", () => {
         // Without this the suite below would silently iterate an empty list and pass.
-        expect(
-            fixtureFiles.length,
-            `no *.json fixtures in ${FIXTURE_DIR}`,
-        ).toBeGreaterThanOrEqual(4);
+        expect(fixtureFiles.length, `no *.json fixtures in ${FIXTURE_DIR}`).toBeGreaterThanOrEqual(
+            4,
+        );
     });
 
     /** Every cell the loop below actually measures — known at collection time, so the

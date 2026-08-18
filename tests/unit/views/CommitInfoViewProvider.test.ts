@@ -239,45 +239,42 @@ describe("CommitInfoViewProvider redundant setCommitDetail post", () => {
      * ordering. Selecting a different commit mid-window separates them: the correct ordering
      * sends `X` then `Y`; the broken one sends `X`, `Y`, `Y`.
      */
-    it(
-        "does not re-post a detail that arrived while the ready handler was still awaiting",
-        async () => {
-            const provider = new CommitInfoViewProvider(createFakeExtensionUri());
-            const { webviewView, posted, receiveMessage } = createInspectableFakeWebviewView();
+    it("does not re-post a detail that arrived while the ready handler was still awaiting", async () => {
+        const provider = new CommitInfoViewProvider(createFakeExtensionUri());
+        const { webviewView, posted, receiveMessage } = createInspectableFakeWebviewView();
 
-            provider.resolveWebviewView(webviewView, INERT_CONTEXT, INERT_TOKEN);
-            await receiveMessage({ type: "ready" });
+        provider.resolveWebviewView(webviewView, INERT_CONTEXT, INERT_TOKEN);
+        await receiveMessage({ type: "ready" });
 
-            provider.setCommitDetail(sampleDetail());
+        provider.setCommitDetail(sampleDetail());
+        await flushMicrotasks();
+        expect(setDetailMessages(posted)).toHaveLength(1);
+
+        // The reload's `ready`. `initIconThemeData` is where that handler yields, so driving
+        // the selection from inside it puts the post exactly in the window under test.
+        //
+        // The guard is load-bearing, not defensive: `setCommitDetail` starts
+        // `decorateAndStoreDetail`, which awaits this very method again. Without it the
+        // stand-in re-enters itself and the test dies of heap exhaustion rather than
+        // reporting on the ordering.
+        const iconTheme = (provider as unknown as { iconTheme: IconThemeService }).iconTheme;
+        let selectedMidWindow = false;
+        vi.spyOn(iconTheme, "initIconThemeData").mockImplementation(async () => {
+            if (selectedMidWindow) return;
+            selectedMidWindow = true;
+            provider.setCommitDetail(otherDetail());
             await flushMicrotasks();
-            expect(setDetailMessages(posted)).toHaveLength(1);
+        });
 
-            // The reload's `ready`. `initIconThemeData` is where that handler yields, so driving
-            // the selection from inside it puts the post exactly in the window under test.
-            //
-            // The guard is load-bearing, not defensive: `setCommitDetail` starts
-            // `decorateAndStoreDetail`, which awaits this very method again. Without it the
-            // stand-in re-enters itself and the test dies of heap exhaustion rather than
-            // reporting on the ordering.
-            const iconTheme = (provider as unknown as { iconTheme: IconThemeService }).iconTheme;
-            let selectedMidWindow = false;
-            vi.spyOn(iconTheme, "initIconThemeData").mockImplementation(async () => {
-                if (selectedMidWindow) return;
-                selectedMidWindow = true;
-                provider.setCommitDetail(otherDetail());
-                await flushMicrotasks();
-            });
+        await receiveMessage({ type: "ready" });
+        await flushMicrotasks();
 
-            await receiveMessage({ type: "ready" });
-            await flushMicrotasks();
-
-            const messages = setDetailMessages(posted);
-            expect(
-                messages.map((message) => (message.detail as CommitDetail).shortHash),
-                "the second commit must reach the webview exactly once: the reset belongs before " +
-                    "the await, so the mid-window post is the one recorded and the handler's " +
-                    "closing post is suppressed as the duplicate it is",
-            ).toEqual(["b08ddf03", "70fa5286"]);
-        },
-    );
+        const messages = setDetailMessages(posted);
+        expect(
+            messages.map((message) => (message.detail as CommitDetail).shortHash),
+            "the second commit must reach the webview exactly once: the reset belongs before " +
+                "the await, so the mid-window post is the one recorded and the handler's " +
+                "closing post is suppressed as the duplicate it is",
+        ).toEqual(["b08ddf03", "70fa5286"]);
+    });
 });

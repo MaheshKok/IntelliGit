@@ -56,7 +56,9 @@ function porcelainRecords(records: Array<{ path: string; branch: string }>): str
     return records
         .flatMap((record, index) => [
             `worktree ${record.path}`,
-            `HEAD ${String(index + 1).repeat(40).slice(0, 40)}`,
+            `HEAD ${String(index + 1)
+                .repeat(40)
+                .slice(0, 40)}`,
             `branch refs/heads/${record.branch}`,
             "",
         ])
@@ -194,12 +196,7 @@ describe("WorktreeService", () => {
             },
         });
 
-        expect(executor.run).toHaveBeenNthCalledWith(1, [
-            "worktree",
-            "list",
-            "--porcelain",
-            "-z",
-        ]);
+        expect(executor.run).toHaveBeenNthCalledWith(1, ["worktree", "list", "--porcelain", "-z"]);
         expect(executor.run).toHaveBeenNthCalledWith(2, [
             "worktree",
             "add",
@@ -213,12 +210,7 @@ describe("WorktreeService", () => {
             "--set-upstream-to=origin/feature/x",
             "feature/x",
         ]);
-        expect(executor.run).toHaveBeenNthCalledWith(4, [
-            "worktree",
-            "list",
-            "--porcelain",
-            "-z",
-        ]);
+        expect(executor.run).toHaveBeenNthCalledWith(4, ["worktree", "list", "--porcelain", "-z"]);
     });
 
     it("copies configured include files into a new worktree and skips missing entries", async () => {
@@ -228,20 +220,27 @@ describe("WorktreeService", () => {
         const worktreeRoot = path.join(root, "feature");
         await mkdir(path.join(sourceRoot, ".vscode"), { recursive: true });
         await writeFile(path.join(sourceRoot, ".env"), "TOKEN=1\n", "utf8");
-        await writeFile(path.join(sourceRoot, ".vscode", "settings.json"), "{\"x\":true}\n", "utf8");
+        await writeFile(path.join(sourceRoot, ".vscode", "settings.json"), '{"x":true}\n', "utf8");
         includeFiles.value = [".env", ".vscode/settings.json", "missing.local"];
         const executor = createExecutor([porcelain("main"), porcelain("feature/x")]);
         const service = new WorktreeService(executor, () => sourceRoot);
 
         await service.createWorktree({
             path: worktreeRoot,
-            branch: { name: "feature/x", hash: "b2", isRemote: false, isCurrent: false, ahead: 0, behind: 0 },
+            branch: {
+                name: "feature/x",
+                hash: "b2",
+                isRemote: false,
+                isCurrent: false,
+                ahead: 0,
+                behind: 0,
+            },
         });
 
         await expect(readFile(path.join(worktreeRoot, ".env"), "utf8")).resolves.toBe("TOKEN=1\n");
         await expect(
             readFile(path.join(worktreeRoot, ".vscode", "settings.json"), "utf8"),
-        ).resolves.toBe("{\"x\":true}\n");
+        ).resolves.toBe('{"x":true}\n');
     });
 
     it("rejects unsafe include-file paths before adding a worktree", async () => {
@@ -276,9 +275,12 @@ describe("WorktreeService", () => {
                 { path: "/repo", branch: "main" },
                 { path: "/worktrees/feature", branch: "feature/x" },
             ]),
-            ["worktree /repo", "HEAD 1111111111111111111111111111111111111111", "detached", ""].join(
-                "\0",
-            ),
+            [
+                "worktree /repo",
+                "HEAD 1111111111111111111111111111111111111111",
+                "detached",
+                "",
+            ].join("\0"),
             porcelainRecords([
                 { path: "/repo", branch: "main" },
                 { path: "/worktrees/current", branch: "feature/current" },
@@ -313,11 +315,7 @@ describe("WorktreeService", () => {
         expect(scoped.runs).toHaveLength(1);
         expect(scoped.runs[0]).toMatchObject({ repoRoot: "/worktrees/feature" });
         expect(scoped.runs[0]?.run).toHaveBeenCalledWith(["status", "--porcelain"]);
-        expect(executor.run).toHaveBeenCalledWith([
-            "worktree",
-            "remove",
-            "/worktrees/feature",
-        ]);
+        expect(executor.run).toHaveBeenCalledWith(["worktree", "remove", "/worktrees/feature"]);
         expect(executor.run).not.toHaveBeenCalledWith(expect.arrayContaining(["branch"]));
     });
 

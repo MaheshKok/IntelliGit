@@ -35,9 +35,21 @@ const MIN_CHROMA_RETENTION = 0.9;
 const MAX_HUE_SHIFT_DEGREES = 5;
 
 const DIFF_STATUS_TOKENS = [
-    { name: "added", expression: JETBRAINS_UI.color.added, hostVar: "--vscode-gitDecoration-addedResourceForeground" },
-    { name: "modified", expression: JETBRAINS_UI.color.modified, hostVar: "--vscode-gitDecoration-modifiedResourceForeground" },
-    { name: "deleted", expression: JETBRAINS_UI.color.deleted, hostVar: "--vscode-gitDecoration-deletedResourceForeground" },
+    {
+        name: "added",
+        expression: JETBRAINS_UI.color.added,
+        hostVar: "--vscode-gitDecoration-addedResourceForeground",
+    },
+    {
+        name: "modified",
+        expression: JETBRAINS_UI.color.modified,
+        hostVar: "--vscode-gitDecoration-modifiedResourceForeground",
+    },
+    {
+        name: "deleted",
+        expression: JETBRAINS_UI.color.deleted,
+        hostVar: "--vscode-gitDecoration-deletedResourceForeground",
+    },
 ] as const;
 
 const fixtureFiles = readdirSync(FIXTURE_DIR).filter((name) => name.endsWith(".json"));
@@ -45,7 +57,9 @@ const fixtureFiles = readdirSync(FIXTURE_DIR).filter((name) => name.endsWith(".j
 describe("diff-status colours keep the host's chroma", () => {
     it("finds the host fixtures to measure against", () => {
         // Without this the suite below would silently iterate an empty list and pass.
-        expect(fixtureFiles.length, `no *.json fixtures in ${FIXTURE_DIR}`).toBeGreaterThanOrEqual(4);
+        expect(fixtureFiles.length, `no *.json fixtures in ${FIXTURE_DIR}`).toBeGreaterThanOrEqual(
+            4,
+        );
     });
 
     for (const fixtureName of fixtureFiles) {

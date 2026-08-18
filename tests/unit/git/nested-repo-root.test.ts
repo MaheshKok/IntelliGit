@@ -39,7 +39,10 @@ vi.mock("vscode", () => ({
 
 import { GitOps } from "../../../src/git/operations";
 import type { GitExecutor } from "../../../src/git/executor";
-import { getRepoRelativeFilePathFromUri, normalizeGitPath } from "../../../src/services/diffService";
+import {
+    getRepoRelativeFilePathFromUri,
+    normalizeGitPath,
+} from "../../../src/services/diffService";
 import { assertRepoRelativePath } from "../../../src/utils/fileOps";
 import * as path from "path";
 

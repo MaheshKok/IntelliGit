@@ -122,8 +122,22 @@ function makeGitOps(): GitOps {
     return {
         getFileContentAtRef: vi.fn(async (filePath: string, ref: string) => `${ref}:${filePath}`),
         getBranches: vi.fn(async () => [
-            { name: "main", hash: "aaa1111", isRemote: false, isCurrent: true, ahead: 0, behind: 0 },
-            { name: "feature", hash: "bbb2222", isRemote: false, isCurrent: false, ahead: 0, behind: 0 },
+            {
+                name: "main",
+                hash: "aaa1111",
+                isRemote: false,
+                isCurrent: true,
+                ahead: 0,
+                behind: 0,
+            },
+            {
+                name: "feature",
+                hash: "bbb2222",
+                isRemote: false,
+                isCurrent: false,
+                ahead: 0,
+                behind: 0,
+            },
         ]),
         getFileHistoryEntries: vi.fn(async () => []),
     } as unknown as GitOps;
@@ -244,7 +258,11 @@ describe("diffService", () => {
             executor,
             ["11111111", "22222222"],
         );
-        expect(gitOps.getFileContentAtRef).toHaveBeenNthCalledWith(1, "src/a.ts", `${commitHash}^2`);
+        expect(gitOps.getFileContentAtRef).toHaveBeenNthCalledWith(
+            1,
+            "src/a.ts",
+            `${commitHash}^2`,
+        );
         expect(gitOps.getFileContentAtRef).toHaveBeenNthCalledWith(2, "src/a.ts", commitHash);
     });
 
@@ -270,8 +288,8 @@ describe("diffService", () => {
 
     it("compares an editor file with a manually entered revision", async () => {
         const gitOps = makeGitOps();
-        mocks.showQuickPick.mockImplementationOnce(async (items: Array<{ refName: string }>) =>
-            items[items.length - 1],
+        mocks.showQuickPick.mockImplementationOnce(
+            async (items: Array<{ refName: string }>) => items[items.length - 1],
         );
         mocks.showInputBox.mockResolvedValueOnce("HEAD~1");
 
@@ -374,7 +392,9 @@ describe("diffService", () => {
 
     it("cleans readonly diff documents when matching virtual documents close", () => {
         const context = { subscriptions: [] as Array<{ dispose(): void }> };
-        let closeListener: ((document: { uri: { scheme: string; toString(): string } }) => void) | undefined;
+        let closeListener:
+            | ((document: { uri: { scheme: string; toString(): string } }) => void)
+            | undefined;
         mocks.onDidCloseTextDocument.mockImplementationOnce((listener) => {
             closeListener = listener as typeof closeListener;
             return { dispose: vi.fn() };
@@ -391,7 +411,10 @@ describe("diffService", () => {
             "/repo",
             gitOps,
         ).then(() => {
-            const leftUri = mocks.executeCommand.mock.calls[0][1] as { scheme: string; toString(): string };
+            const leftUri = mocks.executeCommand.mock.calls[0][1] as {
+                scheme: string;
+                toString(): string;
+            };
             expect(provider.provideTextDocumentContent(leftUri)).toBe("abcdef1234567890:src/a.ts");
 
             closeListener?.({ uri: { scheme: "file", toString: () => leftUri.toString() } });
@@ -444,7 +467,11 @@ describe("diffService", () => {
             "Compare with Branch is only available for local files.",
         );
 
-        await compareEditorFileWithBranch(mocks.FakeUri.file("/elsewhere/src/a.ts"), "/repo", gitOps);
+        await compareEditorFileWithBranch(
+            mocks.FakeUri.file("/elsewhere/src/a.ts"),
+            "/repo",
+            gitOps,
+        );
         expect(mocks.showErrorMessage).toHaveBeenCalledWith(
             "Selected file is outside the current IntelliGit repository workspace.",
         );
@@ -453,7 +480,9 @@ describe("diffService", () => {
         await compareEditorFileWithBranch(mocks.FakeUri.file("/repo/src/a.ts"), "/repo", gitOps);
         expect(gitOps.getFileContentAtRef).not.toHaveBeenCalled();
 
-        (gitOps.getBranches as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error("branches failed"));
+        (gitOps.getBranches as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+            new Error("branches failed"),
+        );
         await compareEditorFileWithBranch(mocks.FakeUri.file("/repo/src/a.ts"), "/repo", gitOps);
         expect(mocks.showErrorMessage).toHaveBeenCalledWith(
             "Compare with branch failed: branches failed",
@@ -468,7 +497,11 @@ describe("diffService", () => {
             "Compare with Revision is only available for local files.",
         );
 
-        await compareEditorFileWithRevision(mocks.FakeUri.file("/elsewhere/src/a.ts"), "/repo", gitOps);
+        await compareEditorFileWithRevision(
+            mocks.FakeUri.file("/elsewhere/src/a.ts"),
+            "/repo",
+            gitOps,
+        );
         expect(mocks.showErrorMessage).toHaveBeenCalledWith(
             "Selected file is outside the current IntelliGit repository workspace.",
         );
@@ -482,12 +515,14 @@ describe("diffService", () => {
                 date: "2026-06-04",
             },
         ]);
-        mocks.showQuickPick.mockImplementationOnce(async (items: Array<{ refName: string }>) => items[0]);
+        mocks.showQuickPick.mockImplementationOnce(
+            async (items: Array<{ refName: string }>) => items[0],
+        );
         await compareEditorFileWithRevision(mocks.FakeUri.file("/repo/src/a.ts"), "/repo", gitOps);
         expect(gitOps.getFileContentAtRef).toHaveBeenCalledWith("src/a.ts", "abcdef1234567890");
 
-        mocks.showQuickPick.mockImplementationOnce(async (items: Array<{ refName: string }>) =>
-            items[items.length - 1],
+        mocks.showQuickPick.mockImplementationOnce(
+            async (items: Array<{ refName: string }>) => items[items.length - 1],
         );
         mocks.showInputBox.mockResolvedValueOnce("   ");
         await compareEditorFileWithRevision(mocks.FakeUri.file("/repo/src/a.ts"), "/repo", gitOps);

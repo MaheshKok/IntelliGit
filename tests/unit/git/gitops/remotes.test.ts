@@ -742,13 +742,19 @@ describe("GitOps", () => {
                         throw new Error("fatal: path 'deleted.txt' does not exist in 'stash@{0}'");
                     }
                     if (key === "show stash@{0}^3:deleted.txt") {
-                        throw new Error("fatal: path 'deleted.txt' does not exist in 'stash@{0}^3'");
+                        throw new Error(
+                            "fatal: path 'deleted.txt' does not exist in 'stash@{0}^3'",
+                        );
                     }
                     if (key === "show stash@{0}^1:untracked.txt") {
-                        throw new Error("fatal: path 'untracked.txt' does not exist in 'stash@{0}^1'");
+                        throw new Error(
+                            "fatal: path 'untracked.txt' does not exist in 'stash@{0}^1'",
+                        );
                     }
                     if (key === "show stash@{0}:untracked.txt") {
-                        throw new Error("fatal: path 'untracked.txt' does not exist in 'stash@{0}'");
+                        throw new Error(
+                            "fatal: path 'untracked.txt' does not exist in 'stash@{0}'",
+                        );
                     }
                     if (key === "show stash@{0}^3:untracked.txt") return "untracked";
                     throw new Error(`Unexpected Git command: ${key}`);
@@ -804,10 +810,7 @@ describe("GitOps", () => {
 
             const contents = ops.getStashFileContents(0, "src/a.ts");
 
-            expect(started).toEqual([
-                "show stash@{0}^1:src/a.ts",
-                "show stash@{0}:src/a.ts",
-            ]);
+            expect(started).toEqual(["show stash@{0}^1:src/a.ts", "show stash@{0}:src/a.ts"]);
             resolvers.get("show stash@{0}^1:src/a.ts")?.("base");
             resolvers.get("show stash@{0}:src/a.ts")?.("stash");
             await expect(contents).resolves.toEqual({ before: "base", after: "stash" });

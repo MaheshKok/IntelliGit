@@ -107,8 +107,7 @@ describe("visual Playwright config", () => {
             animations: "disabled",
         });
         expect(
-            (visualConfig.expect?.toHaveScreenshot as Record<string, unknown>)
-                .snapshotPathTemplate,
+            (visualConfig.expect?.toHaveScreenshot as Record<string, unknown>).snapshotPathTemplate,
         ).toBeUndefined();
         expect(visualConfig.snapshotDir).toBe("tests/visual/__screenshots__");
         expect(visualConfig.retries).toBe(0);

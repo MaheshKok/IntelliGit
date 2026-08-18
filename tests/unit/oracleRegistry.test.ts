@@ -63,14 +63,19 @@ async function findValueOracleImporters(): Promise<Set<string>> {
         }
     }
 
-    expect(valueImportCount, "oracle value-import scanner must find a known-present import").toBeGreaterThan(0);
+    expect(
+        valueImportCount,
+        "oracle value-import scanner must find a known-present import",
+    ).toBeGreaterThan(0);
     return importers;
 }
 
 describe("oracle registry", () => {
     it("matches every TypeScript oracle module exactly once", async () => {
         const modulePaths = (
-            await Promise.all(oracleDirectories.map((directory) => discoverTypeScriptModules(directory)))
+            await Promise.all(
+                oracleDirectories.map((directory) => discoverTypeScriptModules(directory)),
+            )
         ).flat();
         const discoveredIds = modulePaths.map((modulePath) => path.basename(modulePath, ".ts"));
         const duplicateIds = discoveredIds.filter(
@@ -99,7 +104,14 @@ describe("oracle registry", () => {
         // alternative, adding this file to the pinned exemption set, would hand it a permanent
         // licence to import an oracle for real.
         const oracleSpecifier = ["..", "..", "oracles", "geometry"].join("/");
-        const probePath = path.join(repositoryRoot, "tests", "visual", "playwright", "deep", "probe.ts");
+        const probePath = path.join(
+            repositoryRoot,
+            "tests",
+            "visual",
+            "playwright",
+            "deep",
+            "probe.ts",
+        );
         const lintOracleImport = async (source: string): Promise<readonly string[]> => {
             const results = await new ESLint({ cwd: repositoryRoot }).lintText(source, {
                 filePath: probePath,

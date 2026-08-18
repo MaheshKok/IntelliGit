@@ -25,7 +25,11 @@ import { createSanitizedGitEnv, type SanitizedGitEnv } from "../../fixtures/repo
 const execFileAsync = promisify(execFile);
 
 /** Runs one git process against `cwd` with `env`, returning trimmed UTF-8 stdout. */
-export async function git(cwd: string, args: readonly string[], env: NodeJS.ProcessEnv): Promise<string> {
+export async function git(
+    cwd: string,
+    args: readonly string[],
+    env: NodeJS.ProcessEnv,
+): Promise<string> {
     const result = await execFileAsync("git", [...args], { cwd, env, encoding: "buffer" });
     return result.stdout.toString("utf8").trim();
 }
@@ -63,7 +67,11 @@ export async function createScratchRepo(namePrefix: string): Promise<ScratchRepo
 }
 
 /** Writes `content` to `relativePath` under `root`, creating parent directories as needed. */
-export async function writeRepoFile(root: string, relativePath: string, content: string): Promise<void> {
+export async function writeRepoFile(
+    root: string,
+    relativePath: string,
+    content: string,
+): Promise<void> {
     const absolutePath = path.join(root, relativePath);
     await mkdir(path.dirname(absolutePath), { recursive: true });
     await writeFile(absolutePath, content, "utf8");
@@ -72,7 +80,11 @@ export async function writeRepoFile(root: string, relativePath: string, content:
 /** Stages every pending change and commits it, returning the new commit's SHA. Every commit in
  * this test suite shares `seed.ts`'s fixed author/committer identity and date via `env`, so SHAs
  * stay stable across runs wherever a test happens to assert one directly. */
-export async function commitAll(root: string, env: NodeJS.ProcessEnv, message: string): Promise<string> {
+export async function commitAll(
+    root: string,
+    env: NodeJS.ProcessEnv,
+    message: string,
+): Promise<string> {
     await git(root, ["add", "-A"], env);
     await git(root, ["commit", "--quiet", "-m", message], env);
     return git(root, ["rev-parse", "HEAD"], env);

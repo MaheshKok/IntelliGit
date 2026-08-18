@@ -74,7 +74,11 @@ describe("showShelfDiffFromPanel", () => {
             "base contents",
             "Base (HEAD at shelve)",
         );
-        expect(createReadonlyDiffUri).toHaveBeenCalledWith("src/a.ts", "shelved contents", "Shelved");
+        expect(createReadonlyDiffUri).toHaveBeenCalledWith(
+            "src/a.ts",
+            "shelved contents",
+            "Shelved",
+        );
         expect(vscodeMock.workspace.openTextDocument).not.toHaveBeenCalled();
         expect(vscodeMock.commands.executeCommand).toHaveBeenCalledWith(
             "vscode.diff",
@@ -126,49 +130,52 @@ describe("showShelfDiffFromPanel", () => {
     it.each([
         ["baseToShelved", "Base (HEAD at shelve)", "Shelved"],
         ["shelvedToLocal", "Shelved", "Local"],
-    ] as const)("shows a placeholder on both sides for binary shelf entries without decoding bytes", async (
-        mode,
-        leftLabel,
-        rightLabel,
-    ) => {
-        const base = Buffer.from([0, 255]);
-        const shelved = Buffer.from([255, 0]);
-        const source = reader({
-            getShelfDiffContents: vi.fn(async () => ({
-                path: "images/logo.png",
-                binary: true,
-                base,
-                shelved,
-            })),
-        });
-        const baseToString = vi.spyOn(base, "toString");
-        const shelvedToString = vi.spyOn(shelved, "toString");
+    ] as const)(
+        "shows a placeholder on both sides for binary shelf entries without decoding bytes",
+        async (mode, leftLabel, rightLabel) => {
+            const base = Buffer.from([0, 255]);
+            const shelved = Buffer.from([255, 0]);
+            const source = reader({
+                getShelfDiffContents: vi.fn(async () => ({
+                    path: "images/logo.png",
+                    binary: true,
+                    base,
+                    shelved,
+                })),
+            });
+            const baseToString = vi.spyOn(base, "toString");
+            const shelvedToString = vi.spyOn(shelved, "toString");
 
-        await showShelfDiffFromPanel(deps(source), "shelf-1", "change-1", mode);
+            await showShelfDiffFromPanel(deps(source), "shelf-1", "change-1", mode);
 
-        expect(createReadonlyDiffUri).toHaveBeenNthCalledWith(
-            1,
-            "images/logo.png",
-            "Binary file — text diff is unavailable.",
-            leftLabel,
-        );
-        expect(createReadonlyDiffUri).toHaveBeenNthCalledWith(
-            2,
-            "images/logo.png",
-            "Binary file — text diff is unavailable.",
-            rightLabel,
-        );
-        expect(baseToString).not.toHaveBeenCalled();
-        expect(shelvedToString).not.toHaveBeenCalled();
-        expect(vscodeMock.workspace.openTextDocument).not.toHaveBeenCalled();
-    });
+            expect(createReadonlyDiffUri).toHaveBeenNthCalledWith(
+                1,
+                "images/logo.png",
+                "Binary file — text diff is unavailable.",
+                leftLabel,
+            );
+            expect(createReadonlyDiffUri).toHaveBeenNthCalledWith(
+                2,
+                "images/logo.png",
+                "Binary file — text diff is unavailable.",
+                rightLabel,
+            );
+            expect(baseToString).not.toHaveBeenCalled();
+            expect(shelvedToString).not.toHaveBeenCalled();
+            expect(vscodeMock.workspace.openTextDocument).not.toHaveBeenCalled();
+        },
+    );
 
     it("compares shelved content with the current local file using read-only documents", async () => {
         const source = reader();
 
         await showShelfDiffFromPanel(deps(source), "shelf-1", "change-1", "shelvedToLocal");
 
-        expect(createReadonlyDiffUri).toHaveBeenCalledWith("src/a.ts", "shelved contents", "Shelved");
+        expect(createReadonlyDiffUri).toHaveBeenCalledWith(
+            "src/a.ts",
+            "shelved contents",
+            "Shelved",
+        );
         expect(createReadonlyDiffUri).toHaveBeenCalledWith(
             "src/a.ts",
             "local file contents",
@@ -230,7 +237,11 @@ describe("showShelfDiffFromPanel", () => {
         const source = reader({
             getShelfFiles: vi.fn(async () => [
                 ...shelfFiles,
-                { ...shelfFiles[0], changeId: "change-2", worktreeBlock: { path: "src/b.ts", status: "M" } },
+                {
+                    ...shelfFiles[0],
+                    changeId: "change-2",
+                    worktreeBlock: { path: "src/b.ts", status: "M" },
+                },
             ]),
             getShelfDiffContents: vi.fn(async (_id, changeId) => ({
                 path: changeId === "change-1" ? "src/a.ts" : "src/b.ts",

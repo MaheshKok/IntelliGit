@@ -153,9 +153,7 @@ describe("workflow action pinning", () => {
         expect(checkouts.length).toBeGreaterThan(0);
         expect(references.every(({ job }) => job !== "")).toBe(true);
         expect(
-            checkouts.every(({ body }) =>
-                /^\s+persist-credentials:\s*false\s*$/m.test(body),
-            ),
+            checkouts.every(({ body }) => /^\s+persist-credentials:\s*false\s*$/m.test(body)),
         ).toBe(true);
     });
 });

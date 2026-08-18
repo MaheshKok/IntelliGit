@@ -46,11 +46,9 @@ describe("verifyNoE2eManifestCommand: synthetic fixtures", () => {
         const forbiddenPackageJsonPath = seedPackageJson({
             commands: [{ command: "intelligit.e2eControlChannel.seed", title: "Seed" }],
         });
-        const forbiddenRun = spawnSync(
-            process.execPath,
-            [SCRIPT_PATH, forbiddenPackageJsonPath],
-            { encoding: "utf8" },
-        );
+        const forbiddenRun = spawnSync(process.execPath, [SCRIPT_PATH, forbiddenPackageJsonPath], {
+            encoding: "utf8",
+        });
 
         expect(forbiddenRun.status).not.toBe(0);
         expect(forbiddenRun.stderr).toContain("packaging check failed");
@@ -117,7 +115,9 @@ describe("verifyNoE2eManifestCommand: synthetic fixtures", () => {
         // A command author could pick an innocuous-looking id while the palette label still
         // gives the control surface away -- both must be checked.
         const packageJsonPath = seedPackageJson({
-            commands: [{ command: "intelligit.internalDebug", title: "IntelliGit: E2E Seed State" }],
+            commands: [
+                { command: "intelligit.internalDebug", title: "IntelliGit: E2E Seed State" },
+            ],
         });
         const result = verifyNoE2eManifestCommand({
             packageJsonPath,

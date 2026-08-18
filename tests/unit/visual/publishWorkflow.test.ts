@@ -169,7 +169,11 @@ function runVersionGate(script: string, version: string, options: VersionGateOpt
             HOME: workspace,
         });
         const git = (...args: readonly string[]) => {
-            const result = spawnSync("git", args, { cwd: workspace, encoding: "utf8", env: gitEnv });
+            const result = spawnSync("git", args, {
+                cwd: workspace,
+                encoding: "utf8",
+                env: gitEnv,
+            });
             if (result.status !== 0) {
                 throw new Error(
                     `git ${args.join(" ")} failed with status ${result.status}: ${result.stderr ?? ""}`,
@@ -179,7 +183,10 @@ function runVersionGate(script: string, version: string, options: VersionGateOpt
         git("init", "--initial-branch=main");
         git("config", "user.email", "test@example.invalid");
         git("config", "user.name", "Test");
-        writeFileSync(packageJsonPath, JSON.stringify({ version: options.previousVersion ?? version }));
+        writeFileSync(
+            packageJsonPath,
+            JSON.stringify({ version: options.previousVersion ?? version }),
+        );
         git("add", "package.json");
         git("commit", "-m", "previous");
         writeFileSync(packageJsonPath, JSON.stringify({ version }));
@@ -279,11 +286,7 @@ function runTagStep(script: string, tagPlacement: "head" | "older" | "absent") {
         writeFileSync(ghArgsPath, "");
         writeFileSync(
             statePath,
-            tagPlacement === "absent"
-                ? ""
-                : tagPlacement === "head"
-                  ? RELEASE_SHA
-                  : STRANDED_SHA,
+            tagPlacement === "absent" ? "" : tagPlacement === "head" ? RELEASE_SHA : STRANDED_SHA,
         );
         writeFileSync(
             join(binDir, "gh"),
@@ -370,9 +373,10 @@ describe("publish visual workflow", () => {
         const releaseJob = extractJobBlock(readFileSync(WORKFLOW_PATH, "utf8"), "release");
         const needsLine = releaseJob.match(/^\s+needs:.*$/m)?.[0].trim() ?? "";
 
-        expect(needsLine, "release must wait for build, validation, eligibility, and attestation").toBe(
-            "needs: [build, visual, e2e-full, package-smoke, release-eligibility, attest]",
-        );
+        expect(
+            needsLine,
+            "release must wait for build, validation, eligibility, and attestation",
+        ).toBe("needs: [build, visual, e2e-full, package-smoke, release-eligibility, attest]");
     });
 
     it("never cancels an in-flight release run on main", () => {
@@ -446,9 +450,10 @@ describe("publish visual workflow", () => {
         // The block's own close, found by indentation: `extractRunScript` dedents the run body, so
         // only the top-level `fi` sits at column zero and a nested one cannot end the slice early.
         const comparisonEnd = gateScript.indexOf("fi", comparisonStart);
-        expect(comparisonEnd, "the version comparison must be a closed if/fi block").toBeGreaterThan(
-            comparisonStart,
-        );
+        expect(
+            comparisonEnd,
+            "the version comparison must be a closed if/fi block",
+        ).toBeGreaterThan(comparisonStart);
         expect(
             gateScript.slice(comparisonStart, comparisonEnd + 1).join("\n"),
             "comparing this commit's version against the previous one must not decide the release",
@@ -514,7 +519,10 @@ describe("publish visual workflow", () => {
                 "release-eligibility",
             );
             return extractRunScript(
-                extractStepBlock(eligibilityJob, "Check whether this version still needs releasing"),
+                extractStepBlock(
+                    eligibilityJob,
+                    "Check whether this version still needs releasing",
+                ),
             );
         }
 
@@ -667,7 +675,10 @@ describe("publish visual workflow", () => {
                 "release-eligibility",
             );
             const script = extractRunScript(
-                extractStepBlock(eligibilityJob, "Check whether this version still needs releasing"),
+                extractStepBlock(
+                    eligibilityJob,
+                    "Check whether this version still needs releasing",
+                ),
             );
             expect(script, "the version gate step must carry a run script").not.toBe("");
             // The previous version is left at its default, equal to this one: an unchanged version
@@ -819,9 +830,10 @@ describe("publish visual workflow", () => {
             expect(run.liveTagCommit, "the mismatched tag must be left exactly where it was").toBe(
                 run.older,
             );
-            expect(run.ghArgs, "a mismatched tag must never be force-moved onto this run").not.toContain(
-                "POST",
-            );
+            expect(
+                run.ghArgs,
+                "a mismatched tag must never be force-moved onto this run",
+            ).not.toContain("POST");
         });
 
         it("reuses a tag that already names this commit, so a re-run can still recover", () => {
@@ -836,7 +848,9 @@ describe("publish visual workflow", () => {
             // only shows up on the mismatch path, where the tag it was supposed to refuse has
             // already been overwritten.
             expect(run.liveTagCommit, "reuse must leave the live tag untouched").toBe(run.head);
-            expect(run.ghArgs, "an already-correct tag must not be rewritten").not.toContain("POST");
+            expect(run.ghArgs, "an already-correct tag must not be rewritten").not.toContain(
+                "POST",
+            );
         });
 
         it("creates the tag when none exists", () => {
