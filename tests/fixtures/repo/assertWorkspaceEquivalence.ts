@@ -70,7 +70,12 @@ const IDENTITY_KEYS = ["relativePath", "name", "path", "objectId"] as const;
 
 /** Labels one array element for a difference message, preferring a human-meaningful identity
  * (see {@link IDENTITY_KEYS}) over a bare index when either side's element carries one. */
-function arrayElementLabel(pathLabel: string, index: number, expectedElement: unknown, actualElement: unknown): string {
+function arrayElementLabel(
+    pathLabel: string,
+    index: number,
+    expectedElement: unknown,
+    actualElement: unknown,
+): string {
     const expectedRecord = asRecord(expectedElement);
     const actualRecord = asRecord(actualElement);
     for (const key of IDENTITY_KEYS) {
@@ -88,7 +93,12 @@ function arrayElementLabel(pathLabel: string, index: number, expectedElement: un
  * (arrays, plain objects, and primitives alike) so this never needs a per-field special case as
  * {@link WorkspaceSnapshot}'s shape grows.
  */
-function collectDifferences(pathLabel: string, expected: unknown, actual: unknown, out: string[]): void {
+function collectDifferences(
+    pathLabel: string,
+    expected: unknown,
+    actual: unknown,
+    out: string[],
+): void {
     if (Object.is(expected, actual)) return;
 
     const expectedArray = asArray(expected);
@@ -103,7 +113,12 @@ function collectDifferences(pathLabel: string, expected: unknown, actual: unknow
         }
         const maxLength = Math.max(expectedArray.length, actualArray.length);
         for (let index = 0; index < maxLength; index += 1) {
-            const elementLabel = arrayElementLabel(pathLabel, index, expectedArray[index], actualArray[index]);
+            const elementLabel = arrayElementLabel(
+                pathLabel,
+                index,
+                expectedArray[index],
+                actualArray[index],
+            );
             collectDifferences(elementLabel, expectedArray[index], actualArray[index], out);
         }
         return;
@@ -116,9 +131,9 @@ function collectDifferences(pathLabel: string, expected: unknown, actual: unknow
             out.push(`${pathLabel}: ${describe(expected)} !== ${describe(actual)}`);
             return;
         }
-        const keys = Array.from(new Set([...Object.keys(expectedRecord), ...Object.keys(actualRecord)])).sort(
-            compareCodepoints,
-        );
+        const keys = Array.from(
+            new Set([...Object.keys(expectedRecord), ...Object.keys(actualRecord)]),
+        ).sort(compareCodepoints);
         for (const key of keys) {
             collectDifferences(`${pathLabel}.${key}`, expectedRecord[key], actualRecord[key], out);
         }

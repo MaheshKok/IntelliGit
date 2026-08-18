@@ -37,7 +37,9 @@ export async function snapshotIndex(
         runGitRaw(repoRoot, ["ls-files", "-v", "-z"], env),
     ]);
     const flagByPath = parseFlagRecords(flagRecords);
-    const entries = splitNulRecords(stageRecords).map((record) => parseStageRecord(record, flagByPath));
+    const entries = splitNulRecords(stageRecords).map((record) =>
+        parseStageRecord(record, flagByPath),
+    );
     return captured(entries.sort((a, b) => compareCodepoints(a.path, b.path) || a.stage - b.stage));
 }
 
@@ -55,7 +57,9 @@ function parseFlagRecords(raw: string): ReadonlyMap<string, string> {
     for (const record of splitNulRecords(raw)) {
         const separatorIndex = record.indexOf(" ");
         if (separatorIndex === -1) {
-            throw new Error(`snapshotIndex: malformed "ls-files -v" record: ${JSON.stringify(record)}`);
+            throw new Error(
+                `snapshotIndex: malformed "ls-files -v" record: ${JSON.stringify(record)}`,
+            );
         }
         const flag = record.slice(0, separatorIndex);
         const path = record.slice(separatorIndex + 1);
@@ -67,13 +71,17 @@ function parseFlagRecords(raw: string): ReadonlyMap<string, string> {
 function parseStageRecord(record: string, flagByPath: ReadonlyMap<string, string>): IndexEntry {
     const tabIndex = record.indexOf("\t");
     if (tabIndex === -1) {
-        throw new Error(`snapshotIndex: malformed "ls-files --stage" record: ${JSON.stringify(record)}`);
+        throw new Error(
+            `snapshotIndex: malformed "ls-files --stage" record: ${JSON.stringify(record)}`,
+        );
     }
     const path = record.slice(tabIndex + 1);
     const [mode, objectId, stageText] = record.slice(0, tabIndex).split(" ");
     const stage = Number(stageText);
     if (!mode || !objectId || !VALID_STAGES.has(stage)) {
-        throw new Error(`snapshotIndex: malformed "ls-files --stage" record: ${JSON.stringify(record)}`);
+        throw new Error(
+            `snapshotIndex: malformed "ls-files --stage" record: ${JSON.stringify(record)}`,
+        );
     }
     const flag = flagByPath.get(path);
     if (flag === undefined) {

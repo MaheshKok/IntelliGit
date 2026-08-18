@@ -279,7 +279,7 @@ export function assertDisposableScenarioPath(
         `webviewFixtureGate: refusing to recursively remove ${role} "${candidate}" while disposing ` +
             `the "${scenarioId}" scenario -- it does not resolve to a path strictly beneath the OS ` +
             `temp root (${DISPOSABLE_TEMP_ROOTS.join(" or ")}). A scenario must build its ` +
-            'destination and its scratch HOME under `tmpdir()`, and must place its root at ' +
+            "destination and its scratch HOME under `tmpdir()`, and must place its root at " +
             '"<destination>/workspace" so `path.dirname(workspace.root)` recovers that destination; ' +
             "if either changed, thread the real path through explicitly instead of deriving it.",
     );

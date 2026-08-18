@@ -95,7 +95,9 @@ export async function assertTemplateFsckClean(template: FixtureTemplate): Promis
         }),
     );
 
-    const failures = results.filter((result): result is { label: string; ok: false; message: string } => !result.ok);
+    const failures = results.filter(
+        (result): result is { label: string; ok: false; message: string } => !result.ok,
+    );
     if (failures.length > 0) {
         throw new Error(
             `assertTemplateFsckClean: git fsck reported problems in ${failures.length} location(s) -- ` +
@@ -124,7 +126,9 @@ export async function publishTemplate(templateRoot: string, manifestPath: string
  * failed (or successful, once a worker no longer needs it) template is `runFixtureTeardown`'s job,
  * run explicitly -- never implicit rollback inside this function.
  */
-export async function runFixtureSetup(options?: RunFixtureSetupOptions): Promise<FixtureSetupResult> {
+export async function runFixtureSetup(
+    options?: RunFixtureSetupOptions,
+): Promise<FixtureSetupResult> {
     const templateRoot = options?.templateRoot ?? DEFAULT_TEMPLATE_ROOT;
     const manifestPath = options?.manifestPath ?? DEFAULT_MANIFEST_PATH;
 

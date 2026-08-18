@@ -104,7 +104,12 @@ describe("installE2eStateBridge: message filtering", () => {
         const { api, posted } = makeFakeApi({});
         installE2eStateBridge(api);
         stub.listeners[0]?.({
-            data: { source: "someOtherProtocol", callId: "c1", operation: "snapshot", key: "groupByDir" },
+            data: {
+                source: "someOtherProtocol",
+                callId: "c1",
+                operation: "snapshot",
+                key: "groupByDir",
+            },
         });
         expect(posted).toHaveLength(0);
     });
@@ -114,7 +119,12 @@ describe("installE2eStateBridge: message filtering", () => {
         const { api, posted } = makeFakeApi({});
         installE2eStateBridge(api);
         stub.listeners[0]?.({
-            data: { source: "intelligitE2E", callId: "c1", operation: "destroy", key: "groupByDir" },
+            data: {
+                source: "intelligitE2E",
+                callId: "c1",
+                operation: "destroy",
+                key: "groupByDir",
+            },
         });
         expect(posted).toHaveLength(0);
     });
@@ -127,11 +137,21 @@ describe("installE2eStateBridge: allowlist rejection", () => {
         installE2eStateBridge(api);
 
         stub.listeners[0]?.({
-            data: { source: "intelligitE2E", callId: "c1", operation: "snapshot", key: "notAllowlisted" },
+            data: {
+                source: "intelligitE2E",
+                callId: "c1",
+                operation: "snapshot",
+                key: "notAllowlisted",
+            },
         });
 
         expect(posted).toEqual([
-            { source: "intelligitE2E", callId: "c1", ok: false, error: expect.stringContaining("not allowlisted") },
+            {
+                source: "intelligitE2E",
+                callId: "c1",
+                ok: false,
+                error: expect.stringContaining("not allowlisted"),
+            },
         ]);
         expect(getSetStateCalls()).toHaveLength(0);
     });
@@ -147,7 +167,9 @@ describe("installE2eStateBridge: snapshot", () => {
             data: { source: "intelligitE2E", callId: "c1", operation: "snapshot", key: "checked" },
         });
 
-        expect(posted).toEqual([{ source: "intelligitE2E", callId: "c1", ok: true, value: ["a.ts"] }]);
+        expect(posted).toEqual([
+            { source: "intelligitE2E", callId: "c1", ok: true, value: ["a.ts"] },
+        ]);
     });
 
     it("replies with null when the key is absent from persisted state", () => {
@@ -156,7 +178,12 @@ describe("installE2eStateBridge: snapshot", () => {
         installE2eStateBridge(api);
 
         stub.listeners[0]?.({
-            data: { source: "intelligitE2E", callId: "c1", operation: "snapshot", key: "groupByDir" },
+            data: {
+                source: "intelligitE2E",
+                callId: "c1",
+                operation: "snapshot",
+                key: "groupByDir",
+            },
         });
 
         expect(posted).toEqual([{ source: "intelligitE2E", callId: "c1", ok: true, value: null }]);
@@ -168,7 +195,12 @@ describe("installE2eStateBridge: snapshot", () => {
         installE2eStateBridge(api);
 
         stub.listeners[0]?.({
-            data: { source: "intelligitE2E", callId: "c1", operation: "snapshot", key: "groupByDir" },
+            data: {
+                source: "intelligitE2E",
+                callId: "c1",
+                operation: "snapshot",
+                key: "groupByDir",
+            },
         });
 
         expect(posted).toEqual([{ source: "intelligitE2E", callId: "c1", ok: true, value: null }]);
@@ -182,7 +214,13 @@ describe("installE2eStateBridge: seed", () => {
         installE2eStateBridge(api);
 
         stub.listeners[0]?.({
-            data: { source: "intelligitE2E", callId: "c1", operation: "seed", key: "groupByDir", value: true },
+            data: {
+                source: "intelligitE2E",
+                callId: "c1",
+                operation: "seed",
+                key: "groupByDir",
+                value: true,
+            },
         });
 
         expect(getSetStateCalls()).toEqual([{ existingKey: "kept", groupByDir: true }]);
@@ -196,7 +234,10 @@ describe("installE2eStateBridge: seed", () => {
 describe("installE2eStateBridge: reset", () => {
     it("removes the key from persisted state, signals a remount, and acknowledges", () => {
         const stub = stubWindow(true);
-        const { api, posted, getSetStateCalls } = makeFakeApi({ groupByDir: true, checked: ["a.ts"] });
+        const { api, posted, getSetStateCalls } = makeFakeApi({
+            groupByDir: true,
+            checked: ["a.ts"],
+        });
         installE2eStateBridge(api);
 
         stub.listeners[0]?.({

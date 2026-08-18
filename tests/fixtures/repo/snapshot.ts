@@ -61,7 +61,9 @@ export interface SnapshotWorkspaceOptions {
  * initial call captures once and every later comparison (normalized via {@link normalizeSnapshot})
  * diffs against.
  */
-export async function snapshotWorkspace(options: SnapshotWorkspaceOptions): Promise<WorkspaceSnapshot> {
+export async function snapshotWorkspace(
+    options: SnapshotWorkspaceOptions,
+): Promise<WorkspaceSnapshot> {
     const [workspace, origin, durableState] = await Promise.all([
         snapshotRepository(options.root, options.env),
         snapshotRepository(options.originRoot, options.env),
@@ -79,4 +81,8 @@ export async function snapshotWorkspace(options: SnapshotWorkspaceOptions): Prom
 // dead export behind the noise.
 export type { PlaceholderRoots } from "./snapshotNormalize";
 export { captured } from "./snapshotTypes";
-export type { DurableStateProvider, DurableStateSnapshot, WorkspaceSnapshot } from "./snapshotTypes";
+export type {
+    DurableStateProvider,
+    DurableStateSnapshot,
+    WorkspaceSnapshot,
+} from "./snapshotTypes";

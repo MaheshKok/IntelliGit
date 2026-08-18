@@ -423,7 +423,10 @@ describe("commit panel multi-repository view", () => {
     it("hands each repository's behind count to its own tab bar", async () => {
         await renderApp();
         await hydrateTwoRepositories();
-        await sendHostMessage({ ...snapshot("/repo-a", "Repo A", "src/a.ts"), currentBranchBehind: 5 });
+        await sendHostMessage({
+            ...snapshot("/repo-a", "Repo A", "src/a.ts"),
+            currentBranchBehind: 5,
+        });
 
         const behindCounts = Array.from(
             document.querySelectorAll('[data-testid="tabbar-behind"]'),

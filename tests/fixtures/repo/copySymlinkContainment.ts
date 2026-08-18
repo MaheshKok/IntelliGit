@@ -50,7 +50,9 @@ export async function enforceSymlinkContainment(
         throw new Error(
             `copyTemplate: symlink containment violated for ${offending.length} link(s) ` +
                 `(every symlink must resolve inside the copy): ` +
-                offending.map((entry) => `${entry.relativePath} -> ${entry.target} (${entry.reason})`).join("; "),
+                offending
+                    .map((entry) => `${entry.relativePath} -> ${entry.target} (${entry.reason})`)
+                    .join("; "),
         );
     }
 
@@ -79,7 +81,11 @@ function planSymlinkAudit(
         if (target === null) {
             // Guarded by FsEntry's own contract (only "symlink" entries carry a non-null target),
             // but the field type is nullable, so fail loudly here rather than silently skip the audit.
-            offending.push({ relativePath: entry.relativePath, target: "", reason: "symlink entry has a null target" });
+            offending.push({
+                relativePath: entry.relativePath,
+                target: "",
+                reason: "symlink entry has a null target",
+            });
             continue;
         }
 
@@ -89,13 +95,21 @@ function planSymlinkAudit(
                 rebases.push({ relativePath: entry.relativePath, linkPath, newTarget });
                 continue;
             }
-            offending.push({ relativePath: entry.relativePath, target, reason: "absolute target outside the template" });
+            offending.push({
+                relativePath: entry.relativePath,
+                target,
+                reason: "absolute target outside the template",
+            });
             continue;
         }
 
         const resolved = path.resolve(path.dirname(linkPath), target);
         if (!isWithin(destinationRoot, resolved)) {
-            offending.push({ relativePath: entry.relativePath, target, reason: "relative target escapes the copy" });
+            offending.push({
+                relativePath: entry.relativePath,
+                target,
+                reason: "relative target escapes the copy",
+            });
         }
     }
 

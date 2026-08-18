@@ -450,7 +450,9 @@ describe("BranchColumn integration", () => {
         const { root, container } = renderBranchColumn({ branches: worktreeBranches, worktrees });
 
         for (const name of ["checked-out-here", "checked-out-there"]) {
-            const row = branchRows(container, name).find((candidate) => candidate.textContent === name);
+            const row = branchRows(container, name).find(
+                (candidate) => candidate.textContent === name,
+            );
             expect(row?.querySelector("[aria-label]")).toBeNull();
         }
         expect(
