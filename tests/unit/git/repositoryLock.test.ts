@@ -191,4 +191,87 @@ describe("RepositoryLock", () => {
         });
         await winners[0].value();
     });
+
+    describe("a lock file that exists but cannot be parsed", () => {
+        /** Plants an unparseable lock file and returns the common directory holding it. */
+        async function plantUnreadableLock(contents: string): Promise<string> {
+            const common = await commonDir();
+            await mkdir(path.join(common, "intelligit"));
+            await writeFile(path.join(common, "intelligit", "repo.lock"), contents);
+            return common;
+        }
+
+        it("is taken over once nothing is writing to it any more", async () => {
+            // The exact residue of a process that died between the truncate and the write of
+            // one heartbeat: the file is there, holds no owner record, and nothing will ever
+            // update it again. It used to wedge the repository permanently -- a parse failure
+            // was reported as "no owner" exactly as a missing file is, and the busy check ran
+            // BEFORE the staleness and liveness checks that would have released it, so the
+            // takeover path was unreachable for this file no matter how old it got.
+            const common = await plantUnreadableLock("");
+            await new Promise<void>((resolve) => setTimeout(resolve, 2));
+
+            const release = await new RepositoryLock({
+                staleAfterMs: 0,
+                // Reports every pid as alive. The takeover must still happen: an unreadable
+                // file carries no pid, so this asserts the probe is skipped rather than called
+                // with a fabricated argument.
+                livenessProbe: async () => true,
+            }).acquire(common);
+
+            expect(
+                JSON.parse(await readFile(path.join(common, "intelligit", "repo.lock"), "utf8")),
+                "the taken-over lock must now record this process as its owner",
+            ).toMatchObject({ pid: process.pid });
+            await release();
+        });
+
+        it("is left alone while something is still writing to it", async () => {
+            // The counterexample the fix must not break. A heartbeat write truncates before
+            // it writes, so a perfectly LIVE lock is briefly zero-length and unparseable --
+            // indistinguishable, by content, from the dead one above. Only the mtime separates
+            // them, because the truncate stamps it at that instant. Without that test this is
+            // the case where a contender seizes a lock whose owner is still holding it.
+            const common = await plantUnreadableLock("");
+
+            await expect(
+                new RepositoryLock({
+                    staleAfterMs: 60_000,
+                    livenessProbe: async () => false,
+                }).acquire(common),
+            ).rejects.toBeInstanceOf(RepositoryLockBusyError);
+        });
+
+        it("restores an owner that claimed the lock during the takeover", async () => {
+            // An unreadable file has no nonce, so the post-rename identity check cannot match
+            // one. "Unchanged" therefore has to mean "still unreadable": a parseable file at
+            // this point is a peer that acquired the lock legitimately in the gap between the
+            // read and the rename, and it must be put back rather than overwritten.
+            const common = await plantUnreadableLock("");
+            const lockPath = path.join(common, "intelligit", "repo.lock");
+            await new Promise<void>((resolve) => setTimeout(resolve, 2));
+
+            await expect(
+                new RepositoryLock({
+                    staleAfterMs: 0,
+                    livenessProbe: async () => false,
+                    beforeTakeover: async () => {
+                        await writeFile(
+                            lockPath,
+                            JSON.stringify({
+                                nonce: "arrived-late",
+                                pid: process.pid,
+                                heartbeatAt: Date.now(),
+                            }),
+                        );
+                    },
+                }).acquire(common),
+            ).rejects.toBeInstanceOf(RepositoryLockBusyError);
+
+            expect(
+                JSON.parse(await readFile(lockPath, "utf8")),
+                "the late owner must be restored to the lock path, not displaced by the takeover",
+            ).toMatchObject({ nonce: "arrived-late" });
+        });
+    });
 });
