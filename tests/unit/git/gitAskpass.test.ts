@@ -48,11 +48,10 @@ describe("git askpass helper", () => {
         mocks.fsWriteFile.mockRejectedValueOnce(failure);
 
         await expect(
-            runGitCommandWithAskpass(
-                "/repo",
-                ["push"],
-                { username: "oauth2", token: "secret-token" },
-            ),
+            runGitCommandWithAskpass("/repo", ["push"], {
+                username: "oauth2",
+                token: "secret-token",
+            }),
         ).rejects.toThrow("disk full");
 
         expect(mocks.execFile).not.toHaveBeenCalled();

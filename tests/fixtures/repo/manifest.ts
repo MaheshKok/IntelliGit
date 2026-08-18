@@ -82,11 +82,17 @@ export const DEFAULT_MANIFEST_PATH = path.join(tmpdir(), "intelligit-e2e-fixture
  * should only ever be one setup project per run, but this function does not assume that) cannot
  * collide on the same temp path and clobber each other's in-flight write.
  */
-export async function writeFixtureManifest(manifestPath: string, manifest: FixtureManifest): Promise<void> {
+export async function writeFixtureManifest(
+    manifestPath: string,
+    manifest: FixtureManifest,
+): Promise<void> {
     const directory = path.dirname(manifestPath);
     await mkdir(directory, { recursive: true });
 
-    const tempPath = path.join(directory, `.${path.basename(manifestPath)}.tmp-${process.pid}-${randomUUID()}`);
+    const tempPath = path.join(
+        directory,
+        `.${path.basename(manifestPath)}.tmp-${process.pid}-${randomUUID()}`,
+    );
     const serialized = `${JSON.stringify(manifest, null, 2)}\n`;
     await writeFile(tempPath, serialized, "utf8");
     // Same-directory rename: atomic on every POSIX filesystem this suite runs on. A cross-filesystem
@@ -125,11 +131,17 @@ export async function writeFixtureManifest(manifestPath: string, manifest: Fixtu
  * `manifestPath`, exactly one `link` call can win; the kernel guarantees every other caller observes
  * `EEXIST`, never a torn or double-accepted state.
  */
-export async function claimFixtureManifest(manifestPath: string, manifest: FixtureManifest): Promise<void> {
+export async function claimFixtureManifest(
+    manifestPath: string,
+    manifest: FixtureManifest,
+): Promise<void> {
     const directory = path.dirname(manifestPath);
     await mkdir(directory, { recursive: true });
 
-    const tempPath = path.join(directory, `.${path.basename(manifestPath)}.claim-${process.pid}-${randomUUID()}`);
+    const tempPath = path.join(
+        directory,
+        `.${path.basename(manifestPath)}.claim-${process.pid}-${randomUUID()}`,
+    );
     const serialized = `${JSON.stringify(manifest, null, 2)}\n`;
     await writeFile(tempPath, serialized, "utf8");
 
@@ -173,7 +185,9 @@ async function describeExistingManifestTemplateRoot(manifestPath: string): Promi
 }
 
 function isExistsError(error: unknown): boolean {
-    return typeof error === "object" && error !== null && "code" in error && error.code === "EEXIST";
+    return (
+        typeof error === "object" && error !== null && "code" in error && error.code === "EEXIST"
+    );
 }
 
 /**
@@ -224,7 +238,9 @@ async function readManifestFile(manifestPath: string): Promise<string> {
                     `template rebuild.`,
             );
         }
-        throw new Error(`readFixtureManifest: failed to read manifest file at "${manifestPath}": ${describeError(error)}`);
+        throw new Error(
+            `readFixtureManifest: failed to read manifest file at "${manifestPath}": ${describeError(error)}`,
+        );
     }
 }
 
@@ -239,7 +255,9 @@ function validateManifestShape(parsed: unknown, manifestPath: string): FixtureMa
     const record = asRecord(parsed);
 
     if (record === null) {
-        problems.push(`expected the manifest's top level to be a JSON object, got ${describeType(parsed)}`);
+        problems.push(
+            `expected the manifest's top level to be a JSON object, got ${describeType(parsed)}`,
+        );
     } else {
         if (record.schemaVersion !== MANIFEST_SCHEMA_VERSION) {
             problems.push(
@@ -247,7 +265,9 @@ function validateManifestShape(parsed: unknown, manifestPath: string): FixtureMa
             );
         }
         if (!isNonEmptyAbsolutePathString(record.templateRoot)) {
-            problems.push(`"templateRoot" must be a non-empty absolute path string, got ${JSON.stringify(record.templateRoot)}`);
+            problems.push(
+                `"templateRoot" must be a non-empty absolute path string, got ${JSON.stringify(record.templateRoot)}`,
+            );
         }
     }
 
@@ -264,7 +284,9 @@ function validateManifestShape(parsed: unknown, manifestPath: string): FixtureMa
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
-    return typeof value === "object" && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
+    return typeof value === "object" && value !== null && !Array.isArray(value)
+        ? (value as Record<string, unknown>)
+        : null;
 }
 
 function isNonEmptyAbsolutePathString(value: unknown): value is string {
@@ -282,5 +304,7 @@ function describeError(error: unknown): string {
 }
 
 function isNotFoundError(error: unknown): boolean {
-    return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
+    return (
+        typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT"
+    );
 }

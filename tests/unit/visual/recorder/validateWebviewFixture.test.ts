@@ -104,12 +104,15 @@ describe("parseWebviewFixture -- rejects structurally malformed fixtures", () =>
     it.each([
         ["an older", WEBVIEW_FIXTURE_SCHEMA_VERSION - 1],
         ["a newer", WEBVIEW_FIXTURE_SCHEMA_VERSION + 1],
-    ])("rejects %s schemaVersion, naming both the found and expected version", (_label, version) => {
-        const raw = { ...VALID_RAW, schemaVersion: version };
-        expect(() => parseWebviewFixture(raw)).toThrow(
-            new RegExp(`is ${version}.*schema version ${WEBVIEW_FIXTURE_SCHEMA_VERSION}`),
-        );
-    });
+    ])(
+        "rejects %s schemaVersion, naming both the found and expected version",
+        (_label, version) => {
+            const raw = { ...VALID_RAW, schemaVersion: version };
+            expect(() => parseWebviewFixture(raw)).toThrow(
+                new RegExp(`is ${version}.*schema version ${WEBVIEW_FIXTURE_SCHEMA_VERSION}`),
+            );
+        },
+    );
 
     it("accepts exactly the current schemaVersion", () => {
         const raw = { ...VALID_RAW, schemaVersion: WEBVIEW_FIXTURE_SCHEMA_VERSION };

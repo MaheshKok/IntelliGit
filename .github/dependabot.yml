@@ -12,6 +12,25 @@ updates:
           prefix: "chore(ci)"
       labels:
           - dependencies
+      # Minor and patch bumps arrive as ONE pull request; majors stay ungrouped and keep arriving
+      # individually, because a major is the one that needs a human reading the changelog.
+      #
+      # Grouping is the answer to pull-request volume, and narrowing to majors-only is not. Every
+      # red Dependabot proposal this repository has held open was a MAJOR -- react-dom 19 against
+      # react 18, jsdom 28->30 lowercasing CSS custom property names, setup-node 4->7 -- while the
+      # minor and patch ones merged clean. A majors-only feed therefore drops exactly the updates
+      # that are safe to take and keeps exactly the ones that are not. It also drops most security
+      # fixes, which ship as patches: a CVE is remediated in 4.37.7, not in 5.0.0.
+      #
+      # The cost is real and worth stating: a group is all-or-nothing, so one member failing CI
+      # holds back every healthy member sharing its pull request. That is why the bun ecosystem
+      # below splits production from development instead of using a single group -- a broken
+      # development bump cannot then block a production one, or the reverse.
+      groups:
+          actions-minor-and-patch:
+              patterns:
+                  - "*"
+              update-types: ["minor", "patch"]
     # `bun`, not `npm`, because this repository's lockfile is `bun.lock` and every job installs with
     # `bun install --frozen-lockfile`. The npm ecosystem edits `package.json` and cannot write that
     # lockfile, so each proposal arrived with the two out of step and died on the install step
@@ -31,7 +50,32 @@ updates:
           prefix: "chore(deps)"
       labels:
           - dependencies
+      # Two groups rather than one, for the blast-radius reason given on the github-actions
+      # ecosystem above. Majors match neither and still open one pull request each.
+      #
+      # Split by NAME, not by `dependency-type`. That selector reads like the obvious way to say
+      # "development" and "production", but the Dependabot options reference documents it as
+      # supported by bundler, composer, mix, maven, npm and pip -- `bun` is not on that list.
+      #
+      # Its actual effect here cannot be measured, which is the argument against relying on it: the
+      # one runtime dependency, jsonc-parser, is already at the newest published version, so no
+      # grouped proposal has ever had the chance to show the selector including or excluding it.
+      # Grouping by name behaves the same way whether the key was honoured or ignored.
+      #
+      # Naming the production dependency explicitly is the cost of that, and it duplicates a fact
+      # that already lives in `package.json`. `tests/unit/publishing/dependabotGroups.test.ts` pins
+      # the two together in both directions, so adding or removing a runtime dependency without
+      # updating this list fails the suite rather than silently filing it under development -- which
+      # would put the one package that ships to users back behind the 37 that do not.
       groups:
+          # First, so it wins the match: a dependency joins the first group whose patterns accept it.
+          production-dependencies:
+              patterns:
+                  - jsonc-parser
+              update-types: ["minor", "patch"]
           safe-development-dependencies:
-              dependency-type: development
+              patterns:
+                  - "*"
+              exclude-patterns:
+                  - jsonc-parser
               update-types: ["minor", "patch"]

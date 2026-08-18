@@ -109,7 +109,9 @@ export async function snapshotGitDirState(
         // A linked worktree's admin directory lives under the common directory's own `worktrees/`,
         // which the common-directory walk above excludes -- so this is genuinely additional
         // coverage, not a re-walk of the same bytes under a second key.
-        ...Array.from(worktreeGitDirs, ([worktreePath, gitDir]) => snapshotOneGitDir(worktreePath, gitDir, false)),
+        ...Array.from(worktreeGitDirs, ([worktreePath, gitDir]) =>
+            snapshotOneGitDir(worktreePath, gitDir, false),
+        ),
     ]);
     return captured(Object.fromEntries(pairs));
 }

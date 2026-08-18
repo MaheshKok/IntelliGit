@@ -101,9 +101,7 @@ describe("compareHostFixtureStaleness", () => {
         // fixture becomes byte-identical to the committed one, and `toEqual([])` below passes while
         // proving nothing about the 46KB CSS payload. The anchor is asserted before it is mutated.
         expect(
-            /--vscode-editor-background: [^;]+/.test(
-                committedFixture.documentElement.styleCssText,
-            ),
+            /--vscode-editor-background: [^;]+/.test(committedFixture.documentElement.styleCssText),
             "the committed artifact must still carry the anchor token this proof mutates",
         ).toBe(true);
         const capturedFixture: HostFixture = {

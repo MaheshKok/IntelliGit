@@ -177,9 +177,7 @@ describe("signIn", () => {
         expect(mocks.showInformationMessage).toHaveBeenCalledWith("Signed in to github.com.");
         // getSession resolves an already-valid session without firing onDidChangeSessions,
         // so repository mode's listener cannot be the thing that retries the badge here.
-        expect(mocks.executeCommand).toHaveBeenCalledWith(
-            "intelligit.commitChecks.refreshBadges",
-        );
+        expect(mocks.executeCommand).toHaveBeenCalledWith("intelligit.commitChecks.refreshBadges");
     });
 
     it("routes a hand-typed GitHub host to the built-in session too", async () => {

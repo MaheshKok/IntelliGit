@@ -28,7 +28,9 @@ export async function snapshotWorkingTree(
     isBare: boolean,
 ): Promise<Section<readonly FsEntry[]>> {
     if (isBare) {
-        return notCaptured("repository is bare: a bare repository has no working tree to inventory");
+        return notCaptured(
+            "repository is bare: a bare repository has no working tree to inventory",
+        );
     }
     const entries = await inventoryDirectory({
         root: repoRoot,

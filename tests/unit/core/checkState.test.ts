@@ -111,7 +111,10 @@ describe("retry ladder shape", () => {
     });
 
     it("keeps the pending ladder's total coverage at or above a real CI run", () => {
-        const totalCoverageMs = PENDING_CHECK_RETRY_DELAYS_MS.reduce((sum, delay) => sum + delay, 0);
+        const totalCoverageMs = PENDING_CHECK_RETRY_DELAYS_MS.reduce(
+            (sum, delay) => sum + delay,
+            0,
+        );
         expect(totalCoverageMs).toBeGreaterThanOrEqual(240_000);
     });
 });

@@ -16,7 +16,9 @@ const execFileAsync = promisify(execFile);
 const directories: string[] = [];
 
 afterEach(async () => {
-    await Promise.all(directories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })));
+    await Promise.all(
+        directories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })),
+    );
 });
 
 async function git(directory: string, args: string[]): Promise<void> {
@@ -74,12 +76,14 @@ async function assertRoundTrip(
         worktreePatchPath: repository.worktreePatch,
     });
 
-    await expect(gitBuffer(repository.verify, ["diff", "--cached", ...PATCH_GENERATION_FLAGS])).resolves.toEqual(
+    await expect(
+        gitBuffer(repository.verify, ["diff", "--cached", ...PATCH_GENERATION_FLAGS]),
+    ).resolves.toEqual(
         await gitBuffer(repository.source, ["diff", "--cached", ...PATCH_GENERATION_FLAGS]),
     );
-    await expect(gitBuffer(repository.verify, ["diff", ...PATCH_GENERATION_FLAGS])).resolves.toEqual(
-        await gitBuffer(repository.source, ["diff", ...PATCH_GENERATION_FLAGS]),
-    );
+    await expect(
+        gitBuffer(repository.verify, ["diff", ...PATCH_GENERATION_FLAGS]),
+    ).resolves.toEqual(await gitBuffer(repository.source, ["diff", ...PATCH_GENERATION_FLAGS]));
 }
 
 describe("layer patch materialization", () => {
@@ -126,25 +130,22 @@ describe("layer patch materialization", () => {
         await assertRoundTrip(repository);
     });
 
-    it.each(["add-delete", "delete-recreate"])(
-        "round-trips %s cancellation",
-        async (kind) => {
-            const repository = await createRepository(
-                kind === "add-delete" ? { ".gitkeep": "" } : { "tracked.txt": "base\n" },
-            );
-            if (kind === "add-delete") {
-                await writeFile(path.join(repository.source, "new.txt"), "index\n");
-                await git(repository.source, ["add", "new.txt"]);
-                await unlink(path.join(repository.source, "new.txt"));
-            } else {
-                await unlink(path.join(repository.source, "tracked.txt"));
-                await git(repository.source, ["add", "tracked.txt"]);
-                await writeFile(path.join(repository.source, "tracked.txt"), "recreated\n");
-            }
+    it.each(["add-delete", "delete-recreate"])("round-trips %s cancellation", async (kind) => {
+        const repository = await createRepository(
+            kind === "add-delete" ? { ".gitkeep": "" } : { "tracked.txt": "base\n" },
+        );
+        if (kind === "add-delete") {
+            await writeFile(path.join(repository.source, "new.txt"), "index\n");
+            await git(repository.source, ["add", "new.txt"]);
+            await unlink(path.join(repository.source, "new.txt"));
+        } else {
+            await unlink(path.join(repository.source, "tracked.txt"));
+            await git(repository.source, ["add", "tracked.txt"]);
+            await writeFile(path.join(repository.source, "tracked.txt"), "recreated\n");
+        }
 
-            await assertRoundTrip(repository);
-        },
-    );
+        await assertRoundTrip(repository);
+    });
 
     it("round-trips binary and empty-file layers byte-for-byte", async () => {
         const repository = await createRepository({
@@ -162,7 +163,6 @@ describe("layer patch materialization", () => {
             await readFile(path.join(repository.source, "binary.bin")),
         );
     });
-
 
     it("captures and applies an untracked binary file through a no-index patch", async () => {
         const repository = await createRepository({ ".gitkeep": "" });

@@ -66,18 +66,28 @@ export interface CopyTemplateResult {
  * matching `seedFixtureTemplate`'s own fail-fast-and-leave-evidence convention (a caller building
  * a real per-test harness on top of this owns retry/cleanup policy, not this primitive).
  */
-export async function copyTemplate(sourceRoot: string, destinationRoot: string): Promise<CopyTemplateResult> {
+export async function copyTemplate(
+    sourceRoot: string,
+    destinationRoot: string,
+): Promise<CopyTemplateResult> {
     await cp(sourceRoot, destinationRoot, COPY_OPTIONS);
 
     const copiedInventory = await inventoryDirectory({ root: destinationRoot });
 
-    const rebasedPaths = await enforceSymlinkContainment(sourceRoot, destinationRoot, copiedInventory);
+    const rebasedPaths = await enforceSymlinkContainment(
+        sourceRoot,
+        destinationRoot,
+        copiedInventory,
+    );
     await assertNoSharedInodes(sourceRoot, destinationRoot, copiedInventory);
 
     // A rebase mutates the on-disk symlink target, which makes `copiedInventory`'s `symlinkTarget`
     // field for that entry stale -- re-walk only when at least one rebase actually happened, since
     // inode-sharing and simple, well-behaved symlinks never invalidate the first walk.
-    const finalInventory = rebasedPaths.length > 0 ? await inventoryDirectory({ root: destinationRoot }) : copiedInventory;
+    const finalInventory =
+        rebasedPaths.length > 0
+            ? await inventoryDirectory({ root: destinationRoot })
+            : copiedInventory;
 
     return { inventory: finalInventory };
 }

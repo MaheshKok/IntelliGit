@@ -75,12 +75,7 @@ export async function aheadBehindCounts(
     workspace: LocalGitWorkspace,
 ): Promise<{ readonly ahead: number; readonly behind: number }> {
     const output = (
-        await runGit(workspace, [
-            "rev-list",
-            "--left-right",
-            "--count",
-            "main...@{upstream}",
-        ])
+        await runGit(workspace, ["rev-list", "--left-right", "--count", "main...@{upstream}"])
     ).trim();
     const [ahead, behind] = output.split(/\s+/).map(Number);
     if (!Number.isInteger(ahead) || !Number.isInteger(behind)) {

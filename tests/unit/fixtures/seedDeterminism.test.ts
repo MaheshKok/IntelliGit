@@ -81,22 +81,28 @@ describe("Phase 6 step 32 -- canonical snapshot seed determinism", () => {
         cleanupDirs = [];
     }, FIXTURE_TIMEOUT_MS);
 
-    it("compares two fully initialized workspaces by their normalized canonical snapshots", async () => {
-        const workspacesRoot = await mkdtemp(path.join(tmpdir(), "intelligit-phase6-seed-pair-"));
-        cleanupDirs.push(workspacesRoot);
-        const result = await capturePairSnapshots(workspacesRoot);
-        workspaces.push(...result.workspaces);
+    it(
+        "compares two fully initialized workspaces by their normalized canonical snapshots",
+        async () => {
+            const workspacesRoot = await mkdtemp(
+                path.join(tmpdir(), "intelligit-phase6-seed-pair-"),
+            );
+            cleanupDirs.push(workspacesRoot);
+            const result = await capturePairSnapshots(workspacesRoot);
+            workspaces.push(...result.workspaces);
 
-        await Promise.all(
-            result.workspaces.map((workspace, index) =>
-                assertFullyInitialized(workspace, result.snapshots[index]!),
-            ),
-        );
+            await Promise.all(
+                result.workspaces.map((workspace, index) =>
+                    assertFullyInitialized(workspace, result.snapshots[index]!),
+                ),
+            );
 
-        expect(normalizeFixtureSnapshot(result.snapshots[0]!)).toEqual(
-            normalizeFixtureSnapshot(result.snapshots[1]!),
-        );
-    }, FIXTURE_TIMEOUT_MS);
+            expect(normalizeFixtureSnapshot(result.snapshots[0]!)).toEqual(
+                normalizeFixtureSnapshot(result.snapshots[1]!),
+            );
+        },
+        FIXTURE_TIMEOUT_MS,
+    );
 
     it(
         "seeds identically under two different ambient timezones, because the pinned dates carry an explicit offset",
@@ -139,186 +145,216 @@ describe("Phase 6 step 32 -- canonical snapshot seed determinism", () => {
         FIXTURE_TIMEOUT_MS,
     );
 
-    it("RED-proof #1: a substantive index flag survives canonical normalization", async () => {
-        const workspacesRoot = await mkdtemp(
-            path.join(tmpdir(), "intelligit-phase6-normalization-red-"),
-        );
-        cleanupDirs.push(workspacesRoot);
-        const result = await capturePairSnapshots(workspacesRoot);
-        workspaces.push(...result.workspaces);
-
-        const original = result.snapshots[0]!;
-        const index = original.snapshot.workspace.index;
-        expect(index.status).toBe("captured");
-        if (index.status !== "captured" || index.data.length === 0) return;
-
-        const first = index.data[0]!;
-        const badSnapshot: FixtureSnapshot = {
-            ...original,
-            snapshot: {
-                ...original.snapshot,
-                workspace: {
-                    ...original.snapshot.workspace,
-                    index: captured([
-                        { ...first, flag: first.flag === "H" ? "h" : "H" },
-                        ...index.data.slice(1),
-                    ]),
-                },
-            },
-        };
-
-        expect(normalizeFixtureSnapshot(original)).not.toEqual(
-            normalizeFixtureSnapshot(badSnapshot),
-        );
-    }, FIXTURE_TIMEOUT_MS);
-
-    it("RED-proof #2: changed untracked and ignored bytes survive canonical normalization", async () => {
-        const workspacesRoot = await mkdtemp(
-            path.join(tmpdir(), "intelligit-phase6-working-tree-red-"),
-        );
-        cleanupDirs.push(workspacesRoot);
-        const result = await capturePairSnapshots(workspacesRoot);
-        workspaces.push(...result.workspaces);
-
-        const [workspaceA, workspaceB] = result.workspaces;
-        await writeFile(path.join(workspaceA.root, "phase6-untracked.txt"), "same bytes\n", "utf8");
-        await writeFile(path.join(workspaceB.root, "phase6-untracked.txt"), "same bytes\n", "utf8");
-        await writeFile(
-            path.join(workspaceA.root, "ignored", "phase6-build.log"),
-            "same ignored bytes\n",
-            "utf8",
-        );
-        await writeFile(
-            path.join(workspaceB.root, "ignored", "phase6-build.log"),
-            "same ignored bytes\n",
-            "utf8",
-        );
-
-        const beforeA = await captureFixtureSnapshot(workspaceA);
-        const beforeB = await captureFixtureSnapshot(workspaceB);
-        await writeFile(
-            path.join(workspaceB.root, "phase6-untracked.txt"),
-            "different bytes\n",
-            "utf8",
-        );
-        await writeFile(
-            path.join(workspaceB.root, "ignored", "phase6-build.log"),
-            "different ignored bytes\n",
-            "utf8",
-        );
-        const afterB = await captureFixtureSnapshot(workspaceB);
-
-        expect(normalizeFixtureSnapshot(beforeA)).not.toEqual(normalizeFixtureSnapshot(afterB));
-        expect(normalizeFixtureSnapshot(beforeA)).toEqual(normalizeFixtureSnapshot(beforeB));
-    }, FIXTURE_TIMEOUT_MS);
-
-    it("RED-proof #3: a changed repository config value survives canonical normalization", async () => {
-        const workspacesRoot = await mkdtemp(path.join(tmpdir(), "intelligit-phase6-config-red-"));
-        cleanupDirs.push(workspacesRoot);
-        const result = await capturePairSnapshots(workspacesRoot);
-        workspaces.push(...result.workspaces);
-        const beforeA = await captureFixtureSnapshot(result.workspaces[0]!);
-        const beforeB = await captureFixtureSnapshot(result.workspaces[1]!);
-
-        await run(
-            "git",
-            ["config", "phase6.oracle", "changed-value"],
-            result.workspaces[1]!.root,
-            result.workspaces[1]!.env,
-        );
-        const after = await captureFixtureSnapshot(result.workspaces[1]!);
-
-        expect(normalizeFixtureSnapshot(beforeA)).toEqual(normalizeFixtureSnapshot(beforeB));
-        expect(normalizeFixtureSnapshot(beforeA)).not.toEqual(normalizeFixtureSnapshot(after));
-    }, FIXTURE_TIMEOUT_MS);
-
-    it("RED-proof #4: hostile global config and timezone reach an unsanitized control, then stay out of the pair", async () => {
-        const workspacesRoot = await mkdtemp(path.join(tmpdir(), "intelligit-phase6-hostile-env-"));
-        const ambientRoot = await mkdtemp(path.join(tmpdir(), "intelligit-phase6-hostile-global-"));
-        cleanupDirs.push(workspacesRoot, ambientRoot);
-        const globalConfig = path.join(ambientRoot, ".gitconfig");
-        await writeFile(
-            globalConfig,
-            "[user]\n\tname = Ambient Hostile User\n\temail = hostile@example.invalid\n[core]\n\tautocrlf = true\n",
-            "utf8",
-        );
-
-        const savedEnvironment = {
-            GIT_CONFIG_GLOBAL: process.env.GIT_CONFIG_GLOBAL,
-            GIT_CONFIG_SYSTEM: process.env.GIT_CONFIG_SYSTEM,
-            HOME: process.env.HOME,
-            TZ: process.env.TZ,
-        };
-        const hostileEnvironment: NodeJS.ProcessEnv = {
-            ...process.env,
-            GIT_CONFIG_GLOBAL: globalConfig,
-            GIT_CONFIG_SYSTEM: "/dev/null",
-            HOME: ambientRoot,
-            TZ: "Pacific/Auckland",
-        };
-        delete hostileEnvironment.GIT_AUTHOR_NAME;
-        delete hostileEnvironment.GIT_AUTHOR_EMAIL;
-        delete hostileEnvironment.GIT_COMMITTER_NAME;
-        delete hostileEnvironment.GIT_COMMITTER_EMAIL;
-        delete hostileEnvironment.GIT_AUTHOR_DATE;
-        delete hostileEnvironment.GIT_COMMITTER_DATE;
-        Object.assign(process.env, {
-            GIT_CONFIG_GLOBAL: globalConfig,
-            GIT_CONFIG_SYSTEM: "/dev/null",
-            HOME: ambientRoot,
-            TZ: "Pacific/Auckland",
-        });
-
-        try {
-            const controlRoot = await mkdtemp(path.join(ambientRoot, "control-"));
-            cleanupDirs.push(controlRoot);
-            const controlName = await run(
-                "git",
-                ["config", "--global", "--get", "user.name"],
-                controlRoot,
-                hostileEnvironment,
+    it(
+        "RED-proof #1: a substantive index flag survives canonical normalization",
+        async () => {
+            const workspacesRoot = await mkdtemp(
+                path.join(tmpdir(), "intelligit-phase6-normalization-red-"),
             );
-            const controlAutocrlf = await run(
-                "git",
-                ["config", "--global", "--get", "core.autocrlf"],
-                controlRoot,
-                hostileEnvironment,
-            );
-            const controlTimezone = await run("date", ["+%z"], controlRoot, hostileEnvironment);
-            expect(controlName).toBe("Ambient Hostile User");
-            expect(controlAutocrlf).toBe("true");
-            expect(controlTimezone).not.toBe("+0000");
-
+            cleanupDirs.push(workspacesRoot);
             const result = await capturePairSnapshots(workspacesRoot);
             workspaces.push(...result.workspaces);
-            for (const workspace of result.workspaces) {
-                expect(workspace.env.GIT_CONFIG_GLOBAL).toBe("/dev/null");
-                expect(workspace.env.TZ).toBe("Pacific/Auckland");
-                await expect(
-                    run(
-                        "git",
-                        ["config", "--global", "--get", "user.name"],
-                        workspace.root,
-                        workspace.env,
-                    ),
-                ).rejects.toBeDefined();
-                expect(
-                    await run(
-                        "git",
-                        ["config", "--get", "core.autocrlf"],
-                        workspace.root,
-                        workspace.env,
-                    ),
-                ).toBe("false");
-            }
-            expect(normalizeFixtureSnapshot(result.snapshots[0]!)).toEqual(
-                normalizeFixtureSnapshot(result.snapshots[1]!),
+
+            const original = result.snapshots[0]!;
+            const index = original.snapshot.workspace.index;
+            expect(index.status).toBe("captured");
+            if (index.status !== "captured" || index.data.length === 0) return;
+
+            const first = index.data[0]!;
+            const badSnapshot: FixtureSnapshot = {
+                ...original,
+                snapshot: {
+                    ...original.snapshot,
+                    workspace: {
+                        ...original.snapshot.workspace,
+                        index: captured([
+                            { ...first, flag: first.flag === "H" ? "h" : "H" },
+                            ...index.data.slice(1),
+                        ]),
+                    },
+                },
+            };
+
+            expect(normalizeFixtureSnapshot(original)).not.toEqual(
+                normalizeFixtureSnapshot(badSnapshot),
             );
-        } finally {
-            for (const [key, value] of Object.entries(savedEnvironment)) {
-                if (value === undefined) delete process.env[key];
-                else process.env[key] = value;
+        },
+        FIXTURE_TIMEOUT_MS,
+    );
+
+    it(
+        "RED-proof #2: changed untracked and ignored bytes survive canonical normalization",
+        async () => {
+            const workspacesRoot = await mkdtemp(
+                path.join(tmpdir(), "intelligit-phase6-working-tree-red-"),
+            );
+            cleanupDirs.push(workspacesRoot);
+            const result = await capturePairSnapshots(workspacesRoot);
+            workspaces.push(...result.workspaces);
+
+            const [workspaceA, workspaceB] = result.workspaces;
+            await writeFile(
+                path.join(workspaceA.root, "phase6-untracked.txt"),
+                "same bytes\n",
+                "utf8",
+            );
+            await writeFile(
+                path.join(workspaceB.root, "phase6-untracked.txt"),
+                "same bytes\n",
+                "utf8",
+            );
+            await writeFile(
+                path.join(workspaceA.root, "ignored", "phase6-build.log"),
+                "same ignored bytes\n",
+                "utf8",
+            );
+            await writeFile(
+                path.join(workspaceB.root, "ignored", "phase6-build.log"),
+                "same ignored bytes\n",
+                "utf8",
+            );
+
+            const beforeA = await captureFixtureSnapshot(workspaceA);
+            const beforeB = await captureFixtureSnapshot(workspaceB);
+            await writeFile(
+                path.join(workspaceB.root, "phase6-untracked.txt"),
+                "different bytes\n",
+                "utf8",
+            );
+            await writeFile(
+                path.join(workspaceB.root, "ignored", "phase6-build.log"),
+                "different ignored bytes\n",
+                "utf8",
+            );
+            const afterB = await captureFixtureSnapshot(workspaceB);
+
+            expect(normalizeFixtureSnapshot(beforeA)).not.toEqual(normalizeFixtureSnapshot(afterB));
+            expect(normalizeFixtureSnapshot(beforeA)).toEqual(normalizeFixtureSnapshot(beforeB));
+        },
+        FIXTURE_TIMEOUT_MS,
+    );
+
+    it(
+        "RED-proof #3: a changed repository config value survives canonical normalization",
+        async () => {
+            const workspacesRoot = await mkdtemp(
+                path.join(tmpdir(), "intelligit-phase6-config-red-"),
+            );
+            cleanupDirs.push(workspacesRoot);
+            const result = await capturePairSnapshots(workspacesRoot);
+            workspaces.push(...result.workspaces);
+            const beforeA = await captureFixtureSnapshot(result.workspaces[0]!);
+            const beforeB = await captureFixtureSnapshot(result.workspaces[1]!);
+
+            await run(
+                "git",
+                ["config", "phase6.oracle", "changed-value"],
+                result.workspaces[1]!.root,
+                result.workspaces[1]!.env,
+            );
+            const after = await captureFixtureSnapshot(result.workspaces[1]!);
+
+            expect(normalizeFixtureSnapshot(beforeA)).toEqual(normalizeFixtureSnapshot(beforeB));
+            expect(normalizeFixtureSnapshot(beforeA)).not.toEqual(normalizeFixtureSnapshot(after));
+        },
+        FIXTURE_TIMEOUT_MS,
+    );
+
+    it(
+        "RED-proof #4: hostile global config and timezone reach an unsanitized control, then stay out of the pair",
+        async () => {
+            const workspacesRoot = await mkdtemp(
+                path.join(tmpdir(), "intelligit-phase6-hostile-env-"),
+            );
+            const ambientRoot = await mkdtemp(
+                path.join(tmpdir(), "intelligit-phase6-hostile-global-"),
+            );
+            cleanupDirs.push(workspacesRoot, ambientRoot);
+            const globalConfig = path.join(ambientRoot, ".gitconfig");
+            await writeFile(
+                globalConfig,
+                "[user]\n\tname = Ambient Hostile User\n\temail = hostile@example.invalid\n[core]\n\tautocrlf = true\n",
+                "utf8",
+            );
+
+            const savedEnvironment = {
+                GIT_CONFIG_GLOBAL: process.env.GIT_CONFIG_GLOBAL,
+                GIT_CONFIG_SYSTEM: process.env.GIT_CONFIG_SYSTEM,
+                HOME: process.env.HOME,
+                TZ: process.env.TZ,
+            };
+            const hostileEnvironment: NodeJS.ProcessEnv = {
+                ...process.env,
+                GIT_CONFIG_GLOBAL: globalConfig,
+                GIT_CONFIG_SYSTEM: "/dev/null",
+                HOME: ambientRoot,
+                TZ: "Pacific/Auckland",
+            };
+            delete hostileEnvironment.GIT_AUTHOR_NAME;
+            delete hostileEnvironment.GIT_AUTHOR_EMAIL;
+            delete hostileEnvironment.GIT_COMMITTER_NAME;
+            delete hostileEnvironment.GIT_COMMITTER_EMAIL;
+            delete hostileEnvironment.GIT_AUTHOR_DATE;
+            delete hostileEnvironment.GIT_COMMITTER_DATE;
+            Object.assign(process.env, {
+                GIT_CONFIG_GLOBAL: globalConfig,
+                GIT_CONFIG_SYSTEM: "/dev/null",
+                HOME: ambientRoot,
+                TZ: "Pacific/Auckland",
+            });
+
+            try {
+                const controlRoot = await mkdtemp(path.join(ambientRoot, "control-"));
+                cleanupDirs.push(controlRoot);
+                const controlName = await run(
+                    "git",
+                    ["config", "--global", "--get", "user.name"],
+                    controlRoot,
+                    hostileEnvironment,
+                );
+                const controlAutocrlf = await run(
+                    "git",
+                    ["config", "--global", "--get", "core.autocrlf"],
+                    controlRoot,
+                    hostileEnvironment,
+                );
+                const controlTimezone = await run("date", ["+%z"], controlRoot, hostileEnvironment);
+                expect(controlName).toBe("Ambient Hostile User");
+                expect(controlAutocrlf).toBe("true");
+                expect(controlTimezone).not.toBe("+0000");
+
+                const result = await capturePairSnapshots(workspacesRoot);
+                workspaces.push(...result.workspaces);
+                for (const workspace of result.workspaces) {
+                    expect(workspace.env.GIT_CONFIG_GLOBAL).toBe("/dev/null");
+                    expect(workspace.env.TZ).toBe("Pacific/Auckland");
+                    await expect(
+                        run(
+                            "git",
+                            ["config", "--global", "--get", "user.name"],
+                            workspace.root,
+                            workspace.env,
+                        ),
+                    ).rejects.toBeDefined();
+                    expect(
+                        await run(
+                            "git",
+                            ["config", "--get", "core.autocrlf"],
+                            workspace.root,
+                            workspace.env,
+                        ),
+                    ).toBe("false");
+                }
+                expect(normalizeFixtureSnapshot(result.snapshots[0]!)).toEqual(
+                    normalizeFixtureSnapshot(result.snapshots[1]!),
+                );
+            } finally {
+                for (const [key, value] of Object.entries(savedEnvironment)) {
+                    if (value === undefined) delete process.env[key];
+                    else process.env[key] = value;
+                }
             }
-        }
-    }, FIXTURE_TIMEOUT_MS);
+        },
+        FIXTURE_TIMEOUT_MS,
+    );
 });

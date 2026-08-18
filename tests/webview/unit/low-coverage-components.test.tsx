@@ -947,7 +947,10 @@ describe("low coverage components", () => {
 
             expect(PENDING_CHECK_RETRY_DELAYS_MS.at(-1)).toBe(120_000);
             expect(onRequestCommitChecks.mock.calls.filter(([, force]) => force === true)).toEqual(
-                PENDING_CHECK_RETRY_DELAYS_MS.map(() => [commits.map((commit) => commit.hash), true]),
+                PENDING_CHECK_RETRY_DELAYS_MS.map(() => [
+                    commits.map((commit) => commit.hash),
+                    true,
+                ]),
             );
             expect(vi.getTimerCount()).toBe(0);
 
@@ -988,7 +991,9 @@ describe("low coverage components", () => {
             expect(vi.getTimerCount()).toBe(0);
 
             act(() => vi.advanceTimersByTime(60 * 60 * 1_000));
-            expect(onRequestCommitChecks).toHaveBeenCalledTimes(PENDING_CHECK_RETRY_DELAYS_MS.length);
+            expect(onRequestCommitChecks).toHaveBeenCalledTimes(
+                PENDING_CHECK_RETRY_DELAYS_MS.length,
+            );
         } finally {
             if (mounted) unmount(mounted.root, mounted.container);
             act(() => vi.runOnlyPendingTimers());
@@ -1261,7 +1266,9 @@ describe("low coverage components", () => {
             expect(vi.getTimerCount()).toBe(0);
 
             act(() => vi.advanceTimersByTime(60 * 60 * 1_000));
-            expect(onRequestCommitChecks).toHaveBeenCalledTimes(HEAD_NONE_CHECK_RETRY_DELAYS_MS.length);
+            expect(onRequestCommitChecks).toHaveBeenCalledTimes(
+                HEAD_NONE_CHECK_RETRY_DELAYS_MS.length,
+            );
         } finally {
             if (mounted) unmount(mounted.root, mounted.container);
             act(() => vi.runOnlyPendingTimers());

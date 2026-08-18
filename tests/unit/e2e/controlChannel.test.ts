@@ -453,39 +453,45 @@ describe("activateE2eControlChannel: end-to-end request/response over the real t
      * a watcher can survive an uncaught listener throw and still leave the failure attributed to
      * nothing at all, and a test that only checks the next request would pass in that state.
      */
-    it("logs and skips a non-JSON request body instead of throwing inside the watcher listener", { retry: 2 }, async () => {
-        const { context } = makeContext(vscodeMock.ExtensionMode.Development);
-        const handle = activateE2eControlChannel(context);
-        const logged: string[] = [];
-        const consoleSpy = vi.spyOn(console, "error").mockImplementation((...args: unknown[]) => {
-            logged.push(args.map((arg) => String(arg)).join(" "));
-        });
+    it(
+        "logs and skips a non-JSON request body instead of throwing inside the watcher listener",
+        { retry: 2 },
+        async () => {
+            const { context } = makeContext(vscodeMock.ExtensionMode.Development);
+            const handle = activateE2eControlChannel(context);
+            const logged: string[] = [];
+            const consoleSpy = vi
+                .spyOn(console, "error")
+                .mockImplementation((...args: unknown[]) => {
+                    logged.push(args.map((arg) => String(arg)).join(" "));
+                });
 
-        try {
-            writeFileSync(join(channelDir, "not-json.request.json"), "{ not json", "utf8");
+            try {
+                writeFileSync(join(channelDir, "not-json.request.json"), "{ not json", "utf8");
 
-            await waitFor(() =>
-                logged.some((line) => line.includes("not-json") && line.includes("unreadable")),
-            );
+                await waitFor(() =>
+                    logged.some((line) => line.includes("not-json") && line.includes("unreadable")),
+                );
 
-            // Skipped, not answered: with a non-atomic writer this same failure is also how a
-            // half-written file looks, and answering it would race a spurious error response
-            // against the real one.
-            expect(existsSync(join(channelDir, "not-json.response.json"))).toBe(false);
+                // Skipped, not answered: with a non-atomic writer this same failure is also how a
+                // half-written file looks, and answering it would race a spurious error response
+                // against the real one.
+                expect(existsSync(join(channelDir, "not-json.response.json"))).toBe(false);
 
-            // The watcher must still answer the next request.
-            const next = await sendAndAwait(channelDir, "after-not-json", {
-                store: "memento",
-                operation: "snapshot",
-                scope: "workspace",
-                key: ALLOWED_WORKSPACE_KEY,
-            });
-            expect(next.ok).toBe(true);
-        } finally {
-            consoleSpy.mockRestore();
-            handle.dispose();
-        }
-    });
+                // The watcher must still answer the next request.
+                const next = await sendAndAwait(channelDir, "after-not-json", {
+                    store: "memento",
+                    operation: "snapshot",
+                    scope: "workspace",
+                    key: ALLOWED_WORKSPACE_KEY,
+                });
+                expect(next.ok).toBe(true);
+            } finally {
+                consoleSpy.mockRestore();
+                handle.dispose();
+            }
+        },
+    );
 
     /**
      * The log line added for the case above must not become a way out for the thing this
@@ -506,31 +512,37 @@ describe("activateE2eControlChannel: end-to-end request/response over the real t
      * The assertion is on the leading characters V8 actually emits, so it fails when the guard
      * is removed, and it does not depend on the wording of the replacement message.
      */
-    it("never echoes the request body when reporting an unreadable request, because a body can carry a secret", { retry: 2 }, async () => {
-        const { context } = makeContext(vscodeMock.ExtensionMode.Development);
-        const handle = activateE2eControlChannel(context);
-        const logged: string[] = [];
-        const consoleSpy = vi.spyOn(console, "error").mockImplementation((...args: unknown[]) => {
-            logged.push(args.map((arg) => String(arg)).join(" "));
-        });
-        const secretValue = "placeholder-not-a-credential-0000";
+    it(
+        "never echoes the request body when reporting an unreadable request, because a body can carry a secret",
+        { retry: 2 },
+        async () => {
+            const { context } = makeContext(vscodeMock.ExtensionMode.Development);
+            const handle = activateE2eControlChannel(context);
+            const logged: string[] = [];
+            const consoleSpy = vi
+                .spyOn(console, "error")
+                .mockImplementation((...args: unknown[]) => {
+                    logged.push(args.map((arg) => String(arg)).join(" "));
+                });
+            const secretValue = "placeholder-not-a-credential-0000";
 
-        try {
-            writeFileSync(join(channelDir, "leaky.request.json"), secretValue, "utf8");
+            try {
+                writeFileSync(join(channelDir, "leaky.request.json"), secretValue, "utf8");
 
-            await waitFor(() => logged.some((line) => line.includes("leaky")));
+                await waitFor(() => logged.some((line) => line.includes("leaky")));
 
-            expect(
-                logged.join("\n"),
-                "the parse failure was reported with its own message, and V8 builds that message " +
-                    "by quoting the input's leading characters -- so part of a request body, which " +
-                    "for a secret seed is the secret itself, reached a log this suite writes in CI",
-            ).not.toContain(secretValue.slice(0, 10));
-        } finally {
-            consoleSpy.mockRestore();
-            handle.dispose();
-        }
-    });
+                expect(
+                    logged.join("\n"),
+                    "the parse failure was reported with its own message, and V8 builds that message " +
+                        "by quoting the input's leading characters -- so part of a request body, which " +
+                        "for a secret seed is the secret itself, reached a log this suite writes in CI",
+                ).not.toContain(secretValue.slice(0, 10));
+            } finally {
+                consoleSpy.mockRestore();
+                handle.dispose();
+            }
+        },
+    );
 
     /**
      * The failure that happens AFTER `dispatchRequest` has already resolved. `dispatchRequest`
@@ -541,36 +553,42 @@ describe("activateE2eControlChannel: end-to-end request/response over the real t
      * that throw is an unhandled promise rejection in the extension host, attributed to no
      * request at all.
      */
-    it("reports a finalize failure against its own nonce instead of raising an unhandled rejection", { retry: 2 }, async () => {
-        const { context } = makeContext(vscodeMock.ExtensionMode.Development);
-        const handle = activateE2eControlChannel(context);
-        const logged: string[] = [];
-        const consoleSpy = vi.spyOn(console, "error").mockImplementation((...args: unknown[]) => {
-            logged.push(args.map((arg) => String(arg)).join(" "));
-        });
+    it(
+        "reports a finalize failure against its own nonce instead of raising an unhandled rejection",
+        { retry: 2 },
+        async () => {
+            const { context } = makeContext(vscodeMock.ExtensionMode.Development);
+            const handle = activateE2eControlChannel(context);
+            const logged: string[] = [];
+            const consoleSpy = vi
+                .spyOn(console, "error")
+                .mockImplementation((...args: unknown[]) => {
+                    logged.push(args.map((arg) => String(arg)).join(" "));
+                });
 
-        try {
-            mkdirSync(join(channelDir, "collide.response.json"));
-            writeFileSync(
-                join(channelDir, "collide.request.json"),
-                JSON.stringify({
-                    nonce: "collide",
-                    store: "memento",
-                    operation: "snapshot",
-                    scope: "workspace",
-                    key: ALLOWED_WORKSPACE_KEY,
-                }),
-                "utf8",
-            );
+            try {
+                mkdirSync(join(channelDir, "collide.response.json"));
+                writeFileSync(
+                    join(channelDir, "collide.request.json"),
+                    JSON.stringify({
+                        nonce: "collide",
+                        store: "memento",
+                        operation: "snapshot",
+                        scope: "workspace",
+                        key: ALLOWED_WORKSPACE_KEY,
+                    }),
+                    "utf8",
+                );
 
-            await waitFor(() =>
-                logged.some((line) => line.includes("collide") && line.includes("deliver")),
-            );
-        } finally {
-            consoleSpy.mockRestore();
-            handle.dispose();
-        }
-    });
+                await waitFor(() =>
+                    logged.some((line) => line.includes("collide") && line.includes("deliver")),
+                );
+            } finally {
+                consoleSpy.mockRestore();
+                handle.dispose();
+            }
+        },
+    );
 
     /** Writes a request file and waits for the correlated response file, returning its parsed body. */
     async function sendAndAwait(

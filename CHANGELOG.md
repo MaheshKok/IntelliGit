@@ -5,9 +5,7 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.25.7] - 2026-08-17
-
-This release also carries everything listed under 0.25.5 and 0.25.6.
+## [0.25.12] - 2026-08-18
 
 ### Security
 
@@ -31,7 +29,42 @@ This release also carries everything listed under 0.25.5 and 0.25.6.
 - Fixed a server's own numbers being able to unbound or park a rate-limit bucket. A reset header of `1e306` seconds is finite but overflows to Infinity once converted to milliseconds, and satisfied "the reset is in the future" forever; a bucket exempt from the cap had no request ceiling at all, leaving a cooldown computed entirely from server-supplied numbers as its only quantity guard; and a cooldown taken literally could park a bucket for a full day. Granting the bypass now requires a reset inside a day, cooldowns clamp to one request window and re-arm from the next response if the provider still wants more, and an exempt bucket's ceiling follows the advertised limit.
 - Fixed the GitHub quota bypass being granted on a quota no server ever advertised. The limit, remaining and reset fields are each remembered independently, so a response carrying only a limit and a later one carrying only a remaining and a reset combined into a tuple that lifted the automatic ceiling from 300 requests an hour to the full advertised 5000. The bypass is now judged on a single response's own headers. The reserve cooldown deliberately still reads the remembered fields, because a raised ceiling is a permission and has to be earned outright, while a cooldown is a brake — withholding one from a response that proves the quota is nearly spent, merely because that response omitted the limit header, would fail in the unsafe direction.
 - Fixed signing in to a rejected GitHub session reporting success while changing nothing. The recovery asked for an existing session, which returns the very session GitHub had just rejected without prompting, so the user saw "Signed in to github.com." and a badge that failed again for the same reason. It now forces a fresh consent flow.
-- Fixed an unread standard-input pipe being able to take down the extension host. Every Git invocation closes the child's standard input, and a child that exits without draining it breaks the pipe — but the only error handler was on the process, and a stream error with no handler of its own is an uncatchable crash rather than a reported failure. That race is now absorbed, since the child's exit code and standard error already say everything about it. Every other write failure is reported instead: those mean Git is still running and received a truncated input, and a truncated input can still exit successfully, which would turn a failed write into a confident answer over bytes that were never delivered.
+
+## [0.25.11] - 2026-08-18
+
+### Fixed
+
+- Fixed the Commit panel coming up permanently blank while the Graph beside it filled in normally. When the panel loads it announces itself, IntelliGit answers with the list of repositories, and the panel keeps re-asking until that answer arrives. IntelliGit sent the answer to whichever panel it had recorded last, rather than to the panel that had just asked. It forgets that record when the view is closed, and the panel can be reloaded without IntelliGit being told — so once the two disagreed, every answer went nowhere. Nothing reported it, because sending to a panel that is not open is an ordinary thing to do and is not treated as a fault, so the panel re-asked for as long as the window stayed open and stayed empty throughout. A panel that has just sent a message is by definition there, so IntelliGit now treats it as the panel to answer whenever it is holding no record of one — while leaving an existing record untouched, so a panel that has since been replaced cannot take answers meant for the one actually on screen.
+
+## [0.25.10] - 2026-08-18
+
+### Fixed
+
+- Published 0.25.9, which was built and then never released. A test covering how IntelliGit writes the marker that names the window currently changing a repository was checking the wrong thing: it identified the marker file by a number the operating system is free to hand out again once a file is gone, and every renewal of the marker releases the previous one. On Linux that number came straight back, so the test's verdict depended on how many renewals happened to fit in the moment it waited — it passed twice and then failed, which stopped the release. It now holds the file open and checks that the renewal leaves it untouched, which is the behaviour that actually matters. Nothing in the extension itself changed between the two versions.
+
+## [0.25.9] - 2026-08-18
+
+### Fixed
+
+- Fixed shelf and repository actions refusing to run — permanently — after a crash left a damaged marker file behind. IntelliGit marks a repository as busy while it is changing it, and clears the mark when it finishes. If the extension died at the exact moment that mark was being rewritten, what it left behind could no longer be read. A mark that cannot be read names no owner, and IntelliGit treated that the same as one belonging to a process still working, so it waited for an owner that was never coming: every later shelf action reported the repository as busy, and no amount of waiting, retrying or reopening the window cleared it. Only deleting the file by hand did. An unreadable mark is now judged by when it was last written, exactly as a readable one is judged by its owner's last sign of life, and is cleared once nothing has touched it for thirty seconds. A mark that has only just appeared is left alone, so this never interrupts a window that has just started working.
+- Fixed two windows being able to change the same repository at the same time when one of them stalled. IntelliGit refreshes its busy mark every few seconds, and it used to do that by emptying the file and then writing the new mark into it. A window frozen between those two steps — by a long operation, or by the machine being under load — left the mark empty for as long as the freeze lasted; an empty mark names no owner, so a second window could conclude the first was gone and take the repository over while it was still working. The mark is now written elsewhere and swapped into place complete, so it can never be seen half-written: a stalled window is still recognised as the owner and is left alone. A window that is interrupted before its own mark lands now checks the mark back before it starts, so it cannot go on believing it holds a repository that has since been handed to someone else.
+- Fixed a repository being taken over from a window that was in fact still working. Before taking a repository over from a window that appears to have abandoned it, IntelliGit checks that the mark it is about to displace is still the one it examined. That check recognised a mark by its owner alone — and a window keeps the same owner for as long as it runs, so a window that renewed its mark in the moment between the examination and the takeover still looked unchanged and was displaced anyway. Renewing the mark is precisely the sign that the window is alive, and it is now part of what the check compares, so a repository is left alone whenever its owner renews the mark while a takeover is being decided. This could only arise where IntelliGit cannot see for itself whether the owning window is still running — a repository on a network share, or one open on another machine — because everywhere else it asks the system directly.
+
+## [0.25.8] - 2026-08-18
+
+### Fixed
+
+- Fixed the extension stopping altogether when a Git command finishes before it has been given all of its input. Only the command itself was watched for failure, never the channel used to feed it, and a failure on that channel is not one the surrounding code is able to catch — so rather than that single command reporting a problem, everything came to a halt. Nothing is lost by ignoring that particular failure: the command's own exit status and error output already describe what happened. Any other failure to hand over the input is still reported, because a Git command finishes successfully on however much of its input it managed to read — so ignoring those too would have turned a command that ran on half its input into one that appears to have worked.
+- Fixed the list of shelves failing outright instead of waiting whenever a shelf operation was already under way. Reading the list does not pass through the queue that shelf changes pass through, so it met a change in progress head-on and gave up at once, and the commit panel quietly showed the shelves it had last seen instead — stale contents, with nothing reported as wrong. A read now waits up to a second for the change to finish instead of giving up at once, and reports the store as busy only if it is still held after that. The wait is kept short on purpose: this read runs as part of the commit panel's periodic refresh, alongside the working-tree status and branch information, so a longer one would hold up everything else on the panel to little benefit.
+
+## [0.25.7] - 2026-08-17
+
+### Fixed
+
+- Fixed a release that is waiting to publish holding up the checks on every change merged after it. The build, the visual suite and the end-to-end suite shared a queue with the publishing step, and because a release is deliberately never interrupted once it starts, anything merged behind one simply waited — in the case that prompted this, for thirteen hours, after which the change queued in between was dropped without reporting a failure. Releases still publish strictly one at a time; they no longer make anything else wait for them.
+- Removed the manual approval a release had to be granted before it could publish. It gated nothing that the automated checks above it did not already gate, and an approval nobody clicked was what stalled the queue described above.
+- Fixed a release being dropped when two further changes are merged while it is still publishing. Publishing is deliberately done one version at a time, but only a single release could wait its turn: a third merge silently cancelled the one waiting in between. Because the step that decides whether to publish reads the version on the newest commit, a version skipped that way was never reconsidered and simply never shipped — which is how 0.25.2 came to have no release. Up to a hundred releases now wait in line and publish in the order they were merged.
+
 ## [0.25.6] - 2026-08-17
 
 ### Fixed

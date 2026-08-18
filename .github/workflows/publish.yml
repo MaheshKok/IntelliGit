@@ -21,13 +21,23 @@ on:
 # Keyed by event so a manual workflow_dispatch on main cannot cancel an
 # in-flight push-triggered release run (they target the same ref).
 concurrency:
-    group: build-release-${{ github.event_name }}-${{ github.ref }}
+    # Main runs share nothing: `github.run_id` is unique per run, so every merge starts its checks
+    # immediately. This workflow both validates and publishes, and those two needs pull opposite
+    # ways -- a superseded release must survive, which forbids cancelling, while sharing a group
+    # without cancelling means QUEUEING. One slow or parked job then holds every later merge's
+    # build, visual and e2e-full behind a release they have nothing to do with. Measured
+    # 2026-08-17: the release job sat on an unapproved deployment environment from 07:45; the merge
+    # behind it queued and was silently cancelled when a third arrived, so #197's checks never ran
+    # on main at all and #200's never started -- 13 hours, with no failure reported anywhere.
+    # Releases still serialize, on the `release` job's own group, where a queue delays only the
+    # next release.
+    group: build-release-${{ github.event_name }}-${{ github.ref }}-${{ github.ref == 'refs/heads/main' && github.run_id || 'shared' }}
     # A superseded pull-request run is waste worth cancelling; a superseded main run is a lost
-    # release. Two merges land in the same group -- same event (`push`), same ref
-    # (`refs/heads/main`) -- so merging again while a release is in flight cancels it, and a
-    # cancelled run reports no failure, shows no red X, and notifies nobody. Measured: v0.25.3's
-    # release run was cancelled by the merge that followed it minutes later, and the release was
-    # silently lost. Main pushes therefore queue instead of cancelling.
+    # release: a cancelled run reports no failure, shows no red X, and notifies nobody. Measured:
+    # v0.25.3's release run was cancelled by the merge that followed it minutes later, and the
+    # release was silently lost. Main pushes are unreachable by this switch now that each holds its
+    # own group, and it stays ref-conditional so restoring a shared group cannot also silently
+    # restore cancellation.
     cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 permissions:
@@ -426,7 +436,35 @@ jobs:
         needs: [build, visual, e2e-full, package-smoke, release-eligibility, attest]
         runs-on: ubuntu-latest
         timeout-minutes: 30
-        environment: marketplace-production
+        # Publishing serializes here rather than at the workflow level, so a release that has to
+        # wait delays only the next release -- never the checks that gate it. Two releases must not
+        # run at once: the tag, both marketplace uploads and the GitHub Release are all
+        # version-keyed side effects, and an out-of-order pair leaves the marketplace showing the
+        # older version as current. `cancel-in-progress: false` for the reason on the workflow-level
+        # block: a cancelled release is a silently lost one.
+        #
+        # `queue: max` because `cancel-in-progress: false` alone does not mean "everything waits".
+        # The default, `queue: single`, holds at most ONE run pending per group and cancels that one
+        # when a third arrives -- the same silent cancellation this workflow was restructured to
+        # escape, moved down a level. Three merges in a row would publish the first and the third
+        # and drop the second, and the state-based gate above cannot recover it: that gate reads the
+        # version at the CURRENT commit, so once a later bump lands, the skipped one is never asked
+        # about again. It is how v0.25.2 disappeared. `max` queues up to 100 and runs them FIFO.
+        #
+        # It is sound only beside a literal `cancel-in-progress: false`: GitHub fails workflow
+        # VALIDATION when a queued group can also cancel, which stops every job in the file rather
+        # than just this one. That is why it is not copied to the workflow-level block, whose
+        # cancel-in-progress is an expression that evaluates true on pull requests.
+        #
+        # There is deliberately no `environment:`. A deployment environment is the only way a job
+        # acquires a manual gate, and a job parked in `waiting` is what held main for 13 hours on
+        # 2026-08-17. It scoped nothing in exchange: VSCE_PAT and OVSX_PAT are repository secrets,
+        # reachable from any job in this workflow with or without it, and the environment's branch
+        # policy is already asserted below by `github.ref == 'refs/heads/main'`.
+        concurrency:
+            group: marketplace-release
+            cancel-in-progress: false
+            queue: max
         if: ${{ !cancelled() && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.build.result == 'success' && needs.visual.result == 'success' && needs.package-smoke.result == 'success' && (needs.e2e-full.result == 'success' || (github.event_name == 'workflow_dispatch' && inputs.skip_e2e_gate == true)) && needs.release-eligibility.result == 'success' && needs.release-eligibility.outputs.version_changed == 'true' && needs.attest.result == 'success' }}
         permissions:
             contents: write

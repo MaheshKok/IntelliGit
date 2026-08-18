@@ -4,10 +4,7 @@
 import path from "node:path";
 import { expect, test } from "@playwright/test";
 import { captureHostFixture } from "./captureHostFixture";
-import {
-    compareHostFixtures,
-    formatHostFixtureDifferences,
-} from "./hostFixtureComparator";
+import { compareHostFixtures, formatHostFixtureDifferences } from "./hostFixtureComparator";
 import { HOST_FIXTURE_THEMES } from "./hostFixtureThemes";
 import { resolveVSCodeExecutable } from "./resolveVSCodeExecutable";
 import { VSCODE_VERSION } from "./vscodeVersion";

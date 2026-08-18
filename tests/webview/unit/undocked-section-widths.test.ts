@@ -48,10 +48,12 @@ describe("undocked section widths", () => {
             commitPanelWidth: 220,
         };
 
-        expect(resizeSectionPair(widths, "repositoryWidth", "commitPanelWidth", -20)).toMatchObject({
-            repositoryWidth: 120,
-            commitPanelWidth: 220,
-        });
+        expect(resizeSectionPair(widths, "repositoryWidth", "commitPanelWidth", -20)).toMatchObject(
+            {
+                repositoryWidth: 120,
+                commitPanelWidth: 220,
+            },
+        );
     });
 
     it("drops low-priority panes instead of scaling below their true minima", () => {
@@ -73,8 +75,10 @@ describe("undocked section widths", () => {
             "commitPanelWidth",
         ]);
         expect(normalized.widths).toEqual({ graphWidth: 320 });
-        expect(Object.entries(normalized.widths).every(([key, width]) =>
-            width >= (key === "repositoryWidth" ? 120 : 220),
-        )).toBe(true);
+        expect(
+            Object.entries(normalized.widths).every(
+                ([key, width]) => width >= (key === "repositoryWidth" ? 120 : 220),
+            ),
+        ).toBe(true);
     });
 });

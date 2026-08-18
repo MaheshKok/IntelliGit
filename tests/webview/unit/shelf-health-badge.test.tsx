@@ -119,7 +119,9 @@ describe("shelf health badge and banner", () => {
 
         window.intelligitSettings = { ...window.intelligitSettings, tooltipsEnabled: false };
         const disabled = renderTabBar(0, vi.fn());
-        const disabledDock = disabled.container.querySelector('button[aria-label="Dock IntelliGit"]');
+        const disabledDock = disabled.container.querySelector(
+            'button[aria-label="Dock IntelliGit"]',
+        );
         expect(disabledDock?.getAttribute("title")).toBe("Dock IntelliGit");
         unmount(disabled.root, disabled.container);
     });

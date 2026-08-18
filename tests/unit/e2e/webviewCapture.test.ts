@@ -295,9 +295,7 @@ describe("WEBVIEW_CONTEXT_IDS: completeness against the real wiring sites", () =
         // only supported way to wire one: it is what returns the real provider unchanged when
         // the gate is off, so a site that wrapped a provider by any other route would lose
         // identity-equality in production and is deliberately not matched here.
-        for (const match of source.matchAll(
-            /captureWebviewViewProvider\([^,]+,\s*"([a-z-]+)"/g,
-        )) {
+        for (const match of source.matchAll(/captureWebviewViewProvider\([^,]+,\s*"([a-z-]+)"/g)) {
             ids.push(match[1]);
         }
         return ids;

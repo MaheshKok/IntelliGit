@@ -1,22 +1,22 @@
 {
-  "compilerOptions": {
-    "module": "ESNext",
-    "target": "ES2022",
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
-    "jsx": "react-jsx",
-    "strict": true,
-    "esModuleInterop": true,
-    "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true,
-    "resolveJsonModule": true,
-    "moduleResolution": "bundler",
-    "allowImportingTsExtensions": true,
-    "noEmit": true
-  },
-  "include": [
-    "src/webviews/react/**/*.ts",
-    "src/webviews/react/**/*.tsx",
-    "src/webviews/react/**/*.d.ts",
-    "src/types.ts"
-  ]
+    "compilerOptions": {
+        "module": "ESNext",
+        "target": "ES2022",
+        "lib": ["ES2022", "DOM", "DOM.Iterable"],
+        "jsx": "react-jsx",
+        "strict": true,
+        "esModuleInterop": true,
+        "skipLibCheck": true,
+        "forceConsistentCasingInFileNames": true,
+        "resolveJsonModule": true,
+        "moduleResolution": "bundler",
+        "allowImportingTsExtensions": true,
+        "noEmit": true
+    },
+    "include": [
+        "src/webviews/react/**/*.ts",
+        "src/webviews/react/**/*.tsx",
+        "src/webviews/react/**/*.d.ts",
+        "src/types.ts"
+    ]
 }

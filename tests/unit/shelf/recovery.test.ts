@@ -189,16 +189,19 @@ describe("ShelfReverter", () => {
         await expect(
             reverter.revert({
                 transactionId: "symlink-parent",
-                files: [{ relativePath: "escape/new/nested.txt", baseBytes: Buffer.from("base\n") }],
+                files: [
+                    { relativePath: "escape/new/nested.txt", baseBytes: Buffer.from("base\n") },
+                ],
             }),
         ).rejects.toThrow("escaped");
 
         expect(moved).toBe(false);
-        await expect(readFile(path.join(outside, "new", "nested.txt"), "utf8")).rejects.toMatchObject({
+        await expect(
+            readFile(path.join(outside, "new", "nested.txt"), "utf8"),
+        ).rejects.toMatchObject({
             code: "ENOENT",
         });
     });
-
 
     it("continues rollback after one per-path restoration failure and retains that path", async () => {
         let root = "";
@@ -318,7 +321,6 @@ describe("ShelfReverter", () => {
         expect(error).toBeInstanceOf(ShelfRollbackRetainedError);
         expect(await readFile(path.join(repositoryRoot, "tracked.txt"), "utf8")).toBe("base\n");
     });
-
 
     it("pins a normal base OID and uses the empty tree for an unborn repository", async () => {
         const normal = await createReverter();

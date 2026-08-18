@@ -129,12 +129,17 @@ describe("runBoundedFanout", () => {
         const runWithLimit = async (limit: number): Promise<number> => {
             let active = 0;
             let highWaterMark = 0;
-            await runBoundedFanout([0, 1, 2, 3], limit, () => true, async () => {
-                active += 1;
-                highWaterMark = Math.max(highWaterMark, active);
-                await Promise.resolve();
-                active -= 1;
-            });
+            await runBoundedFanout(
+                [0, 1, 2, 3],
+                limit,
+                () => true,
+                async () => {
+                    active += 1;
+                    highWaterMark = Math.max(highWaterMark, active);
+                    await Promise.resolve();
+                    active -= 1;
+                },
+            );
             return highWaterMark;
         };
 
@@ -147,10 +152,15 @@ describe("runBoundedFanout", () => {
         const started: number[] = [];
 
         await expect(
-            runBoundedFanout(items, 2, () => true, async (item) => {
-                started.push(item);
-                if (item === 1) throw new Error("boom");
-            }),
+            runBoundedFanout(
+                items,
+                2,
+                () => true,
+                async (item) => {
+                    started.push(item);
+                    if (item === 1) throw new Error("boom");
+                },
+            ),
         ).resolves.toBeUndefined();
 
         expect([...started].sort((a, b) => a - b)).toEqual([0, 1, 2, 3]);

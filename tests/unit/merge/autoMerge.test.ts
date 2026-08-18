@@ -38,11 +38,7 @@ describe("tryAutoMergeLines", () => {
     });
 
     it("returns the shared rewrite when both sides made the same change", () => {
-        const merged = tryAutoMergeLines(
-            ["let x = 1;"],
-            ["const x = 1;"],
-            ["const x = 1;"],
-        );
+        const merged = tryAutoMergeLines(["let x = 1;"], ["const x = 1;"], ["const x = 1;"]);
         expect(merged).toEqual(["const x = 1;"]);
     });
 
@@ -67,11 +63,7 @@ describe("tryAutoMergeLines", () => {
 
     it("returns null when the sides change the number of lines", () => {
         expect(
-            tryAutoMergeLines(
-                ["original();"],
-                ["replaced();"],
-                ["expanded();", "second_line();"],
-            ),
+            tryAutoMergeLines(["original();"], ["replaced();"], ["expanded();", "second_line();"]),
         ).toBeNull();
         expect(tryAutoMergeLines([], ["added_by_ours();"], ["added_by_theirs();"])).toBeNull();
     });
@@ -79,18 +71,18 @@ describe("tryAutoMergeLines", () => {
     it("returns null when both sides insert at the same position", () => {
         // Ordering of two insertions at one point is ambiguous; never guess.
         expect(
-            tryAutoMergeLines(
-                ["call(a);"],
-                ["call(a, extraOurs);"],
-                ["call(a, extraTheirs);"],
-            ),
+            tryAutoMergeLines(["call(a);"], ["call(a, extraOurs);"], ["call(a, extraTheirs);"]),
         ).toBeNull();
     });
 
     it("merges adjacent but non-overlapping token replacements", () => {
         // ours rewrites the identifier, theirs rewrites the operator right
         // after it; ranges share a boundary but no tokens.
-        const merged = tryAutoMergeLines(["count += step;"], ["total += step;"], ["count -= step;"]);
+        const merged = tryAutoMergeLines(
+            ["count += step;"],
+            ["total += step;"],
+            ["count -= step;"],
+        );
         expect(merged).toEqual(["total -= step;"]);
     });
 
@@ -104,6 +96,8 @@ describe("tryAutoMergeLines", () => {
     });
 
     it("returns null rather than merging when one side empties the line", () => {
-        expect(tryAutoMergeLines(["keep_or_drop();"], [""], ["keep_or_drop(); // note"])).toBeNull();
+        expect(
+            tryAutoMergeLines(["keep_or_drop();"], [""], ["keep_or_drop(); // note"]),
+        ).toBeNull();
     });
 });

@@ -61,7 +61,9 @@ function parseBlockFields(block: string): ReadonlyMap<string, string> {
 function requireField(fields: ReadonlyMap<string, string>, key: string, block: string): string {
     const value = fields.get(key);
     if (!value) {
-        throw new Error(`snapshotWorktrees: block missing "${key}" field: ${JSON.stringify(block)}`);
+        throw new Error(
+            `snapshotWorktrees: block missing "${key}" field: ${JSON.stringify(block)}`,
+        );
     }
     return value;
 }

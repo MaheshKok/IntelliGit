@@ -33,7 +33,9 @@ function makeMemento(
     } as unknown as vscode.Memento & { setKeysForSync(keys: readonly string[]): void };
 }
 
-function makeContext(): { context: Pick<vscode.ExtensionContext, "globalState" | "workspaceState"> } {
+function makeContext(): {
+    context: Pick<vscode.ExtensionContext, "globalState" | "workspaceState">;
+} {
     return {
         context: {
             globalState: makeMemento(),

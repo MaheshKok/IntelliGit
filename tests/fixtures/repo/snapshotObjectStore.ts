@@ -16,7 +16,12 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { runGit } from "./gitRun";
-import type { AlternatesInfo, ObjectStoreEntry, ObjectStoreSnapshot, Section } from "./snapshotTypes";
+import type {
+    AlternatesInfo,
+    ObjectStoreEntry,
+    ObjectStoreSnapshot,
+    Section,
+} from "./snapshotTypes";
 import { captured } from "./snapshotTypes";
 
 const OBJECT_LINE_FORMAT = "%(objectname) %(objecttype) %(objectsize)";
@@ -65,7 +70,9 @@ function parseObjectLine(line: string): ObjectStoreEntry {
     const [objectId, objectType, sizeText] = line.split(" ");
     const size = Number(sizeText);
     if (!objectId || !objectType || Number.isNaN(size)) {
-        throw new Error(`snapshotObjectStore: malformed "cat-file --batch-all-objects" line: ${JSON.stringify(line)}`);
+        throw new Error(
+            `snapshotObjectStore: malformed "cat-file --batch-all-objects" line: ${JSON.stringify(line)}`,
+        );
     }
     return { objectId, objectType, size };
 }
@@ -91,7 +98,9 @@ async function readIfPresent(candidate: string): Promise<string | null> {
 }
 
 function isNotFoundError(error: unknown): boolean {
-    return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
+    return (
+        typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT"
+    );
 }
 
 /**

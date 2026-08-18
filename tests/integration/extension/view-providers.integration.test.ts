@@ -1522,6 +1522,19 @@ describe("view providers integration", () => {
         const resumePendingRecovery = vi
             .spyOn(ShelfService.prototype, "resumePendingRecovery")
             .mockRejectedValueOnce(new Error("resume failed"));
+        // Activation deliberately does not await the initial snapshots -- that is the behaviour under
+        // test -- so the panel's catalog read is still in flight when this test body returns. Left
+        // real it takes the shelf store lock, which creates `shelves/<repo>/.store-lock` under the
+        // temp storage root moments AFTER cleanup has begun, and the final rmdir fails ENOTEMPTY.
+        // The catalog is an unrelated collaborator here: the assertions below are about recovery
+        // being started and its failure surfacing, so stubbing it removes the writer rather than
+        // racing it.
+        const listShelves = vi.spyOn(ShelfService.prototype, "listShelves").mockResolvedValue({
+            shelfIds: [],
+            corruptShelfIds: [],
+            catalogGeneration: 0,
+            shelves: [],
+        });
         const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
         try {
             await activateRepositoryMode(
@@ -1538,8 +1551,14 @@ describe("view providers integration", () => {
             expect(resumePendingRecovery).toHaveBeenCalledOnce();
             await flushMicrotasks();
             expect(showErrorMessage).toHaveBeenCalledWith("resume failed");
+            // Waits out the in-flight catalog read rather than deleting the storage root from under
+            // it, and keeps the stub above honest: if activation stops reading the catalog the stub
+            // is no longer intercepting anything, and whatever replaced it is free to write here
+            // unobserved.
+            await vi.waitFor(() => expect(listShelves).toHaveBeenCalled());
         } finally {
             resumePendingRecovery.mockRestore();
+            listShelves.mockRestore();
             consoleError.mockRestore();
             await removeScratchDirectories(repositoryRoot, globalStoragePath);
         }
@@ -3266,7 +3285,12 @@ describe("view providers integration", () => {
             (hash: string) =>
                 new Promise((resolve) => {
                     resolvers.push(() =>
-                        resolve({ hash, state: "success", summary: "All checks passed", items: [] }),
+                        resolve({
+                            hash,
+                            state: "success",
+                            summary: "All checks passed",
+                            items: [],
+                        }),
                     );
                 }),
         );
@@ -3339,7 +3363,12 @@ describe("view providers integration", () => {
             (hash: string) =>
                 new Promise((resolve) => {
                     resolvers.push(() =>
-                        resolve({ hash, state: "success", summary: "All checks passed", items: [] }),
+                        resolve({
+                            hash,
+                            state: "success",
+                            summary: "All checks passed",
+                            items: [],
+                        }),
                     );
                 }),
         );
@@ -3415,7 +3444,12 @@ describe("view providers integration", () => {
             (hash: string) =>
                 new Promise((resolve) => {
                     resolvers.push(() =>
-                        resolve({ hash, state: "success", summary: "All checks passed", items: [] }),
+                        resolve({
+                            hash,
+                            state: "success",
+                            summary: "All checks passed",
+                            items: [],
+                        }),
                     );
                 }),
         );
@@ -4368,7 +4402,12 @@ describe("view providers integration", () => {
             (hash: string) =>
                 new Promise((resolve) => {
                     resolvers.push(() =>
-                        resolve({ hash, state: "success", summary: "All checks passed", items: [] }),
+                        resolve({
+                            hash,
+                            state: "success",
+                            summary: "All checks passed",
+                            items: [],
+                        }),
                     );
                 }),
         );
@@ -4432,7 +4471,12 @@ describe("view providers integration", () => {
             (hash: string) =>
                 new Promise((resolve) => {
                     resolvers.push(() =>
-                        resolve({ hash, state: "success", summary: "All checks passed", items: [] }),
+                        resolve({
+                            hash,
+                            state: "success",
+                            summary: "All checks passed",
+                            items: [],
+                        }),
                     );
                 }),
         );
@@ -4504,7 +4548,12 @@ describe("view providers integration", () => {
             (hash: string) =>
                 new Promise((resolve) => {
                     resolvers.push(() =>
-                        resolve({ hash, state: "success", summary: "All checks passed", items: [] }),
+                        resolve({
+                            hash,
+                            state: "success",
+                            summary: "All checks passed",
+                            items: [],
+                        }),
                     );
                 }),
         );

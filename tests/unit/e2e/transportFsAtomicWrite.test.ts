@@ -50,7 +50,11 @@ describe("writeResponseFileAtomic: temp-file-plus-rename mechanism", () => {
     });
 
     it("writes the full payload to a temp file, then moves it into place with exactly one rename", () => {
-        writeResponseFileAtomic(channelDir, "abc123", { nonce: "abc123", ok: true, big: "x".repeat(500) });
+        writeResponseFileAtomic(channelDir, "abc123", {
+            nonce: "abc123",
+            ok: true,
+            big: "x".repeat(500),
+        });
 
         expect(mocks.calls).toHaveLength(2);
         expect(mocks.calls[0]).toMatch(/^write:/);

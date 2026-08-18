@@ -4,7 +4,11 @@ import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
-import { GitExecutor, setGitSuccessListener } from "../../../src/git/executor";
+import {
+    GitExecutor,
+    isExpectedStdinFailure,
+    setGitSuccessListener,
+} from "../../../src/git/executor";
 import { RepositoryMutationCoordinator } from "../../../src/git/mutationCoordinator";
 import { RepositoryLock } from "../../../src/git/repositoryLock";
 import { RepositoryMutationGate } from "../../../src/git/repositoryMutationGate";
@@ -202,13 +206,55 @@ describe("GitExecutor", () => {
         // child is gone. `child.once("error")` listens on the process, not on the stdin
         // stream, and an unhandled stream error is an uncatchable crash rather than a
         // rejected promise: it turned a CI run red while all 4023 tests in it passed.
-        // The close handler already reports the real outcome, which is what this asserts.
-        const output = await runFakeGit("exit 0", ["hash-object", "--stdin"], {
-            input: Buffer.alloc(1024 * 1024, 0x61),
-        });
+        //
+        // Which is exactly why the exit code cannot be the oracle here -- it is 0 whether or
+        // not the stream error is handled, because the crash is asynchronous and takes the
+        // RUN down rather than this test. Observing it needs a listener of our own: attaching
+        // one also suppresses the default crash, so an unhandled EPIPE lands in `uncaught`
+        // instead of aborting the process, and the assertion below can name it.
+        const uncaught: Error[] = [];
+        const collect = (error: Error): void => void uncaught.push(error);
+        process.on("uncaughtException", collect);
+        try {
+            const output = await runFakeGit("exit 0", ["hash-object", "--stdin"], {
+                input: Buffer.alloc(1024 * 1024, 0x61),
+            });
+            // The write races the child's exit, so the failure can land after `close` resolves.
+            await new Promise<void>((resolve) => setTimeout(resolve, 50));
 
-        expect(output.exitCode).toBe(0);
+            expect(output.exitCode).toBe(0);
+            expect(
+                uncaught.map((error) => (error as NodeJS.ErrnoException).code ?? error.message),
+                "a broken stdin pipe must not escape as an uncaught exception",
+            ).toEqual([]);
+        } finally {
+            process.off("uncaughtException", collect);
+        }
     });
+
+    it.each([
+        { code: "EPIPE", killed: false, expected: true },
+        { code: "EPIPE", killed: true, expected: true },
+        { code: "ERR_STREAM_DESTROYED", killed: true, expected: true },
+        { code: "ERR_STREAM_DESTROYED", killed: false, expected: false },
+        { code: "ENOSPC", killed: true, expected: false },
+    ])(
+        "treats a $code stdin failure with killed=$killed as expected=$expected",
+        ({ code, killed, expected }) => {
+            // The two `false` rows are the ones that matter, and neither is reachable from an
+            // integration test -- a real child cannot be made to fail its stdin with ENOSPC, and
+            // a stream this executor never destroyed cannot report ERR_STREAM_DESTROYED. They are
+            // exactly the failures the previous blanket `() => undefined` handler swallowed: Git
+            // exits 0 on however much stdin it managed to read, so an absorbed write failure is
+            // handed back as a successful command that quietly ran on truncated input.
+            const error: NodeJS.ErrnoException = Object.assign(new Error(code), { code });
+
+            expect(
+                isExpectedStdinFailure(error, killed),
+                "only a failure the child's own exit already explains may be absorbed",
+            ).toBe(expected);
+        },
+    );
 
     it("accepts an explicitly expected non-zero Git exit code", async () => {
         const executor = new GitExecutor(process.cwd());

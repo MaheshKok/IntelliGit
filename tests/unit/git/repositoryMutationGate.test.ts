@@ -18,8 +18,15 @@ async function tempDir(prefix: string): Promise<string> {
     return directory;
 }
 
-function gate(options?: { acquireTimeoutMs?: number; acquireRetryDelayMs?: number }): RepositoryMutationGate {
-    return new RepositoryMutationGate(new RepositoryMutationCoordinator(), new RepositoryLock(), options);
+function gate(options?: {
+    acquireTimeoutMs?: number;
+    acquireRetryDelayMs?: number;
+}): RepositoryMutationGate {
+    return new RepositoryMutationGate(
+        new RepositoryMutationCoordinator(),
+        new RepositoryLock(),
+        options,
+    );
 }
 
 describe("RepositoryMutationGate", () => {
@@ -46,9 +53,48 @@ describe("RepositoryMutationGate", () => {
         const release = await holder.acquire(common);
 
         await expect(
-            gate({ acquireTimeoutMs: 200, acquireRetryDelayMs: 25 }).run(repoRoot, common, async () => "ran"),
+            gate({ acquireTimeoutMs: 200, acquireRetryDelayMs: 25 }).run(
+                repoRoot,
+                common,
+                async () => "ran",
+            ),
         ).rejects.toBeInstanceOf(RepositoryLockBusyError);
         await release();
+    });
+
+    it("gives up on a busy lock within its bounded wait, not the full uncapped retry delay", async () => {
+        const repoRoot = await tempDir("intelligit-gate-root-");
+        const common = await tempDir("intelligit-gate-common-");
+        const holder = new RepositoryLock();
+        const release = await holder.acquire(common);
+        const holderReleased = new Promise<void>((resolve) => {
+            setTimeout(() => void release().then(resolve, resolve), 300);
+        });
+
+        // On the pre-fix code, the retry loop slept the FULL 1000ms retry delay after its
+        // first busy failure regardless of how little of the 100ms deadline remained, so this
+        // acquisition SUCCEEDED at ~1000ms -- a full order of magnitude past the 100ms window
+        // the caller asked for, and 700ms after the holder actually released at 300ms.
+        const attemptStartedAt = Date.now();
+
+        await expect(
+            gate({ acquireTimeoutMs: 100, acquireRetryDelayMs: 1000 }).run(
+                repoRoot,
+                common,
+                async () => "ran",
+            ),
+        ).rejects.toBeInstanceOf(RepositoryLockBusyError);
+        const elapsedMs = Date.now() - attemptStartedAt;
+
+        // Bounded well below where an uncapped sleep lands rather than tight against the
+        // deadline: the rejection above is what discriminates the defect, since the pre-fix
+        // loop resolves and never reaches here. This only has to catch a later regression
+        // that gives up too late, and a margin sized for that does not flake under load.
+        expect(
+            elapsedMs,
+            "the bounded wait must give up near its 100ms deadline, not sleep the full 1000ms retry delay",
+        ).toBeLessThan(700);
+        await holderReleased;
     });
 
     it("serializes overlapping mutations for one repository root", async () => {

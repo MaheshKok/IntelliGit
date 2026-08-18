@@ -240,7 +240,7 @@ describe("RebaseDialog", () => {
         const { root, container } = render();
         const dialog = container.querySelector('[role="dialog"]') as HTMLElement;
         const controls = Array.from(
-            dialog.querySelectorAll<HTMLElement>('button:not([disabled]), select, textarea'),
+            dialog.querySelectorAll<HTMLElement>("button:not([disabled]), select, textarea"),
         );
         const first = controls[0];
         const last = controls.at(-1) as HTMLElement;

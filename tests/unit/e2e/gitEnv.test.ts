@@ -63,9 +63,9 @@ describe("sanitizedGitEnv drops every inherited git pointer", () => {
     it("drops a mixed-case Git_Work_Tree", () => {
         setEnv("Git_Work_Tree", "/somewhere/else");
         const result = sanitizedGitEnv();
-        expect(
-            Object.keys(result).filter((name) => name.toUpperCase().startsWith("GIT_")),
-        ).toEqual([]);
+        expect(Object.keys(result).filter((name) => name.toUpperCase().startsWith("GIT_"))).toEqual(
+            [],
+        );
     });
 
     // The other direction: a filter widened to `includes("GIT_")` would pass every test above

@@ -45,7 +45,11 @@ vi.mock("vscode", () => createCommitInfoVscodeDouble());
 
 import { setE2eControlChannelActive } from "../../../../src/e2e/activationState";
 import { resetE2eWebviewCaptureSinkForTests } from "../../../../src/e2e/webviewCapture";
-import { FIXTURE_REFS, seedFixtureTemplate, type FixtureTemplate } from "../../../fixtures/repo/seed";
+import {
+    FIXTURE_REFS,
+    seedFixtureTemplate,
+    type FixtureTemplate,
+} from "../../../fixtures/repo/seed";
 import {
     buildProviderOptions,
     COMMIT_GRAPH_CLEAN_SCENARIO,

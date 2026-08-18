@@ -47,8 +47,7 @@ describe("isOvsxVersionPublished", () => {
                     version: "0.6.0",
                     allVersions: {
                         latest: "https://open-vsx.org/api/MaheshKok/intelligit/universal/latest",
-                        "0.6.0":
-                            "https://open-vsx.org/api/MaheshKok/intelligit/universal/0.6.0",
+                        "0.6.0": "https://open-vsx.org/api/MaheshKok/intelligit/universal/0.6.0",
                     },
                 },
                 "0.6.0",
@@ -63,8 +62,7 @@ describe("isOvsxVersionPublished", () => {
                     version: "0.5.5",
                     allVersions: {
                         latest: "https://open-vsx.org/api/MaheshKok/intelligit/universal/latest",
-                        "0.5.5":
-                            "https://open-vsx.org/api/MaheshKok/intelligit/universal/0.5.5",
+                        "0.5.5": "https://open-vsx.org/api/MaheshKok/intelligit/universal/0.5.5",
                     },
                 },
                 "0.6.0",

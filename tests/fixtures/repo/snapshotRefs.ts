@@ -30,7 +30,10 @@ export async function snapshotRefs(
 ): Promise<Section<readonly RefEntry[]>> {
     const raw = await runGit(
         repoRoot,
-        ["for-each-ref", `--format=%(refname)${REF_FIELD_SEPARATOR}%(objecttype)${REF_FIELD_SEPARATOR}%(objectname)`],
+        [
+            "for-each-ref",
+            `--format=%(refname)${REF_FIELD_SEPARATOR}%(objecttype)${REF_FIELD_SEPARATOR}%(objectname)`,
+        ],
         env,
     );
     const entries = raw
@@ -61,7 +64,10 @@ function parseRefLine(line: string): RefEntry {
 export async function snapshotHead(gitDir: string): Promise<Section<HeadRef>> {
     const raw = (await readFile(path.join(gitDir, "HEAD"), "utf8")).trim();
     if (raw.startsWith(SYMBOLIC_HEAD_PREFIX)) {
-        return captured({ kind: "symbolic", target: raw.slice(SYMBOLIC_HEAD_PREFIX.length).trim() });
+        return captured({
+            kind: "symbolic",
+            target: raw.slice(SYMBOLIC_HEAD_PREFIX.length).trim(),
+        });
     }
     return captured({ kind: "detached", target: raw });
 }
@@ -89,5 +95,7 @@ async function pathExists(candidate: string): Promise<boolean> {
 }
 
 function isNotFoundError(error: unknown): boolean {
-    return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
+    return (
+        typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT"
+    );
 }

@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { RepositoryLockBusyError } from "../../../src/git/repositoryLock";
 import { ensureShelfRoot, resolveShelfPaths, ShelfPathError } from "../../../src/shelf/paths";
 import {
     ShelfStaleCatalogError,
@@ -119,7 +120,11 @@ describe("ShelfStore", () => {
         await mkdir(path.dirname(shelf), { recursive: true });
         await symlink(generationOutside, shelf);
         await expect(
-            generation.store.writeGeneration("shelf-one", { schemaVersion: 1, objectHashes: [], files: [] }),
+            generation.store.writeGeneration("shelf-one", {
+                schemaVersion: 1,
+                objectHashes: [],
+                files: [],
+            }),
         ).rejects.toBeInstanceOf(ShelfPathError);
 
         const journal = await makeStore();
@@ -127,13 +132,20 @@ describe("ShelfStore", () => {
         directories.push(journalOutside);
         await symlink(journalOutside, path.join(journal.paths.root, "journals"));
         await expect(
-            journal.store.writeJournal({ id: "tx", state: "shelvePendingRevert", pathProgress: {} }),
+            journal.store.writeJournal({
+                id: "tx",
+                state: "shelvePendingRevert",
+                pathProgress: {},
+            }),
         ).rejects.toBeInstanceOf(ShelfPathError);
 
         const catalog = await makeStore();
         const catalogOutside = await mkdtemp(path.join(tmpdir(), "intelligit-shelf-outside-"));
         directories.push(catalogOutside);
-        await symlink(path.join(catalogOutside, "catalog.json"), path.join(catalog.paths.root, "catalog.json"));
+        await symlink(
+            path.join(catalogOutside, "catalog.json"),
+            path.join(catalog.paths.root, "catalog.json"),
+        );
         await expect(
             catalog.store.runIdempotent(
                 { token: "catalog", operation: "create", payload: Buffer.from("payload") },
@@ -153,13 +165,17 @@ describe("ShelfStore", () => {
         const objects = path.join(garbage.paths.root, "shelves", "shelf-one", "objects");
         await rm(objects, { recursive: true, force: true });
         await symlink(garbageOutside, objects);
-        await expect(garbage.store.collectGarbage("shelf-one")).rejects.toBeInstanceOf(ShelfPathError);
+        await expect(garbage.store.collectGarbage("shelf-one")).rejects.toBeInstanceOf(
+            ShelfPathError,
+        );
 
-        await expect(Promise.all([readdir(generationOutside), readdir(journalOutside), readdir(garbageOutside)])).resolves.toEqual([
-            [],
-            [],
-            [],
-        ]);
+        await expect(
+            Promise.all([
+                readdir(generationOutside),
+                readdir(journalOutside),
+                readdir(garbageOutside),
+            ]),
+        ).resolves.toEqual([[], [], []]);
     });
 
     it("keeps the previous current pointer if a later pointer replacement faults", async () => {
@@ -189,7 +205,11 @@ describe("ShelfStore", () => {
 
     it("never overwrites an orphaned immutable generation after a pointer crash", async () => {
         const { paths, store } = await makeStore();
-        await store.writeGeneration("shelf-one", { schemaVersion: 1, objectHashes: [], files: ["first"] });
+        await store.writeGeneration("shelf-one", {
+            schemaVersion: 1,
+            objectHashes: [],
+            files: ["first"],
+        });
         const failing = new ShelfStore(paths, {
             beforeCurrentPointerRename: async () => {
                 throw new Error("simulated pointer crash");
@@ -214,9 +234,9 @@ describe("ShelfStore", () => {
         });
 
         expect(retry.generation).toBe(3);
-        expect(await readFile(path.join(paths.root, "shelves", "shelf-one", "gen-2", "manifest.json"))).toEqual(
-            orphaned,
-        );
+        expect(
+            await readFile(path.join(paths.root, "shelves", "shelf-one", "gen-2", "manifest.json")),
+        ).toEqual(orphaned);
         expect((await store.readCurrentManifest("shelf-one")).files).toEqual(["retry"]);
     });
 
@@ -241,7 +261,9 @@ describe("ShelfStore", () => {
         await expect(
             store.writeGeneration("shelf-one", { schemaVersion: 1, objectHashes: [], files: [] }),
         ).rejects.toMatchObject({ code: "ENOENT" });
-        await expect(readFile(path.join(shelfDirectory, "gen-2", "manifest.json"))).rejects.toMatchObject({
+        await expect(
+            readFile(path.join(shelfDirectory, "gen-2", "manifest.json")),
+        ).rejects.toMatchObject({
             code: "ENOENT",
         });
     });
@@ -311,11 +333,26 @@ describe("ShelfStore", () => {
 
     it("serializes store mutations and records all Phase-1 journal transition states", async () => {
         const { paths, store } = await makeStore();
-        const second = new ShelfStore(paths);
+        // A short window rather than the default: the owner below never releases while the
+        // contender runs, so this asserts the wait GIVES UP and still surfaces busy.
+        const second = new ShelfStore(paths, { acquireTimeoutMs: 20, acquireRetryDelayMs: 5 });
         await store.withLock(async () => {
-            await expect(second.withLock(async () => undefined)).rejects.toThrow(
-                "already in progress",
-            );
+            // Raced rather than awaited outright: a wait that never gives up would otherwise
+            // surface only as the runner's own timeout, which names nothing and takes 30s to
+            // say it. This resolves the failing case to a value the assertion can quote.
+            const outcome = await Promise.race([
+                second
+                    .withLock(async () => undefined)
+                    .then(
+                        () => "acquired",
+                        (error: Error) => error.message,
+                    ),
+                new Promise<string>((resolve) => setTimeout(() => resolve("still-waiting"), 1_000)),
+            ]);
+            expect(
+                outcome,
+                "a permanently held lock must surface busy, not be waited on forever",
+            ).toContain("already in progress");
         });
 
         await store.writeJournal({ id: "tx-1", state: "shelvePendingRevert", pathProgress: {} });
@@ -328,6 +365,91 @@ describe("ShelfStore", () => {
             { id: "tx-2", state: "applied", pathProgress: {} },
             { id: "tx-3", state: "ghost", pathProgress: {} },
         ]);
+    });
+
+    it("queues a catalog read behind an in-flight mutation instead of failing it", async () => {
+        const { paths, store } = await makeStore();
+        // `ShelfService.listShelves` reads the catalog WITHOUT holding the repository mutation
+        // gate, so it meets an ordinary shelf mutation directly on the store lock. Before the
+        // bounded wait, that read threw `RepositoryLockBusyError` the instant a mutation was in
+        // flight, and the commit panel's cached-shelf fallback turned it into silent stale state.
+        //
+        // Constructed with NO options, so the wait it survives is the shipped default. The
+        // 400ms hold below is what pins that default: it is the one assertion that fails if
+        // the window is quietly shortened to something the mutations this fixes outlast.
+        const reader = new ShelfStore(paths);
+        // Warm the uncontended path so the contended one reaches acquire promptly.
+        await reader.listShelves();
+
+        const order: string[] = [];
+        let lockIsHeld!: () => void;
+        const holderOwnsLock = new Promise<void>((resolve) => {
+            lockIsHeld = resolve;
+        });
+        const holder = store.withLock(async () => {
+            lockIsHeld();
+            await new Promise<void>((resolve) => setTimeout(resolve, 400));
+            order.push("mutation-released");
+        });
+
+        await holderOwnsLock;
+        const readStartedAt = Date.now();
+        const read = reader.listShelves().then((listed) => {
+            order.push("read-completed");
+            return listed;
+        });
+
+        // Settled together so a rejected read cannot escape as an unhandled rejection.
+        const [, listed] = await Promise.all([holder, read]);
+        const readTookMs = Date.now() - readStartedAt;
+
+        expect(listed.shelfIds, "the queued read must return the catalog, not fail").toEqual([]);
+        expect(
+            order,
+            "the read must wait for the mutation to release the lock rather than fail against it",
+        ).toEqual(["mutation-released", "read-completed"]);
+        // Ordering alone is entailed by "the read did not throw" -- a read that never met the
+        // lock at all produces the same array. Only the elapsed time witnesses the contention
+        // this test claims to exercise, and only it fails when the default window shrinks.
+        expect(
+            readTookMs,
+            "the read must have actually waited on the held lock, not slipped past it",
+        ).toBeGreaterThanOrEqual(300);
+    });
+
+    it("gives up on a busy store lock within its bounded wait, not the full uncapped retry delay", async () => {
+        const { paths, store } = await makeStore();
+        let lockIsHeld!: () => void;
+        const holderOwnsLock = new Promise<void>((resolve) => {
+            lockIsHeld = resolve;
+        });
+        const holder = store.withLock(async () => {
+            lockIsHeld();
+            await new Promise<void>((resolve) => setTimeout(resolve, 300));
+        });
+        await holderOwnsLock;
+
+        // On the pre-fix code, the retry loop slept the FULL 1000ms retry delay after its
+        // first busy failure regardless of how little of the 100ms deadline remained, so this
+        // acquisition SUCCEEDED at ~1000ms -- a full order of magnitude past the 100ms window
+        // the caller asked for, and 700ms after the holder actually released at 300ms.
+        const second = new ShelfStore(paths, { acquireTimeoutMs: 100, acquireRetryDelayMs: 1000 });
+        const attemptStartedAt = Date.now();
+
+        await expect(second.withLock(async () => undefined)).rejects.toBeInstanceOf(
+            RepositoryLockBusyError,
+        );
+        const elapsedMs = Date.now() - attemptStartedAt;
+
+        // Bounded well below where an uncapped sleep lands rather than tight against the
+        // deadline: the rejection above is what discriminates the defect, since the pre-fix
+        // loop resolves and never reaches here. This only has to catch a later regression
+        // that gives up too late, and a margin sized for that does not flake under load.
+        expect(
+            elapsedMs,
+            "the bounded wait must give up near its 100ms deadline, not sleep the full 1000ms retry delay",
+        ).toBeLessThan(700);
+        await holder;
     });
 
     it("round-trips a validated persisted shelf contract with metadata and per-layer artifacts", async () => {
@@ -347,7 +469,13 @@ describe("ShelfStore", () => {
         const { paths, store } = await makeStore();
         const input = persistedShelfInput();
         await store.writeShelfGeneration("shelf-one", input);
-        const manifestPath = path.join(paths.root, "shelves", "shelf-one", "gen-1", "manifest.json");
+        const manifestPath = path.join(
+            paths.root,
+            "shelves",
+            "shelf-one",
+            "gen-1",
+            "manifest.json",
+        );
         const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as {
             metadata: { name: string; baseCommit: string; lifecycle: string };
             files: Array<{ indexBlock: { path: string } }>;
@@ -361,7 +489,11 @@ describe("ShelfStore", () => {
             ShelfStoreCorruptionError,
         );
 
-        for (const [shelfId, unsafePath] of [["shelf-two", "../escape"], ["shelf-three", "tracked.txt:stream"], ["shelf-four", "aux.txt"]]) {
+        for (const [shelfId, unsafePath] of [
+            ["shelf-two", "../escape"],
+            ["shelf-three", "tracked.txt:stream"],
+            ["shelf-four", "aux.txt"],
+        ]) {
             await store.writeShelfGeneration(shelfId, input);
             const shelfPath = path.join(paths.root, "shelves", shelfId, "gen-1", "manifest.json");
             const shelfManifest = JSON.parse(await readFile(shelfPath, "utf8")) as {
@@ -371,7 +503,9 @@ describe("ShelfStore", () => {
             shelfManifest.files[0].indexBlock.path = unsafePath;
             resealManifest(shelfManifest);
             await writeFile(shelfPath, JSON.stringify(shelfManifest));
-            await expect(store.readCurrentShelfManifest(shelfId)).rejects.toBeInstanceOf(ShelfStoreCorruptionError);
+            await expect(store.readCurrentShelfManifest(shelfId)).rejects.toBeInstanceOf(
+                ShelfStoreCorruptionError,
+            );
         }
     });
 
@@ -391,12 +525,9 @@ describe("ShelfStore", () => {
             ),
         ).rejects.toBeInstanceOf(ShelfStaleShelfError);
         await expect(
-            store.withGenerationCas(
-                { expectedCatalogGeneration: 0 },
-                async () => {
-                    mutations += 1;
-                },
-            ),
+            store.withGenerationCas({ expectedCatalogGeneration: 0 }, async () => {
+                mutations += 1;
+            }),
         ).rejects.toBeInstanceOf(ShelfStaleCatalogError);
 
         expect(mutations).toBe(0);
@@ -477,8 +608,14 @@ describe("ShelfStore", () => {
 
         await store.deleteShelf("shelf-one");
 
-        await expect(store.listShelves()).resolves.toEqual({ shelfIds: [], corruptShelfIds: [], catalogGeneration: 2 });
-        await expect(store.readCurrentShelfManifest("shelf-one")).rejects.toMatchObject({ code: "ENOENT" });
+        await expect(store.listShelves()).resolves.toEqual({
+            shelfIds: [],
+            corruptShelfIds: [],
+            catalogGeneration: 2,
+        });
+        await expect(store.readCurrentShelfManifest("shelf-one")).rejects.toMatchObject({
+            code: "ENOENT",
+        });
         await expect(store.readJournals()).resolves.toEqual([
             {
                 id: "recovery-one",

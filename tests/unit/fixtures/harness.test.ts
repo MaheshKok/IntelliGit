@@ -373,7 +373,8 @@ describe("createFixtureWorkspace", () => {
         it(
             "removes its own root when construction fails, leaving nothing behind under the workspaces root",
             async () => {
-                const { workDir, manifestPath, workspacesRoot } = await seedTemplateAndManifest("failed-construction");
+                const { workDir, manifestPath, workspacesRoot } =
+                    await seedTemplateAndManifest("failed-construction");
 
                 // A manifest whose templateRoot does not exist: `readFixtureManifest` accepts it
                 // (the path is a well-formed absolute string), `mkdtemp` succeeds, and
@@ -387,7 +388,9 @@ describe("createFixtureWorkspace", () => {
                     "utf8",
                 );
 
-                await expect(createFixtureWorkspace({ manifestPath, workspacesRoot })).rejects.toThrow();
+                await expect(
+                    createFixtureWorkspace({ manifestPath, workspacesRoot }),
+                ).rejects.toThrow();
 
                 const leaked = await readdir(workspacesRoot).catch(() => [] as string[]);
                 expect(
@@ -407,20 +410,25 @@ describe("createFixtureWorkspace", () => {
         it(
             "propagates the original construction error rather than a cleanup error",
             async () => {
-                const { workDir, manifestPath, workspacesRoot } = await seedTemplateAndManifest("failed-construction-error");
+                const { workDir, manifestPath, workspacesRoot } = await seedTemplateAndManifest(
+                    "failed-construction-error",
+                );
                 const missingTemplate = path.join(workDir, "template-that-was-never-seeded");
 
                 await writeFile(
                     manifestPath,
-                    JSON.stringify({ schemaVersion: MANIFEST_SCHEMA_VERSION, templateRoot: missingTemplate }),
+                    JSON.stringify({
+                        schemaVersion: MANIFEST_SCHEMA_VERSION,
+                        templateRoot: missingTemplate,
+                    }),
                     "utf8",
                 );
 
                 // A string argument to `toThrow` is a substring check, which is what the escaped
                 // RegExp this replaced was reconstructing by hand.
-                await expect(createFixtureWorkspace({ manifestPath, workspacesRoot })).rejects.toThrow(
-                    missingTemplate,
-                );
+                await expect(
+                    createFixtureWorkspace({ manifestPath, workspacesRoot }),
+                ).rejects.toThrow(missingTemplate);
             },
             FIXTURE_TIMEOUT_MS,
         );

@@ -67,11 +67,8 @@ describe("GitExecutor stdin stream failures", () => {
         await expect(result).rejects.toThrow(/no space left on device/);
     });
 
-    it.each([
-        ["EPIPE", "write EPIPE"],
-        ["ERR_STREAM_DESTROYED", "cannot call write after a stream was destroyed"],
-    ])("settles from the child's exit when stdin fails with %s", async (code, message) => {
-        const child = fakeChild(streamError(code, message));
+    it("settles from the child's exit when stdin fails with EPIPE", async () => {
+        const child = fakeChild(streamError("EPIPE", "write EPIPE"));
         spawnMock.mockReturnValue(child);
 
         const result = new GitExecutor(process.cwd()).runBinary(["hash-object", "--stdin"], {
@@ -79,10 +76,31 @@ describe("GitExecutor stdin stream failures", () => {
         });
         exitWith(child, 0);
 
-        // The counterweight to the case above: these two ARE the child having exited before
-        // draining, they carry nothing the exit code does not already say, and turning them
-        // into failures would break every command whose child stops reading early.
+        // The counterweight to the case above: this one IS the child having exited before
+        // draining, it carries nothing the exit code does not already say, and turning it into
+        // a failure would break every command whose child stops reading early.
         await expect(result).resolves.toMatchObject({ exitCode: 0 });
+    });
+
+    it("reports ERR_STREAM_DESTROYED when this executor did not destroy the stream", async () => {
+        const child = fakeChild(
+            streamError("ERR_STREAM_DESTROYED", "cannot call write after a stream was destroyed"),
+        );
+        spawnMock.mockReturnValue(child);
+
+        const result = new GitExecutor(process.cwd()).runBinary(["hash-object", "--stdin"], {
+            input: Buffer.from("input the child never read"),
+        });
+        exitWith(child, 0);
+
+        // This used to be absorbed alongside EPIPE, on the reading that both are just the child
+        // exiting early. They are not the same failure. `ERR_STREAM_DESTROYED` is only accounted
+        // for when this executor destroyed the stream itself, by killing a child that overran the
+        // output limit -- nothing does that here, so the stream died for a reason nobody
+        // recorded, while Git still exits 0 on the prefix it managed to read. Absorbing it hands
+        // back the same confident answer over undelivered bytes that the ENOSPC case above
+        // refuses to hand back.
+        await expect(result).rejects.toThrow(/cannot call write after a stream was destroyed/);
     });
 
     it("still reports the child's own failure when stdin closed cleanly", async () => {
