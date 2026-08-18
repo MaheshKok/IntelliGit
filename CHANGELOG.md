@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Fixed a release that is waiting to publish holding up the checks on every change merged after it. The build, the visual suite and the end-to-end suite shared a queue with the publishing step, and because a release is deliberately never interrupted once it starts, anything merged behind one simply waited — in the case that prompted this, for thirteen hours, after which the change queued in between was dropped without reporting a failure. Releases still publish strictly one at a time; they no longer make anything else wait for them.
 - Removed the manual approval a release had to be granted before it could publish. It gated nothing that the automated checks above it did not already gate, and an approval nobody clicked was what stalled the queue described above.
+- Fixed a release being dropped when two further changes are merged while it is still publishing. Publishing is deliberately done one version at a time, but only a single release could wait its turn: a third merge silently cancelled the one waiting in between. Because the step that decides whether to publish reads the version on the newest commit, a version skipped that way was never reconsidered and simply never shipped — which is how 0.25.2 came to have no release. Up to a hundred releases now wait in line and publish in the order they were merged.
 
 ## [0.25.6] - 2026-08-17
 
