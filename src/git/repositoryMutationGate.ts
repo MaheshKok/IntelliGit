@@ -1,7 +1,8 @@
 import { realpath } from "node:fs/promises";
 import path from "node:path";
 import { RepositoryMutationCoordinator } from "./mutationCoordinator";
-import { RepositoryLock, RepositoryLockBusyError } from "./repositoryLock";
+import { acquireWithBoundedWait } from "./boundedLockRetry";
+import { RepositoryLock } from "./repositoryLock";
 
 /** Tuning for how long a mutation briefly waits on a busy cross-process lock. */
 export interface RepositoryMutationGateOptions {
@@ -51,17 +52,10 @@ export class RepositoryMutationGate {
      * another window queue instead of failing; persistent owners still surface busy.
      */
     private async acquireWithBriefWait(commonDir: string): Promise<() => Promise<void>> {
-        const deadline = Date.now() + this.acquireTimeoutMs;
-        for (;;) {
-            try {
-                // react-doctor-disable-next-line react-doctor/async-await-in-loop -- Ordered retries prevent a later acquire from overtaking an earlier mutation request.
-                return await this.lock.acquire(commonDir);
-            } catch (error) {
-                if (!(error instanceof RepositoryLockBusyError) || Date.now() >= deadline)
-                    throw error;
-            }
-            await new Promise<void>((resolve) => setTimeout(resolve, this.acquireRetryDelayMs));
-        }
+        return acquireWithBoundedWait(() => this.lock.acquire(commonDir), {
+            timeoutMs: this.acquireTimeoutMs,
+            retryDelayMs: this.acquireRetryDelayMs,
+        });
     }
 
     /** Resolves Git's relative common-dir response against the active worktree root. */

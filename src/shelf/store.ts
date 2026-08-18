@@ -2,7 +2,8 @@ import { createHash, randomUUID } from "node:crypto";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { lstat, mkdir, open, readFile, readdir, rename, rm } from "node:fs/promises";
 import path from "node:path";
-import { RepositoryLock, RepositoryLockBusyError } from "../git/repositoryLock";
+import { acquireWithBoundedWait } from "../git/boundedLockRetry";
+import { RepositoryLock } from "../git/repositoryLock";
 import {
     assertShelfInternalParent,
     ensureShelfInternalParent,
@@ -192,19 +193,10 @@ export class ShelfStore {
      * holding the whole refresh to find out.
      */
     private async acquireWithBriefWait(): Promise<() => Promise<void>> {
-        const deadline = Date.now() + (this.options.acquireTimeoutMs ?? 1_000);
-        for (;;) {
-            try {
-                // react-doctor-disable-next-line react-doctor/async-await-in-loop -- Ordered retries prevent a later acquire from overtaking an earlier store request.
-                return await this.lock.acquire(this.paths.root);
-            } catch (error) {
-                if (!(error instanceof RepositoryLockBusyError) || Date.now() >= deadline)
-                    throw error;
-            }
-            await new Promise<void>((resolve) =>
-                setTimeout(resolve, this.options.acquireRetryDelayMs ?? 150),
-            );
-        }
+        return acquireWithBoundedWait(() => this.lock.acquire(this.paths.root), {
+            timeoutMs: this.options.acquireTimeoutMs ?? 1_000,
+            retryDelayMs: this.options.acquireRetryDelayMs ?? 150,
+        });
     }
 
     /** Stores a byte object once beneath its shelf and verifies pre-existing content. */

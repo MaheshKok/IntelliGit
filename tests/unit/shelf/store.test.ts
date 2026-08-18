@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { RepositoryLockBusyError } from "../../../src/git/repositoryLock";
 import { ensureShelfRoot, resolveShelfPaths, ShelfPathError } from "../../../src/shelf/paths";
 import {
     ShelfStaleCatalogError,
@@ -391,6 +392,41 @@ describe("ShelfStore", () => {
             readTookMs,
             "the read must have actually waited on the held lock, not slipped past it",
         ).toBeGreaterThanOrEqual(300);
+    });
+
+    it("gives up on a busy store lock within its bounded wait, not the full uncapped retry delay", async () => {
+        const { paths, store } = await makeStore();
+        let lockIsHeld!: () => void;
+        const holderOwnsLock = new Promise<void>((resolve) => {
+            lockIsHeld = resolve;
+        });
+        const holder = store.withLock(async () => {
+            lockIsHeld();
+            await new Promise<void>((resolve) => setTimeout(resolve, 300));
+        });
+        await holderOwnsLock;
+
+        // On the pre-fix code, the retry loop slept the FULL 1000ms retry delay after its
+        // first busy failure regardless of how little of the 100ms deadline remained, so this
+        // acquisition SUCCEEDED at ~1000ms -- a full order of magnitude past the 100ms window
+        // the caller asked for, and 700ms after the holder actually released at 300ms.
+        const second = new ShelfStore(paths, { acquireTimeoutMs: 100, acquireRetryDelayMs: 1000 });
+        const attemptStartedAt = Date.now();
+
+        await expect(second.withLock(async () => undefined)).rejects.toBeInstanceOf(
+            RepositoryLockBusyError,
+        );
+        const elapsedMs = Date.now() - attemptStartedAt;
+
+        // Bounded well below where an uncapped sleep lands rather than tight against the
+        // deadline: the rejection above is what discriminates the defect, since the pre-fix
+        // loop resolves and never reaches here. This only has to catch a later regression
+        // that gives up too late, and a margin sized for that does not flake under load.
+        expect(
+            elapsedMs,
+            "the bounded wait must give up near its 100ms deadline, not sleep the full 1000ms retry delay",
+        ).toBeLessThan(700);
+        await holder;
     });
 
     it("round-trips a validated persisted shelf contract with metadata and per-layer artifacts", async () => {
