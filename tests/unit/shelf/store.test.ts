@@ -311,11 +311,18 @@ describe("ShelfStore", () => {
 
     it("serializes store mutations and records all Phase-1 journal transition states", async () => {
         const { paths, store } = await makeStore();
-        const second = new ShelfStore(paths);
+        // A short window rather than the 5s default: the owner below never releases while the
+        // contender runs, so this asserts the wait GIVES UP and still surfaces busy.
+        const second = new ShelfStore(paths, { acquireTimeoutMs: 20, acquireRetryDelayMs: 5 });
         await store.withLock(async () => {
+            const startedAt = Date.now();
             await expect(second.withLock(async () => undefined)).rejects.toThrow(
                 "already in progress",
             );
+            expect(
+                Date.now() - startedAt,
+                "a permanently held lock must surface busy, not be waited on forever",
+            ).toBeLessThan(2_000);
         });
 
         await store.writeJournal({ id: "tx-1", state: "shelvePendingRevert", pathProgress: {} });
@@ -328,6 +335,42 @@ describe("ShelfStore", () => {
             { id: "tx-2", state: "applied", pathProgress: {} },
             { id: "tx-3", state: "ghost", pathProgress: {} },
         ]);
+    });
+
+    it("queues a catalog read behind an in-flight mutation instead of failing it", async () => {
+        const { paths, store } = await makeStore();
+        // `ShelfService.listShelves` reads the catalog WITHOUT holding the repository mutation
+        // gate, so it meets an ordinary shelf mutation directly on the store lock. Before the
+        // bounded wait, that read threw `RepositoryLockBusyError` the instant a mutation was in
+        // flight, and the commit panel's cached-shelf fallback turned it into silent stale state.
+        const reader = new ShelfStore(paths, { acquireRetryDelayMs: 5 });
+        // Warm the uncontended path so the contended one reaches acquire promptly.
+        await reader.listShelves();
+
+        const order: string[] = [];
+        let lockIsHeld!: () => void;
+        const holderOwnsLock = new Promise<void>((resolve) => {
+            lockIsHeld = resolve;
+        });
+        const holder = store.withLock(async () => {
+            lockIsHeld();
+            await new Promise<void>((resolve) => setTimeout(resolve, 150));
+            order.push("mutation-released");
+        });
+
+        await holderOwnsLock;
+        const read = reader.listShelves().then((listed) => {
+            order.push("read-completed");
+            return listed;
+        });
+
+        // Settled together so a rejected read cannot escape as an unhandled rejection.
+        const [, listed] = await Promise.all([holder, read]);
+        expect(listed.shelfIds, "the queued read must return the catalog, not fail").toEqual([]);
+        expect(
+            order,
+            "the read must wait for the mutation to release the lock rather than fail against it",
+        ).toEqual(["mutation-released", "read-completed"]);
     });
 
     it("round-trips a validated persisted shelf contract with metadata and per-layer artifacts", async () => {

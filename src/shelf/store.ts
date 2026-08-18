@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { lstat, mkdir, open, readFile, readdir, rename, rm } from "node:fs/promises";
 import path from "node:path";
-import { RepositoryLock } from "../git/repositoryLock";
+import { RepositoryLock, RepositoryLockBusyError } from "../git/repositoryLock";
 import {
     assertShelfInternalParent,
     ensureShelfInternalParent,
@@ -90,9 +90,13 @@ export interface ShelfJournalShelfLink {
     readonly id: string;
     readonly generation: number;
 }
-/** Test seams for atomic current-pointer replacement. */
+/** Test seams for atomic current-pointer replacement, and store-lock wait tuning. */
 export interface ShelfStoreOptions {
     readonly beforeCurrentPointerRename?: () => Promise<void>;
+    /** How long a busy store lock is retried before the caller sees busy. Defaults to 5s. */
+    readonly acquireTimeoutMs?: number;
+    /** Delay between attempts while the store lock is busy. Defaults to 150ms. */
+    readonly acquireRetryDelayMs?: number;
 }
 /** Raised when a persisted shelf artifact cannot be safely parsed or verified. */
 export class ShelfStoreCorruptionError extends Error {
@@ -161,11 +165,36 @@ export class ShelfStore {
         if (this.lockContext.getStore()) return operation();
         await ensureShelfRoot(this.paths);
         await ensureShelfInternalParent(this.paths, path.join(".store-lock", STORE_LOCK_FILE));
-        const release = await this.lock.acquire(this.paths.root);
+        const release = await this.acquireWithBriefWait();
         try {
             return await this.lockContext.run(true, operation);
         } finally {
             await release();
+        }
+    }
+
+    /**
+     * Retries a busy store lock for a bounded window, mirroring the repository gate.
+     *
+     * Not every caller of this lock holds that gate first. `ShelfService.listShelves`
+     * reads the catalog outside it, so without a wait an ordinary shelf mutation in
+     * another window makes the panel's own read fail rather than queue behind it --
+     * and the panel falls back to cached shelves, showing stale state with no error.
+     * A persistent owner still surfaces busy once the window is spent.
+     */
+    private async acquireWithBriefWait(): Promise<() => Promise<void>> {
+        const deadline = Date.now() + (this.options.acquireTimeoutMs ?? 5_000);
+        for (;;) {
+            try {
+                // react-doctor-disable-next-line react-doctor/async-await-in-loop -- Ordered retries prevent a later acquire from overtaking an earlier store request.
+                return await this.lock.acquire(this.paths.root);
+            } catch (error) {
+                if (!(error instanceof RepositoryLockBusyError) || Date.now() >= deadline)
+                    throw error;
+            }
+            await new Promise<void>((resolve) =>
+                setTimeout(resolve, this.options.acquireRetryDelayMs ?? 150),
+            );
         }
     }
 
