@@ -1095,6 +1095,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             }
         });
         webviewView.webview.onDidReceiveMessage(async (msg) => {
+            this.adoptLiveSender(thisView);
             const message: unknown = msg;
             try {
                 await this.handleMessage(message);
@@ -2062,6 +2063,36 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         if (!this.view) return false;
         this.postToWebview(message);
         return true;
+    }
+
+    /**
+     * Re-adopts a webview that is provably live, because it just posted a message.
+     *
+     * `onDidDispose` clears `this.view`, and VS Code can reload a hidden view's document without
+     * re-running `resolveWebviewView` -- the case {@link handleReadyMessage}'s own comment already
+     * describes. A `ready` arriving while the record is empty is therefore answered to nothing:
+     * every reply hits {@link postToWebview}'s `!view` early return, which is the single path in
+     * this whole delivery layer that reports nothing at all, so the panel stays on
+     * `commit-panel-awaiting-hydration` for the rest of the session -- however many times the
+     * webview re-asks, because every re-ask is answered exactly as silently as the first.
+     *
+     * Adopts ONLY when the record is empty. A different live view recorded there is the correct
+     * target, and stealing the record would blank the view actually on screen to fix one that
+     * isn't. The theme bindings are restored alongside it because `onDidDispose` tore them down;
+     * `attachWebview` is built to rebind (it clears its own `disposed` flag).
+     *
+     * This rests on VS Code not delivering messages from a webview it has already torn down. If
+     * it ever did, the record would name a dead view until the next resolve, and
+     * {@link showRebaseDialog} would report a dialog it could not raise. That failure is loud --
+     * every post to a dead webview is reported by {@link postWebviewMessage} -- whereas the one
+     * this method exists to prevent is completely silent, which is why it went undiagnosed across
+     * four investigations. Trading a reported failure for an unreported one is the point.
+     */
+    private adoptLiveSender(sender: vscode.WebviewView): void {
+        if (this.view !== undefined) return;
+        this.view = sender;
+        this.iconTheme.attachWebview(sender.webview);
+        this.registerThemeChangeListeners();
     }
 
     /**
