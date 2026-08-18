@@ -7,3 +7,11 @@ out
 .claude
 .claude-flow
 package-lock.json
+
+# Prose formatting is a separate concern from the code gate; reflowing every
+# plan/spec doc would bury the code diff it is meant to police.
+*.md
+
+# Recorded artifacts, not source. The visual fixture gates compare these bytes
+# against a fresh recording, so a formatter rewriting them fails the gate.
+tests/visual/fixtures
