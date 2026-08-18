@@ -52,10 +52,30 @@ updates:
           - dependencies
       # Two groups rather than one, for the blast-radius reason given on the github-actions
       # ecosystem above. Majors match neither and still open one pull request each.
+      #
+      # Split by NAME, not by `dependency-type`. That selector reads like the obvious way to say
+      # "development" and "production", but the Dependabot options reference documents it as
+      # supported by bundler, composer, mix, maven, npm and pip -- `bun` is not on that list.
+      #
+      # Its actual effect here cannot be measured, which is the argument against relying on it: the
+      # one runtime dependency, jsonc-parser, is already at the newest published version, so no
+      # grouped proposal has ever had the chance to show the selector including or excluding it.
+      # Grouping by name behaves the same way whether the key was honoured or ignored.
+      #
+      # Naming the production dependency explicitly is the cost of that, and it duplicates a fact
+      # that already lives in `package.json`. `tests/unit/publishing/dependabotGroups.test.ts` pins
+      # the two together in both directions, so adding or removing a runtime dependency without
+      # updating this list fails the suite rather than silently filing it under development -- which
+      # would put the one package that ships to users back behind the 37 that do not.
       groups:
-          safe-development-dependencies:
-              dependency-type: development
-              update-types: ["minor", "patch"]
+          # First, so it wins the match: a dependency joins the first group whose patterns accept it.
           production-dependencies:
-              dependency-type: production
+              patterns:
+                  - jsonc-parser
+              update-types: ["minor", "patch"]
+          safe-development-dependencies:
+              patterns:
+                  - "*"
+              exclude-patterns:
+                  - jsonc-parser
               update-types: ["minor", "patch"]
