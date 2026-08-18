@@ -1551,10 +1551,11 @@ describe("view providers integration", () => {
             expect(resumePendingRecovery).toHaveBeenCalledOnce();
             await flushMicrotasks();
             expect(showErrorMessage).toHaveBeenCalledWith("resume failed");
-            // Waits out the in-flight catalog read rather than deleting the storage root from under
-            // it, and keeps the stub above honest: if activation stops reading the catalog the stub
-            // is no longer intercepting anything, and whatever replaced it is free to write here
-            // unobserved.
+            // Not a synchronisation barrier: the stub above resolves without touching disk, so no
+            // catalog read is left in flight to wait out. This is a tripwire on the stub's
+            // relevance -- if activation ever reaches the catalog by some route this spy no longer
+            // intercepts, the stub stops removing the writer, and this line times out red rather
+            // than letting a real `.store-lock` write race the cleanup below unobserved.
             await vi.waitFor(() => expect(listShelves).toHaveBeenCalled());
         } finally {
             resumePendingRecovery.mockRestore();

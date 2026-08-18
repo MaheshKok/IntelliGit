@@ -9,6 +9,12 @@ import {
 const GITHUB_API_URL = "https://api.github.com/repos/acme/repo/commits/main/status";
 const COOLDOWN_MESSAGE = "Commit checks rate limit cooldown is active.";
 const REQUEST_WINDOW_MS = 60 * 60 * 1000;
+// The client-side ceiling the gate must hold regardless of what a server advertises, stated as
+// a requirement rather than read from production. Driving the loop below off the production
+// constant would rescale the test with it, so a cap wrongly lowered to 3 would still be
+// "honoured" by a test that only ever asks for 3. The wiring assertion below is the one place
+// the two are compared.
+const HARD_REQUEST_CAP = 5_000;
 
 describe("GitHubRequestGate", () => {
     it("caps concurrent requests", async () => {
@@ -698,6 +704,10 @@ describe("CommitChecksRequestGateRegistry", () => {
         });
     });
 
+    it("ships the hard request cap the bound above is written against", () => {
+        expect(MAX_OBSERVED_REQUESTS_PER_WINDOW).toBe(HARD_REQUEST_CAP);
+    });
+
     it("bounds an exempt github bucket even when the server advertises an implausible quota", async () => {
         const registry = new CommitChecksRequestGateRegistry(COOLDOWN_MESSAGE, () => 1_000);
         registry.observeResponse("github", {
@@ -711,10 +721,10 @@ describe("CommitChecksRequestGateRegistry", () => {
         });
         const task = vi.fn(async () => "ok");
 
-        for (let index = 0; index < MAX_OBSERVED_REQUESTS_PER_WINDOW; index += 1) {
+        for (let index = 0; index < HARD_REQUEST_CAP; index += 1) {
             await registry.run("github", GITHUB_API_URL, task);
         }
-        expect(task).toHaveBeenCalledTimes(MAX_OBSERVED_REQUESTS_PER_WINDOW);
+        expect(task).toHaveBeenCalledTimes(HARD_REQUEST_CAP);
         await expect(registry.run("github", GITHUB_API_URL, task)).rejects.toMatchObject({
             statusCode: 429,
             message: COOLDOWN_MESSAGE,
