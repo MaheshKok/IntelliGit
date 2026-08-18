@@ -202,10 +202,40 @@ export class GitExecutor {
             child.once("close", (exitCode, signal) => {
                 void finish(exitCode, signal);
             });
+            // A child that exits without draining stdin breaks the pipe, so this end() fails
+            // on the stream -- not on the process, which is all the handler above listens to.
+            // An unhandled stream error is an uncatchable crash rather than a rejected promise,
+            // so it takes a whole run down while every test in it passes. Only the failures the
+            // child's own exit already accounts for are absorbed here: any other one means the
+            // input never fully arrived, and swallowing it would report a clean exit for a
+            // command that read a truncated stdin.
+            child.stdin.once("error", (error: NodeJS.ErrnoException) => {
+                if (!isExpectedStdinFailure(error, terminatedForOutputLimit)) reject(error);
+            });
             if (options.input) child.stdin.end(options.input);
             else child.stdin.end();
         });
     }
+}
+
+/**
+ * Whether a stdin write failure is one the child's own exit already explains.
+ *
+ * `EPIPE` means the child was gone before the input landed, which the close handler reports
+ * on its own terms; there is nothing left to say about it. `ERR_STREAM_DESTROYED` is only
+ * that harmless when this executor destroyed the stream itself by killing a child that
+ * overran the output limit -- otherwise the stream died for a reason nobody recorded.
+ *
+ * Everything else is a genuine write failure, and it has to reach the caller. Git reads the
+ * input it was given and exits 0 on what it got, so a swallowed failure here is reported as a
+ * successful command that silently ran on a truncated stdin.
+ */
+export function isExpectedStdinFailure(
+    error: NodeJS.ErrnoException,
+    terminatedForOutputLimit: boolean,
+): boolean {
+    if (error.code === "EPIPE") return true;
+    return error.code === "ERR_STREAM_DESTROYED" && terminatedForOutputLimit;
 }
 
 /** Called after a Git command the user initiated has completed successfully. */
