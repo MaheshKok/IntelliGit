@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -74,6 +74,60 @@ describe("RepositoryLock", () => {
         } finally {
             heartbeatWrite.delayMs = 0;
         }
+    });
+
+    it("replaces the lock record instead of rewriting the file a reader already opened", async () => {
+        const common = await commonDir();
+        const lockPath = path.join(common, "intelligit", "repo.lock");
+        const release = await new RepositoryLock({ heartbeatIntervalMs: 10 }).acquire(common);
+        try {
+            // Rewriting in place is what makes a live owner briefly indistinguishable from
+            // abandoned residue: `writeFile` truncates at open and writes the bytes as a
+            // separate step, so an owner whose thread stalls between the two leaves an empty
+            // file -- unparseable, and with no pid left in it for the liveness probe to rescue
+            // the owner with. Publishing by rename is the difference, and file identity at the
+            // path is what witnesses it: comparing contents would pass either way, because both
+            // forms do update the record.
+            const claimed = await stat(lockPath);
+            await new Promise<void>((resolve) => setTimeout(resolve, 40));
+
+            expect(
+                (await stat(lockPath)).ino,
+                "each heartbeat must publish a new file, never rewrite the one in place",
+            ).not.toBe(claimed.ino);
+        } finally {
+            await release();
+        }
+    });
+
+    it("does not hold a claim another process reclaimed before the record landed", async () => {
+        const common = await commonDir();
+        const lockPath = path.join(common, "intelligit", "repo.lock");
+
+        await expect(
+            new RepositoryLock({
+                // Stands in for a contender that found this process's zero-length claim old
+                // enough to be residue and took it over. The exclusive create wins the path
+                // before the record is in it, so a claimant stalled between the two has to read
+                // the path back to learn it lost. Otherwise both processes hold the lock, and
+                // this one starts a heartbeat that overwrites the other's record.
+                beforeClaimConfirmed: async () => {
+                    await writeFile(
+                        lockPath,
+                        JSON.stringify({
+                            nonce: "reclaimed",
+                            pid: process.pid,
+                            heartbeatAt: Date.now(),
+                        }),
+                    );
+                },
+            }).acquire(common),
+        ).rejects.toBeInstanceOf(RepositoryLockBusyError);
+
+        expect(
+            JSON.parse(await readFile(lockPath, "utf8")),
+            "the process that reclaimed the path must keep it",
+        ).toMatchObject({ nonce: "reclaimed" });
     });
 
     it("does not take over a stale lock while its PID is still live", async () => {
@@ -226,12 +280,12 @@ describe("RepositoryLock", () => {
             await release();
         });
 
-        it("is left alone while something is still writing to it", async () => {
-            // The counterexample the fix must not break. A heartbeat write truncates before
-            // it writes, so a perfectly LIVE lock is briefly zero-length and unparseable --
-            // indistinguishable, by content, from the dead one above. Only the mtime separates
-            // them, because the truncate stamps it at that instant. Without that test this is
-            // the case where a contender seizes a lock whose owner is still holding it.
+        it("is left alone until it has been lying there longer than the stale window", async () => {
+            // The counterexample the fix must not break. Reclaiming an unreadable file means
+            // deciding from its mtime alone that nothing is coming back for it, so one that has
+            // only just appeared is declined -- exactly as a freshly heartbeated owner is.
+            // Without this the takeover degenerates into "unreadable means free", and the age
+            // check that makes it safe is unasserted.
             const common = await plantUnreadableLock("");
 
             await expect(
