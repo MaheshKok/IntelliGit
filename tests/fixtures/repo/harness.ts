@@ -45,10 +45,7 @@ import { copyTemplate } from "./copyTemplate";
 import { runGit } from "./gitRun";
 import { DEFAULT_MANIFEST_PATH, readFixtureManifest } from "./manifest";
 import { rehydrateCopy } from "./rehydrate";
-import {
-    REPOSITORY_SCENARIOS,
-    type RepositoryScenarioId,
-} from "./scenarios";
+import { REPOSITORY_SCENARIOS, type RepositoryScenarioId } from "./scenarios";
 import { createSanitizedGitEnv } from "./seed";
 
 /** What `createFixtureWorkspace()` returns -- matches PLAN.md line 60's stated shape
@@ -164,7 +161,13 @@ export async function createFixtureWorkspace(
                 manifest.templateRoot,
             );
 
-            return { root, originRoot, profileDir, env, dispose: createDisposer(ownRoot, root, env) };
+            return {
+                root,
+                originRoot,
+                profileDir,
+                env,
+                dispose: createDisposer(ownRoot, root, env),
+            };
         } catch (error) {
             // Best-effort, and deliberately not allowed to replace the diagnosis: the caller needs
             // to know WHY construction failed, and a cleanup error raised in its place would bury

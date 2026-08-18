@@ -177,7 +177,8 @@ export default defineConfig([
                             // importing "../../oracles/geometry" produced `lint` rc=0.
                             group: ["**/oracles/*", "./oracles/*"],
                             allowTypeImports: true,
-                            message: 'Import oracle namespaces through { oracles } from ".../oracles".',
+                            message:
+                                'Import oracle namespaces through { oracles } from ".../oracles".',
                         },
                     ],
                 },

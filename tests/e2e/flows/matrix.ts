@@ -1,17 +1,9 @@
 import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
 
-import {
-    expect,
-    test,
-    type FrameLocator,
-    type Page,
-} from "@playwright/test";
+import { expect, test, type FrameLocator, type Page } from "@playwright/test";
 
-import type {
-    FixtureScenarioId,
-    FixtureWorkspace,
-} from "../../fixtures/repo/harness";
+import type { FixtureScenarioId, FixtureWorkspace } from "../../fixtures/repo/harness";
 import {
     DIRTY_FIXTURE,
     DIVERGENCE_FIXTURE,
@@ -193,7 +185,10 @@ async function assertDurableStateClean(context: FlowContext): Promise<void> {
     expect.soft(globalStorageIsDirectory).toBe(true);
     expect.soft(durableState.shelfStoreFiles).toEqual([]);
     expect
-        .soft(durableState.rebaseManifestFiles, "rebase manifest storage must be empty after the flow")
+        .soft(
+            durableState.rebaseManifestFiles,
+            "rebase manifest storage must be empty after the flow",
+        )
         .toEqual([]);
     // Polled, not sampled, for the same reason as the shelf lock below: `releaseCallback` in
     // `src/git/repositoryLock.ts` awaits every owed heartbeat write before unlinking, so the lock
@@ -506,15 +501,13 @@ export const FLOW_MATRIX: readonly FlowRow[] = [
                 .getByTestId("commit-panel-tab-row")
                 .getByRole("button", { name: "Pull", exact: true })
                 .click();
-            await expect
-                .poll(() => localGit.headOid(fixtureWorkspace))
-                .not.toBe(before.head);
+            await expect.poll(() => localGit.headOid(fixtureWorkspace)).not.toBe(before.head);
         },
         uiOracle: async ({ frame, graphFrame }) => {
             const toolbar = frame.getByTestId("commit-panel-tab-row");
-            await expect.soft(toolbar.getByRole("button", { name: "Pull", exact: true })).toHaveCount(
-                1,
-            );
+            await expect
+                .soft(toolbar.getByRole("button", { name: "Pull", exact: true }))
+                .toHaveCount(1);
             if (graphFrame === undefined) throw new Error("The pull row requires the graph panel.");
             // Deliberately NOT `push-ahead-count`: on `ahead-behind` the branch is ahead 1 both
             // before and after the rebase, so that element reads "↑1" whether the pull integrated
@@ -544,9 +537,9 @@ export const FLOW_MATRIX: readonly FlowRow[] = [
             expect.soft(localHead).not.toBe(before.head);
             expect.soft(localHeadParents[0]).toBe(before.originHead);
             expect.soft(localHeadSubject).toBe(LOCAL_ONLY_COMMIT_MESSAGE);
-            expect.soft(treePaths).toEqual(
-                expect.arrayContaining([LOCAL_AHEAD_PATH, ORIGIN_ADVANCE_PATH]),
-            );
+            expect
+                .soft(treePaths)
+                .toEqual(expect.arrayContaining([LOCAL_AHEAD_PATH, ORIGIN_ADVANCE_PATH]));
             expect.soft(localStatus).toEqual([]);
         },
         originOracle: async ({ fixtureWorkspace, before }) => {
@@ -571,9 +564,9 @@ export const FLOW_MATRIX: readonly FlowRow[] = [
         },
         uiOracle: async ({ frame }) => {
             const toolbar = frame.getByTestId("commit-panel-tab-row");
-            await expect.soft(toolbar.getByRole("button", { name: "Push", exact: true })).toHaveCount(
-                1,
-            );
+            await expect
+                .soft(toolbar.getByRole("button", { name: "Push", exact: true }))
+                .toHaveCount(1);
             await expect.soft(frame.getByTestId("push-ahead-count")).toHaveCount(0);
         },
         localGitOracle: async ({ fixtureWorkspace, before }) => {
@@ -630,9 +623,7 @@ export const FLOW_MATRIX: readonly FlowRow[] = [
             await rebaseDialog
                 .getByRole("textbox", { name: "Commit message", exact: true })
                 .fill(DIVERGENCE_FIXTURE.rewordedSubject);
-            await rebaseDialog
-                .getByRole("button", { name: "Start Rebasing", exact: true })
-                .click();
+            await rebaseDialog.getByRole("button", { name: "Start Rebasing", exact: true }).click();
             await expect
                 .poll(() =>
                     page
@@ -654,16 +645,23 @@ export const FLOW_MATRIX: readonly FlowRow[] = [
                 .toHaveCount(1);
         },
         localGitOracle: async ({ fixtureWorkspace, before }) => {
-            const [currentBranch, localHead, localHeadParents, localHeadSubject, treePaths, counts, localStatus] =
-                await Promise.all([
-                    localGit.currentBranch(fixtureWorkspace),
-                    localGit.headOid(fixtureWorkspace),
-                    localGit.headParentOids(fixtureWorkspace),
-                    localGit.headSubject(fixtureWorkspace),
-                    localGit.headTreePaths(fixtureWorkspace),
-                    localGit.aheadBehindCounts(fixtureWorkspace),
-                    localGit.statusPorcelain(fixtureWorkspace),
-                ]);
+            const [
+                currentBranch,
+                localHead,
+                localHeadParents,
+                localHeadSubject,
+                treePaths,
+                counts,
+                localStatus,
+            ] = await Promise.all([
+                localGit.currentBranch(fixtureWorkspace),
+                localGit.headOid(fixtureWorkspace),
+                localGit.headParentOids(fixtureWorkspace),
+                localGit.headSubject(fixtureWorkspace),
+                localGit.headTreePaths(fixtureWorkspace),
+                localGit.aheadBehindCounts(fixtureWorkspace),
+                localGit.statusPorcelain(fixtureWorkspace),
+            ]);
             expect.soft(before.branch).toBe(FIXTURE_REFS.main);
             expect.soft(currentBranch).toBe(FIXTURE_REFS.main);
             expect.soft(localHead).not.toBe(before.head);
@@ -724,9 +722,9 @@ export const FLOW_MATRIX: readonly FlowRow[] = [
             // from making membership vacuously pass, while membership proves every named fixture path
             // really existed in the pre-action porcelain snapshot, including the rename destination.
             expect.soft(visibleStatusEntries).toHaveLength(DIRTY_VISIBLE_PATHS.length);
-            expect.soft(before.status.map((entry) => entry.path)).toEqual(
-                expect.arrayContaining([...DIRTY_VISIBLE_PATHS]),
-            );
+            expect
+                .soft(before.status.map((entry) => entry.path))
+                .toEqual(expect.arrayContaining([...DIRTY_VISIBLE_PATHS]));
             const [localHead, localStatus] = await Promise.all([
                 localGit.headOid(fixtureWorkspace),
                 localGit.statusPorcelain(fixtureWorkspace),
@@ -760,19 +758,21 @@ export const FLOW_MATRIX: readonly FlowRow[] = [
             await expect(
                 shelfMenu.getByRole("menuitem", { name: /^Unshelve(?:…|\.\.\.)/ }),
             ).toBeVisible();
-            await shelfMenu
-                .getByRole("menuitem", { name: /^Unshelve(?:…|\.\.\.)/ })
-                .click();
+            await shelfMenu.getByRole("menuitem", { name: /^Unshelve(?:…|\.\.\.)/ }).click();
 
             const unshelveDialog = frame.getByRole("dialog");
-            await expect(unshelveDialog.getByRole("heading", { name: "Unshelve", exact: true })).toBeVisible();
+            await expect(
+                unshelveDialog.getByRole("heading", { name: "Unshelve", exact: true }),
+            ).toBeVisible();
             await expect(
                 unshelveDialog.getByRole("checkbox", { name: SHELFED_PATH, exact: true }),
             ).toBeChecked();
             await unshelveDialog.getByRole("button", { name: "Unshelve", exact: true }).click();
             await expect
                 .poll(() =>
-                    readFile(path.join(fixtureWorkspace.root, SHELFED_PATH), "utf8").catch(() => null),
+                    readFile(path.join(fixtureWorkspace.root, SHELFED_PATH), "utf8").catch(
+                        () => null,
+                    ),
                 )
                 .toBe(SHELFED_CONTENT);
 
@@ -814,11 +814,13 @@ export const FLOW_MATRIX: readonly FlowRow[] = [
                 readFile(path.join(fixtureWorkspace.root, SHELFED_PATH), "utf8"),
             ]);
             expect.soft(localHead).toBe(before.head);
-            expect.soft(localStatus).toEqual(
-                expect.arrayContaining([
-                    { indexStatus: "?", worktreeStatus: "?", path: SHELFED_PATH },
-                ]),
-            );
+            expect
+                .soft(localStatus)
+                .toEqual(
+                    expect.arrayContaining([
+                        { indexStatus: "?", worktreeStatus: "?", path: SHELFED_PATH },
+                    ]),
+                );
             expect.soft(shelvedContent).toBe(SHELFED_CONTENT);
         },
         originOracle: async ({ fixtureWorkspace, before }) => {
@@ -915,7 +917,11 @@ export const FLOW_MATRIX: readonly FlowRow[] = [
             // refresh sees zero conflict files; it is positive evidence for the rendered panel plus
             // the Accept Yours action, not a disappearance-only assertion on a detached webview.
             await expect
-                .soft(page.getByRole("alert").filter({ hasText: "All merge conflicts are resolved." }))
+                .soft(
+                    page
+                        .getByRole("alert")
+                        .filter({ hasText: "All merge conflicts are resolved." }),
+                )
                 .toHaveCount(1);
             expect.soft(await countConflictSessionFrames(page)).toBe(0);
         },
@@ -924,43 +930,59 @@ export const FLOW_MATRIX: readonly FlowRow[] = [
                 (entry) => entry.indexStatus === "U" || entry.worktreeStatus === "U",
             );
             const unresolvedPaths = [...new Set(unresolvedBefore.map((entry) => entry.path))];
-            const [currentBranch, localHead, localStatus, mergeHead, resolvedContents, headContents] =
-                await Promise.all([
-                    localGit.currentBranch(fixtureWorkspace),
-                    localGit.headOid(fixtureWorkspace),
-                    localGit.statusPorcelain(fixtureWorkspace),
-                    readFile(path.join(fixtureWorkspace.root, ".git", "MERGE_HEAD"), "utf8").catch(
-                        () => null,
-                    ),
-                    Promise.all(
-                        unresolvedPaths.map((repositoryPath) =>
-                            readFile(path.join(fixtureWorkspace.root, repositoryPath), "utf8").catch(
-                                () => null,
-                            ),
+            const [
+                currentBranch,
+                localHead,
+                localStatus,
+                mergeHead,
+                resolvedContents,
+                headContents,
+            ] = await Promise.all([
+                localGit.currentBranch(fixtureWorkspace),
+                localGit.headOid(fixtureWorkspace),
+                localGit.statusPorcelain(fixtureWorkspace),
+                readFile(path.join(fixtureWorkspace.root, ".git", "MERGE_HEAD"), "utf8").catch(
+                    () => null,
+                ),
+                Promise.all(
+                    unresolvedPaths.map((repositoryPath) =>
+                        readFile(path.join(fixtureWorkspace.root, repositoryPath), "utf8").catch(
+                            () => null,
                         ),
                     ),
-                    Promise.all(
-                        unresolvedPaths.map((repositoryPath) =>
-                            localGit.headPathContent(fixtureWorkspace, repositoryPath).catch(
-                                () => null,
-                            ),
-                        ),
+                ),
+                Promise.all(
+                    unresolvedPaths.map((repositoryPath) =>
+                        localGit
+                            .headPathContent(fixtureWorkspace, repositoryPath)
+                            .catch(() => null),
                     ),
-                ]);
+                ),
+            ]);
             // The count prevents a clean/empty fixture from making the per-path checks vacuous.
             expect.soft(unresolvedPaths.length).toBeGreaterThan(0);
             expect.soft(currentBranch).toBe(FIXTURE_REFS.main);
             expect.soft(localHead).toBe(before.head);
             expect.soft(mergeHead).not.toBeNull();
             expect
-                .soft(localStatus.some((entry) => entry.indexStatus === "U" || entry.worktreeStatus === "U"))
+                .soft(
+                    localStatus.some(
+                        (entry) => entry.indexStatus === "U" || entry.worktreeStatus === "U",
+                    ),
+                )
                 .toBe(false);
             // Accept Yours can legitimately produce a clean worktree when ours already equals
             // HEAD; if it differs, Git reports the resolved path as staged M. In either case every
             // remaining status entry must belong to the conflict set and be a staged resolution.
-            expect.soft(localStatus.every((entry) => unresolvedPaths.includes(entry.path))).toBe(true);
             expect
-                .soft(localStatus.every((entry) => entry.indexStatus === "M" && entry.worktreeStatus === " "))
+                .soft(localStatus.every((entry) => unresolvedPaths.includes(entry.path)))
+                .toBe(true);
+            expect
+                .soft(
+                    localStatus.every(
+                        (entry) => entry.indexStatus === "M" && entry.worktreeStatus === " ",
+                    ),
+                )
                 .toBe(true);
             expect.soft(resolvedContents.every((content) => content !== null)).toBe(true);
             expect.soft(headContents.every((content) => content !== null)).toBe(true);
@@ -968,7 +990,8 @@ export const FLOW_MATRIX: readonly FlowRow[] = [
                 const content = resolvedContents[index];
                 const headContent = headContents[index];
                 if (content !== null) expect.soft(content).not.toMatch(/<<<<<<<|=======|>>>>>>>/);
-                if (content !== null && headContent !== null) expect.soft(content).toBe(headContent);
+                if (content !== null && headContent !== null)
+                    expect.soft(content).toBe(headContent);
             }
         },
         originOracle: async ({ fixtureWorkspace, before }) => {
@@ -1013,9 +1036,7 @@ export const FLOW_MATRIX: readonly FlowRow[] = [
             await rebaseDialog
                 .getByRole("textbox", { name: "Commit message", exact: true })
                 .fill(PUSHED_TIP_FIXTURE.rewordedSubject);
-            await rebaseDialog
-                .getByRole("button", { name: "Start Rebasing", exact: true })
-                .click();
+            await rebaseDialog.getByRole("button", { name: "Start Rebasing", exact: true }).click();
 
             // This targets IntelliGit's workbench notification toast in the workbench DOM, not a
             // browser-native dialog, modal container, or webview dialog. The exact message proves
@@ -1049,15 +1070,21 @@ export const FLOW_MATRIX: readonly FlowRow[] = [
                 .toHaveCount(1);
         },
         localGitOracle: async ({ fixtureWorkspace, before }) => {
-            const [currentBranch, localHead, localHeadParents, localHeadSubject, counts, localStatus] =
-                await Promise.all([
-                    localGit.currentBranch(fixtureWorkspace),
-                    localGit.headOid(fixtureWorkspace),
-                    localGit.headParentOids(fixtureWorkspace),
-                    localGit.headSubject(fixtureWorkspace),
-                    localGit.aheadBehindCounts(fixtureWorkspace),
-                    localGit.statusPorcelain(fixtureWorkspace),
-                ]);
+            const [
+                currentBranch,
+                localHead,
+                localHeadParents,
+                localHeadSubject,
+                counts,
+                localStatus,
+            ] = await Promise.all([
+                localGit.currentBranch(fixtureWorkspace),
+                localGit.headOid(fixtureWorkspace),
+                localGit.headParentOids(fixtureWorkspace),
+                localGit.headSubject(fixtureWorkspace),
+                localGit.aheadBehindCounts(fixtureWorkspace),
+                localGit.statusPorcelain(fixtureWorkspace),
+            ]);
             // `aheadBehindCounts` hardcodes `main...@{upstream}`; these checks prove this settled
             // scenario keeps `main` checked out and that the force push updated its upstream.
             expect.soft(before.branch).toBe(FIXTURE_REFS.main);

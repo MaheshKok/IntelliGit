@@ -254,7 +254,7 @@ describe("ShelfTab", () => {
         });
         key(container.querySelector('[data-shelf-id="shelf-a"]') as HTMLElement, "ArrowDown");
         const locallySelected = Array.from(
-            container.querySelectorAll<HTMLElement>('[data-shelf-id]'),
+            container.querySelectorAll<HTMLElement>("[data-shelf-id]"),
         ).find((row) => row.dataset.shelfId === "shelf:transient");
         expect(locallySelected?.getAttribute("aria-selected")).toBe("true");
         expect(document.activeElement).toBe(locallySelected);

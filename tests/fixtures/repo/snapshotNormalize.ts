@@ -205,7 +205,10 @@ function normalizeDurableState(
 }
 
 /** Normalizes the full workspace snapshot -- both repositories, plus durable state if captured. */
-export function normalizeSnapshot(snapshot: WorkspaceSnapshot, roots: PlaceholderRoots): WorkspaceSnapshot {
+export function normalizeSnapshot(
+    snapshot: WorkspaceSnapshot,
+    roots: PlaceholderRoots,
+): WorkspaceSnapshot {
     const replacements = orderedReplacements(roots);
     return {
         workspace: normalizeRepositorySnapshot(snapshot.workspace, roots),

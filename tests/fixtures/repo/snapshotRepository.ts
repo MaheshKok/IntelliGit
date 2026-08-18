@@ -24,15 +24,16 @@ export async function snapshotRepository(
     const isBare = isBareRaw === "true";
     const commonDir = path.resolve(repoRoot, commonDirRaw);
 
-    const [workingTree, index, refs, head, reflogs, objectStore, worktreesResult] = await Promise.all([
-        snapshotWorkingTree(repoRoot, isBare),
-        snapshotIndex(repoRoot, env),
-        snapshotRefs(repoRoot, env),
-        snapshotHead(commonDir),
-        snapshotReflogs(commonDir),
-        snapshotObjectStore(repoRoot, commonDir, env),
-        snapshotWorktrees(repoRoot, commonDir, env),
-    ]);
+    const [workingTree, index, refs, head, reflogs, objectStore, worktreesResult] =
+        await Promise.all([
+            snapshotWorkingTree(repoRoot, isBare),
+            snapshotIndex(repoRoot, env),
+            snapshotRefs(repoRoot, env),
+            snapshotHead(commonDir),
+            snapshotReflogs(commonDir),
+            snapshotObjectStore(repoRoot, commonDir, env),
+            snapshotWorktrees(repoRoot, commonDir, env),
+        ]);
     const gitDirState = await snapshotGitDirState(commonDir, worktreesResult.linkedGitDirs);
 
     return {

@@ -537,7 +537,12 @@ export const oracleSelfTests: Record<OracleId, OracleSelfTest> = {
                 const defaulted = await durableState.readDurableState(workspace);
                 const defaultPathIsProduction =
                     defaulted.globalStoragePath ===
-                    join(workspace.profileDir, "User", "globalStorage", manifestGlobalStorageFolder());
+                    join(
+                        workspace.profileDir,
+                        "User",
+                        "globalStorage",
+                        manifestGlobalStorageFolder(),
+                    );
                 return shelfFilesAreReal && listedFilesMatch && defaultPathIsProduction
                     ? [snapshot.shelfStoreFiles, listedFiles, defaulted.globalStoragePath]
                     : [];

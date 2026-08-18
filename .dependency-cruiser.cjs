@@ -46,7 +46,8 @@ module.exports = {
         },
         {
             name: "no-domain-layer-to-ui",
-            comment: "Git, service, merge, and utility layers should not depend on VS Code view providers or React UI modules.",
+            comment:
+                "Git, service, merge, and utility layers should not depend on VS Code view providers or React UI modules.",
             severity: "error",
             from: {
                 path: "^src/(git|mergeEditor|services|utils)/",
@@ -57,7 +58,8 @@ module.exports = {
         },
         {
             name: "no-webview-to-node-or-vscode-runtime",
-            comment: "Browser webviews must not import Node built-ins or the VS Code extension API.",
+            comment:
+                "Browser webviews must not import Node built-ins or the VS Code extension API.",
             severity: "error",
             from: {
                 path: "^src/webviews/react/",

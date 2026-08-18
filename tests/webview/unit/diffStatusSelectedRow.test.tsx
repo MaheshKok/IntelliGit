@@ -98,9 +98,10 @@ describe("diff-status colours on a selected row", () => {
             ).toContain("--vscode-list-activeSelectionBackground");
 
             const rowColor = colorOf(row);
-            expect(rowColor, "the row must paint a foreground for its children to inherit").not.toBe(
-                "",
-            );
+            expect(
+                rowColor,
+                "the row must paint a foreground for its children to inherit",
+            ).not.toBe("");
             for (const text of ["+2", "-1", "D"]) {
                 expect(
                     colorOf(spanWithText(mounted.container, text)),
