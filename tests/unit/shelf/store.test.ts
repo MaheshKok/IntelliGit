@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { RepositoryLockBusyError } from "../../../src/git/repositoryLock";
 import { ensureShelfRoot, resolveShelfPaths, ShelfPathError } from "../../../src/shelf/paths";
 import {
     ShelfStaleCatalogError,
@@ -311,11 +312,24 @@ describe("ShelfStore", () => {
 
     it("serializes store mutations and records all Phase-1 journal transition states", async () => {
         const { paths, store } = await makeStore();
-        const second = new ShelfStore(paths);
+        // A short window rather than the default: the owner below never releases while the
+        // contender runs, so this asserts the wait GIVES UP and still surfaces busy.
+        const second = new ShelfStore(paths, { acquireTimeoutMs: 20, acquireRetryDelayMs: 5 });
         await store.withLock(async () => {
-            await expect(second.withLock(async () => undefined)).rejects.toThrow(
-                "already in progress",
-            );
+            // Raced rather than awaited outright: a wait that never gives up would otherwise
+            // surface only as the runner's own timeout, which names nothing and takes 30s to
+            // say it. This resolves the failing case to a value the assertion can quote.
+            const outcome = await Promise.race([
+                second.withLock(async () => undefined).then(
+                    () => "acquired",
+                    (error: Error) => error.message,
+                ),
+                new Promise<string>((resolve) => setTimeout(() => resolve("still-waiting"), 1_000)),
+            ]);
+            expect(
+                outcome,
+                "a permanently held lock must surface busy, not be waited on forever",
+            ).toContain("already in progress");
         });
 
         await store.writeJournal({ id: "tx-1", state: "shelvePendingRevert", pathProgress: {} });
@@ -328,6 +342,91 @@ describe("ShelfStore", () => {
             { id: "tx-2", state: "applied", pathProgress: {} },
             { id: "tx-3", state: "ghost", pathProgress: {} },
         ]);
+    });
+
+    it("queues a catalog read behind an in-flight mutation instead of failing it", async () => {
+        const { paths, store } = await makeStore();
+        // `ShelfService.listShelves` reads the catalog WITHOUT holding the repository mutation
+        // gate, so it meets an ordinary shelf mutation directly on the store lock. Before the
+        // bounded wait, that read threw `RepositoryLockBusyError` the instant a mutation was in
+        // flight, and the commit panel's cached-shelf fallback turned it into silent stale state.
+        //
+        // Constructed with NO options, so the wait it survives is the shipped default. The
+        // 400ms hold below is what pins that default: it is the one assertion that fails if
+        // the window is quietly shortened to something the mutations this fixes outlast.
+        const reader = new ShelfStore(paths);
+        // Warm the uncontended path so the contended one reaches acquire promptly.
+        await reader.listShelves();
+
+        const order: string[] = [];
+        let lockIsHeld!: () => void;
+        const holderOwnsLock = new Promise<void>((resolve) => {
+            lockIsHeld = resolve;
+        });
+        const holder = store.withLock(async () => {
+            lockIsHeld();
+            await new Promise<void>((resolve) => setTimeout(resolve, 400));
+            order.push("mutation-released");
+        });
+
+        await holderOwnsLock;
+        const readStartedAt = Date.now();
+        const read = reader.listShelves().then((listed) => {
+            order.push("read-completed");
+            return listed;
+        });
+
+        // Settled together so a rejected read cannot escape as an unhandled rejection.
+        const [, listed] = await Promise.all([holder, read]);
+        const readTookMs = Date.now() - readStartedAt;
+
+        expect(listed.shelfIds, "the queued read must return the catalog, not fail").toEqual([]);
+        expect(
+            order,
+            "the read must wait for the mutation to release the lock rather than fail against it",
+        ).toEqual(["mutation-released", "read-completed"]);
+        // Ordering alone is entailed by "the read did not throw" -- a read that never met the
+        // lock at all produces the same array. Only the elapsed time witnesses the contention
+        // this test claims to exercise, and only it fails when the default window shrinks.
+        expect(
+            readTookMs,
+            "the read must have actually waited on the held lock, not slipped past it",
+        ).toBeGreaterThanOrEqual(300);
+    });
+
+    it("gives up on a busy store lock within its bounded wait, not the full uncapped retry delay", async () => {
+        const { paths, store } = await makeStore();
+        let lockIsHeld!: () => void;
+        const holderOwnsLock = new Promise<void>((resolve) => {
+            lockIsHeld = resolve;
+        });
+        const holder = store.withLock(async () => {
+            lockIsHeld();
+            await new Promise<void>((resolve) => setTimeout(resolve, 300));
+        });
+        await holderOwnsLock;
+
+        // On the pre-fix code, the retry loop slept the FULL 1000ms retry delay after its
+        // first busy failure regardless of how little of the 100ms deadline remained, so this
+        // acquisition SUCCEEDED at ~1000ms -- a full order of magnitude past the 100ms window
+        // the caller asked for, and 700ms after the holder actually released at 300ms.
+        const second = new ShelfStore(paths, { acquireTimeoutMs: 100, acquireRetryDelayMs: 1000 });
+        const attemptStartedAt = Date.now();
+
+        await expect(second.withLock(async () => undefined)).rejects.toBeInstanceOf(
+            RepositoryLockBusyError,
+        );
+        const elapsedMs = Date.now() - attemptStartedAt;
+
+        // Bounded well below where an uncapped sleep lands rather than tight against the
+        // deadline: the rejection above is what discriminates the defect, since the pre-fix
+        // loop resolves and never reaches here. This only has to catch a later regression
+        // that gives up too late, and a margin sized for that does not flake under load.
+        expect(
+            elapsedMs,
+            "the bounded wait must give up near its 100ms deadline, not sleep the full 1000ms retry delay",
+        ).toBeLessThan(700);
+        await holder;
     });
 
     it("round-trips a validated persisted shelf contract with metadata and per-layer artifacts", async () => {
