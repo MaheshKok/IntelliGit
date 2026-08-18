@@ -23,12 +23,19 @@ interface FakeWebview {
  * simulate the webview-side bridge's reply by invoking the captured listener directly.
  */
 function makeFakeWebview(postMessageResult: boolean | (() => boolean) = true): FakeWebview {
-    const state: FakeWebview = { webview: undefined as unknown as vscode.Webview, posted: [], listeners: [], disposeCalls: 0 };
+    const state: FakeWebview = {
+        webview: undefined as unknown as vscode.Webview,
+        posted: [],
+        listeners: [],
+        disposeCalls: 0,
+    };
 
     state.webview = {
         postMessage: async (message: Record<string, unknown>) => {
             state.posted.push(message);
-            return typeof postMessageResult === "function" ? postMessageResult() : postMessageResult;
+            return typeof postMessageResult === "function"
+                ? postMessageResult()
+                : postMessageResult;
         },
         onDidReceiveMessage: (listener: MessageListener) => {
             state.listeners.push(listener);
@@ -44,7 +51,10 @@ function makeFakeWebview(postMessageResult: boolean | (() => boolean) = true): F
 }
 
 /** Simulates the webview-side bridge replying to the most recently posted correlated call. */
-function replyToLatest(fake: FakeWebview, reply: { ok: true; value: unknown } | { ok: false; error: string }): void {
+function replyToLatest(
+    fake: FakeWebview,
+    reply: { ok: true; value: unknown } | { ok: false; error: string },
+): void {
     const lastMessage = fake.posted[fake.posted.length - 1];
     const callId = lastMessage?.callId as string;
     fake.listeners[fake.listeners.length - 1]?.({ source: "intelligitE2E", callId, ...reply });
@@ -84,7 +94,9 @@ describe("E2eWebviewRegistry: hard failure on a missing webview", () => {
     it("fails with a descriptive error, not an empty snapshot, when no webview is registered", async () => {
         const registry = new E2eWebviewRegistry();
 
-        const response = await registry.handleRequest(snapshotRequest({ viewId: "never-registered" }));
+        const response = await registry.handleRequest(
+            snapshotRequest({ viewId: "never-registered" }),
+        );
 
         expect(response.ok).toBe(false);
         if (!response.ok) {
@@ -174,7 +186,12 @@ describe("E2eWebviewRegistry: correlated round trip", () => {
         const responsePromise = registry.handleRequest(snapshotRequest());
         await flushMicrotasks();
 
-        fake.listeners[0]?.({ source: "intelligitE2E", callId: "unrelated-call-id", ok: true, value: 1 });
+        fake.listeners[0]?.({
+            source: "intelligitE2E",
+            callId: "unrelated-call-id",
+            ok: true,
+            value: 1,
+        });
         fake.listeners[0]?.({ source: "someOtherProtocol", callId: fake.posted[0]?.callId });
 
         replyToLatest(fake, { ok: true, value: "real reply" });

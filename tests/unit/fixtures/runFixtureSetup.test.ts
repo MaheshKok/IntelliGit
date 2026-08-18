@@ -15,7 +15,12 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createFixtureWorkspace, type FixtureWorkspace } from "../../fixtures/repo/harness";
-import { claimFixtureManifest, MANIFEST_SCHEMA_VERSION, readFixtureManifest, type FixtureManifest } from "../../fixtures/repo/manifest";
+import {
+    claimFixtureManifest,
+    MANIFEST_SCHEMA_VERSION,
+    readFixtureManifest,
+    type FixtureManifest,
+} from "../../fixtures/repo/manifest";
 import { seedFixtureTemplate } from "../../fixtures/repo/seed";
 import {
     assertTemplateFsckClean,
@@ -49,7 +54,9 @@ async function corruptOneLooseObject(workspaceRoot: string): Promise<void> {
     const objectsDir = path.join(workspaceRoot, ".git", "objects");
     const shardNames = (await readdir(objectsDir)).filter((name) => name.length === 2);
     if (shardNames.length === 0) {
-        throw new Error(`corruptOneLooseObject: no loose-object shard directories found under ${objectsDir}`);
+        throw new Error(
+            `corruptOneLooseObject: no loose-object shard directories found under ${objectsDir}`,
+        );
     }
     const shardDir = path.join(objectsDir, shardNames[0] as string);
     const objectNames = await readdir(shardDir);
@@ -108,7 +115,10 @@ describe("runFixtureSetup", () => {
                 const workspace = await createFixtureWorkspace({ manifestPath, workspacesRoot });
                 workspacesToDispose.push(workspace);
 
-                const readmeContent = await readFile(path.join(workspace.root, "README.md"), "utf8");
+                const readmeContent = await readFile(
+                    path.join(workspace.root, "README.md"),
+                    "utf8",
+                );
                 expect(readmeContent).toBe("# IntelliGit Fixture Repo\n");
             },
             FIXTURE_TIMEOUT_MS,
@@ -147,7 +157,8 @@ describe("runFixtureSetup", () => {
                 // seed on top of a non-empty destination (so corruption cannot be planted before
                 // runFixtureSetup's own internal seed call).
                 vi.doMock("../../fixtures/repo/seed", async (importOriginal) => {
-                    const actual = await importOriginal<typeof import("../../fixtures/repo/seed")>();
+                    const actual =
+                        await importOriginal<typeof import("../../fixtures/repo/seed")>();
                     return {
                         ...actual,
                         seedFixtureTemplate: vi.fn(async (destination: string) => {
@@ -158,13 +169,12 @@ describe("runFixtureSetup", () => {
                     };
                 });
                 vi.resetModules();
-                const { runFixtureSetup: runFixtureSetupWithCorruption } = await import(
-                    "../../fixtures/repo/runFixtureSetup.js"
-                );
+                const { runFixtureSetup: runFixtureSetupWithCorruption } =
+                    await import("../../fixtures/repo/runFixtureSetup.js");
 
-                await expect(runFixtureSetupWithCorruption({ templateRoot, manifestPath })).rejects.toThrow(
-                    /git fsck/,
-                );
+                await expect(
+                    runFixtureSetupWithCorruption({ templateRoot, manifestPath }),
+                ).rejects.toThrow(/git fsck/);
 
                 // The teeth: the manifest must be ABSENT, not partially written, not written then
                 // removed -- readFixtureManifest's own "no manifest file" hard failure is the proof.

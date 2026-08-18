@@ -133,56 +133,52 @@ describe("manifest", () => {
             expect(renameTo).toBe(manifestPath);
         });
 
-        it(
-            "a concurrent reader never observes a partially-written manifest under real write pressure",
-            async () => {
-                const workDir = await makeWorkDir("race");
-                const manifestPath = path.join(workDir, "manifest.json");
-                // A large `templateRoot`-adjacent payload (still schema-valid: extra keys are not
-                // rejected) gives the temp-file write measurable duration, so a reader polling
-                // during that window has a real chance to observe a bug if one existed -- not just
-                // a theoretical race.
-                const manifest = {
-                    schemaVersion: MANIFEST_SCHEMA_VERSION,
-                    templateRoot: path.join(workDir, "template"),
-                    padding: "x".repeat(8_000_000),
-                } as unknown as FixtureManifest;
+        it("a concurrent reader never observes a partially-written manifest under real write pressure", async () => {
+            const workDir = await makeWorkDir("race");
+            const manifestPath = path.join(workDir, "manifest.json");
+            // A large `templateRoot`-adjacent payload (still schema-valid: extra keys are not
+            // rejected) gives the temp-file write measurable duration, so a reader polling
+            // during that window has a real chance to observe a bug if one existed -- not just
+            // a theoretical race.
+            const manifest = {
+                schemaVersion: MANIFEST_SCHEMA_VERSION,
+                templateRoot: path.join(workDir, "template"),
+                padding: "x".repeat(8_000_000),
+            } as unknown as FixtureManifest;
 
-                let writeDone = false;
-                let observedValid = 0;
-                let observedMissing = 0;
-                let observedUnexpected: unknown = null;
+            let writeDone = false;
+            let observedValid = 0;
+            let observedMissing = 0;
+            let observedUnexpected: unknown = null;
 
-                const writePromise = writeFixtureManifest(manifestPath, manifest).then(() => {
-                    writeDone = true;
-                });
+            const writePromise = writeFixtureManifest(manifestPath, manifest).then(() => {
+                writeDone = true;
+            });
 
-                const pollPromise = (async () => {
-                    while (!writeDone) {
-                        try {
-                            const read = await readFixtureManifest(manifestPath);
-                            observedValid += 1;
-                            if (read.templateRoot !== manifest.templateRoot) {
-                                observedUnexpected = `templateRoot mismatch: ${read.templateRoot}`;
-                            }
-                        } catch (error) {
-                            const message = error instanceof Error ? error.message : String(error);
-                            if (message.includes("no manifest file")) {
-                                observedMissing += 1;
-                            } else {
-                                observedUnexpected = message;
-                            }
+            const pollPromise = (async () => {
+                while (!writeDone) {
+                    try {
+                        const read = await readFixtureManifest(manifestPath);
+                        observedValid += 1;
+                        if (read.templateRoot !== manifest.templateRoot) {
+                            observedUnexpected = `templateRoot mismatch: ${read.templateRoot}`;
+                        }
+                    } catch (error) {
+                        const message = error instanceof Error ? error.message : String(error);
+                        if (message.includes("no manifest file")) {
+                            observedMissing += 1;
+                        } else {
+                            observedUnexpected = message;
                         }
                     }
-                })();
+                }
+            })();
 
-                await Promise.all([writePromise, pollPromise]);
+            await Promise.all([writePromise, pollPromise]);
 
-                expect(observedUnexpected).toBeNull();
-                expect(observedMissing + observedValid).toBeGreaterThan(0);
-            },
-            30_000,
-        );
+            expect(observedUnexpected).toBeNull();
+            expect(observedMissing + observedValid).toBeGreaterThan(0);
+        }, 30_000);
     });
 
     describe("hard failures -- distinct message per cause", () => {
@@ -223,7 +219,9 @@ describe("manifest", () => {
             const halfWritten = fullyValid.slice(0, Math.floor(fullyValid.length / 2));
             await writeFile(manifestPath, halfWritten, "utf8");
 
-            await expect(readFixtureManifest(manifestPath)).rejects.toThrow(/truncated or contains malformed JSON/);
+            await expect(readFixtureManifest(manifestPath)).rejects.toThrow(
+                /truncated or contains malformed JSON/,
+            );
         });
 
         it("THROWS distinguishing schema-invalid JSON (valid JSON, wrong shape) from truncated JSON", async () => {
@@ -231,23 +229,37 @@ describe("manifest", () => {
             const manifestPath = path.join(workDir, "manifest.json");
             await writeFile(manifestPath, JSON.stringify([1, 2, 3]), "utf8");
 
-            await expect(readFixtureManifest(manifestPath)).rejects.toThrow(/fails schema validation/);
+            await expect(readFixtureManifest(manifestPath)).rejects.toThrow(
+                /fails schema validation/,
+            );
         });
 
         it("THROWS naming the wrong schemaVersion", async () => {
             const workDir = await makeWorkDir("schema-version");
             const manifestPath = path.join(workDir, "manifest.json");
-            await writeFile(manifestPath, JSON.stringify({ schemaVersion: 999, templateRoot: workDir }), "utf8");
+            await writeFile(
+                manifestPath,
+                JSON.stringify({ schemaVersion: 999, templateRoot: workDir }),
+                "utf8",
+            );
 
-            await expect(readFixtureManifest(manifestPath)).rejects.toThrow(/"schemaVersion" must be exactly/);
+            await expect(readFixtureManifest(manifestPath)).rejects.toThrow(
+                /"schemaVersion" must be exactly/,
+            );
         });
 
         it("THROWS naming a missing templateRoot field", async () => {
             const workDir = await makeWorkDir("schema-missing-root");
             const manifestPath = path.join(workDir, "manifest.json");
-            await writeFile(manifestPath, JSON.stringify({ schemaVersion: MANIFEST_SCHEMA_VERSION }), "utf8");
+            await writeFile(
+                manifestPath,
+                JSON.stringify({ schemaVersion: MANIFEST_SCHEMA_VERSION }),
+                "utf8",
+            );
 
-            await expect(readFixtureManifest(manifestPath)).rejects.toThrow(/"templateRoot" must be/);
+            await expect(readFixtureManifest(manifestPath)).rejects.toThrow(
+                /"templateRoot" must be/,
+            );
         });
 
         it("THROWS naming a relative templateRoot as invalid", async () => {
@@ -255,17 +267,26 @@ describe("manifest", () => {
             const manifestPath = path.join(workDir, "manifest.json");
             await writeFile(
                 manifestPath,
-                JSON.stringify({ schemaVersion: MANIFEST_SCHEMA_VERSION, templateRoot: "relative/path" }),
+                JSON.stringify({
+                    schemaVersion: MANIFEST_SCHEMA_VERSION,
+                    templateRoot: "relative/path",
+                }),
                 "utf8",
             );
 
-            await expect(readFixtureManifest(manifestPath)).rejects.toThrow(/"templateRoot" must be/);
+            await expect(readFixtureManifest(manifestPath)).rejects.toThrow(
+                /"templateRoot" must be/,
+            );
         });
 
         it("THROWS naming multiple problems together when several fields are wrong at once", async () => {
             const workDir = await makeWorkDir("schema-multi");
             const manifestPath = path.join(workDir, "manifest.json");
-            await writeFile(manifestPath, JSON.stringify({ schemaVersion: "not-a-number", templateRoot: 42 }), "utf8");
+            await writeFile(
+                manifestPath,
+                JSON.stringify({ schemaVersion: "not-a-number", templateRoot: 42 }),
+                "utf8",
+            );
 
             let thrown: unknown;
             try {
@@ -378,37 +399,33 @@ describe("manifest", () => {
             await expect(readFixtureManifest(manifestPath)).resolves.toEqual(replacement);
         });
 
-        it(
-            "concurrent claims at the same target: exactly one wins, the rest throw",
-            async () => {
-                const workDir = await makeWorkDir("claim-concurrent");
-                const manifestPath = path.join(workDir, "manifest.json");
-                const CONCURRENT_CLAIMANTS = 10;
+        it("concurrent claims at the same target: exactly one wins, the rest throw", async () => {
+            const workDir = await makeWorkDir("claim-concurrent");
+            const manifestPath = path.join(workDir, "manifest.json");
+            const CONCURRENT_CLAIMANTS = 10;
 
-                const results = await Promise.allSettled(
-                    Array.from({ length: CONCURRENT_CLAIMANTS }, (_, index) =>
-                        claimFixtureManifest(manifestPath, {
-                            schemaVersion: MANIFEST_SCHEMA_VERSION,
-                            templateRoot: path.join(workDir, `claimant-${index}-template`),
-                        }),
-                    ),
-                );
+            const results = await Promise.allSettled(
+                Array.from({ length: CONCURRENT_CLAIMANTS }, (_, index) =>
+                    claimFixtureManifest(manifestPath, {
+                        schemaVersion: MANIFEST_SCHEMA_VERSION,
+                        templateRoot: path.join(workDir, `claimant-${index}-template`),
+                    }),
+                ),
+            );
 
-                const fulfilled = results.filter((result) => result.status === "fulfilled");
-                const rejected = results.filter((result) => result.status === "rejected");
+            const fulfilled = results.filter((result) => result.status === "fulfilled");
+            const rejected = results.filter((result) => result.status === "rejected");
 
-                expect(fulfilled).toHaveLength(1);
-                expect(rejected).toHaveLength(CONCURRENT_CLAIMANTS - 1);
+            expect(fulfilled).toHaveLength(1);
+            expect(rejected).toHaveLength(CONCURRENT_CLAIMANTS - 1);
 
-                // The one winner's manifest must be the one actually on disk -- and it must be readable,
-                // proving the winning write was never partially applied.
-                await expect(readFixtureManifest(manifestPath)).resolves.not.toThrow();
+            // The one winner's manifest must be the one actually on disk -- and it must be readable,
+            // proving the winning write was never partially applied.
+            await expect(readFixtureManifest(manifestPath)).resolves.not.toThrow();
 
-                const entries = await readdir(workDir);
-                expect(entries).toEqual(["manifest.json"]);
-            },
-            30_000,
-        );
+            const entries = await readdir(workDir);
+            expect(entries).toEqual(["manifest.json"]);
+        }, 30_000);
     });
 
     describe("directory hygiene", () => {

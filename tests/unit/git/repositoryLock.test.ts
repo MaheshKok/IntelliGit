@@ -253,14 +253,17 @@ describe("RepositoryLock", () => {
 
         const outcomes = await Promise.allSettled([contender(), contender()]);
         const winners = outcomes.filter(
-            (outcome): outcome is PromiseFulfilledResult<() => Promise<void>> => outcome.status === "fulfilled",
+            (outcome): outcome is PromiseFulfilledResult<() => Promise<void>> =>
+                outcome.status === "fulfilled",
         );
         const losers = outcomes.filter((outcome) => outcome.status === "rejected");
 
         expect(winners).toHaveLength(1);
         expect(losers).toHaveLength(1);
         expect(losers[0].reason).toBeInstanceOf(RepositoryLockBusyError);
-        expect(JSON.parse(await readFile(path.join(lockDir, "repo.lock"), "utf8"))).not.toMatchObject({
+        expect(
+            JSON.parse(await readFile(path.join(lockDir, "repo.lock"), "utf8")),
+        ).not.toMatchObject({
             nonce: "dead-owner",
         });
         await winners[0].value();

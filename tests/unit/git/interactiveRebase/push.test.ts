@@ -83,12 +83,7 @@ describe("readRebasePushTarget", () => {
             expect.anything(),
         );
         expect(executor.runBinary).toHaveBeenCalledWith(
-            [
-                "rev-parse",
-                "--verify",
-                "--end-of-options",
-                "refs/remotes/origin/main^{commit}",
-            ],
+            ["rev-parse", "--verify", "--end-of-options", "refs/remotes/origin/main^{commit}"],
             expect.anything(),
         );
     });
@@ -136,7 +131,9 @@ describe("readRebasePushTarget", () => {
             new Error("missing tracking ref"),
         );
 
-        await expect(readRebasePushTarget(executor as never, "refs/heads/main")).resolves.toBeUndefined();
+        await expect(
+            readRebasePushTarget(executor as never, "refs/heads/main"),
+        ).resolves.toBeUndefined();
         expect(executor.runBinary).toHaveBeenCalledTimes(2);
     });
 
@@ -146,7 +143,9 @@ describe("readRebasePushTarget", () => {
             "not-an-object-id",
         );
 
-        await expect(readRebasePushTarget(executor as never, "refs/heads/main")).resolves.toBeUndefined();
+        await expect(
+            readRebasePushTarget(executor as never, "refs/heads/main"),
+        ).resolves.toBeUndefined();
         expect(executor.runBinary).toHaveBeenCalledTimes(2);
     });
 });

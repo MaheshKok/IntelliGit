@@ -12,7 +12,11 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { claimFixtureManifest, MANIFEST_SCHEMA_VERSION, readFixtureManifest } from "../../fixtures/repo/manifest";
+import {
+    claimFixtureManifest,
+    MANIFEST_SCHEMA_VERSION,
+    readFixtureManifest,
+} from "../../fixtures/repo/manifest";
 import { runFixtureSetup } from "../../fixtures/repo/runFixtureSetup";
 import { runFixtureTeardown } from "../../fixtures/repo/runFixtureTeardown";
 import { seedFixtureTemplate } from "../../fixtures/repo/seed";
@@ -36,7 +40,9 @@ describe("runFixtureTeardown", () => {
     let permissionsToRestore: string[] = [];
 
     afterEach(async () => {
-        await Promise.all(permissionsToRestore.map((dir) => chmod(dir, 0o755).catch(() => undefined)));
+        await Promise.all(
+            permissionsToRestore.map((dir) => chmod(dir, 0o755).catch(() => undefined)),
+        );
         permissionsToRestore = [];
         await Promise.all([
             ...cleanupDirs.map((dir) => rm(dir, { recursive: true, force: true })),
@@ -47,7 +53,9 @@ describe("runFixtureTeardown", () => {
     });
 
     async function makeWorkDir(prefix: string): Promise<string> {
-        const workDir = await mkdtemp(path.join(tmpdir(), `intelligit-runfixtureteardown-${prefix}-`));
+        const workDir = await mkdtemp(
+            path.join(tmpdir(), `intelligit-runfixtureteardown-${prefix}-`),
+        );
         cleanupDirs.push(workDir);
         return workDir;
     }
@@ -95,7 +103,9 @@ describe("runFixtureTeardown", () => {
                 cleanupHomes.push(template.home);
                 expect(await exists(templateRoot)).toBe(true);
 
-                await expect(runFixtureTeardown({ templateRoot, manifestPath })).resolves.not.toThrow();
+                await expect(
+                    runFixtureTeardown({ templateRoot, manifestPath }),
+                ).resolves.not.toThrow();
 
                 expect(await exists(templateRoot)).toBe(false);
             },
@@ -131,7 +141,9 @@ describe("runFixtureTeardown", () => {
                 cleanupHomes.push(result.template.home);
 
                 await runFixtureTeardown({ templateRoot, manifestPath });
-                await expect(runFixtureTeardown({ templateRoot, manifestPath })).resolves.not.toThrow();
+                await expect(
+                    runFixtureTeardown({ templateRoot, manifestPath }),
+                ).resolves.not.toThrow();
             },
             FIXTURE_TIMEOUT_MS,
         );
@@ -155,7 +167,9 @@ describe("runFixtureTeardown", () => {
                 await chmod(lockedParent, 0o555);
                 permissionsToRestore.push(lockedParent);
 
-                await expect(runFixtureTeardown({ templateRoot, manifestPath })).rejects.toThrow(/EACCES|permission/i);
+                await expect(runFixtureTeardown({ templateRoot, manifestPath })).rejects.toThrow(
+                    /EACCES|permission/i,
+                );
             },
             FIXTURE_TIMEOUT_MS,
         );

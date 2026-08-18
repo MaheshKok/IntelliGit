@@ -212,10 +212,15 @@ describe("CommitChecksService", () => {
         const service = new CommitChecksService({
             persistentCache: new CommitChecksPersistentCache(store),
         });
-        await service.getOrFetch(key, vi.fn(async () => snapshot("success")));
+        await service.getOrFetch(
+            key,
+            vi.fn(async () => snapshot("success")),
+        );
 
         const l1ForcedFetch = vi.fn(async () => snapshot("failure"));
-        await expect(service.getOrFetch(key, l1ForcedFetch, { force: true })).resolves.toMatchObject({
+        await expect(
+            service.getOrFetch(key, l1ForcedFetch, { force: true }),
+        ).resolves.toMatchObject({
             state: "failure",
         });
         expect(l1ForcedFetch).toHaveBeenCalledTimes(1);
@@ -224,7 +229,9 @@ describe("CommitChecksService", () => {
             persistentCache: new CommitChecksPersistentCache(store),
         });
         const l2ForcedFetch = vi.fn(async () => snapshot("unknown"));
-        await expect(coldService.getOrFetch(key, l2ForcedFetch, { force: true })).resolves.toMatchObject({
+        await expect(
+            coldService.getOrFetch(key, l2ForcedFetch, { force: true }),
+        ).resolves.toMatchObject({
             state: "unknown",
         });
         expect(l2ForcedFetch).toHaveBeenCalledTimes(1);
@@ -233,7 +240,10 @@ describe("CommitChecksService", () => {
     it("shares one in-flight fetch between forced requests", async () => {
         const service = new CommitChecksService();
         const key = "github:repo@abc1234:-";
-        await service.getOrFetch(key, vi.fn(async () => snapshot("success")));
+        await service.getOrFetch(
+            key,
+            vi.fn(async () => snapshot("success")),
+        );
         let resolveFetch!: (value: CommitChecksSnapshot) => void;
         const forcedFetch = vi.fn(
             () =>

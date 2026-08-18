@@ -18,8 +18,15 @@ async function tempDir(prefix: string): Promise<string> {
     return directory;
 }
 
-function gate(options?: { acquireTimeoutMs?: number; acquireRetryDelayMs?: number }): RepositoryMutationGate {
-    return new RepositoryMutationGate(new RepositoryMutationCoordinator(), new RepositoryLock(), options);
+function gate(options?: {
+    acquireTimeoutMs?: number;
+    acquireRetryDelayMs?: number;
+}): RepositoryMutationGate {
+    return new RepositoryMutationGate(
+        new RepositoryMutationCoordinator(),
+        new RepositoryLock(),
+        options,
+    );
 }
 
 describe("RepositoryMutationGate", () => {
@@ -46,7 +53,11 @@ describe("RepositoryMutationGate", () => {
         const release = await holder.acquire(common);
 
         await expect(
-            gate({ acquireTimeoutMs: 200, acquireRetryDelayMs: 25 }).run(repoRoot, common, async () => "ran"),
+            gate({ acquireTimeoutMs: 200, acquireRetryDelayMs: 25 }).run(
+                repoRoot,
+                common,
+                async () => "ran",
+            ),
         ).rejects.toBeInstanceOf(RepositoryLockBusyError);
         await release();
     });

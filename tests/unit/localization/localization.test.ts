@@ -95,7 +95,9 @@ describe("localization catalogs", () => {
     });
 
     it("escapes spreadsheet formula-leading cells in the translation review CSV", () => {
-        const rows = parseCsvRows(readText("docs/localization/localization_translation_review.csv"));
+        const rows = parseCsvRows(
+            readText("docs/localization/localization_translation_review.csv"),
+        );
         const unsafeCells: string[] = [];
 
         rows.forEach((row, rowIndex) => {

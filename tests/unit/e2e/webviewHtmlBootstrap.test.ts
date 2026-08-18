@@ -101,7 +101,10 @@ describe("buildWebviewShellHtml E2E bootstrap", () => {
         mockVsCode();
         const register = mockActivationState(true);
 
-        await buildHtml({ scriptFile: "webview-mergeeditor.js", e2eViewId: "merge-editor src/a.ts" });
+        await buildHtml({
+            scriptFile: "webview-mergeeditor.js",
+            e2eViewId: "merge-editor src/a.ts",
+        });
 
         expect(register.mock.calls[0]?.[0]).toBe("merge-editor src/a.ts");
     });

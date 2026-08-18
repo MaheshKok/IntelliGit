@@ -4,7 +4,11 @@ import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
-import { GitExecutor, isExpectedStdinFailure, setGitSuccessListener } from "../../../src/git/executor";
+import {
+    GitExecutor,
+    isExpectedStdinFailure,
+    setGitSuccessListener,
+} from "../../../src/git/executor";
 import { RepositoryMutationCoordinator } from "../../../src/git/mutationCoordinator";
 import { RepositoryLock } from "../../../src/git/repositoryLock";
 import { RepositoryMutationGate } from "../../../src/git/repositoryMutationGate";

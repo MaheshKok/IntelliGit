@@ -12,7 +12,18 @@
  * this package.
  */
 
-import { link, mkdir, mkdtemp, readFile, readlink, realpath, rename, rm, symlink, writeFile } from "node:fs/promises";
+import {
+    link,
+    mkdir,
+    mkdtemp,
+    readFile,
+    readlink,
+    realpath,
+    rename,
+    rm,
+    symlink,
+    writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -33,7 +44,9 @@ describe("copyTemplate", () => {
     });
 
     /** A fresh `source`/`destination` pair under one throwaway work directory, tracked for cleanup. */
-    async function makeWorkspace(prefix: string): Promise<{ readonly source: string; readonly destination: string }> {
+    async function makeWorkspace(
+        prefix: string,
+    ): Promise<{ readonly source: string; readonly destination: string }> {
         const workDir = await mkdtemp(path.join(tmpdir(), `intelligit-copytemplate-${prefix}-`));
         cleanupDirs.push(workDir);
         const source = path.join(workDir, "source");
@@ -63,7 +76,10 @@ describe("copyTemplate", () => {
             expect(findEntry(inventory, "workspace/.git")).toBeDefined();
             expect(findEntry(inventory, "origin.git/HEAD")).toBeDefined();
 
-            const copiedReadme = await readFile(path.join(destination, "workspace", "README.md"), "utf8");
+            const copiedReadme = await readFile(
+                path.join(destination, "workspace", "README.md"),
+                "utf8",
+            );
             expect(copiedReadme).toBe("# IntelliGit Fixture Repo\n");
         });
     });
@@ -86,7 +102,9 @@ describe("copyTemplate", () => {
             const outsideTarget = path.join(tmpdir(), "definitely-not-the-template", "secret.txt");
             await symlink(outsideTarget, path.join(source, "abs-outside-link"));
 
-            await expect(copyTemplate(source, destination)).rejects.toThrow(/absolute target outside the template/);
+            await expect(copyTemplate(source, destination)).rejects.toThrow(
+                /absolute target outside the template/,
+            );
         });
 
         it("rebases a template-contained absolute symlink target onto the copy, resolving inside it", async () => {
@@ -158,7 +176,9 @@ describe("copyTemplate", () => {
 
             // Re-derives what `assertNoSharedInodes` already asserted internally, using evidence
             // this test generated itself rather than trusting `copyTemplate`'s internals (Gate 4).
-            await expect(assertNoSharedInodes(source, destination, inventory)).resolves.not.toThrow();
+            await expect(
+                assertNoSharedInodes(source, destination, inventory),
+            ).resolves.not.toThrow();
         });
 
         it("THROWS when a copy shares an inode with the template -- the deliberate break", async () => {
@@ -171,7 +191,14 @@ describe("copyTemplate", () => {
             await link(path.join(source, "shared.txt"), path.join(destination, "shared.txt"));
 
             const entries: readonly FsEntry[] = [
-                { relativePath: "shared.txt", type: "file", mode: 0o644, digest: null, text: null, symlinkTarget: null },
+                {
+                    relativePath: "shared.txt",
+                    type: "file",
+                    mode: 0o644,
+                    digest: null,
+                    text: null,
+                    symlinkTarget: null,
+                },
             ];
 
             await expect(assertNoSharedInodes(source, destination, entries)).rejects.toThrow(
@@ -192,7 +219,10 @@ describe("copyTemplate", () => {
 
             // Case-only rename, performed directly on the copy -- confirmed empirically on this
             // filesystem to change the recorded case without an intermediate name.
-            await rename(path.join(destination, "MixedCase.txt"), path.join(destination, "mixedcase.txt"));
+            await rename(
+                path.join(destination, "MixedCase.txt"),
+                path.join(destination, "mixedcase.txt"),
+            );
 
             const renamedInventory = await inventoryDirectory({ root: destination });
             expect(findEntry(renamedInventory, "mixedcase.txt")).toBeDefined();

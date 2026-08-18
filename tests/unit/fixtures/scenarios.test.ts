@@ -363,7 +363,11 @@ describe("ahead-only", () => {
         scratchHomes.push(workspace.home);
 
         await expect(
-            assertAheadOnlyPostcondition(workspace.root, workspace.template!.originRoot, workspace.env),
+            assertAheadOnlyPostcondition(
+                workspace.root,
+                workspace.template!.originRoot,
+                workspace.env,
+            ),
         ).rejects.toThrow(/ahead-only scenario postcondition violated/);
     });
 });
@@ -374,18 +378,23 @@ describe("pushed-tip", () => {
         const workspace = await scenarioFor("pushed-tip").prepare(destination);
         scratchHomes.push(workspace.home);
 
-        const [counts, status, subject, parents, localRemoteTracking, originHead] = await Promise.all([
-            git(
-                workspace.root,
-                ["rev-list", "--left-right", "--count", "main...@{upstream}"],
-                workspace.env,
-            ),
-            git(workspace.root, ["status", "--porcelain"], workspace.env),
-            git(workspace.root, ["show", "-s", "--format=%s", "HEAD"], workspace.env),
-            git(workspace.root, ["show", "-s", "--format=%P", "HEAD"], workspace.env),
-            git(workspace.root, ["rev-parse", "refs/remotes/origin/main"], workspace.env),
-            git(workspace.template!.originRoot, ["rev-parse", "refs/heads/main"], workspace.env),
-        ]);
+        const [counts, status, subject, parents, localRemoteTracking, originHead] =
+            await Promise.all([
+                git(
+                    workspace.root,
+                    ["rev-list", "--left-right", "--count", "main...@{upstream}"],
+                    workspace.env,
+                ),
+                git(workspace.root, ["status", "--porcelain"], workspace.env),
+                git(workspace.root, ["show", "-s", "--format=%s", "HEAD"], workspace.env),
+                git(workspace.root, ["show", "-s", "--format=%P", "HEAD"], workspace.env),
+                git(workspace.root, ["rev-parse", "refs/remotes/origin/main"], workspace.env),
+                git(
+                    workspace.template!.originRoot,
+                    ["rev-parse", "refs/heads/main"],
+                    workspace.env,
+                ),
+            ]);
 
         expect(counts.split(/\s+/).map(Number)).toEqual([0, 0]);
         expect(status).toBe("");
@@ -393,7 +402,11 @@ describe("pushed-tip", () => {
         expect(parents.split(/\s+/)).toHaveLength(1);
         expect(localRemoteTracking).toBe(originHead);
         await expect(
-            assertPushedTipPostcondition(workspace.root, workspace.template!.originRoot, workspace.env),
+            assertPushedTipPostcondition(
+                workspace.root,
+                workspace.template!.originRoot,
+                workspace.env,
+            ),
         ).resolves.toBeUndefined();
     });
 
@@ -403,7 +416,11 @@ describe("pushed-tip", () => {
         scratchHomes.push(workspace.home);
 
         await expect(
-            assertPushedTipPostcondition(workspace.root, workspace.template!.originRoot, workspace.env),
+            assertPushedTipPostcondition(
+                workspace.root,
+                workspace.template!.originRoot,
+                workspace.env,
+            ),
         ).rejects.toThrow(/pushed-tip scenario postcondition violated/);
     });
 });

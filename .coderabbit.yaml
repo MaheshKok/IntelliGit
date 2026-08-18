@@ -3,27 +3,26 @@
 # CodeRabbit reviews at most 100 changed files per pull request; past that it
 # reviews nothing at all. There is no setting for the cap — the only lever is
 # `path_filters`, which CodeRabbit applies as a sparse-checkout, so excluded
-# files are never even fetched. This file therefore spends the 100 slots
-# deliberately instead of letting a large branch spill over the edge.
+# files are never even fetched.
 #
-# Priority: every source file gets reviewed. What is cut is generated or
-# mechanical content (translations, docs, release notes) plus the test suites
-# whose failures are loud and local. What survives is the shelf engine and the
-# git concurrency layer — the two places where a wrong assertion hides a real
-# defect instead of turning CI red.
+# This file used to spend those 100 slots as a budget: eight test directories
+# were excluded so that a large branch would fit under the cap. That trade does
+# not hold up. A `path_filter` is permanent and repository-wide, so buying room
+# for one branch blinds the reviewer on every file that lands in those
+# directories afterwards. It had hidden 110 test files — `tests/webview` (42),
+# `tests/unit/services` (24), `tests/unit/views` (14), and five smaller trees —
+# indefinitely, to fit branches that merged long ago.
 #
-# On the shelve-parity branch this leaves 97 of 182 changed files reviewed:
-# 81 source/config and 16 tests. Source count is fixed, so the tests are the
-# only adjustable part. If a branch ever crosses the cap again, cut
-# `tests/unit/git/**` next (5 files), then `tests/unit/shelf/**` (11).
+# The cap is a per-pull-request problem and it has a per-pull-request answer:
+# split the branch. A 200-file pull request is not reviewable by a person
+# either.
 #
-# The visual-testing branch crossed it: 129 changed files, 122 surviving the
-# filters below, so CodeRabbit reviewed none of them. Excluding the pixel
-# baselines brings it to 90. That is the cheapest 32 slots in the repo -- they
-# are binary PNGs, so there is no text for a reviewer to have an opinion about,
-# and a diff on one is either an intended rebaseline or a regression the visual
-# suite itself already failed on. Margin is only 10 files, so the next branch
-# to cross the cap cuts `tests/unit/git/**` as above.
+# So the rule here is about content rather than arithmetic. What stays excluded
+# is what a reviewer cannot form an opinion about: binary images, generated
+# translation data, and prose. Everything that is code — `src`, `scripts`, and
+# the whole test tree — gets reviewed.
+#
+# If a branch crosses 100 files, split it. Do not buy the slots from here.
 reviews:
     path_filters:
         # Translation and docs data: no logic, 12 locales of churn per string.
@@ -48,16 +47,19 @@ reviews:
         # them. Kept separate from the baselines above because these change for
         # documentation reasons rather than as visual-suite output.
         - "!media/screenshots/**"
-        # DOM and host-wiring tests: breakage shows up as a red suite, not as a
-        # silently-passing test, so an extra reviewer buys the least here.
-        - "!tests/webview/**"
-        - "!tests/integration/extension/**"
-        - "!tests/integration/webviews/**"
-        - "!tests/integration/shelf/**"
-        - "!tests/unit/views/**"
-        - "!tests/unit/activation/**"
-        - "!tests/unit/localization/**"
-        - "!tests/unit/services/**"
+        #
+        # Deliberately NOT excluded, though it looks like the same class of
+        # recorded data: `tests/visual/fixtures/**`. Its subdirectories do hold
+        # machine-recorded webview payloads, but three files sit at the top of
+        # that directory and are among the most review-worthy in the repository.
+        # `baselineEnvironment.json` pins the container image by digest, so a
+        # change to it is a supply-chain event. `knownFindings.json` and
+        # `knownLocaleFindings.json` are the known-bad baselines the visual gate
+        # ratchets against, which makes them the one place a real regression can
+        # be accepted silently. Excluding the subdirectories alone would need
+        # `tests/visual/fixtures/*/**`, whose behaviour on the top-level files
+        # depends on trailing-`/**` semantics; 12 slots are not worth guessing
+        # at a glob that might blind the ratchet.
     # Dependabot pull requests. CodeRabbit already skips them today -- zero
     # review comments across all 17 dependabot PRs this repo has opened, against
     # 1-18 on every human PR in the same window -- but that skip comes from a

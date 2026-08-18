@@ -17,7 +17,7 @@ describe("tokenizeSyntaxLine", () => {
 
     it("concatenates tokens back to the exact input line", () => {
         const lines = [
-            "const url = \"https://example.com\"; // trailing note",
+            'const url = "https://example.com"; // trailing note',
             "\tif (x <= 10) { return 'a\\'b'; }",
             "let n = 3.14 + arr[0];",
             "// whole line comment",

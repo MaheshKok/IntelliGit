@@ -232,24 +232,28 @@ describe("watchChannelDir", () => {
     // environmental scheduling variance without hiding a real failure: a genuine regression in
     // watchChannelDir fails all 3 attempts, since nothing about the retry changes what is
     // asserted.
-    it("invokes onRequest with the nonce and parsed payload when a request file appears", { timeout: 10_000, retry: 2 }, async () => {
-        const received = new Promise<{ nonce: string; payload: unknown }>((resolve) => {
-            const watcher = watchChannelDir(channelDir, (nonce, payload) => {
-                watcher.dispose();
-                resolve({ nonce, payload });
+    it(
+        "invokes onRequest with the nonce and parsed payload when a request file appears",
+        { timeout: 10_000, retry: 2 },
+        async () => {
+            const received = new Promise<{ nonce: string; payload: unknown }>((resolve) => {
+                const watcher = watchChannelDir(channelDir, (nonce, payload) => {
+                    watcher.dispose();
+                    resolve({ nonce, payload });
+                });
             });
-        });
 
-        writeFileSync(
-            join(channelDir, "watch-nonce.request.json"),
-            JSON.stringify({ hello: "world" }),
-            "utf8",
-        );
+            writeFileSync(
+                join(channelDir, "watch-nonce.request.json"),
+                JSON.stringify({ hello: "world" }),
+                "utf8",
+            );
 
-        const result = await received;
-        expect(result.nonce).toBe("watch-nonce");
-        expect(result.payload).toEqual({ hello: "world" });
-    });
+            const result = await received;
+            expect(result.nonce).toBe("watch-nonce");
+            expect(result.payload).toEqual({ hello: "world" });
+        },
+    );
 
     it("ignores unrelated files written to the same directory", async () => {
         const onRequest = vi.fn();

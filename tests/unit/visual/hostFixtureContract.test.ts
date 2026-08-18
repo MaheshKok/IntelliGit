@@ -83,9 +83,9 @@ describe("host fixture contract", () => {
         const fixtures = readHostFixtures();
         expect(fixtures.length, `no host fixtures found in ${HOST_FIXTURE_DIR}`).toBeGreaterThan(0);
 
-        expect(fixtures.map((fixture) => `${fixture.name}: ${fixture.provenance.platform}`)).toEqual(
-            fixtures.map((fixture) => `${fixture.name}: ${expectedPlatform}`),
-        );
+        expect(
+            fixtures.map((fixture) => `${fixture.name}: ${fixture.provenance.platform}`),
+        ).toEqual(fixtures.map((fixture) => `${fixture.name}: ${expectedPlatform}`));
     });
 
     it("keeps `chakra-ui-light` in the dark fixtures a recorded fact rather than a stale one", () => {

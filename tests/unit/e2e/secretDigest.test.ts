@@ -27,7 +27,9 @@ describe("digestSecret", () => {
     it("differs across different salts for the same value", () => {
         // Proves the digest is not a bare hash: without the salt, an attacker who captured a
         // digest from one process run could dictionary-attack a low-entropy test token.
-        expect(digestSecret("glpat-abc123", "salt-a")).not.toBe(digestSecret("glpat-abc123", "salt-b"));
+        expect(digestSecret("glpat-abc123", "salt-a")).not.toBe(
+            digestSecret("glpat-abc123", "salt-b"),
+        );
     });
 
     it("differs across different values for the same salt", () => {
@@ -35,7 +37,9 @@ describe("digestSecret", () => {
     });
 
     it("differs for values that share a common prefix (no length-extension leakage)", () => {
-        expect(digestSecret("glpat-abc", "salt-a")).not.toBe(digestSecret("glpat-abc123", "salt-a"));
+        expect(digestSecret("glpat-abc", "salt-a")).not.toBe(
+            digestSecret("glpat-abc123", "salt-a"),
+        );
     });
 });
 

@@ -147,8 +147,12 @@ describe("PyCharm parity — config loader scenario", () => {
 
     it("keeps the parse-line conflict to a single line per side", () => {
         const second = conflicts[1];
-        expect(second.baseLines).toEqual(["  const parsed = JSON.parse(raw) as Partial<AppConfig>;"]);
-        expect(second.oursLines).toEqual(["  const parsed = yaml.parse(raw) as Partial<AppConfig>;"]);
+        expect(second.baseLines).toEqual([
+            "  const parsed = JSON.parse(raw) as Partial<AppConfig>;",
+        ]);
+        expect(second.oursLines).toEqual([
+            "  const parsed = yaml.parse(raw) as Partial<AppConfig>;",
+        ]);
         expect(second.theirsLines).toEqual([
             "  const parsed = toml.parse(raw) as Partial<AppConfig>;",
         ]);
@@ -160,9 +164,7 @@ describe("PyCharm parity — config loader scenario", () => {
         expect(third.baseLines[0]).toBe("  this.config = {");
         expect(third.baseLines).toContain("    database: {");
         expect(third.baseLines).toContain("  };");
-        expect(third.oursLines).toEqual([
-            "  this.config = this.mergeConfig(this.config, parsed);",
-        ]);
+        expect(third.oursLines).toEqual(["  this.config = this.mergeConfig(this.config, parsed);"]);
         expect(third.theirsLines[0]).toBe("  // Deep merge with validation");
         expect(third.theirsLines[third.theirsLines.length - 1]).toBe("  this.config = merged;");
     });

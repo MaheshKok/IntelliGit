@@ -183,7 +183,13 @@ export const test = base.extend<VisualFixtures, VisualWorkerFixtures>({
             pageExceptions.push(error.stack ?? error.message);
         });
         await page.route("**/*", (route) =>
-            routeHarnessRequest(route, HARNESS_ORIGIN, DIST_DIR, () => documentHtml, networkEscapes),
+            routeHarnessRequest(
+                route,
+                HARNESS_ORIGIN,
+                DIST_DIR,
+                () => documentHtml,
+                networkEscapes,
+            ),
         );
 
         // This runs before every navigation and delegates the implementation to

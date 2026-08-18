@@ -94,22 +94,25 @@ describe("GitHubRequestGate", () => {
     it.each([
         { limit: "5000", remaining: "500" },
         { limit: "1000", remaining: "100" },
-    ])("blocks a request when observed remaining quota reaches its reserve", async ({ limit, remaining }) => {
-        const gate = new GitHubRequestGate(4, () => 1_000);
-        gate.observeResponse({
-            url: GITHUB_API_URL,
-            statusCode: 200,
-            headers: {
-                "x-ratelimit-limit": limit,
-                "x-ratelimit-remaining": remaining,
-                "x-ratelimit-reset": "3600",
-            },
-        });
-        const task = vi.fn(async () => "ok");
+    ])(
+        "blocks a request when observed remaining quota reaches its reserve",
+        async ({ limit, remaining }) => {
+            const gate = new GitHubRequestGate(4, () => 1_000);
+            gate.observeResponse({
+                url: GITHUB_API_URL,
+                statusCode: 200,
+                headers: {
+                    "x-ratelimit-limit": limit,
+                    "x-ratelimit-remaining": remaining,
+                    "x-ratelimit-reset": "3600",
+                },
+            });
+            const task = vi.fn(async () => "ok");
 
-        await expect(gate.run(task)).rejects.toThrow("GitHub rate limit cooldown is active.");
-        expect(task).not.toHaveBeenCalled();
-    });
+            await expect(gate.run(task)).rejects.toThrow("GitHub rate limit cooldown is active.");
+            expect(task).not.toHaveBeenCalled();
+        },
+    );
 
     it("blocks request 301 in a rolling hour and allows the next request after the oldest expires", async () => {
         let clock = 1_000;
@@ -141,7 +144,9 @@ describe("GitHubRequestGate", () => {
         });
         const blockedTask = vi.fn(async () => "blocked");
 
-        await expect(gate.run(blockedTask)).rejects.toThrow("GitHub rate limit cooldown is active.");
+        await expect(gate.run(blockedTask)).rejects.toThrow(
+            "GitHub rate limit cooldown is active.",
+        );
         expect(blockedTask).not.toHaveBeenCalled();
 
         clock = 3_600_001;
@@ -359,7 +364,9 @@ describe("CommitChecksRequestGateRegistry", () => {
                 throw new HttpError(429, "HTTP 429: slow down", { "retry-after": "60" });
             }),
         ).rejects.toThrow("HTTP 429: slow down");
-        await expect(registry.run("gitlab", cooledUrl, async () => "blocked")).rejects.toMatchObject({
+        await expect(
+            registry.run("gitlab", cooledUrl, async () => "blocked"),
+        ).rejects.toMatchObject({
             statusCode: 429,
         });
         await expect(registry.run("gitlab", isolatedUrl, async () => "isolated")).resolves.toBe(
