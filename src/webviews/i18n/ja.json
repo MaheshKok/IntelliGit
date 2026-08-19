@@ -286,6 +286,7 @@
     "common.fetch": "フェッチ",
     "common.pull": "プル",
     "common.push": "プッシュ",
+    "common.openRepository": "リポジトリを開く",
     "common.sync": "同期",
     "commit.action.publishAndPush": "公開してプッシュ",
     "commit.branchIndicator.local": "ブランチ: {branch}",

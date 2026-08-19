@@ -76,6 +76,7 @@
     "common.fetch": "Fetch",
     "common.pull": "Pull",
     "common.push": "Push",
+    "common.openRepository": "Open Repository",
     "common.sync": "Sync",
     "common.rollback": "Rollback",
     "common.groupByDirectory": "Group by Directory",

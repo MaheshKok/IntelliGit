@@ -261,6 +261,9 @@ export const TOOLBAR_ICON_ACCENTS = {
     fetch: ICON_ACCENTS.cyan,
     pull: ICON_ACCENTS.sky,
     push: ICON_ACCENTS.green,
+    /** Leaves the editor for the forge's own page, so it takes the one hue no
+     * remote-traffic action wears. */
+    openRepository: ICON_ACCENTS.orange,
     /** Window chrome rather than Git, and the only such control in its bar. */
     dock: ICON_ACCENTS.amber,
 
@@ -285,7 +288,7 @@ export const TOOLBAR_ICON_ACCENTS = {
  * its roster fails loudly instead of silently escaping the rule.
  */
 export const TOOLBAR_ACCENT_BARS = {
-    tabBar: ["sync", "fetch", "pull", "push", "dock"],
+    tabBar: ["sync", "fetch", "pull", "push", "openRepository", "dock"],
     commitToolbar: [
         "refresh",
         "rollback",

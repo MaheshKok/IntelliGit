@@ -286,6 +286,7 @@
     "common.fetch": "가져오기",
     "common.pull": "풀",
     "common.push": "푸시",
+    "common.openRepository": "저장소 열기",
     "common.sync": "동기화",
     "commit.action.publishAndPush": "게시 및 푸시",
     "commit.branchIndicator.local": "브랜치: {branch}",

@@ -26,6 +26,12 @@ interface Props {
     onPull?: () => void;
     onPush?: () => void;
     /**
+     * Opens the repository's remote page in the browser. Required rather than optional like its
+     * neighbours: it ships beside Sync/Fetch/Pull/Push in every bar that renders them, and while
+     * it was optional the undocked pane wired the other four and dropped this one silently.
+     */
+    onOpenRepository: () => void;
+    /**
      * Commits the current branch is behind its upstream, rendered beside the Pull action.
      *
      * The push side of this pair has always had a renderer -- `↑N` on the Commit tab's Push
@@ -78,6 +84,7 @@ export function TabBar({
     shelfCount = 0,
     shelfWarningCount = 0,
     onSync,
+    onOpenRepository,
     onFetch,
     onPull,
     onPush,
@@ -111,7 +118,9 @@ export function TabBar({
         },
     ];
     const gitActions =
-        onSync && onFetch && onPull && onPush ? { onSync, onFetch, onPull, onPush } : null;
+        onSync && onFetch && onPull && onPush
+            ? { onSync, onFetch, onPull, onPush, onOpenRepository }
+            : null;
 
     return (
         <Tabs
@@ -247,6 +256,20 @@ export function TabBar({
                                 d="M8 1l3.35 3.35-.7.7L8.5 2.9V11h-1V2.9L5.35 5.05l-.7-.7L8 1z"
                             />
                             <path fill="currentColor" d="M3 13h10v1H3v-1z" />
+                        </GitActionButton>
+                        <GitActionButton
+                            label={t("common.openRepository")}
+                            onClick={gitActions.onOpenRepository}
+                            color={TOOLBAR_ICON_ACCENTS.openRepository}
+                        >
+                            <path
+                                fill="currentColor"
+                                d="M1.5 1H6v1H2v12h12v-4h1v4.5l-.5.5h-13l-.5-.5v-13l.5-.5z"
+                            />
+                            <path
+                                fill="currentColor"
+                                d="M15 1.5V6h-1V2.707L8.354 8.354l-.707-.707L13.293 2H10V1h4.5l.5.5z"
+                            />
                         </GitActionButton>
                     </Flex>
                 ) : null}

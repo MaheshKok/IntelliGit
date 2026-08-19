@@ -306,6 +306,7 @@
     "common.fetch": "Получить",
     "common.pull": "Извлечь",
     "common.push": "Отправить",
+    "common.openRepository": "Открыть репозиторий",
     "common.sync": "Синхронизировать",
     "commit.action.publishAndPush": "Опубликовать и отправить",
     "commit.branchIndicator.local": "Ветка: {branch}",

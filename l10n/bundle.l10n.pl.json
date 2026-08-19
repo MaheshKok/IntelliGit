@@ -71,6 +71,8 @@
     "Compare with Revision is only available for local files.": "Opcja Porównaj z wersją jest dostępna tylko w przypadku plików lokalnych.",
     "Conflicts": "Konflikty",
     "Could not save token securely.": "Nie można zapisać tokena bezpiecznie.",
+    "Could not determine a web page for remote '{0}'.": "Nie można ustalić strony internetowej dla zdalnego repozytorium '{0}'.",
+    "This repository has no remote to open in a browser.": "To repozytorium nie ma zdalnego repozytorium do otwarcia w przeglądarce.",
     "Create a commit before publishing this branch.": "Przed opublikowaniem tej gałęzi utwórz zatwierdzenie.",
     "Create a project on GitLab and push": "Utwórz projekt w GitLab i prześlij",
     "Create a repository on GitHub and push": "Utwórz repozytorium na GitHubie i prześlij",

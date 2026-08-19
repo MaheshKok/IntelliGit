@@ -2,7 +2,7 @@
     "name": "intelligit",
     "displayName": "IntelliGit",
     "description": "%extension.description%",
-    "version": "0.25.12",
+    "version": "0.26.0",
     "publisher": "MaheshKok",
     "icon": "media/intelligit-icon.png",
     "license": "MIT",
@@ -44,6 +44,8 @@
         "onCommand:intelligit.refresh.color",
         "onCommand:intelligit.selectRepository",
         "onCommand:intelligit.selectRepository.color",
+        "onCommand:intelligit.openRepository",
+        "onCommand:intelligit.openRepository.color",
         "onCommand:intelligit.showGitLog",
         "onCommand:intelligit.openUndocked",
         "onCommand:intelligit.openUndocked.color",
@@ -177,6 +179,24 @@
                 "icon": {
                     "light": "media/icons/refresh-color-light.svg",
                     "dark": "media/icons/refresh-color.svg"
+                }
+            },
+            {
+                "command": "intelligit.openRepository",
+                "title": "%command.openRepository%",
+                "category": "%intelligit%",
+                "icon": {
+                    "light": "media/icons/open-repository-ink.svg",
+                    "dark": "media/icons/open-repository-white.svg"
+                }
+            },
+            {
+                "command": "intelligit.openRepository.color",
+                "title": "%command.openRepository%",
+                "category": "%intelligit%",
+                "icon": {
+                    "light": "media/icons/open-repository-color-light.svg",
+                    "dark": "media/icons/open-repository-color.svg"
                 }
             },
             {
@@ -608,6 +628,10 @@
                     "when": "false"
                 },
                 {
+                    "command": "intelligit.openRepository.color",
+                    "when": "false"
+                },
+                {
                     "command": "intelligit.graph.sync",
                     "when": "false"
                 },
@@ -729,6 +753,16 @@
                     "command": "intelligit.graph.push.color",
                     "when": "view == intelligit.sidebarGraph && config.intelligit.icons == color",
                     "group": "navigation@4"
+                },
+                {
+                    "command": "intelligit.openRepository",
+                    "when": "view == intelligit.sidebarGraph && config.intelligit.icons != color",
+                    "group": "navigation@5"
+                },
+                {
+                    "command": "intelligit.openRepository.color",
+                    "when": "view == intelligit.sidebarGraph && config.intelligit.icons == color",
+                    "group": "navigation@5"
                 },
                 {
                     "command": "intelligit.mergeConflictsRefresh",
@@ -1018,7 +1052,7 @@
         "test:e2e": "playwright test --config playwright.e2e.config.ts tests/e2e/flows/flows.spec.ts",
         "test:e2e:container": "./tests/e2e/docker/run.sh 'bun install --frozen-lockfile && bun run build && xvfb-run -a bun run test:e2e'",
         "test:package-smoke": "playwright test --config playwright.e2e.config.ts --project=package-smoke tests/e2e/packageSmoke.spec.ts",
-        "package": "vsce package --no-dependencies && bun run package:verify",
+        "package": "rm -f ./*.vsix && vsce package --no-dependencies && bun run package:verify",
         "package:verify": "node scripts/verifyVsixPackage.js",
         "publish": "vsce publish --no-dependencies"
     },

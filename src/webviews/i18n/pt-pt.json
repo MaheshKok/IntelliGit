@@ -299,6 +299,7 @@
     "common.fetch": "Obter",
     "common.pull": "Puxar",
     "common.push": "Enviar",
+    "common.openRepository": "Abrir Repositório",
     "common.sync": "Sincronizar",
     "commit.action.publishAndPush": "Publicar e enviar",
     "commit.branchIndicator.local": "Ramo: {branch}",

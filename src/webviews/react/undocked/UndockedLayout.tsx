@@ -105,6 +105,7 @@ export interface UndockedLayoutProps {
     handleCancelGeneration: () => void;
     handleCommit: () => void;
     handlePush: () => void;
+    handleOpenRepository: () => void;
     handleSync: () => void;
     handleFetch: () => void;
     handlePull: () => void;
@@ -195,6 +196,7 @@ export function UndockedLayout(props: UndockedLayoutProps): React.ReactElement {
         handleCancelGeneration,
         handleCommit,
         handlePush,
+        handleOpenRepository,
         handleSync,
         handleFetch,
         handlePull,
@@ -265,6 +267,7 @@ export function UndockedLayout(props: UndockedLayoutProps): React.ReactElement {
                                 onFetch={handleFetch}
                                 onPull={handlePull}
                                 onPush={handlePush}
+                                onOpenRepository={handleOpenRepository}
                                 canPush={canPush}
                                 pushLabel={pushLabel}
                                 groupByDir={groupByDir}
@@ -475,6 +478,7 @@ export function UndockedLayout(props: UndockedLayoutProps): React.ReactElement {
                                 onFetch={handleFetch}
                                 onPull={handlePull}
                                 onPush={handlePush}
+                                onOpenRepository={handleOpenRepository}
                                 canPush={canPush}
                                 pushLabel={pushLabel}
                                 groupByDir={groupByDir}

@@ -22,6 +22,7 @@
     "command.refresh": "Refrescar",
     "command.filterByBranch": "Filtrar por rama",
     "command.selectRepository": "Seleccionar repositorio",
+    "command.openRepository": "Abrir repositorio",
     "command.checkout": "Checkout",
     "command.newBranchFrom": "Nueva rama desde...",
     "command.checkoutAndRebaseOntoCurrent": "Checkout y rebase sobre actual",

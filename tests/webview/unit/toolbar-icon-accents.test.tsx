@@ -132,6 +132,7 @@ const tabBar = () => (
         onFetch={vi.fn()}
         onPull={vi.fn()}
         onPush={vi.fn()}
+        onOpenRepository={vi.fn()}
         onDock={vi.fn()}
         commitContent={null}
         stashContent={null}

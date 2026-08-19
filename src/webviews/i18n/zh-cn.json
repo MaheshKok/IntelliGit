@@ -285,6 +285,7 @@
     "common.fetch": "获取",
     "common.pull": "拉取",
     "common.push": "推送",
+    "common.openRepository": "打开存储库",
     "common.sync": "同步",
     "commit.action.publishAndPush": "发布并推送",
     "commit.branchIndicator.local": "分支：{branch}",

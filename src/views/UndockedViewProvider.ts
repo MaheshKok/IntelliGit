@@ -1188,6 +1188,9 @@ export class UndockedViewProvider {
             case "sync":
                 await runGitOperationFromPanel(actionDeps, msg.type);
                 break;
+            case "openRepository":
+                await vscode.commands.executeCommand("intelligit.openRepository");
+                break;
             case "publishBranch":
                 await publishBranchFromPanel(fileActionDeps);
                 break;

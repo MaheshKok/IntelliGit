@@ -22,6 +22,7 @@
     "command.refresh": "새로 고치다",
     "command.filterByBranch": "브랜치별 필터링",
     "command.selectRepository": "저장소 선택",
+    "command.openRepository": "저장소 열기",
     "command.checkout": "체크아웃",
     "command.newBranchFrom": "새 브랜치 만들기...",
     "command.checkoutAndRebaseOntoCurrent": "체크아웃 후 현재 브랜치에 리베이스",

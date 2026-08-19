@@ -71,6 +71,8 @@
     "Compare with Revision is only available for local files.": "「與版本比較」功能僅適用於本機檔案。",
     "Conflicts": "衝突",
     "Could not save token securely.": "無法安全保存令牌。",
+    "Could not determine a web page for remote '{0}'.": "無法確定遠端儲存庫「{0}」的網頁。",
+    "This repository has no remote to open in a browser.": "此儲存庫沒有可在瀏覽器中開啟的遠端儲存庫。",
     "Create a commit before publishing this branch.": "發布此分支前，請先建立提交。",
     "Create a project on GitLab and push": "在 GitLab 上建立專案並推送",
     "Create a repository on GitHub and push": "在 GitHub 上建立一個倉庫並推送",

@@ -175,7 +175,7 @@ export function RepositoryAccordion({
     }, [isExpanded, repository.isAmend, repository.isRefreshing, repository.root, vscode]);
 
     const postRepositoryCommand = useCallback(
-        (type: "sync" | "fetch" | "pull" | "push" | "publishBranch") => {
+        (type: "sync" | "fetch" | "pull" | "push" | "publishBranch" | "openRepository") => {
             vscode.postMessage({ type, ...repositoryScope(repository.root) });
         },
         [repository.root, vscode],
@@ -423,6 +423,7 @@ export function RepositoryAccordion({
                     onFetch={() => postRepositoryCommand("fetch")}
                     onPull={() => postRepositoryCommand("pull")}
                     onPush={handlePush}
+                    onOpenRepository={() => postRepositoryCommand("openRepository")}
                     currentBranchBehind={repository.currentBranchBehind}
                     commitContent={commitContent}
                     stashContent={stashContent}
@@ -587,6 +588,7 @@ export function RepositoryAccordion({
                             onFetch={() => postRepositoryCommand("fetch")}
                             onPull={() => postRepositoryCommand("pull")}
                             onPush={handlePush}
+                            onOpenRepository={() => postRepositoryCommand("openRepository")}
                             currentBranchBehind={repository.currentBranchBehind}
                             commitContent={commitContent}
                             stashContent={stashContent}

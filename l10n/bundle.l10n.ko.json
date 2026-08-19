@@ -71,6 +71,8 @@
     "Compare with Revision is only available for local files.": "'수정본 비교' 기능은 로컬 파일에만 사용할 수 있습니다.",
     "Conflicts": "갈등",
     "Could not save token securely.": "토큰을 안전하게 저장할 수 없습니다.",
+    "Could not determine a web page for remote '{0}'.": "원격 '{0}'의 웹 페이지를 확인할 수 없습니다.",
+    "This repository has no remote to open in a browser.": "이 저장소에는 브라우저에서 열 수 있는 원격이 없습니다.",
     "Create a commit before publishing this branch.": "이 브랜치를 게시하기 전에 커밋을 생성하세요.",
     "Create a project on GitLab and push": "GitLab에 프로젝트를 생성하고 푸시하세요",
     "Create a repository on GitHub and push": "GitHub에 저장소를 생성하고 푸시하세요",

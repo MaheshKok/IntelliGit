@@ -7,6 +7,7 @@ import {
 } from "../commands/operationFence";
 import { GitExecutor } from "../git/executor";
 import { GitOps } from "../git/operations";
+import { remoteUrlToWebUrl } from "../git/remoteWebUrl";
 import { runPublishBranchFlow } from "../services/publishService";
 import type { WorktreeService } from "../services/worktreeService";
 import {
@@ -160,8 +161,33 @@ function registerWindowAndRepositoryCommands(deps: RepositoryCommandsDeps): void
         await setActiveRepository(picked.repository);
     };
 
+    const openRepositoryInBrowser = async (): Promise<void> => {
+        // `origin` is the remote a browsing user means. Falling back to the first
+        // configured remote keeps the button useful on forks and mirrors, where the
+        // only remote may be named `upstream`.
+        const remotes = await gitOps.getRemotes();
+        const remote = remotes.includes("origin") ? "origin" : remotes[0];
+        if (!remote) {
+            showTimedWarningMessage(
+                vscode.l10n.t("This repository has no remote to open in a browser."),
+            );
+            return;
+        }
+        const remoteUrl = await gitOps.getRemoteUrl(remote);
+        const webUrl = remoteUrl ? remoteUrlToWebUrl(remoteUrl) : null;
+        if (!webUrl) {
+            showTimedWarningMessage(
+                vscode.l10n.t("Could not determine a web page for remote '{0}'.", remote),
+            );
+            return;
+        }
+        await vscode.env.openExternal(vscode.Uri.parse(webUrl));
+    };
+
     context.subscriptions.push(
         vscode.commands.registerCommand("intelligit.refresh", refreshRepository),
+        vscode.commands.registerCommand("intelligit.openRepository", openRepositoryInBrowser),
+        vscode.commands.registerCommand("intelligit.openRepository.color", openRepositoryInBrowser),
         vscode.commands.registerCommand("intelligit.refresh.color", refreshRepository),
         vscode.commands.registerCommand("intelligit.graph.fetch", async () => {
             await runGraphGitOperation("fetch");

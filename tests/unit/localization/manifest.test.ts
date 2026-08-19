@@ -297,6 +297,87 @@ describe("extension manifest", () => {
         }
     });
 
+    it("contributes the open-repository action to the sidebar graph title", () => {
+        const manifest = JSON.parse(
+            readFileSync(path.join(process.cwd(), "package.json"), "utf8"),
+        ) as ExtensionManifest;
+        const commands = manifest.contributes?.commands ?? [];
+        const activationEvents = manifest.activationEvents ?? [];
+        const commandPalette = manifest.contributes?.menus?.commandPalette ?? [];
+        const titleMenu = manifest.contributes?.menus?.["view/title"] ?? [];
+
+        for (const [command, iconSuffix, iconsClause] of [
+            ["intelligit.openRepository", "white", "!="],
+            ["intelligit.openRepository.color", "color", "=="],
+        ] as const) {
+            const item = titleMenu.find((entry) => entry.command === command);
+            expect(item?.when).toBe(
+                `view == intelligit.sidebarGraph && config.intelligit.icons ${iconsClause} color`,
+            );
+            // Sits after push (@4) in the same toolbar as sync/fetch/pull/push.
+            expect(item?.group).toBe("navigation@5");
+
+            const icon = `media/icons/open-repository-${iconSuffix}.svg`;
+            expect(commands.find((entry) => entry.command === command)?.icon).toEqual({
+                light: expectLightVariant(icon),
+                dark: icon,
+            });
+            expect(activationEvents).toContain(`onCommand:${command}`);
+        }
+
+        // The color duplicate exists only to swap the icon; two identical entries in the
+        // palette is the bug every other icon pair here hides the same way.
+        expect(
+            commandPalette.find((entry) => entry.command === "intelligit.openRepository.color")
+                ?.when,
+        ).toBe("false");
+        expect(
+            commandPalette.find((entry) => entry.command === "intelligit.openRepository"),
+        ).toBeUndefined();
+    });
+
+    it("keeps the commit tab bar's open-repository button in step with the native icon", () => {
+        // The action ships twice — a static SVG in the view title, and an inline glyph in
+        // the webview tab bar. Nothing links them at runtime, so editing one and not the
+        // other is silent. Same guard the sync/fetch/pull/push pair gets below.
+        const tabBarSource = readFileSync(
+            path.join(process.cwd(), "src/webviews/react/commit-panel/components/TabBar.tsx"),
+            "utf8",
+        );
+        const start = tabBarSource.indexOf('label={t("common.openRepository")}');
+        expect(start).toBeGreaterThanOrEqual(0);
+        const end = tabBarSource.indexOf("</GitActionButton>", start);
+        expect(end).toBeGreaterThan(start);
+        const iconBlock = tabBarSource.slice(start, end);
+
+        expect(iconBlock).toContain("color={TOOLBAR_ICON_ACCENTS.openRepository}");
+        // The tab bar resolves its accent through a host token; the native icon is a static
+        // file and cannot, so they meet at the token's fallback value.
+        expect(TOOLBAR_ICON_ACCENTS.openRepository).toContain("#ff9e64");
+
+        const darkSvg = readFileSync(
+            path.join(process.cwd(), "media/icons/open-repository-color.svg"),
+            "utf8",
+        );
+        const lightSvg = readFileSync(
+            path.join(process.cwd(), "media/icons/open-repository-color-light.svg"),
+            "utf8",
+        );
+        expect(darkSvg).toContain("#ff9e64");
+        const lightFill = lightSvg.match(/#[0-9a-f]{6}/)?.[0];
+        expect(lightFill).toBeDefined();
+        expect(contrastRatio(lightFill as string, "#f3f3f3")).toBeGreaterThanOrEqual(3);
+
+        for (const pathData of [
+            "M1.5 1H6v1H2v12h12v-4h1v4.5l-.5.5h-13l-.5-.5v-13l.5-.5z",
+            "M15 1.5V6h-1V2.707L8.354 8.354l-.707-.707L13.293 2H10V1h4.5l.5.5z",
+        ]) {
+            expect(iconBlock).toContain(`d="${pathData}"`);
+            expect(darkSvg).toContain(`d="${pathData}"`);
+            expect(lightSvg).toContain(`d="${pathData}"`);
+        }
+    });
+
     it("keeps native sidebar color icons matching the commit tab toolbar icons", () => {
         const tabBarSource = readFileSync(
             path.join(process.cwd(), "src/webviews/react/commit-panel/components/TabBar.tsx"),

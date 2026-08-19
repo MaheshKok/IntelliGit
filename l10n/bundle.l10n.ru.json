@@ -71,6 +71,8 @@
     "Compare with Revision is only available for local files.": "Функция «Сравнить с версией» доступна только для локальных файлов.",
     "Conflicts": "Конфликты",
     "Could not save token securely.": "Не удалось безопасно сохранить токен.",
+    "Could not determine a web page for remote '{0}'.": "Не удалось определить веб-страницу для удалённого репозитория «{0}».",
+    "This repository has no remote to open in a browser.": "В этом репозитории нет удалённого репозитория, который можно открыть в браузере.",
     "Create a commit before publishing this branch.": "Перед публикацией этой ветки сделайте коммит.",
     "Create a project on GitLab and push": "Создайте проект в GitLab и отправьте изменения.",
     "Create a repository on GitHub and push": "Создайте репозиторий на GitHub и отправьте в него изменения.",

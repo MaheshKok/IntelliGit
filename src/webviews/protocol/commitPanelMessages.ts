@@ -259,6 +259,10 @@ export type OutboundMessage =
           type: "sync";
       }>
     | RepositoryScopedMessage<{
+          /** Command opening the repository's remote page in the user's browser. */
+          type: "openRepository";
+      }>
+    | RepositoryScopedMessage<{
           /** Persistence event storing the commit message draft in workspace state. */
           type: "saveCommitDraft";
           /** Plain commit message text scoped by repository root; empty text clears storage. */

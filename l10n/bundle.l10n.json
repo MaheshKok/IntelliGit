@@ -92,6 +92,8 @@
     "Conflicts": "Conflicts",
     "Could not clear the saved token.": "Could not clear the saved token.",
     "Could not save token securely.": "Could not save token securely.",
+    "Could not determine a web page for remote '{0}'.": "Could not determine a web page for remote '{0}'.",
+    "This repository has no remote to open in a browser.": "This repository has no remote to open in a browser.",
     "Create a commit before publishing this branch.": "Create a commit before publishing this branch.",
     "Create a project on GitLab and push": "Create a project on GitLab and push",
     "Create a repository on GitHub and push": "Create a repository on GitHub and push",
