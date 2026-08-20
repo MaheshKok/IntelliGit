@@ -6,6 +6,7 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 type CommitTabMockProps = {
     repositoryRoot: string;
     files: Array<{ path: string }>;
+    checkedPaths: Set<string>;
     commitMessage: string;
     isAmend: boolean;
     amendBranchCommits: Array<{ shortHash: string }>;
@@ -153,6 +154,9 @@ async function renderApp(): Promise<void> {
                 <span data-testid="commit-files" data-root={props.repositoryRoot}>
                     {props.files.map((file) => file.path).join(",")}
                 </span>
+                <span data-testid="checked-files" data-root={props.repositoryRoot}>
+                    {Array.from(props.checkedPaths).join(",")}
+                </span>
                 <span data-testid="commit-message" data-root={props.repositoryRoot}>
                     {props.commitMessage}
                 </span>
@@ -295,6 +299,82 @@ beforeEach(() => {
 });
 
 describe("commit panel multi-repository view", () => {
+    it("waits for each repository snapshot before restoring its checked paths", async () => {
+        vi.doMock("../../../src/webviews/react/shared/settings", () => ({
+            getSettings: () => ({ commitCheckState: "preserveSelection" }),
+        }));
+        webviewState = {
+            checkedByRepository: {
+                "/repo-a": ["src/a.ts"],
+                "/repo-b": ["src/b.ts"],
+            },
+        };
+
+        try {
+            await renderApp();
+            await sendHostMessage({
+                type: "setRepositories",
+                repositories: [
+                    {
+                        root: "/repo-a",
+                        label: "Repo A",
+                        kind: "repository",
+                        changedFileCount: 1,
+                    },
+                ],
+                activeRepositoryRoot: "/repo-a",
+            });
+
+            expect(
+                document.querySelector('[data-testid="checked-files"][data-root="/repo-a"]')
+                    ?.textContent,
+            ).toBe("");
+            expect(webviewState).toMatchObject({
+                checkedByRepository: {
+                    "/repo-a": ["src/a.ts"],
+                    "/repo-b": ["src/b.ts"],
+                },
+            });
+
+            await sendHostMessage(snapshot("/repo-a", "Repo A", "src/a.ts"));
+            expect(
+                document.querySelector('[data-testid="checked-files"][data-root="/repo-a"]')
+                    ?.textContent,
+            ).toBe("src/a.ts");
+
+            await sendHostMessage({
+                type: "setRepositories",
+                repositories: [
+                    {
+                        root: "/repo-b",
+                        label: "Repo B",
+                        kind: "worktree",
+                        changedFileCount: 1,
+                    },
+                ],
+                activeRepositoryRoot: "/repo-b",
+            });
+            expect(
+                document.querySelector('[data-testid="checked-files"][data-root="/repo-b"]')
+                    ?.textContent,
+            ).toBe("");
+            expect(webviewState).toMatchObject({
+                checkedByRepository: {
+                    "/repo-a": ["src/a.ts"],
+                    "/repo-b": ["src/b.ts"],
+                },
+            });
+
+            await sendHostMessage(snapshot("/repo-b", "Repo B", "src/b.ts"));
+            expect(
+                document.querySelector('[data-testid="checked-files"][data-root="/repo-b"]')
+                    ?.textContent,
+            ).toBe("src/b.ts");
+        } finally {
+            vi.doUnmock("../../../src/webviews/react/shared/settings");
+        }
+    });
+
     it("preserves repository checked paths until files hydrate", async () => {
         vi.doMock("../../../src/webviews/react/commit-panel/hooks/useVsCodeApi", () => ({
             getVsCodeApi: () => ({
@@ -305,6 +385,9 @@ describe("commit panel multi-repository view", () => {
                 },
             }),
         }));
+        vi.doMock("../../../src/webviews/react/shared/settings", () => ({
+            getSettings: () => ({ commitCheckState: "preserveSelection" }),
+        }));
         const { createRoot } = await import("react-dom/client");
         const { useCheckedFiles } =
             await import("../../../src/webviews/react/commit-panel/hooks/useCheckedFiles");
@@ -314,8 +397,14 @@ describe("commit panel multi-repository view", () => {
         const snapshots: string[][] = [];
         webviewState = { checkedByRepository: { "/repo-a": ["src/a.ts"] } };
 
-        function Harness({ files }: { files: ReturnType<typeof workingFile>[] }): null {
-            const { checkedPaths } = useCheckedFiles(files, "/repo-a");
+        function Harness({
+            files,
+            filesHydrated,
+        }: {
+            files: ReturnType<typeof workingFile>[];
+            filesHydrated: boolean;
+        }): null {
+            const { checkedPaths } = useCheckedFiles(files, "/repo-a", filesHydrated);
             React.useEffect(() => {
                 snapshots.push(Array.from(checkedPaths));
             }, [checkedPaths]);
@@ -324,14 +413,14 @@ describe("commit panel multi-repository view", () => {
 
         try {
             await act(async () => {
-                root.render(<Harness files={[]} />);
+                root.render(<Harness files={[]} filesHydrated={false} />);
             });
             await flush();
 
             expect(webviewState).toEqual({ checkedByRepository: { "/repo-a": ["src/a.ts"] } });
 
             await act(async () => {
-                root.render(<Harness files={[workingFile("src/a.ts")]} />);
+                root.render(<Harness files={[workingFile("src/a.ts")]} filesHydrated={true} />);
             });
             await flush();
 
@@ -342,6 +431,7 @@ describe("commit panel multi-repository view", () => {
                 root.unmount();
             });
             host.remove();
+            vi.doUnmock("../../../src/webviews/react/shared/settings");
         }
     });
 

@@ -12,6 +12,7 @@ const DEFAULTS = {
     tooltipsEnabled: true,
     iconStyle: "standard",
     commitWindowPosition: "left",
+    commitCheckState: "noneChecked",
 } as const;
 
 function stubWindowSettings(intelligitSettings: unknown): void {
@@ -185,6 +186,24 @@ describe("getSettings: commitWindowPosition is right only on exact match", () =>
     });
 });
 
+describe("getSettings: commitCheckState accepts only exact modes", () => {
+    it.each(["allChecked", "noneChecked", "preserveSelection"] as const)(
+        "preserves the exact %s mode",
+        (commitCheckState) => {
+            stubWindowSettings({ commitCheckState });
+            expect(getSettings().commitCheckState).toBe(commitCheckState);
+        },
+    );
+
+    it.each([undefined, null, "ALLCHECKED", "unknown", 42, false])(
+        "falls back to noneChecked for malformed or unknown value %p",
+        (commitCheckState) => {
+            stubWindowSettings({ commitCheckState });
+            expect(getSettings().commitCheckState).toBe("noneChecked");
+        },
+    );
+});
+
 describe("getSettings: full payload and stability", () => {
     it("maps a fully valid payload field-by-field", () => {
         stubWindowSettings({
@@ -192,12 +211,14 @@ describe("getSettings: full payload and stability", () => {
             tooltipsEnabled: false,
             iconStyle: "color",
             commitWindowPosition: "right",
+            commitCheckState: "preserveSelection",
         });
         expect(getSettings()).toEqual({
             hoverDelay: 120,
             tooltipsEnabled: false,
             iconStyle: "color",
             commitWindowPosition: "right",
+            commitCheckState: "preserveSelection",
         });
     });
 

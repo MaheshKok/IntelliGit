@@ -196,7 +196,84 @@ describe("core utilities", () => {
         expect(html).toContain('src="webview:///dist/webview-commitgraph.js"');
         expect(html).toContain("background: #123");
         expect(html).toContain('"commitWindowPosition":"left"');
+        expect(html).toContain('"commitCheckState":"noneChecked"');
     });
+
+    it.each(["allChecked", "noneChecked", "preserveSelection"] as const)(
+        "buildWebviewShellHtml serializes the exact commit-check mode %s",
+        async (commitCheckState) => {
+            const joinPath = vi.fn(
+                (_base: { path?: string }, ...parts: string[]): { path: string } => ({
+                    path: `/${parts.join("/")}`,
+                }),
+            );
+            vi.doMock("vscode", () => ({
+                env: { language: "en" },
+                Uri: { joinPath },
+                workspace: {
+                    getConfiguration: () => ({
+                        get: (key: string) =>
+                            key === "intelligit.commitCheckState" ? commitCheckState : undefined,
+                    }),
+                },
+            }));
+            const { buildWebviewShellHtml } = await import("../../../src/views/webviewHtml");
+            const extensionUri = { path: "/ext" } as unknown as Parameters<
+                typeof buildWebviewShellHtml
+            >[0]["extensionUri"];
+            const webview = {
+                cspSource: "vscode-resource:",
+                asWebviewUri: (uri: { path: string }) => `webview://${uri.path}`,
+            } as unknown as Parameters<typeof buildWebviewShellHtml>[0]["webview"];
+
+            const html = buildWebviewShellHtml({
+                extensionUri,
+                webview,
+                scriptFile: "webview-commitgraph.js",
+                title: "Commit Graph",
+            });
+
+            expect(html).toContain(`"commitCheckState":"${commitCheckState}"`);
+        },
+    );
+
+    it.each([undefined, null, "ALLCHECKED", "unknown", 42])(
+        "buildWebviewShellHtml falls back to noneChecked for malformed or unknown mode %p",
+        async (commitCheckState) => {
+            const joinPath = vi.fn(
+                (_base: { path?: string }, ...parts: string[]): { path: string } => ({
+                    path: `/${parts.join("/")}`,
+                }),
+            );
+            vi.doMock("vscode", () => ({
+                env: { language: "en" },
+                Uri: { joinPath },
+                workspace: {
+                    getConfiguration: () => ({
+                        get: (key: string) =>
+                            key === "intelligit.commitCheckState" ? commitCheckState : undefined,
+                    }),
+                },
+            }));
+            const { buildWebviewShellHtml } = await import("../../../src/views/webviewHtml");
+            const extensionUri = { path: "/ext" } as unknown as Parameters<
+                typeof buildWebviewShellHtml
+            >[0]["extensionUri"];
+            const webview = {
+                cspSource: "vscode-resource:",
+                asWebviewUri: (uri: { path: string }) => `webview://${uri.path}`,
+            } as unknown as Parameters<typeof buildWebviewShellHtml>[0]["webview"];
+
+            const html = buildWebviewShellHtml({
+                extensionUri,
+                webview,
+                scriptFile: "webview-commitgraph.js",
+                title: "Commit Graph",
+            });
+
+            expect(html).toContain('"commitCheckState":"noneChecked"');
+        },
+    );
 
     it("buildWebviewShellHtml follows VS Code sidebar location for auto commit window position", async () => {
         const joinPath = vi.fn(

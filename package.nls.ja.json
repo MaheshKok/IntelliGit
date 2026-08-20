@@ -83,5 +83,9 @@
     "command.showReviewPrompt": "レビュー プロンプトを表示",
     "command.resetReviewPrompt": "レビュー通知の状態をリセット",
     "command.showReviewPromptCard": "評価カードを表示",
-    "command.commitChecksRefreshBadges": "コミットチェックバッジを更新"
+    "command.commitChecksRefreshBadges": "コミットチェックバッジを更新",
+    "configuration.commitCheckState.enum.allChecked": "コミット パネルで、初期ファイルと新しく検出されたファイルをデフォルトでチェックします。",
+    "configuration.commitCheckState.enum.noneChecked": "コミット パネルで、初期ファイルと新しく検出されたファイルをデフォルトで未チェックのままにします（デフォルト）。",
+    "configuration.commitCheckState.enum.preserveSelection": "リポジトリごとに以前のチェック済みファイルの選択を復元します。新しく検出されたファイルは未チェックのままです。",
+    "configuration.commitCheckState.markdownDescription": "コミット パネルの読み込み時または新しいパスの検出時に、ファイルをチェックする方法を制御します。`allChecked` は初期ファイルと新しいファイルをチェックし、`noneChecked` は未チェックのままにし（デフォルト）、`preserveSelection` は各リポジトリの以前の選択を復元しながら新しいファイルを未チェックのままにします。明示的な選択は更新中も保持されます。変更はウィンドウの再読み込み後に有効になります。"
 }

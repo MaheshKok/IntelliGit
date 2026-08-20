@@ -83,5 +83,9 @@
     "command.showReviewPrompt": "Mostrar pedido de avaliação",
     "command.resetReviewPrompt": "Repor o estado do aviso de avaliação",
     "command.showReviewPromptCard": "Mostrar o cartão de avaliação",
-    "command.commitChecksRefreshBadges": "Atualizar selos de verificações de commit"
+    "command.commitChecksRefreshBadges": "Atualizar selos de verificações de commit",
+    "configuration.commitCheckState.enum.allChecked": "Selecione por predefinição os ficheiros iniciais e recém-detetados no painel de commits.",
+    "configuration.commitCheckState.enum.noneChecked": "Deixe por predefinição os ficheiros iniciais e recém-detetados desmarcados no painel de commits (predefinição).",
+    "configuration.commitCheckState.enum.preserveSelection": "Restaure a seleção anterior de ficheiros selecionados para cada repositório; os ficheiros recém-detetados permanecem desmarcados.",
+    "configuration.commitCheckState.markdownDescription": "Controla como os ficheiros são selecionados quando o painel de commits é carregado ou deteta novos caminhos. `allChecked` seleciona os ficheiros iniciais e novos, `noneChecked` deixa-os desmarcados (predefinição) e `preserveSelection` restaura a seleção anterior de cada repositório enquanto deixa os novos ficheiros desmarcados. As escolhas explícitas são preservadas durante a atualização. As alterações entram em vigor depois de recarregar a janela."
 }

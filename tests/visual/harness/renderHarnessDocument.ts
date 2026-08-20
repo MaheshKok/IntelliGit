@@ -9,6 +9,7 @@ export interface HarnessWebviewSettings {
     readonly tooltipsEnabled: boolean;
     readonly iconStyle: "color" | "standard";
     readonly commitWindowPosition: "left" | "right";
+    readonly commitCheckState: "allChecked" | "noneChecked" | "preserveSelection";
 }
 
 /** The no-VS-Code settings baseline used by callers that do not need overrides. */
@@ -17,6 +18,7 @@ export const DEFAULT_HARNESS_WEBVIEW_SETTINGS: HarnessWebviewSettings = {
     tooltipsEnabled: true,
     iconStyle: "standard",
     commitWindowPosition: "left",
+    commitCheckState: "noneChecked",
 };
 
 /** All data required to render one browser-loadable webview shell. */

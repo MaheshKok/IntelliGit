@@ -2,7 +2,7 @@
     "name": "intelligit",
     "displayName": "IntelliGit",
     "description": "%extension.description%",
-    "version": "0.26.0",
+    "version": "0.27.0",
     "publisher": "MaheshKok",
     "icon": "media/intelligit-icon.png",
     "license": "MIT",
@@ -954,6 +954,22 @@
                     ],
                     "default": "auto",
                     "markdownDescription": "%configuration.commitWindowPosition.markdownDescription%"
+                },
+                "intelligit.commitCheckState": {
+                    "type": "string",
+                    "enum": [
+                        "allChecked",
+                        "noneChecked",
+                        "preserveSelection"
+                    ],
+                    "enumDescriptions": [
+                        "%configuration.commitCheckState.enum.allChecked%",
+                        "%configuration.commitCheckState.enum.noneChecked%",
+                        "%configuration.commitCheckState.enum.preserveSelection%"
+                    ],
+                    "default": "noneChecked",
+                    "scope": "window",
+                    "markdownDescription": "%configuration.commitCheckState.markdownDescription%"
                 },
                 "intelligit.commitChecks.hosts": {
                     "type": "object",

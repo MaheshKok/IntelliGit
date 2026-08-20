@@ -83,5 +83,9 @@
     "command.showReviewPrompt": "Afficher la demande d’évaluation",
     "command.resetReviewPrompt": "Réinitialiser l'état de l'invite d'évaluation",
     "command.showReviewPromptCard": "Afficher la carte d'évaluation",
-    "command.commitChecksRefreshBadges": "Actualiser les badges de vérifications de commits"
+    "command.commitChecksRefreshBadges": "Actualiser les badges de vérifications de commits",
+    "configuration.commitCheckState.enum.allChecked": "Cochez par défaut les fichiers initiaux et nouvellement détectés dans le panneau de commit.",
+    "configuration.commitCheckState.enum.noneChecked": "Laissez par défaut les fichiers initiaux et nouvellement détectés décochés dans le panneau de commit (par défaut).",
+    "configuration.commitCheckState.enum.preserveSelection": "Restaurez la sélection précédente des fichiers cochés pour chaque dépôt ; les fichiers nouvellement détectés restent décochés.",
+    "configuration.commitCheckState.markdownDescription": "Contrôle la façon dont les fichiers sont cochés lorsque le panneau de commit se charge ou détecte de nouveaux chemins. `allChecked` coche les fichiers initiaux et nouveaux, `noneChecked` les laisse décochés (par défaut) et `preserveSelection` restaure la sélection précédente de chaque dépôt tout en laissant les nouveaux fichiers décochés. Les choix explicites sont conservés lors de l’actualisation. Les modifications prennent effet après le rechargement de la fenêtre."
 }
