@@ -9,7 +9,11 @@ export interface IntelligitSettings {
     tooltipsEnabled: boolean;
     iconStyle: "color" | "standard";
     commitWindowPosition: "left" | "right";
+    commitCheckState: CommitFileCheckMode;
 }
+
+/** Exact commit-file selection modes accepted from the host bootstrap payload. */
+export type CommitFileCheckMode = "allChecked" | "noneChecked" | "preserveSelection";
 
 /**
  * Reads IntelliGit webview settings from `window.intelligitSettings` with safe defaults.
@@ -23,6 +27,7 @@ export const getSettings = (): IntelligitSettings => {
         tooltipsEnabled: true,
         iconStyle: "standard",
         commitWindowPosition: "left",
+        commitCheckState: "noneChecked",
     };
     if (typeof window !== "undefined") {
         const settings = (window as Window & { intelligitSettings?: unknown }).intelligitSettings;
@@ -40,6 +45,12 @@ export const getSettings = (): IntelligitSettings => {
                 iconStyle: settingsObj.iconStyle === "color" ? "color" : "standard",
                 commitWindowPosition:
                     settingsObj.commitWindowPosition === "right" ? "right" : "left",
+                commitCheckState:
+                    settingsObj.commitCheckState === "allChecked" ||
+                    settingsObj.commitCheckState === "preserveSelection" ||
+                    settingsObj.commitCheckState === "noneChecked"
+                        ? settingsObj.commitCheckState
+                        : "noneChecked",
             };
         }
     }

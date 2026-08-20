@@ -83,5 +83,9 @@
     "command.showReviewPrompt": "Показать запрос на отзыв",
     "command.resetReviewPrompt": "Сбросить состояние запроса на оценку",
     "command.showReviewPromptCard": "Показать карточку оценки",
-    "command.commitChecksRefreshBadges": "Обновить значки проверок коммитов"
+    "command.commitChecksRefreshBadges": "Обновить значки проверок коммитов",
+    "configuration.commitCheckState.enum.allChecked": "По умолчанию отмечать исходные и вновь обнаруженные файлы на панели коммитов.",
+    "configuration.commitCheckState.enum.noneChecked": "По умолчанию оставлять исходные и вновь обнаруженные файлы на панели коммитов неотмеченными (по умолчанию).",
+    "configuration.commitCheckState.enum.preserveSelection": "Восстанавливать предыдущий выбор отмеченных файлов для каждого репозитория; вновь обнаруженные файлы остаются неотмеченными.",
+    "configuration.commitCheckState.markdownDescription": "Определяет, как отмечаются файлы при загрузке панели коммитов или обнаружении новых путей. `allChecked` отмечает исходные и новые файлы, `noneChecked` оставляет их неотмеченными (по умолчанию), а `preserveSelection` восстанавливает предыдущий выбор для каждого репозитория, оставляя новые файлы неотмеченными. Явно заданный выбор сохраняется при обновлении. Изменения вступают в силу после перезагрузки окна."
 }

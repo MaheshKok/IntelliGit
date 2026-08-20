@@ -302,7 +302,7 @@ function App(): React.ReactElement {
         [applyCommitPanelAction],
     );
     const { checkedPaths, toggleFile, toggleFolder, toggleSection, isAllChecked, isSomeChecked } =
-        useCheckedFiles(cpState.files);
+        useCheckedFiles(cpState.files, selectedRepositoryRoot ?? undefined, cpState.filesHydrated);
 
     const [groupByDir, setGroupByDir] = useState<boolean>(() => {
         try {

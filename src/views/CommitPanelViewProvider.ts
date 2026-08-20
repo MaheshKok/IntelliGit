@@ -142,8 +142,9 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
     private commitDetailSeq = 0;
     /** Serialized form of the last `setCommitDetail` payload actually posted to the CURRENT
      * webview -- see `shared/postedPayload.ts`. Reset to `undefined` whenever a fresh webview is
-     * resolved or the commit-detail cache is cleared, so a redundant-looking repost after either
-     * is never wrongly suppressed. */
+     * resolved, an actually adopted live sender replaces a hidden cached view, or the commit-detail
+     * cache is cleared, so a redundant-looking repost after any ownership change is never wrongly
+     * suppressed. */
     private lastPostedPayload: string | undefined;
     /** Whether `handleReadyMessage` has ever completed its full Git read, which is what fills the
      * runtime caches a re-ask is answered from. Never reset: a later mount that re-asks is served
@@ -2082,10 +2083,13 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
      * `commit-panel-awaiting-hydration` for the rest of the session -- however many times the
      * webview re-asks, because every re-ask is answered exactly as silently as the first.
      *
-     * Adopts ONLY when the record is empty. A different live view recorded there is the correct
-     * target, and stealing the record would blank the view actually on screen to fix one that
-     * isn't. The theme bindings are restored alongside it because `onDidDispose` tore them down;
-     * `attachWebview` is built to rebind (it clears its own `disposed` flag).
+     * The visibility ownership invariant is: a recorded visible view always wins; a hidden sender
+     * never displaces a recorded view; and a visible sender may replace only a recorded hidden
+     * view. A different visible view recorded there is therefore the correct target, while a
+     * hidden cached view cannot strand a visible pane. When replacing a defined hidden view, theme
+     * listeners are disposed before they are registered again; `attachWebview` rebinds its own
+     * state. Actual adoption also resets the webview-scoped `lastPostedPayload` dedupe cursor before
+     * the sender becomes the owner, so its unchanged cached detail is eligible for reposting.
      *
      * This rests on VS Code not delivering messages from a webview it has already torn down. If
      * it ever did, the record would name a dead view until the next resolve, and
@@ -2095,7 +2099,14 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
      * four investigations. Trading a reported failure for an unreported one is the point.
      */
     private adoptLiveSender(sender: vscode.WebviewView): void {
-        if (this.view !== undefined) return;
+        const current = this.view;
+        if (current !== undefined && (current === sender || current.visible || !sender.visible)) {
+            return;
+        }
+        if (current !== undefined) {
+            this.disposeThemeChangeDisposables();
+        }
+        this.lastPostedPayload = undefined;
         this.view = sender;
         this.iconTheme.attachWebview(sender.webview);
         this.registerThemeChangeListeners();

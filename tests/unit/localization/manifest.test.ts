@@ -61,6 +61,8 @@ type ExtensionManifest = {
                     type?: string;
                     default?: unknown;
                     scope?: string;
+                    enum?: unknown[];
+                    enumDescriptions?: string[];
                     markdownDescription?: string;
                     properties?: Record<string, { type?: string; default?: unknown }>;
                 }
@@ -610,5 +612,38 @@ describe("extension manifest", () => {
         expect(colorUndockButton?.when).toBe(
             "view == intelligit.commitGraph && config.intelligit.undockableWindowButtonVisability && config.intelligit.icons == color",
         );
+    });
+
+    it("contributes the commit file check-state bootstrap setting", () => {
+        const manifest = JSON.parse(
+            readFileSync(path.join(process.cwd(), "package.json"), "utf8"),
+        ) as ExtensionManifest;
+        const setting =
+            manifest.contributes?.configuration?.properties?.["intelligit.commitCheckState"];
+
+        expect(setting).toMatchObject({
+            type: "string",
+            enum: ["allChecked", "noneChecked", "preserveSelection"],
+            default: "noneChecked",
+            scope: "window",
+            markdownDescription: "%configuration.commitCheckState.markdownDescription%",
+        });
+        expect(setting?.enumDescriptions).toEqual([
+            "%configuration.commitCheckState.enum.allChecked%",
+            "%configuration.commitCheckState.enum.noneChecked%",
+            "%configuration.commitCheckState.enum.preserveSelection%",
+        ]);
+
+        const nls = JSON.parse(
+            readFileSync(path.join(process.cwd(), "package.nls.json"), "utf8"),
+        ) as Record<string, string>;
+        for (const key of [
+            "configuration.commitCheckState.enum.allChecked",
+            "configuration.commitCheckState.enum.noneChecked",
+            "configuration.commitCheckState.enum.preserveSelection",
+            "configuration.commitCheckState.markdownDescription",
+        ]) {
+            expect(nls[key]).toBeTruthy();
+        }
     });
 });

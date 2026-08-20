@@ -118,7 +118,7 @@ export function RepositoryAccordion({
     });
     const showIgnoredFilesPostedRef = useRef(false);
     const { checkedPaths, toggleFile, toggleFolder, toggleSection, isAllChecked, isSomeChecked } =
-        useCheckedFiles(repository.files, repository.root || undefined);
+        useCheckedFiles(repository.files, repository.root, repository.filesHydrated);
     const shelfDrag = useShelfDrag({
         repositoryRoot: repository.root || undefined,
         catalogGeneration: repository.catalogGeneration,

@@ -5,6 +5,12 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.27.0] - 2026-08-20
+
+### Added
+
+- Added `intelligit.commitCheckState` so the Commit panel's initial file selection is predictable instead of depending on whatever state the webview happened to retain. `noneChecked` is the safe default and matches JetBrains IDEs; `allChecked` selects every changed or untracked file; and `preserveSelection` restores each repository's previous choices. Explicit checks and unchecks survive refreshes while a file remains present, newly discovered files follow the selected policy, removed files are forgotten, and ignored files are never selected. The same repository-scoped behaviour applies to both the docked Commit panel and the undocked commit window; changing the setting takes effect when the webview is recreated or the VS Code window is reloaded.
+
 ## [0.26.0] - 2026-08-19
 
 ### Added

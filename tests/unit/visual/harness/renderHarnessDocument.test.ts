@@ -198,6 +198,22 @@ describe("renderHarnessDocument", () => {
         ).toBe(true);
     });
 
+    it.each(["allChecked", "noneChecked", "preserveSelection"] as const)(
+        "serializes the commit-check mode %s in the fixture bootstrap",
+        (commitCheckState) => {
+            const document = parseDocument(
+                renderHarnessDocument({
+                    ...inputFor(WEBVIEW_HOST_CONTEXTS[0], DARK_MODERN),
+                    settings: { ...DEFAULT_SETTINGS, commitCheckState },
+                }),
+            );
+
+            expect(scriptJsonAssignment(document, "intelligitSettings")).toMatchObject({
+                commitCheckState,
+            });
+        },
+    );
+
     it("renders byte-identical output for identical input", () => {
         const input = inputFor(WEBVIEW_HOST_CONTEXTS[5], HC_BLACK);
 

@@ -72,6 +72,8 @@ export type GraphAction =
  */
 export interface CommitPanelState {
     files: WorkingFile[];
+    /** True after the host supplies the first authoritative working-tree snapshot. */
+    filesHydrated: boolean;
     stashes: StashEntry[];
     stashFiles: WorkingFile[];
     selectedStashIndex: number | null;
@@ -169,6 +171,7 @@ export type CommitPanelAction =
 /** Default commit-panel state before the extension sends the first working-tree update. */
 export const initialCommitPanelState: CommitPanelState = {
     files: [],
+    filesHydrated: false,
     stashes: [],
     stashFiles: [],
     selectedStashIndex: null,
@@ -257,6 +260,7 @@ export function commitPanelReducer(
             return {
                 ...state,
                 files: action.files,
+                filesHydrated: true,
                 stashes: action.stashes,
                 stashFiles: action.stashFiles,
                 selectedStashIndex: action.selectedStashIndex,

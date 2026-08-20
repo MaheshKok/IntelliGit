@@ -30,6 +30,8 @@ export type { InboundMessage, OutboundMessage } from "../../protocol/commitPanel
  */
 interface CommitPanelState {
     files: WorkingFile[];
+    /** True after the host supplies the first authoritative working-tree snapshot. */
+    filesHydrated: boolean;
     stashes: StashEntry[];
     stashFiles: WorkingFile[];
     selectedStashIndex: number | null;

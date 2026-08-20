@@ -6,6 +6,7 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 type CommitTabMockProps = {
     repositoryRoot: string;
     files: Array<{ path: string }>;
+    checkedPaths: Set<string>;
     commitMessage: string;
     isAmend: boolean;
     amendBranchCommits: Array<{ shortHash: string }>;
@@ -14,6 +15,7 @@ type CommitTabMockProps = {
     hasCommits?: boolean;
     wholeIndexOperationInProgress?: boolean;
     onToggleFile: (path: string) => void;
+    onToggleFolder: (files: Array<{ path: string }>) => void;
     onMessageChange: (message: string) => void;
     onAmendChange: (isAmend: boolean) => void;
     onGenerateMessage?: () => void;
@@ -153,6 +155,9 @@ async function renderApp(): Promise<void> {
                 <span data-testid="commit-files" data-root={props.repositoryRoot}>
                     {props.files.map((file) => file.path).join(",")}
                 </span>
+                <span data-testid="checked-files" data-root={props.repositoryRoot}>
+                    {Array.from(props.checkedPaths).join(",")}
+                </span>
                 <span data-testid="commit-message" data-root={props.repositoryRoot}>
                     {props.commitMessage}
                 </span>
@@ -174,6 +179,11 @@ async function renderApp(): Promise<void> {
                     data-testid="toggle-first-file"
                     data-root={props.repositoryRoot}
                     onClick={() => props.onToggleFile(props.files[0]?.path ?? "")}
+                />
+                <button
+                    data-testid="toggle-folder"
+                    data-root={props.repositoryRoot}
+                    onClick={() => props.onToggleFolder(props.files)}
                 />
                 <button
                     data-testid="amend-toggle"
@@ -295,6 +305,82 @@ beforeEach(() => {
 });
 
 describe("commit panel multi-repository view", () => {
+    it("waits for each repository snapshot before restoring its checked paths", async () => {
+        vi.doMock("../../../src/webviews/react/shared/settings", () => ({
+            getSettings: () => ({ commitCheckState: "preserveSelection" }),
+        }));
+        webviewState = {
+            checkedByRepository: {
+                "/repo-a": ["src/a.ts"],
+                "/repo-b": ["src/b.ts"],
+            },
+        };
+
+        try {
+            await renderApp();
+            await sendHostMessage({
+                type: "setRepositories",
+                repositories: [
+                    {
+                        root: "/repo-a",
+                        label: "Repo A",
+                        kind: "repository",
+                        changedFileCount: 1,
+                    },
+                ],
+                activeRepositoryRoot: "/repo-a",
+            });
+
+            expect(
+                document.querySelector('[data-testid="checked-files"][data-root="/repo-a"]')
+                    ?.textContent,
+            ).toBe("");
+            expect(webviewState).toMatchObject({
+                checkedByRepository: {
+                    "/repo-a": ["src/a.ts"],
+                    "/repo-b": ["src/b.ts"],
+                },
+            });
+
+            await sendHostMessage(snapshot("/repo-a", "Repo A", "src/a.ts"));
+            expect(
+                document.querySelector('[data-testid="checked-files"][data-root="/repo-a"]')
+                    ?.textContent,
+            ).toBe("src/a.ts");
+
+            await sendHostMessage({
+                type: "setRepositories",
+                repositories: [
+                    {
+                        root: "/repo-b",
+                        label: "Repo B",
+                        kind: "worktree",
+                        changedFileCount: 1,
+                    },
+                ],
+                activeRepositoryRoot: "/repo-b",
+            });
+            expect(
+                document.querySelector('[data-testid="checked-files"][data-root="/repo-b"]')
+                    ?.textContent,
+            ).toBe("");
+            expect(webviewState).toMatchObject({
+                checkedByRepository: {
+                    "/repo-a": ["src/a.ts"],
+                    "/repo-b": ["src/b.ts"],
+                },
+            });
+
+            await sendHostMessage(snapshot("/repo-b", "Repo B", "src/b.ts"));
+            expect(
+                document.querySelector('[data-testid="checked-files"][data-root="/repo-b"]')
+                    ?.textContent,
+            ).toBe("src/b.ts");
+        } finally {
+            vi.doUnmock("../../../src/webviews/react/shared/settings");
+        }
+    });
+
     it("preserves repository checked paths until files hydrate", async () => {
         vi.doMock("../../../src/webviews/react/commit-panel/hooks/useVsCodeApi", () => ({
             getVsCodeApi: () => ({
@@ -305,6 +391,9 @@ describe("commit panel multi-repository view", () => {
                 },
             }),
         }));
+        vi.doMock("../../../src/webviews/react/shared/settings", () => ({
+            getSettings: () => ({ commitCheckState: "preserveSelection" }),
+        }));
         const { createRoot } = await import("react-dom/client");
         const { useCheckedFiles } =
             await import("../../../src/webviews/react/commit-panel/hooks/useCheckedFiles");
@@ -314,8 +403,14 @@ describe("commit panel multi-repository view", () => {
         const snapshots: string[][] = [];
         webviewState = { checkedByRepository: { "/repo-a": ["src/a.ts"] } };
 
-        function Harness({ files }: { files: ReturnType<typeof workingFile>[] }): null {
-            const { checkedPaths } = useCheckedFiles(files, "/repo-a");
+        function Harness({
+            files,
+            filesHydrated,
+        }: {
+            files: ReturnType<typeof workingFile>[];
+            filesHydrated: boolean;
+        }): null {
+            const { checkedPaths } = useCheckedFiles(files, "/repo-a", filesHydrated);
             React.useEffect(() => {
                 snapshots.push(Array.from(checkedPaths));
             }, [checkedPaths]);
@@ -324,14 +419,14 @@ describe("commit panel multi-repository view", () => {
 
         try {
             await act(async () => {
-                root.render(<Harness files={[]} />);
+                root.render(<Harness files={[]} filesHydrated={false} />);
             });
             await flush();
 
             expect(webviewState).toEqual({ checkedByRepository: { "/repo-a": ["src/a.ts"] } });
 
             await act(async () => {
-                root.render(<Harness files={[workingFile("src/a.ts")]} />);
+                root.render(<Harness files={[workingFile("src/a.ts")]} filesHydrated={true} />);
             });
             await flush();
 
@@ -342,6 +437,65 @@ describe("commit panel multi-repository view", () => {
                 root.unmount();
             });
             host.remove();
+            vi.doUnmock("../../../src/webviews/react/shared/settings");
+        }
+    });
+
+    it("preserves an empty-root selection through hydration and folder toggles", async () => {
+        vi.doMock("../../../src/webviews/react/shared/settings", () => ({
+            getSettings: () => ({ commitCheckState: "preserveSelection" }),
+        }));
+        webviewState = {
+            checkedByRepository: {
+                "": ["src/legacy.ts", "src/stale.ts"],
+                "/repo-b": ["src/b.ts"],
+            },
+        };
+
+        try {
+            await renderApp();
+            await sendHostMessage({
+                type: "setRepositories",
+                repositories: [
+                    { root: "", label: "Legacy", kind: "repository", changedFileCount: 1 },
+                ],
+                activeRepositoryRoot: "",
+            });
+
+            expect(document.querySelector('[data-testid="checked-files"]')?.textContent).toBe("");
+            expect(webviewState.checkedByRepository).toEqual({
+                "": ["src/legacy.ts", "src/stale.ts"],
+                "/repo-b": ["src/b.ts"],
+            });
+
+            await sendHostMessage(snapshot("", "Legacy", "src/legacy.ts"));
+            expect(document.querySelector('[data-testid="checked-files"]')?.textContent).toBe(
+                "src/legacy.ts",
+            );
+            expect(webviewState.checkedByRepository).toEqual({
+                "": ["src/legacy.ts"],
+                "/repo-b": ["src/b.ts"],
+            });
+
+            click(document.querySelector('[data-testid="toggle-first-file"]'));
+            await flush();
+            expect(document.querySelector('[data-testid="checked-files"]')?.textContent).toBe("");
+            expect(webviewState.checkedByRepository).toEqual({
+                "": [],
+                "/repo-b": ["src/b.ts"],
+            });
+
+            click(document.querySelector('[data-testid="toggle-folder"]'));
+            await flush();
+            expect(document.querySelector('[data-testid="checked-files"]')?.textContent).toBe(
+                "src/legacy.ts",
+            );
+            expect(webviewState.checkedByRepository).toEqual({
+                "": ["src/legacy.ts"],
+                "/repo-b": ["src/b.ts"],
+            });
+        } finally {
+            vi.doUnmock("../../../src/webviews/react/shared/settings");
         }
     });
 

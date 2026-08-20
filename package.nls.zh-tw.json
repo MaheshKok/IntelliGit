@@ -83,5 +83,9 @@
     "command.showReviewPrompt": "顯示評價提示",
     "command.resetReviewPrompt": "重設評價提示狀態",
     "command.showReviewPromptCard": "顯示評價卡片",
-    "command.commitChecksRefreshBadges": "重新整理提交檢查徽章"
+    "command.commitChecksRefreshBadges": "重新整理提交檢查徽章",
+    "configuration.commitCheckState.enum.allChecked": "預設勾選提交面板中的初始檔案和新發現的檔案。",
+    "configuration.commitCheckState.enum.noneChecked": "預設不勾選提交面板中的初始檔案和新發現的檔案（預設值）。",
+    "configuration.commitCheckState.enum.preserveSelection": "還原每個儲存庫先前勾選的檔案；新發現的檔案保持未勾選狀態。",
+    "configuration.commitCheckState.markdownDescription": "控制提交面板載入或發現新路徑時如何勾選檔案。`allChecked` 勾選初始檔案和新檔案，`noneChecked` 不勾選這些檔案（預設值），`preserveSelection` 還原每個儲存庫先前的選擇，同時不勾選新檔案。明確選擇會在重新整理時保留。變更會在重新載入視窗後生效。"
 }

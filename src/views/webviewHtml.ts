@@ -32,7 +32,10 @@ type WebviewSettings = {
     tooltipsEnabled: boolean;
     iconStyle: "color" | "standard";
     commitWindowPosition: "left" | "right";
+    commitCheckState: CommitFileCheckMode;
 };
+
+type CommitFileCheckMode = "allChecked" | "noneChecked" | "preserveSelection";
 
 /**
  * Builds the shared HTML shell for bundled IntelliGit webview applications.
@@ -59,13 +62,15 @@ export function buildWebviewShellHtml({
         .map((styleUri) => `    <link rel="stylesheet" href="${escapeHtmlAttr(String(styleUri))}">`)
         .join("\n");
     const i18nPayload = getWebviewI18nPayload();
-    const { hoverDelay, tooltipsEnabled, iconStyle, commitWindowPosition } = readWebviewSettings();
+    const { hoverDelay, tooltipsEnabled, iconStyle, commitWindowPosition, commitCheckState } =
+        readWebviewSettings();
 
     const settingsPayload = scriptSafeJson({
         hoverDelay,
         tooltipsEnabled,
         iconStyle,
         commitWindowPosition,
+        commitCheckState,
     });
     const i18nPayloadJson = scriptSafeJson(i18nPayload);
     const e2eBootstrapScript = buildE2eBootstrapScript(
@@ -161,6 +166,7 @@ function readWebviewSettings(): WebviewSettings {
         tooltipsEnabled: true,
         iconStyle: "standard",
         commitWindowPosition: "left",
+        commitCheckState: "noneChecked",
     };
 
     try {
@@ -168,11 +174,18 @@ function readWebviewSettings(): WebviewSettings {
         if (!config) return defaults;
 
         const rawIconStyle = config.get?.<string>("intelligit.icons") ?? "color";
+        const rawCommitCheckState = config.get?.<unknown>("intelligit.commitCheckState");
         return {
             hoverDelay: config.get?.<number>("editor.hover.delay") ?? defaults.hoverDelay,
             tooltipsEnabled: config.get?.<boolean>("intelligit.tooltips.enabled") !== false,
             iconStyle: rawIconStyle === "color" ? "color" : "standard",
             commitWindowPosition: resolveCommitWindowPosition(config),
+            commitCheckState:
+                rawCommitCheckState === "allChecked" ||
+                rawCommitCheckState === "preserveSelection" ||
+                rawCommitCheckState === "noneChecked"
+                    ? rawCommitCheckState
+                    : defaults.commitCheckState,
         };
     } catch {
         return defaults;

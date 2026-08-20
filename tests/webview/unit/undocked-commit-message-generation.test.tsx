@@ -41,6 +41,27 @@ afterEach(() => {
 });
 
 describe("undocked commit-message generation lifecycle", () => {
+    it("marks an empty working-tree snapshot authoritative and resets hydration by repository", () => {
+        const hydrated = commitPanelReducer(initialCommitPanelState, {
+            type: "SET_FILES_AND_STASHES",
+            files: [],
+            stashes: [],
+            stashFiles: [],
+            selectedStashIndex: null,
+            shelves: [],
+            catalogGeneration: 0,
+            selectedShelfId: null,
+            currentBranchHasUpstream: true,
+            currentBranchAhead: 0,
+            currentBranchBehind: 0,
+        });
+
+        expect(hydrated.filesHydrated).toBe(true);
+        expect(commitPanelReducer(hydrated, { type: "RESET_REPOSITORY" }).filesHydrated).toBe(
+            false,
+        );
+    });
+
     it("routes an interactive-rebase offer through the undocked message bridge", async () => {
         const postMessage = vi.fn();
         vi.doMock("../../../src/webviews/react/shared/vscodeApi", () => ({
