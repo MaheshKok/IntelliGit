@@ -285,6 +285,20 @@ jobs:
             - name: Run installed package smoke in the pinned container
               run: ./tests/e2e/docker/run.sh 'bun install --frozen-lockfile && bun run build && INTELLIGIT_VSCODE_VERSION=${{ matrix.vscode_version }} xvfb-run -a bun run test:package-smoke'
 
+            # Without this the only evidence a package-smoke failure leaves is the log: Playwright
+            # writes its screenshot, error context, and trace inside the container, and the job ends
+            # before anything reads them. e2e-full already uploads the same paths.
+            - name: Upload package smoke failure artifacts
+              if: failure()
+              uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+              with:
+                  name: package-smoke-failures-${{ matrix.vscode_version }}
+                  path: |
+                      playwright-report/
+                      test-results/
+                  if-no-files-found: ignore
+                  retention-days: 7
+
     # Eligibility has no production environment or secrets. It is deliberately
     # split from the publishing job so a same-version change never instantiates
     # a job that can access Marketplace credentials.
