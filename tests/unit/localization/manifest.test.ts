@@ -353,7 +353,7 @@ describe("extension manifest", () => {
         expect(iconBlock).toContain("color={TOOLBAR_ICON_ACCENTS.openRepository}");
         // The tab bar resolves its accent through a host token; the native icon is a static
         // file and cannot, so they meet at the token's fallback value.
-        expect(TOOLBAR_ICON_ACCENTS.openRepository).toContain("#ff9e64");
+        expect(TOOLBAR_ICON_ACCENTS.openRepository).toContain("#8fd5ff");
 
         const darkSvg = readFileSync(
             path.join(process.cwd(), "media/icons/open-repository-color.svg"),
@@ -363,7 +363,7 @@ describe("extension manifest", () => {
             path.join(process.cwd(), "media/icons/open-repository-color-light.svg"),
             "utf8",
         );
-        expect(darkSvg).toContain("#ff9e64");
+        expect(darkSvg).toContain("#8fd5ff");
         const lightFill = lightSvg.match(/#[0-9a-f]{6}/)?.[0];
         expect(lightFill).toBeDefined();
         expect(contrastRatio(lightFill as string, "#f3f3f3")).toBeGreaterThanOrEqual(3);
@@ -401,7 +401,7 @@ describe("extension manifest", () => {
             },
             {
                 name: "pull",
-                color: "#8fd5ff",
+                color: "#ff9e64",
                 paths: [
                     "M7.5 1h1v8.1l2.15-2.15.7.7L8 11 4.65 7.65l.7-.7L7.5 9.1V1z",
                     "M3 13h10v1H3v-1z",
