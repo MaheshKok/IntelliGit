@@ -22,6 +22,7 @@
     "command.refresh": "更新",
     "command.filterByBranch": "ブランチで絞り込む",
     "command.selectRepository": "リポジトリを選択",
+    "command.openRepository": "リポジトリを開く",
     "command.checkout": "チェックアウト",
     "command.newBranchFrom": "新しいブランチを作成...",
     "command.checkoutAndRebaseOntoCurrent": "チェックアウトして現在のブランチにリベース",

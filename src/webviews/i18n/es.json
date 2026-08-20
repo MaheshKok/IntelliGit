@@ -300,6 +300,7 @@
     "common.fetch": "Obtener",
     "common.pull": "Extraer",
     "common.push": "Enviar",
+    "common.openRepository": "Abrir repositorio",
     "common.sync": "Sincronizar",
     "commit.action.publishAndPush": "Publicar y enviar",
     "commit.branchIndicator.local": "Rama: {branch}",

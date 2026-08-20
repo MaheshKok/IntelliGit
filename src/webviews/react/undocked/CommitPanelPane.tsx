@@ -29,6 +29,7 @@ interface CommitPanelPaneProps {
     onFetch: () => void;
     onPull: () => void;
     onPush: () => void;
+    onOpenRepository: () => void;
     canPush: boolean;
     pushLabel: string;
     groupByDir: boolean;
@@ -64,6 +65,7 @@ export function CommitPanelPane({
     onFetch,
     onPull,
     onPush,
+    onOpenRepository,
     canPush,
     pushLabel,
     groupByDir,
@@ -90,6 +92,7 @@ export function CommitPanelPane({
                     onFetch={onFetch}
                     onPull={onPull}
                     onPush={onPush}
+                    onOpenRepository={onOpenRepository}
                     currentBranchBehind={cpState.currentBranchBehind}
                     onDock={onDock}
                     commitContent={

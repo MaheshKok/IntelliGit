@@ -7,6 +7,7 @@ import {
 } from "../commands/operationFence";
 import { GitExecutor } from "../git/executor";
 import { GitOps } from "../git/operations";
+import { remoteUrlToWebUrl } from "../git/remoteWebUrl";
 import { runPublishBranchFlow } from "../services/publishService";
 import type { WorktreeService } from "../services/worktreeService";
 import {
@@ -160,8 +161,51 @@ function registerWindowAndRepositoryCommands(deps: RepositoryCommandsDeps): void
         await setActiveRepository(picked.repository);
     };
 
+    const openRepositoryInBrowser = async (repositoryRoot?: string): Promise<void> => {
+        // Both panels are multi-repository: the accordion row or pane the user clicked
+        // can be scoped to a repository that is not the active one, and it already sends
+        // its root with the message. Honour it the way `fetch`/`pull`/`push`/`sync` do --
+        // reading the active repository here opened the wrong remote for every other row.
+        const ops = repositoryRoot ? gitOps.deriveFor(repositoryRoot) : gitOps;
+        // `origin` is the remote a browsing user means. Falling back to the first
+        // configured remote keeps the button useful on forks and mirrors, where the
+        // only remote may be named `upstream`.
+        const remotes = await ops.getRemotes();
+        const remote = remotes.includes("origin") ? "origin" : remotes[0];
+        if (!remote) {
+            showTimedWarningMessage(
+                vscode.l10n.t("This repository has no remote to open in a browser."),
+            );
+            return;
+        }
+        const remoteUrl = await ops.getRemoteUrl(remote);
+        const webUrl = remoteUrl ? remoteUrlToWebUrl(remoteUrl) : null;
+        if (!webUrl) {
+            showTimedWarningMessage(
+                vscode.l10n.t("Could not determine a web page for remote '{0}'.", remote),
+            );
+            return;
+        }
+        await vscode.env.openExternal(vscode.Uri.parse(webUrl));
+    };
+
+    // The same two ids are invoked from a `view/title` menu, where VS Code passes the
+    // view's own context object as the first argument, and from the webview panels,
+    // which pass a repository root. Narrowing to `string` keeps the menu payload from
+    // being handed to `deriveFor` as a bogus root.
+    const openRepositoryFromCommand = async (repositoryRoot?: unknown): Promise<void> => {
+        await openRepositoryInBrowser(
+            typeof repositoryRoot === "string" ? repositoryRoot : undefined,
+        );
+    };
+
     context.subscriptions.push(
         vscode.commands.registerCommand("intelligit.refresh", refreshRepository),
+        vscode.commands.registerCommand("intelligit.openRepository", openRepositoryFromCommand),
+        vscode.commands.registerCommand(
+            "intelligit.openRepository.color",
+            openRepositoryFromCommand,
+        ),
         vscode.commands.registerCommand("intelligit.refresh.color", refreshRepository),
         vscode.commands.registerCommand("intelligit.graph.fetch", async () => {
             await runGraphGitOperation("fetch");

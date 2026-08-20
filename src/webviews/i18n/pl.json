@@ -306,6 +306,7 @@
     "common.fetch": "Pobierz",
     "common.pull": "Ściągnij",
     "common.push": "Wypchnij",
+    "common.openRepository": "Otwórz repozytorium",
     "common.sync": "Synchronizuj",
     "commit.action.publishAndPush": "Opublikuj i wypchnij",
     "commit.branchIndicator.local": "Gałąź: {branch}",

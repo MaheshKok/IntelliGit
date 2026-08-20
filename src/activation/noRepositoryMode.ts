@@ -187,6 +187,8 @@ export function activateNoRepositoryMode(
         "intelligit.dockWindow",
         "intelligit.toggleUndocked",
         "intelligit.publishBranch",
+        "intelligit.openRepository",
+        "intelligit.openRepository.color",
         "intelligit.commitChecks.refreshBadges",
         "intelligit.graph.fetch",
         "intelligit.graph.fetch.color",

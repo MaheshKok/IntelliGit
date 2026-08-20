@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => {
         showInformationMessage: vi.fn(),
         showQuickPick: vi.fn(),
         showWarningMessage: vi.fn(),
+        openExternal: vi.fn(),
         l10nT: vi.fn(),
         runPublishBranchFlow: vi.fn(),
         createBranchCommands: vi.fn(() => []),
@@ -35,8 +36,14 @@ vi.mock("vscode", () => ({
         showWarningMessage: mocks.showWarningMessage,
         withProgress: vi.fn(async (_options, task) => task()),
     },
+    env: {
+        openExternal: mocks.openExternal,
+    },
     Uri: {
         file: (fsPath: string) => ({ fsPath }),
+        // Tagged rather than passed through as a bare string so an assertion cannot pass on
+        // a handler that skipped `Uri.parse` and handed `openExternal` the raw text.
+        parse: (value: string) => ({ parsed: value }),
     },
 }));
 
@@ -273,5 +280,67 @@ describe("registerRepositoryCommands", () => {
 
         expect(deps.openMergeConflictForFile).toHaveBeenCalledWith("src/conflicted.ts");
         expect(deps.openVsCodeMergeEditorForFile).toHaveBeenCalledWith("src/conflicted.ts");
+    });
+
+    describe("intelligit.openRepository", () => {
+        /**
+         * `gitOps` answers for the active repository and `deriveFor(root)` answers for any
+         * other one. The two return distinct remotes so an assertion on the opened URL alone
+         * names which repository was actually read — asserting that `deriveFor` was called
+         * would pass even if the handler then read the active ops anyway.
+         */
+        const makeMultiRepoGitOps = (): GitOps => {
+            const scoped = {
+                getRemotes: vi.fn(async () => ["origin"]),
+                getRemoteUrl: vi.fn(async () => "git@github.com:acme/selected.git"),
+            };
+            return {
+                getRemotes: vi.fn(async () => ["origin"]),
+                getRemoteUrl: vi.fn(async () => "git@github.com:acme/active.git"),
+                deriveFor: vi.fn(() => scoped),
+            } as unknown as GitOps;
+        };
+
+        it.each(["intelligit.openRepository", "intelligit.openRepository.color"])(
+            "%s opens the remote of the repository root the panel passed, not the active one",
+            async (commandId) => {
+                const gitOps = makeMultiRepoGitOps();
+                registerRepositoryCommands(makeDeps(gitOps));
+
+                await mocks.commands.get(commandId)?.("/repo/selected");
+
+                expect(gitOps.deriveFor).toHaveBeenCalledWith("/repo/selected");
+                expect(mocks.openExternal).toHaveBeenCalledWith({
+                    parsed: "https://github.com/acme/selected",
+                });
+                expect(gitOps.getRemoteUrl).not.toHaveBeenCalled();
+            },
+        );
+
+        it("falls back to the active repository when no root travels with the command", async () => {
+            const gitOps = makeMultiRepoGitOps();
+            registerRepositoryCommands(makeDeps(gitOps));
+
+            await mocks.commands.get("intelligit.openRepository")?.();
+
+            expect(gitOps.deriveFor).not.toHaveBeenCalled();
+            expect(mocks.openExternal).toHaveBeenCalledWith({
+                parsed: "https://github.com/acme/active",
+            });
+        });
+
+        // A `view/title` button invokes the same id with the view's context object. Handing
+        // that object to `deriveFor` would run Git against a root spelled "[object Object]".
+        it("ignores a non-string argument from the view/title menu", async () => {
+            const gitOps = makeMultiRepoGitOps();
+            registerRepositoryCommands(makeDeps(gitOps));
+
+            await mocks.commands.get("intelligit.openRepository")?.({ groupId: "navigation@5" });
+
+            expect(gitOps.deriveFor).not.toHaveBeenCalled();
+            expect(mocks.openExternal).toHaveBeenCalledWith({
+                parsed: "https://github.com/acme/active",
+            });
+        });
     });
 });

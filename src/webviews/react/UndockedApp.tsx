@@ -587,6 +587,7 @@ function App(): React.ReactElement {
                 handleCancelGeneration={actions.handleCancelGeneration}
                 handleCommit={actions.handleCommit}
                 handlePush={actions.handlePush}
+                handleOpenRepository={actions.handleOpenRepository}
                 handleSync={actions.handleSync}
                 handleFetch={actions.handleFetch}
                 handlePull={actions.handlePull}

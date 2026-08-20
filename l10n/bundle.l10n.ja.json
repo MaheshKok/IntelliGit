@@ -71,6 +71,8 @@
     "Compare with Revision is only available for local files.": "リビジョンとの比較は、ローカルファイルでのみ利用可能です。",
     "Conflicts": "紛争",
     "Could not save token securely.": "トークンを安全に保存できませんでした。",
+    "Could not determine a web page for remote '{0}'.": "リモート '{0}' の Web ページを特定できませんでした。",
+    "This repository has no remote to open in a browser.": "このリポジトリには、ブラウザーで開けるリモートがありません。",
     "Create a commit before publishing this branch.": "このブランチを公開する前にコミットを作成してください。",
     "Create a project on GitLab and push": "GitLabでプロジェクトを作成し、プッシュします。",
     "Create a repository on GitHub and push": "GitHubにリポジトリを作成してプッシュする",

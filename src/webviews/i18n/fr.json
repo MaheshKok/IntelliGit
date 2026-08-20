@@ -300,6 +300,7 @@
     "common.fetch": "Récupérer",
     "common.pull": "Tirer",
     "common.push": "Pousser",
+    "common.openRepository": "Ouvrir le dépôt",
     "common.sync": "Synchroniser",
     "commit.action.publishAndPush": "Publier et pousser",
     "commit.branchIndicator.local": "Branche : {branch}",

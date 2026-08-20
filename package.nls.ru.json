@@ -22,6 +22,7 @@
     "command.refresh": "Обновить",
     "command.filterByBranch": "Фильтр по ветке",
     "command.selectRepository": "Выберите репозиторий",
+    "command.openRepository": "Открыть репозиторий",
     "command.checkout": "Извлечь",
     "command.newBranchFrom": "Новая ветка из...",
     "command.checkoutAndRebaseOntoCurrent": "Извлечь и перебазировать на текущую ветку",

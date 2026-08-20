@@ -259,8 +259,14 @@ export const TOOLBAR_ICON_ACCENTS = {
     /** Tab bar — traffic with the remote. */
     sync: ICON_ACCENTS.violet,
     fetch: ICON_ACCENTS.cyan,
-    pull: ICON_ACCENTS.sky,
+    /** Warm rather than blue only because open-repository has first claim on
+     * sky; one hue per bar leaves pull the other end. */
+    pull: ICON_ACCENTS.orange,
     push: ICON_ACCENTS.green,
+    /** Leaves the editor for the forge's own page. Sky because this action is
+     * the one that ships twice — here and as a static SVG in the sidebar Graph
+     * title — and the two have to read as the same button. */
+    openRepository: ICON_ACCENTS.sky,
     /** Window chrome rather than Git, and the only such control in its bar. */
     dock: ICON_ACCENTS.amber,
 
@@ -285,7 +291,7 @@ export const TOOLBAR_ICON_ACCENTS = {
  * its roster fails loudly instead of silently escaping the rule.
  */
 export const TOOLBAR_ACCENT_BARS = {
-    tabBar: ["sync", "fetch", "pull", "push", "dock"],
+    tabBar: ["sync", "fetch", "pull", "push", "openRepository", "dock"],
     commitToolbar: [
         "refresh",
         "rollback",

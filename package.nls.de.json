@@ -22,6 +22,7 @@
     "command.refresh": "Aktualisieren",
     "command.filterByBranch": "Nach Branch filtern",
     "command.selectRepository": "Repository auswählen",
+    "command.openRepository": "Repository öffnen",
     "command.checkout": "Checkout",
     "command.newBranchFrom": "Neuer Branch von...",
     "command.checkoutAndRebaseOntoCurrent": "Checkout und Rebase auf aktuellen Branch",

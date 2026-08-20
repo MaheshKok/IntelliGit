@@ -41,6 +41,8 @@
         "intelligit.openFolder",
         "intelligit.openMergeConflict",
         "intelligit.openMergeConflictInVsCode",
+        "intelligit.openRepository",
+        "intelligit.openRepository.color",
         "intelligit.openUndocked",
         "intelligit.openUndocked.color",
         "intelligit.publishBranch",

@@ -71,6 +71,8 @@
     "Compare with Revision is only available for local files.": "La función Comparar con revisión solo está disponible para archivos locales.",
     "Conflicts": "Conflictos",
     "Could not save token securely.": "No se pudo guardar el token de forma segura.",
+    "Could not determine a web page for remote '{0}'.": "No se pudo determinar una página web para el remoto '{0}'.",
+    "This repository has no remote to open in a browser.": "Este repositorio no tiene un remoto que abrir en el navegador.",
     "Create a commit before publishing this branch.": "Crea una confirmación antes de publicar esta rama.",
     "Create a project on GitLab and push": "Crea un proyecto en GitLab y haz push.",
     "Create a repository on GitHub and push": "Crea un repositorio en GitHub y haz push.",

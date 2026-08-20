@@ -25,7 +25,7 @@ function pullBranchIcon() {
             height: "14",
             viewBox: "0 0 16 16",
             "aria-hidden": true,
-            style: { color: resolveIconColor(ICON_ACCENTS.sky, STANDARD_MENU_ICON_COLOR) },
+            style: { color: resolveIconColor(ICON_ACCENTS.orange, STANDARD_MENU_ICON_COLOR) },
         },
         createElement("path", {
             fill: "currentColor",

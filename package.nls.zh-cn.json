@@ -22,6 +22,7 @@
     "command.refresh": "刷新",
     "command.filterByBranch": "按分支筛选",
     "command.selectRepository": "选择存储库",
+    "command.openRepository": "打开存储库",
     "command.checkout": "检出",
     "command.newBranchFrom": "从...新建分支...",
     "command.checkoutAndRebaseOntoCurrent": "检出并变基到当前分支",

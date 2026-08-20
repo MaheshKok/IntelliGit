@@ -1685,6 +1685,12 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             case "sync":
                 await runGitOperationFromPanel(this.actionDepsForRuntime(scopedRuntime()), "sync");
                 break;
+            case "openRepository":
+                await vscode.commands.executeCommand(
+                    "intelligit.openRepository",
+                    scopedRuntime()?.repository.root,
+                );
+                break;
             case "selectCommit":
                 this._onCommitSelected.fire(assertGitHash(msg.hash, "hash"));
                 break;

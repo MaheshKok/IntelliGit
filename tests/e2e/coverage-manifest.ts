@@ -86,6 +86,14 @@ const COMMAND_ENTRIES = [
         notCovered: COMMAND_NOT_COVERED,
     },
     { kind: "command", id: "intelligit.filterByBranch", mutating: false },
+    // Opens the remote's page in the user's browser. Reads `git remote`; changes nothing.
+    { kind: "command", id: "intelligit.openRepository", mutating: false },
+    {
+        kind: "command",
+        id: "intelligit.openRepository.color",
+        mutating: false,
+        aliasOf: "intelligit.openRepository",
+    },
     { kind: "command", id: "intelligit.selectRepository", mutating: false },
     {
         kind: "command",
@@ -339,6 +347,8 @@ const WEBVIEW_ENTRIES = [
         coveredBy: "interactive-rebase",
     },
     { kind: "webview", id: "cancelRebaseDialog", mutating: false },
+    // Hands off to intelligit.openRepository, which only reads `git remote` and opens a browser.
+    { kind: "webview", id: "openRepository", mutating: false },
     { kind: "webview", id: "refresh", mutating: false },
     { kind: "webview", id: "setExpandedRepositories", mutating: false },
     { kind: "webview", id: "abortMerge", mutating: true, notCovered: WEBVIEW_NOT_COVERED },
