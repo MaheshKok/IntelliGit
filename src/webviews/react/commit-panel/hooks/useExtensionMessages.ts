@@ -11,6 +11,7 @@ import type {
 } from "../types";
 import type { WorkingFile } from "../../../../types";
 import { commitMessageGenerationPrefix } from "../../shared/commitMessageDraft";
+import { recordHostMessage, recordHydrationAsk } from "../../shared/hydrationDiagnostics";
 
 const LEGACY_REPOSITORY_ROOT = "";
 
@@ -460,6 +461,10 @@ export function useExtensionMessages(): [
 
         const handler = (event: MessageEvent<InboundMessage>) => {
             const msg = event.data;
+            // Counted before the switch, so a payload no case matches still counts as "the host
+            // is talking to us". A blank panel whose diagnostics report messages the reducer
+            // dropped is a different bug from one that was never answered at all.
+            recordHostMessage(msg);
             switch (msg.type) {
                 case "setRepositories":
                     applyAction({
@@ -594,6 +599,7 @@ export function useExtensionMessages(): [
         window.addEventListener("message", handler);
         let attempt = 1;
         let elapsed = 0;
+        recordHydrationAsk();
         vscode.postMessage({ type: "ready", attempt });
 
         // Re-asking is safe to repeat: the host's `ready` handler posts the repository list and its
@@ -609,6 +615,7 @@ export function useExtensionMessages(): [
         const askAgain = (): void => {
             if (stateRef.current.hydrated) return;
             attempt += 1;
+            recordHydrationAsk();
             vscode.postMessage({ type: "ready", attempt });
             scheduleRetry();
         };

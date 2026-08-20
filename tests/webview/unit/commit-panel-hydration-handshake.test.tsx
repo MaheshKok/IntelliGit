@@ -198,6 +198,46 @@ describe("commit-panel hydration handshake", () => {
         }
     });
 
+    /**
+     * The diagnostics global is the only thing that will name WHICH leg of this handshake dropped
+     * the next time CI produces a blank panel, so it has to be wired to the handshake itself
+     * rather than to a counter that happens to agree with it. Asserted as an identity against the
+     * posts the rest of this file measures: "at least one ask" would still pass for a recorder
+     * that fired once and then went quiet, which is precisely the failure the counter exists to
+     * report.
+     */
+    it("records every ask and every host message for the E2E timeout dump", async () => {
+        window.intelligitE2E = true;
+        const { root, host } = await mountHarness();
+        try {
+            await advance(4_000);
+            const diagnostics = window.intelligitHydrationDiagnostics;
+
+            expect(
+                diagnostics?.asks,
+                "the recorder must count the same asks the host actually received, or a dump " +
+                    "reading `asks:1` would exonerate a retry loop that had in fact stopped",
+            ).toBe(readyCount());
+            expect(
+                diagnostics?.hostMessages,
+                "nothing has been sent back yet, so a non-zero count here would mean the " +
+                    "instrument invents traffic and can never prove the host stayed silent",
+            ).toBe(0);
+
+            await act(async () => sendRepositoryList([]));
+
+            expect(window.intelligitHydrationDiagnostics).toMatchObject({
+                hostMessages: 1,
+                lastHostMessageType: "setRepositories",
+            });
+        } finally {
+            await act(async () => root.unmount());
+            host.remove();
+            delete (window as unknown as Record<string, unknown>).intelligitHydrationDiagnostics;
+            delete (window as unknown as Record<string, unknown>).intelligitE2E;
+        }
+    });
+
     it("stops retrying when the panel is torn down", async () => {
         const { root, host } = await mountHarness();
         await act(async () => root.unmount());

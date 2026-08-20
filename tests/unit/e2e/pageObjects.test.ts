@@ -339,6 +339,7 @@ describe("IntelliGitView", () => {
     function webview(
         markers: readonly string[] | undefined,
         title = "IntelliGit",
+        hydration?: { asks: number; hostMessages: number; lastHostMessageType: string | null },
     ): {
         outer: unknown;
         inner: unknown;
@@ -369,7 +370,16 @@ describe("IntelliGitView", () => {
                         extract({
                             ownerDocument: {
                                 title,
-                                defaultView: { intelligitI18n: {} },
+                                // A real webview carries the hydration counters only while the
+                                // E2E gate is on and only once its handshake effect has run, so
+                                // the absent case is modelled by leaving the key off entirely --
+                                // the same shape a document that never reached the effect has.
+                                defaultView: {
+                                    intelligitI18n: {},
+                                    ...(hydration
+                                        ? { intelligitHydrationDiagnostics: hydration }
+                                        : {}),
+                                },
                                 getElementById: (id: string) => (id === "root" ? root : null),
                             },
                             innerHTML: `<div id="root">${rendered}</div>`,
@@ -515,7 +525,45 @@ describe("IntelliGitView", () => {
         const { page } = workbenchPage([webview([])]);
 
         await expect(new IntelliGitView(page).revealPanel(50)).rejects.toThrow(
-            /bootstrap=yes root=<children:0 chars:0> testIds=\[\]/,
+            /bootstrap=yes root=<children:0 chars:0> hydration=\(none\) testIds=\[\]/,
+        );
+    });
+
+    /**
+     * `bootstrap=yes root=<children:2` says the app mounted and was given nothing. It does not say
+     * WHICH leg of the handshake failed, and the three CI failures this instrument was built from
+     * were byte-identical on every other field -- same `root`, same console, three different flows
+     * across two runs. The counters are the only field that differs by cause, so each shape is
+     * pinned here: a document that never reached the effect, and one whose asks went unanswered.
+     */
+    it("reports a handshake that never started apart from one that went unanswered", async () => {
+        const { page: silent } = workbenchPage([webview([])]);
+        await expect(new IntelliGitView(silent).revealPanel(50)).rejects.toThrow(
+            /hydration=\(none\)/,
+        );
+
+        const { page: asking } = workbenchPage([
+            webview([], "IntelliGit", { asks: 17, hostMessages: 0, lastHostMessageType: null }),
+        ]);
+        await expect(new IntelliGitView(asking).revealPanel(50)).rejects.toThrow(
+            /hydration=<asks:17 received:0 last:null>/,
+        );
+    });
+
+    // The other side of the same fork: the host IS answering and the panel still shows nothing, so
+    // the defect is in what the reducer does with the answer rather than in delivery. A report that
+    // collapsed both into "not hydrated" would send the next investigation to the wrong process.
+    it("reports an answered handshake that failed to hydrate", async () => {
+        const { page } = workbenchPage([
+            webview([], "IntelliGit", {
+                asks: 3,
+                hostMessages: 4,
+                lastHostMessageType: "setRepositories",
+            }),
+        ]);
+
+        await expect(new IntelliGitView(page).revealPanel(50)).rejects.toThrow(
+            /hydration=<asks:3 received:4 last:"setRepositories">/,
         );
     });
 

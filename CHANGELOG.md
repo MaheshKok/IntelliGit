@@ -5,6 +5,12 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.27.1] - 2026-08-20
+
+### Changed
+
+- Added development-only diagnostics to the Commit panel's hydration handshake, so an intermittent CI failure in which the panel mounts and is never given anything to show can be told apart from one in which it is answered and fails to display the answer. The counters record how many times the panel asked the extension host to hydrate it and how many messages came back, and they are reported in the end-to-end suite's timeout message. They are gated on the same development-only flag as the rest of the test control channel: an installed extension allocates nothing and carries no global, and no behaviour a user can see changes.
+
 ## [0.27.0] - 2026-08-20
 
 ### Added
