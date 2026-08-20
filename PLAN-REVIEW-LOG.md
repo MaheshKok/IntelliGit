@@ -110,3 +110,34 @@ VERDICT: REVISE
 
 ## Resolution — arbitrated close at MAX_ROUNDS
 MAX_ROUNDS=5 reached with VERDICT: REVISE on two REQUIRED findings. No disagreement remained: Claude accepted and incorporated both (as with all 32 findings across 5 rounds — zero REJECTED, zero ACCEPTED-RISK). The human broke the tie mid-session with an explicit instruction to proceed to implementation: "start the implementation using /claudex-build and use luna xhigh and if you think luna is not working correctly then use sonnet 5 but keep the rest of the workflow intact." Closing the review as arbitrated-approved with findings #31-#32 fixed; handing to claudex-build (BUILD: gpt-5.6-luna @ xhigh; contingency: Sonnet 5 builder if luna malfunctions).
+
+---
+
+## Act 3 — Build
+
+Kickoff 2026-08-20. User pre-authorization (mid-session, verbatim): "when done then start the implementation using /claudex-build and use luna xhigh and if you think luna is not working correctly then use sonnet 5 but keep the rest of the workflow intact."
+
+Builder: gpt-5.6-luna @ xhigh (fix ladder xhigh → xhigh → Claude takeover; `max` only on explicit per-round user instruction). Contingency (user-authorized): if luna malfunctions loudly (no `thread.started`, model-resolution or auth error, persisting after one environment fix), the lane HALTs with evidence and the conductor re-spawns the phase with a Sonnet 5 builder lane — rest of the workflow intact.
+
+Tunables: SPEC_FILE=PLAN.md, LOG_FILE=PLAN-REVIEW-LOG.md, SANDBOX=danger-full-access, MAX_FIX_ROUNDS=2, SEAL_MODE=shadow, GATES_FILE=.claudex-gates.json (created at kickoff; gitignored — orchestration state, untracked by design).
+
+Kickoff HEAD (plan checkpoint): 13397039500027013a88db7c8f4764b34414bf07. Per-phase BASE_HEAD is recaptured at each lane spawn.
+
+SKILL-SHA 9961facee66f SKILL.md / ca2ed5fd0f9e helpers.py / db9282d4db13 verify.py
+
+Gate manifest: round stage = typecheck, lint-strict; accept stage adds format-check, architecture (depcruise), deps-knip, tests (full vitest unit+webview), visual-container (Playwright pixel baselines in Docker — the Phase 0 tripwire; baselines are container-recorded, so local `test:visual` would false-fail). The e2e flows suite is deliberately NOT a manifest gate (known flaky on main); Phase 2's new e2e smoke runs as a focused verifier check instead.
+
+Mode: phase-lane (thin conductor + one fresh opus lane per phase; lanes strictly sequential).
+
+### Phase table
+
+| Phase | Spec slice                                                                                    | Status  |
+| ----- | --------------------------------------------------------------------------------------------- | ------- |
+| P0    | Phase 0 (1.1–1.4): diff-core extraction, pane generalization, shared CSS, contract tests       | pending |
+| P1    | Phase 1 (2.1–2.6): computeDiffSegments, DiffViewerApp, bundle, panel, protocol, l10n, tests    | pending |
+| P2a   | Phase 2 (3.1–3.3): openUnifiedDiff funnel + setting, side loader, budget measurement           | pending |
+| P2b   | Phase 2 (3.5–3.6): generation-bound sessions, fallback CAS, watchers, live refresh             | pending |
+| P2c   | Phase 2 (3.4, 3.7, 3.8): call-site rewires, ride-along integration, full gate battery          | pending |
+| P3    | Phase 3 (4.1–4.4): straggler sweep, css-modules.d.ts removal, docs                             | pending |
+
+Sizing note: spec Phase 2 split into three lanes (machinery → concurrency/refresh → wiring+gate) to hold each Codex session near the 45–50% peak target. P0 predicted ~55% — above target but kept whole: splitting a move+generalize refactor mid-seam leaves a broken intermediate tree; the continuation path absorbs overflow.
