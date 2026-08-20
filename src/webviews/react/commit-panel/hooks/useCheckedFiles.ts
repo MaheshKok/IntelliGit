@@ -98,7 +98,7 @@ export function useCheckedFiles(
     const validPaths = useMemo(() => buildSelectablePathSet(allFiles), [allFiles]);
     const currentCheckedPaths = useMemo(() => {
         if (
-            !repositoryRoot ||
+            repositoryRoot === undefined ||
             !filesHydrated ||
             state.repositoryRoot !== repositoryRoot ||
             !state.hydrated
@@ -109,7 +109,7 @@ export function useCheckedFiles(
     }, [filesHydrated, repositoryRoot, state, validPaths]);
 
     useEffect(() => {
-        if (!repositoryRoot) {
+        if (repositoryRoot === undefined) {
             // react-doctor-disable-next-line react-doctor/no-derived-state
             setState((previous) => {
                 if (
@@ -166,7 +166,7 @@ export function useCheckedFiles(
     // Persist to vscode state on every change (merge to preserve other keys).
     useEffect(() => {
         if (
-            !repositoryRoot ||
+            repositoryRoot === undefined ||
             !filesHydrated ||
             state.repositoryRoot !== repositoryRoot ||
             !state.hydrated
@@ -187,7 +187,7 @@ export function useCheckedFiles(
 
     const toggleFile = useCallback(
         (path: string) => {
-            if (!repositoryRoot || !filesHydrated || !validPaths.has(path)) return;
+            if (repositoryRoot === undefined || !filesHydrated || !validPaths.has(path)) return;
             setState((previous) => {
                 if (previous.repositoryRoot !== repositoryRoot || !previous.hydrated) {
                     return previous;
@@ -203,7 +203,7 @@ export function useCheckedFiles(
 
     const toggleMany = useCallback(
         (paths: string[]) => {
-            if (!repositoryRoot || !filesHydrated) return;
+            if (repositoryRoot === undefined || !filesHydrated) return;
             const knownPaths = paths.filter((path) => validPaths.has(path));
             if (knownPaths.length === 0) return;
             setState((previous) => {

@@ -15,6 +15,7 @@ type CommitTabMockProps = {
     hasCommits?: boolean;
     wholeIndexOperationInProgress?: boolean;
     onToggleFile: (path: string) => void;
+    onToggleFolder: (files: Array<{ path: string }>) => void;
     onMessageChange: (message: string) => void;
     onAmendChange: (isAmend: boolean) => void;
     onGenerateMessage?: () => void;
@@ -178,6 +179,11 @@ async function renderApp(): Promise<void> {
                     data-testid="toggle-first-file"
                     data-root={props.repositoryRoot}
                     onClick={() => props.onToggleFile(props.files[0]?.path ?? "")}
+                />
+                <button
+                    data-testid="toggle-folder"
+                    data-root={props.repositoryRoot}
+                    onClick={() => props.onToggleFolder(props.files)}
                 />
                 <button
                     data-testid="amend-toggle"
@@ -431,6 +437,64 @@ describe("commit panel multi-repository view", () => {
                 root.unmount();
             });
             host.remove();
+            vi.doUnmock("../../../src/webviews/react/shared/settings");
+        }
+    });
+
+    it("preserves an empty-root selection through hydration and folder toggles", async () => {
+        vi.doMock("../../../src/webviews/react/shared/settings", () => ({
+            getSettings: () => ({ commitCheckState: "preserveSelection" }),
+        }));
+        webviewState = {
+            checkedByRepository: {
+                "": ["src/legacy.ts", "src/stale.ts"],
+                "/repo-b": ["src/b.ts"],
+            },
+        };
+
+        try {
+            await renderApp();
+            await sendHostMessage({
+                type: "setRepositories",
+                repositories: [
+                    { root: "", label: "Legacy", kind: "repository", changedFileCount: 1 },
+                ],
+                activeRepositoryRoot: "",
+            });
+
+            expect(document.querySelector('[data-testid="checked-files"]')?.textContent).toBe("");
+            expect(webviewState.checkedByRepository).toEqual({
+                "": ["src/legacy.ts", "src/stale.ts"],
+                "/repo-b": ["src/b.ts"],
+            });
+
+            await sendHostMessage(snapshot("", "Legacy", "src/legacy.ts"));
+            expect(document.querySelector('[data-testid="checked-files"]')?.textContent).toBe(
+                "src/legacy.ts",
+            );
+            expect(webviewState.checkedByRepository).toEqual({
+                "": ["src/legacy.ts"],
+                "/repo-b": ["src/b.ts"],
+            });
+
+            click(document.querySelector('[data-testid="toggle-first-file"]'));
+            await flush();
+            expect(document.querySelector('[data-testid="checked-files"]')?.textContent).toBe("");
+            expect(webviewState.checkedByRepository).toEqual({
+                "": [],
+                "/repo-b": ["src/b.ts"],
+            });
+
+            click(document.querySelector('[data-testid="toggle-folder"]'));
+            await flush();
+            expect(document.querySelector('[data-testid="checked-files"]')?.textContent).toBe(
+                "src/legacy.ts",
+            );
+            expect(webviewState.checkedByRepository).toEqual({
+                "": ["src/legacy.ts"],
+                "/repo-b": ["src/b.ts"],
+            });
+        } finally {
             vi.doUnmock("../../../src/webviews/react/shared/settings");
         }
     });
