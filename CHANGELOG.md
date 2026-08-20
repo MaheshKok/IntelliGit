@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Added an "Open Repository" action that opens the repository's page on its forge in the browser. It sits beside sync, fetch, pull and push in both toolbars that carry them — the Graph view's title bar and the Commit panel's tab bar — and is also available from the Command Palette. The remote is read from `origin`, falling back to the first configured remote so forks and mirrors whose only remote is named something else still work. Host detection is by URL shape rather than by hostname, so self-hosted GitLab, Gitea and Bitbucket Server instances are supported alongside the SaaS forges, across the scp-like (`git@host:owner/repo.git`), `ssh://`, `git://` and `https://` remote forms. Credentials embedded in a remote are stripped before anything reaches the browser: a URL cached by a credential helper carries the token in it, and handing that to the browser would write it into history and the referrer chain. An SSH port is dropped rather than carried onto the web URL, where it would address the wrong daemon; an explicit port on an `https://` remote is already a web port and is kept.
 
+### Fixed
+
+- Stopped the Commit panel's tab labels breaking across two lines when the tab row runs out of width. The row now wraps its Git actions onto their own line instead, so "Stash (2)" stays intact and no action is pushed off the right edge where it cannot be clicked. This was already visible before the Open Repository action existed, in locales whose tab labels are longer than English — Polish renders "Chować na potem" where English renders "Stash".
+
 ## [0.25.12] - 2026-08-18
 
 ### Security

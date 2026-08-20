@@ -1052,7 +1052,7 @@
         "test:e2e": "playwright test --config playwright.e2e.config.ts tests/e2e/flows/flows.spec.ts",
         "test:e2e:container": "./tests/e2e/docker/run.sh 'bun install --frozen-lockfile && bun run build && xvfb-run -a bun run test:e2e'",
         "test:package-smoke": "playwright test --config playwright.e2e.config.ts --project=package-smoke tests/e2e/packageSmoke.spec.ts",
-        "package": "rm -f ./*.vsix && vsce package --no-dependencies && bun run package:verify",
+        "package": "node -e \"const fs=require('node:fs');for(const f of fs.readdirSync('.'))if(f.toLowerCase().endsWith('.vsix'))fs.rmSync(f,{force:true});\" && vsce package --no-dependencies && bun run package:verify",
         "package:verify": "node scripts/verifyVsixPackage.js",
         "publish": "vsce publish --no-dependencies"
     },

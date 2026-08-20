@@ -57,6 +57,11 @@ const sharedTabStyles = {
     py: "6px",
     minH: "32px",
     fontSize: "12px",
+    // A tab label is a name, never a paragraph: without this the flex row squeezes the
+    // tab list until "Stash (2)" breaks across two lines mid-label, which grew the row
+    // and shifted the whole panel down. The row wraps instead (see the Flex below), so
+    // holding the label on one line costs nothing and no glyph is ever clipped.
+    whiteSpace: "nowrap",
     fontWeight: 600,
     color: "var(--intelligit-pycharm-foreground)",
     opacity: 0.75,
@@ -136,6 +141,14 @@ export function TabBar({
                 borderBottom="1px solid var(--intelligit-pycharm-border)"
                 flexShrink={0}
                 align="stretch"
+                // Five Git actions plus three tabs no longer fit a 320px sidebar, and the
+                // two ways to lose that fight are both silent: shrink the tab list and the
+                // labels wrap mid-word, or hold it and the last icon is clipped off the
+                // right edge where nothing can click it. Wrapping moves the icon group to
+                // its own line instead -- the row gets taller only when it has to, and
+                // every label and every action stays whole. Long locales (pl "Chować na
+                // potem") already overflowed here before the fifth icon existed.
+                flexWrap="wrap"
             >
                 <TabList>
                     {tabs.map((tab) => (
