@@ -190,10 +190,16 @@ jobs:
               uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
               with:
                   name: visual-failures
-                  path: |
-                      playwright-report/
-                      test-results/
-                  if-no-files-found: ignore
+                  # `playwright-report/` is the HTML reporter's directory and nothing here uses
+                  # that reporter -- the e2e config pins `list` and the visual config names none,
+                  # whose default is `list`/`dot`. Listing it made the upload look like it kept
+                  # two kinds of evidence while only `test-results/` ever existed.
+                  #
+                  # `warn` rather than `ignore` for the same reason: a failure that produced no
+                  # artifacts at all is the case worth seeing, since it means the job died before
+                  # the suite ran. `warn` annotates it without failing the step.
+                  path: test-results/
+                  if-no-files-found: warn
                   retention-days: 7
 
     # The flow suite, and the same-SHA gate the release chain below waits on.
@@ -234,10 +240,10 @@ jobs:
               uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
               with:
                   name: e2e-full-failures
-                  path: |
-                      playwright-report/
-                      test-results/
-                  if-no-files-found: ignore
+                  # See the visual job's upload: no reporter here writes `playwright-report/`, and
+                  # a failure carrying no artifacts is worth an annotation rather than silence.
+                  path: test-results/
+                  if-no-files-found: warn
                   retention-days: 7
 
     package-smoke:
@@ -293,10 +299,12 @@ jobs:
               uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
               with:
                   name: package-smoke-failures-${{ matrix.vscode_version }}
-                  path: |
-                      playwright-report/
-                      test-results/
-                  if-no-files-found: ignore
+                  # See the visual job's upload: no reporter here writes `playwright-report/`, and
+                  # a failure carrying no artifacts is worth an annotation rather than silence.
+                  # This job can fail before the suite runs at all -- the VSIX checksum check and
+                  # the container's own install and build all precede it -- so that case is real.
+                  path: test-results/
+                  if-no-files-found: warn
                   retention-days: 7
 
     # Eligibility has no production environment or secrets. It is deliberately
