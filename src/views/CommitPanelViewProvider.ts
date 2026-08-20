@@ -2082,10 +2082,12 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
      * `commit-panel-awaiting-hydration` for the rest of the session -- however many times the
      * webview re-asks, because every re-ask is answered exactly as silently as the first.
      *
-     * Adopts ONLY when the record is empty. A different live view recorded there is the correct
-     * target, and stealing the record would blank the view actually on screen to fix one that
-     * isn't. The theme bindings are restored alongside it because `onDidDispose` tore them down;
-     * `attachWebview` is built to rebind (it clears its own `disposed` flag).
+     * The visibility ownership invariant is: a recorded visible view always wins; a hidden sender
+     * never displaces a recorded view; and a visible sender may replace only a recorded hidden
+     * view. A different visible view recorded there is therefore the correct target, while a
+     * hidden cached view cannot strand a visible pane. When replacing a defined hidden view, theme
+     * listeners are disposed before they are registered again; `attachWebview` rebinds its own
+     * state.
      *
      * This rests on VS Code not delivering messages from a webview it has already torn down. If
      * it ever did, the record would name a dead view until the next resolve, and
@@ -2095,7 +2097,13 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
      * four investigations. Trading a reported failure for an unreported one is the point.
      */
     private adoptLiveSender(sender: vscode.WebviewView): void {
-        if (this.view !== undefined) return;
+        const current = this.view;
+        if (current !== undefined && (current === sender || current.visible || !sender.visible)) {
+            return;
+        }
+        if (current !== undefined) {
+            this.disposeThemeChangeDisposables();
+        }
         this.view = sender;
         this.iconTheme.attachWebview(sender.webview);
         this.registerThemeChangeListeners();
