@@ -639,7 +639,7 @@ describe("CommitPanelViewProvider hydration answers the webview that asked", () 
         expect(
             messagesOfType(replaced.posted, "setRepositories").length,
             "a replaced view must not capture the provider's view record just by posting: the " +
-                "the visibility guard is what keeps adoption a recovery rather than a hijack",
+                "visibility guard is what keeps adoption a recovery rather than a hijack",
         ).toBe(replacedBefore);
     });
 
@@ -680,6 +680,65 @@ describe("CommitPanelViewProvider hydration answers the webview that asked", () 
             messagesOfType(hiddenCached.posted, "setRepositories").length,
             "a hidden cached view must not receive hydration from the visible sender",
         ).toBe(hiddenBefore);
+    });
+
+    it("reposts unchanged commit detail to a newly adopted visible sender", async () => {
+        const parentDir = await mkdtemp(path.join(tmpdir(), "intelligit-visible-sender-detail-"));
+        scratch.register(parentDir);
+        const workspace = await prepareDirtyWorkspace(path.join(parentDir, "root"));
+
+        const constructorOptions = buildCommitPanelConstructorOptions();
+        const provider = new CommitPanelViewProvider(
+            createFakeExtensionUri(),
+            new GitOps(new GitExecutor(workspace.root, undefined, toGitEnvironment(workspace.env))),
+            createFakeUriFromPath(workspace.root),
+            createEmptyWorkspaceMemento(),
+            undefined,
+            constructorOptions.shelfServiceForRepository,
+            constructorOptions.shelfRemoveOnUnshelve,
+            constructorOptions.commitMessageGenerationCoordinator,
+            constructorOptions.interactiveRebaseStorageRoot,
+        );
+
+        const visibleSender = createInspectableCommitPanelWebviewView("delivered", true);
+        provider.resolveWebviewView(visibleSender.webviewView, INERT_CONTEXT, INERT_TOKEN);
+        const hiddenCached = createInspectableCommitPanelWebviewView("delivered", false);
+        provider.resolveWebviewView(hiddenCached.webviewView, INERT_CONTEXT, INERT_TOKEN);
+
+        const detail = sampleDetail();
+        provider.setCommitDetail(detail);
+        await flushMicrotasks();
+
+        const hiddenDetailMessages = setCommitDetailMessages(hiddenCached.posted);
+        expect(
+            hiddenDetailMessages.length,
+            "the hidden cached view must own the initial commit-detail payload before adoption",
+        ).toBeGreaterThanOrEqual(1);
+        const cursorOwningPayload = hiddenDetailMessages[hiddenDetailMessages.length - 1];
+
+        const visibleBeforeSelect = setCommitDetailMessages(visibleSender.posted).length;
+        await visibleSender.receiveMessage({ type: "selectCommit", hash: detail.hash });
+        await flushMicrotasks();
+        expect(
+            setCommitDetailMessages(visibleSender.posted).length,
+            "selectCommit itself must not post commit detail while the visible sender takes ownership",
+        ).toBe(visibleBeforeSelect);
+
+        const visibleBeforeRepost = setCommitDetailMessages(visibleSender.posted).length;
+        const hiddenBeforeRepost = setCommitDetailMessages(hiddenCached.posted).length;
+        provider.setCommitDetail(detail);
+        await flushMicrotasks();
+
+        const visibleAfterRepost = setCommitDetailMessages(visibleSender.posted);
+        expect(
+            visibleAfterRepost.length,
+            "visible adoption must reset the commit-detail dedupe cursor so the unchanged detail is reposted",
+        ).toBeGreaterThan(visibleBeforeRepost);
+        expect(
+            setCommitDetailMessages(hiddenCached.posted).length,
+            "the hidden cached view must not receive the post after visible adoption",
+        ).toBe(hiddenBeforeRepost);
+        expect(visibleAfterRepost[visibleAfterRepost.length - 1]).toEqual(cursorOwningPayload);
     });
 
     it("retains a hidden cached view when the late sender is also hidden", async () => {

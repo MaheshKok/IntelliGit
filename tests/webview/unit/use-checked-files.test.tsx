@@ -184,6 +184,14 @@ describe("useCheckedFiles commit check modes", () => {
         try {
             await harness.render([], "/repo-a", false);
             expect(setState).not.toHaveBeenCalled();
+            expect(
+                webviewState,
+                "legacy checked state must survive before authoritative hydration persistence runs",
+            ).toEqual({
+                unrelated: 42,
+                checked: ["src/legacy.ts"],
+                checkedByRepository: { "/repo-a": ["src/a.ts"] },
+            });
 
             await harness.render(
                 [workingFile("src/a.ts"), workingFile("src/new.ts")],
@@ -191,12 +199,18 @@ describe("useCheckedFiles commit check modes", () => {
                 true,
             );
             expect(Array.from(harness.current().checkedPaths)).toEqual(["src/a.ts"]);
+            expect(
+                webviewState,
+                "authoritative persistence must remove only the legacy top-level checked key",
+            ).toEqual({
+                unrelated: 42,
+                checkedByRepository: { "/repo-a": ["src/a.ts"] },
+            });
 
             await harness.render([], "/repo-a", true);
             expect(Array.from(harness.current().checkedPaths)).toEqual([]);
-            expect(webviewState).toMatchObject({
+            expect(webviewState).toEqual({
                 unrelated: 42,
-                checked: ["src/legacy.ts"],
                 checkedByRepository: { "/repo-a": [] },
             });
 

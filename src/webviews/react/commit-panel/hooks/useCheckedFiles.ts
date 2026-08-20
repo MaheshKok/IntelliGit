@@ -96,17 +96,17 @@ export function useCheckedFiles(
         knownPaths: new Set(),
     }));
     const validPaths = useMemo(() => buildSelectablePathSet(allFiles), [allFiles]);
+    const ownsHydratedRepository =
+        repositoryRoot !== undefined &&
+        filesHydrated &&
+        state.repositoryRoot === repositoryRoot &&
+        state.hydrated;
     const currentCheckedPaths = useMemo(() => {
-        if (
-            repositoryRoot === undefined ||
-            !filesHydrated ||
-            state.repositoryRoot !== repositoryRoot ||
-            !state.hydrated
-        ) {
+        if (!ownsHydratedRepository) {
             return new Set<string>();
         }
         return pruneToKnownPaths(state.checkedPaths, validPaths);
-    }, [filesHydrated, repositoryRoot, state, validPaths]);
+    }, [ownsHydratedRepository, state.checkedPaths, validPaths]);
 
     useEffect(() => {
         if (repositoryRoot === undefined) {
@@ -165,25 +165,21 @@ export function useCheckedFiles(
 
     // Persist to vscode state on every change (merge to preserve other keys).
     useEffect(() => {
-        if (
-            repositoryRoot === undefined ||
-            !filesHydrated ||
-            state.repositoryRoot !== repositoryRoot ||
-            !state.hydrated
-        ) {
-            return;
-        }
+        const ownedRepositoryRoot = repositoryRoot;
+        if (!ownsHydratedRepository || ownedRepositoryRoot === undefined) return;
         const vscode = getVsCodeApi();
         const prev = vscode.getState() ?? {};
+        const nextState = { ...prev };
+        delete nextState.checked;
         // react-doctor-disable-next-line react-doctor/no-event-handler
         vscode.setState({
-            ...prev,
+            ...nextState,
             checkedByRepository: {
                 ...savedCheckedByRepository(prev),
-                [repositoryRoot]: Array.from(currentCheckedPaths),
+                [ownedRepositoryRoot]: Array.from(currentCheckedPaths),
             },
         });
-    }, [currentCheckedPaths, filesHydrated, repositoryRoot, state]);
+    }, [currentCheckedPaths, ownsHydratedRepository, repositoryRoot]);
 
     const toggleFile = useCallback(
         (path: string) => {
