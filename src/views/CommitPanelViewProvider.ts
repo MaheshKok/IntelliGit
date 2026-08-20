@@ -107,6 +107,26 @@ function isHydrationReAsk(attempt: unknown): boolean {
 }
 
 /**
+ * Reads `WebviewView.visible` without letting a view that can no longer answer for itself decide
+ * the outcome by throwing.
+ *
+ * Every getter on a disposed `WebviewView` raises rather than returning a value, so `view.visible`
+ * is not a question that always has an answer. `fallback` is deliberately per-call rather than a
+ * single constant, because the two readers in {@link CommitPanelViewProvider.adoptLiveSender} fail
+ * safe in OPPOSITE directions: a recorded view that cannot be read can no longer render anything,
+ * so it must not keep ownership (`false`), while a sender that cannot be read has just delivered a
+ * message and so must not be denied it (`true`). One shared default would strand the panel on
+ * whichever side it got wrong.
+ */
+function readVisible(view: vscode.WebviewView, fallback: boolean): boolean {
+    try {
+        return view.visible;
+    } catch {
+        return fallback;
+    }
+}
+
+/**
  * Hosts the sidebar Changes webview and its embedded commit graph protocol.
  *
  * The provider owns working-tree, stash, commit-draft, branch-filter, pagination, and commit
@@ -1096,9 +1116,15 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             }
         });
         webviewView.webview.onDidReceiveMessage(async (msg) => {
-            this.adoptLiveSender(thisView);
             const message: unknown = msg;
             try {
+                // Inside the try, not before it. Adoption reads state owned by VS Code rather than
+                // by this provider, so it can raise; raising ahead of the try rejected this async
+                // listener before `handleMessage` ran, which posted nothing, showed nothing and
+                // logged nothing. Every retry then died at the same line, so a panel waiting on
+                // hydration stayed blank while looking, from every angle, like a host that had
+                // simply gone quiet.
+                this.adoptLiveSender(thisView);
                 await this.handleMessage(message);
             } catch (err) {
                 const errorMessage = getErrorMessage(err);
@@ -2097,10 +2123,20 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
      * every post to a dead webview is reported by {@link postWebviewMessage} -- whereas the one
      * this method exists to prevent is completely silent, which is why it went undiagnosed across
      * four investigations. Trading a reported failure for an unreported one is the point.
+     *
+     * That "loud" only ever covered a dead view being POSTED to. Reading one is the other half,
+     * and it used to be silent: both visibility checks below dereference a view whose getters
+     * raise once VS Code has disposed it, and this method ran ahead of its caller's `try`. See
+     * {@link readVisible} for why the two reads fail safe in opposite directions -- and note that
+     * a dead record could only ever be replaced here, since nothing else clears one that
+     * {@link resolveWebviewView}'s own dispose handler did not record.
      */
     private adoptLiveSender(sender: vscode.WebviewView): void {
         const current = this.view;
-        if (current !== undefined && (current === sender || current.visible || !sender.visible)) {
+        if (
+            current !== undefined &&
+            (current === sender || readVisible(current, false) || !readVisible(sender, true))
+        ) {
             return;
         }
         if (current !== undefined) {
