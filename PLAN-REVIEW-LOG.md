@@ -135,10 +135,13 @@ Mode: phase-lane (thin conductor + one fresh opus lane per phase; lanes strictly
 | ----- | --------------------------------------------------------------------------------------------- | ------- |
 | P0    | Phase 0 (1.1–1.4): diff-core extraction, pane generalization, shared CSS, contract tests       | accepted |
 | P1    | Phase 1 (2.1–2.6): computeDiffSegments, DiffViewerApp, bundle, panel, protocol, l10n, tests    | accepted |
-| P2a   | Phase 2 (3.1–3.3): openUnifiedDiff funnel + setting, side loader, budget measurement           | pending |
-| P2b   | Phase 2 (3.5–3.6): generation-bound sessions, fallback CAS, watchers, live refresh             | pending |
+| P2a   | Phase 2 (3.1-3.3): openUnifiedDiff funnel, side loader, budget measurement                     | **accepted 0399aea9** |
+| P2b-i | Phase 2 (3.5): generation-bound sessions, frozen snapshots, fallback CAS                       | pending |
+| P2b-ii| Phase 2 (3.6): root-keyed change event, watcher refcounts, live refresh, loadError       | pending |
 | P2c   | Phase 2 (3.4, 3.7, 3.8): call-site rewires, ride-along integration, full gate battery          | pending |
-| P3    | Phase 3 (4.1–4.4): straggler sweep, css-modules.d.ts removal, docs                             | pending |
+| P4    | Phase 4: editable working-tree pane via CustomTextEditorProvider                     | pending |
+| P5    | Phase 5: find-in-diff via enableFindWidget + DOM-completeness gate                             | pending |
+| P3    | Phase 3: straggler sweep, css-modules.d.ts removal, docs                             | pending |
 
 Sizing note: spec Phase 2 split into three lanes (machinery → concurrency/refresh → wiring+gate) to hold each Codex session near the 45–50% peak target. P0 predicted ~55% — above target but kept whole: splitting a move+generalize refactor mid-seam leaves a broken intermediate tree; the continuation path absorbs overflow.
 
@@ -806,3 +809,41 @@ The same review turned up a second, larger item: the user expects the **2-pane v
 This is not absorbed silently. It is recorded in `PLAN.md` under **Pending scope change — BLOCKS Phase 2b**, because §3.5's session model rests on "resolved immutable side snapshots" that `setIgnoreMode` recomputation reuses without reloading providers. An editable pane breaks that premise outright — dirty state, a write-back protocol direction, save/undo semantics, external-change conflicts, and a different answer for what a generation-bound refresh does to unsaved edits. Building 2b on frozen snapshots and retrofitting editability means rewriting 2b.
 
 P2a is unaffected either way: the funnel, side loader, and budgets are identical whether or not the viewer later becomes editable. So P2a commits, and the build **stops there** pending a `claudex-grill` round on editable mode.
+
+#### P2a — accepted, commit `0399aea9`
+
+Accept-stage battery over the final bytes: **10/10 gates GREEN, `warn=0`, `GATES_RC=0`** (`typecheck` 7.4s, `lint-strict` 14.4s, `format-check` 6.5s, `architecture` 1.0s, `deps-knip` 1.2s, `l10n-validate` 0.1s, `l10n-audit` 0.4s, `package-vsix` 2.5s, `tests` 434.8s, `visual-container` 1015.5s). Commit `0399aea9`, 17 files, +1576/-11, tree clean afterwards.
+
+Two notes on what the commit contains beyond the funnel itself, both read at root from the diff rather than taken from a report:
+
+- `src/git/operations.ts` widens `isMissingGitPathError` from module-private to exported, so the side loader classifies an absent path instead of re-implementing the message matching. One-word diff, no behaviour change.
+- `src/views/DiffViewerPanel.ts` gains an optional `title`, and the triplicated `vscode.l10n.t("Diff: {file}", …)` expression collapses into one `panelTitle()` helper used by all three call sites (create, reveal, shell HTML). `tests/unit/views/diffViewerPanel.test.ts` covers both the create and the reveal path, which matters because the reveal path is the one a second open takes.
+
+`knip.jsonc` gained `scripts/measure-diff-budgets.ts` under `entry` — correct, since the measurement script is a hand-run graph root that nothing imports, and an `entry` states that rather than suppressing a finding the way an ignore would. A comment was added at root before commit because the line sat under a comment about negative typecheck fixtures and read as part of that group. `format:check` and strict `knip` re-run green after that edit; the remaining eight gates are untouched by a comment inside a JSONC config and were **not** re-run.
+
+`.githooks` does not exist in this worktree, so the repo's pre-commit hook silently no-ops here (a worktree's `.git` is a pointer). The gate battery above is the actual gate, not the hook.
+
+#### Scope change resolved — Phases 4 and 5 added
+
+The user answered the surface question with the full table in hand. Decisions:
+
+1. **Editable panes on every surface that has one** — rows 1, 2, 4, 5b. Rows 3 and 5a stay read-only because both of their sides are immutable history.
+2. **External change while dirty behaves like a normal editor** — inherited, not implemented.
+
+The load-bearing discovery that shaped the design, found by reading the call sites rather than the plan: the user's own PyCharm reference case (stash → file → edit the local side) is **read-only on both sides in IntelliGit today**, and would be even with the native editor, because `prepareStashLocalDiffSnapshot` (panelFileActions.ts:185) and `readLocalSnapshot` (shelfDiffActions.ts:124) wrap the file's text in `createReadonlyDiffUri`. The local side is a photocopy. So rows 4 and 5b are a **new capability, not a preserved one**, and the framing of "keep what native gave us" would have missed it entirely.
+
+Second consequence, recorded because it changes a frozen decision: write-through as specified is `CustomTextEditorProvider`, which is bound to one resource with a VS Code-managed lifecycle, and therefore cannot also be Key decision 4's single reusable panel with swapped content. Phase 4.3 narrows decision 4 to the read-only surfaces and gives working-tree surfaces a per-file custom editor — which is also what PyCharm does. **That narrowing needs explicit user confirmation before Phase 4 builds**; it is flagged in the plan rather than assumed.
+
+Third, and the reason the editable-side test is parameterized: the editable side is **not a fixed pane index**. It is the left pane in row 4 and the right pane in rows 1, 2, and 5b. A test asserting "the right pane is editable" would pass on three rows and hide the user's own case.
+
+Phase 3 (cleanup and docs) is re-ordered to run last so the docs describe the shipped feature set.
+
+Build order from here is unchanged for the routing work: **P2b → P2c → P4 → P5 → P3**, each sliced tighter than P2a's 87% peak.
+
+#### P2b sliced before launch, and decision 4 confirmed
+
+The user confirmed the two-panel-kinds narrowing. That resolves P2b's entry condition rather than only Phase 4's: §3.5's frozen-snapshot session model survives intact, because editable surfaces leave the reusable panel entirely for a `CustomTextEditorProvider`. Had the single reusable panel won, §3.5 would have had to carry a live `TextDocument` side and P2b would have needed a different design.
+
+P2b splits into **P2b-i (§3.5)** and **P2b-ii (§3.6)** before launch, not after a session bloats. P2a ran 87% peak against a 45-50% target on a *fix* round carrying only a defect list, and the diagnosis recorded there was that the work order held three independent deliverables. §3.5 (session identity, generation ordering, fallback compare-and-swap, delegate cancellation) and §3.6 (root-keyed change event, watcher reference counting, live re-resolution, loadError state) are exactly that shape again: two deliverables that share a data structure but no control flow.
+
+P2b-i runs **classic in-root**, same as P2a. The two P2a phase-lane deaths came from the harness stream watchdog killing a lane that was blocking on its Codex background task; the main session is not killed the same way, and one of those deaths cost a complete 47-minute Codex session whose work order had already been fully executed.
