@@ -5,6 +5,16 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.27.2] - 2026-08-20
+
+### Fixed
+
+- Fixed a case where the Commit panel could sit empty indefinitely after asking the extension host for its contents. Which webview owns the panel is decided by reading whether each one is on screen, and a webview VS Code has already destroyed answers that question by raising an error rather than by answering it. That read happened before the surrounding error handling began, so the request was abandoned with nothing posted, nothing logged and no message shown — and every retry was abandoned the same way, which is why the panel stayed blank rather than recovering. A view that can no longer be read now yields the panel to the one actually asking, and a failure at that point is reported rather than silent.
+
+### Changed
+
+- Extended the development-only handshake diagnostics added in 0.27.1 to the extension host's side of the exchange, which is the half that says whether a request from the panel arrived at all. Message types only, never their contents, and gated on the same development-only flag as the rest of the test control channel: an installed extension records nothing and behaves identically.
+
 ## [0.27.1] - 2026-08-20
 
 ### Changed

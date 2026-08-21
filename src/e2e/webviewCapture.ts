@@ -59,6 +59,44 @@ export class WebviewCaptureSink {
 }
 
 /**
+ * The handshake message types traced by {@link traceHandshake}, one per direction.
+ *
+ * Deliberately two names rather than every message: the flow suite's timeout dump prints a bounded
+ * trail of the newest console lines, so a line per message would evict the handshake it exists to
+ * show.
+ */
+const HANDSHAKE_TRACED_TYPES = new Set(["ready", "setRepositories"]);
+
+/** Prefix every traced line carries, so the dump's reader can tell host lines from webview ones. */
+const HANDSHAKE_TRACE_PREFIX = "[intelligit-e2e] handshake";
+
+/**
+ * Records one leg of the hydration handshake where the E2E flow suite can read it.
+ *
+ * The webview's own counters (`src/webviews/react/shared/hydrationDiagnostics.ts`) can only ever
+ * prove that the WEBVIEW asked: a host that never received the ask and a host that received it and
+ * answered into a view nobody is looking at both leave `received:0` behind, and the blank-panel
+ * failure this exists for has so far produced byte-identical dumps under both. The host's own count
+ * is the half that separates them, and extension-host `console.error` is the one channel that
+ * reaches Playwright's page console -- which is exactly where `IntelliGitView` reads its trail from.
+ *
+ * Message TYPE only, never a payload: a captured message can carry real repository data, and this
+ * line ends up in a CI artifact.
+ */
+function traceHandshake(
+    contextId: WebviewContextId,
+    direction: "in" | "out",
+    message: unknown,
+): void {
+    const type: unknown =
+        typeof message === "object" && message !== null
+            ? (message as { type?: unknown }).type
+            : undefined;
+    if (typeof type !== "string" || !HANDSHAKE_TRACED_TYPES.has(type)) return;
+    console.error(`${HANDSHAKE_TRACE_PREFIX} ${contextId} ${direction} ${type}`);
+}
+
+/**
  * Process-wide capture sink, allocated lazily and only along the gate-active path (see
  * {@link captureWebview}). A production install where the E2E gate never activates must never
  * hold one of these -- there is no other allocation site.
@@ -114,10 +152,26 @@ export function wrapWebviewForCapture(
         get cspSource() {
             return webview.cspSource;
         },
-        onDidReceiveMessage: webview.onDidReceiveMessage.bind(webview),
+        // Wrapped rather than merely bound, so the INBOUND leg is observable too. The listener is
+        // invoked unchanged and its return value passed straight back: this must stay a tap on the
+        // wire, never a filter on it.
+        onDidReceiveMessage: (
+            listener: (message: unknown) => unknown,
+            thisArgs?: unknown,
+            disposables?: vscode.Disposable[],
+        ): vscode.Disposable =>
+            webview.onDidReceiveMessage(
+                (message: unknown) => {
+                    traceHandshake(contextId, "in", message);
+                    return listener.call(thisArgs, message);
+                },
+                undefined,
+                disposables,
+            ),
         asWebviewUri: (localResource: vscode.Uri) => webview.asWebviewUri(localResource),
         postMessage: (message: unknown): Thenable<boolean> => {
             sink.record(contextId, message);
+            traceHandshake(contextId, "out", message);
             return webview.postMessage(message);
         },
     };

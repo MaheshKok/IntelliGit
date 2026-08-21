@@ -99,9 +99,16 @@ function isRecord(value: unknown): value is Record<string, unknown> {
  */
 type DeliveryOutcome = "delivered" | "refused" | "rejected";
 
+/**
+ * What `WebviewView.visible` answers. `"disposed"` is not a third visibility -- it is the absence of
+ * an answer: every getter on a disposed `WebviewView` raises instead of returning, so code that
+ * reads one has to decide what an unreadable view means rather than receiving a boolean.
+ */
+type Visibility = boolean | "disposed";
+
 function createInspectableCommitPanelWebviewView(
     outcome: DeliveryOutcome = "delivered",
-    visible = true,
+    visible: Visibility = true,
 ): {
     readonly webviewView: vscode.WebviewView;
     readonly posted: unknown[];
@@ -132,7 +139,12 @@ function createInspectableCommitPanelWebviewView(
 
     const webviewView = {
         webview,
-        visible,
+        get visible(): boolean {
+            if (visible === "disposed") {
+                throw new Error("Webview is disposed");
+            }
+            return visible;
+        },
         onDidDispose: (listener: () => void) => {
             disposeHandler = listener;
             return inertDisposable();
@@ -680,6 +692,148 @@ describe("CommitPanelViewProvider hydration answers the webview that asked", () 
             messagesOfType(hiddenCached.posted, "setRepositories").length,
             "a hidden cached view must not receive hydration from the visible sender",
         ).toBe(hiddenBefore);
+    });
+
+    /**
+     * Both tests below are about the same thing from opposite sides: the ownership decision reads
+     * `visible` on two views, and a disposed `WebviewView` answers neither read -- it raises.
+     *
+     * Reading one used to happen before the caller's `try`, so the raise rejected the message
+     * listener outright. Nothing was posted, nothing was shown, nothing was logged, and every
+     * retry died at the identical line -- which is what an unhydrated panel looks like in CI:
+     * `asks:18 received:0` from the webview's own counters, beside a host holding a fully
+     * populated repository.
+     *
+     * The two directions cannot share a default. An unreadable RECORDED view has to yield, because
+     * it can no longer render what it is being handed; an unreadable SENDER has to be answered,
+     * because it just spoke. One constant for both strands the panel on whichever side it gets
+     * wrong, so each is pinned separately here.
+     */
+    it("answers a live sender when the recorded view can no longer be read", async () => {
+        const parentDir = await mkdtemp(path.join(tmpdir(), "intelligit-dead-record-"));
+        scratch.register(parentDir);
+        const workspace = await prepareDirtyWorkspace(path.join(parentDir, "root"));
+
+        const constructorOptions = buildCommitPanelConstructorOptions();
+        const provider = new CommitPanelViewProvider(
+            createFakeExtensionUri(),
+            new GitOps(new GitExecutor(workspace.root, undefined, toGitEnvironment(workspace.env))),
+            createFakeUriFromPath(workspace.root),
+            createEmptyWorkspaceMemento(),
+            undefined, // secrets -- nothing on this path reads a secret.
+            constructorOptions.shelfServiceForRepository,
+            constructorOptions.shelfRemoveOnUnshelve,
+            constructorOptions.commitMessageGenerationCoordinator,
+            constructorOptions.interactiveRebaseStorageRoot,
+        );
+
+        const onScreen = createInspectableCommitPanelWebviewView("delivered", true);
+        provider.resolveWebviewView(onScreen.webviewView, INERT_CONTEXT, INERT_TOKEN);
+        // Resolved second, so it owns the record. VS Code disposed it without this provider's
+        // dispose handler clearing the record -- that handler only fires for the view it was
+        // registered on, so a record can outlive the view it names.
+        const disposedRecord = createInspectableCommitPanelWebviewView("delivered", "disposed");
+        provider.resolveWebviewView(disposedRecord.webviewView, INERT_CONTEXT, INERT_TOKEN);
+
+        const onScreenBefore = messagesOfType(onScreen.posted, "setRepositories").length;
+
+        await onScreen.receiveMessage({ type: "ready", attempt: 18 });
+        await flushMicrotasks();
+
+        expect(
+            messagesOfType(onScreen.posted, "setRepositories").length,
+            "a panel asking for hydration must be answered even when the record names a view " +
+                "that can no longer answer for itself; the alternative is a pane that asks " +
+                "forever and is never told anything",
+        ).toBeGreaterThan(onScreenBefore);
+    });
+
+    it("answers a sender it can no longer read rather than the hidden view holding the record", async () => {
+        const parentDir = await mkdtemp(path.join(tmpdir(), "intelligit-unreadable-sender-"));
+        scratch.register(parentDir);
+        const workspace = await prepareDirtyWorkspace(path.join(parentDir, "root"));
+
+        const constructorOptions = buildCommitPanelConstructorOptions();
+        const provider = new CommitPanelViewProvider(
+            createFakeExtensionUri(),
+            new GitOps(new GitExecutor(workspace.root, undefined, toGitEnvironment(workspace.env))),
+            createFakeUriFromPath(workspace.root),
+            createEmptyWorkspaceMemento(),
+            undefined,
+            constructorOptions.shelfServiceForRepository,
+            constructorOptions.shelfRemoveOnUnshelve,
+            constructorOptions.commitMessageGenerationCoordinator,
+            constructorOptions.interactiveRebaseStorageRoot,
+        );
+
+        const sender = createInspectableCommitPanelWebviewView("delivered", "disposed");
+        provider.resolveWebviewView(sender.webviewView, INERT_CONTEXT, INERT_TOKEN);
+        const hiddenCached = createInspectableCommitPanelWebviewView("delivered", false);
+        provider.resolveWebviewView(hiddenCached.webviewView, INERT_CONTEXT, INERT_TOKEN);
+
+        const senderBefore = messagesOfType(sender.posted, "setRepositories").length;
+        const hiddenBefore = messagesOfType(hiddenCached.posted, "setRepositories").length;
+
+        await sender.receiveMessage({ type: "ready", attempt: 18 });
+        await flushMicrotasks();
+
+        expect(
+            messagesOfType(sender.posted, "setRepositories").length,
+            "a view that just delivered a message is the one waiting for the answer, whether or " +
+                "not its visibility can be read; a post that fails from here is reported, where " +
+                "withholding it is not",
+        ).toBeGreaterThan(senderBefore);
+        expect(
+            messagesOfType(hiddenCached.posted, "setRepositories").length,
+            "the hidden cached view asked for nothing and must not be answered in its place",
+        ).toBe(hiddenBefore);
+    });
+
+    /**
+     * The third row of the ownership table, and the one the two tests above straddle without
+     * covering: the record is unreadable AND the sender is hidden.
+     *
+     * A hidden sender is not a quiet one -- VS Code reloads a hidden view's document without
+     * re-running `resolveWebviewView`, which is the very case this whole path exists for, so the
+     * `ready` arriving here is from a live view that will render the moment its pane is shown.
+     * The recorded view, by contrast, can no longer be read and so can no longer render anything
+     * at all. Keeping ownership there answers a view that cannot listen and strands the one that
+     * asked, which is the exact silence the adoption logic was written to end.
+     */
+    it("answers a hidden sender when the recorded view can no longer be read", async () => {
+        const parentDir = await mkdtemp(path.join(tmpdir(), "intelligit-dead-record-hidden-"));
+        scratch.register(parentDir);
+        const workspace = await prepareDirtyWorkspace(path.join(parentDir, "root"));
+
+        const constructorOptions = buildCommitPanelConstructorOptions();
+        const provider = new CommitPanelViewProvider(
+            createFakeExtensionUri(),
+            new GitOps(new GitExecutor(workspace.root, undefined, toGitEnvironment(workspace.env))),
+            createFakeUriFromPath(workspace.root),
+            createEmptyWorkspaceMemento(),
+            undefined, // secrets -- nothing on this path reads a secret.
+            constructorOptions.shelfServiceForRepository,
+            constructorOptions.shelfRemoveOnUnshelve,
+            constructorOptions.commitMessageGenerationCoordinator,
+            constructorOptions.interactiveRebaseStorageRoot,
+        );
+
+        const hiddenSender = createInspectableCommitPanelWebviewView("delivered", false);
+        provider.resolveWebviewView(hiddenSender.webviewView, INERT_CONTEXT, INERT_TOKEN);
+        // Resolved second, so it holds the record when the hidden view speaks.
+        const disposedRecord = createInspectableCommitPanelWebviewView("delivered", "disposed");
+        provider.resolveWebviewView(disposedRecord.webviewView, INERT_CONTEXT, INERT_TOKEN);
+
+        const hiddenBefore = messagesOfType(hiddenSender.posted, "setRepositories").length;
+
+        await hiddenSender.receiveMessage({ type: "ready", attempt: 18 });
+        await flushMicrotasks();
+
+        expect(
+            messagesOfType(hiddenSender.posted, "setRepositories").length,
+            "a hidden view that asked for hydration is still the only view that can ever render " +
+                "the answer; a record that cannot be read has no claim to outrank it",
+        ).toBeGreaterThan(hiddenBefore);
     });
 
     it("reposts unchanged commit detail to a newly adopted visible sender", async () => {
