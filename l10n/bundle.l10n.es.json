@@ -605,5 +605,6 @@
     "The shelf conflict changed while this editor was open.": "El conflicto del estante cambió mientras este editor estaba abierto.",
     "Keep working tree": "Mantener el árbol de trabajo",
     "Overwrite (previous content saved to recovery)": "Sobrescribir (el contenido anterior se guardó en recuperación)",
-    "Manage the GitHub sign-in from the VS Code Accounts menu.": "Administre el inicio de sesión de GitHub desde el menú Cuentas de VS Code."
+    "Manage the GitHub sign-in from the VS Code Accounts menu.": "Administre el inicio de sesión de GitHub desde el menú Cuentas de VS Code.",
+    "Diff: {file}": "Diff: {file}"
 }

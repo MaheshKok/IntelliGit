@@ -5,22 +5,52 @@
     --diff-editor-fg: var(--merge-editor-fg, var(--vscode-editor-foreground, #bfc7d5));
     --diff-border: var(--merge-border, color-mix(in srgb, var(--diff-editor-fg) 14%, transparent));
     --diff-muted: var(--merge-muted, var(--vscode-descriptionForeground, #9ca3af));
+    /* Semantic hues, mirroring the merge surface's tokens so a read-only pane that
+       imports diff-core alone still resolves to real colours. The merge editor
+       declares --merge-* itself, so these read through to the identical values
+       there, and a viewer that never imports the merge palette still gets a real
+       hue rather than a fallback that collapses onto the editor background.
+       No --diff-danger: the only hue a two-pane diff never needs is the conflict
+       one, and a declared hue nothing reads is a dead declaration. */
+    --diff-ok: var(--merge-ok, var(--vscode-charts-green, #79c18d));
+    --diff-info: var(--merge-info, var(--vscode-terminal-ansiCyan, #58b5c9));
     --diff-line-number-gutter: var(--merge-line-number-gutter, 33px);
     --diff-line-min-width: var(--merge-line-min-width, 0px);
     --diff-action-gutter: var(--merge-action-gutter, 44px);
+    --diff-viewer-action-gutter: 0px;
     --diff-code-font-size: var(--merge-code-font-size, var(--vscode-editor-font-size, 13px));
     --diff-pane-boundary: var(
         --merge-pane-boundary,
         color-mix(in srgb, var(--diff-editor-fg) 24%, var(--diff-editor-bg))
     );
-    --diff-conflict-block-bg: var(--merge-conflict-block-bg, var(--diff-editor-bg));
-    --diff-inserted-block-bg: var(--merge-inserted-block-bg, var(--diff-editor-bg));
-    --diff-modified-block-bg: var(--merge-modified-block-bg, var(--diff-editor-bg));
-    --diff-deleted-block-bg: var(--merge-deleted-block-bg, var(--diff-editor-bg));
-    --diff-pycharm-conflict: var(--pycharm-conflict, var(--diff-conflict-block-bg));
-    --diff-pycharm-inserted: var(--pycharm-inserted, var(--diff-inserted-block-bg));
-    --diff-pycharm-modified: var(--pycharm-modified, var(--diff-modified-block-bg));
-    --diff-pycharm-deleted: var(--pycharm-deleted, var(--diff-deleted-block-bg));
+    /* Word-fragment tint at the merge surface's own strength, and the only paint
+       alias diff-core still owns. The merge editor declares --pycharm-modified, so
+       there this reads through to the identical value it always had.
+       The fallback leg is `transparent`, not a colour, and that is the whole of the
+       read-only surface's palette decision: a background behind code text spends
+       contrast the syntax palette has no budget for. VS Code's light themes colour
+       the number token #098658, which measures 4.60:1 on the plain editor
+       background -- 0.10 above the 4.5 floor the non-pixel contrast oracle enforces
+       -- so any wash under a code row drops it below (measured 4.3-4.4 across
+       light-modern and hc-light at a mix as faint as 4%). A read-only pane
+       therefore marks changes at the block edge and underlines changed fragments;
+       see diff-viewer.css. An editable surface can afford the filled body because
+       each fragment there is a click target, not only a marker. */
+    --diff-pycharm-modified: var(--pycharm-modified, transparent);
+}
+
+/* The merge surface sets this contract on `.merge-content`; a read-only surface
+   has no merge-only container, so diff-core owns the same code metrics here. */
+.diff-core {
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-size: var(--diff-code-font-size, var(--vscode-editor-font-size, 13px));
+    line-height: 20px;
+}
+
+/* Read-only panes have no merge action strip; the named input keeps that choice
+   explicit without changing the merge editor's 44px action gutter. */
+.diff-core.diff-viewer {
+    --diff-action-gutter: var(--diff-viewer-action-gutter, 0px);
 }
 
 .segment {
@@ -53,10 +83,6 @@
         );
 }
 
-.code-block.no-line-numbers {
-    grid-template-columns: minmax(0, 1fr);
-}
-
 .line-numbers {
     background: transparent;
     /* 45% of the editor foreground is the smallest mix that clears the floor in
@@ -83,10 +109,6 @@
     padding-left: var(--diff-action-gutter);
 }
 
-.line-numbers.has-secondary .line-number-row {
-    grid-template-columns: 1fr 1fr;
-}
-
 .line-number {
     padding: 0 7px 0 3px;
     text-align: right;
@@ -95,18 +117,8 @@
     border-left: 1px solid transparent;
 }
 
-.line-number-secondary {
-    color: color-mix(in srgb, var(--diff-muted) 58%, transparent);
-    font-size: 11px;
-    padding-right: 4px;
-}
-
 .line-number-primary {
     padding-left: 4px;
-}
-
-.line-numbers.has-secondary .line-number-primary {
-    border-left-color: color-mix(in srgb, var(--diff-border) 60%, transparent);
 }
 
 .code-lines {

@@ -376,5 +376,8 @@
         "many": "{count} исходящих коммитов",
         "other": "{count} исходящего коммита"
     },
-    "branch.tracking.combined": "{incoming} и {outgoing}"
+    "branch.tracking.combined": "{incoming} и {outgoing}",
+    "diff.newlineDifference": "Файлы различаются только форматом перевода строк",
+    "diff.error.load": "Не удалось загрузить сравнение: {error}",
+    "diff.loading": "Загрузка сравнения..."
 }

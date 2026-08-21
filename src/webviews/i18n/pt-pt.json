@@ -367,5 +367,8 @@
         "many": "{count} commits enviados",
         "other": "{count} commits enviados"
     },
-    "branch.tracking.combined": "{incoming} e {outgoing}"
+    "branch.tracking.combined": "{incoming} e {outgoing}",
+    "diff.newlineDifference": "Os ficheiros diferem apenas na formatação das quebras de linha",
+    "diff.error.load": "Falha ao carregar o diff: {error}",
+    "diff.loading": "A carregar o diff..."
 }

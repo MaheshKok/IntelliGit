@@ -605,5 +605,6 @@
     "The shelf conflict changed while this editor was open.": "此編輯器開啟期間，擱置衝突已發生變化。",
     "Keep working tree": "保留工作樹",
     "Overwrite (previous content saved to recovery)": "覆寫（先前內容已儲存到復原）",
-    "Manage the GitHub sign-in from the VS Code Accounts menu.": "請在 VS Code 的帳戶功能表中管理 GitHub 登入。"
+    "Manage the GitHub sign-in from the VS Code Accounts menu.": "請在 VS Code 的帳戶功能表中管理 GitHub 登入。",
+    "Diff: {file}": "差異：{file}"
 }

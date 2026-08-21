@@ -51,6 +51,10 @@ import {
     recordShelfConflictEditorWebviewFixture,
     SHELF_CONFLICT_EDITOR_CONFLICTED_SCENARIO,
 } from "./recordShelfConflictEditorWebviewFixture";
+import {
+    DIFF_VIEWER_CLEAN_SCENARIO,
+    recordDiffViewerWebviewFixture,
+} from "./recordDiffViewerWebviewFixture";
 import type { WebviewFixture } from "./webviewFixtureTypes";
 
 /** One registered recording: which committed fixture it produces, and how to reproduce it. */
@@ -210,5 +214,19 @@ export const WEBVIEW_FIXTURE_RECORDERS: readonly WebviewFixtureRecorderEntry[] =
                 env: workspace.env,
             });
         },
+    },
+    {
+        contextId: "diff-viewer",
+        scenario: DIFF_VIEWER_CLEAN_SCENARIO,
+        record: (workspace) =>
+            recordDiffViewerWebviewFixture({
+                repoRoot: workspace.root,
+                roots: {
+                    root: workspace.root,
+                    originRoot: workspace.template?.originRoot ?? "",
+                    profileDir: "",
+                },
+                env: workspace.env,
+            }),
     },
 ];

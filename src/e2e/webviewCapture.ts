@@ -1,5 +1,5 @@
 // Captures extension -> webview `postMessage` traffic for the visual-harness drift guard and,
-// eventually, Phase 2b's protocol recorder. See PLAN.md Phase 3 step 15 (the 8 resolved host
+// eventually, Phase 2b's protocol recorder. See PLAN.md Phase 3 step 15 (the 9 resolved host
 // contexts table) and step 16 (the exact set-equality drift guard). Capture happens by wrapping
 // the *webview object* at the boundary where each host hands its webview to the code that
 // renders into it -- never by editing an emitter's body (`postToWebview`, `resolveWebviewView`),
@@ -12,7 +12,7 @@ import type * as vscode from "vscode";
 import { isE2eControlChannelActive } from "./activationState";
 
 /**
- * The 8 resolved host contexts a bundled webview can be rendered into, exactly as enumerated in
+ * The 9 resolved host contexts a bundled webview can be rendered into, exactly as enumerated in
  * PLAN.md Phase 3 step 15's table. Keyed by "resolved host context" rather than by bundle or by
  * call site because neither is 1:1 with a rendered shell: two contexts share the
  * `webview-mergeeditor.js` bundle (`merge-editor`, `shelf-conflict-editor`), and one call site
@@ -28,9 +28,10 @@ export const WEBVIEW_CONTEXT_IDS = [
     "merge-editor",
     "shelf-conflict-editor",
     "merge-conflict-session",
+    "diff-viewer",
 ] as const;
 
-/** One of the 8 resolved host contexts. Assigning an unlisted string is a compile error. */
+/** One of the 9 resolved host contexts. Assigning an unlisted string is a compile error. */
 export type WebviewContextId = (typeof WEBVIEW_CONTEXT_IDS)[number];
 
 /** One captured extension -\> webview message, tagged with the host context that sent it. */

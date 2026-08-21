@@ -89,7 +89,7 @@ function EditableResultBlock({
     const rowCount = Math.max(draft.split("\n").length, lineCount, 1);
     return (
         <div className={`code-block ${className ?? ""} editing`}>
-            <LineNumbers primary={lineNumbers.primary} secondary={lineNumbers.secondary} />
+            <LineNumbers primary={lineNumbers.primary} />
             <textarea
                 className="result-edit-textarea"
                 aria-label={t("merge.result.editingAria")}

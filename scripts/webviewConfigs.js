@@ -6,6 +6,7 @@ const WEBVIEW_CONFIGS = [
     { entry: "react/commit-panel/CommitPanelApp", out: "webview-commitpanel" },
     { entry: "react/CommitInfoApp", out: "webview-commitinfo" },
     { entry: "react/merge-editor/MergeEditorApp", out: "webview-mergeeditor" },
+    { entry: "react/diff-viewer/DiffViewerApp", out: "webview-diffviewer" },
     {
         entry: "react/merge-conflicts-session/MergeConflictSessionApp",
         out: "webview-mergeconflictsession",

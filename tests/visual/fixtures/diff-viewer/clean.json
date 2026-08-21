@@ -1,0 +1,113 @@
+{
+    "schemaVersion": 1,
+    "contextId": "diff-viewer",
+    "scenario": "clean",
+    "messages": [
+        {
+            "contextId": "diff-viewer",
+            "message": {
+                "type": "setDiffData",
+                "data": {
+                    "path": "diff-viewer.ts",
+                    "leftLabel": "HEAD",
+                    "rightLabel": "Working tree",
+                    "languageId": "typescript",
+                    "segments": [
+                        {
+                            "type": "common",
+                            "left": [
+                                "const hd0 = 0;",
+                                "const hd1 = 1;",
+                                "const hd2 = 2;"
+                            ],
+                            "right": [
+                                "const hd0 = 0;",
+                                "const hd1 = 1;",
+                                "const hd2 = 2;"
+                            ]
+                        },
+                        {
+                            "type": "changed",
+                            "left": [
+                                "const rm0 = 0;",
+                                "const rm1 = 1;",
+                                "const rm2 = 2;"
+                            ],
+                            "right": []
+                        },
+                        {
+                            "type": "common",
+                            "left": [
+                                "const md0 = 0;",
+                                "const md1 = 1;",
+                                "const md2 = 2;"
+                            ],
+                            "right": [
+                                "const md0 = 0;",
+                                "const md1 = 1;",
+                                "const md2 = 2;"
+                            ]
+                        },
+                        {
+                            "type": "changed",
+                            "left": [],
+                            "right": [
+                                "const ad0 = 0;",
+                                "const ad1 = 1;",
+                                "const ad2 = 2;",
+                                "const ad3 = 3;"
+                            ]
+                        },
+                        {
+                            "type": "common",
+                            "left": [
+                                "const sp0 = 0;",
+                                "const sp1 = 1;"
+                            ],
+                            "right": [
+                                "const sp0 = 0;",
+                                "const sp1 = 1;"
+                            ]
+                        },
+                        {
+                            "type": "changed",
+                            "left": [
+                                "let ch0 = 0;",
+                                "const ch1 = 1;",
+                                "const ch2 = 2;"
+                            ],
+                            "right": [
+                                "const ch0 = 0;",
+                                "const ch1 = 11;",
+                                "const ch2 = 22;"
+                            ]
+                        },
+                        {
+                            "type": "common",
+                            "left": [
+                                "const tl0 = 0;",
+                                "const tl1 = 1;",
+                                "const tl2 = 2;"
+                            ],
+                            "right": [
+                                "const tl0 = 0;",
+                                "const tl1 = 1;",
+                                "const tl2 = 2;"
+                            ]
+                        }
+                    ],
+                    "left": {
+                        "eol": "lf",
+                        "terminalNewline": true
+                    },
+                    "right": {
+                        "eol": "lf",
+                        "terminalNewline": true
+                    },
+                    "newlineDifference": false,
+                    "ignoreWhitespace": false
+                }
+            }
+        }
+    ]
+}

@@ -8,7 +8,7 @@ import {
     buildWordDiffMask,
     tokenSimilarityRatio,
     tokenizeWordDiff,
-} from "../../../mergeEditor/wordDiff";
+} from "../../../diff/wordDiff";
 import { highlightLine } from "./shikiHighlighter";
 import { useSyntaxHighlightState, type SyntaxHighlightState } from "./syntaxHighlightContext";
 import { tokenizeSyntaxLine, type SyntaxTokenKind } from "./syntaxHighlight";
@@ -174,7 +174,6 @@ const WordDiffLine = React.memo(function WordDiffLine({
 /** Line-number specifications for one code block. */
 export interface LineNumberSpec {
     primary: LineNumberValue[];
-    secondary?: LineNumberValue[];
 }
 
 interface LineNumbersProps extends LineNumberSpec {
@@ -197,10 +196,7 @@ function lineNumberValuesEqual(a: LineNumberValue[], b: LineNumberValue[]): bool
 /** Value-compares two line-number specifications for memoized block updates. */
 export function lineNumberSpecEqual(a: LineNumberSpec, b: LineNumberSpec): boolean {
     if (a === b) return true;
-    if (!lineNumberValuesEqual(a.primary, b.primary)) return false;
-    if (a.secondary === b.secondary) return true;
-    if (!a.secondary || !b.secondary) return false;
-    return lineNumberValuesEqual(a.secondary, b.secondary);
+    return lineNumberValuesEqual(a.primary, b.primary);
 }
 
 function rowPresenceEqual(a: boolean[] | undefined, b: boolean[] | undefined): boolean {
@@ -242,7 +238,6 @@ export interface CodeBlockProps {
     lines: string[];
     lineCount: number;
     lineNumbers: LineNumberSpec;
-    showLineNumbers?: boolean;
     lineNumberSide?: "left" | "right";
     className?: string;
     wordHighlight?: boolean;
@@ -251,17 +246,15 @@ export interface CodeBlockProps {
 
 function rowKey(lineNumbers: LineNumberSpec, line: string, row: number): string {
     const primary = lineNumbers.primary[row] ?? "gap";
-    const secondary = lineNumbers.secondary?.[row] ?? "gap";
-    return `${primary}-${secondary}-${row}-${line}`;
+    return `${primary}-${row}-${line}`;
 }
 
-/** Renders syntax-colored lines, word-diff overlays, and optional line numbers. */
+/** Renders syntax-colored lines, word-diff overlays, and line numbers. */
 export const CodeBlock = React.memo(
     function CodeBlock({
         lines,
         lineCount,
         lineNumbers,
-        showLineNumbers = true,
         lineNumberSide = "left",
         className,
         wordHighlight,
@@ -280,14 +273,10 @@ export const CodeBlock = React.memo(
 
         return (
             <div
-                className={`code-block ${showLineNumbers ? `line-numbers-${lineNumberSide}` : "no-line-numbers"} ${className ?? ""} ${wordHighlight ? "word-highlight" : ""}`}
+                className={`code-block line-numbers-${lineNumberSide} ${className ?? ""} ${wordHighlight ? "word-highlight" : ""}`}
             >
-                {showLineNumbers && lineNumberSide === "left" ? (
-                    <LineNumbers
-                        primary={lineNumbers.primary}
-                        secondary={lineNumbers.secondary}
-                        rowIsReal={rowIsReal}
-                    />
+                {lineNumberSide === "left" ? (
+                    <LineNumbers primary={lineNumbers.primary} rowIsReal={rowIsReal} />
                 ) : null}
                 <div className="code-lines">
                     {padded.map((line, i) => {
@@ -310,12 +299,8 @@ export const CodeBlock = React.memo(
                         );
                     })}
                 </div>
-                {showLineNumbers && lineNumberSide === "right" ? (
-                    <LineNumbers
-                        primary={lineNumbers.primary}
-                        secondary={lineNumbers.secondary}
-                        rowIsReal={rowIsReal}
-                    />
+                {lineNumberSide === "right" ? (
+                    <LineNumbers primary={lineNumbers.primary} rowIsReal={rowIsReal} />
                 ) : null}
             </div>
         );
@@ -323,7 +308,6 @@ export const CodeBlock = React.memo(
     (prev, next) =>
         prev.lines === next.lines &&
         prev.lineCount === next.lineCount &&
-        prev.showLineNumbers === next.showLineNumbers &&
         prev.lineNumberSide === next.lineNumberSide &&
         prev.className === next.className &&
         prev.wordHighlight === next.wordHighlight &&

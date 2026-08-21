@@ -63,6 +63,12 @@ const CACHE_MAX = 5000;
 export function detectTheme(): ShikiTheme {
     if (typeof document === "undefined") return "light-plus";
     const classes = document.body.classList;
+    // High-contrast light carries the legacy `vscode-high-contrast` class as well as
+    // `vscode-high-contrast-light`, so it has to be settled before the legacy check
+    // below; otherwise dark-theme syntax colours land on a white editor background.
+    if (classes.contains("vscode-high-contrast-light")) {
+        return "light-plus";
+    }
     if (classes.contains("vscode-dark") || classes.contains("vscode-high-contrast")) {
         return "dark-plus";
     }

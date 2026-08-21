@@ -1,5 +1,6 @@
 {
     "No Git repositories found in this workspace.": "No Git repositories found in this workspace.",
+    "Diff: {file}": "Diff: {file}",
     "Select a repository for shelf changes": "Select a repository for shelf changes",
     "Shelf service is unavailable for this repository.": "Shelf service is unavailable for this repository.",
     "Uncommitted changes": "Uncommitted changes",

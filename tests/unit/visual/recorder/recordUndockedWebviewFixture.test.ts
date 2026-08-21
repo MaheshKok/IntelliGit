@@ -395,7 +395,7 @@ describe("undocked recorder doubles", () => {
 });
 
 describe("undocked recorder registry", () => {
-    it("registers exactly the eight recorded contexts through Phase 2c-v-d", () => {
+    it("registers exactly the nine recorded contexts through Phase 2c-v-d", () => {
         const contextIds = new Set(WEBVIEW_FIXTURE_RECORDERS.map((entry) => entry.contextId));
 
         expect(contextIds).toEqual(
@@ -404,6 +404,7 @@ describe("undocked recorder registry", () => {
                 "commit-graph-card",
                 "commit-graph-compact",
                 "commit-panel",
+                "diff-viewer",
                 "merge-conflict-session",
                 "merge-editor",
                 "shelf-conflict-editor",

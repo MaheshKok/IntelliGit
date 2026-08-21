@@ -1,6 +1,6 @@
-// Pure word-level diff algorithms for the merge editor.
+// Pure word-level diff algorithms for pane-neutral diff surfaces.
 // Computes token-level LCS, similarity ratios, and word-diff masks
-// used to highlight intra-line changes in conflict hunks.
+// used to highlight intra-line changes in diff and merge views.
 
 /**
  * Splits one line into whitespace, word, and punctuation tokens for stable

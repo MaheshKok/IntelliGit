@@ -134,7 +134,7 @@ Mode: phase-lane (thin conductor + one fresh opus lane per phase; lanes strictly
 | Phase | Spec slice                                                                                    | Status  |
 | ----- | --------------------------------------------------------------------------------------------- | ------- |
 | P0    | Phase 0 (1.1–1.4): diff-core extraction, pane generalization, shared CSS, contract tests       | accepted |
-| P1    | Phase 1 (2.1–2.6): computeDiffSegments, DiffViewerApp, bundle, panel, protocol, l10n, tests    | pending |
+| P1    | Phase 1 (2.1–2.6): computeDiffSegments, DiffViewerApp, bundle, panel, protocol, l10n, tests    | accepted |
 | P2a   | Phase 2 (3.1–3.3): openUnifiedDiff funnel + setting, side loader, budget measurement           | pending |
 | P2b   | Phase 2 (3.5–3.6): generation-bound sessions, fallback CAS, watchers, live refresh             | pending |
 | P2c   | Phase 2 (3.4, 3.7, 3.8): call-site rewires, ride-along integration, full gate battery          | pending |
@@ -267,3 +267,384 @@ Recorded and not acted on: the contract test's `viewportH` argument is inert —
 Post-gate change: only `PLAN-REVIEW-LOG.md` changed after the green accept run, to record this section. No source, test, asset, or configuration byte moved — the seal was rewritten over the final tree and re-checked INTACT before the commit.
 
 Root verdict: **P0 ACCEPTED.**
+
+### P1 — Round 1 — Codex build (gpt-5.6-luna/xhigh)
+
+SID `01a021d3-e6b0-7610-9b5f-c278987ee016`. Telemetry: `PEAK=245305 LAST=69329 PCT=94% NONRESUMABLE=yes`.
+
+Sizing: the work order shipped with a session budget making deliverables 1–8 mandatory and 9–10 continuation-eligible. It did not need the continuation — all ten landed in one session — but at 94% of the window, the second phase in a row to overshoot its prediction (P0 predicted ~55% and ran 94%). The predictor is not calibrated for this repository; treat "large" as "will fill the window" when sizing P2.
+
+HEAD gate: `git rev-parse HEAD` identical before and after the round and equal to BASE_HEAD. No ref moved; every change left uncommitted. `git status --porcelain tests/visual/` showed source and fixture files only — zero PNG baselines added or modified.
+
+Round gates: typecheck OK 6.2s; **lint-strict FAIL(1) 13.4s** — one error (an unused protocol-type import at `src/views/DiffViewerPanel.ts:9:5`) plus three `react-hooks/exhaustive-deps` warnings in `DiffViewerApp.tsx` (`:147` twice, `:319`). `lint:strict` is `eslint src scripts tests --max-warnings=0`, so all four are hard failures.
+
+Codex self-reported all ten deliverables DONE with one declared deviation: no pre-implementation RED was captured for the new behaviour; a retroactive focused GREEN plus the required mutation RED were run instead. `SUBAGENTS_SPAWNED: 0`.
+
+**Phase verifier (fresh opus, read-only, fable-method) — VERDICT REVISE.**
+
+It re-derived Codex's mutation claim rather than accepting it, running three directions with sha256 bracketing and confirming byte-exact restoration of all three files it touched:
+
+- **M1** — viewer renders the editable/action selectors → RED, exit 1, failing title `DiffViewerApp read-only contract > has no editable or per-hunk action surface`. Codex's claim holds.
+- **M3** — the other direction, renaming those selectors in the merge app → RED naming `keeps the anti-vacuity selectors present in the merge app` (expected 4, got 0). The pair bites both ways, so the ABSENT half is not a tautology over selectors that never exist.
+- **M2** — the one Codex did not report: dropping `setData(event.data.data)` leaves the viewer in its loading branch rendering zero code lines, and the file still ran **2 passed, exit 0**. The ABSENT half asserted four absences and nothing positive, so it went green against a viewer that rendered nothing.
+
+It also verified merge pixel-safety at the built artifact rather than the source: `dist/webview-mergeeditor.css` carries the new `.diff-core`, `.diff-core.diff-viewer`, `.diff-pane + .diff-pane` and `.diff-segment-*` rules, but no merge DOM element carries any of those classes (`MergeEditorApp.tsx:1123` roots at `"merge-editor"`; those classes appear only in `DiffViewerApp.tsx`). No equal-specificity tie is created, so the Phase-0 cascade burn recorded at `merge-editor.css:1055` cannot recur.
+
+**Root adjudication of the eight candidate findings.** Accepted and routed: F1 (the unused import is a symptom — both `postMessage` calls sent untyped object literals, so the protocol union was never enforced at the post site and a typo in either type string compiled; routed as "bind the payloads", explicitly not as "delete the import", which would have turned the gate green while leaving the protocol unenforced), F2 (the M2 vacuity gap), F4 (`panel.title` set only at creation, so every diff after the first was labelled with the first file's name — user-visible wrong labelling of the one behaviour spec 2.3 defines), F5/F6.
+
+Rejected, with reasons:
+
+- **F3 (no pixel baseline for the ninth context)** — correctly observed, wrongly attributed. Codex was forbidden from running any Playwright or container command; recording the four viewer baselines is the reviewer's accept-stage step. Confirmed the surface will actually be photographed: `pixelBaselines.spec.ts:9` iterates `HOST_CONTEXT_IDS`, derived from `WEBVIEW_HOST_CONTEXTS`.
+- **F7 (`src/diff/wordDiff.ts` header rewritten)** — required, not a deviation. HEAD's header read "for the merge editor … in conflict hunks"; the file is now imported by the extension-host diff engine, so that text would be false. The algorithm body is byte-identical to HEAD.
+- **F8 (re-serialized CSV row)** — deterministic `l10n:sync` normalization that would return on the next sync.
+
+Also adjudicated from the root's own spot-read and rejected as findings:
+
+- **`DiffViewerPanel` has no production caller.** Spec-correct: Out of scope names "New palette commands (the panel opens programmatically only)", and call-site wiring is Phase 2 step 3.1. `knip` exits 0 — the dynamic import from the integration test gives the bundle entry its edge, so no config entry is needed.
+- **`computeDiffSegments` does not call `wordDiff`**, so spec 2.1's literal "reusing … `wordDiff.ts` for intra-line masks" is unmet host-side. Steelmanned and accepted as built: decision 5 names its own precedent — segments shipped "like `MergeEditorData` today" — and today the merge editor computes word masks render-time in `segments.tsx`. Moving them host-side would fight 2.2's "reusing the merge editor's toggle components" and force a host round-trip per word-highlight toggle. Alignment quality, which is what decision 5 argues for, is `diffLinesFair` and does run host-side. The toggle is genuinely wired (`DiffViewerApp.tsx:81,406,423` → `diff-core/segments.tsx:294`), not decorative.
+
+Root-originated finding, routed with the other four: the greedy-fallback regression hard-coded 3_201 lines and exercised the fallback only because 3201² = 10,246,401 exceeds `MAX_LCS_CELLS = 10_000_000` (`lineDiff.ts:35`, un-exported). Raise that constant and the test keeps passing while covering nothing — and the greedy path is a spec-named regression target.
+
+### P1 — Round 2 — Codex fix round 1 (gpt-5.6-luna/xhigh)
+
+SID `01a02201-d125-75a2-931f-77c66303a2ff`, fresh session (`route fix 1` → `EFFORT=xhigh MODE=fresh`). Telemetry: `PEAK=211381 LAST=211381 PCT=81% NONRESUMABLE=no`. Five findings routed as one order; all five DONE.
+
+HEAD gate: unchanged and equal to BASE_HEAD. Baseline directory untouched.
+
+Round gates re-run by the root — not read from the lane's report: typecheck OK 6.1s, lint-strict OK 12.9s, **GATES: GREEN warn=0**.
+
+Root spot-read of the delta: both host→webview sends now route through a single private post helper typed to the inbound union, so the protocol is enforced at the post site; the two lint warnings were fixed at the cause rather than silenced — `segments` became `useMemo(() => data?.segments ?? [], [data])`, which also restored the two downstream memos that a fresh array identity had been defeating every render, and the teardown effect captures the scroll-sync ref into a local before the cleanup closes over it. The reuse path retitles from the new snapshot using the same localized call as creation, so no new catalog key was needed. The `showLineNumbers` deletion is now complete: zero matches across `src/` and `tests/` for the four dead identifiers, and the emitted class string is byte-identical to what the old always-true branch produced — the only branch any call site ever took. `MAX_LCS_CELLS` is exported and the fallback regression derives `Math.ceil(Math.sqrt(MAX_LCS_CELLS)) + 1` = 3163, whose square clears the guard.
+
+**Verifier delta re-check (same lane, resumed) — VERDICT ACCEPT, 5/5.** It ran no manifest gates, correctly. Highlights: the mutated protocol string yields exactly TS2820 at (123,27) in the mutated state and nowhere else, so the union is enforced rather than decoratively imported; no suppression escapes of any kind were introduced across the seven changed files — no lint-disable comments, no TypeScript error-suppression comments, no any-typed casts — so the gate went green by fixing causes; M2 is now RED naming its own test where it was 2/2 green the round before, with M1 and M3 still RED by name.
+
+Worth recording for its own sake: on the pixel-neutrality check the verifier **discarded its own first piece of evidence**, because it could not prove its "before" bundle copy predated the fix round and may have compared a file against itself. It re-established sensitivity instead — perturbing the class string moves the bundle hash, restoring returns the original exactly — so the comparison is known to be capable of detecting a change, which is what makes its stability mean anything. A hash comparison whose sensitivity is unproven is the same failure as a green mutation. Pixel-neutrality then rested on four independent legs: the class string byte-identical by construction, zero matches for the dead class in the built js and css, merge CSS sources untouched, and merge-webviews integration 28/28.
+
+`MAX_LCS_CELLS` coverage was proven discriminating rather than merely green: a throw-probe inside the greedy matcher goes RED only on the fallback test, and raising the constant from 10M to 40M with the probe armed keeps it RED, where a hard-coded 3164 would have gone green.
+
+### P1 — Round 3 — Codex fix round 2 (gpt-5.6-luna/xhigh)
+
+SID `01a02218-6522-72a0-bafb-9a6e83a4f1e6`, fresh session. Telemetry: `PEAK=185112 LAST=185112 PCT=71% NONRESUMABLE=no`. One defect, and the last permitted fix round.
+
+**The defect: the ready-replay contract lost the ignore-whitespace mode.** `ready` is the webview's "I just mounted, tell me what to show", and the host answered it with segments computed from `this.ignoreWhitespace` without carrying that flag, while the webview's toggle was local state never derived from the payload. Any remount against a surviving host instance therefore left the toolbar reading "no ignore" over whitespace-insensitive content.
+
+The verifier raised this and disagreed with my steelman, correctly on the point that mattered: `retainContextWhenHidden` governs hiding, not reloading, so neither of us had covered a webview remount under a live host instance. We agree window reload is safe — no `WebviewPanelSerializer` is registered for this panel (the only one is `UndockedViewProvider` at `src/activation/common.ts:213`), so the host instance dies with the window.
+
+**Why this was fixed in P1 rather than deferred.** Not because the trigger was proven — it was not. The verifier marked its finding ASSUMED, reasoned from the API contract and never executed, and an unexecuted claim is not a demonstrated bug. What is demonstrable with no VS Code involvement is the part actually fixed: a replay contract whose answer omits a field the webview needs to describe itself truthfully. That is assertable at the host layer with the existing mock, and that is what the tests assert. The reload path is the motivation; the replay gap is the defect. Deferral was the real alternative and is what the P0→P1 conditions did successfully, but those were decisions P0 *could not* make — Out-of-scope barred the DOM choice they depended on. This one is fully decidable inside the phase that owns the protocol, since spec 2.4 makes `diffViewerTypes.ts` a P1 deliverable, and handing a known protocol gap to a phase that would merely inherit it is the "acceptable for now" the standing rules forbid.
+
+The field is **required, not optional**: an optional one would let a future producer omit it and silently reintroduce exactly this bug. `DiffViewerData` already carried `left`, `right` and `newlineDifference` beyond spec 2.4's four named items because 2.1's prose required them, so this is not a departure from the frozen protocol.
+
+Design choice made at root rather than left to the writer: the toggle keeps its optimistic local update and the payload becomes the authority that corrects it. Pure derivation from the payload was the smaller diff but puts a host round-trip between the click and the button changing — a visible regression on an interaction that is currently instant.
+
+The fixture was regenerated through the recorder rather than hand-edited, because the fixture gate byte-compares against a fresh recording; the recorded value is `false`, which is what the toolbar already rendered, so the pixel surface is unchanged.
+
+**Verifier re-check — VERDICT ACCEPT.** Both directions mutation-proven with the tree byte-identical afterwards: deleting the field from `buildData()` turns `replays the authoritative ignore mode when the webview reports ready` RED with the nearest-neighbour test still green, so the new assertion is the only thing catching it; deleting the reconciliation turns `reconciles the ignore mode from a host payload after a fresh mount` RED, and the failure text incidentally proves the toolbar selector picks the ignore button by content rather than by positional luck. Required-field enforcement confirmed at the compiler: a single TS2741 in the mutated state only, with the field supplied explicitly after both spreads and neither spread carrying it, so no future spread can silently satisfy it. The regenerated fixture is recorder-produced end to end — the whole-file byte-compare and the orphan direction are both green across 171/171 recorder tests with the update flag unset.
+
+Adversarial result on the fix shape, which is the part I most wanted a second read on: the classic optimistic-update failure — a stale in-flight payload snapping the button backwards — is **unreachable as a persistent state**, because the mode is assigned before any await and `buildData()` is fully synchronous, so the payload stamps the mode at send time. A reuse-path `open()` during an in-flight toggle can produce one transient flicker that converges; not a defect.
+
+**Root-made change, outside both fix rounds.** `tests/unit/visual/pixelBaselineLayout.test.ts:26` was titled "stores exactly the 32-cell matrix at the configured template path". Its assertions were always computed from the config, so the logic was right, but 32 was about to become 36 and a title that contradicts its own assertion misleads in the one place a person reads when it fails. Retitled to "stores exactly the context-by-project matrix…" — the number removed rather than updated, so it cannot decay again at a tenth context. Verifier confirmed one line changed, zero assertions touched, and that the set-size assertion still bites on filename collisions.
+
+**Two latent edges, logged and not fixed.** Neither is reachable today and neither justified a third round: (1) `DiffViewerApp:139`'s validity guard returns without reposting, making it the one optimistic path with no corrector — currently unreachable through the typed union; (2) the reuse path never resets `ignoreWhitespace`, so file B inherits file A's mode. The second is deliberate and matches PyCharm; it was a defect only while the mode was invisible, and the payload now displays it truthfully.
+
+**Phase 1 entry conditions from P0's shadow review — discharge status.**
+
+1. **Typography [MAJOR] — discharged.** `diff-core.css:29-33` establishes the monospace family and a size wired through `--diff-code-font-size` on `.diff-core`, the class the viewer root carries. Type-scale compliance verified at the gate's own mechanism rather than by eyeball: its size pattern requires a literal digit immediately after the property, which a variable chain never matches, and every literal size in `diff-viewer.css` is 11/12/14. The synthetic scrollbar match the condition demanded is present — `.diff-horizontal-scroll-inner` mirrors `merge-editor.css:670-675` field for field.
+2. **Five dead aliases [MINOR] — discharged.** All five now have both a CSS reader and a live emitter, checked per variable rather than in aggregate: `--diff-code-font-size` (`:31`), `--diff-pane-boundary` (`:58`, emitter `DiffViewerApp.tsx:397,414`), `--diff-pycharm-conflict` (`:62`, emitter `:64`), `--diff-pycharm-inserted` (`:66`, emitter `:69`), `--diff-pycharm-deleted` (`:70`, emitter `:70`). None is merely declared — the failure this condition exists to catch.
+3. **Action gutter [MINOR] — discharged.** `--diff-viewer-action-gutter` added as the `--diff-*` input (`diff-core.css:11`), mapped into `--diff-action-gutter` by `.diff-core.diff-viewer` (`:37-38`), set by the viewer at `DiffViewerApp.tsx:340`. The merge editor's 44px gutter is untouched.
+4. **`LineNumbers` secondary [MINOR] — discharged by deletion.** The prop, its three call-site arguments and the two dead CSS rules are gone, and the vacuous zero-length pin at `merge-webviews.integration.test.tsx:1352` was replaced by an assertion that still bites — every number row renders exactly one cell. Round 1's deletion also took `.code-block.no-line-numbers`, which the independent `showLineNumbers` prop activated rather than `secondary`, leaving a live branch emitting a class with no backing rule — the same "typechecks and does nothing" shape this condition exists to kill, moved one prop over. Fix round 1 closed it by deleting the prop and its branch so the class became unemittable.
+5. **`scrollSync.ts` untested [MINOR] — discharged.** `tests/webview/unit/scrollSync.test.ts` covers all four exported functions, and the skipped-layout fallback is genuinely exercised, verified at root rather than inferred: the test supplies a code-lines element of zero width so the guard never fires, then asserts the computed width string contains the retained `77`. That value can only come from the fallback assigning the last-known pane width — a value oracle, not a shape check.
+6. **`diff-core` not self-contained [MINOR] — discharged.** `wordDiff` moved to the neutral `src/diff/wordDiff.ts`, consumed by both the webview and the new extension-host engine. The coupling the condition named — a pane-agnostic module importing a merge-named one — is gone; `depcruise` reports no violations across 309 modules.
+
+**Binding P2b entry condition (new, from the fix-round-2 adversarial pass).**
+
+The optimistic-toggle safety argument above rests on `buildData()` being **synchronous**: the mode is assigned before any await and the payload stamps it at send time, so two rapid toggles cannot deliver out of order. P2b owns the session and replay machinery and will rebuild this path. If any await is introduced between receiving `setIgnoreMode` and stamping the payload, that property breaks and the transient snap-back becomes persistent. P2b must therefore keep the ignore-mode recompute operating on already-held snapshots and never re-acquire content on a toggle — which spec 3.5 already requires — and if that ever bends, stamp the session generation into the payload and drop stale ones in the webview's reconcile. This is binding: P2b cannot claim the viewer's toggle is correct until it shows which of the two holds.
+
+### P1 — Round 4 — Root takeover (fix rounds exhausted)
+
+`MAX_FIX_ROUNDS=2` was already spent, so under Step 5 of the build skill the phase root finished this one directly rather than opening a third Codex session. No model was swapped; no Codex session was started for this round.
+
+**How it surfaced.** Container run #1 was armed only to record the phase's four new pixel baselines. It did that correctly — 32 to 36 PNGs, exactly the four `diff-viewer` cells, zero existing baselines modified — but it also failed two tests nobody had seen before, because the accept battery had never run against a `diff-viewer` context until the fixture existed:
+
+```
+[hc-light-narrow] nonPixelOracles › diff-viewer matches the known-findings baseline
+[hc-light-wide]   nonPixelOracles › diff-viewer matches the known-findings baseline
+  diff-viewer contrast: 3 NEW finding(s) @1.5   (floor 4.5)
+```
+
+Both high-contrast **light** projects; both high-contrast **black** projects were clean, as were all four modern projects. That asymmetry is the whole diagnosis.
+
+**Root cause — pre-existing, not introduced by this phase.** `git diff --stat <base> -- src/webviews/react/diff-core/shikiHighlighter.ts` is empty: the file is untouched by P1. Its `detectTheme` read
+
+```ts
+if (classes.contains("vscode-dark") || classes.contains("vscode-high-contrast")) return "dark-plus";
+```
+
+VS Code sets **both** `vscode-high-contrast` and `vscode-high-contrast-light` on the body for the high-contrast light theme — the legacy class is kept for backwards compatibility. The repository already records this in two places: the host fixture `tests/visual/fixtures/host/hc-light.json:22-23` lists both classes, and `tests/e2e/hostFixtures/hostFixtureThemes.ts:34-35` documents the duplication verbatim. So the legacy branch matched first and high-contrast *light* was highlighted with the **dark** Shiki palette — light syntax colours painted onto a white editor background. `#9CDCFE` on `#ffffff` computes to 1.491:1 under the oracle's WCAG 2.2 maths, which is the reported 1.5.
+
+Two hypotheses reached 1.5 independently (a dark background under dark tokens via the `#2b3240` fallback in `diff-core.css:4`, and a light palette under a dark one). They were not separated by arithmetic — both matched — but by the fixture: `hc-light.json` carries the legacy class, which makes the palette branch the reachable one and the fallback branch unreachable.
+
+The merge editor shares this code path and was clean only because its fixture's tokens happen to clear 4.5 on white. The defect was latent, not absent; the read-only viewer's sample is what exposed it.
+
+**Blast radius established before the edit, not after.**
+
+- `playwright.visual.config.ts:7` — `HIGH_CONTRAST_SPEC_IGNORE = LOCALE_SWEEP_SPEC | PIXEL_SPEC`, applied to all four `hc-*` projects at lines 81-96. High-contrast projects run **no** pixel spec, so a rendering change confined to high-contrast light cannot move any pixel baseline. The 32 pre-existing baselines are 8 contexts x 4 non-hc projects; the 36 now are 9 x 4.
+- `tests/visual/fixtures/knownFindings.json` holds **zero** contrast findings for any `hc-light` or `hc-black` context (the only baselined contrast findings anywhere are two `commit-panel` entries under `dark-modern-*`). So correcting the palette removes findings that were never baselined: no stale entries, no baseline regeneration, no `--update` run.
+
+**Fix.** Settle high-contrast light before the legacy check, in `src/webviews/react/diff-core/shikiHighlighter.ts`:
+
+```ts
+if (classes.contains("vscode-high-contrast-light")) {
+    return "light-plus";
+}
+if (classes.contains("vscode-dark") || classes.contains("vscode-high-contrast")) {
+    return "dark-plus";
+}
+```
+
+**Reproduction and mutation proof.** The failing test was written and run *before* the fix, in `tests/unit/merge/shikiHighlighter.test.ts`, and it failed for the stated reason rather than incidentally:
+
+| Direction | Mutation | Result |
+| --- | --- | --- |
+| too strict | fix absent (original code) | RED — `detectTheme > returns light-plus for high-contrast light despite the legacy high-contrast class`, `expected 'dark-plus' to be 'light-plus'` (1 failed \| 22 passed) |
+| too loose | guard widened to the legacy class | RED — `detectTheme > returns dark-plus for the vscode-high-contrast body class`, `expected 'light-plus' to be 'dark-plus'` (1 failed \| 22 passed) |
+
+Both mutations were applied by copy, never by `git checkout --`, and the source was restored byte-exact: sha256 `02873b0e400cad49d1f096aaaa1efd3b2a28f67ebea225a719f4a1a249844791` before and after. 23/23 green on restore.
+
+**Why this was fixed rather than baselined.** Adding the three findings to `knownFindings.json` would have turned the gate green in one line. It would also have recorded, as accepted, text rendering at 1.5:1 in a brand-new user-facing surface — an accessibility defect entering the product through its own tripwire. The one-line palette correction removes the findings at their cause, improves the merge editor in the same theme, and needs no baseline edit at all.
+
+**Out-of-slice disclosure.** This is the only P1 change outside the frozen slice, and it edits a file Phase 0 committed. It is recorded here explicitly so it can be challenged: the alternative was shipping the defect or baselining it, and both were worse than a three-line guard with proofs in both directions.
+
+**Two pinned inventories the phase had grown without registering.** The same accept run that exposed the contrast defect also failed two unit tests, both for the same structural reason and both running for the first time — the round stage is only `typecheck` + `lint-strict`, so the full vitest suite had never seen this tree:
+
+| Test | Pin | Why it fired |
+| --- | --- | --- |
+| `tests/unit/scripts/webviewConfigs.test.ts:16` | `toHaveLength(7)` | P1 added an eighth webview bundle, `react/diff-viewer/DiffViewerApp` -> `webview-diffviewer` (`scripts/webviewConfigs.js:9`) |
+| `tests/unit/e2e/coverageManifest.test.ts:205` | 9-entry `OUTBOUND_UNION_DECLARATIONS` | P1 added a tenth outbound union, `src/webviews/protocol/diffViewerTypes.ts:OutboundMessage` |
+
+Neither is a stale test to be relaxed. Both are deliberate two-way ratchets: `webviewConfigs.test.ts` derives `expectedConfigs` from `WEBVIEW_CONFIGS` itself, so its `toEqual` assertions are self-referential and the pinned **count** is the only thing carrying signal; `coverageManifest.test.ts:40-46` states in prose that pinning the declaration list is what stops a renamed union from silently dropping its whole action set out of the required surface. Each was updated by registering the new surface — the bundle count moved 7 to 8 (title included), and the new union was inserted in path order — never by loosening an assertion.
+
+Registering the tenth union also re-armed the assertions that iterate it. `matches every outbound webview action in both directions` passed immediately afterwards, which is the evidence that the viewer's outbound ids were already present in the E2E manifest rather than newly exempt.
+
+Both pins were then mutation-proven against **production** drift, not against themselves:
+
+| Mutation (production side) | Result |
+| --- | --- |
+| drop the `diff-viewer` entry from `scripts/webviewConfigs.js` | RED — `derives eight build and watch configs...`, `expected ... to have a length of 8 but got 7` |
+| rename `OutboundMessage` to `DiffViewerOutbound` in `src/webviews/protocol/diffViewerTypes.ts` | RED — `reads every outbound union it is pinned to, and no others` |
+
+Restored by copy, byte-exact: `scripts/webviewConfigs.js` sha256 `4288cf02502f5172954dbe2094ee2bf7db35f5ff21da13007efc018c03ad61fd` and `src/webviews/protocol/diffViewerTypes.ts` sha256 `ef207e8b6698a537246e0be05dd0e0d2c151e0dc6f90a8656a6bc52b8894bac1`, identical before and after; 7/7 green on restore.
+
+**Accept battery, final tree.**
+
+```
+python3 ~/.claude/skills/claudex-build/verify.py gates --base <BASE_HEAD> --stage accept
+```
+
+| Gate | Result | Time |
+| --- | --- | --- |
+| typecheck | OK | 6.3s |
+| lint-strict | OK | 13.6s |
+| format-check | OK | 6.4s |
+| architecture | OK | 0.9s |
+| deps-knip | OK | 1.1s |
+| tests | OK | 408.5s |
+| visual-container | OK | 883.3s |
+
+`GATES: GREEN warn=0`. The tests gate is **4138 passed / 0 failed across 299 files**; the previous run of the same battery was 4136 passed / 2 failed, and the delta is exactly the two ratchet registrations above. The container battery is **342 passed** — the 336 of Phase 0 plus the six `diff-viewer` cells (four pixel projects and two high-contrast non-pixel projects).
+
+**Pixel baselines.** 32 before, 36 after. The four added are the `diff-viewer` cells for `dark-modern-narrow`, `dark-modern-wide`, `light-modern-narrow`, `light-modern-wide`; `git status --porcelain tests/visual/__screenshots__/` reports four `??` entries and nothing else, so **no existing baseline was modified**. The four were recorded by a deliberate container run, and a second container run then compared them green — sha256 of all 36 files was captured before and after that second run and is byte-identical, which is what rules out a recording side effect masquerading as a pass.
+
+**HEAD gate.** `git rev-parse HEAD` read the BASE_HEAD value unchanged at the end of every round, including both root-takeover rounds. Codex never committed, staged, or moved HEAD.
+
+**Phase 0 entry conditions.** All six binding conditions carried over from P0's shadow review were discharged and re-verified at root before acceptance, each against the artifact rather than against a lane's report: the typography contract, the five `--diff-*` aliases each having both a CSS reader and a live emitter, the `--diff-viewer-action-gutter` input, the residue condition discharged by deletion, the scroll-sync fallback coverage, and the relocation of `wordDiff` to a neutral `src/diff/`.
+
+Root verdict: **P1 ACCEPTED.**
+
+### P1 — Shadow verification (SHADOW=5) and Round 5 — Root takeover #2
+
+Round 4 closed with "Root verdict: **P1 ACCEPTED**", and that verdict was wrong. A shadow verifier run against the accepted tree returned **five findings**, one of them a blocker, and the phase was never committed. This section supersedes Round 4's acceptance: the baseline count and gate table under Round 4's "Accept battery, final tree" describe a tree that no longer exists, and both are restated at the end of this section against the tree actually committed.
+
+`MAX_FIX_ROUNDS=2` remained exhausted, so this round is root-written like Round 4. No Codex session was started; no model or effort was swapped. Every byte below was written by the phase root, which is the disclosure that matters when reading the mutation evidence — nothing here was checked by a second author before the shadow re-check at the end.
+
+**`SHADOW: findings in hash-unchanged files = 5`.**
+
+| # | Finding | Severity | Verifier's status | Disposition |
+| --- | --- | --- | --- | --- |
+| F1 | The viewer renders with no diff colouring and no visible ribbons: every `--diff-*` paint alias terminates at `var(--diff-editor-bg)` in a bundle that never imports `merge-editor.css`, so five rules paint editor-background on editor-background | BLOCKER | VERIFIED | FIXED — but not as the finding proposed |
+| F2 | `computeDiffSegments("a\rb\r", …)` reports `eol:"lf"`: CR-only endings fold into the LF bucket, and `DiffSideMeta["eol"]` cannot express `"cr"` at all | MAJOR | VERIFIED | FIXED (Round 4 carry-over, re-proven below) |
+| F3 | `.diff-viewport` has all four insets `auto`, so `position: sticky` never sticks, and its `margin-bottom: -100%` resolves against the containing block's **inline size** — a width, not the viewport height | MAJOR | ASSUMED | FIXED |
+| F4 | The ribbon layer is a sibling of the panes and receives no transform, so ribbons stay fixed while the columns translate; separately its `viewBox` height is `Σ max(Lᵢ,Rᵢ)` against a CSS box of `max(ΣLᵢ, ΣRᵢ)`, scaling every ribbon by <1 | MAJOR | ASSUMED | FIXED |
+| F5 | `diff-segment-modified` and `diff-segment-empty` are emitted with zero CSS rules — the four-way `changeClass` is two-quarters dead | MINOR | VERIFIED | FIXED for `modified`; **deliberately not fixed** for `empty` — see below |
+
+Both ASSUMED findings were reasoned from a contract rather than executed, and the verifier said so. Both turned out to be real; the reason neither had been executed is the same reason F1 survived every gate, and it is worth stating plainly: **the fixture was two lines shorter than the viewport, so nothing could scroll, so no oracle could reach any of it.** The fixture is now twenty-one canonical rows and the scroll invariants are asserted in jsdom where they can actually be driven.
+
+F5's `empty` half is answered rather than fixed: `diff-segment-empty` keeps zero CSS rules on purpose, because the block it names is zero pixels tall and any rule on it would be paint that never renders. That is the disposition, and it is asserted rather than asserted-about — see the sixth defect below.
+
+**Why every gate stayed green on a surface that rendered nothing.** The verifier's own diagnosis, confirmed at root: the four `diff-viewer` pixel baselines had been recorded *from the defective build*, so they encoded the untinted rendering as correct; and `nonPixelOracles.spec.ts:68` reads its baseline sparsely (`BASELINE.read()[project]?.[contextId] ?? {}`), so a context with no slice asserts only "zero findings" — and unstyled text on the plain editor background has perfect contrast. A baseline recorded from the artifact it is meant to police is not a tripwire. All four PNGs were deleted before any recording run in this round; see **Pixel baselines** below.
+
+**F1 is where this round was spent, and the fix is not the one the finding asked for.**
+
+The obvious repair is the one the finding implies: give each alias a fallback that computes a real colour, so the viewer paints the merge surface's two-tier scheme — a 15% block wash of the change hue with a 30% word-fragment tint on top. That was implemented first. It fails, and not marginally.
+
+Painting the wash makes the `diff-viewer` context reachable by the contrast oracle for the first time, and it reports below-floor text. Binary search on the wash percentage, all eight projects, non-pixel oracle only:
+
+| Wash / fragment | Result |
+| --- | --- |
+| 15% / 30% | contrast findings in every light project and in `dark-modern` localeSweep (24 + 8) |
+| 8% / 16% | still below floor |
+| 8% / 0% | still below floor |
+| 4% / 0% | 9 findings in `light-modern-wide`, 9 in `hc-light-wide`, all one element, @4.3–4.4 |
+| 0% / 0% (control) | 72/72 pass |
+
+Every survivor at 4% is the same element: `span:nth-of-type(5)`, the number token in `const rm0 = 0;`. The arithmetic explains why no percentage works. VS Code's light-plus colours `symbolIcon.numberForeground` **`#098658`**, which measures **4.603:1** on the light editor background (`#ffffff`) against a **4.5** floor — 0.103 of headroom. A background wash moves the luminance underneath every glyph, so a wash visible enough to mark a hunk is a wash that spends more than that. The control run proves the finding is caused by the palette and not by a pre-existing theme defect: at 0% the same tree passes 72/72.
+
+This is not an IntelliGit-specific accident. GitHub's own added-line background `#e6ffec` puts that same token at 4.354. The industry convention fails this gate.
+
+**Baselining was available and was refused.** Adding the findings to `knownFindings.json` is one line and turns the gate green. `knownFindings.json` currently holds **zero** contrast findings for any context except two `commit-panel` entries under `dark-modern-*`; Round 4 refused the same shortcut for a 1.5:1 finding. Recording below-floor code text as accepted, in a brand-new user-facing surface, through the very tripwire that caught it, is the "acceptable for now" the standing rules forbid.
+
+**The merge editor is not a counter-example, and this is worth recording.** `merge-editor` shows `contrast=0` in every project, which reads like proof that a 15% wash is fine. It is not. Merge applies its wash **row-scoped to `.real-code-line::before`** (`merge-editor.css:749-782`), and `collectOracleInputs.ts:357-365` walks `getComputedStyle(element).backgroundColor` up the **element** chain — it never passes a pseudo-element argument. Merge's wash is invisible to the oracle, so its clean slice measures nothing. Porting the wash onto a `::before` would have greened this gate too, by inheriting the blind spot rather than by being legible. Rejected for that reason. Widening the collector to sample pseudo-element backgrounds would turn the merge editor's own baseline red across eight projects and is a harness change no phase-1 slice can carry; it is logged here as the next owner's problem, not fixed.
+
+**What ships instead — the marker moves off the text.**
+
+- **Changed blocks** carry an inset edge bar, `box-shadow: inset 3px 0 0 <hue>`, in each pane's own colour. An inset shadow paints inside the block's own border box, so the bar costs the code no width and the gutter no room, and it lands on no glyph: code rows start 9px in (`.code-line` padding) and the gutter's digits are right-aligned about 20px in. Contrast is untouched because nothing moved behind any text.
+- **The empty counterpart** of a one-sided hunk is painted with nothing at all. It was first given a real 15% wash, on the reasoning that it is the one block that can afford one because it holds no code. That reasoning was wrong about the block, not about the wash: each pane is sized from its **own** line count (`lineCount={item.paneLines[side]}`), so the counterpart of a one-sided hunk is zero rows and measures **zero pixels tall** — a background there is a rule that can never render. Measured on the live page, not argued: `.diff-segment-empty` reports `height: 0` in both panes. The rule and its `--diff-empty-block-bg` alias were deleted, and `diff-viewer.integration.test.tsx` now pins the zero height so a later switch to filler rows fails there instead of quietly producing a blank band.
+- **Changed word fragments** are underlined rather than tinted, beside the glyphs instead of behind them. Only a two-sided hunk renders these spans at all: `WordDiffLine` returns a plain highlighted line when the compared line is empty (`segments.tsx:158`), so `diff-segment-modified` is the only state that can carry them.
+- **The connector ribbon** now fills from `--diff-info`, the semantic hue itself, instead of from `--diff-pycharm-modified`. Drawing a ribbon from a near-background word-fragment wash and then applying `opacity: 0.18` erased it twice over; that double-erasure is half of what F1 reported as "no visible ribbons".
+
+`PLAN.md` is the authority for whether this is a deviation, and it is not. Phase 1 is steps 2.1–2.6, which specify segments, the React app, the bundle entry, the panel, the protocol, l10n and the gates — and **no colour treatment at all**. The Goal line names "side-by-side panes, center line-number gutters, Bézier connector ribbons, Shiki highlighting"; block washes are not in it. `PLAN.md:35-36` — Approach item **4**, which is **Phase 3** — explicitly defers "Sweep remaining diff color tokens where merge editor and viewer diverge" as step 4.1. So the marker design is an implementation choice inside P1, the 4.5 floor is a hard gate, and the divergence this creates is already scheduled. No `HALT: needs-human` was warranted.
+
+The plan's numbering is off by one between its list index and its phase name — item 1 is Phase 0, so item 4 is Phase 3 — and the shadow verifier tripped on exactly that, filing a correction that "4.1 is Phase 4". Re-derived at root from `PLAN.md:35`, which reads `4. **Phase 3 — cleanup and docs.**`: the original citation was right and the correction is **rejected**. The citation above now names the line numbers rather than the step number alone, because a reference that a careful reader misreads is a reference worth disambiguating even when it was correct.
+
+**Layering cleaned up as a consequence, not as a flourish.** The `.diff-segment-*` rules are viewer-only — `changeClass` lives in `DiffViewerApp`, while merge paints through `.variant-insertion .conflict-ours` and friends — so they moved out of the shared `diff-core.css` into `diff-viewer.css`, along with `.diff-pane + .diff-pane`. That makes "the merge editor cannot move" true by construction rather than by argument. `diff-core.css` keeps exactly one paint alias, `--diff-pycharm-modified: var(--pycharm-modified, transparent)`: merge's own declaration wins its first leg and its fragment tint is byte-identical, while the viewer inherits `transparent` and underlines instead. The six aliases that lost their last reader — the conflict pair and the three block washes — were deleted rather than left declared.
+
+**The `wordDiff` relocation is a pure move, and the two comments that named the wrong surface moved with it.** `src/mergeEditor/wordDiff.ts` is deleted and `src/diff/wordDiff.ts` added; `diff -u` against `BASE:src/mergeEditor/wordDiff.ts` reports exactly **two changed lines, both comments** — "for the merge editor" became "for pane-neutral diff surfaces", and "in conflict hunks" became "in diff and merge views". Zero executable lines differ. A file relocated to a neutral home whose header still says it belongs to the surface it left is a comment that will mislead the next reader into putting merge logic back into it, so the rewording is part of the move rather than a flourish on top of it.
+
+**A sixth defect, found by reading the round's own output: the fixture never rendered an insertion.**
+
+The four findings above were the verifier's. This one was not reported by anyone. After the first recording run the new `dark-modern-wide` PNG was opened and its pixels sampled directly, because "the marker design is legible" is a claim about rendering and nothing in the suite asserts rendering. The left pane's bars were there — `#9d9d9d` for the deleted block, `#11a8cd` for the modified one, three pixels wide. The right pane had a single continuous `#11a8cd` bar spanning **seven** rows, where the fixture is supposed to hold four inserted rows followed by three modified ones.
+
+Probing the live page for computed styles gave the reason. The recorded fixture carried five segments, not six: its insertion-only rows sat directly against its two-sided hunk with no common line between them, and `computeDiffSegments` has no reason to split adjacent changed rows, so it emitted **one** `changed` segment whose left side was the modified rows and whose right side was the added rows followed by the modified ones. Both sides non-empty, so both panes classified `diff-segment-modified`. **`diff-segment-inserted` rendered nowhere, in any project, and `--diff-ok` was painted by nothing.** The recorder's own comment asserted the opposite — "the deletion-only hunk precedes the insertion-only one, so the taller pane changes sides" — which is what the fixture was designed to do and not what it did.
+
+Nothing could have caught it. The pixel baselines recorded the missing state as the expected picture. The live-page oracles measured what was on screen, which was internally consistent and merely incomplete. The palette unit tests assert the CSS, and the CSS was correct — the rule existed, matched nothing, and passed. This is the same failure shape as F1 one layer up: a fixture that cannot reach a state makes every gate over that state vacuous.
+
+Fixed by giving the two hunks a two-row common separator, which splits them: the recorded fixture is now seven segments, `changed L3/R0` and `changed L0/R4` on opposite panes with `changed L3/R3` after them. Verified at the rendering layer rather than in the JSON — computed `box-shadow` per block, live page, `dark-modern-wide`:
+
+| Block | Pane | Height | Painted |
+| --- | --- | --- | --- |
+| `diff-segment-deleted` | left | 60px | `rgb(157,157,157)` = `--diff-muted` |
+| `diff-segment-inserted` | right | 80px | `rgb(137,209,133)` = `--diff-ok` |
+| `diff-segment-modified` | both | 60px | `rgb(17,168,205)` = `--diff-info` |
+| `diff-segment-empty` | one per pane | **0px** | `none`, no background |
+
+`--diff-ok` had never been painted before this fix.
+
+The gate against a recurrence is `tests/unit/visual/diffViewerFixtureCoverage.test.ts`, and it reads the fixture **the harness actually mounts** (via `HOST_CONTEXT_FIXTURES["diff-viewer"]`) rather than a payload built inside the test — a synthetic input would classify correctly while the recorded one stayed broken, which is exactly the state the tree was already in. It asserts two-way set equality against `SEGMENT_MARKERS`, and separately that the deletion marker lands on the left pane and the insertion marker on the right: the set alone cannot see a classifier whose two arms are swapped, and a swapped classifier paints insertions in the deletion hue forever (MT17). The classification itself moved out of the React tree into `src/webviews/react/diff-viewer/segmentMarkers.ts` so a plain unit test can run a recorded payload through the production function instead of re-deriving it — a recorder that hand-copies production hides its drift.
+
+**Round 4's entry-condition 2 is re-discharged in a stronger form.** That condition ("five dead aliases") was discharged in Round 4 by naming each alias and its reader in prose, and three of those five aliases have now been deleted outright. Prose discharge is what let a dead declaration come back twice in this phase. It is now machine-checked: `diffCorePalette.test.ts` collects every `--diff-*` declaration across `diff-core.css`, `diff-viewer.css` and `merge-editor.css`, collects every `var(--diff-*)` reader across the same three, and asserts the difference is empty. A colour nobody paints with is an invitation to paint with it.
+
+**Mutation table.** Eighteen mutations, each naming its own assertion, applied by copy and restored by copy — never `git checkout --`. Baseline `rc=0`, every mutation `RED`, restore `rc=0 failing=[]`.
+
+| # | Mutation | Assertion that went red | Failure text |
+| --- | --- | --- | --- |
+| MT1 | a code-bearing state gets a block wash back | `paints no background under any changed-segment block` | `expected [ 'diff-segment-inserted' ] to deeply equal []` |
+| MT2 | the modified state loses its edge bar | `marks every changed-segment state that renders a row` | `expected [ 'diff-segment-deleted', …(1) ] to deeply equal [ 'diff-segment-deleted', …(2) ]` |
+| MT3 | the zero-height counterpart grows an edge bar | `marks every changed-segment state that renders a row` | `expected [ 'diff-segment-deleted', …(3) ] to deeply equal [ 'diff-segment-deleted', …(2) ]` |
+| MT4 | changed words lose their underline | `underlines changed word fragments instead of tinting them` | `expected null to be 'underline'` |
+| MT5 | changed words are tinted behind the glyphs again | `underlines changed word fragments instead of tinting them` | `expected 'var(--diff-info)' to be null` |
+| MT6 | the connector is filled from a near-background wash again | `fills the connector ribbon from a semantic hue, not a wash` | `.diff-ribbon fills with var(--diff-pycharm-modified) … expected false to be true` |
+| MT7 | the fragment alias falls back to a colour, not `transparent` | `leaves the word-fragment tint transparent for a surface that never imports the merge palette` | `expected 'var(\n --pycharm-modified,…' to be 'var(--pycharm-modified, transparent)'` |
+| MT8 | a `--diff-*` alias nothing reads | `declares no --diff-* alias that nothing reads` | `expected [ '--diff-unused-band' ] to deeply equal []` |
+| MT9 | a block wash is re-declared **and wired to a live reader** | `forbids the aliases a read-only two-pane diff must not grow back` (and `paints no background…`) | `--diff-deleted-block-bg is back in diff-core.css … expected 'color-mix(in srgb, var(--diff-muted) …' to be null` |
+| MT10 | F3: the sticky viewport cancels a percentage of its own **width** again | `diff viewer sticky viewport > cancels exactly its own height, in pixels rather than as a percentage` | `expected '\n position: sticky;\n top: 0;\…' to match /margin-bottom:\s*calc\([^)]*var\(--di…/` |
+| MT11 | F4: the right pane's extents are read at the **left** pane's offset | `DiffViewerApp scroll viewport and ribbons > moves each ribbon side by its own pane's scroll offset` | `expected 70 to be 100` |
+| MT12 | F4: the left ribbon side takes the **right** pane's height | `DiffViewerApp scroll viewport and ribbons > draws each ribbon side from that pane's own extent, never the canonical one` | `expected +0 to be 60` |
+| MT13 | F2: a lone carriage return folded back into the `lf` bucket | `computeDiffSegments > records a lone carriage return as its own EOL style, not as a line feed` (and the mixed-EOL sibling) | `expected 'lf' to be 'cr'`; `expected 'lf' to be 'mixed'` |
+| MT14 | high-contrast light falls through to the legacy dark branch | `detectTheme > returns light-plus for high-contrast light despite the legacy high-contrast class` | `expected 'dark-plus' to be 'light-plus'` |
+| MT15 | the zero-height counterpart gets its 15% wash back | `paints no background under any changed-segment block` (and `marks every…`) | `expected [ 'diff-segment-empty' ] to deeply equal []` |
+| MT16 | the recorded fixture's insertion-only hunk gains a left row and stops being one | `renders one block of every marker state the classifier can return` | `expected [ 'diff-segment-deleted', …(2) ] to deeply equal [ 'diff-segment-deleted', …(3) ]` |
+| MT17 | the classifier's insertion and deletion arms are swapped | `puts the deletion marker on the left pane and the insertion marker on the right` | `expected { …(2) } to deeply equal { …(2) }` |
+| MT18 | the empty counterpart is floored at one row, as filler rows would | `gives the counterpart of a one-sided hunk no rows and no intrinsic height` | `expected <span class="code-line-content"></span> to have a length of +0 but got 1` |
+
+Three of these are worth reading twice.
+
+MT9 re-declares a forbidden alias **and wires it to a live reader**. Re-declaring it and leaving it dead would fail the dead-declaration check instead, which would let someone conclude the forbidden-alias ratchet is only about tidiness; wiring it up means only the ratchet can fire.
+
+MT3 and MT15 mutate the same state in the two opposite directions the deleted rule could return in — an edge bar and a wash — because a state styled with *nothing* is the one shape a one-directional mutation cannot distinguish from an oversight.
+
+MT16 and MT17 are the pair that covers the fixture defect from both ends. MT16 breaks the fixture and leaves the classifier alone; MT17 breaks the classifier and leaves the fixture alone. MT17 is the reason the side assertion exists at all: with only the set assertion it survives green, every marker still present, one per pane, and insertions drawn in the deletion hue.
+
+**Accept battery, final tree.**
+
+`python3 ~/.claude/skills/claudex-build/verify.py gates --base <BASE_HEAD> --stage accept` on the tree below, after the recording run and after the baseline hashes were confirmed unchanged:
+
+| Gate | Result | Wall |
+| --- | --- | --- |
+| typecheck | OK | 6.5s |
+| lint-strict | OK | 13.8s |
+| format-check | OK | 6.4s |
+| architecture | OK | 1.0s |
+| deps-knip | OK | 1.2s |
+| tests | OK | 424.9s |
+| visual-container | OK | 923.6s |
+
+`GATES: GREEN warn=0`. The `tests` gate is the whole suite, not the touched files: **4159 passed / 4159, across 302 test files** in 423.40s. `visual-container` is the eight-project Playwright run in the container, `workers: 1`, `retries: 0`, `maxDiffPixels: 0` — it is the run that re-verified the 36 baselines against the committed tree rather than the recording run that wrote four of them.
+
+Acceptance seal written after the gates, never before: `SEAL: WRITTEN files=68 green=True`. `.claudex-gates.json` is gitignored (`.gitignore:182`) and was not staged, force-added, or otherwise brought into the commit.
+
+**Pixel baselines.**
+
+The four `diff-viewer` PNGs were deleted before every recording run in this round — twice, because the first recording was made before the fixture defect above was found and encoded a picture with no insertion marker in it. Deleting rather than re-recording over them is the point: `PLAN.md:51` says a baseline must never be re-recorded to green a regression, and a baseline recorded from a defective build is a regression already pinned.
+
+Both recordings ran in the container (`bun run test:visual:container`), never bare and never with `--update-snapshots`. Playwright writes a missing snapshot on its own and fails only that test, so a recording run is distinguishable from a verification run by its failure list rather than by a flag.
+
+| Run | Result | Failures |
+| --- | --- | --- |
+| 1 (pre-fixture-fix, discarded) | 367 passed, 5 failed, 19.7m | 4 × `A snapshot doesn't exist … writing actual`; 1 × `de` `dark-modern-narrow` localeSweep settle timeout |
+| 2 (recording) | 368 passed, 4 failed, 15.1m | 4 × `A snapshot doesn't exist … writing actual`, and nothing else |
+
+Run 1's fifth failure was `harnessPage.ts:155 waitForRootSubtreeToSettle` — `fixture render did not settle under "#root" within 3000ms` — in one of 24 `diff-viewer` localeSweep cells, with the other 23 and all 8 `nonPixelOracles` cells green. A settle timeout is the signature of an unbounded animation loop, so `scheduleVerticalFrame` was read before drawing any conclusion: it is idempotent (`if (verticalFrameRef.current) return;`) and cannot self-perpetuate. It did not recur in run 2 or in the accept battery's own container run. **Called as flake, on two clean subsequent runs and one inspected mechanism — not as a diagnosis.**
+
+**The 32 container-recorded baselines that already existed did not move.** SHA-256 of every PNG was snapshotted immediately before run 2 and again after: `TRACKED 32 BYTE-IDENTICAL`, and `git status tests/visual/__screenshots__` lists exactly four paths, all `??`. No existing baseline was rewritten by any run in this round.
+
+**The recorded picture was verified, not assumed.** The reason this round found a sixth defect is that the PNG was decoded and sampled rather than trusted, so the same check is recorded here for the committed baseline. Columns one pixel inside each pane's content box, `dark-modern-wide`:
+
+| Column | Span | Colour | Marker |
+| --- | --- | --- | --- |
+| x=1 (left pane) | y 149–208 | `#839ea5` (`--diff-muted` under the 0.18 ribbon) | deleted, 3 rows |
+| x=1 | y 309–368 | `#10a7cd` (`--diff-info`) | modified, 3 rows |
+| x=595 (right pane) | y 209–288 | `#89d185` (`--diff-ok`) | inserted, 4 rows |
+| x=595 | y 329–388 | `#11a8cd` (`--diff-info`) | modified, 3 rows |
+
+Every other pixel in both columns is `#1f1f1f`, the editor background, or the ribbon's `#1c373e` tint over it. The bars are three pixels wide and land on no glyph.
+
+**Shadow re-check.**
+
+The same verifier that raised the five findings was re-sent the tree for one re-check, with the takeover disclosed up front: **every byte of Rounds 4 and 5 is root-written, no Codex session ran, no model or effort was swapped, and nothing — including the tests that prove the fix — was seen by a second author before this re-check.** That disclosure is the reason the re-check was asked to re-derive from the artifact rather than to grade the dispositions.
+
+Verdict: **CLEAR TO COMMIT — all six findings CLOSED, nothing OPEN.**
+
+| # | Verdict | How the verifier proved it, independently |
+| --- | --- | --- |
+| F1 | CLOSED | The three hue aliases now terminate in literals (`diff-core.css:7,15,16`); it wrote its own dependency-free PNG decoder and column-scanned all four baselines, finding three correctly-sided 3px inset bars — left deleted `#839ea5`, left modified `#10a7cd`, right inserted `#73c992` — and de-compositing the green against the 0.18 ribbon returned `rgb(137,209,133)`, matching the root's live-page measurement |
+| F2 | CLOSED | Its own mutation, two named reds |
+| F3 | CLOSED | Two mutations, two distinct named reds |
+| F4 | CLOSED | Two mutations, two named reds |
+| F5 | CLOSED | One named red, both directions gated |
+| F6 (root-found) | CLOSED | Its own reproduction of the original defect — remove the common separators so the one-sided hunks fuse — turned the new coverage gate red on **both** its assertions |
+
+**The contrast arithmetic was recomputed rather than accepted.** The verifier derived `#098658` on white at **4.603:1**, headroom **0.103**, and ran the wash ladder itself: charts-green at 4/8/15/30% gives 4.38 / 4.19 / 3.82 / 3.15, ansiCyan gives 4.40 / 4.21 / 3.87 / 3.24. Its 4% figures reproduce the measured 4.3–4.4 independently. Its conclusion: there is no legal visible wash, so the edge-bar treatment is a forced move and not a scope liberty. The scope judgement was attacked and upheld.
+
+**Its own mutation pass: 11 mutations across 6 files, every one red by name, every one restored byte-exact and sha256-verified.** Two are worth recording. One reproduced the sixth defect from scratch and confirmed the new gate catches it. The other confirmed the root's MT17 claim precisely — swapping the classifier's arms fails **only** the directional assertion while set-equality stays green — which is the evidence that the directional assertion, not the set, is the load-bearing one.
+
+**Baselines re-verified against the base blobs, not against the root's report:** 36 PNGs on disk, 32 tracked at base, **all 32 byte-identical, 0 modified, exactly 4 untracked**. `PLAN.md:51` satisfied. State gate at the end of its run: `HEAD` still reading the BASE_HEAD value, 68 paths (47 M, 20 ??, 1 D — the `wordDiff` move), `SEAL: INTACT files=68 warns_open=0`, nothing committed, staged, pushed or stashed, `bun run test:visual` never invoked, nothing written into `tests/visual/__screenshots__/`.
+
+**One advisory, accepted and recorded rather than fixed.** The verifier judged the flake call thinner than it was framed, and it is right: "`scheduleVerticalFrame` is idempotent" rules out a runaway animation loop, not a genuinely slow settle, and `de` in the narrowest viewport is precisely where reflow cost peaks. Two clean reruns cannot separate a flake from a threshold set too close to normal. The discriminator is cheap and is logged here for whoever sees it next: **log that cell's actual settle time on a passing run — if it habitually lands near 2.4s against the 3000ms bound, the bound is too tight and the diagnosis is a bad threshold, not a flake.** Not a P1 regression: `waitForRootSubtreeToSettle` is a harness timeout, not an assertion about the viewer, and it fires in a spec the viewer's own gates do not depend on. No code change in this phase.
+
+**Two method warnings from the verifier, recorded because both nearly produced a wrong finding.** `git grep` skips untracked files, and most of this phase is untracked — it reported `--diff-viewport-h` and `diff-segment-empty` as absent everywhere until `--untracked` was added, one step short of a fabricated finding. And mutation restores rewrite mtimes: it built a timeline theory on four files' timestamps before realising the timestamps were its own restores. **File timestamps in this worktree are not evidence.** Content was byte-exact throughout.
+
+One correction the verifier filed was **rejected at root** — its claim that the plan's step 4.1 belongs to Phase 4. `PLAN.md:35` reads `4. **Phase 3 — cleanup and docs.**`; the citation was correct and is now written with line numbers so the list-index/phase-name offset cannot mislead the next reader. Accepting a reviewer's correction without re-deriving it is the same failure as accepting a builder's green.
+
+**Phase 0's six entry conditions, re-discharged against the tree actually committed.** Round 4 discharged them against a tree that no longer exists, so each is restated here against the final bytes. (1) The typography contract holds — `diff-core.css` still drives every code row from `--diff-code-font-size`, and no `.diff-viewer` rule overrides it. (2) The alias condition is now **machine-checked instead of argued**: `diffCorePalette.test.ts` collects every `--diff-*` declaration and every `var(--diff-*)` reader across `diff-core.css`, `diff-viewer.css` and `merge-editor.css` and asserts the difference is empty in both directions — and three of the five aliases Round 4 discharged in prose are simply gone, deleted rather than left declared, so the condition is now discharged by absence for those three and by a live reader for the rest. (3) `--diff-viewer-action-gutter: 0px` is declared (`diff-core.css:20`) and read at `:53`. (4) The residue condition stays discharged by deletion. (5) Scroll-sync fallback coverage is unchanged and green. (6) `wordDiff` sits in the neutral `src/diff/`, proven a pure move above.
+
+**HEAD gate.** `git rev-parse HEAD` read the BASE_HEAD value unchanged at the end of every round, including all three root-written ones, and once more immediately before this commit. Codex never committed, staged, or moved HEAD, and neither did any verifier lane.
+
+Root verdict: **P1 ACCEPTED** — this section supersedes Round 4's identical verdict, which was reached before the shadow run and was wrong.

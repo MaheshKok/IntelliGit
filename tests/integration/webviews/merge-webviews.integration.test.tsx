@@ -1349,8 +1349,13 @@ describe("MergeEditorApp", () => {
             document.querySelectorAll(".conflict-theirs .line-number-primary"),
         ).map((el) => el.textContent?.trim());
         expect(theirsNumbers).toEqual(["1", "2", "3"]);
-        expect(document.querySelectorAll(".line-number-secondary")).toHaveLength(0);
         expect(oursNumberRows).toHaveLength(2);
+        expect(
+            oursNumberRows.every((row) => row.querySelectorAll(".line-number").length === 1),
+        ).toBe(true);
+        expect(
+            theirsNumberRows.every((row) => row.querySelectorAll(".line-number").length === 1),
+        ).toBe(true);
         expect(
             document.querySelector(".conflict-ours")?.className.includes("line-numbers-right"),
         ).toBe(true);

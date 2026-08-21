@@ -1,4 +1,4 @@
-// Spec-derived tests for the webview capture boundary (PLAN.md Phase 3 step 15's 8 resolved
+// Spec-derived tests for the webview capture boundary (PLAN.md Phase 3 step 15's 9 resolved
 // host contexts, and step 16's exact-set-equality drift guard). Every test here is written to
 // be able to fail: the tee/delivery/return-value tests exercise `wrapWebviewForCapture` against
 // a fake `vscode.Webview` double that can independently report both what it received and what
@@ -308,6 +308,7 @@ describe("WEBVIEW_CONTEXT_IDS: completeness against the real wiring sites", () =
             "src/views/MergeEditorPanel.ts",
             "src/views/ShelfConflictEditorPanel.ts",
             "src/views/MergeConflictSessionPanel.ts",
+            "src/views/DiffViewerPanel.ts",
         ];
 
         const wiredIds = wiringFiles.flatMap(extractWiredContextIds);
@@ -329,7 +330,7 @@ describe("WEBVIEW_CONTEXT_IDS: completeness against the real wiring sites", () =
 describe("WEBVIEW_CONTEXT_IDS: type-level guard", () => {
     it("accepts every declared id as a WebviewContextId", () => {
         const ids: readonly WebviewContextId[] = WEBVIEW_CONTEXT_IDS;
-        expect(ids).toHaveLength(8);
-        expect(new Set(ids).size).toBe(8);
+        expect(ids).toHaveLength(9);
+        expect(new Set(ids).size).toBe(9);
     });
 });

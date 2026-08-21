@@ -1,4 +1,4 @@
-// Tests for pure word-diff algorithms in merge-editor/wordDiff.ts.
+// Tests for pure word-diff algorithms in diff/wordDiff.ts.
 
 import { describe, it, expect } from "vitest";
 import {
@@ -8,7 +8,7 @@ import {
     tokenSimilarityRatio,
     alignCompareLinesForWordDiff,
     buildWordDiffMask,
-} from "../../../src/mergeEditor/wordDiff";
+} from "../../../src/diff/wordDiff";
 
 describe("tokenizeWordDiff", () => {
     it("returns empty array for empty string", () => {
