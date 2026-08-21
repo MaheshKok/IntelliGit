@@ -789,6 +789,53 @@ describe("CommitPanelViewProvider hydration answers the webview that asked", () 
         ).toBe(hiddenBefore);
     });
 
+    /**
+     * The third row of the ownership table, and the one the two tests above straddle without
+     * covering: the record is unreadable AND the sender is hidden.
+     *
+     * A hidden sender is not a quiet one -- VS Code reloads a hidden view's document without
+     * re-running `resolveWebviewView`, which is the very case this whole path exists for, so the
+     * `ready` arriving here is from a live view that will render the moment its pane is shown.
+     * The recorded view, by contrast, can no longer be read and so can no longer render anything
+     * at all. Keeping ownership there answers a view that cannot listen and strands the one that
+     * asked, which is the exact silence the adoption logic was written to end.
+     */
+    it("answers a hidden sender when the recorded view can no longer be read", async () => {
+        const parentDir = await mkdtemp(path.join(tmpdir(), "intelligit-dead-record-hidden-"));
+        scratch.register(parentDir);
+        const workspace = await prepareDirtyWorkspace(path.join(parentDir, "root"));
+
+        const constructorOptions = buildCommitPanelConstructorOptions();
+        const provider = new CommitPanelViewProvider(
+            createFakeExtensionUri(),
+            new GitOps(new GitExecutor(workspace.root, undefined, toGitEnvironment(workspace.env))),
+            createFakeUriFromPath(workspace.root),
+            createEmptyWorkspaceMemento(),
+            undefined, // secrets -- nothing on this path reads a secret.
+            constructorOptions.shelfServiceForRepository,
+            constructorOptions.shelfRemoveOnUnshelve,
+            constructorOptions.commitMessageGenerationCoordinator,
+            constructorOptions.interactiveRebaseStorageRoot,
+        );
+
+        const hiddenSender = createInspectableCommitPanelWebviewView("delivered", false);
+        provider.resolveWebviewView(hiddenSender.webviewView, INERT_CONTEXT, INERT_TOKEN);
+        // Resolved second, so it holds the record when the hidden view speaks.
+        const disposedRecord = createInspectableCommitPanelWebviewView("delivered", "disposed");
+        provider.resolveWebviewView(disposedRecord.webviewView, INERT_CONTEXT, INERT_TOKEN);
+
+        const hiddenBefore = messagesOfType(hiddenSender.posted, "setRepositories").length;
+
+        await hiddenSender.receiveMessage({ type: "ready", attempt: 18 });
+        await flushMicrotasks();
+
+        expect(
+            messagesOfType(hiddenSender.posted, "setRepositories").length,
+            "a hidden view that asked for hydration is still the only view that can ever render " +
+                "the answer; a record that cannot be read has no claim to outrank it",
+        ).toBeGreaterThan(hiddenBefore);
+    });
+
     it("reposts unchanged commit detail to a newly adopted visible sender", async () => {
         const parentDir = await mkdtemp(path.join(tmpdir(), "intelligit-visible-sender-detail-"));
         scratch.register(parentDir);
