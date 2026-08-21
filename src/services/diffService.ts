@@ -5,6 +5,7 @@
 import * as path from "path";
 import * as vscode from "vscode";
 import { GitExecutor } from "../git/executor";
+import { logGitOpsWarning } from "../git/operationSupport";
 import { GitOps } from "../git/operations";
 import { applyPatchTextToRepo } from "../git/patchApplication";
 import { getErrorMessage } from "../utils/errors";
@@ -17,6 +18,12 @@ import {
 } from "./gitHelpers";
 import { assertRepoRelativePath } from "../utils/fileOps";
 import { EMPTY_TREE_HASH } from "../utils/constants";
+import { exceedsDiffBudget } from "../diff/diffBudgets";
+import { openDiffViewer } from "../diff/diffViewerOpener";
+import { loadDiffSide } from "../diff/sideLoader";
+import type { UnifiedDiffRequest } from "../diff/unifiedDiffTypes";
+
+export type { SideSpec, UnifiedDiffRequest } from "../diff/unifiedDiffTypes";
 
 const READONLY_DIFF_SCHEME = "intelligit-diff";
 const readonlyDiffDocuments = new Map<string, string>();
@@ -122,6 +129,102 @@ export function getRepoRelativeFilePathFromUri(uri: vscode.Uri, repoRoot: string
     const relative = path.relative(repoRoot, uri.fsPath);
     if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) return null;
     return normalizeGitPath(relative);
+}
+
+/**
+ * Opens one read-only diff in the IntelliGit viewer, falling back to the caller's exact native
+ * behaviour for anything the viewer cannot render. There is no user-facing choice of viewer:
+ * `nativeDelegate` exists for content the viewer must refuse — binary, invalid UTF-8, symlink,
+ * submodule, or over-budget sides — not as a preference.
+ */
+export async function openUnifiedDiff(
+    request: UnifiedDiffRequest,
+    nativeDelegate: () => Promise<void>,
+): Promise<void> {
+    const executor =
+        request.left.kind === "ref" || request.right.kind === "ref"
+            ? new GitExecutor(request.repoRoot)
+            : undefined;
+    let leftResult: Awaited<ReturnType<typeof loadDiffSide>> | undefined;
+    let rightResult: Awaited<ReturnType<typeof loadDiffSide>> | undefined;
+    let left: ViewerDiffSide | undefined;
+    let right: ViewerDiffSide | undefined;
+    let overBudget = false;
+
+    try {
+        leftResult = await loadDiffSide({
+            repoRoot: request.repoRoot,
+            filePath: request.path,
+            side: request.left,
+            executor,
+        });
+        if (leftResult.status === "loaded" || leftResult.status === "missing") {
+            left = toViewerSide(leftResult);
+            rightResult = await loadDiffSide({
+                repoRoot: request.repoRoot,
+                filePath: request.path,
+                side: request.right,
+                executor,
+            });
+            if (rightResult.status === "loaded" || rightResult.status === "missing") {
+                right = toViewerSide(rightResult);
+                overBudget = exceedsDiffBudget(left, right);
+            }
+        }
+    } catch (error) {
+        logGitOpsWarning("diffService.openUnifiedDiff.resolve", error);
+        await nativeDelegate();
+        return;
+    }
+
+    // Every outcome the viewer cannot render ends at the native editor: a side that
+    // resolved to something unviewable (left undefined by the block above), a path
+    // absent from both sides, or a pair over budget. One missing side is viewable —
+    // that is how an added or deleted file renders.
+    const bothMissing = leftResult?.status === "missing" && rightResult?.status === "missing";
+    if (!left || !right || bothMissing || overBudget) {
+        await nativeDelegate();
+        return;
+    }
+
+    await openDiffViewer({
+        path: request.path,
+        title: request.title,
+        leftLabel: getSideLabel(request.left),
+        rightLabel: getSideLabel(request.right),
+        languageId: request.languageId,
+        leftText: left.text,
+        rightText: right.text,
+    });
+}
+
+type LoadableDiffSide = Extract<
+    Awaited<ReturnType<typeof loadDiffSide>>,
+    { readonly status: "loaded" | "missing" }
+>;
+
+type ViewerDiffSide = Extract<
+    Awaited<ReturnType<typeof loadDiffSide>>,
+    { readonly status: "loaded" }
+>;
+
+function toViewerSide(result: LoadableDiffSide): ViewerDiffSide {
+    if (result.status === "missing") {
+        return {
+            status: "loaded",
+            bytes: new Uint8Array(),
+            mode: undefined,
+            text: "",
+            lineCount: 0,
+        };
+    }
+    return result;
+}
+
+function getSideLabel(side: UnifiedDiffRequest["left"]): string {
+    if (side.kind === "ref") return side.ref;
+    if (side.kind === "provider") return side.label;
+    return "Working tree";
 }
 
 function getEditorContextFileUri(ctx?: unknown): vscode.Uri | null {

@@ -11,6 +11,7 @@ import { activateRepositoryMode } from "./activation/repositoryMode";
 import { registerCommitChecksAuthCommands } from "./activation/commitChecksAuthCommands";
 import { registerReviewPrompt } from "./services/reviewPrompt";
 import { activateE2eControlChannel } from "./e2e/controlChannel";
+import { setDiffViewerExtensionUri } from "./diff/diffViewerOpener";
 import {
     HAS_MERGE_CONFLICTS_CONTEXT,
     registerStaleUndockedPanelSerializer,
@@ -27,6 +28,7 @@ import {
  * created here or by delegated modes are owned by `context.subscriptions`.
  */
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
+    setDiffViewerExtensionUri(context.extensionUri);
     const e2eControlChannel = activateE2eControlChannel(context);
     context.subscriptions.push({ dispose: () => e2eControlChannel.dispose() });
 

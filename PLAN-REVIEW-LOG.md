@@ -648,3 +648,161 @@ One correction the verifier filed was **rejected at root** — its claim that th
 **HEAD gate.** `git rev-parse HEAD` read the BASE_HEAD value unchanged at the end of every round, including all three root-written ones, and once more immediately before this commit. Codex never committed, staged, or moved HEAD, and neither did any verifier lane.
 
 Root verdict: **P1 ACCEPTED** — this section supersedes Round 4's identical verdict, which was reached before the shadow run and was wrong.
+
+---
+
+### P2a — mode switch: phase-lane → classic in-root
+
+Two P2a phase-lanes were killed by the harness stream watchdog (`no progress for 600s`), both while blocking on their Codex background task rather than while doing anything wrong. Lane 1's Codex session died with it: SID `01a0235a`, launched 09:05, 13 token events, still in its read phase (its last three actions are `ctx_read` calls on `diffService.ts`, `lineDiff.ts`, `shelfDiffActions.ts`), empty `-o` report, **zero files written**. Lane 2 relaunched and its Codex session — SID `01a02390`, 10:04 → 10:51, 47 minutes, 135 token events, 4.1 MB rollout — wrote the full deliverable set before the lane's death killed it mid-verification: its last recorded action is a format check, its `-o` report is empty, and it never produced the numbered DONE/NOT-DONE report the work order required. A third session overlapping that window, SID `01a02394` at 10:08–10:16, was the ChatGPT desktop app running in the **main** repository (`cwd` is the main checkout, tool set is `share_thread`/`plugin_management`/`open_in_codex`), not a second writer here — single-writer discipline held, and the tree has exactly one author.
+
+P2a therefore runs **classic in-root**: the conductor is the acting phase-root, which the skill's own mode selection allows and which the harness cannot kill the same way. The lesson for the remaining phases is in the lane prompt, not the mode: a lane must not block silently past the watchdog window, so P2b/P2c/P3 lane prompts carry an explicit cadence instruction (bounded waits that return inside the window) rather than a single open-ended blocking wait.
+
+### P2a — Round 1 — Codex build (gpt-5.6-luna/xhigh)
+
+SID: `01a02390-481f-76a1-ae24-5d79dba4acac` (orphaned; no self-report — see the mode-switch note above)
+
+Telemetry: `PEAK=243003 LAST=208211 PCT=94% EVENTS=135`, computed from the session rollout because the lane's `$STREAM` and `-o` files did not survive it. `NONRESUMABLE=yes` under the peak rule — irrelevant to routing, since every round is fresh, but this is the **third phase running to overshoot the 45–50% sizing target**, and splitting spec Phase 2 into P2a/P2b/P2c did not prevent it. The work order, not the phase count, is what is oversized: three independent deliverables (funnel, loader, measurement corpus) in one session.
+
+Round gates on the orphaned tree: `verify.py gates --base 5f04b226 --stage round` → `GATES: GREEN warn=0` (typecheck 7.2s, lint-strict 15.1s). Focused: 28/28 pass across the three new unit files (339 ms).
+
+Landed: 927 new lines across `src/diff/unifiedDiffTypes.ts`, `src/diff/sideLoader.ts`, `src/diff/diffBudgets.ts`, `src/diff/diffViewerOpener.ts`, `scripts/measure-diff-budgets.ts` and three new test files, plus the `openUnifiedDiff` funnel and `resolveDiffViewerSetting` in `src/services/diffService.ts`, the `intelligit.diffViewer` configuration contribution in `package.json`, the `isMissingGitPathError` export in `src/git/operations.ts`, a knip entry, the l10n round-trip across twelve catalogs, and a viewer tier case appended to `tests/integration/webviews/merge-editor-performance.integration.test.tsx`.
+
+**Root review — seven findings, none CRITICAL, all filed as defects in written code rather than as absent deliverables** (every deliverable exists in some form; each finding is a defect in one).
+
+| # | Finding | Evidence |
+| --- | --- | --- |
+| 1 | Budget thresholds calibrated on unrepresentative fixtures | The corpus generates lines like `large-left-0` — **16.6 bytes/line** (41,389 B / 2,500 lines) against a measured **39.4 bytes/line** over this repo's 200 largest `.ts`/`.tsx` files. So `MAX_DIFF_BYTES = 82,778` binds at ~2,100 real lines, `MAX_DIFF_LINES = 5,000` is unreachable, and the "large tier accepts 2,500 lines" promise is false for real content (~98,500 B). Two of this repository's own files already exceed the cap: `CommitPanelViewProvider.ts` (103,835 B), `UndockedViewProvider.ts` (93,841 B). The corpus also diffs each side against a wholly different text, so every line differs — a worst case no real diff produces. |
+| 2 | The heap assertion measures the garbage collector | Five identical runs of the large tier gave `heapDelta` = **0, 683623, 446941, 0, 504192**. `MAX_DIFF_HEAP_DELTA_BYTES = 1,355,568` is 2× one sample of that noise, a `0` sample passes vacuously, and `diffBudgets.test.ts` asserts it in the permanent suite. `--expose-gc` is documented in the script's header but the script never calls `gc()`. Compute time over the same samples spread 37–120 ms, so the 259 ms gate has thinner headroom than "2×" suggests. |
+| 3 | Webview render time never measured or gated | `PLAN.md:3.3` names four targets; render time is absent and `diffBudgets.ts`'s doc comment claims "this phase has no permitted viewer browser harness". The premise is false — the file Codex itself extended, `merge-editor-performance.integration.test.tsx`, renders webview apps in jsdom and already gates the merge editor's render. |
+| 4 | Worktree-side submodule has no path | `sideLoader.ts` `loadWorktree()` inspects `FileType.SymbolicLink` but never `Directory`, so a submodule entry reaches `workspace.fs.readFile`, throws, and propagates as an error instead of delegating to native — `PLAN.md:3.2` requires submodule → native delegate. The worktree-side symlink path is handled but untested; symlink and submodule are covered only on the Git-mode (ref) branch. |
+| 5 | The descriptor's `title` is dead | `UnifiedDiffRequest.title` is specified at `PLAN.md:3.1` and carried by the type, but `openUnifiedDiff` never forwards it and `DiffViewerPanelOptions` has no title field, so every Phase-2c call site would pass a value that does nothing. |
+| 6 | Extension URI resolved by hardcoded marketplace id | `diffViewerOpener.ts:8` calls `vscode.extensions.getExtension("MaheshKok.intelligit")` — the only such call in all of `src/`, against 39 sites that thread `context.extensionUri` from activation. The id is correct today (`package.json` publisher `MaheshKok`, name `intelligit`), so this is brittleness and untestability, not a live break. |
+| 7 | Three decorative assertions | `expect(mocks.computeDiffSegments).not.toHaveBeenCalled()` cannot fail — `DiffViewerPanel`, its only caller, is mocked in that file (the adjacent `panelOpen` assertion is the real gate); `expect(3_500 * 3_500).toBeGreaterThan(MAX_DIFF_DP_CELLS)` compares two constants; `it.each(["added", "deleted"])` ignores its parameter, so both iterations run identical code. Also, the funnel is never tested with an `ineligible` side — only `over-budget` exercises that branch. |
+
+Findings 1 and 2 are the load-bearing pair: the first makes the thresholds wrong for the inputs they will actually see, the second puts a garbage-collector measurement into the permanent suite as a gate. Both are the same failure shape — a number measured correctly against the wrong thing.
+
+Root verdict: **REJECTED — fix round 1.**
+
+### P2a — Round 2 — Codex fix 1 (gpt-5.6-luna/xhigh)
+
+Route: `helpers.py route fix 1` → `EFFORT=xhigh MODE=fresh` (binding). SID(prev) `01a02390` → SID(fix1) `01a025b1-e401-7632-acbf-9a1d2dc57a44`. Standalone work order carrying the full delegated-writer receipt, all seven defects with file:line and a per-item check, and the GIT / CONSTRAINTS / NON-GOALS clauses verbatim — the fresh session has never seen the build prompt.
+
+Round 2 verification — root, from the bytes rather than the report. All seven defects re-checked against the files themselves; Codex's own DONE list was treated as a claim throughout. Round gates: `verify.py gates --base 5f04b226 --stage round` → `GATES: GREEN warn=0` (typecheck 7.1s, lint-strict 15.0s). Focused tests **30/30** across the three unit files (249 ms), up from 28 in Round 1 — the two added cases are the ineligible funnel branch and the line-cap trip.
+
+| # | Fix | Verified how |
+| --- | --- | --- |
+| 1 | Budgets recalibrated on real files | `scripts/measure-diff-budgets.ts:54-88` now diffs `wordDiff.ts`, `diffService.ts` and `CommitPanelViewProvider.ts` against a **2% line edit of themselves** (`modifiedCopy`), replacing the corpus that diffed each side against a wholly different text. `measureRealSourceBytesPerLine()` reports **40.1867 B/line** over the 200 largest `.ts`/`.tsx` under `src/`. Caps become `MAX_DIFF_BYTES = 210_094` (2 × the 105,047-byte large side) and `MAX_DIFF_LINES = 5_227` = `floor(210_094 / 40.1867)`. `CommitPanelViewProvider.ts` (103,835 B) — which the old cap rejected — is now the calibrating tier. |
+| 2 | Heap no longer measures the collector | `scripts/measure-diff-budgets.ts:130-145`: `gc?.()` is now actually **called** on both sides, and `heapDeltaBytes` is `"unmeasured"` without `--expose-gc`. `tests/unit/diff/diffBudgets.test.ts` read end-to-end: **no `heapUsed` assertion of any kind remains**. |
+| 3 | Render time measured and gated | `merge-editor-performance.integration.test.tsx:167-190` renders all three accepted tiers through the real `DiffViewerApp` in jsdom and asserts `MAX_DIFF_RENDER_MS`. The Round-1 premise for omitting it ("no permitted viewer browser harness") was false, and the fix uses exactly the harness in the file it had already edited. |
+| 4 | Worktree submodule delegates | `src/diff/sideLoader.ts:197-199` returns `{status:"ineligible", reason:"submodule"}` for a `Directory`, **after** the `SymbolicLink` branch at :194 — the correct order, since a symlink to a directory carries both type bits. |
+| 5 | `title` reaches the panel | Threaded `openUnifiedDiff` → `DiffViewerPanelOptions.title` → `DiffViewerSnapshot.title` → new `DiffViewerPanel.panelTitle()` (:171-177), which falls back to the pre-existing localized `Diff: {file}`. All three former inline `l10n.t` title sites now route through it. |
+| 6 | Extension URI injected | `src/extension.ts:31` calls `setDiffViewerExtensionUri(context.extensionUri)` as the first statement of `activate`. Independently confirmed: `grep -rn getExtension src` returns only `vscode.git` in `RefreshService.ts:311` — a built-in that must resolve by id — and nothing for `MaheshKok.intelligit`. |
+| 7 | Decorative assertions replaced | The constant-vs-constant `3_500 * 3_500 > MAX_DIFF_DP_CELLS` is gone, replaced by three real `exceedsDiffBudget` calls including one tripping the **line** cap alone (`diffBudgets.test.ts:86-91`) — previously unreachable. `it.each` at `unifiedDiffFunnel.test.ts:63-70` now consumes both parameters. The ineligible funnel branch is covered at :166. |
+
+Two Round-1 concerns were re-examined and **not** raised again, both on evidence rather than deference:
+
+- The new gates assert wall-clock time (`MAX_DIFF_COMPUTE_MS = 59`, `MAX_DIFF_RENDER_MS = 5_613`), the same machine-dependent shape as the heap defect just removed. Measured over five consecutive runs: compute test **25/25/25/25/26 ms** against a 59 ms cap, render test **4,725/4,314/4,512/4,499/4,666 ms** total across three tiers — a 9.5% spread against ~100% headroom. House precedent already asserts wall-clock ceilings in the permanent suite (`merge-parser-performance.test.ts:70,105` at 3,000 ms; `operations.test.ts:601,620` at 2,000 ms). Recorded as a slow-CI risk, not a defect.
+- `getSideLabel` returns the raw English `"Working tree"` (`diffService.ts:222`) — a Round-1 miss. On inspection it is not a defect: the existing shipped viewer label path does the same (`shelfDiffActions.ts:24-25`, `BASE_LABEL = "Base (HEAD at shelve)"`, `SHELVED_LABEL = "Shelved"`), so localizing only this one would make the header inconsistent with itself. If these are ever localized it is one change across all of them, not this phase.
+
+**Independent verifier (fresh `opus`, max effort) — 10 findings, triaged by root against the artifact. Seven accepted, three rejected.** The lane gathered evidence; the verdict stayed at root, and one rejection required running an experiment rather than reading the code.
+
+| # | Verifier finding | Root verdict |
+| --- | --- | --- |
+| 1 | Two missing sides open a blank viewer instead of delegating | **ACCEPTED** — `toViewerSide` maps each `missing` to an empty side; `exceedsDiffBudget(empty, empty)` is false, so the pair reaches `openDiffViewer`. |
+| 2 | No `try`/`catch` anywhere in `openUnifiedDiff`, so throws escape the funnel | **ACCEPTED — the load-bearing one.** `loadRef`, `readGitMode`, a provider `load`, and `loadWorktree`'s deliberate EACCES rethrow all propagate out, so the user gets *no* diff where the funnel's whole contract is that they get the native one. |
+| 3 | The render gate's existence assertion is vacuous after loop iteration 1 | **REJECTED — disproved by experiment.** A throwaway probe dispatched a populated tier, then a second `setDiffData` carrying empty content: `.diff-pane .code-block` went **4 → 0**. React reconciles stale nodes away, so the assertion can still fail on later iterations. Reading the code would have left this ambiguous; only running it settled it. |
+| 4 | Payload gate compares UTF-16 `.length` against a UTF-8 byte budget | **ACCEPTED** — budget derived with `Buffer.byteLength(…,"utf8")`, asserted with `.length`; agrees only for ASCII. |
+| 5 | Budget test counts lines with `split("\n").length`, production uses `countLines()` | **ACCEPTED** — `sideLoader.ts:223-233` subtracts a trailing newline, so the permanent gate measures a counter no production path produces. The same off-by-one is visible in the doc table (289/626/2313 vs `wc -l` 288/625/2312). |
+| 6 | `MAX_DIFF_LINES` is decorative because the DP cap binds first | **REJECTED** — three independent caps where the tightest binds is intended defense in depth, not a defect. |
+| 7 | "29.468 ms in the focused Vitest gate" does not reproduce | **ACCEPTED** — root's own five runs measured 25–26 ms *total for all three tiers*, so no tier approaches 29.468 ms and the real headroom is ~4×, not the stated 2×. A doc that states an unreproducible derivation is the same defect class as Round-1 finding 1. |
+| 8 | `2 × 2,806.205 rounded` = 5,612, but the constant is 5,613 | **ACCEPTED** (wording: it is a ceiling). |
+| 9 | No production callers; fixes 5 and 6 are test-only | **REJECTED in the main** — wiring call sites is Phase 2c by spec. **Accepted in part**: `title` is never asserted against the *real* panel (the funnel test mocks `DiffViewerPanel`; `diffViewerPanel.test.ts:118` asserts only the fallback), so the one line making the field live is unproven. |
+| 10 | The open-document branch precedes `stat`, so an open symlink loads as a normal file | **ACCEPTED** — identical input yields a different result depending only on whether an editor is open. |
+
+Root verdict: **REJECTED — fix round 2.** Seven accepted defects, five of which are the same underlying mistake: an exit path that leaves the user with no diff or a blank one, where the funnel's contract requires the native editor. That framing leads the work order rather than the individual items.
+
+### P2a — Round 3 — Codex fix 2 (gpt-5.6-luna/xhigh)
+
+Route: `helpers.py route fix 2` → `EFFORT=xhigh MODE=fresh` (binding). SID(prev) `01a025b1` → SID(fix2) `01a025d9-3349-7ce3-be38-8807328630d7`. This is the last Codex round the ladder allows; a further rejection is a Claude takeover, not a third fix round.
+
+The work order carries a **DO NOT "FIX" THESE** block naming the three rejected findings with the evidence that cleared each — including the 4 → 0 probe result — because a fresh session that re-derives them from scratch would otherwise "helpfully" rewrite correct code. Round 1's WRITER MODE cited a skill path that did not exist on the host (Codex silently substituted `subagent-tdd-workflow`); that citation is replaced with the requirement stated inline.
+
+Telemetry: `PEAK=226981 LAST=226981 PCT=87% NONRESUMABLE=yes`. Nothing in this skill resumes, so that flag does not route anything — but 87% against a 45–50% sizing target is the phase-too-big signal, on a *fix* round carrying only a defect list. P2a was sized as one package and should have been two. **P2b, P2c and P3 get sliced tighter before launch, not after the session bloats.**
+
+Codex returned all seven ACCEPTED findings as DONE. Root re-verified each against the bytes rather than the report:
+
+| # | Fix | Verified how |
+| --- | --- | --- |
+| 1 | Both-missing delegates | `diffService.ts` computes `bothMissing` from the two `LoadableDiffSide` results and delegates; one missing side still opens the viewer with empty text (`unifiedDiffFunnel.test.ts:144-170` covers both directions). |
+| 2 | Resolve errors log and delegate | The whole side-resolution is wrapped; the `catch` calls `logGitOpsWarning("diffService.openUnifiedDiff.resolve", error)` then `nativeDelegate()`. Three tests cover left-rejects, right-rejects, and provider-rejects. |
+| 3 | Payload gate uses UTF-8 bytes | `Buffer.byteLength(…, "utf8")` on both the derivation and the assertion side. |
+| 4 | Budget test uses production `countLines` | `countLines` exported from `sideLoader.ts:223-233` and imported by the budget test; the doc table corrected to the production convention (288/655/2312). |
+| 5 | `title` asserted against the real panel | `diffViewerPanel.test.ts:125-141` asserts the explicit title on both create and reveal; Codex reports its own mutation went red. |
+| 6 | Compute ceiling re-derived from measurement | Five real samples logged in the doc block (15.939 / 16.141 / 15.514 / 16.123 / 16.591 ms) with `MAX_DIFF_COMPUTE_MS = ceil(3.5 × 16.591) = 59`. The unreproducible 29.468 ms claim is gone. |
+| 7 | Stat precedes the dirty-buffer branch | `loadWorktree` now stats first — symlink at :183, directory → `ineligible: "submodule"` at :186 — and only then prefers an open dirty document, so an open editor can no longer change the classification of the same path. |
+
+#### Root takeover — beyond the fix list
+
+Accepting the seven fixes is not the same as accepting the diff. Two things were changed at root after review:
+
+**Collapsed five sequential guards into one.** The fix left five separate `if (…) { await nativeDelegate(); return; }` blocks in a row, two of which were unreachable (a side that resolved to `undefined` was already caught by the clause above it). Collapsed to a single condition with a comment naming every outcome it covers.
+
+**The collapse then had to be proven, and the proof found a real hole.** Mutating each surviving clause away one at a time (`mutate-funnel.py`, restores byte-exact and verifies by sha256):
+
+| Mutation | Expected red | Result |
+| --- | --- | --- |
+| drop `bothMissing` | both sides confirmed missing | RED, named |
+| drop `overBudget` | *(initially nothing)* | **GREEN — the hole** |
+| drop the unresolved-side check | ineligible side | RED, named (3 tests) |
+
+`overBudget` came back **green**: removing the pair-level budget check from the funnel broke no test at all. The two existing "over-budget" tests trip the side loader's own per-side byte cap and are caught by the unresolved-side clause instead, so `exceedsDiffBudget` — the line cap and DP-cell cap this phase spent two rounds calibrating — was enforced by a call **no test proved did anything**. Reading the code cannot see this; a green suite actively hides it. Only the mutation exposed it.
+
+Two isolating tests close it, each sized so exactly one cap can be the reason to delegate: `ceil(sqrt(MAX_DIFF_DP_CELLS)) + 1` lines a side for the cell cap (both sides far under the byte cap), and `MAX_DIFF_LINES + 1` lines against a single-line side for the line cap (cell count far under the DP cap). Both derive their fixtures **from the constants** rather than hardcoding, so a future re-calibration cannot silently stop exercising the branch. Re-run: `drop overBudget` now turns both new tests red by name.
+
+That derivation also resolved the one accept-gate failure. `deps-knip` reported `Unused exports (1) MAX_DIFF_DP_CELLS src/diff/diffBudgets.ts:51:14` — the constant lost its only external consumer when Round 2 correctly deleted the decorative `3_500 * 3_500 > MAX_DIFF_DP_CELLS` assertion. Importing it into the test that actually exercises the cap restores the consumer honestly, rather than silencing knip with a config exemption.
+
+#### Final verifier (fresh `opus`, takeover exception) — 3 findings, all MINOR
+
+Root may not self-certify takeover bytes, so the collapsed guard and the two new tests went to a fresh verifier told not to re-run any gate. It cleared both takeover claims **independently, rather than by inspecting root's reasoning**: it enumerated `loadDiffSide`'s full result space (`loaded | missing | over-budget | ineligible`) against the collapsed condition and found no input where one version delegates and the other opens, and it re-implemented `countLines`/`exceedsDiffBudget` from the bytes as a numeric oracle to confirm each new test trips exactly one cap.
+
+| test | bytes/side (cap 210,094) | lines (cap 5,226) | cells (cap 9,000,000) | predicate true |
+| --- | --- | --- | --- | --- |
+| DP-cell | 6,002 | 3,001 | 9,006,001 | `dpCells` only |
+| line-budget | 10,456 / 6 | 5,228 / 1 | 5,228 | `leftLines` only |
+
+| # | Finding | Root verdict |
+| --- | --- | --- |
+| F1 | `diffBudgets.ts` corpus row for `diffService.ts` is stale — documented 24,199 B / 655 lines, actual 24,055 / 642 | **ACCEPTED — self-inflicted.** The guard collapse removed 13 lines from a file that is itself a corpus row. Same class root accepted as Round-2 finding 7, now applied to root's own bytes. |
+| F2 | `openDiffViewer` sits outside the `try`, so the open phase can throw past the "never strand the user" contract | **REJECTED for P2a, carried to P2c.** The verifier enumerated every reachable throw site and found **none** in production: the extension URI is set as the first statement of `activate`, `assertRepoRelativePath` already ran on the same input inside the try, and the whole compute chain (`diffSegments.ts`, `wordDiff.ts`, `lineDiff.ts`) contains zero `throw` statements — the `MAX_LCS_CELLS` boundary degrades to `greedyMonotonicLineMatch` instead of throwing. With no reachable input, no test can go red without the change, so adding the catch now would be untestable speculative code. It becomes real in P2c, when actual callers make the error surface concrete. |
+| F3 | The integration test re-asserts the compute and payload caps under jsdom, where they were calibrated in node | **ACCEPTED.** Confirmed a strict subset of `diffBudgets.test.ts` — same three files, same two assertions, minus `exceedsDiffBudget` — and it renders nothing, so the jsdom placement buys no coverage while adding a flake surface. Deleted; jsdom performance stays gated by the render test, at the layer that actually needs jsdom. |
+
+**F1's fix surfaced a second-order defect the finding did not name.** Re-running the measurement to correct one row moved `realSourceBytesPerLine` from 40.18865773302732 to **40.1942478007168** — because that figure is measured over this repository's own 200 largest source files, and the guard collapse edited one of them. The published formula `floor(210,094 / ratio) = 5,227` therefore no longer produced its own stated output; the correct floor is **5,226**. `MAX_DIFF_LINES` moved accordingly, and the doc now states that the corpus rows and the ratio are pinned to the recorded run rather than to current HEAD, with the rule that re-derivation restates the *whole* table from one run — a table mixing figures from two runs is not reproducible.
+
+This is a self-invalidating calibration: any future commit touching `src/` shifts the ratio again. Pinning it to a stated run is what makes the doc durable; chasing the last digit on every edit would be a treadmill.
+
+Every other threshold is **unchanged, and verified so rather than assumed**: all of them derive from the large tier, which re-measured byte-identical (103,835 / 105,047 bytes, 2,312 / 2,312 lines, 5,345,344 cells, 219,524 payload). The five-run Vitest compute series behind `MAX_DIFF_COMPUTE_MS` is also large-tier, so it survives untouched.
+
+#### P2a — Round 4 — user scope correction (no Codex round)
+
+The user reviewed the phase before it was committed and challenged the `intelligit.diffViewer` setting: _"why are we giving options to user to choose which diff viewer they want to use ... if they click on any files from our extension they should see only our diff viewer"_. The setting was not invented by the build — it is in the frozen plan twice (§3.1 and Key decision 2) and survived the grill plus five Codex review rounds. The user is nonetheless the one who owns it, and on inspection **half of its stated justification was already false**: Key decision 2 defended the setting as "the escape hatch and keeps the native path tested", but `nativeDelegate` is mandatory regardless — §3.2 requires binary, invalid-UTF-8, symlink, submodule, and over-budget sides to fall back — so the native path stays live and tested with or without a user setting. Only the escape-hatch half was real, and it was speculative.
+
+Decision: **drop the setting.** Removed before commit rather than after, since P2c wires six call sites and the deletion only gets more expensive.
+
+| Removed | How |
+| --- | --- |
+| `package.json` configuration contribution | `git checkout HEAD --` on 14 config/l10n files, after verifying with a filtered diff that every changed line in them was setting-related (the only non-`diffViewer` lines were trailing commas on the preceding key). |
+| 3 keys × 12 locale catalogs, 3 CSV review rows | same revert |
+| `resolveDiffViewerSetting` + the setting branch in `openUnifiedDiff` | direct edit; the doc comment now states that `nativeDelegate` is for unrenderable content, not preference |
+| 6 tests (4 `it.each` resolver cases, the native-branch test, the manifest contribution test) and the `getConfiguration` mock | direct edit; funnel suite 17 → 11 tests |
+
+`src/views/DiffViewerPanel.ts:92` still contains the string `"intelligit.diffViewer"` — that is the webview **viewType id** passed to `createWebviewPanel`, unrelated to the setting, and correctly retained.
+
+Re-verified after removal: focused suites **35/35** across 4 files, `typecheck` / `lint:strict` (0 warnings) / `format:check` / `knip` all clean, and the three-clause guard mutation re-run — every clause still turns a **named** test red, source restored byte-exact (`44008960618f`). `PLAN.md` §3.1, §3.8, the Goal paragraph, and Key decision 2 were amended so P2c cannot re-introduce the setting from a stale spec.
+
+#### Scope change raised — blocks P2b
+
+The same review turned up a second, larger item: the user expects the **2-pane viewer itself to have an editable mode**. The frozen plan puts an editable right pane explicitly out of scope, so "editable" has meant only the existing 3-pane merge editor throughout.
+
+This is not absorbed silently. It is recorded in `PLAN.md` under **Pending scope change — BLOCKS Phase 2b**, because §3.5's session model rests on "resolved immutable side snapshots" that `setIgnoreMode` recomputation reuses without reloading providers. An editable pane breaks that premise outright — dirty state, a write-back protocol direction, save/undo semantics, external-change conflicts, and a different answer for what a generation-bound refresh does to unsaved edits. Building 2b on frozen snapshots and retrofitting editability means rewriting 2b.
+
+P2a is unaffected either way: the funnel, side loader, and budgets are identical whether or not the viewer later becomes editable. So P2a commits, and the build **stops there** pending a `claudex-grill` round on editable mode.

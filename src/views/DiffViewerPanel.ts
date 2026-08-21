@@ -19,6 +19,8 @@ export interface DiffViewerPanelOptions {
     extensionUri: vscode.Uri;
     /** Repository-relative path displayed in the panel title and header. */
     path: string;
+    /** Optional panel title; the path-derived localized title is used when absent. */
+    title?: string;
     /** Label for the left source. */
     leftLabel: string;
     /** Label for the right source. */
@@ -33,6 +35,7 @@ export interface DiffViewerPanelOptions {
 
 interface DiffViewerSnapshot {
     path: string;
+    title?: string;
     leftLabel: string;
     rightLabel: string;
     languageId: string;
@@ -79,9 +82,7 @@ export class DiffViewerPanel {
         const existing = DiffViewerPanel.instance;
         if (existing && existing.isAlive()) {
             existing.snapshot = snapshot;
-            existing.panel.title = vscode.l10n.t("Diff: {file}", {
-                file: path.posix.basename(snapshot.path),
-            });
+            existing.panel.title = DiffViewerPanel.panelTitle(snapshot);
             existing.panel.reveal(vscode.ViewColumn.Active);
             await existing.postLatestData();
             return;
@@ -89,7 +90,7 @@ export class DiffViewerPanel {
 
         const rawPanel = vscode.window.createWebviewPanel(
             "intelligit.diffViewer",
-            vscode.l10n.t("Diff: {file}", { file: path.posix.basename(snapshot.path) }),
+            DiffViewerPanel.panelTitle(snapshot),
             vscode.ViewColumn.Active,
             {
                 enableScripts: true,
@@ -149,7 +150,7 @@ export class DiffViewerPanel {
             webview,
             scriptFile: "webview-diffviewer.js",
             styleFiles: ["webview-diffviewer.css"],
-            title: vscode.l10n.t("Diff: {file}", { file: path.posix.basename(this.snapshot.path) }),
+            title: DiffViewerPanel.panelTitle(this.snapshot),
             e2eViewId: "diff-viewer",
         });
     }
@@ -158,12 +159,21 @@ export class DiffViewerPanel {
     private static snapshotFrom(options: DiffViewerPanelOptions): DiffViewerSnapshot {
         return {
             path: assertRepoRelativePath(options.path),
+            title: options.title,
             leftLabel: options.leftLabel,
             rightLabel: options.rightLabel,
             languageId: options.languageId,
             leftText: options.leftText,
             rightText: options.rightText,
         };
+    }
+
+    /** Resolves the caller's title or the existing localized path-based fallback. */
+    private static panelTitle(snapshot: DiffViewerSnapshot): string {
+        return (
+            snapshot.title ??
+            vscode.l10n.t("Diff: {file}", { file: path.posix.basename(snapshot.path) })
+        );
     }
 
     private isAlive(): boolean {

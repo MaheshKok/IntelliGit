@@ -122,6 +122,25 @@ describe("DiffViewerPanel", () => {
         });
     });
 
+    it("uses an explicit title for creation and reveal updates", async () => {
+        await DiffViewerPanel.open(options({ title: "Custom diff title" }));
+        const panel = lastPanel();
+
+        expect(panel.title).toBe("Custom diff title");
+
+        await DiffViewerPanel.open(
+            options({
+                path: "src/updated.ts",
+                title: "Updated diff title",
+                rightText: "updated\n",
+            }),
+        );
+
+        expect(mocks.panels).toHaveLength(1);
+        expect(panel.reveal).toHaveBeenCalledOnce();
+        expect(panel.title).toBe("Updated diff title");
+    });
+
     it("replays the latest payload when the webview reports ready", async () => {
         await DiffViewerPanel.open(options());
         const panel = lastPanel();

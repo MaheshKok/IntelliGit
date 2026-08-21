@@ -7,10 +7,15 @@
 // guards the memoization layer: an accidental O(segments^2) re-render or a
 // broken memo comparator shows up here as either wrong content or a timeout.
 
+import { readFileSync } from "node:fs";
+import * as path from "node:path";
 import { act } from "react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { flush } from "../../helpers/reactDomTestUtils";
 import { installWebviewI18n } from "../../helpers/webviewI18nTestUtils";
+import { computeDiffSegments } from "../../../src/diff/diffSegments";
+import { MAX_DIFF_RENDER_MS } from "../../../src/diff/diffBudgets";
+import type { DiffViewerData } from "../../../src/webviews/protocol/diffViewerTypes";
 
 interface MockVsCodeApi {
     postMessage: ReturnType<typeof vi.fn>;
@@ -84,6 +89,35 @@ function buildLargeConflictData(): SyntheticData {
     };
 }
 
+function readMeasuredFile(relativePath: string): string {
+    return readFileSync(path.resolve(process.cwd(), relativePath), "utf8");
+}
+
+function modifiedCopy(source: string, marker: string): string {
+    const lines = source.split("\n");
+    const lineCount = lines.at(-1) === "" ? lines.length - 1 : lines.length;
+    const editCount = Math.max(1, Math.ceil(lineCount * 0.02));
+    const start = Math.floor(lineCount * 0.37);
+    for (let offset = 0; offset < editCount; offset++) {
+        const index = Math.min(start + offset, lineCount - 1);
+        lines[index] = `${lines[index]} // measured ${marker} edit ${offset}`;
+    }
+    return lines.join("\n");
+}
+
+function buildViewerData(sourceFile: string, name: string): DiffViewerData {
+    const left = readMeasuredFile(sourceFile);
+    const right = modifiedCopy(left, name);
+    return {
+        path: sourceFile,
+        leftLabel: "left",
+        rightLabel: "right",
+        languageId: "typescript",
+        ...computeDiffSegments(left, right),
+        ignoreWhitespace: false,
+    };
+}
+
 beforeAll(() => {
     Object.defineProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT", {
         value: true,
@@ -99,6 +133,35 @@ afterEach(() => {
 });
 
 describe("MergeEditorApp large document flow", () => {
+    // Compute time and payload size are gated in tests/unit/diff/diffBudgets.test.ts,
+    // in the node environment the ceilings were calibrated in. Re-asserting them here
+    // would measure the same pure computation under jsdom, which renders nothing and
+    // buys no coverage. What jsdom uniquely gates is render time, below.
+    it("keeps accepted diff-viewer tiers within the measured render target", async () => {
+        installVsCodeMock();
+        createRootHost();
+
+        await act(async () => {
+            await import("../../../src/webviews/react/diff-viewer/DiffViewerApp");
+        });
+        await flush();
+
+        for (const { name, sourceFile } of [
+            { name: "small", sourceFile: "src/diff/wordDiff.ts" },
+            { name: "typical", sourceFile: "src/services/diffService.ts" },
+            { name: "large", sourceFile: "src/views/CommitPanelViewProvider.ts" },
+        ]) {
+            const data = buildViewerData(sourceFile, name);
+            const renderStart = performance.now();
+            dispatchHostMessage({ type: "setDiffData", data });
+            await flush();
+            const renderMs = performance.now() - renderStart;
+
+            expect(document.querySelectorAll(".diff-pane .code-block").length).toBeGreaterThan(0);
+            expect(renderMs, `${name} render`).toBeLessThan(MAX_DIFF_RENDER_MS);
+        }
+    }, 20_000);
+
     it("renders 1,000 lines with 50 conflicts and resolves them end-to-end", async () => {
         const vscode = installVsCodeMock();
         createRootHost();

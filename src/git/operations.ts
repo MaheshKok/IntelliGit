@@ -1854,7 +1854,7 @@ function isLockAlreadyExistsError(error: unknown): boolean {
 }
 
 /** Returns whether Git reported a path absent from an otherwise valid treeish. */
-function isMissingGitPathError(message: string): boolean {
+export function isMissingGitPathError(message: string): boolean {
     return (
         message.includes("does not exist in") ||
         message.includes("exists on disk, but not in") ||
