@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { tokenizeSyntaxLine } from "../../../src/webviews/react/merge-editor/syntaxHighlight";
-import type { SyntaxToken } from "../../../src/webviews/react/merge-editor/syntaxHighlight";
+import { tokenizeSyntaxLine } from "../../../src/webviews/react/diff-core/syntaxHighlight";
+import type { SyntaxToken } from "../../../src/webviews/react/diff-core/syntaxHighlight";
 
 function joined(tokens: SyntaxToken[]): string {
     return tokens.map((token) => token.text).join("");

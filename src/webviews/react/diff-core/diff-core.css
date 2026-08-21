@@ -1,0 +1,196 @@
+/* Shared visual contract for pane-agnostic diff blocks. */
+.merge-editor,
+.diff-core {
+    --diff-editor-bg: var(--merge-editor-bg, var(--vscode-editor-background, #2b3240));
+    --diff-editor-fg: var(--merge-editor-fg, var(--vscode-editor-foreground, #bfc7d5));
+    --diff-border: var(--merge-border, color-mix(in srgb, var(--diff-editor-fg) 14%, transparent));
+    --diff-muted: var(--merge-muted, var(--vscode-descriptionForeground, #9ca3af));
+    --diff-line-number-gutter: var(--merge-line-number-gutter, 33px);
+    --diff-line-min-width: var(--merge-line-min-width, 0px);
+    --diff-action-gutter: var(--merge-action-gutter, 44px);
+    --diff-code-font-size: var(--merge-code-font-size, var(--vscode-editor-font-size, 13px));
+    --diff-pane-boundary: var(
+        --merge-pane-boundary,
+        color-mix(in srgb, var(--diff-editor-fg) 24%, var(--diff-editor-bg))
+    );
+    --diff-conflict-block-bg: var(--merge-conflict-block-bg, var(--diff-editor-bg));
+    --diff-inserted-block-bg: var(--merge-inserted-block-bg, var(--diff-editor-bg));
+    --diff-modified-block-bg: var(--merge-modified-block-bg, var(--diff-editor-bg));
+    --diff-deleted-block-bg: var(--merge-deleted-block-bg, var(--diff-editor-bg));
+    --diff-pycharm-conflict: var(--pycharm-conflict, var(--diff-conflict-block-bg));
+    --diff-pycharm-inserted: var(--pycharm-inserted, var(--diff-inserted-block-bg));
+    --diff-pycharm-modified: var(--pycharm-modified, var(--diff-modified-block-bg));
+    --diff-pycharm-deleted: var(--pycharm-deleted, var(--diff-deleted-block-bg));
+}
+
+.segment {
+    width: 100%;
+    /* Browser-level virtualization: offscreen segments skip rendering work
+       while the inline contain-intrinsic-size keeps scrollbar geometry stable
+       for very large diff files. Each segment holds one pane's slice, stacked
+       vertically inside its column. */
+    content-visibility: auto;
+}
+
+/* Columns stay transparent; pane and line-number separators are drawn in the
+   gutter channels so hunk ribbons can pass underneath them. */
+.column {
+    min-width: 0;
+    background: transparent;
+}
+
+.code-block {
+    display: grid;
+    grid-template-columns: var(--diff-line-number-gutter) minmax(0, 1fr);
+    min-height: 0;
+    overflow: hidden;
+    position: relative;
+}
+
+.code-block.line-numbers-right {
+    grid-template-columns: minmax(0, 1fr) calc(
+            var(--diff-line-number-gutter) + var(--diff-action-gutter)
+        );
+}
+
+.code-block.no-line-numbers {
+    grid-template-columns: minmax(0, 1fr);
+}
+
+.line-numbers {
+    background: transparent;
+    /* 45% of the editor foreground is the smallest mix that clears the floor in
+       the worst case (34.7% needed, rounded up for margin), and the gutter stays
+       3.6-3.8 contrast-ratio steps dimmer than the code it numbers, so it still
+       reads as a gutter. Both High Contrast themes define
+       editorLineNumber-foreground equal to editorForeground already, so there
+       the mix resolves to the value they picked. */
+    color: color-mix(
+        in srgb,
+        var(--vscode-editorLineNumber-foreground, var(--diff-muted)) 55%,
+        var(--diff-editor-fg)
+    );
+    box-sizing: border-box;
+}
+
+.line-number-row {
+    display: grid;
+    grid-template-columns: 1fr;
+    box-sizing: border-box;
+}
+
+.code-block.line-numbers-right .line-number-row {
+    padding-left: var(--diff-action-gutter);
+}
+
+.line-numbers.has-secondary .line-number-row {
+    grid-template-columns: 1fr 1fr;
+}
+
+.line-number {
+    padding: 0 7px 0 3px;
+    text-align: right;
+    min-height: 20px;
+    line-height: 20px;
+    border-left: 1px solid transparent;
+}
+
+.line-number-secondary {
+    color: color-mix(in srgb, var(--diff-muted) 58%, transparent);
+    font-size: 11px;
+    padding-right: 4px;
+}
+
+.line-number-primary {
+    padding-left: 4px;
+}
+
+.line-numbers.has-secondary .line-number-primary {
+    border-left-color: color-mix(in srgb, var(--diff-border) 60%, transparent);
+}
+
+.code-lines {
+    min-width: 0;
+    position: relative;
+    /* Single-column grid keeps line rows and token overflow in one horizontal
+       scroll plane. The lower bound is the widest line across ALL panes
+       (--diff-line-min-width), so every pane shares one scroll extent and moves
+       in lockstep — instead of each pane sizing to its own content and short
+       panes refusing to scroll. Row color is painted by the sticky
+       real-code-line layer. */
+    display: grid;
+    grid-template-columns: minmax(max(100%, var(--diff-line-min-width, 0px)), max-content);
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+}
+
+.code-lines::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+}
+
+.code-line {
+    padding: 0 9px;
+    white-space: pre;
+    line-height: 20px;
+    min-height: 20px;
+}
+
+.real-code-line {
+    position: relative;
+}
+
+.real-code-line::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 20px;
+    pointer-events: none;
+}
+
+.code-line-content {
+    position: relative;
+    /* Deliberately NOT `overflow: hidden; text-overflow: ellipsis`. A long code
+       line is meant to overflow and be reached by scrolling: `.code-lines` is a
+       `max-content` grid with `overflow-x: auto`, and the shared scroll driver
+       syncs it with the surface scrollbar so every pane tracks together.
+       Truncating here would clip code the user has to read, and would quietly
+       strand that scrollbar with nothing left to scroll. */
+}
+
+.segment-common .code-line {
+    color: var(--diff-editor-fg);
+}
+
+.tok-comment {
+    color: color-mix(in srgb, var(--vscode-editorLineNumber-foreground, #6e7681) 74%, transparent);
+    font-style: italic;
+}
+
+.tok-keyword {
+    color: var(--vscode-symbolIcon-keywordForeground, #c586c0);
+}
+
+.tok-string {
+    color: var(--vscode-symbolIcon-stringForeground, #ce9178);
+}
+
+.tok-number {
+    color: var(--vscode-symbolIcon-numberForeground, #b5cea8);
+}
+
+.tok-constant {
+    color: var(--vscode-symbolIcon-constantForeground, #4fc1ff);
+}
+
+/* Base word-fragment tint. Consumers that layer variant colors on top own
+   their own overrides and any whitespace-only exception, because those tie at
+   equal specificity and resolve by source order within the consumer's own
+   stylesheet — see `.word-diff-change.word-diff-whitespace` in merge-editor.css. */
+.word-diff-change {
+    background: var(--diff-pycharm-modified);
+    border-radius: 2px;
+}

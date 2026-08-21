@@ -10,7 +10,7 @@ import {
     initShiki,
     isShikiReady,
     highlightLine,
-} from "../../../src/webviews/react/merge-editor/shikiHighlighter";
+} from "../../../src/webviews/react/diff-core/shikiHighlighter";
 
 describe("langForPath", () => {
     it("maps common extensions to their Shiki language id", () => {

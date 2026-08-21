@@ -4,14 +4,14 @@
 
 import { describe, expect, it } from "vitest";
 import {
-    bandSpansForMiddleGap,
     buildVerticalLayout,
     paneOffsetForCanonical,
     ribbonOutlineD,
     ribbonPathD,
-    type MergePane,
+    type PaneId,
     type SegmentPaneLines,
-} from "../../../src/webviews/react/merge-editor/mergeScrollLayout";
+} from "../../../src/webviews/react/diff-core/mergeScrollLayout";
+import { bandSpansForMiddleGap } from "../../../src/webviews/react/merge-editor/mergeScrollLayout";
 
 // common(3) | conflict id=0 ours=1/result=3/theirs=2 | common(2)
 //
@@ -20,21 +20,21 @@ import {
 //   seg1 conflict       20     60     40      60   (lines*20, no chrome)
 //   seg2 common(2)      40     40     40      40
 const FIXTURE: SegmentPaneLines[] = [
-    { left: 3, middle: 3, right: 3, conflict: false },
-    { left: 1, middle: 3, right: 2, conflict: true, id: 0 },
-    { left: 2, middle: 2, right: 2, conflict: false },
+    { paneLines: { left: 3, middle: 3, right: 3 }, conflict: false },
+    { paneLines: { left: 1, middle: 3, right: 2 }, conflict: true, id: 0 },
+    { paneLines: { left: 2, middle: 2, right: 2 }, conflict: false },
 ];
 
 describe("buildVerticalLayout", () => {
     it("stacks canonical tops from the tallest pane per segment", () => {
-        const layout = buildVerticalLayout(FIXTURE);
+        const layout = buildVerticalLayout(FIXTURE, ["left", "middle", "right"] as const);
         expect(layout.canonicalTopPx).toEqual([0, 60, 120]);
         expect(layout.canonicalHPx).toEqual([60, 60, 40]);
         expect(layout.canonicalTotalPx).toBe(160);
     });
 
     it("advances each pane by its own natural height, not the canonical height", () => {
-        const layout = buildVerticalLayout(FIXTURE);
+        const layout = buildVerticalLayout(FIXTURE, ["left", "middle", "right"] as const);
         // Left pane's 1-line conflict (20px) means seg2 starts at 80, not 120.
         expect(layout.paneTopPx.left).toEqual([0, 60, 80]);
         expect(layout.paneTopPx.middle).toEqual([0, 60, 120]);
@@ -43,13 +43,13 @@ describe("buildVerticalLayout", () => {
     });
 
     it("maps each conflict id to its canonical extent for jump-to-hunk", () => {
-        const layout = buildVerticalLayout(FIXTURE);
+        const layout = buildVerticalLayout(FIXTURE, ["left", "middle", "right"] as const);
         expect(layout.hunkCanonical.get(0)).toEqual({ top: 60, height: 60 });
         expect(layout.hunkCanonical.has(1)).toBe(false);
     });
 
     it("returns zeroed geometry for an empty document", () => {
-        const layout = buildVerticalLayout([]);
+        const layout = buildVerticalLayout([], ["left", "middle", "right"] as const);
         expect(layout.canonicalTotalPx).toBe(0);
         expect(layout.paneTotalPx).toEqual({ left: 0, middle: 0, right: 0 });
         expect(paneOffsetForCanonical(layout, "left", 0, 100)).toBe(0);
@@ -57,7 +57,7 @@ describe("buildVerticalLayout", () => {
 });
 
 describe("paneOffsetForCanonical", () => {
-    const layout = buildVerticalLayout(FIXTURE);
+    const layout = buildVerticalLayout(FIXTURE, ["left", "middle", "right"] as const);
     const VIEWPORT = 40; // small enough that clamping does not swallow the proportional range
 
     it("aligns all panes at their own top on a segment boundary", () => {
@@ -96,16 +96,23 @@ describe("paneOffsetForCanonical", () => {
     });
 
     it("keeps large unbalanced hunk boundaries stable while scrolling", () => {
-        const largeLayout = buildVerticalLayout([
-            { left: 45, middle: 45, right: 45, conflict: false },
-            { left: 16, middle: 16, right: 28, conflict: true, id: 42 },
-            { left: 80, middle: 80, right: 80, conflict: false },
-        ]);
+        const largeLayout = buildVerticalLayout(
+            [
+                { paneLines: { left: 45, middle: 45, right: 45 }, conflict: false },
+                {
+                    paneLines: { left: 16, middle: 16, right: 28 },
+                    conflict: true,
+                    id: 42,
+                },
+                { paneLines: { left: 80, middle: 80, right: 80 }, conflict: false },
+            ],
+            ["left", "middle", "right"] as const,
+        );
         const viewport = 200;
         const conflictIndex = 1;
         const conflictTop = largeLayout.canonicalTopPx[conflictIndex];
         const conflictBottom = conflictTop + largeLayout.canonicalHPx[conflictIndex];
-        const visibleExtent = (pane: MergePane, canonicalScroll: number) => {
+        const visibleExtent = (pane: PaneId, canonicalScroll: number) => {
             const offset = paneOffsetForCanonical(largeLayout, pane, canonicalScroll, viewport);
             const top = largeLayout.paneTopPx[pane][conflictIndex] - offset;
             return { top, bottom: top + largeLayout.paneHPx[pane][conflictIndex] };
