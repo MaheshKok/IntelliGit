@@ -62,6 +62,8 @@ const mocks = vi.hoisted(() => {
         pickMainlineParent: vi.fn(),
         buildCommitFilePatch: vi.fn(),
         runWithNotificationProgress: vi.fn(),
+        runBinary: vi.fn(),
+        subscribeToRepositoryWorkingTreeChanges: vi.fn(),
     };
 });
 
@@ -103,6 +105,27 @@ vi.mock("../../../src/utils/notifications", () => ({
     runWithNotificationProgress: mocks.runWithNotificationProgress,
     showTimedInformationMessage: mocks.showInformationMessage,
     showTimedWarningMessage: mocks.showWarningMessage,
+}));
+
+// openCommitFileDiff and the openDiffAgainstGitRef-based comparisons now call openUnifiedDiff
+// from within diffService.ts itself, so vi.mock cannot intercept that same-module reference --
+// the real funnel runs. These two mocks force every ref side it probes to report over budget
+// (see beforeEach), which sends the funnel straight to its native fallback for every existing
+// test here, keeping their direct vscode.diff/getFileContentAtRef assertions valid unchanged.
+// A handful of new tests assert on mocks.runBinary itself to prove the funnel -- not the old
+// direct path -- is what attempted the load, with the exact ref the SideSpec should carry.
+vi.mock("../../../src/git/executor", () => ({
+    GitExecutor: class {
+        constructor(_repoRoot?: string) {}
+        async runBinary(args: string[], options?: unknown) {
+            return mocks.runBinary(args, options);
+        }
+    },
+}));
+
+vi.mock("../../../src/services/repositoryChangeEvents", () => ({
+    subscribeToRepositoryWorkingTreeChanges: mocks.subscribeToRepositoryWorkingTreeChanges,
+    publishRepositoryWorkingTreeChange: vi.fn(),
 }));
 
 import {
@@ -166,6 +189,18 @@ describe("diffService", () => {
         mocks.runWithNotificationProgress.mockImplementation(
             async (_message: string, task: () => Promise<void>) => task(),
         );
+        // Every ref side the funnel probes reports over budget, so openUnifiedDiff always
+        // declines to the native delegate -- see the vi.mock comment above for why.
+        mocks.runBinary.mockImplementation(async (args: string[]) => {
+            if (args[0] === "cat-file" && args[1] === "-s") {
+                return { stdout: Buffer.from("999999999"), truncated: false };
+            }
+            return { stdout: Buffer.alloc(0), truncated: false };
+        });
+        mocks.subscribeToRepositoryWorkingTreeChanges.mockReturnValue({
+            dispose: vi.fn(),
+            rebind: vi.fn(),
+        });
     });
 
     it("registers and disposes the readonly diff content provider", () => {
@@ -266,6 +301,29 @@ describe("diffService", () => {
         expect(gitOps.getFileContentAtRef).toHaveBeenNthCalledWith(2, "src/a.ts", commitHash);
     });
 
+    it("routes openCommitFileDiff through the unified diff funnel using ref sides for parent and commit", async () => {
+        const gitOps = makeGitOps();
+        const executor = makeExecutor();
+        const commitHash = "abcdef1234567890";
+
+        await openCommitFileDiff(commitHash, "src/a.ts", "/repo", gitOps, executor);
+
+        // Proves the funnel -- not the pre-refactor direct getFileContentAtRef path -- is what
+        // attempted the load, and that it carried the correct parent ref as its left SideSpec.
+        expect(mocks.runBinary).toHaveBeenCalledWith(
+            ["cat-file", "-s", `${EMPTY_TREE_HASH}:src/a.ts`],
+            { maxOutputBytes: 64 },
+        );
+        // The forced over-budget size still lands on the same vscode.diff fallback the
+        // "opens a root-commit file diff" test above already verifies in full.
+        expect(mocks.executeCommand).toHaveBeenCalledWith(
+            "vscode.diff",
+            expect.any(mocks.FakeUri),
+            expect.any(mocks.FakeUri),
+            expect.stringContaining("src/a.ts"),
+        );
+    });
+
     it("compares an editor file with a selected branch", async () => {
         const gitOps = makeGitOps();
         mocks.showQuickPick.mockImplementationOnce(async (items: Array<{ refName: string }>) =>
@@ -284,6 +342,19 @@ describe("diffService", () => {
         );
         const [leftUri] = mocks.executeCommand.mock.calls[0].slice(1, 2) as [{ query: string }];
         expect(JSON.parse(leftUri.query).ref).toBe("feature");
+    });
+
+    it("routes compareEditorFileWithBranch through the unified diff funnel with a ref side for the branch", async () => {
+        const gitOps = makeGitOps();
+        mocks.showQuickPick.mockImplementationOnce(async (items: Array<{ refName: string }>) =>
+            items.find((item) => item.refName === "feature"),
+        );
+
+        await compareEditorFileWithBranch(mocks.FakeUri.file("/repo/src/a.ts"), "/repo", gitOps);
+
+        expect(mocks.runBinary).toHaveBeenCalledWith(["cat-file", "-s", "feature:src/a.ts"], {
+            maxOutputBytes: 64,
+        });
     });
 
     it("compares an editor file with a manually entered revision", async () => {
@@ -305,6 +376,20 @@ describe("diffService", () => {
         );
     });
 
+    it("routes compareEditorFileWithRevision through the unified diff funnel with a ref side for the revision", async () => {
+        const gitOps = makeGitOps();
+        mocks.showQuickPick.mockImplementationOnce(
+            async (items: Array<{ refName: string }>) => items[items.length - 1],
+        );
+        mocks.showInputBox.mockResolvedValueOnce("HEAD~1");
+
+        await compareEditorFileWithRevision(mocks.FakeUri.file("/repo/src/a.ts"), "/repo", gitOps);
+
+        expect(mocks.runBinary).toHaveBeenCalledWith(["cat-file", "-s", "HEAD~1:src/a.ts"], {
+            maxOutputBytes: 64,
+        });
+    });
+
     it("compares a commit-info file against the local working tree", async () => {
         const gitOps = makeGitOps();
 
@@ -320,6 +405,21 @@ describe("diffService", () => {
             expect.any(mocks.FakeUri),
             expect.any(mocks.FakeUri),
             "src/a.ts (revision: abcdef1234567890) <-> Working Tree",
+        );
+    });
+
+    it("routes compareCommitInfoFileWithLocal through the unified diff funnel with a ref side for the commit", async () => {
+        const gitOps = makeGitOps();
+
+        await compareCommitInfoFileWithLocal(
+            { filePath: "src/a.ts", commitHash: "abcdef1234567890" },
+            "/repo",
+            gitOps,
+        );
+
+        expect(mocks.runBinary).toHaveBeenCalledWith(
+            ["cat-file", "-s", "abcdef1234567890:src/a.ts"],
+            { maxOutputBytes: 64 },
         );
     });
 

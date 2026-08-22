@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import type { ShelfFileEntry } from "../shelf/model";
-import { createReadonlyDiffUri } from "../services/diffService";
+import { createReadonlyDiffUri, openUnifiedDiff } from "../services/diffService";
+import type { SideSpec } from "../services/diffService";
 
 /** The immutable shelf comparison selected by the webview. */
 export type ShelfDiffMode = "baseToShelved" | "shelvedToLocal";
@@ -27,7 +28,13 @@ const LOCAL_LABEL = "Local";
 const UNAVAILABLE_BASE = "Base content is unavailable for this shelf entry.";
 const BINARY_DIFF_PLACEHOLDER = "Binary file — text diff is unavailable.";
 
-/** Opens shelf artifacts as immutable virtual documents, never substituting the local file for base. */
+/**
+ * Opens shelf artifacts as immutable virtual documents.
+ *
+ * Single-change requests route through the unified diff viewer (see `openShelfChangeDiff`). The
+ * whole-shelf overview stays native -- `vscode.changes` has no unified-viewer equivalent -- and never
+ * substitutes the local file for base.
+ */
 export async function showShelfDiffFromPanel(
     deps: ShelfDiffDeps,
     shelfId: string,
@@ -36,29 +43,22 @@ export async function showShelfDiffFromPanel(
     newTab = false,
 ): Promise<void> {
     if (changeId !== undefined) {
-        const snapshot = await snapshotFor(deps, shelfId, changeId, mode);
-        if (newTab) {
-            await vscode.commands.executeCommand(
-                "vscode.diff",
-                snapshot.left,
-                snapshot.right,
-                `${snapshot.path} (${snapshot.leftLabel} <-> ${snapshot.rightLabel})`,
-                { preview: false },
-            );
-        } else {
-            await vscode.commands.executeCommand(
-                "vscode.diff",
-                snapshot.left,
-                snapshot.right,
-                `${snapshot.path} (${snapshot.leftLabel} <-> ${snapshot.rightLabel})`,
-            );
-        }
+        await openShelfChangeDiff(deps, shelfId, changeId, mode, newTab);
         return;
     }
 
     const files = await deps.shelfReader.getShelfFiles(shelfId);
     const snapshots = await Promise.all(
-        files.map((file) => snapshotFor(deps, shelfId, file.changeId, mode)),
+        files.map(async (file) => {
+            const contents = await deps.shelfReader.getShelfDiffContents(shelfId, file.changeId);
+            // Native vscode.changes path (never goes through the funnel), so the local read is
+            // unconditional here whenever the pane needs it -- there is no decline to gate on.
+            const localSnapshot =
+                !contents.binary && mode === "shelvedToLocal"
+                    ? await readLocalSnapshot(deps.getWorkspaceRoot(), contents.path)
+                    : undefined;
+            return snapshotFor(contents, mode, localSnapshot);
+        }),
     );
     const changes = snapshots.map(
         (snapshot): ShelfChange => [snapshot.left, snapshot.left, snapshot.right],
@@ -67,19 +67,127 @@ export async function showShelfDiffFromPanel(
     if (newTab) await vscode.commands.executeCommand("workbench.action.keepEditor");
 }
 
-async function snapshotFor(
+type ShelfContents = Awaited<ReturnType<ShelfDiffReader["getShelfDiffContents"]>>;
+
+/**
+ * Routes one shelved change through the unified diff viewer.
+ *
+ * Shelf content is read once, up front (matching the prior single-read behavior), and shared by both
+ * the funnel providers and the native fallback closure so a decline never re-reads or risks divergent
+ * content. `baseToShelved` compares two immutable shelf snapshots; `shelvedToLocal` compares a shelf
+ * snapshot with the live worktree file, reusing the funnel's own dirty-document-aware loader.
+ */
+async function openShelfChangeDiff(
     deps: ShelfDiffDeps,
     shelfId: string,
     changeId: string,
     mode: ShelfDiffMode,
-): Promise<{
+    newTab: boolean,
+): Promise<void> {
+    const contents = await deps.shelfReader.getShelfDiffContents(shelfId, changeId);
+    const repoRoot = deps.getWorkspaceRoot().fsPath;
+    const identityPrefix = `${shelfId}:${changeId}:${mode}`;
+    const { left, right, leftLabel, rightLabel } = shelfChangeRequestSides(
+        contents,
+        mode,
+        identityPrefix,
+    );
+    const title = `${contents.path} (${leftLabel} <-> ${rightLabel})`;
+
+    await openUnifiedDiff(
+        { repoRoot, path: contents.path, left, right, languageId: "", title },
+        async (cancellationToken) => {
+            // Matches snapshotFor's own read condition: a local read only fires for the one case
+            // that ever needed it, so a decline never triggers a needless filesystem/document probe.
+            const localSnapshot =
+                !contents.binary && mode === "shelvedToLocal"
+                    ? await readLocalSnapshot(deps.getWorkspaceRoot(), contents.path)
+                    : undefined;
+            const snapshot = snapshotFor(contents, mode, localSnapshot);
+            if (cancellationToken.isCancellationRequested) return;
+            const fallbackTitle = `${snapshot.path} (${snapshot.leftLabel} <-> ${snapshot.rightLabel})`;
+            const options = newTab ? [{ preview: false }] : [];
+            await vscode.commands.executeCommand(
+                "vscode.diff",
+                snapshot.left,
+                snapshot.right,
+                fallbackTitle,
+                ...options,
+            );
+        },
+    );
+}
+
+/**
+ * Builds the funnel's left/right sides for one shelved change from already-fetched content.
+ *
+ * Binary content always renders as the same placeholder on both sides regardless of mode, matching
+ * the pre-funnel behavior of never attempting to decode shelf bytes reported as binary. Non-binary
+ * `shelvedToLocal` uses a live `worktree` side so it shares the funnel's dirty-document precedence
+ * instead of a bespoke local read.
+ */
+function shelfChangeRequestSides(
+    contents: ShelfContents,
+    mode: ShelfDiffMode,
+    identityPrefix: string,
+): { left: SideSpec; right: SideSpec; leftLabel: string; rightLabel: string } {
+    const providerSide = (
+        label: string,
+        bytes: Buffer,
+        binary: boolean,
+        side: string,
+    ): SideSpec => ({
+        kind: "provider",
+        label,
+        identity: `${identityPrefix}:${side}`,
+        load: () => Promise.resolve({ status: "loaded", bytes, mode: 0o100644, binary }),
+    });
+
+    if (contents.binary) {
+        const [leftLabel, rightLabel] =
+            mode === "baseToShelved" ? [BASE_LABEL, SHELVED_LABEL] : [SHELVED_LABEL, LOCAL_LABEL];
+        const placeholder = Buffer.from(BINARY_DIFF_PLACEHOLDER, "utf8");
+        return {
+            left: providerSide(leftLabel, placeholder, true, "left"),
+            right: providerSide(rightLabel, placeholder, true, "right"),
+            leftLabel,
+            rightLabel,
+        };
+    }
+    if (mode === "baseToShelved") {
+        const hasBase = contents.base !== undefined;
+        const leftLabel = hasBase ? BASE_LABEL : "Base unavailable";
+        return {
+            left: providerSide(
+                leftLabel,
+                hasBase ? contents.base! : Buffer.from(UNAVAILABLE_BASE, "utf8"),
+                false,
+                "left",
+            ),
+            right: providerSide(SHELVED_LABEL, contents.shelved, false, "right"),
+            leftLabel,
+            rightLabel: SHELVED_LABEL,
+        };
+    }
+    return {
+        left: providerSide(SHELVED_LABEL, contents.shelved, false, "left"),
+        right: { kind: "worktree" },
+        leftLabel: SHELVED_LABEL,
+        rightLabel: LOCAL_LABEL,
+    };
+}
+
+function snapshotFor(
+    contents: ShelfContents,
+    mode: ShelfDiffMode,
+    localSnapshot?: string,
+): {
     path: string;
     left: vscode.Uri;
     right: vscode.Uri;
     leftLabel: string;
     rightLabel: string;
-}> {
-    const contents = await deps.shelfReader.getShelfDiffContents(shelfId, changeId);
+} {
     if (contents.binary) {
         const [leftLabel, rightLabel] =
             mode === "baseToShelved" ? [BASE_LABEL, SHELVED_LABEL] : [SHELVED_LABEL, LOCAL_LABEL];
@@ -111,11 +219,10 @@ async function snapshotFor(
         };
     }
 
-    const local = await readLocalSnapshot(deps.getWorkspaceRoot(), contents.path);
     return {
         path: contents.path,
         left: shelved,
-        right: createReadonlyDiffUri(contents.path, local, LOCAL_LABEL),
+        right: createReadonlyDiffUri(contents.path, localSnapshot ?? "", LOCAL_LABEL),
         leftLabel: SHELVED_LABEL,
         rightLabel: LOCAL_LABEL,
     };

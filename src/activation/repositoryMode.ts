@@ -65,6 +65,7 @@ import { registerShelfCommands } from "./shelfCommands";
 import {
     createOpenCommitFileDiffHandler,
     registerRepositoryViewEvents,
+    registerUndockedCommitFileDiffHandler,
     showInteractiveRebaseControlResult,
     showInteractiveRebaseSubmissionRejection,
     showInteractiveRebaseSubmissionRunResult,
@@ -762,11 +763,6 @@ export async function activateRepositoryMode(
             gitOps: undockedGitOps,
             worktreeService: undockedWorktreeService,
         };
-        const handleOpenUndockedCommitFileDiff = createOpenCommitFileDiffHandler({
-            executor: undockedExecutor,
-            gitOps: undockedGitOps,
-            getRepoRoot: getUndockedSelectedRepositoryRoot,
-        });
         const rebaseSubmissionHandler = createInteractiveRebaseSubmissionHandler({
             executor: undockedExecutor,
             pendingRebaseDialogRequests,
@@ -1071,7 +1067,14 @@ export async function activateRepositoryMode(
                     );
                 }
             }),
-            undocked.onOpenCommitFileDiff(handleOpenUndockedCommitFileDiff),
+            registerUndockedCommitFileDiffHandler(
+                {
+                    executor: undockedExecutor,
+                    gitOps: undockedGitOps,
+                    getRepoRoot: getUndockedSelectedRepositoryRoot,
+                },
+                undocked,
+            ),
             undocked.onDidChangeWorkingTree(() => {
                 commitPanel.refreshSilent().catch((err) => {
                     console.error("[IntelliGit] Docked commit panel refresh failed:", err);

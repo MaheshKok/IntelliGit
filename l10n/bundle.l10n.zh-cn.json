@@ -606,5 +606,6 @@
     "Keep working tree": "保留工作树",
     "Overwrite (previous content saved to recovery)": "覆盖（先前内容已保存到恢复）",
     "Manage the GitHub sign-in from the VS Code Accounts menu.": "请在 VS Code 的帐户菜单中管理 GitHub 登录。",
-    "Diff: {file}": "差异：{file}"
+    "Diff: {file}": "差异：{file}",
+    "{path} (HEAD ↔ Working Tree)": "{path}（HEAD ↔ 工作树）"
 }

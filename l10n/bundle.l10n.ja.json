@@ -606,5 +606,6 @@
     "Keep working tree": "ワーキングツリーを保持",
     "Overwrite (previous content saved to recovery)": "上書き（以前の内容はリカバリーに保存されます）",
     "Manage the GitHub sign-in from the VS Code Accounts menu.": "GitHub のサインインは VS Code のアカウントメニューから管理してください。",
-    "Diff: {file}": "差分: {file}"
+    "Diff: {file}": "差分: {file}",
+    "{path} (HEAD ↔ Working Tree)": "{path}（HEAD ↔ ワーキングツリー）"
 }

@@ -4,6 +4,9 @@ import type { FrameLocator, Locator, Page } from "@playwright/test";
  * apart by what they render rather than by where they sit in the DOM. */
 const SIDEBAR_MARKER = '[data-testid="commit-panel-tab-row"]';
 const GRAPH_PANEL_MARKER = '[data-testid="commit-list-viewport"]';
+/** Present only once the diff viewer has replaced its loading state with rendered segments --
+ * see DiffViewerApp.tsx, where the loading and error branches carry no such marker. */
+const DIFF_VIEWER_MARKER = '[data-testid="diff-viewer-root"]';
 
 /** How long a surface may take to render its marker before `reveal`/`revealPanel` give up. */
 const DEFAULT_REVEAL_TIMEOUT_MS = 30_000;
@@ -84,6 +87,13 @@ export class IntelliGitView {
      * first (`IntelliGit: Show Git Log`). */
     public async revealPanel(timeoutMs = DEFAULT_REVEAL_TIMEOUT_MS): Promise<FrameLocator> {
         return this.frameOwning(GRAPH_PANEL_MARKER, timeoutMs);
+    }
+
+    /** Returns the diff viewer's webview document. The caller triggers it first (for example,
+     * clicking a changed-file row), since it opens as its own editor-tab panel rather than
+     * docking inside the sidebar or graph panel. */
+    public async revealDiffViewer(timeoutMs = DEFAULT_REVEAL_TIMEOUT_MS): Promise<FrameLocator> {
+        return this.frameOwning(DIFF_VIEWER_MARKER, timeoutMs);
     }
 
     /**

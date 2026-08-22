@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import type { GitOps } from "../git/operations";
+import { isMissingGitPathError } from "../git/operations";
 import type {
     StashEntry,
     ThemeFolderIconMap,
@@ -8,10 +9,12 @@ import type {
     WorkingFile,
 } from "../types";
 import { assertRepoRelativePath, deleteFileWithFallback } from "../utils/fileOps";
+import { getErrorMessage } from "../utils/errors";
 import { assertNumber, assertRepoPathArray, assertString } from "./messageValidation";
 import type { IconThemeService } from "./shared/IconThemeService";
 import { showTimedInformationMessage } from "../utils/notifications";
-import { createReadonlyDiffUri } from "../services/diffService";
+import { createReadonlyDiffUri, openUnifiedDiff } from "../services/diffService";
+import type { SideSpec } from "../services/diffService";
 import { mapWithConcurrency } from "../utils/concurrency";
 
 type StashChange = [vscode.Uri, vscode.Uri, vscode.Uri];
@@ -141,18 +144,35 @@ export async function publishBranchFromPanel(deps: PanelFileActionDeps): Promise
 }
 
 /**
- * Opens VS Code's Git change view for a validated repository-relative file path.
+ * Opens the changed-files diff for a validated repository-relative file path.
  *
- * The active repository root is supplied by the owning provider; path validation prevents a webview
- * payload from constructing editor URIs outside that root.
+ * Always compares HEAD to the working tree (the PyCharm changelist model), never `git.openChange`'s
+ * index-aware staged/unstaged pair -- staging state is not part of this comparison. Routes through the
+ * unified diff viewer, falling back to the exact prior `git.openChange` behavior for content the
+ * viewer must refuse.
  */
 export async function showDiffFromPanel(
     deps: PanelFileActionDeps,
     pathValue: unknown,
 ): Promise<void> {
     const filePath = assertRepoRelativePath(assertString(pathValue, "path"));
-    const uri = vscode.Uri.joinPath(deps.getWorkspaceRoot(), filePath);
-    await vscode.commands.executeCommand("git.openChange", uri);
+    const workspaceRoot = deps.getWorkspaceRoot();
+    const uri = vscode.Uri.joinPath(workspaceRoot, filePath);
+
+    await openUnifiedDiff(
+        {
+            repoRoot: workspaceRoot.fsPath,
+            path: filePath,
+            left: { kind: "ref", ref: "HEAD" },
+            right: { kind: "worktree" },
+            languageId: "",
+            title: vscode.l10n.t("{path} (HEAD ↔ Working Tree)", { path: filePath }),
+        },
+        async (cancellationToken) => {
+            if (cancellationToken.isCancellationRequested) return;
+            await vscode.commands.executeCommand("git.openChange", uri);
+        },
+    );
 }
 
 /**
@@ -234,15 +254,110 @@ function createStashLocalDiffUris(snapshot: StashDiffSnapshot): StashDiffUris {
 }
 
 /**
+ * Resolves a stash's "after" content by its stable commit hash rather than `stash@{index}`.
+ *
+ * The stack position can shift while a diff session is open (another stash popped or dropped), so a
+ * fallback delegate re-reading by index could reopen the wrong entry. `GitOps.getStashFileContents`
+ * only accepts a position, so this mirrors its own untracked-file fallback (the stash's third parent
+ * holds files that were untracked when stashed) directly against the resolved commit instead.
+ */
+async function getStashAfterContentByHash(
+    gitOps: GitOps,
+    stashHash: string,
+    filePath: string,
+): Promise<string | undefined> {
+    try {
+        return await gitOps.getFileContentAtRef(filePath, stashHash);
+    } catch (error) {
+        if (!isMissingGitPathError(getErrorMessage(error).toLowerCase())) throw error;
+    }
+    try {
+        return await gitOps.getFileContentAtRef(filePath, `${stashHash}^3`);
+    } catch (error) {
+        if (isMissingGitPathError(getErrorMessage(error).toLowerCase())) return undefined;
+        throw error;
+    }
+}
+
+/**
+ * Routes one stash file through the unified diff viewer, local file always on the left.
+ *
+ * The stash's commit hash is resolved once, up front, and used as both the funnel's stable provider
+ * identity and the content lookup key -- never the positional `stash@{index}`, which can renumber
+ * while the session is open. The native fallback reuses the same resolved hash and the existing
+ * readonly-snapshot path, so a delegate invoked after renumbering still reopens the same stash.
+ */
+async function openStashFileDiff(
+    deps: Pick<PanelFileActionDeps, "gitOps" | "getWorkspaceRoot">,
+    index: number,
+    filePath: string,
+    stashLabel: string,
+    preview: boolean,
+): Promise<void> {
+    const stashes = await deps.gitOps.listStashes();
+    const stashHash = stashes.find((entry) => entry.index === index)?.hash;
+    if (stashHash === undefined) {
+        throw new Error(`Stash entry changed at index ${index}; refresh and try again.`);
+    }
+    const workspaceRoot = deps.getWorkspaceRoot();
+    const title = vscode.l10n.t("{path} (Local File <-> Stash {reference})", {
+        path: filePath,
+        reference: `{${index}}`,
+    });
+
+    const right: SideSpec = {
+        kind: "provider",
+        label: stashLabel,
+        identity: stashHash,
+        load: async (maxOutputBytes) => {
+            const after = await getStashAfterContentByHash(deps.gitOps, stashHash, filePath);
+            if (after === undefined) return { status: "missing" };
+            const bytes = Buffer.from(after, "utf8");
+            if (bytes.byteLength > maxOutputBytes) {
+                return { status: "over-budget", size: bytes.byteLength };
+            }
+            return { status: "loaded", bytes, mode: 0o100644 };
+        },
+    };
+
+    await openUnifiedDiff(
+        {
+            repoRoot: workspaceRoot.fsPath,
+            path: filePath,
+            left: { kind: "worktree" },
+            right,
+            languageId: "",
+            title,
+        },
+        async (cancellationToken) => {
+            const after = await getStashAfterContentByHash(deps.gitOps, stashHash, filePath);
+            const snapshot = await prepareStashLocalDiffSnapshot(
+                workspaceRoot,
+                filePath,
+                stashLabel,
+                {
+                    before: undefined,
+                    after,
+                },
+            );
+            if (cancellationToken.isCancellationRequested) return;
+            const { stashed, local } = createStashLocalDiffUris(snapshot);
+            await vscode.commands.executeCommand("vscode.diff", local, stashed, title, { preview });
+        },
+    );
+}
+
+/**
  * Opens a VS Code diff for one stash file, or VS Code's multi-file changes editor for the whole stash.
  *
- * File-specific requests compare readonly snapshots of stashed and local content so each side has
- * an explicit resource label. Missing stash or workspace sides use explicitly labeled empty virtual
- * documents. Local content is always the original (left) side and stash content is always the
- * modified (right) side, including added, deleted, untracked, and missing-side cases. Other
- * filesystem errors reject. Stash-level requests retain every valid stash file in the changes editor.
- * Preview mode defaults to true for legacy callers; false keeps the resulting changes editor pinned
- * in a new tab.
+ * File-specific requests route through the unified diff viewer (see `openStashFileDiff`), local file
+ * always on the left. Whole-stash requests stay native: they compare readonly snapshots of stashed and
+ * local content so each side has an explicit resource label. Missing stash or workspace sides use
+ * explicitly labeled empty virtual documents. Local content is always the original (left) side and
+ * stash content is always the modified (right) side, including added, deleted, untracked, and
+ * missing-side cases. Other filesystem errors reject. Stash-level requests retain every valid stash
+ * file in the changes editor. Preview mode defaults to true for legacy callers; false keeps the
+ * resulting changes editor pinned in a new tab.
  */
 export async function showStashDiffFromPanel(
     deps: Pick<PanelFileActionDeps, "gitOps" | "getWorkspaceRoot">,
@@ -254,19 +369,7 @@ export async function showStashDiffFromPanel(
     const stashLabel = vscode.l10n.t("Stash {reference}", { reference: `{${index}}` });
     if (pathValue !== undefined) {
         const filePath = assertRepoRelativePath(assertString(pathValue, "path"));
-        const contents = await deps.gitOps.getStashFileContents(index, filePath);
-        const snapshot = await prepareStashLocalDiffSnapshot(
-            deps.getWorkspaceRoot(),
-            filePath,
-            stashLabel,
-            contents,
-        );
-        const { stashed, local } = createStashLocalDiffUris(snapshot);
-        const title = vscode.l10n.t("{path} (Local File <-> Stash {reference})", {
-            path: filePath,
-            reference: `{${index}}`,
-        });
-        await vscode.commands.executeCommand("vscode.diff", local, stashed, title, { preview });
+        await openStashFileDiff(deps, index, filePath, stashLabel, preview);
         return;
     }
 

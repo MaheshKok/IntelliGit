@@ -3,11 +3,26 @@ import { describe, expect, it, vi } from "vitest";
 const coordinatorInstances = vi.hoisted(() => [] as Array<Record<string, unknown>>);
 const commitPanelArguments = vi.hoisted(() => [] as unknown[][]);
 const undockedOptions = vi.hoisted(() => [] as Array<Record<string, unknown>>);
+// Captures the constructed UndockedViewProvider instance itself (not just its constructor
+// options, which `undockedOptions` already covers) so a test can assert the exact panel object
+// `ensureUndockedPanel` (repositoryMode.ts) hands to registerUndockedCommitFileDiffHandler.
+const undockedInstances = vi.hoisted(() => [] as Array<Record<string, unknown>>);
 const gitOpsDeriveFor = vi.hoisted(() => vi.fn((root: string) => ({ root })));
 const watchWholeIndexOperation = vi.hoisted(() => vi.fn(() => ({ dispose: vi.fn() })));
 const repositoryCommandDeps = vi.hoisted(() => ({
     value: undefined as Record<string, unknown> | undefined,
 }));
+// Hoisted so the test can assert on this mock's own call state below: `ensureUndockedPanel`
+// (repositoryMode.ts) must still call this seam and not just route correctly once called, which
+// repositoryViewEvents.test.ts already proves in isolation.
+const registerUndockedCommitFileDiffHandlerMock = vi.hoisted(() =>
+    vi.fn(
+        (
+            _deps: { executor: unknown; gitOps: unknown; getRepoRoot: () => string },
+            _undocked: unknown,
+        ) => ({ dispose: vi.fn() }),
+    ),
+);
 
 const disposable = () => ({ dispose: vi.fn() });
 const event = () => vi.fn(() => disposable());
@@ -123,6 +138,7 @@ vi.mock("../../../src/views/UndockedViewProvider", () => ({
         showRebaseDialog = vi.fn(() => true);
         dispose = vi.fn();
         constructor(...args: unknown[]) {
+            undockedInstances.push(this as unknown as Record<string, unknown>);
             undockedOptions.push(
                 args.find(
                     (argument): argument is Record<string, unknown> =>
@@ -245,6 +261,10 @@ vi.mock("../../../src/activation/shelfCommands", () => ({ registerShelfCommands:
 vi.mock("../../../src/activation/repositoryViewEvents", () => ({
     createOpenCommitFileDiffHandler: vi.fn(() => vi.fn()),
     registerRepositoryViewEvents: vi.fn(),
+    // ensureUndockedPanel (repositoryMode.ts) wires the undocked commit-file-diff event through
+    // this seam; showUndockedGitLog below reaches it, so the mock needs the export too. Hoisted so
+    // the test can assert this mock's own call state -- see registerUndockedCommitFileDiffHandlerMock.
+    registerUndockedCommitFileDiffHandler: registerUndockedCommitFileDiffHandlerMock,
 }));
 
 describe("commit-message generation host wiring", () => {
@@ -273,6 +293,17 @@ describe("commit-message generation host wiring", () => {
         // one is appended.
         expect(commitPanelArguments[0]).toContain(coordinator);
         expect(undockedOptions[0]?.commitMessageGenerationCoordinator).toBe(coordinator);
+
+        // Defect 2 fix-round 2: `ensureUndockedPanel` (repositoryMode.ts) must still call this
+        // seam, not just route correctly once called -- repositoryViewEvents.test.ts already
+        // proves routing in isolation. Deleting the production call site throws nothing and
+        // leaves every assertion above untouched, so only the mock's own call state catches it.
+        expect(registerUndockedCommitFileDiffHandlerMock).toHaveBeenCalledTimes(1);
+        const [undockedDiffDeps, undockedDiffPanel] =
+            registerUndockedCommitFileDiffHandlerMock.mock.calls[0];
+        expect(Object.keys(undockedDiffDeps).sort()).toEqual(["executor", "getRepoRoot", "gitOps"]);
+        expect(undockedDiffDeps.getRepoRoot()).toBe("/repo-a");
+        expect(undockedDiffPanel).toBe(undockedInstances[0]);
 
         const rootContext = coordinator.dependencies.resolveRoot("/repo-b");
         expect(rootContext.workspaceFolder).toEqual({

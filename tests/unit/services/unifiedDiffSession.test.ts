@@ -120,6 +120,7 @@ vi.mock("../../../src/git/executor", () => ({
 
 import { setDiffViewerExtensionUri } from "../../../src/diff/diffViewerOpener";
 import { openUnifiedDiff } from "../../../src/services/diffService";
+import { showDiffFromPanel } from "../../../src/views/panelFileActions";
 
 const extensionUri = { fsPath: "/extension" } as Parameters<typeof setDiffViewerExtensionUri>[0];
 
@@ -406,6 +407,41 @@ describe("unified diff session snapshots", () => {
             data: {
                 segments: expect.arrayContaining([
                     expect.objectContaining({ left: ["  mutated  "] }),
+                ]),
+            },
+        });
+    });
+});
+
+describe("file-row click reaches the diff viewer with the correct payload", () => {
+    // showDiffFromPanel is the real, unmocked caller here (only its transitive vscode/executor/
+    // repositoryChangeEvents dependencies are mocked, the same ones every other test in this file
+    // relies on) -- unlike the routing tests in panelFileActions.test.ts, which mock openUnifiedDiff
+    // itself and so only prove the right SideSpec was built. This proves the full path: a file-row
+    // click posts a setDiffData payload assembled from the actual HEAD and working-tree content.
+    it("posts HEAD and working-tree content to DiffViewerPanel when a changed-file row is clicked", async () => {
+        setDiffViewerExtensionUri(extensionUri);
+        mocks.refText = "head content\n";
+        mocks.readFile.mockResolvedValueOnce(Buffer.from("working tree content\n"));
+        const deps = {
+            getWorkspaceRoot: () => ({
+                fsPath: "/repo",
+                toString: () => "file:/repo",
+            }),
+        } as unknown as Parameters<typeof showDiffFromPanel>[0];
+
+        await showDiffFromPanel(deps, "src/example.ts");
+
+        const panel = mocks.panels.at(-1);
+        if (!panel) throw new Error("Expected showDiffFromPanel to open a diff viewer panel");
+        expect(panel.postedMessages.at(-1)).toMatchObject({
+            type: "setDiffData",
+            data: {
+                segments: expect.arrayContaining([
+                    expect.objectContaining({
+                        left: ["head content"],
+                        right: ["working tree content"],
+                    }),
                 ]),
             },
         });

@@ -18,9 +18,19 @@ const vscodeMock = vi.hoisted(() => ({
 const createReadonlyDiffUri = vi.hoisted(() =>
     vi.fn((filePath: string, content: string, ref: string) => ({ filePath, content, ref })),
 );
+// shelfDiffActions.ts imports openUnifiedDiff cross-module from diffService.ts, so it can be
+// mocked directly here. The beforeEach below makes it immediately invoke the native delegate it
+// was given -- simulating the viewer declining -- so every existing assertion on the exact prior
+// direct-createReadonlyDiffUri/vscode.diff fallback behavior stays valid unchanged, while
+// dedicated tests assert on openUnifiedDiffMock's own call arguments to prove single-change
+// requests are actually routed to the funnel with the correct SideSpec.
+const openUnifiedDiffMock = vi.hoisted(() => vi.fn());
 
 vi.mock("vscode", () => vscodeMock);
-vi.mock("../../../src/services/diffService", () => ({ createReadonlyDiffUri }));
+vi.mock("../../../src/services/diffService", () => ({
+    createReadonlyDiffUri,
+    openUnifiedDiff: openUnifiedDiffMock,
+}));
 
 import { showShelfDiffFromPanel, type ShelfDiffReader } from "../../../src/views/shelfDiffActions";
 import type { ShelfFileEntry } from "../../../src/shelf/model";
@@ -62,6 +72,17 @@ describe("showShelfDiffFromPanel", () => {
         vi.mocked(vscodeMock.workspace.openTextDocument).mockResolvedValue({
             getText: () => "local file contents",
         });
+        openUnifiedDiffMock.mockImplementation(async (_request: unknown, nativeDelegate: never) =>
+            (
+                nativeDelegate as (token: {
+                    isCancellationRequested: boolean;
+                    onCancellationRequested: () => { dispose(): void };
+                }) => Promise<void>
+            )({
+                isCancellationRequested: false,
+                onCancellationRequested: () => ({ dispose: () => undefined }),
+            }),
+        );
     });
 
     it("shows the immutable base-to-shelved view with exact side labels", async () => {
@@ -268,6 +289,49 @@ describe("showShelfDiffFromPanel", () => {
                     { filePath: "src/b.ts", content: "shelved", ref: "Shelved" },
                 ],
             ]),
+        );
+    });
+
+    it("routes single-change baseToShelved diffs through the unified diff funnel with two provider sides", async () => {
+        const source = reader();
+
+        await showShelfDiffFromPanel(deps(source), "shelf-1", "change-1", "baseToShelved");
+
+        expect(openUnifiedDiffMock).toHaveBeenCalledWith(
+            expect.objectContaining({
+                path: "src/a.ts",
+                left: expect.objectContaining({ kind: "provider", label: "Base (HEAD at shelve)" }),
+                right: expect.objectContaining({ kind: "provider", label: "Shelved" }),
+            }),
+            expect.any(Function),
+        );
+    });
+
+    it("routes single-change shelvedToLocal diffs through the unified diff funnel with a worktree right side", async () => {
+        const source = reader();
+
+        await showShelfDiffFromPanel(deps(source), "shelf-1", "change-1", "shelvedToLocal");
+
+        expect(openUnifiedDiffMock).toHaveBeenCalledWith(
+            expect.objectContaining({
+                path: "src/a.ts",
+                left: expect.objectContaining({ kind: "provider", label: "Shelved" }),
+                right: { kind: "worktree" },
+            }),
+            expect.any(Function),
+        );
+    });
+
+    it("never routes the whole-shelf overview through the unified diff funnel", async () => {
+        const source = reader();
+
+        await showShelfDiffFromPanel(deps(source), "shelf-1", undefined, "baseToShelved");
+
+        expect(openUnifiedDiffMock).not.toHaveBeenCalled();
+        expect(vscodeMock.commands.executeCommand).toHaveBeenCalledWith(
+            "vscode.changes",
+            expect.any(String),
+            expect.any(Array),
         );
     });
 });

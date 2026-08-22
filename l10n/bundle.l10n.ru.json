@@ -606,5 +606,6 @@
     "Keep working tree": "Сохранить рабочее дерево",
     "Overwrite (previous content saved to recovery)": "Перезаписать (предыдущее содержимое сохранено в восстановлении)",
     "Manage the GitHub sign-in from the VS Code Accounts menu.": "Управляйте входом в GitHub через меню Учетные записи в VS Code.",
-    "Diff: {file}": "Сравнение: {file}"
+    "Diff: {file}": "Сравнение: {file}",
+    "{path} (HEAD ↔ Working Tree)": "{path} (HEAD ↔ Рабочее дерево)"
 }

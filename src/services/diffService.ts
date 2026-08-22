@@ -615,14 +615,16 @@ function getCommitInfoFileContext(value: unknown): CommitInfoFileContext | null 
 }
 
 /**
- * Opens a VS Code diff between a working-tree file and its content at a Git ref.
+ * Opens a diff between a working-tree file and its content at a Git ref.
  *
- * `repoRelativeFilePath` must already be validated and slash-separated. Git read
- * failures propagate to the caller so UI command handlers can display the
- * workflow-specific error message.
+ * `repoRelativeFilePath` must already be validated and slash-separated. Routes through the unified
+ * diff viewer, falling back to the exact prior direct-read-then-`vscode.diff` behavior for content the
+ * viewer must refuse. Git read failures inside the native fallback still propagate to the caller so UI
+ * command handlers can display the workflow-specific error message.
  */
 async function openDiffAgainstGitRef(
     fileUri: vscode.Uri,
+    repoRoot: string,
     repoRelativeFilePath: string,
     ref: string,
     sourceLabel: "revision" | "branch",
@@ -631,10 +633,23 @@ async function openDiffAgainstGitRef(
     const trimmedRef = ref.trim();
     if (!trimmedRef) return;
 
-    const refContent = await gitOps.getFileContentAtRef(repoRelativeFilePath, trimmedRef);
-    const leftUri = createReadonlyDiffUri(repoRelativeFilePath, refContent, trimmedRef);
     const title = `${repoRelativeFilePath} (${sourceLabel}: ${trimmedRef}) <-> Working Tree`;
-    await vscode.commands.executeCommand("vscode.diff", leftUri, fileUri, title);
+    await openUnifiedDiff(
+        {
+            repoRoot,
+            path: repoRelativeFilePath,
+            left: { kind: "ref", ref: trimmedRef },
+            right: { kind: "worktree" },
+            languageId: "",
+            title,
+        },
+        async (cancellationToken) => {
+            const refContent = await gitOps.getFileContentAtRef(repoRelativeFilePath, trimmedRef);
+            if (cancellationToken.isCancellationRequested) return;
+            const leftUri = createReadonlyDiffUri(repoRelativeFilePath, refContent, trimmedRef);
+            await vscode.commands.executeCommand("vscode.diff", leftUri, fileUri, title);
+        },
+    );
 }
 
 /**
@@ -651,7 +666,7 @@ async function openDiffAgainstGitRef(
 export async function openCommitFileDiff(
     commitHash: string,
     filePath: string,
-    _repoRoot: string,
+    repoRoot: string,
     gitOps: GitOps,
     executor: GitExecutor,
 ): Promise<void> {
@@ -680,26 +695,40 @@ export async function openCommitFileDiff(
         parentDisplayHash = parentRef;
     }
 
-    let leftContent: string;
-    try {
-        leftContent = await gitOps.getFileContentAtRef(safePath, parentRef);
-    } catch {
-        leftContent = "";
-    }
-
-    let rightContent: string;
-    try {
-        rightContent = await gitOps.getFileContentAtRef(safePath, validatedHash);
-    } catch {
-        rightContent = "";
-    }
-
     const shortParent = parentDisplayHash.slice(0, 8);
     const shortCommit = validatedHash.slice(0, 8);
-    const leftUri = createReadonlyDiffUri(safePath, leftContent, shortParent);
-    const rightUri = createReadonlyDiffUri(safePath, rightContent, shortCommit);
     const title = `${safePath} (${shortParent} ↔ ${shortCommit})`;
-    await vscode.commands.executeCommand("vscode.diff", leftUri, rightUri, title);
+
+    await openUnifiedDiff(
+        {
+            repoRoot,
+            path: safePath,
+            left: { kind: "ref", ref: parentRef },
+            right: { kind: "ref", ref: validatedHash },
+            languageId: "",
+            title,
+        },
+        async (cancellationToken) => {
+            let leftContent: string;
+            try {
+                leftContent = await gitOps.getFileContentAtRef(safePath, parentRef);
+            } catch {
+                leftContent = "";
+            }
+
+            let rightContent: string;
+            try {
+                rightContent = await gitOps.getFileContentAtRef(safePath, validatedHash);
+            } catch {
+                rightContent = "";
+            }
+
+            if (cancellationToken.isCancellationRequested) return;
+            const leftUri = createReadonlyDiffUri(safePath, leftContent, shortParent);
+            const rightUri = createReadonlyDiffUri(safePath, rightContent, shortCommit);
+            await vscode.commands.executeCommand("vscode.diff", leftUri, rightUri, title);
+        },
+    );
 }
 
 /**
@@ -759,6 +788,7 @@ export async function compareEditorFileWithBranch(
 
         await openDiffAgainstGitRef(
             fileUri,
+            repoRoot,
             repoRelativeFilePath,
             picked.refName,
             "branch",
@@ -849,7 +879,14 @@ export async function compareEditorFileWithRevision(
             refName = input.trim();
         }
 
-        await openDiffAgainstGitRef(fileUri, repoRelativeFilePath, refName, "revision", gitOps);
+        await openDiffAgainstGitRef(
+            fileUri,
+            repoRoot,
+            repoRelativeFilePath,
+            refName,
+            "revision",
+            gitOps,
+        );
     } catch (error) {
         const message = getErrorMessage(error);
         vscode.window.showErrorMessage(
@@ -875,7 +912,14 @@ export async function compareCommitInfoFileWithLocal(
     try {
         const safePath = assertRepoRelativePath(fileCtx.filePath);
         const fileUri = vscode.Uri.file(path.join(repoRoot, safePath));
-        await openDiffAgainstGitRef(fileUri, safePath, fileCtx.commitHash, "revision", gitOps);
+        await openDiffAgainstGitRef(
+            fileUri,
+            repoRoot,
+            safePath,
+            fileCtx.commitHash,
+            "revision",
+            gitOps,
+        );
     } catch (error) {
         const message = getErrorMessage(error);
         vscode.window.showErrorMessage(

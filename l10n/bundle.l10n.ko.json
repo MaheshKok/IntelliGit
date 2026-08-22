@@ -606,5 +606,6 @@
     "Keep working tree": "작업 트리 유지",
     "Overwrite (previous content saved to recovery)": "덮어쓰기(이전 내용은 복구에 저장됨)",
     "Manage the GitHub sign-in from the VS Code Accounts menu.": "GitHub 로그인은 VS Code 계정 메뉴에서 관리하세요.",
-    "Diff: {file}": "차이: {file}"
+    "Diff: {file}": "차이: {file}",
+    "{path} (HEAD ↔ Working Tree)": "{path} (HEAD ↔ 작업 트리)"
 }

@@ -415,7 +415,7 @@ export function App(): React.ReactElement {
 
     return (
         <SyntaxHighlightProvider value={syntaxHighlightState}>
-            <div className="diff-core diff-viewer" style={rootStyle}>
+            <div className="diff-core diff-viewer" style={rootStyle} data-testid="diff-viewer-root">
                 <div className="diff-toolbar">
                     <div className="toolbar-left">
                         <button
@@ -468,6 +468,7 @@ export function App(): React.ReactElement {
                                         columnRefs.current.left = element;
                                     }}
                                     className="diff-pane diff-pane-left"
+                                    data-testid="diff-pane-left"
                                 >
                                     {renderedSegments.map((item) => (
                                         <DiffPaneBlock
@@ -485,6 +486,7 @@ export function App(): React.ReactElement {
                                         columnRefs.current.right = element;
                                     }}
                                     className="diff-pane diff-pane-right"
+                                    data-testid="diff-pane-right"
                                 >
                                     {renderedSegments.map((item) => (
                                         <DiffPaneBlock

@@ -207,7 +207,8 @@ const vscodeMock = {
         t: (message: string, _placeholders?: unknown) => message,
     },
     ProgressLocation: { Notification: 15 },
-    ViewColumn: { One: 1 },
+    ViewColumn: { One: 1, Active: -1 },
+    FileType: { File: 1, Directory: 2, SymbolicLink: 64 },
     Disposable: class {
         constructor(private readonly disposeCallback: () => void) {}
         dispose(): void {
@@ -325,7 +326,11 @@ const vscodeMock = {
             workspaceState.workspaceFolders = value;
         },
         fs: {
-            stat: vi.fn(async () => undefined),
+            // Every registered path resolves as an ordinary existing text file -- nothing in this
+            // suite exercises the missing/symlink/directory branches of loadWorktree, which have
+            // their own dedicated coverage in sideLoader.test.ts.
+            stat: vi.fn(async () => ({ type: 1, size: 1024, ctime: 0, mtime: 0 })),
+            readFile: vi.fn(async () => new TextEncoder().encode("local file content\n")),
         },
         openTextDocument,
         onDidChangeWorkspaceFolders: vi.fn((listener: () => Promise<void> | void) => {
@@ -459,38 +464,46 @@ vi.mock("../../../src/git/executor", () => ({
         deriveFor = (root: string) => new MockGitExecutor(root);
     },
 }));
-vi.mock("../../../src/git/operations", () => ({
-    GitOps: class MockGitOps {
-        constructor(private readonly executor?: { root?: string }) {}
+vi.mock("../../../src/git/operations", async (importOriginal) => {
+    // Spread the real module so pure helpers -- e.g. `isMissingGitPathError`, which
+    // panelFileActions.ts's stash single-file diff path imports directly -- stay real instead of
+    // silently becoming undefined. Only GitOps is replaced, with the hand-rolled fake below.
+    const actual = await importOriginal<typeof import("../../../src/git/operations")>();
+    return {
+        ...actual,
+        GitOps: class MockGitOps {
+            constructor(private readonly executor?: { root?: string }) {}
 
-        private currentRoot(): string {
-            return this.executor?.root ?? activeGitRoot.value;
-        }
+            private currentRoot(): string {
+                return this.executor?.root ?? activeGitRoot.value;
+            }
 
-        getBranches = vi.fn(async () => {
-            const root = this.currentRoot();
-            if (!deferBranchRefreshes.active) return makeBranchesForRoot(root);
-            return new Promise<unknown[]>((resolve) => {
-                branchRefreshControls.push({ root, resolve });
+            getBranches = vi.fn(async () => {
+                const root = this.currentRoot();
+                if (!deferBranchRefreshes.active) return makeBranchesForRoot(root);
+                return new Promise<unknown[]>((resolve) => {
+                    branchRefreshControls.push({ root, resolve });
+                });
             });
-        });
-        getLog = vi.fn(async () => gitLogByRoot.get(this.currentRoot()) ?? []);
-        getRemotes = vi.fn(async () => ["origin"]);
-        getRemoteUrl = vi.fn(
-            async () =>
-                gitRemoteUrlByRoot.get(this.currentRoot()) ?? "https://github.com/owner/repo.git",
-        );
-        getUnpushedCommitHashes = vi.fn(async () => []);
-        hasAnyCommits = vi.fn(async () => true);
-        hasUncommittedChanges = vi.fn(async () => false);
-        hasWholeIndexOperationInProgress = vi.fn(async () => false);
-        getActiveOperation = vi.fn(async () => "none");
-        getStatus = vi.fn(async () => gitStatusByRoot.get(this.currentRoot()) ?? []);
-        listStashes = vi.fn(async () => []);
-        getConflictFilesDetailed = vi.fn(async () => []);
-        deriveFor = vi.fn((root: string) => new MockGitOps({ root }));
-    },
-}));
+            getLog = vi.fn(async () => gitLogByRoot.get(this.currentRoot()) ?? []);
+            getRemotes = vi.fn(async () => ["origin"]);
+            getRemoteUrl = vi.fn(
+                async () =>
+                    gitRemoteUrlByRoot.get(this.currentRoot()) ??
+                    "https://github.com/owner/repo.git",
+            );
+            getUnpushedCommitHashes = vi.fn(async () => []);
+            hasAnyCommits = vi.fn(async () => true);
+            hasUncommittedChanges = vi.fn(async () => false);
+            hasWholeIndexOperationInProgress = vi.fn(async () => false);
+            getActiveOperation = vi.fn(async () => "none");
+            getStatus = vi.fn(async () => gitStatusByRoot.get(this.currentRoot()) ?? []);
+            listStashes = vi.fn(async () => []);
+            getConflictFilesDetailed = vi.fn(async () => []);
+            deriveFor = vi.fn((root: string) => new MockGitOps({ root }));
+        },
+    };
+});
 vi.mock("../../../src/services/worktreeService", () => ({
     WorktreeService: class {
         refresh = vi.fn(async () => []);
@@ -790,6 +803,7 @@ function makeGitOpsMock() {
         abortMerge: vi.fn(async () => undefined),
         getStashFilePatch: vi.fn(async () => "diff --git a b"),
         getStashFileContents: vi.fn(async () => ({ before: "base", after: "stash" })),
+        getFileContentAtRef: vi.fn(async () => "stash file content\n"),
         getFileHistory: vi.fn(async () => "history line"),
     };
 }
@@ -946,7 +960,21 @@ async function setupCommitPanelProvider(
 }
 
 describe("view providers integration", () => {
-    beforeEach(() => {
+    beforeEach(async () => {
+        // Normally primed once during activation, before any diff-opening code can run. This
+        // suite builds providers directly without going through activation, so the unified diff
+        // funnel's success path (openDiffViewer) needs it set here or it throws for every rewired
+        // diff call. A dynamic import, not a static one, so loading it doesn't force "vscode" to
+        // resolve before vscodeMock (defined further down this file) is initialized -- vi.mock's
+        // hoisting would otherwise race the two and throw "Cannot access 'vscodeMock' before
+        // initialization".
+        const { setDiffViewerExtensionUri } = await import("../../../src/diff/diffViewerOpener");
+        setDiffViewerExtensionUri(
+            vscodeMock.Uri.file("/ext") as unknown as Parameters<
+                typeof setDiffViewerExtensionUri
+            >[0],
+        );
+
         vi.clearAllMocks();
         registeredCommands.clear();
         activeTextEditorListeners.length = 0;
@@ -2640,12 +2668,14 @@ describe("view providers integration", () => {
             { type: "stashMutationCompleted", requestId: "undocked-delete" },
             { type: "stashMutationCompleted", requestId: "undocked-clear" },
         ]);
-        expect(gitOps.getStashFileContents).toHaveBeenCalledWith(0, "src/a.ts");
-        expect(openTextDocument).toHaveBeenCalledWith({
-            fsPath: "/repo/src/a.ts",
-            path: "/repo/src/a.ts",
-        });
-        expect(executeCommand).toHaveBeenCalledWith(
+        // Single-file stash diffs route through the unified diff funnel (Deliverable 1e): the
+        // local working-tree file loads via vscode.workspace.fs, and the stash side resolves by
+        // the stash's stable commit hash -- never `stash@{index}` -- through getFileContentAtRef.
+        // Ordinary text content succeeds in the funnel, so neither the old openTextDocument call
+        // nor the native vscode.diff delegate below fires; that delegate is still reachable for
+        // content the viewer must refuse (see the binary/symlink/over-budget coverage elsewhere).
+        expect(gitOps.getFileContentAtRef).toHaveBeenCalledWith("src/a.ts", "stashhash");
+        expect(executeCommand).not.toHaveBeenCalledWith(
             "vscode.diff",
             expect.objectContaining({
                 scheme: "intelligit-diff",
@@ -2659,6 +2689,19 @@ describe("view providers integration", () => {
             }),
             "{path} (Local File <-> Stash {reference})",
             { preview: true },
+        );
+        expect(postMessageSpy).toHaveBeenCalledWith(
+            expect.objectContaining({
+                type: "setDiffData",
+                data: expect.objectContaining({
+                    segments: expect.arrayContaining([
+                        expect.objectContaining({
+                            left: ["local file content"],
+                            right: ["stash file content"],
+                        }),
+                    ]),
+                }),
+            }),
         );
         expect(deleteFileWithFallback).toHaveBeenCalledWith(gitOps, expect.any(Object), "src/a.ts");
         expect(workingTreeEvents.length).toBeGreaterThanOrEqual(9);
@@ -7261,13 +7304,15 @@ describe("view providers integration", () => {
             },
         ]);
 
+        // Single-file stash diffs route through the unified diff funnel (Deliverable 1e): the
+        // local working-tree file loads via vscode.workspace.fs, and the stash side resolves by
+        // the stash's stable commit hash -- never `stash@{index}` -- through getFileContentAtRef.
+        // Ordinary text content succeeds in the funnel, so neither the old openTextDocument call
+        // nor the native vscode.diff delegate below fires; that delegate is still reachable for
+        // content the viewer must refuse (see the binary/symlink/over-budget coverage elsewhere).
         await webview.send({ type: "showStashDiff", index: 0, path: "src/a.ts" });
-        expect(gitOps.getStashFileContents).toHaveBeenCalledWith(0, "src/a.ts");
-        expect(openTextDocument).toHaveBeenCalledWith({
-            fsPath: "/repo/src/a.ts",
-            path: "/repo/src/a.ts",
-        });
-        expect(executeCommand).toHaveBeenCalledWith(
+        expect(gitOps.getFileContentAtRef).toHaveBeenCalledWith("src/a.ts", "stashhash");
+        expect(executeCommand).not.toHaveBeenCalledWith(
             "vscode.diff",
             expect.objectContaining({
                 scheme: "intelligit-diff",
@@ -7281,6 +7326,19 @@ describe("view providers integration", () => {
             }),
             "{path} (Local File <-> Stash {reference})",
             { preview: true },
+        );
+        expect(postMessageSpy).toHaveBeenCalledWith(
+            expect.objectContaining({
+                type: "setDiffData",
+                data: expect.objectContaining({
+                    segments: expect.arrayContaining([
+                        expect.objectContaining({
+                            left: ["local file content"],
+                            right: ["stash file content"],
+                        }),
+                    ]),
+                }),
+            }),
         );
         provider.dispose();
     });

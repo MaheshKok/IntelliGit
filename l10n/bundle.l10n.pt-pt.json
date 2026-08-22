@@ -606,5 +606,6 @@
     "Keep working tree": "Manter a árvore de trabalho",
     "Overwrite (previous content saved to recovery)": "Substituir (conteúdo anterior guardado na recuperação)",
     "Manage the GitHub sign-in from the VS Code Accounts menu.": "Faça a gestão do início de sessão do GitHub no menu Contas do VS Code.",
-    "Diff: {file}": "Diff: {file}"
+    "Diff: {file}": "Diff: {file}",
+    "{path} (HEAD ↔ Working Tree)": "{path} (HEAD ↔ Árvore de trabalho)"
 }
