@@ -1,4 +1,5 @@
 import type { HostFixture } from "./types";
+import { parseStyleCustomProperties } from "./canonicalizeHostFixture";
 import { serializeHostFixture } from "./hostFixtureFile";
 
 type ComparableValue = string | number | readonly string[] | Readonly<Record<string, string>>;
@@ -113,6 +114,52 @@ function recordDifference(
     }
 }
 
+/**
+ * Records a `documentElement.styleCssText` difference for tokens the pinned build declares and the
+ * second capture either DROPPED or REDEFINED. A token present only in the second capture is
+ * ignored.
+ *
+ * Upstream adds theme tokens continuously -- one Insiders run added 25 (`--vscode-modernTab-*`,
+ * `--vscode-modernEditorTab-*`, `--vscode-chat-findMatch*`) against two it actually changed. A
+ * token nothing in this extension reads cannot change how the extension renders, so an addition is
+ * not an early warning; it is what kept this canary red every night until stable caught up, which
+ * is the same as having no canary. A token that disappears or changes value underneath a webview
+ * can break it, so those are what get reported.
+ *
+ * Only the offending tokens travel into the difference. Carrying both full blocks put ~900
+ * identical tokens on either side of the formatter's truncation limit, so the failure named the
+ * field and then printed the same prefix twice.
+ */
+function recordStyleCustomPropertyDifference(
+    differences: HostFixtureDifference[],
+    committedCssText: string,
+    capturedCssText: string,
+): void {
+    const captured = parseStyleCustomProperties(capturedCssText);
+    const committedOffenders: Record<string, string> = {};
+    const capturedOffenders: Record<string, string> = {};
+
+    for (const [name, committedValue] of parseStyleCustomProperties(committedCssText)) {
+        const capturedValue = captured.get(name);
+        if (capturedValue === committedValue) continue;
+
+        committedOffenders[name] = committedValue;
+        // An absent key on the captured side IS the removal: the second build no longer declares
+        // this token at all, which reads differently from a token that merely changed value.
+        if (capturedValue !== undefined) {
+            capturedOffenders[name] = capturedValue;
+        }
+    }
+
+    if (Object.keys(committedOffenders).length > 0) {
+        differences.push({
+            field: "documentElement.styleCssText",
+            committedValue: committedOffenders,
+            capturedValue: capturedOffenders,
+        });
+    }
+}
+
 function formatDifferenceValue(value: ComparableValue, maxValueLength: number): string {
     const serialized = JSON.stringify(value);
     if (serialized.length <= maxValueLength) {
@@ -175,9 +222,12 @@ export function compareHostFixtures(
         committedFixture.documentElement.dataset,
         capturedFixture.documentElement.dataset,
     );
-    recordDifference(
+    // Token-wise, not string-wise: this comparison is the cross-build canary, where the two
+    // captures come from DIFFERENT VS Code builds and upstream additions are expected. The
+    // staleness comparison below stays an exact string match on purpose -- there both sides come
+    // from the SAME pinned build, so any drift at all means the committed fixture needs recapture.
+    recordStyleCustomPropertyDifference(
         differences,
-        "documentElement.styleCssText",
         committedFixture.documentElement.styleCssText,
         capturedFixture.documentElement.styleCssText,
     );

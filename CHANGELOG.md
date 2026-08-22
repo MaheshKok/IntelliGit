@@ -5,6 +5,12 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.27.3] - 2026-08-22
+
+### Changed
+
+- The nightly comparison between the pinned VS Code build and Insiders now reads the workbench's theme tokens one at a time instead of as a single string, and reports only the tokens the newer build dropped or gave a different value. Upstream adds theme tokens continuously — one night's run added twenty-five and changed two — and comparing the block as one string called every addition a difference, so the check stood red for a week over tokens this extension never reads, which is the same as having no check at all. A token that disappears or changes value underneath a webview can still break it, so those are still reported, and the failure now names just those tokens rather than printing nine hundred identical ones on either side of a truncation limit. The separate staleness check is deliberately unchanged and still compares byte for byte: both of its sides come from the same pinned build, so there an added token does mean the committed fixture needs recapturing. This is test infrastructure only — nothing an installed extension does changes.
+
 ## [0.27.2] - 2026-08-20
 
 ### Fixed
