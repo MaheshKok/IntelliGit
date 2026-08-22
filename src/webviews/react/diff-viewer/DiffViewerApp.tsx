@@ -331,11 +331,9 @@ export function App(): React.ReactElement {
     useEffect(() => {
         const handler = (event: MessageEvent<InboundMessage>) => {
             if (event.data.type === "setDiffData") {
-                setError(null);
+                setError(event.data.data.loadError ?? null);
                 setIgnoreMode(event.data.data.ignoreWhitespace ? "whitespace" : "none");
                 setData(event.data.data);
-            } else if (event.data.type === "loadError") {
-                setError(event.data.message);
             }
         };
         window.addEventListener("message", handler);

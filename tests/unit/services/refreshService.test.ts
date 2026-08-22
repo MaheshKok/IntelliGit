@@ -9,6 +9,22 @@ import type { MergeConflictsTreeProvider } from "../../../src/views/MergeConflic
 vi.mock("vscode", () => {
     /** Creates disposable mocks for VS Code watcher/listener registrations. */
     const disposable = () => ({ dispose: vi.fn() });
+    class EventEmitter<T> {
+        private readonly listeners = new Set<(value: T) => unknown>();
+
+        readonly event = (listener: (value: T) => unknown) => {
+            this.listeners.add(listener);
+            return { dispose: () => this.listeners.delete(listener) };
+        };
+
+        fire(value: T): void {
+            for (const listener of this.listeners) listener(value);
+        }
+
+        dispose(): void {
+            this.listeners.clear();
+        }
+    }
     const fileSystemWatcher = {
         onDidChange: vi.fn(() => disposable()),
         onDidCreate: vi.fn(() => disposable()),
@@ -17,6 +33,7 @@ vi.mock("vscode", () => {
     };
 
     return {
+        EventEmitter,
         commands: {
             executeCommand: vi.fn(),
         },

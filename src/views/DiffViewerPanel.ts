@@ -61,6 +61,7 @@ export class DiffViewerPanel {
     private disposed = false;
     private ignoreWhitespace = false;
     private snapshot: DiffViewerSnapshot;
+    private loadError: string | undefined;
     private sessionGeneration: number | undefined;
     private onSessionDisposed: (() => void) | undefined;
 
@@ -81,7 +82,8 @@ export class DiffViewerPanel {
                 if (!this.isAlive()) return;
                 const message = getErrorMessage(error);
                 void vscode.window.showErrorMessage(message);
-                await this.post({ type: "loadError", message });
+                this.loadError = message;
+                await this.postLatestData();
             }
         });
 
@@ -123,6 +125,14 @@ export class DiffViewerPanel {
         return true;
     }
 
+    /** Posts a generation-checked refresh error while retaining the currently rendered snapshots. */
+    static async postLoadError(generation: number, message: string): Promise<void> {
+        const existing = DiffViewerPanel.instance;
+        if (!existing || !existing.isAlive() || existing.sessionGeneration !== generation) return;
+        existing.loadError = message;
+        await existing.postLatestData();
+    }
+
     /** Opens the reusable panel, or reveals it and replaces its current snapshot. */
     static async open(options: DiffViewerPanelOptions): Promise<void> {
         const snapshot = DiffViewerPanel.snapshotFrom(options);
@@ -141,6 +151,7 @@ export class DiffViewerPanel {
                 });
             }
             existing.snapshot = snapshot;
+            existing.loadError = undefined;
             existing.panel.title = DiffViewerPanel.panelTitle(snapshot);
             existing.panel.reveal(vscode.ViewColumn.Active);
             await existing.postLatestData();
@@ -177,10 +188,15 @@ export class DiffViewerPanel {
         const computed = computeDiffSegments(leftText, rightText, {
             ignoreWhitespace: this.ignoreWhitespace,
         });
-        return { ...metadata, ...computed, ignoreWhitespace: this.ignoreWhitespace };
+        return {
+            ...metadata,
+            ...computed,
+            ignoreWhitespace: this.ignoreWhitespace,
+            loadError: this.loadError,
+        };
     }
 
-    /** Reposts the current in-memory snapshot to the webview. */
+    /** Reposts the current in-memory snapshot and its active refresh error to the webview. */
     private async postLatestData(): Promise<void> {
         if (!this.isAlive()) return;
         // Keep payload construction before the first await: rapid optimistic toggles

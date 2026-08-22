@@ -43,6 +43,8 @@ export interface DiffViewerData {
     newlineDifference: boolean;
     /** Authoritative ignore-whitespace mode for the segments in this payload. */
     ignoreWhitespace: boolean;
+    /** Active refresh failure while the displayed snapshots remain valid. */
+    loadError?: string;
 }
 
 /** Commands posted by the diff viewer to the extension host. */
@@ -51,6 +53,4 @@ export type OutboundMessage =
     | { type: "setIgnoreMode"; mode: "none" | "whitespace" };
 
 /** Messages sent by the extension host to initialize or report the viewer state. */
-export type InboundMessage =
-    | { type: "setDiffData"; data: DiffViewerData }
-    | { type: "loadError"; message: string };
+export type InboundMessage = { type: "setDiffData"; data: DiffViewerData };

@@ -7,15 +7,39 @@ interface CapturedPanel {
     dispose(): void;
 }
 
-const mocks = vi.hoisted(() => ({ panels: [] as CapturedPanel[] }));
+const mocks = vi.hoisted(() => ({
+    panels: [] as CapturedPanel[],
+    subscriptions: [] as Array<{
+        repoRoot: string;
+        listener: (event: { repoRoot: string; path?: string; source: string }) => void;
+        dispose: ReturnType<typeof vi.fn>;
+        rebind: ReturnType<typeof vi.fn>;
+    }>,
+    worktreeText: "working tree\n",
+    documents: [] as Array<{ uri: { toString(): string }; getText(): string }>,
+    readFile: vi.fn(async () => Buffer.from("working tree\n")),
+    refText: "first ref\n",
+}));
 
 vi.mock("vscode", () => ({
     ViewColumn: { Active: -1 },
     l10n: { t: (message: string) => message },
     Uri: {
+        file: (fsPath: string) => ({ fsPath, toString: () => `file:${fsPath}` }),
         joinPath: (base: { fsPath: string }, ...parts: string[]) => ({
             fsPath: [base.fsPath, ...parts].join("/"),
+            toString: () => `file:${[base.fsPath, ...parts].join("/")}`,
         }),
+    },
+    FileType: { File: 1, Directory: 2, SymbolicLink: 64 },
+    workspace: {
+        fs: {
+            stat: vi.fn(async () => ({ type: 1, size: 16 })),
+            readFile: mocks.readFile,
+        },
+        get textDocuments() {
+            return mocks.documents;
+        },
     },
     window: {
         createWebviewPanel: () => {
@@ -63,6 +87,37 @@ vi.mock("../../../src/views/webviewHtml", () => ({
     buildWebviewShellHtml: () => "<html />",
 }));
 
+vi.mock("../../../src/services/repositoryChangeEvents", () => ({
+    subscribeToRepositoryWorkingTreeChanges: (
+        repoRoot: string,
+        listener: (event: { repoRoot: string; path?: string; source: string }) => void,
+    ) => {
+        const subscription = { repoRoot, listener, dispose: vi.fn(), rebind: vi.fn() };
+        mocks.subscriptions.push(subscription);
+        return subscription;
+    },
+}));
+
+vi.mock("../../../src/git/executor", () => ({
+    GitExecutor: class GitExecutor {
+        async runBinary(args: string[]) {
+            if (args[0] === "cat-file" && args[1] === "-s") {
+                return {
+                    stdout: Buffer.from(String(Buffer.byteLength(mocks.refText))),
+                    truncated: false,
+                };
+            }
+            if (args[0] === "ls-tree") {
+                return {
+                    stdout: Buffer.from("100644 blob ref\tsrc/example.ts\0"),
+                    truncated: false,
+                };
+            }
+            return { stdout: Buffer.from(mocks.refText), truncated: false };
+        }
+    },
+}));
+
 import { setDiffViewerExtensionUri } from "../../../src/diff/diffViewerOpener";
 import { openUnifiedDiff } from "../../../src/services/diffService";
 
@@ -92,9 +147,213 @@ function request(leftLoad: () => Promise<ProviderLoadResult>): UnifiedDiffReques
 afterEach(() => {
     mocks.panels.at(-1)?.dispose();
     mocks.panels.length = 0;
+    mocks.subscriptions.length = 0;
+    mocks.documents.length = 0;
+    mocks.worktreeText = "working tree\n";
+    mocks.refText = "first ref\n";
+    mocks.readFile.mockReset();
+    mocks.readFile.mockResolvedValue(Buffer.from(mocks.worktreeText));
 });
 
 describe("unified diff session snapshots", () => {
+    // Both separators must refresh: watcher events always arrive slash-separated, so a
+    // descriptor carrying native Windows separators only matches after normalization. The
+    // POSIX case is the one that runs in CI, so neither may stand in for the other.
+    it.each([
+        ["POSIX separators", "src/example.ts"],
+        ["Windows separators", "src\\example.ts"],
+    ])("refreshes a mutable worktree session whose descriptor uses %s", async (_name, path) => {
+        setDiffViewerExtensionUri(extensionUri);
+        const providerLoad = vi.fn(async () => ({
+            status: "loaded" as const,
+            bytes: Buffer.from("frozen provider\n"),
+            mode: 0o100644,
+        }));
+        mocks.documents.push({
+            uri: { toString: () => `file:/repo/${path}` },
+            getText: () => mocks.worktreeText,
+        });
+
+        await openUnifiedDiff(
+            {
+                ...request(providerLoad),
+                path,
+                right: { kind: "worktree" },
+            },
+            vi.fn(async () => undefined),
+        );
+
+        expect(mocks.subscriptions).toHaveLength(1);
+        expect(providerLoad).toHaveBeenCalledOnce();
+        mocks.worktreeText = "dirty document\n";
+        mocks.subscriptions[0]?.listener({
+            repoRoot: "/repo",
+            path: "src/example.ts",
+            source: "workspace-file",
+        });
+
+        await vi.waitFor(() => {
+            expect(mocks.panels.at(-1)?.postedMessages.at(-1)).toMatchObject({
+                type: "setDiffData",
+                data: {
+                    segments: expect.arrayContaining([
+                        expect.objectContaining({ right: ["dirty document"] }),
+                    ]),
+                },
+            });
+        });
+        expect(providerLoad).toHaveBeenCalledOnce();
+    });
+
+    it("does not subscribe fully frozen provider sessions", async () => {
+        setDiffViewerExtensionUri(extensionUri);
+
+        await openUnifiedDiff(
+            request(async () => ({
+                status: "loaded" as const,
+                bytes: Buffer.from("left\n"),
+                mode: 0o100644,
+            })),
+            vi.fn(async () => undefined),
+        );
+
+        expect(mocks.subscriptions).toHaveLength(0);
+    });
+
+    it("does not subscribe a diff between two object-ID refs", async () => {
+        setDiffViewerExtensionUri(extensionUri);
+
+        await openUnifiedDiff(
+            {
+                ...request(async () => ({
+                    status: "loaded" as const,
+                    bytes: Buffer.from("unused provider\n"),
+                    mode: 0o100644,
+                })),
+                left: { kind: "ref", ref: "a".repeat(40) },
+                right: { kind: "ref", ref: "b".repeat(40) },
+            },
+            vi.fn(async () => undefined),
+        );
+
+        expect(mocks.subscriptions).toHaveLength(0);
+    });
+
+    it("atomically rebinds the mutable listener when a newer descriptor replaces the panel session", async () => {
+        setDiffViewerExtensionUri(extensionUri);
+        const mutableRequest = {
+            ...request(async () => ({
+                status: "loaded" as const,
+                bytes: Buffer.from("frozen provider\n"),
+                mode: 0o100644,
+            })),
+            right: { kind: "worktree" as const },
+        };
+
+        await openUnifiedDiff(
+            mutableRequest,
+            vi.fn(async () => undefined),
+        );
+        const subscription = mocks.subscriptions[0];
+        if (!subscription) throw new Error("Expected a mutable session subscription");
+
+        await openUnifiedDiff(
+            { ...mutableRequest, repoRoot: "/other-repository" },
+            vi.fn(async () => undefined),
+        );
+
+        expect(mocks.subscriptions).toHaveLength(1);
+        expect(subscription.rebind).toHaveBeenCalledWith("/other-repository", expect.any(Function));
+    });
+
+    it.each([
+        ["HEAD move", "HEAD", "git-state", "second HEAD\n"],
+        ["branch move", "feature", "git-refs", "second branch\n"],
+    ])("refreshes a symbolic ref after a %s", async (_name, ref, source, refreshedText) => {
+        setDiffViewerExtensionUri(extensionUri);
+        const providerLoad = vi.fn(async () => ({
+            status: "loaded" as const,
+            bytes: Buffer.from("frozen provider\n"),
+            mode: 0o100644,
+        }));
+
+        await openUnifiedDiff(
+            {
+                ...request(providerLoad),
+                left: { kind: "ref", ref },
+                right: {
+                    kind: "provider",
+                    label: "frozen provider",
+                    identity: "frozen-provider",
+                    load: providerLoad,
+                },
+            },
+            vi.fn(async () => undefined),
+        );
+        expect(mocks.subscriptions).toHaveLength(1);
+        mocks.refText = refreshedText;
+        mocks.subscriptions[0]?.listener({ repoRoot: "/repo", source });
+
+        await vi.waitFor(() => {
+            expect(mocks.panels.at(-1)?.postedMessages.at(-1)).toMatchObject({
+                type: "setDiffData",
+                data: {
+                    segments: expect.arrayContaining([
+                        expect.objectContaining({ left: [refreshedText.trim()] }),
+                    ]),
+                },
+            });
+        });
+        expect(providerLoad).toHaveBeenCalledOnce();
+    });
+
+    it("posts a refresh loadError atomically with the last rendered panes", async () => {
+        setDiffViewerExtensionUri(extensionUri);
+        mocks.readFile.mockResolvedValueOnce(Buffer.from("initial worktree\n"));
+
+        await openUnifiedDiff(
+            {
+                ...request(async () => ({
+                    status: "loaded" as const,
+                    bytes: Buffer.from("frozen provider\n"),
+                    mode: 0o100644,
+                })),
+                right: { kind: "worktree" },
+            },
+            vi.fn(async () => undefined),
+        );
+        const panel = mocks.panels.at(-1);
+        if (!panel) throw new Error("Expected a panel");
+        mocks.readFile.mockRejectedValueOnce(new Error("permission denied"));
+        mocks.subscriptions[0]?.listener({
+            repoRoot: "/repo",
+            path: "src/example.ts",
+            source: "workspace-file",
+        });
+
+        await vi.waitFor(() => {
+            expect(panel.postedMessages.at(-1)).toEqual({
+                type: "setDiffData",
+                data: expect.objectContaining({
+                    loadError: "permission denied",
+                    segments: expect.arrayContaining([
+                        expect.objectContaining({ right: ["initial worktree"] }),
+                    ]),
+                }),
+            });
+        });
+        expect(panel.postedMessages).toContainEqual(
+            expect.objectContaining({
+                type: "setDiffData",
+                data: expect.objectContaining({
+                    segments: expect.arrayContaining([
+                        expect.objectContaining({ right: ["initial worktree"] }),
+                    ]),
+                }),
+            }),
+        );
+    });
+
     it("does not load providers again when the panel toggles ignore mode", async () => {
         setDiffViewerExtensionUri(extensionUri);
         const providerLoad = vi.fn(async () => ({

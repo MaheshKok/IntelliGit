@@ -29,6 +29,14 @@ export function clearDiffViewerSession(generation: number): void {
     DiffViewerPanel.clearSessionBinding(generation);
 }
 
+/** Reports a refresh failure only when the reusable panel still belongs to that generation. */
+export async function reportDiffViewerLoadError(
+    generation: number,
+    message: string,
+): Promise<void> {
+    await DiffViewerPanel.postLoadError(generation, message);
+}
+
 /** Opens the Phase 1 reusable viewer after the funnel has completed all host-side gates. */
 export async function openDiffViewer(options: ViewerOptions): Promise<void> {
     if (!diffViewerExtensionUri) {

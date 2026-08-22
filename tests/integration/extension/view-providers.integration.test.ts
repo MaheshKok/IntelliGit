@@ -343,6 +343,11 @@ const vscodeMock = {
             }),
         })),
         onDidChangeConfiguration: vi.fn(() => ({ dispose: vi.fn() })),
+        onDidChangeTextDocument: vi.fn(() => ({ dispose: vi.fn() })),
+        onDidSaveTextDocument: vi.fn(() => ({ dispose: vi.fn() })),
+        onDidCreateFiles: vi.fn(() => ({ dispose: vi.fn() })),
+        onDidDeleteFiles: vi.fn(() => ({ dispose: vi.fn() })),
+        onDidRenameFiles: vi.fn(() => ({ dispose: vi.fn() })),
         createFileSystemWatcher: vi.fn((pattern: unknown) => {
             const watcher = new FakeFileSystemWatcher(pattern);
             fileSystemWatchers.push(watcher);
@@ -5743,63 +5748,58 @@ describe("view providers integration", () => {
     });
 
     it("CommitPanelViewProvider watches expanded non-active repositories with targeted refreshes", async () => {
+        vi.resetModules();
         const { provider, gitOps, webview } = await setupCommitPanelProvider();
-        const repoBGitOps = makeGitOpsMock();
-        repoBGitOps.getStatus.mockResolvedValue([
-            { path: "src/b.ts", status: "M", staged: false, additions: 2, deletions: 0 },
-        ]);
-        provider.setRepositories(
-            [
-                { root: "/repo", label: "Repo A" },
-                { root: "/repo-b", label: "Repo B" },
-            ],
-            "/repo",
-        );
-        const runtimeB = (
-            provider as unknown as {
-                runtimes: Map<string, { gitOps: ReturnType<typeof makeGitOpsMock> }>;
-            }
-        ).runtimes.get("/repo-b");
-        expect(runtimeB).toBeDefined();
-        runtimeB!.gitOps = repoBGitOps;
-        await flushMicrotasks();
-
-        expect(activeWatcherForRoot("/repo")).toBeUndefined();
-        expect(activeWatcherForRoot("/repo-b")).toBeUndefined();
-
-        await webview.send({ type: "setExpandedRepositories", repositoryRoots: ["/repo-b"] });
-        const expandedWatcher = activeWatcherForRoot("/repo-b");
-        expect(activeWatcherForRoot("/repo")).toBeUndefined();
-        expect(expandedWatcher).toBeDefined();
-
-        gitOps.getStatus.mockClear();
-        repoBGitOps.getStatus.mockClear();
-        postMessageSpy.mockClear();
-        expandedWatcher!.trigger("change", "/repo-b/src/b.ts");
-        for (let i = 0; i < 10; i += 1) {
+        vi.useFakeTimers();
+        try {
+            const repoBGitOps = makeGitOpsMock();
+            repoBGitOps.getStatus.mockResolvedValue([
+                { path: "src/b.ts", status: "M", staged: false, additions: 2, deletions: 0 },
+            ]);
+            provider.setRepositories(
+                [
+                    { root: "/repo", label: "Repo A" },
+                    { root: "/repo-b", label: "Repo B" },
+                ],
+                "/repo",
+            );
+            const runtimeB = (
+                provider as unknown as {
+                    runtimes: Map<string, { gitOps: ReturnType<typeof makeGitOpsMock> }>;
+                }
+            ).runtimes.get("/repo-b");
+            expect(runtimeB).toBeDefined();
+            runtimeB!.gitOps = repoBGitOps;
             await flushMicrotasks();
-            if (
-                postMessageSpy.mock.calls.some(([message]) =>
-                    expect
-                        .objectContaining({ type: "update", repositoryRoot: "/repo-b" })
-                        .asymmetricMatch(message),
-                )
-            ) {
-                break;
-            }
+
+            expect(activeWatcherForRoot("/repo")).toBeUndefined();
+            expect(activeWatcherForRoot("/repo-b")).toBeUndefined();
+
+            await webview.send({ type: "setExpandedRepositories", repositoryRoots: ["/repo-b"] });
+            const expandedWatcher = activeWatcherForRoot("/repo-b");
+            expect(activeWatcherForRoot("/repo")).toBeUndefined();
+            expect(expandedWatcher).toBeDefined();
+
+            gitOps.getStatus.mockClear();
+            repoBGitOps.getStatus.mockClear();
+            postMessageSpy.mockClear();
+            expandedWatcher!.trigger("change", "/repo-b/src/b.ts");
+            await vi.advanceTimersByTimeAsync(300);
+
+            expect(repoBGitOps.getStatus).toHaveBeenCalledWith({ includeIgnored: false });
+            expect(gitOps.getStatus).not.toHaveBeenCalled();
+            expect(postMessageSpy).toHaveBeenCalledWith(
+                expect.objectContaining({ type: "update", repositoryRoot: "/repo-b" }),
+            );
+
+            await webview.send({ type: "setExpandedRepositories", repositoryRoots: [] });
+            expect(expandedWatcher!.dispose).toHaveBeenCalled();
+            expect(activeWatcherForRoot("/repo")).toBeUndefined();
+            expect(activeWatcherForRoot("/repo-b")).toBeUndefined();
+        } finally {
+            provider.dispose();
+            vi.useRealTimers();
         }
-
-        expect(repoBGitOps.getStatus).toHaveBeenCalledWith({ includeIgnored: false });
-        expect(gitOps.getStatus).not.toHaveBeenCalled();
-        expect(postMessageSpy).toHaveBeenCalledWith(
-            expect.objectContaining({ type: "update", repositoryRoot: "/repo-b" }),
-        );
-
-        await webview.send({ type: "setExpandedRepositories", repositoryRoots: [] });
-        expect(expandedWatcher!.dispose).toHaveBeenCalled();
-        expect(activeWatcherForRoot("/repo")).toBeUndefined();
-        expect(activeWatcherForRoot("/repo-b")).toBeUndefined();
-        provider.dispose();
     });
 
     it("CommitPanelViewProvider disposes expanded repository watchers when rows are removed", async () => {

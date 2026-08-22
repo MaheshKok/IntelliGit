@@ -137,7 +137,7 @@ Mode: phase-lane (thin conductor + one fresh opus lane per phase; lanes strictly
 | P1    | Phase 1 (2.1–2.6): computeDiffSegments, DiffViewerApp, bundle, panel, protocol, l10n, tests    | accepted |
 | P2a   | Phase 2 (3.1-3.3): openUnifiedDiff funnel, side loader, budget measurement                     | **accepted 0399aea9** |
 | P2b-i | Phase 2 (3.5): generation-bound sessions, frozen snapshots, fallback CAS                       | **accepted 23a713e1** |
-| P2b-ii| Phase 2 (3.6): root-keyed change event, watcher refcounts, live refresh, loadError       | pending |
+| P2b-ii| Phase 2 (3.6): root-keyed change event, watcher refcounts, live refresh, loadError       | **accepted PENDINGHASH** |
 | P2c   | Phase 2 (3.4, 3.7, 3.8): call-site rewires, ride-along integration, full gate battery          | pending |
 | P4    | Phase 4: editable working-tree pane via CustomTextEditorProvider                     | pending |
 | P5    | Phase 5: find-in-diff via enableFindWidget + DOM-completeness gate                             | pending |
@@ -970,3 +970,256 @@ own battery supplies a second independent sample at zero added serial time.
 
 **Commits.** `35d6a074` (Shiki warm-up + regression test) and `23a713e1` (P2b-i, spec 3.5),
 split because the Shiki defect predates P2b-i and stands on its own.
+
+#### P2b-ii accepted — change events, watcher refcounts, live refresh, loadError (spec 3.6)
+
+**Builder:** `gpt-5.6-terra` @ `xhigh` (model swap requested by the user for this phase, to be
+compared against luna on P2b-i). Base `d8165339`.
+
+### Build round — SID `01a028f3-19f9-7801-a727-0aa33c48a7f2`
+
+Telemetry `PEAK=244193 LAST=39145 PCT=94% NONRESUMABLE=yes` — the session compacted mid-run
+(LAST is well under half of PEAK). Same ceiling luna hit on P2b-i; §3.6 was deliberately kept
+whole rather than split, to keep the slice comparable (recorded before launch in
+`comparison-confounds.md`, and standing).
+
+Report claimed 10/10 DONE, all gates green, `SUBAGENTS_SPAWNED: 0`, "Deviations: none".
+HEAD unchanged at `d8165339` — the git prohibition was respected.
+Diffstat: 8 files, +542 / −161, plus new `src/views/repositoryChangeEvents.ts` and
+`tests/unit/views/repositoryChangeEvents.test.ts`.
+
+**Gates I re-ran myself** (never delegated, never taken from the builder's report):
+`typecheck` exit 0; `lint:strict` exit 0; focused suite 5 files / 53 tests / 0 failed / 494ms.
+All three matched terra's reported numbers exactly. That is a genuine contrast with luna on
+P2b-i, which reported green on two gates (`format:check`, knip) that were in fact red.
+
+**The extraction itself is faithful.** I read every hunk. `repositoryChangeEvents.ts` preserves
+the Linux vs non-Linux refs-watcher split (line 167), the `gitStateFiles` set, and
+`ignoredWorkspaceEventDirs`, and it *adds* root-containment filtering the old code lacked. The
+refcount rebind is genuinely atomic — `RootWorkingTreeChangeSubscription.rebind()` acquires the
+next watcher before releasing the previous one, so a same-root rebind goes 1→2→1 and never
+touches zero.
+
+### Findings — five defects, all in deliverables marked DONE under "Deviations: none"
+
+**F1 [HIGH] — Windows live refresh is dead, via a double-escape regex.**
+`shouldRefreshForChange` in `src/services/diffService.ts`:
+`descriptor.path.replace(/\\\\/g, "/")`. In a regex literal `\\` matches ONE backslash, so
+`/\\\\/g` matches TWO CONSECUTIVE backslashes and a win32 path passes through untouched.
+`relativeWorkspacePath` always emits forward slashes, so `event.path === requestedPath` can
+never hold on Windows; the fallthrough `hasMutableRef && event.source !== "workspace-file"` is
+false for a workspace-file event. Net: **on Windows, saving the file being diffed does not
+refresh the diff** — the headline behaviour of the phase, dead on a supported platform.
+Proven, not inferred: `"src\services\foo.ts".replace(/\\\\/g,"/")` returns the input unchanged;
+`.replace(/\\/g,"/")` returns `"src/services/foo.ts"`.
+Invisible to the suite because every test passes an already-slash-separated `"src/example.ts"`.
+
+**F2 [MEDIUM] — deliverable 9's atomicity is unmet, and the new test encodes the defect.**
+`DiffViewerPanel.postLatestData()` posts `setDiffData`, then `loadError`, as two messages.
+`DiffViewerApp.tsx:334` calls `setError(null)` on `setDiffData`. Two separate message events =
+two React commits, so a `ready` replay renders fresh panes with **no** error and the error then
+pops in — a guaranteed visible flash. The spec said "replays it TOGETHER with the latest
+payload."
+The new test asserts `toEqual([objectContaining({type:"setDiffData"}), {type:"loadError",…}])`
+— written to describe the implementation, so it can never fail on this. Textbook case of
+[[tests-catch-errors-not-mirror-implementation]].
+Credit where due: the success-clears direction *is* atomic (`open()` clears `loadError` and
+posts one message).
+
+**F3 [MEDIUM-HIGH] — the commit panel consumes a debounced stream raw.**
+`registerRuntimeWatcher` subscribes with no source filter and calls
+`refreshDataWithErrorHandling` → `refreshData` immediately, undebounced. Two compounding
+problems: (a) the watcher it replaced deliberately excluded Git metadata — the deleted
+`shouldRefreshForWatcherUri` rejected top-level `.git`/`dist`/`build`/`out` — so these rows
+never refreshed on index/HEAD/refs before and now refresh on every one; (b) the sibling
+consumer of the *same* stream, `RefreshService.scheduleRefreshEvent` — in a file this very
+round edits — applies a careful per-source policy (git-state/git-refs → debounced full,
+workspace-file → debounced light, git-index → suppressed after a recent full). None of it was
+carried across. Each expanded non-active repo row now runs a full status refresh per
+`.git/index` write, so a rebase or a large `git add` produces a burst.
+
+**F4 [LOW] — undisclosed removal of a deliberate invariant.**
+`Object.freeze(session.sideSnapshots)` deleted from `openUnifiedDiff`. The deletion is correct
+and necessary — refresh must reassign `left`/`right` — but it drops an invariant the prior
+accepted round established, under "Deviations: none". No test covered it. Keep the change,
+require the disclosure and a comment.
+
+**F5 [LOW, downgraded on re-inspection] — `registerRuntimeWatcher` lost its try/catch.**
+My first read called this a real robustness regression; it is mostly not. `RootWorkingTreeWatcher`
+internally try/catches both `createFileSystemWatcher` and the `fs.watch` calls, so the
+"virtual or test roots" case the old comment named is still handled. Only the
+`vscode.workspace.onDid*` registrations are now unguarded, and those exist in any real host.
+Exposure is test doubles and exotic hosts. Reported as minor; either restore the guard or
+justify dropping it.
+
+**Noted, not filed:** `isObjectIdRef` accepts any 7–40 hex string (it reuses the repo's shared
+`isValidGitHash`), so a branch literally named `deadbeef` would be misclassified as immutable
+and never refresh. Obscure enough not to be worth a round, and terra followed the house helper.
+
+### Fix round 1 — SID `01a02914-4e5e-7273-b94c-663ea130f6e7`
+
+`gpt-5.6-terra` @ `xhigh`, fresh session (nothing in this skill resumes). Work order restates
+every constraint and every defect self-containedly, and requires, for F1 and F2, a new or
+rewritten test that fails when the fix is reverted — a fix without such a test counts NOT-FIXED.
+
+Telemetry `PEAK=152038 LAST=152038 PCT=58% NONRESUMABLE=no` — a fresh session on a defect list
+runs at well under half the peak of the same model building the phase whole (94%). HEAD still
+`d8165339`; report claims 5/5 FIXED, `SUBAGENTS_SPAWNED: 0`.
+
+**All five fixes verified at the source, by me:**
+
+- F1 — `/\\/g` at diffService.ts:501. Correct.
+- F2 — `loadError?: string` now rides inside `DiffViewerData`; `postLatestData()` posts ONE
+  message; `DiffViewerApp` reads `event.data.data.loadError ?? null`. The standalone
+  `loadError` InboundMessage variant was **deleted** rather than left dead, and the panel's own
+  message-handler catch was rerouted through `postLatestData()` too. Genuinely atomic in both
+  directions.
+- F3 — filters to `source === "workspace-file"` (Git metadata excluded again, matching the old
+  `ignoredWatcherDirs` intent, which `relativeWorkspacePath` already enforces for
+  `.git`/`dist`/`build`/`out`), coalesces at 300 ms, clears the timer on dispose, and re-checks
+  `runtimeWatchers.has(root)` inside the timer so a collapsed row cannot fire.
+- F4 — comment added at the unfrozen container.
+- F5 — try/catch restored.
+
+### Root takeover — one item the fix round got wrong, and one it left open
+
+**Terra converted a test in place instead of adding one.** The build round's
+`"subscribes mutable worktree sessions and refreshes from an unsaved document"` used
+`path: "src/example.ts"`; the fix round rewrote that same test to `"src\\example.ts"`. Test
+count held at 53 across a round that added Windows coverage — that is the tell. Net effect: the
+POSIX path shape, the one that actually runs on macOS/Linux/CI, lost its only test.
+Fixed at root by parameterizing over both separators (`it.each`), not by adding a duplicate.
+
+**Mutation proof, F1** — reverted `/\\/g` → `/\\\\/g`:
+`× refreshes a mutable worktree session whose descriptor uses Windows separators`
+**RED**, `✓ … POSIX separators` **GREEN**, nine other tests unaffected.
+That asymmetry is the point: the POSIX case provably cannot detect this bug, so the two cases
+are not redundant and the in-place conversion was a real coverage loss. Source restored
+byte-identical.
+
+**Mutation proof, F2 (host)** — dropped `loadError: this.loadError` from the payload:
+2 failed / 16 passed — `× replays an active refresh error atomically…` and
+`× posts a refresh loadError atomically with the last rendered panes`, each naming its own
+assertion. Restored byte-identical.
+
+**A transported value with no reader.** The fix round proved the host *sends* the error and
+never that the viewer *reads* it — nothing imported `DiffViewerApp` for this, so reverting
+`setError(event.data.data.loadError ?? null)` to `setError(null)` would have silently killed
+the user-visible half with every test still green. Added an integration case at
+`tests/integration/webviews/diff-viewer.integration.test.tsx` covering both directions (error
+renders, next clean payload clears it).
+**Mutation proof** — reverted that line: exactly one test red,
+`→ a payload-carried loadError must render the error banner: expected null not to be null`.
+(First cut of the assertion failed with "the given combination of arguments (undefined and
+string) is invalid" — a message about assertion mechanics, not behaviour — so the expectation
+was rewritten to name the contract before the proof was accepted.) Restored byte-identical.
+
+**Process note:** the first accept battery was killed and rerun. It had been launched before
+these last edits, so it would have been gating a tree that changed under it — in particular
+`format:check` could have passed on bytes that no longer existed. A battery over a mutating
+tree proves nothing definite.
+
+
+### Fix round 2 — SID `01a0293e-c08c-7413-983f-ba0795729e34`
+
+`gpt-5.6-terra` @ `xhigh`, fresh session. Two BLOCKERs, **both found by my accept battery and
+neither by the builder**, because the builder was never asked to run either gate:
+
+- `architecture` RED — `no-domain-layer-to-ui`:
+  `src/services/diffService.ts → src/views/repositoryChangeEvents.ts`. The shared registry is
+  infrastructure and had been placed in the view layer, so the services layer could not legally
+  consume it.
+- `tests` RED — 4 failed / 4223 passed, all four in the two `tests/integration/extension/` files.
+
+**A miss of my own, recorded because it is the same failure I charged luna with.** My
+fix-round-1 CHECKS list named `typecheck`, `lint:strict`, `format:check` and `deps:check:strict`
+— and **not** `architecture:check`. So a layering violation introduced in the build round
+survived an entire fix round without anyone looking at it. That is structurally identical to
+luna's P2b-i format-check miss on §3.5: a builder runs the gates its work order names, and a
+gate absent from the work order is a gate nobody runs. `architecture:check`, plus an explicit
+mandate to run the **full** `bun run test` rather than a focused subset, went into the fix-2
+CHECKS list for exactly that reason.
+
+Telemetry `PEAK=241234 LAST=85564 PCT=93% NONRESUMABLE=yes` — compacted again, on a round
+carrying nothing but a two-defect list. Fix round 1 on a five-defect list ran at 58%. The
+difference is that this round had to read and rewrite two integration suites (the larger is
+~5,800 lines) before it could change a line. HEAD still `d8165339`; `SUBAGENTS_SPAWNED: 0`.
+
+**Defect 1 — the move.** `src/views/repositoryChangeEvents.ts` →
+`src/services/repositoryChangeEvents.ts`, test alongside it, all three importers repointed
+(`RefreshService.ts`, `CommitPanelViewProvider.ts` → `../services/…`; `diffService.ts` →
+`./…`). Verified as a **move, not a copy**: `ls src/views/repositoryChangeEvents.ts` →
+"No such file or directory". `architecture:check` now reports *no dependency violations found
+(315 modules, 1171 dependencies cruised)*.
+
+**Defect 2 — and here my own root-cause analysis was half wrong.** The work order stated as
+verified fact: *"Neither integration test's `vscode` mock defines ANY of those five (verified:
+grep for all five in both files returns nothing)"*, and ordered the five registrations added to
+both files. That was **true for `view-providers.integration.test.ts` and false for
+`extension.integration.test.ts`** — the latter already had all five (they appear as unchanged
+context in the diff; only the listener *type* changed). The real cause there was different: the
+listeners were registered but **invoked with no arguments** (`textDocListeners[0]?.()`), so the
+real handler dereferenced `event.document.uri` on `undefined`. Terra did not comply with the
+false premise and duplicate the registrations; it found the actual cause, gave the four listener
+arrays real typed event shapes, and **disclosed the deviation**, which is how I found my error.
+
+**2b — the silent discard is gone.** `registerRuntimeWatcher`'s bare `catch {}` is now
+`catch (error) { console.error("[IntelliGit] Commit-panel runtime watcher registration failed:", error) }`
+(`CommitPanelViewProvider.ts:781`). A missing-API TypeError had been indistinguishable from
+"this root cannot be watched" — which is precisely what hid all four failures behind a green
+focused run. `console.error` is the repo convention here (44 uses across `src/`, `[IntelliGit]`-
+prefixed variants in `repositoryMode.ts`), not an invention of this round.
+
+### Verification of fix round 2 — mine, not the builder's report
+
+**No assertion was weakened.** I read both integration diffs in full. Every `toBeDefined()`,
+call-count and dispose assertion named in the work order is retained verbatim. The 102 changed
+lines in `view-providers.integration.test.ts` are almost entirely re-indentation into a
+`try/finally` (added so the module-global watcher registry cannot leak refcounted watchers into
+the next test); the only semantic change is swapping a 10-iteration microtask poll for
+`vi.advanceTimersByTimeAsync(300)`, which fix round 1's own 300 ms debounce made necessary. The
+*second* failing test in that file is not touched at all — it is fixed purely by the mock, which
+is the shape a correct root-cause fix should have.
+
+**A stale-listener risk I checked and cleared.** The round added `vi.resetModules()` to two
+tests, which re-activates the extension and pushes *additional* listeners onto the shared
+arrays, so `textDocListeners[0]` could have been a stale listener from an earlier activation.
+It is not: `beforeEach` at line 1032 does `textDocListeners.length = 0`. Import ordering is also
+correct — `resetModules()` → `import("fs")` → `import("../../../src/extension")`, so the mock
+and the module under test come from the same fresh registry.
+
+**No scope creep**, established from file mtimes rather than from the report:
+
+| Time | Files touched | Defect |
+| ---- | ------------- | ------ |
+| 12:39:11 (one batch) | registry + its test, 3 importers, `unifiedDiffSession.test.ts` mock path | 1 — the move |
+| 12:59 / 13:01 | the two integration test files | 2 — the four failures |
+
+Everything else in the diff predates the round. The round did rewrite my protected
+`unifiedDiffSession.test.ts`, but only the `vi.mock` import path the move forced — both
+`it.each` separator cases survive intact, as does the payload-carried `loadError` integration
+case and the `/\\/g` single-escape at `diffService.ts:501`.
+
+### Acceptance
+
+`verify.py gates --base d8165339 --stage accept` — **GATES: GREEN warn=0**, all ten, run by me
+over a frozen tree after every edit was final: `typecheck` 6.3s, `lint-strict` 13.7s
+(`--max-warnings=0`), `format-check` 6.5s, `architecture` 0.9s, `deps-knip` 1.2s,
+`l10n-validate` 0.1s, `l10n-audit` 0.4s, `package-vsix` 2.5s, **`tests` 423.0s — 308 files /
+4227 tests passed / 0 failed**, `visual-container` 918.6s with all 36 baselines byte-identical.
+
+Both gates that were red at the previous battery are green, and the test count moved 4223 → 4227
+in the right direction: the four failures became four passes without the total shrinking, so
+nothing was deleted or skipped to reach green.
+
+**Builder self-report accuracy.** Terra's reported counts — 308 files, 4227 tests, 0 failed,
+`architecture` 0 violations at 315 modules / 1171 dependencies — matched my independent
+re-execution exactly, for the second round running. Set against luna on P2b-i, which reported
+two gates green that were in fact red, this is the one column in the model comparison showing
+real separation, and it is not explained by the prompt: both builders' work orders named the
+gates they were to run and report.
+
+**Rounds to acceptance: 3** (build + 2 fixes), plus two root-authored test corrections. luna
+needed 2 on P2b-i, plus one root correction.
+
+**Commit.** `PENDINGHASH` (P2b-ii, spec 3.6).

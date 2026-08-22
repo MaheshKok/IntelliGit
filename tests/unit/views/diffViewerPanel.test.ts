@@ -155,6 +155,41 @@ describe("DiffViewerPanel", () => {
         });
     });
 
+    it("replays an active refresh error atomically with the latest payload, then clears both together on success", async () => {
+        await DiffViewerPanel.open(options({ sessionGeneration: 1 }));
+        const panel = lastPanel();
+        await DiffViewerPanel.postLoadError(1, "Permission denied");
+        clearPosted(panel);
+
+        await panel.messageHandler?.({ type: "ready" });
+
+        expect(panel.postedMessages).toEqual([
+            expect.objectContaining({
+                type: "setDiffData",
+                data: expect.objectContaining({
+                    path: "src/example.ts",
+                    loadError: "Permission denied",
+                }),
+            }),
+        ]);
+
+        await DiffViewerPanel.open(
+            options({ sessionGeneration: 2, leftText: "refreshed\n", rightText: "current\n" }),
+        );
+        clearPosted(panel);
+        await panel.messageHandler?.({ type: "ready" });
+
+        expect(panel.postedMessages).toHaveLength(1);
+        expect(panel.postedMessages[0]).toMatchObject({
+            type: "setDiffData",
+            data: expect.objectContaining({
+                segments: expect.arrayContaining([
+                    expect.objectContaining({ left: ["refreshed"], right: ["current"] }),
+                ]),
+            }),
+        });
+    });
+
     it("replays the authoritative ignore mode when the webview reports ready", async () => {
         await DiffViewerPanel.open(options({ leftText: "  same  ", rightText: "same" }));
         const panel = lastPanel();

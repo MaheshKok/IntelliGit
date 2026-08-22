@@ -2,7 +2,6 @@
 // Shows working tree changes with checkboxes, commit message input,
 // commit/push buttons, amend toggle, and stash management.
 // Frontend is a React + Chakra UI app loaded from dist/webview-commitpanel.js.
-import * as path from "path";
 import * as vscode from "vscode";
 import { GitOps } from "../git/operations";
 import {
@@ -39,6 +38,7 @@ import { isBranchAction, isCommitAction } from "../webviews/protocol/commitGraph
 import { IconThemeService } from "./shared/IconThemeService";
 import { isRedundantPost, serializeWebviewPayload } from "./shared/postedPayload";
 import { registerThemeChangeListeners, disposeAll } from "./shared/themeListeners";
+import { subscribeToRepositoryWorkingTreeChanges } from "../services/repositoryChangeEvents";
 import {
     assertGitHash,
     assertMessage,
@@ -120,13 +120,13 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
     private static readonly CHANGED_FILE_COUNTS_SCHEMA_VERSION = 1;
     private static readonly MAX_STORED_CHANGED_FILE_COUNTS = 100;
     private static readonly MAX_STORED_CHANGED_FILE_COUNT_AGE_MS = 30 * 24 * 60 * 60 * 1_000;
-    private static readonly ignoredWatcherDirs = new Set([".git", "dist", "build", "out"]);
     private view?: vscode.WebviewView;
     private lastFileCount = 0;
     private repositories: DiscoveredRepository[] = [];
     private readonly runtimes = new Map<string, CommitPanelRepositoryRuntime>();
     private readonly expandedRepositoryRoots = new Set<string>();
     private readonly runtimeWatchers = new Map<string, vscode.Disposable>();
+    private readonly runtimeRefreshTimers = new Map<string, ReturnType<typeof setTimeout>>();
     private readonly storedChangedFileCounts = new Map<string, StoredChangedFileCount>();
     private changedFileCountsWrite = Promise.resolve();
     private activeRepositoryRoot: string | null = null;
@@ -766,49 +766,42 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         }
     }
 
-    /** Registers a repository-scoped filesystem watcher that refreshes only its owning runtime. */
+    /** Retains the shared root watcher while this non-active repository row stays expanded. */
     private registerRuntimeWatcher(runtime: CommitPanelRepositoryRuntime): void {
         try {
-            const watcher = vscode.workspace.createFileSystemWatcher(
-                new vscode.RelativePattern(runtime.repoRootUri, "**/*"),
+            this.runtimeWatchers.set(
+                runtime.repository.root,
+                subscribeToRepositoryWorkingTreeChanges(runtime.repository.root, (event) => {
+                    // The previous row watcher deliberately ignored Git metadata and generated paths.
+                    if (event.source !== "workspace-file") return;
+                    this.scheduleRuntimeWatcherRefresh(runtime);
+                }),
             );
-            const refresh = (uri: vscode.Uri) => {
-                if (!this.shouldRefreshForWatcherUri(runtime, uri)) return;
-                this.refreshDataWithErrorHandling(true, runtime);
-            };
-            const disposables = [
-                watcher.onDidChange(refresh),
-                watcher.onDidCreate(refresh),
-                watcher.onDidDelete(refresh),
-                watcher,
-            ];
-            this.runtimeWatchers.set(runtime.repository.root, {
-                dispose: () => {
-                    for (const disposable of disposables) {
-                        disposable.dispose();
-                    }
-                },
-            });
-        } catch {
-            /* File watching may be unavailable for virtual or test roots. */
+        } catch (error) {
+            console.error("[IntelliGit] Commit-panel runtime watcher registration failed:", error);
         }
     }
 
-    /** Filters watcher events to real working-tree paths and skips noisy generated/Git folders. */
-    private shouldRefreshForWatcherUri(
-        runtime: CommitPanelRepositoryRuntime,
-        uri: vscode.Uri,
-    ): boolean {
-        const relativePath = path.relative(runtime.repository.root, uri.fsPath);
-        if (!relativePath || relativePath.startsWith("..") || path.isAbsolute(relativePath)) {
-            return false;
-        }
-        const [topLevelDir] = relativePath.split(/[\\/]/);
-        return !CommitPanelViewProvider.ignoredWatcherDirs.has(topLevelDir ?? "");
+    /** Coalesces row-local file changes at the active service's light-refresh cadence. */
+    private scheduleRuntimeWatcherRefresh(runtime: CommitPanelRepositoryRuntime): void {
+        const root = runtime.repository.root;
+        const existing = this.runtimeRefreshTimers.get(root);
+        if (existing) clearTimeout(existing);
+        this.runtimeRefreshTimers.set(
+            root,
+            setTimeout(() => {
+                this.runtimeRefreshTimers.delete(root);
+                if (!this.runtimeWatchers.has(root)) return;
+                this.refreshDataWithErrorHandling(true, runtime);
+            }, 300),
+        );
     }
 
     /** Disposes the provider-owned watcher for one repository root if it is currently registered. */
     private disposeRuntimeWatcher(root: string): void {
+        const timer = this.runtimeRefreshTimers.get(root);
+        if (timer) clearTimeout(timer);
+        this.runtimeRefreshTimers.delete(root);
         const watcher = this.runtimeWatchers.get(root);
         if (!watcher) return;
         watcher.dispose();

@@ -128,6 +128,34 @@ describe("DiffViewerApp read-only contract", () => {
         expect(ignoreModeButton?.textContent).not.toContain("Do not ignore");
     });
 
+    // The host carries a refresh failure inside the payload rather than as a second message, so
+    // one render shows the error and the next clears it. Asserting the host side alone would not
+    // notice a viewer that never reads the field.
+    it("renders a payload-carried load error and clears it on the next clean payload", async () => {
+        installVsCodeMock();
+        createRootHost();
+
+        await act(async () => {
+            await import("../../../src/webviews/react/diff-viewer/DiffViewerApp");
+        });
+        await flush();
+        dispatchHostMessage({
+            type: "setDiffData",
+            data: { ...diffFixture, loadError: "Permission denied" },
+        });
+        await flush();
+
+        const banner = document.querySelector(".error-message");
+        expect(banner, "a payload-carried loadError must render the error banner").not.toBeNull();
+        expect(banner?.textContent).toContain("Permission denied");
+
+        dispatchHostMessage({ type: "setDiffData", data: diffFixture });
+        await flush();
+
+        expect(document.querySelector(".error-message")).toBeNull();
+        expect(document.querySelector(".diff-viewer")).not.toBeNull();
+    });
+
     it("keeps the anti-vacuity selectors present in the merge app", async () => {
         installVsCodeMock();
         createRootHost();

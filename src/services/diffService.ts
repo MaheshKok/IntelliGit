@@ -23,8 +23,14 @@ import {
     claimDiffViewerSession,
     clearDiffViewerSession,
     openDiffViewer,
+    reportDiffViewerLoadError,
 } from "../diff/diffViewerOpener";
 import { loadDiffSide } from "../diff/sideLoader";
+import {
+    subscribeToRepositoryWorkingTreeChanges,
+    type RepositoryWorkingTreeChange,
+    type RepositoryWorkingTreeChangeSubscription,
+} from "./repositoryChangeEvents";
 import type {
     DiffViewerCancellationToken,
     NativeDiffDelegate,
@@ -54,7 +60,7 @@ interface UnifiedDiffSession {
     };
     readonly stableProviderIdentities: StableProviderIdentities;
     readonly nativeDelegate: NativeDiffDelegate;
-    readonly generation: number;
+    generation: number;
 }
 
 class DiffViewerCancellationSource {
@@ -104,9 +110,12 @@ interface ActiveUnifiedDiffSession extends Omit<UnifiedDiffSession, "sideSnapsho
         right?: FrozenDiffSideSnapshot;
     };
     readonly cancellationSource: DiffViewerCancellationSource;
-    readonly onPanelDisposed: () => void;
+    onPanelDisposed: () => void;
     fallbackStarted: boolean;
-    readonly unsubscribe: () => void;
+    unsubscribe: () => void;
+    changeSubscription: RepositoryWorkingTreeChangeSubscription | undefined;
+    refreshInFlight: boolean;
+    refreshPending: boolean;
 }
 
 let nextUnifiedDiffGeneration = 0;
@@ -278,9 +287,10 @@ export async function openUnifiedDiff(
 
     // Keep decoded sides for 3.6 partial re-resolution; the raw bytes are no longer needed
     // after the budget check and UTF-8 decode, so retaining copies would only waste memory.
+    // The container stays mutable so refresh can replace mutable sides; freezeDiffSide still
+    // protects each published snapshot from mutation.
     session.sideSnapshots.left = freezeDiffSide(left);
     session.sideSnapshots.right = freezeDiffSide(right);
-    Object.freeze(session.sideSnapshots);
     if (!isCurrentUnifiedDiffSession(session)) return;
 
     await openDiffViewer({
@@ -294,6 +304,10 @@ export async function openUnifiedDiff(
         sessionGeneration: session.generation,
         onSessionDisposed: session.onPanelDisposed,
     });
+    if (session.refreshPending) {
+        session.refreshPending = false;
+        requestUnifiedDiffRefresh(session);
+    }
 }
 
 function beginUnifiedDiffSession(
@@ -301,12 +315,13 @@ function beginUnifiedDiffSession(
     nativeDelegate: NativeDiffDelegate,
 ): ActiveUnifiedDiffSession {
     latestUnifiedDiffSession?.cancellationSource.cancel();
+    const previousSession = latestUnifiedDiffSession;
     const cancellationSource = new DiffViewerCancellationSource();
     const sideSnapshots: {
         left?: FrozenDiffSideSnapshot;
         right?: FrozenDiffSideSnapshot;
     } = {};
-    const session = {
+    const session: ActiveUnifiedDiffSession = {
         descriptor,
         sideSnapshots,
         stableProviderIdentities: {
@@ -319,9 +334,14 @@ function beginUnifiedDiffSession(
         onPanelDisposed: () => undefined,
         fallbackStarted: false,
         unsubscribe: () => undefined,
+        changeSubscription: undefined,
+        refreshInFlight: false,
+        refreshPending: false,
     };
     session.onPanelDisposed = () => {
         cancellationSource.cancel();
+        session.unsubscribe();
+        session.unsubscribe = () => undefined;
         if (activeUnifiedDiffSession === session) activeUnifiedDiffSession = undefined;
     };
     activeUnifiedDiffSession = session;
@@ -330,7 +350,173 @@ function beginUnifiedDiffSession(
         generation: session.generation,
         onDispose: session.onPanelDisposed,
     });
+    bindUnifiedDiffSessionSubscription(session, previousSession);
     return session;
+}
+
+/** Moves the panel's mutable-side listener synchronously when a new descriptor replaces it. */
+function bindUnifiedDiffSessionSubscription(
+    session: ActiveUnifiedDiffSession,
+    previousSession: ActiveUnifiedDiffSession | undefined,
+): void {
+    if (!hasMutableDiffSide(session.descriptor)) {
+        previousSession?.unsubscribe();
+        return;
+    }
+    const listener = (event: RepositoryWorkingTreeChange) =>
+        requestUnifiedDiffRefresh(session, event);
+    const transferred = previousSession?.changeSubscription;
+    if (transferred) {
+        transferred.rebind(session.descriptor.repoRoot, listener);
+        previousSession.changeSubscription = undefined;
+        previousSession.unsubscribe = () => undefined;
+        session.changeSubscription = transferred;
+    } else {
+        session.changeSubscription = subscribeToRepositoryWorkingTreeChanges(
+            session.descriptor.repoRoot,
+            listener,
+        );
+    }
+    session.unsubscribe = () => {
+        const subscription = session.changeSubscription;
+        session.changeSubscription = undefined;
+        subscription?.dispose();
+    };
+}
+
+/** Requests one serialized refresh when a root event can change at least one mutable side. */
+function requestUnifiedDiffRefresh(
+    session: ActiveUnifiedDiffSession,
+    event?: RepositoryWorkingTreeChange,
+): void {
+    if (!isCurrentUnifiedDiffSession(session)) return;
+    if (event && !shouldRefreshForChange(session.descriptor, event)) return;
+    if (
+        session.refreshInFlight ||
+        session.sideSnapshots.left === undefined ||
+        session.sideSnapshots.right === undefined
+    ) {
+        session.refreshPending = true;
+        return;
+    }
+    session.refreshInFlight = true;
+    void refreshUnifiedDiffSession(session)
+        .catch((error) => {
+            logGitOpsWarning("diffService.openUnifiedDiff.refresh.unhandled", error);
+        })
+        .finally(() => {
+            session.refreshInFlight = false;
+            if (!session.refreshPending || !isCurrentUnifiedDiffSession(session)) return;
+            session.refreshPending = false;
+            requestUnifiedDiffRefresh(session);
+        });
+}
+
+/** Reloads only mutable snapshots and retains the prior panel content when the reload fails. */
+async function refreshUnifiedDiffSession(session: ActiveUnifiedDiffSession): Promise<void> {
+    const generation = ++nextUnifiedDiffGeneration;
+    session.generation = generation;
+    claimDiffViewerSession({ generation, onDispose: session.onPanelDisposed });
+    const needsGitExecutor = [session.descriptor.left, session.descriptor.right].some(
+        (side) => side.kind === "ref" && isMutableDiffSide(side),
+    );
+    const executor = needsGitExecutor ? new GitExecutor(session.descriptor.repoRoot) : undefined;
+
+    try {
+        const left = await resolveRefreshSide(session, "left", executor);
+        if (!isCurrentUnifiedDiffSession(session, generation)) return;
+        const right = await resolveRefreshSide(session, "right", executor);
+        if (!isCurrentUnifiedDiffSession(session, generation)) return;
+        if (exceedsDiffSnapshotBudget(left, right)) {
+            throw new Error("The refreshed diff exceeds the viewer budget.");
+        }
+        session.sideSnapshots.left = left;
+        session.sideSnapshots.right = right;
+        await openDiffViewer({
+            path: session.descriptor.path,
+            title: session.descriptor.title,
+            leftLabel: getSideLabel(session.descriptor.left),
+            rightLabel: getSideLabel(session.descriptor.right),
+            languageId: session.descriptor.languageId,
+            leftText: left.text,
+            rightText: right.text,
+            sessionGeneration: generation,
+            onSessionDisposed: session.onPanelDisposed,
+        });
+    } catch (error) {
+        if (!isCurrentUnifiedDiffSession(session, generation)) return;
+        logGitOpsWarning("diffService.openUnifiedDiff.refresh", error);
+        try {
+            await reportDiffViewerLoadError(generation, getErrorMessage(error));
+        } catch (postError) {
+            logGitOpsWarning("diffService.openUnifiedDiff.refresh.loadError", postError);
+        }
+    }
+}
+
+/** Resolves a mutable source again and returns an initial frozen snapshot for immutable sides. */
+async function resolveRefreshSide(
+    session: ActiveUnifiedDiffSession,
+    sideName: "left" | "right",
+    executor: GitExecutor | undefined,
+): Promise<FrozenDiffSideSnapshot> {
+    const side = session.descriptor[sideName];
+    const snapshot = session.sideSnapshots[sideName];
+    if (!isMutableDiffSide(side)) {
+        if (snapshot === undefined) throw new Error("The frozen diff side is unavailable.");
+        return snapshot;
+    }
+    const result = await loadDiffSide({
+        repoRoot: session.descriptor.repoRoot,
+        filePath: session.descriptor.path,
+        side,
+        executor,
+    });
+    if (result.status !== "loaded" && result.status !== "missing") {
+        throw new Error("The refreshed diff side is no longer renderable.");
+    }
+    return freezeDiffSide(toViewerSide(result));
+}
+
+/** Applies the existing measured budget gates to the decoded snapshots retained by a session. */
+function exceedsDiffSnapshotBudget(
+    left: FrozenDiffSideSnapshot,
+    right: FrozenDiffSideSnapshot,
+): boolean {
+    return exceedsDiffBudget(
+        { bytes: Buffer.from(left.text, "utf8"), lineCount: left.lineCount },
+        { bytes: Buffer.from(right.text, "utf8"), lineCount: right.lineCount },
+    );
+}
+
+/** Selects events that can affect the requested file or a mutable symbolic reference. */
+function shouldRefreshForChange(
+    descriptor: UnifiedDiffRequest,
+    event: RepositoryWorkingTreeChange,
+): boolean {
+    const hasMutableRef = [descriptor.left, descriptor.right].some(
+        (side) => side.kind === "ref" && isMutableDiffSide(side),
+    );
+    if (event.path === undefined) return true;
+    const requestedPath = descriptor.path.replace(/\\/g, "/");
+    if (event.path === requestedPath) return true;
+    return hasMutableRef && event.source !== "workspace-file";
+}
+
+/** Identifies worktree and symbolic-ref sides that must be resolved again after a root change. */
+function hasMutableDiffSide(descriptor: UnifiedDiffRequest): boolean {
+    return isMutableDiffSide(descriptor.left) || isMutableDiffSide(descriptor.right);
+}
+
+/** Treats full object IDs and provider sides as frozen snapshots for the lifetime of a session. */
+function isMutableDiffSide(side: UnifiedDiffRequest["left"]): boolean {
+    return side.kind === "worktree" || (side.kind === "ref" && !isObjectIdRef(side.ref));
+}
+
+/** Matches Git object-ID syntax without treating symbolic names as immutable. */
+function isObjectIdRef(ref: string): boolean {
+    const value = ref.trim();
+    return isValidGitHash(value) || /^[0-9a-f]{64}$/i.test(value);
 }
 
 function isCurrentUnifiedDiffSession(
