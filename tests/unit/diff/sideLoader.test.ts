@@ -209,6 +209,7 @@ describe("loadDiffSide", () => {
         const binary: SideSpec = {
             kind: "provider",
             label: "Shelf",
+            identity: "Shelf",
             load: vi.fn(async () => ({
                 status: "loaded" as const,
                 bytes: Buffer.from([0xff, 0x00]),
@@ -228,6 +229,7 @@ describe("loadDiffSide", () => {
         const provider: SideSpec = {
             kind: "provider",
             label: "Shelf",
+            identity: "Shelf",
             load: vi.fn(async () => ({ status: "missing" as const })),
         };
 
@@ -240,6 +242,7 @@ describe("loadDiffSide", () => {
         const provider: SideSpec = {
             kind: "provider",
             label: "Shelf",
+            identity: "Shelf",
             load: vi.fn(async () => ({ status: "over-budget" as const, size: 33 })),
         };
 

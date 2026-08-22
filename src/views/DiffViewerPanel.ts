@@ -31,6 +31,16 @@ export interface DiffViewerPanelOptions {
     leftText: string;
     /** Already-loaded right source text. */
     rightText: string;
+    /** Internal generation binding used to protect the reusable panel from stale cleanup. */
+    sessionGeneration?: number;
+    /** Cancels the session's delegate when this panel is disposed. */
+    onSessionDisposed?: () => void;
+}
+
+/** Generation binding used by the host to guard panel cleanup. */
+export interface DiffViewerPanelSessionBinding {
+    readonly generation: number;
+    readonly onDispose: () => void;
 }
 
 interface DiffViewerSnapshot {
@@ -46,10 +56,13 @@ interface DiffViewerSnapshot {
 /** Owns the single reusable diff viewer panel and its in-memory source snapshot. */
 export class DiffViewerPanel {
     private static instance: DiffViewerPanel | undefined;
+    private static pendingSession: DiffViewerPanelSessionBinding | undefined;
 
     private disposed = false;
     private ignoreWhitespace = false;
     private snapshot: DiffViewerSnapshot;
+    private sessionGeneration: number | undefined;
+    private onSessionDisposed: (() => void) | undefined;
 
     private constructor(
         private readonly panel: vscode.WebviewPanel,
@@ -57,6 +70,8 @@ export class DiffViewerPanel {
         options: DiffViewerPanelOptions,
     ) {
         this.snapshot = DiffViewerPanel.snapshotFrom(options);
+        this.sessionGeneration = options.sessionGeneration;
+        this.onSessionDisposed = options.onSessionDisposed;
         panel.webview.html = this.getHtml(panel.webview);
 
         panel.webview.onDidReceiveMessage(async (raw: unknown) => {
@@ -72,8 +87,40 @@ export class DiffViewerPanel {
 
         panel.onDidDispose(() => {
             this.disposed = true;
+            const onSessionDisposed = this.onSessionDisposed;
+            this.sessionGeneration = undefined;
+            this.onSessionDisposed = undefined;
             if (DiffViewerPanel.instance === this) DiffViewerPanel.instance = undefined;
+            onSessionDisposed?.();
         });
+    }
+
+    /** Claims the reusable panel for a generation before its asynchronous load completes. */
+    static claimSession(binding: DiffViewerPanelSessionBinding): void {
+        const existing = DiffViewerPanel.instance;
+        if (existing && existing.isAlive()) {
+            existing.bindSession(binding);
+            return;
+        }
+        if (
+            DiffViewerPanel.pendingSession === undefined ||
+            DiffViewerPanel.pendingSession.generation < binding.generation
+        ) {
+            DiffViewerPanel.pendingSession = binding;
+        }
+    }
+
+    /** Clears only the session that still owns the panel; newer bindings are untouched. */
+    static clearSessionBinding(generation: number): boolean {
+        let cleared = false;
+        if (DiffViewerPanel.pendingSession?.generation === generation) {
+            DiffViewerPanel.pendingSession = undefined;
+            cleared = true;
+        }
+        const existing = DiffViewerPanel.instance;
+        if (!existing || existing.sessionGeneration !== generation) return cleared;
+        existing.sessionGeneration = undefined;
+        return true;
     }
 
     /** Opens the reusable panel, or reveals it and replaces its current snapshot. */
@@ -81,6 +128,18 @@ export class DiffViewerPanel {
         const snapshot = DiffViewerPanel.snapshotFrom(options);
         const existing = DiffViewerPanel.instance;
         if (existing && existing.isAlive()) {
+            if (options.sessionGeneration !== undefined) {
+                if (
+                    existing.sessionGeneration !== undefined &&
+                    existing.sessionGeneration > options.sessionGeneration
+                ) {
+                    return;
+                }
+                existing.bindSession({
+                    generation: options.sessionGeneration,
+                    onDispose: options.onSessionDisposed ?? (() => undefined),
+                });
+            }
             existing.snapshot = snapshot;
             existing.panel.title = DiffViewerPanel.panelTitle(snapshot);
             existing.panel.reveal(vscode.ViewColumn.Active);
@@ -101,6 +160,9 @@ export class DiffViewerPanel {
         const panel = captureWebview(rawPanel, "diff-viewer");
         const instance = new DiffViewerPanel(panel, options.extensionUri, options);
         DiffViewerPanel.instance = instance;
+        if (DiffViewerPanel.pendingSession?.generation === options.sessionGeneration) {
+            DiffViewerPanel.pendingSession = undefined;
+        }
         await instance.postLatestData();
     }
 
@@ -121,7 +183,10 @@ export class DiffViewerPanel {
     /** Reposts the current in-memory snapshot to the webview. */
     private async postLatestData(): Promise<void> {
         if (!this.isAlive()) return;
-        await this.post({ type: "setDiffData", data: this.buildData() });
+        // Keep payload construction before the first await: rapid optimistic toggles
+        // must stamp their own mode before the next message handler can run.
+        const message: InboundMessage = { type: "setDiffData", data: this.buildData() };
+        await this.post(message);
     }
 
     /** Posts a host-to-webview message constrained to the inbound protocol. */
@@ -178,5 +243,13 @@ export class DiffViewerPanel {
 
     private isAlive(): boolean {
         return !this.disposed;
+    }
+
+    private bindSession(binding: DiffViewerPanelSessionBinding): void {
+        if (this.sessionGeneration !== undefined && this.sessionGeneration > binding.generation) {
+            return;
+        }
+        this.sessionGeneration = binding.generation;
+        this.onSessionDisposed = binding.onDispose;
     }
 }

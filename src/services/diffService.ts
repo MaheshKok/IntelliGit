@@ -19,15 +19,99 @@ import {
 import { assertRepoRelativePath } from "../utils/fileOps";
 import { EMPTY_TREE_HASH } from "../utils/constants";
 import { exceedsDiffBudget } from "../diff/diffBudgets";
-import { openDiffViewer } from "../diff/diffViewerOpener";
+import {
+    claimDiffViewerSession,
+    clearDiffViewerSession,
+    openDiffViewer,
+} from "../diff/diffViewerOpener";
 import { loadDiffSide } from "../diff/sideLoader";
-import type { UnifiedDiffRequest } from "../diff/unifiedDiffTypes";
+import type {
+    DiffViewerCancellationToken,
+    NativeDiffDelegate,
+    StableProviderIdentities,
+    UnifiedDiffRequest,
+} from "../diff/unifiedDiffTypes";
 
 export type { SideSpec, UnifiedDiffRequest } from "../diff/unifiedDiffTypes";
 
 const READONLY_DIFF_SCHEME = "intelligit-diff";
 const readonlyDiffDocuments = new Map<string, string>();
 let readonlyDiffDocumentSeq = 0;
+
+/** Immutable text and loader metadata retained for an open diff session. */
+interface FrozenDiffSideSnapshot {
+    readonly text: string;
+    readonly mode: number | undefined;
+    readonly lineCount: number;
+}
+
+/** Generation-owned state for one panel request and its eventual native fallback. */
+interface UnifiedDiffSession {
+    readonly descriptor: UnifiedDiffRequest;
+    readonly sideSnapshots: {
+        readonly left?: FrozenDiffSideSnapshot;
+        readonly right?: FrozenDiffSideSnapshot;
+    };
+    readonly stableProviderIdentities: StableProviderIdentities;
+    readonly nativeDelegate: NativeDiffDelegate;
+    readonly generation: number;
+}
+
+class DiffViewerCancellationSource {
+    private cancelled = false;
+    private readonly listeners = new Set<() => void>();
+    readonly token: DiffViewerCancellationToken;
+
+    constructor() {
+        this.token = createDiffViewerCancellationToken(this);
+    }
+
+    isCancellationRequested(): boolean {
+        return this.cancelled;
+    }
+
+    addCancellationListener(listener: () => void): { dispose(): void } {
+        if (this.cancelled) {
+            listener();
+            return { dispose: () => undefined };
+        }
+        this.listeners.add(listener);
+        return { dispose: () => this.listeners.delete(listener) };
+    }
+
+    cancel(): void {
+        if (this.cancelled) return;
+        this.cancelled = true;
+        for (const listener of this.listeners) listener();
+        this.listeners.clear();
+    }
+}
+
+function createDiffViewerCancellationToken(
+    source: DiffViewerCancellationSource,
+): DiffViewerCancellationToken {
+    return {
+        get isCancellationRequested() {
+            return source.isCancellationRequested();
+        },
+        onCancellationRequested: (listener) => source.addCancellationListener(listener),
+    };
+}
+
+interface ActiveUnifiedDiffSession extends Omit<UnifiedDiffSession, "sideSnapshots"> {
+    readonly sideSnapshots: {
+        left?: FrozenDiffSideSnapshot;
+        right?: FrozenDiffSideSnapshot;
+    };
+    readonly cancellationSource: DiffViewerCancellationSource;
+    readonly onPanelDisposed: () => void;
+    fallbackStarted: boolean;
+    readonly unsubscribe: () => void;
+}
+
+let nextUnifiedDiffGeneration = 0;
+let activeUnifiedDiffSession: ActiveUnifiedDiffSession | undefined;
+let latestUnifiedDiffSession: ActiveUnifiedDiffSession | undefined;
 
 /**
  * Serves ephemeral read-only documents used as the left and right sides of VS Code diffs.
@@ -139,8 +223,9 @@ export function getRepoRelativeFilePathFromUri(uri: vscode.Uri, repoRoot: string
  */
 export async function openUnifiedDiff(
     request: UnifiedDiffRequest,
-    nativeDelegate: () => Promise<void>,
+    nativeDelegate: NativeDiffDelegate,
 ): Promise<void> {
+    const session = beginUnifiedDiffSession(request, nativeDelegate);
     const executor =
         request.left.kind === "ref" || request.right.kind === "ref"
             ? new GitExecutor(request.repoRoot)
@@ -152,12 +237,14 @@ export async function openUnifiedDiff(
     let overBudget = false;
 
     try {
+        const loadGeneration = session.generation;
         leftResult = await loadDiffSide({
             repoRoot: request.repoRoot,
             filePath: request.path,
             side: request.left,
             executor,
         });
+        if (!isCurrentUnifiedDiffSession(session, loadGeneration)) return;
         if (leftResult.status === "loaded" || leftResult.status === "missing") {
             left = toViewerSide(leftResult);
             rightResult = await loadDiffSide({
@@ -166,14 +253,16 @@ export async function openUnifiedDiff(
                 side: request.right,
                 executor,
             });
+            if (!isCurrentUnifiedDiffSession(session, loadGeneration)) return;
             if (rightResult.status === "loaded" || rightResult.status === "missing") {
                 right = toViewerSide(rightResult);
                 overBudget = exceedsDiffBudget(left, right);
             }
         }
     } catch (error) {
+        if (!isCurrentUnifiedDiffSession(session)) return;
         logGitOpsWarning("diffService.openUnifiedDiff.resolve", error);
-        await nativeDelegate();
+        await transitionToNativeFallback(session);
         return;
     }
 
@@ -183,9 +272,16 @@ export async function openUnifiedDiff(
     // that is how an added or deleted file renders.
     const bothMissing = leftResult?.status === "missing" && rightResult?.status === "missing";
     if (!left || !right || bothMissing || overBudget) {
-        await nativeDelegate();
+        await transitionToNativeFallback(session);
         return;
     }
+
+    // Keep decoded sides for 3.6 partial re-resolution; the raw bytes are no longer needed
+    // after the budget check and UTF-8 decode, so retaining copies would only waste memory.
+    session.sideSnapshots.left = freezeDiffSide(left);
+    session.sideSnapshots.right = freezeDiffSide(right);
+    Object.freeze(session.sideSnapshots);
+    if (!isCurrentUnifiedDiffSession(session)) return;
 
     await openDiffViewer({
         path: request.path,
@@ -195,7 +291,78 @@ export async function openUnifiedDiff(
         languageId: request.languageId,
         leftText: left.text,
         rightText: right.text,
+        sessionGeneration: session.generation,
+        onSessionDisposed: session.onPanelDisposed,
     });
+}
+
+function beginUnifiedDiffSession(
+    descriptor: UnifiedDiffRequest,
+    nativeDelegate: NativeDiffDelegate,
+): ActiveUnifiedDiffSession {
+    latestUnifiedDiffSession?.cancellationSource.cancel();
+    const cancellationSource = new DiffViewerCancellationSource();
+    const sideSnapshots: {
+        left?: FrozenDiffSideSnapshot;
+        right?: FrozenDiffSideSnapshot;
+    } = {};
+    const session = {
+        descriptor,
+        sideSnapshots,
+        stableProviderIdentities: {
+            left: getStableProviderIdentity(descriptor.left),
+            right: getStableProviderIdentity(descriptor.right),
+        },
+        nativeDelegate,
+        generation: ++nextUnifiedDiffGeneration,
+        cancellationSource,
+        onPanelDisposed: () => undefined,
+        fallbackStarted: false,
+        unsubscribe: () => undefined,
+    };
+    session.onPanelDisposed = () => {
+        cancellationSource.cancel();
+        if (activeUnifiedDiffSession === session) activeUnifiedDiffSession = undefined;
+    };
+    activeUnifiedDiffSession = session;
+    latestUnifiedDiffSession = session;
+    claimDiffViewerSession({
+        generation: session.generation,
+        onDispose: session.onPanelDisposed,
+    });
+    return session;
+}
+
+function isCurrentUnifiedDiffSession(
+    session: ActiveUnifiedDiffSession,
+    generation = session.generation,
+): boolean {
+    return activeUnifiedDiffSession === session && session.generation === generation;
+}
+
+async function transitionToNativeFallback(session: ActiveUnifiedDiffSession): Promise<void> {
+    if (!isCurrentUnifiedDiffSession(session) || session.fallbackStarted) return;
+    session.fallbackStarted = true;
+
+    clearDiffViewerSession(session.generation);
+    session.unsubscribe();
+    if (activeUnifiedDiffSession === session) activeUnifiedDiffSession = undefined;
+    await session.nativeDelegate(
+        session.cancellationSource.token,
+        session.stableProviderIdentities,
+    );
+}
+
+function freezeDiffSide(side: ViewerDiffSide): FrozenDiffSideSnapshot {
+    return Object.freeze({
+        text: side.text,
+        mode: side.mode,
+        lineCount: side.lineCount,
+    });
+}
+
+function getStableProviderIdentity(side: UnifiedDiffRequest["left"]): string | undefined {
+    return side.kind === "provider" ? side.identity : undefined;
 }
 
 type LoadableDiffSide = Extract<

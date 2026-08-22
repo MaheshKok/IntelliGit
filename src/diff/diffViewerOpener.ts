@@ -1,5 +1,9 @@
 import * as vscode from "vscode";
-import { DiffViewerPanel, type DiffViewerPanelOptions } from "../views/DiffViewerPanel";
+import {
+    DiffViewerPanel,
+    type DiffViewerPanelOptions,
+    type DiffViewerPanelSessionBinding,
+} from "../views/DiffViewerPanel";
 
 type ViewerOptions = Omit<DiffViewerPanelOptions, "extensionUri">;
 
@@ -13,6 +17,16 @@ let diffViewerExtensionUri: vscode.Uri | undefined;
  */
 export function setDiffViewerExtensionUri(extensionUri: vscode.Uri): void {
     diffViewerExtensionUri = extensionUri;
+}
+
+/** Claims the reusable panel before a session's asynchronous side loads finish. */
+export function claimDiffViewerSession(binding: DiffViewerPanelSessionBinding): void {
+    DiffViewerPanel.claimSession(binding);
+}
+
+/** Clears a session binding only when the panel still belongs to that generation. */
+export function clearDiffViewerSession(generation: number): void {
+    DiffViewerPanel.clearSessionBinding(generation);
 }
 
 /** Opens the Phase 1 reusable viewer after the funnel has completed all host-side gates. */

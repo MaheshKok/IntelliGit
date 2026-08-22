@@ -3,6 +3,8 @@ import type { ProviderLoadResult } from "../../../src/diff/unifiedDiffTypes";
 
 const mocks = vi.hoisted(() => ({
     panelOpen: vi.fn(async () => undefined),
+    claimSession: vi.fn(),
+    clearSessionBinding: vi.fn(() => true),
     logGitOpsWarning: vi.fn(),
 }));
 
@@ -11,7 +13,11 @@ vi.mock("vscode", () => ({
 }));
 
 vi.mock("../../../src/views/DiffViewerPanel", () => ({
-    DiffViewerPanel: { open: mocks.panelOpen },
+    DiffViewerPanel: {
+        open: mocks.panelOpen,
+        claimSession: mocks.claimSession,
+        clearSessionBinding: mocks.clearSessionBinding,
+    },
 }));
 
 vi.mock("../../../src/git/operationSupport", () => ({
@@ -28,18 +34,31 @@ function loaded(label: string): ProviderLoadResult {
     return { status: "loaded", bytes: Buffer.from(`${label}\n`), mode: 0o100644 };
 }
 
-function provider(label: string, result: ProviderLoadResult) {
+function provider(label: string, result: ProviderLoadResult, identity?: string) {
     return {
         kind: "provider" as const,
         label,
         load: vi.fn(async () => result),
+        identity: identity ?? label,
     };
+}
+
+function deferred<T>(): {
+    promise: Promise<T>;
+    resolve(value: T): void;
+} {
+    let resolve!: (value: T) => void;
+    const promise = new Promise<T>((nextResolve) => {
+        resolve = nextResolve;
+    });
+    return { promise, resolve };
 }
 
 function rejectingProvider(label: string, message: string): UnifiedDiffRequest["left"] {
     return {
         kind: "provider",
         label,
+        identity: label,
         load: vi.fn(async (_maxOutputBytes: number): Promise<ProviderLoadResult> => {
             throw new Error(message);
         }),
@@ -63,6 +82,7 @@ function request(
 describe("unified diff funnel", () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        mocks.clearSessionBinding.mockImplementation(() => true);
         setDiffViewerExtensionUri(extensionUri);
     });
 
@@ -236,5 +256,162 @@ describe("unified diff funnel", () => {
 
         expect(nativeDelegate).toHaveBeenCalledOnce();
         expect(mocks.panelOpen).not.toHaveBeenCalled();
+    });
+
+    it("discards a slow opening completion after a faster opening wins", async () => {
+        const slow = deferred<ProviderLoadResult>();
+        const nativeA = vi.fn(async () => undefined);
+        const nativeB = vi.fn(async () => undefined);
+        const slowA = provider("slow A", {
+            status: "loaded",
+            bytes: Buffer.from("slow A\n"),
+            mode: 0o100644,
+        });
+        slowA.load = vi.fn(async () => slow.promise);
+
+        const openingA = openUnifiedDiff(request(slowA), nativeA);
+        await openUnifiedDiff(
+            request(
+                provider("fast B left", loaded("fast B left")),
+                provider("fast B right", loaded("fast B right")),
+            ),
+            nativeB,
+        );
+        slow.resolve(loaded("slow A"));
+        await openingA;
+
+        expect(mocks.panelOpen).toHaveBeenCalledOnce();
+        expect(mocks.panelOpen).toHaveBeenLastCalledWith(
+            expect.objectContaining({ rightText: "fast B right\n" }),
+        );
+        expect(nativeA).not.toHaveBeenCalled();
+    });
+
+    it("keeps a newer panel open while a stale fallback delegate finishes", async () => {
+        const delegateGate = deferred<void>();
+        let fallbackToken: { isCancellationRequested: boolean } | undefined;
+        let nativeSideEffect = false;
+        const nativeA = vi.fn(async (token: { isCancellationRequested: boolean }) => {
+            fallbackToken = token;
+            expect(token.isCancellationRequested).toBe(false);
+            await delegateGate.promise;
+            if (!token.isCancellationRequested) nativeSideEffect = true;
+        });
+        const nativeB = vi.fn(async () => undefined);
+
+        const fallbackA = openUnifiedDiff(
+            request(
+                provider("fallback", { status: "over-budget", size: 99 }),
+                provider("right", loaded("right")),
+            ),
+            nativeA,
+        );
+        await vi.waitFor(() => expect(nativeA).toHaveBeenCalledOnce());
+
+        await openUnifiedDiff(
+            request(provider("B left", loaded("B left")), provider("B right", loaded("B right"))),
+            nativeB,
+        );
+        expect(fallbackToken?.isCancellationRequested).toBe(true);
+        expect(mocks.panelOpen).toHaveBeenLastCalledWith(
+            expect.objectContaining({ leftText: "B left\n", rightText: "B right\n" }),
+        );
+
+        delegateGate.resolve();
+        await fallbackA;
+        expect(nativeSideEffect).toBe(false);
+        expect(mocks.clearSessionBinding).toHaveBeenCalledOnce();
+    });
+
+    it("detaches the panel before invoking a fallback delegate", async () => {
+        const order: string[] = [];
+        mocks.clearSessionBinding.mockImplementation(() => {
+            order.push("detach");
+            return true;
+        });
+        const nativeDelegate = vi.fn(async () => {
+            order.push("delegate");
+        });
+
+        await openUnifiedDiff(
+            request(provider("fallback", { status: "over-budget", size: 99 })),
+            nativeDelegate,
+        );
+
+        expect(order).toEqual(["detach", "delegate"]);
+    });
+
+    it.each([
+        [
+            "binary",
+            { status: "loaded", bytes: Buffer.from("binary"), mode: 0o100644, binary: true },
+        ],
+        ["invalid UTF-8", { status: "loaded", bytes: Buffer.from([0xc3, 0x28]), mode: 0o100644 }],
+        ["symlink", { status: "loaded", bytes: Buffer.from("link"), mode: 0o120000 }],
+        ["submodule", { status: "loaded", bytes: Buffer.from("module"), mode: 0o160000 }],
+        ["over-budget", { status: "over-budget", size: 99 }],
+    ] as const)("transitions to native fallback for %s", async (_reason, result) => {
+        const nativeDelegate = vi.fn(async () => undefined);
+
+        await openUnifiedDiff(request(provider("left", result)), nativeDelegate);
+
+        expect(mocks.clearSessionBinding).toHaveBeenCalledOnce();
+        expect(nativeDelegate).toHaveBeenCalledOnce();
+        expect(mocks.panelOpen).not.toHaveBeenCalled();
+    });
+
+    it.each([
+        [
+            "binary",
+            { status: "loaded", bytes: Buffer.from("binary"), mode: 0o100644, binary: true },
+        ],
+        ["invalid UTF-8", { status: "loaded", bytes: Buffer.from([0xc3, 0x28]), mode: 0o100644 }],
+        ["symlink", { status: "loaded", bytes: Buffer.from("link"), mode: 0o120000 }],
+        ["submodule", { status: "loaded", bytes: Buffer.from("module"), mode: 0o160000 }],
+        ["over-budget", { status: "over-budget", size: 99 }],
+    ] as const)(
+        "clears the live binding before mid-session fallback for %s",
+        async (_reason, result) => {
+            const firstDelegate = vi.fn(async () => undefined);
+            const secondDelegate = vi.fn(async () => undefined);
+
+            await openUnifiedDiff(request(), firstDelegate);
+
+            expect(mocks.panelOpen).toHaveBeenCalledOnce();
+            expect(mocks.claimSession).toHaveBeenCalledOnce();
+            const firstGeneration = mocks.claimSession.mock.calls[0]?.[0].generation;
+
+            await openUnifiedDiff(request(provider("left", result)), secondDelegate);
+
+            expect(mocks.panelOpen).toHaveBeenCalledOnce();
+            expect(mocks.claimSession).toHaveBeenCalledTimes(2);
+            const secondGeneration = mocks.claimSession.mock.calls[1]?.[0].generation;
+            expect(secondGeneration).not.toBe(firstGeneration);
+            expect(mocks.clearSessionBinding).toHaveBeenCalledOnce();
+            expect(mocks.clearSessionBinding).toHaveBeenCalledWith(secondGeneration);
+            expect(secondDelegate).toHaveBeenCalledOnce();
+        },
+    );
+
+    it("passes the stable provider identity to fallback after stash renumbering", async () => {
+        const loadedStash = deferred<ProviderLoadResult>();
+        const stash = provider("stash@{2}", { status: "over-budget", size: 99 }, "commit-oid");
+        stash.load = vi.fn(async () => loadedStash.promise);
+        let identities: { left?: string; right?: string } | undefined;
+        const nativeDelegate = vi.fn(
+            async (
+                _token: { isCancellationRequested: boolean },
+                providerIdentities: { left?: string; right?: string },
+            ) => {
+                identities = providerIdentities;
+            },
+        );
+
+        const opening = openUnifiedDiff(request(stash), nativeDelegate);
+        stash.label = "stash@{0}";
+        loadedStash.resolve({ status: "over-budget", size: 99 });
+        await opening;
+
+        expect(identities).toEqual({ left: "commit-oid", right: "right" });
     });
 });

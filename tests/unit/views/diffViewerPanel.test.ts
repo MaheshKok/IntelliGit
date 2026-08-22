@@ -183,4 +183,37 @@ describe("DiffViewerPanel", () => {
             data: { segments: [{ type: "common", left: ["  same  "], right: ["same"] }] },
         });
     });
+
+    it("stamps each rapid ignore toggle before yielding to the next handler", async () => {
+        await DiffViewerPanel.open(options({ leftText: "  same  ", rightText: "same" }));
+        const panel = lastPanel();
+        clearPosted(panel);
+
+        const firstToggle = panel.messageHandler?.({ type: "setIgnoreMode", mode: "whitespace" });
+        const secondToggle = panel.messageHandler?.({ type: "setIgnoreMode", mode: "none" });
+        await Promise.all([firstToggle, secondToggle]);
+
+        expect(panel.postedMessages).toHaveLength(2);
+        expect(
+            (panel.postedMessages[0] as { data: { ignoreWhitespace: boolean } }).data
+                .ignoreWhitespace,
+        ).toBe(true);
+        expect(
+            (panel.postedMessages[1] as { data: { ignoreWhitespace: boolean } }).data
+                .ignoreWhitespace,
+        ).toBe(false);
+    });
+
+    it("clears only the generation that still owns the panel", async () => {
+        const disposedA = vi.fn();
+        const disposedB = vi.fn();
+        await DiffViewerPanel.open(options({ sessionGeneration: 1, onSessionDisposed: disposedA }));
+        DiffViewerPanel.claimSession({ generation: 2, onDispose: disposedB });
+
+        expect(DiffViewerPanel.clearSessionBinding(1)).toBe(false);
+        lastPanel().dispose();
+
+        expect(disposedA).not.toHaveBeenCalled();
+        expect(disposedB).toHaveBeenCalledOnce();
+    });
 });
