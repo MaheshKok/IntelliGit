@@ -138,7 +138,7 @@ Mode: phase-lane (thin conductor + one fresh opus lane per phase; lanes strictly
 | P2a   | Phase 2 (3.1-3.3): openUnifiedDiff funnel, side loader, budget measurement                     | **accepted 0399aea9** |
 | P2b-i | Phase 2 (3.5): generation-bound sessions, frozen snapshots, fallback CAS                       | **accepted 23a713e1** |
 | P2b-ii| Phase 2 (3.6): root-keyed change event, watcher refcounts, live refresh, loadError       | **accepted 0ede98f1** |
-| P2c   | Phase 2 (3.4, 3.7, 3.8): call-site rewires, ride-along integration, full gate battery          | pending |
+| P2c   | Phase 2 (3.4, 3.7, 3.8): call-site rewires, ride-along integration, full gate battery          | **accepted df920f54** |
 | P4    | Phase 4: editable working-tree pane via CustomTextEditorProvider                     | pending |
 | P5    | Phase 5: find-in-diff via enableFindWidget + DOM-completeness gate                             | pending |
 | P3    | Phase 3: straggler sweep, css-modules.d.ts removal, docs                             | pending |
@@ -1223,3 +1223,138 @@ gates they were to run and report.
 needed 2 on P2b-i, plus one root correction.
 
 **Commit.** `0ede98f1` (P2b-ii, spec 3.6).
+## Phase 2c — call-site rewires, ride-along integration, full gate battery (spec 3.4, 3.7, 3.8)
+
+Builder: **Sonnet 5 at `max`**, reached through the Agent tool rather than `codex exec` — the
+third model in the luna / terra / sonnet comparison the user asked for. Base `2e24fee8`.
+
+### Build round — REJECT, 4 findings
+
+**F4 [BLOCKER] — a new user-facing string shipped untranslated.** `l10n-audit` exited 1:
+`{path} (HEAD ↔ Working Tree)` at `panelFileActions.ts:169` was wrapped in `vscode.l10n.t(...)`
+but never added to `l10n/bundle.l10n.json`, so it would have rendered English in all 11 locales.
+
+**F1 [MEDIUM-HIGH] — a source-text regex reported as a runtime proof.** The undocked half of
+deliverable 4 did `readFileSync(".../repositoryMode.ts")` and regex-matched the source, then
+reported DONE. The deliverable had said in terms: "a test asserting only that the two code paths
+look similar proves nothing." It goes green if the handler is built but never invoked, and red on
+mere property reordering. The docked half of the same deliverable was genuinely runtime-proven —
+the gap was only the "undocked calls the factory and registers its result" link.
+
+**F2 [MEDIUM] — deliverable 8 skipped, and its own escape hatch skipped too.** The work order
+pre-authorized a fallback ("write the spec-faithful test, mark it `ADDED (not executed here)`").
+The lane reported the e2e smoke MISSING and wrote nothing. Its stated reasoning — no `data-testid`s
+on the viewer, and a flow matrix keyed to contributed command IDs — was a fair account of the
+difficulty, but it argues for taking the fallback, not for clearing neither bar.
+
+**F3 [MEDIUM] — 3 of 15 inventory verdicts wrong, all under-claiming.** Reported MISSING while
+covered, two of them inside a file the report named as searched: the HEAD-move/branch-move
+`it.each` and the unsaved-edit / watcher-driven refresh `it.each`, both in
+`unifiedDiffSession.test.ts`. Direction is the safe one — the lane chose flagging over guessing —
+so this is a search-thoroughness failure, not an honesty failure.
+
+**A conductor defect, not a builder defect.** F4 existed because *my* work order hand-enumerated
+the gate list and omitted `l10n:audit`. That was the third consecutive round where a hand-typed
+CHECKS list dropped a different gate — luna lost `format:check` and knip, terra lost
+`architecture:check`, sonnet lost l10n. Each time I patched only the gate the last round exposed,
+which is why it kept recurring: the bug was the hand-enumeration itself. From fix round 1 onward
+the work order tells the builder to *read* `.claudex-gates.json` and run everything except
+`visual-container`. Recorded as a standing rule.
+
+### Fix round 1 — 3 of 4 accepted, defect 2 reopened
+
+Accepted: **F4** (all 11 catalogs carry real translations with `{path}` intact and correct script
+variants — zh-cn 工作树 vs zh-tw 工作樹, full-width parens in CJK); **F2** as `ADDED (not executed
+here)`, the sanctioned fallback, with a spec that asserts the two panes *differ* rather than merely
+being non-empty; **F3** including a disclosed renumbering and two disclosed nuances.
+
+**F1 reopened — the seam moved the untested surface rather than removing it.** The lane replaced
+the regex with a real runtime test and extracted a seam,
+`registerUndockedCommitFileDiffHandler` (`repositoryViewEvents.ts:99`). The test is a genuine
+improvement: it fires a real event and observes `createOpenCommitFileDiffHandler`'s handler run.
+But it calls the seam *directly*, and the integration test only added the export to a `vi.mock`
+factory so the module would stop throwing — it never asserted the mock was called. So nothing
+proved `ensureUndockedPanel` still calls the seam.
+
+I proved that at the root rather than inferring it. Replacing the whole 8-line call element at
+`repositoryMode.ts:1070-1077` with an inert `{ dispose: () => {} },`:
+
+| | Test Files | Tests | rc |
+| --- | --- | --- | --- |
+| baseline | 2 passed | 6 passed | 0 |
+| production call site deleted | 2 passed | 6 passed | 0 |
+
+Zero detection. Restored byte-identical from a file copy — never `git checkout --`, which would
+have discarded the entire uncommitted round in that file. The irony worth recording: the regex
+test being replaced *would* have caught this deletion, because it matched the call's source text.
+The replacement was better at proving routing and worse at proving the call exists; the fix had to
+deliver both.
+
+### Fix round 2 — accepted
+
+The lane kept the seam and its runtime test and added the missing assertion to the integration
+test that already drives the real path (`activateRepositoryMode` → `showUndockedGitLog()` →
+`ensureUndockedPanel`). It is stronger than what the work order asked for: call count, the exact
+dep key set, `getRepoRoot()`'s *behavioral* return value traced through `selectInitialRepository`'s
+fallback, and panel identity by `toBe` rather than by shape.
+
+**Mutation re-run by me, not quoted from the lane.** Same mutation as above:
+
+```
+AssertionError: expected "vi.fn()" to be called 1 times, but got 0 times
+ ❯ tests/integration/extension/commit-message-generation-host-wiring.integration.test.ts:301:59
+ Test Files  1 failed | 1 passed (2)
+      Tests  1 failed | 5 passed (6)
+```
+
+Red names the new assertion, at the line the lane reported. `repositoryMode.ts` also verified
+byte-identical to my own pre-mutation backup from round 1, which is what makes the lane's "no net
+production change" claim checkable rather than merely stated.
+
+### Two disclosures I checked rather than accepted
+
+**A stray write into the main checkout.** A relative-path `ctx_patch` resolved against
+`/Users/maheshkokare/PycharmProjects/IntelliGit` (branch `fix/insiders-theme-token-drift`) instead
+of this worktree, and the lane then ran `git checkout --` there to undo it. That command destroys
+uncommitted work. The main tree is entirely clean, the shared stash stack holds 6 pre-existing
+unrelated entries, and the file touched is unrelated to that branch's topic — so there is no
+evidence of loss, though a clean tree cannot fully prove absence. Fix round 2's order forbids
+relative paths outright.
+
+**A mutation proof that was never witnessed.** Round 1's F1 mutation red line was quoted from
+before a mid-round compaction and could not be re-derived — a scoped vitest invocation was denied
+by the permission gate, and so was a retry of the full suite. The lane disclosed this as unverified
+rather than presenting it as fresh, which is the correct call. My own mutation supersedes it.
+
+**One mischaracterization, corrected.** The lane described `l10n-audit` as
+"non-blocking/report-only". It is not — that gate exited 1 and blocked acceptance in the build
+round. It exits 0 now because catalog coverage is clean; the 7 remaining "hardcoded candidates"
+are a separate heuristic warning that does not fail the gate. No outcome depended on this, but the
+description would mislead a later round into ignoring a real blocker.
+
+### Acceptance
+
+`verify.py gates --base 2e24fee8 --stage accept` — **GATES: GREEN warn=0**, all ten, run by me
+over a frozen tree after every edit was final: `typecheck` 6.9s, `lint-strict` 20.7s
+(`--max-warnings=0`), `format-check` 7.4s, `architecture` 1.1s, `deps-knip` 1.3s,
+`l10n-validate` 0.1s, `l10n-audit` 0.5s, `package-vsix` 3.0s, **`tests` 446.4s — 309 files /
+4245 tests passed / 0 failed**, `visual-container` 954.1s with all 36 baselines byte-identical.
+HEAD unmoved at `2e24fee8` across the run; 29 changed files before and after.
+
+**Builder self-report accuracy.** Sonnet's counts (309 files / 4245 tests / 0 failed) matched my
+independent re-execution exactly, three times running. It also disclosed three problems against
+its own interest — the unverified mutation proof, the stray write, and a `format-check` failure it
+then fixed. Zero overclaims found. Set against luna on P2b-i, which reported two red gates as
+green, this remains the one column in the comparison showing real separation.
+
+**Rounds to acceptance: 3** (build + 2 fixes) — the same as luna on P2b-i and terra on P2b-ii. On
+round count the three models are indistinguishable, and the phases are not equal work, so that
+number is a null result and should not be read as a ranking.
+
+**A failure mode unique to this leg, and not a model property.** The fix-round-1 lane parked ~50
+minutes waiting on a notification from a background gate whose task had already exited, and needed
+a root nudge to resume. `codex exec` cannot fail this way — it runs to completion or dies. This is
+an Agent-tool artifact of the sonnet leg, and the comparison must say so rather than charge it to
+the model.
+
+**Commit.** `df920f54` (P2c, spec 3.4/3.7/3.8).
