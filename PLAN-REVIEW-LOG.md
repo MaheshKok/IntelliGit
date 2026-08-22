@@ -136,7 +136,7 @@ Mode: phase-lane (thin conductor + one fresh opus lane per phase; lanes strictly
 | P0    | Phase 0 (1.1–1.4): diff-core extraction, pane generalization, shared CSS, contract tests       | accepted |
 | P1    | Phase 1 (2.1–2.6): computeDiffSegments, DiffViewerApp, bundle, panel, protocol, l10n, tests    | accepted |
 | P2a   | Phase 2 (3.1-3.3): openUnifiedDiff funnel, side loader, budget measurement                     | **accepted 0399aea9** |
-| P2b-i | Phase 2 (3.5): generation-bound sessions, frozen snapshots, fallback CAS                       | pending |
+| P2b-i | Phase 2 (3.5): generation-bound sessions, frozen snapshots, fallback CAS                       | **accepted 23a713e1** |
 | P2b-ii| Phase 2 (3.6): root-keyed change event, watcher refcounts, live refresh, loadError       | pending |
 | P2c   | Phase 2 (3.4, 3.7, 3.8): call-site rewires, ride-along integration, full gate battery          | pending |
 | P4    | Phase 4: editable working-tree pane via CustomTextEditorProvider                     | pending |
@@ -847,3 +847,126 @@ The user confirmed the two-panel-kinds narrowing. That resolves P2b's entry cond
 P2b splits into **P2b-i (§3.5)** and **P2b-ii (§3.6)** before launch, not after a session bloats. P2a ran 87% peak against a 45-50% target on a *fix* round carrying only a defect list, and the diagnosis recorded there was that the work order held three independent deliverables. §3.5 (session identity, generation ordering, fallback compare-and-swap, delegate cancellation) and §3.6 (root-keyed change event, watcher reference counting, live re-resolution, loadError state) are exactly that shape again: two deliverables that share a data structure but no control flow.
 
 P2b-i runs **classic in-root**, same as P2a. The two P2a phase-lane deaths came from the harness stream watchdog killing a lane that was blocking on its Codex background task; the main session is not killed the same way, and one of those deaths cost a complete 47-minute Codex session whose work order had already been fully executed.
+
+#### P2b-i accepted — session model, generations, fallback CAS (spec 3.5)
+
+Builder: `gpt-5.6-luna` at `xhigh`. Build round SID `01a02868-abdb-7733-b7c4-82abee0a0bf7`
+(PEAK 204,383 / 79%), one fix round (PEAK 123,927 / 47%). Two rounds to acceptance.
+
+**All ten deliverables landed, and five real defects were found at root that the builder's
+report marked DONE.** The report claimed 10/10 with evidence; my own verification confirmed
+the code existed in every case but found five defects in it:
+
+- F1 — `FrozenDiffSideSnapshot` and `UnifiedDiffSession` were exported from a module nothing
+  else imports them from. Narrowed to module-private.
+- F2 — `freezeDiffSide` kept the raw decoded bytes alongside the text, a dead ~420KB copy per
+  open on a typical file. The sides are already decoded by then and 3.6 re-resolution reads
+  text, not bytes. Removed, with a comment at diffService.ts:279 naming why the bytes are gone.
+- F3 — the parameterized fallback test asserted the transition at OPEN time, not MID-SESSION.
+  The spec's ordering requirement only has teeth mid-session, so the test as written could not
+  fail on the bug it existed for. Rewritten to open a first session, then force fallback on a
+  second, asserting the live binding is cleared for the NEW generation.
+- F4 — the provider-mutation test asserted only that the payload differed from the mutated
+  value. An inequality is not an identity: it passed while the oracle read nothing. Now
+  asserts the original text present AND the mutated text absent.
+- F5 — `claimDiffViewerSession` / `clearDiffViewerSession` went through an indirection layer
+  with one implementation. Collapsed to direct static calls.
+
+**Two gates the builder reported green without running.** `deps:check:strict` (knip) was red
+on the new `scripts/measure-diff-budgets.ts` entry, found at adjudication. `format:check` was
+red on all five touched files, found only by the accept battery. Both are cheap and both are
+acceptance gates. The P2b-ii work order now names them explicitly in CHECKS — which is a
+prompt asymmetry that must be stated in any luna-vs-terra comparison, not read as a model
+difference.
+
+**Mutation proof, run at root, not taken from the report.** Removing the compare-and-swap
+detach (`clearDiffViewerSession(session.generation)`) in `transitionToNativeFallback` turned
+five mid-session assertions red BY NAME across the parameterized fallback cases. Source
+restored byte-exact, verified by sha256
+`61b966cb2341c1acbb1520ff49d63e5e2cbef2c73a749caae8a9474dc2eb1e52` before and after.
+
+---
+
+##### The tenth gate: `visual-container`, and the pre-existing Shiki defect it caught
+
+Nine gates went green on the first accept battery. `visual-container` went red — **on a
+different baseline cell each full run.** Chasing it consumed most of the phase and turned out
+to be the most valuable thing in it, because the defect is user-visible and predates P2b-i.
+
+**Two wrong conclusions I published and had to retract**, recorded because the retraction is
+the useful part:
+
+1. _"It's a flake, and I can prove it."_ Two isolated re-runs of the failing cell passed, so I
+   said so. The next full battery failed again on a different cell. **An isolated green run of
+   the cell that happened to lose the lottery is not evidence about the lottery.**
+2. _"The base commit is green, so P2b-i's tree caused it."_ A base-commit matrix passed, which
+   contradicted the import-closure analysis (nothing in P2b-i reaches the webview bundle).
+   Killed by hashing the built artifacts instead of trusting the run:
+   `dist/webview-diffviewer.js` = `c0d341b30bbd645e` and `dist/webview-diffviewer.css` =
+   `61a8103225022ee0` on **both** the current tree and `0399aea9`, and the fixture `clean.json`
+   byte-identical. Identical inputs cannot produce a tree-attributable difference — the base
+   green was one lucky sample.
+
+**Getting to the actual pixels.** No PIL, no pngjs in the container, so a pure-stdlib PNG
+decoder (Paeth/Sub/Up/Average filters, plus a shift test to rule out a layout offset) produced
+exact differing coordinates, contiguous column runs, and per-region palette histograms.
+
+**The hypothesis that had to die first.** The obvious story was "Shiki hadn't initialized, so
+the regex fallback painted the line." It is wrong, and colour alone cannot settle it:
+`.tok-number` (#b5cea8) and `.tok-constant` (#4fc1ff) in `diff-core.css` deliberately mirror
+Shiki's dark-plus values, so those two discriminate nothing. The keyword does — Shiki's
+#569CD6 versus the fallback's `.tok-keyword` #c586c0. **#569CD6 was present in both renders and
+#c586c0 in neither**, so both renders came from Shiki. The difference was inside Shiki.
+
+**Root cause.** Shiki's **first** `codeToTokensBase` call against a freshly built grammar can
+classify differently from every later call on identical input. Measured over 8 identical
+container mounts: `const hd0 = 0;` came back as a single `0;` numeric token — semicolon
+swallowed into the literal and painted number-green — on **3 of 8**, and as `0` + `;` on the
+other 5. Two things make that more than a cosmetic flicker:
+
+- `tokenCache` in `shikiHighlighter.ts` memoizes per line, so one cold call **poisons that line
+  for the rest of the session**; and
+- _which_ line receives the cold call varies run to run, which is exactly why a different
+  baseline cell failed each time.
+
+This is a **real user-visible rendering bug**, not a test artifact: a user opening a diff sees
+a semicolon painted as part of a numeric literal, sticky until the webview reloads.
+
+**Fix.** Tokenize a throwaway line (`const a = 0;`) once per language before any real line, so
+the cold call lands where nobody sees it (`shikiHighlighter.ts:108-130`). Empirically verified:
+**8/8 identical token dumps** after the fix, line 1 correctly `"0"` + separate `";"`.
+
+**Two shortcuts explicitly refused.** Raising `maxDiffPixels` above 0, and re-recording the
+baselines. Either would have turned the battery green in one edit and **deleted the only signal
+that caught a real bug** — the baselines were doing their job precisely by being unstable.
+
+**Committed regression test:** `tests/unit/merge/shikiWarmup.test.ts` (3 tests). It drives a
+fake highlighter that returns a coarse single token on its first call and correct tokens after —
+the measured shape of the defect — rather than the real Shiki, which reproduces it only ~3 times
+in 8 and would therefore **pass five runs out of eight with the fix removed**. Mutation table,
+all run at root, source restored byte-identical afterwards (`diff` clean):
+
+| Mutation                                           | Result | Red assertions                                                                                                    |
+| -------------------------------------------------- | ------ | ----------------------------------------------------------------------------------------------------------------- |
+| Delete the `warmLang(lang, theme)` call             | RED    | all 3, incl. `expected 'const hd0 = 0;' not to be 'const hd0 = 0;'`                                                 |
+| Drop the once-per-language guard (warm every call)  | RED    | only _"warms each language once, not once per line"_ — `expected [ Array(3) ] to have a length of 1 but got 3`      |
+| Global warm-up flag instead of per-language         | RED    | only _"warms a second language separately from the first"_ — `expected 1 to be 2`                                   |
+
+Each mutation kills exactly the assertion that exists for it; no assertion is decoration.
+
+**Proof command and counts.** `VITEST_MAX_THREADS=3 VITEST_MIN_THREADS=1 bun vitest run` over
+the five affected files: **5 files / 55 tests passed** (49 before the fix round).
+
+Final accept battery, `verify.py gates --base fad3e7e2 --stage accept`: **GATES: GREEN warn=0**,
+all ten — `typecheck` 6.3s, `lint-strict` 13.7s, `format-check` 6.4s, `architecture` 0.9s,
+`deps-knip` 1.1s, `l10n-validate` 0.1s, `l10n-audit` 0.4s, `package-vsix` 2.5s, `tests` 426.8s
+(full suite), **`visual-container` 925.9s**.
+
+**What that single green does and does not prove.** It is corroboration, not the proof — the
+same "one isolated green run" that I twice mistook for evidence earlier in this phase. The
+proof is the mechanism plus the 8/8 determinism dump plus the mutation table above. No
+confirmation re-run was spent, because `visual-container` is a standing accept gate: P2b-ii's
+own battery supplies a second independent sample at zero added serial time.
+
+**Commits.** `35d6a074` (Shiki warm-up + regression test) and `23a713e1` (P2b-i, spec 3.5),
+split because the Shiki defect predates P2b-i and stands on its own.
