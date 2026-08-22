@@ -7,19 +7,19 @@
 // a `dataset`) can never make two otherwise-identical captures differ.
 
 /**
- * Canonicalizes a raw `element.style.cssText` string: keeps only `--*`
- * custom properties (the `--vscode-*` theme tokens), sorts them by name, and
- * renders each as `name: value;` joined by a single space.
+ * Parses a raw `element.style.cssText` string into its `--*` custom properties
+ * (the `--vscode-*` theme tokens), keyed by name. Non-custom declarations are
+ * dropped, and a repeated name keeps its last value the way the browser
+ * resolves a declaration block -- a real `cssText` read back out of a
+ * `CSSStyleDeclaration` never carries one twice, because `setProperty`
+ * overwrites in place.
  *
- * Raw `cssText` order reflects `Object.entries()` iteration order over VS
- * Code's internal theme-token map when it wrote the properties
- * (`documentStyle.setProperty` in a `for...of` loop, see
- * `out/vs/workbench/contrib/webview/browser/pre/index.html`'s
- * `applyStyles`) -- an implementation detail, not a contract. Sorting here is
- * what turns "recapture and byte-compare" from order-flaky into meaningful.
+ * Split out of `canonicalizeStyleCssText` so the comparator can reason about
+ * individual tokens rather than re-implementing this loop against the same
+ * string it already canonicalized.
  */
-export function canonicalizeStyleCssText(cssText: string): string {
-    const properties: Array<{ readonly name: string; readonly value: string }> = [];
+export function parseStyleCustomProperties(cssText: string): ReadonlyMap<string, string> {
+    const properties = new Map<string, string>();
 
     for (const rawDeclaration of cssText.split(";")) {
         const declaration = rawDeclaration.trim();
@@ -32,11 +32,31 @@ export function canonicalizeStyleCssText(cssText: string): string {
         const value = declaration.slice(colonIndex + 1).trim();
         if (!name.startsWith("--")) continue;
 
-        properties.push({ name, value });
+        properties.set(name, value);
     }
 
-    properties.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
-    return properties.map(({ name, value }) => `${name}: ${value};`).join(" ");
+    return properties;
+}
+
+/**
+ * Canonicalizes a raw `element.style.cssText` string: keeps only `--*`
+ * custom properties (the `--vscode-*` theme tokens), sorts them by name, and
+ * renders each as `name: value;` joined by a single space.
+ *
+ * Raw `cssText` order reflects `Object.entries()` iteration order over VS
+ * Code's internal theme-token map when it wrote the properties
+ * (`documentStyle.setProperty` in a `for...of` loop, see
+ * `out/vs/workbench/contrib/webview/browser/pre/index.html`'s
+ * `applyStyles`) -- an implementation detail, not a contract. Sorting here is
+ * what turns "recapture and byte-compare" from order-flaky into meaningful.
+ */
+export function canonicalizeStyleCssText(cssText: string): string {
+    return [...parseStyleCustomProperties(cssText)]
+        .sort(([leftName], [rightName]) =>
+            leftName < rightName ? -1 : leftName > rightName ? 1 : 0,
+        )
+        .map(([name, value]) => `${name}: ${value};`)
+        .join(" ");
 }
 
 /** Sorts a `classList` snapshot for stable output. `classList` entries are already unique, so sorting alone canonicalizes it. */

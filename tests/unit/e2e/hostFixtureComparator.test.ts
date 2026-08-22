@@ -51,8 +51,16 @@ function asRecord(fixture: HostFixture): Record<string, unknown> {
     return fixture as unknown as Record<string, unknown>;
 }
 
-/** Produces a value that differs from `value` while keeping its shape. */
-function mutateValue(value: unknown): unknown {
+/**
+ * Produces a value that differs from `value` while keeping its shape.
+ *
+ * `styleCssText` is mutated by rewriting every token's VALUE rather than by appending, because the
+ * comparator deliberately ignores tokens the second capture adds. Appended text is a mutation the
+ * comparator is supposed to survive, so using it here would make the executable-inventory ratchet
+ * below report "this field is never compared" about a field that is.
+ */
+function mutateValue(value: unknown, field: string): unknown {
+    if (field === "styleCssText") return (value as string).replace(/:[^;]*/g, ": mutated");
     if (typeof value === "number") return value + 1;
     if (typeof value === "string") return `${value}-mutated`;
     if (Array.isArray(value)) return [...value, "mutated"];
@@ -67,8 +75,16 @@ function withMutatedField(
     const sectionValue = asRecord(fixture)[section] as Record<string, unknown>;
     return {
         ...asRecord(fixture),
-        [section]: { ...sectionValue, [field]: mutateValue(sectionValue[field]) },
+        [section]: { ...sectionValue, [field]: mutateValue(sectionValue[field], field) },
     } as unknown as HostFixture;
+}
+
+/** Replaces only the theme-token block, leaving every other field of the fixture identical. */
+function withStyleCssText(fixture: HostFixture, styleCssText: string): HostFixture {
+    return {
+        ...fixture,
+        documentElement: { ...fixture.documentElement, styleCssText },
+    };
 }
 
 describe("compareHostFixtures", () => {
@@ -115,23 +131,88 @@ describe("compareHostFixtures", () => {
         ]);
     });
 
-    it("reports a changed custom-property block with both values", () => {
-        const committed = createFixture();
-        const captured: HostFixture = {
-            ...committed,
-            documentElement: {
-                ...committed.documentElement,
-                styleCssText: "--vscode-editor-background: #ffffff;",
-            },
-        };
+    it("reports a redefined theme token, naming only that token", () => {
+        const committed = withStyleCssText(
+            createFixture(),
+            "--vscode-editor-background: #000000; --vscode-surface-border: rgba(204, 204, 204, 0.15);",
+        );
+        const captured = withStyleCssText(
+            createFixture(),
+            "--vscode-editor-background: #000000; --vscode-surface-border: #252526;",
+        );
 
         expect(compareHostFixtures(committed, captured)).toEqual([
             {
                 field: "documentElement.styleCssText",
-                committedValue: "--vscode-editor-background: #000000;",
-                capturedValue: "--vscode-editor-background: #ffffff;",
+                committedValue: { "--vscode-surface-border": "rgba(204, 204, 204, 0.15)" },
+                capturedValue: { "--vscode-surface-border": "#252526" },
             },
         ]);
+    });
+
+    it("reports a theme token the second build dropped", () => {
+        const committed = withStyleCssText(
+            createFixture(),
+            "--vscode-editor-background: #000000; --vscode-surface-border: #252526;",
+        );
+        const captured = withStyleCssText(createFixture(), "--vscode-editor-background: #000000;");
+
+        // The captured side carries no key for the dropped token -- that absence is the removal,
+        // and it is what distinguishes this from a token that merely changed value.
+        expect(compareHostFixtures(committed, captured)).toEqual([
+            {
+                field: "documentElement.styleCssText",
+                committedValue: { "--vscode-surface-border": "#252526" },
+                capturedValue: {},
+            },
+        ]);
+    });
+
+    // The failure this whole comparison exists to stop reading as noise: VS Code Insiders added 25
+    // theme tokens IntelliGit reads none of, and the exact-string comparison called it a
+    // difference every night for a week.
+    it("ignores theme tokens the second build added", () => {
+        const committed = createFixture();
+        const captured = withStyleCssText(
+            committed,
+            "--vscode-editor-background: #000000; " +
+                "--vscode-modernTab-hoverBackground: #2a2d2e; " +
+                "--vscode-chat-findMatchBackground: rgba(234, 92, 0, 0.67);",
+        );
+
+        expect(compareHostFixtures(committed, captured)).toEqual([]);
+    });
+
+    it("still reports a dropped token when additions arrive in the same block", () => {
+        const committed = withStyleCssText(
+            createFixture(),
+            "--vscode-editor-background: #000000; --vscode-surface-border: #252526;",
+        );
+        const captured = withStyleCssText(
+            createFixture(),
+            "--vscode-editor-background: #000000; --vscode-modernTab-hoverBackground: #2a2d2e;",
+        );
+
+        expect(compareHostFixtures(committed, captured)).toEqual([
+            {
+                field: "documentElement.styleCssText",
+                committedValue: { "--vscode-surface-border": "#252526" },
+                capturedValue: {},
+            },
+        ]);
+    });
+
+    it("compares tokens by name rather than by block order", () => {
+        const committed = withStyleCssText(
+            createFixture(),
+            "--vscode-editor-background: #000000; --vscode-surface-border: #252526;",
+        );
+        const captured = withStyleCssText(
+            createFixture(),
+            "--vscode-surface-border: #252526; --vscode-editor-background: #000000;",
+        );
+
+        expect(compareHostFixtures(committed, captured)).toEqual([]);
     });
 
     it("reports a changed dataset value with both values", () => {
