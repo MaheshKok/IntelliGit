@@ -137,7 +137,7 @@ Mode: phase-lane (thin conductor + one fresh opus lane per phase; lanes strictly
 | P1    | Phase 1 (2.1–2.6): computeDiffSegments, DiffViewerApp, bundle, panel, protocol, l10n, tests    | accepted |
 | P2a   | Phase 2 (3.1-3.3): openUnifiedDiff funnel, side loader, budget measurement                     | **accepted 0399aea9** |
 | P2b-i | Phase 2 (3.5): generation-bound sessions, frozen snapshots, fallback CAS                       | **accepted 23a713e1** |
-| P2b-ii| Phase 2 (3.6): root-keyed change event, watcher refcounts, live refresh, loadError       | **accepted PENDINGHASH** |
+| P2b-ii| Phase 2 (3.6): root-keyed change event, watcher refcounts, live refresh, loadError       | **accepted 0ede98f1** |
 | P2c   | Phase 2 (3.4, 3.7, 3.8): call-site rewires, ride-along integration, full gate battery          | pending |
 | P4    | Phase 4: editable working-tree pane via CustomTextEditorProvider                     | pending |
 | P5    | Phase 5: find-in-diff via enableFindWidget + DOM-completeness gate                             | pending |
@@ -1222,4 +1222,4 @@ gates they were to run and report.
 **Rounds to acceptance: 3** (build + 2 fixes), plus two root-authored test corrections. luna
 needed 2 on P2b-i, plus one root correction.
 
-**Commit.** `PENDINGHASH` (P2b-ii, spec 3.6).
+**Commit.** `0ede98f1` (P2b-ii, spec 3.6).
