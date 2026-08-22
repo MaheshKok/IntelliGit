@@ -105,9 +105,34 @@ export function isShikiReady(): boolean {
     return highlighterReady && highlighter !== null;
 }
 
+// Throwaway line tokenized once per language before any real one. Shiki's FIRST
+// `codeToTokensBase` call against a freshly built grammar can classify differently
+// from every later call on identical input: measured over 8 identical container
+// mounts, `const hd0 = 0;` came back as a single `0;` numeric token -- the
+// semicolon swallowed into the literal and painted number-green -- on 3 of them,
+// and as `0` + `;` on the other 5. Two things make that worse than a cosmetic
+// flicker. `tokenCache` below memoizes per line, so one cold call poisons that
+// line for the rest of the session; and whichever line happens to be tokenized
+// first varies, so the damage lands somewhere different every run. Burning the
+// cold call on a line nobody sees makes the render a function of its input again.
+const WARMUP_LINE = "const a = 0;";
+const warmedLangs = new Set<string>();
+
+function warmLang(lang: string, theme: ShikiTheme): void {
+    if (warmedLangs.has(lang) || !highlighter) return;
+    warmedLangs.add(lang);
+    try {
+        highlighter.codeToTokensBase(WARMUP_LINE, { lang, theme });
+    } catch {
+        // Best-effort: a grammar that cannot tokenize the warm-up line still
+        // tokenizes real ones, and a warm-up must never break highlighting.
+    }
+}
+
 /** Tokenize one line with Shiki, returning null when unavailable or unsupported. */
 export function highlightLine(line: string, lang: string, theme: ShikiTheme): ShikiToken[] | null {
     if (!isShikiReady() || !highlighter) return null;
+    warmLang(lang, theme);
 
     const cacheKey = `${line}|${lang}|${theme}`;
     if (tokenCache.has(cacheKey)) return tokenCache.get(cacheKey) ?? null;
