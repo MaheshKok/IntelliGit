@@ -12,6 +12,7 @@ import { promisify } from "node:util";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createFixtureWorkspace, type FixtureWorkspace } from "../../fixtures/repo/harness";
+import { gitSpellingOf } from "../../helpers/gitPathSpelling";
 import { git } from "./gitTestHelpers";
 
 const FIXTURE_TIMEOUT_MS = 30_000;
@@ -282,11 +283,9 @@ describe("FixtureWorkspace resource cleanup", () => {
                 true,
             );
             expect(
-                (
-                    await git(workspace.root, ["worktree", "list", "--porcelain"], workspace.env)
-                ).includes(linkedWorktreePath),
+                await git(workspace.root, ["worktree", "list", "--porcelain"], workspace.env),
                 "git reported the external linked worktree before cleanup",
-            ).toBe(true);
+            ).toContain(gitSpellingOf(linkedWorktreePath));
 
             rmMock.mockImplementation(async (target, options) => {
                 if (target === linkedWorktreePath || target === linkedWorktreeRealPath) {

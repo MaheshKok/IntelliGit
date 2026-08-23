@@ -331,3 +331,175 @@ describe("buildPlaceholderReplacements -- the native resolver's canonical spelli
         expect(normalizeString(asked, replacements)).toBe("<ROOT>");
     });
 });
+
+/**
+ * git does not store a local remote as a plain path -- it stores a `file://` URL, and it
+ * percent-encodes the path inside it. On the Windows leg of #223 that turned the 8.3 short name
+ * `RUNNER~1` into `RUNNER%7E1`, a fourth spelling none of the three needles above matched. The
+ * whole URL therefore survived normalization, so two rehydrated copies differed by their random
+ * workspace segment and `gitDirState...config.digest` mismatched (run 32650798689).
+ *
+ * These assertions use the exact bytes observed in that run's failure output, not a reconstruction.
+ */
+describe("buildPlaceholderReplacements -- git's percent-encoded file:// remote URL (#223)", () => {
+    // What `os.tmpdir()` returns on a GitHub Actions Windows runner.
+    const NODE_SPELLING = "C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\ig-abc\\workspace";
+    // What git wrote into `.git/config` for a local remote underneath it.
+    const GIT_CONFIG_URL =
+        "file:///C:/Users/RUNNER%7E1/AppData/Local/Temp/ig-abc/workspace/origin.git";
+
+    const replacementsForWindows = (root: string) =>
+        buildPlaceholderReplacements({ root, originRoot: "", profileDir: "" }, "\\");
+
+    it("collapses the URL form, where `~` reaches .git/config as %7E", () => {
+        expect(
+            normalizeString(GIT_CONFIG_URL, replacementsForWindows(NODE_SPELLING)),
+            "the percent-encoded 8.3 short name must redact like every other spelling",
+        ).toBe("file:///<ROOT>/origin.git");
+    });
+
+    it("encodes a space too, so a root under `C:\\Users\\First Last` still redacts", () => {
+        expect(
+            normalizeString(
+                "file:///C:/Users/First%20Last/Temp/ig-abc/workspace/origin.git",
+                replacementsForWindows("C:\\Users\\First Last\\Temp\\ig-abc\\workspace"),
+            ),
+        ).toBe("file:///<ROOT>/origin.git");
+    });
+
+    it("leaves an unrelated percent sequence alone", () => {
+        // Ratchet: the encoder must widen the needle set, never turn `%7E` into a wildcard that
+        // redacts some other path that merely happens to contain one.
+        expect(
+            normalizeString(
+                "file:///C:/Somewhere/Else/RUNNER%7E1/thing",
+                replacementsForWindows(NODE_SPELLING),
+            ),
+        ).toBe("file:///C:/Somewhere/Else/RUNNER%7E1/thing");
+    });
+});
+
+/**
+ * A snapshot is routinely normalized AFTER the directory it describes is gone: `restoreFidelity`
+ * captures a workspace, restores over it, and then compares the two normalized snapshots. By
+ * comparison time the pre-restore workspace no longer exists, so `realpath` throws for it.
+ *
+ * Falling back to the literal candidate there silently drops the long-name spelling -- the one
+ * spelling git's own output uses -- so the pre-restore side kept a real absolute path while the
+ * post-restore side (whose directory still existed) redacted cleanly. Observed in run 32650798689
+ * as `"path": "C:/Users/runneradmin/..."` on one side and `"path": "<ROOT>"` on the other.
+ */
+describe("buildPlaceholderReplacements -- a root whose directory is already gone (#223)", () => {
+    let scratch: string | undefined;
+
+    afterEach(async () => {
+        if (scratch) await rm(scratch, { recursive: true, force: true });
+        scratch = undefined;
+    });
+
+    it("still recovers the canonical spelling from the ancestors that survive", async () => {
+        scratch = await mkdtemp(path.join(tmpdir(), "intelligit-deleted-root-"));
+        await mkdir(path.join(scratch, "FooBar"), { recursive: true });
+
+        // The leaf is never created: this is the shape of a workspace torn down before its
+        // snapshot is normalized.
+        const asked = path.join(scratch, "foobar", "workspace");
+
+        let canonicalAncestor: string;
+        try {
+            canonicalAncestor = realpathSync.native(path.join(scratch, "foobar"));
+        } catch {
+            // Case-sensitive filesystem: `foobar` does not exist at all, so there is no canonical
+            // spelling distinct from the asked-for one and nothing to prove here.
+            return;
+        }
+        expect(canonicalAncestor.endsWith("FooBar")).toBe(true);
+
+        const gitWouldReport = path.join(canonicalAncestor, "workspace");
+        // Vacuity guard: if these two agreed, the test would pass without exercising the walk-up.
+        expect(gitWouldReport).not.toBe(asked);
+
+        const replacements = buildPlaceholderReplacements({
+            root: asked,
+            originRoot: "",
+            profileDir: "",
+        });
+
+        expect(
+            normalizeString(gitWouldReport, replacements),
+            "a torn-down workspace must still contribute its canonical prefix",
+        ).toBe("<ROOT>");
+        expect(normalizeString(asked, replacements)).toBe("<ROOT>");
+    });
+
+    it("never grafts this host's cwd onto a path written in the other platform's separator", () => {
+        // POSIX `dirname` finds no `/` in a Windows path and returns ".". Resolving that would
+        // succeed and prepend the CWD, producing needles that describe no real location -- and
+        // redact nothing, since the real path would no longer be among them.
+        const foreign = "C:\\Users\\RUNNER~1\\Temp\\ig-abc\\workspace";
+        const replacements = buildPlaceholderReplacements(
+            { root: foreign, originRoot: "", profileDir: "" },
+            "\\",
+        );
+
+        for (const [needle] of replacements) {
+            expect(needle, `needle "${needle}" must not carry this host's cwd`).not.toContain(
+                process.cwd(),
+            );
+        }
+        expect(normalizeString(foreign, replacements)).toBe("<ROOT>");
+    });
+});
+
+/**
+ * A captured artifact is not always raw text. The shelf journal (`journals/<SHELF-ID>.json`) holds
+ * absolute paths inside a JSON string, so on Windows every separator arrives DOUBLED and no
+ * single-backslash needle can match it. Run 32650798689 left both `pathProgress...target` (the 8.3
+ * spelling) and `.recoveryPath` (the long spelling) fully intact in the journal, carrying the
+ * random workspace segment that made two independently seeded copies compare unequal.
+ */
+describe("buildPlaceholderReplacements -- paths JSON-escaped inside a captured artifact (#223)", () => {
+    const NODE_SPELLING = "C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\ig-abc\\copy\\workspace";
+
+    it("redacts a Windows path stored in a JSON string, where every separator is doubled", () => {
+        const replacements = buildPlaceholderReplacements(
+            { root: NODE_SPELLING, originRoot: "", profileDir: "" },
+            "\\",
+        );
+
+        // Exactly how the journal stores it.
+        const journal = JSON.stringify({ target: `${NODE_SPELLING}\\untracked.txt` });
+        // Vacuity guard: if the separators were not doubled, this would prove nothing.
+        expect(journal).toContain("C:\\\\Users\\\\RUNNER~1");
+
+        expect(
+            normalizeString(journal, replacements),
+            "a path inside a JSON string must redact like one in raw text",
+        ).toBe('{"target":"<ROOT>\\\\untracked.txt"}');
+    });
+
+    it("still redacts the long-name spelling the same journal uses for recoveryPath", () => {
+        const longName = "C:\\Users\\runneradmin\\AppData\\Local\\Temp\\ig-abc\\copy\\workspace";
+        const replacements = buildPlaceholderReplacements(
+            { root: longName, originRoot: "", profileDir: "" },
+            "\\",
+        );
+
+        expect(
+            normalizeString(JSON.stringify({ recoveryPath: `${longName}\\.git` }), replacements),
+        ).toBe('{"recoveryPath":"<ROOT>\\\\.git"}');
+    });
+
+    it("does not fabricate a doubled needle from a POSIX filename containing a backslash", () => {
+        const replacements = buildPlaceholderReplacements(
+            { root: "/tmp/weird\\name", originRoot: "", profileDir: "" },
+            "/",
+        );
+
+        for (const [needle] of replacements) {
+            expect(needle, `needle "${needle}" doubled a legal POSIX backslash`).not.toContain(
+                "\\\\",
+            );
+        }
+    });
+});
