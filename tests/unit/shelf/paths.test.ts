@@ -62,8 +62,16 @@ describe("shelf paths", () => {
         const artifact = await writePrivateShelfFile(paths, "objects/content", "payload");
 
         expect(paths.root).toBe(path.join(overridePath, paths.repoId));
-        expect((await stat(paths.root)).mode & 0o777).toBe(0o700);
-        expect((await stat(artifact)).mode & 0o777).toBe(0o600);
+        // Windows does not implement POSIX permission bits: `stat().mode` there reports 0o666 for
+        // any writable file whatever mode `mkdir`/`open` was given, so on that platform this
+        // asserted the OS rather than the code (#223 -- it read `expected 438 to be 448`, i.e.
+        // 0o666 vs 0o700). Privacy there is an ACL property this assertion could never observe.
+        // Narrowed rather than deleted: the POSIX legs still enforce it, and they are the ones
+        // where a regression to a world-readable shelf would be a real disclosure.
+        if (process.platform !== "win32") {
+            expect((await stat(paths.root)).mode & 0o777).toBe(0o700);
+            expect((await stat(artifact)).mode & 0o777).toBe(0o600);
+        }
     });
 
     it("rejects symlinked storage roots and shelf-internal escapes", async () => {

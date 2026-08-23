@@ -8,6 +8,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
+import { gitSpellingOf } from "../../helpers/gitPathSpelling";
 
 import { createFixtureWorkspace, type FixtureWorkspace } from "../../fixtures/repo/harness";
 import { MANIFEST_SCHEMA_VERSION, writeFixtureManifest } from "../../fixtures/repo/manifest";
@@ -88,7 +89,7 @@ describe("Phase 6 step 35 -- workspace isolation", () => {
             expect(
                 worktreeList,
                 "git worktree add must register the outside probe worktree",
-            ).toContain(linkedWorktreePath);
+            ).toContain(gitSpellingOf(linkedWorktreePath));
 
             // Mutation 2: push an older local commit to A's private origin and prove its main ref moved.
             const originMainBefore = await git(

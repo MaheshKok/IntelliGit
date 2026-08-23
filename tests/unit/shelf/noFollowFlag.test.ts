@@ -29,6 +29,16 @@ describe("resolveNoFollowFlag", () => {
         // Vacuity guard. A function that returned 0 everywhere would also pass the assertion above
         // while silently dropping the symlink protection on the platforms that do enforce it.
         const expected = typeof constants.O_NOFOLLOW === "number" ? constants.O_NOFOLLOW : 0;
+        if (expected === 0) {
+            // The host itself does not define O_NOFOLLOW, so there is no real flag to compare
+            // against and the guard below cannot hold. Measured on the Windows leg of #223 (run
+            // 32648506739), where this assertion failed with `expected 0 to be greater than 0` --
+            // which is also the evidence that the original `typeof` guard in `noFollowFlag.ts` was
+            // already returning 0 there, and that O_NOFOLLOW was never the cause of that leg's
+            // EINVAL. The POSIX legs cover the branch below.
+            expect(resolveNoFollowFlag("darwin")).toBe(0);
+            return;
+        }
         expect(expected, "this test host should define O_NOFOLLOW").toBeGreaterThan(0);
         for (const platform of ["darwin", "linux", "freebsd"] as const) {
             expect(resolveNoFollowFlag(platform), platform).toBe(expected);
