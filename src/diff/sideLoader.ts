@@ -10,7 +10,8 @@ import type { ProviderLoadResult, SideSpec } from "./unifiedDiffTypes";
 
 type SideIneligibleReason = "binary" | "invalid-utf8" | "symlink" | "submodule";
 
-interface LoadedDiffSide {
+/** One decoded, viewer-eligible source side. */
+export interface LoadedDiffSide {
     readonly status: "loaded";
     readonly bytes: Uint8Array;
     readonly mode: number | undefined;
@@ -23,6 +24,23 @@ type SideLoadResult =
     | { readonly status: "missing" }
     | { readonly status: "over-budget"; readonly size: number }
     | { readonly status: "ineligible"; readonly reason: SideIneligibleReason };
+
+/** A decoded side that can be projected into the viewer, including an absent file. */
+export type LoadableDiffSide = LoadedDiffSide | { readonly status: "missing" };
+
+/** Converts an absent side to the viewer's existing empty-text representation. */
+export function toViewerSide(result: LoadableDiffSide): LoadedDiffSide {
+    if (result.status === "missing") {
+        return {
+            status: "loaded",
+            bytes: new Uint8Array(),
+            mode: undefined,
+            text: "",
+            lineCount: 0,
+        };
+    }
+    return result;
+}
 
 /** Inputs for one bounded side load. */
 export interface SideLoaderOptions {

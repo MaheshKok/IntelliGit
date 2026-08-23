@@ -63,6 +63,7 @@ const mocks = vi.hoisted(() => {
         buildCommitFilePatch: vi.fn(),
         runWithNotificationProgress: vi.fn(),
         runBinary: vi.fn(),
+        openEditableDiff: vi.fn(),
         subscribeToRepositoryWorkingTreeChanges: vi.fn(),
     };
 });
@@ -127,6 +128,9 @@ vi.mock("../../../src/services/repositoryChangeEvents", () => ({
     subscribeToRepositoryWorkingTreeChanges: mocks.subscribeToRepositoryWorkingTreeChanges,
     publishRepositoryWorkingTreeChange: vi.fn(),
 }));
+vi.mock("../../../src/diff/editableDiffOpener", () => ({
+    openEditableDiff: mocks.openEditableDiff,
+}));
 
 import {
     applySelectedCommitFileChange,
@@ -188,6 +192,12 @@ describe("diffService", () => {
         mocks.buildCommitFilePatch.mockResolvedValue("diff --git a/src/a.ts b/src/a.ts\n");
         mocks.runWithNotificationProgress.mockImplementation(
             async (_message: string, task: () => Promise<void>) => task(),
+        );
+        mocks.openEditableDiff.mockImplementation(
+            async (_request: unknown, nativeDelegate: never) =>
+                (nativeDelegate as (token: { isCancellationRequested: boolean }) => Promise<void>)({
+                    isCancellationRequested: false,
+                }),
         );
         // Every ref side the funnel probes reports over budget, so openUnifiedDiff always
         // declines to the native delegate -- see the vi.mock comment above for why.
@@ -276,6 +286,7 @@ describe("diffService", () => {
         ];
         expect(JSON.parse(leftUri.query).ref).toBe(EMPTY_TREE_HASH.slice(0, 8));
         expect(JSON.parse(rightUri.query).ref).toBe(commitHash.slice(0, 8));
+        expect(mocks.openEditableDiff).not.toHaveBeenCalled();
     });
 
     it("uses the selected mainline parent for merge commit file diffs", async () => {
@@ -344,7 +355,7 @@ describe("diffService", () => {
         expect(JSON.parse(leftUri.query).ref).toBe("feature");
     });
 
-    it("routes compareEditorFileWithBranch through the unified diff funnel with a ref side for the branch", async () => {
+    it("opens an editable branch diff with the real file URI on the working-tree side", async () => {
         const gitOps = makeGitOps();
         mocks.showQuickPick.mockImplementationOnce(async (items: Array<{ refName: string }>) =>
             items.find((item) => item.refName === "feature"),
@@ -352,9 +363,15 @@ describe("diffService", () => {
 
         await compareEditorFileWithBranch(mocks.FakeUri.file("/repo/src/a.ts"), "/repo", gitOps);
 
-        expect(mocks.runBinary).toHaveBeenCalledWith(["cat-file", "-s", "feature:src/a.ts"], {
-            maxOutputBytes: 64,
-        });
+        expect(mocks.openEditableDiff).toHaveBeenCalledWith(
+            expect.objectContaining({
+                left: { kind: "ref", ref: "feature" },
+                right: { kind: "worktree" },
+                fileUri: expect.any(mocks.FakeUri),
+            }),
+            expect.any(Function),
+            expect.any(Function),
+        );
     });
 
     it("compares an editor file with a manually entered revision", async () => {
@@ -376,7 +393,7 @@ describe("diffService", () => {
         );
     });
 
-    it("routes compareEditorFileWithRevision through the unified diff funnel with a ref side for the revision", async () => {
+    it("opens an editable revision diff with the real file URI on the working-tree side", async () => {
         const gitOps = makeGitOps();
         mocks.showQuickPick.mockImplementationOnce(
             async (items: Array<{ refName: string }>) => items[items.length - 1],
@@ -385,9 +402,15 @@ describe("diffService", () => {
 
         await compareEditorFileWithRevision(mocks.FakeUri.file("/repo/src/a.ts"), "/repo", gitOps);
 
-        expect(mocks.runBinary).toHaveBeenCalledWith(["cat-file", "-s", "HEAD~1:src/a.ts"], {
-            maxOutputBytes: 64,
-        });
+        expect(mocks.openEditableDiff).toHaveBeenCalledWith(
+            expect.objectContaining({
+                left: { kind: "ref", ref: "HEAD~1" },
+                right: { kind: "worktree" },
+                fileUri: expect.any(mocks.FakeUri),
+            }),
+            expect.any(Function),
+            expect.any(Function),
+        );
     });
 
     it("compares a commit-info file against the local working tree", async () => {
@@ -408,7 +431,7 @@ describe("diffService", () => {
         );
     });
 
-    it("routes compareCommitInfoFileWithLocal through the unified diff funnel with a ref side for the commit", async () => {
+    it("opens an editable commit-info diff with the real file URI on the working-tree side", async () => {
         const gitOps = makeGitOps();
 
         await compareCommitInfoFileWithLocal(
@@ -417,9 +440,14 @@ describe("diffService", () => {
             gitOps,
         );
 
-        expect(mocks.runBinary).toHaveBeenCalledWith(
-            ["cat-file", "-s", "abcdef1234567890:src/a.ts"],
-            { maxOutputBytes: 64 },
+        expect(mocks.openEditableDiff).toHaveBeenCalledWith(
+            expect.objectContaining({
+                left: { kind: "ref", ref: "abcdef1234567890" },
+                right: { kind: "worktree" },
+                fileUri: expect.any(mocks.FakeUri),
+            }),
+            expect.any(Function),
+            expect.any(Function),
         );
     });
 

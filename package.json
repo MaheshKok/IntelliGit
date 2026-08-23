@@ -85,6 +85,18 @@
                 }
             }
         ],
+        "customEditors": [
+            {
+                "viewType": "intelligit.editableDiff",
+                "displayName": "%intelligit%",
+                "selector": [
+                    {
+                        "filenamePattern": "*"
+                    }
+                ],
+                "priority": "option"
+            }
+        ],
         "viewsContainers": {
             "activitybar": [
                 {

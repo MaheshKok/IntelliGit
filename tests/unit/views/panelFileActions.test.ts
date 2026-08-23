@@ -42,11 +42,17 @@ const createReadonlyDiffUri = vi.hoisted(() =>
 // stays valid unchanged, while dedicated tests assert on openUnifiedDiffMock's own call
 // arguments to prove the funnel is actually being routed to with the correct SideSpec.
 const openUnifiedDiffMock = vi.hoisted(() => vi.fn());
+const openEditableDiffMock = vi.hoisted(() => vi.fn());
+const beginEditableDiffSessionMock = vi.hoisted(() => vi.fn());
 
 vi.mock("vscode", () => vscodeMock);
 vi.mock("../../../src/services/diffService", () => ({
+    beginEditableDiffSession: beginEditableDiffSessionMock,
     createReadonlyDiffUri,
     openUnifiedDiff: openUnifiedDiffMock,
+}));
+vi.mock("../../../src/diff/editableDiffOpener", () => ({
+    openEditableDiff: openEditableDiffMock,
 }));
 
 import {
@@ -119,6 +125,11 @@ beforeEach(() => {
     // Runs before every nested describe's own beforeEach (and its vi.clearAllMocks(), which
     // clears call history but not this implementation) so the decline default is always active.
     openUnifiedDiffMock.mockImplementation(async (_request: unknown, nativeDelegate: never) =>
+        (nativeDelegate as (token: ReturnType<typeof fakeCancellationToken>) => Promise<void>)(
+            fakeCancellationToken(),
+        ),
+    );
+    openEditableDiffMock.mockImplementation(async (_request: unknown, nativeDelegate: never) =>
         (nativeDelegate as (token: ReturnType<typeof fakeCancellationToken>) => Promise<void>)(
             fakeCancellationToken(),
         ),
@@ -483,15 +494,17 @@ describe("showDiffFromPanel", () => {
         return { getWorkspaceRoot: () => ({ scheme: "file", path: "/repo" }) };
     }
 
-    it("routes through the unified diff funnel comparing HEAD to the working tree, never git.openChange's index-aware pair", async () => {
+    it("opens an editable diff comparing HEAD to the working tree, never git.openChange's index-aware pair", async () => {
         await showDiffFromPanel(deps(), "src/a.ts");
 
-        expect(openUnifiedDiffMock).toHaveBeenCalledWith(
+        expect(openEditableDiffMock).toHaveBeenCalledWith(
             expect.objectContaining({
                 path: "src/a.ts",
                 left: { kind: "ref", ref: "HEAD" },
                 right: { kind: "worktree" },
+                fileUri: expect.objectContaining({ path: "src/a.ts" }),
             }),
+            expect.any(Function),
             expect.any(Function),
         );
     });

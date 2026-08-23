@@ -293,3 +293,51 @@
     color: var(--vscode-errorForeground, #f48771);
     text-align: center;
 }
+
+/* The same message as a strip in the header stack, for a refresh that failed while a diff is
+   already on screen. It reports ABOVE the stale diff rather than in place of it: replacing the
+   surface would unmount a document-backed pane mid-edit and take the user's editing surface
+   away for as long as the error stood. Left-aligned and full width because it is a header row
+   here, not the centred empty state the base rule is written for. */
+.diff-error-banner {
+    max-width: none;
+    flex-shrink: 0;
+    padding: 4px 10px;
+    border-bottom: 1px solid var(--diff-border);
+    background: var(--diff-header-bg);
+    font-size: 11px;
+    text-align: left;
+}
+
+/* The height is set inline from the canonical extent — a percentage would resolve against a grid
+   row this pane is the only occupant of whenever the opposite side renders nothing (an added
+   file). `min-height` is the floor for the one case canonical cannot express: an empty file has
+   no segments, so its canonical extent is 0 and the pane would fall back to a textarea's two-row
+   default in an otherwise blank viewer.
+   The padding matches `.code-line` exactly rather than being chosen for looks. Vertical padding
+   would offset every row against its counterpart in the opposite pane and against the ribbons,
+   which are drawn from pane offsets that are 0-based multiples of the line height; it would also
+   eat into a border-box height that is exactly `lines x line-height`, pushing the last rows into
+   a scrollbar of the textarea's own inside a viewport that clips it. */
+.diff-edit-textarea {
+    box-sizing: border-box;
+    width: 100%;
+    min-height: var(--diff-viewport-h, 0px);
+    /* The pane is sized to hold every line box it renders, so it must never become a scroll
+       container of its own: the scroll driver translates the column and never the textarea, so a
+       scroll here is invisible to it and shifts every row against the opposite pane, the line
+       numbers, and the ribbons with nothing to put them back. `hidden` on both axes, not just
+       `overflow-y`: a classic horizontal scrollbar takes its ~15px out of a border-box height
+       that is exactly lines x line-height, which re-creates the vertical overflow it was
+       supposed to be independent of. Horizontal reach is the shared scrollbar's job (P4c). */
+    overflow: hidden;
+    resize: none;
+    border: 0;
+    outline-offset: -2px;
+    padding: 0 9px;
+    color: var(--diff-editor-fg);
+    background: var(--diff-editor-bg);
+    font: inherit;
+    line-height: 20px;
+    white-space: pre;
+}

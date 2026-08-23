@@ -13,8 +13,13 @@ import { getErrorMessage } from "../utils/errors";
 import { assertNumber, assertRepoPathArray, assertString } from "./messageValidation";
 import type { IconThemeService } from "./shared/IconThemeService";
 import { showTimedInformationMessage } from "../utils/notifications";
-import { createReadonlyDiffUri, openUnifiedDiff } from "../services/diffService";
+import {
+    beginEditableDiffSession,
+    createReadonlyDiffUri,
+    openUnifiedDiff,
+} from "../services/diffService";
 import type { SideSpec } from "../services/diffService";
+import { openEditableDiff } from "../diff/editableDiffOpener";
 import { mapWithConcurrency } from "../utils/concurrency";
 
 type StashChange = [vscode.Uri, vscode.Uri, vscode.Uri];
@@ -159,7 +164,7 @@ export async function showDiffFromPanel(
     const workspaceRoot = deps.getWorkspaceRoot();
     const uri = vscode.Uri.joinPath(workspaceRoot, filePath);
 
-    await openUnifiedDiff(
+    await openEditableDiff(
         {
             repoRoot: workspaceRoot.fsPath,
             path: filePath,
@@ -167,11 +172,13 @@ export async function showDiffFromPanel(
             right: { kind: "worktree" },
             languageId: "",
             title: vscode.l10n.t("{path} (HEAD ↔ Working Tree)", { path: filePath }),
+            fileUri: uri,
         },
         async (cancellationToken) => {
             if (cancellationToken.isCancellationRequested) return;
             await vscode.commands.executeCommand("git.openChange", uri);
         },
+        beginEditableDiffSession,
     );
 }
 

@@ -80,6 +80,116 @@ function DiffPaneBlock({
     );
 }
 
+/** Renders the live document as an input while keeping all edit authority in the host. */
+function EditableDiffPane({
+    side,
+    label,
+    text,
+    documentVersion,
+    reseedToken,
+    canonicalTotalPx,
+    onEdit,
+}: {
+    side: DiffPane;
+    label: string;
+    text: string;
+    documentVersion: number;
+    reseedToken: number;
+    canonicalTotalPx: number;
+    onEdit: (
+        currentText: string,
+        nextText: string,
+        baseVersion: number,
+        baseReseedToken: number,
+    ) => void;
+}): React.ReactElement {
+    // The token rides with the draft rather than being read live at keystroke time, so the
+    // delta reports the reseed the measured text actually came from. Reading the current prop
+    // would stamp a delta measured against the old draft with a token the pane has not
+    // adopted yet, which is exactly the staleness the host uses it to detect.
+    const [draft, setDraft] = useState({ text, version: documentVersion, token: reseedToken });
+    const textareaRef = useRef<HTMLTextAreaElement>(null);
+    const carryCaret = useRef<{ start: number; end: number } | null>(null);
+    const hostText = useRef({ text, version: documentVersion, token: reseedToken });
+
+    // Mirrors the host's latest payload for the reseed effect below to read WITHOUT
+    // depending on it. Written in an effect rather than during render because a render
+    // React discards still runs its body, and the discarded values would be what a later
+    // reseed restored. Declared first, so it has already run when the reseed effect fires
+    // in the same commit.
+    useEffect(() => {
+        hostText.current = { text, version: documentVersion, token: reseedToken };
+    });
+
+    // Reseed only when the host says the text moved for a reason we did not cause. The
+    // host echoes one payload per delta it applies, so reseeding on every payload would
+    // roll the pane back to whichever edit has finished round-tripping and drop the
+    // keystrokes typed since — the version numbers alone cannot tell the two apart.
+    useEffect(() => {
+        const node = textareaRef.current;
+        if (node) carryCaret.current = { start: node.selectionStart, end: node.selectionEnd };
+        setDraft(hostText.current);
+    }, [reseedToken]);
+
+    // Rewriting a controlled textarea's value collapses the selection to the end, so an
+    // external write would drop the caret at EOF and land the next keystroke there.
+    useEffect(() => {
+        const node = textareaRef.current;
+        const caret = carryCaret.current;
+        if (!node || !caret) return;
+        carryCaret.current = null;
+        const end = node.value.length;
+        node.setSelectionRange(Math.min(caret.start, end), Math.min(caret.end, end));
+    }, [draft]);
+
+    // A textarea renders one line box per "\n"-separated element, including the empty one that
+    // follows a terminal newline — which `splitText` deliberately emits no row for, since it
+    // treats that newline as metadata. Sizing from the segment model alone therefore leaves the
+    // pane exactly one line short of its own value for nearly every real file. Measured from
+    // `draft` rather than the `text` prop so the height tracks the edit in flight instead of the
+    // host's last echo, which also covers a draft that has outgrown the last computed segments.
+    const contentPx = draft.text.split("\n").length * LINE_HEIGHT_PX;
+
+    return (
+        <textarea
+            ref={textareaRef}
+            // The pane carries the canonical extent itself rather than inheriting a height from
+            // the grid row. This pane REPLACES the segment stack, and a textarea has no `rows`
+            // here and never grows with its value, so the row is sized by whatever the opposite
+            // pane renders — which for an added file is one one-sided segment, no rows, and no
+            // height at all. Canonical is the right number in every case, not just that one: it
+            // is the per-segment max of the two sides, so it is never below the opposite pane's
+            // own extent, and it is the same number the scroll spacer declares.
+            // `height`, not `min-height`: an empty file has no segments at all, so canonical is
+            // 0, and the CSS floors the pane at one viewport so it never collapses to a
+            // textarea's two-row default.
+            style={{ height: Math.max(canonicalTotalPx, contentPx) }}
+            className="diff-edit-textarea"
+            data-testid={`diff-pane-${side}-editable`}
+            aria-label={label}
+            spellCheck={false}
+            value={draft.text}
+            onChange={(event) => {
+                const nextText = event.currentTarget.value;
+                // This render is showing a draft the host has already replaced: the reseed
+                // payload has been committed (it is in `reseedToken`) but the passive effect
+                // that adopts it into the draft has not produced a commit yet. React reads
+                // `onChange` from the latest COMMITTED render, so a keystroke landing in that
+                // window is handled by this stale closure. Sending its delta is pointless — the
+                // host drops anything stamped with a superseded token — and the `setDraft`
+                // below is actively harmful: it would land after the adopting `setDraft` and
+                // last-write-wins would pin the draft on the dead token. `reseedToken` never
+                // changes again, so the effect would never re-fire and every later keystroke
+                // would be dropped in silence. Drop this one instead; the reseed is what the
+                // pane is about to show anyway.
+                if (draft.token !== reseedToken) return;
+                onEdit(draft.text, nextText, draft.version, draft.token);
+                setDraft({ text: nextText, version: draft.version + 1, token: draft.token });
+            }}
+        />
+    );
+}
+
 /**
  * Renders one connector ribbon per changed segment. Paths carry no geometry
  * here — the scroll driver sets each path's `d` in its rAF, in viewport pixels,
@@ -165,15 +275,42 @@ export function App(): React.ReactElement {
         });
     }, [segments]);
 
-    const paneLines = useMemo<SegmentPaneLines<DiffPane>[]>(
-        () =>
-            renderedSegments.map((item) => ({
-                paneLines: item.paneLines,
-                conflict: item.segment.type === "changed",
-                id: item.segment.type === "changed" ? item.index : undefined,
-            })),
-        [renderedSegments],
-    );
+    const paneLines = useMemo<SegmentPaneLines<DiffPane>[]>(() => {
+        const rows = renderedSegments.map((item) => ({
+            paneLines: item.paneLines,
+            conflict: item.segment.type === "changed",
+            id: item.segment.type === "changed" ? item.index : undefined,
+        }));
+        const pane = data?.editablePane;
+        const text = data?.editableText;
+        if (!pane || text === undefined || rows.length === 0) return rows;
+
+        // The editable pane is a `<textarea>`, and it does not render the segment model — it
+        // renders its own value, one line box per "\n"-separated element. `splitText` emits no
+        // row for a terminal newline, so for nearly every real file the textarea is one box
+        // taller than the segments say. Sizing only the pane to that (which it does) would put
+        // the extra box outside every reachable scroll position: `paneTotalPx` and the spacer
+        // are both built from these counts, `clampOffset` stops the column at
+        // `paneTotalPx - viewport`, and `.diff-viewport` clips whatever is past it. So the
+        // deficit belongs here, where the scroll range, the spacer, and the ribbon offsets are
+        // all derived from one number.
+        //
+        // Derived as a difference rather than special-cased as "+1 for a terminal newline":
+        // the two counters can disagree for more than one reason, and the pane must never be
+        // the shorter of the two whatever the reason is. `editableText` is LF-normalized
+        // host-side, so this counts the same units the textarea lays out.
+        const boxes = text.split("\n").length;
+        const counted = rows.reduce((sum, row) => sum + row.paneLines[pane], 0);
+        const deficit = Math.max(0, boxes - counted);
+        if (deficit === 0) return rows;
+
+        const last = rows[rows.length - 1];
+        rows[rows.length - 1] = {
+            ...last,
+            paneLines: { ...last.paneLines, [pane]: last.paneLines[pane] + deficit },
+        };
+        return rows;
+    }, [renderedSegments, data?.editablePane, data?.editableText]);
     const layout = useMemo(() => buildVerticalLayout(paneLines, DIFF_PANES), [paneLines]);
     layoutRef.current = layout;
     const ribbonIndices = useMemo(
@@ -328,6 +465,52 @@ export function App(): React.ReactElement {
         vscode.postMessage({ type: "setIgnoreMode", mode });
     }, [ignoreMode, vscode]);
 
+    const handleEdit = useCallback(
+        (currentText: string, nextText: string, baseVersion: number, baseReseedToken: number) => {
+            if (!data?.editablePane) return;
+            let startOffset = 0;
+            while (
+                startOffset < currentText.length &&
+                startOffset < nextText.length &&
+                currentText[startOffset] === nextText[startOffset]
+            ) {
+                startOffset++;
+            }
+            let currentEnd = currentText.length;
+            let nextEnd = nextText.length;
+            while (
+                currentEnd > startOffset &&
+                nextEnd > startOffset &&
+                currentText[currentEnd - 1] === nextText[nextEnd - 1]
+            ) {
+                currentEnd--;
+                nextEnd--;
+            }
+            // Both scans compare UTF-16 code units, so either can stop between the halves of
+            // a surrogate pair -- two emoji in the same 1024-point block share a high
+            // surrogate. That emits a lone surrogate over a range bisecting a character.
+            // Step each boundary back onto a code-point edge.
+            const lead = currentText.charCodeAt(startOffset - 1);
+            if (startOffset > 0 && lead >= 0xd800 && lead <= 0xdbff) startOffset--;
+            const tail = currentText.charCodeAt(currentEnd);
+            if (tail >= 0xdc00 && tail <= 0xdfff) {
+                currentEnd++;
+                nextEnd++;
+            }
+            vscode.postMessage({
+                type: "editText",
+                delta: {
+                    baseVersion,
+                    baseReseedToken,
+                    startOffset,
+                    endOffset: currentEnd,
+                    text: nextText.slice(startOffset, nextEnd),
+                },
+            });
+        },
+        [data?.editablePane, vscode],
+    );
+
     useEffect(() => {
         const handler = (event: MessageEvent<InboundMessage>) => {
             if (event.data.type === "setDiffData") {
@@ -395,9 +578,10 @@ export function App(): React.ReactElement {
 
     // Only a failure with nothing already on screen takes the whole surface. The host
     // reports a refresh failure while deliberately retaining the snapshot it already
-    // posted, so the diff still rendered is valid and remains the best available answer;
-    // replacing it would discard that and leave the reader with an error and nothing to
-    // read, with nothing guaranteeing a later refresh arrives to clear it.
+    // posted, so the diff still rendered is valid and remains the best available answer.
+    // Replacing it would discard that, and once a pane is document-backed it would also
+    // unmount the user's editing surface mid-edit, for as long as the error stands — with
+    // nothing guaranteeing a later refresh arrives to clear it.
     if (error && !data) {
         return (
             <div className="diff-core diff-viewer diff-loading">
@@ -480,16 +664,30 @@ export function App(): React.ReactElement {
                                     className="diff-pane diff-pane-left"
                                     data-testid="diff-pane-left"
                                 >
-                                    {renderedSegments.map((item) => (
-                                        <DiffPaneBlock
-                                            key={`left-${item.index}`}
-                                            segment={item.segment}
+                                    {data.editablePane === "left" &&
+                                    data.editableText !== undefined &&
+                                    data.documentVersion !== undefined ? (
+                                        <EditableDiffPane
                                             side="left"
-                                            lineCount={item.paneLines.left}
-                                            lineNumbers={item.lineNumbers.left}
-                                            highlightWords={highlightWords}
+                                            label={data.leftLabel}
+                                            text={data.editableText}
+                                            documentVersion={data.documentVersion}
+                                            reseedToken={data.editableReseedToken ?? 0}
+                                            canonicalTotalPx={layout.canonicalTotalPx}
+                                            onEdit={handleEdit}
                                         />
-                                    ))}
+                                    ) : (
+                                        renderedSegments.map((item) => (
+                                            <DiffPaneBlock
+                                                key={`left-${item.index}`}
+                                                segment={item.segment}
+                                                side="left"
+                                                lineCount={item.paneLines.left}
+                                                lineNumbers={item.lineNumbers.left}
+                                                highlightWords={highlightWords}
+                                            />
+                                        ))
+                                    )}
                                 </div>
                                 <div
                                     ref={(element) => {
@@ -498,16 +696,30 @@ export function App(): React.ReactElement {
                                     className="diff-pane diff-pane-right"
                                     data-testid="diff-pane-right"
                                 >
-                                    {renderedSegments.map((item) => (
-                                        <DiffPaneBlock
-                                            key={`right-${item.index}`}
-                                            segment={item.segment}
+                                    {data.editablePane === "right" &&
+                                    data.editableText !== undefined &&
+                                    data.documentVersion !== undefined ? (
+                                        <EditableDiffPane
                                             side="right"
-                                            lineCount={item.paneLines.right}
-                                            lineNumbers={item.lineNumbers.right}
-                                            highlightWords={highlightWords}
+                                            label={data.rightLabel}
+                                            text={data.editableText}
+                                            documentVersion={data.documentVersion}
+                                            reseedToken={data.editableReseedToken ?? 0}
+                                            canonicalTotalPx={layout.canonicalTotalPx}
+                                            onEdit={handleEdit}
                                         />
-                                    ))}
+                                    ) : (
+                                        renderedSegments.map((item) => (
+                                            <DiffPaneBlock
+                                                key={`right-${item.index}`}
+                                                segment={item.segment}
+                                                side="right"
+                                                lineCount={item.paneLines.right}
+                                                lineNumbers={item.lineNumbers.right}
+                                                highlightWords={highlightWords}
+                                            />
+                                        ))
+                                    )}
                                 </div>
                             </div>
                             <DiffRibbonLayer

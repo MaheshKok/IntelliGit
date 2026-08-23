@@ -39,6 +39,65 @@ function dispatchHostMessage(data: unknown): void {
     });
 }
 
+/** Mounts the app with the left pane document-backed and returns a keystroke driver. */
+async function mountEditablePane(
+    editableText: string,
+    documentVersion: number,
+    segments: unknown = diffFixture.segments,
+): Promise<(next: string) => void> {
+    createRootHost();
+    await act(async () => {
+        await import("../../../src/webviews/react/diff-viewer/DiffViewerApp");
+    });
+    await flush();
+    dispatchHostMessage({
+        type: "setDiffData",
+        data: {
+            ...diffFixture,
+            segments,
+            editablePane: "left" as const,
+            editableText,
+            documentVersion,
+            editableReseedToken: 0,
+        },
+    });
+    await flush();
+    const textarea = document.querySelector<HTMLTextAreaElement>(
+        "[data-testid='diff-pane-left-editable']",
+    );
+    const valueSetter = Object.getOwnPropertyDescriptor(
+        HTMLTextAreaElement.prototype,
+        "value",
+    )?.set;
+    return (next: string) => {
+        act(() => {
+            valueSetter?.call(textarea, next);
+            textarea?.dispatchEvent(new Event("input", { bubbles: true }));
+        });
+    };
+}
+
+interface SentDelta {
+    baseVersion: number;
+    baseReseedToken: number;
+    startOffset: number;
+    endOffset: number;
+    text: string;
+}
+
+/** Every edit delta posted to the host, in order. */
+function sentDeltas(vscode: MockVsCodeApi): SentDelta[] {
+    return vscode.postMessage.mock.calls
+        .map((call) => call[0] as { type?: string; delta?: SentDelta })
+        .filter((message) => message?.type === "editText")
+        .map((message) => message.delta as SentDelta);
+}
+
+/** Base versions of every delta posted, in order — the host applies them in this order. */
+function sentDeltaVersions(vscode: MockVsCodeApi): number[] {
+    return sentDeltas(vscode).map((delta) => delta?.baseVersion ?? -1);
+}
+
 const diffFixture = {
     path: "src/example.ts",
     leftLabel: "HEAD",
@@ -107,6 +166,192 @@ describe("DiffViewerApp read-only contract", () => {
         expect(document.querySelector("textarea")).toBeNull();
     });
 
+    it("renders the descriptor-selected pane as a document-backed editor and posts a delta", async () => {
+        const vscode = installVsCodeMock();
+        createRootHost();
+
+        await act(async () => {
+            await import("../../../src/webviews/react/diff-viewer/DiffViewerApp");
+        });
+        await flush();
+        dispatchHostMessage({
+            type: "setDiffData",
+            data: {
+                ...diffFixture,
+                editablePane: "left" as const,
+                editableText: "shared();\nbefore();",
+                documentVersion: 1,
+            },
+        });
+        await flush();
+
+        const textarea = document.querySelector<HTMLTextAreaElement>(
+            "[data-testid='diff-pane-left-editable']",
+        );
+        expect(textarea).not.toBeNull();
+        expect(document.querySelector("[data-testid='diff-pane-right-editable']")).toBeNull();
+        const valueSetter = Object.getOwnPropertyDescriptor(
+            HTMLTextAreaElement.prototype,
+            "value",
+        )?.set;
+        act(() => {
+            valueSetter?.call(textarea, "shared();\nafter();");
+            textarea!.dispatchEvent(new Event("input", { bubbles: true }));
+        });
+
+        expect(textarea?.value).toContain("after();");
+        expect(vscode.postMessage).toHaveBeenLastCalledWith({
+            type: "editText",
+            delta: {
+                baseVersion: 1,
+                baseReseedToken: 0,
+                startOffset: 10,
+                endOffset: 16,
+                text: "after",
+            },
+        });
+
+        act(() => {
+            valueSetter?.call(textarea, textarea!.value + String.fromCharCode(10) + "again();");
+            textarea!.dispatchEvent(new Event("input", { bubbles: true }));
+        });
+
+        expect(textarea?.value).toContain("again();");
+        expect(vscode.postMessage).toHaveBeenLastCalledWith({
+            type: "editText",
+            delta: {
+                baseVersion: 2,
+                baseReseedToken: 0,
+                startOffset: 18,
+                endOffset: 18,
+                text: String.fromCharCode(10) + "again();",
+            },
+        });
+    });
+
+    it("keeps typing when the host echoes an in-flight edit without a new reseed token", async () => {
+        const vscode = installVsCodeMock();
+        const type = await mountEditablePane("AB", 1);
+        const textarea = document.querySelector<HTMLTextAreaElement>(
+            "[data-testid='diff-pane-left-editable']",
+        );
+
+        type("AXB");
+        type("AXYB");
+        // The host finished applying only the FIRST delta and echoed it back. Its version
+        // advanced by one while the draft advanced by two, and the token did not move —
+        // reseeding here would roll the pane back to "AXB" and cost the next keystroke.
+        dispatchHostMessage({
+            type: "setDiffData",
+            data: {
+                ...diffFixture,
+                editablePane: "left" as const,
+                editableText: "AXB",
+                documentVersion: 2,
+                editableReseedToken: 0,
+            },
+        });
+        await flush();
+        type("AXYZB");
+
+        expect(textarea?.value).toBe("AXYZB");
+        // The host applies these in order: 1->2, 2->3, 3->4. A repeated base version means
+        // the host drops that delta and the character is lost with no error anywhere.
+        expect(sentDeltaVersions(vscode)).toEqual([1, 2, 3]);
+    });
+
+    it("discards the local draft when the host reports an external change", async () => {
+        const vscode = installVsCodeMock();
+        const type = await mountEditablePane("AB", 1);
+        const textarea = document.querySelector<HTMLTextAreaElement>(
+            "[data-testid='diff-pane-left-editable']",
+        );
+
+        type("AXB");
+        dispatchHostMessage({
+            type: "setDiffData",
+            data: {
+                ...diffFixture,
+                editablePane: "left" as const,
+                editableText: "EXTERNAL",
+                documentVersion: 9,
+                editableReseedToken: 1,
+            },
+        });
+        await flush();
+
+        expect(textarea?.value).toBe("EXTERNAL");
+        type("EXTERNAL!");
+        expect(sentDeltaVersions(vscode)).toEqual([1, 9]);
+        // Each delta is stamped with the reseed its measured text came from. A pane that
+        // reported a fixed token, or the one it held at mount, would look current to the host
+        // forever — and the host's staleness guard is exactly that comparison.
+        expect(sentDeltas(vscode).map((delta) => delta.baseReseedToken)).toEqual([0, 1]);
+    });
+
+    it("spans the whole surrogate pair when one astral character replaces another", async () => {
+        const vscode = installVsCodeMock();
+        // Both emoji sit in the same 1024-code-point block, so they share a high surrogate
+        // and differ only in the low one. A scan comparing UTF-16 code units therefore stops
+        // BETWEEN the halves, and the delta it emits replaces half of one character with half
+        // of another — a range VS Code has to resolve to a position that does not exist.
+        const grin = String.fromCodePoint(0x1f600);
+        const smile = String.fromCodePoint(0x1f601);
+        const type = await mountEditablePane("a" + grin + "b", 1);
+
+        type("a" + smile + "b");
+
+        expect(sentDeltas(vscode)).toEqual([
+            { baseVersion: 1, baseReseedToken: 0, startOffset: 1, endOffset: 3, text: smile },
+        ]);
+    });
+
+    it("spans the whole surrogate pair when the two characters share their LOW surrogate", async () => {
+        const vscode = installVsCodeMock();
+        // The mirror image of the case above, and the one the leading-boundary step-back
+        // cannot reach: U+1F600 and U+1FA00 differ in the HIGH surrogate and share the low
+        // one, so it is the SUFFIX scan that stops between the halves. Without the trailing
+        // step-forward the delta ends mid-character and emits a lone high surrogate.
+        const grin = String.fromCodePoint(0x1f600);
+        const chessKing = String.fromCodePoint(0x1fa00);
+        expect(grin.charCodeAt(1)).toBe(chessKing.charCodeAt(1));
+        const type = await mountEditablePane("a" + grin + "b", 1);
+
+        type("a" + chessKing + "b");
+
+        expect(sentDeltas(vscode)).toEqual([
+            { baseVersion: 1, baseReseedToken: 0, startOffset: 1, endOffset: 3, text: chessKing },
+        ]);
+    });
+
+    it("keeps the caret in place when the host reseeds the pane", async () => {
+        installVsCodeMock();
+        await mountEditablePane("abcdef", 1);
+        const textarea = document.querySelector<HTMLTextAreaElement>(
+            "[data-testid='diff-pane-left-editable']",
+        );
+        textarea?.setSelectionRange(2, 2);
+
+        dispatchHostMessage({
+            type: "setDiffData",
+            data: {
+                ...diffFixture,
+                editablePane: "left" as const,
+                editableText: "abcXef",
+                documentVersion: 2,
+                editableReseedToken: 1,
+            },
+        });
+        await flush();
+
+        // Rewriting a controlled textarea's value drops the cursor at the end of the new
+        // text, so an external write anywhere in the file would silently relocate the user
+        // to EOF and land their next keystroke there.
+        expect(textarea?.value).toBe("abcXef");
+        expect(textarea?.selectionStart).toBe(2);
+        expect(textarea?.selectionEnd).toBe(2);
+    });
+
     it("reconciles the ignore mode from a host payload after a fresh mount", async () => {
         installVsCodeMock();
         createRootHost();
@@ -173,6 +418,269 @@ describe("DiffViewerApp read-only contract", () => {
 
         expect(document.querySelector(".error-message")).toBeNull();
         expect(document.querySelector(".diff-viewer")).not.toBeNull();
+    });
+
+    it("keeps the document-backed pane mounted when a refresh reports a load error", async () => {
+        // A failed refresh must be reported, not staged as a replacement for the viewer. The
+        // editable pane IS the user's editing surface: unmounting it takes typing away for as
+        // long as the error stands, and nothing guarantees a later repository event arrives to
+        // clear it. A background rebuild that briefly pushes the immutable side over the
+        // viewer budget is enough to trigger this.
+        installVsCodeMock();
+        await mountEditablePane("shared();\nbefore();", 1);
+
+        dispatchHostMessage({
+            type: "setDiffData",
+            data: {
+                ...diffFixture,
+                editablePane: "left" as const,
+                editableText: "shared();\nbefore();",
+                documentVersion: 1,
+                editableReseedToken: 0,
+                loadError: "The refreshed diff exceeds the viewer budget.",
+            },
+        });
+        await flush();
+
+        const banner = document.querySelector(".error-message");
+        expect(banner?.textContent).toContain("exceeds the viewer budget");
+        expect(
+            document.querySelector("[data-testid='diff-pane-left-editable']"),
+            "a refresh failure must not unmount the pane the user is typing in",
+        ).not.toBeNull();
+    });
+
+    it("gives the editable pane a height of its own when the immutable side is empty", async () => {
+        // An added file has no HEAD side, so its one segment is one-sided and the immutable pane
+        // renders no rows at all. The editable pane REPLACES the segment stack rather than
+        // sitting on top of it, so with a zero-row counterpart the grid row has nothing left to
+        // size against — and a textarea carries no `rows` here and never grows with its value,
+        // so it would collapse to its default two rows while the spacer still declares the full
+        // scroll range. The editing surface has to declare the canonical extent itself.
+        installVsCodeMock();
+        createRootHost();
+        await act(async () => {
+            await import("../../../src/webviews/react/diff-viewer/DiffViewerApp");
+        });
+        await flush();
+
+        const added = Array.from({ length: 40 }, (_, index) => `line ${index};`);
+        dispatchHostMessage({
+            type: "setDiffData",
+            data: {
+                ...diffFixture,
+                segments: [{ type: "changed" as const, left: [], right: added }],
+                editablePane: "right" as const,
+                editableText: added.join("\n"),
+                documentVersion: 1,
+                editableReseedToken: 0,
+            },
+        });
+        await flush();
+
+        expect(
+            document.querySelectorAll(".diff-pane-left .code-line"),
+            "the premise: an added file's immutable pane renders no rows",
+        ).toHaveLength(0);
+
+        const spacer = document.querySelector<HTMLElement>(".diff-vscroll-spacer");
+        const textarea = document.querySelector<HTMLTextAreaElement>(
+            "[data-testid='diff-pane-right-editable']",
+        );
+        // An absolute number, not the spacer's own value: both are rendered from the same
+        // expression in the same render, so comparing them to each other would hold just as
+        // well at "0px" — which is exactly the collapsed pane this asserts against.
+        expect(
+            textarea?.style.height,
+            "nothing else sizes this row, so the pane must carry the canonical extent itself",
+        ).toBe("800px");
+        expect(spacer?.style.height, "and the scroll range agrees with it").toBe("800px");
+    });
+
+    it("never renders the editable pane shorter than the text it is showing", async () => {
+        // `splitText` treats a terminal newline as metadata and emits no row for it, but a
+        // textarea renders one line box per "\n"-separated element — so a file ending in a
+        // newline, which is nearly all of them, needs one line more than the segment model
+        // reports. Left short, the textarea becomes a scroll container of its own, and the
+        // scroll driver translates the COLUMN and never the textarea, so that scroll is
+        // invisible to it: one wheel tick over this pane shifts every row against the opposite
+        // pane, its line numbers, and the ribbons, and nothing puts them back.
+        installVsCodeMock();
+        createRootHost();
+        await act(async () => {
+            await import("../../../src/webviews/react/diff-viewer/DiffViewerApp");
+        });
+        await flush();
+
+        const lines = Array.from({ length: 40 }, (_, index) => `line ${index};`);
+        dispatchHostMessage({
+            type: "setDiffData",
+            data: {
+                ...diffFixture,
+                segments: [{ type: "common" as const, left: lines, right: lines }],
+                editablePane: "left" as const,
+                editableText: lines.join("\n") + "\n",
+                documentVersion: 1,
+                editableReseedToken: 0,
+            },
+        });
+        await flush();
+
+        const textarea = document.querySelector<HTMLTextAreaElement>(
+            "[data-testid='diff-pane-left-editable']",
+        );
+        const spacer = document.querySelector<HTMLElement>(".diff-vscroll-spacer");
+        expect(
+            textarea?.style.height,
+            "the value has 41 line boxes, and a pane shorter than its own text scrolls itself",
+        ).toBe("820px");
+        // The scroll range has to agree, or the fix just moves the problem: the extra box
+        // would sit past `paneTotalPx - viewport`, where the clamp stops the column and the
+        // viewport clips it, and no scroll position could ever bring it on screen.
+        expect(spacer?.style.height, "and the row it added has to be reachable").toBe("820px");
+    });
+
+    it("renders an editable pane over a zero-segment payload without crashing", async () => {
+        // A file that is empty in HEAD and empty on disk produces no segments at all, and the
+        // deficit arithmetic still runs over that: one line box against zero counted rows. The
+        // early return is the only thing standing between that payload and reading `paneLines`
+        // off an `undefined` last row, which throws during render and takes the whole app with
+        // it — a blank panel, not a degraded one. `touch newfile.txt` and open its diff.
+        installVsCodeMock();
+        createRootHost();
+        await act(async () => {
+            await import("../../../src/webviews/react/diff-viewer/DiffViewerApp");
+        });
+        await flush();
+
+        dispatchHostMessage({
+            type: "setDiffData",
+            data: {
+                ...diffFixture,
+                segments: [],
+                editablePane: "right" as const,
+                editableText: "",
+                documentVersion: 1,
+                editableReseedToken: 0,
+            },
+        });
+        await flush();
+
+        expect(
+            document.querySelector("[data-testid='diff-pane-right-editable']"),
+            "an empty file on both sides still has a pane to type into",
+        ).not.toBeNull();
+    });
+
+    it("puts the deficit on the editable pane of the last segment, and nowhere else", async () => {
+        // The fixture above is a single segment with both panes the same height, which makes
+        // two wrong implementations indistinguishable from the right one: `rows[0]` and
+        // `rows[rows.length - 1]` are the same object there, and widening both panes reads
+        // exactly like widening the editable one. This is the shape that separates them — two
+        // segments, with the editable side the TALLER one in the first and the SHORTER one in
+        // the last.
+        //
+        // Placed correctly, the row lands where that pane is already the shorter of the two,
+        // so the canonical space absorbs it and does not move. Placed on the first segment, or
+        // on both panes, it lands where the pane is the taller one and drags the shared scroll
+        // range 20px with it — putting every row below out of step with the opposite pane,
+        // its line numbers, and the ribbons.
+        installVsCodeMock();
+        createRootHost();
+        await act(async () => {
+            await import("../../../src/webviews/react/diff-viewer/DiffViewerApp");
+        });
+        await flush();
+
+        const block = (count: number, tag: string) =>
+            Array.from({ length: count }, (_, index) => `${tag} ${index};`);
+        dispatchHostMessage({
+            type: "setDiffData",
+            data: {
+                ...diffFixture,
+                segments: [
+                    { type: "changed" as const, left: block(20, "a"), right: block(10, "b") },
+                    { type: "changed" as const, left: block(10, "c"), right: block(20, "d") },
+                ],
+                editablePane: "left" as const,
+                // 30 counted rows, so a terminal newline is 31 line boxes and a deficit of 1.
+                editableText: block(30, "x").join("\n") + "\n",
+                documentVersion: 1,
+                editableReseedToken: 0,
+            },
+        });
+        await flush();
+
+        const spacer = document.querySelector<HTMLElement>(".diff-vscroll-spacer");
+        // Two segments of 20 canonical rows each — the per-segment maximum, untouched by a row
+        // added to the pane that is already the shorter one. This assertion is also green if
+        // the deficit is dropped entirely; that case belongs to the test above. This one exists
+        // only to say WHERE the row goes once there is one.
+        expect(
+            spacer?.style.height,
+            "the row belongs to the editable pane of the last segment, which absorbs it",
+        ).toBe("800px");
+    });
+
+    it("keeps the editable pane as tall as the immutable side it is aligned against", async () => {
+        installVsCodeMock();
+        createRootHost();
+        await act(async () => {
+            await import("../../../src/webviews/react/diff-viewer/DiffViewerApp");
+        });
+        await flush();
+
+        // The height is the larger of the segment model's extent and the draft's own, and
+        // every other height test here uses a fixture where the draft wins or the two are
+        // equal — which makes the segment-model half of that comparison inert in all of them,
+        // and green whether it is there or not. This is the inverse: an editable side one line
+        // long against forty immutable ones. Without the canonical half the pane collapses to
+        // 20px inside an 800px row, and the ribbons land on nothing.
+        const rows = Array.from({ length: 40 }, (_, index) => `line ${index};`);
+        dispatchHostMessage({
+            type: "setDiffData",
+            data: {
+                ...diffFixture,
+                segments: [{ type: "changed" as const, left: rows, right: ["only();"] }],
+                editablePane: "right" as const,
+                editableText: "only();",
+                documentVersion: 1,
+                editableReseedToken: 0,
+            },
+        });
+        await flush();
+
+        const textarea = document.querySelector<HTMLTextAreaElement>(
+            "[data-testid='diff-pane-right-editable']",
+        );
+        expect(textarea?.style.height, "the segment the pane occupies is 40 rows tall").toBe(
+            "800px",
+        );
+    });
+
+    it("grows the editable pane as the draft outgrows the payload it was seeded from", async () => {
+        installVsCodeMock();
+        // One line in the segments, so the segment model contributes exactly one row and the
+        // draft is the taller of the two the moment a second line exists.
+        const type = await mountEditablePane("AB", 1, [
+            { type: "common" as const, left: ["AB"], right: ["AB"] },
+        ]);
+        const textarea = document.querySelector<HTMLTextAreaElement>(
+            "[data-testid='diff-pane-left-editable']",
+        );
+        expect(textarea?.style.height, "one row before anything is typed").toBe("20px");
+
+        // Pressing Enter adds a line box now; the host's echo — and the recomputed segments
+        // that come with it — are a full round trip away. Sized from the `text` prop instead
+        // of the draft, the pane spends that whole window one line short of its own value,
+        // which is the same self-scrolling pane as above reached by typing rather than by a
+        // terminal newline. The window is every keystroke, so it is not a corner case.
+        type("A" + String.fromCharCode(10) + "B");
+
+        expect(
+            textarea?.style.height,
+            "the pane has to hold the draft, not the payload it was seeded from",
+        ).toBe("40px");
     });
 
     it("keeps the anti-vacuity selectors present in the merge app", async () => {

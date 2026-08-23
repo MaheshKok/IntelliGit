@@ -434,6 +434,7 @@ const WEBVIEW_ENTRIES = [
     { kind: "webview", id: "acceptYours", mutating: true, coveredBy: "merge-conflict-resolve" },
     { kind: "webview", id: "acceptTheirs", mutating: true, notCovered: WEBVIEW_NOT_COVERED },
     { kind: "webview", id: "close", mutating: false },
+    { kind: "webview", id: "editText", mutating: true, notCovered: WEBVIEW_NOT_COVERED },
     { kind: "webview", id: "setIgnoreMode", mutating: false },
     { kind: "webview", id: "applyResolution", mutating: true, notCovered: WEBVIEW_NOT_COVERED },
     { kind: "webview", id: "openConflictSession", mutating: false },
