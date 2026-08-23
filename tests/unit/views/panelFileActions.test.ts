@@ -180,12 +180,13 @@ describe("showStashDiffFromPanel", () => {
         );
     });
 
-    it("routes single-file stash diffs through the unified diff funnel with worktree-left, stash-hash-right sides", async () => {
+    it("routes row 4 stash diffs through the editable funnel with the real local file URI on the left", async () => {
         const gitOps = makeGitOps();
+        openEditableDiffMock.mockResolvedValueOnce(undefined);
 
         await showStashDiffFromPanel(fileActionDeps(gitOps), 2, "src/a.ts", false);
 
-        expect(openUnifiedDiffMock).toHaveBeenCalledWith(
+        expect(openEditableDiffMock).toHaveBeenCalledWith(
             expect.objectContaining({
                 path: "src/a.ts",
                 left: { kind: "worktree" },
@@ -194,9 +195,16 @@ describe("showStashDiffFromPanel", () => {
                     identity: "stash2hash",
                     label: "Stash {2}",
                 }),
+                fileUri: expect.objectContaining({
+                    root: { scheme: "file", path: "/repo" },
+                    path: "src/a.ts",
+                }),
             }),
             expect.any(Function),
+            beginEditableDiffSessionMock,
         );
+        expect(openUnifiedDiffMock).not.toHaveBeenCalled();
+        expect(createReadonlyDiffUri).not.toHaveBeenCalled();
     });
 
     it("throws when the requested stash index is no longer present at that position", async () => {

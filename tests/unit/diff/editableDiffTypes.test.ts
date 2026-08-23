@@ -3,8 +3,20 @@ import { editablePaneForSides } from "../../../src/diff/editableDiffTypes";
 
 describe("editablePaneForSides", () => {
     it.each([
-        ["right", { kind: "ref", ref: "HEAD" }, { kind: "worktree" }],
         [
+            "row 1 (panel HEAD-to-working-tree)",
+            "right",
+            { kind: "ref", ref: "HEAD" },
+            { kind: "worktree" },
+        ],
+        [
+            "row 2 (git-ref-to-working-tree)",
+            "right",
+            { kind: "ref", ref: "feature" },
+            { kind: "worktree" },
+        ],
+        [
+            "row 4 (single-file stash)",
             "left",
             { kind: "worktree" },
             {
@@ -14,7 +26,18 @@ describe("editablePaneForSides", () => {
                 load: async () => ({ status: "missing" as const }),
             },
         ],
-    ] as const)("derives %s from the working-tree side", (pane, left, right) => {
+        [
+            "row 5b (shelved-to-local)",
+            "right",
+            {
+                kind: "provider",
+                label: "Shelved",
+                identity: "shelf-oid",
+                load: async () => ({ status: "missing" as const }),
+            },
+            { kind: "worktree" },
+        ],
+    ] as const)("derives the %s pane from the working-tree side", (_row, pane, left, right) => {
         expect(editablePaneForSides(left, right)).toBe(pane);
     });
 

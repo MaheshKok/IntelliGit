@@ -13,13 +13,10 @@ import { getErrorMessage } from "../utils/errors";
 import { assertNumber, assertRepoPathArray, assertString } from "./messageValidation";
 import type { IconThemeService } from "./shared/IconThemeService";
 import { showTimedInformationMessage } from "../utils/notifications";
-import {
-    beginEditableDiffSession,
-    createReadonlyDiffUri,
-    openUnifiedDiff,
-} from "../services/diffService";
+import { beginEditableDiffSession, createReadonlyDiffUri } from "../services/diffService";
 import type { SideSpec } from "../services/diffService";
 import { openEditableDiff } from "../diff/editableDiffOpener";
+import type { NativeDiffDelegate } from "../diff/unifiedDiffTypes";
 import { mapWithConcurrency } from "../utils/concurrency";
 
 type StashChange = [vscode.Uri, vscode.Uri, vscode.Uri];
@@ -327,38 +324,41 @@ async function openStashFileDiff(
         },
     };
 
-    await openUnifiedDiff(
-        {
-            repoRoot: workspaceRoot.fsPath,
-            path: filePath,
-            left: { kind: "worktree" },
-            right,
-            languageId: "",
-            title,
-        },
-        async (cancellationToken) => {
-            const after = await getStashAfterContentByHash(deps.gitOps, stashHash, filePath);
-            const snapshot = await prepareStashLocalDiffSnapshot(
-                workspaceRoot,
-                filePath,
-                stashLabel,
-                {
-                    before: undefined,
-                    after,
-                },
-            );
-            if (cancellationToken.isCancellationRequested) return;
-            const { stashed, local } = createStashLocalDiffUris(snapshot);
-            await vscode.commands.executeCommand("vscode.diff", local, stashed, title, { preview });
-        },
+    const left: SideSpec = { kind: "worktree" };
+    const request = {
+        repoRoot: workspaceRoot.fsPath,
+        path: filePath,
+        left,
+        right,
+        languageId: "",
+        title,
+    };
+    const nativeDelegate: NativeDiffDelegate = async (cancellationToken) => {
+        const after = await getStashAfterContentByHash(deps.gitOps, stashHash, filePath);
+        const snapshot = await prepareStashLocalDiffSnapshot(workspaceRoot, filePath, stashLabel, {
+            before: undefined,
+            after,
+        });
+        if (cancellationToken.isCancellationRequested) return;
+        const { stashed, local } = createStashLocalDiffUris(snapshot);
+        await vscode.commands.executeCommand("vscode.diff", local, stashed, title, { preview });
+    };
+
+    // `left` above is unconditionally the working tree, so `editablePaneForSides` always derives
+    // "left" here and a read-only branch would be unreachable. The shelf path keeps its conditional
+    // because rows 5a and binary changes genuinely have no working-tree side.
+    await openEditableDiff(
+        { ...request, fileUri: vscode.Uri.joinPath(workspaceRoot, filePath) },
+        nativeDelegate,
+        beginEditableDiffSession,
     );
 }
 
 /**
  * Opens a VS Code diff for one stash file, or VS Code's multi-file changes editor for the whole stash.
  *
- * File-specific requests route through the unified diff viewer (see `openStashFileDiff`), local file
- * always on the left. Whole-stash requests stay native: they compare readonly snapshots of stashed and
+ * File-specific requests open an editable diff editor bound to the working-tree file (see
+ * `openStashFileDiff`), local file always on the left and writable through to disk. Whole-stash requests stay native: they compare readonly snapshots of stashed and
  * local content so each side has an explicit resource label. Missing stash or workspace sides use
  * explicitly labeled empty virtual documents. Local content is always the original (left) side and
  * stash content is always the modified (right) side, including added, deleted, untracked, and
