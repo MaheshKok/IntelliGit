@@ -28,6 +28,21 @@ import { spawnSync } from "node:child_process";
 export const FILENAMES_MAY_CONTAIN_RESERVED_CHARACTERS = process.platform !== "win32";
 
 /**
+ * Whether the filesystem lets one file be renamed ON TOP OF another that a handle still has open.
+ *
+ * POSIX swaps the directory entry and leaves the open handle pointing at the file it already had.
+ * Windows refuses outright: `MoveFileEx` cannot replace a destination another handle holds, and the
+ * Windows leg of #223 reported it verbatim --
+ * `EPERM: operation not permitted, rename '...\repo.lock.<nonce>' -> '...\repo.lock'`.
+ *
+ * The invariant a rename-publish exists to protect survives on both: a reader never observes a
+ * partial record, because POSIX gives it the whole previous file and Windows leaves the whole
+ * previous file in place by declining the replace. Only the MECHANISM is POSIX-only, which is why
+ * this gates the test that witnesses the mechanism rather than one that asserts the invariant.
+ */
+export const RENAME_OVER_OPEN_FILE_SUPPORTED = process.platform !== "win32";
+
+/**
  * Whether POSIX permission bits are enforced by the filesystem.
  *
  * `fs.chmod` on Windows sets only the read-only attribute, and even that does not make a DIRECTORY
