@@ -82,8 +82,16 @@ const REAL_FIXTURES_DIR = path.join(REPO_ROOT, "tests", "visual", "fixtures");
  * calls) takes long enough that vitest's default 5s-per-test timeout is not generous enough --
  * this mirrors the 60s the old shared `beforeAll` used for exactly one such build. Every test below
  * that lets the gate prepare a REAL "clean" scenario (i.e. does not inject its own
- * `prepareScenario`) passes this as its own timeout. */
-const REAL_SCENARIO_TIMEOUT_MS = 60_000;
+ * `prepareScenario`) passes this as its own timeout.
+ *
+ * The 60s it used to be was inherited from that `beforeAll` and never measured against the slowest
+ * supported platform. Windows runs this work 2-5x slower -- many small `git` calls over many small
+ * files -- and `rewrites a drifted fixture` needed 53,835ms of the 60,000 there on run
+ * 32654169455, then 60,012ms on the next one, where it timed out (#223). A 10% margin on the
+ * slowest leg is a red waiting for an ordinary bad minute, not a budget. What a timeout is for
+ * here is catching a HANG, and 180s still does that against a file whose Windows leg totals ~220s
+ * either way. */
+const REAL_SCENARIO_TIMEOUT_MS = 180_000;
 
 /** Recursive directory copy, used to mirror the real fixtures tree into a scratch `repoRoot`.
  * Hand-rolled rather than `fs.cp`, which is still flagged experimental on the Node versions this
