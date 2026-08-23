@@ -42,19 +42,50 @@ describe("readConsumedThemeTokens", () => {
         expect(tokens.has(token)).toBe(false);
     });
 
-    /**
-     * The scanner matches literal token names. Every reference in this repository writes the name
-     * out and interpolates only the FALLBACK (`var(--vscode-menu-border, ${...})`), so that holds
-     * today -- but a token assembled from a variable would be invisible to the scan and would drop
-     * out of the canary without any test noticing. This is that notice.
-     */
-    it("has no theme token whose NAME is built by interpolation", () => {
-        const interpolated = [...tokens].filter((token) => token.includes("${"));
+    it("scans the real src tree without tripping the interpolated-name guard", () => {
         expect(
-            interpolated,
+            () => readConsumedThemeTokens(REPO_ROOT),
+            "every reference in src must write the token name out and interpolate only the " +
+                "FALLBACK, or the canary stops watching it",
+        ).not.toThrow();
+    });
+
+    /**
+     * The interpolation guard, asserted where it can actually fail.
+     *
+     * A previous version of this test filtered the RESULT set for `${` -- which is vacuous, because
+     * `THEME_TOKEN_PATTERN` cannot match a `$` and so can never put an interpolated name INTO the
+     * set. The construction has to be caught in the file contents at scan time, which is what these
+     * two cases exercise. Both shapes fail, in different ways:
+     *
+     * - `--vscode-${x}` matches nothing and vanishes from the comparison silently;
+     * - `--vscode-menu-${x}` matches the `--vscode-menu-` PREFIX and enters the set as a token that
+     *   does not exist, so the real one is unwatched AND the filter carries a phantom.
+     */
+    it.each([
+        ["a fully interpolated name", "`var(--vscode-${slot}-background)`"],
+        ["a name interpolated after a literal prefix", "`var(--vscode-menu-${part})`"],
+    ])("throws on %s rather than scanning past it", (_label, source) => {
+        const root = mkdtempSync(join(tmpdir(), "intelligit-interpolated-token-"));
+        mkdirSync(join(root, "src"));
+        // Enough literal tokens to clear the 40-token floor, so a throw here proves the
+        // interpolation guard fired rather than the fail-loud minimum.
+        writeFileSync(
+            join(root, "src", "plenty.ts"),
+            Array.from({ length: 50 }, (_unused, index) => `// --vscode-token-${index}`).join("\n"),
+            "utf8",
+        );
+        writeFileSync(
+            join(root, "src", "interpolated.ts"),
+            `export const css = ${source};\n`,
+            "utf8",
+        );
+
+        expect(
+            () => readConsumedThemeTokens(root),
             "a token name assembled at runtime cannot be scanned, so it would silently leave the " +
-                "comparison; write the name literally and interpolate only the fallback",
-        ).toEqual([]);
+                "comparison; the scan must refuse rather than guess",
+        ).toThrow(/builds a theme token NAME by interpolation/);
     });
 
     it("throws rather than returning a set too small to be a real filter", () => {

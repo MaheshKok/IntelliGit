@@ -117,7 +117,7 @@ function recordDifference(
 /**
  * Records a `documentElement.styleCssText` difference for tokens the pinned build declares and the
  * second capture either DROPPED or REDEFINED. A token present only in the second capture is
- * ignored.
+ * ignored unless `consumedTokens` says this extension reads it.
  *
  * Upstream adds theme tokens continuously -- one Insiders run added 25 (`--vscode-modernTab-*`,
  * `--vscode-modernEditorTab-*`, `--vscode-chat-findMatch*`) against two it actually changed. A
@@ -130,12 +130,13 @@ function recordDifference(
  * identical tokens on either side of the formatter's truncation limit, so the failure named the
  * field and then printed the same prefix twice.
  *
- * `consumedTokens` applies that same "cannot change how the extension renders" rule to the other
- * two cases. Ignoring additions was only half of it: the 2026-08-23 Insiders run failed on
- * `--vscode-agents-layout-floatingPanelGap` (5px -> 4px), `--vscode-agentsPanel-border` and
- * `--vscode-surface-border` (rgba -> hex), all REDEFINED rather than added, and all read by zero
- * files in `src`. Every theme in that run failed, on nothing this extension can render. Omit the
- * set to compare every token -- callers that are not the cross-build canary should.
+ * `consumedTokens` applies that same "cannot change how the extension renders" rule to all three
+ * cases, including the additions above. Ignoring additions was only half of it: the 2026-08-23
+ * Insiders run failed on `--vscode-agents-layout-floatingPanelGap` (5px -> 4px),
+ * `--vscode-agentsPanel-border` and `--vscode-surface-border` (rgba -> hex), all REDEFINED rather
+ * than added, and all read by zero files in `src`. Every theme in that run failed, on nothing this
+ * extension can render. Omit the set to compare every token -- callers that are not the cross-build
+ * canary should.
  */
 function recordStyleCustomPropertyDifference(
     differences: HostFixtureDifference[],
@@ -143,24 +144,40 @@ function recordStyleCustomPropertyDifference(
     capturedCssText: string,
     consumedTokens?: ReadonlySet<string>,
 ): void {
+    const committed = parseStyleCustomProperties(committedCssText);
     const captured = parseStyleCustomProperties(capturedCssText);
     const committedOffenders: Record<string, string> = {};
     const capturedOffenders: Record<string, string> = {};
 
-    for (const [name, committedValue] of parseStyleCustomProperties(committedCssText)) {
-        if (consumedTokens !== undefined && !consumedTokens.has(name)) continue;
-        const capturedValue = captured.get(name);
-        if (capturedValue === committedValue) continue;
+    // Committed names alone when nothing narrows the comparison: an addition is then
+    // indistinguishable from upstream's ~25 nightly ones, and reporting it keeps the canary red
+    // forever. With the consumed set, "nothing reads it" is tested DIRECTLY rather than guessed at
+    // from the addition's shape -- so an addition that survives the filter is a token this
+    // extension does read, gaining a real value where it used to take the fallback in
+    // `var(--vscode-x, y)`. That is a rendering change, and it is exactly what the additions rule
+    // was a proxy for.
+    const names =
+        consumedTokens === undefined
+            ? committed.keys()
+            : new Set([...committed.keys(), ...captured.keys()]);
 
-        committedOffenders[name] = committedValue;
-        // An absent key on the captured side IS the removal: the second build no longer declares
-        // this token at all, which reads differently from a token that merely changed value.
+    for (const name of names) {
+        if (consumedTokens !== undefined && !consumedTokens.has(name)) continue;
+        const committedValue = committed.get(name);
+        const capturedValue = captured.get(name);
+        if (committedValue === capturedValue) continue;
+
+        // An absent key on either side IS the change: that build does not declare this token at
+        // all, which reads differently from a token that merely changed value.
+        if (committedValue !== undefined) {
+            committedOffenders[name] = committedValue;
+        }
         if (capturedValue !== undefined) {
             capturedOffenders[name] = capturedValue;
         }
     }
 
-    if (Object.keys(committedOffenders).length > 0) {
+    if (Object.keys(committedOffenders).length > 0 || Object.keys(capturedOffenders).length > 0) {
         differences.push({
             field: "documentElement.styleCssText",
             committedValue: committedOffenders,

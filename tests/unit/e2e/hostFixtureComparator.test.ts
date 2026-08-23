@@ -285,6 +285,53 @@ describe("compareHostFixtures", () => {
         ]);
     });
 
+    /**
+     * The other direction of the same fallback, and the one the committed-only loop could not see.
+     *
+     * `var(--vscode-editor-background, y)` takes `y` on the pinned build, which does not declare the
+     * token, and `#111111` on the newer one, which does. Nothing was removed and nothing was
+     * redefined, yet the extension renders differently across the two builds -- which is the whole
+     * question this canary asks.
+     */
+    it("reports a consumed token the newer build started declaring", () => {
+        const committed = withStyleCssText(
+            createFixture(),
+            "--vscode-agents-layout-floatingPanelGap: 5px;",
+        );
+        const captured = withStyleCssText(
+            createFixture(),
+            "--vscode-agents-layout-floatingPanelGap: 5px; --vscode-editor-background: #111111;",
+        );
+
+        expect(
+            compareHostFixtures(committed, captured, new Set(["--vscode-editor-background"])),
+            "a token the extension READS gaining a real value where it used to fall back changes " +
+                "how it renders, so the ignore-additions rule must not cover it",
+        ).toEqual([
+            {
+                field: "documentElement.styleCssText",
+                committedValue: {},
+                capturedValue: { "--vscode-editor-background": "#111111" },
+            },
+        ]);
+    });
+
+    it("still ignores an addition of a token the extension does not read", () => {
+        const committed = withStyleCssText(createFixture(), "--vscode-editor-background: #000000;");
+        const captured = withStyleCssText(
+            createFixture(),
+            "--vscode-editor-background: #000000; " +
+                "--vscode-modernTab-hoverBackground: #2a2d2e; " +
+                "--vscode-chat-findMatchBackground: rgba(234, 92, 0, 0.67);",
+        );
+
+        expect(
+            compareHostFixtures(committed, captured, new Set(["--vscode-editor-background"])),
+            "reporting consumed additions must not reopen the ~25 upstream adds per night that " +
+                "kept this canary red; the filter is what makes the narrower rule safe",
+        ).toEqual([]);
+    });
+
     it("compares every token when no consumed set is given", () => {
         const committed = withStyleCssText(
             createFixture(),

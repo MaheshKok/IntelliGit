@@ -15,10 +15,22 @@ const SCANNED_EXTENSIONS = new Set([".ts", ".tsx", ".css", ".html"]);
  * Matches a token NAME wherever it appears -- `var(--vscode-foo)`, a nested fallback, or a bare
  * mention. Every reference in this repository writes the name literally; only the FALLBACK is ever
  * interpolated (`var(--vscode-menu-border, ${JETBRAINS_UI.color.menuBorder})`), which this still
- * matches. A token assembled from a template variable would be invisible here, so the executability
- * test asserts that no such construction exists rather than trusting that none is ever added.
+ * matches.
  */
 const THEME_TOKEN_PATTERN = /--vscode-[A-Za-z0-9_-]+/g;
+
+/**
+ * A token NAME assembled from a template expression, which `THEME_TOKEN_PATTERN` cannot read whole.
+ *
+ * Both shapes are invisible, and the second is the worse one: `--vscode-${x}` matches nothing and
+ * drops out of the set silently, while `--vscode-menu-${x}` matches the `--vscode-menu-` PREFIX and
+ * enters the set as a token that does not exist. Either way the real token stops being compared
+ * with nothing going red, so the scan refuses to guess and fails instead.
+ *
+ * Deliberately not `g`: `exec` on a global regex carries `lastIndex` between calls, so reusing one
+ * across files would start each search wherever the previous file happened to stop.
+ */
+const INTERPOLATED_TOKEN_NAME_PATTERN = /--vscode-[A-Za-z0-9_-]*\$\{/;
 
 /**
  * Fail-loud floor, not a target. This set is the whole filter, so a scan that silently returns
@@ -43,6 +55,16 @@ export function readConsumedThemeTokens(repoRoot: string): ReadonlySet<string> {
         const relativePath = String(entry);
         if (!SCANNED_EXTENSIONS.has(path.extname(relativePath))) continue;
         const contents = readFileSync(path.join(sourceRoot, relativePath), "utf8");
+        const interpolated = INTERPOLATED_TOKEN_NAME_PATTERN.exec(contents);
+        if (interpolated !== null) {
+            throw new Error(
+                `${relativePath} builds a theme token NAME by interpolation ` +
+                    `(${interpolated[0]}...). The scan reads names literally, so this token would ` +
+                    `drop out of the Insiders comparison -- or worse, enter it as the truncated ` +
+                    `prefix -- with nothing going red. Write the name out and interpolate only ` +
+                    `the fallback: var(--vscode-menu-border, \${JETBRAINS_UI.color.menuBorder}).`,
+            );
+        }
         for (const match of contents.matchAll(THEME_TOKEN_PATTERN)) {
             tokens.add(match[0]);
         }
