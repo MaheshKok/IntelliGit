@@ -23,7 +23,11 @@ export function registerEditableDiffEditorProvider(
         EDITABLE_DIFF_VIEW_TYPE,
         provider,
         {
-            webviewOptions: { retainContextWhenHidden: true },
+            webviewOptions: {
+                // Enables webview Ctrl+F; VS Code find only searches DOM text, so do not virtualize away rows.
+                enableFindWidget: true,
+                retainContextWhenHidden: true,
+            },
         },
     );
     const disposable = {

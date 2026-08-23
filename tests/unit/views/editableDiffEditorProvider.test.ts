@@ -28,6 +28,7 @@ const mocks = vi.hoisted(() => {
         applyEdit: vi.fn(),
         writeFile: vi.fn(),
         save: vi.fn(),
+        registerCustomEditorProvider: vi.fn(() => ({ dispose: vi.fn() })),
         logGitOpsWarning: vi.fn(),
         // Resolves a boolean because the real `postMessage` does, and that return value is
         // load-bearing: it is how the API reports a dropped message. A bare `vi.fn()` resolves
@@ -70,12 +71,16 @@ vi.mock("vscode", () => ({
     EndOfLine: { LF: 1, CRLF: 2 },
     env: { language: "en" },
     l10n: { t: (message: string) => message },
+    window: { registerCustomEditorProvider: mocks.registerCustomEditorProvider },
 }));
 vi.mock("../../../src/git/operationSupport", () => ({
     logGitOpsWarning: mocks.logGitOpsWarning,
 }));
 
-import { EditableDiffEditorProvider } from "../../../src/views/EditableDiffEditorProvider";
+import {
+    EditableDiffEditorProvider,
+    registerEditableDiffEditorProvider,
+} from "../../../src/views/EditableDiffEditorProvider";
 
 describe("EditableDiffEditorProvider", () => {
     let documentText: string;
@@ -169,6 +174,22 @@ describe("EditableDiffEditorProvider", () => {
                 return true;
             },
         );
+    });
+
+    it("registers editable diffs with VS Code's find widget enabled", () => {
+        const registration = registerEditableDiffEditorProvider({
+            extensionUri: { toString: () => "file:///extension" },
+            subscriptions: [],
+        } as never);
+
+        expect(mocks.registerCustomEditorProvider).toHaveBeenCalledWith(
+            "intelligit.editableDiff",
+            expect.any(EditableDiffEditorProvider),
+            expect.objectContaining({
+                webviewOptions: expect.objectContaining({ enableFindWidget: true }),
+            }),
+        );
+        registration.dispose();
     });
 
     it("writes a webview delta through the VS Code document and re-renders document changes", async () => {

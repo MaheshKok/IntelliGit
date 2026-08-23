@@ -2,6 +2,7 @@
 
 import { act } from "react";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { MAX_DIFF_LINES } from "../../../src/diff/diffBudgets";
 import { LINE_HEIGHT_PX } from "../../../src/webviews/react/diff-core/mergeScrollLayout";
 import { flush } from "../../helpers/reactDomTestUtils";
 import { installWebviewI18n } from "../../helpers/webviewI18nTestUtils";
@@ -185,6 +186,52 @@ describe("DiffViewerApp read-only contract", () => {
         expect(document.querySelector(".result-edit-textarea")).toBeNull();
         expect(document.querySelector(".result-editable")).toBeNull();
         expect(document.querySelector("textarea")).toBeNull();
+    });
+
+    // Per Phase 5: windowing/virtualization must not remove off-screen rows, because VS Code find only searches DOM text.
+    it("keeps every line of a ceiling-sized diff in the DOM so the find widget can search it", async () => {
+        const linesPerSegment = 10;
+        const segmentCount = Math.floor(MAX_DIFF_LINES / linesPerSegment);
+        const segments = Array.from({ length: segmentCount }, (_, segmentIndex) => ({
+            type: "changed" as const,
+            left: Array.from(
+                { length: linesPerSegment },
+                (_, lineIndex) => `left${segmentIndex}_${lineIndex}();`,
+            ),
+            right: Array.from(
+                { length: segmentIndex === 0 ? linesPerSegment - 1 : linesPerSegment },
+                (_, lineIndex) => `right${segmentIndex}_${lineIndex}();`,
+            ),
+        }));
+        const expectedLeft = segments.flatMap((segment) => segment.left);
+        const expectedRight = segments.flatMap((segment) => segment.right);
+
+        installVsCodeMock();
+        createRootHost();
+        await act(async () => {
+            await import("../../../src/webviews/react/diff-viewer/DiffViewerApp");
+        });
+        await flush();
+        dispatchHostMessage({ type: "setDiffData", data: { ...diffFixture, segments } });
+        await flush();
+
+        const renderedLineTexts = (side: "left" | "right"): string[] =>
+            Array.from(
+                document.querySelectorAll<HTMLElement>(
+                    `.diff-pane-${side} .code-line.real-code-line .code-line-content`,
+                ),
+                (line) => line.textContent ?? "",
+            );
+        const paddingRows = document.querySelectorAll(".code-line.padding-code-line");
+
+        expect(renderedLineTexts("left")).toEqual(expectedLeft);
+        expect(renderedLineTexts("right")).toEqual(expectedRight);
+        // The current two-pane renderer preserves natural per-pane heights, so it emits no
+        // spacer rows for an unbalanced segment. If alignment rows are added later, they must
+        // remain empty and stay outside the real text list above.
+        expect(Array.from(paddingRows, (row) => row.textContent ?? "")).toEqual(
+            Array.from({ length: paddingRows.length }, () => ""),
+        );
     });
 
     it("renders the descriptor-selected pane with CodeBlock rows, line numbers, and scrollable code lines", async () => {

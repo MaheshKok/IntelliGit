@@ -1194,7 +1194,7 @@ describe("extension integration", () => {
         expect(registerCustomEditorProvider).toHaveBeenCalledWith(
             "intelligit.editableDiff",
             expect.anything(),
-            { webviewOptions: { retainContextWhenHidden: true } },
+            { webviewOptions: { enableFindWidget: true, retainContextWhenHidden: true } },
         );
         expect(showInformationMessage).toHaveBeenCalledWith(
             "No Git repositories found in this workspace.",
