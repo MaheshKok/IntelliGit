@@ -361,5 +361,7 @@
     "branch.tracking.combined": "{incoming} und {outgoing}",
     "diff.newlineDifference": "Dateien unterscheiden sich nur durch die Zeilenumbruchformatierung",
     "diff.error.load": "Diff konnte nicht geladen werden: {error}",
-    "diff.loading": "Diff wird geladen..."
+    "diff.loading": "Diff wird geladen...",
+    "diff.editable.blockHint": "Doppelklicken Sie oder drücken Sie die Eingabetaste, um zu bearbeiten",
+    "diff.editable.editingAria": "Arbeitsbereichsblock bearbeiten"
 }

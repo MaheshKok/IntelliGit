@@ -352,5 +352,7 @@
     "branch.tracking.combined": "{incoming}，{outgoing}",
     "diff.newlineDifference": "文件仅换行格式不同",
     "diff.error.load": "无法加载差异：{error}",
-    "diff.loading": "正在加载差异..."
+    "diff.loading": "正在加载差异...",
+    "diff.editable.blockHint": "双击或按 Enter 键进行编辑",
+    "diff.editable.editingAria": "编辑工作树块"
 }

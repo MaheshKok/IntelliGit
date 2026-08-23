@@ -328,7 +328,7 @@
 
 /* This is one active block, so it shares its segment's gutter and row count while retaining the
    native horizontal behavior that follows the caret. The display path stays in `.code-lines` and
-   participates in the shared scrollbar; edit-mode horizontal synchronization is deferred. */
+   the edit path feeds its native scroll position back through the shared scrollbar. */
 .diff-edit-textarea {
     box-sizing: border-box;
     width: 100%;

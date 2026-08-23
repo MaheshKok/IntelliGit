@@ -96,6 +96,12 @@ interface EditableBlockDraft {
     token: number;
 }
 
+interface EditableBlockLayout {
+    side: DiffPane;
+    index: number;
+    rowCount: number;
+}
+
 /** Replaces one line-addressed display block in the LF-normalized document text. */
 function replaceBlockText(
     sourceText: string,
@@ -112,16 +118,16 @@ function replaceBlockText(
 /** Renders editable display blocks while keeping document writes delegated to the host. */
 function EditableDiffPane({
     side,
-    label,
     text,
     documentVersion,
     reseedToken,
     renderedSegments,
     highlightWords,
     onEdit,
+    onDraftLayoutChange,
+    onHorizontalScroll,
 }: {
     side: DiffPane;
-    label: string;
     text: string;
     documentVersion: number;
     reseedToken: number;
@@ -133,22 +139,38 @@ function EditableDiffPane({
         baseVersion: number,
         baseReseedToken: number,
     ) => void;
+    onDraftLayoutChange: (layout: EditableBlockLayout | null) => void;
+    onHorizontalScroll: (left: number, source: HTMLElement) => void;
 }): React.ReactElement {
     const [draft, setDraft] = useState<EditableBlockDraft | null>(null);
+    const isComposingRef = useRef(false);
+    const reseedDuringCompositionRef = useRef(false);
     const lineNumberSide = side === "left" ? "right" : "left";
 
-    // A reseed denotes an external document change. The active block was measured against the
-    // old document and must not remain available for a second edit against stale text.
-    useEffect(() => {
+    const clearDraft = useCallback(() => {
         setDraft(null);
-    }, [reseedToken]);
+        onDraftLayoutChange(null);
+    }, [onDraftLayoutChange]);
+
+    // A reseed denotes an external document change. The active block was measured against the
+    // old document and must not remain available for a second edit against stale text. During an
+    // IME composition, keep its buffer alive until compositionend, but never commit the stale draft.
+    useEffect(() => {
+        if (isComposingRef.current) {
+            reseedDuringCompositionRef.current = true;
+            return;
+        }
+        clearDraft();
+    }, [clearDraft, reseedToken]);
+
+    useEffect(() => () => onDraftLayoutChange(null), [onDraftLayoutChange]);
 
     const startEditing = useCallback(
         (item: RenderedSegment) => {
             const startLine = renderedSegments
                 .slice(0, item.index)
                 .reduce((total, previous) => total + previous.segment[side].length, 0);
-            setDraft({
+            const nextDraft = {
                 index: item.index,
                 text: item.segment[side].join("\n"),
                 sourceText: text,
@@ -156,14 +178,21 @@ function EditableDiffPane({
                 lineCount: item.segment[side].length,
                 version: documentVersion,
                 token: reseedToken,
+            };
+            setDraft(nextDraft);
+            onDraftLayoutChange({
+                side,
+                index: item.index,
+                rowCount: Math.max(nextDraft.lineCount, 1),
             });
         },
-        [documentVersion, renderedSegments, reseedToken, side, text],
+        [documentVersion, onDraftLayoutChange, renderedSegments, reseedToken, side, text],
     );
 
     const commitDraft = useCallback(() => {
         if (draft === null) return;
-        setDraft(null);
+        clearDraft();
+        if (draft.token !== reseedToken) return;
         const nextText = replaceBlockText(
             draft.sourceText,
             draft.startLine,
@@ -173,7 +202,7 @@ function EditableDiffPane({
         if (nextText !== draft.sourceText) {
             onEdit(draft.sourceText, nextText, draft.version, draft.token);
         }
-    }, [draft, onEdit]);
+    }, [clearDraft, draft, onEdit, reseedToken]);
 
     return (
         <>
@@ -182,7 +211,6 @@ function EditableDiffPane({
                 const compareLines = item.segment[side === "left" ? "right" : "left"];
                 const isEditing = draft?.index === item.index;
                 const lineCount = item.paneLines[side];
-                const style = intrinsicSizeStyle(lineCount);
 
                 if (isEditing && draft) {
                     const rowCount = Math.max(draft.text.split("\n").length, lineCount, 1);
@@ -190,7 +218,7 @@ function EditableDiffPane({
                         <div
                             key={`editable-${side}-${item.index}`}
                             className={`code-block line-numbers-${lineNumberSide} diff-editing-block editing`}
-                            style={style}
+                            style={intrinsicSizeStyle(rowCount)}
                         >
                             {lineNumberSide === "left" ? (
                                 <LineNumbers primary={item.lineNumbers[side].primary} />
@@ -198,25 +226,50 @@ function EditableDiffPane({
                             <textarea
                                 className="diff-edit-textarea"
                                 data-testid={`diff-pane-${side}-editable`}
-                                aria-label={label}
+                                aria-label={t("diff.editable.editingAria")}
                                 value={draft.text}
                                 rows={rowCount}
                                 // Deliberate: edit mode opens from a user action and should focus the draft textarea.
                                 // react-doctor-disable-next-line react-doctor/no-autofocus
                                 autoFocus
                                 spellCheck={false}
-                                onChange={(event) =>
-                                    setDraft({ ...draft, text: event.target.value })
-                                }
+                                onCompositionStart={() => {
+                                    isComposingRef.current = true;
+                                }}
+                                onCompositionEnd={() => {
+                                    isComposingRef.current = false;
+                                    if (!reseedDuringCompositionRef.current) return;
+                                    reseedDuringCompositionRef.current = false;
+                                    clearDraft();
+                                }}
+                                onChange={(event) => {
+                                    const nextText = event.target.value;
+                                    setDraft({ ...draft, text: nextText });
+                                    onDraftLayoutChange({
+                                        side,
+                                        index: draft.index,
+                                        rowCount: Math.max(
+                                            nextText.split("\n").length,
+                                            draft.lineCount,
+                                            1,
+                                        ),
+                                    });
+                                }}
                                 onBlur={commitDraft}
                                 onKeyDown={(event) => {
                                     if (event.key === "Escape") {
                                         event.preventDefault();
                                         event.stopPropagation();
-                                        setDraft(null);
+                                        clearDraft();
                                     }
                                 }}
                                 onClick={(event) => event.stopPropagation()}
+                                onScroll={(event) =>
+                                    onHorizontalScroll(
+                                        event.currentTarget.scrollLeft,
+                                        event.currentTarget,
+                                    )
+                                }
                             />
                             {lineNumberSide === "right" ? (
                                 <LineNumbers primary={item.lineNumbers[side].primary} />
@@ -225,13 +278,22 @@ function EditableDiffPane({
                     );
                 }
 
+                const style = intrinsicSizeStyle(lineCount);
                 return (
                     <div
                         key={`editable-${side}-${item.index}`}
                         className="segment diff-editable-block"
                         style={style}
                         onDoubleClick={() => startEditing(item)}
-                        title={t("merge.result.editHint")}
+                        onKeyDown={(event) => {
+                            if (event.key !== "Enter" && event.key !== "F2") return;
+                            event.preventDefault();
+                            startEditing(item);
+                        }}
+                        role="group"
+                        tabIndex={0}
+                        title={t("diff.editable.blockHint")}
+                        aria-label={t("diff.editable.blockHint")}
                     >
                         <CodeBlock
                             lines={lines}
@@ -282,6 +344,7 @@ export function App(): React.ReactElement {
     const [error, setError] = useState<string | null>(null);
     const [ignoreMode, setIgnoreMode] = useState<"none" | "whitespace">("none");
     const [highlightWords, setHighlightWords] = useState(true);
+    const [editingBlock, setEditingBlock] = useState<EditableBlockLayout | null>(null);
     const [shikiReady, setShikiReady] = useState(() => isShikiReady());
     const [shikiTheme] = useState(() => detectTheme());
     const vscode = useMemo(() => getVsCodeApi<OutboundMessage, unknown>(), []);
@@ -300,6 +363,9 @@ export function App(): React.ReactElement {
     // layout/resize so the per-frame draw only recomputes y.
     const viewportRef = useRef({ height: 0, width: 0 });
     const ribbonPaths = useMemo(() => new Map<number, SVGPathElement>(), []);
+    const handleDraftLayoutChange = useCallback((layout: EditableBlockLayout | null) => {
+        setEditingBlock(layout);
+    }, []);
 
     const segments = useMemo(() => data?.segments ?? [], [data]);
     const syntaxHighlightState = useMemo(
@@ -336,11 +402,14 @@ export function App(): React.ReactElement {
     const paneLines = useMemo<SegmentPaneLines<DiffPane>[]>(
         () =>
             renderedSegments.map((item) => ({
-                paneLines: item.paneLines,
+                paneLines:
+                    editingBlock?.index === item.index
+                        ? { ...item.paneLines, [editingBlock.side]: editingBlock.rowCount }
+                        : item.paneLines,
                 conflict: item.segment.type === "changed",
                 id: item.segment.type === "changed" ? item.index : undefined,
             })),
-        [renderedSegments],
+        [editingBlock, renderedSegments],
     );
     const layout = useMemo(() => buildVerticalLayout(paneLines, DIFF_PANES), [paneLines]);
     layoutRef.current = layout;
@@ -364,7 +433,10 @@ export function App(): React.ReactElement {
     const syncHorizontalScroll = useCallback((left: number, source?: HTMLElement | null) => {
         syncHorizontalScrollCore(
             DIFF_PANES,
-            (pane) => columnRefs.current[pane]?.querySelectorAll<HTMLElement>(".code-lines") ?? [],
+            (pane) =>
+                columnRefs.current[pane]?.querySelectorAll<HTMLElement>(
+                    ".code-lines, .diff-edit-textarea",
+                ) ?? [],
             horizontalScrollRef.current,
             scrollSyncRef.current,
             left,
@@ -700,13 +772,14 @@ export function App(): React.ReactElement {
                                     data.documentVersion !== undefined ? (
                                         <EditableDiffPane
                                             side="left"
-                                            label={data.leftLabel}
                                             text={data.editableText}
                                             documentVersion={data.documentVersion}
                                             reseedToken={data.editableReseedToken ?? 0}
                                             renderedSegments={renderedSegments}
                                             highlightWords={highlightWords}
                                             onEdit={handleEdit}
+                                            onDraftLayoutChange={handleDraftLayoutChange}
+                                            onHorizontalScroll={syncHorizontalScroll}
                                         />
                                     ) : (
                                         renderedSegments.map((item) => (
@@ -733,13 +806,14 @@ export function App(): React.ReactElement {
                                     data.documentVersion !== undefined ? (
                                         <EditableDiffPane
                                             side="right"
-                                            label={data.rightLabel}
                                             text={data.editableText}
                                             documentVersion={data.documentVersion}
                                             reseedToken={data.editableReseedToken ?? 0}
                                             renderedSegments={renderedSegments}
                                             highlightWords={highlightWords}
                                             onEdit={handleEdit}
+                                            onDraftLayoutChange={handleDraftLayoutChange}
+                                            onHorizontalScroll={syncHorizontalScroll}
                                         />
                                     ) : (
                                         renderedSegments.map((item) => (

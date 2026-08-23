@@ -370,5 +370,7 @@
     "branch.tracking.combined": "{incoming} e {outgoing}",
     "diff.newlineDifference": "Os arquivos diferem apenas na formatação de quebras de linha",
     "diff.error.load": "Falha ao carregar o diff: {error}",
-    "diff.loading": "Carregando diff..."
+    "diff.loading": "Carregando diff...",
+    "diff.editable.blockHint": "Clique duas vezes ou pressione Enter para editar",
+    "diff.editable.editingAria": "Editar bloco da árvore de trabalho"
 }

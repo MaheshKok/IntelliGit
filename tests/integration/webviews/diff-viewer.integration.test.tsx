@@ -594,6 +594,165 @@ describe("DiffViewerApp read-only contract", () => {
         expect(textarea.rows).toBe(1);
     });
 
+    it("keeps a composing draft mounted through a reseed, then discards it without posting", async () => {
+        const vscode = installVsCodeMock();
+        await mountEditablePane("shared();\nbefore();", 1);
+
+        const textarea = editBlock(1);
+        act(() => {
+            textarea.dispatchEvent(new Event("compositionstart", { bubbles: true }));
+        });
+        setDraftText(textarea, "composed();");
+        dispatchHostMessage({
+            type: "setDiffData",
+            data: {
+                ...diffFixture,
+                editablePane: "left" as const,
+                editableText: "shared();\nhostText();",
+                documentVersion: 2,
+                editableReseedToken: 1,
+            },
+        });
+        await flush();
+
+        const composingTextarea = document.querySelector<HTMLTextAreaElement>(
+            "[data-testid='diff-pane-left-editable']",
+        );
+        expect(composingTextarea?.value).toBe("composed();");
+        act(() => {
+            composingTextarea?.dispatchEvent(new Event("compositionend", { bubbles: true }));
+        });
+        await flush();
+
+        expect(document.querySelector("[data-testid='diff-pane-left-editable']")).toBeNull();
+        expect(sentDeltas(vscode)).toEqual([]);
+    });
+
+    it("does not commit a composing draft that loses focus after a reseed", async () => {
+        const vscode = installVsCodeMock();
+        await mountEditablePane("shared();\nbefore();", 1);
+
+        const textarea = editBlock(1);
+        act(() => {
+            textarea.dispatchEvent(new Event("compositionstart", { bubbles: true }));
+        });
+        setDraftText(textarea, "composed();");
+        dispatchHostMessage({
+            type: "setDiffData",
+            data: {
+                ...diffFixture,
+                editablePane: "left" as const,
+                editableText: "shared();\nhostText();",
+                documentVersion: 2,
+                editableReseedToken: 1,
+            },
+        });
+        await flush();
+
+        commitDraft(textarea);
+
+        expect(sentDeltas(vscode)).toEqual([]);
+    });
+
+    it("opens editable blocks from Enter and F2 with their editing announcements", async () => {
+        installVsCodeMock();
+        await mountEditablePane("shared();\nbefore();", 1);
+
+        const block = document.querySelector<HTMLElement>(".diff-pane-left .diff-editable-block");
+        expect(block?.getAttribute("role")).toBe("group");
+        expect(block?.getAttribute("aria-label")).toBe("Double-click or press Enter to edit");
+        expect(block?.title).toBe("Double-click or press Enter to edit");
+
+        act(() => {
+            block?.focus();
+        });
+        expect(document.activeElement).toBe(block);
+        const enter = new KeyboardEvent("keydown", {
+            key: "Enter",
+            bubbles: true,
+            cancelable: true,
+        });
+        act(() => {
+            block?.dispatchEvent(enter);
+        });
+        expect(enter.defaultPrevented).toBe(true);
+        const enterTextarea = document.querySelector<HTMLTextAreaElement>(
+            "[data-testid='diff-pane-left-editable']",
+        );
+        expect(enterTextarea?.getAttribute("aria-label")).toBe("Edit working tree block");
+        act(() => {
+            enterTextarea?.dispatchEvent(
+                new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+            );
+        });
+
+        const f2 = new KeyboardEvent("keydown", { key: "F2", bubbles: true, cancelable: true });
+        act(() => {
+            block?.focus();
+            block?.dispatchEvent(f2);
+        });
+        expect(f2.defaultPrevented).toBe(true);
+        expect(document.querySelector("[data-testid='diff-pane-left-editable']")).not.toBeNull();
+    });
+
+    it("synchronizes an edit textarea with peer code lines in both directions", async () => {
+        installVsCodeMock();
+        await mountEditablePane("shared();\nbefore();", 1);
+
+        const textarea = editBlock(1);
+        const counterpart = document.querySelector<HTMLElement>(".diff-pane-right .code-lines");
+        const sharedBar = document.querySelector<HTMLElement>(".diff-horizontal-scroll");
+        expect(counterpart).not.toBeNull();
+        expect(sharedBar).not.toBeNull();
+        Object.defineProperties(counterpart as HTMLElement, {
+            clientWidth: { configurable: true, value: 20 },
+            scrollWidth: { configurable: true, value: 100 },
+        });
+        Object.defineProperties(textarea, {
+            clientWidth: { configurable: true, value: 20 },
+            scrollWidth: { configurable: true, value: 100 },
+        });
+        const raf = vi.spyOn(globalThis, "requestAnimationFrame").mockImplementation((callback) => {
+            callback(0);
+            return 0;
+        });
+        try {
+            act(() => {
+                textarea.scrollLeft = 37;
+                textarea.dispatchEvent(new Event("scroll", { bubbles: true }));
+            });
+            expect(counterpart?.scrollLeft).toBe(37);
+            expect(sharedBar?.scrollLeft).toBe(37);
+
+            act(() => {
+                (sharedBar as HTMLElement).scrollLeft = 19;
+                sharedBar?.dispatchEvent(new Event("scroll", { bubbles: true }));
+            });
+            expect(textarea.scrollLeft).toBe(19);
+        } finally {
+            raf.mockRestore();
+        }
+    });
+
+    it("extends the shared scroll range as an active draft grows", async () => {
+        installVsCodeMock();
+        await mountEditablePane("before();", 1, [
+            { type: "changed" as const, left: ["before();"], right: ["after();"] },
+        ]);
+
+        const textarea = editBlock(0);
+        const draftLines = Array.from({ length: 7 }, (_, index) => `draft${index}();`);
+        setDraftText(textarea, draftLines.join("\n"));
+
+        const spacer = document.querySelector<HTMLElement>(".diff-vscroll-spacer");
+        const editingBlock = textarea.closest<HTMLElement>(".diff-editing-block");
+        expect(textarea.rows).toBe(draftLines.length);
+        expect(editingBlock?.style.containIntrinsicSize).toBe(
+            `auto ${draftLines.length * LINE_HEIGHT_PX}px`,
+        );
+        expect(spacer?.style.height).toBe(`${draftLines.length * LINE_HEIGHT_PX}px`);
+    });
+
     it("keeps the anti-vacuity selectors present in the merge app", async () => {
         installVsCodeMock();
         createRootHost();

@@ -379,5 +379,7 @@
     "branch.tracking.combined": "{incoming} и {outgoing}",
     "diff.newlineDifference": "Файлы различаются только форматом перевода строк",
     "diff.error.load": "Не удалось загрузить сравнение: {error}",
-    "diff.loading": "Загрузка сравнения..."
+    "diff.loading": "Загрузка сравнения...",
+    "diff.editable.blockHint": "Дважды щелкните или нажмите Enter, чтобы изменить",
+    "diff.editable.editingAria": "Изменить блок рабочего дерева"
 }
