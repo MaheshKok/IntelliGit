@@ -21,6 +21,7 @@ import { promisify } from "node:util";
 
 import { afterAll, describe, expect, it } from "vitest";
 
+import { removeScratchDirectories } from "../../helpers/scratchDirectories";
 import { resolveShelfPaths } from "../../../src/shelf/paths";
 import { ShelfStore } from "../../../src/shelf/store";
 import { GitExecutor } from "../../../src/git/executor";
@@ -116,10 +117,7 @@ async function assertNoIdentityLeakage(workspace: ScenarioWorkspace): Promise<vo
 }
 
 afterAll(async () => {
-    await Promise.all([
-        ...scratchRoots.map((root) => rm(root, { recursive: true, force: true })),
-        ...scratchHomes.map((home) => rm(home, { recursive: true, force: true })),
-    ]);
+    await removeScratchDirectories(...scratchRoots, ...scratchHomes);
 });
 
 describe("REPOSITORY_SCENARIOS", () => {

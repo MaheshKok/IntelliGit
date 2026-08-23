@@ -4,7 +4,7 @@
  * reset primitive is `dispose()` followed by a fresh copy, so the tests exercise that public path.
  */
 
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -23,6 +23,7 @@ import {
     normalizeFixtureSnapshot,
     type FixtureSnapshot,
 } from "../../fixtures/repo/phase6Snapshot";
+import { removeScratchDirectories } from "../../helpers/scratchDirectories";
 import { git } from "./gitTestHelpers";
 
 const FIXTURE_TIMEOUT_MS = 60_000;
@@ -39,9 +40,7 @@ describe("Phase 6 step 33 -- restore fidelity", () => {
 
     afterEach(async () => {
         await Promise.all(workspaces.map((workspace) => workspace.dispose()));
-        await Promise.all(
-            cleanupDirs.map((directory) => rm(directory, { recursive: true, force: true })),
-        );
+        await removeScratchDirectories(...cleanupDirs);
         workspaces = [];
         cleanupDirs = [];
     }, FIXTURE_TIMEOUT_MS);

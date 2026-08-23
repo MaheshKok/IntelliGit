@@ -6,12 +6,13 @@
  * cycle leaves the second setup free to build cleanly at the same paths.
  */
 
-import { chmod, mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 import { POSIX_PERMISSIONS_ENFORCED } from "../../helpers/platformCapabilities";
+import { removeScratchDirectories } from "../../helpers/scratchDirectories";
 
 import {
     claimFixtureManifest,
@@ -45,10 +46,7 @@ describe("runFixtureTeardown", () => {
             permissionsToRestore.map((dir) => chmod(dir, 0o755).catch(() => undefined)),
         );
         permissionsToRestore = [];
-        await Promise.all([
-            ...cleanupDirs.map((dir) => rm(dir, { recursive: true, force: true })),
-            ...cleanupHomes.map((home) => rm(home, { recursive: true, force: true })),
-        ]);
+        await removeScratchDirectories(...cleanupDirs, ...cleanupHomes);
         cleanupDirs = [];
         cleanupHomes = [];
     });

@@ -18,6 +18,7 @@ import { promisify } from "node:util";
 import { afterEach, describe, expect, it } from "vitest";
 import { GitExecutor } from "../../../src/git/executor";
 import { POSIX_PERMISSIONS_ENFORCED } from "../../helpers/platformCapabilities";
+import { removeScratchDirectories } from "../../helpers/scratchDirectories";
 import { GitOps } from "../../../src/git/operations";
 import { RepositoryMutationCoordinator } from "../../../src/git/mutationCoordinator";
 import { RepositoryLock } from "../../../src/git/repositoryLock";
@@ -39,9 +40,7 @@ const execFileAsync = promisify(execFile);
 const directories: string[] = [];
 
 afterEach(async () => {
-    await Promise.all(
-        directories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })),
-    );
+    await removeScratchDirectories(...directories.splice(0));
 });
 
 async function git(directory: string, args: string[]): Promise<void> {
