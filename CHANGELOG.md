@@ -5,6 +5,18 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.27.4] - 2026-08-23
+
+### Fixed
+
+- Fixed the compatibility check reporting a code-style failure in every file in the repository when it ran on Windows. Line endings were pinned for the visual-test fixtures only, so on Windows — where Git converts to CRLF on checkout by default — the formatter found the whole repository non-conforming: seven hundred and eighty-six files, none of them touched by any change. Line endings are now pinned repository-wide, which matches what is already committed and leaves the binary image baselines alone.
+- Fixed the same compatibility check failing on Linux and macOS because it ran a test that drives a real browser without installing one first. The failure named a missing browser executable rather than anything about the code under test, which is exactly what that test is written to say; the browser is now installed before the tests run, the same way the release workflow already does it.
+
+### Changed
+
+- The nightly comparison between the pinned VS Code build and Insiders now compares only the theme tokens this extension actually reads, scanned out of the source rather than kept as a list by hand. The previous rule ignored tokens the newer build had added, which turned out to be a stand-in for the real question and only half an answer: the run on 23 August failed on all four themes over three tokens that were redefined rather than added, and that no file in this extension names. A token nothing reads cannot change how anything renders. Tokens that are read are still reported when they are dropped, when they are given a different value, and now also when the newer build starts declaring one the pinned build did not — that last case changes appearance without anything being removed, because the newly declared value replaces the fallback the extension had been falling back to. The scan fails loudly rather than comparing a suspiciously small set, and refuses outright if it finds a token name assembled from a variable, since such a name cannot be read out of the source and would otherwise leave the comparison unnoticed. This is test infrastructure only — nothing an installed extension does changes.
+- Extended the development-only handshake diagnostics so that each webview the extension host exchanges messages with carries its own number. The trace previously named only the channel, which left a request and its answer indistinguishable from a request answered to a different webview — precisely the distinction needed to explain an intermittent failure in which the Commit panel asks to be filled, is answered, and stays empty anyway. Gated on the same development-only flag as the rest of the test control channel: an installed extension records nothing and behaves identically.
+
 ## [0.27.3] - 2026-08-22
 
 ### Changed
