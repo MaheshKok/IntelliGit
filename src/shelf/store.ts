@@ -666,6 +666,13 @@ async function writeAtomicExclusive(target: string, contents: Uint8Array): Promi
     }
 }
 async function fsyncDirectory(directory: string): Promise<void> {
+    // Windows has no directory-fsync equivalent. Opening the handle SUCCEEDS there and
+    // `FlushFileBuffers` on it then fails with EPERM, so every shelf write threw before this
+    // gate -- 206 of them in the first portability run that got far enough to execute the suite.
+    // Gated by platform rather than by catching EPERM on purpose: catching would also swallow a
+    // genuine I/O failure on POSIX, where this call is what makes the rename above durable. There
+    // is nothing to fall back to on Windows, which is why SQLite and LevelDB skip it too.
+    if (process.platform === "win32") return;
     const handle = await open(directory, "r");
     try {
         await handle.sync();
