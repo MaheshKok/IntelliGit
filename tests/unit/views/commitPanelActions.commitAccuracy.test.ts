@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { FILENAMES_MAY_CONTAIN_RESERVED_CHARACTERS } from "../../helpers/platformCapabilities";
 import { GitExecutor } from "../../../src/git/executor";
 import { GitOps } from "../../../src/git/operations";
 
@@ -313,15 +314,18 @@ describe("commitSelectedFromPanel commit accuracy", () => {
         expect(await git(repo, ["diff", "--name-only"])).toBe("src.txt\n");
     });
 
-    it("treats wildcard and magic characters in checked filenames literally", async () => {
-        const repo = await createRepository();
-        const literalPath = "literal[abc]*?.txt";
-        await write(repo, literalPath, "literal\n");
+    it.skipIf(!FILENAMES_MAY_CONTAIN_RESERVED_CHARACTERS)(
+        "treats wildcard and magic characters in checked filenames literally",
+        async () => {
+            const repo = await createRepository();
+            const literalPath = "literal[abc]*?.txt";
+            await write(repo, literalPath, "literal\n");
 
-        await commitSelected(repo, { message: "literal", paths: [literalPath] });
+            await commitSelected(repo, { message: "literal", paths: [literalPath] });
 
-        expect(await changedPaths(repo)).toBe(`A\t${literalPath}\n`);
-    });
+            expect(await changedPaths(repo)).toBe(`A\t${literalPath}\n`);
+        },
+    );
 
     it("amends only checked paths", async () => {
         const repo = await createRepository();

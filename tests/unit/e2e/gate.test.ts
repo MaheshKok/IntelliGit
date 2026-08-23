@@ -10,6 +10,7 @@ import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { POSIX_PERMISSIONS_ENFORCED } from "../../helpers/platformCapabilities";
 
 // "vscode" has no runtime module outside the Extension Development Host; only the
 // ExtensionMode enum's real numeric values are needed here.
@@ -104,21 +105,24 @@ describe("evaluateE2eGate: channel directory gate", () => {
         }
     });
 
-    it("does not activate when the directory exists but is not writable", () => {
-        const dir = mkdtempSync(join(tmpdir(), "intelligit-e2e-gate-test-"));
-        chmodSync(dir, 0o500);
-        try {
-            const result = evaluateE2eGate(vscode.ExtensionMode.Development, {
-                INTELLIGIT_E2E: "1",
-                INTELLIGIT_E2E_CHANNEL_DIR: dir,
-            });
-            expect(result.active).toBe(false);
-            expect(result.reason).toMatch(/not writable/);
-        } finally {
-            chmodSync(dir, 0o700);
-            rmSync(dir, { recursive: true, force: true });
-        }
-    });
+    it.skipIf(!POSIX_PERMISSIONS_ENFORCED)(
+        "does not activate when the directory exists but is not writable",
+        () => {
+            const dir = mkdtempSync(join(tmpdir(), "intelligit-e2e-gate-test-"));
+            chmodSync(dir, 0o500);
+            try {
+                const result = evaluateE2eGate(vscode.ExtensionMode.Development, {
+                    INTELLIGIT_E2E: "1",
+                    INTELLIGIT_E2E_CHANNEL_DIR: dir,
+                });
+                expect(result.active).toBe(false);
+                expect(result.reason).toMatch(/not writable/);
+            } finally {
+                chmodSync(dir, 0o700);
+                rmSync(dir, { recursive: true, force: true });
+            }
+        },
+    );
 
     it('rejects INTELLIGIT_E2E="true" -- only the literal string "1" satisfies the gate', () => {
         const dir = mkdtempSync(join(tmpdir(), "intelligit-e2e-gate-test-"));

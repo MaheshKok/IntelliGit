@@ -11,6 +11,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
+import { POSIX_PERMISSIONS_ENFORCED } from "../../helpers/platformCapabilities";
 
 import {
     claimFixtureManifest,
@@ -150,7 +151,7 @@ describe("runFixtureTeardown", () => {
     });
 
     describe("non-masking: a genuine filesystem failure is never swallowed", () => {
-        it(
+        it.skipIf(!POSIX_PERMISSIONS_ENFORCED)(
             "propagates EACCES when the template's parent directory forbids removal, rather than treating it as merely absent",
             async () => {
                 const workDir = await makeWorkDir("permission-denied");

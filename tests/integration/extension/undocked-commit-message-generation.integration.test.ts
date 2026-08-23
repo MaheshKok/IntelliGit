@@ -2,6 +2,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { fixturePath } from "../../helpers/fixturePaths";
 
+// Every root here is resolved through `fixturePath` rather than written as a POSIX-shaped
+// literal. `/repo-a` is not an absolute path on Windows: production joins it with `.git`
+// and gets a driveless `\repo-a\.git`, while an expectation built from `fixturePath` gets
+// `D:\repo-a\.git`. Both sides have to come from the same place or the test compares two
+// different spellings of a path neither the provider nor git ever disagreed about (#223).
+const REPO_A = fixturePath("/repo-a");
+const REPO_B = fixturePath("/repo-b");
+const EXTENSION_DIR = fixturePath("/extension");
+
 type MessageHandler = (message: unknown) => Promise<void> | void;
 
 class FakeEventEmitter<T> {
@@ -134,7 +143,7 @@ function createRootGitOps() {
         // Platform-native, because the consumer resolves these before handing them on and real
         // git emits drive-rooted paths on Windows. See tests/helpers/fixturePaths.ts.
         getGitDirectories: vi.fn(async () => ({
-            root: fixturePath("/repo-a"),
+            root: REPO_A,
             gitDir: fixturePath("/repo-a/.git"),
             commonDir: fixturePath("/repo-a/.git"),
         })),
@@ -149,10 +158,10 @@ function createRootGitOps() {
 
 function createGitOps() {
     const rootGitOpsByRoot = {
-        "/repo-a": createRootGitOps(),
-        "/repo-b": createRootGitOps(),
+        [REPO_A]: createRootGitOps(),
+        [REPO_B]: createRootGitOps(),
     };
-    const rootGitOps = rootGitOpsByRoot["/repo-a"];
+    const rootGitOps = rootGitOpsByRoot[REPO_A];
     return {
         ...rootGitOps,
         deriveFor: vi.fn(
@@ -182,19 +191,19 @@ async function createProvider() {
         update: vi.fn(async () => undefined),
     };
     const provider = new UndockedViewProvider(
-        { fsPath: "/extension", path: "/extension" } as never,
+        { fsPath: EXTENSION_DIR, path: EXTENSION_DIR } as never,
         gitOps as never,
-        { fsPath: "/repo-a", path: "/repo-a" } as never,
+        { fsPath: REPO_A, path: REPO_A } as never,
         {} as never,
         workspaceState as never,
         {},
         undefined,
         {
             repositories: [
-                { root: "/repo-a", label: "repo-a" },
-                { root: "/repo-b", label: "repo-b" },
+                { root: REPO_A, label: "repo-a" },
+                { root: REPO_B, label: "repo-b" },
             ],
-            selectedRepositoryRoot: "/repo-a",
+            selectedRepositoryRoot: REPO_A,
             commitMessageGenerationCoordinator: coordinator,
         } as never,
     );
@@ -229,7 +238,7 @@ describe("UndockedViewProvider commit-message generation", () => {
 
         await send({
             type: "generateCommitMessage",
-            repositoryRoot: "/repo-a",
+            repositoryRoot: REPO_A,
             requestId: "generate-1",
             paths: ["src/a.ts", "src/a.ts"],
             amend: false,
@@ -241,7 +250,7 @@ describe("UndockedViewProvider commit-message generation", () => {
             requestId: string;
             validate: (control: { isActive: () => boolean }) => Promise<unknown>;
         };
-        expect(submission.repositoryRoot).toBe("/repo-a");
+        expect(submission.repositoryRoot).toBe(REPO_A);
         expect(submission.requestId).toBe("generate-1");
         await expect(submission.validate({ isActive: () => true })).resolves.toEqual({
             paths: ["src/a.ts"],
@@ -250,7 +259,7 @@ describe("UndockedViewProvider commit-message generation", () => {
                 { path: "src/a.ts", status: "M", staged: false, additions: 1, deletions: 0 },
             ],
         });
-        expect(gitOps.deriveFor).toHaveBeenCalledWith("/repo-a");
+        expect(gitOps.deriveFor).toHaveBeenCalledWith(REPO_A);
         expect(gitOps.rootGitOps.getStatus).toHaveBeenCalledTimes(1);
         expect(gitOps.rootGitOps.getStatus).toHaveBeenCalledWith({ withStats: false });
         provider.dispose();
@@ -260,7 +269,7 @@ describe("UndockedViewProvider commit-message generation", () => {
         const { coordinator, provider } = await createProvider();
         await send({
             type: "generateCommitMessage",
-            repositoryRoot: "/repo-a",
+            repositoryRoot: REPO_A,
             requestId: "valid",
             paths: ["src/a.ts"],
             amend: false,
@@ -271,7 +280,7 @@ describe("UndockedViewProvider commit-message generation", () => {
 
         await send({
             type: "generateCommitMessage",
-            repositoryRoot: "/repo-a",
+            repositoryRoot: REPO_A,
             requestId: "invalid",
             paths: ["src/a.ts"],
             amend: "false",
@@ -287,7 +296,7 @@ describe("UndockedViewProvider commit-message generation", () => {
         expect(coordinator.submit).toHaveBeenCalledTimes(1);
         expect(postMessage).toHaveBeenCalledWith({
             type: "commitMessageGeneration",
-            repositoryRoot: "/repo-a",
+            repositoryRoot: REPO_A,
             requestId: "invalid",
             kind: "error",
             errorKind: "invalidRequest",
@@ -301,14 +310,14 @@ describe("UndockedViewProvider commit-message generation", () => {
         });
 
         submission.host.emit({
-            repositoryRoot: "/repo-a",
+            repositoryRoot: REPO_A,
             requestId: "valid",
             kind: "chunk",
             text: "feat: generated",
         });
         expect(postMessage).toHaveBeenCalledWith({
             type: "commitMessageGeneration",
-            repositoryRoot: "/repo-a",
+            repositoryRoot: REPO_A,
             requestId: "valid",
             kind: "chunk",
             text: "feat: generated",
@@ -320,7 +329,7 @@ describe("UndockedViewProvider commit-message generation", () => {
         const { coordinator, provider } = await createProvider();
         await send({
             type: "generateCommitMessage",
-            repositoryRoot: "/repo-a",
+            repositoryRoot: REPO_A,
             requestId: "late",
             paths: ["src/a.ts"],
             amend: false,
@@ -331,13 +340,13 @@ describe("UndockedViewProvider commit-message generation", () => {
         postMessage.mockClear();
 
         submission.host.emit({
-            repositoryRoot: "/repo-a",
+            repositoryRoot: REPO_A,
             requestId: "late",
             kind: "cancelled",
             superseded: true,
         });
         submission.host.emit({
-            repositoryRoot: "/repo-a",
+            repositoryRoot: REPO_A,
             requestId: "late",
             kind: "done",
             superseded: true,
@@ -346,14 +355,14 @@ describe("UndockedViewProvider commit-message generation", () => {
         expect(postMessage.mock.calls.map(([message]) => message)).toEqual([
             {
                 type: "commitMessageGeneration",
-                repositoryRoot: "/repo-a",
+                repositoryRoot: REPO_A,
                 requestId: "late",
                 kind: "cancelled",
                 superseded: true,
             },
             {
                 type: "commitMessageGeneration",
-                repositoryRoot: "/repo-a",
+                repositoryRoot: REPO_A,
                 requestId: "late",
                 kind: "done",
                 superseded: true,
@@ -369,7 +378,7 @@ describe("UndockedViewProvider commit-message generation", () => {
 
         await send({
             type: "generateCommitMessage",
-            repositoryRoot: "/repo-a",
+            repositoryRoot: REPO_A,
             requestId: "oversized",
             paths,
             amend: false,
@@ -380,7 +389,7 @@ describe("UndockedViewProvider commit-message generation", () => {
         expect(gitOps.rootGitOps.getStatus).not.toHaveBeenCalled();
         expect(postMessage).toHaveBeenCalledWith({
             type: "commitMessageGeneration",
-            repositoryRoot: "/repo-a",
+            repositoryRoot: REPO_A,
             requestId: "oversized",
             kind: "error",
             errorKind: "invalidRequest",
@@ -396,21 +405,21 @@ describe("UndockedViewProvider commit-message generation", () => {
         ]);
         await send({
             type: "generateCommitMessage",
-            repositoryRoot: "/repo-a",
+            repositoryRoot: REPO_A,
             requestId: "rename-source",
             paths: ["source.ts"],
             amend: false,
         });
         await send({
             type: "generateCommitMessage",
-            repositoryRoot: "/repo-a",
+            repositoryRoot: REPO_A,
             requestId: "ignored",
             paths: ["ignored.log"],
             amend: false,
         });
         await send({
             type: "generateCommitMessage",
-            repositoryRoot: "/repo-a",
+            repositoryRoot: REPO_A,
             requestId: "empty",
             paths: [],
             amend: false,
@@ -431,7 +440,7 @@ describe("UndockedViewProvider commit-message generation", () => {
         );
         await send({
             type: "generateCommitMessage",
-            repositoryRoot: "/repo-a",
+            repositoryRoot: REPO_A,
             requestId: "cancelled",
             paths: ["destination.ts"],
             amend: false,
@@ -443,13 +452,13 @@ describe("UndockedViewProvider commit-message generation", () => {
         const validation = cancelledSubmission.validate({ isActive: () => false });
         await send({
             type: "cancelCommitMessageGeneration",
-            repositoryRoot: "/repo-a",
+            repositoryRoot: REPO_A,
             requestId: "cancelled",
         });
         resolveStatus([{ path: "destination.ts", status: "M", staged: false }]);
         await expect(validation).resolves.toBeUndefined();
         expect(coordinator.cancel).toHaveBeenCalledWith({
-            repositoryRoot: "/repo-a",
+            repositoryRoot: REPO_A,
             requestId: "cancelled",
             host: cancelledSubmission.host,
         });
@@ -460,7 +469,7 @@ describe("UndockedViewProvider commit-message generation", () => {
         const { coordinator, gitOps, provider } = await createProvider();
         await send({
             type: "generateCommitMessage",
-            repositoryRoot: "/repo-a",
+            repositoryRoot: REPO_A,
             requestId: "amend-unborn",
             paths: ["src/a.ts"],
             amend: true,
@@ -487,7 +496,7 @@ describe("UndockedViewProvider commit-message generation", () => {
 
         await send({
             type: "generateCommitMessage",
-            repositoryRoot: "/repo-a",
+            repositoryRoot: REPO_A,
             requestId: "panel-close",
             paths: ["src/a.ts"],
             amend: false,
@@ -513,10 +522,10 @@ describe("UndockedViewProvider commit-message generation", () => {
         );
 
         provider.setRepositories([]);
-        expect(coordinator.dropHostRoot).toHaveBeenCalledWith(expect.any(Object), "/repo-a");
+        expect(coordinator.dropHostRoot).toHaveBeenCalledWith(expect.any(Object), REPO_A);
         expect(
             (provider as unknown as { selectedRepositoryRoot: string }).selectedRepositoryRoot,
-        ).toBe("/repo-a");
+        ).toBe(REPO_A);
 
         pendingOperation.resolve("none");
         await refresh;
@@ -539,7 +548,7 @@ describe("UndockedViewProvider commit-message generation", () => {
             provider as unknown as { refreshCommitPanelData: () => Promise<void> }
         ).refreshCommitPanelData();
 
-        expect(readLiveRebaseManifest).toHaveBeenCalledWith("/storage", "/repo-a");
+        expect(readLiveRebaseManifest).toHaveBeenCalledWith("/storage", REPO_A);
         expect(deriveRebaseControl).toHaveBeenCalledWith({
             gitDir: fixturePath("/repo-a/.git"),
             liveManifest,
@@ -638,20 +647,20 @@ describe("UndockedViewProvider commit-message generation", () => {
             paths: ["src/a.ts"],
         });
 
-        expect(coordinator.acquireCommitLease).toHaveBeenCalledWith("/repo-a");
+        expect(coordinator.acquireCommitLease).toHaveBeenCalledWith(REPO_A);
         expect(rejectedRelease).toHaveBeenCalledTimes(1);
         provider.dispose();
     });
 
     it("scopes direct commit routes to the selected root and releases each lease", async () => {
         const { coordinator, gitOps, provider } = await createProvider();
-        const repoBGitOps = gitOps.rootGitOpsByRoot["/repo-b"];
+        const repoBGitOps = gitOps.rootGitOpsByRoot[REPO_B];
         const commitRelease = vi.fn();
         const pushRelease = vi.fn();
         coordinator.acquireCommitLease
             .mockReturnValueOnce(commitRelease)
             .mockReturnValueOnce(pushRelease);
-        provider.setRepositoryRootUri({ fsPath: "/repo-b", path: "/repo-b" } as never);
+        provider.setRepositoryRootUri({ fsPath: REPO_B, path: REPO_B } as never);
         gitOps.deriveFor.mockClear();
 
         commitOnlyFromPanel.mockImplementationOnce(
@@ -675,10 +684,10 @@ describe("UndockedViewProvider commit-message generation", () => {
 
         expect(commitOnlyFromPanel).toHaveBeenCalledOnce();
         expect(commitAndPushFromPanel).toHaveBeenCalledOnce();
-        expect(gitOps.deriveFor).toHaveBeenNthCalledWith(1, "/repo-b");
-        expect(gitOps.deriveFor).toHaveBeenNthCalledWith(2, "/repo-b");
-        expect(coordinator.acquireCommitLease).toHaveBeenNthCalledWith(1, "/repo-b");
-        expect(coordinator.acquireCommitLease).toHaveBeenNthCalledWith(2, "/repo-b");
+        expect(gitOps.deriveFor).toHaveBeenNthCalledWith(1, REPO_B);
+        expect(gitOps.deriveFor).toHaveBeenNthCalledWith(2, REPO_B);
+        expect(coordinator.acquireCommitLease).toHaveBeenNthCalledWith(1, REPO_B);
+        expect(coordinator.acquireCommitLease).toHaveBeenNthCalledWith(2, REPO_B);
         expect(commitRelease).toHaveBeenCalledOnce();
         expect(pushRelease).toHaveBeenCalledOnce();
         provider.dispose();
@@ -686,19 +695,19 @@ describe("UndockedViewProvider commit-message generation", () => {
 
     it("refreshes hasCommits through one root-bound GitOps facade and rejects ABA repository switches", async () => {
         const { gitOps, provider } = await createProvider();
-        const repoBGitOps = gitOps.rootGitOpsByRoot["/repo-b"];
+        const repoBGitOps = gitOps.rootGitOpsByRoot[REPO_B];
         repoBGitOps.listStashes.mockResolvedValue([{ index: 3 }]);
         repoBGitOps.getStashFiles.mockResolvedValue([{ path: "stash/b.ts", status: "M" }]);
         repoBGitOps.hasAnyCommits.mockResolvedValue(false);
         repoBGitOps.getActiveOperation.mockResolvedValue("merge");
 
-        provider.setRepositoryRootUri({ fsPath: "/repo-b", path: "/repo-b" } as never);
+        provider.setRepositoryRootUri({ fsPath: REPO_B, path: REPO_B } as never);
         await (
             provider as unknown as { refreshCommitPanelData: () => Promise<void> }
         ).refreshCommitPanelData();
 
         expect(gitOps.deriveFor).toHaveBeenCalledTimes(1);
-        expect(gitOps.deriveFor).toHaveBeenCalledWith("/repo-b");
+        expect(gitOps.deriveFor).toHaveBeenCalledWith(REPO_B);
         expect(repoBGitOps.getStatus).toHaveBeenCalledTimes(1);
         expect(repoBGitOps.listStashes).toHaveBeenCalledTimes(1);
         expect(repoBGitOps.getBranches).toHaveBeenCalledTimes(1);
@@ -717,13 +726,13 @@ describe("UndockedViewProvider commit-message generation", () => {
         postMessage.mockClear();
         const pendingStatus = createDeferred<unknown[]>();
         gitOps.rootGitOps.getStatus.mockImplementationOnce(() => pendingStatus.promise);
-        provider.setRepositoryRootUri({ fsPath: "/repo-a", path: "/repo-a" } as never);
+        provider.setRepositoryRootUri({ fsPath: REPO_A, path: REPO_A } as never);
         const refresh = (
             provider as unknown as { refreshCommitPanelData: () => Promise<void> }
         ).refreshCommitPanelData();
         await vi.waitFor(() => expect(gitOps.rootGitOps.getStatus).toHaveBeenCalledTimes(1));
-        provider.setRepositoryRootUri({ fsPath: "/repo-b", path: "/repo-b" } as never);
-        provider.setRepositoryRootUri({ fsPath: "/repo-a", path: "/repo-a" } as never);
+        provider.setRepositoryRootUri({ fsPath: REPO_B, path: REPO_B } as never);
+        provider.setRepositoryRootUri({ fsPath: REPO_A, path: REPO_A } as never);
         pendingStatus.resolve([
             { path: "src/a.ts", status: "M", staged: false, additions: 1, deletions: 0 },
         ]);
@@ -776,8 +785,8 @@ describe("UndockedViewProvider commit-message generation", () => {
         await vi.waitFor(() =>
             expect(gitOps.rootGitOps.getActiveOperation).toHaveBeenCalledTimes(1),
         );
-        provider.setRepositoryRootUri({ fsPath: "/repo-b", path: "/repo-b" } as never);
-        provider.setRepositoryRootUri({ fsPath: "/repo-a", path: "/repo-a" } as never);
+        provider.setRepositoryRootUri({ fsPath: REPO_B, path: REPO_B } as never);
+        provider.setRepositoryRootUri({ fsPath: REPO_A, path: REPO_A } as never);
         pendingOperation.resolve("none");
         await selectStash;
         expect(postMessage).not.toHaveBeenCalledWith(expect.objectContaining({ type: "update" }));
@@ -787,19 +796,19 @@ describe("UndockedViewProvider commit-message generation", () => {
     it("posts captured roots for the undocked UI's exact-root filtered commit-panel events", async () => {
         const { provider } = await createProvider();
 
-        provider.setRepositoryRootUri({ fsPath: "/repo-b", path: "/repo-b" } as never);
+        provider.setRepositoryRootUri({ fsPath: REPO_B, path: REPO_B } as never);
         await (
             provider as unknown as { refreshCommitPanelData: () => Promise<void> }
         ).refreshCommitPanelData();
         expect(postMessage).toHaveBeenCalledWith(
-            expect.objectContaining({ type: "update", repositoryRoot: "/repo-b" }),
+            expect.objectContaining({ type: "update", repositoryRoot: REPO_B }),
         );
 
         postMessage.mockClear();
         await send({ type: "ready" });
         expect(postMessage).toHaveBeenCalledWith({
             type: "restoreCommitDraft",
-            repositoryRoot: "/repo-b",
+            repositoryRoot: REPO_B,
             message: "",
         });
 
@@ -818,17 +827,17 @@ describe("UndockedViewProvider commit-message generation", () => {
         });
         expect(postMessage).toHaveBeenCalledWith({
             type: "lastCommitMessage",
-            repositoryRoot: "/repo-b",
+            repositoryRoot: REPO_B,
             message: "feat: previous commit",
         });
         expect(postMessage).toHaveBeenCalledWith({
             type: "amendBranchCommits",
-            repositoryRoot: "/repo-b",
+            repositoryRoot: REPO_B,
             commits: [],
         });
         expect(postMessage).toHaveBeenCalledWith({
             type: "committed",
-            repositoryRoot: "/repo-b",
+            repositoryRoot: REPO_B,
             clearCommitMessage: true,
         });
         provider.dispose();
@@ -837,15 +846,15 @@ describe("UndockedViewProvider commit-message generation", () => {
     it("persists a terminal draft to its accepted root after the selected root switches", async () => {
         const { provider, workspaceState } = await createProvider();
 
-        provider.setRepositoryRootUri({ fsPath: "/repo-b", path: "/repo-b" } as never);
+        provider.setRepositoryRootUri({ fsPath: REPO_B, path: REPO_B } as never);
         await send({
             type: "saveCommitDraft",
-            repositoryRoot: "/repo-a",
+            repositoryRoot: REPO_A,
             message: "generated for repo a",
         });
 
         expect(workspaceState.update).toHaveBeenCalledWith(
-            expect.stringContaining("/repo-a"),
+            expect.stringContaining(REPO_A),
             "generated for repo a",
         );
         await send({
@@ -870,7 +879,7 @@ describe("UndockedViewProvider commit-message generation", () => {
         const { coordinator, provider } = await createProvider();
         await send({
             type: "generateCommitMessage",
-            repositoryRoot: "/repo-a",
+            repositoryRoot: REPO_A,
             requestId: "error",
             paths: ["src/a.ts"],
             amend: false,
@@ -879,7 +888,7 @@ describe("UndockedViewProvider commit-message generation", () => {
             host: { emit: (event: unknown) => void };
         };
         submission.host.emit({
-            repositoryRoot: "/repo-a",
+            repositoryRoot: REPO_A,
             requestId: "error",
             kind: "error",
             errorKind: "blocked",
