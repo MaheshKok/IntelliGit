@@ -37,6 +37,33 @@ export const FILENAMES_MAY_CONTAIN_RESERVED_CHARACTERS = process.platform !== "w
  */
 export const POSIX_PERMISSIONS_ENFORCED = process.platform !== "win32";
 
+/**
+ * The octal permission bits `lstat` reports for a writable regular file, spelled the way the shelf
+ * fingerprint spells them.
+ *
+ * Windows has no POSIX permission bits at all. `fs.lstat` there synthesizes `0o666` for a writable
+ * file and `0o444` for a read-only one, whatever mode the file was created with, so the
+ * `<mode>:<sha256>` fingerprint reads `666:...` on Windows and `644:...` on POSIX for byte-identical
+ * content.
+ *
+ * This is a DECLARATION of what each platform reports, not a read of what the code under test
+ * computed: an implementation that dropped the `& 0o7777` mask and emitted `100644`, or dropped the
+ * mode segment entirely, still fails against it.
+ */
+export const WRITABLE_FILE_MODE_OCTAL = process.platform === "win32" ? "666" : "644";
+
+/**
+ * Whether the filesystem rejects an over-long path component with an error `rm` cannot swallow.
+ *
+ * `NAME_MAX` is 255 on macOS and Linux alike, so a 300-character segment is refused with
+ * `ENAMETOOLONG` for root and non-root alike -- which is exactly what `cleanUpThenRethrow`'s test
+ * needs, a removal that genuinely fails. Windows has no equivalent: the same name is simply a path
+ * that does not exist, and `rm(..., { force: true })` ignores a path that does not exist. The
+ * removal SUCCEEDS there, so nothing is warned about and the displacement being guarded against
+ * cannot arise in the first place.
+ */
+export const OVERLONG_NAMES_FAIL_REMOVAL = process.platform !== "win32";
+
 /** Whether this runtime can execute the POSIX-shell contracts used by shell-dependent tests. */
 export const supportsPosixShell =
     process.platform !== "win32" &&

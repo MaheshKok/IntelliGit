@@ -26,6 +26,7 @@ import {
     seedFixtureTemplate,
     type FixtureTemplate,
 } from "../../fixtures/repo/seed";
+import { OVERLONG_NAMES_FAIL_REMOVAL } from "../../helpers/platformCapabilities";
 import { createScratchWorkspaces } from "./scratchWorkspaces";
 
 const execFileAsync = promisify(execFile);
@@ -471,24 +472,27 @@ describe("cleanUpThenRethrow", () => {
         );
     });
 
-    it("reports a failed removal without letting it replace the original error", async () => {
-        const unremovable = join(tmpdir(), "n".repeat(300));
-        const seedingFailure = new Error("git init exploded");
-        const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    it.skipIf(!OVERLONG_NAMES_FAIL_REMOVAL)(
+        "reports a failed removal without letting it replace the original error",
+        async () => {
+            const unremovable = join(tmpdir(), "n".repeat(300));
+            const seedingFailure = new Error("git init exploded");
+            const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
 
-        try {
-            // Identity, not message matching: a rejection carrying the ENAMETOOLONG error would
-            // still be "an Error", and asserting the exact instance is what makes displacement
-            // detectable.
-            await expect(cleanUpThenRethrow(unremovable, seedingFailure)).rejects.toBe(
-                seedingFailure,
-            );
-            expect(warn).toHaveBeenCalledTimes(1);
-            expect(String(warn.mock.calls[0]?.[0])).toContain("ENAMETOOLONG");
-        } finally {
-            warn.mockRestore();
-        }
-    });
+            try {
+                // Identity, not message matching: a rejection carrying the ENAMETOOLONG error would
+                // still be "an Error", and asserting the exact instance is what makes displacement
+                // detectable.
+                await expect(cleanUpThenRethrow(unremovable, seedingFailure)).rejects.toBe(
+                    seedingFailure,
+                );
+                expect(warn).toHaveBeenCalledTimes(1);
+                expect(String(warn.mock.calls[0]?.[0])).toContain("ENAMETOOLONG");
+            } finally {
+                warn.mockRestore();
+            }
+        },
+    );
 
     it("removes the path before rethrowing", async () => {
         const workDir = await mkdtemp(join(tmpdir(), "intelligit-cleanup-rethrow-test-"));

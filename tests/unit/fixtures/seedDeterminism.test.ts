@@ -323,10 +323,24 @@ describe("Phase 6 step 32 -- canonical snapshot seed determinism", () => {
                     controlRoot,
                     hostileEnvironment,
                 );
-                const controlTimezone = await run("date", ["+%z"], controlRoot, hostileEnvironment);
+                // Node, not `date`. `date` is not a Windows program at all, and the MSYS
+                // `date.exe` Git for Windows puts on PATH answers `+0000` for an IANA zone name it
+                // has no tzdata for -- so this control claimed the ambient zone never reached the
+                // child on a runner where it plainly had, and failed the one assertion whose whole
+                // job is to stop the rest of the test passing vacuously. `process.execPath` is the
+                // one interpreter guaranteed present on every leg, and its bundled ICU resolves
+                // `Pacific/Auckland` identically on all three.
+                const controlTimezone = await run(
+                    process.execPath,
+                    ["-e", "process.stdout.write(String(new Date().getTimezoneOffset()))"],
+                    controlRoot,
+                    hostileEnvironment,
+                );
                 expect(controlName).toBe("Ambient Hostile User");
                 expect(controlAutocrlf).toBe("true");
-                expect(controlTimezone).not.toBe("+0000");
+                // UTC is 0; Pacific/Auckland is -720 or -780 depending on DST. A zero here
+                // means the hostile TZ never reached the child and everything below is vacuous.
+                expect(controlTimezone).not.toBe("0");
 
                 const result = await capturePairSnapshots(workspacesRoot);
                 workspaces.push(...result.workspaces);
