@@ -298,7 +298,9 @@ describe("WorktreeService", () => {
         await expect(
             currentLinked.removeWorktree(fixturePath("/worktrees/current")),
         ).rejects.toThrow("current worktree");
-        await expect(service.removeWorktree("/missing")).rejects.toThrow("Worktree not found");
+        await expect(service.removeWorktree(fixturePath("/missing"))).rejects.toThrow(
+            "Worktree not found",
+        );
     });
 
     it("removes a clean worktree without force and leaves branches untouched", async () => {
@@ -330,7 +332,7 @@ describe("WorktreeService", () => {
         const executor = createExecutor([
             porcelainRecords([
                 { path: fixturePath("/repo"), branch: "main" },
-                { path: "/worktrees/dirty", branch: "dirty" },
+                { path: fixturePath("/worktrees/dirty"), branch: "dirty" },
             ]),
             "",
             porcelain("main"),
@@ -339,21 +341,23 @@ describe("WorktreeService", () => {
         const service = new WorktreeService(executor, () => fixturePath("/repo"), scoped.factory);
 
         showWarningMessage.mockResolvedValueOnce(undefined);
-        await expect(service.removeWorktree("/worktrees/dirty")).resolves.toBeUndefined();
+        await expect(
+            service.removeWorktree(fixturePath("/worktrees/dirty")),
+        ).resolves.toBeUndefined();
         expect(executor.run).not.toHaveBeenCalledWith([
             "worktree",
             "remove",
             "--force",
-            "/worktrees/dirty",
+            fixturePath("/worktrees/dirty"),
         ]);
 
         showWarningMessage.mockResolvedValueOnce("Delete Worktree");
-        await service.removeWorktree("/worktrees/dirty");
+        await service.removeWorktree(fixturePath("/worktrees/dirty"));
         expect(executor.run).toHaveBeenCalledWith([
             "worktree",
             "remove",
             "--force",
-            "/worktrees/dirty",
+            fixturePath("/worktrees/dirty"),
         ]);
     });
 

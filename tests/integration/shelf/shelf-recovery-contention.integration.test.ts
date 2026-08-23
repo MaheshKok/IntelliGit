@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import { readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { describeAbruptTermination } from "../../helpers/abruptTermination";
 import { GitExecutor } from "../../../src/git/executor";
 import { GitOps } from "../../../src/git/operations";
 import { RepositoryMutationCoordinator } from "../../../src/git/mutationCoordinator";
@@ -52,6 +53,23 @@ function runCrashWorker(
     });
 }
 
+/**
+ * Fails unless the crash worker died without running cleanup, in whatever way this platform says
+ * that. The stderr the worker produced is folded into the message because the usual cause of a
+ * surprise here is the worker throwing before it reached its checkpoint.
+ */
+function expectAbruptTermination(outcome: {
+    readonly code: number | null;
+    readonly signal: NodeJS.Signals | null;
+    readonly stderr: string;
+}): void {
+    const verdict = describeAbruptTermination(outcome);
+    expect(
+        verdict.abrupt,
+        `Crash worker did not die abruptly: ${verdict.reason}. stderr:\n${outcome.stderr}`,
+    ).toBe(true);
+}
+
 async function expireCrashLocks(repositoryRoot: string, storageRoot: string): Promise<void> {
     const commonDir = path.resolve(
         repositoryRoot,
@@ -85,10 +103,7 @@ describe("ShelfService recovery and real lock contention", () => {
         const beforeIndex = await indexSnapshot(fixture.root);
 
         const outcome = await runCrashWorker(fixture.root, fixture.storageRoot);
-        expect(
-            outcome.signal,
-            `Crash worker did not exit via SIGKILL (code: ${outcome.code}). stderr:\n${outcome.stderr}`,
-        ).toBe("SIGKILL");
+        expectAbruptTermination(outcome);
         await expireCrashLocks(fixture.root, fixture.storageRoot);
         const restarted = await createSecondService(fixture.root, fixture.storageRoot);
         await expect(restarted.service.resumePendingRecovery()).resolves.toMatchObject({
@@ -106,10 +121,7 @@ describe("ShelfService recovery and real lock contention", () => {
         const fixture = await createShelfFixture();
         await writeFile(path.join(fixture.root, "tracked.txt"), "shelved bytes\n");
         const outcome = await runCrashWorker(fixture.root, fixture.storageRoot);
-        expect(
-            outcome.signal,
-            `Crash worker did not exit via SIGKILL (code: ${outcome.code}). stderr:\n${outcome.stderr}`,
-        ).toBe("SIGKILL");
+        expectAbruptTermination(outcome);
         await expireCrashLocks(fixture.root, fixture.storageRoot);
         await writeFile(path.join(fixture.root, "tracked.txt"), "third party bytes\n");
 
