@@ -17,6 +17,7 @@ import {
     captureWebviewViewProvider,
     getE2eWebviewCaptureSink,
     resetE2eWebviewCaptureSinkForTests,
+    resetWebviewWrapperNumberingForTests,
     WEBVIEW_CONTEXT_IDS,
     WebviewCaptureSink,
     wrapWebviewForCapture,
@@ -108,6 +109,12 @@ afterEach(() => {
  * a line per message would push the handshake out of the dump's bounded trail.
  */
 describe("wrapWebviewForCapture: handshake trace", () => {
+    // Wrapper numbering is process-wide, so without this the ids in these assertions would depend
+    // on how many wrappers earlier tests happened to build -- and on the order vitest ran them in.
+    beforeEach(() => {
+        resetWebviewWrapperNumberingForTests();
+    });
+
     /** Every `console.error` argument list emitted while `run` executed. */
     function tracedLines(run: () => void): string[] {
         const spy = vi.spyOn(console, "error").mockImplementation(() => undefined);
@@ -156,8 +163,8 @@ describe("wrapWebviewForCapture: handshake trace", () => {
             "the subscriber's own disposables array must still be the one VS Code appends to, or " +
                 "the listener outlives whoever owned it",
         ).toBe(ownDisposables);
-        expect(lines, "the ask must be traced, naming context and direction").toEqual([
-            "[intelligit-e2e] handshake commit-panel in ready",
+        expect(lines, "the ask must be traced, naming context, instance and direction").toEqual([
+            "[intelligit-e2e] handshake commit-panel#1 in ready",
         ]);
     });
 
@@ -182,7 +189,50 @@ describe("wrapWebviewForCapture: handshake trace", () => {
             lines,
             "only the two handshake types may be traced: a line per message would evict the " +
                 "handshake from the dump's bounded console trail",
-        ).toEqual(["[intelligit-e2e] handshake commit-panel out setRepositories"]);
+        ).toEqual(["[intelligit-e2e] handshake commit-panel#1 out setRepositories"]);
+    });
+
+    /**
+     * The field the 2026-08-23 Insiders failure needed and did not have.
+     *
+     * That dump traced `in ready` and `out setRepositories` repeatedly while the panel reported
+     * `asks:18 received:0` and `postWebviewMessage` logged no delivery failure -- so the host
+     * receives the ask, calls `postMessage`, and the answer still never lands. The one remaining
+     * question is whether the answer went to the webview that asked, and the old line could not
+     * say: both legs of every view printed the bare `commit-panel`.
+     *
+     * Asserted from the log lines rather than from the counter, because the log is the only thing
+     * CI ever sees. A wrapper numbering per message, or reusing one number across wraps, passes
+     * every other test in this file and leaves the next failure exactly as mute as the last one.
+     */
+    it("gives each wrapped webview its own number, shared by both legs of its handshake", () => {
+        const first = makeFakeWebview();
+        const second = makeFakeWebview();
+        const sink = new WebviewCaptureSink();
+        const wrappedFirst = wrapWebviewForCapture(first.webview, "commit-panel", sink);
+        const wrappedSecond = wrapWebviewForCapture(second.webview, "commit-panel", sink);
+
+        const lines = tracedLines(() => {
+            wrappedFirst.onDidReceiveMessage(() => undefined);
+            wrappedSecond.onDidReceiveMessage(() => undefined);
+            // The shape the bug would print: one view asks, the OTHER is answered.
+            first.receive({ type: "ready", attempt: 18 });
+            void wrappedSecond.postMessage({ type: "setRepositories", repositories: [] });
+            // ...and the shape a healthy handshake prints, from a single view.
+            second.receive({ type: "ready", attempt: 1 });
+        });
+
+        expect(
+            lines,
+            "each wrapped webview must carry its own number and keep it across both directions: " +
+                "identical numbers on a matched ask/answer pair acquit the record-versus-sender " +
+                "split in postToWebview, and differing ones convict it -- a trace that cannot " +
+                "tell those apart is why four investigations ended without an answer",
+        ).toEqual([
+            "[intelligit-e2e] handshake commit-panel#1 in ready",
+            "[intelligit-e2e] handshake commit-panel#2 out setRepositories",
+            "[intelligit-e2e] handshake commit-panel#2 in ready",
+        ]);
     });
 
     it("never puts a payload in the trace", () => {
