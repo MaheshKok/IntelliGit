@@ -1,16 +1,10 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import {
     assertExactInstalledExtensionVersion,
     buildInstalledExtensionLaunchArgs,
     buildPackageCliInvocation,
 } from "../../e2e/hostFixtures/packageSmokeHelpers";
-
-// `process` belongs to the whole worker, not to this file, so a platform spy left standing decides
-// what every later file sees -- and only when the run order happens to put one downstream.
-afterEach(() => {
-    vi.restoreAllMocks();
-});
 
 describe("buildPackageCliInvocation", () => {
     it("builds an install command from the resolved CLI tuple and fresh directories", () => {
@@ -20,6 +14,7 @@ describe("buildPackageCliInvocation", () => {
                 userDataDir: "/tmp/package-smoke-profile",
                 extensionsDir: "/tmp/package-smoke-extensions",
                 operation: { kind: "install", vsixPath: "/repo/intelligit.vsix" },
+                platform: "darwin",
             }),
         ).toEqual({
             executablePath: "/cached/Code",
@@ -42,6 +37,7 @@ describe("buildPackageCliInvocation", () => {
                 userDataDir: "/tmp/package-smoke-profile",
                 extensionsDir: "/tmp/package-smoke-extensions",
                 operation: { kind: "list" },
+                platform: "darwin",
             }),
         ).toEqual({
             executablePath: "/cached/Code",
@@ -57,18 +53,17 @@ describe("buildPackageCliInvocation", () => {
 
     // Node refuses to spawn the `bin\code.cmd` the resolver returns on Windows unless a shell runs
     // it (CVE-2024-27980), and `spawn EINVAL` was the entire Windows package smoke for as long as
-    // the job has existed -- it never got far enough to report anything else. Stubbing the platform
+    // the job has existed -- it never got far enough to report anything else. Naming the platform
     // is the only way to reach this branch from the machines the suite is developed on; skipping it
     // off Windows would leave the one platform that needs it as the only one never asserted.
     it("runs the Windows CLI through a shell, quoted for the shell that re-parses it", () => {
-        vi.spyOn(process, "platform", "get").mockReturnValue("win32");
-
         expect(
             buildPackageCliInvocation({
                 cliArgs: ["C:\\cache\\bin\\code.cmd", "--cli-data-dir=C:\\cache\\cli"],
                 userDataDir: "C:\\Users\\Some Name\\profile",
                 extensionsDir: "C:\\Users\\Some Name\\extensions",
                 operation: { kind: "list" },
+                platform: "win32",
             }),
         ).toEqual({
             executablePath: '"C:\\cache\\bin\\code.cmd"',
@@ -81,6 +76,23 @@ describe("buildPackageCliInvocation", () => {
             ],
             useShell: true,
         });
+    });
+
+    // Injecting the platform moves the untested surface to the default: every case above now names
+    // a platform, so nothing above would notice if the default stopped following the host. The
+    // package smoke calls this with no platform at all, so that default is the only thing standing
+    // between the Windows CLI and `spawn EINVAL`.
+    it("falls back to the running platform when no platform is supplied", () => {
+        const invocation = buildPackageCliInvocation({
+            cliArgs: ["/cached/Code"],
+            userDataDir: "/tmp/package-smoke-profile",
+            extensionsDir: "/tmp/package-smoke-extensions",
+            operation: { kind: "list" },
+        });
+
+        expect(invocation.useShell, "default must follow the host, not a hard-coded platform").toBe(
+            process.platform === "win32",
+        );
     });
 });
 

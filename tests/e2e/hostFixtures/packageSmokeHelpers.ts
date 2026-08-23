@@ -5,7 +5,7 @@ export interface PackageCliInvocation {
     /**
      * Whether the caller must hand this to `execFile`/`spawn` with `shell: true`. Carried on the
      * invocation rather than decided at the call site so the platform rule has one home and a unit
-     * test can stub the platform to reach it -- the Windows branch is otherwise unreachable from
+     * test can name the platform to reach it -- the Windows branch is otherwise unreachable from
      * every machine this suite is developed on.
      */
     readonly useShell: boolean;
@@ -33,6 +33,14 @@ export function buildPackageCliInvocation(options: {
     readonly userDataDir: string;
     readonly extensionsDir: string;
     readonly operation: PackageCliOperation;
+    /**
+     * Defaults to the running platform. Tests pass it explicitly so that BOTH branches are
+     * reachable from any machine, and -- the part that actually bit -- so no case can silently
+     * assert whichever branch its host happens to take. Written first as a `process.platform` spy,
+     * which reads the same on macOS and is wrong on Windows: the two POSIX cases here went red on
+     * the Windows leg because they were asserting the host, not a decision.
+     */
+    readonly platform?: NodeJS.Platform;
 }): PackageCliInvocation {
     const [executablePath, ...resolvedArgs] = options.cliArgs;
     if (executablePath === undefined) {
@@ -52,7 +60,7 @@ export function buildPackageCliInvocation(options: {
     // this goes further than upstream: a profile directory under `C:\Users\Some Name\...` would
     // otherwise split into two arguments, and VS Code would quietly write to the wrong path rather
     // than fail. Quoting is applied only on the shell path, where a shell is there to strip it.
-    const useShell = process.platform === "win32";
+    const useShell = (options.platform ?? process.platform) === "win32";
     const forShell = (value: string): string => (useShell ? `"${value}"` : value);
 
     return {
