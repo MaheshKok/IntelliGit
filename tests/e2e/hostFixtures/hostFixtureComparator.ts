@@ -129,17 +129,26 @@ function recordDifference(
  * Only the offending tokens travel into the difference. Carrying both full blocks put ~900
  * identical tokens on either side of the formatter's truncation limit, so the failure named the
  * field and then printed the same prefix twice.
+ *
+ * `consumedTokens` applies that same "cannot change how the extension renders" rule to the other
+ * two cases. Ignoring additions was only half of it: the 2026-08-23 Insiders run failed on
+ * `--vscode-agents-layout-floatingPanelGap` (5px -> 4px), `--vscode-agentsPanel-border` and
+ * `--vscode-surface-border` (rgba -> hex), all REDEFINED rather than added, and all read by zero
+ * files in `src`. Every theme in that run failed, on nothing this extension can render. Omit the
+ * set to compare every token -- callers that are not the cross-build canary should.
  */
 function recordStyleCustomPropertyDifference(
     differences: HostFixtureDifference[],
     committedCssText: string,
     capturedCssText: string,
+    consumedTokens?: ReadonlySet<string>,
 ): void {
     const captured = parseStyleCustomProperties(capturedCssText);
     const committedOffenders: Record<string, string> = {};
     const capturedOffenders: Record<string, string> = {};
 
     for (const [name, committedValue] of parseStyleCustomProperties(committedCssText)) {
+        if (consumedTokens !== undefined && !consumedTokens.has(name)) continue;
         const capturedValue = captured.get(name);
         if (capturedValue === committedValue) continue;
 
@@ -186,10 +195,17 @@ export function formatHostFixtureDifferences(
 /**
  * Compares the observable host payload and comparable provenance of two captures without reading
  * files, launching VS Code, or consulting the environment.
+ *
+ * `consumedTokens` narrows the `styleCssText` comparison to theme tokens this extension actually
+ * reads (see {@link recordStyleCustomPropertyDifference}). It is a PARAMETER rather than a lookup
+ * so this function stays pure and unit-testable; `compare.spec.ts` derives the real set from `src`
+ * via `readConsumedThemeTokens`. Omitted, every token is compared, which is what the existing
+ * callers and the field-inventory ratchet rely on.
  */
 export function compareHostFixtures(
     committedFixture: HostFixture,
     capturedFixture: HostFixture,
+    consumedTokens?: ReadonlySet<string>,
 ): readonly HostFixtureDifference[] {
     const differences: HostFixtureDifference[] = [];
 
@@ -230,6 +246,7 @@ export function compareHostFixtures(
         differences,
         committedFixture.documentElement.styleCssText,
         capturedFixture.documentElement.styleCssText,
+        consumedTokens,
     );
     recordDifference(
         differences,

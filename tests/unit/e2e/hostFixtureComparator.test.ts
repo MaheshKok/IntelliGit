@@ -215,6 +215,99 @@ describe("compareHostFixtures", () => {
         expect(compareHostFixtures(committed, captured)).toEqual([]);
     });
 
+    /**
+     * The three tokens below are not invented: they are exactly what failed run 32615426982 on
+     * 2026-08-23, every theme, on a commit that already carried the ignore-additions narrowing
+     * (#220). All three were REDEFINED rather than added, so that narrowing could not help, and
+     * `grep -rn -- '--vscode-agents-layout-floatingPanelGap' src` returns nothing for any of them.
+     * A canary that fires on tokens the extension cannot render is red every night until stable
+     * catches up, which is the same as having no canary.
+     */
+    it("ignores a redefined token nothing in the extension reads", () => {
+        const committed = withStyleCssText(
+            createFixture(),
+            "--vscode-agents-layout-floatingPanelGap: 5px; --vscode-surface-border: rgba(59, 59, 59, 0.15);",
+        );
+        const captured = withStyleCssText(
+            createFixture(),
+            "--vscode-agents-layout-floatingPanelGap: 4px; --vscode-surface-border: #e5e5e5;",
+        );
+
+        expect(
+            compareHostFixtures(committed, captured, new Set(["--vscode-editor-background"])),
+            "a token this extension never names cannot change how it renders, so redefining it " +
+                "upstream is not an early warning",
+        ).toEqual([]);
+    });
+
+    it("reports a redefined token the extension does read", () => {
+        const committed = withStyleCssText(
+            createFixture(),
+            "--vscode-editor-background: #000000; --vscode-agentsPanel-border: rgba(59, 59, 59, 0.15);",
+        );
+        const captured = withStyleCssText(
+            createFixture(),
+            "--vscode-editor-background: #111111; --vscode-agentsPanel-border: #e5e5e5;",
+        );
+
+        expect(
+            compareHostFixtures(committed, captured, new Set(["--vscode-editor-background"])),
+            "narrowing must not blind the canary to the tokens it exists to watch",
+        ).toEqual([
+            {
+                field: "documentElement.styleCssText",
+                committedValue: { "--vscode-editor-background": "#000000" },
+                capturedValue: { "--vscode-editor-background": "#111111" },
+            },
+        ]);
+    });
+
+    it("reports a consumed token the newer build stopped declaring", () => {
+        const committed = withStyleCssText(
+            createFixture(),
+            "--vscode-editor-background: #000000; --vscode-agents-layout-floatingPanelGap: 5px;",
+        );
+        const captured = withStyleCssText(
+            createFixture(),
+            "--vscode-agents-layout-floatingPanelGap: 4px;",
+        );
+
+        expect(
+            compareHostFixtures(committed, captured, new Set(["--vscode-editor-background"])),
+            "a removal is the case that actually breaks a webview -- the fallback in " +
+                "`var(--vscode-x, y)` silently takes over -- so it must survive the narrowing",
+        ).toEqual([
+            {
+                field: "documentElement.styleCssText",
+                committedValue: { "--vscode-editor-background": "#000000" },
+                capturedValue: {},
+            },
+        ]);
+    });
+
+    it("compares every token when no consumed set is given", () => {
+        const committed = withStyleCssText(
+            createFixture(),
+            "--vscode-agents-layout-floatingPanelGap: 5px;",
+        );
+        const captured = withStyleCssText(
+            createFixture(),
+            "--vscode-agents-layout-floatingPanelGap: 4px;",
+        );
+
+        expect(
+            compareHostFixtures(committed, captured),
+            "the narrowing is opt-in: callers that are not the cross-build canary, and the field " +
+                "inventory ratchet, still compare the whole block",
+        ).toEqual([
+            {
+                field: "documentElement.styleCssText",
+                committedValue: { "--vscode-agents-layout-floatingPanelGap": "5px" },
+                capturedValue: { "--vscode-agents-layout-floatingPanelGap": "4px" },
+            },
+        ]);
+    });
+
     it("reports a changed dataset value with both values", () => {
         const committed = createFixture();
         const captured: HostFixture = {
