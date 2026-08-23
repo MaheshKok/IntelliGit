@@ -60,6 +60,19 @@ export function buildPackageCliInvocation(options: {
     // this goes further than upstream: a profile directory under `C:\Users\Some Name\...` would
     // otherwise split into two arguments, and VS Code would quietly write to the wrong path rather
     // than fail. Quoting is applied only on the shell path, where a shell is there to strip it.
+    //
+    // What `shell: true` resolves to on win32, since pairing it with an argument array reads like
+    // an error and is not one: Node joins the file and the arguments with single spaces and runs
+    // `cmd.exe /d /s /c "<joined>"` with `windowsVerbatimArguments`, applying no escaping of its
+    // own. Spawning `cmd.exe /c` by hand is therefore the identical call with the joining written
+    // out, and switching to `exec` means hand-writing that join plus this quoting -- both add
+    // escaping code without changing what runs, which is why neither is done here.
+    //
+    // What the quoting covers, exactly: double quotes make spaces safe and make `&`, `|` and `^`
+    // literal to cmd. They do not stop `%VAR%` expanding, and a literal `"` cannot be escaped
+    // inside a quoted token at all -- though Windows forbids `"` in a filename, so only `%` is
+    // reachable. Every path here is either the VS Code cache path or a `mkdtemp` directory this
+    // suite creates, so none can contain one.
     const useShell = (options.platform ?? process.platform) === "win32";
     const forShell = (value: string): string => (useShell ? `"${value}"` : value);
 

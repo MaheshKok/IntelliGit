@@ -1,29 +1,36 @@
 /**
- * Pins the two properties `replaceRegularWorktreeFile`'s open flags exist to carry, after #223
- * forced the truncation out of an `O_TRUNC` flag and into an explicit `truncate(0)`.
+ * Pins what `replaceRegularWorktreeFile` guarantees about replacing a worktree file.
  *
- * Windows rejects `O_WRONLY | O_TRUNC` with no `O_CREAT`: libuv turns that into the Win32
- * `TRUNCATE_EXISTING` disposition and `open` fails with `EINVAL`, which broke shelf raw-apply for
- * every Windows user.
+ * The payload is written to an exclusively created sibling and renamed over the target, rather
+ * than written into the target directly. That is a security property, not a style choice: the
+ * lstat that proves the target is a regular file and the write that trusts it are separate
+ * syscalls, and a symlink swapped in between them used to be *followed*, with the post-write lstat
+ * reporting an escape that had already happened. `O_NOFOLLOW` closed that on POSIX and Windows
+ * ignores the flag entirely, which is precisely where the pre/post pair stopped being a guard.
  *
- * Drop `O_TRUNC` and forget the explicit truncate, and a shorter payload leaves the tail of the
- * previous contents behind -- silent file corruption that no length-agnostic assertion catches.
- * That is the first test below, and it is the one that mutation-proves the fix.
+ * Three properties, each with its own test below:
  *
- * The "refuses to create" test below asserts a real contract, but it does NOT pin the open flags,
- * and it is written down here so nobody later reads it as if it did: `assertRegularTarget` lstats
- * the target before the open, so swapping the flags to `O_CREAT | O_TRUNC` (the other disposition
- * Windows accepts) leaves every test in this file green -- measured. The reason not to use
- * `O_CREAT` is therefore defence in depth across the lstat-to-open window, not the behaviour any
- * test here observes.
+ * - The target is replaced by a rename, so a path swapped in mid-flight is overwritten rather than
+ *   written through. Asserted by inode identity, which is the only locally observable difference
+ *   between the two mechanisms -- byte content is identical either way, so a content assertion
+ *   cannot see this change at all.
+ * - The file's permission bits survive. `wx` creates at 0o600, so a mechanism that forgets to
+ *   carry the mode silently makes an executable script non-executable and owner-only.
+ * - No temporary survives a successful write.
+ *
+ * Payload-length correctness (#223, where `O_WRONLY | O_TRUNC` with no `O_CREAT` broke shelf
+ * raw-apply for every Windows user) is still asserted byte-exactly below. It is now structural --
+ * the payload goes to a fresh file -- but the assertion is kept because "shorter payload leaves a
+ * tail behind" is the defect that matters, whatever mechanism is underneath.
  */
 
-import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
+import { POSIX_PERMISSIONS_ENFORCED } from "../../helpers/platformCapabilities";
 import { replaceRegularWorktreeFile } from "../../../src/shelf/safeWorktreeWrite";
 
 describe("replaceRegularWorktreeFile", () => {
@@ -61,6 +68,58 @@ describe("replaceRegularWorktreeFile", () => {
         await replaceRegularWorktreeFile(repositoryRoot, "tracked.txt", Buffer.from(longer));
 
         expect(await readFile(target, "utf8")).toBe(longer);
+    });
+
+    it("replaces the target by rename rather than writing into it", async () => {
+        const repositoryRoot = await createRoot();
+        const target = path.join(repositoryRoot, "tracked.txt");
+        await writeFile(target, "before\n");
+        const before = await stat(target);
+
+        // A platform that does not report inodes would make the assertion below vacuously true, so
+        // fail loudly here instead of silently proving nothing.
+        expect(before.ino, "this platform must report inode numbers").toBeGreaterThan(0);
+
+        await replaceRegularWorktreeFile(repositoryRoot, "tracked.txt", Buffer.from("after\n"));
+
+        const after = await stat(target);
+        expect(await readFile(target, "utf8")).toBe("after\n");
+        // The temporary's inode is allocated while the original is still linked, so the two cannot
+        // collide. Writing into the target in place would keep the original inode -- which is what
+        // this file asserted for as long as the write followed a symlink it had already checked.
+        expect(
+            after.ino,
+            "target must be a different file, i.e. renamed into place, not written through",
+        ).not.toBe(before.ino);
+    });
+
+    it.skipIf(!POSIX_PERMISSIONS_ENFORCED)(
+        "carries the replaced file's permission bits across the rename",
+        async () => {
+            const repositoryRoot = await createRoot();
+            const target = path.join(repositoryRoot, "run.sh");
+            await writeFile(target, "#!/bin/sh\necho before\n");
+            await chmod(target, 0o755);
+
+            await replaceRegularWorktreeFile(
+                repositoryRoot,
+                "run.sh",
+                Buffer.from("#!/bin/sh\necho after\n"),
+            );
+
+            // 0o600 is what `wx` creates, and is what this reads if the mode is not carried over:
+            // an executable script silently returned non-executable and unreadable by anyone else.
+            expect((await stat(target)).mode & 0o777).toBe(0o755);
+        },
+    );
+
+    it("leaves no temporary behind after a successful write", async () => {
+        const repositoryRoot = await createRoot();
+        await writeFile(path.join(repositoryRoot, "tracked.txt"), "before\n");
+
+        await replaceRegularWorktreeFile(repositoryRoot, "tracked.txt", Buffer.from("after\n"));
+
+        expect(await readdir(repositoryRoot)).toEqual(["tracked.txt"]);
     });
 
     it("refuses to create a file that does not already exist", async () => {
