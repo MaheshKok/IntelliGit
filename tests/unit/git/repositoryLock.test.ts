@@ -8,6 +8,10 @@ import { RepositoryLock, RepositoryLockBusyError } from "../../../src/git/reposi
  * a controlled fact rather than a race the test hopes to win. Zero for every other test here. */
 const heartbeatWrite = vi.hoisted(() => ({ delayMs: 0 }));
 
+/** Makes `rename` fail toward one destination basename, so the recovery paths that rename can be
+ * driven without waiting for a real filesystem to refuse. Unset for every other test here. */
+const renameFailure = vi.hoisted(() => ({ failToward: undefined as string | undefined }));
+
 // Node's built-in `node:fs/promises` exports non-configurable properties, so `vi.spyOn` cannot wrap
 // them; `vi.mock` with a pass-through factory is vitest's standard workaround. Only the heartbeat's
 // write is slowed: `acquire` creates the lock with an exclusive-create `flag`, the heartbeat never
@@ -25,7 +29,23 @@ vi.mock("node:fs/promises", async (importOriginal) => {
         }
         return actual.writeFile(file, data, options);
     };
-    return { ...actual, writeFile: writeFileWithHeartbeatDelay };
+    const renameWithInjectedFailure: typeof actual.rename = async (oldPath, newPath) => {
+        const target = renameFailure.failToward;
+        if (target !== undefined && String(newPath).endsWith(target)) {
+            const failure: NodeJS.ErrnoException = new Error(
+                `ENOENT: no such file or directory, rename '${String(oldPath)}' -> '${String(newPath)}'`,
+            );
+            failure.code = "ENOENT";
+            failure.syscall = "rename";
+            throw failure;
+        }
+        return actual.rename(oldPath, newPath);
+    };
+    return {
+        ...actual,
+        writeFile: writeFileWithHeartbeatDelay,
+        rename: renameWithInjectedFailure,
+    };
 });
 
 const directories: string[] = [];
@@ -220,6 +240,57 @@ describe("RepositoryLock", () => {
             await expect(takesOverWhenKillFails("EINVAL")).resolves.toBe(false);
             await expect(takesOverWhenKillFails(undefined)).resolves.toBe(false);
         });
+    });
+
+    it("reports a busy lock even when restoring the displaced record fails", async () => {
+        const common = await commonDir();
+        const lockDir = path.join(common, "intelligit");
+        const lockPath = path.join(lockDir, "repo.lock");
+        await mkdir(lockDir);
+        await writeFile(lockPath, JSON.stringify({ nonce: "dead-owner", pid: 1, heartbeatAt: 0 }));
+
+        try {
+            await expect(
+                new RepositoryLock({
+                    staleAfterMs: 60_000,
+                    livenessProbe: async () => false,
+                    // Rewrites the record AFTER the takeover decision was made about it, which is
+                    // how a live owner announces the liveness probe got it wrong. `isSameLockFile`
+                    // then says no, and the restore runs -- and here it fails.
+                    beforeTakeover: async () => {
+                        await writeFile(
+                            lockPath,
+                            JSON.stringify({ nonce: "dead-owner", pid: 1, heartbeatAt: 1 }),
+                        );
+                        renameFailure.failToward = "repo.lock";
+                    },
+                }).acquire(common),
+                // Without the restore being best-effort this rejects with the rename's own ENOENT,
+                // and every `instanceof RepositoryLockBusyError` recovery path upstream is skipped
+                // for a lock that is merely held.
+            ).rejects.toBeInstanceOf(RepositoryLockBusyError);
+        } finally {
+            renameFailure.failToward = undefined;
+        }
+    });
+
+    it("reports a heartbeat that can no longer publish instead of failing silently", async () => {
+        const common = await commonDir();
+        const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+        const release = await new RepositoryLock({ heartbeatIntervalMs: 10 }).acquire(common);
+        try {
+            renameFailure.failToward = "repo.lock";
+            await vi.waitFor(() => {
+                expect(consoleError).toHaveBeenCalled();
+            });
+            // A frozen `heartbeatAt` is what the next acquirer misreads as abandoned, so the
+            // message has to say that much rather than just naming the errno.
+            expect(String(consoleError.mock.calls[0]?.[0])).toContain("take this lock over");
+        } finally {
+            renameFailure.failToward = undefined;
+            consoleError.mockRestore();
+            await release();
+        }
     });
 
     it("allows exactly one contender to take over the same stale dead lock", async () => {

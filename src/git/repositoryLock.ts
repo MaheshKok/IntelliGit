@@ -102,7 +102,15 @@ export class RepositoryLock {
             }
             const moved = await readLockFile(takeoverPath);
             if (!isSameLockFile(moved, existing)) {
-                await rename(takeoverPath, lockPath);
+                // Best-effort, exactly as in the write-failure branch below -- and for the same
+                // reason. This restore is cleanup for a decision already made: the lock is held
+                // by someone else and the caller is owed `RepositoryLockBusyError`. Letting the
+                // rename's own failure propagate replaces that verdict with, say, an ENOENT, so
+                // the caller is told "no such file" about a lock that is merely busy and every
+                // `instanceof RepositoryLockBusyError` recovery path is skipped. A restore that
+                // does not land leaves the record at `takeoverPath`, which the stale-takeover
+                // path above reclaims on the next acquire.
+                await rename(takeoverPath, lockPath).catch(() => undefined);
                 throw new RepositoryLockBusyError();
             }
             try {
@@ -185,12 +193,28 @@ export class RepositoryLock {
         // self-heals only after `staleAfterMs`. Chaining (rather than tracking the latest write)
         // also means release awaits every owed write, not just the last one started.
         let pendingWrite: Promise<void> = Promise.resolve();
+        // Deduplicated, so a publish that fails the same way on every tick reports once rather
+        // than at the heartbeat interval forever.
+        let lastPublishFailure: string | undefined;
         const heartbeat = setInterval(() => {
             owner.heartbeatAt = Date.now();
             const snapshot = JSON.stringify(owner);
             pendingWrite = pendingWrite
                 .then(() => publishLockRecord(temporaryPath, lockPath, snapshot))
-                .catch(() => undefined);
+                .catch((error: unknown) => {
+                    // Never rethrown: this runs on a timer chain, where an unhandled rejection
+                    // takes the extension host down. Never silent either. A heartbeat that stops
+                    // publishing freezes `heartbeatAt`, so the next acquirer reads a lock this
+                    // process is actively holding as stale, takes it over, and two owners then
+                    // mutate one repository -- with nothing anywhere saying why. Swallowing at
+                    // the leaf deleted the only report of that.
+                    const description = error instanceof Error ? error.message : String(error);
+                    if (description === lastPublishFailure) return;
+                    lastPublishFailure = description;
+                    console.error(
+                        `IntelliGit: repository lock heartbeat could not publish its record; another process may take this lock over while it is still held: ${description}`,
+                    );
+                });
         }, this.heartbeatIntervalMs);
         heartbeat.unref();
         return async () => {
