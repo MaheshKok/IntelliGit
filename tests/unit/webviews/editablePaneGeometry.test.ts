@@ -15,7 +15,6 @@ const read = (rel: string): string => fs.readFileSync(path.join(ROOT, rel), "utf
 
 const CORE_CSS = read("src/webviews/react/diff-core/diff-core.css");
 const VIEWER_CSS = read("src/webviews/react/diff-viewer/diff-viewer.css");
-const APP_TSX = read("src/webviews/react/diff-viewer/DiffViewerApp.tsx");
 const LAYOUT_TS = read("src/webviews/react/diff-core/mergeScrollLayout.ts");
 
 /** The declaration block of a top-level rule, by exact selector. */
@@ -79,7 +78,7 @@ describe("editable diff pane geometry", () => {
         ).toBe(`${layoutPx}px`);
     });
 
-    it("never lets the editable pane become a scroll container of its own", () => {
+    it("keeps the active block textarea out of its own scroll range", () => {
         // The app sizes this pane to hold every line box it renders, so any scrolling it does
         // is scrolling the driver cannot see — it translates the column, never the textarea —
         // and one wheel tick shifts every row against the opposite pane with nothing to put
@@ -87,20 +86,5 @@ describe("editable diff pane geometry", () => {
         // takes its ~15px out of a border-box height that is exactly lines x line-height,
         // which re-creates the vertical overflow the exact height was supposed to remove.
         expect(declaration(VIEWER_CSS, ".diff-edit-textarea", "overflow")).toBe("hidden");
-    });
-
-    it("floors the editable pane at the viewport height the app actually publishes", () => {
-        // An empty file has no segments, so its canonical extent is 0 and the inline height is
-        // 0px. Without this floor the pane collapses to a textarea's two-row default.
-        const floor = declaration(VIEWER_CSS, ".diff-edit-textarea", "min-height");
-        const property = /var\((--[a-z-]+)/.exec(floor)?.[1];
-
-        expect(property, "the floor must come from a custom property, not a fixed guess").toBe(
-            "--diff-viewport-h",
-        );
-        expect(
-            APP_TSX,
-            "and the app has to be the one setting it, or the floor is always the fallback",
-        ).toContain(`setProperty("${property}"`);
     });
 });
