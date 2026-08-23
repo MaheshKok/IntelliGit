@@ -65,6 +65,7 @@ async function runPackageCli(options: {
     return execFileAsync(invocation.executablePath, [...invocation.args], {
         env: toElectronLaunchEnv(options.environment),
         maxBuffer: 2 * 1024 * 1024,
+        shell: invocation.useShell,
     });
 }
 

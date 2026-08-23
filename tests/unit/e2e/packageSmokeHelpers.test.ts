@@ -1,10 +1,16 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
     assertExactInstalledExtensionVersion,
     buildInstalledExtensionLaunchArgs,
     buildPackageCliInvocation,
 } from "../../e2e/hostFixtures/packageSmokeHelpers";
+
+// `process` belongs to the whole worker, not to this file, so a platform spy left standing decides
+// what every later file sees -- and only when the run order happens to put one downstream.
+afterEach(() => {
+    vi.restoreAllMocks();
+});
 
 describe("buildPackageCliInvocation", () => {
     it("builds an install command from the resolved CLI tuple and fresh directories", () => {
@@ -25,6 +31,7 @@ describe("buildPackageCliInvocation", () => {
                 "/repo/intelligit.vsix",
                 "--force",
             ],
+            useShell: false,
         });
     });
 
@@ -44,6 +51,35 @@ describe("buildPackageCliInvocation", () => {
                 "--list-extensions",
                 "--show-versions",
             ],
+            useShell: false,
+        });
+    });
+
+    // Node refuses to spawn the `bin\code.cmd` the resolver returns on Windows unless a shell runs
+    // it (CVE-2024-27980), and `spawn EINVAL` was the entire Windows package smoke for as long as
+    // the job has existed -- it never got far enough to report anything else. Stubbing the platform
+    // is the only way to reach this branch from the machines the suite is developed on; skipping it
+    // off Windows would leave the one platform that needs it as the only one never asserted.
+    it("runs the Windows CLI through a shell, quoted for the shell that re-parses it", () => {
+        vi.spyOn(process, "platform", "get").mockReturnValue("win32");
+
+        expect(
+            buildPackageCliInvocation({
+                cliArgs: ["C:\\cache\\bin\\code.cmd", "--cli-data-dir=C:\\cache\\cli"],
+                userDataDir: "C:\\Users\\Some Name\\profile",
+                extensionsDir: "C:\\Users\\Some Name\\extensions",
+                operation: { kind: "list" },
+            }),
+        ).toEqual({
+            executablePath: '"C:\\cache\\bin\\code.cmd"',
+            args: [
+                '"--cli-data-dir=C:\\cache\\cli"',
+                '"--user-data-dir=C:\\Users\\Some Name\\profile"',
+                '"--extensions-dir=C:\\Users\\Some Name\\extensions"',
+                '"--list-extensions"',
+                '"--show-versions"',
+            ],
+            useShell: true,
         });
     });
 });
