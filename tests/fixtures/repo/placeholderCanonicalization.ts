@@ -26,9 +26,30 @@
  * placeholder instead of the clean form the contract promises. Every root's needle list therefore
  * includes both its literal spelling and its realpath'd spelling, when they differ and the path
  * exists.
+ *
+ * Windows spells one directory three ways, and git picks a different one than Node does (#223).
+ * Two independent mismatches, both of which left a real absolute path sitting un-redacted in a
+ * committed fixture on the Windows leg while every macOS run looked clean:
+ *
+ * 1. **8.3 short names.** `os.tmpdir()` on a GitHub Actions Windows runner returns
+ *    `C:\Users\RUNNER~1\AppData\Local\Temp`, while git reports the long form,
+ *    `C:/Users/runneradmin/AppData/Local/Temp`. `fs.realpathSync` is Node's own JS resolver and
+ *    leaves `RUNNER~1` alone; only `fs.realpathSync.native` goes through
+ *    `GetFinalPathNameByHandle` and expands it. Both spellings are collected, so neither resolver
+ *    has to be the right one.
+ * 2. **Separators.** git addresses paths with `/` on every platform; Node hands back `\`. A needle
+ *    built from `path.join` therefore cannot match a path that came out of
+ *    `git worktree list --porcelain`.
+ *
+ * The forward-slash variant is added only when the *platform* separator is `\`, never
+ * unconditionally: a backslash is a legal character in a POSIX filename, so rewriting one there
+ * would fabricate a needle that could redact an unrelated real path. `separator` is a parameter
+ * rather than a read of `path.sep` so the Windows branch is reachable from a macOS run -- see
+ * `tests/unit/fixtures/placeholderCanonicalization.test.ts`.
  */
 
 import { realpathSync } from "node:fs";
+import { sep } from "node:path";
 
 /** The three concrete-path roots a copy carries after live rehydration (PLAN.md step 8). */
 export interface PlaceholderRoots {
@@ -46,22 +67,33 @@ export type PlaceholderReplacement = readonly [needle: string, placeholder: stri
  * called before the directory exists (e.g. a not-yet-created `profileDir`) or against a purely
  * in-memory, fabricated value in a test.
  */
-function realpathOrSelf(candidate: string): string {
+function realpathOrSelf(candidate: string, resolve: (path: string) => string): string {
     try {
-        return realpathSync(candidate);
+        return resolve(candidate);
     } catch {
         return candidate;
     }
 }
 
 /**
- * Both spellings of one root -- literal and realpath'd -- mapped to the same placeholder. See the
- * module doc comment's "Realpath duality" section for why both are needed.
+ * Every spelling of one root -- literal, both realpath'd forms, and their forward-slash variants on
+ * Windows -- mapped to the same placeholder. See the module doc comment's "Realpath duality" and
+ * Windows sections for why each is needed.
  */
-function spellingsFor(root: string, placeholder: string): readonly PlaceholderReplacement[] {
+function spellingsFor(
+    root: string,
+    placeholder: string,
+    separator: string,
+): readonly PlaceholderReplacement[] {
     if (root.length === 0) return [];
-    const realRoot = realpathOrSelf(root);
-    const spellings = new Set([root, realRoot]);
+    const spellings = new Set([
+        root,
+        realpathOrSelf(root, realpathSync),
+        realpathOrSelf(root, realpathSync.native),
+    ]);
+    if (separator === "\\") {
+        for (const spelling of [...spellings]) spellings.add(spelling.split("\\").join("/"));
+    }
     return Array.from(spellings, (spelling) => [spelling, placeholder] as const);
 }
 
@@ -72,11 +104,12 @@ function spellingsFor(root: string, placeholder: string): readonly PlaceholderRe
  */
 export function buildPlaceholderReplacements(
     roots: PlaceholderRoots,
+    separator: string = sep,
 ): readonly PlaceholderReplacement[] {
     return [
-        ...spellingsFor(roots.root, "<ROOT>"),
-        ...spellingsFor(roots.originRoot, "<ORIGIN>"),
-        ...spellingsFor(roots.profileDir, "<PROFILE>"),
+        ...spellingsFor(roots.root, "<ROOT>", separator),
+        ...spellingsFor(roots.originRoot, "<ORIGIN>", separator),
+        ...spellingsFor(roots.profileDir, "<PROFILE>", separator),
     ].sort(([a], [b]) => b.length - a.length);
 }
 

@@ -216,3 +216,118 @@ describe("normalizeUnknownDeep -- object KEYS, not only values", () => {
         expect(() => normalizeUnknownDeep(value, replacements)).toThrow(/collide|collision/i);
     });
 });
+
+/**
+ * Windows spells one directory several ways, and git picks a different one than Node does (#223).
+ * Both mismatches below left a real absolute path sitting un-redacted inside a COMMITTED fixture on
+ * the Windows leg, while every macOS run looked clean -- `webviewFixtureGate` reported
+ * `committed="\"worktreePath\": \"<ROOT>\"" fresh="\"worktreePath\": \"C:\\\\Users\\\\runneradmin\\\\..."`
+ * for four contexts at once. The separator half is proven here by supplying the platform rather
+ * than inheriting it; the 8.3 short-name half (`RUNNER~1` vs `runneradmin`) cannot be reproduced
+ * off Windows, since POSIX has no short names to expand, and is covered by the CI leg instead.
+ */
+describe("buildPlaceholderReplacements -- Windows spells one root several ways (#223)", () => {
+    const NODE_SPELLING = "C:\\Users\\runneradmin\\AppData\\Local\\Temp\\ig-abc\\workspace";
+    /** git addresses paths with `/` on every platform, including Windows. */
+    const GIT_SPELLING = "C:/Users/runneradmin/AppData/Local/Temp/ig-abc/workspace";
+
+    it("redacts the forward-slash spelling git reports, not only the backslash spelling Node builds", () => {
+        const replacements = buildPlaceholderReplacements(
+            { root: NODE_SPELLING, originRoot: "", profileDir: "" },
+            "\\",
+        );
+
+        expect(
+            normalizeString(GIT_SPELLING, replacements),
+            "a path out of `git worktree list --porcelain` must still collapse to the placeholder",
+        ).toBe("<ROOT>");
+        expect(normalizeString(NODE_SPELLING, replacements)).toBe("<ROOT>");
+    });
+
+    it("does not fabricate a needle from a POSIX filename containing a literal backslash", () => {
+        // The ratchet against fixing the above with an unconditional `replace(/\\/g, "/")`: a
+        // backslash is a legal character in a POSIX filename, so rewriting one on a POSIX run
+        // invents a needle that redacts a DIFFERENT, unrelated real directory. The forward-slash
+        // variant is therefore added only when the platform separator is itself a backslash.
+        const replacements = buildPlaceholderReplacements(
+            { root: "/tmp/weird\\name", originRoot: "", profileDir: "" },
+            "/",
+        );
+
+        expect(normalizeString("/tmp/weird\\name", replacements)).toBe("<ROOT>");
+        expect(
+            normalizeString("/tmp/weird/name", replacements),
+            "a distinct real directory must not be redacted by a fabricated needle",
+        ).toBe("/tmp/weird/name");
+    });
+
+    it("defaults to the running platform's separator", () => {
+        const roots: PlaceholderRoots = {
+            root: "/scratch/default/root",
+            originRoot: "",
+            profileDir: "",
+        };
+
+        expect(buildPlaceholderReplacements(roots)).toEqual(
+            buildPlaceholderReplacements(roots, path.sep),
+        );
+    });
+});
+
+/**
+ * `fs.realpathSync` and `fs.realpathSync.native` are not interchangeable, and the difference is
+ * what made #223's Windows leg leak paths. `realpathSync` is Node's own JS resolver: it follows
+ * symlinks but otherwise hands back the spelling you asked for. `realpathSync.native` goes through
+ * the OS -- `GetFinalPathNameByHandle` on Windows -- and returns the CANONICAL ON-DISK spelling.
+ *
+ * On a Windows runner that is the difference between `C:\Users\RUNNER~1\...` (what `os.tmpdir()`
+ * returns, an 8.3 short name) and `C:/Users/runneradmin/...` (what git reports). A needle list
+ * built only from the JS resolver never contains the long form, so nothing redacts.
+ *
+ * POSIX has no 8.3 short names, but a case-insensitive filesystem exposes the SAME mechanism: ask
+ * for `foobar` when the directory is really `FooBar` and only the native resolver tells you so.
+ * That makes the Windows-only defect reproducible here, instead of first executing on CI 28
+ * minutes later. Skipped on a case-sensitive filesystem, where the two resolvers cannot diverge
+ * this way -- the Windows and macOS legs both cover it.
+ */
+describe("buildPlaceholderReplacements -- the native resolver's canonical spelling (#223)", () => {
+    let scratch: string | undefined;
+
+    afterEach(async () => {
+        if (scratch) await rm(scratch, { recursive: true, force: true });
+        scratch = undefined;
+    });
+
+    it("collapses the on-disk spelling when the caller passed a differently-cased one", async () => {
+        scratch = await mkdtemp(path.join(tmpdir(), "intelligit-recorder-native-"));
+        const onDisk = path.join(scratch, "FooBar");
+        await mkdir(onDisk, { recursive: true });
+        const asked = path.join(scratch, "foobar");
+
+        let nativeSpelling: string;
+        try {
+            nativeSpelling = realpathSync.native(asked);
+        } catch {
+            // Case-sensitive filesystem (typically Linux): `foobar` simply does not exist, so the
+            // two resolvers cannot diverge and there is nothing to prove here.
+            return;
+        }
+
+        // Otherwise this test proves nothing: it must be the NATIVE resolver, and only it, that
+        // recovers the on-disk spelling.
+        expect(nativeSpelling.endsWith("FooBar")).toBe(true);
+        expect(realpathSync(asked).endsWith("foobar")).toBe(true);
+
+        const replacements = buildPlaceholderReplacements({
+            root: asked,
+            originRoot: "",
+            profileDir: "",
+        });
+
+        expect(
+            normalizeString(nativeSpelling, replacements),
+            "a path reported in its canonical on-disk spelling must still collapse",
+        ).toBe("<ROOT>");
+        expect(normalizeString(asked, replacements)).toBe("<ROOT>");
+    });
+});
