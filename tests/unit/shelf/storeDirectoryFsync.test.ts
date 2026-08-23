@@ -100,13 +100,21 @@ describe("writeAtomic directory fsync", () => {
         ).toBe(0);
     });
 
-    it("still fsyncs the directory on POSIX, where the rename's durability depends on it", async () => {
-        await writeOneGeneration("linux");
+    // Stubbing `process.platform` changes what the CODE checks, not what the kernel does. Forcing
+    // the POSIX branch while genuinely on Windows therefore attempts the real fsync and really
+    // fails with the EPERM this whole commit exists to avoid -- run 32638093138 caught exactly
+    // that, as the only two EPERMs left out of the original 206. The assertion is only meaningful
+    // where the syscall works, and the ubuntu and macos legs are where it runs.
+    it.skipIf(process.platform === "win32")(
+        "still fsyncs the directory on POSIX, where the rename's durability depends on it",
+        async () => {
+            await writeOneGeneration("linux");
 
-        expect(
-            directoryOpenCount(),
-            "skipping this everywhere would trade a Windows crash for silent data loss on the " +
-                "platforms where the call actually works",
-        ).toBeGreaterThan(0);
-    });
+            expect(
+                directoryOpenCount(),
+                "skipping this everywhere would trade a Windows crash for silent data loss on " +
+                    "the platforms where the call actually works",
+            ).toBeGreaterThan(0);
+        },
+    );
 });
