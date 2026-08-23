@@ -6,7 +6,7 @@
  */
 
 import { execFile } from "node:child_process";
-import { mkdtemp, rm, stat, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -276,6 +276,11 @@ describe("Phase 6 step 32 -- canonical snapshot seed determinism", () => {
                 "[user]\n\tname = Ambient Hostile User\n\temail = hostile@example.invalid\n[core]\n\tautocrlf = true\n",
                 "utf8",
             );
+            // The system half of the hostile env is "nothing", but it still has to be expressible
+            // on Windows, where `/dev/null` is unopenable. An empty real file says the same thing
+            // everywhere.
+            const emptySystemConfig = path.join(ambientRoot, "empty-system-gitconfig");
+            await writeFile(emptySystemConfig, "");
 
             const savedEnvironment = {
                 GIT_CONFIG_GLOBAL: process.env.GIT_CONFIG_GLOBAL,
@@ -286,7 +291,7 @@ describe("Phase 6 step 32 -- canonical snapshot seed determinism", () => {
             const hostileEnvironment: NodeJS.ProcessEnv = {
                 ...process.env,
                 GIT_CONFIG_GLOBAL: globalConfig,
-                GIT_CONFIG_SYSTEM: "/dev/null",
+                GIT_CONFIG_SYSTEM: emptySystemConfig,
                 HOME: ambientRoot,
                 TZ: "Pacific/Auckland",
             };
@@ -298,7 +303,7 @@ describe("Phase 6 step 32 -- canonical snapshot seed determinism", () => {
             delete hostileEnvironment.GIT_COMMITTER_DATE;
             Object.assign(process.env, {
                 GIT_CONFIG_GLOBAL: globalConfig,
-                GIT_CONFIG_SYSTEM: "/dev/null",
+                GIT_CONFIG_SYSTEM: emptySystemConfig,
                 HOME: ambientRoot,
                 TZ: "Pacific/Auckland",
             });
@@ -326,7 +331,12 @@ describe("Phase 6 step 32 -- canonical snapshot seed determinism", () => {
                 const result = await capturePairSnapshots(workspacesRoot);
                 workspaces.push(...result.workspaces);
                 for (const workspace of result.workspaces) {
-                    expect(workspace.env.GIT_CONFIG_GLOBAL).toBe("/dev/null");
+                    // By content, not by literal path: `/dev/null` reads as empty on POSIX but is
+                    // unopenable on Windows, and only reading it can tell those two apart.
+                    expect(
+                        await readFile(workspace.env.GIT_CONFIG_GLOBAL as string, "utf8"),
+                        "GIT_CONFIG_GLOBAL must point at a real, EMPTY config file",
+                    ).toBe("");
                     expect(workspace.env.TZ).toBe("Pacific/Auckland");
                     await expect(
                         run(

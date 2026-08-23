@@ -93,11 +93,15 @@ async function createSanitizedGitEnv(): Promise<Record<string, string>> {
     // `toElectronLaunchEnv` drops undefined-valued process keys before Electron sees them; a cast
     // would compile and then pass an actual undefined through the child-process boundary.
     const inherited = toElectronLaunchEnv(process.env);
+    // Empty real file, not `/dev/null` -- git for Windows resolves that to `\\.\nul` and fails.
+    // Same convention as `seed.ts` and `electronLaunchHelpers.ts`; see the former for why.
+    const emptyGitConfig = path.join(home, "empty-gitconfig");
+    await writeFile(emptyGitConfig, "");
     return {
         ...inherited,
         HOME: home,
-        GIT_CONFIG_GLOBAL: "/dev/null",
-        GIT_CONFIG_SYSTEM: "/dev/null",
+        GIT_CONFIG_GLOBAL: emptyGitConfig,
+        GIT_CONFIG_SYSTEM: emptyGitConfig,
         ...GIT_IDENTITY,
     };
 }

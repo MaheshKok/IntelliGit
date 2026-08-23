@@ -118,9 +118,21 @@ describe("seedFixtureTemplate", () => {
     });
 
     describe("sanitized git environment", () => {
-        it("nulls global and system config and pins a scratch HOME", () => {
-            expect(templateA.env.GIT_CONFIG_GLOBAL).toBe("/dev/null");
-            expect(templateA.env.GIT_CONFIG_SYSTEM).toBe("/dev/null");
+        // Asserted as a PROPERTY -- "git reads no configuration through this env" -- rather than
+        // as a literal path. The literal was `/dev/null` for years and was wrong on Windows, where
+        // git resolves it to the `\\.\nul` device and refuses it outright, killing every seeded
+        // repository at `git init`. A test pinned to the literal cannot notice that; a test that
+        // reads the file it points at can.
+        it("empties global and system config and pins a scratch HOME", async () => {
+            for (const key of ["GIT_CONFIG_GLOBAL", "GIT_CONFIG_SYSTEM"] as const) {
+                const configPath = templateA.env[key];
+                expect(configPath, `${key} must be set`).toBeTruthy();
+                expect(
+                    await readFile(configPath as string, "utf8"),
+                    `${key} must point at a real, EMPTY config file -- a device path such as ` +
+                        `/dev/null is unreadable on Windows`,
+                ).toBe("");
+            }
             expect(templateA.env.HOME).toBe(templateA.home);
             expect(templateA.home).not.toBe(process.env.HOME);
         });

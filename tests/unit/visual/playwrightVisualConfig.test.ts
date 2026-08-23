@@ -2,6 +2,7 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
+import { fixturePath } from "../../helpers/fixturePaths";
 import visualConfig from "../../../playwright.visual.config";
 import {
     assertNoNetworkEscapes,
@@ -125,14 +126,18 @@ describe("visual harness configuration guards", () => {
     });
 
     it("can fail: a missing manifest entry reaches the fail-fast build guard", () => {
-        const distDir = "/repo/dist";
+        const distDir = fixturePath("/repo/dist");
         const required = ["present.js", "missing.js"];
         const exists = (filePath: string): boolean => !filePath.endsWith("missing.js");
 
         expect(missingDistAssets(distDir, required, exists)).toEqual(["missing.js"]);
-        expect(() => assertRequiredDistAssets(distDir, required, exists)).toThrow(
-            new RegExp(`${path.join(distDir, "missing.js")}.*bun run build`),
-        );
+        // Asserted as two matches rather than one interpolated RegExp. A Windows path carries
+        // backslashes, and `new RegExp("...\\repo\\dist\\missing.js...")` reads `\r` as a carriage
+        // return and `\d` as a digit class, so the pattern silently stopped meaning the path it
+        // was built from. `toThrow(string)` is a plain substring match and needs no escaping.
+        const guard = (): unknown => assertRequiredDistAssets(distDir, required, exists);
+        expect(guard).toThrow(path.join(distDir, "missing.js"));
+        expect(guard).toThrow(/bun run build/);
     });
 
     it("can fail: a request that escaped the route interceptor reaches the teardown guard", () => {
@@ -158,7 +163,7 @@ describe("visual harness configuration guards", () => {
 });
 
 describe("visual harness dist traversal guard", () => {
-    const distDir = "/repo/dist";
+    const distDir = fixturePath("/repo/dist");
 
     it("resolves a normal dist asset below the dist root", () => {
         expect(resolveDistAssetPath(distDir, "/dist/webview-mergeeditor.js")).toBe(

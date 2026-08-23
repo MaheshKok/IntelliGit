@@ -2,6 +2,7 @@
 // root discovery when VS Code workspace folder differs from the git repo root.
 
 import { describe, it, expect, vi } from "vitest";
+import { fixturePath } from "../../helpers/fixturePaths";
 import { interpolateL10n } from "../../helpers/l10nTestHelper";
 
 // Mock vscode before any imports that depend on it
@@ -137,8 +138,11 @@ describe("GitOps.getRepositoryRoot", () => {
 // ---------------------------------------------------------------------------
 
 describe("path resolution with nested repo structure", () => {
-    const gitRoot = "/root/client";
-    const workspaceFolder = "/root/client/project2";
+    // Resolved to a platform-native absolute path. `/root/client` is not absolute on Windows, so
+    // the `path.join` assertions below produced `\root\client\...` against a `/root/client/...`
+    // literal and failed for a reason unrelated to the nesting bug they pin. See fixturePaths.ts.
+    const gitRoot = fixturePath("/root/client");
+    const workspaceFolder = fixturePath("/root/client/project2");
 
     describe("getRepoRelativeFilePathFromUri", () => {
         it("computes correct relative path when using git root", () => {
@@ -191,22 +195,22 @@ describe("path resolution with nested repo structure", () => {
         it("constructs correct disk path from git-relative path using git root", () => {
             const gitRelativePath = "project2/src/file.ts";
             const correctDiskPath = path.join(gitRoot, gitRelativePath);
-            expect(correctDiskPath).toBe("/root/client/project2/src/file.ts");
+            expect(correctDiskPath).toBe(fixturePath("/root/client/project2/src/file.ts"));
         });
 
         it("produces doubled path when using workspace folder (the bug)", () => {
             const gitRelativePath = "project2/src/file.ts";
             const wrongDiskPath = path.join(workspaceFolder, gitRelativePath);
             // The doubled path is the exact bug: /root/client/project2/project2/src/file.ts
-            expect(wrongDiskPath).toBe("/root/client/project2/project2/src/file.ts");
-            expect(wrongDiskPath).not.toBe("/root/client/project2/src/file.ts");
+            expect(wrongDiskPath).toBe(fixturePath("/root/client/project2/project2/src/file.ts"));
+            expect(wrongDiskPath).not.toBe(fixturePath("/root/client/project2/src/file.ts"));
         });
 
         it("constructs correct path for files in a different subproject", () => {
             // When working from project2 but a file in project5 is changed
             const gitRelativePath = "project5/src/utils.ts";
             const correctDiskPath = path.join(gitRoot, gitRelativePath);
-            expect(correctDiskPath).toBe("/root/client/project5/src/utils.ts");
+            expect(correctDiskPath).toBe(fixturePath("/root/client/project5/src/utils.ts"));
         });
     });
 });
@@ -338,16 +342,20 @@ describe("repo root discovery edge cases", () => {
     });
 
     it("handles repo root that is parent of workspace by multiple levels", async () => {
+        // The mocked `--show-toplevel` is platform-native rather than a bare `/root/client`,
+        // because real git on Windows emits a drive-rooted path and the `path.join` below is
+        // asserted against an absolute literal. See fixturePaths.ts.
+        const repoRoot = fixturePath("/root/client");
         const executor = createMockExecutor({
-            "rev-parse --show-toplevel": "/root/client\n",
+            "rev-parse --show-toplevel": `${repoRoot}\n`,
         });
         const ops = new GitOps(executor);
         const root = await ops.getRepositoryRoot();
-        expect(root).toBe("/root/client");
+        expect(root).toBe(repoRoot);
 
         const gitRelativePath = "project2/packages/core/index.ts";
         const diskPath = path.join(root, gitRelativePath);
-        expect(diskPath).toBe("/root/client/project2/packages/core/index.ts");
+        expect(diskPath).toBe(fixturePath("/root/client/project2/packages/core/index.ts"));
     });
 
     it("handles paths with spaces", async () => {

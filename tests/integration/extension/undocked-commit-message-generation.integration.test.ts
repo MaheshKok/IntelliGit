@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { fixturePath } from "../../helpers/fixturePaths";
+
 type MessageHandler = (message: unknown) => Promise<void> | void;
 
 class FakeEventEmitter<T> {
@@ -129,10 +131,12 @@ function createRootGitOps() {
         hasAnyCommits: vi.fn(async () => true),
         hasWholeIndexOperationInProgress: vi.fn(async () => false),
         getActiveOperation: vi.fn(async () => "none"),
+        // Platform-native, because the consumer resolves these before handing them on and real
+        // git emits drive-rooted paths on Windows. See tests/helpers/fixturePaths.ts.
         getGitDirectories: vi.fn(async () => ({
-            root: "/repo-a",
-            gitDir: "/repo-a/.git",
-            commonDir: "/repo-a/.git",
+            root: fixturePath("/repo-a"),
+            gitDir: fixturePath("/repo-a/.git"),
+            commonDir: fixturePath("/repo-a/.git"),
         })),
         getLastCommitMessage: vi.fn(async () => "feat: previous commit"),
         getAmendBranchCommits: vi.fn(async () => []),
@@ -537,7 +541,7 @@ describe("UndockedViewProvider commit-message generation", () => {
 
         expect(readLiveRebaseManifest).toHaveBeenCalledWith("/storage", "/repo-a");
         expect(deriveRebaseControl).toHaveBeenCalledWith({
-            gitDir: "/repo-a/.git",
+            gitDir: fixturePath("/repo-a/.git"),
             liveManifest,
         });
         expect(postMessage).toHaveBeenCalledWith(

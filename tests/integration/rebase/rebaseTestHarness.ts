@@ -32,6 +32,21 @@ const deterministicGitEnvironment = {
     // Rebase recreates commits. Fixed dates keep those recreated object IDs stable across machines.
     GIT_AUTHOR_DATE: "2000-01-01T00:00:00 +0000",
     GIT_COMMITTER_DATE: "2000-01-01T00:00:00 +0000",
+    // Git for Windows ships `core.autocrlf=true` in its SYSTEM config, so a checkout there rewrites
+    // LF to CRLF and every byte-exact assertion in this suite reads back one character longer than
+    // it wrote -- `expected 'third\r\n' to be 'third\n'`. Pinned here rather than by nulling the
+    // system config file, because `GIT_CONFIG_COUNT` injects command-level config, which outranks
+    // both system and global and needs no file on disk: this environment is a plain const consumed
+    // from a synchronous context, and a file would force a lazily-created, separately-disposed
+    // temporary into every call site.
+    //
+    // Scope note: this pins line endings, not the whole environment. Unlike the fixture stack's
+    // `createSanitizedGitEnv`, this harness still inherits an ambient `~/.gitconfig`, so a
+    // developer with e.g. `diff.renames=false` can still perturb it. That gap predates this change
+    // and is not what was failing on Windows.
+    GIT_CONFIG_COUNT: "1",
+    GIT_CONFIG_KEY_0: "core.autocrlf",
+    GIT_CONFIG_VALUE_0: "false",
 } as const;
 
 /** Removes every temporary directory registered by the current integration test file. */

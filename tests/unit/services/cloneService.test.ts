@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { fixturePath } from "../../helpers/fixturePaths";
 import { interpolateL10n } from "../../helpers/l10nTestHelper";
 
 const mocks = vi.hoisted(() => ({
@@ -135,7 +136,7 @@ describe("cloneService phase 3", () => {
         mocks.configValues.clear();
         mocks.gitRuns.length = 0;
 
-        mocks.showOpenDialog.mockResolvedValue([{ fsPath: "/dest" }]);
+        mocks.showOpenDialog.mockResolvedValue([{ fsPath: fixturePath("/dest") }]);
         mocks.showInformationMessage.mockResolvedValue(undefined);
         mocks.showWarningMessage.mockResolvedValue(undefined);
         mocks.showErrorMessage.mockResolvedValue(undefined);
@@ -160,7 +161,7 @@ describe("cloneService phase 3", () => {
         });
         mocks.fsAccess.mockRejectedValue(errno("ENOENT", "missing"));
         mocks.fsRm.mockResolvedValue(undefined);
-        mocks.fsMkdtemp.mockResolvedValue("/tmp/intelligit-askpass-test");
+        mocks.fsMkdtemp.mockResolvedValue(fixturePath("/tmp/intelligit-askpass-test"));
         mocks.fsWriteFile.mockResolvedValue(undefined);
         mocks.fsChmod.mockResolvedValue(undefined);
         mocks.execFile.mockImplementation((_file, _args, _options, callback) => {
@@ -208,7 +209,7 @@ describe("cloneService phase 3", () => {
 
         expect(mocks.gitRuns).toEqual([
             {
-                root: "/dest",
+                root: fixturePath("/dest"),
                 args: ["clone", "git@github.com:user/repo.git", "repo"],
             },
         ]);
@@ -229,7 +230,7 @@ describe("cloneService phase 3", () => {
         );
         expect(mocks.executeCommand).toHaveBeenCalledWith(
             "vscode.openFolder",
-            { fsPath: "/dest/repo" },
+            { fsPath: fixturePath("/dest/repo") },
             false,
         );
         expect(mocks.updateWorkspaceFolders).not.toHaveBeenCalled();
@@ -243,7 +244,7 @@ describe("cloneService phase 3", () => {
 
         expect(mocks.gitRuns).toEqual([
             {
-                root: "/dest",
+                root: fixturePath("/dest"),
                 args: ["clone", "git@github.com:user/..git", "repo"],
             },
         ]);
@@ -400,11 +401,11 @@ describe("cloneService phase 3", () => {
         };
         expect(execArgs).toEqual(["clone", "https://github.com/user/repo.git", "repo"]);
         expect(JSON.stringify(execArgs)).not.toContain("gh-token");
-        expect(execOptions.cwd).toBe("/dest");
+        expect(execOptions.cwd).toBe(fixturePath("/dest"));
         expect(execOptions.env.INTELLIGIT_GIT_USERNAME).toBe("x-access-token");
         expect(execOptions.env.INTELLIGIT_GIT_TOKEN).toBe("gh-token/with:@chars");
         expect(mocks.gitRuns).toContainEqual({
-            root: "/dest/repo",
+            root: fixturePath("/dest/repo"),
             args: ["remote", "set-url", "origin", "https://github.com/user/repo.git"],
         });
     });
