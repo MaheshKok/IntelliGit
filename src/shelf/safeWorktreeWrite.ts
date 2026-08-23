@@ -1,6 +1,7 @@
 import { constants } from "node:fs";
 import { lstat, open } from "node:fs/promises";
 import { validateShelfManifestPath } from "./importValidation";
+import { resolveNoFollowFlag } from "./noFollowFlag";
 import { ensureContainedParent, resolveRepositoryPath } from "./recoveryPaths";
 
 /** Writes raw shelf bytes only to an existing regular file contained by the repository. */
@@ -12,8 +13,7 @@ export async function replaceRegularWorktreeFile(
     const target = resolveRepositoryPath(repositoryRoot, validateShelfManifestPath(relativePath));
     await ensureContainedParent(repositoryRoot, target);
     await assertRegularTarget(target);
-    const noFollow = typeof constants.O_NOFOLLOW === "number" ? constants.O_NOFOLLOW : 0;
-    const file = await open(target, constants.O_WRONLY | constants.O_TRUNC | noFollow);
+    const file = await open(target, constants.O_WRONLY | constants.O_TRUNC | resolveNoFollowFlag());
     try {
         await file.writeFile(bytes);
         await file.sync();
