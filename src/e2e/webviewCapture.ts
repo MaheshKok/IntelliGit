@@ -71,6 +71,23 @@ const HANDSHAKE_TRACED_TYPES = new Set(["ready", "setRepositories"]);
 const HANDSHAKE_TRACE_PREFIX = "[intelligit-e2e] handshake";
 
 /**
+ * Numbers each wrapped webview so the two legs of one handshake can be attributed to the same
+ * boundary object -- or proven to belong to different ones.
+ *
+ * A boundary, not a document: `wrapWebviewForCapture` runs once per `resolveWebviewView`, so two
+ * numbers mean VS Code built two `WebviewView`s, while one number across a reload means the
+ * document was rebuilt behind a single view. That is exactly the distinction the trace could not
+ * make before, and the reason it is a wrap-time counter rather than anything derived from the
+ * message or the document.
+ */
+let webviewWrapperCount = 0;
+
+/** Test-only: restarts wrapper numbering so one test's ids cannot leak into another's assertions. */
+export function resetWebviewWrapperNumberingForTests(): void {
+    webviewWrapperCount = 0;
+}
+
+/**
  * Records one leg of the hydration handshake where the E2E flow suite can read it.
  *
  * The webview's own counters (`src/webviews/react/shared/hydrationDiagnostics.ts`) can only ever
@@ -80,11 +97,23 @@ const HANDSHAKE_TRACE_PREFIX = "[intelligit-e2e] handshake";
  * is the half that separates them, and extension-host `console.error` is the one channel that
  * reaches Playwright's page console -- which is exactly where `IntelliGitView` reads its trail from.
  *
+ * That host half has now been read once, and it moved the question rather than answering it: the
+ * 2026-08-23 Insiders failure traced `in ready` and `out setRepositories` repeatedly beside a panel
+ * still reporting `asks:18 received:0`, with no delivery failure logged by `postWebviewMessage`. So
+ * the host receives the ask and calls `postMessage`, and the answer still does not arrive. What
+ * remains is whether it was posted to the SAME webview that asked -- and `contextId` alone cannot
+ * say, because both legs of both views print `commit-panel`. `instance` is that missing field:
+ * differing numbers across a matched in/out pair convict the record-versus-sender split in
+ * `CommitPanelViewProvider.postToWebview`, and identical numbers acquit it and leave VS Code
+ * dropping a post it acknowledged.
+ *
  * Message TYPE only, never a payload: a captured message can carry real repository data, and this
- * line ends up in a CI artifact.
+ * line ends up in a CI artifact. The instance number is an in-process counter and names nothing
+ * about the workspace, so it is safe to print under the same rule.
  */
 function traceHandshake(
     contextId: WebviewContextId,
+    instance: number,
     direction: "in" | "out",
     message: unknown,
 ): void {
@@ -93,7 +122,7 @@ function traceHandshake(
             ? (message as { type?: unknown }).type
             : undefined;
     if (typeof type !== "string" || !HANDSHAKE_TRACED_TYPES.has(type)) return;
-    console.error(`${HANDSHAKE_TRACE_PREFIX} ${contextId} ${direction} ${type}`);
+    console.error(`${HANDSHAKE_TRACE_PREFIX} ${contextId}#${instance} ${direction} ${type}`);
 }
 
 /**
@@ -136,6 +165,9 @@ export function wrapWebviewForCapture(
     contextId: WebviewContextId,
     sink: WebviewCaptureSink,
 ): vscode.Webview {
+    // Allocated per wrap rather than per message, so every line this wrapper ever emits carries the
+    // same number and a pair that disagrees is a genuinely different boundary object.
+    const instance = ++webviewWrapperCount;
     return {
         get options() {
             return webview.options;
@@ -162,7 +194,7 @@ export function wrapWebviewForCapture(
         ): vscode.Disposable =>
             webview.onDidReceiveMessage(
                 (message: unknown) => {
-                    traceHandshake(contextId, "in", message);
+                    traceHandshake(contextId, instance, "in", message);
                     return listener.call(thisArgs, message);
                 },
                 undefined,
@@ -171,7 +203,7 @@ export function wrapWebviewForCapture(
         asWebviewUri: (localResource: vscode.Uri) => webview.asWebviewUri(localResource),
         postMessage: (message: unknown): Thenable<boolean> => {
             sink.record(contextId, message);
-            traceHandshake(contextId, "out", message);
+            traceHandshake(contextId, instance, "out", message);
             return webview.postMessage(message);
         },
     };

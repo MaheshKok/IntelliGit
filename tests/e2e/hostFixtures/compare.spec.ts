@@ -4,6 +4,7 @@
 import path from "node:path";
 import { expect, test } from "@playwright/test";
 import { captureHostFixture } from "./captureHostFixture";
+import { readConsumedThemeTokens } from "./consumedThemeTokens";
 import { compareHostFixtures, formatHostFixtureDifferences } from "./hostFixtureComparator";
 import { HOST_FIXTURE_THEMES } from "./hostFixtureThemes";
 import { resolveVSCodeExecutable } from "./resolveVSCodeExecutable";
@@ -22,10 +23,21 @@ let resolvedExecutables:
       }
     | undefined;
 
+/**
+ * The theme tokens this extension reads, scanned from `src` once for all four themes.
+ *
+ * Derived rather than listed: a hand-kept list would go stale the first time a webview styles
+ * itself with a token nobody remembered to add, and the canary would stop watching it silently.
+ * `readConsumedThemeTokens` throws rather than returning a short set, so a broken scan fails these
+ * tests instead of quietly passing them.
+ */
+let consumedThemeTokens: ReadonlySet<string> | undefined;
+
 test.beforeAll(async () => {
     // globalSetup pre-downloads the pinned build. This hook resolves that cached executable and
     // downloads the second build once, before the four per-theme tests begin.
     test.setTimeout(BEFORE_ALL_TIMEOUT_MS);
+    consumedThemeTokens = readConsumedThemeTokens(REPO_ROOT);
     const pinned = await resolveVSCodeExecutable(REPO_ROOT, PINNED_VSCODE_VERSION);
     const insiders = await resolveVSCodeExecutable(REPO_ROOT, INSIDERS_VSCODE_VERSION);
     resolvedExecutables = { pinned, insiders };
@@ -38,8 +50,10 @@ for (const themeConfig of HOST_FIXTURE_THEMES) {
         // CI contention without making a genuinely hung test unbounded.
         test.setTimeout(PER_THEME_TIMEOUT_MS);
 
-        if (!resolvedExecutables) {
-            throw new Error("Host-fixture executables were not resolved by beforeAll.");
+        if (!resolvedExecutables || !consumedThemeTokens) {
+            throw new Error(
+                "Host-fixture executables and consumed theme tokens were not resolved by beforeAll.",
+            );
         }
 
         const pinnedFixture = await captureHostFixture(themeConfig, {
@@ -50,12 +64,17 @@ for (const themeConfig of HOST_FIXTURE_THEMES) {
             vscodeExecutablePath: resolvedExecutables.insiders,
             repoRoot: REPO_ROOT,
         });
-        const differences = compareHostFixtures(pinnedFixture, insidersFixture);
+        const differences = compareHostFixtures(
+            pinnedFixture,
+            insidersFixture,
+            consumedThemeTokens,
+        );
 
         expect(
             differences,
             `Host fixture "${themeConfig.fixtureId}" differs between VS Code ${PINNED_VSCODE_VERSION} ` +
-                `and Insiders:\n${formatHostFixtureDifferences(differences)}`,
+                `and Insiders, across the ${consumedThemeTokens.size} theme tokens this extension ` +
+                `reads:\n${formatHostFixtureDifferences(differences)}`,
         ).toEqual([]);
     });
 }
