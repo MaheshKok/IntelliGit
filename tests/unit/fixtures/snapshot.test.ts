@@ -15,7 +15,7 @@
  * durable-state seam's two-armed contract.
  */
 
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -40,6 +40,12 @@ import {
     type DurableStateProvider,
     type DurableStateSnapshot,
 } from "../../fixtures/repo/snapshot";
+// `removeScratchDirectories`, not a bare `rm`, for every scratch root below: a `git` this suite
+// ran against one can still hold its own working directory when the rm reaches the rmdir, and
+// Windows refuses to remove a directory any handle is still open on. It surfaced as
+// `EBUSY: resource busy or locked, rmdir ...\not-a-repo` on the row whose own assertions had all
+// passed (#223). Retrying past writes the test does not control is what the helper exists for.
+import { removeScratchDirectories } from "../../helpers/scratchDirectories";
 
 const FIXTURE_TIMEOUT_MS = 30_000;
 const UNUSED_PROFILE_DIR = "/nonexistent/profile";
@@ -66,8 +72,9 @@ describe("snapshotWorkspace -- captures the full restorable domain for both repo
     let template: FixtureTemplate | undefined;
 
     afterEach(async () => {
-        if (template) await rm(template.home, { recursive: true, force: true });
-        if (scratchDest) await rm(scratchDest, { recursive: true, force: true });
+        await removeScratchDirectories(
+            ...[template?.home, scratchDest].filter((root) => root !== undefined),
+        );
         template = undefined;
         scratchDest = undefined;
     }, FIXTURE_TIMEOUT_MS);
@@ -149,7 +156,7 @@ describe("snapshotWorkspace -- captures the full restorable domain for both repo
                 }),
             ).rejects.toThrow();
 
-            await rm(sanitized.home, { recursive: true, force: true });
+            await removeScratchDirectories(sanitized.home);
         },
         FIXTURE_TIMEOUT_MS,
     );
@@ -160,8 +167,9 @@ describe("snapshotWorkspace -- durable VS Code state seam (PLAN.md step 10)", ()
     let template: FixtureTemplate | undefined;
 
     afterEach(async () => {
-        if (template) await rm(template.home, { recursive: true, force: true });
-        if (scratchDest) await rm(scratchDest, { recursive: true, force: true });
+        await removeScratchDirectories(
+            ...[template?.home, scratchDest].filter((root) => root !== undefined),
+        );
         template = undefined;
         scratchDest = undefined;
     }, FIXTURE_TIMEOUT_MS);
@@ -283,7 +291,7 @@ describe("inventoryDirectory -- text capture limit boundary (fsInventory.ts)", (
     let scratch: string | undefined;
 
     afterEach(async () => {
-        if (scratch) await rm(scratch, { recursive: true, force: true });
+        if (scratch) await removeScratchDirectories(scratch);
         scratch = undefined;
     });
 
@@ -325,7 +333,7 @@ describe("inventoryDirectory -- deterministic, locale-independent ordering (fsIn
     let scratch: string | undefined;
 
     afterEach(async () => {
-        if (scratch) await rm(scratch, { recursive: true, force: true });
+        if (scratch) await removeScratchDirectories(scratch);
         scratch = undefined;
     });
 
