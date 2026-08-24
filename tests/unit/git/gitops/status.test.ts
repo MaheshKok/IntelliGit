@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { FILENAMES_MAY_CONTAIN_RESERVED_CHARACTERS } from "../../../helpers/platformCapabilities";
 import { execFile } from "node:child_process";
 import { mkdtemp, rm, writeFile, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -434,31 +435,34 @@ describe("GitOps", () => {
             }
         });
 
-        it("treats Git pathspec magic syntax as a literal selected path", async () => {
-            const repo = await createTempGitRepo();
-            try {
-                const ops = new GitOps(new RealGitExecutor(repo) as unknown as GitExecutor);
-                const magicPath = ":(glob)*";
-                await writeFile(path.join(repo, magicPath), "magic\n", "utf8");
-                await writeFile(path.join(repo, "victim.txt"), "victim\n", "utf8");
+        it.skipIf(!FILENAMES_MAY_CONTAIN_RESERVED_CHARACTERS)(
+            "treats Git pathspec magic syntax as a literal selected path",
+            async () => {
+                const repo = await createTempGitRepo();
+                try {
+                    const ops = new GitOps(new RealGitExecutor(repo) as unknown as GitExecutor);
+                    const magicPath = ":(glob)*";
+                    await writeFile(path.join(repo, magicPath), "magic\n", "utf8");
+                    await writeFile(path.join(repo, "victim.txt"), "victim\n", "utf8");
 
-                await ops.stageFiles([magicPath]);
+                    await ops.stageFiles([magicPath]);
 
-                const staged = (await git(repo, ["diff", "--cached", "--name-only", "-z"]))
-                    .split("\0")
-                    .filter(Boolean);
-                expect(staged).toEqual([magicPath]);
+                    const staged = (await git(repo, ["diff", "--cached", "--name-only", "-z"]))
+                        .split("\0")
+                        .filter(Boolean);
+                    expect(staged).toEqual([magicPath]);
 
-                await ops.rollbackFiles([magicPath]);
+                    await ops.rollbackFiles([magicPath]);
 
-                const remaining = (await git(repo, ["status", "--porcelain=v1", "-z"]))
-                    .split("\0")
-                    .filter(Boolean);
-                expect(remaining).toEqual(["?? victim.txt"]);
-            } finally {
-                await rm(repo, { recursive: true, force: true });
-            }
-        });
+                    const remaining = (await git(repo, ["status", "--porcelain=v1", "-z"]))
+                        .split("\0")
+                        .filter(Boolean);
+                    expect(remaining).toEqual(["?? victim.txt"]);
+                } finally {
+                    await rm(repo, { recursive: true, force: true });
+                }
+            },
+        );
 
         it("marks unversioned paths intent-to-add with literal pathspec handling", async () => {
             const executor = createMockExecutor({});

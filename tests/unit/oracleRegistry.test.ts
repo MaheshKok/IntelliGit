@@ -59,7 +59,12 @@ async function findValueOracleImporters(): Promise<Set<string>> {
         const source = await readFile(filePath, "utf8");
         for (const _match of source.matchAll(valueOracleImportPattern)) {
             valueImportCount += 1;
-            importers.add(path.relative(repositoryRoot, filePath));
+            // Normalized to forward slashes so the pinned set reads the same on every platform.
+            // `path.relative` yields `tests\unit\...` on Windows, which matches nothing in a set
+            // written with `/`, so this test failed there for a reason unrelated to what it pins.
+            // Same idiom the repository's other two path-pinning meta-tests already use --
+            // tsconfigCoverage.test.ts:49 and coverageManifest.test.ts:87.
+            importers.add(path.relative(repositoryRoot, filePath).split(path.sep).join("/"));
         }
     }
 

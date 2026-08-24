@@ -163,9 +163,13 @@ function runVersionGate(script: string, version: string, options: VersionGateOpt
         const ghArgsPath = join(workspace, "gh-args");
         const packageJsonPath = join(workspace, "package.json");
 
+        // Empty real file rather than `/dev/null`: git for Windows resolves that to `\\.\nul` and
+        // refuses it, so every `git` call below would fail before reaching the version gate.
+        const emptyGitConfig = join(workspace, "empty-gitconfig");
+        writeFileSync(emptyGitConfig, "");
         const gitEnv = sanitizedGitEnv({
-            GIT_CONFIG_GLOBAL: "/dev/null",
-            GIT_CONFIG_SYSTEM: "/dev/null",
+            GIT_CONFIG_GLOBAL: emptyGitConfig,
+            GIT_CONFIG_SYSTEM: emptyGitConfig,
             HOME: workspace,
         });
         const git = (...args: readonly string[]) => {

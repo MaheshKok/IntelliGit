@@ -3,10 +3,15 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { RepositoryLock, RepositoryLockBusyError } from "../../../src/git/repositoryLock";
+import { RENAME_OVER_OPEN_FILE_SUPPORTED } from "../../helpers/platformCapabilities";
 
 /** Delay applied to heartbeat writes only, so "the write is still in flight when release runs" is
  * a controlled fact rather than a race the test hopes to win. Zero for every other test here. */
 const heartbeatWrite = vi.hoisted(() => ({ delayMs: 0 }));
+
+/** Makes `rename` fail toward one destination basename, so the recovery paths that rename can be
+ * driven without waiting for a real filesystem to refuse. Unset for every other test here. */
+const renameFailure = vi.hoisted(() => ({ failToward: undefined as string | undefined }));
 
 // Node's built-in `node:fs/promises` exports non-configurable properties, so `vi.spyOn` cannot wrap
 // them; `vi.mock` with a pass-through factory is vitest's standard workaround. Only the heartbeat's
@@ -25,7 +30,23 @@ vi.mock("node:fs/promises", async (importOriginal) => {
         }
         return actual.writeFile(file, data, options);
     };
-    return { ...actual, writeFile: writeFileWithHeartbeatDelay };
+    const renameWithInjectedFailure: typeof actual.rename = async (oldPath, newPath) => {
+        const target = renameFailure.failToward;
+        if (target !== undefined && String(newPath).endsWith(target)) {
+            const failure: NodeJS.ErrnoException = new Error(
+                `ENOENT: no such file or directory, rename '${String(oldPath)}' -> '${String(newPath)}'`,
+            );
+            failure.code = "ENOENT";
+            failure.syscall = "rename";
+            throw failure;
+        }
+        return actual.rename(oldPath, newPath);
+    };
+    return {
+        ...actual,
+        writeFile: writeFileWithHeartbeatDelay,
+        rename: renameWithInjectedFailure,
+    };
 });
 
 const directories: string[] = [];
@@ -76,49 +97,77 @@ describe("RepositoryLock", () => {
         }
     });
 
-    it("replaces the lock record instead of rewriting the file a reader already opened", async () => {
+    it("publishes a fresh record on every heartbeat", async () => {
+        // The portable half of the test below, which is skipped on Windows. That one needs a
+        // reader holding the lock file open, which is exactly what stops the replace happening
+        // there -- so without this, the Windows leg would assert nothing at all about whether
+        // heartbeats reach the lock path, and a publish that never lands would read as green.
         const common = await commonDir();
         const lockPath = path.join(common, "intelligit", "repo.lock");
         const release = await new RepositoryLock({ heartbeatIntervalMs: 10 }).acquire(common);
-        // Rewriting in place is what makes a live owner briefly indistinguishable from
-        // abandoned residue: `writeFile` truncates at open and writes the bytes as a separate
-        // step, so an owner whose thread stalls between the two leaves an empty file --
-        // unparseable, and with no pid left in it for the liveness probe to rescue the owner
-        // with. Publishing by rename is the difference, and a reader already holding the file
-        // open is what witnesses it: the rename leaves that reader's file untouched, while an
-        // in-place rewrite truncates the very bytes it is holding. Reading the PATH instead
-        // would pass either way, because both forms do update the record found there.
-        //
-        // The held-open handle is also the only thing that makes this decidable. Inode numbers
-        // cannot answer it: `publishLockRecord` renames one fixed temporary path per owner, so
-        // each heartbeat frees the inode the previous one published and the allocator hands it
-        // straight back. Measured on ext4, eight publishes cycled between exactly two inodes,
-        // returning to the starting one on every even heartbeat -- so an inode comparison here
-        // is a coin flip that lands on the count of heartbeats that happened to fit in the
-        // wait. Holding the file open pins its inode, which can then be neither reused nor
-        // rewritten behind this assertion.
         try {
-            const reader = await open(lockPath, "r");
-            try {
-                const claimed = await readFile(lockPath, "utf8");
-                // Wait for a heartbeat to land rather than for a duration: until one record
-                // has been published there is nothing for the two forms to differ about, and
-                // a fixed sleep decides how many landed by how loaded the machine is.
-                await vi.waitFor(async () => {
-                    expect(await readFile(lockPath, "utf8")).not.toBe(claimed);
-                });
-
-                expect(
-                    await reader.readFile({ encoding: "utf8" }),
-                    "each heartbeat must publish a new file, never rewrite the one already open",
-                ).toBe(claimed);
-            } finally {
-                await reader.close();
-            }
+            const claimed = await readFile(lockPath, "utf8");
+            await vi.waitFor(async () => {
+                expect(await readFile(lockPath, "utf8")).not.toBe(claimed);
+            });
         } finally {
             await release();
         }
     });
+
+    // Skipped where the platform will not perform the replace this test watches for. Windows
+    // refuses to rename onto a file another handle holds open, and the held-open handle below is
+    // the whole apparatus -- so every publish during the wait fails with
+    // `EPERM: operation not permitted, rename '...\repo.lock.<nonce>' -> '...\repo.lock'` and the
+    // record never advances. Not a bug being skipped past: the invariant is that a reader never
+    // observes a partial record, and Windows upholds it by leaving the whole previous record in
+    // place. What is unavailable there is the mechanism, not the guarantee.
+    it.skipIf(!RENAME_OVER_OPEN_FILE_SUPPORTED)(
+        "replaces the lock record instead of rewriting the file a reader already opened",
+        async () => {
+            const common = await commonDir();
+            const lockPath = path.join(common, "intelligit", "repo.lock");
+            const release = await new RepositoryLock({ heartbeatIntervalMs: 10 }).acquire(common);
+            // Rewriting in place is what makes a live owner briefly indistinguishable from
+            // abandoned residue: `writeFile` truncates at open and writes the bytes as a separate
+            // step, so an owner whose thread stalls between the two leaves an empty file --
+            // unparseable, and with no pid left in it for the liveness probe to rescue the owner
+            // with. Publishing by rename is the difference, and a reader already holding the file
+            // open is what witnesses it: the rename leaves that reader's file untouched, while an
+            // in-place rewrite truncates the very bytes it is holding. Reading the PATH instead
+            // would pass either way, because both forms do update the record found there.
+            //
+            // The held-open handle is also the only thing that makes this decidable. Inode numbers
+            // cannot answer it: `publishLockRecord` renames one fixed temporary path per owner, so
+            // each heartbeat frees the inode the previous one published and the allocator hands it
+            // straight back. Measured on ext4, eight publishes cycled between exactly two inodes,
+            // returning to the starting one on every even heartbeat -- so an inode comparison here
+            // is a coin flip that lands on the count of heartbeats that happened to fit in the
+            // wait. Holding the file open pins its inode, which can then be neither reused nor
+            // rewritten behind this assertion.
+            try {
+                const reader = await open(lockPath, "r");
+                try {
+                    const claimed = await readFile(lockPath, "utf8");
+                    // Wait for a heartbeat to land rather than for a duration: until one record
+                    // has been published there is nothing for the two forms to differ about, and
+                    // a fixed sleep decides how many landed by how loaded the machine is.
+                    await vi.waitFor(async () => {
+                        expect(await readFile(lockPath, "utf8")).not.toBe(claimed);
+                    });
+
+                    expect(
+                        await reader.readFile({ encoding: "utf8" }),
+                        "each heartbeat must publish a new file, never rewrite the one already open",
+                    ).toBe(claimed);
+                } finally {
+                    await reader.close();
+                }
+            } finally {
+                await release();
+            }
+        },
+    );
 
     it("does not hold a claim another process reclaimed before the record landed", async () => {
         const common = await commonDir();
@@ -220,6 +269,57 @@ describe("RepositoryLock", () => {
             await expect(takesOverWhenKillFails("EINVAL")).resolves.toBe(false);
             await expect(takesOverWhenKillFails(undefined)).resolves.toBe(false);
         });
+    });
+
+    it("reports a busy lock even when restoring the displaced record fails", async () => {
+        const common = await commonDir();
+        const lockDir = path.join(common, "intelligit");
+        const lockPath = path.join(lockDir, "repo.lock");
+        await mkdir(lockDir);
+        await writeFile(lockPath, JSON.stringify({ nonce: "dead-owner", pid: 1, heartbeatAt: 0 }));
+
+        try {
+            await expect(
+                new RepositoryLock({
+                    staleAfterMs: 60_000,
+                    livenessProbe: async () => false,
+                    // Rewrites the record AFTER the takeover decision was made about it, which is
+                    // how a live owner announces the liveness probe got it wrong. `isSameLockFile`
+                    // then says no, and the restore runs -- and here it fails.
+                    beforeTakeover: async () => {
+                        await writeFile(
+                            lockPath,
+                            JSON.stringify({ nonce: "dead-owner", pid: 1, heartbeatAt: 1 }),
+                        );
+                        renameFailure.failToward = "repo.lock";
+                    },
+                }).acquire(common),
+                // Without the restore being best-effort this rejects with the rename's own ENOENT,
+                // and every `instanceof RepositoryLockBusyError` recovery path upstream is skipped
+                // for a lock that is merely held.
+            ).rejects.toBeInstanceOf(RepositoryLockBusyError);
+        } finally {
+            renameFailure.failToward = undefined;
+        }
+    });
+
+    it("reports a heartbeat that can no longer publish instead of failing silently", async () => {
+        const common = await commonDir();
+        const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+        const release = await new RepositoryLock({ heartbeatIntervalMs: 10 }).acquire(common);
+        try {
+            renameFailure.failToward = "repo.lock";
+            await vi.waitFor(() => {
+                expect(consoleError).toHaveBeenCalled();
+            });
+            // A frozen `heartbeatAt` is what the next acquirer misreads as abandoned, so the
+            // message has to say that much rather than just naming the errno.
+            expect(String(consoleError.mock.calls[0]?.[0])).toContain("take this lock over");
+        } finally {
+            renameFailure.failToward = undefined;
+            consoleError.mockRestore();
+            await release();
+        }
     });
 
     it("allows exactly one contender to take over the same stale dead lock", async () => {

@@ -7,6 +7,10 @@ export default defineConfig({
     test: {
         include: ["tests/**/*.test.ts", "tests/**/*.test.tsx"],
         globals: true,
+        // Pins the Git configuration every test subprocess sees. See the module's own comment for
+        // why this is process-level rather than per-module. `tests/unit/gitEnvironmentIsolation.
+        // test.ts` fails if this line is removed, so the guarantee cannot be dropped silently.
+        setupFiles: ["./tests/setup/gitEnvironment.ts"],
         // Deliberately NOT `restoreMocks: true`. It is the right default for a suite written
         // against it, but not for this one: the webview tests install `window.matchMedia` and
         // friends once per file and share them across their cases, so restoring after every test

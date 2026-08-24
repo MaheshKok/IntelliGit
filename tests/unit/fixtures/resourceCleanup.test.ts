@@ -12,6 +12,7 @@ import { promisify } from "node:util";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createFixtureWorkspace, type FixtureWorkspace } from "../../fixtures/repo/harness";
+import { gitSpellingOf } from "../../helpers/gitPathSpelling";
 import { git } from "./gitTestHelpers";
 
 const FIXTURE_TIMEOUT_MS = 30_000;
@@ -282,14 +283,22 @@ describe("FixtureWorkspace resource cleanup", () => {
                 true,
             );
             expect(
-                (
-                    await git(workspace.root, ["worktree", "list", "--porcelain"], workspace.env)
-                ).includes(linkedWorktreePath),
+                await git(workspace.root, ["worktree", "list", "--porcelain"], workspace.env),
                 "git reported the external linked worktree before cleanup",
-            ).toBe(true);
+            ).toContain(gitSpellingOf(linkedWorktreePath));
 
+            // Both sides normalized through `gitSpellingOf`, never compared as literals.
+            // `removeLinkedWorktrees` takes the path out of `git worktree list --porcelain`, and
+            // git spells every path with `/` on every platform -- so on Windows the removal this
+            // mock exists to intercept arrives as `C:/Users/RUNNER~1/.../linked-worktree-outside-
+            // root` while both literals above are `path.join`'s `\` form. Neither `===` matched,
+            // the injected failure never happened, and `dispose()` resolved: reported only as
+            // `promise resolved "undefined" instead of rejecting` (#223). `gitSpellingOf` resolves
+            // through `realpath.native` and then to `/`, which collapses the separator, the 8.3
+            // short name, and the on-disk case in one step rather than enumerating spellings.
+            const linkedWorktreeSpelling = gitSpellingOf(linkedWorktreePath);
             rmMock.mockImplementation(async (target, options) => {
-                if (target === linkedWorktreePath || target === linkedWorktreeRealPath) {
+                if (gitSpellingOf(String(target)) === linkedWorktreeSpelling) {
                     throw injectedError;
                 }
                 return realRm(target, options);

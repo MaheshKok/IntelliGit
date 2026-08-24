@@ -4,6 +4,8 @@ import os from "node:os";
 import path from "node:path";
 
 import { chromium } from "@playwright/test";
+
+import { removeScratchDirectories } from "../../helpers/scratchDirectories";
 import { expect, it } from "vitest";
 
 // Derived from this file's own location, not `process.cwd()`: a cwd-derived root silently
@@ -183,6 +185,6 @@ it("proves missing, matching, and mismatching screenshot baselines", async () =>
         expect(thirdRun.output).not.toMatch(/A snapshot doesn't exist|missing snapshot/i);
     } finally {
         if (configPath !== undefined) await rm(configPath, { force: true });
-        await rm(tempDirectory, { recursive: true, force: true });
+        await removeScratchDirectories(tempDirectory);
     }
 }, 60_000);

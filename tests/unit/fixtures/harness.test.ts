@@ -13,6 +13,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { afterEach, describe, expect, it } from "vitest";
+import { gitSpellingOf } from "../../helpers/gitPathSpelling";
 
 import {
     DEFAULT_WORKSPACES_ROOT,
@@ -91,12 +92,32 @@ describe("createFixtureWorkspace", () => {
         const candidate = "/var/folders/example/intelligit-e2e-workspaces";
         const socketPathLimit = 1;
 
-        expect(() => deriveWorkspacesRoot(candidate, socketPathLimit)).toThrowError(
-            new RangeError(
-                `Cannot derive a creatable workspaces root for candidateParent "${candidate}" ` +
-                    `with socketPathLimit ${socketPathLimit}; shortest path attempted was "/i".`,
-            ),
+        // The message is asserted in two halves rather than as one byte-exact string: the
+        // shortest path is built with `path.join`, so its separator is the running platform's
+        // (`/i` on POSIX, `\i` on Windows) even though the candidate is a macOS-shaped literal.
+        // Pinning the whole message asserted the platform, not the behaviour. The regex states
+        // the property -- the filesystem root followed by the short name -- instead of
+        // re-deriving `path.join(path.parse(candidate).root, "i")`, which would just mirror the
+        // implementation and go green on any bug the implementation itself contained.
+        let thrown: unknown;
+        try {
+            deriveWorkspacesRoot(candidate, socketPathLimit);
+        } catch (error) {
+            thrown = error;
+        }
+
+        expect(thrown, "an impossible socket budget must throw, not return a path").toBeInstanceOf(
+            RangeError,
         );
+        const message = (thrown as RangeError).message;
+        expect(message).toContain(
+            `Cannot derive a creatable workspaces root for candidateParent "${candidate}" ` +
+                `with socketPathLimit ${socketPathLimit};`,
+        );
+        expect(
+            message,
+            "the message must name the shortest path it attempted, at the filesystem root",
+        ).toMatch(/shortest path attempted was "[\\/]i"\.$/);
     });
 
     describe("construction", () => {
@@ -324,7 +345,10 @@ describe("createFixtureWorkspace", () => {
                     ["worktree", "list", "--porcelain"],
                     workspace.env,
                 );
-                expect(worktreeList).toContain(linkedWorktreePath);
+                expect(
+                    worktreeList,
+                    "git worktree add must register the linked worktree outside the root",
+                ).toContain(gitSpellingOf(linkedWorktreePath));
 
                 await workspace.dispose();
 

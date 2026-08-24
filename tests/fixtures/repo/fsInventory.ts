@@ -111,7 +111,13 @@ async function buildEntry(
 ): Promise<FsEntry> {
     const mode = stats.mode & 0o7777;
     if (type === "symlink") {
-        const symlinkTarget = await readlink(absolutePath);
+        // Forward slashes, matching how `relativePath` is assembled above. `readlink` hands back
+        // the target spelled with the platform separator, so a link created as `data/real.txt`
+        // reads back as `data\real.txt` on Windows and no comparison against a portable literal
+        // can match. An inventory is compared across runs and printed in diffs, so the portable
+        // spelling is the one that belongs in it -- and this module already chose that for every
+        // other path field it produces.
+        const symlinkTarget = (await readlink(absolutePath)).split(path.sep).join("/");
         return { relativePath, type, mode, digest: null, text: null, symlinkTarget };
     }
     if (type !== "file") {

@@ -53,7 +53,6 @@ import { VSCODE_VERSION } from "./vscodeVersion";
 async function excludeFromSpotlight(cachePath: string): Promise<void> {
     if (process.platform !== "darwin") return;
     try {
-        await mkdir(cachePath, { recursive: true });
         await writeFile(path.join(cachePath, ".metadata_never_index"), "", "utf8");
     } catch {
         // Indexing is a performance concern, never a correctness one.
@@ -122,6 +121,16 @@ export async function resolveVSCodeExecutable(
     version = resolveVSCodeVersion(),
 ): Promise<string> {
     const cachePath = vscodeCachePath();
+    // `downloadAndUnzipVSCode` creates the cache directory with a NON-recursive `mkdirSync`, so it
+    // works only where the parent already exists. Nothing guaranteed that. On macOS the parent got
+    // created as a side effect of the Spotlight opt-out below, and on Linux `~/.cache` exists by XDG
+    // convention -- on Windows neither holds, `%USERPROFILE%\.cache` is simply absent, and the whole
+    // job died in `globalSetup` with `ENOENT: no such file or directory, mkdir
+    // 'C:\Users\runneradmin\.cache\intelligit-vscode-test'` before one smoke test ran (#223).
+    // Created here rather than inside `excludeFromSpotlight`, which is darwin-only, best-effort, and
+    // swallows its own failures by design: a correctness step must not live where failures are
+    // discarded, and the helper depended on this directory rather than owning it.
+    await mkdir(cachePath, { recursive: true });
     await excludeFromSpotlight(cachePath);
     const executablePath = await downloadAndUnzipVSCode({
         version,

@@ -6,6 +6,7 @@ import path from "node:path";
 import type { GitExecutor } from "../git/executor";
 import { validateShelfManifestPath } from "../shelf/importValidation";
 import type { ShelfFileEntry } from "../shelf/model";
+import { resolveNoFollowFlag } from "../shelf/noFollowFlag";
 import { ensureContainedParent, resolveRecoveryPath } from "../shelf/recoveryPaths";
 import { replaceRegularWorktreeFile } from "../shelf/safeWorktreeWrite";
 import {
@@ -341,10 +342,9 @@ async function parkShelfConflictCurrent(
     });
     try {
         await ensureContainedParent(gitDir, target);
-        const noFollow = typeof constants.O_NOFOLLOW === "number" ? constants.O_NOFOLLOW : 0;
         const file = await open(
             target,
-            constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | noFollow,
+            constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | resolveNoFollowFlag(),
             0o600,
         );
         try {

@@ -13,6 +13,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { FILENAMES_MAY_CONTAIN_RESERVED_CHARACTERS } from "../../helpers/platformCapabilities";
 import { GitExecutor } from "../../../src/git/executor";
 import {
     GitOps,
@@ -820,16 +821,19 @@ describe("GitOps.getDiffForPaths", () => {
         expect(result.diff).toBe(expected);
     });
 
-    it("C-quotes a synthesized header for a symlink path containing a double quote", async () => {
-        const root = await createGitRepository();
-        await symlink("target-value", path.join(root, 'quote"link'));
+    it.skipIf(!FILENAMES_MAY_CONTAIN_RESERVED_CHARACTERS)(
+        "C-quotes a synthesized header for a symlink path containing a double quote",
+        async () => {
+            const root = await createGitRepository();
+            await symlink("target-value", path.join(root, 'quote"link'));
 
-        const result = await gitOpsFor(root).getDiffForPaths(['quote"link']);
+            const result = await gitOpsFor(root).getDiffForPaths(['quote"link']);
 
-        await git(root, ["add", "--", 'quote"link']);
-        const expected = await git(root, ["diff", "--cached", "--full-index", "--no-color"]);
-        expect(result.diff).toBe(expected);
-    });
+            await git(root, ["add", "--", 'quote"link']);
+            const expected = await git(root, ["diff", "--cached", "--full-index", "--no-color"]);
+            expect(result.diff).toBe(expected);
+        },
+    );
 
     it("appends a trailing tab to the synthesized +++ line for an unquoted symlink path containing a space", async () => {
         const root = await createGitRepository();

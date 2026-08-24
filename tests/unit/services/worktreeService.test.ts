@@ -2,6 +2,7 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { fixturePath } from "../../helpers/fixturePaths";
 import type { GitExecutor } from "../../../src/git/executor";
 import { WorktreeService } from "../../../src/services/worktreeService";
 
@@ -98,7 +99,7 @@ describe("WorktreeService", () => {
 
     it("caches worktree lists until refresh repulls and emits", async () => {
         const executor = createExecutor([porcelain("main"), porcelain("feature/x")]);
-        const service = new WorktreeService(executor, () => "/repo");
+        const service = new WorktreeService(executor, () => fixturePath("/repo"));
         const listener = vi.fn();
         service.onDidChangeWorktrees(listener);
 
@@ -114,11 +115,11 @@ describe("WorktreeService", () => {
     it("decorates matching local branches without mutating the source list", async () => {
         const executor = createExecutor([
             porcelainRecords([
-                { path: "/repo", branch: "main" },
-                { path: "/repo-feature", branch: "feature/x" },
+                { path: fixturePath("/repo"), branch: "main" },
+                { path: fixturePath("/repo-feature"), branch: "feature/x" },
             ]),
         ]);
-        const service = new WorktreeService(executor, () => "/repo");
+        const service = new WorktreeService(executor, () => fixturePath("/repo"));
         const branches = [
             {
                 name: "main",
@@ -161,12 +162,12 @@ describe("WorktreeService", () => {
         expect(decorated[0]).toMatchObject({
             isCheckedOutInWorktree: true,
             isCurrentWorktree: true,
-            worktreePath: "/repo",
+            worktreePath: fixturePath("/repo"),
         });
         expect(decorated[1]).toMatchObject({
             isCheckedOutInWorktree: true,
             isCurrentWorktree: false,
-            worktreePath: "/repo-feature",
+            worktreePath: fixturePath("/repo-feature"),
         });
         expect(decorated[2]).toMatchObject({
             isCheckedOutInWorktree: false,
@@ -182,10 +183,10 @@ describe("WorktreeService", () => {
 
     it("creates a remote-branch worktree and sets upstream explicitly", async () => {
         const executor = createExecutor([porcelain("main"), porcelain("feature/x")]);
-        const service = new WorktreeService(executor, () => "/repo");
+        const service = new WorktreeService(executor, () => fixturePath("/repo"));
 
         await service.createWorktree({
-            path: "/worktrees/feature-x",
+            path: fixturePath("/worktrees/feature-x"),
             branch: {
                 name: "origin/feature/x",
                 hash: "b2",
@@ -202,7 +203,7 @@ describe("WorktreeService", () => {
             "add",
             "-b",
             "feature/x",
-            "/worktrees/feature-x",
+            fixturePath("/worktrees/feature-x"),
             "origin/feature/x",
         ]);
         expect(executor.run).toHaveBeenNthCalledWith(3, [
@@ -246,11 +247,11 @@ describe("WorktreeService", () => {
     it("rejects unsafe include-file paths before adding a worktree", async () => {
         const executor = createExecutor([porcelain("main")]);
         includeFiles.value = ["../secret.env"];
-        const service = new WorktreeService(executor, () => "/repo");
+        const service = new WorktreeService(executor, () => fixturePath("/repo"));
 
         await expect(
             service.createWorktree({
-                path: "/worktrees/feature",
+                path: fixturePath("/worktrees/feature"),
                 branch: {
                     name: "feature/x",
                     hash: "b2",
@@ -264,7 +265,7 @@ describe("WorktreeService", () => {
         expect(executor.run).not.toHaveBeenCalledWith([
             "worktree",
             "add",
-            "/worktrees/feature",
+            fixturePath("/worktrees/feature"),
             "feature/x",
         ]);
     });
@@ -272,8 +273,8 @@ describe("WorktreeService", () => {
     it("rejects removing main, detached main, or current worktrees", async () => {
         const executor = createExecutor([
             porcelainRecords([
-                { path: "/repo", branch: "main" },
-                { path: "/worktrees/feature", branch: "feature/x" },
+                { path: fixturePath("/repo"), branch: "main" },
+                { path: fixturePath("/worktrees/feature"), branch: "feature/x" },
             ]),
             [
                 "worktree /repo",
@@ -282,71 +283,81 @@ describe("WorktreeService", () => {
                 "",
             ].join("\0"),
             porcelainRecords([
-                { path: "/repo", branch: "main" },
-                { path: "/worktrees/current", branch: "feature/current" },
+                { path: fixturePath("/repo"), branch: "main" },
+                { path: fixturePath("/worktrees/current"), branch: "feature/current" },
             ]),
         ]);
-        const service = new WorktreeService(executor, () => "/repo");
+        const service = new WorktreeService(executor, () => fixturePath("/repo"));
 
-        await expect(service.removeWorktree("/repo")).rejects.toThrow("main worktree");
+        await expect(service.removeWorktree(fixturePath("/repo"))).rejects.toThrow("main worktree");
         await service.refresh();
-        await expect(service.removeWorktree("/repo")).rejects.toThrow("main worktree");
-        const currentLinked = new WorktreeService(executor, () => "/worktrees/current");
-        await expect(currentLinked.removeWorktree("/worktrees/current")).rejects.toThrow(
-            "current worktree",
+        await expect(service.removeWorktree(fixturePath("/repo"))).rejects.toThrow("main worktree");
+        const currentLinked = new WorktreeService(executor, () =>
+            fixturePath("/worktrees/current"),
         );
-        await expect(service.removeWorktree("/missing")).rejects.toThrow("Worktree not found");
+        await expect(
+            currentLinked.removeWorktree(fixturePath("/worktrees/current")),
+        ).rejects.toThrow("current worktree");
+        await expect(service.removeWorktree(fixturePath("/missing"))).rejects.toThrow(
+            "Worktree not found",
+        );
     });
 
     it("removes a clean worktree without force and leaves branches untouched", async () => {
         const executor = createExecutor([
             porcelainRecords([
-                { path: "/repo", branch: "main" },
-                { path: "/worktrees/feature", branch: "feature/x" },
+                { path: fixturePath("/repo"), branch: "main" },
+                { path: fixturePath("/worktrees/feature"), branch: "feature/x" },
             ]),
             "",
             porcelain("main"),
         ]);
         const scoped = createScopedExecutor("");
-        const service = new WorktreeService(executor, () => "/repo", scoped.factory);
+        const service = new WorktreeService(executor, () => fixturePath("/repo"), scoped.factory);
 
-        await service.removeWorktree("/worktrees/feature");
+        await service.removeWorktree(fixturePath("/worktrees/feature"));
 
         expect(scoped.runs).toHaveLength(1);
-        expect(scoped.runs[0]).toMatchObject({ repoRoot: "/worktrees/feature" });
+        expect(scoped.runs[0]).toMatchObject({ repoRoot: fixturePath("/worktrees/feature") });
         expect(scoped.runs[0]?.run).toHaveBeenCalledWith(["status", "--porcelain"]);
-        expect(executor.run).toHaveBeenCalledWith(["worktree", "remove", "/worktrees/feature"]);
+        expect(executor.run).toHaveBeenCalledWith([
+            "worktree",
+            "remove",
+            fixturePath("/worktrees/feature"),
+        ]);
         expect(executor.run).not.toHaveBeenCalledWith(expect.arrayContaining(["branch"]));
     });
 
     it("requires explicit confirmation before force-removing a dirty worktree", async () => {
         const executor = createExecutor([
             porcelainRecords([
-                { path: "/repo", branch: "main" },
-                { path: "/worktrees/dirty", branch: "dirty" },
+                { path: fixturePath("/repo"), branch: "main" },
+                { path: fixturePath("/worktrees/dirty"), branch: "dirty" },
             ]),
             "",
             porcelain("main"),
         ]);
         const scoped = createScopedExecutor(" M file.txt\n");
-        const service = new WorktreeService(executor, () => "/repo", scoped.factory);
+        const service = new WorktreeService(executor, () => fixturePath("/repo"), scoped.factory);
 
         showWarningMessage.mockResolvedValueOnce(undefined);
-        await expect(service.removeWorktree("/worktrees/dirty")).resolves.toBeUndefined();
+        await expect(
+            service.removeWorktree(fixturePath("/worktrees/dirty")),
+        ).resolves.toBeUndefined();
         expect(executor.run).not.toHaveBeenCalledWith([
             "worktree",
             "remove",
             "--force",
-            "/worktrees/dirty",
+            fixturePath("/worktrees/dirty"),
         ]);
 
         showWarningMessage.mockResolvedValueOnce("Delete Worktree");
-        await service.removeWorktree("/worktrees/dirty");
+        await service.removeWorktree(fixturePath("/worktrees/dirty"));
         expect(executor.run).toHaveBeenCalledWith([
             "worktree",
             "remove",
             "--force",
-            "/worktrees/dirty",
+            fixturePath("/worktrees/dirty"),
         ]);
     });
 
@@ -358,10 +369,10 @@ describe("WorktreeService", () => {
             porcelain("main"),
             porcelain("main"),
         ]);
-        const service = new WorktreeService(executor, () => "/repo");
+        const service = new WorktreeService(executor, () => fixturePath("/repo"));
 
-        await service.lockWorktree("/worktrees/feature", "hold");
-        await service.unlockWorktree("/worktrees/feature");
+        await service.lockWorktree(fixturePath("/worktrees/feature"), "hold");
+        await service.unlockWorktree(fixturePath("/worktrees/feature"));
         await service.pruneWorktrees();
         await service.repairWorktrees();
 
@@ -370,9 +381,13 @@ describe("WorktreeService", () => {
             "lock",
             "--reason",
             "hold",
-            "/worktrees/feature",
+            fixturePath("/worktrees/feature"),
         ]);
-        expect(executor.run).toHaveBeenCalledWith(["worktree", "unlock", "/worktrees/feature"]);
+        expect(executor.run).toHaveBeenCalledWith([
+            "worktree",
+            "unlock",
+            fixturePath("/worktrees/feature"),
+        ]);
         expect(executor.run).toHaveBeenCalledWith(["worktree", "prune"]);
         expect(executor.run).toHaveBeenCalledWith(["worktree", "repair"]);
     });

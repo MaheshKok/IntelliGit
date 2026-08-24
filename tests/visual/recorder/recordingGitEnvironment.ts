@@ -12,7 +12,7 @@
  *
  * The fixture layer already builds exactly the environment that prevents this:
  * `createSanitizedGitEnv()` (`tests/fixtures/repo/seed.ts`) pins a scratch `HOME`,
- * `GIT_CONFIG_GLOBAL=/dev/null`, `GIT_CONFIG_SYSTEM=/dev/null`, a fixed identity, and a fixed
+ * `GIT_CONFIG_GLOBAL` and `GIT_CONFIG_SYSTEM` at an empty file, a fixed identity, and a fixed
  * date, and every `ScenarioWorkspace` carries it as `env`. It was simply not being threaded as far
  * as the recording -- the registry passed `repoRoot` and `roots` and dropped `env` on the floor.
  * This module is the thread.

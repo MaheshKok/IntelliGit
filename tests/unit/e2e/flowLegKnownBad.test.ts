@@ -63,6 +63,19 @@ describe("four-way flow oracle known-bad subprocesses", () => {
                     `${leg} oracle failed for row ${flow.id}`,
                 );
             }
-        }, 300_000);
+            // `lock-residue` needs six times what its three siblings need: measured on one macOS
+            // machine, local-git 38,077ms / origin 39,090ms / durable-state 38,215ms against
+            // lock-residue 232,430ms. They run the same rows through the same oracle and differ only
+            // in the corruption, and this is the one that leaves a repository lock and a shelf lock
+            // behind (`corruptLockResidue`) -- so every row waits out real stale-lock detection
+            // (`staleAfterMs`, 30s, src/git/repositoryLock.ts:61) across the 11 rows of FLOW_MATRIX.
+            // That wait IS the behaviour under test; making it cheap would mean a test-only timing
+            // knob reaching into production lock code, which is worse than a long test.
+            //
+            // So 300,000 was never a Windows problem. It left 23% headroom on the FASTEST platform,
+            // and Windows -- only 1.2x slower here, at 282,240ms on run 32654169455 -- spent 94% of
+            // it before timing out on the next run. A timeout exists to catch a hang, and 600,000
+            // still does that against a leg whose slowest honest observation is 282s.
+        }, 600_000);
     }
 });

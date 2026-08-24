@@ -2,6 +2,13 @@
 export interface PackageCliInvocation {
     readonly executablePath: string;
     readonly args: readonly string[];
+    /**
+     * Whether the caller must hand this to `execFile`/`spawn` with `shell: true`. Carried on the
+     * invocation rather than decided at the call site so the platform rule has one home and a unit
+     * test can name the platform to reach it -- the Windows branch is otherwise unreachable from
+     * every machine this suite is developed on.
+     */
+    readonly useShell: boolean;
 }
 
 /** The package-management operation to run against the fresh VS Code profile. */
@@ -26,6 +33,14 @@ export function buildPackageCliInvocation(options: {
     readonly userDataDir: string;
     readonly extensionsDir: string;
     readonly operation: PackageCliOperation;
+    /**
+     * Defaults to the running platform. Tests pass it explicitly so that BOTH branches are
+     * reachable from any machine, and -- the part that actually bit -- so no case can silently
+     * assert whichever branch its host happens to take. Written first as a `process.platform` spy,
+     * which reads the same on macOS and is wrong on Windows: the two POSIX cases here went red on
+     * the Windows leg because they were asserting the host, not a decision.
+     */
+    readonly platform?: NodeJS.Platform;
 }): PackageCliInvocation {
     const [executablePath, ...resolvedArgs] = options.cliArgs;
     if (executablePath === undefined) {
@@ -37,14 +52,39 @@ export function buildPackageCliInvocation(options: {
             ? ["--install-extension", options.operation.vsixPath, "--force"]
             : ["--list-extensions", "--show-versions"];
 
+    // On Windows the resolver hands back `bin\code.cmd`, and Node refuses to spawn a `.cmd` or
+    // `.bat` without a shell (CVE-2024-27980) -- so the smoke test died with `spawn EINVAL` before
+    // VS Code ran at all (#223). Upstream hits the same wall and answers it the same way in
+    // `runVSCodeCommand`: a shell on win32 only, with the executable quoted because the shell
+    // re-parses the whole command line. Arguments are quoted for the same reason, which is where
+    // this goes further than upstream: a profile directory under `C:\Users\Some Name\...` would
+    // otherwise split into two arguments, and VS Code would quietly write to the wrong path rather
+    // than fail. Quoting is applied only on the shell path, where a shell is there to strip it.
+    //
+    // What `shell: true` resolves to on win32, since pairing it with an argument array reads like
+    // an error and is not one: Node joins the file and the arguments with single spaces and runs
+    // `cmd.exe /d /s /c "<joined>"` with `windowsVerbatimArguments`, applying no escaping of its
+    // own. Spawning `cmd.exe /c` by hand is therefore the identical call with the joining written
+    // out, and switching to `exec` means hand-writing that join plus this quoting -- both add
+    // escaping code without changing what runs, which is why neither is done here.
+    //
+    // What the quoting covers, exactly: double quotes make spaces safe and make `&`, `|` and `^`
+    // literal to cmd. They do not stop `%VAR%` expanding, and a literal `"` cannot be escaped
+    // inside a quoted token at all -- though Windows forbids `"` in a filename, so only `%` is
+    // reachable. Every path here is either the VS Code cache path or a `mkdtemp` directory this
+    // suite creates, so none can contain one.
+    const useShell = (options.platform ?? process.platform) === "win32";
+    const forShell = (value: string): string => (useShell ? `"${value}"` : value);
+
     return {
-        executablePath,
+        executablePath: forShell(executablePath),
         args: [
             ...resolvedArgs,
             `--user-data-dir=${options.userDataDir}`,
             `--extensions-dir=${options.extensionsDir}`,
             ...operationArgs,
-        ],
+        ].map(forShell),
+        useShell,
     };
 }
 

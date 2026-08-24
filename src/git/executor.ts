@@ -161,7 +161,17 @@ export class GitExecutor {
                           }
                           if (chunk.length > remainingBytes) {
                               truncated = true;
-                              terminatedForOutputLimit = child.kill();
+                              // Latched BEFORE the kill, and never overwritten by a later chunk.
+                              // `child.kill()` reports whether the signal was *sent*, which is
+                              // false once the process is already gone -- so a second overflow
+                              // chunk arriving after the first kill took effect used to reset this
+                              // to false, and `finish` then rejected the very death it asked for.
+                              // Windows delivers exactly that shape, because `TerminateProcess` is
+                              // asynchronous and the pipe keeps draining behind it (#223). What
+                              // this flag means is "we asked for the termination", and that is
+                              // knowable without consulting the return value at all.
+                              terminatedForOutputLimit = true;
+                              child.kill();
                           }
                       });
                       child.stdout.once("end", resolve);

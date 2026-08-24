@@ -3,6 +3,7 @@ import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
+import { ABSENT_GIT_CONFIG_GLOBAL } from "../../helpers/gitConfigIsolation";
 import { removeScratchDirectories } from "../../helpers/scratchDirectories";
 import { GitExecutor } from "../../../src/git/executor";
 import { RepositoryMutationCoordinator } from "../../../src/git/mutationCoordinator";
@@ -28,6 +29,16 @@ export async function git(repositoryRoot: string, args: readonly string[]): Prom
         encoding: "buffer",
         env: {
             ...process.env,
+            // Config isolation, not just identity. Everything this harness backs asserts on exact
+            // bytes -- `indexSnapshot`, `cachedDiff`, `fileBytes` -- and without these two the
+            // subprocess inherits both the developer's `~/.gitconfig` and the system config. On
+            // Windows the system config is where Git ships `core.autocrlf=true`, so every one of
+            // those byte comparisons read back CRLF where the fixture wrote LF. It is not a
+            // Windows-only hazard either: a global `diff.renames=false` perturbs the same
+            // assertions on any machine, which is the reproducibility defect
+            // `tests/visual/recorder/recordingGitEnvironment.ts` documents at length.
+            GIT_CONFIG_GLOBAL: ABSENT_GIT_CONFIG_GLOBAL,
+            GIT_CONFIG_NOSYSTEM: "1",
             GIT_AUTHOR_NAME: "Shelf integration test",
             GIT_AUTHOR_EMAIL: "shelf-integration@example.invalid",
             GIT_COMMITTER_NAME: "Shelf integration test",

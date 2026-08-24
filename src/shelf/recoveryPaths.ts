@@ -42,7 +42,20 @@ export function assertRepositoryRelativePath(value: string): string {
     if (normalized === "." || normalized === ".." || normalized.startsWith(".." + path.sep)) {
         throw new RecoverySafetyError("Recovery path escapes repository root.");
     }
-    return normalized;
+    // Returned with forward slashes, not the platform separator. This value is used as a GIT
+    // path -- `writeIndexEntry`, `getIndexEntry`, `getIndexPathFingerprint` and `getBaseEntry`
+    // all take it straight to git -- and git addresses paths with `/` on every platform, so
+    // `git show <oid>:blocked\one.txt` resolves nothing. `path.normalize` returns
+    // `blocked\one.txt` on Windows, so each of those lookups silently addressed a path git had
+    // never heard of. It is also the value surfaced in `ShelfRollbackRetainedError.retainedPaths`
+    // and used as a journal key, both of which must stay portable across platforms for an
+    // exported shelf to import elsewhere. `src/utils/fileOps.ts` documents the same constraint
+    // and already does this.
+    //
+    // The escape guard above deliberately runs first, on the platform form, so this is purely a
+    // change of representation: `path.resolve` treats `/` and `\` identically on Windows, so the
+    // filesystem call sites (`resolveRepositoryPath`, `resolveRecoveryPath`) are unaffected.
+    return normalized.split(path.sep).join("/");
 }
 
 /** Realpath-checks an existing target parent against the repository root. */

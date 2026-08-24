@@ -1,5 +1,5 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { join, sep } from "node:path";
 import { describe, expect, it } from "vitest";
 import { TYPE_SCALE, TYPE_SCALE_PX } from "../../../src/webviews/react/shared/tokens";
 
@@ -51,6 +51,28 @@ interface Hit {
     text: string;
 }
 
+/**
+ * The key a scanned file is reported and matched under: its path relative to the webview root,
+ * always written with `/`.
+ *
+ * EXEMPT is a hand-written list keyed with forward slashes, but `sourceFiles` builds absolute paths
+ * with `path.join`, which uses `\` on Windows. Slicing that directly produced
+ * `react\merge-editor\merge-editor.css`, which matches no exemption -- so on the Windows leg of
+ * #223 BOTH exempted declarations were reported as offenders, and the pinning test read their
+ * match counts as 0 instead of 1. Neither is a real drift in the type scale; both are the same
+ * separator mismatch, counted twice.
+ *
+ * `separator` is a parameter rather than a read of `path.sep` so a macOS run can exercise the
+ * Windows branch -- an assertion that only fires on the platform where it breaks is a gate that
+ * cannot be developed against.
+ */
+function exemptionKey(absolute: string, root: string, separator: string = sep): string {
+    return absolute
+        .slice(root.length + 1)
+        .split(separator)
+        .join("/");
+}
+
 function sourceFiles(dir: string, out: string[] = []): string[] {
     for (const entry of readdirSync(dir)) {
         const full = join(dir, entry);
@@ -69,7 +91,7 @@ const SIZE_PATTERN = /(?:fontSize\s*[=:]\s*["']|font-size\s*:\s*)(\d+(?:\.\d+)?)
 function collectHits(): Hit[] {
     const hits: Hit[] = [];
     for (const file of sourceFiles(WEBVIEW_ROOT)) {
-        const relative = file.slice(WEBVIEW_ROOT.length + 1);
+        const relative = exemptionKey(file, WEBVIEW_ROOT);
         readFileSync(file, "utf8")
             .split("\n")
             .forEach((text, index) => {
@@ -87,6 +109,21 @@ function collectHits(): Hit[] {
 }
 
 describe("type scale", () => {
+    it("keys a scanned file the way EXEMPT is written, whichever separator the host uses", () => {
+        // Both branches asserted from one run: EXEMPT's keys are forward-slashed by hand, so a
+        // Windows-shaped absolute path has to arrive at the same key a POSIX one does.
+        expect(
+            exemptionKey(
+                "D:\\src\\webviews\\react\\merge-editor\\merge-editor.css",
+                "D:\\src\\webviews",
+                "\\",
+            ),
+        ).toBe("react/merge-editor/merge-editor.css");
+        expect(
+            exemptionKey("/src/webviews/react/merge-editor/merge-editor.css", "/src/webviews", "/"),
+        ).toBe("react/merge-editor/merge-editor.css");
+    });
+
     it("exposes exactly the four documented sizes", () => {
         expect(TYPE_SCALE).toEqual({ caption: 11, label: 12, body: 13, dialogTitle: 14 });
         expect([...TYPE_SCALE_PX].sort((a, b) => a - b)).toEqual([11, 12, 13, 14]);

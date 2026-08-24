@@ -9,6 +9,8 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 
+import { fixtureJoin, fixturePath } from "../../helpers/fixturePaths";
+
 const vscodeMock = vi.hoisted(() => ({
     l10n: {
         t: (message: string, args?: Record<string, string | number>) =>
@@ -128,7 +130,7 @@ function makeCtx(overrides: Partial<CommitActionContext> = {}): CommitActionCont
         short: SHORT,
         executor: { run: vi.fn().mockResolvedValue("") } as unknown as GitExecutor,
         gitOps: { getBranches: vi.fn().mockResolvedValue([]) } as unknown as GitOps,
-        repoRoot: "/repo",
+        repoRoot: fixturePath("/repo"),
         currentBranches: [],
         refreshAll: vi.fn().mockResolvedValue(undefined),
         ...overrides,
@@ -186,7 +188,7 @@ describe("createPatch", () => {
     });
 
     it("writes the format-patch output to the chosen file on success", async () => {
-        saveDialog.mockResolvedValue({ fsPath: "/repo/out.patch" });
+        saveDialog.mockResolvedValue({ fsPath: fixturePath("/repo/out.patch") });
         const ctx = makeCtx();
         runOf(ctx).mockResolvedValue("PATCH-CONTENT");
         await createPatch(ctx);
@@ -201,7 +203,7 @@ describe("createPatch", () => {
     });
 
     it("shows an error and writes nothing when format-patch fails", async () => {
-        saveDialog.mockResolvedValue({ fsPath: "/repo/out.patch" });
+        saveDialog.mockResolvedValue({ fsPath: fixturePath("/repo/out.patch") });
         const ctx = makeCtx();
         runOf(ctx).mockRejectedValue(new Error("boom"));
         await createPatch(ctx);
@@ -212,11 +214,11 @@ describe("createPatch", () => {
 
     it("defaults the save target to <short>.patch under the repo root", async () => {
         saveDialog.mockResolvedValue(undefined);
-        const ctx = makeCtx({ repoRoot: "/repo", short: SHORT });
+        const ctx = makeCtx({ repoRoot: fixturePath("/repo"), short: SHORT });
         await createPatch(ctx);
         expect(saveDialog).toHaveBeenCalledTimes(1);
         const options = saveDialog.mock.calls[0][0] as { defaultUri?: { fsPath: string } };
-        expect(options.defaultUri?.fsPath).toBe(`/repo/${SHORT}.patch`);
+        expect(options.defaultUri?.fsPath).toBe(fixtureJoin("/repo", `${SHORT}.patch`));
     });
 });
 

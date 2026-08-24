@@ -3,6 +3,7 @@ import * as os from "os";
 import * as path from "path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { interpolateL10n } from "../../helpers/l10nTestHelper";
+import { fixturePath } from "../../helpers/fixturePaths";
 import { removeScratchDirectories } from "../../helpers/scratchDirectories";
 
 /** Command callback shape captured by the VS Code command-registration mock. */
@@ -1541,7 +1542,11 @@ describe("extension integration", () => {
             isPrunable: false,
         });
         expect(executorRun).toHaveBeenCalledWith(["status", "--porcelain"]);
-        expect(executorRun).toHaveBeenCalledWith(["worktree", "remove", "/repo-feature"]);
+        expect(executorRun).toHaveBeenCalledWith([
+            "worktree",
+            "remove",
+            fixturePath("/repo-feature"),
+        ]);
         expect(showInformationMessage).toHaveBeenCalledWith("Deleted worktree /repo-feature");
         await getCommand("intelligit.worktree.lock")({
             path: "/repo-feature",
@@ -2492,8 +2497,8 @@ describe("extension integration", () => {
         });
 
         expect(executeCommandFallback).toHaveBeenCalledWith("git.openMergeEditor", {
-            fsPath: "/repo/src/conflicted.ts",
-            path: "/repo/src/conflicted.ts",
+            fsPath: fixturePath("/repo/src/conflicted.ts"),
+            path: fixturePath("/repo/src/conflicted.ts"),
         });
         expect(executeCommandFallback).not.toHaveBeenCalledWith("vscode.open", expect.anything());
         expect(latestCommitPanelProvider!.refreshSilent).toHaveBeenCalledTimes(1);
@@ -4297,9 +4302,12 @@ describe("extension integration", () => {
             latestSidebarGraphProvider?.refresh.mockClear();
             latestCommitPanelProvider.refresh.mockClear();
             undocked.refresh.mockClear();
-            undocked.emitRebaseControl({ action: "continue", repositoryRoot: "/repo" });
+            undocked.emitRebaseControl({
+                action: "continue",
+                repositoryRoot: fixturePath("/repo"),
+            });
             await waitForAsync();
-            expect(continueSpy).toHaveBeenCalledWith(expect.anything(), "/repo");
+            expect(continueSpy).toHaveBeenCalledWith(expect.anything(), fixturePath("/repo"));
 
             resolveFirstControl({ status: "completed", rebasedHeadOid: HEAD_OID });
             await waitForAsync();
@@ -4313,9 +4321,12 @@ describe("extension integration", () => {
             latestSidebarGraphProvider?.refresh.mockClear();
             latestCommitPanelProvider.refresh.mockClear();
             undocked.refresh.mockClear();
-            undocked.emitRebaseControl({ action: "continue", repositoryRoot: "/repo" });
+            undocked.emitRebaseControl({
+                action: "continue",
+                repositoryRoot: fixturePath("/repo"),
+            });
             await waitForAsync();
-            await undocked.changeSelectedRepositoryRoot("/repo-after-switch");
+            await undocked.changeSelectedRepositoryRoot(fixturePath("/repo-after-switch"));
             resolveSecondControl({ status: "completed", rebasedHeadOid: HEAD_OID });
             await waitForAsync();
             await waitForAsync();
