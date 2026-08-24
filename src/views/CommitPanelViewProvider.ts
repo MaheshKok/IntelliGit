@@ -38,7 +38,10 @@ import { isBranchAction, isCommitAction } from "../webviews/protocol/commitGraph
 import { IconThemeService } from "./shared/IconThemeService";
 import { isRedundantPost, serializeWebviewPayload } from "./shared/postedPayload";
 import { registerThemeChangeListeners, disposeAll } from "./shared/themeListeners";
-import { subscribeToRepositoryWorkingTreeChanges } from "../services/repositoryChangeEvents";
+import {
+    subscribeToRepositoryWorkingTreeChanges,
+    type RepositoryWorkingTreeChange,
+} from "../services/repositoryChangeEvents";
 import {
     assertGitHash,
     assertMessage,
@@ -104,6 +107,21 @@ interface StoredChangedFileCountsPayload {
  */
 function isHydrationReAsk(attempt: unknown): boolean {
     return typeof attempt === "number" && attempt > 1;
+}
+
+/**
+ * Whether a root event can change what an expanded repository row shows.
+ *
+ * The row watcher this replaced was a `createFileSystemWatcher`, so it only ever saw disk
+ * writes; routing it through the shared event stream also handed it Git-metadata events and
+ * one buffer edit per keystroke. Both are filtered here rather than at the publisher, because
+ * the diff viewer subscribes to the same stream and does need the keystroke -- it renders an
+ * open document's unsaved text. What this row renders is `git status`, which cannot change
+ * until the write lands, so refreshing on an unsaved edit re-runs it for an answer that cannot
+ * differ.
+ */
+export function affectsExpandedRow(event: RepositoryWorkingTreeChange): boolean {
+    return event.source === "workspace-file" && event.unsaved !== true;
 }
 
 /**
@@ -811,8 +829,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             this.runtimeWatchers.set(
                 runtime.repository.root,
                 subscribeToRepositoryWorkingTreeChanges(runtime.repository.root, (event) => {
-                    // The previous row watcher deliberately ignored Git metadata and generated paths.
-                    if (event.source !== "workspace-file") return;
+                    if (!affectsExpandedRow(event)) return;
                     this.scheduleRuntimeWatcherRefresh(runtime);
                 }),
             );

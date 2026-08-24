@@ -3,6 +3,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 /** The shape of a real `fs.FSWatcher` this suite depends on: an emitter that can be closed. */
 type FakeFsWatcher = EventEmitter & { close: ReturnType<typeof vi.fn> };
 
+/** The two `TextDocument` members the workspace route reads. */
+type FakeDocument = { uri: { fsPath: string }; isDirty: boolean };
+
 const mocks = vi.hoisted(() => ({
     disposables: [] as Array<{ dispose: ReturnType<typeof vi.fn> }>,
     watchers: [] as Array<{
@@ -12,6 +15,8 @@ const mocks = vi.hoisted(() => ({
         dispose: ReturnType<typeof vi.fn>;
     }>,
     fsWatchers: [] as unknown[],
+    documentChangeHandlers: [] as Array<(event: { document: FakeDocument }) => void>,
+    documentSaveHandlers: [] as Array<(document: FakeDocument) => void>,
 }));
 
 vi.mock("vscode", () => {
@@ -42,8 +47,16 @@ vi.mock("vscode", () => {
             ) {}
         },
         workspace: {
-            onDidChangeTextDocument: vi.fn(() => disposable()),
-            onDidSaveTextDocument: vi.fn(() => disposable()),
+            onDidChangeTextDocument: vi.fn(
+                (handler: (event: { document: FakeDocument }) => void) => {
+                    mocks.documentChangeHandlers.push(handler);
+                    return disposable();
+                },
+            ),
+            onDidSaveTextDocument: vi.fn((handler: (document: FakeDocument) => void) => {
+                mocks.documentSaveHandlers.push(handler);
+                return disposable();
+            }),
             onDidCreateFiles: vi.fn(() => disposable()),
             onDidDeleteFiles: vi.fn(() => disposable()),
             onDidRenameFiles: vi.fn(() => disposable()),
@@ -83,6 +96,8 @@ afterEach(() => {
     mocks.disposables.length = 0;
     mocks.watchers.length = 0;
     mocks.fsWatchers.length = 0;
+    mocks.documentChangeHandlers.length = 0;
+    mocks.documentSaveHandlers.length = 0;
     vi.clearAllMocks();
 });
 
@@ -120,6 +135,53 @@ describe("repository working-tree changes", () => {
             source: "workspace-file",
         });
         subscription.dispose();
+    });
+
+    // One route publishes changes that are not on disk. The diff viewer needs them -- it renders
+    // an open document's unsaved text -- while every consumer that reads the filesystem or Git
+    // gets an answer that cannot have changed. Marking is what lets the two share one stream; the
+    // pair below is asserted in both directions, because a marker set on everything separates
+    // nothing.
+    it("marks a buffer edit as unsaved and leaves a written file unmarked", () => {
+        const listener = vi.fn();
+        const subscription = subscribeToRepositoryWorkingTreeChanges("/repo", listener);
+        const onDidChangeTextDocument = mocks.documentChangeHandlers[0];
+        const onDidSaveTextDocument = mocks.documentSaveHandlers[0];
+        if (!onDidChangeTextDocument || !onDidSaveTextDocument)
+            throw new Error("Expected both document routes to be registered");
+
+        // `finally`, because the root watcher is module-global and reference-counted: a failure
+        // that skipped the release would leave it armed, the next test would reuse it instead of
+        // arming its own, and that test would fail for a reason belonging to this one.
+        try {
+            onDidChangeTextDocument({
+                document: { uri: { fsPath: "/repo/src/example.ts" }, isDirty: true },
+            });
+
+            expect(
+                listener,
+                "an edit still only in the buffer published as an ordinary write, so a consumer reading git status cannot tell it apart from one",
+            ).toHaveBeenCalledWith({
+                repoRoot: "/repo",
+                path: "src/example.ts",
+                source: "workspace-file",
+                unsaved: true,
+            });
+
+            listener.mockClear();
+            onDidSaveTextDocument({ uri: { fsPath: "/repo/src/example.ts" }, isDirty: false });
+
+            expect(
+                listener,
+                "the write that lands on disk carried the unsaved marker, which would skip the refresh the save exists to trigger",
+            ).toHaveBeenCalledWith({
+                repoRoot: "/repo",
+                path: "src/example.ts",
+                source: "workspace-file",
+            });
+        } finally {
+            subscription.dispose();
+        }
     });
 
     it("keeps the old root watcher alive across an active-root switch while a panel is open", () => {

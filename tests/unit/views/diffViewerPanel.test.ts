@@ -101,8 +101,11 @@ function clearPosted(panel: CapturedPanel): void {
     panel.postedMessages.length = 0;
 }
 
+// Teardown, not an assertion. `lastPanel()` throws when nothing was recorded, so a test that
+// failed before opening a panel reported that throw on top of its own failure -- and the
+// second error is the one the reporter shows last.
 afterEach(() => {
-    lastPanel().dispose();
+    mocks.panels.at(-1)?.dispose();
     mocks.panels.length = 0;
 });
 

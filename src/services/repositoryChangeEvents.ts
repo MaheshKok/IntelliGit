@@ -20,6 +20,15 @@ export interface RepositoryWorkingTreeChange {
     readonly path?: string;
     /** Existing watcher route that observed the change. */
     readonly source: RepositoryWorkingTreeChangeSource;
+    /**
+     * Set when the change exists only in an editor buffer and has not been written to disk.
+     *
+     * The workspace route publishes buffer edits as well as writes, because the diff viewer
+     * loads an open document's unsaved text (`src/diff/sideLoader.ts`) and so has to re-read on
+     * a keystroke. A consumer that reads the filesystem or Git instead cannot see anything this
+     * event changed, and should skip it rather than recompute an answer that cannot differ.
+     */
+    readonly unsaved?: boolean;
 }
 /** A subscription that can synchronously move to another repository root. */
 export interface RepositoryWorkingTreeChangeSubscription extends vscode.Disposable {
@@ -97,7 +106,9 @@ class RootWorkingTreeWatcher implements vscode.Disposable {
     private registerWorkspaceWatchers(): void {
         this.disposables.push(
             vscode.workspace.onDidChangeTextDocument((event) =>
-                this.fireWorkspaceUri(event.document.uri),
+                // `isDirty` rather than a constant `true`: an edit applied under auto-save, or
+                // one VS Code has already written, is a disk change and must not be marked.
+                this.fireWorkspaceUri(event.document.uri, event.document.isDirty),
             ),
             vscode.workspace.onDidSaveTextDocument((document) =>
                 this.fireWorkspaceUri(document.uri),
@@ -212,13 +223,16 @@ class RootWorkingTreeWatcher implements vscode.Disposable {
     }
 
     /** Filters workspace events to this root and retains the path for focused diff subscribers. */
-    private fireWorkspaceUri(uri: vscode.Uri): void {
+    private fireWorkspaceUri(uri: vscode.Uri, unsaved = false): void {
         const changedPath = relativeWorkspacePath(this.repoRoot, uri.fsPath);
         if (changedPath === undefined) return;
         this.fire({
             repoRoot: this.repoRoot,
             path: changedPath,
             source: "workspace-file",
+            // Added only when it is true, so every disk-backed route keeps the payload it
+            // already published and no consumer has to distinguish `false` from absent.
+            ...(unsaved ? { unsaved: true } : {}),
         });
     }
 }

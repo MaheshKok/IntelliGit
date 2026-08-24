@@ -45,7 +45,10 @@ describe("diff viewer sticky viewport", () => {
             block,
             "the viewport height must come from the measured --diff-viewport-h so the margin below can cancel the same number of pixels",
         ).toMatch(/height:\s*var\(--diff-viewport-h/);
-        expect(block).toMatch(/margin-bottom:\s*calc\([^)]*var\(--diff-viewport-h/);
+        expect(
+            block,
+            "the margin must SUBTRACT the measured height: `calc(1 * var(--diff-viewport-h))` has the same shape as the fix and is its exact inverse, adding a second viewport of flow instead of removing the one already there",
+        ).toMatch(/margin-bottom:\s*calc\(\s*-1\s*\*\s*var\(--diff-viewport-h/);
         expect(
             block,
             "a percentage margin resolves against the containing block's WIDTH (CSS 2.1 §8.3), so a percentage here cancels an unrelated number of pixels and collapses the scroll range",

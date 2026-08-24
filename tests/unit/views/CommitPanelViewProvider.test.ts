@@ -52,7 +52,11 @@ import {
 } from "../../visual/recorder/commitInfoVscodeDouble";
 import { GitExecutor } from "../../../src/git/executor";
 import { GitOps } from "../../../src/git/operations";
-import { CommitPanelViewProvider } from "../../../src/views/CommitPanelViewProvider";
+import {
+    CommitPanelViewProvider,
+    affectsExpandedRow,
+} from "../../../src/views/CommitPanelViewProvider";
+import type { RepositoryWorkingTreeChange } from "../../../src/services/repositoryChangeEvents";
 import {
     buildCommitPanelConstructorOptions,
     createEmptyWorkspaceMemento,
@@ -932,5 +936,37 @@ describe("CommitPanelViewProvider hydration answers the webview that asked", () 
             messagesOfType(hiddenSender.posted, "setRepositories").length,
             "a hidden sender must not replace another hidden recorded view",
         ).toBe(senderBefore);
+    });
+});
+
+// The row watcher used to be a `createFileSystemWatcher`, so "what reaches this row" was
+// decided by the OS and never needed asserting. It is now a filter over a shared stream that
+// also carries Git metadata and one event per keystroke, so the decision is code -- and the
+// listener that applies it needs a live provider, a repository runtime and an expanded row to
+// reach. The predicate is extracted so the rule itself can be asserted directly.
+describe("expanded-row refresh filter", () => {
+    const event = (
+        overrides: Partial<RepositoryWorkingTreeChange>,
+    ): RepositoryWorkingTreeChange => ({
+        repoRoot: "/repo",
+        path: "src/example.ts",
+        source: "workspace-file",
+        ...overrides,
+    });
+
+    it("refreshes on a write that lands on disk", () => {
+        expect(affectsExpandedRow(event({}))).toBe(true);
+    });
+
+    it("skips an edit that is still only in the editor buffer", () => {
+        expect(
+            affectsExpandedRow(event({ unsaved: true })),
+            "an unsaved edit re-runs `git status`, which cannot change until the write lands, once per typing burst for the lifetime of the expanded row",
+        ).toBe(false);
+    });
+
+    it("skips Git metadata, as the filesystem watcher it replaced did", () => {
+        expect(affectsExpandedRow(event({ source: "git-index" }))).toBe(false);
+        expect(affectsExpandedRow(event({ source: "git-state" }))).toBe(false);
     });
 });
