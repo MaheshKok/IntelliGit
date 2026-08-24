@@ -152,6 +152,15 @@ describe("EditableDiffEditorProvider", () => {
     // Renders are coalesced onto a microtask, so each assertion must let one land —
     // otherwise both would read the payload from the initial render and pass vacuously.
     const settle = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
+    // The host creates no webview until `resolveCustomTextEditor` returns, so the first payload
+    // is pulled by the webview rather than pushed by the provider: `DiffViewerApp` posts `ready`
+    // once it mounts and the session renders in response. Driving both steps here is what makes
+    // these tests exercise the sequence production actually performs.
+    const resolveAndBoot = async (provider: EditableDiffEditorProvider): Promise<void> => {
+        await provider.resolveCustomTextEditor(document as never, panel as never, {} as never);
+        mocks.sendWebviewMessage({ type: "ready" });
+        await settle();
+    };
 
     beforeEach(() => {
         vi.clearAllMocks();
@@ -192,6 +201,30 @@ describe("EditableDiffEditorProvider", () => {
         registration.dispose();
     });
 
+    it("resolves the editor without awaiting a reply the host cannot deliver yet", async () => {
+        // VS Code creates no webview until `resolveCustomTextEditor` returns, so nothing posted
+        // from inside it can be delivered, and awaiting that delivery is a circular wait: the
+        // open never completes, and the editor tab sits blank with its title already applied and
+        // no error raised anywhere. Every other test in this file mocks `postMessage` as
+        // already-resolved, which removes exactly the circularity that fails in the real host.
+        const provider = newProvider();
+        await provider.open(uri as never, { ...openDescriptor, onSessionDisposed: vi.fn() });
+        mocks.postMessage.mockReturnValue(new Promise<boolean>(() => undefined));
+
+        let resolved = false;
+        void provider
+            .resolveCustomTextEditor(document as never, panel as never, {} as never)
+            .then(() => {
+                resolved = true;
+            });
+        await settle();
+        // `vi.clearAllMocks()` in beforeEach clears recorded calls, not implementations, so this
+        // stub would otherwise hang every later test in the file.
+        mocks.postMessage.mockResolvedValue(true);
+
+        expect(resolved, "resolveCustomTextEditor must not await a webview reply").toBe(true);
+    });
+
     it("writes a webview delta through the VS Code document and re-renders document changes", async () => {
         const provider = new EditableDiffEditorProvider({
             toString: () => "file:///extension",
@@ -206,7 +239,7 @@ describe("EditableDiffEditorProvider", () => {
             immutableText: "head();\n",
             onSessionDisposed: vi.fn(),
         });
-        await provider.resolveCustomTextEditor(document as never, panel as never, {} as never);
+        await resolveAndBoot(provider);
         expect(mocks.postMessage.mock.calls.at(-1)?.[0]).not.toHaveProperty(
             "data.onSessionDisposed",
         );
@@ -276,7 +309,7 @@ describe("EditableDiffEditorProvider", () => {
             editablePane: "right",
             immutableText: "head();\n",
         });
-        await provider.resolveCustomTextEditor(document as never, panel as never, {} as never);
+        await resolveAndBoot(provider);
 
         const initialToken = tokenNow();
 
@@ -316,7 +349,7 @@ describe("EditableDiffEditorProvider", () => {
         });
         const provider = newProvider();
         await provider.open(uri as never, openDescriptor);
-        await provider.resolveCustomTextEditor(document as never, panel as never, {} as never);
+        await resolveAndBoot(provider);
         const initialToken = tokenNow();
 
         void mocks.sendWebviewMessage({
@@ -361,7 +394,7 @@ describe("EditableDiffEditorProvider", () => {
         );
         const provider = newProvider();
         await provider.open(uri as never, openDescriptor);
-        await provider.resolveCustomTextEditor(document as never, panel as never, {} as never);
+        await resolveAndBoot(provider);
         const initialToken = tokenNow();
 
         await mocks.sendWebviewMessage({
@@ -403,7 +436,7 @@ describe("EditableDiffEditorProvider", () => {
         );
         const provider = newProvider();
         await provider.open(uri as never, openDescriptor);
-        await provider.resolveCustomTextEditor(document as never, panel as never, {} as never);
+        await resolveAndBoot(provider);
         const initialToken = tokenNow();
 
         await mocks.sendWebviewMessage({
@@ -466,7 +499,7 @@ describe("EditableDiffEditorProvider", () => {
         );
         const provider = newProvider();
         await provider.open(uri as never, openDescriptor);
-        await provider.resolveCustomTextEditor(document as never, panel as never, {} as never);
+        await resolveAndBoot(provider);
         const initialToken = tokenNow();
 
         await mocks.sendWebviewMessage({
@@ -507,7 +540,7 @@ describe("EditableDiffEditorProvider", () => {
         documentEol = 2;
         const provider = newProvider();
         await provider.open(uri as never, openDescriptor);
-        await provider.resolveCustomTextEditor(document as never, panel as never, {} as never);
+        await resolveAndBoot(provider);
         const initialToken = tokenNow();
 
         expect(mocks.postMessage.mock.calls.at(-1)?.[0]).toMatchObject({
@@ -538,7 +571,7 @@ describe("EditableDiffEditorProvider", () => {
         documentEol = 2;
         const provider = newProvider();
         await provider.open(uri as never, openDescriptor);
-        await provider.resolveCustomTextEditor(document as never, panel as never, {} as never);
+        await resolveAndBoot(provider);
         const initialToken = tokenNow();
 
         await mocks.sendWebviewMessage({
@@ -565,7 +598,7 @@ describe("EditableDiffEditorProvider", () => {
         documentEol = 2;
         const provider = newProvider();
         await provider.open(uri as never, openDescriptor);
-        await provider.resolveCustomTextEditor(document as never, panel as never, {} as never);
+        await resolveAndBoot(provider);
         const initialToken = tokenNow();
 
         expect(mocks.postMessage.mock.calls.at(-1)?.[0]).toMatchObject({
@@ -594,7 +627,7 @@ describe("EditableDiffEditorProvider", () => {
         documentText = "typed();\n";
         const provider = newProvider();
         await provider.open(uri as never, openDescriptor);
-        await provider.resolveCustomTextEditor(document as never, panel as never, {} as never);
+        await resolveAndBoot(provider);
         const initialToken = tokenNow();
         const rendersBefore = mocks.postMessage.mock.calls.length;
 
@@ -612,7 +645,7 @@ describe("EditableDiffEditorProvider", () => {
         documentText = "a\nb\n";
         const provider = newProvider();
         await provider.open(uri as never, openDescriptor);
-        await provider.resolveCustomTextEditor(document as never, panel as never, {} as never);
+        await resolveAndBoot(provider);
         const initialToken = tokenNow();
 
         // Changing a file's line endings rewrites every terminator and bumps the version, but
@@ -634,7 +667,7 @@ describe("EditableDiffEditorProvider", () => {
     it("keeps a live editor when only revealing its tab fails", async () => {
         const provider = newProvider();
         await provider.open(uri as never, openDescriptor);
-        await provider.resolveCustomTextEditor(document as never, panel as never, {} as never);
+        await resolveAndBoot(provider);
         mocks.postMessage.mockClear();
         mocks.executeCommand.mockRejectedValueOnce(new Error("cannot reveal"));
 
@@ -656,7 +689,7 @@ describe("EditableDiffEditorProvider", () => {
         panel.title = "";
         const provider = newProvider();
         await provider.open(uri as never, openDescriptor);
-        await provider.resolveCustomTextEditor(document as never, panel as never, {} as never);
+        await resolveAndBoot(provider);
 
         // The webview shell's `<title>` is not the tab label, so without an explicit assignment
         // the tab keeps VS Code's document-derived name until some later `open()` relabels it.
@@ -667,7 +700,7 @@ describe("EditableDiffEditorProvider", () => {
         const onSessionDisposed = vi.fn();
         const provider = newProvider();
         await provider.open(uri as never, { ...openDescriptor, onSessionDisposed });
-        await provider.resolveCustomTextEditor(document as never, panel as never, {} as never);
+        await resolveAndBoot(provider);
 
         mocks.firePanelDispose();
 
@@ -709,7 +742,7 @@ describe("EditableDiffEditorProvider", () => {
             editablePane: "right",
             immutableText: "head();\n",
         });
-        await provider.resolveCustomTextEditor(document as never, panel as never, {} as never);
+        await resolveAndBoot(provider);
 
         mocks.sendWebviewMessage({
             type: "editText",
@@ -750,7 +783,7 @@ describe("EditableDiffEditorProvider", () => {
             editablePane: "right",
             immutableText: "head();\n",
         });
-        await provider.resolveCustomTextEditor(document as never, panel as never, {} as never);
+        await resolveAndBoot(provider);
         mocks.postMessage.mockClear();
 
         documentText = "first change\n";
@@ -772,7 +805,7 @@ describe("EditableDiffEditorProvider", () => {
     it("logs a scheduled render that never reached the webview", async () => {
         const provider = newProvider();
         await provider.open(uri as never, openDescriptor);
-        await provider.resolveCustomTextEditor(document as never, panel as never, {} as never);
+        await resolveAndBoot(provider);
         mocks.postMessage.mockClear();
         mocks.postMessage.mockRejectedValueOnce(new Error("the panel is gone"));
 
@@ -794,7 +827,7 @@ describe("EditableDiffEditorProvider", () => {
     it("re-arms a reseed whose payload never reached the webview", async () => {
         const provider = newProvider();
         await provider.open(uri as never, openDescriptor);
-        await provider.resolveCustomTextEditor(document as never, panel as never, {} as never);
+        await resolveAndBoot(provider);
         const initialToken = tokenNow();
         mocks.postMessage.mockClear();
         mocks.applyEdit.mockResolvedValue(false);
@@ -835,7 +868,7 @@ describe("EditableDiffEditorProvider", () => {
         // happening to reach the drop branch.
         const provider = newProvider();
         await provider.open(uri as never, openDescriptor);
-        await provider.resolveCustomTextEditor(document as never, panel as never, {} as never);
+        await resolveAndBoot(provider);
         const initialToken = tokenNow();
         mocks.postMessage.mockClear();
         mocks.applyEdit.mockResolvedValue(false);
@@ -871,7 +904,7 @@ describe("EditableDiffEditorProvider", () => {
         // pane rejects every keystroke from then on with nothing left to republish it.
         const provider = newProvider();
         await provider.open(uri as never, openDescriptor);
-        await provider.resolveCustomTextEditor(document as never, panel as never, {} as never);
+        await resolveAndBoot(provider);
         const stale = tokenNow();
         mocks.postMessage.mockClear();
 
@@ -919,7 +952,7 @@ describe("EditableDiffEditorProvider", () => {
     it("republishes a token the webview never received, instead of going silently read-only", async () => {
         const provider = newProvider();
         await provider.open(uri as never, openDescriptor);
-        await provider.resolveCustomTextEditor(document as never, panel as never, {} as never);
+        await resolveAndBoot(provider);
         const initialToken = tokenNow();
         mocks.postMessage.mockClear();
         mocks.postMessage.mockRejectedValueOnce(new Error("the payload did not land"));
@@ -960,7 +993,7 @@ describe("EditableDiffEditorProvider", () => {
     it("treats a post the host reports as undelivered the same as one that threw", async () => {
         const provider = newProvider();
         await provider.open(uri as never, openDescriptor);
-        await provider.resolveCustomTextEditor(document as never, panel as never, {} as never);
+        await resolveAndBoot(provider);
         const initialToken = tokenNow();
         mocks.postMessage.mockClear();
         // The API reports a dropped message by RESOLVING `false`. Rejection is the disposed
@@ -998,7 +1031,7 @@ describe("EditableDiffEditorProvider", () => {
         // which is the moment the user is typing fastest.
         const provider = newProvider();
         await provider.open(uri as never, openDescriptor);
-        await provider.resolveCustomTextEditor(document as never, panel as never, {} as never);
+        await resolveAndBoot(provider);
         mocks.postMessage.mockResolvedValueOnce(false);
 
         documentText = "elsewhere();\n";
@@ -1046,7 +1079,7 @@ describe("EditableDiffEditorProvider", () => {
             editablePane: "right",
             immutableText: "head();\n",
         });
-        await provider.resolveCustomTextEditor(document as never, panel as never, {} as never);
+        await resolveAndBoot(provider);
         const initialToken = tokenNow();
         mocks.postMessage.mockClear();
         mocks.applyEdit.mockResolvedValue(false);
@@ -1092,7 +1125,7 @@ describe("EditableDiffEditorProvider", () => {
             immutableText: "head();\n",
         });
 
-        await provider.resolveCustomTextEditor(document as never, panel as never, {} as never);
+        await resolveAndBoot(provider);
 
         expect(panel.webview.options).toMatchObject({ enableScripts: true });
         expect(panel.webview.options.localResourceRoots).toHaveLength(1);
@@ -1122,7 +1155,7 @@ describe("EditableDiffEditorProvider", () => {
         // with nothing logged, which is why the version alone cannot be the only guard.
         const provider = newProvider();
         await provider.open(uri as never, openDescriptor);
-        await provider.resolveCustomTextEditor(document as never, panel as never, {} as never);
+        await resolveAndBoot(provider);
         const staleToken = tokenNow();
 
         documentText = "FOREIGN();\n";
@@ -1155,7 +1188,7 @@ describe("EditableDiffEditorProvider", () => {
         // permanently read-only after the first external write to the file.
         const provider = newProvider();
         await provider.open(uri as never, openDescriptor);
-        await provider.resolveCustomTextEditor(document as never, panel as never, {} as never);
+        await resolveAndBoot(provider);
 
         documentText = "FOREIGN();\n";
         documentVersion += 1;
@@ -1186,7 +1219,7 @@ describe("EditableDiffEditorProvider", () => {
         // exactly the double the guard exists to prevent.
         const provider = newProvider();
         await provider.open(uri as never, openDescriptor);
-        await provider.resolveCustomTextEditor(document as never, panel as never, {} as never);
+        await resolveAndBoot(provider);
         mocks.postMessage.mockRejectedValueOnce(new Error("webview is disposed"));
 
         await expect(provider.open(uri as never, openDescriptor)).resolves.toBeUndefined();
@@ -1205,7 +1238,7 @@ describe("EditableDiffEditorProvider", () => {
         // one, and nothing is ever written to the document.
         const provider = newProvider();
         await provider.open(uri as never, openDescriptor);
-        await provider.resolveCustomTextEditor(document as never, panel as never, {} as never);
+        await resolveAndBoot(provider);
         const adopted = tokenNow();
 
         documentText = "FOREIGN();\n";
@@ -1257,7 +1290,7 @@ describe("EditableDiffEditorProvider", () => {
         // nothing in the output channel saying why.
         const provider = newProvider();
         await provider.open(uri as never, openDescriptor);
-        await provider.resolveCustomTextEditor(document as never, panel as never, {} as never);
+        await resolveAndBoot(provider);
         const adopted = tokenNow();
 
         documentText = "FOREIGN();\n";
@@ -1318,7 +1351,7 @@ describe("EditableDiffEditorProvider", () => {
         await expect(opening).rejects.toThrow("no editor");
 
         // Nothing is pending now, so a later restore of this document is not ours to render.
-        await provider.resolveCustomTextEditor(document as never, panel as never, {} as never);
+        await resolveAndBoot(provider);
         expect(mocks.executeCommand).toHaveBeenLastCalledWith("vscode.open", uri, {
             preview: false,
         });
@@ -1330,7 +1363,7 @@ describe("EditableDiffEditorProvider", () => {
             toString: () => "file:///extension",
         } as never);
 
-        await provider.resolveCustomTextEditor(document as never, panel as never, {} as never);
+        await resolveAndBoot(provider);
 
         expect(mocks.executeCommand).toHaveBeenCalledWith("vscode.open", uri, { preview: false });
         expect(panel.dispose).toHaveBeenCalledOnce();
@@ -1356,7 +1389,7 @@ describe("EditableDiffEditorProvider", () => {
         // validation and then map to offset 0.
         const provider = newProvider();
         await provider.open(uri as never, openDescriptor);
-        await provider.resolveCustomTextEditor(document as never, panel as never, {} as never);
+        await resolveAndBoot(provider);
 
         await mocks.sendWebviewMessage({
             type: "editText",
@@ -1380,7 +1413,7 @@ describe("EditableDiffEditorProvider", () => {
         // queue promise itself is left rejected and `.then` skips every later keystroke for good.
         const provider = newProvider();
         await provider.open(uri as never, openDescriptor);
-        await provider.resolveCustomTextEditor(document as never, panel as never, {} as never);
+        await resolveAndBoot(provider);
         const adopted = tokenNow();
 
         mocks.applyEdit.mockRejectedValueOnce(new Error("edit failed"));
@@ -1422,7 +1455,7 @@ describe("EditableDiffEditorProvider", () => {
         // this shape records no post at all and is invisible to any assertion that reads one.
         const provider = newProvider();
         await provider.open(uri as never, openDescriptor);
-        await provider.resolveCustomTextEditor(document as never, panel as never, {} as never);
+        await resolveAndBoot(provider);
         const initialToken = tokenNow();
         mocks.postMessage.mockClear();
 
@@ -1470,7 +1503,7 @@ describe("EditableDiffEditorProvider", () => {
         // the same permanent wedge as a dropped token, reached from the recovery path instead.
         const provider = newProvider();
         await provider.open(uri as never, openDescriptor);
-        await provider.resolveCustomTextEditor(document as never, panel as never, {} as never);
+        await resolveAndBoot(provider);
         const adopted = tokenNow();
 
         mocks.applyEdit.mockRejectedValueOnce(new Error("edit failed"));
@@ -1515,7 +1548,7 @@ describe("EditableDiffEditorProvider", () => {
         // on, which is the behaviour the republish is gated to avoid.
         const provider = newProvider();
         await provider.open(uri as never, openDescriptor);
-        await provider.resolveCustomTextEditor(document as never, panel as never, {} as never);
+        await resolveAndBoot(provider);
         const initialToken = tokenNow();
         mocks.postMessage.mockClear();
         mocks.postMessage.mockResolvedValueOnce(undefined as never);

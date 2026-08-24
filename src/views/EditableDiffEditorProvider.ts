@@ -165,7 +165,11 @@ export class EditableDiffEditorProvider implements vscode.CustomTextEditorProvid
             if (this.sessions.get(key) === session) this.sessions.delete(key);
             session.dispose();
         });
-        await session.render();
+        // Deliberately no render here. VS Code delivers nothing to a webview until this method
+        // returns, so a publish awaited from inside it can never settle: the open hangs forever,
+        // and the tab sits blank with its title already applied and no error raised anywhere.
+        // The webview asks for its own first payload instead -- `DiffViewerApp` posts `ready`
+        // once it mounts, and `handleMessage` renders in response.
     }
 
     /** Releases every document session when extension activation is disposed. */
