@@ -393,7 +393,12 @@ export function App(): React.ReactElement {
         };
     }, []);
 
-    if (error) {
+    // Only a failure with nothing already on screen takes the whole surface. The host
+    // reports a refresh failure while deliberately retaining the snapshot it already
+    // posted, so the diff still rendered is valid and remains the best available answer;
+    // replacing it would discard that and leave the reader with an error and nothing to
+    // read, with nothing guaranteeing a later refresh arrives to clear it.
+    if (error && !data) {
         return (
             <div className="diff-core diff-viewer diff-loading">
                 <div className="error-message">{t("diff.error.load", { error })}</div>
@@ -459,6 +464,11 @@ export function App(): React.ReactElement {
                     <div className="diff-pane-meta">{data.leftLabel}</div>
                     <div className="diff-pane-meta">{data.rightLabel}</div>
                 </div>
+                {error ? (
+                    <div className="error-message diff-error-banner" role="alert">
+                        {t("diff.error.load", { error })}
+                    </div>
+                ) : null}
                 <div className="diff-content-shell">
                     <div ref={contentRef} className="diff-content" onScrollCapture={handleScroll}>
                         <div ref={viewportElementRef} className="diff-viewport">

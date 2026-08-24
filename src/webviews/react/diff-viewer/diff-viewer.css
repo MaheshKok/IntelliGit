@@ -245,6 +245,19 @@
     width: 1px;
 }
 
+/* A refresh failure reported above a diff that is still on screen and still valid, rather
+   than in place of it. It is a strip in the header stack, not a centred takeover, because
+   the content below it remains the thing the reader came for. */
+.diff-error-banner {
+    max-width: none;
+    flex-shrink: 0;
+    padding: 4px 10px;
+    border-bottom: 1px solid var(--diff-border);
+    background: var(--diff-header-bg);
+    font-size: 11px;
+    text-align: left;
+}
+
 .diff-horizontal-scroll {
     position: absolute;
     right: 14px;

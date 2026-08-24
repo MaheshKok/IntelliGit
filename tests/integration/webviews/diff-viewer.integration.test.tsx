@@ -149,6 +149,25 @@ describe("DiffViewerApp read-only contract", () => {
         expect(banner, "a payload-carried loadError must render the error banner").not.toBeNull();
         expect(banner?.textContent).toContain("Permission denied");
 
+        // The host reports a refresh failure while deliberately retaining the snapshot it
+        // already posted (`DiffViewerPanel.postLoadError`), so the diff on screen is still
+        // valid and still the best available answer. A viewer that replaces the whole
+        // surface throws that away and leaves the reader with an error and nothing else --
+        // and `.diff-viewer` cannot witness it, because the full-screen error carries that
+        // class too. Only the rendered root and its panes separate the two.
+        expect(
+            document.querySelector("[data-testid='diff-viewer-root']"),
+            "the refresh error replaced the whole viewer; the still-valid diff it was reported against is gone",
+        ).not.toBeNull();
+        expect(
+            document.querySelector("[data-testid='diff-pane-left']"),
+            "the left pane was unmounted by a refresh error, so previously loaded content is no longer readable",
+        ).not.toBeNull();
+        expect(
+            document.querySelector("[data-testid='diff-pane-right']"),
+            "the right pane was unmounted by a refresh error, so previously loaded content is no longer readable",
+        ).not.toBeNull();
+
         dispatchHostMessage({ type: "setDiffData", data: diffFixture });
         await flush();
 
