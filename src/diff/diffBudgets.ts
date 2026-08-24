@@ -46,12 +46,25 @@
  * `node --expose-gc` provides forced collection; otherwise it is reported as
  * `"unmeasured"` and is never a unit-test gate.
  *
- * Both millisecond figures are uninstrumented measurements and are asserted only in
- * uninstrumented runs; `tests/helpers/timingBudgets.ts` carries the mechanism. Under
- * `--coverage` on this same host the large tier measured 64.164 ms against the 16.591 ms
- * recorded here -- 3.87x, more than the 3.5x headroom the compute target was built with --
- * and 209.875 ms on GitHub's x86 runner. Neither number describes the product, so raising
- * the targets to admit them would only make the gate unable to see a real regression.
+ * Both millisecond figures are single-host measurements, and are asserted only on runs that
+ * resemble the host they were taken on; `tests/helpers/timingBudgets.ts` carries the mechanism
+ * and `tests/unit/diff/timingBudgetGate.test.ts` pins both the default and the two invokers
+ * that suspend it. Two independent things move these readings far enough to break them:
+ *
+ * - Instrumentation. Under `--coverage` on this same host the large tier measured 64.164 ms
+ *   against the 16.591 ms recorded here -- 3.87x, more than the 3.5x headroom the compute
+ *   target was built with -- and 209.875 ms on GitHub's x86 runner.
+ * - The host by itself, with no instrumentation at all. An uninstrumented `bun run test` on
+ *   `ubuntu-latest` measured the large viewer render at 6,555.914 ms against the 5,613 ms
+ *   target above, while the macOS leg of that same matrix, on that same commit, passed. That
+ *   second fact is what isolates the variable: coverage is one way to miss the calibration
+ *   host, not the only way, and a gate suspended only for coverage still fails on a runner.
+ *
+ * Neither number describes the product, so raising the targets to admit them would only make
+ * the gate unable to see a real regression. What still runs everywhere is the deterministic
+ * half -- payload byte size, line counts, DP-cell and pathological rejection -- plus the
+ * host-agnostic 15 s / 10 s bounds in `merge-editor-performance.integration.test.tsx`, which
+ * exist to catch a quadratic re-render rather than to time one.
  */
 
 /** Maximum bytes permitted for one diff side, derived as 2 x 105,047. */
