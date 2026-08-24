@@ -59,6 +59,23 @@ function pinnedRefsFor(workflow: string, actionPath: string): readonly string[] 
     return [...workflow.matchAll(pattern)].map((match) => match[1]);
 }
 
+/**
+ * Extracts a top-level workflow mapping -- `on:`, `concurrency:` -- so an assertion about a trigger
+ * cannot be satisfied by an identical string sitting inside a job.
+ */
+function extractTopLevelBlock(workflow: string, key: string): string {
+    const header = `\n${key}:\n`;
+    const start = workflow.indexOf(header);
+    if (start === -1) return "";
+
+    const bodyStart = start + header.length;
+    const nextTopLevelOffset = workflow.slice(bodyStart).search(/^[a-z]/m);
+    return workflow.slice(
+        bodyStart,
+        nextTopLevelOffset === -1 ? workflow.length : bodyStart + nextTopLevelOffset,
+    );
+}
+
 /** Returns the complete job-local permission map as rendered in a workflow. */
 function jobPermissionEntries(job: string): readonly string[] {
     const permissions = job.match(
@@ -294,6 +311,51 @@ describe("CI quality hardening workflows", () => {
             "dependency-review.yml must run dependency-review-action, SHA-pinned",
         ).toBe(1);
         expect(dependencyReview).toContain("fail-on-severity: high");
+    });
+
+    it("reports the portability legs on every pull request, so one of them can gate a merge", () => {
+        const compatibility = readRepositoryFile(".github/workflows/compatibility.yml");
+        const triggers = extractTopLevelBlock(compatibility, "on");
+
+        // The reason the Windows leg was not a required status check was never a policy choice: the
+        // workflow ran on a weekly schedule and on manual dispatch only, so it produced no check run
+        // on a pull request at all. Requiring a context that never reports does not fail a merge, it
+        // blocks one indefinitely, which is why the trigger has to land before the ruleset does.
+        expect(
+            triggers,
+            "the portability workflow must run on pull requests, or its check cannot gate a merge",
+        ).toMatch(/^ {4}pull_request:\n {8}branches:\n {12}- main\n/m);
+
+        // Exact set equality, not an absence check per filter key. `paths:` is the one that bites
+        // today, but `paths-ignore:` and `branches-ignore:` deadlock a required check in precisely
+        // the same way, and an enumerated ban only ever covers the cases someone remembered. Any
+        // new key under this trigger has to be justified against the deadlock before it is added.
+        const pullRequestBlock =
+            triggers.match(/^ {4}pull_request:\n((?: {8}.*\n| *\n)*)/m)?.[1] ?? "";
+        expect(
+            [...pullRequestBlock.matchAll(/^ {8}([a-z-]+):/gm)].map(([, key]) => key),
+            "a filter here silences the workflow on the pull requests it excludes, and a required " +
+                "check that stays silent blocks the merge instead of passing it",
+        ).toEqual(["branches"]);
+
+        // Windows takes about thirty minutes of the ninety-minute budget, so an uncancelled
+        // superseded run holds a runner for a commit nobody will merge. The scheduled run is exempt
+        // by the same reasoning inverted: exactly one is ever in flight, so cancelling it discards
+        // that week's only result. Asserting the guard rather than a bare `true` is the point --
+        // `cancel-in-progress: true` would typecheck as YAML and silently drop weekly results.
+        expect(extractTopLevelBlock(compatibility, "concurrency")).toMatch(
+            /cancel-in-progress: \$\{\{ github\.event_name == 'pull_request' \}\}/,
+        );
+
+        // The check that gets required is named after the matrix entry, so dropping the entry
+        // renames the context out of existence -- and a required context with no check run is the
+        // same deadlock as no trigger at all, arriving by a different route.
+        expect(
+            compatibility,
+            "the required context is 'Installed package smoke (windows-latest)', which only exists " +
+                "while the runner stays in the matrix and the job name keeps interpolating it",
+        ).toContain("name: Installed package smoke (${{ matrix.os }})");
+        expect(compatibility).toContain("windows-latest");
     });
 
     it("covers installed-package portability and makes Dependabot update both actionable ecosystems", () => {

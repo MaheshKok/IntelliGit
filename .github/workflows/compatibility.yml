@@ -1,12 +1,26 @@
 name: Installed-package portability
 
 on:
+    # No `paths:` filter, deliberately. This workflow's Windows leg is a required status check, and
+    # a required check that never reports blocks a pull request forever rather than passing it -- so
+    # a documentation-only change has to get a verdict here too, not silence. `ciHardeningWorkflows`
+    # asserts the absence rather than trusting a comment.
+    pull_request:
+        branches:
+            - main
     schedule:
         - cron: "43 3 * * 0"
     workflow_dispatch:
 
 permissions:
     contents: read
+
+# The Windows leg runs about thirty minutes, so a superseded pull-request run spends half an hour of
+# a runner on a commit nobody will merge. Scheduled runs are exempt on purpose: only one is ever in
+# flight, and cancelling it would drop that week's result rather than replace it.
+concurrency:
+    group: ${{ github.workflow }}-${{ github.ref }}
+    cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
     compatibility:
