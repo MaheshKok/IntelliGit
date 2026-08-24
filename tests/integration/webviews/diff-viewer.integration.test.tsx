@@ -1062,4 +1062,69 @@ describe("DiffViewerApp scroll viewport and ribbons", () => {
             "the two panes advance by different amounts through a one-sided hunk; a single shared offset cannot produce both",
         ).not.toBe(before.rightTop - after.rightTop);
     });
+
+    // The stripe needs no viewport measurement -- it is a share of the canonical range,
+    // not of the visible box -- but it reads the same layout as the ribbons, so it is
+    // measured against the same fixture rather than a second one that could disagree.
+    it("marks each change in the scrollbar channel at its share of the scroll range", async () => {
+        await mountScrollFixture();
+
+        const marks = [
+            ...document.querySelectorAll<HTMLElement>(
+                "[data-testid='diff-change-stripe'] .diff-change-mark",
+            ),
+        ];
+
+        expect(
+            marks,
+            "the stripe drew no marks; a reader cannot see there are changes below the fold",
+        ).toHaveLength(2);
+
+        // The marks are percentages of the scroll range, so the track has to be that
+        // range and not the pane: a short file ends partway down and its marks would
+        // otherwise spread past the last row of code.
+        const stripe = document.querySelector<HTMLElement>("[data-testid='diff-change-stripe']");
+        const spacer = document.querySelector<HTMLElement>(".diff-vscroll-spacer");
+        expect(
+            stripe?.style.maxHeight,
+            "the stripe's track and the scroller's spacer are the same range; a stripe measured against anything else points at the wrong rows",
+        ).toBe(spacer?.style.height);
+
+        // Deletion-only hunk: canonical top 100, height 60, of a 780px range.
+        expect(marks[0].classList.contains("diff-change-deleted")).toBe(true);
+        expect(Number.parseFloat(marks[0].style.top)).toBeCloseTo((100 / 780) * 100, 4);
+        expect(Number.parseFloat(marks[0].style.height)).toBeCloseTo((60 / 780) * 100, 4);
+
+        // Insertion-only hunk: canonical top 260, height 120.
+        expect(marks[1].classList.contains("diff-change-inserted")).toBe(true);
+        expect(Number.parseFloat(marks[1].style.top)).toBeCloseTo((260 / 780) * 100, 4);
+        expect(Number.parseFloat(marks[1].style.height)).toBeCloseTo((120 / 780) * 100, 4);
+    });
+
+    it("scrolls to the change a mark points at when it is clicked", async () => {
+        const { content } = await mountScrollFixture();
+
+        // jsdom performs no layout, so its own scrollTop stays 0 however it is assigned;
+        // intercepting the write is the only way to see where the click aimed.
+        const scrolled: number[] = [];
+        Object.defineProperty(content, "scrollTop", {
+            configurable: true,
+            get: () => 0,
+            set: (value: number) => {
+                scrolled.push(value);
+            },
+        });
+
+        const marks = document.querySelectorAll<HTMLElement>(
+            "[data-testid='diff-change-stripe'] .diff-change-mark",
+        );
+        act(() => {
+            marks[1].click();
+        });
+
+        expect(
+            scrolled,
+            "clicking the insertion mark should scroll to the insertion hunk's own canonical top",
+        ).toEqual([260]);
+    });
 });

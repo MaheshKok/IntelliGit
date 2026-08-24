@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { SEGMENT_MARKERS } from "../../../src/webviews/react/diff-viewer/segmentMarkers";
+import { STRIPE_TONES } from "../../../src/webviews/react/diff-viewer/changeStripe";
 
 const DIFF_CORE_CSS = resolve(__dirname, "../../../src/webviews/react/diff-core/diff-core.css");
 const DIFF_VIEWER_CSS = resolve(
@@ -19,7 +20,19 @@ const SEGMENT_MARKERS_SOURCE = resolve(
 );
 
 /** Semantic hues a diff surface is allowed to draw a change colour from. */
-const HUE_TOKENS = ["--diff-ok", "--diff-info", "--diff-muted"] as const;
+const HUE_TOKENS = ["--diff-ok", "--diff-danger", "--diff-info", "--diff-muted"] as const;
+
+/**
+ * The changed-segment state each stripe tone points at. The stripe exists so a reader can
+ * see where the changes are without scrolling, which only works if following a mark lands
+ * on a block of the same colour -- so the two are pinned to one hue apiece, in both
+ * directions, rather than left to agree by memory.
+ */
+const STRIPE_TONE_STATES: Readonly<Record<string, string>> = {
+    inserted: "diff-segment-inserted",
+    deleted: "diff-segment-deleted",
+    modified: "diff-segment-modified",
+};
 
 /**
  * The class every changed block carries alongside exactly one state class. It is a
@@ -56,6 +69,21 @@ const FORBIDDEN_ALIASES = [
     "--diff-modified-block-bg",
     "--diff-deleted-block-bg",
 ] as const;
+
+/** Rules whose selector is one `.diff-change-*` class, keyed by the suffix. */
+function changeRules(css: string): Map<string, string> {
+    const rules = new Map<string, string>();
+    for (const match of css.matchAll(/\.diff-change-([a-z]+)\s*\{([^}]*)\}/g)) {
+        rules.set(match[1] as string, `${rules.get(match[1] as string) ?? ""}${match[2]}`);
+    }
+    return rules;
+}
+
+/** The hue token a declaration draws from, or null when it names no --diff-* alias. */
+function hueIn(value: string | null): string | null {
+    const match = value === null ? null : /var\(\s*(--diff-[a-z0-9-]+)/.exec(value);
+    return match ? (match[1] as string) : null;
+}
 
 /** Rules whose selector is one state class scoped to the viewer root. */
 function stateRules(css: string): Map<string, string> {
@@ -213,6 +241,49 @@ describe("diff-core palette", () => {
             HUE_TOKENS.some((hue) => fill?.includes(`var(${hue})`)),
             `.diff-ribbon fills with ${fill ?? "nothing"}; drawn from a near-background wash the ribbon is erased by its own 0.18 opacity and the two panes lose their connectors`,
         ).toBe(true);
+    });
+
+    it("draws every stripe mark in the hue of the block it points at", () => {
+        // The stripe's whole claim is that a mark predicts what is at that scroll
+        // position. A tone whose colour drifts from its state's edge bar keeps pointing
+        // at the right line in the wrong colour, which reads as a different kind of
+        // change -- worse than no marker, and invisible to a pixel baseline that
+        // rerecorded both together.
+        const changes = changeRules(viewerCss);
+        const states = stateRules(viewerCss);
+
+        for (const tone of STRIPE_TONES) {
+            const markHue = hueIn(propertyIn(changes.get(tone) ?? "", "background"));
+            const blockHue = hueIn(
+                propertyIn(states.get(STRIPE_TONE_STATES[tone] as string) ?? "", "box-shadow"),
+            );
+            expect(
+                markHue,
+                `.diff-change-${tone} paints with ${markHue ?? "no --diff-* hue"}, so the stripe mark for a ${tone} change is drawn from something the palette does not own`,
+            ).not.toBeNull();
+            expect(
+                markHue,
+                `.diff-change-${tone} is ${markHue} but ${STRIPE_TONE_STATES[tone]} is ${blockHue}; following that mark lands on a differently coloured block`,
+            ).toBe(blockHue);
+            expect(
+                HUE_TOKENS.includes(markHue as (typeof HUE_TOKENS)[number]),
+                `${markHue} is not a semantic hue`,
+            ).toBe(true);
+        }
+    });
+
+    it("paints no stripe mark in a tone the classifier cannot produce", () => {
+        // The other direction: a leftover rule for a tone nothing emits is a colour
+        // waiting to be reintroduced, the same failure the dead-alias check exists for.
+        const painted = [...changeRules(viewerCss)]
+            .filter(([, body]) => propertyIn(body, "background") !== null)
+            .map(([tone]) => tone)
+            .sort();
+
+        expect(
+            painted,
+            "a .diff-change-* rule paints a tone buildStripeMarks never returns",
+        ).toEqual([...STRIPE_TONES].sort());
     });
 
     it("declares no --diff-* alias that nothing reads", () => {

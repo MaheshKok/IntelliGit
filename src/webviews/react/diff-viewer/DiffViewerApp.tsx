@@ -35,6 +35,7 @@ import {
 import { IconChevronDown, IconEye, IconFilter } from "../merge-editor/icons";
 import { splitEditedText } from "../merge-editor/mergeState";
 import { DIFF_PANES, segmentClassName, type DiffPane } from "./segmentMarkers";
+import { buildStripeMarks } from "./changeStripe";
 import "./diff-viewer.css";
 
 const LINE_PADDING_PX = 18;
@@ -412,6 +413,18 @@ export function App(): React.ReactElement {
         [editingBlock, renderedSegments],
     );
     const layout = useMemo(() => buildVerticalLayout(paneLines, DIFF_PANES), [paneLines]);
+    const stripeMarks = useMemo(() => buildStripeMarks(segments, layout), [segments, layout]);
+
+    // The scroll range is `canonicalTotalPx` and the stripe is measured against the same
+    // number, so a mark's segment top is already the scrollTop that puts it at the fold.
+    const jumpToSegment = useCallback(
+        (index: number) => {
+            const content = contentRef.current;
+            if (!content) return;
+            content.scrollTop = layout.canonicalTopPx[index] ?? 0;
+        },
+        [layout],
+    );
     layoutRef.current = layout;
     const ribbonIndices = useMemo(
         () =>
@@ -839,6 +852,33 @@ export function App(): React.ReactElement {
                             style={{ height: layout.canonicalTotalPx }}
                             aria-hidden="true"
                         />
+                    </div>
+                    <div
+                        className="diff-change-stripe"
+                        data-testid="diff-change-stripe"
+                        aria-hidden="true"
+                        // Clamped to the scroll range the marks are fractions of. A file
+                        // shorter than the viewport has no scrollbar to mirror and ends
+                        // partway down the pane, so a stripe spanning the full height
+                        // would spread its marks past where the content stops -- pointing
+                        // confidently at blank space. Taller than the viewport, this
+                        // exceeds the box and the stripe is the full track, as it should
+                        // be. Same number as the spacer, because it is the same range.
+                        style={{ maxHeight: layout.canonicalTotalPx }}
+                    >
+                        {stripeMarks.map((mark) => (
+                            <div
+                                key={mark.index}
+                                className={`diff-change-mark diff-change-${mark.tone}`}
+                                style={{
+                                    top: `${mark.topPct}%`,
+                                    height: `${mark.heightPct}%`,
+                                }}
+                                onClick={() => {
+                                    jumpToSegment(mark.index);
+                                }}
+                            />
+                        ))}
                     </div>
                     <div
                         ref={horizontalScrollRef}

@@ -137,7 +137,9 @@
     height: 100%;
     overflow-x: hidden;
     overflow-y: auto;
-    padding-right: 14px;
+    /* 14px for the native scrollbar plus 8px for the change stripe's lane, so neither
+       one lands on top of code. */
+    padding-right: 22px;
     padding-bottom: 10px;
     background: var(--diff-editor-bg);
 }
@@ -191,7 +193,7 @@
 }
 
 .diff-viewer .diff-segment-deleted {
-    box-shadow: inset 3px 0 0 var(--diff-muted);
+    box-shadow: inset 3px 0 0 var(--diff-danger);
 }
 
 .diff-viewer .diff-segment-modified {
@@ -258,9 +260,60 @@
     text-align: left;
 }
 
+/* Where the changes are, in the lane beside the scrollbar. The spacer above is the whole
+   scroll range, so a mark's percentage of this element is exactly its percentage of that
+   range -- there is no second measurement that can fall out of step with the scroller.
+   The lane sits at right:14px rather than over the scrollbar itself: `.diff-content`'s
+   22px padding keeps code out from under it, and the 14px to its right stays free so the
+   scrollbar is still draggable.
+   aria-hidden, and the marks are plain elements rather than buttons, because this is a
+   redundant view of content the scroller already reaches from the keyboard -- the same
+   call VS Code's own minimap makes. Click-to-jump is a pointer shortcut, not the only
+   way to get there, so it adds no tab stops (one per change would be hundreds).
+   It runs the full height rather than stopping above the horizontal scrollbar: that bar
+   ends at right:22px, exactly where this lane starts, so nothing overlaps -- and any
+   inset here would compress the marks against the native scrollbar they are read
+   alongside, which is the one thing the stripe cannot afford to get wrong. */
+.diff-change-stripe {
+    position: absolute;
+    top: 0;
+    right: 14px;
+    bottom: 0;
+    width: 8px;
+    z-index: 3;
+    pointer-events: none;
+}
+
+.diff-change-mark {
+    position: absolute;
+    right: 0;
+    left: 0;
+    /* A one-line change is 20px of a file that can be tens of thousands, which rounds to
+       a fraction of a pixel: without a floor, the marks a reader most needs to find are
+       exactly the ones that would not render. */
+    min-height: 2px;
+    border-radius: 1px;
+    pointer-events: auto;
+    cursor: pointer;
+}
+
+/* Each tone is the hue of the edge bar on the block it points at, so following a mark
+   never lands on a differently coloured change. */
+.diff-change-inserted {
+    background: var(--diff-ok);
+}
+
+.diff-change-deleted {
+    background: var(--diff-danger);
+}
+
+.diff-change-modified {
+    background: var(--diff-info);
+}
+
 .diff-horizontal-scroll {
     position: absolute;
-    right: 14px;
+    right: 22px;
     bottom: 0;
     left: 0;
     height: 9px;
