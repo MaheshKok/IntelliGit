@@ -358,6 +358,161 @@ describe("CI quality hardening workflows", () => {
         expect(compatibility).toContain("windows-latest");
     });
 
+    it("restores before it installs, and keeps the browser out of the tree it packages", () => {
+        // Every assertion here guards a change that leaves the workflow GREEN and merely slow, which
+        // is why they are worth writing down: nothing in CI notices a cache that restores nothing.
+        // Baseline before these steps existed, run 32777133567 -- windows 28m41s against ubuntu's
+        // 9m, of which 206s was downloading Chromium and 76s was `bun install`.
+        const compatibility = readRepositoryFile(".github/workflows/compatibility.yml");
+        const job = extractJobBlock(compatibility, "compatibility");
+
+        const stepOffset = (stepName: string): number => {
+            const offset = job.indexOf(`            - name: ${stepName}\n`);
+            expect(offset, `the job must still contain a step named '${stepName}'`).not.toBe(-1);
+            return offset;
+        };
+
+        // Ordering is the whole mechanism. A cache step placed after the install it was meant to
+        // accelerate restores into a directory that is already populated and saves what the install
+        // just did anyway -- it costs time, saves none, and reads as configured in every review.
+        const restoreOffset = stepOffset("Restore the bun store and the Playwright browser");
+        const browserPathOffset = stepOffset(
+            "Point Playwright's browser download outside the packaged workspace",
+        );
+        const playwrightInstallOffset = stepOffset(
+            "Install the Playwright browser the comparator proof runs against",
+        );
+        expect(
+            restoreOffset,
+            "the cache must be restored before `bun install`, or it accelerates nothing",
+        ).toBeLessThan(stepOffset("Install dependencies"));
+        expect(
+            restoreOffset,
+            "the cache must be restored before the browser download it exists to skip",
+        ).toBeLessThan(playwrightInstallOffset);
+        expect(
+            browserPathOffset,
+            "PLAYWRIGHT_BROWSERS_PATH has to be exported before the install reads it; afterwards " +
+                "the browser lands in the platform default and the cache saves an empty directory",
+        ).toBeLessThan(playwrightInstallOffset);
+
+        const cacheStep = extractStepBlock(job, "Restore the bun store and the Playwright browser");
+        expect(cacheStep, "the restore step must still be a real cache").toContain(
+            "uses: actions/cache@",
+        );
+
+        const browserPathStep = extractStepBlock(
+            job,
+            "Point Playwright's browser download outside the packaged workspace",
+        );
+        expect(
+            browserPathStep,
+            "the exported value must survive the step that writes it",
+        ).toContain('>> "$GITHUB_ENV"');
+        const declaredBrowserPath = browserPathStep.match(/PLAYWRIGHT_BROWSERS_PATH=([^"]+)"/)?.[1];
+        expect(
+            declaredBrowserPath,
+            "the workflow must still declare a browser location",
+        ).toBeTypeOf("string");
+
+        // The two sides are compared rather than each matched against `ms-playwright`, because the
+        // failure mode is them DISAGREEING: a `path:` naming a directory the browser was never
+        // written to saves an empty tree, restores an empty tree, and re-downloads Chromium on
+        // every run while the step still reports a cache hit on the bun store beside it.
+        const cachedPaths = (cacheStep.match(/path: \|\n((?:\s+\S.*\n)+?)\s+key:/)?.[1] ?? "")
+            .trim()
+            .split("\n")
+            .map((line) => line.trim());
+        expect(
+            cachedPaths,
+            "the cached path and the exported browser location must name one directory",
+        ).toContain(declaredBrowserPath);
+
+        // `bun run package` runs `vsce` over the working tree a few steps down. A browser under
+        // `github.workspace` -- or any relative path, which resolves there -- is roughly 150MB of
+        // Chromium swept into the VSIX, and the smoke test that installs it would still pass.
+        expect(
+            declaredBrowserPath,
+            "the browser must not sit in the tree `vsce` packages",
+        ).not.toContain("github.workspace");
+        expect(
+            declaredBrowserPath,
+            "the browser location must be rooted at a runner-provided absolute directory; a " +
+                "relative path resolves inside the checkout",
+        ).toMatch(/^\$\{\{ runner\.[a-z_]+ \}\}\//);
+
+        // `hashFiles` returns an empty string for a path that matches nothing, so a typo here does
+        // not fail -- it collapses the key to its bare prefix, and the first run to save under that
+        // key owns it for every future run regardless of what the lockfile says afterwards.
+        const cacheKey = cacheStep.match(/^\s+key: (.+)$/m)?.[1] ?? "";
+        const hashedFiles = [...cacheKey.matchAll(/hashFiles\('([^']+)'\)/g)].map(
+            ([, file]) => file,
+        );
+        expect(hashedFiles, "the key must vary with the dependency set it caches").not.toEqual([]);
+        for (const file of hashedFiles) {
+            expect(
+                existsSync(resolve(REPOSITORY_ROOT, file)),
+                `the key hashes '${file}', which does not exist -- hashFiles would return "" and ` +
+                    "every run would collide on one permanently stale entry",
+            ).toBe(true);
+        }
+
+        // A `restore-keys` prefix that is not a prefix of `key` matches nothing, so the fallback
+        // silently stops existing and every dependency bump pays the full download again.
+        const restoreKey = (
+            cacheStep.match(/restore-keys: \|\n((?:\s+\S.*\n)+)/)?.[1] ?? ""
+        ).trim();
+        expect(restoreKey, "a fallback prefix must be declared").not.toBe("");
+        expect(
+            cacheKey.slice(0, restoreKey.length),
+            "restore-keys only ever matches a prefix of a saved key",
+        ).toBe(restoreKey);
+
+        const defenderStepName =
+            "Exclude the runner's working directories from Defender real-time scanning";
+        const defender = extractStepBlock(job, defenderStepName);
+
+        // First step on purpose. Checkout alone writes tens of thousands of files, and an exclusion
+        // added afterwards has already let Defender scan every one of them.
+        expect(
+            stepOffset(defenderStepName),
+            "the exclusion must precede checkout, whose own writes are the first thing it covers",
+        ).toBeLessThan(stepOffset("Checkout code"));
+
+        expect(
+            defender,
+            "`Add-MpPreference` does not exist off Windows, so the step must stay guarded",
+        ).toContain("if: runner.os == 'Windows'");
+
+        // This is the assertion with the worst consequence behind it. The Windows leg is a required
+        // status check: if a transient Defender failure fails this step, it fails the job, and that
+        // blocks every merge in the repository to save half an hour on one of them. A skipped
+        // exclusion costs time and nothing else.
+        expect(defender, "a required check must not be able to fail on an optimisation").toContain(
+            "continue-on-error: true",
+        );
+
+        // `$env:TEMP` is not redundant with `RUNNER_TEMP`; it is the entry that matters most. The
+        // fixture layer roots its work at `os.tmpdir()` -- `tests/fixtures/repo/harness.ts:126` for
+        // the E2E workspaces, `runFixtureSetup.ts:46` for the template repository -- and on a
+        // GitHub Actions Windows runner that resolves to `C:\Users\RUNNER~1\AppData\Local\Temp`,
+        // documented at `tests/fixtures/repo/placeholderCanonicalization.ts:34`. `RUNNER_TEMP` is a
+        // different directory on a different drive. Trimming the list to the two names that sound
+        // like the right ones would leave every seeded Git repository scanned file by file.
+        const requiredExclusions = [
+            "$env:GITHUB_WORKSPACE",
+            "$env:RUNNER_TEMP",
+            "$env:TEMP",
+            "$env:USERPROFILE\\.bun",
+        ];
+        for (const location of requiredExclusions) {
+            expect(
+                defender,
+                `'${location}' is written to heavily by this job and must be excluded`,
+            ).toContain(location);
+        }
+    });
+
     it("covers installed-package portability and makes Dependabot update both actionable ecosystems", () => {
         const compatibility = readRepositoryFile(".github/workflows/compatibility.yml");
         const dependabot = readRepositoryFile(".github/dependabot.yml");

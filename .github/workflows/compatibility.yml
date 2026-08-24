@@ -33,6 +33,27 @@ jobs:
                 os: [ubuntu-latest, macos-latest, windows-latest]
 
         steps:
+            # Deliberately the first step, before checkout: the exclusion then covers the tens of
+            # thousands of files checkout itself writes, not just the ones the suite writes later.
+            #
+            # This leg is filesystem-bound, never CPU-bound -- it seeds real Git repositories,
+            # copies template trees, and writes thousands of tiny loose objects, every one of which
+            # Defender opens and scans on creation. Measured on run 32772636554: `Run tests` took
+            # 1141s here against 386s on ubuntu, and `import` alone -- pure module resolution, i.e.
+            # `stat` calls -- accounted for 74s of it. The runner is a throwaway VM that only ever
+            # holds this repository's own code and its pinned dependencies, so excluding those four
+            # paths from real-time scanning trades nothing a scan was protecting.
+            #
+            # `continue-on-error` is load-bearing, not politeness: this leg is a required status
+            # check, so a Defender hiccup that failed the step would block every merge in the
+            # repository to save half an hour on one. A skipped exclusion costs time and nothing
+            # else, and the annotation says so.
+            - name: Exclude the runner's working directories from Defender real-time scanning
+              if: runner.os == 'Windows'
+              continue-on-error: true
+              shell: pwsh
+              run: Add-MpPreference -ExclusionPath $env:GITHUB_WORKSPACE, $env:RUNNER_TEMP, $env:TEMP, "$env:USERPROFILE\.bun"
+
             - name: Checkout code
               uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
               with:
@@ -47,6 +68,38 @@ jobs:
               uses: oven-sh/setup-bun@f4d14e03ff726c06358e5557344e1da148b56cf7 # v1.2.2
               with:
                   bun-version: "1.3.5"
+
+            # Playwright's default download location is spelled differently on all three runners
+            # (`~/.cache`, `~/Library/Caches`, `%LOCALAPPDATA%`), and a cache whose `path:` names a
+            # directory the browser was never written to restores nothing while looking configured.
+            # Pinning one location removes the spelling question entirely, and the same expression
+            # is used here and in the `path:` below so the two cannot drift apart.
+            #
+            # It has to sit OUTSIDE `github.workspace`: `bun run package` runs `vsce` over the
+            # working tree a few steps down, and a browser bundle at the repository root would be
+            # swept into the VSIX unless `.vscodeignore` happened to exclude it.
+            - name: Point Playwright's browser download outside the packaged workspace
+              shell: bash
+              run: echo "PLAYWRIGHT_BROWSERS_PATH=${{ runner.temp }}/ms-playwright" >> "$GITHUB_ENV"
+
+            # Both restores must precede the two steps they accelerate -- a cache placed after its
+            # consumer is inert and still reads as configured. Measured on Windows: 76s for
+            # `bun install` (3s on ubuntu, which copies through hardlinks where Windows must copy
+            # bytes) and 206s to download and unzip Chromium.
+            #
+            # Keyed on the lockfile, so a dependency bump earns a fresh browser download rather
+            # than silently running last week's binary; `restore-keys` still hands back the
+            # previous entry meanwhile, and `playwright install` below is a no-op when the cached
+            # build already matches.
+            - name: Restore the bun store and the Playwright browser
+              uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+              with:
+                  path: |
+                      ~/.bun/install/cache
+                      ${{ runner.temp }}/ms-playwright
+                  key: ${{ runner.os }}-portability-${{ hashFiles('bun.lock') }}
+                  restore-keys: |
+                      ${{ runner.os }}-portability-
 
             - name: Install dependencies
               run: bun install --frozen-lockfile
