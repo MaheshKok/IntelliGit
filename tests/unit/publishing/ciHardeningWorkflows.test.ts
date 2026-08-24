@@ -358,11 +358,12 @@ describe("CI quality hardening workflows", () => {
         expect(compatibility).toContain("windows-latest");
     });
 
-    it("restores before it installs, and keeps the browser out of the tree it packages", () => {
-        // Every assertion here guards a change that leaves the workflow GREEN and merely slow, which
-        // is why they are worth writing down: nothing in CI notices a cache that restores nothing.
-        // Baseline before these steps existed, run 32777133567 -- windows 28m41s against ubuntu's
-        // 9m, of which 206s was downloading Chromium and 76s was `bun install`.
+    it("keeps the Windows leg off the two costs that were measured, not guessed", () => {
+        // Every assertion here guards a change that leaves the workflow GREEN and merely slow --
+        // nothing in CI notices a cache that restores nothing, or an OS feature install nobody
+        // needs. Both costs below were established by A/B on one commit rather than read off a
+        // step name, because reading a duration and naming a cause is how the browser cache that
+        // used to live here got written in the first place.
         const compatibility = readRepositoryFile(".github/workflows/compatibility.yml");
         const job = extractJobBlock(compatibility, "compatibility");
 
@@ -375,71 +376,47 @@ describe("CI quality hardening workflows", () => {
         // Ordering is the whole mechanism. A cache step placed after the install it was meant to
         // accelerate restores into a directory that is already populated and saves what the install
         // just did anyway -- it costs time, saves none, and reads as configured in every review.
-        const restoreOffset = stepOffset("Restore the bun store and the Playwright browser");
-        const browserPathOffset = stepOffset(
-            "Point Playwright's browser download outside the packaged workspace",
-        );
-        const playwrightInstallOffset = stepOffset(
-            "Install the Playwright browser the comparator proof runs against",
-        );
+        // Measured on Windows: `bun install` 75s cold against 19s restored.
         expect(
-            restoreOffset,
+            stepOffset("Restore the bun store"),
             "the cache must be restored before `bun install`, or it accelerates nothing",
         ).toBeLessThan(stepOffset("Install dependencies"));
-        expect(
-            restoreOffset,
-            "the cache must be restored before the browser download it exists to skip",
-        ).toBeLessThan(playwrightInstallOffset);
-        expect(
-            browserPathOffset,
-            "PLAYWRIGHT_BROWSERS_PATH has to be exported before the install reads it; afterwards " +
-                "the browser lands in the platform default and the cache saves an empty directory",
-        ).toBeLessThan(playwrightInstallOffset);
 
-        const cacheStep = extractStepBlock(job, "Restore the bun store and the Playwright browser");
+        const cacheStep = extractStepBlock(job, "Restore the bun store");
         expect(cacheStep, "the restore step must still be a real cache").toContain(
             "uses: actions/cache@",
         );
 
-        const browserPathStep = extractStepBlock(
-            job,
-            "Point Playwright's browser download outside the packaged workspace",
-        );
+        // `--with-deps` means two entirely different things by platform. On Linux it apt-installs
+        // libraries Chromium cannot launch without. On Windows it runs DISM to enable Media
+        // Foundation, a VIDEO CODEC pack, and that is the entire cost of this step: 202s with the
+        // browser already restored from cache (run 32783641129 attempt 2) against 200s with a
+        // cache miss and a fresh download (run 32785953517) -- the browser is not what it spends
+        // its time on. Nothing in this repository records video, and the only consumer takes
+        // screenshots. Making the flag unconditional again silently returns ~190s per run to the
+        // one leg that gates every merge, with no test failing.
+        const playwrightRun =
+            extractStepBlock(
+                job,
+                "Install the Playwright browser the comparator proof runs against",
+            ).match(/^\s+run: (.+)$/m)?.[1] ?? "";
         expect(
-            browserPathStep,
-            "the exported value must survive the step that writes it",
-        ).toContain('>> "$GITHUB_ENV"');
-        const declaredBrowserPath = browserPathStep.match(/PLAYWRIGHT_BROWSERS_PATH=([^"]+)"/)?.[1];
+            playwrightRun,
+            "`--with-deps` must stay gated to Linux; on Windows it installs video codecs that " +
+                "nothing here uses, and it is the whole cost of this step",
+        ).toMatch(/runner\.os == 'Linux'.*--with-deps/);
         expect(
-            declaredBrowserPath,
-            "the workflow must still declare a browser location",
-        ).toBeTypeOf("string");
+            playwrightRun,
+            "the browser itself must still be installed on every platform",
+        ).toContain("chromium");
 
-        // The two sides are compared rather than each matched against `ms-playwright`, because the
-        // failure mode is them DISAGREEING: a `path:` naming a directory the browser was never
-        // written to saves an empty tree, restores an empty tree, and re-downloads Chromium on
-        // every run while the step still reports a cache hit on the bun store beside it.
-        const cachedPaths = (cacheStep.match(/path: \|\n((?:\s+\S.*\n)+?)\s+key:/)?.[1] ?? "")
-            .trim()
-            .split("\n")
-            .map((line) => line.trim());
+        // The Playwright browser was cached here and has been removed: it changed this step's cost
+        // by 2s while adding ~170MB to an archive Windows spends 73s untarring. Re-adding it is a
+        // regression that looks like an optimisation, so the cache is pinned to the bun store.
         expect(
-            cachedPaths,
-            "the cached path and the exported browser location must name one directory",
-        ).toContain(declaredBrowserPath);
-
-        // `bun run package` runs `vsce` over the working tree a few steps down. A browser under
-        // `github.workspace` -- or any relative path, which resolves there -- is roughly 150MB of
-        // Chromium swept into the VSIX, and the smoke test that installs it would still pass.
-        expect(
-            declaredBrowserPath,
-            "the browser must not sit in the tree `vsce` packages",
-        ).not.toContain("github.workspace");
-        expect(
-            declaredBrowserPath,
-            "the browser location must be rooted at a runner-provided absolute directory; a " +
-                "relative path resolves inside the checkout",
-        ).toMatch(/^\$\{\{ runner\.[a-z_]+ \}\}\//);
+            cacheStep.match(/^\s+path: (.+)$/m)?.[1],
+            "the cache holds the bun store only; the browser measurably did not benefit from it",
+        ).toBe("~/.bun/install/cache");
 
         // `hashFiles` returns an empty string for a path that matches nothing, so a typo here does
         // not fail -- it collapses the key to its bare prefix, and the first run to save under that

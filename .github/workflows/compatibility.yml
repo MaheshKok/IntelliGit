@@ -69,34 +69,20 @@ jobs:
               with:
                   bun-version: "1.3.5"
 
-            # Playwright's default download location is spelled differently on all three runners
-            # (`~/.cache`, `~/Library/Caches`, `%LOCALAPPDATA%`), and a cache whose `path:` names a
-            # directory the browser was never written to restores nothing while looking configured.
-            # Pinning one location removes the spelling question entirely, and the same expression
-            # is used here and in the `path:` below so the two cannot drift apart.
+            # Must precede the install it accelerates -- a cache placed after its consumer is inert
+            # and still reads as configured. Measured on Windows: `bun install` 75s cold against 19s
+            # restored, where ubuntu takes 3s either way because it links what Windows must copy.
             #
-            # It has to sit OUTSIDE `github.workspace`: `bun run package` runs `vsce` over the
-            # working tree a few steps down, and a browser bundle at the repository root would be
-            # swept into the VSIX unless `.vscodeignore` happened to exclude it.
-            - name: Point Playwright's browser download outside the packaged workspace
-              shell: bash
-              run: echo "PLAYWRIGHT_BROWSERS_PATH=${{ runner.temp }}/ms-playwright" >> "$GITHUB_ENV"
-
-            # Both restores must precede the two steps they accelerate -- a cache placed after its
-            # consumer is inert and still reads as configured. Measured on Windows: 76s for
-            # `bun install` (3s on ubuntu, which copies through hardlinks where Windows must copy
-            # bytes) and 206s to download and unzip Chromium.
-            #
-            # Keyed on the lockfile, so a dependency bump earns a fresh browser download rather
-            # than silently running last week's binary; `restore-keys` still hands back the
-            # previous entry meanwhile, and `playwright install` below is a no-op when the cached
-            # build already matches.
-            - name: Restore the bun store and the Playwright browser
+            # The Playwright browser was cached here too and has been removed. It saved nothing: on
+            # run 32783641129 attempt 2 the browser restored from cache and `playwright install`
+            # still took 202s, against 200s on run 32785953517 where the cache missed and the
+            # browser downloaded fresh. The cost was never the download (see the install step
+            # below), so all the browser did was add ~170MB to an archive that Windows spends
+            # 73s untarring.
+            - name: Restore the bun store
               uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
               with:
-                  path: |
-                      ~/.bun/install/cache
-                      ${{ runner.temp }}/ms-playwright
+                  path: ~/.bun/install/cache
                   key: ${{ runner.os }}-portability-${{ hashFiles('bun.lock') }}
                   restore-keys: |
                       ${{ runner.os }}-portability-
@@ -107,8 +93,18 @@ jobs:
             # `bun run test` includes tests/unit/visual/screenshotComparatorMeta.test.ts, which
             # launches a real Chromium to prove the screenshot comparator. Without this the suite
             # fails on the browser binary rather than on anything this workflow is meant to check.
+            #
+            # `--with-deps` is gated to Linux, where it apt-installs libraries Chromium cannot
+            # launch without. On Windows the same flag runs DISM to enable Media Foundation -- a
+            # VIDEO CODEC pack -- and that, not the browser download, is what this step spends its
+            # time on: the whole of its output was the `{Media Foundation}` feature table, and the
+            # step cost 202s with the browser already restored from cache (run 32783641129 attempt
+            # 2) against 200s with a cache miss and a fresh download (run 32785953517). Nothing in
+            # this repository records video -- there is no `recordVideo` anywhere -- and the one
+            # consumer takes screenshots and states its own requirement as `playwright install
+            # chromium` at screenshotComparatorMeta.test.ts:163. macOS needs no OS packages either.
             - name: Install the Playwright browser the comparator proof runs against
-              run: bunx playwright install --with-deps chromium
+              run: bunx playwright install ${{ runner.os == 'Linux' && '--with-deps' || '' }} chromium
 
             - name: Check formatting
               run: bun run format:check
