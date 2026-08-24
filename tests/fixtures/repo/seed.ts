@@ -133,7 +133,7 @@ export interface SeedFixtureTemplateOptions {
 
 /**
  * Builds a sanitized, deterministic git environment: a scratch `HOME`, both global and system git
- * config pointed at `/dev/null`, and a fixed author/committer identity -- so no developer's real
+ * config pointed at an empty file, and a fixed author/committer identity -- so no developer's real
  * `~/.gitconfig`, credential helper, or ambient date can reach a git process run with this env, and
  * two processes run with it produce identical objects for identical content. Mirrors
  * `tests/e2e/hostFixtures/electronLaunchHelpers.ts`'s `createSanitizedGitEnv` (same technique, same
@@ -161,13 +161,23 @@ export async function createSanitizedGitEnv(options?: {
 }): Promise<SanitizedGitEnv> {
     const homeParent = options?.homeParent ?? tmpdir();
     const home = await mkdtemp(path.join(homeParent, "intelligit-fixture-home-"));
+    // An empty REAL FILE rather than `/dev/null`. Git for Windows resolves `/dev/null` to the
+    // `\\.\nul` device and refuses it outright -- `fatal: unable to access '\\.\nul': Invalid
+    // argument` -- so every repository seeded through this env died at `git init` there, taking
+    // most of the integration suite with it. An empty file reads as "no configuration" on every
+    // platform, which is exactly the intent, and needs no platform branch to say so. It also
+    // LOCKS, which `/dev/null` cannot: `git config --global` fails with "could not lock config
+    // file /dev/null" on POSIX today, so this is strictly more capable than what it replaces.
+    // Lives inside `home` so it is disposed on the caller's existing schedule.
+    const emptyGitConfig = path.join(home, "empty-gitconfig");
+    await writeFile(emptyGitConfig, "");
     return {
         home,
         env: {
             ...process.env,
             HOME: home,
-            GIT_CONFIG_GLOBAL: "/dev/null",
-            GIT_CONFIG_SYSTEM: "/dev/null",
+            GIT_CONFIG_GLOBAL: emptyGitConfig,
+            GIT_CONFIG_SYSTEM: emptyGitConfig,
             LC_ALL: "C",
             LANG: "C",
             ...FIXTURE_GIT_IDENTITY,

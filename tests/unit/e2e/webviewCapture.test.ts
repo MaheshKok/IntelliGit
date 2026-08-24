@@ -10,13 +10,14 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type * as vscode from "vscode";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setE2eControlChannelActive } from "../../../src/e2e/activationState";
 import {
     captureWebview,
     captureWebviewViewProvider,
     getE2eWebviewCaptureSink,
     resetE2eWebviewCaptureSinkForTests,
+    resetWebviewWrapperNumberingForTests,
     WEBVIEW_CONTEXT_IDS,
     WebviewCaptureSink,
     wrapWebviewForCapture,
@@ -29,17 +30,36 @@ interface FakeWebview {
     webview: vscode.Webview;
     delivered: unknown[];
     setPostMessageResult(result: Thenable<boolean>): void;
+    /**
+     * Delivers `message` to whatever listener the code under test subscribed, and returns that
+     * listener's own return value. The real host is the only producer of inbound messages, so this
+     * stands in for it -- a wrapper that swallowed the listener, or its result, fails here.
+     */
+    receive(message: unknown): unknown;
+    /** The `disposables` array the subscriber passed, if any. VS Code appends the subscription to
+     * it, so a wrapper that drops it leaks the listener past its owner's disposal. */
+    subscribedDisposables(): vscode.Disposable[] | undefined;
 }
 
 /** A controllable double for `vscode.Webview` that records what it actually received. */
 function makeFakeWebview(): FakeWebview {
     let nextResult: Thenable<boolean> = Promise.resolve(true);
+    let listener: ((message: unknown) => unknown) | undefined;
+    let disposablesPassed: vscode.Disposable[] | undefined;
     const delivered: unknown[] = [];
     const webview = {
         options: {},
         html: "",
         cspSource: "vscode-webview://fake",
-        onDidReceiveMessage: () => ({ dispose: () => undefined }),
+        onDidReceiveMessage: (
+            handler: (message: unknown) => unknown,
+            _thisArgs?: unknown,
+            disposables?: vscode.Disposable[],
+        ) => {
+            listener = handler;
+            disposablesPassed = disposables;
+            return { dispose: () => undefined };
+        },
         asWebviewUri: (uri: vscode.Uri) => uri,
         postMessage: (message: unknown) => {
             delivered.push(message);
@@ -53,6 +73,15 @@ function makeFakeWebview(): FakeWebview {
         setPostMessageResult(result: Thenable<boolean>) {
             nextResult = result;
         },
+        receive(message: unknown): unknown {
+            if (!listener) {
+                throw new Error(
+                    "makeFakeWebview.receive: nothing has subscribed to onDidReceiveMessage yet.",
+                );
+            }
+            return listener(message);
+        },
+        subscribedDisposables: () => disposablesPassed,
     };
 }
 
@@ -64,6 +93,169 @@ beforeEach(() => {
 afterEach(() => {
     resetE2eWebviewCaptureSinkForTests();
     setE2eControlChannelActive(false);
+});
+
+/**
+ * The host's half of the hydration handshake trace.
+ *
+ * The webview counts its own asks (`src/webviews/react/shared/hydrationDiagnostics.ts`), and its
+ * first CI reading was `asks:18 received:0` -- eighteen requests, no answer. That number cannot say
+ * WHY: a host that never received the ask and a host that received it and answered a view nobody is
+ * looking at leave the identical record behind. These lines are the other half, and the flow
+ * suite's timeout dump reads them out of the page console.
+ *
+ * Traced by type only, and only the two types the handshake turns on. Both bounds are asserted
+ * rather than described: a payload in the line would put repository contents in a CI artifact, and
+ * a line per message would push the handshake out of the dump's bounded trail.
+ */
+describe("wrapWebviewForCapture: handshake trace", () => {
+    // Wrapper numbering is process-wide, so without this the ids in these assertions would depend
+    // on how many wrappers earlier tests happened to build -- and on the order vitest ran them in.
+    beforeEach(() => {
+        resetWebviewWrapperNumberingForTests();
+    });
+
+    /** Every `console.error` argument list emitted while `run` executed. */
+    function tracedLines(run: () => void): string[] {
+        const spy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+        try {
+            run();
+            return spy.mock.calls.map((call) => call.map(String).join(" "));
+        } finally {
+            spy.mockRestore();
+        }
+    }
+
+    it("traces the ask without altering what the listener sees or returns", () => {
+        const fake = makeFakeWebview();
+        const wrapped = wrapWebviewForCapture(
+            fake.webview,
+            "commit-panel",
+            new WebviewCaptureSink(),
+        );
+        const seen: unknown[] = [];
+        const ask = { type: "ready", attempt: 18 };
+        const ownDisposables: vscode.Disposable[] = [];
+
+        let returned: unknown;
+        const lines = tracedLines(() => {
+            wrapped.onDidReceiveMessage(
+                (message: unknown) => {
+                    seen.push(message);
+                    return "listener-result";
+                },
+                undefined,
+                ownDisposables,
+            );
+            returned = fake.receive(ask);
+        });
+
+        expect(seen, "the listener must receive the host's message itself, untouched").toEqual([
+            ask,
+        ]);
+        expect(
+            returned,
+            "the listener's return value must reach the host -- this is a tap on the wire, not a " +
+                "filter on it",
+        ).toBe("listener-result");
+        expect(
+            fake.subscribedDisposables(),
+            "the subscriber's own disposables array must still be the one VS Code appends to, or " +
+                "the listener outlives whoever owned it",
+        ).toBe(ownDisposables);
+        expect(lines, "the ask must be traced, naming context, instance and direction").toEqual([
+            "[intelligit-e2e] handshake commit-panel#1 in ready",
+        ]);
+    });
+
+    it("traces the host's answer and stays quiet about every other message", () => {
+        const fake = makeFakeWebview();
+        const wrapped = wrapWebviewForCapture(
+            fake.webview,
+            "commit-panel",
+            new WebviewCaptureSink(),
+        );
+
+        const lines = tracedLines(() => {
+            wrapped.onDidReceiveMessage(() => undefined);
+            void wrapped.postMessage({ type: "setRepositories", repositories: [] });
+            void wrapped.postMessage({ type: "update", files: [] });
+            fake.receive({ type: "refresh" });
+            fake.receive("not-a-message");
+            fake.receive(null);
+        });
+
+        expect(
+            lines,
+            "only the two handshake types may be traced: a line per message would evict the " +
+                "handshake from the dump's bounded console trail",
+        ).toEqual(["[intelligit-e2e] handshake commit-panel#1 out setRepositories"]);
+    });
+
+    /**
+     * The field the 2026-08-23 Insiders failure needed and did not have.
+     *
+     * That dump traced `in ready` and `out setRepositories` repeatedly while the panel reported
+     * `asks:18 received:0` and `postWebviewMessage` logged no delivery failure -- so the host
+     * receives the ask, calls `postMessage`, and the answer still never lands. The one remaining
+     * question is whether the answer went to the webview that asked, and the old line could not
+     * say: both legs of every view printed the bare `commit-panel`.
+     *
+     * Asserted from the log lines rather than from the counter, because the log is the only thing
+     * CI ever sees. A wrapper numbering per message, or reusing one number across wraps, passes
+     * every other test in this file and leaves the next failure exactly as mute as the last one.
+     */
+    it("gives each wrapped webview its own number, shared by both legs of its handshake", () => {
+        const first = makeFakeWebview();
+        const second = makeFakeWebview();
+        const sink = new WebviewCaptureSink();
+        const wrappedFirst = wrapWebviewForCapture(first.webview, "commit-panel", sink);
+        const wrappedSecond = wrapWebviewForCapture(second.webview, "commit-panel", sink);
+
+        const lines = tracedLines(() => {
+            wrappedFirst.onDidReceiveMessage(() => undefined);
+            wrappedSecond.onDidReceiveMessage(() => undefined);
+            // The shape the bug would print: one view asks, the OTHER is answered.
+            first.receive({ type: "ready", attempt: 18 });
+            void wrappedSecond.postMessage({ type: "setRepositories", repositories: [] });
+            // ...and the shape a healthy handshake prints, from a single view.
+            second.receive({ type: "ready", attempt: 1 });
+        });
+
+        expect(
+            lines,
+            "each wrapped webview must carry its own number and keep it across both directions: " +
+                "identical numbers on a matched ask/answer pair acquit the record-versus-sender " +
+                "split in postToWebview, and differing ones convict it -- a trace that cannot " +
+                "tell those apart is why four investigations ended without an answer",
+        ).toEqual([
+            "[intelligit-e2e] handshake commit-panel#1 in ready",
+            "[intelligit-e2e] handshake commit-panel#2 out setRepositories",
+            "[intelligit-e2e] handshake commit-panel#2 in ready",
+        ]);
+    });
+
+    it("never puts a payload in the trace", () => {
+        const fake = makeFakeWebview();
+        const wrapped = wrapWebviewForCapture(
+            fake.webview,
+            "commit-panel",
+            new WebviewCaptureSink(),
+        );
+
+        const lines = tracedLines(() => {
+            wrapped.onDidReceiveMessage(() => undefined);
+            void wrapped.postMessage({
+                type: "setRepositories",
+                repositories: [{ root: "/home/someone/secret-client-work" }],
+            });
+        });
+
+        expect(
+            lines.join("\n"),
+            "a captured message carries real repository data and this line lands in a CI artifact",
+        ).not.toContain("secret-client-work");
+    });
 });
 
 describe("wrapWebviewForCapture: tee", () => {

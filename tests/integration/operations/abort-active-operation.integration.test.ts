@@ -1,9 +1,10 @@
 import { execFile } from "node:child_process";
 import { access, mkdtemp, writeFile } from "node:fs/promises";
-import { devNull, tmpdir } from "node:os";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { ABSENT_GIT_CONFIG_GLOBAL } from "../../helpers/gitConfigIsolation";
 import { removeScratchDirectories } from "../../helpers/scratchDirectories";
 import { GitExecutor } from "../../../src/git/executor";
 import { GitOps } from "../../../src/git/operations";
@@ -16,7 +17,7 @@ let originalGitConfigNoSystem: string | undefined;
 beforeEach(() => {
     originalGitConfigGlobal = process.env.GIT_CONFIG_GLOBAL;
     originalGitConfigNoSystem = process.env.GIT_CONFIG_NOSYSTEM;
-    process.env.GIT_CONFIG_GLOBAL = devNull;
+    process.env.GIT_CONFIG_GLOBAL = ABSENT_GIT_CONFIG_GLOBAL;
     process.env.GIT_CONFIG_NOSYSTEM = "1";
 });
 
@@ -193,7 +194,7 @@ async function git(repositoryRoot: string, args: readonly string[]): Promise<str
         cwd: repositoryRoot,
         env: {
             ...process.env,
-            GIT_CONFIG_GLOBAL: devNull,
+            GIT_CONFIG_GLOBAL: ABSENT_GIT_CONFIG_GLOBAL,
             GIT_CONFIG_NOSYSTEM: "1",
             GIT_EDITOR: "true",
         },

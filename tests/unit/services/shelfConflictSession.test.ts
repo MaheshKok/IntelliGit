@@ -5,6 +5,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ShelfFileEntry } from "../../../src/shelf/model";
 import { ShelfStaleShelfError } from "../../../src/shelf/store";
+import { WRITABLE_FILE_MODE_OCTAL } from "../../helpers/platformCapabilities";
 import {
     ShelfConflictSessionService,
     extractOursFromConflictMarkers,
@@ -124,7 +125,7 @@ describe("ShelfConflictSessionService", () => {
             base: "base\n",
             current: "before\nlocal\nafter\n",
             patchedBase: "shelved\n",
-            worktreeFingerprint: `644:${createHash("sha256")
+            worktreeFingerprint: `${WRITABLE_FILE_MODE_OCTAL}:${createHash("sha256")
                 .update(await readFile(target))
                 .digest("hex")}`,
             shelfGeneration: 1,
@@ -330,7 +331,7 @@ describe("ShelfConflictSessionService", () => {
                 writeShelfGeneration: vi.fn(async (_id, next) => ({ ...next, generation: 3 })),
             } as never,
         });
-        const fingerprint = `644:${createHash("sha256")
+        const fingerprint = `${WRITABLE_FILE_MODE_OCTAL}:${createHash("sha256")
             .update(await readFile(target))
             .digest("hex")}`;
 

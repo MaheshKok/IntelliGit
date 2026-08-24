@@ -65,6 +65,7 @@ async function runPackageCli(options: {
     return execFileAsync(invocation.executablePath, [...invocation.args], {
         env: toElectronLaunchEnv(options.environment),
         maxBuffer: 2 * 1024 * 1024,
+        shell: invocation.useShell,
     });
 }
 
@@ -165,8 +166,17 @@ test.describe("installed VSIX package smoke", () => {
             const frame = await intelliGitView.reveal();
             const root = frame.locator("#root");
             await expect(root).toBeVisible();
-            const childCount = await root.evaluate((element) => element.children.length);
-            expect(childCount).toBeGreaterThan(0);
+            // The workbench may replace a webview's `#active-frame` after its document has already
+            // rendered, and `locator.evaluate` does not retry across that swap -- it fails outright
+            // with "Frame was detached". `toBeVisible` above survives it because web-first
+            // assertions re-resolve; a bare `evaluate` between two of them does not, so the read
+            // repeats under `toPass` and a swap becomes a retry rather than a red pipeline.
+            // Observed on VS Code 1.96.0 in CI run 32411770447, green on an unmodified re-run.
+            let childCount = 0;
+            await expect(async () => {
+                childCount = await root.evaluate((element) => element.children.length);
+                expect(childCount).toBeGreaterThan(0);
+            }).toPass({ timeout: 30_000, intervals: [250] });
             console.log(
                 `[package smoke] IntelliGit activity-bar webview mounted (#root children: ${childCount})`,
             );

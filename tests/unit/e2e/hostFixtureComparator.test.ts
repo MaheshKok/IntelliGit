@@ -51,8 +51,16 @@ function asRecord(fixture: HostFixture): Record<string, unknown> {
     return fixture as unknown as Record<string, unknown>;
 }
 
-/** Produces a value that differs from `value` while keeping its shape. */
-function mutateValue(value: unknown): unknown {
+/**
+ * Produces a value that differs from `value` while keeping its shape.
+ *
+ * `styleCssText` is mutated by rewriting every token's VALUE rather than by appending, because the
+ * comparator deliberately ignores tokens the second capture adds. Appended text is a mutation the
+ * comparator is supposed to survive, so using it here would make the executable-inventory ratchet
+ * below report "this field is never compared" about a field that is.
+ */
+function mutateValue(value: unknown, field: string): unknown {
+    if (field === "styleCssText") return (value as string).replace(/:[^;]*/g, ": mutated");
     if (typeof value === "number") return value + 1;
     if (typeof value === "string") return `${value}-mutated`;
     if (Array.isArray(value)) return [...value, "mutated"];
@@ -67,8 +75,16 @@ function withMutatedField(
     const sectionValue = asRecord(fixture)[section] as Record<string, unknown>;
     return {
         ...asRecord(fixture),
-        [section]: { ...sectionValue, [field]: mutateValue(sectionValue[field]) },
+        [section]: { ...sectionValue, [field]: mutateValue(sectionValue[field], field) },
     } as unknown as HostFixture;
+}
+
+/** Replaces only the theme-token block, leaving every other field of the fixture identical. */
+function withStyleCssText(fixture: HostFixture, styleCssText: string): HostFixture {
+    return {
+        ...fixture,
+        documentElement: { ...fixture.documentElement, styleCssText },
+    };
 }
 
 describe("compareHostFixtures", () => {
@@ -115,21 +131,226 @@ describe("compareHostFixtures", () => {
         ]);
     });
 
-    it("reports a changed custom-property block with both values", () => {
-        const committed = createFixture();
-        const captured: HostFixture = {
-            ...committed,
-            documentElement: {
-                ...committed.documentElement,
-                styleCssText: "--vscode-editor-background: #ffffff;",
-            },
-        };
+    it("reports a redefined theme token, naming only that token", () => {
+        const committed = withStyleCssText(
+            createFixture(),
+            "--vscode-editor-background: #000000; --vscode-surface-border: rgba(204, 204, 204, 0.15);",
+        );
+        const captured = withStyleCssText(
+            createFixture(),
+            "--vscode-editor-background: #000000; --vscode-surface-border: #252526;",
+        );
 
         expect(compareHostFixtures(committed, captured)).toEqual([
             {
                 field: "documentElement.styleCssText",
-                committedValue: "--vscode-editor-background: #000000;",
-                capturedValue: "--vscode-editor-background: #ffffff;",
+                committedValue: { "--vscode-surface-border": "rgba(204, 204, 204, 0.15)" },
+                capturedValue: { "--vscode-surface-border": "#252526" },
+            },
+        ]);
+    });
+
+    it("reports a theme token the second build dropped", () => {
+        const committed = withStyleCssText(
+            createFixture(),
+            "--vscode-editor-background: #000000; --vscode-surface-border: #252526;",
+        );
+        const captured = withStyleCssText(createFixture(), "--vscode-editor-background: #000000;");
+
+        // The captured side carries no key for the dropped token -- that absence is the removal,
+        // and it is what distinguishes this from a token that merely changed value.
+        expect(compareHostFixtures(committed, captured)).toEqual([
+            {
+                field: "documentElement.styleCssText",
+                committedValue: { "--vscode-surface-border": "#252526" },
+                capturedValue: {},
+            },
+        ]);
+    });
+
+    // The failure this whole comparison exists to stop reading as noise: VS Code Insiders added 25
+    // theme tokens IntelliGit reads none of, and the exact-string comparison called it a
+    // difference every night for a week.
+    it("ignores theme tokens the second build added", () => {
+        const committed = createFixture();
+        const captured = withStyleCssText(
+            committed,
+            "--vscode-editor-background: #000000; " +
+                "--vscode-modernTab-hoverBackground: #2a2d2e; " +
+                "--vscode-chat-findMatchBackground: rgba(234, 92, 0, 0.67);",
+        );
+
+        expect(compareHostFixtures(committed, captured)).toEqual([]);
+    });
+
+    it("still reports a dropped token when additions arrive in the same block", () => {
+        const committed = withStyleCssText(
+            createFixture(),
+            "--vscode-editor-background: #000000; --vscode-surface-border: #252526;",
+        );
+        const captured = withStyleCssText(
+            createFixture(),
+            "--vscode-editor-background: #000000; --vscode-modernTab-hoverBackground: #2a2d2e;",
+        );
+
+        expect(compareHostFixtures(committed, captured)).toEqual([
+            {
+                field: "documentElement.styleCssText",
+                committedValue: { "--vscode-surface-border": "#252526" },
+                capturedValue: {},
+            },
+        ]);
+    });
+
+    it("compares tokens by name rather than by block order", () => {
+        const committed = withStyleCssText(
+            createFixture(),
+            "--vscode-editor-background: #000000; --vscode-surface-border: #252526;",
+        );
+        const captured = withStyleCssText(
+            createFixture(),
+            "--vscode-surface-border: #252526; --vscode-editor-background: #000000;",
+        );
+
+        expect(compareHostFixtures(committed, captured)).toEqual([]);
+    });
+
+    /**
+     * The three tokens below are not invented: they are exactly what failed run 32615426982 on
+     * 2026-08-23, every theme, on a commit that already carried the ignore-additions narrowing
+     * (#220). All three were REDEFINED rather than added, so that narrowing could not help, and
+     * `grep -rn -- '--vscode-agents-layout-floatingPanelGap' src` returns nothing for any of them.
+     * A canary that fires on tokens the extension cannot render is red every night until stable
+     * catches up, which is the same as having no canary.
+     */
+    it("ignores a redefined token nothing in the extension reads", () => {
+        const committed = withStyleCssText(
+            createFixture(),
+            "--vscode-agents-layout-floatingPanelGap: 5px; --vscode-surface-border: rgba(59, 59, 59, 0.15);",
+        );
+        const captured = withStyleCssText(
+            createFixture(),
+            "--vscode-agents-layout-floatingPanelGap: 4px; --vscode-surface-border: #e5e5e5;",
+        );
+
+        expect(
+            compareHostFixtures(committed, captured, new Set(["--vscode-editor-background"])),
+            "a token this extension never names cannot change how it renders, so redefining it " +
+                "upstream is not an early warning",
+        ).toEqual([]);
+    });
+
+    it("reports a redefined token the extension does read", () => {
+        const committed = withStyleCssText(
+            createFixture(),
+            "--vscode-editor-background: #000000; --vscode-agentsPanel-border: rgba(59, 59, 59, 0.15);",
+        );
+        const captured = withStyleCssText(
+            createFixture(),
+            "--vscode-editor-background: #111111; --vscode-agentsPanel-border: #e5e5e5;",
+        );
+
+        expect(
+            compareHostFixtures(committed, captured, new Set(["--vscode-editor-background"])),
+            "narrowing must not blind the canary to the tokens it exists to watch",
+        ).toEqual([
+            {
+                field: "documentElement.styleCssText",
+                committedValue: { "--vscode-editor-background": "#000000" },
+                capturedValue: { "--vscode-editor-background": "#111111" },
+            },
+        ]);
+    });
+
+    it("reports a consumed token the newer build stopped declaring", () => {
+        const committed = withStyleCssText(
+            createFixture(),
+            "--vscode-editor-background: #000000; --vscode-agents-layout-floatingPanelGap: 5px;",
+        );
+        const captured = withStyleCssText(
+            createFixture(),
+            "--vscode-agents-layout-floatingPanelGap: 4px;",
+        );
+
+        expect(
+            compareHostFixtures(committed, captured, new Set(["--vscode-editor-background"])),
+            "a removal is the case that actually breaks a webview -- the fallback in " +
+                "`var(--vscode-x, y)` silently takes over -- so it must survive the narrowing",
+        ).toEqual([
+            {
+                field: "documentElement.styleCssText",
+                committedValue: { "--vscode-editor-background": "#000000" },
+                capturedValue: {},
+            },
+        ]);
+    });
+
+    /**
+     * The other direction of the same fallback, and the one the committed-only loop could not see.
+     *
+     * `var(--vscode-editor-background, y)` takes `y` on the pinned build, which does not declare the
+     * token, and `#111111` on the newer one, which does. Nothing was removed and nothing was
+     * redefined, yet the extension renders differently across the two builds -- which is the whole
+     * question this canary asks.
+     */
+    it("reports a consumed token the newer build started declaring", () => {
+        const committed = withStyleCssText(
+            createFixture(),
+            "--vscode-agents-layout-floatingPanelGap: 5px;",
+        );
+        const captured = withStyleCssText(
+            createFixture(),
+            "--vscode-agents-layout-floatingPanelGap: 5px; --vscode-editor-background: #111111;",
+        );
+
+        expect(
+            compareHostFixtures(committed, captured, new Set(["--vscode-editor-background"])),
+            "a token the extension READS gaining a real value where it used to fall back changes " +
+                "how it renders, so the ignore-additions rule must not cover it",
+        ).toEqual([
+            {
+                field: "documentElement.styleCssText",
+                committedValue: {},
+                capturedValue: { "--vscode-editor-background": "#111111" },
+            },
+        ]);
+    });
+
+    it("still ignores an addition of a token the extension does not read", () => {
+        const committed = withStyleCssText(createFixture(), "--vscode-editor-background: #000000;");
+        const captured = withStyleCssText(
+            createFixture(),
+            "--vscode-editor-background: #000000; " +
+                "--vscode-modernTab-hoverBackground: #2a2d2e; " +
+                "--vscode-chat-findMatchBackground: rgba(234, 92, 0, 0.67);",
+        );
+
+        expect(
+            compareHostFixtures(committed, captured, new Set(["--vscode-editor-background"])),
+            "reporting consumed additions must not reopen the ~25 upstream adds per night that " +
+                "kept this canary red; the filter is what makes the narrower rule safe",
+        ).toEqual([]);
+    });
+
+    it("compares every token when no consumed set is given", () => {
+        const committed = withStyleCssText(
+            createFixture(),
+            "--vscode-agents-layout-floatingPanelGap: 5px;",
+        );
+        const captured = withStyleCssText(
+            createFixture(),
+            "--vscode-agents-layout-floatingPanelGap: 4px;",
+        );
+
+        expect(
+            compareHostFixtures(committed, captured),
+            "the narrowing is opt-in: callers that are not the cross-build canary, and the field " +
+                "inventory ratchet, still compare the whole block",
+        ).toEqual([
+            {
+                field: "documentElement.styleCssText",
+                committedValue: { "--vscode-agents-layout-floatingPanelGap": "5px" },
+                capturedValue: { "--vscode-agents-layout-floatingPanelGap": "4px" },
             },
         ]);
     });

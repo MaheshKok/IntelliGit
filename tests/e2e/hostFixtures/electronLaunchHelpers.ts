@@ -38,11 +38,16 @@ export async function createSanitizedGitEnv(
 ): Promise<NodeJS.ProcessEnv> {
     const home = await mkdtemp(path.join(tmpdir(), "intelligit-hostfixture-home-"));
     directoriesToClean.push(home);
+    // Empty real file, not `/dev/null` -- git for Windows resolves that to `\\.\nul` and fails.
+    // Kept identical to `tests/fixtures/repo/seed.ts`'s `createSanitizedGitEnv`, which documents
+    // the full reasoning; these two are deliberately one convention and must not drift apart.
+    const emptyGitConfig = path.join(home, "empty-gitconfig");
+    await writeFile(emptyGitConfig, "");
     return {
         ...process.env,
         HOME: home,
-        GIT_CONFIG_GLOBAL: "/dev/null",
-        GIT_CONFIG_SYSTEM: "/dev/null",
+        GIT_CONFIG_GLOBAL: emptyGitConfig,
+        GIT_CONFIG_SYSTEM: emptyGitConfig,
         ...GIT_IDENTITY,
     };
 }

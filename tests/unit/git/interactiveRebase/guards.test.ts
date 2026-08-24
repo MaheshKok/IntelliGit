@@ -1,9 +1,10 @@
 import { execFile } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import { devNull, tmpdir } from "node:os";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { ABSENT_GIT_CONFIG_GLOBAL } from "../../../helpers/gitConfigIsolation";
 import { evaluateInteractiveRebaseGuards } from "../../../../src/git/interactiveRebase/guards";
 import type { GitExecutor } from "../../../../src/git/executor";
 
@@ -296,7 +297,11 @@ async function git(repo: string, args: string[]): Promise<string> {
     return (
         await execFileAsync("git", ["-c", "commit.gpgSign=false", ...args], {
             cwd: repo,
-            env: { ...process.env, GIT_CONFIG_GLOBAL: devNull, GIT_CONFIG_NOSYSTEM: "1" },
+            env: {
+                ...process.env,
+                GIT_CONFIG_GLOBAL: ABSENT_GIT_CONFIG_GLOBAL,
+                GIT_CONFIG_NOSYSTEM: "1",
+            },
         })
     ).stdout;
 }

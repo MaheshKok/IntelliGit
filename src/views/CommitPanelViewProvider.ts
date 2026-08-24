@@ -107,6 +107,45 @@ function isHydrationReAsk(attempt: unknown): boolean {
 }
 
 /**
+ * Reads `WebviewView.visible`, reporting "could not be read" as `undefined` rather than as a
+ * boolean.
+ *
+ * Every getter on a disposed `WebviewView` raises instead of returning, so this is a three-answer
+ * question wearing a two-answer type. Answering it with a per-call fallback boolean was enough to
+ * stop the raise but not to decide ownership: an unreadable view and a hidden one then arrive at
+ * {@link retainsOwnership} as the same value, and they do not mean remotely the same thing.
+ */
+function readVisible(view: vscode.WebviewView): boolean | undefined {
+    try {
+        return view.visible;
+    } catch {
+        return undefined;
+    }
+}
+
+/**
+ * Whether the recorded view keeps ownership against a sender that has just delivered a message.
+ *
+ * The rule reads down the three states of the RECORD, because only the record can be stale:
+ *
+ * - unreadable -- it can no longer render anything it is handed, so it yields to any live sender,
+ *   a hidden one included. A hidden view is not a quiet one; VS Code reloads a hidden view's
+ *   document without re-running {@link CommitPanelViewProvider.resolveWebviewView}, so a `ready`
+ *   from one is a view that will paint the moment its pane is shown.
+ * - visible -- it is on screen and wins outright.
+ * - hidden -- it yields only to a sender that is readable and visible, so a hidden sender never
+ *   displaces it and an unreadable sender is still answered where it stands.
+ *
+ * Stated as one function because the previous form asked the two questions independently, and
+ * `!senderVisible` could then return ownership to a record that had already lost it.
+ */
+function retainsOwnership(current: vscode.WebviewView, sender: vscode.WebviewView): boolean {
+    const recorded = readVisible(current);
+    if (recorded === undefined) return false;
+    return recorded || readVisible(sender) === false;
+}
+
+/**
  * Hosts the sidebar Changes webview and its embedded commit graph protocol.
  *
  * The provider owns working-tree, stash, commit-draft, branch-filter, pagination, and commit
@@ -1089,9 +1128,15 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             }
         });
         webviewView.webview.onDidReceiveMessage(async (msg) => {
-            this.adoptLiveSender(thisView);
             const message: unknown = msg;
             try {
+                // Inside the try, not before it. Adoption reads state owned by VS Code rather than
+                // by this provider, so it can raise; raising ahead of the try rejected this async
+                // listener before `handleMessage` ran, which posted nothing, showed nothing and
+                // logged nothing. Every retry then died at the same line, so a panel waiting on
+                // hydration stayed blank while looking, from every angle, like a host that had
+                // simply gone quiet.
+                this.adoptLiveSender(thisView);
                 await this.handleMessage(message);
             } catch (err) {
                 const errorMessage = getErrorMessage(err);
@@ -2090,10 +2135,17 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
      * every post to a dead webview is reported by {@link postWebviewMessage} -- whereas the one
      * this method exists to prevent is completely silent, which is why it went undiagnosed across
      * four investigations. Trading a reported failure for an unreported one is the point.
+     *
+     * That "loud" only ever covered a dead view being POSTED to. Reading one is the other half,
+     * and it used to be silent: the visibility checks dereference a view whose getters raise once
+     * VS Code has disposed it, and this method ran ahead of its caller's `try`. See
+     * {@link retainsOwnership} for how an unreadable view is kept distinct from a hidden one --
+     * and note that a dead record could only ever be replaced here, since nothing else clears one
+     * that {@link resolveWebviewView}'s own dispose handler did not record.
      */
     private adoptLiveSender(sender: vscode.WebviewView): void {
         const current = this.view;
-        if (current !== undefined && (current === sender || current.visible || !sender.visible)) {
+        if (current !== undefined && (current === sender || retainsOwnership(current, sender))) {
             return;
         }
         if (current !== undefined) {

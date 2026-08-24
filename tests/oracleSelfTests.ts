@@ -8,7 +8,7 @@ import {
     writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, posix } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { createFixtureWorkspace, type FixtureWorkspace } from "./fixtures/repo/harness";
@@ -600,7 +600,15 @@ export const oracleSelfTests: Record<OracleId, OracleSelfTest> = {
             );
             const untrackedFile = join(workspace.root, DIRTY_FIXTURE.untrackedPath);
             const untrackedBackup = join(nestedProbeRoot, DIRTY_FIXTURE.untrackedPath);
-            const nestedUntrackedPath = join(DIRTY_FIXTURE.untrackedPath, DIRTY_FIXTURE.crlfPath);
+            // `posix.join`, not `join`: this needle is compared against git's own porcelain
+            // output, and git spells every path with `/` on every platform. `path.join` produced
+            // `untracked.txt\crlf.txt` on the Windows leg of #223, `nestedStatusReportsFile` went
+            // false, and the whole known-bad collapsed to `[]` -- reported only as
+            // `expected [] to not have a length of +0`, naming none of its five checks.
+            const nestedUntrackedPath = posix.join(
+                DIRTY_FIXTURE.untrackedPath,
+                DIRTY_FIXTURE.crlfPath,
+            );
             let nestedStatus = localGit.parseStatusPorcelain("");
             try {
                 renameSync(untrackedFile, untrackedBackup);

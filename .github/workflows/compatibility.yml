@@ -37,6 +37,12 @@ jobs:
             - name: Install dependencies
               run: bun install --frozen-lockfile
 
+            # `bun run test` includes tests/unit/visual/screenshotComparatorMeta.test.ts, which
+            # launches a real Chromium to prove the screenshot comparator. Without this the suite
+            # fails on the browser binary rather than on anything this workflow is meant to check.
+            - name: Install the Playwright browser the comparator proof runs against
+              run: bunx playwright install --with-deps chromium
+
             - name: Check formatting
               run: bun run format:check
 

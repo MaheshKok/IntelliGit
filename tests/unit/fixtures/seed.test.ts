@@ -26,6 +26,7 @@ import {
     seedFixtureTemplate,
     type FixtureTemplate,
 } from "../../fixtures/repo/seed";
+import { OVERLONG_NAMES_FAIL_REMOVAL } from "../../helpers/platformCapabilities";
 import { createScratchWorkspaces } from "./scratchWorkspaces";
 
 const execFileAsync = promisify(execFile);
@@ -118,9 +119,21 @@ describe("seedFixtureTemplate", () => {
     });
 
     describe("sanitized git environment", () => {
-        it("nulls global and system config and pins a scratch HOME", () => {
-            expect(templateA.env.GIT_CONFIG_GLOBAL).toBe("/dev/null");
-            expect(templateA.env.GIT_CONFIG_SYSTEM).toBe("/dev/null");
+        // Asserted as a PROPERTY -- "git reads no configuration through this env" -- rather than
+        // as a literal path. The literal was `/dev/null` for years and was wrong on Windows, where
+        // git resolves it to the `\\.\nul` device and refuses it outright, killing every seeded
+        // repository at `git init`. A test pinned to the literal cannot notice that; a test that
+        // reads the file it points at can.
+        it("empties global and system config and pins a scratch HOME", async () => {
+            for (const key of ["GIT_CONFIG_GLOBAL", "GIT_CONFIG_SYSTEM"] as const) {
+                const configPath = templateA.env[key];
+                expect(configPath, `${key} must be set`).toBeTruthy();
+                expect(
+                    await readFile(configPath as string, "utf8"),
+                    `${key} must point at a real, EMPTY config file -- a device path such as ` +
+                        `/dev/null is unreadable on Windows`,
+                ).toBe("");
+            }
             expect(templateA.env.HOME).toBe(templateA.home);
             expect(templateA.home).not.toBe(process.env.HOME);
         });
@@ -459,24 +472,27 @@ describe("cleanUpThenRethrow", () => {
         );
     });
 
-    it("reports a failed removal without letting it replace the original error", async () => {
-        const unremovable = join(tmpdir(), "n".repeat(300));
-        const seedingFailure = new Error("git init exploded");
-        const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    it.skipIf(!OVERLONG_NAMES_FAIL_REMOVAL)(
+        "reports a failed removal without letting it replace the original error",
+        async () => {
+            const unremovable = join(tmpdir(), "n".repeat(300));
+            const seedingFailure = new Error("git init exploded");
+            const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
 
-        try {
-            // Identity, not message matching: a rejection carrying the ENAMETOOLONG error would
-            // still be "an Error", and asserting the exact instance is what makes displacement
-            // detectable.
-            await expect(cleanUpThenRethrow(unremovable, seedingFailure)).rejects.toBe(
-                seedingFailure,
-            );
-            expect(warn).toHaveBeenCalledTimes(1);
-            expect(String(warn.mock.calls[0]?.[0])).toContain("ENAMETOOLONG");
-        } finally {
-            warn.mockRestore();
-        }
-    });
+            try {
+                // Identity, not message matching: a rejection carrying the ENAMETOOLONG error would
+                // still be "an Error", and asserting the exact instance is what makes displacement
+                // detectable.
+                await expect(cleanUpThenRethrow(unremovable, seedingFailure)).rejects.toBe(
+                    seedingFailure,
+                );
+                expect(warn).toHaveBeenCalledTimes(1);
+                expect(String(warn.mock.calls[0]?.[0])).toContain("ENAMETOOLONG");
+            } finally {
+                warn.mockRestore();
+            }
+        },
+    );
 
     it("removes the path before rethrowing", async () => {
         const workDir = await mkdtemp(join(tmpdir(), "intelligit-cleanup-rethrow-test-"));

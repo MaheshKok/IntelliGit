@@ -26,9 +26,58 @@
  * placeholder instead of the clean form the contract promises. Every root's needle list therefore
  * includes both its literal spelling and its realpath'd spelling, when they differ and the path
  * exists.
+ *
+ * Windows spells one directory three ways, and git picks a different one than Node does (#223).
+ * Two independent mismatches, both of which left a real absolute path sitting un-redacted in a
+ * committed fixture on the Windows leg while every macOS run looked clean:
+ *
+ * 1. **8.3 short names.** `os.tmpdir()` on a GitHub Actions Windows runner returns
+ *    `C:\Users\RUNNER~1\AppData\Local\Temp`, while git reports the long form,
+ *    `C:/Users/runneradmin/AppData/Local/Temp`. `fs.realpathSync` is Node's own JS resolver and
+ *    leaves `RUNNER~1` alone; only `fs.realpathSync.native` goes through
+ *    `GetFinalPathNameByHandle` and expands it. Both spellings are collected, so neither resolver
+ *    has to be the right one.
+ * 2. **Separators.** git addresses paths with `/` on every platform; Node hands back `\`. A needle
+ *    built from `path.join` therefore cannot match a path that came out of
+ *    `git worktree list --porcelain`.
+ *
+ * The forward-slash variant is added only when the *platform* separator is `\`, never
+ * unconditionally: a backslash is a legal character in a POSIX filename, so rewriting one there
+ * would fabricate a needle that could redact an unrelated real path. `separator` is a parameter
+ * rather than a read of `path.sep` so the Windows branch is reachable from a macOS run -- see
+ * `tests/unit/fixtures/placeholderCanonicalization.test.ts`.
+ *
+ * 3. **Percent-encoding.** git stores a local remote as a `file://` URL and percent-encodes the
+ *    path inside it, so the 8.3 short name reaches `.git/config` as
+ *    `file:///C:/Users/RUNNER%7E1/AppData/Local/Temp/...` -- `~` written as `%7E`. None of the
+ *    three spellings above match that, so the whole URL survived normalization and the two sides
+ *    of a rehydration comparison differed by their random workspace segment. Measured on run
+ *    32650798689: `gitDirState.data.common[3:relativePath=config].digest` mismatched while every
+ *    other captured field agreed.
+ *
+ * The encoded variant is added unconditionally rather than gated on the separator: on POSIX the
+ * encoding is a no-op for ordinary paths (the Set dedupes it away) and a genuine improvement for
+ * one containing a space, which git encodes as `%20` on every platform.
+ *
+ * 4. **JSON escaping.** A captured artifact is not always raw text. The shelf journal
+ *    (`journals/<SHELF-ID>.json`) stores absolute paths inside a JSON string, so every separator
+ *    arrives DOUBLED -- `C:\\Users\\RUNNER~1\\...` -- and a single-backslash needle cannot match
+ *    it. Same run: `pathProgress.untracked.txt.target` and `.recoveryPath` both survived intact,
+ *    carrying the random workspace segment that made two seeded copies compare unequal.
+ *
+ * The doubled variant is gated on the separator for the same reason the forward-slash one is: a
+ * backslash is legal in a POSIX filename, so doubling one there would fabricate a needle.
+ *
+ * Deleted roots (#223, same run): a snapshot is often normalized AFTER the directory it describes
+ * is gone -- `restoreFidelity` compares a pre-restore snapshot against a post-restore one, and the
+ * pre-restore workspace no longer exists by then. A bare `realpath` throws there, and falling back
+ * to the literal candidate silently drops the long-name spelling, which is the ONE spelling git's
+ * own output uses. {@link realpathOrSelf} therefore resolves the longest ancestor that still exists
+ * and re-appends the rest, so a torn-down leaf still contributes its canonical prefix.
  */
 
 import { realpathSync } from "node:fs";
+import { basename, dirname, join, sep } from "node:path";
 
 /** The three concrete-path roots a copy carries after live rehydration (PLAN.md step 8). */
 export interface PlaceholderRoots {
@@ -42,26 +91,86 @@ export type PlaceholderReplacement = readonly [needle: string, placeholder: stri
 
 /**
  * Resolves `candidate` to its realpath'd spelling, falling back to the literal candidate whenever
- * it does not exist yet or realpath otherwise fails -- normalization must stay usable even when
- * called before the directory exists (e.g. a not-yet-created `profileDir`) or against a purely
- * in-memory, fabricated value in a test.
+ * nothing along the path resolves -- normalization must stay usable when called before the
+ * directory exists (e.g. a not-yet-created `profileDir`) or against a purely in-memory, fabricated
+ * value in a test.
+ *
+ * A candidate whose LEAF is gone but whose ancestors survive is resolved rather than abandoned: the
+ * longest existing ancestor is realpath'd and the unresolvable remainder is re-appended. On Windows
+ * that recovers the long-name prefix (`C:\Users\runneradmin\...`) for a workspace that has already
+ * been torn down, which is the only spelling git's own output ever uses. Without it, a snapshot
+ * normalized after its directory was removed keeps a real absolute path in the artifact.
  */
-function realpathOrSelf(candidate: string): string {
-    try {
-        return realpathSync(candidate);
-    } catch {
-        return candidate;
+function realpathOrSelf(candidate: string, resolve: (path: string) => string): string {
+    let head = candidate;
+    let suffix = "";
+    for (;;) {
+        try {
+            const resolved = resolve(head);
+            return suffix.length === 0 ? resolved : join(resolved, suffix);
+        } catch {
+            const parent = dirname(head);
+            // `dirname` is a fixed point at the filesystem root, so that is one terminating case:
+            // nothing along the whole path resolved and the literal candidate is all there is.
+            //
+            // `"."` is the other, and it is the one that matters for a path written in the OTHER
+            // platform's separator -- POSIX `dirname` sees no `/` in `C:\Users\...` and returns
+            // `"."`. Resolving that would succeed and graft the CWD onto the front of a Windows
+            // path, fabricating a needle that describes no real location. Only true ANCESTORS of
+            // the candidate may be resolved.
+            if (parent === head || parent === ".") return candidate;
+            suffix = suffix.length === 0 ? basename(head) : join(basename(head), suffix);
+            head = parent;
+        }
     }
 }
 
 /**
- * Both spellings of one root -- literal and realpath'd -- mapped to the same placeholder. See the
- * module doc comment's "Realpath duality" section for why both are needed.
+ * Characters git leaves alone when percent-encoding a path into a `file://` URL. Everything else --
+ * notably the `~` that makes an 8.3 short name, and a space -- is encoded, so a needle built from
+ * the raw path cannot match what lands in `.git/config`.
  */
-function spellingsFor(root: string, placeholder: string): readonly PlaceholderReplacement[] {
+const UNENCODED_IN_GIT_URL = /[A-Za-z0-9._:/-]/;
+
+/** Percent-encodes a path the way git writes one into a `file://` remote URL. */
+function percentEncodePath(spelling: string): string {
+    let encoded = "";
+    for (const character of spelling) {
+        if (UNENCODED_IN_GIT_URL.test(character)) {
+            encoded += character;
+            continue;
+        }
+        for (const byte of new TextEncoder().encode(character)) {
+            encoded += `%${byte.toString(16).toUpperCase().padStart(2, "0")}`;
+        }
+    }
+    return encoded;
+}
+
+/**
+ * Every spelling of one root -- literal, both realpath'd forms, their forward-slash variants on
+ * Windows, and the percent-encoded form of each -- mapped to the same placeholder. See the module
+ * doc comment's "Realpath duality" and Windows sections for why each is needed.
+ */
+function spellingsFor(
+    root: string,
+    placeholder: string,
+    separator: string,
+): readonly PlaceholderReplacement[] {
     if (root.length === 0) return [];
-    const realRoot = realpathOrSelf(root);
-    const spellings = new Set([root, realRoot]);
+    const spellings = new Set([
+        root,
+        realpathOrSelf(root, realpathSync),
+        realpathOrSelf(root, realpathSync.native),
+    ]);
+    if (separator === "\\") {
+        for (const spelling of [...spellings]) spellings.add(spelling.split("\\").join("/"));
+        // AFTER the forward-slash pass, never before: doubling first would turn `C:\Users` into
+        // `C:\\Users` and then into `C://Users`, a needle matching nothing.
+        for (const spelling of [...spellings]) spellings.add(spelling.split("\\").join("\\\\"));
+    }
+    // After the separator passes, so the forward-slash spellings git actually emits get encoded too.
+    for (const spelling of [...spellings]) spellings.add(percentEncodePath(spelling));
     return Array.from(spellings, (spelling) => [spelling, placeholder] as const);
 }
 
@@ -72,11 +181,12 @@ function spellingsFor(root: string, placeholder: string): readonly PlaceholderRe
  */
 export function buildPlaceholderReplacements(
     roots: PlaceholderRoots,
+    separator: string = sep,
 ): readonly PlaceholderReplacement[] {
     return [
-        ...spellingsFor(roots.root, "<ROOT>"),
-        ...spellingsFor(roots.originRoot, "<ORIGIN>"),
-        ...spellingsFor(roots.profileDir, "<PROFILE>"),
+        ...spellingsFor(roots.root, "<ROOT>", separator),
+        ...spellingsFor(roots.originRoot, "<ORIGIN>", separator),
+        ...spellingsFor(roots.profileDir, "<PROFILE>", separator),
     ].sort(([a], [b]) => b.length - a.length);
 }
 

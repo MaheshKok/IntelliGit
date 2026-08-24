@@ -44,6 +44,38 @@ const CONSOLE_LINE_LIMIT = 300;
  * came from a webview or from the workbench shell around it. */
 const WEBVIEW_URL_SCHEME = "vscode-webview://";
 
+/**
+ * Renders the commit panel's handshake counters (`src/webviews/react/shared/hydrationDiagnostics.ts`)
+ * for the timeout message.
+ *
+ * The blank-panel failure this instrument exists for has three causes that the rest of the dump
+ * reports identically -- three CI failures across two runs produced the same
+ * `root=<children:2 chars:147>` with the same clean console -- and each leaves a different
+ * signature here:
+ *
+ * - `(none)`: the global was never created, so the effect that posts `ready` never ran. Only
+ *   meaningful while the E2E gate is on; with the gate off no webview ever carries the global.
+ * - `asks:N received:0`: the webview asked N times and the host answered nothing. The drop is on
+ *   the host side of the handshake, or inbound before it.
+ * - `asks:N received:M`: the host is answering and the reducer is not hydrating from what it
+ *   sends -- `last` names the message type that arrived most recently.
+ *
+ * Surfaces on every webview rather than the commit panel alone: a graph panel reporting `(none)`
+ * while the commit panel reports counters is what proves the absence is specific rather than a
+ * bundle-wide failure.
+ */
+function describeHydration(
+    diagnostics:
+        | { asks: number; hostMessages: number; lastHostMessageType: string | null }
+        | undefined,
+): string {
+    if (!diagnostics) return "(none)";
+    return (
+        `<asks:${diagnostics.asks} received:${diagnostics.hostMessages} ` +
+        `last:${JSON.stringify(diagnostics.lastHostMessageType)}>`
+    );
+}
+
 /** Locates IntelliGit's webview surfaces: the activity-bar view and the full-width graph panel. */
 export class IntelliGitView {
     /** Errors and warnings the page emitted, newest last. See `describeConsole`. */
@@ -174,7 +206,14 @@ export class IntelliGitView {
                     .evaluate((body: HTMLElement) => {
                         const document = body.ownerDocument;
                         const shellGlobals = document.defaultView as
-                            | (Window & { intelligitI18n?: unknown })
+                            | (Window & {
+                                  intelligitI18n?: unknown;
+                                  intelligitHydrationDiagnostics?: {
+                                      asks: number;
+                                      hostMessages: number;
+                                      lastHostMessageType: string | null;
+                                  };
+                              })
                             | null;
                         const root = document.getElementById("root");
                         return {
@@ -183,6 +222,7 @@ export class IntelliGitView {
                             rootChildren: root?.childElementCount ?? -1,
                             rootChars: root?.innerHTML.length ?? -1,
                             bootstrapped: shellGlobals?.intelligitI18n !== undefined,
+                            hydration: shellGlobals?.intelligitHydrationDiagnostics,
                             testIds: Array.from(body.querySelectorAll("[data-testid]"))
                                 .slice(0, 8)
                                 .map((element) => element.getAttribute("data-testid")),
@@ -195,6 +235,7 @@ export class IntelliGitView {
                           `bodyChars=${summary.bodyChars} ` +
                           `bootstrap=${summary.bootstrapped ? "yes" : "no"} ` +
                           `root=<children:${summary.rootChildren} chars:${summary.rootChars}> ` +
+                          `hydration=${describeHydration(summary.hydration)} ` +
                           `testIds=${JSON.stringify(summary.testIds)}`;
             }),
         );

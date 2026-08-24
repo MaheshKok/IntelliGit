@@ -163,9 +163,13 @@ function runVersionGate(script: string, version: string, options: VersionGateOpt
         const ghArgsPath = join(workspace, "gh-args");
         const packageJsonPath = join(workspace, "package.json");
 
+        // Empty real file rather than `/dev/null`: git for Windows resolves that to `\\.\nul` and
+        // refuses it, so every `git` call below would fail before reaching the version gate.
+        const emptyGitConfig = join(workspace, "empty-gitconfig");
+        writeFileSync(emptyGitConfig, "");
         const gitEnv = sanitizedGitEnv({
-            GIT_CONFIG_GLOBAL: "/dev/null",
-            GIT_CONFIG_SYSTEM: "/dev/null",
+            GIT_CONFIG_GLOBAL: emptyGitConfig,
+            GIT_CONFIG_SYSTEM: emptyGitConfig,
             HOME: workspace,
         });
         const git = (...args: readonly string[]) => {
@@ -1207,5 +1211,84 @@ describe("publish visual workflow", () => {
             extractJobBlock(nightlyWorkflow, "e2e-nightly"),
             "the jobs that execute the suite must not be granted issues: write",
         ).not.toMatch(/^\s+issues: write\s*$/m);
+    });
+});
+
+/**
+ * Every upload step in `publish.yml` that keeps a suite's evidence, derived from the workflow
+ * rather than listed here -- a fixed list of three would pass while a fourth job uploaded nothing
+ * anyone could read.
+ */
+function failureEvidenceUploadSteps(workflow: string): { name: string; body: string }[] {
+    return (
+        workflow
+            .split(/^ {12}- name: /m)
+            .slice(1)
+            // Comment lines are dropped before anything is matched. These steps are commented with
+            // the very path names the assertions look for -- prose explaining why
+            // `playwright-report/` is absent contains `playwright-report/` -- so a check reading
+            // the raw block fails on a correct workflow and would be "fixed" by deleting the
+            // explanation. The subject here is the YAML.
+            .map((chunk) => ({
+                name: chunk.slice(0, chunk.indexOf("\n")),
+                body: chunk.replace(/^\s*#.*$/gm, ""),
+            }))
+            .filter(
+                (step) =>
+                    step.body.includes("upload-artifact") && step.body.includes("if: failure()"),
+            )
+    );
+}
+
+/**
+ * `playwright-report/` is the HTML reporter's output directory, and nothing in this repository
+ * runs that reporter -- `playwright.e2e.config.ts` pins `list`, and `playwright.visual.config.ts`
+ * names none, whose default is `list` (or `dot` under CI). Every failure upload nonetheless listed
+ * it alongside `test-results/`, which is the failure this pins: an upload that names two kinds of
+ * evidence and can only ever carry one reads, in review and in a downloaded artifact alike, as
+ * though the missing half simply had nothing to report.
+ *
+ * The reporter check is the half that keeps this honest. Asserting the absent path alone would
+ * turn into a false failure the day someone legitimately enables HTML reporting; asserting the
+ * configuration too means that change fails HERE, with a message naming the upload steps it has
+ * to update, rather than silently shipping a report no artifact carries.
+ */
+describe("failure artifact uploads", () => {
+    it("keeps only evidence a reporter actually writes", () => {
+        const workflow = readFileSync(WORKFLOW_PATH, "utf8");
+        const steps = failureEvidenceUploadSteps(workflow);
+
+        expect(
+            steps.length,
+            "publish.yml must upload evidence from its failing suites",
+        ).toBeGreaterThan(0);
+        for (const configPath of ["playwright.e2e.config.ts", "playwright.visual.config.ts"]) {
+            expect(
+                readFileSync(resolve(REPOSITORY_ROOT, configPath), "utf8"),
+                `${configPath} enables the HTML reporter -- every failure upload in publish.yml ` +
+                    "must start carrying playwright-report/ again, and this assertion inverted",
+            ).not.toMatch(/["']html["']/);
+        }
+        for (const step of steps) {
+            expect(
+                step.body,
+                `"${step.name}" uploads playwright-report/, which no reporter here writes`,
+            ).not.toContain("playwright-report/");
+            expect(step.body, `"${step.name}" must keep test-results/`).toContain("test-results/");
+        }
+    });
+
+    // `ignore` suppresses the one outcome worth an annotation: a job that failed before its suite
+    // produced anything, which is precisely when the missing artifact is the finding rather than
+    // noise. `warn` surfaces it without failing the step, so the upload stays non-blocking.
+    it("annotates a failure that produced no evidence at all", () => {
+        const workflow = readFileSync(WORKFLOW_PATH, "utf8");
+
+        for (const step of failureEvidenceUploadSteps(workflow)) {
+            expect(
+                step.body,
+                `"${step.name}" silences the case where a failing job produced no artifacts`,
+            ).toContain("if-no-files-found: warn");
+        }
     });
 });

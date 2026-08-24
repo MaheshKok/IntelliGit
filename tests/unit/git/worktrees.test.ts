@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { fixturePath } from "../../helpers/fixturePaths";
 import type { GitExecutor } from "../../../src/git/executor";
 import {
     addWorktree,
@@ -77,9 +78,12 @@ afterEach(async () => {
 
 describe("parseWorktreeList", () => {
     it("parses a single current main worktree", () => {
-        const repo = "/tmp/project";
+        // Platform-native: `parseWorktreeList` resolves the porcelain path, and real git on
+        // Windows emits a drive-rooted one. A bare `/tmp/project` came back as `D:\tmp\project`
+        // and could never equal the literal. See tests/helpers/fixturePaths.ts.
+        const repo = fixturePath("/tmp/project");
         const parsed = parseWorktreeList(
-            porcelain([["worktree /tmp/project", "HEAD abc123", "branch refs/heads/main"]]),
+            porcelain([[`worktree ${repo}`, "HEAD abc123", "branch refs/heads/main"]]),
             `${repo}/`,
         );
 
@@ -139,18 +143,24 @@ describe("parseWorktreeList", () => {
     });
 
     it("parses main plus linked worktrees with short branch names", () => {
+        const repo = fixturePath("/tmp/repo");
+        const featureWorktree = fixturePath("/tmp/repo feature");
         const parsed = parseWorktreeList(
             porcelain([
-                ["worktree /tmp/repo", "HEAD aaaaaaa", "branch refs/heads/main"],
-                ["worktree /tmp/repo feature", "HEAD bbbbbbb", "branch refs/heads/feature/x"],
-                ["worktree /tmp/repo-review", "HEAD ccccccc", "branch refs/heads/review"],
+                [`worktree ${repo}`, "HEAD aaaaaaa", "branch refs/heads/main"],
+                [`worktree ${featureWorktree}`, "HEAD bbbbbbb", "branch refs/heads/feature/x"],
+                [
+                    `worktree ${fixturePath("/tmp/repo-review")}`,
+                    "HEAD ccccccc",
+                    "branch refs/heads/review",
+                ],
             ]),
-            "/tmp/repo",
+            repo,
         );
 
         expect(parsed).toHaveLength(3);
         expect(parsed[1]).toMatchObject({
-            path: "/tmp/repo feature",
+            path: featureWorktree,
             head: "bbbbbbb",
             branch: "feature/x",
             state: "linked",

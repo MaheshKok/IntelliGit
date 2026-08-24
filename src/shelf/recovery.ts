@@ -11,6 +11,7 @@ import type {
     ShelfJournalShelfLink,
     ShelfStore,
 } from "./store";
+import { resolveNoFollowFlag } from "./noFollowFlag";
 import { GitExecutorRecoveryGit, RecoverySafetyError } from "./recoveryGit";
 import type { ShelfRecoveryGit } from "./recoveryGit";
 import {
@@ -667,7 +668,6 @@ async function writeBaseFile(
     target: string,
     bytes: Uint8Array,
 ): Promise<void> {
-    const noFollow = typeof constants.O_NOFOLLOW === "number" ? constants.O_NOFOLLOW : 0;
     // Containment is a prerequisite for the absent-target guard and exclusive creation.
     // react-doctor-disable-next-line react-doctor/async-defer-await
     await ensureContainedParent(repositoryRoot, target);
@@ -677,7 +677,7 @@ async function writeBaseFile(
 
     const file = await open(
         target,
-        constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | noFollow,
+        constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | resolveNoFollowFlag(),
         0o600,
     );
     try {

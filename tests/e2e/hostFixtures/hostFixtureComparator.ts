@@ -1,4 +1,5 @@
 import type { HostFixture } from "./types";
+import { parseStyleCustomProperties } from "./canonicalizeHostFixture";
 import { serializeHostFixture } from "./hostFixtureFile";
 
 type ComparableValue = string | number | readonly string[] | Readonly<Record<string, string>>;
@@ -113,6 +114,78 @@ function recordDifference(
     }
 }
 
+/**
+ * Records a `documentElement.styleCssText` difference for tokens the pinned build declares and the
+ * second capture either DROPPED or REDEFINED. A token present only in the second capture is
+ * ignored unless `consumedTokens` says this extension reads it.
+ *
+ * Upstream adds theme tokens continuously -- one Insiders run added 25 (`--vscode-modernTab-*`,
+ * `--vscode-modernEditorTab-*`, `--vscode-chat-findMatch*`) against two it actually changed. A
+ * token nothing in this extension reads cannot change how the extension renders, so an addition is
+ * not an early warning; it is what kept this canary red every night until stable caught up, which
+ * is the same as having no canary. A token that disappears or changes value underneath a webview
+ * can break it, so those are what get reported.
+ *
+ * Only the offending tokens travel into the difference. Carrying both full blocks put ~900
+ * identical tokens on either side of the formatter's truncation limit, so the failure named the
+ * field and then printed the same prefix twice.
+ *
+ * `consumedTokens` applies that same "cannot change how the extension renders" rule to all three
+ * cases, including the additions above. Ignoring additions was only half of it: the 2026-08-23
+ * Insiders run failed on `--vscode-agents-layout-floatingPanelGap` (5px -> 4px),
+ * `--vscode-agentsPanel-border` and `--vscode-surface-border` (rgba -> hex), all REDEFINED rather
+ * than added, and all read by zero files in `src`. Every theme in that run failed, on nothing this
+ * extension can render. Omit the set to compare every token -- callers that are not the cross-build
+ * canary should.
+ */
+function recordStyleCustomPropertyDifference(
+    differences: HostFixtureDifference[],
+    committedCssText: string,
+    capturedCssText: string,
+    consumedTokens?: ReadonlySet<string>,
+): void {
+    const committed = parseStyleCustomProperties(committedCssText);
+    const captured = parseStyleCustomProperties(capturedCssText);
+    const committedOffenders: Record<string, string> = {};
+    const capturedOffenders: Record<string, string> = {};
+
+    // Committed names alone when nothing narrows the comparison: an addition is then
+    // indistinguishable from upstream's ~25 nightly ones, and reporting it keeps the canary red
+    // forever. With the consumed set, "nothing reads it" is tested DIRECTLY rather than guessed at
+    // from the addition's shape -- so an addition that survives the filter is a token this
+    // extension does read, gaining a real value where it used to take the fallback in
+    // `var(--vscode-x, y)`. That is a rendering change, and it is exactly what the additions rule
+    // was a proxy for.
+    const names =
+        consumedTokens === undefined
+            ? committed.keys()
+            : new Set([...committed.keys(), ...captured.keys()]);
+
+    for (const name of names) {
+        if (consumedTokens !== undefined && !consumedTokens.has(name)) continue;
+        const committedValue = committed.get(name);
+        const capturedValue = captured.get(name);
+        if (committedValue === capturedValue) continue;
+
+        // An absent key on either side IS the change: that build does not declare this token at
+        // all, which reads differently from a token that merely changed value.
+        if (committedValue !== undefined) {
+            committedOffenders[name] = committedValue;
+        }
+        if (capturedValue !== undefined) {
+            capturedOffenders[name] = capturedValue;
+        }
+    }
+
+    if (Object.keys(committedOffenders).length > 0 || Object.keys(capturedOffenders).length > 0) {
+        differences.push({
+            field: "documentElement.styleCssText",
+            committedValue: committedOffenders,
+            capturedValue: capturedOffenders,
+        });
+    }
+}
+
 function formatDifferenceValue(value: ComparableValue, maxValueLength: number): string {
     const serialized = JSON.stringify(value);
     if (serialized.length <= maxValueLength) {
@@ -139,10 +212,17 @@ export function formatHostFixtureDifferences(
 /**
  * Compares the observable host payload and comparable provenance of two captures without reading
  * files, launching VS Code, or consulting the environment.
+ *
+ * `consumedTokens` narrows the `styleCssText` comparison to theme tokens this extension actually
+ * reads (see {@link recordStyleCustomPropertyDifference}). It is a PARAMETER rather than a lookup
+ * so this function stays pure and unit-testable; `compare.spec.ts` derives the real set from `src`
+ * via `readConsumedThemeTokens`. Omitted, every token is compared, which is what the existing
+ * callers and the field-inventory ratchet rely on.
  */
 export function compareHostFixtures(
     committedFixture: HostFixture,
     capturedFixture: HostFixture,
+    consumedTokens?: ReadonlySet<string>,
 ): readonly HostFixtureDifference[] {
     const differences: HostFixtureDifference[] = [];
 
@@ -175,11 +255,15 @@ export function compareHostFixtures(
         committedFixture.documentElement.dataset,
         capturedFixture.documentElement.dataset,
     );
-    recordDifference(
+    // Token-wise, not string-wise: this comparison is the cross-build canary, where the two
+    // captures come from DIFFERENT VS Code builds and upstream additions are expected. The
+    // staleness comparison below stays an exact string match on purpose -- there both sides come
+    // from the SAME pinned build, so any drift at all means the committed fixture needs recapture.
+    recordStyleCustomPropertyDifference(
         differences,
-        "documentElement.styleCssText",
         committedFixture.documentElement.styleCssText,
         capturedFixture.documentElement.styleCssText,
+        consumedTokens,
     );
     recordDifference(
         differences,

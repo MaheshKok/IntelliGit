@@ -161,6 +161,8 @@ describe("copyTemplate", () => {
             expect(linkEntry?.type).toBe("symlink");
             // The literal text, unresolved -- a dereferenced or path-resolved copy would report
             // something other than the exact relative string this symlink was created with.
+            // Forward slashes on every platform: `inventoryDirectory` normalizes the `readlink`
+            // result, so this literal is the portable spelling rather than the host's.
             expect(linkEntry?.symlinkTarget).toBe("data/real.txt");
         });
     });

@@ -14,13 +14,14 @@
  */
 
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 
 import { afterAll, describe, expect, it } from "vitest";
 
+import { removeScratchDirectories } from "../../helpers/scratchDirectories";
 import { resolveShelfPaths } from "../../../src/shelf/paths";
 import { ShelfStore } from "../../../src/shelf/store";
 import { GitExecutor } from "../../../src/git/executor";
@@ -100,18 +101,23 @@ function scenarioFor(id: RepositoryScenarioId) {
  * rather than inline per test -- typed explicitly so a future scenario that forgets to route
  * through `createSanitizedGitEnv` fails here instead of only in whichever test happens to run
  * first. */
-function assertNoIdentityLeakage(workspace: ScenarioWorkspace): void {
-    expect(workspace.env.GIT_CONFIG_GLOBAL).toBe("/dev/null");
-    expect(workspace.env.GIT_CONFIG_SYSTEM).toBe("/dev/null");
+async function assertNoIdentityLeakage(workspace: ScenarioWorkspace): Promise<void> {
+    // The config paths are asserted by CONTENT, not by literal value: `/dev/null` was the literal
+    // here for years and is unreadable on Windows (`\\.\nul`), which no equality check could see.
+    for (const key of ["GIT_CONFIG_GLOBAL", "GIT_CONFIG_SYSTEM"] as const) {
+        const configPath = workspace.env[key];
+        expect(configPath, `${key} must be set`).toBeTruthy();
+        expect(
+            await readFile(configPath as string, "utf8"),
+            `${key} must point at a real, EMPTY config file`,
+        ).toBe("");
+    }
     expect(workspace.env.HOME).toBe(workspace.home);
     expect(workspace.home).not.toBe(process.env.HOME);
 }
 
 afterAll(async () => {
-    await Promise.all([
-        ...scratchRoots.map((root) => rm(root, { recursive: true, force: true })),
-        ...scratchHomes.map((home) => rm(home, { recursive: true, force: true })),
-    ]);
+    await removeScratchDirectories(...scratchRoots, ...scratchHomes);
 });
 
 describe("REPOSITORY_SCENARIOS", () => {
@@ -134,7 +140,7 @@ describe("no identity leakage", () => {
             const workspace = await scenarioFor(id).prepare(destination);
             scratchHomes.push(workspace.home);
 
-            assertNoIdentityLeakage(workspace);
+            await assertNoIdentityLeakage(workspace);
         },
     );
 });

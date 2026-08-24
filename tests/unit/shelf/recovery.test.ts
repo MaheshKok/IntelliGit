@@ -17,6 +17,8 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { afterEach, describe, expect, it } from "vitest";
 import { GitExecutor } from "../../../src/git/executor";
+import { POSIX_PERMISSIONS_ENFORCED } from "../../helpers/platformCapabilities";
+import { removeScratchDirectories } from "../../helpers/scratchDirectories";
 import { GitOps } from "../../../src/git/operations";
 import { RepositoryMutationCoordinator } from "../../../src/git/mutationCoordinator";
 import { RepositoryLock } from "../../../src/git/repositoryLock";
@@ -38,9 +40,7 @@ const execFileAsync = promisify(execFile);
 const directories: string[] = [];
 
 afterEach(async () => {
-    await Promise.all(
-        directories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })),
-    );
+    await removeScratchDirectories(...directories.splice(0));
 });
 
 async function git(directory: string, args: string[]): Promise<void> {
@@ -300,27 +300,33 @@ describe("ShelfReverter", () => {
         );
     });
 
-    it("retains both states when third-party mode changes keep the same bytes", async () => {
-        let root = "";
-        const { repositoryRoot, reverter } = await createReverter({
-            checkpoint: async (checkpoint) => {
-                if (checkpoint === "base-written") {
-                    await chmod(path.join(root, "tracked.txt"), 0o755);
-                }
-            },
-        });
-        root = repositoryRoot;
+    // Skipped where `chmod` cannot change what `lstat` reports: on Windows it toggles only the
+    // read-only attribute, so 0o755 on an already-writable file leaves the reported mode at 0o666
+    // and the third-party interference this test injects never happens.
+    it.skipIf(!POSIX_PERMISSIONS_ENFORCED)(
+        "retains both states when third-party mode changes keep the same bytes",
+        async () => {
+            let root = "";
+            const { repositoryRoot, reverter } = await createReverter({
+                checkpoint: async (checkpoint) => {
+                    if (checkpoint === "base-written") {
+                        await chmod(path.join(root, "tracked.txt"), 0o755);
+                    }
+                },
+            });
+            root = repositoryRoot;
 
-        const error = await reverter
-            .revert({
-                transactionId: "mode-interference",
-                files: [{ relativePath: "tracked.txt", baseBytes: Buffer.from("base\n") }],
-            })
-            .catch((reason: unknown) => reason);
+            const error = await reverter
+                .revert({
+                    transactionId: "mode-interference",
+                    files: [{ relativePath: "tracked.txt", baseBytes: Buffer.from("base\n") }],
+                })
+                .catch((reason: unknown) => reason);
 
-        expect(error).toBeInstanceOf(ShelfRollbackRetainedError);
-        expect(await readFile(path.join(repositoryRoot, "tracked.txt"), "utf8")).toBe("base\n");
-    });
+            expect(error).toBeInstanceOf(ShelfRollbackRetainedError);
+            expect(await readFile(path.join(repositoryRoot, "tracked.txt"), "utf8")).toBe("base\n");
+        },
+    );
 
     it("pins a normal base OID and uses the empty tree for an unborn repository", async () => {
         const normal = await createReverter();
