@@ -29,7 +29,11 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { assertNoSharedInodes } from "../../fixtures/repo/copyInodeGuard";
+import {
+    assertNoSharedInodes,
+    sharesStorage,
+    type FileIdentity,
+} from "../../fixtures/repo/copyInodeGuard";
 import { copyTemplate } from "../../fixtures/repo/copyTemplate";
 import { inventoryDirectory } from "../../fixtures/repo/fsInventory";
 import { seedFixtureTemplate } from "../../fixtures/repo/seed";
@@ -206,6 +210,69 @@ describe("copyTemplate", () => {
             await expect(assertNoSharedInodes(source, destination, entries)).rejects.toThrow(
                 /shares an inode with the template/,
             );
+        });
+
+        // `fs.cp` has no mechanism that can produce a hardlink -- it copies through the platform's
+        // own file-copy call -- so when this guard fired on `windows-latest` for exactly one loose
+        // Git object (`origin.git/objects/72/44a2...`, run 32772636554), the pair it condemned
+        // could not have been linked. Four earlier Windows runs of the same test were green: what
+        // `lstat` reports for `dev`/`ino` there is not, on its own, stable enough to identify a
+        // file, and the guard read a match into it.
+        //
+        // A second name is what a hardlink IS, and `nlink` is reported independently of the ids.
+        // The failing values cannot be manufactured by creating files -- an unlinked pair on a
+        // healthy filesystem never reports matching ids -- so the decision is asserted directly
+        // rather than through a copy the host would have to cooperate in breaking.
+        it("needs a second name, not just matching ids, before calling a pair linked", () => {
+            const cases: readonly {
+                readonly what: string;
+                readonly source: FileIdentity;
+                readonly destination: FileIdentity;
+                readonly shared: boolean;
+            }[] = [
+                {
+                    what: "a real hardlink: matching ids, and both sides admit a second name",
+                    source: { dev: 16_777_232, ino: 4_211_009, nlink: 2 },
+                    destination: { dev: 16_777_232, ino: 4_211_009, nlink: 2 },
+                    shared: true,
+                },
+                {
+                    what: "ids the platform declined to fill in -- two separate files, both zero",
+                    source: { dev: 0, ino: 0, nlink: 1 },
+                    destination: { dev: 0, ino: 0, nlink: 1 },
+                    shared: false,
+                },
+                {
+                    what: "plausible matching ids, but each file has exactly one name",
+                    source: { dev: 16_777_232, ino: 4_211_009, nlink: 1 },
+                    destination: { dev: 16_777_232, ino: 4_211_009, nlink: 1 },
+                    shared: false,
+                },
+                {
+                    what: "link counts that disagree cannot both describe one file",
+                    source: { dev: 16_777_232, ino: 4_211_009, nlink: 2 },
+                    destination: { dev: 16_777_232, ino: 4_211_009, nlink: 1 },
+                    shared: false,
+                },
+                {
+                    what: "distinct inodes on one device are distinct files",
+                    source: { dev: 16_777_232, ino: 4_211_009, nlink: 2 },
+                    destination: { dev: 16_777_232, ino: 4_211_010, nlink: 2 },
+                    shared: false,
+                },
+                {
+                    what: "one inode number on two devices is a coincidence, not a link",
+                    source: { dev: 16_777_232, ino: 4_211_009, nlink: 2 },
+                    destination: { dev: 16_777_233, ino: 4_211_009, nlink: 2 },
+                    shared: false,
+                },
+            ];
+
+            for (const testCase of cases) {
+                expect(sharesStorage(testCase.source, testCase.destination), testCase.what).toBe(
+                    testCase.shared,
+                );
+            }
         });
     });
 
