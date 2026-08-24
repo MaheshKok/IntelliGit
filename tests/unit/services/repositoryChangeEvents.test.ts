@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+/** The shape of a real `fs.FSWatcher` this suite depends on: an emitter that can be closed. */
+type FakeFsWatcher = EventEmitter & { close: ReturnType<typeof vi.fn> };
+
 const mocks = vi.hoisted(() => ({
     disposables: [] as Array<{ dispose: ReturnType<typeof vi.fn> }>,
     watchers: [] as Array<{
@@ -8,6 +11,7 @@ const mocks = vi.hoisted(() => ({
         onDidDelete: ReturnType<typeof vi.fn>;
         dispose: ReturnType<typeof vi.fn>;
     }>,
+    fsWatchers: [] as unknown[],
 }));
 
 vi.mock("vscode", () => {
@@ -57,16 +61,33 @@ vi.mock("vscode", () => {
     };
 });
 
-vi.mock("fs", () => ({ watch: vi.fn(() => ({ close: vi.fn() })) }));
+// A real `EventEmitter`, not a stub with an `on` spy. The defect under test is Node's own
+// rule that an `error` event with no listener is rethrown as an uncaught exception, so a
+// hand-rolled fake would decide the outcome the assertion is supposed to measure.
+vi.mock("fs", async () => {
+    const { EventEmitter: NodeEventEmitter } = await import("node:events");
+    return {
+        watch: vi.fn(() => {
+            const watcher = Object.assign(new NodeEventEmitter(), { close: vi.fn() });
+            mocks.fsWatchers.push(watcher);
+            return watcher;
+        }),
+    };
+});
 vi.mock("../../../src/git/gitDirectory", () => ({ resolveGitDir: () => "/repo/.git" }));
 
+import { EventEmitter } from "node:events";
 import { subscribeToRepositoryWorkingTreeChanges } from "../../../src/services/repositoryChangeEvents";
 
 afterEach(() => {
     mocks.disposables.length = 0;
     mocks.watchers.length = 0;
+    mocks.fsWatchers.length = 0;
     vi.clearAllMocks();
 });
+
+/** The `fs.watch` handles the root watcher armed, in registration order. */
+const fsWatchers = (): FakeFsWatcher[] => mocks.fsWatchers as FakeFsWatcher[];
 
 describe("repository working-tree changes", () => {
     it("keeps a root watcher armed after an expanded row releases while a diff panel remains subscribed", () => {
@@ -118,5 +139,33 @@ describe("repository working-tree changes", () => {
 
         activeRootB.dispose();
         expect(watcherB.dispose).toHaveBeenCalledOnce();
+    });
+
+    // The `try`/`catch` around each `fs.watch` call covers only the synchronous
+    // construction. A watch that succeeds and fails later -- the git dir replaced by a
+    // checkout, an inotify limit reached, EPERM on Windows -- emits `error` on the
+    // returned handle, and an `error` event with no listener is rethrown by Node as an
+    // uncaught exception. That does not degrade this one optional watcher: it takes down
+    // the extension host, and every other extension in it, with it.
+    it("survives a watch that fails after it was armed instead of killing the extension host", () => {
+        const subscription = subscribeToRepositoryWorkingTreeChanges("/repo", vi.fn());
+        const watchers = fsWatchers();
+
+        expect(
+            watchers.length,
+            "no fs.watch handle was armed, so this test is not exercising the failure it claims to",
+        ).toBeGreaterThan(0);
+
+        for (const [index, watcher] of watchers.entries()) {
+            expect(() => {
+                watcher.emit("error", new Error("ENOSPC: inotify watch limit reached"));
+            }, `fs.watch handle ${index} rethrew its error; an unhandled 'error' event terminates the extension host`).not.toThrow();
+            expect(
+                watcher.close,
+                `fs.watch handle ${index} stayed open after failing, so it can raise again`,
+            ).toHaveBeenCalled();
+        }
+
+        subscription.dispose();
     });
 });

@@ -2,6 +2,7 @@ import * as fs from "fs";
 import * as path from "path";
 import * as vscode from "vscode";
 import { resolveGitDir } from "../git/gitDirectory";
+import { logGitOpsWarning } from "../git/operationSupport";
 
 /** Sources whose existing watcher pathways can invalidate a repository diff snapshot. */
 export type RepositoryWorkingTreeChangeSource =
@@ -131,6 +132,30 @@ class RootWorkingTreeWatcher implements vscode.Disposable {
         }
     }
 
+    /**
+     * Retains one `fs.watch` handle so a failure after arming degrades to "not watching".
+     *
+     * The `try`/`catch` at each call site covers only the synchronous construction. A watch
+     * that succeeds and fails later -- the git dir replaced by a checkout, an inotify limit
+     * reached, EPERM on Windows -- reports that as an `error` event on the returned handle,
+     * and `FSWatcher` is an `EventEmitter`, so an `error` with no listener is rethrown by
+     * Node as an uncaught exception. That does not cost this one optional watcher: it
+     * terminates the extension host and every other extension running in it. Every other
+     * path in this file already treats an unwatchable root as acceptable degradation, so
+     * the handler closes the handle and matches that.
+     */
+    private retainFsWatcher(watcher: fs.FSWatcher): void {
+        watcher.on("error", (error) => {
+            logGitOpsWarning("repositoryChangeEvents.fsWatch", error);
+            try {
+                watcher.close();
+            } catch {
+                /* The failure that raised this may already have closed the handle. */
+            }
+        });
+        this.fsWatchers.push(watcher);
+    }
+
     /** Registers the existing Git metadata paths that can move symbolic refs. */
     private registerGitWatchers(): void {
         const gitDir = resolveGitDir(this.repoRoot);
@@ -144,7 +169,7 @@ class RootWorkingTreeWatcher implements vscode.Disposable {
         ]);
 
         try {
-            this.fsWatchers.push(
+            this.retainFsWatcher(
                 fs.watch(gitDir, (_event, filename) => {
                     const name = filename?.toString();
                     if (!name) {
@@ -175,7 +200,7 @@ class RootWorkingTreeWatcher implements vscode.Disposable {
                     watcher,
                 );
             } else {
-                this.fsWatchers.push(
+                this.retainFsWatcher(
                     fs.watch(refsPath, { recursive: true }, () => {
                         this.fire({ repoRoot: this.repoRoot, source: "git-refs" });
                     }),
