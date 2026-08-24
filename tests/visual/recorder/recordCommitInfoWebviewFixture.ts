@@ -1,10 +1,9 @@
 /**
- * Phase 2c-i's one thin vertical slice: records a "clean" webview-payload fixture for the
- * `commit-info` resolved host context (`CommitInfoViewProvider`,
- * `src/views/CommitInfoViewProvider.ts`) end to end -- a REAL provider, resolved through Phase 2a's
- * capture seam (`src/e2e/webviewCapture.ts`), driven against a REAL seeded git workspace so a REAL
- * git service (`GitOps.getCommitDetail`, `src/git/operations.ts`) produces the payload, then
- * canonicalized with Phase 2b (`canonicalizeCapturedMessages.ts`) and serialized with Phase 2b's
+ * Records a "clean" webview-payload fixture for the `commit-info` resolved host context
+ * (`CommitInfoViewProvider`, `src/views/CommitInfoViewProvider.ts`) end to end -- a REAL provider,
+ * resolved through the capture seam (`src/e2e/webviewCapture.ts`), driven against a REAL seeded git
+ * workspace so a REAL git service (`GitOps.getCommitDetail`, `src/git/operations.ts`) produces the
+ * payload, then canonicalized (`canonicalizeCapturedMessages.ts`) and serialized with the
  * fixed-byte convention (`webviewFixtureFile.ts`).
  *
  * **Why `commit-info`.** Of the 9 resolved host contexts (`WEBVIEW_CONTEXT_IDS`), this one has the
@@ -69,7 +68,7 @@ import type { WebviewFixture } from "./webviewFixtureTypes";
 /** The `commit-info` host context's own resolved id -- see `WEBVIEW_CONTEXT_IDS`. */
 const COMMIT_INFO_CONTEXT_ID: WebviewContextId = "commit-info";
 
-/** Phase 2c-i's one recorded scenario name, per PLAN.md step 11's `<scenario>.json` convention. */
+/** The one recorded scenario name, per the `<scenario>.json` convention. */
 export const COMMIT_INFO_CLEAN_SCENARIO = "clean";
 
 export interface RecordCommitInfoWebviewFixtureOptions {

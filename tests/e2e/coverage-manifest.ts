@@ -11,10 +11,10 @@ export type CoverageEntry = {
 };
 
 /** The explicit decision for a command that no implemented flow exercises yet. */
-const COMMAND_NOT_COVERED = "No implemented Phase 4 flow exercises this contributed command.";
+const COMMAND_NOT_COVERED = "No implemented flow exercises this contributed command.";
 
 /** The explicit decision for a webview action that no implemented flow exercises yet. */
-const WEBVIEW_NOT_COVERED = "No implemented Phase 4 flow exercises this webview action.";
+const WEBVIEW_NOT_COVERED = "No implemented flow exercises this webview action.";
 
 const COMMAND_ENTRIES = [
     { kind: "command", id: "intelligit.showGitLog", mutating: false },

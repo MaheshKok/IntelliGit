@@ -1,5 +1,5 @@
 /**
- * Spec-derived tests for the Phase 2c-v-c `undocked` / `mid-rebase` recorder.
+ * Spec-derived tests for the `undocked` / `mid-rebase` recorder.
  *
  * The two-workspace assertion is the recorder's determinism oracle; the exact policy tests cover
  * decisions that cannot be inferred from bytes, and the cleanup/double tests make the process-wide
@@ -396,7 +396,7 @@ describe("undocked recorder doubles", () => {
 });
 
 describe("undocked recorder registry", () => {
-    it("registers exactly the nine recorded contexts through Phase 2c-v-d", () => {
+    it("registers exactly the nine recorded contexts", () => {
         const contextIds = new Set(WEBVIEW_FIXTURE_RECORDERS.map((entry) => entry.contextId));
 
         expect(contextIds).toEqual(

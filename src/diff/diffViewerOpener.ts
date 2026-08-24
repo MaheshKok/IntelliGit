@@ -37,7 +37,7 @@ export async function reportDiffViewerLoadError(
     await DiffViewerPanel.postLoadError(generation, message);
 }
 
-/** Opens the Phase 1 reusable viewer after the funnel has completed all host-side gates. */
+/** Opens the reusable viewer after the funnel has completed all host-side gates. */
 export async function openDiffViewer(options: ViewerOptions): Promise<void> {
     if (!diffViewerExtensionUri) {
         throw new Error("Diff viewer extension URI has not been initialized.");

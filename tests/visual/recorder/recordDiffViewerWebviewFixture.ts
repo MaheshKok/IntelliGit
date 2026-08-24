@@ -1,7 +1,7 @@
 /**
- * Records the small `clean` fixture for the Phase 1 `diff-viewer` host context. The viewer is
- * intentionally exercised with texts supplied directly to `DiffViewerPanel.open()` because Phase 1
- * owns the panel protocol and rendering, while Phase 2 owns repository-side acquisition.
+ * Records the small `clean` fixture for the `diff-viewer` host context. The viewer is intentionally
+ * exercised with texts supplied directly to `DiffViewerPanel.open()`, which owns the panel protocol
+ * and rendering; repository-side acquisition is a separate concern.
  */
 
 import { isE2eControlChannelActive } from "../../../src/e2e/activationState";

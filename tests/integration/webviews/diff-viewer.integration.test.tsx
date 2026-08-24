@@ -188,7 +188,8 @@ describe("DiffViewerApp read-only contract", () => {
         expect(document.querySelector("textarea")).toBeNull();
     });
 
-    // Per Phase 5: windowing/virtualization must not remove off-screen rows, because VS Code find only searches DOM text.
+    // Windowing/virtualization must not remove off-screen rows, because VS Code find only searches
+    // DOM text.
     it("keeps every line of a ceiling-sized diff in the DOM so the find widget can search it", async () => {
         const linesPerSegment = 10;
         const segmentCount = Math.floor(MAX_DIFF_LINES / linesPerSegment);

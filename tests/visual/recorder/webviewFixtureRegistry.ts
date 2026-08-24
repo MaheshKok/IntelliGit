@@ -1,22 +1,22 @@
 /**
- * The registry of every recorded webview payload fixture (PLAN.md step 13). Each entry names one
- * resolved host context + scenario a committed fixture under `tests/visual/fixtures/<contextId>/`
- * belongs to, and the function that reproduces it against a freshly prepared scenario workspace
+ * The registry of every recorded webview payload fixture. Each entry names one resolved host
+ * context + scenario a committed fixture under `tests/visual/fixtures/<contextId>/` belongs to, and
+ * the function that reproduces it against a freshly prepared scenario workspace
  * (`tests/fixtures/repo/scenarios.ts`). `webviewFixtureGate.ts`'s repo-wide gate iterates this list
  * -- so registering a new context or scenario means adding a DATA entry here, never writing another
  * bespoke test file.
  *
- * Phase 2c-iv-a: `scenario` is typed `RepositoryScenarioId`, not a bare `string`. A fixture's
- * committed path segment IS the repository state it was recorded against, so making both one typed
- * field turns "a fixture named `clean` that was actually recorded against `dirty`" from a bug that
- * has to be found into a state that cannot be represented -- there is no second `scenarioId` field
- * left to disagree with it. `record` is handed the `ScenarioWorkspace` the gate prepared for that
- * exact `scenario` (`webviewFixtureGate.ts` prepares each distinct one at most once and reuses it
- * across every entry that declares it); an entry that needs seeded history (a commit hash, a
- * branch) reads it off `workspace.template`, which is only ever absent for `empty-repo` (see
- * `requireScenarioTemplate` below). `requireScenarioTemplate` itself is not exported: nothing
- * outside this module needs to reuse the guard directly -- `webviewFixtureGate.test.ts` exercises
- * it through the real `commit-info` entry's `record`, the way every consumer actually reaches it.
+ * `scenario` is typed `RepositoryScenarioId`, not a bare `string`. A fixture's committed path
+ * segment IS the repository state it was recorded against, so making both one typed field turns "a
+ * fixture named `clean` that was actually recorded against `dirty`" from a bug that has to be found
+ * into a state that cannot be represented -- there is no second `scenarioId` field left to disagree
+ * with it. `record` is handed the `ScenarioWorkspace` the gate prepared for that exact `scenario`
+ * (`webviewFixtureGate.ts` prepares each distinct one at most once and reuses it across every entry
+ * that declares it); an entry that needs seeded history (a commit hash, a branch) reads it off
+ * `workspace.template`, which is only ever absent for `empty-repo` (see `requireScenarioTemplate`
+ * below). `requireScenarioTemplate` itself is not exported: nothing outside this module needs to
+ * reuse the guard directly -- `webviewFixtureGate.test.ts` exercises it through the real
+ * `commit-info` entry's `record`, the way every consumer actually reaches it.
  */
 
 import type { WebviewContextId } from "../../../src/e2e/webviewCapture";
@@ -85,7 +85,7 @@ function requireScenarioTemplate(
 }
 
 /**
- * Every registered recording. Phase 2c-i's `commit-info` / `clean` recorder
+ * Every registered recording. The `commit-info` / `clean` recorder
  * (`recordCommitInfoWebviewFixture.ts`) is the first entry -- registered here, rather than
  * referenced directly by anything that needs to walk "every recorded fixture", so the repo-wide
  * gate (`webviewFixtureGate.ts`) has exactly one list to iterate. Adding the next context or
@@ -105,10 +105,10 @@ export const WEBVIEW_FIXTURE_RECORDERS: readonly WebviewFixtureRecorderEntry[] =
             });
         },
     },
-    // Phase 2c-iv-b: `commit-graph-card` and `commit-graph-compact` are the SAME
-    // `CommitGraphViewProvider` class constructed with a different `scriptFile` (see
-    // `recordCommitGraphWebviewFixture.ts`'s own doc comment) -- both declared here against the
-    // same `clean` scenario this module's doc comment already prepares once and reuses.
+    // `commit-graph-card` and `commit-graph-compact` are the SAME `CommitGraphViewProvider` class
+    // constructed with a different `scriptFile` (see `recordCommitGraphWebviewFixture.ts`'s own doc
+    // comment) -- both declared here against the same `clean` scenario this module's doc comment
+    // already prepares once and reuses.
     {
         contextId: "commit-graph-card",
         scenario: COMMIT_GRAPH_CLEAN_SCENARIO,
@@ -133,7 +133,7 @@ export const WEBVIEW_FIXTURE_RECORDERS: readonly WebviewFixtureRecorderEntry[] =
             });
         },
     },
-    // Phase 2c-iv-c: `commit-panel` records the `dirty` scenario, not `clean` -- see
+    // `commit-panel` records the `dirty` scenario, not `clean` -- see
     // `recordCommitPanelWebviewFixture.ts`'s own doc comment. `repoRoot` is taken from
     // `workspace.root` directly (not `template.root`) because that is the field every
     // `ScenarioWorkspace` unconditionally carries; `requireScenarioTemplate` is still needed to
@@ -150,10 +150,10 @@ export const WEBVIEW_FIXTURE_RECORDERS: readonly WebviewFixtureRecorderEntry[] =
             });
         },
     },
-    // Phase 2c-v-a: `merge-conflict-session` records the `conflicted` scenario -- see
+    // `merge-conflict-session` records the `conflicted` scenario -- see
     // `recordMergeConflictSessionWebviewFixture.ts`'s own doc comment for why `conflicted`, not
-    // `clean`. `repoRoot` is taken from `workspace.root` directly for the same reason `commit-panel`
-    // does; `requireScenarioTemplate` is still needed to reach `originRoot`.
+    // `clean`. `repoRoot` is taken from `workspace.root` directly for the same reason
+    // `commit-panel` does; `requireScenarioTemplate` is still needed to reach `originRoot`.
     {
         contextId: "merge-conflict-session",
         scenario: MERGE_CONFLICT_SESSION_CONFLICTED_SCENARIO,
@@ -166,7 +166,7 @@ export const WEBVIEW_FIXTURE_RECORDERS: readonly WebviewFixtureRecorderEntry[] =
             });
         },
     },
-    // Phase 2c-v-b: merge-editor records conflicted stage data, not clean repository data.
+    // merge-editor records conflicted stage data, not clean repository data.
     {
         contextId: "merge-editor",
         scenario: MERGE_EDITOR_CONFLICTED_SCENARIO,
@@ -179,7 +179,7 @@ export const WEBVIEW_FIXTURE_RECORDERS: readonly WebviewFixtureRecorderEntry[] =
             });
         },
     },
-    // Phase 2c-v-c: undocked records the real in-progress rebase state, not a clean or merged tree.
+    // undocked records the real in-progress rebase state, not a clean or merged tree.
     {
         contextId: "undocked",
         scenario: UNDOCKED_MID_REBASE_SCENARIO,
@@ -192,10 +192,10 @@ export const WEBVIEW_FIXTURE_RECORDERS: readonly WebviewFixtureRecorderEntry[] =
             });
         },
     },
-    // Phase 2c-v-d: `shelf-conflict-editor` records `shelf-conflicted`, not `shelf-populated` --
-    // only the former shelves eligible mutable.txt content, rewrites the worktree, and opens a
-    // real three-way text conflict. The scenario carries its exact shelf storage root because the
-    // recorder must consume the store it wrote rather than re-derive a disposable destination.
+    // `shelf-conflict-editor` records `shelf-conflicted`, not `shelf-populated` -- only the former
+    // shelves eligible mutable.txt content, rewrites the worktree, and opens a real three-way text
+    // conflict. The scenario carries its exact shelf storage root because the recorder must consume
+    // the store it wrote rather than re-derive a disposable destination.
     {
         contextId: "shelf-conflict-editor",
         scenario: SHELF_CONFLICT_EDITOR_CONFLICTED_SCENARIO,
