@@ -151,11 +151,27 @@ describe("E2eControlChannelClient response polling", () => {
             pollIntervalMs: 5,
         });
 
-        const responsePromise = client.request(REQUEST_PAYLOAD);
+        // The handler is attached where the promise is created, not at the assertion. This is the
+        // one case in the file whose promise is expected to REJECT, and `responseTimeoutMs` is 25ms
+        // -- less than the `waitForRequest` directory poll below costs on a slow filesystem. So the
+        // rejection lands while nothing is watching it, Node reports an unhandled rejection, and
+        // that fails the RUN while this test still passes: `.rejects` is satisfied by a promise
+        // that rejected earlier, so the assertion never notices it was late. Measured on
+        // windows-latest at 10a7e3a9 -- `Tests 4160 passed | 46 skipped (4206)`, `Errors 1 error`,
+        // exit code 1, no test red anywhere. Reproducible on any platform by sleeping 80ms in the
+        // gap this line closes.
+        const outcome = client.request(REQUEST_PAYLOAD).catch((error: unknown) => error);
         const request = await waitForRequest();
+        const rejection = await outcome;
 
-        await expect(responsePromise).rejects.toThrow(
-            new RegExp(`did not arrive within 25ms.*${request.nonce}\\.request\\.json`),
-        );
+        expect(
+            rejection,
+            "the bounded poll must reject rather than resolve; a resolved value here would mean " +
+                "the deadline was never enforced",
+        ).toBeInstanceOf(Error);
+        expect(
+            (rejection as Error).message,
+            "the timeout must name both the bound it exceeded and the request left unanswered",
+        ).toMatch(new RegExp(`did not arrive within 25ms.*${request.nonce}\\.request\\.json`));
     });
 });
