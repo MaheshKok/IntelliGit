@@ -45,6 +45,13 @@
  * 2x target is `ceil(2 x 2,806.205) = 5,613 ms`. Heap delta is reported by the script only when
  * `node --expose-gc` provides forced collection; otherwise it is reported as
  * `"unmeasured"` and is never a unit-test gate.
+ *
+ * Both millisecond figures are uninstrumented measurements and are asserted only in
+ * uninstrumented runs; `tests/helpers/timingBudgets.ts` carries the mechanism. Under
+ * `--coverage` on this same host the large tier measured 64.164 ms against the 16.591 ms
+ * recorded here -- 3.87x, more than the 3.5x headroom the compute target was built with --
+ * and 209.875 ms on GitHub's x86 runner. Neither number describes the product, so raising
+ * the targets to admit them would only make the gate unable to see a real regression.
  */
 
 /** Maximum bytes permitted for one diff side, derived as 2 x 105,047. */

@@ -12,6 +12,7 @@ vi.mock("vscode", () => ({
     },
     workspace: { fs: { stat: vi.fn(), readFile: vi.fn() }, textDocuments: [] },
 }));
+import { timingBudgetsApply } from "../../helpers/timingBudgets";
 import { computeDiffSegments } from "../../../src/diff/diffSegments";
 import { countLines } from "../../../src/diff/sideLoader";
 import {
@@ -85,7 +86,9 @@ describe("measured diff viewer budgets", () => {
                 ),
                 name,
             ).toBe(false);
-            expect(elapsedMs, `${name} compute`).toBeLessThan(MAX_DIFF_COMPUTE_MS);
+            if (timingBudgetsApply) {
+                expect(elapsedMs, `${name} compute`).toBeLessThan(MAX_DIFF_COMPUTE_MS);
+            }
             expect(
                 Buffer.byteLength(JSON.stringify(payload), "utf8"),
                 `${name} payload bytes`,

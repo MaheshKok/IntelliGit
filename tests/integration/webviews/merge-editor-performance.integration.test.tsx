@@ -15,6 +15,7 @@ import { flush } from "../../helpers/reactDomTestUtils";
 import { installWebviewI18n } from "../../helpers/webviewI18nTestUtils";
 import { computeDiffSegments } from "../../../src/diff/diffSegments";
 import { MAX_DIFF_RENDER_MS } from "../../../src/diff/diffBudgets";
+import { timingBudgetsApply } from "../../helpers/timingBudgets";
 import type { DiffViewerData } from "../../../src/webviews/protocol/diffViewerTypes";
 
 interface MockVsCodeApi {
@@ -158,7 +159,9 @@ describe("MergeEditorApp large document flow", () => {
             const renderMs = performance.now() - renderStart;
 
             expect(document.querySelectorAll(".diff-pane .code-block").length).toBeGreaterThan(0);
-            expect(renderMs, `${name} render`).toBeLessThan(MAX_DIFF_RENDER_MS);
+            if (timingBudgetsApply) {
+                expect(renderMs, `${name} render`).toBeLessThan(MAX_DIFF_RENDER_MS);
+            }
         }
     }, 20_000);
 
