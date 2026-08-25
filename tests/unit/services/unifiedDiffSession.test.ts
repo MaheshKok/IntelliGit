@@ -133,6 +133,7 @@ vi.mock("../../../src/git/executor", () => ({
 
 import { setDiffViewerExtensionUri } from "../../../src/diff/diffViewerOpener";
 import { openUnifiedDiff } from "../../../src/services/diffService";
+import { assertRepoRelativePath } from "../../../src/utils/fileOps";
 import { showDiffFromPanel } from "../../../src/views/panelFileActions";
 
 const extensionUri = { fsPath: "/extension" } as Parameters<typeof setDiffViewerExtensionUri>[0];
@@ -184,8 +185,20 @@ describe("unified diff session snapshots", () => {
             mode: 0o100644,
         }));
         mocks.documents.push({
-            // Mirrors the mocked `Uri.joinPath`, which joins `[base.fsPath, ...parts]` on "/".
-            uri: { toString: () => `file:${REPO_ROOT}/${path}` },
+            // The descriptor spelling is the variable under test; the file's identity is not.
+            // `loadDiffSide` runs every `filePath` through `assertRepoRelativePath`, which ends
+            // in `split(path.sep).join("/")` -- so on Windows the loader looks the buffer up as
+            // `src/example.ts` while the descriptor still says `src\example.ts`. A fixture
+            // registered under the raw spelling is never found, the loader falls back to disk,
+            // and the assertion below reads as "the refresh never happened" when the refresh
+            // worked correctly. Calling the same function keeps the two in agreement on every
+            // platform without predicting what `path.sep` is.
+            //
+            // This borrows production's normalizer and so cannot notice a change to it. That is
+            // acceptable because the lookup is only how this test OBSERVES the refresh; the
+            // behaviour it asserts is the separator handling in `shouldRefreshForChange`, which
+            // is a different function and stays measured -- see the mutation note on the case.
+            uri: { toString: () => `file:${REPO_ROOT}/${assertRepoRelativePath(path)}` },
             getText: () => mocks.worktreeText,
         });
 
@@ -202,7 +215,9 @@ describe("unified diff session snapshots", () => {
         expect(providerLoad).toHaveBeenCalledOnce();
         mocks.worktreeText = "dirty document\n";
         mocks.subscriptions[0]?.listener({
-            repoRoot: "/repo",
+            repoRoot: REPO_ROOT,
+            // Watcher events are always slash-separated regardless of the descriptor spelling,
+            // which is precisely what `shouldRefreshForChange` has to reconcile.
             path: "src/example.ts",
             source: "workspace-file",
         });
