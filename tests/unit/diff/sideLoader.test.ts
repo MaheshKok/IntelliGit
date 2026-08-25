@@ -1,26 +1,27 @@
+import * as path from "node:path";
+
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SideSpec } from "../../../src/services/diffService";
 
-const mocks = vi.hoisted(() => ({
-    stat: vi.fn(),
-    readFile: vi.fn(),
-    textDocuments: [] as Array<{ uri: { toString(): string }; getText(): string }>,
-}));
+const mocks = vi.hoisted(() => {
+    const fileUri = (fsPath: string) => ({
+        scheme: "file",
+        fsPath,
+        toString: () => `file://${fsPath}`,
+    });
+    return {
+        stat: vi.fn(),
+        readFile: vi.fn(),
+        textDocuments: [] as Array<{ uri: { toString(): string }; getText(): string }>,
+        fileUri,
+        joinUri: (root: { fsPath: string }, filePath: string) =>
+            fileUri(`${root.fsPath}/${filePath}`),
+    };
+});
 
 vi.mock("vscode", () => ({
     FileType: { File: 1, Directory: 2, SymbolicLink: 64 },
-    Uri: {
-        file: (fsPath: string) => ({
-            scheme: "file",
-            fsPath,
-            toString: () => `file://${fsPath}`,
-        }),
-        joinPath: (root: { fsPath: string }, filePath: string) => ({
-            scheme: "file",
-            fsPath: `${root.fsPath}/${filePath}`,
-            toString: () => `file://${root.fsPath}/${filePath}`,
-        }),
-    },
+    Uri: { file: mocks.fileUri, joinPath: mocks.joinUri },
     workspace: {
         fs: { stat: mocks.stat, readFile: mocks.readFile },
         textDocuments: mocks.textDocuments,
@@ -28,6 +29,20 @@ vi.mock("vscode", () => ({
 }));
 
 import { countLines, loadDiffSide } from "../../../src/diff/sideLoader";
+
+/**
+ * The fixture repository root, resolved the way the loader resolves it.
+ *
+ * `loadWorktree` builds its lookup URI from `path.resolve(repoRoot)`. `/repo` is not an absolute
+ * path on Windows, so that call rewrites it against the current drive and the URI the loader
+ * computes stops matching a hand-written `file:///repo/...` literal -- the open document is then
+ * missed and the loader silently falls back to disk, which is exactly the behaviour these tests
+ * exist to rule out. Resolving here keeps both sides in agreement on every platform.
+ */
+const REPO_ROOT = path.resolve("/repo");
+
+/** The URI the loader computes for the fixture file, built through the same mock it uses. */
+const fixtureFileUri = () => mocks.joinUri(mocks.fileUri(REPO_ROOT), "file.txt");
 
 interface BinaryExecutor {
     runBinary: ReturnType<typeof vi.fn>;
@@ -64,7 +79,7 @@ function refSide(ref = "HEAD"): SideSpec {
 
 function options(side: SideSpec, binaryExecutor: BinaryExecutor, maxBytes = 32) {
     return {
-        repoRoot: "/repo",
+        repoRoot: REPO_ROOT,
         filePath: "file.txt",
         side,
         maxBytes,
@@ -136,8 +151,7 @@ describe("loadDiffSide", () => {
     });
 
     it("uses an open dirty document before stale filesystem metadata", async () => {
-        const uri = { toString: () => "file:///repo/file.txt" };
-        mocks.textDocuments.push({ uri, getText: () => "dirty\n" });
+        mocks.textDocuments.push({ uri: fixtureFileUri(), getText: () => "dirty\n" });
 
         const result = await loadDiffSide(options({ kind: "worktree" }, executor() as never));
 
@@ -147,8 +161,7 @@ describe("loadDiffSide", () => {
     });
 
     it("keeps a dirty open symlink ineligible", async () => {
-        const uri = { toString: () => "file:///repo/file.txt" };
-        mocks.textDocuments.push({ uri, getText: () => "dirty symlink\n" });
+        mocks.textDocuments.push({ uri: fixtureFileUri(), getText: () => "dirty symlink\n" });
         mocks.stat.mockResolvedValue({ type: 64, size: 0 });
 
         await expect(loadDiffSide(options({ kind: "worktree" }, executor()))).resolves.toEqual({

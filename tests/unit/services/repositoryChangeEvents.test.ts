@@ -1,4 +1,28 @@
+import * as path from "node:path";
+
 import { afterEach, describe, expect, it, vi } from "vitest";
+
+/**
+ * A fixture root that the production root normalizer leaves unchanged, on every platform.
+ *
+ * `/repo` is not an absolute path on Windows. `path.resolve` rewrites it against the current
+ * drive and the normalizer then lowercases the result, so the watcher publishes `d:\repo` while
+ * a literal `"/repo"` in an expectation still says `/repo` -- the assertion fails for a reason
+ * that has nothing to do with what it is measuring. Applying the same two steps here makes the
+ * constant a fixed point, so the assertions below can hold it directly.
+ *
+ * This does mirror the normalizer, which costs these tests the ability to notice a change to it.
+ * `collapses two spellings of one root onto a single watcher` below buys that back by asserting
+ * what the normalizer is FOR, rather than what it returns.
+ */
+function fixtureRoot(name: string): string {
+    const resolved = path.resolve(name);
+    return process.platform === "win32" ? resolved.toLowerCase() : resolved;
+}
+
+const REPO = fixtureRoot("/repo");
+const REPO_A = fixtureRoot("/repo-a");
+const REPO_B = fixtureRoot("/repo-b");
 
 /** The shape of a real `fs.FSWatcher` this suite depends on: an emitter that can be closed. */
 type FakeFsWatcher = EventEmitter & { close: ReturnType<typeof vi.fn> };
@@ -106,35 +130,63 @@ const fsWatchers = (): FakeFsWatcher[] => mocks.fsWatchers as FakeFsWatcher[];
 
 describe("repository working-tree changes", () => {
     it("keeps a root watcher armed after an expanded row releases while a diff panel remains subscribed", () => {
-        const row = subscribeToRepositoryWorkingTreeChanges("/repo", vi.fn());
-        const panel = subscribeToRepositoryWorkingTreeChanges("/repo", vi.fn());
-        const watcher = mocks.watchers[0];
-        if (!watcher) throw new Error("Expected a root watcher");
+        const row = subscribeToRepositoryWorkingTreeChanges(REPO, vi.fn());
+        const panel = subscribeToRepositoryWorkingTreeChanges(REPO, vi.fn());
+        try {
+            const watcher = mocks.watchers[0];
+            if (!watcher) throw new Error("Expected a root watcher");
 
-        row.dispose();
-        expect(watcher.dispose).not.toHaveBeenCalled();
+            row.dispose();
+            expect(watcher.dispose).not.toHaveBeenCalled();
 
-        panel.dispose();
-        expect(watcher.dispose).toHaveBeenCalledOnce();
+            panel.dispose();
+            expect(watcher.dispose).toHaveBeenCalledOnce();
+        } finally {
+            row.dispose();
+            panel.dispose();
+        }
+    });
+
+    // Two spellings of one root must not arm two watchers: the second subscription would watch
+    // the same directory twice and every consumer would refresh twice per write. This asserts
+    // the normalizer's purpose without reading its output, which is what lets `fixtureRoot`
+    // above mirror it safely.
+    it("collapses two spellings of one root onto a single watcher", () => {
+        const canonical = subscribeToRepositoryWorkingTreeChanges(REPO, vi.fn());
+        let alternate: { dispose(): void } | undefined;
+        try {
+            const armedForCanonical = mocks.watchers.length;
+            alternate = subscribeToRepositoryWorkingTreeChanges(`${REPO}${path.sep}`, vi.fn());
+            expect(
+                mocks.watchers.length,
+                "a trailing separator spelled a second root, so the same directory is now watched twice and every consumer refreshes twice per write",
+            ).toBe(armedForCanonical);
+        } finally {
+            canonical.dispose();
+            alternate?.dispose();
+        }
     });
 
     it("emits the root and repository-relative path from the workspace watcher", () => {
         const listener = vi.fn();
-        const subscription = subscribeToRepositoryWorkingTreeChanges("/repo", listener);
-        const watcher = mocks.watchers[0];
-        if (!watcher) throw new Error("Expected a root watcher");
+        const subscription = subscribeToRepositoryWorkingTreeChanges(REPO, listener);
+        try {
+            const watcher = mocks.watchers[0];
+            if (!watcher) throw new Error("Expected a root watcher");
 
-        const onDidChange = watcher.onDidChange.mock.calls[0]?.[0] as
-            | ((uri: { fsPath: string }) => void)
-            | undefined;
-        onDidChange?.({ fsPath: "/repo/src/example.ts" });
+            const onDidChange = watcher.onDidChange.mock.calls[0]?.[0] as
+                | ((uri: { fsPath: string }) => void)
+                | undefined;
+            onDidChange?.({ fsPath: path.join(REPO, "src", "example.ts") });
 
-        expect(listener).toHaveBeenCalledWith({
-            repoRoot: "/repo",
-            path: "src/example.ts",
-            source: "workspace-file",
-        });
-        subscription.dispose();
+            expect(listener).toHaveBeenCalledWith({
+                repoRoot: REPO,
+                path: "src/example.ts",
+                source: "workspace-file",
+            });
+        } finally {
+            subscription.dispose();
+        }
     });
 
     // One route publishes changes that are not on disk. The diff viewer needs them -- it renders
@@ -144,7 +196,8 @@ describe("repository working-tree changes", () => {
     // nothing.
     it("marks a buffer edit as unsaved and leaves a written file unmarked", () => {
         const listener = vi.fn();
-        const subscription = subscribeToRepositoryWorkingTreeChanges("/repo", listener);
+        const subscription = subscribeToRepositoryWorkingTreeChanges(REPO, listener);
+        const changed = path.join(REPO, "src", "example.ts");
         const onDidChangeTextDocument = mocks.documentChangeHandlers[0];
         const onDidSaveTextDocument = mocks.documentSaveHandlers[0];
         if (!onDidChangeTextDocument || !onDidSaveTextDocument)
@@ -155,27 +208,27 @@ describe("repository working-tree changes", () => {
         // arming its own, and that test would fail for a reason belonging to this one.
         try {
             onDidChangeTextDocument({
-                document: { uri: { fsPath: "/repo/src/example.ts" }, isDirty: true },
+                document: { uri: { fsPath: changed }, isDirty: true },
             });
 
             expect(
                 listener,
                 "an edit still only in the buffer published as an ordinary write, so a consumer reading git status cannot tell it apart from one",
             ).toHaveBeenCalledWith({
-                repoRoot: "/repo",
+                repoRoot: REPO,
                 path: "src/example.ts",
                 source: "workspace-file",
                 unsaved: true,
             });
 
             listener.mockClear();
-            onDidSaveTextDocument({ uri: { fsPath: "/repo/src/example.ts" }, isDirty: false });
+            onDidSaveTextDocument({ uri: { fsPath: changed }, isDirty: false });
 
             expect(
                 listener,
                 "the write that lands on disk carried the unsaved marker, which would skip the refresh the save exists to trigger",
             ).toHaveBeenCalledWith({
-                repoRoot: "/repo",
+                repoRoot: REPO,
                 path: "src/example.ts",
                 source: "workspace-file",
             });
@@ -185,22 +238,29 @@ describe("repository working-tree changes", () => {
     });
 
     it("keeps the old root watcher alive across an active-root switch while a panel is open", () => {
-        const activeRootA = subscribeToRepositoryWorkingTreeChanges("/repo-a", vi.fn());
-        const panel = subscribeToRepositoryWorkingTreeChanges("/repo-a", vi.fn());
-        const watcherA = mocks.watchers[0];
-        if (!watcherA) throw new Error("Expected the first root watcher");
+        const activeRootA = subscribeToRepositoryWorkingTreeChanges(REPO_A, vi.fn());
+        const panel = subscribeToRepositoryWorkingTreeChanges(REPO_A, vi.fn());
+        let activeRootB: { dispose(): void } | undefined;
+        try {
+            const watcherA = mocks.watchers[0];
+            if (!watcherA) throw new Error("Expected the first root watcher");
 
-        activeRootA.dispose();
-        expect(watcherA.dispose).not.toHaveBeenCalled();
+            activeRootA.dispose();
+            expect(watcherA.dispose).not.toHaveBeenCalled();
 
-        const activeRootB = subscribeToRepositoryWorkingTreeChanges("/repo-b", vi.fn());
-        const watcherB = mocks.watchers[1];
-        if (!watcherB) throw new Error("Expected the replacement root watcher");
-        panel.dispose();
-        expect(watcherA.dispose).toHaveBeenCalledOnce();
+            activeRootB = subscribeToRepositoryWorkingTreeChanges(REPO_B, vi.fn());
+            const watcherB = mocks.watchers[1];
+            if (!watcherB) throw new Error("Expected the replacement root watcher");
+            panel.dispose();
+            expect(watcherA.dispose).toHaveBeenCalledOnce();
 
-        activeRootB.dispose();
-        expect(watcherB.dispose).toHaveBeenCalledOnce();
+            activeRootB.dispose();
+            expect(watcherB.dispose).toHaveBeenCalledOnce();
+        } finally {
+            activeRootA.dispose();
+            panel.dispose();
+            activeRootB?.dispose();
+        }
     });
 
     // The `try`/`catch` around each `fs.watch` call covers only the synchronous
@@ -210,24 +270,26 @@ describe("repository working-tree changes", () => {
     // uncaught exception. That does not degrade this one optional watcher: it takes down
     // the extension host, and every other extension in it, with it.
     it("survives a watch that fails after it was armed instead of killing the extension host", () => {
-        const subscription = subscribeToRepositoryWorkingTreeChanges("/repo", vi.fn());
-        const watchers = fsWatchers();
+        const subscription = subscribeToRepositoryWorkingTreeChanges(REPO, vi.fn());
+        try {
+            const watchers = fsWatchers();
 
-        expect(
-            watchers.length,
-            "no fs.watch handle was armed, so this test is not exercising the failure it claims to",
-        ).toBeGreaterThan(0);
-
-        for (const [index, watcher] of watchers.entries()) {
-            expect(() => {
-                watcher.emit("error", new Error("ENOSPC: inotify watch limit reached"));
-            }, `fs.watch handle ${index} rethrew its error; an unhandled 'error' event terminates the extension host`).not.toThrow();
             expect(
-                watcher.close,
-                `fs.watch handle ${index} stayed open after failing, so it can raise again`,
-            ).toHaveBeenCalled();
-        }
+                watchers.length,
+                "no fs.watch handle was armed, so this test is not exercising the failure it claims to",
+            ).toBeGreaterThan(0);
 
-        subscription.dispose();
+            for (const [index, watcher] of watchers.entries()) {
+                expect(() => {
+                    watcher.emit("error", new Error("ENOSPC: inotify watch limit reached"));
+                }, `fs.watch handle ${index} rethrew its error; an unhandled 'error' event terminates the extension host`).not.toThrow();
+                expect(
+                    watcher.close,
+                    `fs.watch handle ${index} stayed open after failing, so it can raise again`,
+                ).toHaveBeenCalled();
+            }
+        } finally {
+            subscription.dispose();
+        }
     });
 });

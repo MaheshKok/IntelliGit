@@ -1,5 +1,18 @@
+// Aliased: the parametrized separator cases below bind `path` as the descriptor under test.
+import * as nodePath from "node:path";
+
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ProviderLoadResult, UnifiedDiffRequest } from "../../../src/diff/unifiedDiffTypes";
+
+/**
+ * The fixture repository root, resolved the way the worktree loader resolves it.
+ *
+ * `/repo` is not an absolute path on Windows, so `path.resolve` in `loadWorktree` rewrites it
+ * against the current drive; a document URI hand-written as `file:/repo/...` then fails to match
+ * the URI the loader computes, the open buffer is missed, and the session silently renders the
+ * file from disk instead of the dirty text these tests assert on.
+ */
+const REPO_ROOT = nodePath.resolve("/repo");
 
 interface CapturedPanel {
     postedMessages: unknown[];
@@ -132,7 +145,7 @@ function request(leftLoad: () => Promise<ProviderLoadResult>): UnifiedDiffReques
         load,
     });
     return {
-        repoRoot: "/repo",
+        repoRoot: REPO_ROOT,
         path: "src/example.ts",
         left: provider("left", leftLoad),
         right: provider("right", async () => ({
@@ -171,7 +184,8 @@ describe("unified diff session snapshots", () => {
             mode: 0o100644,
         }));
         mocks.documents.push({
-            uri: { toString: () => `file:/repo/${path}` },
+            // Mirrors the mocked `Uri.joinPath`, which joins `[base.fsPath, ...parts]` on "/".
+            uri: { toString: () => `file:${REPO_ROOT}/${path}` },
             getText: () => mocks.worktreeText,
         });
 

@@ -893,11 +893,26 @@ function lastSetRepositoriesMessage():
     return messages.at(-1);
 }
 
+/**
+ * Resolves a root the way `repositoryChangeEvents` does before it builds a watcher pattern.
+ *
+ * The watcher's `RelativePattern` is built from the NORMALIZED root, so a fixture spelled
+ * `/repo-b` is watched as `d:\repo-b` on Windows and a raw string comparison finds nothing --
+ * the row reads as unwatched when it is watched. Both sides go through this, because
+ * normalizing only the lookup would still miss a pattern recorded in another spelling.
+ */
+function normalizeFixtureRoot(root: string): string {
+    const resolved = path.resolve(root);
+    return process.platform === "win32" ? resolved.toLowerCase() : resolved;
+}
+
 function activeWatcherForRoot(root: string): FakeFileSystemWatcher | undefined {
+    const wanted = normalizeFixtureRoot(root);
     return fileSystemWatchers.find((watcher) => {
         if (watcher.dispose.mock.calls.length > 0) return false;
         const pattern = watcher.pattern as { baseUri?: { fsPath?: string; path?: string } };
-        return (pattern.baseUri?.fsPath ?? pattern.baseUri?.path) === root;
+        const base = pattern.baseUri?.fsPath ?? pattern.baseUri?.path;
+        return base !== undefined && normalizeFixtureRoot(base) === wanted;
     });
 }
 
