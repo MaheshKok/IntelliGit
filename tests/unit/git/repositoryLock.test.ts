@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, open, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, open, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -9,6 +9,7 @@ import {
     RepositoryLockBusyError,
 } from "../../../src/git/repositoryLock";
 import { RENAME_OVER_OPEN_FILE_SUPPORTED } from "../../helpers/platformCapabilities";
+import { removeScratchDirectories } from "../../helpers/scratchDirectories";
 
 /** Delay applied to heartbeat writes only, so "the write is still in flight when release runs" is
  * a controlled fact rather than a race the test hopes to win. Zero for every other test here. */
@@ -85,7 +86,9 @@ afterEach(async () => {
         value: originalPlatform,
         configurable: true,
     });
-    await Promise.all(directories.splice(0).map((directory) => rm(directory, { recursive: true })));
+    await Promise.all(
+        directories.splice(0).map((directory) => removeScratchDirectories(directory)),
+    );
 });
 
 async function commonDir(): Promise<string> {

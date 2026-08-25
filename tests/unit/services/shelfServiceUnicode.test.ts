@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -11,13 +11,14 @@ import { RepositoryMutationGate } from "../../../src/git/repositoryMutationGate"
 import { resolveShelfPaths } from "../../../src/shelf/paths";
 import { ShelfStore } from "../../../src/shelf/store";
 import { ShelfService } from "../../../src/services/shelfService";
+import { removeScratchDirectories } from "../../helpers/scratchDirectories";
 
 const execFileAsync = promisify(execFile);
 const directories: string[] = [];
 
 afterEach(async () => {
     await Promise.all(
-        directories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })),
+        directories.splice(0).map((directory) => removeScratchDirectories(directory)),
     );
 });
 

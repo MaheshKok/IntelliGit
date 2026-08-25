@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -41,6 +41,7 @@ import {
     PromptTooLargeError,
     prepareCommitMessageGeneration,
 } from "../../../src/ai/commitMessageGenerator";
+import { removeScratchDirectories } from "../../helpers/scratchDirectories";
 
 const directories: string[] = [];
 const execFileAsync = promisify(execFile);
@@ -49,7 +50,7 @@ const itPosix = process.platform === "win32" ? it.skip : it;
 afterEach(async () => {
     await Promise.all(
         directories.splice(0).map(async (directory) => {
-            await rm(directory, { recursive: true, force: true });
+            await removeScratchDirectories(directory);
         }),
     );
 });

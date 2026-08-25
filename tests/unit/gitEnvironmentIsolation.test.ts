@@ -15,6 +15,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { removeScratchDirectories } from "../helpers/scratchDirectories";
 
 const execFileAsync = promisify(execFile);
 const directories: string[] = [];
@@ -39,7 +40,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
     await Promise.all(
-        directories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })),
+        directories.splice(0).map((directory) => removeScratchDirectories(directory)),
     );
 });
 

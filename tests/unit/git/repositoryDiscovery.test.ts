@@ -6,6 +6,7 @@ import {
     discoverGitRepositories,
     type ResolveGitRepository,
 } from "../../../src/services/repositoryDiscovery";
+import { removeScratchDirectories } from "../../helpers/scratchDirectories";
 
 const tempRoots: string[] = [];
 
@@ -36,9 +37,7 @@ function resolverFor(roots: string[]): ResolveGitRepository {
 }
 
 afterEach(async () => {
-    await Promise.all(
-        tempRoots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true })),
-    );
+    await Promise.all(tempRoots.splice(0).map((root) => removeScratchDirectories(root)));
 });
 
 describe("discoverGitRepositories", () => {

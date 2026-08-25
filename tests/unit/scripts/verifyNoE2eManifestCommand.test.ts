@@ -6,7 +6,7 @@
 // a control command is ever actually added to it, not just against synthetic fixtures.
 
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -15,6 +15,7 @@ import {
     findE2eCommands,
     verifyNoE2eManifestCommand,
 } from "../../../scripts/verifyNoE2eManifestCommand.js";
+import { removeScratchDirectoriesSync } from "../../helpers/scratchDirectories";
 
 const SCRIPT_PATH = resolve(__dirname, "../../../scripts/verifyNoE2eManifestCommand.js");
 
@@ -33,7 +34,7 @@ describe("verifyNoE2eManifestCommand: synthetic fixtures", () => {
     });
 
     afterEach(() => {
-        rmSync(dir, { recursive: true, force: true });
+        removeScratchDirectoriesSync(dir);
     });
 
     function seedPackageJson(contributes: unknown): string {
@@ -183,7 +184,7 @@ describe("verifyNoE2eManifestCommand: a control command with neutral metadata", 
     });
 
     afterEach(() => {
-        rmSync(dir, { recursive: true, force: true });
+        removeScratchDirectoriesSync(dir);
     });
 
     const NEUTRAL_COMMAND = { command: "intelligit.internalDebug", title: "Seed" };

@@ -6,7 +6,7 @@
  */
 
 import { execFile } from "node:child_process";
-import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -20,6 +20,7 @@ import {
     normalizeFixtureSnapshot,
     type FixtureSnapshot,
 } from "../../fixtures/repo/phase6Snapshot";
+import { removeScratchDirectories } from "../../helpers/scratchDirectories";
 
 const execFileAsync = promisify(execFile);
 const FIXTURE_TIMEOUT_MS = 60_000;
@@ -74,9 +75,7 @@ describe("Phase 6 step 32 -- canonical snapshot seed determinism", () => {
 
     afterEach(async () => {
         await Promise.all(workspaces.map((workspace) => workspace.dispose()));
-        await Promise.all(
-            cleanupDirs.map((directory) => rm(directory, { recursive: true, force: true })),
-        );
+        await Promise.all(cleanupDirs.map((directory) => removeScratchDirectories(directory)));
         workspaces = [];
         cleanupDirs = [];
     }, FIXTURE_TIMEOUT_MS);

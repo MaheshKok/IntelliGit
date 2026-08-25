@@ -3,7 +3,7 @@
  * boundary into a second copy or the shared seed template.
  */
 
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -18,6 +18,7 @@ import {
 } from "../../fixtures/repo/phase6Snapshot";
 import { seedFixtureTemplate, type FixtureTemplate } from "../../fixtures/repo/seed";
 import { git } from "./gitTestHelpers";
+import { removeScratchDirectories } from "../../helpers/scratchDirectories";
 
 const FIXTURE_TIMEOUT_MS = 60_000;
 
@@ -35,9 +36,7 @@ describe("Phase 6 step 35 -- workspace isolation", () => {
                 }
             }),
         );
-        await Promise.all(
-            cleanupDirs.map((directory) => rm(directory, { recursive: true, force: true })),
-        );
+        await Promise.all(cleanupDirs.map((directory) => removeScratchDirectories(directory)));
         workspaces = [];
         cleanupDirs = [];
     }, FIXTURE_TIMEOUT_MS);

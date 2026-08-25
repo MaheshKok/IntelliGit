@@ -7,13 +7,14 @@
  * manifest, run the build" message instead of a loud parse/schema error.
  */
 
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { createManifest, hashFileContents, readManifest } from "../../../scripts/buildManifest.js";
+import { removeScratchDirectoriesSync } from "../../helpers/scratchDirectories";
 
 describe("buildManifest", () => {
     let distDir: string;
@@ -23,7 +24,7 @@ describe("buildManifest", () => {
     });
 
     afterEach(() => {
-        rmSync(distDir, { recursive: true, force: true });
+        removeScratchDirectoriesSync(distDir);
     });
 
     it("returns null when no manifest file exists", () => {

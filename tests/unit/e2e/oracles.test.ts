@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -11,6 +11,7 @@ import { headOid, headSubject, parseStatusPorcelain, refOid } from "../../e2e/or
 import { listFilesUnder, readDurableState } from "../../e2e/oracles/durableState";
 import { getRebaseStoragePaths } from "../../../src/git/interactiveRebase/storage";
 import { resolveShelfPaths } from "../../../src/shelf/paths";
+import { removeScratchDirectories } from "../../helpers/scratchDirectories";
 
 const execFileAsync = promisify(execFile);
 
@@ -68,7 +69,7 @@ describe("localGit oracle parsing", () => {
             expect(currentHead).toMatch(/^[0-9a-f]{40}$/);
             expect(await refOid(workspace, "HEAD")).toBe(currentHead);
         } finally {
-            await rm(root, { recursive: true, force: true });
+            await removeScratchDirectories(root);
         }
     });
 
@@ -93,8 +94,8 @@ describe("localGit oracle parsing", () => {
             } else {
                 process.env.GIT_DIR = previousGitDir;
             }
-            await rm(root, { recursive: true, force: true });
-            await rm(decoy, { recursive: true, force: true });
+            await removeScratchDirectories(root);
+            await removeScratchDirectories(decoy);
         }
     });
 });
@@ -163,7 +164,7 @@ describe("origin oracle", () => {
             expect(origin.didRefMove(before, after)).toBe(true);
             await expect(origin.refOid(workspace, "refs/heads/missing")).rejects.toThrow();
         } finally {
-            await rm(root, { recursive: true, force: true });
+            await removeScratchDirectories(root);
         }
     });
 });
@@ -193,7 +194,7 @@ describe("durable state oracle", () => {
                 path.join(root, "a", "z.txt"),
             ]);
         } finally {
-            await rm(root, { recursive: true, force: true });
+            await removeScratchDirectories(root);
         }
     });
 
@@ -216,7 +217,7 @@ describe("durable state oracle", () => {
             expect(snapshot.repoLockPresent).toBe(false);
             expect(snapshot.takeoverPaths).toEqual([]);
         } finally {
-            await rm(root, { recursive: true, force: true });
+            await removeScratchDirectories(root);
         }
     });
 
@@ -266,7 +267,7 @@ describe("durable state oracle", () => {
                 true,
             );
         } finally {
-            await rm(root, { recursive: true, force: true });
+            await removeScratchDirectories(root);
         }
     });
 });

@@ -21,12 +21,15 @@ import {
     type DiffForPathsResult,
 } from "../../../src/git/operations";
 import type { WorkingFile } from "../../../src/types";
+import { removeScratchDirectories } from "../../helpers/scratchDirectories";
 
 const execFileAsync = promisify(execFile);
 const directories: string[] = [];
 
 afterEach(async () => {
-    await Promise.all(directories.splice(0).map((directory) => rm(directory, { recursive: true })));
+    await Promise.all(
+        directories.splice(0).map((directory) => removeScratchDirectories(directory)),
+    );
 });
 
 async function git(directory: string, args: string[]): Promise<string> {
@@ -305,7 +308,7 @@ describe("GitOps.withIndexSnapshot", () => {
 
         const caught: unknown = await gitOps
             .withIndexSnapshot(async () => {
-                await rm(path.join(root, ".git"), { recursive: true, force: true });
+                await removeScratchDirectories(path.join(root, ".git"));
                 throw operationError;
             })
             .catch((error: unknown) => error);
@@ -325,7 +328,7 @@ describe("GitOps.withIndexSnapshot", () => {
 
         const caught: unknown = await gitOps
             .withIndexSnapshot(async () => {
-                await rm(path.join(root, ".git"), { recursive: true, force: true });
+                await removeScratchDirectories(path.join(root, ".git"));
                 return "operation-result";
             })
             .catch((error: unknown) => error);

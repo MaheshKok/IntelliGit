@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type * as vscode from "vscode";
@@ -46,6 +46,7 @@ vi.mock("../../../src/e2e/transportFs", async () => {
 
 import * as vscodeMock from "vscode";
 import { activateE2eControlChannel } from "../../../src/e2e/controlChannel";
+import { removeScratchDirectoriesSync } from "../../helpers/scratchDirectories";
 
 /**
  * The handler's side effect, counted directly. A retry that re-runs the handler seeds the
@@ -97,7 +98,7 @@ describe("activateE2eControlChannel response delivery", () => {
     afterEach(() => {
         delete process.env.INTELLIGIT_E2E;
         delete process.env.INTELLIGIT_E2E_CHANNEL_DIR;
-        rmSync(channelDir, { recursive: true, force: true });
+        removeScratchDirectoriesSync(channelDir);
         vi.restoreAllMocks();
     });
 

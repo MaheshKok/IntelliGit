@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -18,6 +18,7 @@ import {
     removeWorktree,
     unlockWorktree,
 } from "../../../src/git/worktrees";
+import { removeScratchDirectories } from "../../helpers/scratchDirectories";
 
 const execFileAsync = promisify(execFile);
 const tempRoots: string[] = [];
@@ -71,9 +72,7 @@ async function createTempGitRepo(): Promise<{ root: string; repo: string }> {
 }
 
 afterEach(async () => {
-    await Promise.all(
-        tempRoots.splice(0).map((root) => rm(root, { recursive: true, force: true })),
-    );
+    await Promise.all(tempRoots.splice(0).map((root) => removeScratchDirectories(root)));
 });
 
 describe("parseWorktreeList", () => {

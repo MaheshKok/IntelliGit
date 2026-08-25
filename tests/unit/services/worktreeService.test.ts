@@ -1,10 +1,11 @@
-import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fixturePath } from "../../helpers/fixturePaths";
 import type { GitExecutor } from "../../../src/git/executor";
 import { WorktreeService } from "../../../src/services/worktreeService";
+import { removeScratchDirectories } from "../../helpers/scratchDirectories";
 
 const showWarningMessage = vi.hoisted(() => vi.fn());
 const includeFiles = vi.hoisted(() => ({ value: [] as string[] }));
@@ -92,9 +93,7 @@ function createScopedExecutor(statusOutput: string): {
 describe("WorktreeService", () => {
     afterEach(async () => {
         includeFiles.value = [];
-        await Promise.all(
-            tempRoots.splice(0).map((root) => rm(root, { recursive: true, force: true })),
-        );
+        await Promise.all(tempRoots.splice(0).map((root) => removeScratchDirectories(root)));
     });
 
     it("caches worktree lists until refresh repulls and emits", async () => {

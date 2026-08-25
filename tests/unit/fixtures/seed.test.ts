@@ -28,6 +28,7 @@ import {
 } from "../../fixtures/repo/seed";
 import { OVERLONG_NAMES_FAIL_REMOVAL } from "../../helpers/platformCapabilities";
 import { createScratchWorkspaces } from "./scratchWorkspaces";
+import { removeScratchDirectories } from "../../helpers/scratchDirectories";
 
 const execFileAsync = promisify(execFile);
 
@@ -169,7 +170,7 @@ describe("seedFixtureTemplate", () => {
                     expect(sanitized.env.LC_ALL).toBe("C");
                     expect(sanitized.env.LANG).toBe("C");
                 } finally {
-                    await rm(sanitized.home, { recursive: true, force: true });
+                    await removeScratchDirectories(sanitized.home);
                 }
             } finally {
                 restoreEnvVar("LC_ALL", ambient.LC_ALL);
@@ -422,9 +423,7 @@ describe("seedFixtureTemplate failure cleanup", () => {
     const allocated: string[] = [];
 
     afterAll(async () => {
-        await Promise.all(
-            allocated.map((scratchPath) => rm(scratchPath, { recursive: true, force: true })),
-        );
+        await Promise.all(allocated.map((scratchPath) => removeScratchDirectories(scratchPath)));
     });
 
     it("removes the temporary home it allocated when seeding fails", async () => {
@@ -466,9 +465,7 @@ describe("cleanUpThenRethrow", () => {
 
     afterAll(async () => {
         await Promise.all(
-            allocatedScratchRoots.map((scratchPath) =>
-                rm(scratchPath, { recursive: true, force: true }),
-            ),
+            allocatedScratchRoots.map((scratchPath) => removeScratchDirectories(scratchPath)),
         );
     });
 

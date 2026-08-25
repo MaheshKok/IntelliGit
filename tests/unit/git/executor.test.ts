@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, open, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, open, readFile, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -12,6 +12,7 @@ import {
 import { RepositoryMutationCoordinator } from "../../../src/git/mutationCoordinator";
 import { RepositoryLock } from "../../../src/git/repositoryLock";
 import { RepositoryMutationGate } from "../../../src/git/repositoryMutationGate";
+import { removeScratchDirectories } from "../../helpers/scratchDirectories";
 
 const itPosix = process.platform === "win32" ? it.skip : it;
 
@@ -85,7 +86,7 @@ async function withFakeGit<T>(
         return await run(new GitExecutor(process.cwd(), gate));
     } finally {
         restoreEnv();
-        await rm(directory, { force: true, recursive: true });
+        await removeScratchDirectories(directory);
     }
 }
 
@@ -121,7 +122,7 @@ async function gatedRunCount(args: string[]): Promise<number> {
         return gatedRuns.length;
     } finally {
         restoreEnv();
-        await rm(directory, { force: true, recursive: true });
+        await removeScratchDirectories(directory);
     }
 }
 
@@ -133,7 +134,7 @@ async function runWithStubGit(args: string[], script = "exit 0"): Promise<void> 
         await new GitExecutor(process.cwd()).run(args);
     } finally {
         restoreEnv();
-        await rm(directory, { force: true, recursive: true });
+        await removeScratchDirectories(directory);
     }
 }
 
@@ -355,7 +356,7 @@ describe("GitExecutor", () => {
             expect(output.stdout).toEqual(Buffer.alloc(0));
             expect((await readFile(outputFile)).toString("utf8")).toMatch(/^[a-f0-9]{40}\n$/);
         } finally {
-            await rm(directory, { force: true, recursive: true });
+            await removeScratchDirectories(directory);
         }
     });
 
@@ -370,7 +371,7 @@ describe("GitExecutor", () => {
                 }),
             ).rejects.toMatchObject({ code: "ENOENT" });
         } finally {
-            await rm(directory, { force: true, recursive: true });
+            await removeScratchDirectories(directory);
         }
     });
 
@@ -444,7 +445,7 @@ describe("GitExecutor", () => {
             await writeFile(release, "", "utf8");
             await push.catch(() => undefined);
             restoreEnv();
-            await rm(directory, { force: true, recursive: true });
+            await removeScratchDirectories(directory);
         }
     });
 
@@ -489,7 +490,7 @@ describe("GitExecutor", () => {
                 readFile(join(resultsDir, String(index)), "utf8"),
             ),
         );
-        await rm(directory, { force: true, recursive: true });
+        await removeScratchDirectories(directory);
         const observedMaxConcurrency = Math.max(...counts.map((count) => Number(count.trim())));
 
         expect(observedMaxConcurrency).toBeGreaterThan(1);
@@ -517,7 +518,7 @@ describe("GitExecutor", () => {
         } finally {
             await writer.close();
             restoreEnv();
-            await rm(directory, { force: true, recursive: true });
+            await removeScratchDirectories(directory);
         }
     });
 });

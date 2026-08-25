@@ -1,15 +1,18 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { RepositoryMutationCoordinator } from "../../../src/git/mutationCoordinator";
 import { RepositoryLock, RepositoryLockBusyError } from "../../../src/git/repositoryLock";
 import { RepositoryMutationGate } from "../../../src/git/repositoryMutationGate";
+import { removeScratchDirectories } from "../../helpers/scratchDirectories";
 
 const directories: string[] = [];
 
 afterEach(async () => {
-    await Promise.all(directories.splice(0).map((directory) => rm(directory, { recursive: true })));
+    await Promise.all(
+        directories.splice(0).map((directory) => removeScratchDirectories(directory)),
+    );
 });
 
 async function tempDir(prefix: string): Promise<string> {

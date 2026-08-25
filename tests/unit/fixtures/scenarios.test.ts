@@ -14,7 +14,7 @@
  */
 
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -509,7 +509,7 @@ describe("rewritten-history", () => {
             workspace.env,
         );
         await git(collaboratorClone, ["push", "--quiet", "origin", "main"], workspace.env);
-        await rm(collaboratorClone, { recursive: true, force: true });
+        await removeScratchDirectories(collaboratorClone);
 
         await expect(
             assertRewrittenHistoryPostcondition(
@@ -603,7 +603,7 @@ describe("stale-lease", () => {
             ["push", "--quiet", "--force", "origin", "main"],
             workspace.env,
         );
-        await rm(collaboratorClone, { recursive: true, force: true });
+        await removeScratchDirectories(collaboratorClone);
 
         await expect(
             assertStaleLeasePostcondition(

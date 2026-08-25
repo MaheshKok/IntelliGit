@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ABSENT_GIT_CONFIG_GLOBAL } from "../../../helpers/gitConfigIsolation";
 import { evaluateInteractiveRebaseGuards } from "../../../../src/git/interactiveRebase/guards";
 import type { GitExecutor } from "../../../../src/git/executor";
+import { removeScratchDirectories } from "../../../helpers/scratchDirectories";
 
 const execFileAsync = promisify(execFile);
 const HASH = "a".repeat(40);
@@ -16,7 +17,7 @@ const directories: string[] = [];
 
 afterEach(async () => {
     await Promise.all(
-        directories.splice(0).map((directory) => rm(directory, { force: true, recursive: true })),
+        directories.splice(0).map((directory) => removeScratchDirectories(directory)),
     );
 });
 

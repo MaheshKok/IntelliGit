@@ -11,7 +11,7 @@
  */
 
 import { execFile } from "node:child_process";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -20,6 +20,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { GitExecutor } from "../../../src/git/executor";
 import { GitOps } from "../../../src/git/operations";
+import { removeScratchDirectories } from "../../helpers/scratchDirectories";
 
 /** Makes the exclusive create of an `index.lock` fail with a chosen errno for the next
  * `remaining` attempts, so the errno Windows answers with is reachable from a POSIX host, and
@@ -87,7 +88,9 @@ afterEach(async () => {
     indexLockProbe.remaining = 0;
     indexLockProbe.renamesOntoIndex = 0;
     Object.defineProperty(process, "platform", { value: originalPlatform, configurable: true });
-    await Promise.all(directories.splice(0).map((directory) => rm(directory, { recursive: true })));
+    await Promise.all(
+        directories.splice(0).map((directory) => removeScratchDirectories(directory)),
+    );
 });
 
 async function git(directory: string, args: string[]): Promise<string> {

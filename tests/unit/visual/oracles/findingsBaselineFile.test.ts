@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -9,6 +9,7 @@ import {
     baselineFile,
     UPDATE_ENV_VAR,
 } from "../../../visual/oracles/findingsBaselineFile";
+import { removeScratchDirectories } from "../../../helpers/scratchDirectories";
 
 const originalUpdateValue = process.env[UPDATE_ENV_VAR];
 const temporaryDirectories: string[] = [];
@@ -17,9 +18,7 @@ afterEach(async () => {
     if (originalUpdateValue === undefined) delete process.env[UPDATE_ENV_VAR];
     else process.env[UPDATE_ENV_VAR] = originalUpdateValue;
     await Promise.all(
-        temporaryDirectories
-            .splice(0)
-            .map((directory) => rm(directory, { recursive: true, force: true })),
+        temporaryDirectories.splice(0).map((directory) => removeScratchDirectories(directory)),
     );
 });
 

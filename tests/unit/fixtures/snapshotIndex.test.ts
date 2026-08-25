@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { snapshotIndex } from "../../fixtures/repo/snapshotIndex";
 import { git, type ScratchRepo } from "./gitTestHelpers";
 import { commitAll, createScratchRepo, writeRepoFile } from "./gitTestHelpers";
+import { removeScratchDirectories } from "../../helpers/scratchDirectories";
 
 describe("snapshotIndex", () => {
     let repo: ScratchRepo | undefined;
@@ -140,7 +141,7 @@ describe("snapshotIndex", () => {
             expect(section.data).toEqual([]);
 
             const { rm } = await import("node:fs/promises");
-            await rm(bareRoot, { recursive: true, force: true });
+            await removeScratchDirectories(bareRoot);
         });
     });
 });

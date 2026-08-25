@@ -13,7 +13,7 @@
 // Mixing that with other tests in the same file that need the real filesystem risks the two
 // interfering with each other.
 
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -36,6 +36,7 @@ vi.mock("node:fs", async (importOriginal) => {
 });
 
 import { writeResponseFileAtomic } from "../../../src/e2e/transportFs";
+import { removeScratchDirectoriesSync } from "../../helpers/scratchDirectories";
 
 describe("writeResponseFileAtomic: temp-file-plus-rename mechanism", () => {
     let channelDir: string;
@@ -46,7 +47,7 @@ describe("writeResponseFileAtomic: temp-file-plus-rename mechanism", () => {
     });
 
     afterEach(() => {
-        rmSync(channelDir, { recursive: true, force: true });
+        removeScratchDirectoriesSync(channelDir);
     });
 
     it("writes the full payload to a temp file, then moves it into place with exactly one rename", () => {

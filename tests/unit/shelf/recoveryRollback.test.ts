@@ -1,15 +1,6 @@
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import {
-    mkdir,
-    mkdtemp,
-    readFile,
-    readdir,
-    rename,
-    rm,
-    symlink,
-    writeFile,
-} from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rename, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -27,13 +18,14 @@ import {
     type RevertCheckpoint,
 } from "../../../src/shelf/recovery";
 import { ShelfStore } from "../../../src/shelf/store";
+import { removeScratchDirectories } from "../../helpers/scratchDirectories";
 
 const execFileAsync = promisify(execFile);
 const directories: string[] = [];
 
 afterEach(async () => {
     await Promise.all(
-        directories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })),
+        directories.splice(0).map((directory) => removeScratchDirectories(directory)),
     );
 });
 
@@ -390,7 +382,7 @@ describe("ShelfReverter per-path rollback index guards", () => {
         await writeFile(path.join(repositoryRoot, "gone", "nested.txt"), "nested base\n");
         await git(repositoryRoot, ["add", "gone/nested.txt"]);
         await git(repositoryRoot, ["commit", "-m", "nested base"]);
-        await rm(path.join(repositoryRoot, "gone"), { recursive: true, force: true });
+        await removeScratchDirectories(path.join(repositoryRoot, "gone"));
         await git(repositoryRoot, ["add", "-u"]);
 
         await reverter.revert({

@@ -6,7 +6,6 @@ import {
     mkdtempSync,
     readdirSync,
     readFileSync,
-    rmSync,
     writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -15,6 +14,7 @@ import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { oracles } from "../../oracles";
+import { removeScratchDirectoriesSync } from "../../helpers/scratchDirectories";
 
 const { sanitizedGitEnv } = oracles.get("gitEnv");
 
@@ -263,7 +263,7 @@ function runVersionGate(script: string, version: string, options: VersionGateOpt
                 : [],
         } satisfies VersionGateRun;
     } finally {
-        rmSync(workspace, { recursive: true, force: true });
+        removeScratchDirectoriesSync(workspace);
     }
 }
 
@@ -344,7 +344,7 @@ function runTagStep(script: string, tagPlacement: "head" | "older" | "absent") {
             older: STRANDED_SHA,
         };
     } finally {
-        rmSync(workspace, { recursive: true, force: true });
+        removeScratchDirectoriesSync(workspace);
     }
 }
 

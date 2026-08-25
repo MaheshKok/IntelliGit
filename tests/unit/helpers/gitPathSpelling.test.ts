@@ -6,7 +6,7 @@
  * Windows one.
  */
 
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp } from "node:fs/promises";
 import { realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -14,6 +14,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { gitSpellingOf } from "../../helpers/gitPathSpelling";
+import { removeScratchDirectories } from "../../helpers/scratchDirectories";
 
 describe("gitSpellingOf -- separators", () => {
     it("rewrites Node's separators to the ones git emits when the platform separator is a backslash", () => {
@@ -38,7 +39,7 @@ describe("gitSpellingOf -- the canonical on-disk spelling", () => {
     let scratch: string | undefined;
 
     afterEach(async () => {
-        if (scratch) await rm(scratch, { recursive: true, force: true });
+        if (scratch) await removeScratchDirectories(scratch);
         scratch = undefined;
     });
 
