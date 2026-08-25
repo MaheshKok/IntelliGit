@@ -77,3 +77,41 @@ export function buildStripeMarks(
     });
     return marks;
 }
+
+/**
+ * `scrollTop` can sit a fraction of a pixel off a segment's own top, so a strict
+ * comparison would find the change the reader is already looking at and move nowhere.
+ * A pixel of tolerance makes the second press advance instead of sticking.
+ */
+const SAME_POSITION_PX = 1;
+
+/**
+ * The changed segment to move to from `scrollTop`, or `undefined` when none lies that way.
+ *
+ * The stripe is aria-hidden and its marks take no tab stops -- one per change would be
+ * hundreds on a real diff -- so click-to-jump reaches the pointer only. This is the same
+ * jump addressed by position rather than by mark, which is what lets a key offer it
+ * without the stripe having to become focusable. VS Code draws the same line: its minimap
+ * is decorative and the change navigation lives on a command.
+ *
+ * Marks arrive in segment order, so they are already ascending by top; the first one past
+ * the fold in either direction is the answer. Nothing wraps -- at the last change the key
+ * does nothing, which is quieter than silently returning to the top.
+ */
+export function adjacentChangeIndex(
+    marks: readonly StripeMark[],
+    layout: DiffVerticalLayout<DiffPane>,
+    scrollTop: number,
+    direction: 1 | -1,
+): number | undefined {
+    const topOf = (mark: StripeMark): number => layout.canonicalTopPx[mark.index] ?? 0;
+
+    if (direction === 1) {
+        return marks.find((mark) => topOf(mark) > scrollTop + SAME_POSITION_PX)?.index;
+    }
+    for (let position = marks.length - 1; position >= 0; position -= 1) {
+        const mark = marks[position];
+        if (mark && topOf(mark) < scrollTop - SAME_POSITION_PX) return mark.index;
+    }
+    return undefined;
+}

@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 import type { DiffSegment } from "../../../src/webviews/protocol/diffViewerTypes";
 import { buildVerticalLayout } from "../../../src/webviews/react/diff-core/mergeScrollLayout";
 import { DIFF_PANES } from "../../../src/webviews/react/diff-viewer/segmentMarkers";
-import { buildStripeMarks } from "../../../src/webviews/react/diff-viewer/changeStripe";
+import {
+    adjacentChangeIndex,
+    buildStripeMarks,
+} from "../../../src/webviews/react/diff-viewer/changeStripe";
 
 const common = (line: string): DiffSegment => ({ type: "common", left: [line], right: [line] });
 const changed = (left: string[], right: string[]): DiffSegment => ({
@@ -123,5 +126,58 @@ describe("buildStripeMarks", () => {
 
     it("returns nothing for an unmeasured layout rather than marks at NaN", () => {
         expect(buildStripeMarks([], layoutFor([]))).toEqual([]);
+    });
+});
+
+/**
+ * A file with three changes spread through common rows, so "the next one" and "the one
+ * before" are distinguishable and neither is the first nor the last segment. A selector
+ * that always answered with an end of the file would pass on a one-change fixture.
+ */
+const NAVIGABLE = [
+    common("head();"),
+    inserted("added();"),
+    common("mid1();"),
+    common("mid2();"),
+    common("mid3();"),
+    deleted("removed();"),
+    common("tail1();"),
+    common("tail2();"),
+    common("tail3();"),
+    changed(["was();"], ["now();"]),
+];
+
+describe("adjacentChangeIndex", () => {
+    const marks = marksFor(NAVIGABLE);
+    const layout = layoutFor(NAVIGABLE);
+    /** The scroll offset that puts a segment's own first row at the top of the viewport. */
+    const topOf = (index: number): number => layout.canonicalTopPx[index] ?? Number.NaN;
+
+    it("moves to the first change below where the reader is", () => {
+        expect(adjacentChangeIndex(marks, layout, 0, 1)).toBe(1);
+    });
+
+    it("moves to the nearest change above, not the first one in the file", () => {
+        expect(adjacentChangeIndex(marks, layout, topOf(9), -1)).toBe(5);
+    });
+
+    it("advances off a change the reader is already sitting on instead of re-finding it", () => {
+        expect(adjacentChangeIndex(marks, layout, topOf(5), 1)).toBe(9);
+        expect(adjacentChangeIndex(marks, layout, topOf(5), -1)).toBe(1);
+    });
+
+    it("still advances when the scroll offset is a fraction of a pixel off the change", () => {
+        expect(adjacentChangeIndex(marks, layout, topOf(5) + 0.5, 1)).toBe(9);
+        expect(adjacentChangeIndex(marks, layout, topOf(5) - 0.5, 1)).toBe(9);
+    });
+
+    it("stops at the ends rather than wrapping round to the other one", () => {
+        expect(adjacentChangeIndex(marks, layout, 0, -1)).toBeUndefined();
+        expect(adjacentChangeIndex(marks, layout, topOf(9), 1)).toBeUndefined();
+    });
+
+    it("does nothing on a file with no changes at all", () => {
+        const segments = [common("only();"), common("common();")];
+        expect(adjacentChangeIndex(marksFor(segments), layoutFor(segments), 0, 1)).toBeUndefined();
     });
 });

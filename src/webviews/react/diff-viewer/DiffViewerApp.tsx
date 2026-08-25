@@ -35,7 +35,7 @@ import {
 import { IconChevronDown, IconEye, IconFilter } from "../merge-editor/icons";
 import { splitEditedText } from "../merge-editor/mergeState";
 import { DIFF_PANES, segmentClassName, type DiffPane } from "./segmentMarkers";
-import { buildStripeMarks } from "./changeStripe";
+import { adjacentChangeIndex, buildStripeMarks } from "./changeStripe";
 import "./diff-viewer.css";
 
 const LINE_PADDING_PX = 18;
@@ -639,6 +639,42 @@ export function App(): React.ReactElement {
         vscode.postMessage({ type: "ready" });
         return () => window.removeEventListener("message", handler);
     }, [vscode]);
+
+    // The stripe marks are aria-hidden and take no tab stops -- one per change would be
+    // hundreds on a real diff -- so click-to-jump is a pointer affordance only. Without a
+    // key for the same move, reaching the next change from the keyboard means scrolling
+    // and looking for it, which is the gap this closes.
+    useEffect(() => {
+        const handler = (event: KeyboardEvent) => {
+            if (!event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+            if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+            // A composing IME owns the arrow keys for its candidate list, and inside a text
+            // field this chord is already taken -- macOS walks the caret by paragraph on
+            // Option+Up/Down, which an open edit block needs. The diff claims it outside a
+            // field only, so nothing a reader can type into loses a key it already had.
+            if (event.isComposing) return;
+            const target = event.target;
+            if (
+                target instanceof HTMLElement &&
+                (target.isContentEditable || target.closest("input, textarea") !== null)
+            ) {
+                return;
+            }
+            const content = contentRef.current;
+            if (!content) return;
+            const index = adjacentChangeIndex(
+                stripeMarks,
+                layout,
+                content.scrollTop,
+                event.key === "ArrowDown" ? 1 : -1,
+            );
+            if (index === undefined) return;
+            event.preventDefault();
+            jumpToSegment(index);
+        };
+        window.addEventListener("keydown", handler);
+        return () => window.removeEventListener("keydown", handler);
+    }, [jumpToSegment, layout, stripeMarks]);
 
     useEffect(() => {
         if (shikiReady) return;
