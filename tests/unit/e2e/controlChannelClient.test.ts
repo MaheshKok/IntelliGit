@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -10,6 +10,7 @@ import {
     type E2eRequestInput,
     writeE2eRequestAtomic,
 } from "../../e2e/controlChannelClient";
+import { removeScratchDirectories } from "../../helpers/scratchDirectories";
 
 const REQUEST_PAYLOAD: E2eRequestInput = {
     store: "memento",
@@ -25,7 +26,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
-    await rm(channelDir, { recursive: true, force: true });
+    await removeScratchDirectories(channelDir);
 });
 
 /** Waits for the client to publish one complete request file and returns its parsed envelope. */

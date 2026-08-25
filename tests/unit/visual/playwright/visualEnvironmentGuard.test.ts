@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -18,6 +18,7 @@ import {
 } from "../../../visual/playwright/visualEnvironmentGuard";
 import { BASELINE_PLATFORM } from "../../../visual/oracles/findingsBaselineFile";
 import type { VisualEnvironment } from "../../../visual/oracles/visualEnvironment";
+import { removeScratchDirectoriesSync } from "../../../helpers/scratchDirectories";
 
 const validDigest = `repo@sha256:${"a".repeat(64)}`;
 const defaultCompareBaseImage = Symbol("default compare base image");
@@ -40,7 +41,7 @@ function withTemporaryEnvironmentPath(
     const environmentPath = join(directory, "baselineEnvironment.json");
     const pinPath = join(directory, "base-image.txt");
     writeFileSync(pinPath, `# test pin\n\n${validDigest}\n`, "utf8");
-    const cleanup = (): void => rmSync(directory, { recursive: true, force: true });
+    const cleanup = (): void => removeScratchDirectoriesSync(directory);
     try {
         const result = run(environmentPath, pinPath);
         if (result instanceof Promise) return result.finally(cleanup);

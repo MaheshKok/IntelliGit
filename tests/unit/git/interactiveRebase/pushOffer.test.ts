@@ -29,6 +29,7 @@ import {
     writeRebaseManifest,
 } from "../../../../src/git/interactiveRebase/storage";
 import type { RebaseSessionManifest } from "../../../../src/git/interactiveRebase/types";
+import { removeScratchDirectories } from "../../../helpers/scratchDirectories";
 
 const BRANCH = "refs/heads/main";
 const HEAD = "b".repeat(40);
@@ -37,7 +38,7 @@ const roots: string[] = [];
 
 afterEach(async () => {
     failingRemovals.clear();
-    await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
+    await Promise.all(roots.splice(0).map((root) => removeScratchDirectories(root)));
 });
 
 async function fixture(

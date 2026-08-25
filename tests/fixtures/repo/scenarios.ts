@@ -25,7 +25,7 @@
  */
 
 import { existsSync } from "node:fs";
-import { mkdir, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { GitExecutor } from "../../../src/git/executor";
@@ -44,6 +44,7 @@ import {
     seedFixtureTemplate,
     type FixtureTemplate,
 } from "./seed";
+import { removeScratchDirectories } from "../../helpers/scratchDirectories";
 
 export { DIRTY_FIXTURE };
 
@@ -679,7 +680,7 @@ async function prepareAheadBehind(
         env,
     );
     await runGit(advanceClone, ["push", "--quiet", "origin", FIXTURE_REFS.main], env);
-    await rm(advanceClone, { recursive: true, force: true });
+    await removeScratchDirectories(advanceClone);
 
     // Fetches (never merges) origin's new commit: local `main` stays put, so it becomes "behind".
     await runGit(root, ["fetch", "--quiet", FIXTURE_REFS.remote, FIXTURE_REFS.main], env);
@@ -772,7 +773,7 @@ async function prepareRewrittenHistory(
         ["push", "--quiet", "--force", FIXTURE_REFS.remote, FIXTURE_REFS.main],
         env,
     );
-    await rm(collaboratorClone, { recursive: true, force: true });
+    await removeScratchDirectories(collaboratorClone);
 
     await assertCleanPostcondition(root, env);
     await assertRewrittenHistoryPostcondition(root, originRoot, env);
@@ -812,7 +813,7 @@ async function prepareStaleLease(
         ["push", "--quiet", FIXTURE_REFS.remote, FIXTURE_REFS.main],
         env,
     );
-    await rm(collaboratorClone, { recursive: true, force: true });
+    await removeScratchDirectories(collaboratorClone);
 
     await assertCleanPostcondition(root, env);
     await assertStaleLeasePostcondition(root, originRoot, env);

@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -14,6 +14,7 @@ vi.mock("node:fs", async (importOriginal) => {
 });
 
 import { removeRequestFile, watchChannelDir } from "../../../src/e2e/transportFs";
+import { removeScratchDirectoriesSync } from "../../helpers/scratchDirectories";
 
 describe("watchChannelDir reconciliation", () => {
     let channelDir: string;
@@ -24,7 +25,7 @@ describe("watchChannelDir reconciliation", () => {
     });
 
     afterEach(() => {
-        rmSync(channelDir, { recursive: true, force: true });
+        removeScratchDirectoriesSync(channelDir);
     });
 
     it("answers a later request after an earlier request when fs.watch sends no notification", async () => {

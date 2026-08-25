@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -11,12 +11,13 @@ import {
     ShelfStore,
     ShelfStoreCorruptionError,
 } from "../../../src/shelf/store";
+import { removeScratchDirectories } from "../../helpers/scratchDirectories";
 
 const directories: string[] = [];
 
 afterEach(async () => {
     await Promise.all(
-        directories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })),
+        directories.splice(0).map((directory) => removeScratchDirectories(directory)),
     );
 });
 
@@ -163,7 +164,7 @@ describe("ShelfStore", () => {
         const garbageOutside = await mkdtemp(path.join(tmpdir(), "intelligit-shelf-outside-"));
         directories.push(garbageOutside);
         const objects = path.join(garbage.paths.root, "shelves", "shelf-one", "objects");
-        await rm(objects, { recursive: true, force: true });
+        await removeScratchDirectories(objects);
         await symlink(garbageOutside, objects);
         await expect(garbage.store.collectGarbage("shelf-one")).rejects.toBeInstanceOf(
             ShelfPathError,

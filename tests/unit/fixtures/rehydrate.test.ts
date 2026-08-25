@@ -14,7 +14,7 @@
  */
 
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -32,6 +32,7 @@ import {
 import { DECLARED_REWRITES, rehydrateCopy } from "../../fixtures/repo/rehydrate";
 import { snapshotWorkspace, type PlaceholderRoots } from "../../fixtures/repo/snapshot";
 import { git } from "./gitTestHelpers";
+import { removeScratchDirectories } from "../../helpers/scratchDirectories";
 
 const execFileAsync = promisify(execFile);
 const FIXTURE_TIMEOUT_MS = 30_000;
@@ -53,7 +54,7 @@ describe("rehydrateCopy / assertWorkspaceEquivalentToTemplate", () => {
     let cleanupDirs: string[] = [];
 
     afterEach(async () => {
-        await Promise.all(cleanupDirs.map((dir) => rm(dir, { recursive: true, force: true })));
+        await Promise.all(cleanupDirs.map((dir) => removeScratchDirectories(dir)));
         cleanupDirs = [];
     }, FIXTURE_TIMEOUT_MS);
 

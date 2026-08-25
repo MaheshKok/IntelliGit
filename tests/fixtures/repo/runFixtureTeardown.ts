@@ -19,6 +19,7 @@ import { rm } from "node:fs/promises";
 
 import { DEFAULT_MANIFEST_PATH } from "./manifest";
 import { DEFAULT_TEMPLATE_ROOT } from "./runFixtureSetup";
+import { removeScratchDirectories } from "../../helpers/scratchDirectories";
 
 export interface RunFixtureTeardownOptions {
     /** The template directory to remove. Defaults to {@link DEFAULT_TEMPLATE_ROOT}. */
@@ -39,7 +40,7 @@ export async function runFixtureTeardown(options?: RunFixtureTeardownOptions): P
     const manifestPath = options?.manifestPath ?? DEFAULT_MANIFEST_PATH;
 
     await Promise.all([
-        rm(templateRoot, { recursive: true, force: true }),
-        rm(manifestPath, { recursive: true, force: true }),
+        removeScratchDirectories(templateRoot),
+        removeScratchDirectories(manifestPath),
     ]);
 }

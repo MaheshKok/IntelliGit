@@ -8,7 +8,7 @@
  */
 
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -45,6 +45,7 @@ import {
     setFakeWorkspaceConfiguration,
 } from "../../../visual/recorder/workspaceConfigurationDouble";
 import { createScratchWorkspaces } from "../../fixtures/scratchWorkspaces";
+import { removeScratchDirectories } from "../../../helpers/scratchDirectories";
 
 const CONFLICTED_SCENARIO = REPOSITORY_SCENARIOS.find((scenario) => scenario.id === "conflicted");
 if (!CONFLICTED_SCENARIO) {
@@ -268,8 +269,8 @@ describe("merge-editor webview recorder", () => {
             ).rejects.toThrow(/exactly one conflicted file/);
         } finally {
             await Promise.all([
-                rm(cleanWorkspace.home, { recursive: true, force: true }),
-                rm(cleanDestination, { recursive: true, force: true }),
+                removeScratchDirectories(cleanWorkspace.home),
+                removeScratchDirectories(cleanDestination),
             ]);
         }
     });

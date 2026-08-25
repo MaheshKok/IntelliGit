@@ -7,6 +7,7 @@ import { promisify } from "node:util";
 import { GitOps, UpstreamPushDeclinedError } from "../../../../src/git/operations";
 import type { GitExecutor } from "../../../../src/git/executor";
 import { parseStashFiles } from "../../../../src/git/stashFiles";
+import { removeScratchDirectories } from "../../../helpers/scratchDirectories";
 
 const execFileAsync = promisify(execFile);
 
@@ -723,7 +724,7 @@ describe("GitOps", () => {
                     }
                 }
             } finally {
-                await rm(repo, { recursive: true, force: true });
+                await removeScratchDirectories(repo);
             }
         });
 

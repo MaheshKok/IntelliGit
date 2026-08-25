@@ -36,7 +36,18 @@ describe("FixtureWorkspace resource cleanup", () => {
         await Promise.all(workspacesToDispose.map((workspace) => workspace.dispose()));
         workspacesToDispose = [];
         await Promise.all(
-            cleanupDirs.map((directory) => actual.rm(directory, { recursive: true, force: true })),
+            // Deliberately the un-mocked binding, and deliberately NOT `removeScratchDirectories`:
+            // that helper imports `rm` from `node:fs/promises`, which this suite mocks, so routing
+            // teardown through it would add to the very `rmMock` call count these assertions read.
+            // The retry contract is copied rather than shared, for that one reason.
+            cleanupDirs.map((directory) =>
+                actual.rm(directory, {
+                    recursive: true,
+                    force: true,
+                    maxRetries: 10,
+                    retryDelay: 50,
+                }),
+            ),
         );
         cleanupDirs = [];
         rmMock.mockClear();

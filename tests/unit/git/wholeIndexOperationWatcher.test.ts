@@ -1,10 +1,11 @@
 import type { FSWatcher } from "node:fs";
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { resolveGitDir } from "../../../src/git/gitDirectory";
 import { watchWholeIndexOperation } from "../../../src/git/wholeIndexOperationWatcher";
+import { removeScratchDirectories } from "../../helpers/scratchDirectories";
 
 const { readFileSyncMock, watchMock } = vi.hoisted(() => ({
     readFileSyncMock: vi.fn(),
@@ -25,7 +26,9 @@ const directories: string[] = [];
 afterEach(async () => {
     readFileSyncMock.mockClear();
     watchMock.mockReset();
-    await Promise.all(directories.splice(0).map((directory) => rm(directory, { recursive: true })));
+    await Promise.all(
+        directories.splice(0).map((directory) => removeScratchDirectories(directory)),
+    );
 });
 
 /** Creates an isolated repository-shaped directory for synchronous Git-dir resolver tests. */

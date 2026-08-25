@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, realpath, rm, symlink } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -10,14 +10,13 @@ import {
     validateImportedPatchStream,
     validateShelfManifestPath,
 } from "../../../src/shelf/importValidation";
+import { removeScratchDirectories } from "../../helpers/scratchDirectories";
 
 const temporaryDirectories: string[] = [];
 
 afterEach(async () => {
     await Promise.all(
-        temporaryDirectories
-            .splice(0)
-            .map((directory) => rm(directory, { recursive: true, force: true })),
+        temporaryDirectories.splice(0).map((directory) => removeScratchDirectories(directory)),
     );
 });
 

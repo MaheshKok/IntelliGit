@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -12,6 +12,7 @@ import {
     MAX_INTERACTIVE_REBASE_RANGE_OUTPUT_BYTES,
 } from "../../../../src/git/interactiveRebase/range";
 import type { GitExecutor } from "../../../../src/git/executor";
+import { removeScratchDirectories } from "../../../helpers/scratchDirectories";
 
 const execFileAsync = promisify(execFile);
 const HASH_A = "a".repeat(40);
@@ -24,7 +25,7 @@ const directories: string[] = [];
 
 afterEach(async () => {
     await Promise.all(
-        directories.splice(0).map((directory) => rm(directory, { force: true, recursive: true })),
+        directories.splice(0).map((directory) => removeScratchDirectories(directory)),
     );
 });
 

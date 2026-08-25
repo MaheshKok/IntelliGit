@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -13,6 +13,7 @@ import {
     writeRebaseManifest,
 } from "../../../../src/git/interactiveRebase/storage";
 import type { RebaseSessionManifest } from "../../../../src/git/interactiveRebase/types";
+import { removeScratchDirectories } from "../../../helpers/scratchDirectories";
 
 const REPO_ROOT = "/fixture-repository";
 const BRANCH = "refs/heads/main";
@@ -22,7 +23,7 @@ const REBASED_HEAD = "c".repeat(40);
 const roots: string[] = [];
 
 afterEach(async () => {
-    await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
+    await Promise.all(roots.splice(0).map((root) => removeScratchDirectories(root)));
 });
 
 /** Creates valid durable state with only the fields reconciliation is allowed to use. */

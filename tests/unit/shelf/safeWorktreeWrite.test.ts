@@ -24,7 +24,7 @@
  * tail behind" is the defect that matters, whatever mechanism is underneath.
  */
 
-import { chmod, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, readdir, readFile, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -32,12 +32,13 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { POSIX_PERMISSIONS_ENFORCED } from "../../helpers/platformCapabilities";
 import { replaceRegularWorktreeFile } from "../../../src/shelf/safeWorktreeWrite";
+import { removeScratchDirectories } from "../../helpers/scratchDirectories";
 
 describe("replaceRegularWorktreeFile", () => {
     let root: string | undefined;
 
     afterEach(async () => {
-        if (root) await rm(root, { recursive: true, force: true });
+        if (root) await removeScratchDirectories(root);
         root = undefined;
     });
 

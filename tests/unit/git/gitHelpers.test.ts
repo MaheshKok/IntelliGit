@@ -1,7 +1,7 @@
 // Tests for pure utility functions in src/services/gitHelpers.ts.
 
 import { execFile } from "node:child_process";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { beforeEach, describe, it, expect, vi } from "vitest";
@@ -58,6 +58,7 @@ import {
 import type { Branch } from "../../../src/types";
 import type { GitOps } from "../../../src/git/operations";
 import type { GitExecutor } from "../../../src/git/executor";
+import { removeScratchDirectories } from "../../helpers/scratchDirectories";
 
 /** Builds a branch fixture with safe defaults for checkout helper tests. */
 function makeBranch(overrides: Partial<Branch> = {}): Branch {
@@ -519,7 +520,7 @@ describe("buildCommitFilePatch", () => {
             expect(patch).toContain(":(glob)*");
             expect(patch).not.toContain("victim.txt");
         } finally {
-            await rm(repo, { recursive: true, force: true });
+            await removeScratchDirectories(repo);
         }
     });
 

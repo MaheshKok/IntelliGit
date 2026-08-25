@@ -7,7 +7,7 @@
  */
 
 import { execFile } from "node:child_process";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -54,6 +54,7 @@ import {
 } from "../../../visual/recorder/workspaceConfigurationDouble";
 import { REPOSITORY_SCENARIOS, type ScenarioWorkspace } from "../../../fixtures/repo/scenarios";
 import { createScratchWorkspaces } from "../../fixtures/scratchWorkspaces";
+import { removeScratchDirectories } from "../../../helpers/scratchDirectories";
 
 const execFileAsync = promisify(execFile);
 
@@ -465,8 +466,8 @@ describe("shelf-conflict-editor webview recorder", () => {
             ).rejects.toThrow(/shelf|manifest|exactly one/i);
         } finally {
             await Promise.all([
-                rm(cleanWorkspace.home, { recursive: true, force: true }),
-                rm(cleanDestination, { recursive: true, force: true }),
+                removeScratchDirectories(cleanWorkspace.home),
+                removeScratchDirectories(cleanDestination),
             ]);
         }
     });

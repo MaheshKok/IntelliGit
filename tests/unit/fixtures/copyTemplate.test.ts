@@ -20,7 +20,6 @@ import {
     readlink,
     realpath,
     rename,
-    rm,
     symlink,
     writeFile,
 } from "node:fs/promises";
@@ -38,12 +37,13 @@ import { copyTemplate } from "../../fixtures/repo/copyTemplate";
 import { inventoryDirectory } from "../../fixtures/repo/fsInventory";
 import { seedFixtureTemplate } from "../../fixtures/repo/seed";
 import type { FsEntry } from "../../fixtures/repo/snapshotTypes";
+import { removeScratchDirectories } from "../../helpers/scratchDirectories";
 
 describe("copyTemplate", () => {
     let cleanupDirs: string[] = [];
 
     afterEach(async () => {
-        await Promise.all(cleanupDirs.map((dir) => rm(dir, { recursive: true, force: true })));
+        await Promise.all(cleanupDirs.map((dir) => removeScratchDirectories(dir)));
         cleanupDirs = [];
     });
 

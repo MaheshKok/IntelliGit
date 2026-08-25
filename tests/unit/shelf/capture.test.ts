@@ -11,12 +11,13 @@ import {
 import { ShelfUnsupportedStateError, type ShelfFileEntry } from "../../../src/shelf/model";
 import { resolveShelfPaths } from "../../../src/shelf/paths";
 import { ShelfStore } from "../../../src/shelf/store";
+import { removeScratchDirectories } from "../../helpers/scratchDirectories";
 
 const directories: string[] = [];
 
 afterEach(async () => {
     await Promise.all(
-        directories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })),
+        directories.splice(0).map((directory) => removeScratchDirectories(directory)),
     );
 });
 

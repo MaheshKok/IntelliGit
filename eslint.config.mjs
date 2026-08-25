@@ -186,6 +186,31 @@ export default defineConfig([
         },
     },
     {
+        // Its OWN block on purpose, with no `ignores`. The `tests/**/*.ts` block above carries an
+        // ignore list that exists for the oracle-import rule, and `tests/unit/e2e/oracles.test.ts`
+        // alone holds seven recursive removals -- hanging this rule there would exempt exactly the
+        // files nobody would think to re-check, and it would lint clean while doing it.
+        files: ["tests/**/*.ts"],
+        languageOptions: {
+            parser: tseslint.parser,
+        },
+        rules: {
+            "no-restricted-syntax": [
+                "error",
+                {
+                    // Keyed on `recursive` present and `maxRetries` absent rather than on the
+                    // import, because 29 removals in tests/ are single files (`rm(file)`,
+                    // `rm(x, { force: true })`) that have no readdir/rmdir window to lose and
+                    // must stay legal. A recursive removal is the only shape at risk.
+                    selector:
+                        'CallExpression:matches([callee.name=/^rm(Sync)?$/], [callee.property.name=/^rm(Sync)?$/]) > ObjectExpression:has(Property[key.name="recursive"]):not(:has(Property[key.name="maxRetries"]))',
+                    message:
+                        "Recursive removals in tests must retry: use removeScratchDirectories / removeScratchDirectoriesSync from tests/helpers/scratchDirectories. Git keeps writing into .git/objects/pack after its command returns, so a bare recursive rm loses the rmdir race and fails whichever row is executing -- it took the Windows leg red repeatedly.",
+                },
+            ],
+        },
+    },
+    {
         files: SCRIPT_FILES,
         ...js.configs.recommended,
         languageOptions: {

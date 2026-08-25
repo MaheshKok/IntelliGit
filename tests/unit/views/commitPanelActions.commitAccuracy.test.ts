@@ -27,12 +27,15 @@ const notificationsMock = vi.hoisted(() => ({
 vi.mock("../../../src/utils/notifications", () => notificationsMock);
 
 import { commitSelectedFromPanel } from "../../../src/views/commitPanelActions";
+import { removeScratchDirectories } from "../../helpers/scratchDirectories";
 
 const execFileAsync = promisify(execFile);
 const directories: string[] = [];
 
 afterEach(async () => {
-    await Promise.all(directories.splice(0).map((directory) => rm(directory, { recursive: true })));
+    await Promise.all(
+        directories.splice(0).map((directory) => removeScratchDirectories(directory)),
+    );
 });
 
 async function git(repo: string, args: string[]): Promise<string> {

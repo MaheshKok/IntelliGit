@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -10,6 +10,7 @@ import {
     checkPinnedProvenance,
     readPinnedBaseImage,
 } from "../../../visual/oracles/pinnedBaseImage";
+import { removeScratchDirectoriesSync } from "../../../helpers/scratchDirectories";
 
 const PIN_PATH = resolve(__dirname, "../../../e2e/docker/base-image.txt");
 const ENVIRONMENT_PATH = resolve(__dirname, "../../../visual/fixtures/baselineEnvironment.json");
@@ -24,7 +25,7 @@ describe("pinned base image oracle", () => {
 
             expect(readPinnedBaseImage(pinPath)).toBe(validDigest);
         } finally {
-            rmSync(directory, { recursive: true, force: true });
+            removeScratchDirectoriesSync(directory);
         }
     });
 
@@ -36,7 +37,7 @@ describe("pinned base image oracle", () => {
 
             expect(() => readPinnedBaseImage(pinPath)).toThrow("Pinned base image pin not found");
         } finally {
-            rmSync(directory, { recursive: true, force: true });
+            removeScratchDirectoriesSync(directory);
         }
     });
 
