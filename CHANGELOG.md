@@ -5,6 +5,13 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.27.6] - 2026-08-25
+
+### Fixed
+
+- Fixed restoring the Git index after a commit failing outright on Windows instead of degrading as it was built to. Committing part of a file's changes snapshots the index first and puts it back afterwards, and putting it back creates an `<index>.lock` file exclusively, so that a concurrent `git status` never reads a half-written index. A lock that already exists means another Git process is mid-write, so the restore waits briefly and, if the contention outlasts that, falls back to copying the index directly — getting the user's index back matters more than strict atomicity. Whether the lock already existed was decided by one error code, `EEXIST`, which is what POSIX answers. Windows answers `EPERM` instead whenever the name is *delete-pending* — the state left behind every time Git removes the lock while a handle on it is still open, which is to say after every index write it performs. Read as a fault rather than as contention, that code skipped the wait and the fallback both, so the one path written to degrade gracefully failed outright, on the platform where Git holds that lock most often, and left the index with the commit's temporary unstaging still applied. The decision now uses the same shared check the repository lock uses, which accepts the second code on Windows alone.
+- Fixed a repository lock being reported as a permission error rather than waited for, on Windows. The lock is claimed by creating its record exclusively, and a record that already exists means another window holds the lock — which callers recognise in order to wait briefly and retry, since the hold is normally momentary. That condition was recognised by the same POSIX-only error code, so on Windows a lock whose record was delete-pending surfaced as `EPERM: operation not permitted` and every waiting caller was skipped: the operation failed immediately, naming a permission problem that did not exist, instead of retrying and succeeding. Widening the check cannot widen what the lock grants, because every path it opens still ends at the same busy verdict.
+
 ## [0.27.5] - 2026-08-23
 
 ### Fixed

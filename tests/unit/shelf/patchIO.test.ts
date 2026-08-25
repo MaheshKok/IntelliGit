@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { access, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { access, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -13,6 +13,7 @@ import {
     materializeLayerPatches,
     selectPatchBlocks,
 } from "../../../src/shelf/patchIO";
+import { removeScratchDirectories } from "../../helpers/scratchDirectories";
 
 const execFileAsync = promisify(execFile);
 
@@ -146,7 +147,7 @@ describe("shelf patch primitives", () => {
             ]);
             expect(executor.runCalls.flat()).not.toContain("--3way");
         } finally {
-            await rm(directory, { recursive: true, force: true });
+            await removeScratchDirectories(directory);
         }
     });
 
@@ -173,7 +174,7 @@ describe("shelf patch primitives", () => {
             await expect(access(sourcePath)).rejects.toThrow();
             await expect(readFile(destinationPath, "utf8")).resolves.toBe("before\n");
         } finally {
-            await rm(directory, { recursive: true, force: true });
+            await removeScratchDirectories(directory);
         }
     });
 

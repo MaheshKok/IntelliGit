@@ -2,6 +2,7 @@ import * as os from "os";
 import * as path from "path";
 import { promises as fsp } from "fs";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { removeScratchDirectories } from "../../helpers/scratchDirectories";
 
 interface VscodeState {
     themeId?: string;
@@ -236,7 +237,7 @@ describe("FileIconThemeResolver", () => {
             resolver.dispose();
             expect(state.extensionDisposeCount).toBe(1);
         } finally {
-            await fsp.rm(extensionPath, { recursive: true, force: true });
+            await removeScratchDirectories(extensionPath);
         }
     });
 

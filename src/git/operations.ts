@@ -14,6 +14,7 @@ import path from "node:path";
 import { readEmptyTreeOid } from "./emptyTree";
 import { GitExecutor } from "./executor";
 import { resolveGitDir } from "./gitDirectory";
+import { isExclusiveCreateBlocked } from "./repositoryLock";
 import {
     WHOLE_INDEX_OPERATION_MARKERS,
     type WholeIndexOperationMarker,
@@ -1023,6 +1024,13 @@ export class GitOps {
      * retried briefly since that window is normally sub-second. If contention persists past the
      * retry budget, restoring the user's index takes priority over strict atomicity, so this
      * falls back to a direct, non-atomic copy rather than failing the restore outright.
+     *
+     * "Existing" is judged by `isExclusiveCreateBlocked` rather than by `EEXIST` alone, because
+     * Windows does not always answer `EEXIST`. Git removes `index.lock` on every write, and a
+     * removal whose handle is still open leaves the name *delete-pending*, where the exclusive
+     * create below returns `EPERM` instead. Read as a fault rather than as contention, that errno
+     * skipped both the retry and the fallback -- so the one path deliberately built to degrade
+     * gracefully failed outright, on the platform where Git contends most.
      */
     private async restoreIndexSnapshot(snapshotPath: string, indexPath: string): Promise<void> {
         const lockPath = `${indexPath}.lock`;
@@ -1036,7 +1044,7 @@ export class GitOps {
                 // react-doctor-disable-next-line react-doctor/async-await-in-loop
                 await writeFile(lockPath, snapshotBytes, { flag: "wx" });
             } catch (error) {
-                if (!isLockAlreadyExistsError(error)) throw error;
+                if (!isExclusiveCreateBlocked(error)) throw error;
                 if (attempt < maxAttempts - 1) {
                     await new Promise<void>((resolve) => setTimeout(resolve, retryDelayMs));
                     continue;
@@ -1844,13 +1852,6 @@ async function pathExists(filePath: string): Promise<boolean> {
     } catch {
         return false;
     }
-}
-
-/** Returns whether an `fs` error indicates the target path already exists (e.g. `EEXIST` from an exclusive create). */
-function isLockAlreadyExistsError(error: unknown): boolean {
-    return (
-        typeof error === "object" && error !== null && "code" in error && error.code === "EEXIST"
-    );
 }
 
 /** Returns whether Git reported a path absent from an otherwise valid treeish. */

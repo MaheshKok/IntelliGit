@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type * as vscode from "vscode";
@@ -45,6 +45,7 @@ vi.mock("../../../src/e2e/transportFs", async () => {
 
 import * as vscodeMock from "vscode";
 import { activateE2eControlChannel } from "../../../src/e2e/controlChannel";
+import { removeScratchDirectoriesSync } from "../../helpers/scratchDirectories";
 
 function makeContext(workspaceUpdate: ReturnType<typeof vi.fn>): vscode.ExtensionContext {
     const workspaceMap = new Map<string, unknown>();
@@ -77,7 +78,7 @@ describe("activateE2eControlChannel drain/watcher overlap", () => {
     afterEach(() => {
         delete process.env.INTELLIGIT_E2E;
         delete process.env.INTELLIGIT_E2E_CHANNEL_DIR;
-        rmSync(channelDir, { recursive: true, force: true });
+        removeScratchDirectoriesSync(channelDir);
     });
 
     it("dispatches once when the drain and live watcher both observe one nonce", async () => {

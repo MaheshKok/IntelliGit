@@ -6,7 +6,7 @@
 // directory present -- so this suite drives `evaluateE2eGate` directly with real temp
 // directories rather than stubbing filesystem calls.
 
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -20,6 +20,7 @@ vi.mock("vscode", () => ({
 
 import * as vscode from "vscode";
 import { evaluateE2eGate } from "../../../src/e2e/gate";
+import { removeScratchDirectoriesSync } from "../../helpers/scratchDirectories";
 
 describe("evaluateE2eGate: gating truth table", () => {
     let channelDir: string;
@@ -29,7 +30,7 @@ describe("evaluateE2eGate: gating truth table", () => {
     });
 
     afterEach(() => {
-        rmSync(channelDir, { recursive: true, force: true });
+        removeScratchDirectoriesSync(channelDir);
     });
 
     // All four cells of {Development, Production} x {INTELLIGIT_E2E=1, unset}. Exactly one
@@ -101,7 +102,7 @@ describe("evaluateE2eGate: channel directory gate", () => {
             expect(result.active).toBe(false);
             expect(result.reason).toMatch(/not an existing directory/);
         } finally {
-            rmSync(dir, { recursive: true, force: true });
+            removeScratchDirectoriesSync(dir);
         }
     });
 
@@ -119,7 +120,7 @@ describe("evaluateE2eGate: channel directory gate", () => {
                 expect(result.reason).toMatch(/not writable/);
             } finally {
                 chmodSync(dir, 0o700);
-                rmSync(dir, { recursive: true, force: true });
+                removeScratchDirectoriesSync(dir);
             }
         },
     );
@@ -133,7 +134,7 @@ describe("evaluateE2eGate: channel directory gate", () => {
             });
             expect(result.active).toBe(false);
         } finally {
-            rmSync(dir, { recursive: true, force: true });
+            removeScratchDirectoriesSync(dir);
         }
     });
 });

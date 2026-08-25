@@ -20,7 +20,7 @@
  * scenario normalization is actually built for and are proven equal, including the index file.
  */
 
-import { cp, mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
+import { cp, mkdtemp, mkdir, symlink, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -33,15 +33,16 @@ import { snapshotWorkspace } from "../../fixtures/repo/snapshot";
 import type { FsEntry } from "../../fixtures/repo/snapshotTypes";
 import { captured, notCaptured } from "../../fixtures/repo/snapshotTypes";
 import { seedFixtureTemplate, type FixtureTemplate } from "../../fixtures/repo/seed";
+import { removeScratchDirectories } from "../../helpers/scratchDirectories";
 
 describe("normalizeSnapshot -- two raw copies of one seed compare equal (step 8's real scenario)", () => {
     let scratchDirs: string[] = [];
     let template: FixtureTemplate | undefined;
 
     afterEach(async () => {
-        await Promise.all(scratchDirs.map((dir) => rm(dir, { recursive: true, force: true })));
+        await Promise.all(scratchDirs.map((dir) => removeScratchDirectories(dir)));
         scratchDirs = [];
-        if (template) await rm(template.home, { recursive: true, force: true });
+        if (template) await removeScratchDirectories(template.home);
         template = undefined;
     }, 30_000);
 
@@ -52,8 +53,8 @@ describe("normalizeSnapshot -- two raw copies of one seed compare equal (step 8'
 
         const copy1Dest = await mkdtemp(path.join(tmpdir(), "intelligit-normalize-copy1-"));
         const copy2Dest = await mkdtemp(path.join(tmpdir(), "intelligit-normalize-copy2-"));
-        await rm(copy1Dest, { recursive: true, force: true });
-        await rm(copy2Dest, { recursive: true, force: true });
+        await removeScratchDirectories(copy1Dest);
+        await removeScratchDirectories(copy2Dest);
         scratchDirs.push(copy1Dest, copy2Dest);
         await cp(seedDest, copy1Dest, {
             recursive: true,
@@ -98,8 +99,8 @@ describe("normalizeSnapshot -- two raw copies of one seed compare equal (step 8'
 
         const copy1Dest = await mkdtemp(path.join(tmpdir(), "intelligit-normalize-red-copy1-"));
         const copy2Dest = await mkdtemp(path.join(tmpdir(), "intelligit-normalize-red-copy2-"));
-        await rm(copy1Dest, { recursive: true, force: true });
-        await rm(copy2Dest, { recursive: true, force: true });
+        await removeScratchDirectories(copy1Dest);
+        await removeScratchDirectories(copy2Dest);
         scratchDirs.push(copy1Dest, copy2Dest);
         await cp(seedDest, copy1Dest, {
             recursive: true,
@@ -260,7 +261,7 @@ describe("normalizeSnapshot -- realpath duality", () => {
     let scratch: string | undefined;
 
     afterEach(async () => {
-        if (scratch) await rm(scratch, { recursive: true, force: true });
+        if (scratch) await removeScratchDirectories(scratch);
         scratch = undefined;
     });
 

@@ -14,6 +14,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { createManifest, writeManifest } from "../../../scripts/buildManifest.js";
 import { verifyBuildProvenance } from "../../../scripts/verifyBuildProvenance.js";
+import { removeScratchDirectoriesSync } from "../../helpers/scratchDirectories";
 
 describe("verifyBuildProvenance", () => {
     let distDir: string;
@@ -23,7 +24,7 @@ describe("verifyBuildProvenance", () => {
     });
 
     afterEach(() => {
-        rmSync(distDir, { recursive: true, force: true });
+        removeScratchDirectoriesSync(distDir);
     });
 
     function seedOutput(name: string, contents: string): string {

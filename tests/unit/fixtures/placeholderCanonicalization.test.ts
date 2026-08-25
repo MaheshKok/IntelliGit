@@ -10,7 +10,7 @@
  * consumers by construction -- there is exactly one implementation for both tests to exercise.
  */
 
-import { mkdir, mkdtemp, rm, symlink } from "node:fs/promises";
+import { mkdir, mkdtemp, symlink } from "node:fs/promises";
 import { realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -23,6 +23,7 @@ import {
     normalizeString,
     type PlaceholderRoots,
 } from "../../fixtures/repo/placeholderCanonicalization";
+import { removeScratchDirectories } from "../../helpers/scratchDirectories";
 
 /**
  * Every webview fixture recorder passes `profileDir: ""` -- those slices never allocate a VS Code
@@ -106,7 +107,7 @@ describe("normalizeUnknownDeep -- realpath duality", () => {
     let scratch: string | undefined;
 
     afterEach(async () => {
-        if (scratch) await rm(scratch, { recursive: true, force: true });
+        if (scratch) await removeScratchDirectories(scratch);
         scratch = undefined;
     });
 
@@ -294,7 +295,7 @@ describe("buildPlaceholderReplacements -- the native resolver's canonical spelli
     let scratch: string | undefined;
 
     afterEach(async () => {
-        if (scratch) await rm(scratch, { recursive: true, force: true });
+        if (scratch) await removeScratchDirectories(scratch);
         scratch = undefined;
     });
 
@@ -393,7 +394,7 @@ describe("buildPlaceholderReplacements -- a root whose directory is already gone
     let scratch: string | undefined;
 
     afterEach(async () => {
-        if (scratch) await rm(scratch, { recursive: true, force: true });
+        if (scratch) await removeScratchDirectories(scratch);
         scratch = undefined;
     });
 

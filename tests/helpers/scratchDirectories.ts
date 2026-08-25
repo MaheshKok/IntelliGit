@@ -1,3 +1,4 @@
+import { rmSync } from "node:fs";
 import { rm } from "node:fs/promises";
 
 /**
@@ -21,4 +22,19 @@ export async function removeScratchDirectories(...directories: readonly string[]
             rm(directory, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 }),
         ),
     );
+}
+
+/**
+ * Synchronous sibling of {@link removeScratchDirectories}, for teardown that cannot await.
+ *
+ * The retry contract is identical because the hazard is: `rmSync` fails on the same
+ * EBUSY/EMFILE/ENFILE/ENOTEMPTY/EPERM class and accepts the same `maxRetries`/`retryDelay`. The
+ * options stay spelled out at both call sites rather than hoisted to a shared constant so the
+ * `no-restricted-syntax` guard in `eslint.config.mjs`, which matches an inline options object,
+ * demonstrably covers this file too instead of being evaded by the one module that defines it.
+ */
+export function removeScratchDirectoriesSync(...directories: readonly string[]): void {
+    for (const directory of directories) {
+        rmSync(directory, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+    }
 }

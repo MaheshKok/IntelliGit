@@ -13,13 +13,14 @@ import { resolveShelfPaths } from "../../../src/shelf/paths";
 import { ShelfStore } from "../../../src/shelf/store";
 import { ShelfService } from "../../../src/services/shelfService";
 import { pathFingerprint } from "../../../src/services/shelfServiceOperations";
+import { removeScratchDirectories } from "../../helpers/scratchDirectories";
 
 const execFileAsync = promisify(execFile);
 const directories: string[] = [];
 
 afterEach(async () => {
     await Promise.all(
-        directories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })),
+        directories.splice(0).map((directory) => removeScratchDirectories(directory)),
     );
 });
 
@@ -404,7 +405,7 @@ describe("ShelfService", () => {
         directories.push(outside);
         const outsideTarget = path.join(outside, "tracked.txt");
         await writeFile(outsideTarget, "one\nlocal\nthree\n");
-        await rm(path.join(root, "nested"), { recursive: true, force: true });
+        await removeScratchDirectories(path.join(root, "nested"));
         await symlink(outside, path.join(root, "nested"));
         const originalRunBinary = executor.runBinary.bind(executor);
         let merged = false;

@@ -48,7 +48,7 @@ import { createCommitInfoVscodeDouble } from "../../visual/recorder/commitInfoVs
 // the `vi.mock` call it feeds.
 vi.mock("vscode", () => createCommitInfoVscodeDouble());
 
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -71,6 +71,7 @@ import {
     resetFakeWorkspaceConfigurationForTests,
     setFakeWorkspaceConfiguration,
 } from "../../visual/recorder/workspaceConfigurationDouble";
+import { removeScratchDirectories } from "../../helpers/scratchDirectories";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === "object" && value !== null;
@@ -200,7 +201,7 @@ describe("UndockedViewProvider commit-detail re-post on webview reload", () => {
                 for (const createdPanel of getCreatedWebviewPanels()) createdPanel.dispose();
                 resetCreatedWebviewPanelsForTests();
                 resetFakeWorkspaceConfigurationForTests();
-                await rm(parentDir, { recursive: true, force: true });
+                await removeScratchDirectories(parentDir);
             }
         },
     );

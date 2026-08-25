@@ -56,6 +56,7 @@ import {
     getReviewUrl,
     registerReviewPrompt,
 } from "../../../src/services/reviewPrompt";
+import { removeScratchDirectories } from "../../helpers/scratchDirectories";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 /** Well clear of the 14-day install age and the 30-day snooze horizon. */
@@ -129,7 +130,7 @@ describe("reviewPrompt", () => {
     afterEach(async () => {
         setGitSuccessListener(undefined);
         resetReviewPromptHosts();
-        await rm(storageDir, { recursive: true, force: true });
+        await removeScratchDirectories(storageDir);
     });
 
     describe("countsAsSuccess", () => {
@@ -515,7 +516,7 @@ describe("reviewPrompt", () => {
             vscodeMock.window.showInformationMessage.mockResolvedValue(RATE_ACTION);
             const service = makeService();
             await service.init();
-            await rm(path.join(storageDir, "reviewPrompt"), { recursive: true, force: true });
+            await removeScratchDirectories(path.join(storageDir, "reviewPrompt"));
             await writeFile(path.join(storageDir, "reviewPrompt"), "not a directory", "utf8");
 
             service.handleGitSuccess("commit", ["commit"]);
@@ -778,7 +779,7 @@ describe("reviewPrompt", () => {
 
     describe("containment", () => {
         it("disables itself instead of failing activation when storage is unusable", async () => {
-            await rm(storageDir, { recursive: true, force: true });
+            await removeScratchDirectories(storageDir);
             await writeFile(storageDir, "not a directory", "utf8");
             const service = makeService();
 

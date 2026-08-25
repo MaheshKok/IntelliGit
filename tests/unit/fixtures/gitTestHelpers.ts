@@ -15,12 +15,13 @@
  */
 
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 
 import { createSanitizedGitEnv, type SanitizedGitEnv } from "../../fixtures/repo/seed";
+import { removeScratchDirectories } from "../../helpers/scratchDirectories";
 
 const execFileAsync = promisify(execFile);
 
@@ -58,10 +59,7 @@ export async function createScratchRepo(namePrefix: string): Promise<ScratchRepo
         env,
         home,
         dispose: async () => {
-            await Promise.all([
-                rm(root, { recursive: true, force: true }),
-                rm(home, { recursive: true, force: true }),
-            ]);
+            await Promise.all([removeScratchDirectories(root), removeScratchDirectories(home)]);
         },
     };
 }

@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -16,13 +16,14 @@ import type {
     RebaseSessionLifecycle,
     RebaseSessionManifest,
 } from "../../../../src/git/interactiveRebase/types";
+import { removeScratchDirectories } from "../../../helpers/scratchDirectories";
 
 const REPO_ROOT = "/fixture-repository";
 const SESSION_ID = "session-1";
 const roots: string[] = [];
 
 afterEach(async () => {
-    await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
+    await Promise.all(roots.splice(0).map((root) => removeScratchDirectories(root)));
 });
 
 /** Creates an isolated storage root holding one manifest at the requested lifecycle. */

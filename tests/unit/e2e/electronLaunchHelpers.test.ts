@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -8,6 +8,7 @@ import {
     seedProfileSettings,
     toElectronLaunchEnv,
 } from "../../e2e/hostFixtures/electronLaunchHelpers";
+import { removeScratchDirectories } from "../../helpers/scratchDirectories";
 
 describe("toElectronLaunchEnv", () => {
     it("drops undefined-valued keys instead of forwarding them to Electron", () => {
@@ -34,7 +35,7 @@ describe("seedProfileSettings", () => {
             // fails if the custom workbench confirmation renderer is ever dropped from the harness.
             expect(settings["window.dialogStyle"]).toBe("custom");
         } finally {
-            await rm(userDataDir, { recursive: true, force: true });
+            await removeScratchDirectories(userDataDir);
         }
     });
 });

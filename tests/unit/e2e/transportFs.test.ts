@@ -6,7 +6,7 @@
 // mechanism sufficient; a unit test cannot itself race a reader against a writer
 // deterministically, so it verifies the code takes the only path that guarantee covers.
 
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -20,6 +20,7 @@ import {
     watchChannelDir,
     writeResponseFileAtomic,
 } from "../../../src/e2e/transportFs";
+import { removeScratchDirectoriesSync } from "../../helpers/scratchDirectories";
 
 /**
  * `describeReadFailure` is tested here as a pure function rather than through `watchChannelDir`,
@@ -123,7 +124,7 @@ describe("writeResponseFileAtomic: partial-write safety", () => {
     });
 
     afterEach(() => {
-        rmSync(channelDir, { recursive: true, force: true });
+        removeScratchDirectoriesSync(channelDir);
     });
 
     it("leaves the final response path readable with the exact written payload, and no leftover temp file", () => {
@@ -156,7 +157,7 @@ describe("readRequestFile / removeRequestFile", () => {
     });
 
     afterEach(() => {
-        rmSync(channelDir, { recursive: true, force: true });
+        removeScratchDirectoriesSync(channelDir);
     });
 
     it("reads and JSON-parses an existing request file", () => {
@@ -200,7 +201,7 @@ describe("removeChannelReadyMarker", () => {
     });
 
     afterEach(() => {
-        rmSync(channelDir, { recursive: true, force: true });
+        removeScratchDirectoriesSync(channelDir);
     });
 
     it("removes the marker and tolerates a missing marker", () => {
@@ -221,7 +222,7 @@ describe("watchChannelDir", () => {
     });
 
     afterEach(() => {
-        rmSync(channelDir, { recursive: true, force: true });
+        removeScratchDirectoriesSync(channelDir);
     });
 
     // Exercises a real fs.watch delivery, not a mock. A confirmed run showed this can

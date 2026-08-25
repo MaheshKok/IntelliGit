@@ -38,6 +38,7 @@ vi.mock("node:fs/promises", async (importOriginal) => {
 import { runInteractiveRebaseSubmission } from "../../../../src/git/interactiveRebase/run";
 import { getRebaseStoragePaths } from "../../../../src/git/interactiveRebase/storage";
 import type { InteractiveRebaseRunDependencies } from "../../../../src/git/interactiveRebase/run";
+import { removeScratchDirectories } from "../../../helpers/scratchDirectories";
 
 const BASE = "a".repeat(40);
 const HEAD = "b".repeat(40);
@@ -50,7 +51,7 @@ afterEach(async () => {
     cleanupFault.manifestRemoval = false;
     terminalManifestWriteFault.enabled = false;
     await Promise.all(
-        directories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })),
+        directories.splice(0).map((directory) => removeScratchDirectories(directory)),
     );
 });
 

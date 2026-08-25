@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { readFile, rm, writeFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { describeAbruptTermination } from "../../helpers/abruptTermination";
@@ -22,6 +22,7 @@ import {
     gitDirectory,
     indexSnapshot,
 } from "./shelfTestHarness";
+import { removeScratchDirectories } from "../../helpers/scratchDirectories";
 
 afterEach(cleanTemporaryRepositories);
 
@@ -229,7 +230,7 @@ describe("ShelfService recovery and real lock contention", () => {
         );
         await writeFile(path.join(fixture.root, "tracked.txt"), "one\nfresh local\nthree\n");
         const recoveryRoot = path.join(await gitDirectory(fixture.root), "intelligit", "recovery");
-        await rm(recoveryRoot, { recursive: true, force: true });
+        await removeScratchDirectories(recoveryRoot);
         await writeFile(recoveryRoot, "not a directory");
 
         await expect(

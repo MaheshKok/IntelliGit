@@ -22,7 +22,7 @@
  * other four.
  */
 
-import { rm } from "node:fs/promises";
+import { removeScratchDirectories } from "../../helpers/scratchDirectories";
 
 /** The one thing this module needs from a seeded workspace: the temp `HOME` it owns. */
 interface ScratchWorkspace {
@@ -83,7 +83,7 @@ export function createScratchWorkspaces(): ScratchWorkspaces {
             // the undocumented part.
             await Promise.all(
                 [...new Set(scratchPaths)].map((scratchPath) =>
-                    rm(scratchPath, { recursive: true, force: true }),
+                    removeScratchDirectories(scratchPath),
                 ),
             );
         },

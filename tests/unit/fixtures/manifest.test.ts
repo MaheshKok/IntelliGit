@@ -8,7 +8,7 @@
  * `readFixtureManifest`'s own implementation.
  */
 
-import { mkdir, mkdtemp, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rename, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -37,6 +37,7 @@ import {
     writeFixtureManifest,
     type FixtureManifest,
 } from "../../fixtures/repo/manifest";
+import { removeScratchDirectories } from "../../helpers/scratchDirectories";
 
 function escapeRegExp(value: string): string {
     return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -46,7 +47,7 @@ describe("manifest", () => {
     let cleanupDirs: string[] = [];
 
     afterEach(async () => {
-        await Promise.all(cleanupDirs.map((dir) => rm(dir, { recursive: true, force: true })));
+        await Promise.all(cleanupDirs.map((dir) => removeScratchDirectories(dir)));
         cleanupDirs = [];
     });
 

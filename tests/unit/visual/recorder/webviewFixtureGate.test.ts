@@ -44,7 +44,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { existsSync, realpathSync } from "node:fs";
-import { copyFile, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, mkdtemp, readFile, readdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -74,6 +74,7 @@ import {
     type WebviewFixtureRecorderEntry,
 } from "../../../visual/recorder/webviewFixtureRegistry";
 import type { WebviewFixture } from "../../../visual/recorder/webviewFixtureTypes";
+import { removeScratchDirectories } from "../../../helpers/scratchDirectories";
 
 const REPO_ROOT = path.resolve(__dirname, "../../../..");
 const REAL_FIXTURES_DIR = path.join(REPO_ROOT, "tests", "visual", "fixtures");
@@ -276,7 +277,7 @@ describe("runWebviewFixtureGate", () => {
                 });
                 expect(findings[0].detail.length).toBeGreaterThan(0);
             } finally {
-                await rm(scratchRepoRoot, { recursive: true, force: true });
+                await removeScratchDirectories(scratchRepoRoot);
             }
         },
         REAL_SCENARIO_TIMEOUT_MS,
@@ -342,7 +343,7 @@ describe("runWebviewFixtureGate", () => {
                         }),
                     ).toEqual([]);
                 } finally {
-                    await rm(scratchRepoRoot, { recursive: true, force: true });
+                    await removeScratchDirectories(scratchRepoRoot);
                 }
             },
             REAL_SCENARIO_TIMEOUT_MS,
@@ -377,7 +378,7 @@ describe("runWebviewFixtureGate", () => {
                         ),
                     ).toBe(await committedBytesInRepo());
                 } finally {
-                    await rm(scratchRepoRoot, { recursive: true, force: true });
+                    await removeScratchDirectories(scratchRepoRoot);
                 }
             },
             REAL_SCENARIO_TIMEOUT_MS,
@@ -414,7 +415,7 @@ describe("runWebviewFixtureGate", () => {
                         "orphan-scenario",
                     );
                 } finally {
-                    await rm(scratchRepoRoot, { recursive: true, force: true });
+                    await removeScratchDirectories(scratchRepoRoot);
                 }
             },
             REAL_SCENARIO_TIMEOUT_MS,
@@ -444,7 +445,7 @@ describe("runWebviewFixtureGate", () => {
                     // Still the drifted bytes: the default gate reports drift, it never repairs it.
                     expect(await readFile(committedPath, "utf8")).toBe(drifted);
                 } finally {
-                    await rm(scratchRepoRoot, { recursive: true, force: true });
+                    await removeScratchDirectories(scratchRepoRoot);
                 }
             },
             REAL_SCENARIO_TIMEOUT_MS,
@@ -484,7 +485,7 @@ describe("runWebviewFixtureGate", () => {
                 path: orphanPath,
             });
         } finally {
-            await rm(scratchRepoRoot, { recursive: true, force: true });
+            await removeScratchDirectories(scratchRepoRoot);
         }
     });
 
@@ -520,7 +521,7 @@ describe("runWebviewFixtureGate", () => {
                 expect(calls).toEqual(["clean", "dirty"]);
                 expect(preparations).toHaveLength(2);
             } finally {
-                await rm(scratchRepoRoot, { recursive: true, force: true });
+                await removeScratchDirectories(scratchRepoRoot);
             }
         });
 
@@ -545,7 +546,7 @@ describe("runWebviewFixtureGate", () => {
                 expect(existsSync(preparations[0].destination)).toBe(false);
                 expect(existsSync(preparations[0].home)).toBe(false);
             } finally {
-                await rm(scratchRepoRoot, { recursive: true, force: true });
+                await removeScratchDirectories(scratchRepoRoot);
             }
         });
 
@@ -576,7 +577,7 @@ describe("runWebviewFixtureGate", () => {
                 expect(existsSync(preparations[0].destination)).toBe(false);
                 expect(existsSync(preparations[0].home)).toBe(false);
             } finally {
-                await rm(scratchRepoRoot, { recursive: true, force: true });
+                await removeScratchDirectories(scratchRepoRoot);
             }
         });
 
@@ -611,7 +612,7 @@ describe("runWebviewFixtureGate", () => {
                 expect(existsSync(preparations[0].destination)).toBe(false);
                 expect(existsSync(preparations[0].home)).toBe(false);
             } finally {
-                await rm(scratchRepoRoot, { recursive: true, force: true });
+                await removeScratchDirectories(scratchRepoRoot);
             }
         });
     });
@@ -650,7 +651,7 @@ describe("runWebviewFixtureGate", () => {
                 expect(existsSync(workspace.root)).toBe(true);
                 expect(existsSync(path.dirname(workspace.root))).toBe(true);
             } finally {
-                await rm(path.dirname(workspace.root), { recursive: true, force: true });
+                await removeScratchDirectories(path.dirname(workspace.root));
             }
         });
     });
@@ -740,7 +741,7 @@ describe("runWebviewFixtureGate", () => {
                         assertDisposableScenarioPath(realpathSync(allocated), "clean", role),
                     ).not.toThrow();
                 } finally {
-                    await rm(allocated, { recursive: true, force: true });
+                    await removeScratchDirectories(allocated);
                 }
             },
         );
