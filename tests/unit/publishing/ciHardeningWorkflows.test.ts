@@ -338,24 +338,73 @@ describe("CI quality hardening workflows", () => {
                 "check that stays silent blocks the merge instead of passing it",
         ).toEqual(["branches"]);
 
-        // Windows takes about thirty minutes of the ninety-minute budget, so an uncancelled
-        // superseded run holds a runner for a commit nobody will merge. The scheduled run is exempt
-        // by the same reasoning inverted: exactly one is ever in flight, so cancelling it discards
+        // Three Windows shards and two POSIX legs run in parallel, so an uncancelled superseded
+        // run holds five runners for a commit nobody will merge. The scheduled run is exempt by
+        // the same reasoning inverted: exactly one is ever in flight, so cancelling it discards
         // that week's only result. Asserting the guard rather than a bare `true` is the point --
         // `cancel-in-progress: true` would typecheck as YAML and silently drop weekly results.
         expect(extractTopLevelBlock(compatibility, "concurrency")).toMatch(
             /cancel-in-progress: \$\{\{ github\.event_name == 'pull_request' \}\}/,
         );
 
-        // The check that gets required is named after the matrix entry, so dropping the entry
-        // renames the context out of existence -- and a required context with no check run is the
-        // same deadlock as no trigger at all, arriving by a different route.
+        // The required context is 'Installed package smoke (windows-latest)'. The Windows suite is
+        // sharded, so no test job carries that name any more -- the verdict job does, and it
+        // exists to fold "every shard succeeded" into the one context ruleset 12862467 watches. A
+        // required context with no check run is the same deadlock as no trigger at all, arriving
+        // by a different route, so the name has to survive every future reshape of the shards.
         expect(
             compatibility,
-            "the required context is 'Installed package smoke (windows-latest)', which only exists " +
-                "while the runner stays in the matrix and the job name keeps interpolating it",
-        ).toContain("name: Installed package smoke (${{ matrix.os }})");
-        expect(compatibility).toContain("windows-latest");
+            "the required context is 'Installed package smoke (windows-latest)', which now only " +
+                "exists while the verdict job keeps carrying that exact name",
+        ).toContain("        name: Installed package smoke (windows-latest)\n");
+
+        const verdict = extractJobBlock(compatibility, "windows-verdict");
+        expect(
+            verdict,
+            "the verdict must wait on the shard job, or it reports before the tests it summarises",
+        ).toMatch(/^        needs: windows$/m);
+
+        // `always()` is what turns a failed shard into a FAILING verdict rather than a skipped
+        // one. GitHub treats a skipped required check as satisfied, so without this line the gate
+        // would pass in exactly the case it exists to block.
+        expect(
+            verdict,
+            "a skipped required check counts as satisfied; the verdict must run unconditionally " +
+                "and judge the shard result itself, not rely on implicit needs gating",
+        ).toContain("if: always()");
+        expect(
+            verdict,
+            "`always()` removed the implicit needs gating, so this explicit result test is the " +
+                "entire verdict; nothing else fails this job",
+        ).toMatch(/test "\$RESULT" = "success"/);
+        expect(verdict).toContain("RESULT: ${{ needs.windows.result }}");
+
+        // The shards must jointly cover the whole suite: `--shard` slices vitest's file list, and
+        // the entries below partition it -- N slices of /N, each present exactly once.
+        const windows = extractJobBlock(compatibility, "windows");
+        expect(
+            windows.match(/shard: \[(.*)\]/)?.[1],
+            "the shard list must stay an exact partition of the suite",
+        ).toBe("1/4, 2/4, 3/4, 4/4");
+        expect(
+            windows,
+            "every shard must pass its slice to vitest, or four jobs each run the full suite",
+        ).toContain("bun run test --shard=${{ matrix.shard }}");
+        expect(windows).toContain("runs-on: windows-latest");
+
+        // The wall-clock budget skip must ride the shard job's `Run tests` step exactly as it
+        // rides the POSIX legs'. The sharded job first shipped without it, and the first
+        // pull_request run went red on a stopwatch reading -- 94.68 ms against the 59 ms
+        // single-host target (run 32880197683) -- with every deterministic assertion green.
+        expect(
+            windows,
+            "the Windows shards must skip wall-clock timing budgets like the POSIX legs do; " +
+                "a shared runner measures itself, not the product",
+        ).toContain('INTELLIGIT_SKIP_TIMING_BUDGETS: "1"');
+        expect(
+            compatibility.split('INTELLIGIT_SKIP_TIMING_BUDGETS: "1"').length - 1,
+            "exactly the two `Run tests` steps set the skip -- a dropped or extra setter is drift",
+        ).toBe(2);
     });
 
     it("keeps the Windows leg off the two costs that were measured, not guessed", () => {
@@ -365,106 +414,124 @@ describe("CI quality hardening workflows", () => {
         // step name, because reading a duration and naming a cause is how the browser cache that
         // used to live here got written in the first place.
         const compatibility = readRepositoryFile(".github/workflows/compatibility.yml");
-        const job = extractJobBlock(compatibility, "compatibility");
+        const jobs = {
+            compatibility: extractJobBlock(compatibility, "compatibility"),
+            windows: extractJobBlock(compatibility, "windows"),
+        };
 
-        const stepOffset = (stepName: string): number => {
+        const stepOffsetIn = (job: string, jobId: string, stepName: string): number => {
             const offset = job.indexOf(`            - name: ${stepName}\n`);
-            expect(offset, `the job must still contain a step named '${stepName}'`).not.toBe(-1);
+            expect(
+                offset,
+                `the '${jobId}' job must still contain a step named '${stepName}'`,
+            ).not.toBe(-1);
             return offset;
         };
 
-        // Ordering is the whole mechanism. A cache step placed after the install it was meant to
-        // accelerate restores into a directory that is already populated and saves what the install
-        // just did anyway -- it costs time, saves none, and reads as configured in every review.
-        // Measured on Windows: `bun install` 75s cold against 19s restored.
-        expect(
-            stepOffset("Restore the bun store"),
-            "the cache must be restored before `bun install`, or it accelerates nothing",
-        ).toBeLessThan(stepOffset("Install dependencies"));
-
-        const cacheStep = extractStepBlock(job, "Restore the bun store");
-        expect(cacheStep, "the restore step must still be a real cache").toContain(
-            "uses: actions/cache@",
-        );
-
-        // `--with-deps` means two entirely different things by platform. On Linux it apt-installs
-        // libraries Chromium cannot launch without. On Windows it runs DISM to enable Media
-        // Foundation, a VIDEO CODEC pack, and that is the entire cost of this step: 202s with the
-        // browser already restored from cache (run 32783641129 attempt 2) against 200s with a
-        // cache miss and a fresh download (run 32785953517) -- the browser is not what it spends
-        // its time on. Nothing in this repository records video, and the only consumer takes
-        // screenshots. Making the flag unconditional again silently returns ~190s per run to the
-        // one leg that gates every merge, with no test failing.
-        const playwrightRun =
-            extractStepBlock(
-                job,
-                "Install the Playwright browser the comparator proof runs against",
-            ).match(/^\s+run: (.+)$/m)?.[1] ?? "";
-        expect(
-            playwrightRun,
-            "`--with-deps` must stay gated to Linux; on Windows it installs video codecs that " +
-                "nothing here uses, and it is the whole cost of this step",
-        ).toMatch(/runner\.os == 'Linux'.*--with-deps/);
-        expect(
-            playwrightRun,
-            "the browser itself must still be installed on every platform",
-        ).toContain("chromium");
-
-        // The Playwright browser was cached here and has been removed: it changed this step's cost
-        // by 2s while adding ~170MB to an archive Windows spends 73s untarring. Re-adding it is a
-        // regression that looks like an optimisation, so the cache is pinned to the bun store.
-        expect(
-            cacheStep.match(/^\s+path: (.+)$/m)?.[1],
-            "the cache holds the bun store only; the browser measurably did not benefit from it",
-        ).toBe("~/.bun/install/cache");
-
-        // `hashFiles` returns an empty string for a path that matches nothing, so a typo here does
-        // not fail -- it collapses the key to its bare prefix, and the first run to save under that
-        // key owns it for every future run regardless of what the lockfile says afterwards.
-        const cacheKey = cacheStep.match(/^\s+key: (.+)$/m)?.[1] ?? "";
-        const hashedFiles = [...cacheKey.matchAll(/hashFiles\('([^']+)'\)/g)].map(
-            ([, file]) => file,
-        );
-        expect(hashedFiles, "the key must vary with the dependency set it caches").not.toEqual([]);
-        for (const file of hashedFiles) {
+        // Both jobs install and test the same way, so the invariants below hold for each of them;
+        // the Windows job is where every cost was measured, but a regression in the POSIX job
+        // would be the same mistake at a smaller price.
+        for (const [jobId, job] of Object.entries(jobs)) {
+            // Ordering is the whole mechanism. A cache step placed after the install it was meant
+            // to accelerate restores into a directory that is already populated and saves what the
+            // install just did anyway -- it costs time, saves none, and reads as configured in
+            // every review. Measured on Windows: `bun install` 75s cold against 19s restored.
             expect(
-                existsSync(resolve(REPOSITORY_ROOT, file)),
-                `the key hashes '${file}', which does not exist -- hashFiles would return "" and ` +
-                    "every run would collide on one permanently stale entry",
-            ).toBe(true);
-        }
+                stepOffsetIn(job, jobId, "Restore the bun store"),
+                `the cache in '${jobId}' must be restored before \`bun install\`, or it ` +
+                    "accelerates nothing",
+            ).toBeLessThan(stepOffsetIn(job, jobId, "Install dependencies"));
 
-        // A `restore-keys` prefix that is not a prefix of `key` matches nothing, so the fallback
-        // silently stops existing and every dependency bump pays the full download again.
-        const restoreKey = (
-            cacheStep.match(/restore-keys: \|\n((?:\s+\S.*\n)+)/)?.[1] ?? ""
-        ).trim();
-        expect(restoreKey, "a fallback prefix must be declared").not.toBe("");
-        expect(
-            cacheKey.slice(0, restoreKey.length),
-            "restore-keys only ever matches a prefix of a saved key",
-        ).toBe(restoreKey);
+            const cacheStep = extractStepBlock(job, "Restore the bun store");
+            expect(
+                cacheStep,
+                `the restore step in '${jobId}' must still be a real cache`,
+            ).toContain("uses: actions/cache@");
+
+            // `--with-deps` means two entirely different things by platform. On Linux it
+            // apt-installs libraries Chromium cannot launch without. On Windows it runs DISM to
+            // enable Media Foundation, a VIDEO CODEC pack, and that is the entire cost of the
+            // step: 202s with the browser already restored from cache (run 32783641129 attempt 2)
+            // against 200s with a cache miss and a fresh download (run 32785953517) -- the browser
+            // is not what it spends its time on. Nothing in this repository records video, and the
+            // only consumer takes screenshots. Making the flag unconditional again silently
+            // returns ~190s per run to every shard that gates a merge, with no test failing.
+            const playwrightRun =
+                extractStepBlock(
+                    job,
+                    "Install the Playwright browser the comparator proof runs against",
+                ).match(/^\s+run: (.+)$/m)?.[1] ?? "";
+            expect(
+                playwrightRun,
+                `\`--with-deps\` in '${jobId}' must stay gated to Linux; on Windows it installs ` +
+                    "video codecs that nothing here uses, and it is the whole cost of this step",
+            ).toMatch(/runner\.os == 'Linux'.*--with-deps/);
+            expect(
+                playwrightRun,
+                "the browser itself must still be installed on every platform",
+            ).toContain("chromium");
+
+            // The Playwright browser was cached here and has been removed: it changed this step's
+            // cost by 2s while adding ~170MB to an archive Windows spends 73s untarring. Re-adding
+            // it is a regression that looks like an optimisation, so the cache is pinned to the
+            // bun store.
+            expect(
+                cacheStep.match(/^\s+path: (.+)$/m)?.[1],
+                "the cache holds the bun store only; the browser measurably did not benefit from it",
+            ).toBe("~/.bun/install/cache");
+
+            // `hashFiles` returns an empty string for a path that matches nothing, so a typo here
+            // does not fail -- it collapses the key to its bare prefix, and the first run to save
+            // under that key owns it for every future run regardless of what the lockfile says
+            // afterwards.
+            const cacheKey = cacheStep.match(/^\s+key: (.+)$/m)?.[1] ?? "";
+            const hashedFiles = [...cacheKey.matchAll(/hashFiles\('([^']+)'\)/g)].map(
+                ([, file]) => file,
+            );
+            expect(hashedFiles, "the key must vary with the dependency set it caches").not.toEqual(
+                [],
+            );
+            for (const file of hashedFiles) {
+                expect(
+                    existsSync(resolve(REPOSITORY_ROOT, file)),
+                    `the key hashes '${file}', which does not exist -- hashFiles would return ` +
+                        '"" and every run would collide on one permanently stale entry',
+                ).toBe(true);
+            }
+
+            // A `restore-keys` prefix that is not a prefix of `key` matches nothing, so the
+            // fallback silently stops existing and every dependency bump pays the full download
+            // again.
+            const restoreKey = (
+                cacheStep.match(/restore-keys: \|\n((?:\s+\S.*\n)+)/)?.[1] ?? ""
+            ).trim();
+            expect(restoreKey, "a fallback prefix must be declared").not.toBe("");
+            expect(
+                cacheKey.slice(0, restoreKey.length),
+                "restore-keys only ever matches a prefix of a saved key",
+            ).toBe(restoreKey);
+        }
 
         const defenderStepName =
             "Exclude the runner's working directories from Defender real-time scanning";
-        const defender = extractStepBlock(job, defenderStepName);
+        const defender = extractStepBlock(jobs.windows, defenderStepName);
 
         // First step on purpose. Checkout alone writes tens of thousands of files, and an exclusion
         // added afterwards has already let Defender scan every one of them.
         expect(
-            stepOffset(defenderStepName),
+            stepOffsetIn(jobs.windows, "windows", defenderStepName),
             "the exclusion must precede checkout, whose own writes are the first thing it covers",
-        ).toBeLessThan(stepOffset("Checkout code"));
+        ).toBeLessThan(stepOffsetIn(jobs.windows, "windows", "Checkout code"));
 
         expect(
             defender,
             "`Add-MpPreference` does not exist off Windows, so the step must stay guarded",
         ).toContain("if: runner.os == 'Windows'");
 
-        // This is the assertion with the worst consequence behind it. The Windows leg is a required
-        // status check: if a transient Defender failure fails this step, it fails the job, and that
-        // blocks every merge in the repository to save half an hour on one of them. A skipped
-        // exclusion costs time and nothing else.
+        // This is the assertion with the worst consequence behind it. The Windows shards feed a
+        // required status check: if a transient Defender failure fails this step, it fails the
+        // shard and the verdict with it, and that blocks every merge in the repository to save
+        // minutes on one of them. A skipped exclusion costs time and nothing else.
         expect(defender, "a required check must not be able to fail on an optimisation").toContain(
             "continue-on-error: true",
         );
@@ -497,7 +564,8 @@ describe("CI quality hardening workflows", () => {
         expect(compatibility).toContain("schedule:");
         expect(compatibility).toContain("workflow_dispatch:");
         expect(compatibility).toContain("timeout-minutes: 90");
-        expect(compatibility).toContain("os: [ubuntu-latest, macos-latest, windows-latest]");
+        expect(compatibility).toContain("os: [ubuntu-latest, macos-latest]");
+        expect(compatibility).toContain("runs-on: windows-latest");
         expect(compatibility).toContain("bun install --frozen-lockfile");
         expect(compatibility).toContain("bun run format:check");
         expect(compatibility).toContain("bun run lint");

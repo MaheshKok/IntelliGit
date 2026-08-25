@@ -15,8 +15,8 @@
  * across every entry that declares it); an entry that needs seeded history (a commit hash, a
  * branch) reads it off `workspace.template`, which is only ever absent for `empty-repo` (see
  * `requireScenarioTemplate` below). `requireScenarioTemplate` itself is not exported: nothing
- * outside this module needs to reuse the guard directly -- `webviewFixtureGate.test.ts` exercises
- * it through the real `commit-info` entry's `record`, the way every consumer actually reaches it.
+ * outside this module needs to reuse the guard directly -- `webviewFixtureGate.disposal.test.ts`
+ * exercises it through the real `commit-info` entry's `record`, the way every consumer reaches it.
  */
 
 import type { WebviewContextId } from "../../../src/e2e/webviewCapture";

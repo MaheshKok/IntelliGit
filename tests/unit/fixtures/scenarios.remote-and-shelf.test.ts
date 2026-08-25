@@ -1,23 +1,14 @@
 /**
- * Spec-derived tests for `tests/fixtures/repo/scenarios.ts` (PLAN.md:101, Phase 2c-iii). Every
- * scenario's defining postcondition is checked with a real `git` command (or, for
- * `shelf-populated`, a fresh `ShelfStore` read) run against the built workspace -- never by
- * trusting `prepare()`'s own return value alone -- for the same reason `seed.test.ts` does this:
- * a bug in a scenario builder would otherwise produce a silent false-green fixture for a screen no
- * real user would see (`scenarios.ts`'s own "Governing principle" doc comment).
- *
- * The `git()` helper below is deliberately re-declared rather than imported from
- * `tests/fixtures/repo/gitRun.ts`, mirroring `tests/unit/fixtures/gitTestHelpers.ts`'s own
- * documented reasoning: driving the fixture and reading it back through the SAME internal
- * git-runner the module under test also uses would let a bug in that shared seam hide from every
- * test built on top of it.
+ * Spec-derived tests for `tests/fixtures/repo/scenarios.ts`: the remote-relationship scenarios
+ * (ahead-behind / ahead-only / pushed-tip / rewritten-history / stale-lease), empty-repo, and the
+ * shelf scenarios. One `scenarios.test.ts` became this trio so the Windows CI shards can spread
+ * its git-heavy builds; the local-worktree scenarios and the independence sweep live in the
+ * sibling `scenarios.*.test.ts` files, and the shared read-back seam plus its reasoning live in
+ * `scenariosTestHelpers.ts`.
  */
 
-import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { promisify } from "node:util";
 
 import { afterAll, describe, expect, it } from "vitest";
 
@@ -32,288 +23,32 @@ import { ShelfService } from "../../../src/services/shelfService";
 
 import { createSanitizedGitEnv } from "../../fixtures/repo/seed";
 import {
+    allocateDestination,
+    git,
+    gitFails,
+    removeTrackedScratchDirectories,
+    scenarioFor,
+    trackScratchHome,
+} from "./scenariosTestHelpers";
+import {
     assertAheadBehindPostcondition,
     assertAheadOnlyPostcondition,
-    assertCleanPostcondition,
-    assertConflictedPostcondition,
-    assertDetachedHeadPostcondition,
-    assertDirtyPostcondition,
     assertEmptyRepoPostcondition,
-    assertMidRebasePostcondition,
     assertPushedTipPostcondition,
     assertRewrittenHistoryPostcondition,
     assertShelfConflictedPostcondition,
     assertShelfPopulatedPostcondition,
     assertStaleLeasePostcondition,
-    DIRTY_FIXTURE,
     PUSHED_TIP_FIXTURE,
-    REPOSITORY_SCENARIO_IDS,
-    REPOSITORY_SCENARIOS,
-    type RepositoryScenarioId,
-    type ScenarioWorkspace,
 } from "../../fixtures/repo/scenarios";
 
-const execFileAsync = promisify(execFile);
-
-/** Runs one git process and returns trimmed UTF-8 stdout -- the test suite's own independent seam,
- * not `scenarios.ts`'s. */
-async function git(cwd: string, args: readonly string[], env: NodeJS.ProcessEnv): Promise<string> {
-    const result = await execFileAsync("git", [...args], { cwd, env, encoding: "buffer" });
-    return result.stdout.toString("utf8").trim();
-}
-
-/** Like `git`, but resolves `false` on a non-zero exit instead of rejecting -- used only for
- * assertions that check whether a git subcommand fails (e.g. `symbolic-ref` on a detached HEAD). */
-async function gitFails(
-    cwd: string,
-    args: readonly string[],
-    env: NodeJS.ProcessEnv,
-): Promise<boolean> {
-    try {
-        await git(cwd, args, env);
-        return false;
-    } catch {
-        return true;
-    }
-}
-
-const scratchRoots: string[] = [];
-const scratchHomes: string[] = [];
-
-/** Allocates a fresh, empty destination under this test file's own scratch root, registered for
- * `afterAll` cleanup. */
-async function allocateDestination(): Promise<string> {
-    const parent = await mkdtemp(join(tmpdir(), "intelligit-scenarios-test-"));
-    scratchRoots.push(parent);
-    return join(parent, "destination");
-}
-
-function scenarioFor(id: RepositoryScenarioId) {
-    const scenario = REPOSITORY_SCENARIOS.find((candidate) => candidate.id === id);
-    if (!scenario)
-        throw new Error(
-            `no REPOSITORY_SCENARIOS entry for "${id}" -- fix the test, not the fixture`,
-        );
-    return scenario;
-}
-
-/** Every scenario's `env`/`home` shape, asserted against the frozen `ScenarioWorkspace` contract
- * rather than inline per test -- typed explicitly so a future scenario that forgets to route
- * through `createSanitizedGitEnv` fails here instead of only in whichever test happens to run
- * first. */
-async function assertNoIdentityLeakage(workspace: ScenarioWorkspace): Promise<void> {
-    // The config paths are asserted by CONTENT, not by literal value: `/dev/null` was the literal
-    // here for years and is unreadable on Windows (`\\.\nul`), which no equality check could see.
-    for (const key of ["GIT_CONFIG_GLOBAL", "GIT_CONFIG_SYSTEM"] as const) {
-        const configPath = workspace.env[key];
-        expect(configPath, `${key} must be set`).toBeTruthy();
-        expect(
-            await readFile(configPath as string, "utf8"),
-            `${key} must point at a real, EMPTY config file`,
-        ).toBe("");
-    }
-    expect(workspace.env.HOME).toBe(workspace.home);
-    expect(workspace.home).not.toBe(process.env.HOME);
-}
-
-afterAll(async () => {
-    await removeScratchDirectories(...scratchRoots, ...scratchHomes);
-});
-
-describe("REPOSITORY_SCENARIOS", () => {
-    it("has exactly one entry per REPOSITORY_SCENARIO_IDS id, in the same order, with no duplicates", () => {
-        expect(REPOSITORY_SCENARIOS.map((scenario) => scenario.id)).toEqual([
-            ...REPOSITORY_SCENARIO_IDS,
-        ]);
-        // Set equality, not just a length/order check: catches a duplicate id masking a missing one.
-        expect(new Set(REPOSITORY_SCENARIOS.map((scenario) => scenario.id)).size).toBe(
-            REPOSITORY_SCENARIO_IDS.length,
-        );
-    });
-});
-
-describe("no identity leakage", () => {
-    it.each(REPOSITORY_SCENARIO_IDS)(
-        "%s routes HOME/config through the sanitized env",
-        async (id) => {
-            const destination = await allocateDestination();
-            const workspace = await scenarioFor(id).prepare(destination);
-            scratchHomes.push(workspace.home);
-
-            await assertNoIdentityLeakage(workspace);
-        },
-    );
-});
-
-describe("clean", () => {
-    it("leaves git status --porcelain empty", async () => {
-        const destination = await allocateDestination();
-        const workspace = await scenarioFor("clean").prepare(destination);
-        scratchHomes.push(workspace.home);
-
-        const status = await git(workspace.root, ["status", "--porcelain"], workspace.env);
-        expect(status).toBe("");
-    });
-
-    it("can fail: a dirty workspace violates the clean postcondition", async () => {
-        const destination = await allocateDestination();
-        const workspace = await scenarioFor("dirty").prepare(destination);
-        scratchHomes.push(workspace.home);
-
-        await expect(assertCleanPostcondition(workspace.root, workspace.env)).rejects.toThrow(
-            /clean scenario postcondition violated/,
-        );
-    });
-});
-
-describe("dirty", () => {
-    it("names at least one modified and one untracked path in git status --porcelain", async () => {
-        const destination = await allocateDestination();
-        const workspace = await scenarioFor("dirty").prepare(destination);
-        scratchHomes.push(workspace.home);
-
-        const status = await git(workspace.root, ["status", "--porcelain"], workspace.env);
-        const lines = status.split("\n");
-        expect(lines.some((line) => line.startsWith("??"))).toBe(true);
-        expect(lines.some((line) => !line.startsWith("??") && /M/.test(line.slice(0, 2)))).toBe(
-            true,
-        );
-    });
-
-    it("exposes the exact status paths the dirty scenario creates, including rename source metadata", async () => {
-        const destination = await allocateDestination();
-        const workspace = await scenarioFor("dirty").prepare(destination);
-        scratchHomes.push(workspace.home);
-
-        const status = await git(
-            workspace.root,
-            ["status", "--porcelain=v1", "-z", "--untracked-files=all"],
-            workspace.env,
-        );
-        const records = status.split("\0").filter(Boolean);
-
-        // Porcelain -z emits the rename destination and source as separate records; the panel only
-        // renders the destination, so both records are checked to keep the fixture and oracle honest.
-        expect(records).toEqual(
-            expect.arrayContaining([
-                `A  ${DIRTY_FIXTURE.binaryPath}`,
-                `MM ${DIRTY_FIXTURE.mutablePath}`,
-                `R  ${DIRTY_FIXTURE.renamePath}`,
-                DIRTY_FIXTURE.renameFromPath,
-                `?? ${DIRTY_FIXTURE.crlfPath}`,
-                `?? ${DIRTY_FIXTURE.untrackedPath}`,
-            ]),
-        );
-        expect(records).toHaveLength(DIRTY_FIXTURE.visiblePaths.length + 1);
-        expect(records).not.toContain(`?? ${DIRTY_FIXTURE.ignoredPath}`);
-    });
-
-    it("can fail: a clean workspace violates the dirty postcondition", async () => {
-        const destination = await allocateDestination();
-        const workspace = await scenarioFor("clean").prepare(destination);
-        scratchHomes.push(workspace.home);
-
-        await expect(assertDirtyPostcondition(workspace.root, workspace.env)).rejects.toThrow(
-            /dirty scenario postcondition violated/,
-        );
-    });
-});
-
-describe("conflicted", () => {
-    it("leaves a real in-progress merge with an unmerged entry", async () => {
-        const destination = await allocateDestination();
-        const workspace = await scenarioFor("conflicted").prepare(destination);
-        scratchHomes.push(workspace.home);
-
-        const mergeHead = await git(
-            workspace.root,
-            ["rev-parse", "--verify", "MERGE_HEAD"],
-            workspace.env,
-        );
-        expect(mergeHead).toHaveLength(40);
-
-        const status = await git(workspace.root, ["status", "--porcelain"], workspace.env);
-        expect(status.split("\n")).toContain("UU conflict.txt");
-    });
-
-    it("can fail: repairing the conflict (merge --abort) violates the conflicted postcondition", async () => {
-        const destination = await allocateDestination();
-        const workspace = await scenarioFor("conflicted").prepare(destination);
-        scratchHomes.push(workspace.home);
-
-        // Sanity check first: the postcondition genuinely holds on the freshly built scenario.
-        await expect(
-            assertConflictedPostcondition(workspace.root, workspace.env),
-        ).resolves.toBeUndefined();
-
-        await git(workspace.root, ["merge", "--abort"], workspace.env);
-
-        await expect(assertConflictedPostcondition(workspace.root, workspace.env)).rejects.toThrow(
-            /conflicted scenario postcondition violated/,
-        );
-    });
-});
-
-describe("mid-rebase", () => {
-    it("leaves a real in-progress rebase reporting a rebase in progress", async () => {
-        const destination = await allocateDestination();
-        const workspace = await scenarioFor("mid-rebase").prepare(destination);
-        scratchHomes.push(workspace.home);
-
-        const status = await git(workspace.root, ["status"], workspace.env);
-        expect(status).toMatch(/rebas/i);
-        expect(status).toContain("conflict.txt");
-    });
-
-    it("can fail: repairing the rebase (rebase --abort) violates the mid-rebase postcondition", async () => {
-        const destination = await allocateDestination();
-        const workspace = await scenarioFor("mid-rebase").prepare(destination);
-        scratchHomes.push(workspace.home);
-
-        await expect(
-            assertMidRebasePostcondition(workspace.root, workspace.env),
-        ).resolves.toBeUndefined();
-
-        await git(workspace.root, ["rebase", "--abort"], workspace.env);
-
-        await expect(assertMidRebasePostcondition(workspace.root, workspace.env)).rejects.toThrow(
-            /mid-rebase scenario postcondition violated/,
-        );
-    });
-});
-
-describe("detached-head", () => {
-    it("fails symbolic-ref and points HEAD at the intended commit", async () => {
-        const destination = await allocateDestination();
-        const workspace = await scenarioFor("detached-head").prepare(destination);
-        scratchHomes.push(workspace.home);
-
-        expect(await gitFails(workspace.root, ["symbolic-ref", "-q", "HEAD"], workspace.env)).toBe(
-            true,
-        );
-        const head = await git(workspace.root, ["rev-parse", "HEAD"], workspace.env);
-        expect(head).toBe(workspace.template?.commits.featureCommit3);
-    });
-
-    it("can fail: checking out a branch violates the detached-head postcondition", async () => {
-        const destination = await allocateDestination();
-        const workspace = await scenarioFor("detached-head").prepare(destination);
-        scratchHomes.push(workspace.home);
-        const expectedSha = workspace.template!.commits.featureCommit3;
-
-        await git(workspace.root, ["checkout", "--quiet", "main"], workspace.env);
-
-        await expect(
-            assertDetachedHeadPostcondition(workspace.root, workspace.env, expectedSha),
-        ).rejects.toThrow(/detached-head scenario postcondition violated/);
-    });
-});
+afterAll(removeTrackedScratchDirectories);
 
 describe("ahead-behind", () => {
     it("puts local main both ahead of and behind its upstream", async () => {
         const destination = await allocateDestination();
         const workspace = await scenarioFor("ahead-behind").prepare(destination);
-        scratchHomes.push(workspace.home);
+        trackScratchHome(workspace.home);
 
         const counts = await git(
             workspace.root,
@@ -328,7 +63,7 @@ describe("ahead-behind", () => {
     it("can fail: a freshly seeded (unadvanced) template violates the ahead-behind postcondition", async () => {
         const destination = await allocateDestination();
         const workspace = await scenarioFor("dirty").prepare(destination);
-        scratchHomes.push(workspace.home);
+        trackScratchHome(workspace.home);
 
         await expect(assertAheadBehindPostcondition(workspace.root, workspace.env)).rejects.toThrow(
             /ahead-behind scenario postcondition violated/,
@@ -340,7 +75,7 @@ describe("ahead-only", () => {
     it("puts local main exactly one commit ahead of its upstream without moving origin/main", async () => {
         const destination = await allocateDestination();
         const workspace = await scenarioFor("ahead-only").prepare(destination);
-        scratchHomes.push(workspace.home);
+        trackScratchHome(workspace.home);
 
         const counts = await git(
             workspace.root,
@@ -366,7 +101,7 @@ describe("ahead-only", () => {
     it("can fail: a clean zero-ahead state violates the ahead-only postcondition", async () => {
         const destination = await allocateDestination();
         const workspace = await scenarioFor("clean").prepare(destination);
-        scratchHomes.push(workspace.home);
+        trackScratchHome(workspace.home);
 
         await expect(
             assertAheadOnlyPostcondition(
@@ -382,7 +117,7 @@ describe("pushed-tip", () => {
     it("puts a clean non-merge main tip on origin/main with no ahead/behind delta", async () => {
         const destination = await allocateDestination();
         const workspace = await scenarioFor("pushed-tip").prepare(destination);
-        scratchHomes.push(workspace.home);
+        trackScratchHome(workspace.home);
 
         const [counts, status, subject, parents, localRemoteTracking, originHead] =
             await Promise.all([
@@ -419,7 +154,7 @@ describe("pushed-tip", () => {
     it("can fail: the unpushed ahead-only state violates the pushed-tip postcondition", async () => {
         const destination = await allocateDestination();
         const workspace = await scenarioFor("ahead-only").prepare(destination);
-        scratchHomes.push(workspace.home);
+        trackScratchHome(workspace.home);
 
         await expect(
             assertPushedTipPostcondition(
@@ -435,7 +170,7 @@ describe("rewritten-history", () => {
     it("rewrites origin/main to a real non-descendant commit without fetching locally", async () => {
         const destination = await allocateDestination();
         const workspace = await scenarioFor("rewritten-history").prepare(destination);
-        scratchHomes.push(workspace.home);
+        trackScratchHome(workspace.home);
 
         const localHead = await git(workspace.root, ["rev-parse", "HEAD"], workspace.env);
         const localRemoteTracking = await git(
@@ -470,7 +205,7 @@ describe("rewritten-history", () => {
     it("can fail: an unrevised origin violates the rewritten-history postcondition", async () => {
         const destination = await allocateDestination();
         const workspace = await scenarioFor("dirty").prepare(destination);
-        scratchHomes.push(workspace.home);
+        trackScratchHome(workspace.home);
 
         await expect(
             assertRewrittenHistoryPostcondition(
@@ -484,7 +219,7 @@ describe("rewritten-history", () => {
     it("can fail: a normal descendant origin commit violates the non-fast-forward postcondition", async () => {
         const destination = await allocateDestination();
         const workspace = await scenarioFor("dirty").prepare(destination);
-        scratchHomes.push(workspace.home);
+        trackScratchHome(workspace.home);
         await git(workspace.root, ["reset", "--hard", "HEAD"], workspace.env);
         await git(workspace.root, ["clean", "-fdx", "--quiet"], workspace.env);
 
@@ -525,7 +260,7 @@ describe("stale-lease", () => {
     it("leaves a local rewrite and a collaborator commit beyond the last fetched lease", async () => {
         const destination = await allocateDestination();
         const workspace = await scenarioFor("stale-lease").prepare(destination);
-        scratchHomes.push(workspace.home);
+        trackScratchHome(workspace.home);
 
         const localHead = await git(workspace.root, ["rev-parse", "HEAD"], workspace.env);
         const lastFetched = await git(
@@ -560,7 +295,7 @@ describe("stale-lease", () => {
     it("can fail: a rewritten origin without a collaborator descendant violates the stale lease postcondition", async () => {
         const destination = await allocateDestination();
         const workspace = await scenarioFor("rewritten-history").prepare(destination);
-        scratchHomes.push(workspace.home);
+        trackScratchHome(workspace.home);
 
         await expect(
             assertStaleLeasePostcondition(
@@ -574,7 +309,7 @@ describe("stale-lease", () => {
     it("can fail: a rewritten origin without an ancestor lease violates the stale lease postcondition", async () => {
         const destination = await allocateDestination();
         const workspace = await scenarioFor("dirty").prepare(destination);
-        scratchHomes.push(workspace.home);
+        trackScratchHome(workspace.home);
         await git(workspace.root, ["reset", "--hard", "HEAD"], workspace.env);
         await git(workspace.root, ["clean", "-fdx", "--quiet"], workspace.env);
 
@@ -619,7 +354,7 @@ describe("empty-repo", () => {
     it("has no commits, no origin, and an empty status", async () => {
         const destination = await allocateDestination();
         const workspace = await scenarioFor("empty-repo").prepare(destination);
-        scratchHomes.push(workspace.home);
+        trackScratchHome(workspace.home);
 
         expect(workspace.template).toBeUndefined();
         expect(
@@ -636,7 +371,7 @@ describe("empty-repo", () => {
     it("can fail: a repository with history violates the empty-repo postcondition", async () => {
         const destination = await allocateDestination();
         const workspace = await scenarioFor("dirty").prepare(destination);
-        scratchHomes.push(workspace.home);
+        trackScratchHome(workspace.home);
 
         await expect(assertEmptyRepoPostcondition(workspace.root, workspace.env)).rejects.toThrow(
             /empty-repo scenario postcondition violated/,
@@ -648,7 +383,7 @@ describe("shelf-populated", () => {
     it("reports at least one shelf entry through a freshly opened ShelfStore", async () => {
         const destination = await allocateDestination();
         const workspace = await scenarioFor("shelf-populated").prepare(destination);
-        scratchHomes.push(workspace.home);
+        trackScratchHome(workspace.home);
 
         // Deliberately does NOT reuse any ShelfStore scenarios.ts constructed internally --
         // opens an independent one against the same on-disk paths, exactly like this suite's
@@ -673,8 +408,8 @@ describe("shelf-populated", () => {
         // change what this repo is created as, so this negative case would be running against a
         // different repository on a different machine.
         const { home, env } = await createSanitizedGitEnv();
-        scratchHomes.push(home);
-        await execFileAsync("git", ["init", "--quiet"], { cwd: repoRoot, env });
+        trackScratchHome(home);
+        await git(repoRoot, ["init", "--quiet"], env);
 
         const shelfPaths = await resolveShelfPaths({
             repositoryRoot: repoRoot,
@@ -692,7 +427,7 @@ describe("shelf-conflicted", () => {
     it("opens a real text conflict session and preserves the shelf storage root", async () => {
         const destination = await allocateDestination();
         const workspace = await scenarioFor("shelf-conflicted").prepare(destination);
-        scratchHomes.push(workspace.home);
+        trackScratchHome(workspace.home);
 
         expect(workspace.shelfStorageRoot).toBe(join(destination, "shelf-storage"));
         const shelfPaths = await resolveShelfPaths({
@@ -721,7 +456,7 @@ describe("shelf-conflicted", () => {
     it("can fail: a populated shelf with only an ineligible path violates the real conflict-session postcondition", async () => {
         const destination = await allocateDestination();
         const workspace = await scenarioFor("shelf-populated").prepare(destination);
-        scratchHomes.push(workspace.home);
+        trackScratchHome(workspace.home);
 
         const shelfPaths = await resolveShelfPaths({
             repositoryRoot: workspace.root,
@@ -762,7 +497,7 @@ describe("shelf-conflicted", () => {
     it("can fail: a local rewrite that collapses onto the base side violates the postcondition", async () => {
         const destination = await allocateDestination();
         const workspace = await scenarioFor("shelf-conflicted").prepare(destination);
-        scratchHomes.push(workspace.home);
+        trackScratchHome(workspace.home);
 
         const shelfPaths = await resolveShelfPaths({
             repositoryRoot: workspace.root,
@@ -791,38 +526,4 @@ describe("shelf-conflicted", () => {
             /pairwise distinct base\/current\/patchedBase sides/,
         );
     });
-});
-
-describe("independence", () => {
-    it.each(REPOSITORY_SCENARIO_IDS)(
-        "%s: two prepare() calls produce workspaces that share no path and are mutually unaffected",
-        async (id) => {
-            const destinationA = await allocateDestination();
-            const destinationB = await allocateDestination();
-            const workspaceA = await scenarioFor(id).prepare(destinationA);
-            const workspaceB = await scenarioFor(id).prepare(destinationB);
-            scratchHomes.push(workspaceA.home, workspaceB.home);
-
-            expect(workspaceA.root).not.toBe(workspaceB.root);
-            expect(workspaceA.home).not.toBe(workspaceB.home);
-
-            // Mutate A, then prove B did not see it. `git status --ignored` in B is the decisive
-            // oracle and the only one used: it reports the marker if -- and only if -- B's working
-            // tree is the same directory as A's, so it genuinely fails when independence fails.
-            // (A `cat-file -e HEAD:independence-marker.txt` check would NOT: the marker is never
-            // committed, so that path fails to resolve in every repository including A's own, and
-            // the assertion would pass even if A and B were literally the same directory.)
-            await writeFile(
-                join(workspaceA.root, "independence-marker.txt"),
-                "only in A\n",
-                "utf8",
-            );
-            const workingTreeStatusB = await git(
-                workspaceB.root,
-                ["status", "--porcelain=v1", "--ignored"],
-                workspaceB.env,
-            );
-            expect(workingTreeStatusB).not.toContain("independence-marker.txt");
-        },
-    );
 });
