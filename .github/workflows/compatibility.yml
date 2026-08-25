@@ -210,9 +210,16 @@ jobs:
             - name: Build extension
               run: bun run build
 
-            # `--shard` slices vitest's file list, so the three slices together are exactly the
-            # full suite, and `bun run` forwards the flag to vitest untouched.
+            # `--shard` slices vitest's file list, so the four slices together are exactly the
+            # full suite, and `bun run` forwards the flag to vitest untouched. The timing-budget
+            # skip is the same one the POSIX job's `Run tests` step documents above, and a shared
+            # Windows runner is even further from the calibration host: run 32880197683 measured
+            # large diff compute at 94.68 ms against the 59 ms target while every deterministic
+            # sibling assertion passed. Dropping this env when the job was sharded is exactly the
+            # regression `ciHardeningWorkflows` now pins against on both test steps.
             - name: Run tests
+              env:
+                  INTELLIGIT_SKIP_TIMING_BUDGETS: "1"
               run: bun run test --shard=${{ matrix.shard }}
 
             - name: Package extension

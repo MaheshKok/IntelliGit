@@ -391,6 +391,20 @@ describe("CI quality hardening workflows", () => {
             "every shard must pass its slice to vitest, or four jobs each run the full suite",
         ).toContain("bun run test --shard=${{ matrix.shard }}");
         expect(windows).toContain("runs-on: windows-latest");
+
+        // The wall-clock budget skip must ride the shard job's `Run tests` step exactly as it
+        // rides the POSIX legs'. The sharded job first shipped without it, and the first
+        // pull_request run went red on a stopwatch reading -- 94.68 ms against the 59 ms
+        // single-host target (run 32880197683) -- with every deterministic assertion green.
+        expect(
+            windows,
+            "the Windows shards must skip wall-clock timing budgets like the POSIX legs do; " +
+                "a shared runner measures itself, not the product",
+        ).toContain('INTELLIGIT_SKIP_TIMING_BUDGETS: "1"');
+        expect(
+            compatibility.split('INTELLIGIT_SKIP_TIMING_BUDGETS: "1"').length - 1,
+            "exactly the two `Run tests` steps set the skip -- a dropped or extra setter is drift",
+        ).toBe(2);
     });
 
     it("keeps the Windows leg off the two costs that were measured, not guessed", () => {
