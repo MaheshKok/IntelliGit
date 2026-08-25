@@ -153,8 +153,8 @@ describe("recordCommitInfoWebviewFixture", () => {
     });
 
     // The former "matches the committed fixture on disk, byte for byte" test used to live here.
-    // It is now redundant with -- and strictly subsumed by -- `webviewFixtureGate.test.ts`'s
-    // repo-wide regenerate-and-compare gate (PLAN.md step 13), which runs this exact byte
+    // It is now redundant with -- and strictly subsumed by -- the repo-wide regenerate-and-compare
+    // gate (`webviewFixtureGate.*.test.ts`, PLAN.md step 13), which runs this exact byte
     // comparison for this recorder (and every other registered one) via
     // `webviewFixtureRegistry.ts`. Removed here rather than kept as a duplicate.
 

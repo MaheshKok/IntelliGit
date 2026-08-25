@@ -12,9 +12,9 @@
  * a screen no user ever sees, which then becomes a baseline nobody catches. So every builder below
  * asserts its own defining postcondition with a real `git` (or, for `shelf-populated`, a real
  * `ShelfStore`) read immediately after building the state, and throws if that assertion fails.
- * Each assertion is also exported on its own (`assert*Postcondition`), so
- * `tests/unit/fixtures/scenarios.test.ts` can prove the throw itself is reachable -- not just that
- * the happy path returns -- by running an assertion against a state built to violate it.
+ * Each assertion is also exported on its own (`assert*Postcondition`), so the
+ * `tests/unit/fixtures/scenarios.*.test.ts` suites can prove the throw itself is reachable -- not
+ * just that the happy path returns -- by running an assertion against a state built to violate it.
  *
  * Every non-empty scenario below reseeds its own template from scratch (`seedFixtureTemplate`)
  * rather than copying and mutating a shared one. Seeding is deterministic (pinned identity, pinned
@@ -174,8 +174,8 @@ function toWorkspace(
 }
 
 // ---------------------------------------------------------------------------------------------
-// Postcondition assertions -- each exported so scenarios.test.ts can prove the throw is reachable
-// by running it directly against a state built to violate it.
+// Postcondition assertions -- each exported so the scenarios.*.test.ts suites can prove the throw
+// is reachable by running it directly against a state built to violate it.
 // ---------------------------------------------------------------------------------------------
 
 /** `clean`: no modified tracked files, no untracked files. Stash entries are deliberately outside
