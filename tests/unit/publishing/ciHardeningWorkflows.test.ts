@@ -385,10 +385,10 @@ describe("CI quality hardening workflows", () => {
         expect(
             windows.match(/shard: \[(.*)\]/)?.[1],
             "the shard list must stay an exact partition of the suite",
-        ).toBe("1/3, 2/3, 3/3");
+        ).toBe("1/4, 2/4, 3/4, 4/4");
         expect(
             windows,
-            "every shard must pass its slice to vitest, or three jobs each run the full suite",
+            "every shard must pass its slice to vitest, or four jobs each run the full suite",
         ).toContain("bun run test --shard=${{ matrix.shard }}");
         expect(windows).toContain("runs-on: windows-latest");
     });

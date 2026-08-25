@@ -15,8 +15,8 @@ on:
 permissions:
     contents: read
 
-# Three Windows shards and two POSIX legs run in parallel, so an uncancelled superseded run holds
-# five runners for a commit nobody will merge. Scheduled runs are exempt on purpose: only one is
+# Four Windows shards and two POSIX legs run in parallel, so an uncancelled superseded run holds
+# six runners for a commit nobody will merge. Scheduled runs are exempt on purpose: only one is
 # ever in flight, and cancelling it would drop that week's result rather than replace it.
 concurrency:
     group: ${{ github.workflow }}-${{ github.ref }}
@@ -114,9 +114,12 @@ jobs:
     # The Windows suite is filesystem- and subprocess-bound, never CPU-bound: on run 32855934673 it
     # packed 2099s of test work into 1079s of wall clock -- effective parallelism ~2 on a 4-core
     # runner, the balance lost to CreateProcess and the NTFS filter stack. A faster runner buys
-    # little there, so the wall time is cut by splitting the file list across three runners
-    # instead: each shard pays the same ~4 minutes of setup plus a third of the tests, against the
-    # ~22 minutes the single Windows leg had settled at.
+    # little there, so the wall time is cut by splitting the file list across four runners
+    # instead: each shard pays the same ~4 minutes of setup plus a quarter of the tests, against
+    # the ~22 minutes the single Windows leg had settled at. Four rather than three because
+    # `--shard` slices by file COUNT, not duration: on run 32868687621 the 3-way slice packed the
+    # 339s lock-residue leg beside the two heaviest scenario files and landed one shard at 15m53s
+    # while its siblings idled at 8m43s/7m32s -- smaller slices bound how much can cluster.
     windows:
         name: Windows tests (shard ${{ matrix.shard }})
         runs-on: windows-latest
@@ -124,7 +127,7 @@ jobs:
         strategy:
             fail-fast: false
             matrix:
-                shard: [1/3, 2/3, 3/3]
+                shard: [1/4, 2/4, 3/4, 4/4]
 
         steps:
             # Deliberately the first step, before checkout: the exclusion then covers the tens of
