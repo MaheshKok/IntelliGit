@@ -202,8 +202,14 @@ export default defineConfig([
                     // import, because 29 removals in tests/ are single files (`rm(file)`,
                     // `rm(x, { force: true })`) that have no readdir/rmdir window to lose and
                     // must stay legal. A recursive removal is the only shape at risk.
+                    //
+                    // Exempting `recursive: false` specifically -- rather than requiring
+                    // `recursive: true` -- is the fail-safe direction. A flag this rule cannot
+                    // read statically (`{ recursive: deep }`) still reports, because a false
+                    // positive costs one word and a missed one puts the flake back. Only the
+                    // provably non-recursive spelling is let through.
                     selector:
-                        'CallExpression:matches([callee.name=/^rm(Sync)?$/], [callee.property.name=/^rm(Sync)?$/]) > ObjectExpression:has(Property[key.name="recursive"]):not(:has(Property[key.name="maxRetries"]))',
+                        'CallExpression:matches([callee.name=/^rm(Sync)?$/], [callee.property.name=/^rm(Sync)?$/]) > ObjectExpression:has(Property[key.name="recursive"]):not(:has(Property[key.name="recursive"][value.raw="false"])):not(:has(Property[key.name="maxRetries"]))',
                     message:
                         "Recursive removals in tests must retry: use removeScratchDirectories / removeScratchDirectoriesSync from tests/helpers/scratchDirectories. Git keeps writing into .git/objects/pack after its command returns, so a bare recursive rm loses the rmdir race and fails whichever row is executing -- it took the Windows leg red repeatedly.",
                 },
