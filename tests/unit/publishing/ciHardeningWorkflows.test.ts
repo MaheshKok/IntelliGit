@@ -358,6 +358,138 @@ describe("CI quality hardening workflows", () => {
         expect(compatibility).toContain("windows-latest");
     });
 
+    it("keeps the Windows leg off the two costs that were measured, not guessed", () => {
+        // Every assertion here guards a change that leaves the workflow GREEN and merely slow --
+        // nothing in CI notices a cache that restores nothing, or an OS feature install nobody
+        // needs. Both costs below were established by A/B on one commit rather than read off a
+        // step name, because reading a duration and naming a cause is how the browser cache that
+        // used to live here got written in the first place.
+        const compatibility = readRepositoryFile(".github/workflows/compatibility.yml");
+        const job = extractJobBlock(compatibility, "compatibility");
+
+        const stepOffset = (stepName: string): number => {
+            const offset = job.indexOf(`            - name: ${stepName}\n`);
+            expect(offset, `the job must still contain a step named '${stepName}'`).not.toBe(-1);
+            return offset;
+        };
+
+        // Ordering is the whole mechanism. A cache step placed after the install it was meant to
+        // accelerate restores into a directory that is already populated and saves what the install
+        // just did anyway -- it costs time, saves none, and reads as configured in every review.
+        // Measured on Windows: `bun install` 75s cold against 19s restored.
+        expect(
+            stepOffset("Restore the bun store"),
+            "the cache must be restored before `bun install`, or it accelerates nothing",
+        ).toBeLessThan(stepOffset("Install dependencies"));
+
+        const cacheStep = extractStepBlock(job, "Restore the bun store");
+        expect(cacheStep, "the restore step must still be a real cache").toContain(
+            "uses: actions/cache@",
+        );
+
+        // `--with-deps` means two entirely different things by platform. On Linux it apt-installs
+        // libraries Chromium cannot launch without. On Windows it runs DISM to enable Media
+        // Foundation, a VIDEO CODEC pack, and that is the entire cost of this step: 202s with the
+        // browser already restored from cache (run 32783641129 attempt 2) against 200s with a
+        // cache miss and a fresh download (run 32785953517) -- the browser is not what it spends
+        // its time on. Nothing in this repository records video, and the only consumer takes
+        // screenshots. Making the flag unconditional again silently returns ~190s per run to the
+        // one leg that gates every merge, with no test failing.
+        const playwrightRun =
+            extractStepBlock(
+                job,
+                "Install the Playwright browser the comparator proof runs against",
+            ).match(/^\s+run: (.+)$/m)?.[1] ?? "";
+        expect(
+            playwrightRun,
+            "`--with-deps` must stay gated to Linux; on Windows it installs video codecs that " +
+                "nothing here uses, and it is the whole cost of this step",
+        ).toMatch(/runner\.os == 'Linux'.*--with-deps/);
+        expect(
+            playwrightRun,
+            "the browser itself must still be installed on every platform",
+        ).toContain("chromium");
+
+        // The Playwright browser was cached here and has been removed: it changed this step's cost
+        // by 2s while adding ~170MB to an archive Windows spends 73s untarring. Re-adding it is a
+        // regression that looks like an optimisation, so the cache is pinned to the bun store.
+        expect(
+            cacheStep.match(/^\s+path: (.+)$/m)?.[1],
+            "the cache holds the bun store only; the browser measurably did not benefit from it",
+        ).toBe("~/.bun/install/cache");
+
+        // `hashFiles` returns an empty string for a path that matches nothing, so a typo here does
+        // not fail -- it collapses the key to its bare prefix, and the first run to save under that
+        // key owns it for every future run regardless of what the lockfile says afterwards.
+        const cacheKey = cacheStep.match(/^\s+key: (.+)$/m)?.[1] ?? "";
+        const hashedFiles = [...cacheKey.matchAll(/hashFiles\('([^']+)'\)/g)].map(
+            ([, file]) => file,
+        );
+        expect(hashedFiles, "the key must vary with the dependency set it caches").not.toEqual([]);
+        for (const file of hashedFiles) {
+            expect(
+                existsSync(resolve(REPOSITORY_ROOT, file)),
+                `the key hashes '${file}', which does not exist -- hashFiles would return "" and ` +
+                    "every run would collide on one permanently stale entry",
+            ).toBe(true);
+        }
+
+        // A `restore-keys` prefix that is not a prefix of `key` matches nothing, so the fallback
+        // silently stops existing and every dependency bump pays the full download again.
+        const restoreKey = (
+            cacheStep.match(/restore-keys: \|\n((?:\s+\S.*\n)+)/)?.[1] ?? ""
+        ).trim();
+        expect(restoreKey, "a fallback prefix must be declared").not.toBe("");
+        expect(
+            cacheKey.slice(0, restoreKey.length),
+            "restore-keys only ever matches a prefix of a saved key",
+        ).toBe(restoreKey);
+
+        const defenderStepName =
+            "Exclude the runner's working directories from Defender real-time scanning";
+        const defender = extractStepBlock(job, defenderStepName);
+
+        // First step on purpose. Checkout alone writes tens of thousands of files, and an exclusion
+        // added afterwards has already let Defender scan every one of them.
+        expect(
+            stepOffset(defenderStepName),
+            "the exclusion must precede checkout, whose own writes are the first thing it covers",
+        ).toBeLessThan(stepOffset("Checkout code"));
+
+        expect(
+            defender,
+            "`Add-MpPreference` does not exist off Windows, so the step must stay guarded",
+        ).toContain("if: runner.os == 'Windows'");
+
+        // This is the assertion with the worst consequence behind it. The Windows leg is a required
+        // status check: if a transient Defender failure fails this step, it fails the job, and that
+        // blocks every merge in the repository to save half an hour on one of them. A skipped
+        // exclusion costs time and nothing else.
+        expect(defender, "a required check must not be able to fail on an optimisation").toContain(
+            "continue-on-error: true",
+        );
+
+        // `$env:TEMP` is not redundant with `RUNNER_TEMP`; it is the entry that matters most. The
+        // fixture layer roots its work at `os.tmpdir()` -- `tests/fixtures/repo/harness.ts:126` for
+        // the E2E workspaces, `runFixtureSetup.ts:46` for the template repository -- and on a
+        // GitHub Actions Windows runner that resolves to `C:\Users\RUNNER~1\AppData\Local\Temp`,
+        // documented at `tests/fixtures/repo/placeholderCanonicalization.ts:34`. `RUNNER_TEMP` is a
+        // different directory on a different drive. Trimming the list to the two names that sound
+        // like the right ones would leave every seeded Git repository scanned file by file.
+        const requiredExclusions = [
+            "$env:GITHUB_WORKSPACE",
+            "$env:RUNNER_TEMP",
+            "$env:TEMP",
+            "$env:USERPROFILE\\.bun",
+        ];
+        for (const location of requiredExclusions) {
+            expect(
+                defender,
+                `'${location}' is written to heavily by this job and must be excluded`,
+            ).toContain(location);
+        }
+    });
+
     it("covers installed-package portability and makes Dependabot update both actionable ecosystems", () => {
         const compatibility = readRepositoryFile(".github/workflows/compatibility.yml");
         const dependabot = readRepositoryFile(".github/dependabot.yml");
