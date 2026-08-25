@@ -1,10 +1,10 @@
 name: Installed-package portability
 
 on:
-    # No `paths:` filter, deliberately. This workflow's Windows leg is a required status check, and
-    # a required check that never reports blocks a pull request forever rather than passing it -- so
-    # a documentation-only change has to get a verdict here too, not silence. `ciHardeningWorkflows`
-    # asserts the absence rather than trusting a comment.
+    # No `paths:` filter, deliberately. This workflow's Windows verdict is a required status check,
+    # and a required check that never reports blocks a pull request forever rather than passing it
+    # -- so a documentation-only change has to get a verdict here too, not silence.
+    # `ciHardeningWorkflows` asserts the absence rather than trusting a comment.
     pull_request:
         branches:
             - main
@@ -15,9 +15,9 @@ on:
 permissions:
     contents: read
 
-# The Windows leg runs about thirty minutes, so a superseded pull-request run spends half an hour of
-# a runner on a commit nobody will merge. Scheduled runs are exempt on purpose: only one is ever in
-# flight, and cancelling it would drop that week's result rather than replace it.
+# Three Windows shards and two POSIX legs run in parallel, so an uncancelled superseded run holds
+# five runners for a commit nobody will merge. Scheduled runs are exempt on purpose: only one is
+# ever in flight, and cancelling it would drop that week's result rather than replace it.
 concurrency:
     group: ${{ github.workflow }}-${{ github.ref }}
     cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -30,30 +30,9 @@ jobs:
         strategy:
             fail-fast: false
             matrix:
-                os: [ubuntu-latest, macos-latest, windows-latest]
+                os: [ubuntu-latest, macos-latest]
 
         steps:
-            # Deliberately the first step, before checkout: the exclusion then covers the tens of
-            # thousands of files checkout itself writes, not just the ones the suite writes later.
-            #
-            # This leg is filesystem-bound, never CPU-bound -- it seeds real Git repositories,
-            # copies template trees, and writes thousands of tiny loose objects, every one of which
-            # Defender opens and scans on creation. Measured on run 32772636554: `Run tests` took
-            # 1141s here against 386s on ubuntu, and `import` alone -- pure module resolution, i.e.
-            # `stat` calls -- accounted for 74s of it. The runner is a throwaway VM that only ever
-            # holds this repository's own code and its pinned dependencies, so excluding those four
-            # paths from real-time scanning trades nothing a scan was protecting.
-            #
-            # `continue-on-error` is load-bearing, not politeness: this leg is a required status
-            # check, so a Defender hiccup that failed the step would block every merge in the
-            # repository to save half an hour on one. A skipped exclusion costs time and nothing
-            # else, and the annotation says so.
-            - name: Exclude the runner's working directories from Defender real-time scanning
-              if: runner.os == 'Windows'
-              continue-on-error: true
-              shell: pwsh
-              run: Add-MpPreference -ExclusionPath $env:GITHUB_WORKSPACE, $env:RUNNER_TEMP, $env:TEMP, "$env:USERPROFILE\.bun"
-
             - name: Checkout code
               uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
               with:
@@ -70,15 +49,8 @@ jobs:
                   bun-version: "1.3.5"
 
             # Must precede the install it accelerates -- a cache placed after its consumer is inert
-            # and still reads as configured. Measured on Windows: `bun install` 75s cold against 19s
-            # restored, where ubuntu takes 3s either way because it links what Windows must copy.
-            #
-            # The Playwright browser was cached here too and has been removed. It saved nothing: on
-            # run 32783641129 attempt 2 the browser restored from cache and `playwright install`
-            # still took 202s, against 200s on run 32785953517 where the cache missed and the
-            # browser downloaded fresh. The cost was never the download (see the install step
-            # below), so all the browser did was add ~170MB to an archive that Windows spends
-            # 73s untarring.
+            # and still reads as configured. ubuntu takes 3s either way because it links what
+            # Windows must copy, but the fallback still saves the full download on a lockfile bump.
             - name: Restore the bun store
               uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
               with:
@@ -95,14 +67,8 @@ jobs:
             # fails on the browser binary rather than on anything this workflow is meant to check.
             #
             # `--with-deps` is gated to Linux, where it apt-installs libraries Chromium cannot
-            # launch without. On Windows the same flag runs DISM to enable Media Foundation -- a
-            # VIDEO CODEC pack -- and that, not the browser download, is what this step spends its
-            # time on: the whole of its output was the `{Media Foundation}` feature table, and the
-            # step cost 202s with the browser already restored from cache (run 32783641129 attempt
-            # 2) against 200s with a cache miss and a fresh download (run 32785953517). Nothing in
-            # this repository records video -- there is no `recordVideo` anywhere -- and the one
-            # consumer takes screenshots and states its own requirement as `playwright install
-            # chromium` at screenshotComparatorMeta.test.ts:163. macOS needs no OS packages either.
+            # launch without. macOS needs no OS packages, and on Windows the flag enables a video
+            # codec pack nothing here uses -- the measurements live on the Windows job's step.
             - name: Install the Playwright browser the comparator proof runs against
               run: bunx playwright install ${{ runner.os == 'Linux' && '--with-deps' || '' }} chromium
 
@@ -140,7 +106,139 @@ jobs:
               shell: bash
               run: INTELLIGIT_VSCODE_VERSION=1.132.0 xvfb-run -a bun run test:package-smoke
 
-            - name: Smoke test the installed package on macOS and Windows
+            - name: Smoke test the installed package on macOS
               if: matrix.os != 'ubuntu-latest'
               shell: bash
               run: INTELLIGIT_VSCODE_VERSION=1.132.0 bun run test:package-smoke
+
+    # The Windows suite is filesystem- and subprocess-bound, never CPU-bound: on run 32855934673 it
+    # packed 2099s of test work into 1079s of wall clock -- effective parallelism ~2 on a 4-core
+    # runner, the balance lost to CreateProcess and the NTFS filter stack. A faster runner buys
+    # little there, so the wall time is cut by splitting the file list across three runners
+    # instead: each shard pays the same ~4 minutes of setup plus a third of the tests, against the
+    # ~22 minutes the single Windows leg had settled at.
+    windows:
+        name: Windows tests (shard ${{ matrix.shard }})
+        runs-on: windows-latest
+        timeout-minutes: 90
+        strategy:
+            fail-fast: false
+            matrix:
+                shard: [1/3, 2/3, 3/3]
+
+        steps:
+            # Deliberately the first step, before checkout: the exclusion then covers the tens of
+            # thousands of files checkout itself writes, not just the ones the suite writes later.
+            #
+            # The suite seeds real Git repositories, copies template trees, and writes thousands of
+            # tiny loose objects, every one of which Defender opens and scans on creation. Measured
+            # on run 32772636554: `Run tests` took 1141s here against 386s on ubuntu, and the
+            # exclusion took it to 1082s before anything else changed. The runner is a throwaway VM
+            # that only ever holds this repository's own code and its pinned dependencies, so
+            # excluding these four paths from real-time scanning trades nothing a scan was
+            # protecting.
+            #
+            # `continue-on-error` is load-bearing, not politeness: this job feeds a required status
+            # check, so a Defender hiccup that failed the step would block every merge in the
+            # repository to save minutes on one. A skipped exclusion costs time and nothing else,
+            # and the annotation says so.
+            - name: Exclude the runner's working directories from Defender real-time scanning
+              if: runner.os == 'Windows'
+              continue-on-error: true
+              shell: pwsh
+              run: Add-MpPreference -ExclusionPath $env:GITHUB_WORKSPACE, $env:RUNNER_TEMP, $env:TEMP, "$env:USERPROFILE\.bun"
+
+            - name: Checkout code
+              uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+              with:
+                  persist-credentials: false
+
+            - name: Setup Node.js
+              uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+              with:
+                  node-version: "22"
+
+            - name: Setup Bun
+              uses: oven-sh/setup-bun@f4d14e03ff726c06358e5557344e1da148b56cf7 # v1.2.2
+              with:
+                  bun-version: "1.3.5"
+
+            # Must precede the install it accelerates -- a cache placed after its consumer is inert
+            # and still reads as configured. Measured on Windows: `bun install` 75s cold against
+            # 19s restored.
+            #
+            # The Playwright browser was cached here too and has been removed. It saved nothing: on
+            # run 32783641129 attempt 2 the browser restored from cache and `playwright install`
+            # still took 202s, against 200s on run 32785953517 where the cache missed and the
+            # browser downloaded fresh. The cost was never the download (see the install step
+            # below), so all the browser did was add ~170MB to an archive that Windows spends 73s
+            # untarring.
+            - name: Restore the bun store
+              uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+              with:
+                  path: ~/.bun/install/cache
+                  key: ${{ runner.os }}-portability-${{ hashFiles('bun.lock') }}
+                  restore-keys: |
+                      ${{ runner.os }}-portability-
+
+            - name: Install dependencies
+              run: bun install --frozen-lockfile
+
+            # `--with-deps` is gated to Linux. On Windows the same flag runs DISM to enable Media
+            # Foundation -- a VIDEO CODEC pack -- and that, not the browser download, is what this
+            # step used to spend its time on: the whole of its output was the `{Media Foundation}`
+            # feature table, and the step cost 202s with the browser already restored from cache
+            # (run 32783641129 attempt 2) against 200s with a cache miss and a fresh download (run
+            # 32785953517). Nothing in this repository records video -- there is no `recordVideo`
+            # anywhere -- and the one consumer takes screenshots and states its own requirement as
+            # `playwright install chromium` at screenshotComparatorMeta.test.ts:163.
+            - name: Install the Playwright browser the comparator proof runs against
+              run: bunx playwright install ${{ runner.os == 'Linux' && '--with-deps' || '' }} chromium
+
+            - name: Check formatting
+              run: bun run format:check
+
+            - name: Run ESLint
+              run: bun run lint
+
+            - name: Run type check
+              run: bun run typecheck
+
+            - name: Build extension
+              run: bun run build
+
+            # `--shard` slices vitest's file list, so the three slices together are exactly the
+            # full suite, and `bun run` forwards the flag to vitest untouched.
+            - name: Run tests
+              run: bun run test --shard=${{ matrix.shard }}
+
+            - name: Package extension
+              run: bun run package
+
+            - name: Smoke test the installed package on Windows
+              shell: bash
+              run: INTELLIGIT_VSCODE_VERSION=1.132.0 bun run test:package-smoke
+
+    # Ruleset 12862467 requires the context 'Installed package smoke (windows-latest)'. The Windows
+    # suite is sharded above, so no single test job carries that name any more; this job does, and
+    # it exists only to fold "every shard succeeded" into the one context the ruleset watches.
+    # Renaming it orphans the required context, which blocks every merge in the repository rather
+    # than passing them.
+    #
+    # `if: always()` is load-bearing: without it a failed shard leaves this job SKIPPED, and GitHub
+    # treats a skipped required check as satisfied -- the gate would pass precisely when it must
+    # fail. With it the job always reports, so the explicit result test below is the entire
+    # verdict.
+    windows-verdict:
+        name: Installed package smoke (windows-latest)
+        needs: windows
+        if: always()
+        runs-on: ubuntu-latest
+        timeout-minutes: 5
+        steps:
+            - name: Fail unless every Windows shard succeeded
+              env:
+                  RESULT: ${{ needs.windows.result }}
+              run: |
+                  echo "Windows shards: $RESULT"
+                  test "$RESULT" = "success"
