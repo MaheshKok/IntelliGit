@@ -33,6 +33,27 @@ jobs:
                 os: [ubuntu-latest, macos-latest, windows-latest]
 
         steps:
+            # Deliberately the first step, before checkout: the exclusion then covers the tens of
+            # thousands of files checkout itself writes, not just the ones the suite writes later.
+            #
+            # This leg is filesystem-bound, never CPU-bound -- it seeds real Git repositories,
+            # copies template trees, and writes thousands of tiny loose objects, every one of which
+            # Defender opens and scans on creation. Measured on run 32772636554: `Run tests` took
+            # 1141s here against 386s on ubuntu, and `import` alone -- pure module resolution, i.e.
+            # `stat` calls -- accounted for 74s of it. The runner is a throwaway VM that only ever
+            # holds this repository's own code and its pinned dependencies, so excluding those four
+            # paths from real-time scanning trades nothing a scan was protecting.
+            #
+            # `continue-on-error` is load-bearing, not politeness: this leg is a required status
+            # check, so a Defender hiccup that failed the step would block every merge in the
+            # repository to save half an hour on one. A skipped exclusion costs time and nothing
+            # else, and the annotation says so.
+            - name: Exclude the runner's working directories from Defender real-time scanning
+              if: runner.os == 'Windows'
+              continue-on-error: true
+              shell: pwsh
+              run: Add-MpPreference -ExclusionPath $env:GITHUB_WORKSPACE, $env:RUNNER_TEMP, $env:TEMP, "$env:USERPROFILE\.bun"
+
             - name: Checkout code
               uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
               with:
@@ -48,14 +69,42 @@ jobs:
               with:
                   bun-version: "1.3.5"
 
+            # Must precede the install it accelerates -- a cache placed after its consumer is inert
+            # and still reads as configured. Measured on Windows: `bun install` 75s cold against 19s
+            # restored, where ubuntu takes 3s either way because it links what Windows must copy.
+            #
+            # The Playwright browser was cached here too and has been removed. It saved nothing: on
+            # run 32783641129 attempt 2 the browser restored from cache and `playwright install`
+            # still took 202s, against 200s on run 32785953517 where the cache missed and the
+            # browser downloaded fresh. The cost was never the download (see the install step
+            # below), so all the browser did was add ~170MB to an archive that Windows spends
+            # 73s untarring.
+            - name: Restore the bun store
+              uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+              with:
+                  path: ~/.bun/install/cache
+                  key: ${{ runner.os }}-portability-${{ hashFiles('bun.lock') }}
+                  restore-keys: |
+                      ${{ runner.os }}-portability-
+
             - name: Install dependencies
               run: bun install --frozen-lockfile
 
             # `bun run test` includes tests/unit/visual/screenshotComparatorMeta.test.ts, which
             # launches a real Chromium to prove the screenshot comparator. Without this the suite
             # fails on the browser binary rather than on anything this workflow is meant to check.
+            #
+            # `--with-deps` is gated to Linux, where it apt-installs libraries Chromium cannot
+            # launch without. On Windows the same flag runs DISM to enable Media Foundation -- a
+            # VIDEO CODEC pack -- and that, not the browser download, is what this step spends its
+            # time on: the whole of its output was the `{Media Foundation}` feature table, and the
+            # step cost 202s with the browser already restored from cache (run 32783641129 attempt
+            # 2) against 200s with a cache miss and a fresh download (run 32785953517). Nothing in
+            # this repository records video -- there is no `recordVideo` anywhere -- and the one
+            # consumer takes screenshots and states its own requirement as `playwright install
+            # chromium` at screenshotComparatorMeta.test.ts:163. macOS needs no OS packages either.
             - name: Install the Playwright browser the comparator proof runs against
-              run: bunx playwright install --with-deps chromium
+              run: bunx playwright install ${{ runner.os == 'Linux' && '--with-deps' || '' }} chromium
 
             - name: Check formatting
               run: bun run format:check

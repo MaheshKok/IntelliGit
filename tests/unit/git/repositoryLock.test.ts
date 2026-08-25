@@ -2,7 +2,12 @@ import { mkdir, mkdtemp, open, readFile, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { RepositoryLock, RepositoryLockBusyError } from "../../../src/git/repositoryLock";
+import { acquireWithBoundedWait } from "../../../src/git/boundedLockRetry";
+import {
+    isExclusiveCreateBlocked,
+    RepositoryLock,
+    RepositoryLockBusyError,
+} from "../../../src/git/repositoryLock";
 import { RENAME_OVER_OPEN_FILE_SUPPORTED } from "../../helpers/platformCapabilities";
 
 /** Delay applied to heartbeat writes only, so "the write is still in flight when release runs" is
@@ -13,19 +18,35 @@ const heartbeatWrite = vi.hoisted(() => ({ delayMs: 0 }));
  * driven without waiting for a real filesystem to refuse. Unset for every other test here. */
 const renameFailure = vi.hoisted(() => ({ failToward: undefined as string | undefined }));
 
+/** Makes the exclusive create fail with a chosen errno for the next `remaining` attempts, so the
+ * errno Windows answers with can be driven from a POSIX host. Unset for every other test here. */
+const exclusiveCreateFailure = vi.hoisted(() => ({
+    code: undefined as string | undefined,
+    remaining: 0,
+}));
+
 // Node's built-in `node:fs/promises` exports non-configurable properties, so `vi.spyOn` cannot wrap
 // them; `vi.mock` with a pass-through factory is vitest's standard workaround. Only the heartbeat's
 // write is slowed: `acquire` creates the lock with an exclusive-create `flag`, the heartbeat never
 // does, so the absence of `flag` identifies it without reaching into the implementation.
 vi.mock("node:fs/promises", async (importOriginal) => {
     const actual = await importOriginal<typeof import("node:fs/promises")>();
-    const writeFileWithHeartbeatDelay: typeof actual.writeFile = async (file, data, options) => {
-        const isHeartbeatWrite =
-            heartbeatWrite.delayMs > 0 &&
-            typeof options === "object" &&
-            options !== null &&
-            !("flag" in options);
-        if (isHeartbeatWrite) {
+    const writeFileWithInjectedBehaviour: typeof actual.writeFile = async (file, data, options) => {
+        const isExclusiveCreate =
+            typeof options === "object" && options !== null && "flag" in options;
+        const injected = exclusiveCreateFailure.code;
+        if (isExclusiveCreate && injected !== undefined && exclusiveCreateFailure.remaining > 0) {
+            exclusiveCreateFailure.remaining -= 1;
+            // Shaped like the real thing down to the syscall, because the syscall name in the
+            // observed failure is what identified this call site rather than a rename or unlink.
+            const failure: NodeJS.ErrnoException = new Error(
+                `${injected}: operation not permitted, open '${String(file)}'`,
+            );
+            failure.code = injected;
+            failure.syscall = "open";
+            throw failure;
+        }
+        if (heartbeatWrite.delayMs > 0 && !isExclusiveCreate) {
             await new Promise((resolve) => setTimeout(resolve, heartbeatWrite.delayMs));
         }
         return actual.writeFile(file, data, options);
@@ -44,14 +65,26 @@ vi.mock("node:fs/promises", async (importOriginal) => {
     };
     return {
         ...actual,
-        writeFile: writeFileWithHeartbeatDelay,
+        writeFile: writeFileWithInjectedBehaviour,
         rename: renameWithInjectedFailure,
     };
 });
 
 const directories: string[] = [];
+const originalPlatform = process.platform;
+
+/** Supplies the platform rather than inheriting it, so the Windows branch is reachable on POSIX. */
+function pretendPlatform(value: NodeJS.Platform): void {
+    Object.defineProperty(process, "platform", { value, configurable: true });
+}
 
 afterEach(async () => {
+    exclusiveCreateFailure.code = undefined;
+    exclusiveCreateFailure.remaining = 0;
+    Object.defineProperty(process, "platform", {
+        value: originalPlatform,
+        configurable: true,
+    });
     await Promise.all(directories.splice(0).map((directory) => rm(directory, { recursive: true })));
 });
 
@@ -482,5 +515,109 @@ describe("RepositoryLock", () => {
                 "the late owner must be restored to the lock path, not displaced by the takeover",
             ).toMatchObject({ nonce: "arrived-late" });
         });
+    });
+});
+
+/**
+ * Pins the errno classification the exclusive create is judged by.
+ *
+ * The defect is invisible on the host that runs this suite. On POSIX a held lock answers `EEXIST`
+ * and always did, so no POSIX run can tell the fix from the defect; the Windows answer has to be
+ * supplied rather than waited for.
+ */
+describe("isExclusiveCreateBlocked", () => {
+    it("treats the Windows delete-pending errno as contention", () => {
+        // The whole point. `rm` on a lock file another handle still holds open marks the name
+        // instead of removing it, and `CreateFile(CREATE_NEW)` against a marked name answers
+        // ERROR_ACCESS_DENIED -> EPERM. Read as a fault, that failed the caller outright where
+        // POSIX merely waited.
+        expect(isExclusiveCreateBlocked({ code: "EPERM" }, "win32")).toBe(true);
+    });
+
+    it("does not treat a POSIX EPERM as contention", () => {
+        // The other direction, and the one that keeps the widening honest. POSIX answers `EEXIST`
+        // for an occupied path, so an EPERM there is a real permission fault and must stay one --
+        // a classifier that swallowed it everywhere would turn every such fault into a bounded
+        // wait ending in a misleading "already in progress".
+        expect(isExclusiveCreateBlocked({ code: "EPERM" }, "linux")).toBe(false);
+        expect(isExclusiveCreateBlocked({ code: "EPERM" }, "darwin")).toBe(false);
+    });
+
+    it("widens by exactly one errno, on exactly one platform", () => {
+        expect(isExclusiveCreateBlocked({ code: "EEXIST" }, "linux")).toBe(true);
+        expect(isExclusiveCreateBlocked({ code: "EEXIST" }, "win32")).toBe(true);
+        // EACCES is the neighbouring permission errno and is NOT the delete-pending shape.
+        expect(isExclusiveCreateBlocked({ code: "EACCES" }, "win32")).toBe(false);
+        expect(isExclusiveCreateBlocked({ code: "ENOENT" }, "win32")).toBe(false);
+        expect(isExclusiveCreateBlocked(new Error("no code at all"), "win32")).toBe(false);
+        expect(isExclusiveCreateBlocked(undefined, "win32")).toBe(false);
+    });
+
+    it("defaults to the running platform", () => {
+        // The seam moves the untested surface: both production call sites omit the argument, so a
+        // default hardcoded to either platform would leave them wrong on the other while every
+        // assertion above still passed. Host-dependent on purpose -- this is the one assertion
+        // here whose expected value differs between the POSIX legs and the Windows leg.
+        expect(isExclusiveCreateBlocked({ code: "EPERM" })).toBe(process.platform === "win32");
+        expect(isExclusiveCreateBlocked({ code: "EEXIST" })).toBe(true);
+    });
+});
+
+describe("RepositoryLock on Windows", () => {
+    it("queues behind a delete-pending lock file instead of failing the caller", async () => {
+        // The Windows leg of run 32789206621, reproduced: `ShelfStore.listShelves` met an ordinary
+        // shelf mutation on the store lock and got
+        // `EPERM: operation not permitted, open '...\.store-lock\store.lock'` instead of waiting.
+        // Before the classifier recognised that errno the raw EPERM left `acquire`, and
+        // `acquireWithBoundedWait` retries `RepositoryLockBusyError` and nothing else -- so the
+        // bounded wait never ran a second attempt.
+        pretendPlatform("win32");
+        exclusiveCreateFailure.code = "EPERM";
+        exclusiveCreateFailure.remaining = 1;
+        const common = await commonDir();
+
+        const release = await acquireWithBoundedWait(() => new RepositoryLock().acquire(common), {
+            timeoutMs: 1_000,
+            retryDelayMs: 10,
+        });
+
+        expect(
+            exclusiveCreateFailure.remaining,
+            "the injected EPERM must actually have been served, or this test proves nothing",
+        ).toBe(0);
+        await release();
+    });
+
+    it("still reports a POSIX EPERM as a fault rather than waiting on it", async () => {
+        // Same injection, same call path, only the platform differs -- so this is the assertion
+        // that fails if the errno is ever accepted unconditionally.
+        pretendPlatform("linux");
+        exclusiveCreateFailure.code = "EPERM";
+        exclusiveCreateFailure.remaining = 1;
+        const common = await commonDir();
+
+        await expect(
+            acquireWithBoundedWait(() => new RepositoryLock().acquire(common), {
+                timeoutMs: 1_000,
+                retryDelayMs: 10,
+            }),
+        ).rejects.toMatchObject({ code: "EPERM" });
+    });
+
+    it("ends a persistent delete-pending state at busy, never at a stolen lock", async () => {
+        // The safety claim the widening rests on: every path this predicate newly reaches runs
+        // into the busy/stale machinery, which dates an unreadable lock to now and an absent one
+        // to never-stale. So a create that keeps answering EPERM can only ever end here.
+        pretendPlatform("win32");
+        exclusiveCreateFailure.code = "EPERM";
+        exclusiveCreateFailure.remaining = Number.MAX_SAFE_INTEGER;
+        const common = await commonDir();
+
+        await expect(
+            acquireWithBoundedWait(() => new RepositoryLock().acquire(common), {
+                timeoutMs: 50,
+                retryDelayMs: 10,
+            }),
+        ).rejects.toBeInstanceOf(RepositoryLockBusyError);
     });
 });
