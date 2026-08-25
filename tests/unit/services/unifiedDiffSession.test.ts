@@ -256,15 +256,15 @@ describe("unified diff session snapshots", () => {
 
     it("re-resolves the historical side of an editable session without replacing dirty document text", async () => {
         const fileUri = {
-            fsPath: "/repo/src/example.ts",
-            toString: () => "file:/repo/src/example.ts",
+            fsPath: `${REPO_ROOT}/src/example.ts`,
+            toString: () => `file:${REPO_ROOT}/src/example.ts`,
         };
         const dirtyDocument = { uri: fileUri, getText: () => "unsaved working tree\n" };
         mocks.documents.push(dirtyDocument);
 
         await openEditableDiff(
             {
-                repoRoot: "/repo",
+                repoRoot: REPO_ROOT,
                 path: "src/example.ts",
                 left: { kind: "ref", ref: "HEAD" },
                 right: { kind: "worktree" },
@@ -277,7 +277,7 @@ describe("unified diff session snapshots", () => {
         );
 
         mocks.refText = "updated HEAD\n";
-        mocks.subscriptions[0]?.listener({ repoRoot: "/repo", source: "git-state" });
+        mocks.subscriptions[0]?.listener({ repoRoot: REPO_ROOT, source: "git-state" });
 
         await vi.waitFor(() => {
             expect(mocks.refreshEditableDiffEditor).toHaveBeenCalledWith(
@@ -294,12 +294,18 @@ describe("unified diff session snapshots", () => {
     });
 
     it("keeps every editable editor subscribed after another editor opens and one closes", async () => {
-        const fileA = { fsPath: "/repo/src/a.ts", toString: () => "file:/repo/src/a.ts" };
-        const fileB = { fsPath: "/repo/src/b.ts", toString: () => "file:/repo/src/b.ts" };
+        const fileA = {
+            fsPath: `${REPO_ROOT}/src/a.ts`,
+            toString: () => `file:${REPO_ROOT}/src/a.ts`,
+        };
+        const fileB = {
+            fsPath: `${REPO_ROOT}/src/b.ts`,
+            toString: () => `file:${REPO_ROOT}/src/b.ts`,
+        };
         const openEditor = async (fileUri: typeof fileA, path: string) =>
             openEditableDiff(
                 {
-                    repoRoot: "/repo",
+                    repoRoot: REPO_ROOT,
                     path,
                     left: { kind: "ref", ref: "HEAD" },
                     right: { kind: "worktree" },
@@ -319,8 +325,8 @@ describe("unified diff session snapshots", () => {
         if (!firstSubscription || !secondSubscription)
             throw new Error("Expected two editable subscriptions");
         mocks.refText = "after first commit\n";
-        firstSubscription.listener({ repoRoot: "/repo", source: "git-state" });
-        secondSubscription.listener({ repoRoot: "/repo", source: "git-state" });
+        firstSubscription.listener({ repoRoot: REPO_ROOT, source: "git-state" });
+        secondSubscription.listener({ repoRoot: REPO_ROOT, source: "git-state" });
 
         await vi.waitFor(() => {
             expect(mocks.refreshEditableDiffEditor).toHaveBeenCalledWith(
@@ -342,7 +348,7 @@ describe("unified diff session snapshots", () => {
         firstDescriptor.onSessionDisposed?.();
         mocks.refreshEditableDiffEditor.mockClear();
         mocks.refText = "after second commit\n";
-        secondSubscription.listener({ repoRoot: "/repo", source: "git-state" });
+        secondSubscription.listener({ repoRoot: REPO_ROOT, source: "git-state" });
 
         await vi.waitFor(() => {
             expect(mocks.refreshEditableDiffEditor).toHaveBeenCalledWith(
@@ -355,13 +361,13 @@ describe("unified diff session snapshots", () => {
 
     it("leaves the visible editor subscribed when a second open for the same file declines", async () => {
         const fileUri = {
-            fsPath: "/repo/src/example.ts",
-            toString: () => "file:/repo/src/example.ts",
+            fsPath: `${REPO_ROOT}/src/example.ts`,
+            toString: () => `file:${REPO_ROOT}/src/example.ts`,
         };
         const open = (native: () => Promise<undefined>) =>
             openEditableDiff(
                 {
-                    repoRoot: "/repo",
+                    repoRoot: REPO_ROOT,
                     path: "src/example.ts",
                     left: { kind: "ref", ref: "HEAD" },
                     right: { kind: "worktree" },
@@ -386,7 +392,7 @@ describe("unified diff session snapshots", () => {
         expect(nativeFallback).toHaveBeenCalledOnce();
         expect(mocks.subscriptions[0]?.dispose).not.toHaveBeenCalled();
         mocks.refText = "after commit\n";
-        mocks.subscriptions[0]?.listener({ repoRoot: "/repo", source: "git-state" });
+        mocks.subscriptions[0]?.listener({ repoRoot: REPO_ROOT, source: "git-state" });
 
         await vi.waitFor(() => {
             expect(mocks.refreshEditableDiffEditor).toHaveBeenCalledWith(
@@ -402,13 +408,13 @@ describe("unified diff session snapshots", () => {
 
     it("retires the previous session when the same file opens a second editor", async () => {
         const fileUri = {
-            fsPath: "/repo/src/example.ts",
-            toString: () => "file:/repo/src/example.ts",
+            fsPath: `${REPO_ROOT}/src/example.ts`,
+            toString: () => `file:${REPO_ROOT}/src/example.ts`,
         };
         const open = () =>
             openEditableDiff(
                 {
-                    repoRoot: "/repo",
+                    repoRoot: REPO_ROOT,
                     path: "src/example.ts",
                     left: { kind: "ref", ref: "HEAD" },
                     right: { kind: "worktree" },
@@ -432,8 +438,8 @@ describe("unified diff session snapshots", () => {
 
         mocks.refreshEditableDiffEditor.mockClear();
         mocks.refText = "after commit\n";
-        mocks.subscriptions[0]?.listener({ repoRoot: "/repo", source: "git-state" });
-        mocks.subscriptions[1]?.listener({ repoRoot: "/repo", source: "git-state" });
+        mocks.subscriptions[0]?.listener({ repoRoot: REPO_ROOT, source: "git-state" });
+        mocks.subscriptions[1]?.listener({ repoRoot: REPO_ROOT, source: "git-state" });
 
         await vi.waitFor(() => {
             expect(mocks.refreshEditableDiffEditor).toHaveBeenCalledOnce();
@@ -450,8 +456,8 @@ describe("unified diff session snapshots", () => {
 
     it("falls back to the native diff when the editor itself fails to open", async () => {
         const fileUri = {
-            fsPath: "/repo/src/example.ts",
-            toString: () => "file:/repo/src/example.ts",
+            fsPath: `${REPO_ROOT}/src/example.ts`,
+            toString: () => `file:${REPO_ROOT}/src/example.ts`,
         };
         const nativeDelegate = vi.fn(async () => undefined);
         mocks.openEditableDiffEditor.mockRejectedValueOnce(new Error("no editor"));
@@ -462,7 +468,7 @@ describe("unified diff session snapshots", () => {
         // subscribed to repository events with no editor for its refreshes to reach.
         await openEditableDiff(
             {
-                repoRoot: "/repo",
+                repoRoot: REPO_ROOT,
                 path: "src/example.ts",
                 left: { kind: "ref", ref: "HEAD" },
                 right: { kind: "worktree" },
@@ -480,13 +486,13 @@ describe("unified diff session snapshots", () => {
 
     it("keeps the refreshed historical side on screen when a later refresh fails", async () => {
         const fileUri = {
-            fsPath: "/repo/src/example.ts",
-            toString: () => "file:/repo/src/example.ts",
+            fsPath: `${REPO_ROOT}/src/example.ts`,
+            toString: () => `file:${REPO_ROOT}/src/example.ts`,
         };
 
         await openEditableDiff(
             {
-                repoRoot: "/repo",
+                repoRoot: REPO_ROOT,
                 path: "src/example.ts",
                 left: { kind: "ref", ref: "HEAD" },
                 right: { kind: "worktree" },
@@ -499,7 +505,7 @@ describe("unified diff session snapshots", () => {
         );
 
         mocks.refText = "after commit\n";
-        mocks.subscriptions[0]?.listener({ repoRoot: "/repo", source: "git-state" });
+        mocks.subscriptions[0]?.listener({ repoRoot: REPO_ROOT, source: "git-state" });
         await vi.waitFor(() => {
             expect(mocks.refreshEditableDiffEditor).toHaveBeenCalledWith(
                 fileUri,
@@ -512,7 +518,7 @@ describe("unified diff session snapshots", () => {
         // successful refresh above never wrote its text back, the historical pane rewinds to
         // the content it opened with, while the banner claims only that it stopped updating.
         mocks.refText = "x".repeat(MAX_DIFF_BYTES + 1);
-        mocks.subscriptions[0]?.listener({ repoRoot: "/repo", source: "git-state" });
+        mocks.subscriptions[0]?.listener({ repoRoot: REPO_ROOT, source: "git-state" });
 
         await vi.waitFor(() => {
             expect(mocks.refreshEditableDiffEditor).toHaveBeenCalledWith(
@@ -531,13 +537,13 @@ describe("unified diff session snapshots", () => {
 
     it("reports a failed editable refresh in the editor instead of leaving it stale", async () => {
         const fileUri = {
-            fsPath: "/repo/src/example.ts",
-            toString: () => "file:/repo/src/example.ts",
+            fsPath: `${REPO_ROOT}/src/example.ts`,
+            toString: () => `file:${REPO_ROOT}/src/example.ts`,
         };
 
         await openEditableDiff(
             {
-                repoRoot: "/repo",
+                repoRoot: REPO_ROOT,
                 path: "src/example.ts",
                 left: { kind: "ref", ref: "HEAD" },
                 right: { kind: "worktree" },
@@ -555,7 +561,7 @@ describe("unified diff session snapshots", () => {
         // discards this report on its generation guard. Without a path of its own the pane
         // keeps rendering a historical side that has silently stopped tracking the ref.
         mocks.refText = "x".repeat(MAX_DIFF_BYTES + 1);
-        mocks.subscriptions[0]?.listener({ repoRoot: "/repo", source: "git-state" });
+        mocks.subscriptions[0]?.listener({ repoRoot: REPO_ROOT, source: "git-state" });
 
         await vi.waitFor(() => {
             expect(mocks.refreshEditableDiffEditor).toHaveBeenCalledWith(
@@ -573,7 +579,7 @@ describe("unified diff session snapshots", () => {
         setDiffViewerExtensionUri(extensionUri);
         mocks.worktreeText = "read-only before\n";
         mocks.documents.push({
-            uri: { toString: () => "file:/repo/src/example.ts" },
+            uri: { toString: () => `file:${REPO_ROOT}/src/example.ts` },
             getText: () => mocks.worktreeText,
         });
         await openUnifiedDiff(
@@ -592,12 +598,12 @@ describe("unified diff session snapshots", () => {
         if (!panel || !readOnlySubscription) throw new Error("Expected a read-only panel session");
 
         const editableUri = {
-            fsPath: "/repo/src/editable.ts",
-            toString: () => "file:/repo/src/editable.ts",
+            fsPath: `${REPO_ROOT}/src/editable.ts`,
+            toString: () => `file:${REPO_ROOT}/src/editable.ts`,
         };
         await openEditableDiff(
             {
-                repoRoot: "/repo",
+                repoRoot: REPO_ROOT,
                 path: "src/editable.ts",
                 left: { kind: "ref", ref: "HEAD" },
                 right: { kind: "worktree" },
@@ -612,7 +618,7 @@ describe("unified diff session snapshots", () => {
         expect(mocks.subscriptions).toHaveLength(2);
         mocks.worktreeText = "read-only after\n";
         readOnlySubscription.listener({
-            repoRoot: "/repo",
+            repoRoot: REPO_ROOT,
             path: "src/example.ts",
             source: "workspace-file",
         });
@@ -720,7 +726,7 @@ describe("unified diff session snapshots", () => {
         );
         expect(mocks.subscriptions).toHaveLength(1);
         mocks.refText = refreshedText;
-        mocks.subscriptions[0]?.listener({ repoRoot: "/repo", source });
+        mocks.subscriptions[0]?.listener({ repoRoot: REPO_ROOT, source });
 
         await vi.waitFor(() => {
             expect(mocks.panels.at(-1)?.postedMessages.at(-1)).toMatchObject({
@@ -754,7 +760,7 @@ describe("unified diff session snapshots", () => {
         if (!panel) throw new Error("Expected a panel");
         mocks.readFile.mockRejectedValueOnce(new Error("permission denied"));
         mocks.subscriptions[0]?.listener({
-            repoRoot: "/repo",
+            repoRoot: REPO_ROOT,
             path: "src/example.ts",
             source: "workspace-file",
         });
@@ -850,8 +856,8 @@ describe("file-row click reaches the document-owned diff with the correct payloa
         mocks.readFile.mockResolvedValueOnce(Buffer.from("working tree content\n"));
         const deps = {
             getWorkspaceRoot: () => ({
-                fsPath: "/repo",
-                toString: () => "file:/repo",
+                fsPath: REPO_ROOT,
+                toString: () => `file:${REPO_ROOT}`,
             }),
         } as unknown as Parameters<typeof showDiffFromPanel>[0];
 
@@ -859,7 +865,7 @@ describe("file-row click reaches the document-owned diff with the correct payloa
 
         expect(mocks.panels).toHaveLength(0);
         expect(mocks.openEditableDiffEditor).toHaveBeenCalledWith(
-            expect.objectContaining({ fsPath: "/repo/src/example.ts" }),
+            expect.objectContaining({ fsPath: `${REPO_ROOT}/src/example.ts` }),
             expect.objectContaining({
                 editablePane: "right",
                 immutableText: "head content\n",
