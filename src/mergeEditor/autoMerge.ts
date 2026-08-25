@@ -4,7 +4,7 @@
 // ambiguity (overlapping edits, same-point insertions, line-count changes,
 // deletion versus edit) returns null so the hunk stays a manual conflict.
 
-import { computeTokenLcsPairs, tokenizeWordDiff } from "./wordDiff";
+import { computeTokenLcsPairs, tokenizeWordDiff } from "../diff/wordDiff";
 
 /** One contiguous token-level edit mapping a base range to a modified range. */
 interface TokenEditRange {

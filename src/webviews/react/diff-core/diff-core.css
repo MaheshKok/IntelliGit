@@ -1,0 +1,208 @@
+/* Shared visual contract for pane-agnostic diff blocks. */
+.merge-editor,
+.diff-core {
+    --diff-editor-bg: var(--merge-editor-bg, var(--vscode-editor-background, #2b3240));
+    --diff-editor-fg: var(--merge-editor-fg, var(--vscode-editor-foreground, #bfc7d5));
+    --diff-border: var(--merge-border, color-mix(in srgb, var(--diff-editor-fg) 14%, transparent));
+    --diff-muted: var(--merge-muted, var(--vscode-descriptionForeground, #9ca3af));
+    /* Semantic hues, mirroring the merge surface's tokens so a read-only pane that
+       imports diff-core alone still resolves to real colours. The merge editor
+       declares --merge-* itself, so these read through to the identical values
+       there, and a viewer that never imports the merge palette still gets a real
+       hue rather than a fallback that collapses onto the editor background.
+       No --diff-danger: the only hue a two-pane diff never needs is the conflict
+       one, and a declared hue nothing reads is a dead declaration. */
+    --diff-ok: var(--merge-ok, var(--vscode-charts-green, #79c18d));
+    --diff-info: var(--merge-info, var(--vscode-terminal-ansiCyan, #58b5c9));
+    --diff-line-number-gutter: var(--merge-line-number-gutter, 33px);
+    --diff-line-min-width: var(--merge-line-min-width, 0px);
+    --diff-action-gutter: var(--merge-action-gutter, 44px);
+    --diff-viewer-action-gutter: 0px;
+    --diff-code-font-size: var(--merge-code-font-size, var(--vscode-editor-font-size, 13px));
+    --diff-pane-boundary: var(
+        --merge-pane-boundary,
+        color-mix(in srgb, var(--diff-editor-fg) 24%, var(--diff-editor-bg))
+    );
+    /* Word-fragment tint at the merge surface's own strength, and the only paint
+       alias diff-core still owns. The merge editor declares --pycharm-modified, so
+       there this reads through to the identical value it always had.
+       The fallback leg is `transparent`, not a colour, and that is the whole of the
+       read-only surface's palette decision: a background behind code text spends
+       contrast the syntax palette has no budget for. VS Code's light themes colour
+       the number token #098658, which measures 4.60:1 on the plain editor
+       background -- 0.10 above the 4.5 floor the non-pixel contrast oracle enforces
+       -- so any wash under a code row drops it below (measured 4.3-4.4 across
+       light-modern and hc-light at a mix as faint as 4%). A read-only pane
+       therefore marks changes at the block edge and underlines changed fragments;
+       see diff-viewer.css. An editable surface can afford the filled body because
+       each fragment there is a click target, not only a marker. */
+    --diff-pycharm-modified: var(--pycharm-modified, transparent);
+}
+
+/* The merge surface sets this contract on `.merge-content`; a read-only surface
+   has no merge-only container, so diff-core owns the same code metrics here. */
+.diff-core {
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-size: var(--diff-code-font-size, var(--vscode-editor-font-size, 13px));
+    line-height: 20px;
+}
+
+/* Read-only panes have no merge action strip; the named input keeps that choice
+   explicit without changing the merge editor's 44px action gutter. */
+.diff-core.diff-viewer {
+    --diff-action-gutter: var(--diff-viewer-action-gutter, 0px);
+}
+
+.segment {
+    width: 100%;
+    /* Browser-level virtualization: offscreen segments skip rendering work
+       while the inline contain-intrinsic-size keeps scrollbar geometry stable
+       for very large diff files. Each segment holds one pane's slice, stacked
+       vertically inside its column. */
+    content-visibility: auto;
+}
+
+/* Columns stay transparent; pane and line-number separators are drawn in the
+   gutter channels so hunk ribbons can pass underneath them. */
+.column {
+    min-width: 0;
+    background: transparent;
+}
+
+.code-block {
+    display: grid;
+    grid-template-columns: var(--diff-line-number-gutter) minmax(0, 1fr);
+    min-height: 0;
+    overflow: hidden;
+    position: relative;
+}
+
+.code-block.line-numbers-right {
+    grid-template-columns: minmax(0, 1fr) calc(
+            var(--diff-line-number-gutter) + var(--diff-action-gutter)
+        );
+}
+
+.line-numbers {
+    background: transparent;
+    /* 45% of the editor foreground is the smallest mix that clears the floor in
+       the worst case (34.7% needed, rounded up for margin), and the gutter stays
+       3.6-3.8 contrast-ratio steps dimmer than the code it numbers, so it still
+       reads as a gutter. Both High Contrast themes define
+       editorLineNumber-foreground equal to editorForeground already, so there
+       the mix resolves to the value they picked. */
+    color: color-mix(
+        in srgb,
+        var(--vscode-editorLineNumber-foreground, var(--diff-muted)) 55%,
+        var(--diff-editor-fg)
+    );
+    box-sizing: border-box;
+}
+
+.line-number-row {
+    display: grid;
+    grid-template-columns: 1fr;
+    box-sizing: border-box;
+}
+
+.code-block.line-numbers-right .line-number-row {
+    padding-left: var(--diff-action-gutter);
+}
+
+.line-number {
+    padding: 0 7px 0 3px;
+    text-align: right;
+    min-height: 20px;
+    line-height: 20px;
+    border-left: 1px solid transparent;
+}
+
+.line-number-primary {
+    padding-left: 4px;
+}
+
+.code-lines {
+    min-width: 0;
+    position: relative;
+    /* Single-column grid keeps line rows and token overflow in one horizontal
+       scroll plane. The lower bound is the widest line across ALL panes
+       (--diff-line-min-width), so every pane shares one scroll extent and moves
+       in lockstep — instead of each pane sizing to its own content and short
+       panes refusing to scroll. Row color is painted by the sticky
+       real-code-line layer. */
+    display: grid;
+    grid-template-columns: minmax(max(100%, var(--diff-line-min-width, 0px)), max-content);
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+}
+
+.code-lines::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+}
+
+.code-line {
+    padding: 0 9px;
+    white-space: pre;
+    line-height: 20px;
+    min-height: 20px;
+}
+
+.real-code-line {
+    position: relative;
+}
+
+.real-code-line::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 20px;
+    pointer-events: none;
+}
+
+.code-line-content {
+    position: relative;
+    /* Deliberately NOT `overflow: hidden; text-overflow: ellipsis`. A long code
+       line is meant to overflow and be reached by scrolling: `.code-lines` is a
+       `max-content` grid with `overflow-x: auto`, and the shared scroll driver
+       syncs it with the surface scrollbar so every pane tracks together.
+       Truncating here would clip code the user has to read, and would quietly
+       strand that scrollbar with nothing left to scroll. */
+}
+
+.segment-common .code-line {
+    color: var(--diff-editor-fg);
+}
+
+.tok-comment {
+    color: color-mix(in srgb, var(--vscode-editorLineNumber-foreground, #6e7681) 74%, transparent);
+    font-style: italic;
+}
+
+.tok-keyword {
+    color: var(--vscode-symbolIcon-keywordForeground, #c586c0);
+}
+
+.tok-string {
+    color: var(--vscode-symbolIcon-stringForeground, #ce9178);
+}
+
+.tok-number {
+    color: var(--vscode-symbolIcon-numberForeground, #b5cea8);
+}
+
+.tok-constant {
+    color: var(--vscode-symbolIcon-constantForeground, #4fc1ff);
+}
+
+/* Base word-fragment tint. Consumers that layer variant colors on top own
+   their own overrides and any whitespace-only exception, because those tie at
+   equal specificity and resolve by source order within the consumer's own
+   stylesheet — see `.word-diff-change.word-diff-whitespace` in merge-editor.css. */
+.word-diff-change {
+    background: var(--diff-pycharm-modified);
+    border-radius: 2px;
+}

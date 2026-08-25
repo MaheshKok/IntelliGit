@@ -30,9 +30,8 @@ export interface EqualRange {
 // UNIMPORTANT_LINE_CHAR_COUNT default.
 const UNIMPORTANT_LINE_CHAR_COUNT = 3;
 
-// DP table size guard shared by all LCS passes; beyond it we fall back to a
-// fast greedy monotonic matcher.
-const MAX_LCS_CELLS = 10_000_000;
+/** Maximum DP table size shared by all LCS passes; larger inputs use the greedy fallback. */
+export const MAX_LCS_CELLS = 10_000_000;
 
 // Cap on a line's anchor weight so one very long line cannot outvote several
 // distinct meaningful lines. Deliberate deviation from IntelliJ's ByLineRt.kt,

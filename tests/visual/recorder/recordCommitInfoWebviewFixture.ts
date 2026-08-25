@@ -7,7 +7,7 @@
  * canonicalized with Phase 2b (`canonicalizeCapturedMessages.ts`) and serialized with Phase 2b's
  * fixed-byte convention (`webviewFixtureFile.ts`).
  *
- * **Why `commit-info`.** Of the 8 resolved host contexts (`WEBVIEW_CONTEXT_IDS`), this one has the
+ * **Why `commit-info`.** Of the 9 resolved host contexts (`WEBVIEW_CONTEXT_IDS`), this one has the
  * least host wiring to stand up: `CommitInfoViewProvider` needs only an `extensionUri` and a
  * `vscode.WebviewView` to resolve, and its "clean" scenario (`ready`, then one selected commit)
  * touches exactly one collaborator beyond the VS Code surface -- `IconThemeService` /
@@ -141,7 +141,7 @@ export async function recordCommitInfoWebviewFixture(
     );
 
     // The webview signals readiness before any commit is selected -- the real bootstrap sequence
-    // every one of the 8 host contexts' bundled React apps follows.
+    // every one of the 9 host contexts' bundled React apps follows.
     await receiveMessage({ type: "ready" });
 
     const gitOps = new GitOps(

@@ -35,11 +35,25 @@ const vscodeMock = vi.hoisted(() => {
 const createReadonlyDiffUri = vi.hoisted(() =>
     vi.fn((filePath: string, content: string, ref: string) => ({ filePath, content, ref })),
 );
+// panelFileActions.ts imports openUnifiedDiff cross-module from diffService.ts, so (unlike
+// diffService.ts's own tests) it can be mocked directly here. The default beforeEach below makes
+// it immediately invoke the native delegate it was given -- simulating the viewer declining --
+// so every existing assertion on the exact prior git.openChange/vscode.diff fallback behavior
+// stays valid unchanged, while dedicated tests assert on openUnifiedDiffMock's own call
+// arguments to prove the funnel is actually being routed to with the correct SideSpec.
+const openUnifiedDiffMock = vi.hoisted(() => vi.fn());
 
 vi.mock("vscode", () => vscodeMock);
-vi.mock("../../../src/services/diffService", () => ({ createReadonlyDiffUri }));
+vi.mock("../../../src/services/diffService", () => ({
+    createReadonlyDiffUri,
+    openUnifiedDiff: openUnifiedDiffMock,
+}));
 
-import { selectStashFromPanel, showStashDiffFromPanel } from "../../../src/views/panelFileActions";
+import {
+    selectStashFromPanel,
+    showDiffFromPanel,
+    showStashDiffFromPanel,
+} from "../../../src/views/panelFileActions";
 import type { GitOps } from "../../../src/git/operations";
 import type { WorkingFile } from "../../../src/types";
 
@@ -50,7 +64,22 @@ function makeGitOps(): GitOps {
             { path: "src/a.ts", status: "M", staged: false, additions: 1, deletions: 1 },
             { path: "new.txt", status: "?", staged: false, additions: 1, deletions: 0 },
         ]),
+        // The single-file path resolves the stash by its stable commit hash (never
+        // stash@{index}), so it reads through getFileContentAtRef instead of the index-based
+        // getStashFileContents used by the still-native whole-stash overview.
+        listStashes: vi.fn(async () => [{ index: 2, hash: "stash2hash" }]),
+        getFileContentAtRef: vi.fn(async (_filePath: string, ref: string) =>
+            ref === "stash2hash" ? "stash" : undefined,
+        ),
     } as unknown as GitOps;
+}
+
+/** A fresh, always-resolved cancellation token matching the funnel's native-delegate contract. */
+function fakeCancellationToken() {
+    return {
+        isCancellationRequested: false,
+        onCancellationRequested: () => ({ dispose: () => undefined }),
+    };
 }
 
 function fileActionDeps(gitOps: GitOps) {
@@ -86,6 +115,16 @@ function stashSelectionDeps(
     } as Parameters<typeof selectStashFromPanel>[0];
 }
 
+beforeEach(() => {
+    // Runs before every nested describe's own beforeEach (and its vi.clearAllMocks(), which
+    // clears call history but not this implementation) so the decline default is always active.
+    openUnifiedDiffMock.mockImplementation(async (_request: unknown, nativeDelegate: never) =>
+        (nativeDelegate as (token: ReturnType<typeof fakeCancellationToken>) => Promise<void>)(
+            fakeCancellationToken(),
+        ),
+    );
+});
+
 describe("showStashDiffFromPanel", () => {
     beforeEach(() => {
         vi.clearAllMocks();
@@ -101,7 +140,9 @@ describe("showStashDiffFromPanel", () => {
 
         await showStashDiffFromPanel(fileActionDeps(gitOps), 2, "src/a.ts", false);
 
-        expect(gitOps.getStashFileContents).toHaveBeenCalledWith(2, "src/a.ts");
+        expect(gitOps.listStashes).toHaveBeenCalled();
+        expect(gitOps.getFileContentAtRef).toHaveBeenCalledWith("src/a.ts", "stash2hash");
+        expect(gitOps.getStashFileContents).not.toHaveBeenCalled();
         expect(createReadonlyDiffUri).toHaveBeenCalledWith("src/a.ts", "stash", "Stash {2}");
         expect(createReadonlyDiffUri).toHaveBeenCalledWith(
             "src/a.ts",
@@ -128,15 +169,45 @@ describe("showStashDiffFromPanel", () => {
         );
     });
 
+    it("routes single-file stash diffs through the unified diff funnel with worktree-left, stash-hash-right sides", async () => {
+        const gitOps = makeGitOps();
+
+        await showStashDiffFromPanel(fileActionDeps(gitOps), 2, "src/a.ts", false);
+
+        expect(openUnifiedDiffMock).toHaveBeenCalledWith(
+            expect.objectContaining({
+                path: "src/a.ts",
+                left: { kind: "worktree" },
+                right: expect.objectContaining({
+                    kind: "provider",
+                    identity: "stash2hash",
+                    label: "Stash {2}",
+                }),
+            }),
+            expect.any(Function),
+        );
+    });
+
+    it("throws when the requested stash index is no longer present at that position", async () => {
+        const gitOps = makeGitOps();
+        vi.mocked(gitOps.listStashes).mockResolvedValueOnce([]);
+
+        await expect(showStashDiffFromPanel(fileActionDeps(gitOps), 2, "src/a.ts")).rejects.toThrow(
+            "Stash entry changed at index 2; refresh and try again.",
+        );
+        expect(gitOps.getFileContentAtRef).not.toHaveBeenCalled();
+        expect(openUnifiedDiffMock).not.toHaveBeenCalled();
+    });
+
     it("uses an explicitly labeled empty virtual document when the stashed side is absent", async () => {
         const gitOps = makeGitOps();
-        vi.mocked(gitOps.getStashFileContents).mockResolvedValueOnce({
-            before: "must not be used",
-            after: undefined,
-        });
+        const missingPathError = new Error("fatal: path 'src/a.ts' does not exist in 'stash2hash'");
+        vi.mocked(gitOps.getFileContentAtRef).mockRejectedValue(missingPathError);
 
         await showStashDiffFromPanel(fileActionDeps(gitOps), 2, "src/a.ts");
 
+        expect(gitOps.getFileContentAtRef).toHaveBeenCalledWith("src/a.ts", "stash2hash");
+        expect(gitOps.getFileContentAtRef).toHaveBeenCalledWith("src/a.ts", "stash2hash^3");
         expect(vscodeMock.commands.executeCommand).toHaveBeenCalledWith(
             "vscode.diff",
             { filePath: "src/a.ts", content: "local file contents", ref: "Local File" },
@@ -387,6 +458,51 @@ describe("showStashDiffFromPanel", () => {
         await expect(showDiff).rejects.toBe(permissionError);
         expect(createReadonlyDiffUri).not.toHaveBeenCalled();
         expect(vscodeMock.commands.executeCommand).not.toHaveBeenCalled();
+    });
+
+    it("never routes the whole-stash overview through the unified diff funnel", async () => {
+        const gitOps = makeGitOps();
+
+        await showStashDiffFromPanel(fileActionDeps(gitOps), 2, undefined);
+
+        expect(openUnifiedDiffMock).not.toHaveBeenCalled();
+        expect(vscodeMock.commands.executeCommand).toHaveBeenCalledWith(
+            "vscode.changes",
+            expect.any(String),
+            expect.any(Array),
+        );
+    });
+});
+
+describe("showDiffFromPanel", () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+    });
+
+    function deps() {
+        return { getWorkspaceRoot: () => ({ scheme: "file", path: "/repo" }) };
+    }
+
+    it("routes through the unified diff funnel comparing HEAD to the working tree, never git.openChange's index-aware pair", async () => {
+        await showDiffFromPanel(deps(), "src/a.ts");
+
+        expect(openUnifiedDiffMock).toHaveBeenCalledWith(
+            expect.objectContaining({
+                path: "src/a.ts",
+                left: { kind: "ref", ref: "HEAD" },
+                right: { kind: "worktree" },
+            }),
+            expect.any(Function),
+        );
+    });
+
+    it("falls back to the exact prior git.openChange behavior when the viewer declines", async () => {
+        await showDiffFromPanel(deps(), "src/a.ts");
+
+        expect(vscodeMock.commands.executeCommand).toHaveBeenCalledWith(
+            "git.openChange",
+            expect.objectContaining({ path: "src/a.ts" }),
+        );
     });
 });
 

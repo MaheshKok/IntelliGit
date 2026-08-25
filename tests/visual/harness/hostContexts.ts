@@ -119,6 +119,14 @@ export const WEBVIEW_HOST_CONTEXTS: readonly ResolvedHostContext[] = [
         resolvedBackgroundVar: DEFAULT_BACKGROUND_VAR,
         titleDescriptor: { kind: "localized", key: "Conflicts" },
     },
+    {
+        contextId: "diff-viewer",
+        scriptFile: "webview-diffviewer.js",
+        styleFiles: ["webview-diffviewer.css"],
+        declaredBackgroundVar: undefined,
+        resolvedBackgroundVar: DEFAULT_BACKGROUND_VAR,
+        titleDescriptor: { kind: "localized", key: "Diff: {file}" },
+    },
 ] as const;
 
 /**

@@ -1,12 +1,11 @@
-// Shared line-number helpers for the merge editor.
-// Kept outside segment components so Fast Refresh sees component modules cleanly.
+// Shared line-number helpers for pane renderers.
 
 /** Line-number value for a rendered row; `null` reserves padding rows. */
 export type LineNumberValue = number | null;
 
 /**
- * Builds displayed line numbers for a pane, using null placeholders when a
- * shorter side needs visual padding to align with the hunk's row count.
+ * Builds displayed line numbers for one pane, using null placeholders when a
+ * shorter side needs visual padding to align with its rendered row count.
  */
 export function buildLineNumberValues(
     startAt: number,

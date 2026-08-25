@@ -5,6 +5,7 @@
 import * as path from "path";
 import * as vscode from "vscode";
 import { GitExecutor } from "../git/executor";
+import { logGitOpsWarning } from "../git/operationSupport";
 import { GitOps } from "../git/operations";
 import { applyPatchTextToRepo } from "../git/patchApplication";
 import { getErrorMessage } from "../utils/errors";
@@ -17,10 +18,109 @@ import {
 } from "./gitHelpers";
 import { assertRepoRelativePath } from "../utils/fileOps";
 import { EMPTY_TREE_HASH } from "../utils/constants";
+import { exceedsDiffBudget } from "../diff/diffBudgets";
+import {
+    claimDiffViewerSession,
+    clearDiffViewerSession,
+    openDiffViewer,
+    reportDiffViewerLoadError,
+} from "../diff/diffViewerOpener";
+import { loadDiffSide } from "../diff/sideLoader";
+import {
+    subscribeToRepositoryWorkingTreeChanges,
+    type RepositoryWorkingTreeChange,
+    type RepositoryWorkingTreeChangeSubscription,
+} from "./repositoryChangeEvents";
+import type {
+    DiffViewerCancellationToken,
+    NativeDiffDelegate,
+    StableProviderIdentities,
+    UnifiedDiffRequest,
+} from "../diff/unifiedDiffTypes";
+
+export type { SideSpec, UnifiedDiffRequest } from "../diff/unifiedDiffTypes";
 
 const READONLY_DIFF_SCHEME = "intelligit-diff";
 const readonlyDiffDocuments = new Map<string, string>();
 let readonlyDiffDocumentSeq = 0;
+
+/** Immutable text and loader metadata retained for an open diff session. */
+interface FrozenDiffSideSnapshot {
+    readonly text: string;
+    readonly mode: number | undefined;
+    readonly lineCount: number;
+}
+
+/** Generation-owned state for one panel request and its eventual native fallback. */
+interface UnifiedDiffSession {
+    readonly descriptor: UnifiedDiffRequest;
+    readonly sideSnapshots: {
+        readonly left?: FrozenDiffSideSnapshot;
+        readonly right?: FrozenDiffSideSnapshot;
+    };
+    readonly stableProviderIdentities: StableProviderIdentities;
+    readonly nativeDelegate: NativeDiffDelegate;
+    generation: number;
+}
+
+class DiffViewerCancellationSource {
+    private cancelled = false;
+    private readonly listeners = new Set<() => void>();
+    readonly token: DiffViewerCancellationToken;
+
+    constructor() {
+        this.token = createDiffViewerCancellationToken(this);
+    }
+
+    isCancellationRequested(): boolean {
+        return this.cancelled;
+    }
+
+    addCancellationListener(listener: () => void): { dispose(): void } {
+        if (this.cancelled) {
+            listener();
+            return { dispose: () => undefined };
+        }
+        this.listeners.add(listener);
+        return { dispose: () => this.listeners.delete(listener) };
+    }
+
+    cancel(): void {
+        if (this.cancelled) return;
+        this.cancelled = true;
+        for (const listener of this.listeners) listener();
+        this.listeners.clear();
+    }
+}
+
+function createDiffViewerCancellationToken(
+    source: DiffViewerCancellationSource,
+): DiffViewerCancellationToken {
+    return {
+        get isCancellationRequested() {
+            return source.isCancellationRequested();
+        },
+        onCancellationRequested: (listener) => source.addCancellationListener(listener),
+    };
+}
+
+interface ActiveUnifiedDiffSession extends Omit<UnifiedDiffSession, "sideSnapshots"> {
+    readonly sideSnapshots: {
+        left?: FrozenDiffSideSnapshot;
+        right?: FrozenDiffSideSnapshot;
+    };
+    readonly cancellationSource: DiffViewerCancellationSource;
+    onPanelDisposed: () => void;
+    fallbackStarted: boolean;
+    unsubscribe: () => void;
+    changeSubscription: RepositoryWorkingTreeChangeSubscription | undefined;
+    refreshInFlight: boolean;
+    refreshPending: boolean;
+}
+
+let nextUnifiedDiffGeneration = 0;
+let activeUnifiedDiffSession: ActiveUnifiedDiffSession | undefined;
+let latestUnifiedDiffSession: ActiveUnifiedDiffSession | undefined;
 
 /**
  * Serves ephemeral read-only documents used as the left and right sides of VS Code diffs.
@@ -124,6 +224,362 @@ export function getRepoRelativeFilePathFromUri(uri: vscode.Uri, repoRoot: string
     return normalizeGitPath(relative);
 }
 
+/**
+ * Opens one read-only diff in the IntelliGit viewer, falling back to the caller's exact native
+ * behaviour for anything the viewer cannot render. There is no user-facing choice of viewer:
+ * `nativeDelegate` exists for content the viewer must refuse — binary, invalid UTF-8, symlink,
+ * submodule, or over-budget sides — not as a preference.
+ */
+export async function openUnifiedDiff(
+    request: UnifiedDiffRequest,
+    nativeDelegate: NativeDiffDelegate,
+): Promise<void> {
+    const session = beginUnifiedDiffSession(request, nativeDelegate);
+    const executor =
+        request.left.kind === "ref" || request.right.kind === "ref"
+            ? new GitExecutor(request.repoRoot)
+            : undefined;
+    let leftResult: Awaited<ReturnType<typeof loadDiffSide>> | undefined;
+    let rightResult: Awaited<ReturnType<typeof loadDiffSide>> | undefined;
+    let left: ViewerDiffSide | undefined;
+    let right: ViewerDiffSide | undefined;
+    let overBudget = false;
+
+    try {
+        const loadGeneration = session.generation;
+        leftResult = await loadDiffSide({
+            repoRoot: request.repoRoot,
+            filePath: request.path,
+            side: request.left,
+            executor,
+        });
+        if (!isCurrentUnifiedDiffSession(session, loadGeneration)) return;
+        if (leftResult.status === "loaded" || leftResult.status === "missing") {
+            left = toViewerSide(leftResult);
+            rightResult = await loadDiffSide({
+                repoRoot: request.repoRoot,
+                filePath: request.path,
+                side: request.right,
+                executor,
+            });
+            if (!isCurrentUnifiedDiffSession(session, loadGeneration)) return;
+            if (rightResult.status === "loaded" || rightResult.status === "missing") {
+                right = toViewerSide(rightResult);
+                overBudget = exceedsDiffBudget(left, right);
+            }
+        }
+    } catch (error) {
+        if (!isCurrentUnifiedDiffSession(session)) return;
+        logGitOpsWarning("diffService.openUnifiedDiff.resolve", error);
+        await transitionToNativeFallback(session);
+        return;
+    }
+
+    // Every outcome the viewer cannot render ends at the native editor: a side that
+    // resolved to something unviewable (left undefined by the block above), a path
+    // absent from both sides, or a pair over budget. One missing side is viewable —
+    // that is how an added or deleted file renders.
+    const bothMissing = leftResult?.status === "missing" && rightResult?.status === "missing";
+    if (!left || !right || bothMissing || overBudget) {
+        await transitionToNativeFallback(session);
+        return;
+    }
+
+    // Keep decoded sides for 3.6 partial re-resolution; the raw bytes are no longer needed
+    // after the budget check and UTF-8 decode, so retaining copies would only waste memory.
+    // The container stays mutable so refresh can replace mutable sides; freezeDiffSide still
+    // protects each published snapshot from mutation.
+    session.sideSnapshots.left = freezeDiffSide(left);
+    session.sideSnapshots.right = freezeDiffSide(right);
+    if (!isCurrentUnifiedDiffSession(session)) return;
+
+    await openDiffViewer({
+        path: request.path,
+        title: request.title,
+        leftLabel: getSideLabel(request.left),
+        rightLabel: getSideLabel(request.right),
+        languageId: request.languageId,
+        leftText: left.text,
+        rightText: right.text,
+        sessionGeneration: session.generation,
+        onSessionDisposed: session.onPanelDisposed,
+    });
+    if (session.refreshPending) {
+        session.refreshPending = false;
+        requestUnifiedDiffRefresh(session);
+    }
+}
+
+function beginUnifiedDiffSession(
+    descriptor: UnifiedDiffRequest,
+    nativeDelegate: NativeDiffDelegate,
+): ActiveUnifiedDiffSession {
+    latestUnifiedDiffSession?.cancellationSource.cancel();
+    const previousSession = latestUnifiedDiffSession;
+    const cancellationSource = new DiffViewerCancellationSource();
+    const sideSnapshots: {
+        left?: FrozenDiffSideSnapshot;
+        right?: FrozenDiffSideSnapshot;
+    } = {};
+    const session: ActiveUnifiedDiffSession = {
+        descriptor,
+        sideSnapshots,
+        stableProviderIdentities: {
+            left: getStableProviderIdentity(descriptor.left),
+            right: getStableProviderIdentity(descriptor.right),
+        },
+        nativeDelegate,
+        generation: ++nextUnifiedDiffGeneration,
+        cancellationSource,
+        onPanelDisposed: () => undefined,
+        fallbackStarted: false,
+        unsubscribe: () => undefined,
+        changeSubscription: undefined,
+        refreshInFlight: false,
+        refreshPending: false,
+    };
+    session.onPanelDisposed = () => {
+        cancellationSource.cancel();
+        session.unsubscribe();
+        session.unsubscribe = () => undefined;
+        if (activeUnifiedDiffSession === session) activeUnifiedDiffSession = undefined;
+    };
+    activeUnifiedDiffSession = session;
+    latestUnifiedDiffSession = session;
+    claimDiffViewerSession({
+        generation: session.generation,
+        onDispose: session.onPanelDisposed,
+    });
+    bindUnifiedDiffSessionSubscription(session, previousSession);
+    return session;
+}
+
+/** Moves the panel's mutable-side listener synchronously when a new descriptor replaces it. */
+function bindUnifiedDiffSessionSubscription(
+    session: ActiveUnifiedDiffSession,
+    previousSession: ActiveUnifiedDiffSession | undefined,
+): void {
+    if (!hasMutableDiffSide(session.descriptor)) {
+        previousSession?.unsubscribe();
+        return;
+    }
+    const listener = (event: RepositoryWorkingTreeChange) =>
+        requestUnifiedDiffRefresh(session, event);
+    const transferred = previousSession?.changeSubscription;
+    if (transferred) {
+        transferred.rebind(session.descriptor.repoRoot, listener);
+        previousSession.changeSubscription = undefined;
+        previousSession.unsubscribe = () => undefined;
+        session.changeSubscription = transferred;
+    } else {
+        session.changeSubscription = subscribeToRepositoryWorkingTreeChanges(
+            session.descriptor.repoRoot,
+            listener,
+        );
+    }
+    session.unsubscribe = () => {
+        const subscription = session.changeSubscription;
+        session.changeSubscription = undefined;
+        subscription?.dispose();
+    };
+}
+
+/** Requests one serialized refresh when a root event can change at least one mutable side. */
+function requestUnifiedDiffRefresh(
+    session: ActiveUnifiedDiffSession,
+    event?: RepositoryWorkingTreeChange,
+): void {
+    if (!isCurrentUnifiedDiffSession(session)) return;
+    if (event && !shouldRefreshForChange(session.descriptor, event)) return;
+    if (
+        session.refreshInFlight ||
+        session.sideSnapshots.left === undefined ||
+        session.sideSnapshots.right === undefined
+    ) {
+        session.refreshPending = true;
+        return;
+    }
+    session.refreshInFlight = true;
+    void refreshUnifiedDiffSession(session)
+        .catch((error) => {
+            logGitOpsWarning("diffService.openUnifiedDiff.refresh.unhandled", error);
+        })
+        .finally(() => {
+            session.refreshInFlight = false;
+            if (!session.refreshPending || !isCurrentUnifiedDiffSession(session)) return;
+            session.refreshPending = false;
+            requestUnifiedDiffRefresh(session);
+        });
+}
+
+/** Reloads only mutable snapshots and retains the prior panel content when the reload fails. */
+async function refreshUnifiedDiffSession(session: ActiveUnifiedDiffSession): Promise<void> {
+    const generation = ++nextUnifiedDiffGeneration;
+    session.generation = generation;
+    claimDiffViewerSession({ generation, onDispose: session.onPanelDisposed });
+    const needsGitExecutor = [session.descriptor.left, session.descriptor.right].some(
+        (side) => side.kind === "ref" && isMutableDiffSide(side),
+    );
+    const executor = needsGitExecutor ? new GitExecutor(session.descriptor.repoRoot) : undefined;
+
+    try {
+        const left = await resolveRefreshSide(session, "left", executor);
+        if (!isCurrentUnifiedDiffSession(session, generation)) return;
+        const right = await resolveRefreshSide(session, "right", executor);
+        if (!isCurrentUnifiedDiffSession(session, generation)) return;
+        if (exceedsDiffSnapshotBudget(left, right)) {
+            throw new Error("The refreshed diff exceeds the viewer budget.");
+        }
+        session.sideSnapshots.left = left;
+        session.sideSnapshots.right = right;
+        await openDiffViewer({
+            path: session.descriptor.path,
+            title: session.descriptor.title,
+            leftLabel: getSideLabel(session.descriptor.left),
+            rightLabel: getSideLabel(session.descriptor.right),
+            languageId: session.descriptor.languageId,
+            leftText: left.text,
+            rightText: right.text,
+            sessionGeneration: generation,
+            onSessionDisposed: session.onPanelDisposed,
+        });
+    } catch (error) {
+        if (!isCurrentUnifiedDiffSession(session, generation)) return;
+        logGitOpsWarning("diffService.openUnifiedDiff.refresh", error);
+        try {
+            await reportDiffViewerLoadError(generation, getErrorMessage(error));
+        } catch (postError) {
+            logGitOpsWarning("diffService.openUnifiedDiff.refresh.loadError", postError);
+        }
+    }
+}
+
+/** Resolves a mutable source again and returns an initial frozen snapshot for immutable sides. */
+async function resolveRefreshSide(
+    session: ActiveUnifiedDiffSession,
+    sideName: "left" | "right",
+    executor: GitExecutor | undefined,
+): Promise<FrozenDiffSideSnapshot> {
+    const side = session.descriptor[sideName];
+    const snapshot = session.sideSnapshots[sideName];
+    if (!isMutableDiffSide(side)) {
+        if (snapshot === undefined) throw new Error("The frozen diff side is unavailable.");
+        return snapshot;
+    }
+    const result = await loadDiffSide({
+        repoRoot: session.descriptor.repoRoot,
+        filePath: session.descriptor.path,
+        side,
+        executor,
+    });
+    if (result.status !== "loaded" && result.status !== "missing") {
+        throw new Error("The refreshed diff side is no longer renderable.");
+    }
+    return freezeDiffSide(toViewerSide(result));
+}
+
+/** Applies the existing measured budget gates to the decoded snapshots retained by a session. */
+function exceedsDiffSnapshotBudget(
+    left: FrozenDiffSideSnapshot,
+    right: FrozenDiffSideSnapshot,
+): boolean {
+    return exceedsDiffBudget(
+        { bytes: Buffer.from(left.text, "utf8"), lineCount: left.lineCount, text: left.text },
+        { bytes: Buffer.from(right.text, "utf8"), lineCount: right.lineCount, text: right.text },
+    );
+}
+
+/** Selects events that can affect the requested file or a mutable symbolic reference. */
+function shouldRefreshForChange(
+    descriptor: UnifiedDiffRequest,
+    event: RepositoryWorkingTreeChange,
+): boolean {
+    const hasMutableRef = [descriptor.left, descriptor.right].some(
+        (side) => side.kind === "ref" && isMutableDiffSide(side),
+    );
+    if (event.path === undefined) return true;
+    const requestedPath = descriptor.path.replace(/\\/g, "/");
+    if (event.path === requestedPath) return true;
+    return hasMutableRef && event.source !== "workspace-file";
+}
+
+/** Identifies worktree and symbolic-ref sides that must be resolved again after a root change. */
+function hasMutableDiffSide(descriptor: UnifiedDiffRequest): boolean {
+    return isMutableDiffSide(descriptor.left) || isMutableDiffSide(descriptor.right);
+}
+
+/** Treats full object IDs and provider sides as frozen snapshots for the lifetime of a session. */
+function isMutableDiffSide(side: UnifiedDiffRequest["left"]): boolean {
+    return side.kind === "worktree" || (side.kind === "ref" && !isObjectIdRef(side.ref));
+}
+
+/** Matches Git object-ID syntax without treating symbolic names as immutable. */
+function isObjectIdRef(ref: string): boolean {
+    const value = ref.trim();
+    return isValidGitHash(value) || /^[0-9a-f]{64}$/i.test(value);
+}
+
+function isCurrentUnifiedDiffSession(
+    session: ActiveUnifiedDiffSession,
+    generation = session.generation,
+): boolean {
+    return activeUnifiedDiffSession === session && session.generation === generation;
+}
+
+async function transitionToNativeFallback(session: ActiveUnifiedDiffSession): Promise<void> {
+    if (!isCurrentUnifiedDiffSession(session) || session.fallbackStarted) return;
+    session.fallbackStarted = true;
+
+    clearDiffViewerSession(session.generation);
+    session.unsubscribe();
+    if (activeUnifiedDiffSession === session) activeUnifiedDiffSession = undefined;
+    await session.nativeDelegate(
+        session.cancellationSource.token,
+        session.stableProviderIdentities,
+    );
+}
+
+function freezeDiffSide(side: ViewerDiffSide): FrozenDiffSideSnapshot {
+    return Object.freeze({
+        text: side.text,
+        mode: side.mode,
+        lineCount: side.lineCount,
+    });
+}
+
+function getStableProviderIdentity(side: UnifiedDiffRequest["left"]): string | undefined {
+    return side.kind === "provider" ? side.identity : undefined;
+}
+
+type LoadableDiffSide = Extract<
+    Awaited<ReturnType<typeof loadDiffSide>>,
+    { readonly status: "loaded" | "missing" }
+>;
+
+type ViewerDiffSide = Extract<
+    Awaited<ReturnType<typeof loadDiffSide>>,
+    { readonly status: "loaded" }
+>;
+
+function toViewerSide(result: LoadableDiffSide): ViewerDiffSide {
+    if (result.status === "missing") {
+        return {
+            status: "loaded",
+            bytes: new Uint8Array(),
+            mode: undefined,
+            text: "",
+            lineCount: 0,
+        };
+    }
+    return result;
+}
+
+function getSideLabel(side: UnifiedDiffRequest["left"]): string {
+    if (side.kind === "ref") return side.ref;
+    if (side.kind === "provider") return side.label;
+    return "Working tree";
+}
+
 function getEditorContextFileUri(ctx?: unknown): vscode.Uri | null {
     if (ctx instanceof vscode.Uri) return ctx;
     const activeUri = vscode.window.activeTextEditor?.document.uri;
@@ -159,14 +615,16 @@ function getCommitInfoFileContext(value: unknown): CommitInfoFileContext | null 
 }
 
 /**
- * Opens a VS Code diff between a working-tree file and its content at a Git ref.
+ * Opens a diff between a working-tree file and its content at a Git ref.
  *
- * `repoRelativeFilePath` must already be validated and slash-separated. Git read
- * failures propagate to the caller so UI command handlers can display the
- * workflow-specific error message.
+ * `repoRelativeFilePath` must already be validated and slash-separated. Routes through the unified
+ * diff viewer, falling back to the exact prior direct-read-then-`vscode.diff` behavior for content the
+ * viewer must refuse. Git read failures inside the native fallback still propagate to the caller so UI
+ * command handlers can display the workflow-specific error message.
  */
 async function openDiffAgainstGitRef(
     fileUri: vscode.Uri,
+    repoRoot: string,
     repoRelativeFilePath: string,
     ref: string,
     sourceLabel: "revision" | "branch",
@@ -175,10 +633,23 @@ async function openDiffAgainstGitRef(
     const trimmedRef = ref.trim();
     if (!trimmedRef) return;
 
-    const refContent = await gitOps.getFileContentAtRef(repoRelativeFilePath, trimmedRef);
-    const leftUri = createReadonlyDiffUri(repoRelativeFilePath, refContent, trimmedRef);
     const title = `${repoRelativeFilePath} (${sourceLabel}: ${trimmedRef}) <-> Working Tree`;
-    await vscode.commands.executeCommand("vscode.diff", leftUri, fileUri, title);
+    await openUnifiedDiff(
+        {
+            repoRoot,
+            path: repoRelativeFilePath,
+            left: { kind: "ref", ref: trimmedRef },
+            right: { kind: "worktree" },
+            languageId: "",
+            title,
+        },
+        async (cancellationToken) => {
+            const refContent = await gitOps.getFileContentAtRef(repoRelativeFilePath, trimmedRef);
+            if (cancellationToken.isCancellationRequested) return;
+            const leftUri = createReadonlyDiffUri(repoRelativeFilePath, refContent, trimmedRef);
+            await vscode.commands.executeCommand("vscode.diff", leftUri, fileUri, title);
+        },
+    );
 }
 
 /**
@@ -195,7 +666,7 @@ async function openDiffAgainstGitRef(
 export async function openCommitFileDiff(
     commitHash: string,
     filePath: string,
-    _repoRoot: string,
+    repoRoot: string,
     gitOps: GitOps,
     executor: GitExecutor,
 ): Promise<void> {
@@ -224,26 +695,40 @@ export async function openCommitFileDiff(
         parentDisplayHash = parentRef;
     }
 
-    let leftContent: string;
-    try {
-        leftContent = await gitOps.getFileContentAtRef(safePath, parentRef);
-    } catch {
-        leftContent = "";
-    }
-
-    let rightContent: string;
-    try {
-        rightContent = await gitOps.getFileContentAtRef(safePath, validatedHash);
-    } catch {
-        rightContent = "";
-    }
-
     const shortParent = parentDisplayHash.slice(0, 8);
     const shortCommit = validatedHash.slice(0, 8);
-    const leftUri = createReadonlyDiffUri(safePath, leftContent, shortParent);
-    const rightUri = createReadonlyDiffUri(safePath, rightContent, shortCommit);
     const title = `${safePath} (${shortParent} ↔ ${shortCommit})`;
-    await vscode.commands.executeCommand("vscode.diff", leftUri, rightUri, title);
+
+    await openUnifiedDiff(
+        {
+            repoRoot,
+            path: safePath,
+            left: { kind: "ref", ref: parentRef },
+            right: { kind: "ref", ref: validatedHash },
+            languageId: "",
+            title,
+        },
+        async (cancellationToken) => {
+            let leftContent: string;
+            try {
+                leftContent = await gitOps.getFileContentAtRef(safePath, parentRef);
+            } catch {
+                leftContent = "";
+            }
+
+            let rightContent: string;
+            try {
+                rightContent = await gitOps.getFileContentAtRef(safePath, validatedHash);
+            } catch {
+                rightContent = "";
+            }
+
+            if (cancellationToken.isCancellationRequested) return;
+            const leftUri = createReadonlyDiffUri(safePath, leftContent, shortParent);
+            const rightUri = createReadonlyDiffUri(safePath, rightContent, shortCommit);
+            await vscode.commands.executeCommand("vscode.diff", leftUri, rightUri, title);
+        },
+    );
 }
 
 /**
@@ -303,6 +788,7 @@ export async function compareEditorFileWithBranch(
 
         await openDiffAgainstGitRef(
             fileUri,
+            repoRoot,
             repoRelativeFilePath,
             picked.refName,
             "branch",
@@ -393,7 +879,14 @@ export async function compareEditorFileWithRevision(
             refName = input.trim();
         }
 
-        await openDiffAgainstGitRef(fileUri, repoRelativeFilePath, refName, "revision", gitOps);
+        await openDiffAgainstGitRef(
+            fileUri,
+            repoRoot,
+            repoRelativeFilePath,
+            refName,
+            "revision",
+            gitOps,
+        );
     } catch (error) {
         const message = getErrorMessage(error);
         vscode.window.showErrorMessage(
@@ -419,7 +912,14 @@ export async function compareCommitInfoFileWithLocal(
     try {
         const safePath = assertRepoRelativePath(fileCtx.filePath);
         const fileUri = vscode.Uri.file(path.join(repoRoot, safePath));
-        await openDiffAgainstGitRef(fileUri, safePath, fileCtx.commitHash, "revision", gitOps);
+        await openDiffAgainstGitRef(
+            fileUri,
+            repoRoot,
+            safePath,
+            fileCtx.commitHash,
+            "revision",
+            gitOps,
+        );
     } catch (error) {
         const message = getErrorMessage(error);
         vscode.window.showErrorMessage(

@@ -1,5 +1,6 @@
 {
     "No Git repositories found in this workspace.": "No Git repositories found in this workspace.",
+    "Diff: {file}": "Diff: {file}",
     "Select a repository for shelf changes": "Select a repository for shelf changes",
     "Shelf service is unavailable for this repository.": "Shelf service is unavailable for this repository.",
     "Uncommitted changes": "Uncommitted changes",
@@ -513,6 +514,7 @@
     "Stashed: {ref}": "Stashed: {ref}",
     "{path} (Stashed: {ref}) <-> Local File": "{path} (Stashed: {ref}) <-> Local File",
     "{path} (Local File <-> Stash {reference})": "{path} (Local File <-> Stash {reference})",
+    "{path} (HEAD ↔ Working Tree)": "{path} (HEAD ↔ Working Tree)",
     "{title}: {detail}{hintText}": "{title}: {detail}{hintText}",
     "Install Copilot": "Install Copilot",
     "Sign In": "Sign In",

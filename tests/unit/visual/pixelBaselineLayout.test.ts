@@ -23,7 +23,7 @@ const pixelProjectNames = (visualConfig.projects ?? [])
     .map((project) => project.name as string);
 
 describe("pixel baseline layout", () => {
-    it("stores exactly the 32-cell matrix at the configured template path", () => {
+    it("stores exactly the context-by-project matrix at the configured template path", () => {
         expect(
             existsSync(BASELINE_DIR),
             `No baselines at ${BASELINE_DIR}. Generate them with bun run test:visual:container.`,

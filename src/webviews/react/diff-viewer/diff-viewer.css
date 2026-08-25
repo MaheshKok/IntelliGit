@@ -1,0 +1,295 @@
+@import "../diff-core/diff-core.css";
+
+.diff-viewer {
+    --diff-toolbar-bg: var(--vscode-sideBar-background, var(--diff-editor-bg));
+    --diff-header-bg: var(--vscode-editorGroupHeader-tabsBackground, var(--diff-editor-bg));
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    overflow: hidden;
+    color: var(--diff-editor-fg);
+    background: var(--diff-editor-bg);
+}
+
+.diff-toolbar {
+    display: flex;
+    align-items: center;
+    min-height: 30px;
+    padding: 2px 8px;
+    background: var(--diff-toolbar-bg);
+    border-bottom: 1px solid var(--diff-border);
+    flex-shrink: 0;
+}
+
+.toolbar-left {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+}
+
+.toolbar-btn {
+    min-height: 24px;
+    padding: 0 7px;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--vscode-foreground);
+    font-size: 12px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    line-height: 1;
+}
+
+.toolbar-btn:hover {
+    background: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.12));
+    border-color: color-mix(in srgb, var(--diff-border) 80%, transparent);
+}
+
+.toolbar-btn.active,
+.toolbar-btn[aria-pressed="true"] {
+    background: color-mix(in srgb, var(--vscode-button-background, #0e639c) 34%, transparent);
+    border-color: color-mix(in srgb, var(--vscode-button-background, #0e639c) 64%, transparent);
+}
+
+.toolbar-btn.dropdown {
+    gap: 4px;
+}
+
+.toolbar-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 12px;
+    height: 12px;
+}
+
+.dropdown-icon {
+    opacity: 0.7;
+    margin-left: -1px;
+}
+
+.diff-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 34px;
+    padding: 4px 10px;
+    background: var(--diff-header-bg);
+    border-bottom: 1px solid var(--diff-border);
+    flex-shrink: 0;
+}
+
+.file-path {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--vscode-foreground);
+    font-size: 14px;
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.diff-newline-marker {
+    padding: 1px 6px;
+    border: 1px solid var(--diff-pane-boundary);
+    border-radius: 8px;
+    color: var(--diff-muted);
+    font-size: 11px;
+    white-space: nowrap;
+}
+
+.diff-pane-meta-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    min-height: 24px;
+    background: color-mix(in srgb, var(--diff-editor-bg) 92%, #000 8%);
+    border-bottom: 1px solid var(--diff-border);
+    flex-shrink: 0;
+}
+
+.diff-pane-meta {
+    min-width: 0;
+    padding: 2px 8px;
+    overflow: hidden;
+    border-right: 1px solid var(--diff-pane-boundary);
+    color: color-mix(in srgb, var(--diff-editor-fg) 76%, transparent);
+    font-size: 11px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.diff-pane-meta:last-child {
+    border-right: 0;
+}
+
+.diff-content-shell {
+    position: relative;
+    min-height: 0;
+    background: var(--diff-editor-bg);
+    flex: 1;
+}
+
+.diff-content {
+    height: 100%;
+    overflow-x: hidden;
+    overflow-y: auto;
+    padding-right: 14px;
+    padding-bottom: 10px;
+    background: var(--diff-editor-bg);
+}
+
+/* Sticky viewport holding the two translated columns. It is exactly one viewport
+   tall and pinned to the top of the scroller; the spacer below it supplies the
+   scroll length (canonicalTotalPx). The negative margin removes the viewport's
+   own height from flow so the scroll range is the spacer alone. Both come from
+   --diff-viewport-h, which the scroll driver sets from clientHeight: a
+   percentage margin resolves against the containing block's WIDTH, so the -100%
+   this replaced cancelled an unrelated number of pixels and left the viewport
+   unpinned. */
+.diff-viewport {
+    position: sticky;
+    top: 0;
+    height: var(--diff-viewport-h, 100%);
+    margin-bottom: calc(-1 * var(--diff-viewport-h, 0px));
+    overflow: hidden;
+}
+
+.diff-columns {
+    position: relative;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    min-height: 0;
+}
+
+.diff-pane {
+    min-width: 0;
+    background: transparent;
+}
+
+.diff-pane + .diff-pane {
+    border-left: 1px solid var(--diff-pane-boundary);
+}
+
+/* A changed block is marked at its edge, never underneath its code.
+   The wash this replaced is not a taste question, it is arithmetic: syntax tokens
+   are coloured for the plain editor background, and VS Code's light themes give
+   the number token #098658, which measures 4.60:1 on white -- 0.10 above the 4.5
+   floor `tests/visual/oracles/contrast.ts` enforces. A mix as faint as 4% took it
+   to 4.3-4.4 in light-modern and hc-light, so there is no wash percentage that is
+   both visible and legal here, and baselining the finding would pin a real
+   regression the pixel gate exists to catch.
+   An inset box-shadow paints inside the block's own border box, so the bar costs
+   the code no width and the line-number gutter no room, and it never lands under a
+   glyph: the code rows start 9px in and the gutter's digits are right-aligned
+   20px in. Contrast is untouched because nothing moved behind any text. */
+.diff-viewer .diff-segment-inserted {
+    box-shadow: inset 3px 0 0 var(--diff-ok);
+}
+
+.diff-viewer .diff-segment-deleted {
+    box-shadow: inset 3px 0 0 var(--diff-muted);
+}
+
+.diff-viewer .diff-segment-modified {
+    box-shadow: inset 3px 0 0 var(--diff-info);
+}
+
+/* .diff-segment-empty is deliberately unpainted. Each pane is sized from its own line
+   count (`paneLines[side]` in DiffViewerApp.tsx), so the counterpart of a one-sided
+   hunk is zero rows and therefore zero pixels tall: any background declared on it
+   would be a rule that can never render. The hunk is legible anyway -- the opposite
+   pane carries the coloured edge bar and the ribbon lands on this side's collapsed
+   position. `tests/integration/webviews/diff-viewer.integration.test.tsx` pins the
+   zero height, so a later switch to filler rows fails there rather than silently
+   turning this into a blank band. */
+
+/* Which words changed, marked beside the glyphs instead of behind them, for the
+   same reason the block wash is gone. Only a two-sided hunk renders these spans at
+   all: `WordDiffLine` returns a plain highlighted line when the compared line is
+   empty (src/webviews/react/diff-core/segments.tsx:158), so a one-sided hunk has
+   nothing to underline and the modified state is the only one that can carry them.
+   The tint the merge editor paints here is inherited as `transparent` through
+   --diff-pycharm-modified, which merge-editor.css overrides for itself. */
+.diff-viewer .word-diff-change {
+    text-decoration-line: underline;
+    text-decoration-color: var(--diff-info);
+    text-decoration-thickness: 2px;
+    text-decoration-skip-ink: none;
+    text-underline-offset: 2px;
+}
+
+.diff-ribbon-layer {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    overflow: visible;
+}
+
+/* The connector fills with the semantic hue itself, not a wash of it. A ribbon
+   crosses the gap between the panes and lands on nothing but the editor
+   background, so it carries its own alpha and needs a colour with saturation left
+   in it; drawing it from a fragment tint made it a near-background band that the
+   0.18 opacity then erased entirely. */
+.diff-ribbon {
+    fill: var(--diff-info);
+    opacity: 0.18;
+}
+
+.diff-vscroll-spacer {
+    width: 1px;
+}
+
+/* A refresh failure reported above a diff that is still on screen and still valid, rather
+   than in place of it. It is a strip in the header stack, not a centred takeover, because
+   the content below it remains the thing the reader came for. */
+.diff-error-banner {
+    max-width: none;
+    flex-shrink: 0;
+    padding: 4px 10px;
+    border-bottom: 1px solid var(--diff-border);
+    background: var(--diff-header-bg);
+    font-size: 11px;
+    text-align: left;
+}
+
+.diff-horizontal-scroll {
+    position: absolute;
+    right: 14px;
+    bottom: 0;
+    left: 0;
+    height: 9px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    z-index: 2;
+    background: var(--diff-editor-bg);
+}
+
+.diff-horizontal-scroll-inner {
+    height: 1px;
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-size: var(--diff-code-font-size, var(--vscode-editor-font-size, 13px));
+}
+
+.diff-horizontal-scroll::-webkit-scrollbar {
+    height: 9px;
+}
+
+.diff-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    color: var(--diff-muted);
+}
+
+.error-message {
+    max-width: 500px;
+    color: var(--vscode-errorForeground, #f48771);
+    text-align: center;
+}

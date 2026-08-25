@@ -376,5 +376,8 @@
         "many": "{count} wychodzących commitów",
         "other": "{count} wychodzących commitów"
     },
-    "branch.tracking.combined": "{incoming} i {outgoing}"
+    "branch.tracking.combined": "{incoming} i {outgoing}",
+    "diff.newlineDifference": "Pliki różnią się tylko formatem znaków końca linii",
+    "diff.error.load": "Nie udało się załadować różnic: {error}",
+    "diff.loading": "Ładowanie różnic..."
 }

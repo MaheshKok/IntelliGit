@@ -349,5 +349,8 @@
     "branch.tracking.outgoing": {
         "other": "{count} 個傳出提交"
     },
-    "branch.tracking.combined": "{incoming}，{outgoing}"
+    "branch.tracking.combined": "{incoming}，{outgoing}",
+    "diff.newlineDifference": "檔案僅換行格式不同",
+    "diff.error.load": "無法載入差異：{error}",
+    "diff.loading": "正在載入差異..."
 }

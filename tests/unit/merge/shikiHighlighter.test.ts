@@ -10,7 +10,7 @@ import {
     initShiki,
     isShikiReady,
     highlightLine,
-} from "../../../src/webviews/react/merge-editor/shikiHighlighter";
+} from "../../../src/webviews/react/diff-core/shikiHighlighter";
 
 describe("langForPath", () => {
     it("maps common extensions to their Shiki language id", () => {
@@ -79,6 +79,15 @@ describe("detectTheme", () => {
     it("returns dark-plus for the vscode-high-contrast body class", () => {
         document.body.classList.add("vscode-high-contrast");
         expect(detectTheme()).toBe("dark-plus");
+    });
+
+    it("returns light-plus for high-contrast light despite the legacy high-contrast class", () => {
+        // VS Code adds the legacy `vscode-high-contrast` class alongside
+        // `vscode-high-contrast-light` for backwards compatibility, so a check that
+        // only matches the legacy class paints dark-theme syntax colours onto the
+        // white high-contrast-light editor background.
+        document.body.classList.add("vscode-high-contrast", "vscode-high-contrast-light");
+        expect(detectTheme()).toBe("light-plus");
     });
 
     it("returns light-plus for the vscode-light body class", () => {

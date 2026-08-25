@@ -343,7 +343,7 @@ describe("resolved host-context production oracle", () => {
         ).toBe(recorderContextIds.length);
     });
 
-    // One test per context rather than one loop over all eight: in a loop the first failing context
+    // One test per context rather than one loop over all nine: in a loop the first failing context
     // masks every later one, so a single mutation would report as a single defect no matter how
     // many rows it actually broke.
     it.each([...WEBVIEW_HOST_CONTEXTS])(

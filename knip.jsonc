@@ -20,6 +20,10 @@
         "tests/typecheck-negative/fixtures/**/*.ts",
         "tests/e2e/flows/negative/leg.negative.ts",
         "tests/visual/negative/screenshotComparator.negative.ts",
+        // Run by hand to re-derive the corpus tables in src/diff/diffBudgets.ts. Nothing
+        // imports it, so without an entry knip reads a deliberately standalone
+        // measurement tool as a dead file.
+        "scripts/measure-diff-budgets.ts",
     ],
     "project": ["src/**/*.{ts,tsx}", "scripts/**/*.{js,ts}", "tests/**/*.{ts,tsx}"],
     "ignoreFiles": ["src/webviews/react/css-modules.d.ts"],

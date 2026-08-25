@@ -13,6 +13,7 @@ import React, {
 import { createRoot } from "react-dom/client";
 import type {
     ConflictSegment,
+    CommonSegment,
     HunkSideDismissal,
     HunkResolution,
     InboundMessage,
@@ -43,7 +44,6 @@ import {
     isTrueConflict,
 } from "./mergeState";
 import {
-    CommonPaneBlock,
     OursConflictBlock,
     ResultConflictBlock,
     TheirsConflictBlock,
@@ -54,21 +54,26 @@ import {
     type ConnectorSpec,
     type OverviewMarker,
 } from "./segments";
+import { bandSpansForMiddleGap } from "./mergeScrollLayout";
 import {
-    bandSpansForMiddleGap,
     buildVerticalLayout,
     LINE_HEIGHT_PX,
-    paneOffsetForCanonical,
     ribbonOutlineD,
     ribbonPathD,
-    type MergeVerticalLayout,
-    type MergePane,
+    type DiffVerticalLayout,
     type RibbonSpan,
     type SegmentPaneLines,
-} from "./mergeScrollLayout";
-import { buildLineNumberValues } from "./lineNumbers";
-import { initShiki, isShikiReady, langForPath, detectTheme } from "./shikiHighlighter";
-import { SyntaxHighlightProvider } from "./syntaxHighlightContext";
+} from "../diff-core/mergeScrollLayout";
+import { buildLineNumberValues } from "../diff-core/lineNumbers";
+import { initShiki, isShikiReady, langForPath, detectTheme } from "../diff-core/shikiHighlighter";
+import { SyntaxHighlightProvider } from "../diff-core/syntaxHighlightContext";
+import {
+    applyPaneOffsets,
+    paneOffsetsForCanonical,
+    syncHorizontalScroll as syncHorizontalScrollCore,
+    updateSharedScrollbar as updateSharedScrollbarCore,
+} from "../diff-core/scrollSync";
+import { CommonPaneBlock } from "../diff-core/segments";
 import "./merge-editor.css";
 
 const EMPTY_SEGMENTS: MergeSegment[] = [];
@@ -76,9 +81,14 @@ const EMPTY_SEGMENTS: MergeSegment[] = [];
 /** Horizontal padding of a `.code-line` (0 9px), added to the content width. */
 const LINE_PADDING_PX = 18;
 
-const MERGE_PANES: readonly MergePane[] = ["left", "middle", "right"];
+const MERGE_PANES = ["left", "middle", "right"] as const;
+type MergePaneId = (typeof MERGE_PANES)[number];
 
 const RIBBON_LINE_TARGET_HEIGHT_PX = 3;
+
+function isCommonSegment(segment: MergeSegment): segment is CommonSegment {
+    return segment.type === "common";
+}
 
 /** Row extent of one side's target inside the stacked result block (in lines). */
 interface ResultSlice {
@@ -279,7 +289,7 @@ export function App() {
     );
 
     const mergeContentRef = useRef<HTMLDivElement | null>(null);
-    const columnRefs = useRef<Record<MergePane, HTMLDivElement | null>>({
+    const columnRefs = useRef<Record<MergePaneId, HTMLDivElement | null>>({
         left: null,
         middle: null,
         right: null,
@@ -294,7 +304,7 @@ export function App() {
         right: { band: emptySpan(), contour: emptySpan() },
     });
     const viewportHRef = useRef(0);
-    const layoutRef = useRef<MergeVerticalLayout | null>(null);
+    const layoutRef = useRef<DiffVerticalLayout<MergePaneId> | null>(null);
     // Conflict hunks the ribbons link, kept in a ref so the rAF draw reads the
     // current set without being re-created each render.
     const connectorsRef = useRef<ConnectorRenderSpec[]>([]);
@@ -306,25 +316,14 @@ export function App() {
 
     const scrollSyncRef = useRef<{ raf: number; left: number }>({ raf: 0, left: 0 });
     const syncHorizontalScroll = useCallback((left: number, source?: HTMLElement | null) => {
-        const sync = scrollSyncRef.current;
-        sync.left = left;
-        if (sync.raf) return;
-        sync.raf = requestAnimationFrame(() => {
-            sync.raf = 0;
-            const targetLeft = sync.left;
-            const panes =
-                mergeContentRef.current?.querySelectorAll<HTMLElement>(".code-lines") ?? [];
-            for (const pane of panes) {
-                if (pane === source) continue;
-                const max = Math.max(0, pane.scrollWidth - pane.clientWidth);
-                const paneLeft = Math.min(targetLeft, max);
-                if (Math.abs(pane.scrollLeft - paneLeft) >= 1) pane.scrollLeft = paneLeft;
-            }
-            const bar = horizontalScrollRef.current;
-            if (bar && bar !== source && Math.abs(bar.scrollLeft - targetLeft) >= 1) {
-                bar.scrollLeft = targetLeft;
-            }
-        });
+        syncHorizontalScrollCore(
+            MERGE_PANES,
+            (pane) => columnRefs.current[pane]?.querySelectorAll<HTMLElement>(".code-lines") ?? [],
+            horizontalScrollRef.current,
+            scrollSyncRef.current,
+            left,
+            source,
+        );
     }, []);
 
     // Cache the viewport height (clamps pane offsets, culls ribbons) and expose
@@ -404,7 +403,7 @@ export function App() {
     }, []);
 
     const drawConnectors = useCallback(
-        (offsets: Record<MergePane, number>, viewportH: number) => {
+        (offsets: Readonly<Record<MergePaneId, number>>, viewportH: number) => {
             const layout = layoutRef.current;
             if (!layout) return;
             const { left: leftSpans, right: rightSpans } = gutterXRef.current;
@@ -475,15 +474,8 @@ export function App() {
         if (!layout || !content) return;
         const viewportH = viewportHRef.current;
         const scroll = content.scrollTop;
-        const offsets = {
-            left: paneOffsetForCanonical(layout, "left", scroll, viewportH),
-            middle: paneOffsetForCanonical(layout, "middle", scroll, viewportH),
-            right: paneOffsetForCanonical(layout, "right", scroll, viewportH),
-        } as Record<MergePane, number>;
-        for (const pane of MERGE_PANES) {
-            const col = columnRefs.current[pane];
-            if (col) col.style.transform = `translateY(${-offsets[pane]}px)`;
-        }
+        const offsets = paneOffsetsForCanonical(layout, MERGE_PANES, scroll, viewportH);
+        applyPaneOffsets(MERGE_PANES, (pane) => columnRefs.current[pane], offsets);
         drawConnectors(offsets, viewportH);
     }, [drawConnectors]);
 
@@ -559,42 +551,17 @@ export function App() {
         return max;
     }, [segments, state.edits]);
     const updateHorizontalScrollWidth = useCallback(() => {
-        const bar = horizontalScrollRef.current;
-        const inner = horizontalScrollInnerRef.current;
-        const content = mergeContentRef.current;
-        if (!bar || !inner || !content) return;
-        // The narrowest pane overflows first, so it sets the shared scroll extent.
-        // Each column is one flow with a stable width, so the first non-collapsed
-        // `.code-lines` in each `.merge-col` gives that pane's clientWidth without
-        // walking every block.
-        let minClientWidth = Infinity;
-        for (const col of content.querySelectorAll<HTMLElement>(".merge-col")) {
-            for (const pane of col.querySelectorAll<HTMLElement>(".code-lines")) {
-                // A skipped (content-visibility) block reports 0; ignore those
-                // and fall back to the last real width below.
-                if (pane.clientWidth > 0) {
-                    minClientWidth = Math.min(minClientWidth, pane.clientWidth);
-                    break;
-                }
-            }
-        }
-        // ponytail: reuse the last real width when the first segment is offscreen
-        // and layout-skipped. It only drifts if the window is resized while
-        // scrolled past segment 0, and self-corrects on the next render tick.
-        if (minClientWidth === Infinity) {
-            minClientWidth = lastPaneClientWidthRef.current;
-        } else {
-            lastPaneClientWidthRef.current = minClientWidth;
-        }
-        // 100% == bar width; the ch term is the content width (monospace) and the
-        // px terms add the line padding and subtract the visible pane, leaving
-        // exactly the overflow the bar must cover.
-        inner.style.width = `calc(100% + ${maxLineLength}ch + ${LINE_PADDING_PX}px - ${minClientWidth}px)`;
-        const maxScroll = Math.max(0, inner.offsetWidth - bar.clientWidth);
-        bar.hidden = maxScroll < 1;
-        if (scrollSyncRef.current.left > maxScroll) {
-            syncHorizontalScroll(maxScroll);
-        }
+        updateSharedScrollbarCore(
+            MERGE_PANES,
+            (pane) => columnRefs.current[pane],
+            horizontalScrollRef.current,
+            horizontalScrollInnerRef.current,
+            maxLineLength,
+            LINE_PADDING_PX,
+            lastPaneClientWidthRef,
+            scrollSyncRef.current.left,
+            syncHorizontalScroll,
+        );
     }, [maxLineLength, syncHorizontalScroll]);
     useEffect(() => {
         updateHorizontalScrollWidthRef.current = updateHorizontalScrollWidth;
@@ -687,15 +654,17 @@ export function App() {
     }, [segments, state.resolutions, state.edits]);
 
     // Vertical geometry for the single-scrollbar / translated-column layout.
-    const layout = useMemo<MergeVerticalLayout>(() => {
-        const paneLines: SegmentPaneLines[] = renderedSegments.map((item) => ({
-            left: item.paneLines.left,
-            middle: item.paneLines.middle,
-            right: item.paneLines.right,
+    const layout = useMemo<DiffVerticalLayout<MergePaneId>>(() => {
+        const paneLines: SegmentPaneLines<MergePaneId>[] = renderedSegments.map((item) => ({
+            paneLines: {
+                left: item.paneLines.left,
+                middle: item.paneLines.middle,
+                right: item.paneLines.right,
+            },
             conflict: item.segment.type === "conflict",
             id: item.segment.type === "conflict" ? item.segment.id : undefined,
         }));
-        return buildVerticalLayout(paneLines);
+        return buildVerticalLayout(paneLines, MERGE_PANES);
     }, [renderedSegments]);
 
     // Hunks the connector ribbons link across panes — every conflict segment,
@@ -1138,7 +1107,7 @@ export function App() {
     const rootStyle = {
         "--merge-line-number-gutter": `max(33px, calc(${gutterDigits}ch + 12px))`,
         // Shared minimum content width for every pane so all code-lines panes
-        // scroll in lockstep (see .code-lines in merge-editor.css). Monospace
+        // scroll in lockstep (see .code-lines in diff-core.css). Monospace
         // editor font makes 1ch == one glyph, matching the synthetic scrollbar.
         "--merge-line-min-width": `calc(${maxLineLength}ch + ${LINE_PADDING_PX}px)`,
         ...(state.data.editorFontSize
@@ -1373,13 +1342,14 @@ export function App() {
                                 className="merge-col col-left"
                             >
                                 {renderedSegments.map((item) =>
-                                    item.segment.type === "common" ? (
+                                    isCommonSegment(item.segment) ? (
                                         <CommonPaneBlock
                                             key={item.renderKey}
                                             pane="left"
                                             segment={item.segment}
                                             lineCount={item.paneLines.left}
                                             lineNumbers={item.lineNumbers.left}
+                                            lineNumberSide="right"
                                             highlightWords={highlightWords}
                                         />
                                     ) : (
@@ -1408,13 +1378,14 @@ export function App() {
                                 className="merge-col col-middle"
                             >
                                 {renderedSegments.map((item) =>
-                                    item.segment.type === "common" ? (
+                                    isCommonSegment(item.segment) ? (
                                         <CommonPaneBlock
                                             key={item.renderKey}
                                             pane="middle"
                                             segment={item.segment}
                                             lineCount={item.paneLines.middle}
                                             lineNumbers={item.lineNumbers.middle}
+                                            lineNumberSide="left"
                                             highlightWords={highlightWords}
                                         />
                                     ) : (
@@ -1446,13 +1417,14 @@ export function App() {
                                 className="merge-col col-right"
                             >
                                 {renderedSegments.map((item) =>
-                                    item.segment.type === "common" ? (
+                                    isCommonSegment(item.segment) ? (
                                         <CommonPaneBlock
                                             key={item.renderKey}
                                             pane="right"
                                             segment={item.segment}
                                             lineCount={item.paneLines.right}
                                             lineNumbers={item.lineNumbers.right}
+                                            lineNumberSide="left"
                                             highlightWords={highlightWords}
                                         />
                                     ) : (

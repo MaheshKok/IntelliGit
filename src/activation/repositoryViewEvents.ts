@@ -32,7 +32,9 @@ import { CommitPanelViewProvider } from "../views/CommitPanelViewProvider";
 import { getErrorMessage } from "../utils/errors";
 import { runWithNotificationProgress } from "../utils/notifications";
 
-interface CommitFileDiffDeps {
+/** Exported so `registerUndockedCommitFileDiffHandler` and its test can build this bundle
+ * without reaching into `createOpenCommitFileDiffHandler`'s call site for the shape. */
+export interface CommitFileDiffDeps {
     executor: GitExecutor;
     gitOps: GitOps;
     getRepoRoot: () => string;
@@ -82,6 +84,24 @@ export function createOpenCommitFileDiffHandler(
             );
         }
     };
+}
+
+/**
+ * Undocked-panel counterpart to the four docked subscriptions `registerRepositoryViewEvents`
+ * wires below.
+ *
+ * Kept separate because the undocked panel is assembled by `ensureUndockedPanel`, a factory
+ * with a large, mostly-unrelated dependency graph (WorktreeService, rebase submission
+ * handlers, workspace-state persistence, ...). This seam isolates just the commit-file-diff
+ * wiring -- built from the same shared factory the docked providers use -- so a test can
+ * exercise it without constructing that graph.
+ */
+export function registerUndockedCommitFileDiffHandler(
+    deps: CommitFileDiffDeps,
+    undocked: { onOpenCommitFileDiff: vscode.Event<{ commitHash: string; filePath: string }> },
+): vscode.Disposable {
+    const handleOpenCommitFileDiff = createOpenCommitFileDiffHandler(deps);
+    return undocked.onOpenCommitFileDiff(handleOpenCommitFileDiff);
 }
 
 /**

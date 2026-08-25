@@ -2,7 +2,6 @@
 // Shows working tree changes with checkboxes, commit message input,
 // commit/push buttons, amend toggle, and stash management.
 // Frontend is a React + Chakra UI app loaded from dist/webview-commitpanel.js.
-import * as path from "path";
 import * as vscode from "vscode";
 import { GitOps } from "../git/operations";
 import {
@@ -39,6 +38,10 @@ import { isBranchAction, isCommitAction } from "../webviews/protocol/commitGraph
 import { IconThemeService } from "./shared/IconThemeService";
 import { isRedundantPost, serializeWebviewPayload } from "./shared/postedPayload";
 import { registerThemeChangeListeners, disposeAll } from "./shared/themeListeners";
+import {
+    subscribeToRepositoryWorkingTreeChanges,
+    type RepositoryWorkingTreeChange,
+} from "../services/repositoryChangeEvents";
 import {
     assertGitHash,
     assertMessage,
@@ -107,6 +110,21 @@ function isHydrationReAsk(attempt: unknown): boolean {
 }
 
 /**
+ * Whether a root event can change what an expanded repository row shows.
+ *
+ * The row watcher this replaced was a `createFileSystemWatcher`, so it only ever saw disk
+ * writes; routing it through the shared event stream also handed it Git-metadata events and
+ * one buffer edit per keystroke. Both are filtered here rather than at the publisher, because
+ * the diff viewer subscribes to the same stream and does need the keystroke -- it renders an
+ * open document's unsaved text. What this row renders is `git status`, which cannot change
+ * until the write lands, so refreshing on an unsaved edit re-runs it for an answer that cannot
+ * differ.
+ */
+export function affectsExpandedRow(event: RepositoryWorkingTreeChange): boolean {
+    return event.source === "workspace-file" && event.unsaved !== true;
+}
+
+/**
  * Reads `WebviewView.visible`, reporting "could not be read" as `undefined` rather than as a
  * boolean.
  *
@@ -159,13 +177,13 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
     private static readonly CHANGED_FILE_COUNTS_SCHEMA_VERSION = 1;
     private static readonly MAX_STORED_CHANGED_FILE_COUNTS = 100;
     private static readonly MAX_STORED_CHANGED_FILE_COUNT_AGE_MS = 30 * 24 * 60 * 60 * 1_000;
-    private static readonly ignoredWatcherDirs = new Set([".git", "dist", "build", "out"]);
     private view?: vscode.WebviewView;
     private lastFileCount = 0;
     private repositories: DiscoveredRepository[] = [];
     private readonly runtimes = new Map<string, CommitPanelRepositoryRuntime>();
     private readonly expandedRepositoryRoots = new Set<string>();
     private readonly runtimeWatchers = new Map<string, vscode.Disposable>();
+    private readonly runtimeRefreshTimers = new Map<string, ReturnType<typeof setTimeout>>();
     private readonly storedChangedFileCounts = new Map<string, StoredChangedFileCount>();
     private changedFileCountsWrite = Promise.resolve();
     private activeRepositoryRoot: string | null = null;
@@ -805,49 +823,41 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         }
     }
 
-    /** Registers a repository-scoped filesystem watcher that refreshes only its owning runtime. */
+    /** Retains the shared root watcher while this non-active repository row stays expanded. */
     private registerRuntimeWatcher(runtime: CommitPanelRepositoryRuntime): void {
         try {
-            const watcher = vscode.workspace.createFileSystemWatcher(
-                new vscode.RelativePattern(runtime.repoRootUri, "**/*"),
+            this.runtimeWatchers.set(
+                runtime.repository.root,
+                subscribeToRepositoryWorkingTreeChanges(runtime.repository.root, (event) => {
+                    if (!affectsExpandedRow(event)) return;
+                    this.scheduleRuntimeWatcherRefresh(runtime);
+                }),
             );
-            const refresh = (uri: vscode.Uri) => {
-                if (!this.shouldRefreshForWatcherUri(runtime, uri)) return;
-                this.refreshDataWithErrorHandling(true, runtime);
-            };
-            const disposables = [
-                watcher.onDidChange(refresh),
-                watcher.onDidCreate(refresh),
-                watcher.onDidDelete(refresh),
-                watcher,
-            ];
-            this.runtimeWatchers.set(runtime.repository.root, {
-                dispose: () => {
-                    for (const disposable of disposables) {
-                        disposable.dispose();
-                    }
-                },
-            });
-        } catch {
-            /* File watching may be unavailable for virtual or test roots. */
+        } catch (error) {
+            console.error("[IntelliGit] Commit-panel runtime watcher registration failed:", error);
         }
     }
 
-    /** Filters watcher events to real working-tree paths and skips noisy generated/Git folders. */
-    private shouldRefreshForWatcherUri(
-        runtime: CommitPanelRepositoryRuntime,
-        uri: vscode.Uri,
-    ): boolean {
-        const relativePath = path.relative(runtime.repository.root, uri.fsPath);
-        if (!relativePath || relativePath.startsWith("..") || path.isAbsolute(relativePath)) {
-            return false;
-        }
-        const [topLevelDir] = relativePath.split(/[\\/]/);
-        return !CommitPanelViewProvider.ignoredWatcherDirs.has(topLevelDir ?? "");
+    /** Coalesces row-local file changes at the active service's light-refresh cadence. */
+    private scheduleRuntimeWatcherRefresh(runtime: CommitPanelRepositoryRuntime): void {
+        const root = runtime.repository.root;
+        const existing = this.runtimeRefreshTimers.get(root);
+        if (existing) clearTimeout(existing);
+        this.runtimeRefreshTimers.set(
+            root,
+            setTimeout(() => {
+                this.runtimeRefreshTimers.delete(root);
+                if (!this.runtimeWatchers.has(root)) return;
+                this.refreshDataWithErrorHandling(true, runtime);
+            }, 300),
+        );
     }
 
     /** Disposes the provider-owned watcher for one repository root if it is currently registered. */
     private disposeRuntimeWatcher(root: string): void {
+        const timer = this.runtimeRefreshTimers.get(root);
+        if (timer) clearTimeout(timer);
+        this.runtimeRefreshTimers.delete(root);
         const watcher = this.runtimeWatchers.get(root);
         if (!watcher) return;
         watcher.dispose();

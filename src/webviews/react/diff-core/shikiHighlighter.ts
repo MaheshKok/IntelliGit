@@ -1,6 +1,6 @@
-// Shiki syntax highlighting module for the merge editor webview.
-// Uses the JavaScript regex engine (CSP-safe, no wasm/eval) with sync tokenization,
-// statically bundled grammars for 12 languages, and in-memory line cache.
+// Shiki syntax highlighting module for diff webviews.
+// The JavaScript regex engine is CSP-safe (no wasm/eval); grammars are bundled
+// statically and tokenization is cached per source line.
 import { createHighlighterCoreSync } from "shiki/core";
 import { createJavaScriptRegexEngine } from "shiki/engine/javascript";
 
@@ -23,7 +23,7 @@ import lightPlus from "@shikijs/themes/light-plus";
 /** Bundled Shiki theme name mirroring VS Code's default light/dark themes. */
 export type ShikiTheme = "dark-plus" | "light-plus";
 
-/** One grammar-tokenized run of text with its resolved theme color and font-style bitmask. */
+/** One grammar-tokenized run with its resolved color and font-style bitmask. */
 export interface ShikiToken {
     /** The token's literal text content. */
     text: string;
@@ -51,7 +51,7 @@ const extensionMap: Record<string, string> = {
     md: "markdown",
 };
 
-// Lazy-initialized sync highlighter (singleton).
+// Lazy-initialized sync highlighter singleton.
 let highlighter: ReturnType<typeof createHighlighterCoreSync> | null = null;
 let highlighterReady = false;
 
@@ -59,40 +59,33 @@ let highlighterReady = false;
 const tokenCache = new Map<string, ShikiToken[] | null>();
 const CACHE_MAX = 5000;
 
-/**
- * Detect the user's theme preference from VS Code body classList.
- */
+/** Detect the user's theme preference from VS Code's body classList. */
 export function detectTheme(): ShikiTheme {
     if (typeof document === "undefined") return "light-plus";
     const classes = document.body.classList;
+    // High-contrast light carries the legacy `vscode-high-contrast` class as well as
+    // `vscode-high-contrast-light`, so it has to be settled before the legacy check
+    // below; otherwise dark-theme syntax colours land on a white editor background.
+    if (classes.contains("vscode-high-contrast-light")) {
+        return "light-plus";
+    }
     if (classes.contains("vscode-dark") || classes.contains("vscode-high-contrast")) {
         return "dark-plus";
     }
     return "light-plus";
 }
 
-/**
- * Derive language identifier from file path (extension-based).
- * Returns null if no extension is found or the extension is not registered.
- */
+/** Derive a registered Shiki language identifier from a file path. */
 export function langForPath(filePath: string): string | null {
     const lastDot = filePath.lastIndexOf(".");
-    if (lastDot === -1 || lastDot === filePath.length - 1) {
-        return null;
-    }
+    if (lastDot === -1 || lastDot === filePath.length - 1) return null;
     const ext = filePath.substring(lastDot + 1).toLowerCase();
     return extensionMap[ext] ?? null;
 }
 
-/**
- * Initialize the Shiki highlighter with sync JavaScript regex engine.
- * Idempotent: returns false if already initialized or if initialization fails.
- * Returns true if successfully initialized on this call.
- */
+/** Initialize the sync Shiki singleton; returns true only on first success. */
 export function initShiki(): boolean {
-    if (highlighterReady) {
-        return false;
-    }
+    if (highlighterReady) return false;
     try {
         highlighter = createHighlighterCoreSync({
             langs: [js, ts, jsx, tsx, json, python, go, css, html, yaml, shell, markdown],
@@ -107,54 +100,57 @@ export function initShiki(): boolean {
     }
 }
 
-/**
- * Check if the Shiki highlighter is ready for tokenization.
- */
+/** Check whether Shiki is ready for tokenization. */
 export function isShikiReady(): boolean {
     return highlighterReady && highlighter !== null;
 }
 
-/**
- * Tokenize a single line using Shiki. Returns null if Shiki is not ready
- * or if the language is not registered. Memoizes results in tokenCache.
- * @param line - The source code line to tokenize.
- * @param lang - The Shiki language identifier (e.g., "typescript").
- * @param theme - The Shiki theme name (e.g., "dark-plus").
- */
-export function highlightLine(line: string, lang: string, theme: ShikiTheme): ShikiToken[] | null {
-    if (!isShikiReady() || !highlighter) {
-        return null;
+// Throwaway line tokenized once per language before any real one. Shiki's FIRST
+// `codeToTokensBase` call against a freshly built grammar can classify differently
+// from every later call on identical input: measured over 8 identical container
+// mounts, `const hd0 = 0;` came back as a single `0;` numeric token -- the
+// semicolon swallowed into the literal and painted number-green -- on 3 of them,
+// and as `0` + `;` on the other 5. Two things make that worse than a cosmetic
+// flicker. `tokenCache` below memoizes per line, so one cold call poisons that
+// line for the rest of the session; and whichever line happens to be tokenized
+// first varies, so the damage lands somewhere different every run. Burning the
+// cold call on a line nobody sees makes the render a function of its input again.
+const WARMUP_LINE = "const a = 0;";
+const warmedLangs = new Set<string>();
+
+function warmLang(lang: string, theme: ShikiTheme): void {
+    if (warmedLangs.has(lang) || !highlighter) return;
+    warmedLangs.add(lang);
+    try {
+        highlighter.codeToTokensBase(WARMUP_LINE, { lang, theme });
+    } catch {
+        // Best-effort: a grammar that cannot tokenize the warm-up line still
+        // tokenizes real ones, and a warm-up must never break highlighting.
     }
+}
+
+/** Tokenize one line with Shiki, returning null when unavailable or unsupported. */
+export function highlightLine(line: string, lang: string, theme: ShikiTheme): ShikiToken[] | null {
+    if (!isShikiReady() || !highlighter) return null;
+    warmLang(lang, theme);
 
     const cacheKey = `${line}|${lang}|${theme}`;
-    if (tokenCache.has(cacheKey)) {
-        return tokenCache.get(cacheKey) ?? null;
-    }
+    if (tokenCache.has(cacheKey)) return tokenCache.get(cacheKey) ?? null;
 
     try {
-        // codeToTokensBase tokenizes a string into lines → tokens.
         const lines = highlighter.codeToTokensBase(line, { lang, theme });
         if (!lines || lines.length === 0) {
             tokenCache.set(cacheKey, null);
             return null;
         }
-
-        // Flatten tokens to ShikiToken array and memoize.
         const tokens: ShikiToken[] = [];
         for (const token of lines[0]) {
-            tokens.push({
-                text: token.content,
-                color: token.color,
-                fontStyle: token.fontStyle,
-            });
+            tokens.push({ text: token.content, color: token.color, fontStyle: token.fontStyle });
         }
-
-        // Evict oldest entries if cache exceeds limit.
         if (tokenCache.size >= CACHE_MAX) {
             const firstKey = tokenCache.keys().next().value;
             if (firstKey) tokenCache.delete(firstKey);
         }
-
         tokenCache.set(cacheKey, tokens);
         return tokens;
     } catch (err) {

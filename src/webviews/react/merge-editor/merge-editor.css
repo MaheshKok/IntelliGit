@@ -1,3 +1,5 @@
+@import "../diff-core/diff-core.css";
+
 .merge-editor {
     --merge-editor-bg: var(--vscode-editor-background, #2b3240);
     --merge-editor-fg: var(--vscode-editor-foreground, #bfc7d5);
@@ -488,65 +490,14 @@
     background-clip: padding-box;
 }
 
-.segment {
-    width: 100%;
-    /* Browser-level virtualization: offscreen segments skip rendering work
-       while the inline contain-intrinsic-size keeps scrollbar geometry stable
-       for very large conflict files. Each segment now holds a single pane's
-       slice, stacked vertically inside its column. */
-    content-visibility: auto;
-}
-/* Columns stay transparent; pane and line-number separators are drawn in the
-   gutter channels so hunk ribbons still pass underneath them. */
-.column {
-    min-width: 0;
-    background: transparent;
-}
-.code-block {
-    display: grid;
-    grid-template-columns: var(--merge-line-number-gutter) minmax(0, 1fr);
-    min-height: 0;
-    overflow: hidden;
-    position: relative;
-}
-.code-block.line-numbers-right {
-    grid-template-columns:
-        minmax(0, 1fr)
-        calc(var(--merge-line-number-gutter) + var(--merge-action-gutter));
-}
 .conflict-theirs.code-block {
     grid-template-columns:
         calc(var(--merge-line-number-gutter) + var(--merge-action-gutter))
         minmax(0, 1fr);
 }
-.code-block.no-line-numbers {
-    grid-template-columns: minmax(0, 1fr);
-}
-/* Transparent so ribbons drawn below the column show through non-band rows;
-   band rows still paint their own row background on top. */
-/* The host's own gutter colour is too dim to use unmodified here. VS Code paints
-   its line numbers on the flat editor background; ours sit on top of the conflict
-   and deleted-block ribbons, which tint the surface and eat the remaining
-   headroom. Inverting the oracle's measured ratios recovers the real composited
-   backgrounds: Dark Modern's #6e7681 lands at 3.6:1 on a plain row and 3.0:1 over
-   a ribbon, and Light Modern's clears 4.5:1 on the flat background but drops to
-   3.8:1 over one -- which is why the finding appears in a theme whose gutter looks
-   fine in isolation.
 
-   45% of the editor foreground is the smallest mix that clears the floor in the
-   worst case (34.7% needed, rounded up for margin), and the gutter stays 3.6-3.8
-   contrast-ratio steps dimmer than the code it numbers, so it still reads as a
-   gutter. Both High Contrast themes define editorLineNumber-foreground equal to
-   editorForeground already, so there the mix resolves to the value they picked. */
-.line-numbers {
-    background: transparent;
-    color: color-mix(
-        in srgb,
-        var(--vscode-editorLineNumber-foreground, var(--merge-muted)) 55%,
-        var(--merge-editor-fg)
-    );
-    box-sizing: border-box;
-}
+/* Conflict-only gutter painting stays with merge resolution state; the base
+   line-number and code-line shells are supplied by diff-core.css. */
 .segment-conflict.change-conflict.unresolved .line-numbers {
     position: relative;
 }
@@ -583,14 +534,6 @@
     pointer-events: none;
     z-index: 2;
 }
-.line-number-row {
-    display: grid;
-    grid-template-columns: 1fr;
-    box-sizing: border-box;
-}
-.code-block.line-numbers-right .line-number-row {
-    padding-left: var(--merge-action-gutter);
-}
 .col-right .code-block.line-numbers-left {
     grid-template-columns:
         calc(var(--merge-line-number-gutter) + var(--merge-action-gutter))
@@ -601,27 +544,6 @@
 }
 .conflict-theirs .line-number-row {
     padding-right: var(--merge-action-gutter);
-}
-.line-numbers.has-secondary .line-number-row {
-    grid-template-columns: 1fr 1fr;
-}
-.line-number {
-    padding: 0 7px 0 3px;
-    text-align: right;
-    min-height: 20px;
-    line-height: 20px;
-    border-left: 1px solid transparent;
-}
-.line-number-secondary {
-    color: color-mix(in srgb, var(--merge-muted) 58%, transparent);
-    font-size: 11px;
-    padding-right: 4px;
-}
-.line-number-primary {
-    padding-left: 4px;
-}
-.line-numbers.has-secondary .line-number-primary {
-    border-left-color: color-mix(in srgb, var(--merge-border) 60%, transparent);
 }
 .segment-conflict.change-conflict.unresolved .line-numbers,
 .segment-conflict.change-conflict.unresolved .line-number-row {
@@ -651,60 +573,6 @@
 .segment-conflict.change-conflict.unresolved .code-lines {
     position: relative;
     z-index: 1;
-}
-.code-lines {
-    min-width: 0;
-    position: relative;
-    /* Single-column grid keeps line rows and token overflow in one horizontal
-       scroll plane. The lower bound is the widest line across ALL panes
-       (--merge-line-min-width), so every pane shares one scroll extent and moves
-       in lockstep — PyCharm-style — instead of each pane sizing to its own
-       content and short panes (a conflict side/result) refusing to scroll. Row
-       color is painted by the sticky real-code-line layer. */
-    display: grid;
-    grid-template-columns: minmax(max(100%, var(--merge-line-min-width, 0px)), max-content);
-    overflow-x: auto;
-    overflow-y: hidden;
-    scrollbar-width: none;
-}
-.code-lines::-webkit-scrollbar {
-    width: 0;
-    height: 0;
-}
-.code-line {
-    padding: 0 9px;
-    white-space: pre;
-    line-height: 20px;
-    min-height: 20px;
-}
-.real-code-line {
-    position: relative;
-}
-.real-code-line::before {
-    content: "";
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 20px;
-    pointer-events: none;
-}
-/* Deliberately NOT `overflow: hidden; text-overflow: ellipsis`. A long code line
-   is meant to overflow and be reached by scrolling: `.code-lines` above is a
-   `max-content` grid with `overflow-x: auto`, and MergeEditorApp syncs its
-   scrollLeft with the synthetic `.merge-horizontal-scroll` bar so both panes
-   track together. Truncating here would clip code the user has to read to
-   resolve a conflict, and would quietly strand that scrollbar with nothing left
-   to scroll. The visual suite's clipping oracle used to report these spans as
-   defects because it treated `text-overflow: ellipsis` as the only truncation
-   affordance; it now exempts content reachable through a scrollable ancestor
-   (see tests/visual/playwright/collectOracleInputs.ts), so do not "fix" this
-   pane by truncating it if the oracle ever flags it again. */
-.code-line-content {
-    position: relative;
-}
-.segment-common .code-line {
-    color: var(--vscode-editor-foreground);
 }
 
 .segment-conflict {
@@ -1159,29 +1027,6 @@
     text-overflow: ellipsis;
 }
 
-.tok-comment {
-    color: color-mix(in srgb, var(--vscode-editorLineNumber-foreground, #6e7681) 74%, transparent);
-    font-style: italic;
-}
-.tok-keyword {
-    color: var(--vscode-symbolIcon-keywordForeground, #c586c0);
-}
-.tok-string {
-    color: var(--vscode-symbolIcon-stringForeground, #ce9178);
-}
-.tok-number {
-    color: var(--vscode-symbolIcon-numberForeground, #b5cea8);
-}
-.tok-constant {
-    color: var(--vscode-symbolIcon-constantForeground, #4fc1ff);
-}
-/* Changed words carry the full PyCharm color on top of the faded block
-   background: dark red words in red conflict sections, dark green words in
-   green insertions, and so on. */
-.word-diff-change {
-    background: var(--pycharm-modified);
-    border-radius: 2px;
-}
 .change-conflict .word-diff-change {
     background: var(--pycharm-conflict);
 }
@@ -1204,6 +1049,12 @@
 .variant-modification .conflict-result.resolved:not(.edited) .word-diff-change {
     background: var(--pycharm-modified);
 }
+/* Whitespace-only runs drop the variant color for a neutral tint. This rule
+   MUST stay here, after the variant rules above: it ties with
+   `.change-conflict|.variant-modification|.variant-deletion .word-diff-change`
+   at (0,2,0) and wins only on source order. Moving it into diff-core.css puts
+   it ~850 lines earlier via the @import and silently inverts those three
+   ties, so it stays merge-side with the variant rules that give it meaning. */
 .word-diff-change.word-diff-whitespace {
     background: color-mix(in srgb, var(--vscode-editor-foreground, #ccc) 10%, transparent);
 }

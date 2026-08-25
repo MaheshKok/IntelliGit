@@ -53,17 +53,25 @@ const registerWebviewViewProvider = vi.fn(() => ({ dispose: vi.fn() }));
 const registerWebviewPanelSerializer = vi.fn(() => ({ dispose: vi.fn() }));
 const registerTextDocumentContentProvider = vi.fn(() => ({ dispose: vi.fn() }));
 const createTerminal = vi.fn(() => ({ show: vi.fn(), sendText: vi.fn() }));
-const textDocListeners: Array<() => void> = [];
+type MockWorkspaceUri = { fsPath: string; path: string };
+type TextDocumentChangeListener = (event: { document: { uri: MockWorkspaceUri } }) => void;
+type TextDocumentSaveListener = (document: { uri: MockWorkspaceUri }) => void;
+type WorkspaceFilesListener = (event: { files: MockWorkspaceUri[] }) => void;
+type WorkspaceRenameListener = (event: {
+    files: Array<{ oldUri: MockWorkspaceUri; newUri: MockWorkspaceUri }>;
+}) => void;
+
+const textDocListeners: TextDocumentChangeListener[] = [];
 const activeTextEditorListeners: Array<(editor?: { document: { uri: unknown } }) => void> = [];
 const workspaceFolderListeners: Array<() => Promise<void> | void> = [];
 let activeTextEditor: { document: { uri: unknown } } | undefined;
 const closeDocListeners: Array<
     (document: { uri: { scheme: string; toString: () => string } }) => void
 > = [];
-const saveDocListeners: Array<() => void> = [];
-const createFileListeners: Array<() => void> = [];
-const deleteFileListeners: Array<() => void> = [];
-const renameFileListeners: Array<() => void> = [];
+const saveDocListeners: TextDocumentSaveListener[] = [];
+const createFileListeners: WorkspaceFilesListener[] = [];
+const deleteFileListeners: WorkspaceFilesListener[] = [];
+const renameFileListeners: WorkspaceRenameListener[] = [];
 const authSessionListeners: Array<(event: { provider: { id: string } }) => void> = [];
 const configurationValues = new Map<string, unknown>();
 const configurationUpdate = vi.fn(async (key: string, value: unknown) => {
@@ -770,23 +778,23 @@ vi.mock("vscode", () => ({
                 return { dispose: vi.fn() };
             },
         ),
-        onDidChangeTextDocument: vi.fn((listener: () => void) => {
+        onDidChangeTextDocument: vi.fn((listener: TextDocumentChangeListener) => {
             textDocListeners.push(listener);
             return { dispose: vi.fn() };
         }),
-        onDidSaveTextDocument: vi.fn((listener: () => void) => {
+        onDidSaveTextDocument: vi.fn((listener: TextDocumentSaveListener) => {
             saveDocListeners.push(listener);
             return { dispose: vi.fn() };
         }),
-        onDidCreateFiles: vi.fn((listener: () => void) => {
+        onDidCreateFiles: vi.fn((listener: WorkspaceFilesListener) => {
             createFileListeners.push(listener);
             return { dispose: vi.fn() };
         }),
-        onDidDeleteFiles: vi.fn((listener: () => void) => {
+        onDidDeleteFiles: vi.fn((listener: WorkspaceFilesListener) => {
             deleteFileListeners.push(listener);
             return { dispose: vi.fn() };
         }),
-        onDidRenameFiles: vi.fn((listener: () => void) => {
+        onDidRenameFiles: vi.fn((listener: WorkspaceRenameListener) => {
             renameFileListeners.push(listener);
             return { dispose: vi.fn() };
         }),
@@ -2033,11 +2041,13 @@ describe("extension integration", () => {
     });
 
     it("refreshes the undocked commit panel when docked commit state changes", async () => {
+        vi.resetModules();
         vi.useFakeTimers();
+        let context: MockExtensionContext | undefined;
         try {
             configurationValues.set("undockableWindow", true);
             const { activate } = await import("../../../src/extension");
-            const context = {
+            context = {
                 extensionUri: { fsPath: "/ext", path: "/ext" },
                 subscriptions: [],
             } as unknown as MockExtensionContext;
@@ -2073,7 +2083,9 @@ describe("extension integration", () => {
             latestCommitPanelProvider!.refreshSilent.mockClear();
             latestCommitGraphProvider!.refresh.mockClear();
 
-            textDocListeners[0]?.();
+            textDocListeners[0]?.({
+                document: { uri: { fsPath: "/repo/src/example.ts", path: "/repo/src/example.ts" } },
+            });
             vi.advanceTimersByTime(300);
             await waitForAsync();
 
@@ -2096,6 +2108,7 @@ describe("extension integration", () => {
             expect(undocked!.refresh).not.toHaveBeenCalled();
             expect(undocked!.refreshSilent).toHaveBeenCalledTimes(1);
         } finally {
+            for (const subscription of context?.subscriptions ?? []) subscription.dispose();
             vi.useRealTimers();
         }
     });
@@ -3282,11 +3295,14 @@ describe("extension integration", () => {
                 branchName: "missing-branch",
             });
 
-            textDocListeners.forEach((listener) => listener());
-            saveDocListeners.forEach((listener) => listener());
-            createFileListeners.forEach((listener) => listener());
-            deleteFileListeners.forEach((listener) => listener());
-            renameFileListeners.forEach((listener) => listener());
+            const changedUri = { fsPath: "/repo/src/example.ts", path: "/repo/src/example.ts" };
+            textDocListeners.forEach((listener) => listener({ document: { uri: changedUri } }));
+            saveDocListeners.forEach((listener) => listener({ uri: changedUri }));
+            createFileListeners.forEach((listener) => listener({ files: [changedUri] }));
+            deleteFileListeners.forEach((listener) => listener({ files: [changedUri] }));
+            renameFileListeners.forEach((listener) =>
+                listener({ files: [{ oldUri: changedUri, newUri: changedUri }] }),
+            );
             fsWatchCallbacks[0]?.("change", "HEAD");
             fsWatchCallbacks[0]?.("change", "FETCH_HEAD");
             fsWatchCallbacks[1]?.();
@@ -4519,6 +4535,7 @@ describe("extension integration", () => {
     });
 
     it("handles fs.watch setup failures and exposes deactivate", async () => {
+        vi.resetModules();
         const fs = await import("fs");
         const watchMock = vi.mocked(fs.watch as unknown as (...args: unknown[]) => unknown);
         watchMock
@@ -4534,8 +4551,12 @@ describe("extension integration", () => {
             extensionUri: { fsPath: "/ext", path: "/ext" },
             subscriptions: [],
         } as unknown as MockExtensionContext;
-        await activate(context);
-        deactivate();
-        expect(watchMock).toHaveBeenCalled();
+        try {
+            await activate(context);
+            deactivate();
+            expect(watchMock).toHaveBeenCalled();
+        } finally {
+            for (const subscription of context.subscriptions) subscription.dispose();
+        }
     });
 });

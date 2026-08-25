@@ -367,5 +367,8 @@
         "many": "{count} commits sortants",
         "other": "{count} commits sortants"
     },
-    "branch.tracking.combined": "{incoming} et {outgoing}"
+    "branch.tracking.combined": "{incoming} et {outgoing}",
+    "diff.newlineDifference": "Les fichiers diffèrent uniquement par le format des sauts de ligne",
+    "diff.error.load": "Échec du chargement du diff : {error}",
+    "diff.loading": "Chargement du diff..."
 }

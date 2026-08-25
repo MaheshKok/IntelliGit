@@ -1,8 +1,6 @@
-// Pure line tokenizer for the merge editor's lightweight syntax highlighting.
-// Splits a single source line into classified tokens (comment, string,
-// keyword, constant, number, plain) that the CodeBlock render layer maps to
-// theme-colored spans. Single-line scan only: multi-line constructs such as
-// block comments and regex literals are intentionally out of scope.
+// Pure line tokenizer for pane-agnostic lightweight syntax highlighting.
+// Multi-line constructs such as block comments and regex literals remain out
+// of scope because the renderer tokenizes one source line at a time.
 
 /** Classification of one slice of a source line. */
 export type SyntaxTokenKind = "plain" | "comment" | "string" | "keyword" | "constant" | "number";
@@ -22,22 +20,15 @@ function appendCodeTokens(tokens: SyntaxToken[], text: string): void {
     let last = 0;
     for (const match of text.matchAll(KEYWORD_REGEX)) {
         const start = match.index ?? 0;
-        if (start > last) {
-            tokens.push({ text: text.slice(last, start), kind: "plain" });
-        }
+        if (start > last) tokens.push({ text: text.slice(last, start), kind: "plain" });
         const kind: SyntaxTokenKind = match[1] ? "keyword" : match[2] ? "constant" : "number";
         tokens.push({ text: match[0], kind });
         last = start + match[0].length;
     }
-    if (last < text.length) {
-        tokens.push({ text: text.slice(last), kind: "plain" });
-    }
+    if (last < text.length) tokens.push({ text: text.slice(last), kind: "plain" });
 }
 
-/**
- * Returns the index one past the end of a string literal starting at `start`.
- * Honors backslash escapes; an unterminated literal extends to end of line.
- */
+/** Returns the index one past a string literal, honoring backslash escapes. */
 function scanStringEnd(line: string, start: number): number {
     const quote = line[start];
     let i = start + 1;
@@ -53,12 +44,8 @@ function scanStringEnd(line: string, start: number): number {
 }
 
 /**
- * Tokenizes one source line into classified slices.
- *
- * The tokens concatenate back to the input exactly. String literals are
- * detected first so that `//` inside a string never starts a comment; the
- * first `//` outside a string turns the remainder of the line into a single
- * comment token.
+ * Tokenizes one source line; strings are recognized before comments so `//`
+ * inside a string remains string content.
  */
 export function tokenizeSyntaxLine(line: string): SyntaxToken[] {
     const tokens: SyntaxToken[] = [];

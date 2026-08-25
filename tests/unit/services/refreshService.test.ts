@@ -9,6 +9,22 @@ import type { MergeConflictsTreeProvider } from "../../../src/views/MergeConflic
 vi.mock("vscode", () => {
     /** Creates disposable mocks for VS Code watcher/listener registrations. */
     const disposable = () => ({ dispose: vi.fn() });
+    class EventEmitter<T> {
+        private readonly listeners = new Set<(value: T) => unknown>();
+
+        readonly event = (listener: (value: T) => unknown) => {
+            this.listeners.add(listener);
+            return { dispose: () => this.listeners.delete(listener) };
+        };
+
+        fire(value: T): void {
+            for (const listener of this.listeners) listener(value);
+        }
+
+        dispose(): void {
+            this.listeners.clear();
+        }
+    }
     const fileSystemWatcher = {
         onDidChange: vi.fn(() => disposable()),
         onDidCreate: vi.fn(() => disposable()),
@@ -17,6 +33,7 @@ vi.mock("vscode", () => {
     };
 
     return {
+        EventEmitter,
         commands: {
             executeCommand: vi.fn(),
         },
@@ -199,6 +216,44 @@ describe("RefreshService refresh scheduling", () => {
         onDidCreate({ fsPath: "/tmp/intelligit-refresh-test/src/generated.ts" });
         await vi.advanceTimersByTimeAsync(300);
         expect(deps.commitPanel.refreshSilent).toHaveBeenCalledTimes(1);
+
+        service.dispose();
+    });
+
+    /**
+     * Everything this service refreshes re-reads Git, which cannot move until a write lands, so
+     * an edit still sitting in a buffer schedules a refresh that recomputes the same answer --
+     * once per keystroke. Both directions are asserted from the one listener: dropping the
+     * filter makes the dirty case refresh, and over-filtering on `source` rather than on
+     * `unsaved` makes the saved case stop refreshing.
+     */
+    it("skips refreshes for unsaved buffer edits but not for the write that follows", async () => {
+        const vscode = await import("vscode");
+        const { service, deps } = makeService();
+        service.registerFileWatchers();
+
+        const onDidChangeTextDocument = vscode.workspace
+            .onDidChangeTextDocument as unknown as ReturnType<typeof vi.fn>;
+        const fireDocumentChange = onDidChangeTextDocument.mock.calls[0][0] as (event: {
+            document: { uri: { fsPath: string }; isDirty: boolean };
+        }) => void;
+        const uri = { fsPath: "/tmp/intelligit-refresh-test/src/generated.ts" };
+
+        for (let keystroke = 0; keystroke < 5; keystroke++) {
+            fireDocumentChange({ document: { uri, isDirty: true } });
+        }
+        await vi.advanceTimersByTimeAsync(300);
+        expect(
+            deps.commitPanel.refreshSilent,
+            "five keystrokes in one unsaved buffer cannot change what `git status` reports",
+        ).not.toHaveBeenCalled();
+
+        fireDocumentChange({ document: { uri, isDirty: false } });
+        await vi.advanceTimersByTimeAsync(300);
+        expect(
+            deps.commitPanel.refreshSilent,
+            "the same route must still refresh once the edit is on disk",
+        ).toHaveBeenCalledTimes(1);
 
         service.dispose();
     });

@@ -1,12 +1,10 @@
 // Auto-refresh service extracted from extension.ts.
 // Manages debounced light (commit panel only) and full
 // (branches + graph + panel + conflicts) refresh cycles,
-// plus file system watchers on the .git directory.
+// plus subscriptions to shared root filesystem and Git-state watchers.
 
-import * as fs from "fs";
 import * as path from "path";
 import * as vscode from "vscode";
-import { resolveGitDir } from "../git/gitDirectory";
 import { GitOps } from "../git/operations";
 import type { Branch, GitWorktree } from "../types";
 import { CommitGraphViewProvider } from "./CommitGraphViewProvider";
@@ -14,13 +12,18 @@ import { CommitPanelViewProvider } from "./CommitPanelViewProvider";
 import { MergeConflictsTreeProvider } from "./MergeConflictsTreeProvider";
 import type { UndockedViewProvider } from "./UndockedViewProvider";
 import type { WorktreeService } from "../services/worktreeService";
+import {
+    publishRepositoryWorkingTreeChange,
+    subscribeToRepositoryWorkingTreeChanges,
+    type RepositoryWorkingTreeChangeSource,
+} from "../services/repositoryChangeEvents";
 
 /**
  * View and Git dependencies coordinated by refresh events for one active repository.
  *
  * The service assumes all providers in this bundle already point at the same repository root;
  * callers must replace or recreate the service when the active repository changes so cached view
- * state and file watchers do not cross repository boundaries.
+ * state does not cross repository boundaries.
  */
 export interface RefreshServiceDeps {
     gitOps: GitOps;
@@ -57,32 +60,22 @@ interface VsCodeGitRepository {
     onDidChangeState?: (listener: () => unknown) => vscode.Disposable;
 }
 
-/** Debounced refresh source labels used to keep diagnostics and tests deterministic. */
-type RefreshEventType =
-    | "workspace-file"
-    | "git-index"
-    | "git-state"
-    | "git-refs"
-    | "git-repository-state";
-
 /**
  * Coordinates debounced UI refreshes and repository watchers for one active Git root.
  *
- * The service owns timers, `.git` filesystem watchers, VS Code Git API listeners, and conflict
- * badge/context updates. It assumes all injected providers already target the same repository;
- * dispose and recreate it when the active root changes so cached refresh events cannot cross roots.
+ * The service owns timers, VS Code Git API listeners, and conflict badge/context updates. Shared
+ * root watchers publish typed events separately so non-active repository consumers can retain the
+ * same source while this active service is replaced.
  */
 export class RefreshService implements vscode.Disposable {
     private static readonly lightRefreshSuppressionAfterFullMs = 800;
     private static readonly pollingRefreshIntervalMs = 5000;
-    private static readonly ignoredWorkspaceEventDirs = new Set([".git", "dist", "build", "out"]);
-
     private lightTimer: ReturnType<typeof setTimeout> | undefined;
     private fullTimer: ReturnType<typeof setTimeout> | undefined;
     private pollTimer: ReturnType<typeof setInterval> | undefined;
-    private readonly fsWatchers: fs.FSWatcher[] = [];
     private readonly gitRepositoryStateDisposables = new Map<string, vscode.Disposable>();
     private readonly disposables: vscode.Disposable[] = [];
+    private rootChangeSubscription: vscode.Disposable | undefined;
     private suppressedLightTimer: ReturnType<typeof setTimeout> | undefined;
     private pollingRefreshInFlight = false;
     private recentFullScheduledUntil = 0;
@@ -185,42 +178,23 @@ export class RefreshService implements vscode.Disposable {
         }, 500);
     }
 
-    /** Register workspace, Git-directory, and VS Code Git API refresh listeners. */
+    /** Registers the shared root change event alongside active-repository Git state listeners. */
     registerFileWatchers(): void {
-        /** Coalesces noisy workspace file events into the shared refresh debounce. */
-        const handler = () => this.scheduleRefreshEvent("workspace-file");
-
-        this.disposables.push(
-            vscode.workspace.onDidChangeTextDocument(handler),
-            vscode.workspace.onDidSaveTextDocument(handler),
-            vscode.workspace.onDidCreateFiles(handler),
-            vscode.workspace.onDidDeleteFiles(handler),
-            vscode.workspace.onDidRenameFiles(handler),
+        if (this.rootChangeSubscription) return;
+        this.rootChangeSubscription = subscribeToRepositoryWorkingTreeChanges(
+            this.repoRoot,
+            (event) => {
+                // Every refresh this service schedules re-reads Git -- commit panels, branches,
+                // worktrees, merge conflicts. None of that can move until a write lands, so an
+                // edit still sitting in a buffer would only re-run them for the same answer,
+                // once per keystroke. The diff viewer subscribes to the same stream and does
+                // need those events, which is why the filter belongs here and not at the
+                // publisher; `affectsExpandedRow` filters the commit panel's row watcher for
+                // the same reason.
+                if (event.unsaved === true) return;
+                this.scheduleRefreshEvent(event.source);
+            },
         );
-
-        try {
-            const watcher = vscode.workspace.createFileSystemWatcher(
-                new vscode.RelativePattern(vscode.Uri.file(this.repoRoot), "**/*"),
-            );
-            const repoFileHandler = (uri: vscode.Uri) => {
-                const relativePath = path.relative(this.repoRoot, uri.fsPath);
-                const [topLevelDir] = relativePath.split(path.sep);
-                if (topLevelDir && RefreshService.ignoredWorkspaceEventDirs.has(topLevelDir)) {
-                    return;
-                }
-                this.scheduleRefreshEvent("workspace-file");
-            };
-            this.disposables.push(
-                watcher.onDidChange(repoFileHandler),
-                watcher.onDidCreate(repoFileHandler),
-                watcher.onDidDelete(repoFileHandler),
-                watcher,
-            );
-        } catch {
-            /* Repository file watcher may be unavailable for virtual roots. */
-        }
-
-        this.registerGitDirWatchers();
         this.registerVsCodeGitWatchers();
         this.registerPollingRefresh();
     }
@@ -239,64 +213,6 @@ export class RefreshService implements vscode.Disposable {
                     this.pollingRefreshInFlight = false;
                 });
         }, RefreshService.pollingRefreshIntervalMs);
-    }
-
-    /** Watch Git metadata files whose changes imply light or full UI refreshes. */
-    private registerGitDirWatchers(): void {
-        const gitDir = resolveGitDir(this.repoRoot);
-        const gitStateFiles = new Set([
-            "HEAD",
-            "FETCH_HEAD",
-            "packed-refs",
-            "MERGE_HEAD",
-            "REBASE_HEAD",
-            "index",
-        ]);
-
-        try {
-            const dirWatcher = fs.watch(gitDir, (_event, filename) => {
-                if (!filename) {
-                    this.scheduleRefreshEvent("git-state");
-                    return;
-                }
-                if (gitStateFiles.has(filename)) {
-                    if (filename === "index") {
-                        this.scheduleRefreshEvent("git-index");
-                    } else {
-                        this.scheduleRefreshEvent("git-state");
-                    }
-                }
-            });
-            this.fsWatchers.push(dirWatcher);
-        } catch {
-            /* .git dir may not be watchable */
-        }
-
-        try {
-            // fs.watch with recursive: true is only supported on macOS and Windows.
-            // On Linux, use vscode.workspace.createFileSystemWatcher for cross-platform
-            // recursive watching of the refs directory.
-            const refsPath = path.join(gitDir, "refs");
-            if (process.platform === "linux") {
-                const pattern = new vscode.RelativePattern(vscode.Uri.file(refsPath), "**/*");
-                const watcher = vscode.workspace.createFileSystemWatcher(pattern);
-                /** Coalesces Linux Git ref watcher events into the shared refresh debounce. */
-                const handler = () => this.scheduleRefreshEvent("git-refs");
-                this.disposables.push(
-                    watcher.onDidChange(handler),
-                    watcher.onDidCreate(handler),
-                    watcher.onDidDelete(handler),
-                    watcher,
-                );
-            } else {
-                const refsWatcher = fs.watch(refsPath, { recursive: true }, () =>
-                    this.scheduleRefreshEvent("git-refs"),
-                );
-                this.fsWatchers.push(refsWatcher);
-            }
-        } catch {
-            /* refs dir may not exist yet or may not be watchable */
-        }
     }
 
     /** Start asynchronous registration for VS Code's Git repository state events. */
@@ -347,7 +263,12 @@ export class RefreshService implements vscode.Disposable {
 
         this.gitRepositoryStateDisposables.set(
             rootKey,
-            repository.onDidChangeState(() => this.scheduleRefreshEvent("git-repository-state")),
+            repository.onDidChangeState(() =>
+                publishRepositoryWorkingTreeChange({
+                    repoRoot: this.repoRoot,
+                    source: "git-repository-state",
+                }),
+            ),
         );
     }
 
@@ -366,7 +287,7 @@ export class RefreshService implements vscode.Disposable {
     }
 
     /** Route refresh events through one light/full coalescing policy. */
-    private scheduleRefreshEvent(eventType: RefreshEventType): void {
+    private scheduleRefreshEvent(eventType: RepositoryWorkingTreeChangeSource): void {
         switch (eventType) {
             case "git-state":
             case "git-refs":
@@ -397,9 +318,8 @@ export class RefreshService implements vscode.Disposable {
         if (this.fullTimer) clearTimeout(this.fullTimer);
         if (this.pollTimer) clearInterval(this.pollTimer);
         if (this.suppressedLightTimer) clearTimeout(this.suppressedLightTimer);
-        for (const watcher of this.fsWatchers) {
-            watcher.close();
-        }
+        this.rootChangeSubscription?.dispose();
+        this.rootChangeSubscription = undefined;
         for (const disposable of this.gitRepositoryStateDisposables.values()) {
             disposable.dispose();
         }
