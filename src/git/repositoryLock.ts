@@ -83,7 +83,7 @@ export class RepositoryLock {
                 });
                 return await this.confirmClaim(lockPath, owner);
             } catch (error) {
-                if (!isAlreadyExists(error)) throw error;
+                if (!isExclusiveCreateBlocked(error)) throw error;
             }
             const existing = await readLockFile(lockPath);
             if (!this.isStale(existing)) throw new RepositoryLockBusyError();
@@ -120,7 +120,7 @@ export class RepositoryLock {
                     mode: 0o600,
                 });
             } catch (error) {
-                if (isAlreadyExists(error)) {
+                if (isExclusiveCreateBlocked(error)) {
                     await rm(takeoverPath, { force: true });
                     throw new RepositoryLockBusyError();
                 }
@@ -317,10 +317,42 @@ function parseOwner(contents: string): LockOwner | undefined {
         : undefined;
 }
 
-function isAlreadyExists(error: unknown): boolean {
-    return (
-        typeof error === "object" && error !== null && "code" in error && error.code === "EEXIST"
-    );
+/**
+ * Whether an exclusive create failed because the lock path is already occupied.
+ *
+ * POSIX has one answer for this, `EEXIST`, and Windows usually agrees. It stops agreeing while
+ * the previous lock file is *delete-pending*: `rm` on a file another handle still holds open does
+ * not remove the name, it marks it, and every `CreateFile(CREATE_NEW)` against that name answers
+ * `ERROR_ACCESS_DENIED` -- which libuv maps to `EPERM` -- until the last handle closes.
+ * `readLockFile` opens the lock path and closes it asynchronously, and `releaseCallback` removes
+ * the path right after reading it back, so a release racing a contender produces exactly that
+ * window.
+ *
+ * Classifying it as anything but contention is what broke it. The raw `EPERM` left `acquire`
+ * instead of `RepositoryLockBusyError`, and `acquireWithBoundedWait` retries only the latter, so
+ * a wait POSIX rides out became an immediate hard failure for the caller. Observed as
+ * `EPERM: operation not permitted, open '...\.store-lock\store.lock'` out of
+ * `ShelfStore.listShelves` on the Windows leg of run 32789206621.
+ *
+ * Widening this predicate cannot widen what the lock grants. Both call sites use it only to
+ * decide whether to fall through to the busy/stale machinery, and on the new branch that
+ * machinery reads the path back: an unreadable file is dated to now and so can never be stale, an
+ * absent one is never stale, and a readable stale one is the takeover `EEXIST` already permitted.
+ * Every added path therefore ends at `RepositoryLockBusyError` and nowhere else.
+ *
+ * The cost when it is wrong: a genuine Windows permission fault on the lock directory now
+ * surfaces as a bounded wait ending in `RepositoryLockBusyError` rather than an immediate
+ * `EPERM` -- a worse message for an environment that is broken either way, paid to stop
+ * misreporting ordinary contention as a fault. `platform` is a parameter for the same reason it
+ * is one in `resolveNoFollowFlag`: the branch is unreachable from a POSIX test run otherwise.
+ */
+export function isExclusiveCreateBlocked(
+    error: unknown,
+    platform: NodeJS.Platform = process.platform,
+): boolean {
+    if (typeof error !== "object" || error === null || !("code" in error)) return false;
+    if (error.code === "EEXIST") return true;
+    return platform === "win32" && error.code === "EPERM";
 }
 
 function isNotFound(error: unknown): boolean {
