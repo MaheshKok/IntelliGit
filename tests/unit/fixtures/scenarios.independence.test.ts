@@ -14,6 +14,7 @@ import { afterAll, describe, expect, it } from "vitest";
 import {
     allocateDestination,
     git,
+    gitFails,
     removeTrackedScratchDirectories,
     scenarioFor,
     trackScratchHome,
@@ -52,6 +53,24 @@ describe("independence", () => {
                 workspaceB.env,
             );
             expect(workingTreeStatusB).not.toContain("independence-marker.txt");
+
+            // Second axis: Git state, not just the working tree. Linked worktrees have distinct
+            // roots -- the marker check above passes for them -- yet share `.git/config`, refs,
+            // and objects. A `--local` key written in A must be unreadable from B (`--get` on an
+            // absent key exits non-zero), so this fails exactly when the builder ever hands out
+            // two views of one repository instead of two repositories.
+            await git(
+                workspaceA.root,
+                ["config", "--local", "intelligit.independence", "only-in-a"],
+                workspaceA.env,
+            );
+            expect(
+                await gitFails(
+                    workspaceB.root,
+                    ["config", "--local", "--get", "intelligit.independence"],
+                    workspaceB.env,
+                ),
+            ).toBe(true);
         },
     );
 });
