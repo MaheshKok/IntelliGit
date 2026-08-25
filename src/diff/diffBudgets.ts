@@ -79,22 +79,53 @@ export const MAX_DIFF_DP_CELLS = 9_000_000;
 /** Maximum accepted-tier extension-host segment computation time, ceil(3.5 x 16.591). */
 export const MAX_DIFF_COMPUTE_MS = 59;
 
-/** Maximum accepted-tier serialized payload size, derived as 2 x 219,524. */
+/**
+ * Maximum accepted-tier serialized payload size, derived as 2 x 219,524.
+ *
+ * Enforced by `exceedsDiffBudget` against the approximation below, and separately asserted
+ * against the real serialized payload for the accepted corpus in `diffBudgets.test.ts`.
+ */
 export const MAX_DIFF_PAYLOAD_BYTES = 439_048;
 
 /** Maximum accepted-tier webview render time, derived as ceil(2 x 2,806.205). */
 export const MAX_DIFF_RENDER_MS = 5_613;
 
+/**
+ * Approximates the serialized payload from the two decoded sides, before segments exist.
+ *
+ * The payload the panel posts is dominated by the same text re-emitted as JSON string arrays,
+ * so escaping -- not raw byte count -- is what sets its size, and escaping is content-dependent:
+ * measured on this corpus, the same 420,168 content bytes serialize to 493,536 bytes as minified
+ * source and to 2,521,304 as control characters. That is why the per-side `MAX_DIFF_BYTES` cap
+ * cannot stand in for this one; two sides that each pass it carry up to 420,188 bytes into a
+ * 439,048-byte payload budget, leaving nothing for escaping or structure.
+ *
+ * `JSON.stringify` on each side's text is the exact escaped size, and the only term it omits is
+ * the per-line quoting the segment split adds. So this UNDERSTATES the real payload, measured at
+ * 0.87x it in the worst case (5,200 short lines) and 0.94-1.00x across every other tier. It is
+ * used as a rejection gate only, where understating means the gate is conservative about
+ * rejecting rather than about accepting: no measured accepted tier comes near the budget (the
+ * largest sits at 0.504x it), so the shortfall cannot turn an accepted tier away, and a pair
+ * that trips this is over budget by more than the shortfall could explain.
+ */
+function approximatePayloadBytes(leftText: string, rightText: string): number {
+    return (
+        Buffer.byteLength(JSON.stringify(leftText), "utf8") +
+        Buffer.byteLength(JSON.stringify(rightText), "utf8")
+    );
+}
+
 /** Returns whether a loaded pair exceeds any viewer budget before panel computation. */
 export function exceedsDiffBudget(
-    left: { readonly bytes: Uint8Array; readonly lineCount: number },
-    right: { readonly bytes: Uint8Array; readonly lineCount: number },
+    left: { readonly bytes: Uint8Array; readonly lineCount: number; readonly text: string },
+    right: { readonly bytes: Uint8Array; readonly lineCount: number; readonly text: string },
 ): boolean {
     return (
         left.bytes.byteLength > MAX_DIFF_BYTES ||
         right.bytes.byteLength > MAX_DIFF_BYTES ||
         left.lineCount > MAX_DIFF_LINES ||
         right.lineCount > MAX_DIFF_LINES ||
-        left.lineCount * right.lineCount > MAX_DIFF_DP_CELLS
+        left.lineCount * right.lineCount > MAX_DIFF_DP_CELLS ||
+        approximatePayloadBytes(left.text, right.text) > MAX_DIFF_PAYLOAD_BYTES
     );
 }

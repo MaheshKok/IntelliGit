@@ -484,8 +484,8 @@ function exceedsDiffSnapshotBudget(
     right: FrozenDiffSideSnapshot,
 ): boolean {
     return exceedsDiffBudget(
-        { bytes: Buffer.from(left.text, "utf8"), lineCount: left.lineCount },
-        { bytes: Buffer.from(right.text, "utf8"), lineCount: right.lineCount },
+        { bytes: Buffer.from(left.text, "utf8"), lineCount: left.lineCount, text: left.text },
+        { bytes: Buffer.from(right.text, "utf8"), lineCount: right.lineCount, text: right.text },
     );
 }
 

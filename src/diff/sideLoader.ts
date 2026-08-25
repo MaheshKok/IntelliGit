@@ -162,6 +162,26 @@ async function readGitMode(
     return mode;
 }
 
+/**
+ * Returns the open editor buffer for a worktree path, or `undefined` when nothing has it open.
+ *
+ * The viewer renders what the editor shows, so an open document's text wins over the bytes on
+ * disk whether or not those bytes still exist.
+ */
+function openDocumentSide(
+    file: vscode.Uri,
+    maxBytes: number,
+): RawSide | { readonly status: "over-budget"; readonly size: number } | undefined {
+    const openDocument = vscode.workspace.textDocuments.find(
+        (document) => document.uri.toString() === file.toString(),
+    );
+    if (openDocument === undefined) return undefined;
+    const text = openDocument.getText();
+    const size = Buffer.byteLength(text, "utf8");
+    if (size > maxBytes) return { status: "over-budget", size };
+    return { status: "loaded", bytes: Buffer.from(text, "utf8"), mode: undefined };
+}
+
 async function loadWorktree(
     repoRoot: string,
     filePath: string,
@@ -177,8 +197,12 @@ async function loadWorktree(
     try {
         stat = await vscode.workspace.fs.stat(file);
     } catch (error) {
-        if (isFileNotFoundError(error)) return { status: "missing" };
-        throw error;
+        if (!isFileNotFoundError(error)) throw error;
+        // A file deleted on disk while still open keeps its buffer, and that buffer is what the
+        // next save will write. Reporting "missing" here would render the working-tree side as
+        // deleted while the editor still shows its text -- the same disagreement the open-document
+        // lookup below exists to prevent, just on the branch where `stat` never succeeds.
+        return openDocumentSide(file, maxBytes) ?? { status: "missing" };
     }
     if ((stat.type & vscode.FileType.SymbolicLink) !== 0) {
         return { status: "loaded", bytes: new Uint8Array(), mode: 0o120000 };
@@ -187,16 +211,8 @@ async function loadWorktree(
         return { status: "ineligible", reason: "submodule" };
     }
 
-    const openDocument = vscode.workspace.textDocuments.find(
-        (document) => document.uri.toString() === file.toString(),
-    );
-    if (openDocument !== undefined) {
-        const text = openDocument.getText();
-        const size = Buffer.byteLength(text, "utf8");
-        if (size > maxBytes) return { status: "over-budget", size };
-        const bytes = Buffer.from(text, "utf8");
-        return { status: "loaded", bytes, mode: undefined };
-    }
+    const fromOpenDocument = openDocumentSide(file, maxBytes);
+    if (fromOpenDocument !== undefined) return fromOpenDocument;
 
     if (stat.size > maxBytes) return { status: "over-budget", size: stat.size };
 

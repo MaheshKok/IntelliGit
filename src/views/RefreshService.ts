@@ -183,7 +183,17 @@ export class RefreshService implements vscode.Disposable {
         if (this.rootChangeSubscription) return;
         this.rootChangeSubscription = subscribeToRepositoryWorkingTreeChanges(
             this.repoRoot,
-            (event) => this.scheduleRefreshEvent(event.source),
+            (event) => {
+                // Every refresh this service schedules re-reads Git -- commit panels, branches,
+                // worktrees, merge conflicts. None of that can move until a write lands, so an
+                // edit still sitting in a buffer would only re-run them for the same answer,
+                // once per keystroke. The diff viewer subscribes to the same stream and does
+                // need those events, which is why the filter belongs here and not at the
+                // publisher; `affectsExpandedRow` filters the commit panel's row watcher for
+                // the same reason.
+                if (event.unsaved === true) return;
+                this.scheduleRefreshEvent(event.source);
+            },
         );
         this.registerVsCodeGitWatchers();
         this.registerPollingRefresh();

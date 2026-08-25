@@ -150,6 +150,22 @@ describe("loadDiffSide", () => {
         });
     });
 
+    /**
+     * Deleting a file on disk does not close its editor, and the buffer that stays open is what
+     * the next save writes. The sibling case below already prefers that buffer over stale
+     * metadata; this is the same preference on the branch where `stat` never returns one, which
+     * would otherwise render the working-tree side as deleted while the editor still shows text.
+     */
+    it("uses an open dirty document for a file that no longer exists on disk", async () => {
+        mocks.stat.mockRejectedValue({ code: "FileNotFound" });
+        mocks.textDocuments.push({ uri: fixtureFileUri(), getText: () => "unsaved\n" });
+
+        const result = await loadDiffSide(options({ kind: "worktree" }, executor() as never));
+
+        expect(result).toMatchObject({ status: "loaded", text: "unsaved\n" });
+        expect(mocks.readFile).not.toHaveBeenCalled();
+    });
+
     it("uses an open dirty document before stale filesystem metadata", async () => {
         mocks.textDocuments.push({ uri: fixtureFileUri(), getText: () => "dirty\n" });
 
