@@ -1,4 +1,4 @@
-import { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -15,6 +15,7 @@ import {
     tryAcquireRebaseReservation,
     writeRebaseManifest,
 } from "../../../../src/git/interactiveRebase/storage";
+import { removeScratchDirectories } from "../../../helpers/scratchDirectories";
 
 const terminalManifestWriteFault = vi.hoisted(() => ({ enabled: false }));
 
@@ -44,7 +45,7 @@ const directories: string[] = [];
 afterEach(async () => {
     terminalManifestWriteFault.enabled = false;
     await Promise.all(
-        directories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })),
+        directories.splice(0).map((directory) => removeScratchDirectories(directory)),
     );
 });
 
@@ -124,7 +125,7 @@ async function fixture(
                 const succeeded = exitCode === 0 && !options.continueThrows;
                 const after = options.afterContinue ?? (succeeded ? "end" : "keep");
                 const mergeDirectory = path.join(gitDir, "rebase-merge");
-                if (after === "end") await rm(mergeDirectory, { recursive: true, force: true });
+                if (after === "end") await removeScratchDirectories(mergeDirectory);
                 if (after === "steal") {
                     await writeFile(
                         path.join(mergeDirectory, REBASE_SESSION_MARKER),
@@ -139,7 +140,7 @@ async function fixture(
             }
             if (command === "rebase --abort") {
                 if (options.abortFails) throw new Error("abort failed");
-                await rm(path.join(gitDir, "rebase-merge"), { recursive: true });
+                await removeScratchDirectories(path.join(gitDir, "rebase-merge"));
                 return binary();
             }
             throw new Error(`Unexpected Git command: ${command}`);

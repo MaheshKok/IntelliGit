@@ -8,7 +8,7 @@
  * would produce), so these tests prove the actual ordering rather than a stand-in for it.
  */
 
-import { chmod, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, readdir, readFile, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -27,6 +27,7 @@ import {
     publishTemplate,
     runFixtureSetup,
 } from "../../fixtures/repo/runFixtureSetup";
+import { removeScratchDirectories } from "../../helpers/scratchDirectories";
 
 const FIXTURE_TIMEOUT_MS = 30_000;
 
@@ -79,8 +80,8 @@ describe("runFixtureSetup", () => {
         await Promise.all(workspacesToDispose.map((workspace) => workspace.dispose()));
         workspacesToDispose = [];
         await Promise.all([
-            ...cleanupDirs.map((dir) => rm(dir, { recursive: true, force: true })),
-            ...cleanupHomes.map((home) => rm(home, { recursive: true, force: true })),
+            ...cleanupDirs.map((dir) => removeScratchDirectories(dir)),
+            ...cleanupHomes.map((home) => removeScratchDirectories(home)),
         ]);
         cleanupDirs = [];
         cleanupHomes = [];

@@ -22,6 +22,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
+import { removeScratchDirectories } from "../../helpers/scratchDirectories";
 
 const execFileAsync = promisify(execFile);
 
@@ -201,7 +202,7 @@ export async function createSanitizedGitEnv(options?: {
  */
 export async function cleanUpThenRethrow(scratchPath: string, error: unknown): Promise<never> {
     try {
-        await rm(scratchPath, { recursive: true, force: true });
+        await removeScratchDirectories(scratchPath);
     } catch (cleanupError) {
         // Reported, not swallowed: a leaked scratch directory is worth knowing about, but not at
         // the cost of the error below, which is the one that explains the failure.

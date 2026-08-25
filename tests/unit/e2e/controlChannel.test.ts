@@ -12,7 +12,6 @@ import {
     mkdtempSync,
     readdirSync,
     readFileSync,
-    rmSync,
     unlinkSync,
     writeFileSync,
 } from "node:fs";
@@ -29,6 +28,7 @@ import * as vscodeMock from "vscode";
 import { activateE2eControlChannel } from "../../../src/e2e/controlChannel";
 import { isE2eControlChannelActive } from "../../../src/e2e/activationState";
 import { E2E_CHANNEL_READY_MARKER } from "../../../src/e2e/transportFs";
+import { removeScratchDirectoriesSync } from "../../helpers/scratchDirectories";
 
 const ALLOWED_WORKSPACE_KEY = "intelligit.selectedRepositoryRoot";
 
@@ -108,7 +108,7 @@ describe("activateE2eControlChannel: the watcher does not start outside Developm
     afterEach(() => {
         delete process.env.INTELLIGIT_E2E;
         delete process.env.INTELLIGIT_E2E_CHANNEL_DIR;
-        rmSync(channelDir, { recursive: true, force: true });
+        removeScratchDirectoriesSync(channelDir);
     });
 
     it("does not activate, and never answers a request, under Production even with INTELLIGIT_E2E=1 and the directory present and writable", async () => {
@@ -191,7 +191,7 @@ describe("activateE2eControlChannel: the watcher does not start outside Developm
             handle.dispose();
             delete process.env.INTELLIGIT_E2E;
             delete process.env.INTELLIGIT_E2E_CHANNEL_DIR;
-            rmSync(matrixChannelDir, { recursive: true, force: true });
+            removeScratchDirectoriesSync(matrixChannelDir);
         }
     });
 });
@@ -208,7 +208,7 @@ describe("activateE2eControlChannel: end-to-end request/response over the real t
     afterEach(() => {
         delete process.env.INTELLIGIT_E2E;
         delete process.env.INTELLIGIT_E2E_CHANNEL_DIR;
-        rmSync(channelDir, { recursive: true, force: true });
+        removeScratchDirectoriesSync(channelDir);
     });
 
     it(
@@ -429,7 +429,7 @@ describe("activateE2eControlChannel: end-to-end request/response over the real t
 
                 // Unblocking alone must be enough -- no new request file is written here, so only
                 // reconciliation retrying the surviving one can produce a response.
-                rmSync(responsePath, { recursive: true, force: true });
+                removeScratchDirectoriesSync(responsePath);
                 await waitFor(() => existsSync(responsePath));
                 expect(JSON.parse(readFileSync(responsePath, "utf8")).ok).toBe(true);
                 expect(existsSync(requestPath)).toBe(false);

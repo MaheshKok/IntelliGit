@@ -13,11 +13,12 @@
  */
 
 import { afterEach, describe, expect, it } from "vitest";
-import { mkdtemp, rm, stat } from "node:fs/promises";
+import { mkdtemp, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { createScratchWorkspaces } from "./scratchWorkspaces";
+import { removeScratchDirectories } from "../../helpers/scratchDirectories";
 
 async function exists(target: string): Promise<boolean> {
     try {
@@ -42,9 +43,7 @@ describe("createScratchWorkspaces", () => {
     }
 
     afterEach(async () => {
-        await Promise.all(
-            allocated.splice(0).map((dir) => rm(dir, { recursive: true, force: true })),
-        );
+        await Promise.all(allocated.splice(0).map((dir) => removeScratchDirectories(dir)));
     });
 
     it("removes a slow sibling's home when the other seed fails first", async () => {

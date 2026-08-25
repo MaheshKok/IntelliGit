@@ -1,4 +1,4 @@
-import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -8,6 +8,7 @@ import {
     deriveRebaseControl,
     type LiveRebaseManifest,
 } from "../../../../src/git/interactiveRebase/rebaseControl";
+import { removeScratchDirectories } from "../../../helpers/scratchDirectories";
 
 const directories: string[] = [];
 const canAssertUnreadableDirectory = supportsUnreadableDirectories;
@@ -16,7 +17,7 @@ afterEach(async () => {
     await Promise.all(
         directories.splice(0).map(async (directory) => {
             await chmod(directory, 0o700).catch(() => undefined);
-            await rm(directory, { force: true, recursive: true });
+            await removeScratchDirectories(directory);
         }),
     );
 });

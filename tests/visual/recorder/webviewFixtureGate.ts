@@ -32,7 +32,7 @@
  */
 
 import { realpathSync } from "node:fs";
-import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -43,6 +43,7 @@ import {
 } from "../../fixtures/repo/scenarios";
 import { serializeWebviewFixture, webviewFixtureFilePath } from "./webviewFixtureFile";
 import type { WebviewFixtureRecorderEntry } from "./webviewFixtureRegistry";
+import { removeScratchDirectories } from "../../helpers/scratchDirectories";
 
 /** Directory name directly under `tests/visual/fixtures/` that is NOT a webview-payload context
  * directory. See this module's own doc comment for why `host` specifically is excluded here.
@@ -173,7 +174,7 @@ export async function prepareIntoScratchDestination(
     try {
         return await prepare(destination);
     } catch (error) {
-        await rm(destination, { recursive: true, force: true });
+        await removeScratchDirectories(destination);
         throw error;
     }
 }
@@ -210,8 +211,8 @@ async function disposeScenarioWorkspace(workspace: ScenarioWorkspace): Promise<v
     const destination = path.dirname(workspace.root);
     assertDisposableScenarioPath(destination, workspace.id, "destination");
     assertDisposableScenarioPath(workspace.home, workspace.id, "home");
-    await rm(destination, { recursive: true, force: true });
-    await rm(workspace.home, { recursive: true, force: true });
+    await removeScratchDirectories(destination);
+    await removeScratchDirectories(workspace.home);
 }
 
 /**
@@ -247,7 +248,7 @@ function isStrictlyContainedIn(parent: string, child: string): boolean {
  * (`seed.ts:150`, and `scenarios.ts`'s `toWorkspace` / `prepareEmptyRepo`). That is a convention,
  * not something the type system enforces -- a future builder returning a root sitting directly AT
  * its destination makes the derivation resolve one level too high, to the OS temp root, and the
- * `rm(..., { recursive: true })` stops being a cleanup and becomes an unrecoverable delete of every
+ * `removeScratchDirectories(...)` stops being a cleanup and becomes an unrecoverable delete of every
  * other process's scratch state. The supplied one: `runWebviewFixtureGate`'s `prepareScenario`
  * option is injectable, so `workspace.root` and `workspace.home` are whatever a scenario returns.
  * A scenario rooted anywhere in the repository -- `<repoRoot>/tests/workspace`, say -- yielded a

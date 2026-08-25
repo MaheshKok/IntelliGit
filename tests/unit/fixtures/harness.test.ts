@@ -7,7 +7,7 @@
  * module's own internal `runGit` seam), mirroring `rehydrate.test.ts`'s own discipline.
  */
 
-import { mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -24,6 +24,7 @@ import {
 import { MANIFEST_SCHEMA_VERSION, writeFixtureManifest } from "../../fixtures/repo/manifest";
 import { seedFixtureTemplate, type FixtureTemplate } from "../../fixtures/repo/seed";
 import { git } from "./gitTestHelpers";
+import { removeScratchDirectories } from "../../helpers/scratchDirectories";
 
 const FIXTURE_TIMEOUT_MS = 30_000;
 
@@ -34,7 +35,7 @@ describe("createFixtureWorkspace", () => {
     afterEach(async () => {
         await Promise.all(workspacesToDispose.map((workspace) => workspace.dispose()));
         workspacesToDispose = [];
-        await Promise.all(cleanupDirs.map((dir) => rm(dir, { recursive: true, force: true })));
+        await Promise.all(cleanupDirs.map((dir) => removeScratchDirectories(dir)));
         cleanupDirs = [];
     }, FIXTURE_TIMEOUT_MS);
 

@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -11,12 +11,13 @@ import {
     extractOursFromConflictMarkers,
     type ShelfConflictSessionDependencies,
 } from "../../../src/services/shelfConflictSession";
+import { removeScratchDirectories } from "../../helpers/scratchDirectories";
 
 const directories: string[] = [];
 
 afterEach(async () => {
     await Promise.all(
-        directories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })),
+        directories.splice(0).map((directory) => removeScratchDirectories(directory)),
     );
 });
 

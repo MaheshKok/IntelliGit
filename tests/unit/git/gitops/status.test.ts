@@ -11,6 +11,7 @@ import {
     type ActiveOperationKind,
 } from "../../../../src/git/operations";
 import type { GitExecutor } from "../../../../src/git/executor";
+import { removeScratchDirectories } from "../../../helpers/scratchDirectories";
 
 const execFileAsync = promisify(execFile);
 
@@ -405,7 +406,7 @@ describe("GitOps", () => {
                 await ops.stageFiles(["tracked.txt"]);
                 expect(await status(repo)).toBe("D  tracked.txt\n");
             } finally {
-                await rm(repo, { recursive: true, force: true });
+                await removeScratchDirectories(repo);
             }
         });
 
@@ -431,7 +432,7 @@ describe("GitOps", () => {
                     ' M nested/tracked.txt\n?? --weird.txt\n?? "space name.txt"\n',
                 );
             } finally {
-                await rm(repo, { recursive: true, force: true });
+                await removeScratchDirectories(repo);
             }
         });
 
@@ -459,7 +460,7 @@ describe("GitOps", () => {
                         .filter(Boolean);
                     expect(remaining).toEqual(["?? victim.txt"]);
                 } finally {
-                    await rm(repo, { recursive: true, force: true });
+                    await removeScratchDirectories(repo);
                 }
             },
         );
@@ -497,7 +498,7 @@ describe("GitOps", () => {
 
                 expect(await status(repo)).toBe(" A new-file.txt\n");
             } finally {
-                await rm(repo, { recursive: true, force: true });
+                await removeScratchDirectories(repo);
             }
         });
 
@@ -526,7 +527,7 @@ describe("GitOps", () => {
 
                 expect(await status(repo)).toBe("");
             } finally {
-                await rm(repo, { recursive: true, force: true });
+                await removeScratchDirectories(repo);
             }
         });
 
@@ -546,7 +547,7 @@ describe("GitOps", () => {
 
                 expect(await status(repo)).toBe("");
             } finally {
-                await rm(repo, { recursive: true, force: true });
+                await removeScratchDirectories(repo);
             }
         });
 
@@ -568,7 +569,7 @@ describe("GitOps", () => {
 
                 expect(await status(repo)).toBe("");
             } finally {
-                await rm(repo, { recursive: true, force: true });
+                await removeScratchDirectories(repo);
             }
         });
 
@@ -584,7 +585,7 @@ describe("GitOps", () => {
 
                 expect(await status(repo)).toBe("D  --weird.txt\n");
             } finally {
-                await rm(repo, { recursive: true, force: true });
+                await removeScratchDirectories(repo);
             }
         });
 
@@ -601,7 +602,7 @@ describe("GitOps", () => {
                 await ops.rollbackFiles(["renamed.txt"]);
                 expect(await status(repo)).toBe("");
             } finally {
-                await rm(repo, { recursive: true, force: true });
+                await removeScratchDirectories(repo);
             }
         });
 
@@ -628,7 +629,7 @@ describe("GitOps", () => {
                 expect(rawStatus).toContain("space file.txt");
                 expect(rawStatus).toContain("nested/tracked.txt");
             } finally {
-                await rm(repo, { recursive: true, force: true });
+                await removeScratchDirectories(repo);
             }
         });
 
@@ -647,7 +648,7 @@ describe("GitOps", () => {
                 const lastMsg = await ops.getLastCommitMessage();
                 expect(lastMsg).toContain("feat: update tracked");
             } finally {
-                await rm(repo, { recursive: true, force: true });
+                await removeScratchDirectories(repo);
             }
         });
 
@@ -674,7 +675,7 @@ describe("GitOps", () => {
                 expect(lines).toHaveLength(2);
                 expect(lines[0]).toContain("amended message");
             } finally {
-                await rm(repo, { recursive: true, force: true });
+                await removeScratchDirectories(repo);
             }
         });
 
@@ -700,7 +701,7 @@ describe("GitOps", () => {
                 );
                 expect(await status(repo)).toBe("D  to-remove.txt\n");
             } finally {
-                await rm(repo, { recursive: true, force: true });
+                await removeScratchDirectories(repo);
             }
         });
 
@@ -716,7 +717,7 @@ describe("GitOps", () => {
                 const content = await ops.getFileContentAtRef("--ref-file.txt", "HEAD");
                 expect(content).toBe("ref content\n");
             } finally {
-                await rm(repo, { recursive: true, force: true });
+                await removeScratchDirectories(repo);
             }
         });
     });

@@ -1,6 +1,6 @@
 import { JSDOM } from "jsdom";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -56,6 +56,7 @@ import {
 } from "../../../visual/harness/hostContexts";
 
 import * as webviewHtml from "../../../../src/views/webviewHtml";
+import { removeScratchDirectories } from "../../../helpers/scratchDirectories";
 
 const DEFAULT_BACKGROUND_VAR = "var(--vscode-editor-background)";
 const DARK_MODERN = darkModern as HostFixture;
@@ -307,11 +308,9 @@ describe("resolved host-context production oracle", () => {
 
     afterAll(async () => {
         await Promise.all(
-            [...workspaces.values()].map((workspace) =>
-                rm(workspace.home, { recursive: true, force: true }),
-            ),
+            [...workspaces.values()].map((workspace) => removeScratchDirectories(workspace.home)),
         );
-        await rm(parentDir, { recursive: true, force: true });
+        await removeScratchDirectories(parentDir);
     });
 
     beforeEach(() => {

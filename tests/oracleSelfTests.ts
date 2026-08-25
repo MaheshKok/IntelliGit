@@ -1,12 +1,4 @@
-import {
-    mkdirSync,
-    mkdtempSync,
-    readFileSync,
-    renameSync,
-    rmSync,
-    statSync,
-    writeFileSync,
-} from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, posix } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -17,6 +9,7 @@ import { FIXTURE_REFS } from "./fixtures/repo/seed";
 import { oracles, type OracleId } from "./oracles";
 import type { EnvironmentVerdict } from "./visual/playwright/visualEnvironmentGuard";
 import type { VisualEnvironment } from "./visual/oracles/visualEnvironment";
+import { removeScratchDirectoriesSync } from "./helpers/scratchDirectories";
 
 export interface OracleSelfTest {
     /** What defect this oracle exists to catch, in one line. */
@@ -122,7 +115,7 @@ export async function disposeSelfTestWorkspaces(): Promise<void> {
         if (rejected !== undefined) throw rejected.reason;
     } finally {
         selfTestWorkspaces.clear();
-        rmSync(selfTestWorkspacesRoot, { recursive: true, force: true });
+        removeScratchDirectoriesSync(selfTestWorkspacesRoot);
     }
 }
 
@@ -395,7 +388,7 @@ export const oracleSelfTests: Record<OracleId, OracleSelfTest> = {
                     return [error];
                 }
             } finally {
-                rmSync(directory, { recursive: true, force: true });
+                removeScratchDirectoriesSync(directory);
             }
         },
         knownGood: () => {
@@ -410,7 +403,7 @@ export const oracleSelfTests: Record<OracleId, OracleSelfTest> = {
             } catch (error) {
                 return [error];
             } finally {
-                rmSync(directory, { recursive: true, force: true });
+                removeScratchDirectoriesSync(directory);
             }
         },
     },
@@ -547,7 +540,7 @@ export const oracleSelfTests: Record<OracleId, OracleSelfTest> = {
                     ? [snapshot.shelfStoreFiles, listedFiles, defaulted.globalStoragePath]
                     : [];
             } finally {
-                rmSync(nestedRoot, { recursive: true, force: true });
+                removeScratchDirectoriesSync(nestedRoot);
             }
         },
         knownGood: async () => {
@@ -619,9 +612,9 @@ export const oracleSelfTests: Record<OracleId, OracleSelfTest> = {
                 );
                 nestedStatus = await localGit.statusPorcelain(workspace);
             } finally {
-                rmSync(untrackedFile, { recursive: true, force: true });
+                removeScratchDirectoriesSync(untrackedFile);
                 renameSync(untrackedBackup, untrackedFile);
-                rmSync(nestedProbeRoot, { recursive: true, force: true });
+                removeScratchDirectoriesSync(nestedProbeRoot);
             }
             const nestedStatusReportsFile = nestedStatus.some(
                 ({ path }) => path === nestedUntrackedPath,

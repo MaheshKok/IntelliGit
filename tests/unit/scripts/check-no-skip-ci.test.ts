@@ -12,7 +12,7 @@
  */
 
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -23,6 +23,7 @@ import {
     findOffenders,
     getCommitMessages,
 } from "../../../scripts/check-no-skip-ci.js";
+import { removeScratchDirectoriesSync } from "../../helpers/scratchDirectories";
 
 describe("containsSkipDirective: recognized GitHub skip tokens", () => {
     it.each(["[skip ci]", "[ci skip]", "[no ci]", "[skip actions]", "[actions skip]"])(
@@ -216,7 +217,7 @@ describe("getCommitMessages: integration against a real repository", () => {
     });
 
     afterAll(() => {
-        rmSync(repoDir, { recursive: true, force: true });
+        removeScratchDirectoriesSync(repoDir);
     });
 
     it("returns exactly one entry per commit in the exclusive base..head range", () => {

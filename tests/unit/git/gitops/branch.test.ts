@@ -1,11 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { execFile } from "node:child_process";
-import { mkdtemp, rm, writeFile, mkdir } from "node:fs/promises";
+import { mkdtemp, writeFile, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { GitOps, UpstreamPushDeclinedError } from "../../../../src/git/operations";
 import type { GitExecutor } from "../../../../src/git/executor";
+import { removeScratchDirectories } from "../../../helpers/scratchDirectories";
 
 const execFileAsync = promisify(execFile);
 
@@ -62,7 +63,7 @@ describe("GitOps", () => {
                 const gitDir = (await git(repo, ["rev-parse", "--git-dir"])).trim();
                 expect(gitDir).toBe(".git");
             } finally {
-                await rm(repo, { recursive: true, force: true });
+                await removeScratchDirectories(repo);
             }
         });
 

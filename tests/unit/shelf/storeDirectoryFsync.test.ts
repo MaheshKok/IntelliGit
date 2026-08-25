@@ -7,13 +7,14 @@
 // the suite on Windows: 206 failures, every one `EPERM: operation not permitted, fsync` raised from
 // `fsyncDirectory`, because Windows lets a directory handle be OPENED and then refuses to flush it.
 import { statSync } from "node:fs";
-import { mkdir, mkdtemp, open, realpath, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, open, realpath } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ensureShelfRoot, resolveShelfPaths } from "../../../src/shelf/paths";
 import { ShelfStore } from "../../../src/shelf/store";
+import { removeScratchDirectories } from "../../helpers/scratchDirectories";
 
 // Everything except `open` stays real: the point is to watch one call, not to simulate a store.
 vi.mock("node:fs/promises", async (importOriginal) => {
@@ -32,7 +33,7 @@ afterEach(async () => {
     setPlatform(originalPlatform);
     vi.mocked(open).mockClear();
     await Promise.all(
-        directories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })),
+        directories.splice(0).map((directory) => removeScratchDirectories(directory)),
     );
 });
 

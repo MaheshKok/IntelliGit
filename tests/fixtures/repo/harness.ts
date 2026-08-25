@@ -47,6 +47,7 @@ import { DEFAULT_MANIFEST_PATH, readFixtureManifest } from "./manifest";
 import { rehydrateCopy } from "./rehydrate";
 import { REPOSITORY_SCENARIOS, type RepositoryScenarioId } from "./scenarios";
 import { createSanitizedGitEnv } from "./seed";
+import { removeScratchDirectories } from "../../helpers/scratchDirectories";
 
 /** What `createFixtureWorkspace()` returns -- matches PLAN.md line 60's stated shape
  * (`{ root, originRoot, profileDir, dispose }`) plus `env`, which every caller needs in order to
@@ -172,7 +173,7 @@ export async function createFixtureWorkspace(
             // Best-effort, and deliberately not allowed to replace the diagnosis: the caller needs
             // to know WHY construction failed, and a cleanup error raised in its place would bury
             // that. `force: true` already absorbs the case where nothing was created yet.
-            await rm(ownRoot, { recursive: true, force: true }).catch(() => undefined);
+            await removeScratchDirectories(ownRoot).catch(() => undefined);
             throw error;
         }
     }
@@ -194,7 +195,7 @@ export async function createFixtureWorkspace(
         // Best-effort, and deliberately not allowed to replace the diagnosis: the caller needs
         // to know WHY construction failed, and a cleanup error raised in its place would bury
         // that. `force: true` already absorbs the case where nothing was created yet.
-        await rm(ownRoot, { recursive: true, force: true }).catch(() => undefined);
+        await removeScratchDirectories(ownRoot).catch(() => undefined);
         throw error;
     }
 }
@@ -367,9 +368,7 @@ async function removeLinkedWorktrees(root: string, env: NodeJS.ProcessEnv): Prom
         .filter((worktreePath): worktreePath is string => worktreePath !== null);
 
     await Promise.all(
-        linkedWorktreePaths.map((worktreePath) =>
-            rm(worktreePath, { recursive: true, force: true }),
-        ),
+        linkedWorktreePaths.map((worktreePath) => removeScratchDirectories(worktreePath)),
     );
 }
 

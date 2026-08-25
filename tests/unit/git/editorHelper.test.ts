@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -9,6 +9,7 @@ import {
     quoteGitEditorArgument,
 } from "../../../src/git/interactiveRebase/editorCommand";
 import { supportsPosixShell } from "../../helpers/platformCapabilities";
+import { removeScratchDirectories } from "../../helpers/scratchDirectories";
 
 const HASH_A = "a".repeat(40);
 const HASH_B = "b".repeat(40);
@@ -19,7 +20,7 @@ const itPosix = supportsPosixShell ? it : it.skip;
 
 afterEach(async () => {
     await Promise.all(
-        directories.splice(0).map((directory) => rm(directory, { force: true, recursive: true })),
+        directories.splice(0).map((directory) => removeScratchDirectories(directory)),
     );
 });
 

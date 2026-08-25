@@ -468,7 +468,7 @@ describe("ShelfReverter", () => {
         const primary = await createReverter();
         const linkedWorktree = await mkdtemp(path.join(tmpdir(), "intelligit-shelf-linked-"));
         directories.push(linkedWorktree);
-        await rm(linkedWorktree, { recursive: true, force: true });
+        await removeScratchDirectories(linkedWorktree);
         await git(primary.repositoryRoot, [
             "worktree",
             "add",

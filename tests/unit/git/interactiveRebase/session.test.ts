@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -8,6 +8,7 @@ import type {
     RebaseTodoEntry,
 } from "../../../../src/git/interactiveRebase/types";
 import { writeInteractiveRebaseSession } from "../../../../src/git/interactiveRebase/session";
+import { removeScratchDirectories } from "../../../helpers/scratchDirectories";
 
 const HASH_A = "a".repeat(40);
 const HASH_B = "B".repeat(40);
@@ -15,7 +16,7 @@ const directories: string[] = [];
 
 afterEach(async () => {
     await Promise.all(
-        directories.splice(0).map((directory) => rm(directory, { force: true, recursive: true })),
+        directories.splice(0).map((directory) => removeScratchDirectories(directory)),
     );
 });
 

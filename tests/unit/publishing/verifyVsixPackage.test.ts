@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -13,6 +13,7 @@ import {
     selectSoleVsix,
     verifyVsixPackage,
 } from "../../../scripts/verifyVsixPackage.js";
+import { removeScratchDirectoriesSync } from "../../helpers/scratchDirectories";
 
 const REQUIRED_FILES = [
     "package.json",
@@ -47,7 +48,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-    rmSync(fixtureRoot, { recursive: true, force: true });
+    removeScratchDirectoriesSync(fixtureRoot);
 });
 
 async function writeArchive(entries: ArchiveEntry[]): Promise<string> {
