@@ -1,3 +1,14 @@
+/**
+ * Shared harness for the four `flowLegKnownBad.<leg>.test.ts` files. The four known-bad legs used
+ * to live in one file as a single loop; that made the file an indivisible ~11-minute block on the
+ * Windows CI shards (661s on run 32863905788 -- `--shard` slices by FILE, so no shard count could
+ * split it). One file per leg lets the shard scheduler spread the four subprocess runs, while every
+ * assertion stays single-sourced here so the legs cannot drift apart.
+ *
+ * The loop used to make losing a leg structurally impossible; four separate files reopen exactly
+ * that hole, so `flowLegKnownBad.coverage.test.ts` proves one leg file exists per id here.
+ */
+
 import { execFile } from "node:child_process";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -10,7 +21,9 @@ const execFileAsync = promisify(execFile);
 const REPO_ROOT = path.resolve(__dirname, "../../..");
 const NEGATIVE_CONFIG = "vitest.flow-negative.config.ts";
 const NEGATIVE_SPEC = "tests/e2e/flows/negative/leg.negative.ts";
-const LEG_IDS = ["local-git", "origin", "durable-state", "lock-residue"] as const;
+
+export const KNOWN_BAD_LEG_IDS = ["local-git", "origin", "durable-state", "lock-residue"] as const;
+export type KnownBadLegId = (typeof KNOWN_BAD_LEG_IDS)[number];
 
 interface SubprocessResult {
     readonly exitCode: number;
@@ -47,8 +60,9 @@ async function runNegativeSpec(leg: string, control = false): Promise<Subprocess
     }
 }
 
-describe("four-way flow oracle known-bad subprocesses", () => {
-    for (const leg of LEG_IDS) {
+/** Registers the one control-then-corrupted test for `leg` -- called once per leg test file. */
+export function flowLegKnownBadSuite(leg: KnownBadLegId): void {
+    describe("four-way flow oracle known-bad subprocesses", () => {
         it(`requires the ${leg} corruption to turn the spec red`, async () => {
             const control = await runNegativeSpec(leg, true);
             expect(control.exitCode, `control output:\n${control.output}`).toBe(0);
@@ -77,5 +91,5 @@ describe("four-way flow oracle known-bad subprocesses", () => {
             // it before timing out on the next run. A timeout exists to catch a hang, and 600,000
             // still does that against a leg whose slowest honest observation is 282s.
         }, 600_000);
-    }
-});
+    });
+}
