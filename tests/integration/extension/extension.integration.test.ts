@@ -52,6 +52,7 @@ const withProgress = vi.fn(
 const registerWebviewViewProvider = vi.fn(() => ({ dispose: vi.fn() }));
 const registerWebviewPanelSerializer = vi.fn(() => ({ dispose: vi.fn() }));
 const registerTextDocumentContentProvider = vi.fn(() => ({ dispose: vi.fn() }));
+const registerCustomEditorProvider = vi.fn(() => ({ dispose: vi.fn() }));
 const createTerminal = vi.fn(() => ({ show: vi.fn(), sendText: vi.fn() }));
 type MockWorkspaceUri = { fsPath: string; path: string };
 type TextDocumentChangeListener = (event: { document: { uri: MockWorkspaceUri } }) => void;
@@ -700,6 +701,7 @@ vi.mock("vscode", () => ({
     window: {
         registerWebviewViewProvider,
         registerWebviewPanelSerializer,
+        registerCustomEditorProvider,
         get activeTextEditor() {
             return activeTextEditor;
         },
@@ -1189,6 +1191,11 @@ describe("extension integration", () => {
         expect(registeredCommands.has("intelligit.openUndocked")).toBe(true);
         expect(registeredCommands.has("intelligit.dockWindow")).toBe(true);
         expect(registeredCommands.has("intelligit.toggleUndocked")).toBe(true);
+        expect(registerCustomEditorProvider).toHaveBeenCalledWith(
+            "intelligit.editableDiff",
+            expect.anything(),
+            { webviewOptions: { enableFindWidget: true, retainContextWhenHidden: true } },
+        );
         expect(showInformationMessage).toHaveBeenCalledWith(
             "No Git repositories found in this workspace.",
         );

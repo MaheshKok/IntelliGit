@@ -310,6 +310,8 @@
     "diff.newlineDifference": "Files differ only by newline formatting",
     "diff.error.load": "Failed to load diff: {error}",
     "diff.loading": "Loading diff...",
+    "diff.editable.blockHint": "Double-click or press Enter to edit",
+    "diff.editable.editingAria": "Edit working tree block",
     "mergeSession.title": "Conflicts",
     "mergeSession.subtitle.pre": "Merging branch ",
     "mergeSession.subtitle.mid": " into branch ",

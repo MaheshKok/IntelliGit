@@ -1,22 +1,20 @@
 // Captures extension -> webview `postMessage` traffic for the visual-harness drift guard and,
-// eventually, Phase 2b's protocol recorder. See PLAN.md Phase 3 step 15 (the 9 resolved host
-// contexts table) and step 16 (the exact set-equality drift guard). Capture happens by wrapping
-// the *webview object* at the boundary where each host hands its webview to the code that
-// renders into it -- never by editing an emitter's body (`postToWebview`, `resolveWebviewView`),
-// which this module never touches and never needs to. Gated by the same three-gate predicate as
-// the rest of the E2E control channel (`isE2eControlChannelActive`, see
-// `src/e2e/activationState.ts`): when the gate is off, every host receives its original webview
-// object back, unchanged and identity-equal, and nothing is allocated.
+// eventually, a protocol recorder. Capture happens by wrapping the *webview object* at the boundary
+// where each host hands its webview to the code that renders into it -- never by editing an
+// emitter's body (`postToWebview`, `resolveWebviewView`), which this module never touches and never
+// needs to. Gated by the same three-gate predicate as the rest of the E2E control channel
+// (`isE2eControlChannelActive`, see `src/e2e/activationState.ts`): when the gate is off, every host
+// receives its original webview object back, unchanged and identity-equal, and nothing is
+// allocated.
 
 import type * as vscode from "vscode";
 import { isE2eControlChannelActive } from "./activationState";
 
 /**
- * The 9 resolved host contexts a bundled webview can be rendered into, exactly as enumerated in
- * PLAN.md Phase 3 step 15's table. Keyed by "resolved host context" rather than by bundle or by
- * call site because neither is 1:1 with a rendered shell: two contexts share the
- * `webview-mergeeditor.js` bundle (`merge-editor`, `shelf-conflict-editor`), and one call site
- * (`CommitGraphViewProvider`) is constructed twice into two different contexts
+ * The 9 resolved host contexts a bundled webview can be rendered into. Keyed by "resolved host
+ * context" rather than by bundle or by call site because neither is 1:1 with a rendered shell: two
+ * contexts share the `webview-mergeeditor.js` bundle (`merge-editor`, `shelf-conflict-editor`), and
+ * one call site (`CommitGraphViewProvider`) is constructed twice into two different contexts
  * (`commit-graph-card`, `commit-graph-compact`).
  */
 export const WEBVIEW_CONTEXT_IDS = [
@@ -41,9 +39,9 @@ export interface CapturedWebviewMessage {
 }
 
 /**
- * In-memory, append-only record of every `postMessage` a captured webview has sent, in call
- * order. Phase 2b will persist this to disk; this slice keeps it in memory only, and never logs
- * payload contents on its own -- a captured message can carry real repository data.
+ * In-memory, append-only record of every `postMessage` a captured webview has sent, in call order.
+ * Nothing persists this to disk today; it is held in memory only, and never logs payload contents
+ * on its own -- a captured message can carry real repository data.
  */
 export class WebviewCaptureSink {
     private readonly messages: CapturedWebviewMessage[] = [];

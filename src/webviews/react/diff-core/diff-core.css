@@ -10,9 +10,15 @@
        declares --merge-* itself, so these read through to the identical values
        there, and a viewer that never imports the merge palette still gets a real
        hue rather than a fallback that collapses onto the editor background.
-       No --diff-danger: the only hue a two-pane diff never needs is the conflict
-       one, and a declared hue nothing reads is a dead declaration. */
+       Red is the deletion hue here, not the conflict one: a two-pane diff has no
+       conflicts to paint, but it does have removals, and PyCharm's diff scheme --
+       which this surface follows -- draws those red rather than in the neutral the
+       viewer first shipped. What a viewer still never needs is the conflict *block*
+       paint; `tests/unit/visual/diffCorePalette.test.ts` keeps those aliases banned
+       by name, and every hue below has to be read by a rule or it fails there as a
+       dead declaration. */
     --diff-ok: var(--merge-ok, var(--vscode-charts-green, #79c18d));
+    --diff-danger: var(--merge-danger, var(--vscode-errorForeground, #d86c6c));
     --diff-info: var(--merge-info, var(--vscode-terminal-ansiCyan, #58b5c9));
     --diff-line-number-gutter: var(--merge-line-number-gutter, 33px);
     --diff-line-min-width: var(--merge-line-min-width, 0px);

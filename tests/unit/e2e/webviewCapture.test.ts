@@ -1,11 +1,11 @@
-// Spec-derived tests for the webview capture boundary (PLAN.md Phase 3 step 15's 9 resolved
-// host contexts, and step 16's exact-set-equality drift guard). Every test here is written to
-// be able to fail: the tee/delivery/return-value tests exercise `wrapWebviewForCapture` against
-// a fake `vscode.Webview` double that can independently report both what it received and what
-// it returned, the gate test asserts identity equality (not just deep equality) so a wrapper
-// that always allocates a new object cannot pass it by accident, and the completeness test reads
-// the real production wiring files from disk so deleting or duplicating a wiring site changes
-// its input rather than a hand-copied fixture.
+// Spec-derived tests for the webview capture boundary (its 9 resolved host contexts, and the
+// exact-set-equality drift guard). Every test here is written to be able to fail: the
+// tee/delivery/return-value tests exercise `wrapWebviewForCapture` against a fake `vscode.Webview`
+// double that can independently report both what it received and what it returned, the gate test
+// asserts identity equality (not just deep equality) so a wrapper that always allocates a new
+// object cannot pass it by accident, and the completeness test reads the real production wiring
+// files from disk so deleting or duplicating a wiring site changes its input rather than a
+// hand-copied fixture.
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -622,11 +622,11 @@ describe("WEBVIEW_CONTEXT_IDS: completeness against the real wiring sites", () =
 
         // A raw id can legitimately appear at two literal call sites for the same context (this
         // codebase's `SwitchableWebviewViewProvider` branch wires either `.setProvider(...)` or
-        // `registerWebviewViewProvider(...)` for the same context, never both at once), so this
-        // is deliberately a SET comparison, not a count: `wiredIds.length` is not asserted
-        // against `WEBVIEW_CONTEXT_IDS.length` anywhere in this test. A duplicated id used in
-        // place of a missing one still leaves the distinct set one short and one wrong, which
-        // `toEqual` below catches; a plain count would not (PLAN.md step 16).
+        // `registerWebviewViewProvider(...)` for the same context, never both at once), so this is
+        // deliberately a SET comparison, not a count: `wiredIds.length` is not asserted against
+        // `WEBVIEW_CONTEXT_IDS.length` anywhere in this test. A duplicated id used in place of a
+        // missing one still leaves the distinct set one short and one wrong, which `toEqual` below
+        // catches; a plain count would not.
         const wiredSet = new Set(wiredIds);
         const declaredSet = new Set<string>(WEBVIEW_CONTEXT_IDS);
 

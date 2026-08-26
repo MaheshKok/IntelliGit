@@ -1,7 +1,14 @@
 import * as vscode from "vscode";
 import type { ShelfFileEntry } from "../shelf/model";
-import { createReadonlyDiffUri, openUnifiedDiff } from "../services/diffService";
+import {
+    beginEditableDiffSession,
+    createReadonlyDiffUri,
+    openUnifiedDiff,
+} from "../services/diffService";
 import type { SideSpec } from "../services/diffService";
+import { openEditableDiff } from "../diff/editableDiffOpener";
+import { editablePaneForSides } from "../diff/editableDiffTypes";
+import type { NativeDiffDelegate } from "../diff/unifiedDiffTypes";
 
 /** The immutable shelf comparison selected by the webview. */
 export type ShelfDiffMode = "baseToShelved" | "shelvedToLocal";
@@ -29,11 +36,11 @@ const UNAVAILABLE_BASE = "Base content is unavailable for this shelf entry.";
 const BINARY_DIFF_PLACEHOLDER = "Binary file — text diff is unavailable.";
 
 /**
- * Opens shelf artifacts as immutable virtual documents.
+ * Opens shelf artifacts, immutable except for a `shelvedToLocal` comparison's local side.
  *
- * Single-change requests route through the unified diff viewer (see `openShelfChangeDiff`). The
- * whole-shelf overview stays native -- `vscode.changes` has no unified-viewer equivalent -- and never
- * substitutes the local file for base.
+ * Single-change requests route through `openShelfChangeDiff`, which picks the editable editor or the
+ * read-only viewer by whether a working-tree side exists. The whole-shelf overview stays native --
+ * `vscode.changes` has no unified-viewer equivalent -- and never substitutes the local file for base.
  */
 export async function showShelfDiffFromPanel(
     deps: ShelfDiffDeps,
@@ -70,12 +77,15 @@ export async function showShelfDiffFromPanel(
 type ShelfContents = Awaited<ReturnType<ShelfDiffReader["getShelfDiffContents"]>>;
 
 /**
- * Routes one shelved change through the unified diff viewer.
+ * Routes one shelved change to the editable diff editor, or to the read-only viewer when neither
+ * side is the working tree.
  *
  * Shelf content is read once, up front (matching the prior single-read behavior), and shared by both
  * the funnel providers and the native fallback closure so a decline never re-reads or risks divergent
- * content. `baseToShelved` compares two immutable shelf snapshots; `shelvedToLocal` compares a shelf
- * snapshot with the live worktree file, reusing the funnel's own dirty-document-aware loader.
+ * content. `baseToShelved` compares two immutable shelf snapshots and stays in the read-only viewer;
+ * non-binary `shelvedToLocal` compares a shelf snapshot with the live worktree file and opens the
+ * editable editor, so edits to the local side write through to disk. Binary content has no
+ * working-tree side on either mode and therefore stays read-only.
  */
 async function openShelfChangeDiff(
     deps: ShelfDiffDeps,
@@ -85,7 +95,8 @@ async function openShelfChangeDiff(
     newTab: boolean,
 ): Promise<void> {
     const contents = await deps.shelfReader.getShelfDiffContents(shelfId, changeId);
-    const repoRoot = deps.getWorkspaceRoot().fsPath;
+    const workspaceRoot = deps.getWorkspaceRoot();
+    const repoRoot = workspaceRoot.fsPath;
     const identityPrefix = `${shelfId}:${changeId}:${mode}`;
     const { left, right, leftLabel, rightLabel } = shelfChangeRequestSides(
         contents,
@@ -94,28 +105,36 @@ async function openShelfChangeDiff(
     );
     const title = `${contents.path} (${leftLabel} <-> ${rightLabel})`;
 
-    await openUnifiedDiff(
-        { repoRoot, path: contents.path, left, right, languageId: "", title },
-        async (cancellationToken) => {
-            // Matches snapshotFor's own read condition: a local read only fires for the one case
-            // that ever needed it, so a decline never triggers a needless filesystem/document probe.
-            const localSnapshot =
-                !contents.binary && mode === "shelvedToLocal"
-                    ? await readLocalSnapshot(deps.getWorkspaceRoot(), contents.path)
-                    : undefined;
-            const snapshot = snapshotFor(contents, mode, localSnapshot);
-            if (cancellationToken.isCancellationRequested) return;
-            const fallbackTitle = `${snapshot.path} (${snapshot.leftLabel} <-> ${snapshot.rightLabel})`;
-            const options = newTab ? [{ preview: false }] : [];
-            await vscode.commands.executeCommand(
-                "vscode.diff",
-                snapshot.left,
-                snapshot.right,
-                fallbackTitle,
-                ...options,
-            );
-        },
-    );
+    const request = { repoRoot, path: contents.path, left, right, languageId: "", title };
+    const nativeDelegate: NativeDiffDelegate = async (cancellationToken) => {
+        // Matches snapshotFor's own read condition: a local read only fires for the one case
+        // that ever needed it, so a decline never triggers a needless filesystem/document probe.
+        const localSnapshot =
+            !contents.binary && mode === "shelvedToLocal"
+                ? await readLocalSnapshot(deps.getWorkspaceRoot(), contents.path)
+                : undefined;
+        const snapshot = snapshotFor(contents, mode, localSnapshot);
+        if (cancellationToken.isCancellationRequested) return;
+        const fallbackTitle = `${snapshot.path} (${snapshot.leftLabel} <-> ${snapshot.rightLabel})`;
+        const options = newTab ? [{ preview: false }] : [];
+        await vscode.commands.executeCommand(
+            "vscode.diff",
+            snapshot.left,
+            snapshot.right,
+            fallbackTitle,
+            ...options,
+        );
+    };
+
+    if (editablePaneForSides(left, right)) {
+        await openEditableDiff(
+            { ...request, fileUri: vscode.Uri.joinPath(workspaceRoot, contents.path) },
+            nativeDelegate,
+            beginEditableDiffSession,
+        );
+        return;
+    }
+    await openUnifiedDiff(request, nativeDelegate);
 }
 
 /**

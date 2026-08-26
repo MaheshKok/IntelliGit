@@ -372,6 +372,7 @@ const deleteFileWithFallback = vi.fn(async () => true);
 // Spy on the GitHub provider's network boundary so the real CommitChecksCoordinator
 // runs inside the view provider (exercising its cache/re-fetch logic end-to-end).
 const providerGetChecks = vi.hoisted(() => vi.fn());
+const openEditableDiffMock = vi.hoisted(() => vi.fn());
 const useRealGitHubCommitChecks = vi.hoisted(() => ({ value: false }));
 const githubProviderCalls = vi.hoisted(() => [] as string[]);
 const githubProviderRoots = vi.hoisted(() => [] as string[]);
@@ -439,6 +440,9 @@ const makeBranchesForRoot = vi.hoisted(() => (root: string) => [
 ]);
 
 vi.mock("vscode", () => vscodeMock);
+vi.mock("../../../src/diff/editableDiffOpener", () => ({
+    openEditableDiff: openEditableDiffMock,
+}));
 vi.mock("../../../src/services/repositoryDiscovery", async () => {
     const actual = await vi.importActual<
         typeof import("../../../src/services/repositoryDiscovery")
@@ -1024,6 +1028,12 @@ describe("view providers integration", () => {
             summary: "All checks passed",
             items: [],
         }));
+        openEditableDiffMock.mockImplementation(async (...args: unknown[]) => {
+            const nativeDelegate = args[1] as (cancellationToken: {
+                isCancellationRequested: boolean;
+            }) => Promise<void>;
+            await nativeDelegate({ isCancellationRequested: false });
+        });
     });
 
     it("CommitPanelViewProvider sends one correlated generation request with its fresh validated snapshot", async () => {
@@ -2632,6 +2642,8 @@ describe("view providers integration", () => {
         await send({ type: "stashDelete", index: 0, requestId: "undocked-delete" });
         showWarningMessage.mockResolvedValueOnce("Clear All Stashes");
         await send({ type: "stashClear", requestId: "undocked-clear" });
+        openEditableDiffMock.mockClear();
+        openEditableDiffMock.mockResolvedValueOnce(undefined);
         await send({ type: "showStashDiff", index: 0, path: "src/a.ts" });
         await send({ type: "openFile", path: "src/a.ts" });
         showWarningMessage.mockResolvedValueOnce("Delete");
@@ -2683,12 +2695,26 @@ describe("view providers integration", () => {
             { type: "stashMutationCompleted", requestId: "undocked-delete" },
             { type: "stashMutationCompleted", requestId: "undocked-clear" },
         ]);
-        // Single-file stash diffs route through the unified diff funnel (Deliverable 1e): the
-        // local working-tree file loads via vscode.workspace.fs, and the stash side resolves by
-        // the stash's stable commit hash -- never `stash@{index}` -- through getFileContentAtRef.
-        // Ordinary text content succeeds in the funnel, so neither the old openTextDocument call
-        // nor the native vscode.diff delegate below fires; that delegate is still reachable for
-        // content the viewer must refuse (see the binary/symlink/over-budget coverage elsewhere).
+        // A single-file stash diff owns its working-tree document, so the provider sends it to
+        // the editable opener with that real URI rather than the read-only unified panel.
+        expect(openEditableDiffMock).toHaveBeenCalledWith(
+            expect.objectContaining({
+                fileUri: expect.objectContaining({ fsPath: "/repo/src/a.ts" }),
+                left: expect.objectContaining({ kind: "worktree" }),
+                right: expect.objectContaining({ kind: "provider" }),
+            }),
+            expect.any(Function),
+            expect.any(Function),
+        );
+        // The opener is mocked here, so nothing drives the stash side by itself and the
+        // `setDiffData` assertion this replaced could no longer fire. Drive the side directly: it
+        // must resolve the stash blob by the stash's stable commit hash, never `stash@{index}`.
+        const stashSide = openEditableDiffMock.mock.calls.at(-1)?.[0] as {
+            right: { load: (maxOutputBytes: number) => Promise<{ status: string }> };
+        };
+        await expect(stashSide.right.load(1_000_000)).resolves.toEqual(
+            expect.objectContaining({ status: "loaded" }),
+        );
         expect(gitOps.getFileContentAtRef).toHaveBeenCalledWith("src/a.ts", "stashhash");
         expect(executeCommand).not.toHaveBeenCalledWith(
             "vscode.diff",
@@ -2704,19 +2730,6 @@ describe("view providers integration", () => {
             }),
             "{path} (Local File <-> Stash {reference})",
             { preview: true },
-        );
-        expect(postMessageSpy).toHaveBeenCalledWith(
-            expect.objectContaining({
-                type: "setDiffData",
-                data: expect.objectContaining({
-                    segments: expect.arrayContaining([
-                        expect.objectContaining({
-                            left: ["local file content"],
-                            right: ["stash file content"],
-                        }),
-                    ]),
-                }),
-            }),
         );
         expect(deleteFileWithFallback).toHaveBeenCalledWith(gitOps, expect.any(Object), "src/a.ts");
         expect(workingTreeEvents.length).toBeGreaterThanOrEqual(9);
@@ -7319,13 +7332,29 @@ describe("view providers integration", () => {
             },
         ]);
 
-        // Single-file stash diffs route through the unified diff funnel (Deliverable 1e): the
-        // local working-tree file loads via vscode.workspace.fs, and the stash side resolves by
-        // the stash's stable commit hash -- never `stash@{index}` -- through getFileContentAtRef.
-        // Ordinary text content succeeds in the funnel, so neither the old openTextDocument call
-        // nor the native vscode.diff delegate below fires; that delegate is still reachable for
-        // content the viewer must refuse (see the binary/symlink/over-budget coverage elsewhere).
+        // A single-file stash diff owns its working-tree document, so the provider sends it to
+        // the editable opener with that real URI rather than the read-only unified panel.
+        openEditableDiffMock.mockClear();
+        openEditableDiffMock.mockResolvedValueOnce(undefined);
         await webview.send({ type: "showStashDiff", index: 0, path: "src/a.ts" });
+        expect(openEditableDiffMock).toHaveBeenCalledWith(
+            expect.objectContaining({
+                fileUri: expect.objectContaining({ fsPath: "/repo/src/a.ts" }),
+                left: expect.objectContaining({ kind: "worktree" }),
+                right: expect.objectContaining({ kind: "provider" }),
+            }),
+            expect.any(Function),
+            expect.any(Function),
+        );
+        // The opener is mocked here, so nothing drives the stash side by itself and the
+        // `setDiffData` assertion this replaced could no longer fire. Drive the side directly: it
+        // must resolve the stash blob by the stash's stable commit hash, never `stash@{index}`.
+        const stashSide = openEditableDiffMock.mock.calls.at(-1)?.[0] as {
+            right: { load: (maxOutputBytes: number) => Promise<{ status: string }> };
+        };
+        await expect(stashSide.right.load(1_000_000)).resolves.toEqual(
+            expect.objectContaining({ status: "loaded" }),
+        );
         expect(gitOps.getFileContentAtRef).toHaveBeenCalledWith("src/a.ts", "stashhash");
         expect(executeCommand).not.toHaveBeenCalledWith(
             "vscode.diff",
@@ -7341,19 +7370,6 @@ describe("view providers integration", () => {
             }),
             "{path} (Local File <-> Stash {reference})",
             { preview: true },
-        );
-        expect(postMessageSpy).toHaveBeenCalledWith(
-            expect.objectContaining({
-                type: "setDiffData",
-                data: expect.objectContaining({
-                    segments: expect.arrayContaining([
-                        expect.objectContaining({
-                            left: ["local file content"],
-                            right: ["stash file content"],
-                        }),
-                    ]),
-                }),
-            }),
         );
         provider.dispose();
     });

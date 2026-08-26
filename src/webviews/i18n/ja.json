@@ -352,5 +352,7 @@
     "branch.tracking.combined": "{incoming}、{outgoing}",
     "diff.newlineDifference": "ファイルは改行形式のみ異なります",
     "diff.error.load": "差分の読み込みに失敗しました: {error}",
-    "diff.loading": "差分を読み込み中…"
+    "diff.loading": "差分を読み込み中…",
+    "diff.editable.blockHint": "ダブルクリックするか Enter キーを押して編集",
+    "diff.editable.editingAria": "作業ツリーのブロックを編集"
 }

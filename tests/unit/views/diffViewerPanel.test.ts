@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 interface CapturedPanel {
     title: string;
+    webviewOptions: { enableFindWidget?: boolean };
     postedMessages: unknown[];
     messageHandler: ((message: unknown) => Promise<void>) | undefined;
     reveal: ReturnType<typeof vi.fn>;
@@ -22,10 +23,16 @@ vi.mock("vscode", () => ({
         }),
     },
     window: {
-        createWebviewPanel: (_viewType: string, title: string) => {
+        createWebviewPanel: (
+            _viewType: string,
+            title: string,
+            _column: unknown,
+            webviewOptions: { enableFindWidget?: boolean },
+        ) => {
             const disposeListeners: Array<() => void> = [];
             const captured: CapturedPanel = {
                 title,
+                webviewOptions,
                 postedMessages: [],
                 messageHandler: undefined,
                 reveal: vi.fn(),
@@ -110,6 +117,12 @@ afterEach(() => {
 });
 
 describe("DiffViewerPanel", () => {
+    it("enables VS Code's find widget for Ctrl+F", async () => {
+        await DiffViewerPanel.open(options());
+
+        expect(lastPanel().webviewOptions.enableFindWidget).toBe(true);
+    });
+
     it("reveals and reuses one panel on a second open", async () => {
         await DiffViewerPanel.open(options());
         const panel = lastPanel();

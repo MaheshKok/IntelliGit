@@ -25,7 +25,13 @@ import {
     openDiffViewer,
     reportDiffViewerLoadError,
 } from "../diff/diffViewerOpener";
-import { loadDiffSide } from "../diff/sideLoader";
+import {
+    loadDiffSide,
+    toViewerSide,
+    type LoadedDiffSide as ViewerDiffSide,
+} from "../diff/sideLoader";
+import { openEditableDiff } from "../diff/editableDiffOpener";
+import { labelForDiffSide, type EditableDiffSession } from "../diff/editableDiffTypes";
 import {
     subscribeToRepositoryWorkingTreeChanges,
     type RepositoryWorkingTreeChange,
@@ -111,16 +117,28 @@ interface ActiveUnifiedDiffSession extends Omit<UnifiedDiffSession, "sideSnapsho
     };
     readonly cancellationSource: DiffViewerCancellationSource;
     onPanelDisposed: () => void;
+    /** Takes this file's editable slot, retiring whichever session held it. */
+    claimEditableSlot: () => void;
+    /** Drops this session from both editable slot maps without disturbing a successor. */
+    releaseEditableSlots: () => void;
     fallbackStarted: boolean;
     unsubscribe: () => void;
     changeSubscription: RepositoryWorkingTreeChangeSubscription | undefined;
     refreshInFlight: boolean;
     refreshPending: boolean;
+    readonly claimViewerPanel: boolean;
+    readonly onEditableRefresh:
+        | ((left: Readonly<{ text: string }>, right: Readonly<{ text: string }>) => Promise<void>)
+        | undefined;
+    readonly onEditableRefreshError: ((message: string) => Promise<void>) | undefined;
 }
 
 let nextUnifiedDiffGeneration = 0;
-let activeUnifiedDiffSession: ActiveUnifiedDiffSession | undefined;
 let latestUnifiedDiffSession: ActiveUnifiedDiffSession | undefined;
+/** Editable sessions whose editor is on screen, one per file. */
+const editableDiffSessions = new Map<string, ActiveUnifiedDiffSession>();
+/** Editable sessions still loading their sides, with nothing yet on screen. */
+const loadingEditableSessions = new Map<string, ActiveUnifiedDiffSession>();
 
 /**
  * Serves ephemeral read-only documents used as the left and right sides of VS Code diffs.
@@ -296,8 +314,8 @@ export async function openUnifiedDiff(
     await openDiffViewer({
         path: request.path,
         title: request.title,
-        leftLabel: getSideLabel(request.left),
-        rightLabel: getSideLabel(request.right),
+        leftLabel: labelForDiffSide(request.left),
+        rightLabel: labelForDiffSide(request.right),
         languageId: request.languageId,
         leftText: left.text,
         rightText: right.text,
@@ -310,12 +328,32 @@ export async function openUnifiedDiff(
     }
 }
 
+interface BeginUnifiedDiffSessionOptions {
+    readonly claimViewerPanel?: boolean;
+    readonly editableSessionKey?: string;
+    readonly onEditableRefresh?: (
+        left: Readonly<{ text: string }>,
+        right: Readonly<{ text: string }>,
+    ) => Promise<void>;
+    readonly onEditableRefreshError?: (message: string) => Promise<void>;
+}
+
 function beginUnifiedDiffSession(
     descriptor: UnifiedDiffRequest,
     nativeDelegate: NativeDiffDelegate,
+    options: BeginUnifiedDiffSessionOptions = {},
 ): ActiveUnifiedDiffSession {
-    latestUnifiedDiffSession?.cancellationSource.cancel();
-    const previousSession = latestUnifiedDiffSession;
+    const claimViewerPanel = options.claimViewerPanel ?? true;
+    const previousSession = claimViewerPanel ? latestUnifiedDiffSession : undefined;
+    previousSession?.cancellationSource.cancel();
+    // An editable request supersedes a sibling that is still LOADING — nothing of that one
+    // is on screen yet. It does not touch the session that already owns the editor: both
+    // sides still have to load and pass the budget, and a request that then declines
+    // (deleted working-tree file, over budget) would otherwise leave a visible tab bound to
+    // a dead session that never refreshes again.
+    if (options.editableSessionKey) {
+        loadingEditableSessions.get(options.editableSessionKey)?.onPanelDisposed();
+    }
     const cancellationSource = new DiffViewerCancellationSource();
     const sideSnapshots: {
         left?: FrozenDiffSideSnapshot;
@@ -332,26 +370,90 @@ function beginUnifiedDiffSession(
         generation: ++nextUnifiedDiffGeneration,
         cancellationSource,
         onPanelDisposed: () => undefined,
+        claimEditableSlot: () => undefined,
+        releaseEditableSlots: () => undefined,
         fallbackStarted: false,
         unsubscribe: () => undefined,
         changeSubscription: undefined,
         refreshInFlight: false,
         refreshPending: false,
+        claimViewerPanel,
+        onEditableRefresh: options.onEditableRefresh,
+        onEditableRefreshError: options.onEditableRefreshError,
     };
     session.onPanelDisposed = () => {
         cancellationSource.cancel();
         session.unsubscribe();
         session.unsubscribe = () => undefined;
-        if (activeUnifiedDiffSession === session) activeUnifiedDiffSession = undefined;
+        session.releaseEditableSlots();
     };
-    activeUnifiedDiffSession = session;
-    latestUnifiedDiffSession = session;
-    claimDiffViewerSession({
-        generation: session.generation,
-        onDispose: session.onPanelDisposed,
-    });
+    session.releaseEditableSlots = () => {
+        const key = options.editableSessionKey;
+        if (!key) return;
+        if (loadingEditableSessions.get(key) === session) loadingEditableSessions.delete(key);
+        if (editableDiffSessions.get(key) === session) editableDiffSessions.delete(key);
+    };
+    session.claimEditableSlot = () => {
+        const key = options.editableSessionKey;
+        if (!key) return;
+        if (loadingEditableSessions.get(key) === session) loadingEditableSessions.delete(key);
+        const previous = editableDiffSessions.get(key);
+        if (previous && previous !== session) previous.onPanelDisposed();
+        editableDiffSessions.set(key, session);
+    };
+    if (options.editableSessionKey) {
+        loadingEditableSessions.set(options.editableSessionKey, session);
+    }
+    if (session.claimViewerPanel) {
+        latestUnifiedDiffSession = session;
+        claimDiffViewerSession({
+            generation: session.generation,
+            onDispose: session.onPanelDisposed,
+        });
+    }
     bindUnifiedDiffSessionSubscription(session, previousSession);
     return session;
+}
+
+/** Starts an independently refreshable session for one VS Code-managed editable editor. */
+export function beginEditableDiffSession(
+    descriptor: UnifiedDiffRequest,
+    nativeDelegate: NativeDiffDelegate,
+    onRefresh: (
+        left: Readonly<{ text: string }>,
+        right: Readonly<{ text: string }>,
+    ) => Promise<void>,
+    onRefreshError: (message: string) => Promise<void>,
+): EditableDiffSession {
+    const session = beginUnifiedDiffSession(descriptor, nativeDelegate, {
+        claimViewerPanel: false,
+        editableSessionKey: [descriptor.repoRoot, descriptor.path].join("\u0000"),
+        onEditableRefresh: onRefresh,
+        onEditableRefreshError: onRefreshError,
+    });
+    return {
+        isCurrent: () => isCurrentUnifiedDiffSession(session),
+        setInitialSides: (left, right) => {
+            if (!isCurrentUnifiedDiffSession(session)) return false;
+            session.sideSnapshots.left = freezeDiffSide(left);
+            session.sideSnapshots.right = freezeDiffSide(right);
+            // The last point before the editor opens, and the first at which retiring the
+            // previous session for this file cannot strand a still-visible editor.
+            session.claimEditableSlot();
+            return true;
+        },
+        refreshIfPending: () => {
+            if (!session.refreshPending || !isCurrentUnifiedDiffSession(session)) return;
+            session.refreshPending = false;
+            requestUnifiedDiffRefresh(session);
+        },
+        fallback: () => transitionToNativeFallback(session),
+        openReadOnly: async () => {
+            session.onPanelDisposed();
+            await openUnifiedDiff(descriptor, nativeDelegate);
+        },
+        dispose: session.onPanelDisposed,
+    };
 }
 
 /** Moves the panel's mutable-side listener synchronously when a new descriptor replaces it. */
@@ -416,7 +518,9 @@ function requestUnifiedDiffRefresh(
 async function refreshUnifiedDiffSession(session: ActiveUnifiedDiffSession): Promise<void> {
     const generation = ++nextUnifiedDiffGeneration;
     session.generation = generation;
-    claimDiffViewerSession({ generation, onDispose: session.onPanelDisposed });
+    if (session.claimViewerPanel) {
+        claimDiffViewerSession({ generation, onDispose: session.onPanelDisposed });
+    }
     const needsGitExecutor = [session.descriptor.left, session.descriptor.right].some(
         (side) => side.kind === "ref" && isMutableDiffSide(side),
     );
@@ -432,11 +536,15 @@ async function refreshUnifiedDiffSession(session: ActiveUnifiedDiffSession): Pro
         }
         session.sideSnapshots.left = left;
         session.sideSnapshots.right = right;
+        if (session.onEditableRefresh) {
+            await session.onEditableRefresh(left, right);
+            return;
+        }
         await openDiffViewer({
             path: session.descriptor.path,
             title: session.descriptor.title,
-            leftLabel: getSideLabel(session.descriptor.left),
-            rightLabel: getSideLabel(session.descriptor.right),
+            leftLabel: labelForDiffSide(session.descriptor.left),
+            rightLabel: labelForDiffSide(session.descriptor.right),
             languageId: session.descriptor.languageId,
             leftText: left.text,
             rightText: right.text,
@@ -447,7 +555,13 @@ async function refreshUnifiedDiffSession(session: ActiveUnifiedDiffSession): Pro
         if (!isCurrentUnifiedDiffSession(session, generation)) return;
         logGitOpsWarning("diffService.openUnifiedDiff.refresh", error);
         try {
-            await reportDiffViewerLoadError(generation, getErrorMessage(error));
+            // An editable session never claims the viewer panel, so `postLoadError` would
+            // drop this on its generation guard and the editor would go quietly stale.
+            if (session.onEditableRefreshError) {
+                await session.onEditableRefreshError(getErrorMessage(error));
+            } else {
+                await reportDiffViewerLoadError(generation, getErrorMessage(error));
+            }
         } catch (postError) {
             logGitOpsWarning("diffService.openUnifiedDiff.refresh.loadError", postError);
         }
@@ -523,16 +637,20 @@ function isCurrentUnifiedDiffSession(
     session: ActiveUnifiedDiffSession,
     generation = session.generation,
 ): boolean {
-    return activeUnifiedDiffSession === session && session.generation === generation;
+    return (
+        !session.cancellationSource.isCancellationRequested() && session.generation === generation
+    );
 }
 
 async function transitionToNativeFallback(session: ActiveUnifiedDiffSession): Promise<void> {
     if (!isCurrentUnifiedDiffSession(session) || session.fallbackStarted) return;
     session.fallbackStarted = true;
 
-    clearDiffViewerSession(session.generation);
+    if (session.claimViewerPanel) clearDiffViewerSession(session.generation);
     session.unsubscribe();
-    if (activeUnifiedDiffSession === session) activeUnifiedDiffSession = undefined;
+    // A session that hands off to the native editor owns no editable surface any more, so
+    // it must vacate its slots or nothing ever deletes them.
+    session.releaseEditableSlots();
     await session.nativeDelegate(
         session.cancellationSource.token,
         session.stableProviderIdentities,
@@ -549,35 +667,6 @@ function freezeDiffSide(side: ViewerDiffSide): FrozenDiffSideSnapshot {
 
 function getStableProviderIdentity(side: UnifiedDiffRequest["left"]): string | undefined {
     return side.kind === "provider" ? side.identity : undefined;
-}
-
-type LoadableDiffSide = Extract<
-    Awaited<ReturnType<typeof loadDiffSide>>,
-    { readonly status: "loaded" | "missing" }
->;
-
-type ViewerDiffSide = Extract<
-    Awaited<ReturnType<typeof loadDiffSide>>,
-    { readonly status: "loaded" }
->;
-
-function toViewerSide(result: LoadableDiffSide): ViewerDiffSide {
-    if (result.status === "missing") {
-        return {
-            status: "loaded",
-            bytes: new Uint8Array(),
-            mode: undefined,
-            text: "",
-            lineCount: 0,
-        };
-    }
-    return result;
-}
-
-function getSideLabel(side: UnifiedDiffRequest["left"]): string {
-    if (side.kind === "ref") return side.ref;
-    if (side.kind === "provider") return side.label;
-    return "Working tree";
 }
 
 function getEditorContextFileUri(ctx?: unknown): vscode.Uri | null {
@@ -634,7 +723,7 @@ async function openDiffAgainstGitRef(
     if (!trimmedRef) return;
 
     const title = `${repoRelativeFilePath} (${sourceLabel}: ${trimmedRef}) <-> Working Tree`;
-    await openUnifiedDiff(
+    await openEditableDiff(
         {
             repoRoot,
             path: repoRelativeFilePath,
@@ -642,6 +731,7 @@ async function openDiffAgainstGitRef(
             right: { kind: "worktree" },
             languageId: "",
             title,
+            fileUri,
         },
         async (cancellationToken) => {
             const refContent = await gitOps.getFileContentAtRef(repoRelativeFilePath, trimmedRef);
@@ -649,6 +739,7 @@ async function openDiffAgainstGitRef(
             const leftUri = createReadonlyDiffUri(repoRelativeFilePath, refContent, trimmedRef);
             await vscode.commands.executeCommand("vscode.diff", leftUri, fileUri, title);
         },
+        beginEditableDiffSession,
     );
 }
 

@@ -3,8 +3,8 @@ import type { WebviewContextId } from "../../../src/e2e/webviewCapture";
 /**
  * The resolved host-context shell table is keyed by the host that calls the production shell, not
  * by its bundle. One bundle can serve multiple hosts, and one host class can be constructed with
- * different bundle options; collapsing either relationship would make the Phase 6 drift oracle
- * compare the wrong production contract.
+ * different bundle options; collapsing either relationship would make the drift oracle compare the
+ * wrong production contract.
  *
  * This module intentionally contains no renderer, HTML, filesystem, or recorder code. It is the
  * checked-in data contract that the recorder-backed oracle pins to production before a harness can

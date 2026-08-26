@@ -2,12 +2,12 @@
 // opens the viewer with both the HEAD and working-tree panes populated.
 //
 // This does not use flows/matrix.ts's FlowRow contract: FlowRow's four oracle legs
-// (uiOracle/localGitOracle/originOracle/durableStateOracle) exist to prove a *mutation*
-// against local git, origin, and durable state, and IMPLEMENTED_FLOW_IDS is a closed union
-// pinned to PLAN.md step 25's ten canonical flows. Viewing a diff mutates nothing, so it is
-// neither a candidate for that closed set nor a fit for oracles that would have nothing to
-// assert. packageSmoke.spec.ts and controlChannelRoundTrip.spec.ts establish the precedent
-// for a standalone spec with its own launch sequence outside that matrix.
+// (uiOracle/localGitOracle/originOracle/durableStateOracle) exist to prove a *mutation* against
+// local git, origin, and durable state, and IMPLEMENTED_FLOW_IDS is a closed union pinned to ten
+// canonical flows. Viewing a diff mutates nothing, so it is neither a candidate for that closed set
+// nor a fit for oracles that would have nothing to assert. packageSmoke.spec.ts and
+// controlChannelRoundTrip.spec.ts establish the precedent for a standalone spec with its own launch
+// sequence outside that matrix.
 
 import path from "node:path";
 

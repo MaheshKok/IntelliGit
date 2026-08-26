@@ -42,11 +42,17 @@ const createReadonlyDiffUri = vi.hoisted(() =>
 // stays valid unchanged, while dedicated tests assert on openUnifiedDiffMock's own call
 // arguments to prove the funnel is actually being routed to with the correct SideSpec.
 const openUnifiedDiffMock = vi.hoisted(() => vi.fn());
+const openEditableDiffMock = vi.hoisted(() => vi.fn());
+const beginEditableDiffSessionMock = vi.hoisted(() => vi.fn());
 
 vi.mock("vscode", () => vscodeMock);
 vi.mock("../../../src/services/diffService", () => ({
+    beginEditableDiffSession: beginEditableDiffSessionMock,
     createReadonlyDiffUri,
     openUnifiedDiff: openUnifiedDiffMock,
+}));
+vi.mock("../../../src/diff/editableDiffOpener", () => ({
+    openEditableDiff: openEditableDiffMock,
 }));
 
 import {
@@ -123,6 +129,11 @@ beforeEach(() => {
             fakeCancellationToken(),
         ),
     );
+    openEditableDiffMock.mockImplementation(async (_request: unknown, nativeDelegate: never) =>
+        (nativeDelegate as (token: ReturnType<typeof fakeCancellationToken>) => Promise<void>)(
+            fakeCancellationToken(),
+        ),
+    );
 });
 
 describe("showStashDiffFromPanel", () => {
@@ -169,12 +180,13 @@ describe("showStashDiffFromPanel", () => {
         );
     });
 
-    it("routes single-file stash diffs through the unified diff funnel with worktree-left, stash-hash-right sides", async () => {
+    it("routes row 4 stash diffs through the editable funnel with the real local file URI on the left", async () => {
         const gitOps = makeGitOps();
+        openEditableDiffMock.mockResolvedValueOnce(undefined);
 
         await showStashDiffFromPanel(fileActionDeps(gitOps), 2, "src/a.ts", false);
 
-        expect(openUnifiedDiffMock).toHaveBeenCalledWith(
+        expect(openEditableDiffMock).toHaveBeenCalledWith(
             expect.objectContaining({
                 path: "src/a.ts",
                 left: { kind: "worktree" },
@@ -183,9 +195,16 @@ describe("showStashDiffFromPanel", () => {
                     identity: "stash2hash",
                     label: "Stash {2}",
                 }),
+                fileUri: expect.objectContaining({
+                    root: { scheme: "file", path: "/repo" },
+                    path: "src/a.ts",
+                }),
             }),
             expect.any(Function),
+            beginEditableDiffSessionMock,
         );
+        expect(openUnifiedDiffMock).not.toHaveBeenCalled();
+        expect(createReadonlyDiffUri).not.toHaveBeenCalled();
     });
 
     it("throws when the requested stash index is no longer present at that position", async () => {
@@ -483,15 +502,17 @@ describe("showDiffFromPanel", () => {
         return { getWorkspaceRoot: () => ({ scheme: "file", path: "/repo" }) };
     }
 
-    it("routes through the unified diff funnel comparing HEAD to the working tree, never git.openChange's index-aware pair", async () => {
+    it("opens an editable diff comparing HEAD to the working tree, never git.openChange's index-aware pair", async () => {
         await showDiffFromPanel(deps(), "src/a.ts");
 
-        expect(openUnifiedDiffMock).toHaveBeenCalledWith(
+        expect(openEditableDiffMock).toHaveBeenCalledWith(
             expect.objectContaining({
                 path: "src/a.ts",
                 left: { kind: "ref", ref: "HEAD" },
                 right: { kind: "worktree" },
+                fileUri: expect.objectContaining({ path: "src/a.ts" }),
             }),
+            expect.any(Function),
             expect.any(Function),
         );
     });

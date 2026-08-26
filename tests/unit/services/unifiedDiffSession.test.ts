@@ -32,6 +32,10 @@ const mocks = vi.hoisted(() => ({
     documents: [] as Array<{ uri: { toString(): string }; getText(): string }>,
     readFile: vi.fn(async () => Buffer.from("working tree\n")),
     refText: "first ref\n",
+    applyEdit: vi.fn(),
+    writeFile: vi.fn(),
+    openEditableDiffEditor: vi.fn(async () => undefined),
+    refreshEditableDiffEditor: vi.fn(async () => undefined),
 }));
 
 vi.mock("vscode", () => ({
@@ -49,7 +53,9 @@ vi.mock("vscode", () => ({
         fs: {
             stat: vi.fn(async () => ({ type: 1, size: 16 })),
             readFile: mocks.readFile,
+            writeFile: mocks.writeFile,
         },
+        applyEdit: mocks.applyEdit,
         get textDocuments() {
             return mocks.documents;
         },
@@ -100,6 +106,11 @@ vi.mock("../../../src/views/webviewHtml", () => ({
     buildWebviewShellHtml: () => "<html />",
 }));
 
+vi.mock("../../../src/views/EditableDiffEditorProvider", () => ({
+    openEditableDiffEditor: mocks.openEditableDiffEditor,
+    refreshEditableDiffEditor: mocks.refreshEditableDiffEditor,
+}));
+
 vi.mock("../../../src/services/repositoryChangeEvents", () => ({
     subscribeToRepositoryWorkingTreeChanges: (
         repoRoot: string,
@@ -131,8 +142,10 @@ vi.mock("../../../src/git/executor", () => ({
     },
 }));
 
+import { MAX_DIFF_BYTES } from "../../../src/diff/diffBudgets";
 import { setDiffViewerExtensionUri } from "../../../src/diff/diffViewerOpener";
-import { openUnifiedDiff } from "../../../src/services/diffService";
+import { openEditableDiff } from "../../../src/diff/editableDiffOpener";
+import { beginEditableDiffSession, openUnifiedDiff } from "../../../src/services/diffService";
 import { assertRepoRelativePath } from "../../../src/utils/fileOps";
 import { showDiffFromPanel } from "../../../src/views/panelFileActions";
 
@@ -168,6 +181,12 @@ afterEach(() => {
     mocks.refText = "first ref\n";
     mocks.readFile.mockReset();
     mocks.readFile.mockResolvedValue(Buffer.from(mocks.worktreeText));
+    mocks.applyEdit.mockReset();
+    mocks.writeFile.mockReset();
+    mocks.openEditableDiffEditor.mockReset();
+    mocks.openEditableDiffEditor.mockResolvedValue(undefined);
+    mocks.refreshEditableDiffEditor.mockReset();
+    mocks.refreshEditableDiffEditor.mockResolvedValue(undefined);
 });
 
 describe("unified diff session snapshots", () => {
@@ -233,6 +252,391 @@ describe("unified diff session snapshots", () => {
             });
         });
         expect(providerLoad).toHaveBeenCalledOnce();
+    });
+
+    it("re-resolves the historical side of an editable session without replacing dirty document text", async () => {
+        const fileUri = {
+            fsPath: `${REPO_ROOT}/src/example.ts`,
+            toString: () => `file:${REPO_ROOT}/src/example.ts`,
+        };
+        const dirtyDocument = { uri: fileUri, getText: () => "unsaved working tree\n" };
+        mocks.documents.push(dirtyDocument);
+
+        await openEditableDiff(
+            {
+                repoRoot: REPO_ROOT,
+                path: "src/example.ts",
+                left: { kind: "ref", ref: "HEAD" },
+                right: { kind: "worktree" },
+                languageId: "typescript",
+                title: "Editable diff",
+                fileUri: fileUri as never,
+            },
+            vi.fn(async () => undefined),
+            beginEditableDiffSession,
+        );
+
+        mocks.refText = "updated HEAD\n";
+        mocks.subscriptions[0]?.listener({ repoRoot: REPO_ROOT, source: "git-state" });
+
+        await vi.waitFor(() => {
+            expect(mocks.refreshEditableDiffEditor).toHaveBeenCalledWith(
+                fileUri,
+                expect.objectContaining({ immutableText: "updated HEAD\n" }),
+            );
+        });
+        expect(mocks.applyEdit).not.toHaveBeenCalled();
+        expect(mocks.writeFile).not.toHaveBeenCalled();
+        const descriptor = mocks.openEditableDiffEditor.mock.calls[0]?.[1] as {
+            onSessionDisposed?: () => void;
+        };
+        descriptor.onSessionDisposed?.();
+    });
+
+    it("keeps every editable editor subscribed after another editor opens and one closes", async () => {
+        const fileA = {
+            fsPath: `${REPO_ROOT}/src/a.ts`,
+            toString: () => `file:${REPO_ROOT}/src/a.ts`,
+        };
+        const fileB = {
+            fsPath: `${REPO_ROOT}/src/b.ts`,
+            toString: () => `file:${REPO_ROOT}/src/b.ts`,
+        };
+        const openEditor = async (fileUri: typeof fileA, path: string) =>
+            openEditableDiff(
+                {
+                    repoRoot: REPO_ROOT,
+                    path,
+                    left: { kind: "ref", ref: "HEAD" },
+                    right: { kind: "worktree" },
+                    languageId: "typescript",
+                    title: "Editable diff",
+                    fileUri: fileUri as never,
+                },
+                vi.fn(async () => undefined),
+                beginEditableDiffSession,
+            );
+
+        await openEditor(fileA, "src/a.ts");
+        await openEditor(fileB, "src/b.ts");
+
+        expect(mocks.subscriptions).toHaveLength(2);
+        const [firstSubscription, secondSubscription] = mocks.subscriptions;
+        if (!firstSubscription || !secondSubscription)
+            throw new Error("Expected two editable subscriptions");
+        mocks.refText = "after first commit\n";
+        firstSubscription.listener({ repoRoot: REPO_ROOT, source: "git-state" });
+        secondSubscription.listener({ repoRoot: REPO_ROOT, source: "git-state" });
+
+        await vi.waitFor(() => {
+            expect(mocks.refreshEditableDiffEditor).toHaveBeenCalledWith(
+                fileA,
+                expect.objectContaining({ immutableText: "after first commit\n" }),
+            );
+            expect(mocks.refreshEditableDiffEditor).toHaveBeenCalledWith(
+                fileB,
+                expect.objectContaining({ immutableText: "after first commit\n" }),
+            );
+        });
+
+        const firstDescriptor = mocks.openEditableDiffEditor.mock.calls[0]?.[1] as {
+            onSessionDisposed?: () => void;
+        };
+        const secondDescriptor = mocks.openEditableDiffEditor.mock.calls[1]?.[1] as {
+            onSessionDisposed?: () => void;
+        };
+        firstDescriptor.onSessionDisposed?.();
+        mocks.refreshEditableDiffEditor.mockClear();
+        mocks.refText = "after second commit\n";
+        secondSubscription.listener({ repoRoot: REPO_ROOT, source: "git-state" });
+
+        await vi.waitFor(() => {
+            expect(mocks.refreshEditableDiffEditor).toHaveBeenCalledWith(
+                fileB,
+                expect.objectContaining({ immutableText: "after second commit\n" }),
+            );
+        });
+        secondDescriptor.onSessionDisposed?.();
+    });
+
+    it("leaves the visible editor subscribed when a second open for the same file declines", async () => {
+        const fileUri = {
+            fsPath: `${REPO_ROOT}/src/example.ts`,
+            toString: () => `file:${REPO_ROOT}/src/example.ts`,
+        };
+        const open = (native: () => Promise<undefined>) =>
+            openEditableDiff(
+                {
+                    repoRoot: REPO_ROOT,
+                    path: "src/example.ts",
+                    left: { kind: "ref", ref: "HEAD" },
+                    right: { kind: "worktree" },
+                    languageId: "typescript",
+                    title: "Editable diff",
+                    fileUri: fileUri as never,
+                },
+                native,
+                beginEditableDiffSession,
+            );
+
+        await open(vi.fn(async () => undefined));
+        expect(mocks.openEditableDiffEditor).toHaveBeenCalledOnce();
+
+        // This request loads both sides and only THEN fails the budget. Retiring the live
+        // session the moment a sibling merely STARTS would leave a visible editor bound to a
+        // dead one: it stops refreshing, and nothing on screen says why.
+        mocks.refText = "x".repeat(MAX_DIFF_BYTES + 1);
+        const nativeFallback = vi.fn(async () => undefined);
+        await open(nativeFallback);
+
+        expect(nativeFallback).toHaveBeenCalledOnce();
+        expect(mocks.subscriptions[0]?.dispose).not.toHaveBeenCalled();
+        mocks.refText = "after commit\n";
+        mocks.subscriptions[0]?.listener({ repoRoot: REPO_ROOT, source: "git-state" });
+
+        await vi.waitFor(() => {
+            expect(mocks.refreshEditableDiffEditor).toHaveBeenCalledWith(
+                fileUri,
+                expect.objectContaining({ immutableText: "after commit\n" }),
+            );
+        });
+        const descriptor = mocks.openEditableDiffEditor.mock.calls[0]?.[1] as {
+            onSessionDisposed?: () => void;
+        };
+        descriptor.onSessionDisposed?.();
+    });
+
+    it("retires the previous session when the same file opens a second editor", async () => {
+        const fileUri = {
+            fsPath: `${REPO_ROOT}/src/example.ts`,
+            toString: () => `file:${REPO_ROOT}/src/example.ts`,
+        };
+        const open = () =>
+            openEditableDiff(
+                {
+                    repoRoot: REPO_ROOT,
+                    path: "src/example.ts",
+                    left: { kind: "ref", ref: "HEAD" },
+                    right: { kind: "worktree" },
+                    languageId: "typescript",
+                    title: "Editable diff",
+                    fileUri: fileUri as never,
+                },
+                vi.fn(async () => undefined),
+                beginEditableDiffSession,
+            );
+
+        await open();
+        await open();
+
+        expect(mocks.openEditableDiffEditor).toHaveBeenCalledTimes(2);
+        expect(mocks.subscriptions).toHaveLength(2);
+        // Both sessions target one editor. Left subscribed, they both refresh on the next
+        // repository event and the retired one can land last -- overwriting the editor with
+        // its stale title, stale immutable side, and an onSessionDisposed for a dead session.
+        expect(mocks.subscriptions[0]?.dispose).toHaveBeenCalled();
+
+        mocks.refreshEditableDiffEditor.mockClear();
+        mocks.refText = "after commit\n";
+        mocks.subscriptions[0]?.listener({ repoRoot: REPO_ROOT, source: "git-state" });
+        mocks.subscriptions[1]?.listener({ repoRoot: REPO_ROOT, source: "git-state" });
+
+        await vi.waitFor(() => {
+            expect(mocks.refreshEditableDiffEditor).toHaveBeenCalledOnce();
+        });
+        expect(mocks.refreshEditableDiffEditor).toHaveBeenCalledWith(
+            fileUri,
+            expect.objectContaining({ immutableText: "after commit\n" }),
+        );
+        const descriptor = mocks.openEditableDiffEditor.mock.calls[1]?.[1] as {
+            onSessionDisposed?: () => void;
+        };
+        descriptor.onSessionDisposed?.();
+    });
+
+    it("falls back to the native diff when the editor itself fails to open", async () => {
+        const fileUri = {
+            fsPath: `${REPO_ROOT}/src/example.ts`,
+            toString: () => `file:${REPO_ROOT}/src/example.ts`,
+        };
+        const nativeDelegate = vi.fn(async () => undefined);
+        mocks.openEditableDiffEditor.mockRejectedValueOnce(new Error("no editor"));
+
+        // A rejected open is one more "the viewer cannot render this", so it must land where
+        // every other decline in this funnel lands. Rethrowing would surface an error toast
+        // instead of the native diff, and would leave the slot this session already claimed
+        // subscribed to repository events with no editor for its refreshes to reach.
+        await openEditableDiff(
+            {
+                repoRoot: REPO_ROOT,
+                path: "src/example.ts",
+                left: { kind: "ref", ref: "HEAD" },
+                right: { kind: "worktree" },
+                languageId: "typescript",
+                title: "Editable diff",
+                fileUri: fileUri as never,
+            },
+            nativeDelegate,
+            beginEditableDiffSession,
+        );
+
+        expect(nativeDelegate).toHaveBeenCalledOnce();
+        expect(mocks.subscriptions[0]?.dispose).toHaveBeenCalled();
+    });
+
+    it("keeps the refreshed historical side on screen when a later refresh fails", async () => {
+        const fileUri = {
+            fsPath: `${REPO_ROOT}/src/example.ts`,
+            toString: () => `file:${REPO_ROOT}/src/example.ts`,
+        };
+
+        await openEditableDiff(
+            {
+                repoRoot: REPO_ROOT,
+                path: "src/example.ts",
+                left: { kind: "ref", ref: "HEAD" },
+                right: { kind: "worktree" },
+                languageId: "typescript",
+                title: "Editable diff",
+                fileUri: fileUri as never,
+            },
+            vi.fn(async () => undefined),
+            beginEditableDiffSession,
+        );
+
+        mocks.refText = "after commit\n";
+        mocks.subscriptions[0]?.listener({ repoRoot: REPO_ROOT, source: "git-state" });
+        await vi.waitFor(() => {
+            expect(mocks.refreshEditableDiffEditor).toHaveBeenCalledWith(
+                fileUri,
+                expect.objectContaining({ immutableText: "after commit\n" }),
+            );
+        });
+        mocks.refreshEditableDiffEditor.mockClear();
+
+        // The error report rebuilds from the descriptor this session retained. If the
+        // successful refresh above never wrote its text back, the historical pane rewinds to
+        // the content it opened with, while the banner claims only that it stopped updating.
+        mocks.refText = "x".repeat(MAX_DIFF_BYTES + 1);
+        mocks.subscriptions[0]?.listener({ repoRoot: REPO_ROOT, source: "git-state" });
+
+        await vi.waitFor(() => {
+            expect(mocks.refreshEditableDiffEditor).toHaveBeenCalledWith(
+                fileUri,
+                expect.objectContaining({
+                    loadError: expect.any(String),
+                    immutableText: "after commit\n",
+                }),
+            );
+        });
+        const descriptor = mocks.openEditableDiffEditor.mock.calls[0]?.[1] as {
+            onSessionDisposed?: () => void;
+        };
+        descriptor.onSessionDisposed?.();
+    });
+
+    it("reports a failed editable refresh in the editor instead of leaving it stale", async () => {
+        const fileUri = {
+            fsPath: `${REPO_ROOT}/src/example.ts`,
+            toString: () => `file:${REPO_ROOT}/src/example.ts`,
+        };
+
+        await openEditableDiff(
+            {
+                repoRoot: REPO_ROOT,
+                path: "src/example.ts",
+                left: { kind: "ref", ref: "HEAD" },
+                right: { kind: "worktree" },
+                languageId: "typescript",
+                title: "Editable diff",
+                fileUri: fileUri as never,
+            },
+            vi.fn(async () => undefined),
+            beginEditableDiffSession,
+        );
+        expect(mocks.openEditableDiffEditor).toHaveBeenCalledOnce();
+        mocks.refreshEditableDiffEditor.mockClear();
+
+        // An editable session never claims the viewer panel, so the panel's own error channel
+        // discards this report on its generation guard. Without a path of its own the pane
+        // keeps rendering a historical side that has silently stopped tracking the ref.
+        mocks.refText = "x".repeat(MAX_DIFF_BYTES + 1);
+        mocks.subscriptions[0]?.listener({ repoRoot: REPO_ROOT, source: "git-state" });
+
+        await vi.waitFor(() => {
+            expect(mocks.refreshEditableDiffEditor).toHaveBeenCalledWith(
+                fileUri,
+                expect.objectContaining({ loadError: expect.any(String) }),
+            );
+        });
+        const descriptor = mocks.openEditableDiffEditor.mock.calls[0]?.[1] as {
+            onSessionDisposed?: () => void;
+        };
+        descriptor.onSessionDisposed?.();
+    });
+
+    it("leaves a live read-only panel session refreshable after opening an editable diff", async () => {
+        setDiffViewerExtensionUri(extensionUri);
+        mocks.worktreeText = "read-only before\n";
+        mocks.documents.push({
+            uri: { toString: () => `file:${REPO_ROOT}/src/example.ts` },
+            getText: () => mocks.worktreeText,
+        });
+        await openUnifiedDiff(
+            {
+                ...request(async () => ({
+                    status: "loaded" as const,
+                    bytes: Buffer.from("frozen provider\n"),
+                    mode: 0o100644,
+                })),
+                right: { kind: "worktree" },
+            },
+            vi.fn(async () => undefined),
+        );
+        const panel = mocks.panels.at(-1);
+        const readOnlySubscription = mocks.subscriptions[0];
+        if (!panel || !readOnlySubscription) throw new Error("Expected a read-only panel session");
+
+        const editableUri = {
+            fsPath: `${REPO_ROOT}/src/editable.ts`,
+            toString: () => `file:${REPO_ROOT}/src/editable.ts`,
+        };
+        await openEditableDiff(
+            {
+                repoRoot: REPO_ROOT,
+                path: "src/editable.ts",
+                left: { kind: "ref", ref: "HEAD" },
+                right: { kind: "worktree" },
+                languageId: "typescript",
+                title: "Editable diff",
+                fileUri: editableUri as never,
+            },
+            vi.fn(async () => undefined),
+            beginEditableDiffSession,
+        );
+
+        expect(mocks.subscriptions).toHaveLength(2);
+        mocks.worktreeText = "read-only after\n";
+        readOnlySubscription.listener({
+            repoRoot: REPO_ROOT,
+            path: "src/example.ts",
+            source: "workspace-file",
+        });
+
+        await vi.waitFor(() => {
+            expect(panel.postedMessages.at(-1)).toMatchObject({
+                type: "setDiffData",
+                data: {
+                    segments: expect.arrayContaining([
+                        expect.objectContaining({ right: ["read-only after"] }),
+                    ]),
+                },
+            });
+        });
+        const descriptor = mocks.openEditableDiffEditor.mock.calls.at(-1)?.[1] as {
+            onSessionDisposed?: () => void;
+        };
+        descriptor.onSessionDisposed?.();
     });
 
     it("does not subscribe fully frozen provider sessions", async () => {
@@ -322,7 +726,7 @@ describe("unified diff session snapshots", () => {
         );
         expect(mocks.subscriptions).toHaveLength(1);
         mocks.refText = refreshedText;
-        mocks.subscriptions[0]?.listener({ repoRoot: "/repo", source });
+        mocks.subscriptions[0]?.listener({ repoRoot: REPO_ROOT, source });
 
         await vi.waitFor(() => {
             expect(mocks.panels.at(-1)?.postedMessages.at(-1)).toMatchObject({
@@ -356,7 +760,7 @@ describe("unified diff session snapshots", () => {
         if (!panel) throw new Error("Expected a panel");
         mocks.readFile.mockRejectedValueOnce(new Error("permission denied"));
         mocks.subscriptions[0]?.listener({
-            repoRoot: "/repo",
+            repoRoot: REPO_ROOT,
             path: "src/example.ts",
             source: "workspace-file",
         });
@@ -442,37 +846,32 @@ describe("unified diff session snapshots", () => {
     });
 });
 
-describe("file-row click reaches the diff viewer with the correct payload", () => {
-    // showDiffFromPanel is the real, unmocked caller here (only its transitive vscode/executor/
-    // repositoryChangeEvents dependencies are mocked, the same ones every other test in this file
-    // relies on) -- unlike the routing tests in panelFileActions.test.ts, which mock openUnifiedDiff
-    // itself and so only prove the right SideSpec was built. This proves the full path: a file-row
-    // click posts a setDiffData payload assembled from the actual HEAD and working-tree content.
-    it("posts HEAD and working-tree content to DiffViewerPanel when a changed-file row is clicked", async () => {
+describe("file-row click reaches the document-owned diff with the correct payload", () => {
+    // The opener is real here, so it still loads and budgets the HEAD and working-tree sides before
+    // handing the document-owned view its immutable snapshot. Only the VS Code custom-editor handoff
+    // is mocked: this suite does not activate an extension to register that provider.
+    it("binds the changed-file URI and HEAD snapshot to the editable diff when clicked", async () => {
         setDiffViewerExtensionUri(extensionUri);
         mocks.refText = "head content\n";
         mocks.readFile.mockResolvedValueOnce(Buffer.from("working tree content\n"));
         const deps = {
             getWorkspaceRoot: () => ({
-                fsPath: "/repo",
-                toString: () => "file:/repo",
+                fsPath: REPO_ROOT,
+                toString: () => `file:${REPO_ROOT}`,
             }),
         } as unknown as Parameters<typeof showDiffFromPanel>[0];
 
         await showDiffFromPanel(deps, "src/example.ts");
 
-        const panel = mocks.panels.at(-1);
-        if (!panel) throw new Error("Expected showDiffFromPanel to open a diff viewer panel");
-        expect(panel.postedMessages.at(-1)).toMatchObject({
-            type: "setDiffData",
-            data: {
-                segments: expect.arrayContaining([
-                    expect.objectContaining({
-                        left: ["head content"],
-                        right: ["working tree content"],
-                    }),
-                ]),
-            },
-        });
+        expect(mocks.panels).toHaveLength(0);
+        expect(mocks.openEditableDiffEditor).toHaveBeenCalledWith(
+            expect.objectContaining({ fsPath: `${REPO_ROOT}/src/example.ts` }),
+            expect.objectContaining({
+                editablePane: "right",
+                immutableText: "head content\n",
+                leftLabel: "HEAD",
+                rightLabel: "Working tree",
+            }),
+        );
     });
 });

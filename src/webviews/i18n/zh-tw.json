@@ -352,5 +352,7 @@
     "branch.tracking.combined": "{incoming}，{outgoing}",
     "diff.newlineDifference": "檔案僅換行格式不同",
     "diff.error.load": "無法載入差異：{error}",
-    "diff.loading": "正在載入差異..."
+    "diff.loading": "正在載入差異...",
+    "diff.editable.blockHint": "按兩下或按 Enter 鍵即可編輯",
+    "diff.editable.editingAria": "編輯工作樹區塊"
 }

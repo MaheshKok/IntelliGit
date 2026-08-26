@@ -164,6 +164,8 @@ export class DiffViewerPanel {
             vscode.ViewColumn.Active,
             {
                 enableScripts: true,
+                // Enables webview Ctrl+F; VS Code find only searches DOM text, so do not virtualize away rows.
+                enableFindWidget: true,
                 retainContextWhenHidden: true,
                 localResourceRoots: [vscode.Uri.joinPath(options.extensionUri, "dist")],
             },

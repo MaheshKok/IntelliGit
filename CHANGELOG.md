@@ -5,6 +5,20 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.29.0] - 2026-08-26
+
+### Added
+
+- You can now edit the working-tree side of a diff directly. It is the real file, not a copy, so undo, the dirty marker and saving all behave like a normal editor tab. Double-click a block to edit it, Escape to cancel. Only working-tree sides are editable — a diff between two commits stays read-only.
+- Editing works from the keyboard: Tab to a block, Enter or F2 to open it. Blocks have accessible names, and input methods that compose (Chinese, Japanese, Korean) no longer break when the file changes underneath.
+- Stash and shelf diffs are editable on the local side, and now show the live file instead of a snapshot taken when the diff opened.
+- Find is back. Both diff views enable VS Code's find widget: next and previous, match highlighting, regex and whole-word. Go-to-definition, the minimap and the inline-diff toggle are still missing.
+- A stripe beside the scrollbar marks where the changes are, so you can see what is below the fold. Click a mark to jump to it, or use Alt+Down and Alt+Up.
+
+### Changed
+
+- Deletions are red instead of grey, matching PyCharm. The colour stays on the block edge and the changed words rather than washing the whole line, so syntax highlighting stays readable.
+
 ## [0.28.1] - 2026-08-26
 
 ### Changed

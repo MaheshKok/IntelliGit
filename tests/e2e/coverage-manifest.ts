@@ -11,10 +11,10 @@ export type CoverageEntry = {
 };
 
 /** The explicit decision for a command that no implemented flow exercises yet. */
-const COMMAND_NOT_COVERED = "No implemented Phase 4 flow exercises this contributed command.";
+const COMMAND_NOT_COVERED = "No implemented flow exercises this contributed command.";
 
 /** The explicit decision for a webview action that no implemented flow exercises yet. */
-const WEBVIEW_NOT_COVERED = "No implemented Phase 4 flow exercises this webview action.";
+const WEBVIEW_NOT_COVERED = "No implemented flow exercises this webview action.";
 
 const COMMAND_ENTRIES = [
     { kind: "command", id: "intelligit.showGitLog", mutating: false },
@@ -434,6 +434,7 @@ const WEBVIEW_ENTRIES = [
     { kind: "webview", id: "acceptYours", mutating: true, coveredBy: "merge-conflict-resolve" },
     { kind: "webview", id: "acceptTheirs", mutating: true, notCovered: WEBVIEW_NOT_COVERED },
     { kind: "webview", id: "close", mutating: false },
+    { kind: "webview", id: "editText", mutating: true, notCovered: WEBVIEW_NOT_COVERED },
     { kind: "webview", id: "setIgnoreMode", mutating: false },
     { kind: "webview", id: "applyResolution", mutating: true, notCovered: WEBVIEW_NOT_COVERED },
     { kind: "webview", id: "openConflictSession", mutating: false },

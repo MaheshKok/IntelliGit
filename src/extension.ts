@@ -12,6 +12,7 @@ import { registerCommitChecksAuthCommands } from "./activation/commitChecksAuthC
 import { registerReviewPrompt } from "./services/reviewPrompt";
 import { activateE2eControlChannel } from "./e2e/controlChannel";
 import { setDiffViewerExtensionUri } from "./diff/diffViewerOpener";
+import { registerEditableDiffEditorProvider } from "./views/EditableDiffEditorProvider";
 import {
     HAS_MERGE_CONFLICTS_CONTEXT,
     registerStaleUndockedPanelSerializer,
@@ -34,6 +35,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     registerStaleUndockedPanelSerializer(context);
     registerReadonlyDiffContentProvider(context);
+    registerEditableDiffEditorProvider(context);
     registerCommitChecksAuthCommands(context);
     void registerReviewPrompt(context);
     void setViewContext(HAS_MERGE_CONFLICTS_CONTEXT, false);
