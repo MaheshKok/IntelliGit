@@ -584,31 +584,15 @@
     text-align: left;
 }
 
+/* The only affordance an editable block carries. A ring on hover and an outline plus a tint while
+   typing drew a form control around a stretch of code, which is the one thing this pane is not:
+   the block is part of the file, and the caret is what says where the typing is going. */
 .diff-editable-block {
     cursor: text;
 }
 
-.diff-editable-block:hover .code-lines {
-    box-shadow: inset 0 0 0 1px
-        color-mix(in srgb, var(--vscode-focusBorder, var(--diff-editor-fg)) 25%, transparent);
-}
-
 .diff-editing-block {
     position: relative;
-}
-
-.diff-editing-block.editing {
-    background: color-mix(
-        in srgb,
-        var(--diff-editor-bg) 88%,
-        var(--vscode-focusBorder, var(--diff-editor-fg)) 12%
-    );
-    /* The focus ring belongs to the block, not to the text layer above it: that layer is
-       translated horizontally to stay level with the code (see `syncHorizontalScroll`), and a
-       ring riding along would slide off the block it is supposed to be outlining. */
-    outline: 1px solid
-        color-mix(in srgb, var(--vscode-focusBorder, var(--diff-editor-fg)) 55%, transparent);
-    outline-offset: -1px;
 }
 
 /* The syntax-painted block stays in flow; the native control above it owns caret, selection, and

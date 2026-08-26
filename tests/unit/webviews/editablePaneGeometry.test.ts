@@ -31,6 +31,22 @@ function ruleBody(css: string, selector: string): string {
     return match[1];
 }
 
+/** Every top-level rule whose selector names the editable-block family, selector and body. */
+function editableBlockRules(css: string): { selector: string; body: string }[] {
+    return (
+        [...css.matchAll(/(?:^|\n)([^{}\n][^{}]*)\{([^}]*)\}/g)]
+            .map((match) => ({ selector: match[1].trim(), body: match[2] }))
+            // Pseudo-ELEMENTS paint something other than the block's own box -- `::selection` fills
+            // the selected glyphs and has to. Pseudo-classes stay in scope: `:hover` is exactly where
+            // a ring comes back.
+            .filter(
+                (rule) =>
+                    /\.diff-edit(able|ing)-block/.test(rule.selector) &&
+                    !rule.selector.includes("::"),
+            )
+    );
+}
+
 function declaration(css: string, selector: string, property: string): string {
     const match = new RegExp(`(?:^|;|\\n)\\s*${property}:\\s*([^;]+);`).exec(
         ruleBody(css, selector),
@@ -158,16 +174,28 @@ describe("editable diff pane geometry", () => {
         );
     });
 
-    it("puts the focus ring on the block rather than on the translated text layer", () => {
-        // The text layer is translated horizontally to stay level with the code beneath it, so a
-        // ring drawn on that layer slides out of the block it is marking as active. The block
-        // itself never moves.
-        expect(declaration(VIEWER_CSS, ".diff-editing-block .diff-edit-textarea", "outline")).toBe(
-            "0",
-        );
-        expect(declaration(VIEWER_CSS, ".diff-editing-block.editing", "outline")).toContain(
-            "--vscode-focusBorder",
-        );
+    it("draws no box around a block that is hovered or being typed into", () => {
+        // An editable block is a stretch of the file, not a form control: a hover ring, an
+        // outline while typing, or a tint of its own all fence it off from the code it belongs
+        // to. The caret says where the typing is going and `cursor: text` says the block can be
+        // entered, which is the whole affordance.
+        //
+        // Asserted across every rule in the family rather than by naming the two that used to
+        // paint: a ring re-added under any other selector -- hover, focus-within, a state class
+        // -- puts the box back just as visibly, and a test that banned only the old selectors
+        // would not see it.
+        expect(declaration(VIEWER_CSS, ".diff-editable-block", "cursor")).toBe("text");
+
+        for (const rule of editableBlockRules(VIEWER_CSS)) {
+            for (const [, property, value] of rule.body.matchAll(
+                /(?:^|;)\s*(outline|box-shadow|border|background|background-color)\s*:\s*([^;]+)/g,
+            )) {
+                expect(
+                    value.trim(),
+                    `${rule.selector} paints ${property} — an editable block carries no box`,
+                ).toMatch(/^(0|none|transparent)$/);
+            }
+        }
     });
 
     it("keeps the native interaction layer transparent over the shared highlighted scroll plane", () => {
