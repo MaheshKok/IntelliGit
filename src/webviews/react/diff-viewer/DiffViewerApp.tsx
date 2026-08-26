@@ -106,7 +106,7 @@ function DiffPaneBlock({
 }
 
 interface EditableBlockDraft {
-    index: number;
+    indices: readonly number[];
     text: string;
     caretOffset: number;
     sourceText: string;
@@ -118,7 +118,7 @@ interface EditableBlockDraft {
 
 interface EditableBlockLayout {
     side: DiffPane;
-    index: number;
+    indices: readonly number[];
     rowCount: number;
     /**
      * Longest line in the draft, in characters.
@@ -177,6 +177,62 @@ function paneStartLine(
     return renderedSegments
         .slice(0, index)
         .reduce((total, previous) => total + previous.segment[side].length, 0);
+}
+
+/** Re-finds a draft's display segments after its own edit changes the diff's segmentation. */
+function reanchorDraft(
+    draft: EditableBlockDraft,
+    renderedSegments: readonly RenderedSegment[],
+    side: DiffPane,
+    text: string,
+    lastPostedText: string,
+): EditableBlockDraft {
+    const rangeEnd = draft.startLine + draft.lineCount;
+    const indices: number[] = [];
+    let cursor = 0;
+    let runStart = 0;
+    let runEnd = 0;
+
+    for (const item of renderedSegments) {
+        const nextCursor = cursor + item.segment[side].length;
+        if (cursor < rangeEnd && draft.startLine < nextCursor) {
+            if (indices.length === 0) runStart = cursor;
+            indices.push(item.index);
+            runEnd = nextCursor;
+        }
+        cursor = nextCursor;
+    }
+
+    if (indices.length === 0) return draft;
+    const nextStartLine = Math.min(draft.startLine, runStart);
+    const nextLineCount = Math.max(rangeEnd, runEnd) - nextStartLine;
+    const widened = nextStartLine !== draft.startLine || nextLineCount !== draft.lineCount;
+    const nextDraft = { ...draft, indices, startLine: nextStartLine, lineCount: nextLineCount };
+
+    if (!widened || draft.text !== lastPostedText) return nextDraft;
+    return {
+        ...nextDraft,
+        text: text
+            .split("\n")
+            .slice(nextStartLine, nextStartLine + nextLineCount)
+            .join("\n"),
+    };
+}
+
+function editedPaneLines(
+    paneLines: Record<DiffPane, number>,
+    index: number,
+    editingBlock: EditableBlockLayout | null,
+): Record<DiffPane, number> {
+    if (editingBlock === null || !editingBlock.indices.includes(index)) return paneLines;
+    return {
+        ...paneLines,
+        [editingBlock.side]: editingBlock.indices[0] === index ? editingBlock.rowCount : 0,
+    };
+}
+
+function isAvailableActionHunk(index: number, editingBlock: EditableBlockLayout | null): boolean {
+    return editingBlock === null || !editingBlock.indices.includes(index);
 }
 
 /** Syntax highlighting splits a source line into spans, so rebuild its block-local text offset. */
@@ -246,16 +302,26 @@ function EditableDiffPane({
     const [draft, setDraft] = useState<EditableBlockDraft | null>(null);
     const textareaRef = useRef<HTMLTextAreaElement | null>(null);
     const editingIndexRef = useRef<number | null>(null);
+    const debounceTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
+    const lastPostedTextRef = useRef<string | null>(null);
+    const draftRef = useRef<EditableBlockDraft | null>(null);
     const isComposingRef = useRef(false);
     const reseedDuringCompositionRef = useRef(false);
     const lineNumberSide = side === "left" ? "right" : "left";
     const draftLines = useMemo(() => draft?.text.split("\n") ?? [], [draft?.text]);
 
+    const clearDebounceTimer = useCallback(() => {
+        if (debounceTimerRef.current === null) return;
+        window.clearTimeout(debounceTimerRef.current);
+        debounceTimerRef.current = null;
+    }, []);
+
     const clearDraft = useCallback(() => {
+        clearDebounceTimer();
         editingIndexRef.current = null;
         setDraft(null);
         onDraftLayoutChange(null);
-    }, [onDraftLayoutChange]);
+    }, [clearDebounceTimer, onDraftLayoutChange]);
 
     // A reseed denotes an external document change. The active block was measured against the
     // old document and must not remain available for a second edit against stale text. During an
@@ -268,9 +334,15 @@ function EditableDiffPane({
         clearDraft();
     }, [clearDraft, reseedToken]);
 
-    useEffect(() => () => onDraftLayoutChange(null), [onDraftLayoutChange]);
+    useEffect(
+        () => () => {
+            clearDebounceTimer();
+            onDraftLayoutChange(null);
+        },
+        [clearDebounceTimer, onDraftLayoutChange],
+    );
 
-    const editingDraftIndex = draft?.index;
+    const editingDraftIndex = draft?.indices[0];
     const editingCaretOffset = draft?.caretOffset;
     useEffect(() => {
         if (editingDraftIndex === undefined || editingCaretOffset === undefined) return;
@@ -287,13 +359,69 @@ function EditableDiffPane({
         if (textarea && codeLines) alignScrollOverlays([textarea], codeLines.scrollLeft);
     }, [editingCaretOffset, editingDraftIndex]);
 
+    // The debounced post reads the draft as it stands when the timer FIRES, never the one it was
+    // armed with. Typing resumes the moment the first post goes out, so the next window is armed
+    // while that post's echo is still in flight; a captured draft would still carry the pre-echo
+    // version, and the host rejects a delta whose baseVersion has moved -- which reseeds, and the
+    // reseed destroys the textarea the user is typing in.
+    useEffect(() => {
+        draftRef.current = draft;
+    });
+
+    const restartDebouncedPost = useCallback(() => {
+        clearDebounceTimer();
+        debounceTimerRef.current = window.setTimeout(() => {
+            debounceTimerRef.current = null;
+            const current = draftRef.current;
+            if (current === null || isComposingRef.current || current.token !== reseedToken) return;
+            const nextText = replaceBlockText(
+                current.sourceText,
+                current.startLine,
+                current.lineCount,
+                current.text,
+            );
+            if (nextText === current.sourceText) return;
+            lastPostedTextRef.current = current.text;
+            onEdit(current.sourceText, nextText, current.version, current.token);
+        }, 1000);
+    }, [clearDebounceTimer, onEdit, reseedToken]);
+
+    useEffect(() => {
+        if (draft === null || draft.token !== reseedToken || draft.version === documentVersion)
+            return;
+        const lastPostedText = lastPostedTextRef.current ?? draft.text;
+        const nextDraft = reanchorDraft(
+            {
+                ...draft,
+                caretOffset: textareaRef.current?.selectionStart ?? draft.caretOffset,
+                sourceText: text,
+                version: documentVersion,
+                lineCount: lastPostedText.split("\n").length,
+            },
+            renderedSegments,
+            side,
+            text,
+            lastPostedText,
+        );
+        editingIndexRef.current = nextDraft.indices[0];
+        setDraft(nextDraft);
+        const nextLines = nextDraft.text.split("\n");
+        onDraftLayoutChange({
+            side,
+            indices: nextDraft.indices,
+            rowCount: Math.max(nextLines.length, 1),
+            maxLineLength: longestLine(nextLines),
+        });
+    }, [documentVersion, draft, onDraftLayoutChange, renderedSegments, reseedToken, side, text]);
+
     const startEditing = useCallback(
         (item: RenderedSegment, caretOffset = 0) => {
             if (editingIndexRef.current === item.index) return;
             editingIndexRef.current = item.index;
+            lastPostedTextRef.current = null;
             const startLine = paneStartLine(renderedSegments, item.index, side);
             const nextDraft = {
-                index: item.index,
+                indices: [item.index],
                 text: item.segment[side].join("\n"),
                 caretOffset,
                 sourceText: text,
@@ -305,7 +433,7 @@ function EditableDiffPane({
             setDraft(nextDraft);
             onDraftLayoutChange({
                 side,
-                index: item.index,
+                indices: nextDraft.indices,
                 rowCount: Math.max(nextDraft.lineCount, 1),
                 maxLineLength: longestLine(item.segment[side]),
             });
@@ -314,7 +442,12 @@ function EditableDiffPane({
     );
 
     const commitDraft = useCallback(() => {
+        clearDebounceTimer();
         if (draft === null) return;
+        if (draft.text === lastPostedTextRef.current) {
+            clearDraft();
+            return;
+        }
         clearDraft();
         if (draft.token !== reseedToken) return;
         const nextText = replaceBlockText(
@@ -324,20 +457,22 @@ function EditableDiffPane({
             draft.text,
         );
         if (nextText !== draft.sourceText) {
+            lastPostedTextRef.current = draft.text;
             onEdit(draft.sourceText, nextText, draft.version, draft.token);
         }
-    }, [clearDraft, draft, onEdit, reseedToken]);
+    }, [clearDebounceTimer, clearDraft, draft, onEdit, reseedToken]);
 
     return (
         <>
             {renderedSegments.map((item) => {
                 const lines = item.segment[side];
                 const compareLines = item.segment[side === "left" ? "right" : "left"];
-                const isEditing = draft?.index === item.index;
+                const isEditing = draft !== null && draft.indices.includes(item.index);
                 const lineCount = item.paneLines[side];
 
                 if (isEditing && draft) {
-                    const rowCount = Math.max(draftLines.length, lineCount, 1);
+                    if (draft.indices[0] !== item.index) return null;
+                    const rowCount = Math.max(draftLines.length, 1);
                     return (
                         <div
                             key={`editable-${side}-${item.index}`}
@@ -368,20 +503,30 @@ function EditableDiffPane({
                                 }}
                                 onCompositionEnd={() => {
                                     isComposingRef.current = false;
-                                    if (!reseedDuringCompositionRef.current) return;
-                                    reseedDuringCompositionRef.current = false;
-                                    clearDraft();
+                                    if (reseedDuringCompositionRef.current) {
+                                        reseedDuringCompositionRef.current = false;
+                                        clearDraft();
+                                        return;
+                                    }
+                                    restartDebouncedPost();
                                 }}
                                 onChange={(event) => {
                                     const nextText = event.target.value;
                                     const nextLines = nextText.split("\n");
-                                    setDraft({ ...draft, text: nextText });
+                                    const nextDraft = { ...draft, text: nextText };
+                                    setDraft(nextDraft);
                                     onDraftLayoutChange({
                                         side,
-                                        index: draft.index,
-                                        rowCount: Math.max(nextLines.length, draft.lineCount, 1),
+                                        indices: draft.indices,
+                                        // The draft's own lines, never the block it replaces: the
+                                        // row count reported here is what the pane's geometry is
+                                        // built from, and the render below sizes the block from
+                                        // these same lines. Holding the pre-edit height would keep
+                                        // the two disagreeing until the echo re-based them.
+                                        rowCount: Math.max(nextLines.length, 1),
                                         maxLineLength: longestLine(nextLines),
                                     });
+                                    restartDebouncedPost();
                                 }}
                                 onBlur={commitDraft}
                                 onKeyDown={(event) => {
@@ -642,10 +787,7 @@ export function App(): React.ReactElement {
     const paneLines = useMemo<SegmentPaneLines<DiffPane>[]>(
         () =>
             renderedSegments.map((item) => ({
-                paneLines:
-                    editingBlock?.index === item.index
-                        ? { ...item.paneLines, [editingBlock.side]: editingBlock.rowCount }
-                        : item.paneLines,
+                paneLines: editedPaneLines(item.paneLines, item.index, editingBlock),
                 conflict: item.segment.type === "changed",
                 id: item.segment.type === "changed" ? item.index : undefined,
             })),
@@ -693,8 +835,13 @@ export function App(): React.ReactElement {
     // of the same condition cannot be shown to be doing anything, since removing either one
     // leaves the other answering.
     const actionHunks = useMemo(
-        () => (singlePane === null ? ribbonIndices.map((ribbon) => ribbon.index) : []),
-        [ribbonIndices, singlePane],
+        () =>
+            singlePane === null
+                ? ribbonIndices
+                      .map((ribbon) => ribbon.index)
+                      .filter((index) => isAvailableActionHunk(index, editingBlock))
+                : [],
+        [editingBlock, ribbonIndices, singlePane],
     );
 
     const maxLineLength = useMemo(() => {

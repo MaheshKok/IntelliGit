@@ -1342,6 +1342,287 @@ describe("DiffViewerApp read-only contract", () => {
         expect(document.querySelectorAll('[data-conflict-id="0"] .action-btn')).toHaveLength(4);
         expect(document.querySelector(".result-editable")).not.toBeNull();
     });
+    describe("editable live re-diff", () => {
+        afterEach(() => {
+            vi.useRealTimers();
+        });
+
+        it("posts an edited block once after a one-second debounce", async () => {
+            const vscode = installVsCodeMock();
+            await mountEditablePane("shared();\nbefore();", 1);
+            vi.useFakeTimers();
+
+            const textarea = editBlock(1);
+            setDraftText(textarea, "after();");
+            act(() => {
+                vi.advanceTimersByTime(999);
+            });
+            expect(sentDeltas(vscode)).toEqual([]);
+
+            act(() => {
+                vi.advanceTimersByTime(1);
+            });
+            expect(sentDeltas(vscode)).toEqual([
+                {
+                    baseVersion: 1,
+                    baseReseedToken: 0,
+                    startOffset: 10,
+                    endOffset: 16,
+                    text: "after",
+                },
+            ]);
+        });
+
+        it("restarts the debounce window instead of queuing another post", async () => {
+            const vscode = installVsCodeMock();
+            await mountEditablePane("shared();\nbefore();", 1);
+            vi.useFakeTimers();
+
+            const textarea = editBlock(1);
+            setDraftText(textarea, "first();");
+            act(() => {
+                vi.advanceTimersByTime(750);
+            });
+            setDraftText(textarea, "second();");
+            act(() => {
+                vi.advanceTimersByTime(250);
+            });
+            expect(sentDeltas(vscode)).toEqual([]);
+
+            act(() => {
+                vi.advanceTimersByTime(750);
+            });
+            expect(applyDelta("shared();\nbefore();", sentDeltas(vscode)[0])).toBe(
+                "shared();\nsecond();",
+            );
+            act(() => {
+                vi.advanceTimersByTime(1000);
+            });
+            expect(sentDeltas(vscode)).toHaveLength(1);
+        });
+
+        it("does not double-post a debounced draft when focus leaves the textarea", async () => {
+            const vscode = installVsCodeMock();
+            await mountEditablePane("shared();\nbefore();", 1);
+            vi.useFakeTimers();
+
+            const textarea = editBlock(1);
+            setDraftText(textarea, "after();");
+            act(() => {
+                vi.advanceTimersByTime(1000);
+            });
+            commitDraft(textarea);
+
+            expect(sentDeltas(vscode)).toHaveLength(1);
+        });
+
+        it("re-bases a same-token echo without dismounting the active textarea", async () => {
+            const vscode = installVsCodeMock();
+            await mountEditablePane("shared();\nbefore();", 1);
+            vi.useFakeTimers();
+
+            const textarea = editBlock(1);
+            setDraftText(textarea, "first();");
+            act(() => {
+                vi.advanceTimersByTime(1000);
+            });
+            dispatchHostMessage({
+                type: "setDiffData",
+                data: {
+                    ...diffFixture,
+                    segments: [
+                        { type: "common" as const, left: ["shared();"], right: ["shared();"] },
+                        { type: "changed" as const, left: ["first();"], right: ["after();"] },
+                    ],
+                    editablePane: "left" as const,
+                    editableText: "shared();\nfirst();",
+                    documentVersion: 2,
+                    editableReseedToken: 0,
+                },
+            });
+            await flush();
+
+            const echoedTextarea = document.querySelector<HTMLTextAreaElement>(
+                "[data-testid='diff-pane-left-editable']",
+            );
+            expect(echoedTextarea).toBe(textarea);
+            expect(document.activeElement).toBe(textarea);
+            expect(echoedTextarea?.value).toBe("first();");
+
+            setDraftText(textarea, "second();");
+            act(() => {
+                vi.advanceTimersByTime(1000);
+            });
+            expect(sentDeltaVersions(vscode)).toEqual([1, 2]);
+        });
+
+        // Typing resumes the instant the first post goes out, so the second debounce is armed
+        // while the echo is still in flight. A timer that captured the draft it was armed with
+        // holds the pre-echo version, and the host rejects a delta whose baseVersion has moved --
+        // which reseeds, and the reseed destroys the textarea the user is typing in.
+        it("posts the re-based version when typing resumes before the echo lands", async () => {
+            const vscode = installVsCodeMock();
+            await mountEditablePane("shared();\nbefore();", 1);
+            vi.useFakeTimers();
+
+            const textarea = editBlock(1);
+            setDraftText(textarea, "first();");
+            act(() => {
+                vi.advanceTimersByTime(1000);
+            });
+
+            setDraftText(textarea, "second();");
+            dispatchHostMessage({
+                type: "setDiffData",
+                data: {
+                    ...diffFixture,
+                    segments: [
+                        { type: "common" as const, left: ["shared();"], right: ["shared();"] },
+                        { type: "changed" as const, left: ["first();"], right: ["after();"] },
+                    ],
+                    editablePane: "left" as const,
+                    editableText: "shared();\nfirst();",
+                    documentVersion: 2,
+                    editableReseedToken: 0,
+                },
+            });
+            await flush();
+            act(() => {
+                vi.advanceTimersByTime(1000);
+            });
+
+            expect(sentDeltaVersions(vscode)).toEqual([1, 2]);
+        });
+
+        it("still clears a draft when a foreign payload changes its token", async () => {
+            installVsCodeMock();
+            await mountEditablePane("shared();\nbefore();", 1);
+
+            const textarea = editBlock(1);
+            setDraftText(textarea, "local();");
+            dispatchHostMessage({
+                type: "setDiffData",
+                data: {
+                    ...diffFixture,
+                    editablePane: "left" as const,
+                    editableText: "shared();\nforeign();",
+                    documentVersion: 2,
+                    editableReseedToken: 1,
+                },
+            });
+            await flush();
+
+            expect(document.querySelector("[data-testid='diff-pane-left-editable']")).toBeNull();
+        });
+
+        it("waits for compositionend before restarting the debounced post", async () => {
+            const vscode = installVsCodeMock();
+            await mountEditablePane("shared();\nbefore();", 1);
+            vi.useFakeTimers();
+
+            const textarea = editBlock(1);
+            act(() => {
+                textarea.dispatchEvent(new Event("compositionstart", { bubbles: true }));
+            });
+            setDraftText(textarea, "composed();");
+            act(() => {
+                vi.advanceTimersByTime(1000);
+            });
+            expect(sentDeltas(vscode)).toEqual([]);
+
+            act(() => {
+                textarea.dispatchEvent(new Event("compositionend", { bubbles: true }));
+                vi.advanceTimersByTime(999);
+            });
+            expect(sentDeltas(vscode)).toEqual([]);
+            act(() => {
+                vi.advanceTimersByTime(1);
+            });
+            expect(applyDelta("shared();\nbefore();", sentDeltas(vscode)[0])).toBe(
+                "shared();\ncomposed();",
+            );
+        });
+
+        it("re-anchors a live draft across split hunks and hides every overlapping revert action", async () => {
+            const vscode = installVsCodeMock();
+            await mountEditablePane("shared();\nbefore();\ntail();", 1, [
+                { type: "common" as const, left: ["shared();"], right: ["shared();"] },
+                { type: "changed" as const, left: ["before();"], right: ["after();"] },
+                { type: "common" as const, left: ["tail();"], right: ["tail();"] },
+            ]);
+            vi.useFakeTimers();
+
+            const textarea = editBlock(1);
+            setDraftText(textarea, "first();\nsecond();");
+            act(() => {
+                vi.advanceTimersByTime(1000);
+            });
+            dispatchHostMessage({
+                type: "setDiffData",
+                data: {
+                    ...diffFixture,
+                    segments: [
+                        { type: "common" as const, left: ["shared();"], right: ["shared();"] },
+                        { type: "changed" as const, left: ["first();"], right: ["remoteFirst();"] },
+                        {
+                            type: "changed" as const,
+                            left: ["second();"],
+                            right: ["remoteSecond();"],
+                        },
+                        { type: "common" as const, left: ["tail();"], right: ["tail();"] },
+                    ],
+                    editablePane: "left" as const,
+                    editableText: "shared();\nfirst();\nsecond();\ntail();",
+                    documentVersion: 2,
+                    editableReseedToken: 0,
+                },
+            });
+            await flush();
+
+            expect(textarea.rows).toBe(2);
+            expect(document.querySelector("[data-testid='diff-revert-1']")).toBeNull();
+            expect(document.querySelector("[data-testid='diff-revert-2']")).toBeNull();
+            expect(sentDeltas(vscode)).toHaveLength(1);
+        });
+
+        it("widens an unchanged draft to the full echoed segment span", async () => {
+            await mountEditablePane("shared();\nbefore();\ntail();", 1, [
+                { type: "common" as const, left: ["shared();"], right: ["shared();"] },
+                { type: "changed" as const, left: ["before();"], right: ["after();"] },
+                { type: "common" as const, left: ["tail();"], right: ["tail();"] },
+            ]);
+            vi.useFakeTimers();
+
+            const textarea = editBlock(1);
+            setDraftText(textarea, "posted();");
+            act(() => {
+                vi.advanceTimersByTime(1000);
+            });
+            dispatchHostMessage({
+                type: "setDiffData",
+                data: {
+                    ...diffFixture,
+                    segments: [
+                        { type: "common" as const, left: ["shared();"], right: ["shared();"] },
+                        {
+                            type: "changed" as const,
+                            left: ["neighbour();", "posted();"],
+                            right: ["after();"],
+                        },
+                        { type: "common" as const, left: ["tail();"], right: ["tail();"] },
+                    ],
+                    editablePane: "left" as const,
+                    editableText: "shared();\nneighbour();\nposted();\ntail();",
+                    documentVersion: 2,
+                    editableReseedToken: 0,
+                },
+            });
+            await flush();
+
+            expect(textarea.value).toBe("neighbour();\nposted();");
+            expect(textarea.rows).toBe(2);
+        });
+    });
 });
 
 // --- Scroll viewport and ribbon geometry ---
@@ -1601,6 +1882,25 @@ describe("DiffViewerApp scroll viewport and ribbons", () => {
             editableLines?.dispatchEvent(new Event("scroll", { bubbles: true }));
         });
         expect(immutableLines?.scrollLeft).toBe(42);
+    });
+
+    // Each ribbon side is drawn from that pane's own extent, so a draft that deletes lines has to
+    // shrink its side as it is typed -- not a second later when the echo lands. Reporting the
+    // pre-edit block height instead keeps the edited pane's row accounting ahead of what it
+    // actually renders, and the panes ride out of alignment for the whole debounce window.
+    it("shrinks the edited pane's ribbon side as the draft loses lines", async () => {
+        await mountScrollFixture("left");
+        const ribbonSide = (): number => {
+            const path = document.querySelectorAll(".diff-ribbon-layer .diff-ribbon")[0];
+            const extents = ribbonExtents(path);
+            return extents.leftBottom - extents.leftTop;
+        };
+        expect(ribbonSide()).toBe(3 * LINE_HEIGHT_PX);
+
+        setDraftText(editBlock(1), "removed0;");
+        await flush();
+
+        expect(ribbonSide()).toBe(LINE_HEIGHT_PX);
     });
 
     it("draws each ribbon side from that pane's own extent, never the canonical one", async () => {
