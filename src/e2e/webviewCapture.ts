@@ -72,6 +72,25 @@ const HANDSHAKE_TRACED_TYPES = new Set(["ready", "setRepositories"]);
 const HANDSHAKE_TRACE_PREFIX = "[intelligit-e2e] handshake";
 
 /**
+ * Whether `message` is a document announcing itself for the first time.
+ *
+ * The webview's retry numbers its asks from 1 per DOCUMENT
+ * (`src/webviews/react/commit-panel/hooks/useExtensionMessages.ts`), so a second `attempt: 1`
+ * behind one wrapper is a document that was rebuilt, not a view that was re-resolved.
+ *
+ * Only a literal `1` counts. `isHydrationReAsk` reads unknown input the other way round because
+ * its failure costs a redundant Git read; here the cost is inverted -- a missing or malformed
+ * `attempt` reported as a fresh document would convict a reload that never happened, and this
+ * field exists to convict. Undercounting leaves the next dump as mute as the last, which is
+ * recoverable; a phantom generation sends the next investigation somewhere real evidence does not.
+ */
+function isOpeningAsk(message: unknown): boolean {
+    if (typeof message !== "object" || message === null) return false;
+    const { type, attempt } = message as { type?: unknown; attempt?: unknown };
+    return type === "ready" && attempt === 1;
+}
+
+/**
  * Numbers each wrapped webview so the two legs of one handshake can be attributed to the same
  * boundary object -- or proven to belong to different ones.
  *
@@ -105,16 +124,26 @@ export function resetWebviewWrapperNumberingForTests(): void {
  * remains is whether it was posted to the SAME webview that asked -- and `contextId` alone cannot
  * say, because both legs of both views print `commit-panel`. `instance` is that missing field:
  * differing numbers across a matched in/out pair convict the record-versus-sender split in
- * `CommitPanelViewProvider.postToWebview`, and identical numbers acquit it and leave VS Code
- * dropping a post it acknowledged.
+ * `CommitPanelViewProvider.postToWebview`.
+ *
+ * Identical numbers acquit that split -- and they used to be read as leaving "VS Code dropped a
+ * post it acknowledged" as the sole survivor. They never did. `instance` counts WRAPS, one per
+ * `resolveWebviewView`, and VS Code rebuilds a hidden view's document without re-running it; the
+ * numbering comment above says exactly this, and the conclusion drawn from it did not. So a host
+ * answering a document generation that no longer exists printed byte-identically to a host
+ * answering the live one, and the 2026-08-25 runs (PR #232, 32881969364 and 32883412896) could not
+ * separate them. `generation` is the field that does: it advances on each `attempt: 1` behind one
+ * wrapper (see {@link isOpeningAsk}), so `#1.1 out` beside `#1.2 in` is an answer posted into a
+ * dead document, and a matched pair convicts VS Code's own delivery instead.
  *
  * Message TYPE only, never a payload: a captured message can carry real repository data, and this
- * line ends up in a CI artifact. The instance number is an in-process counter and names nothing
- * about the workspace, so it is safe to print under the same rule.
+ * line ends up in a CI artifact. Both numbers are in-process counters and name nothing about the
+ * workspace, so they are safe to print under the same rule.
  */
 function traceHandshake(
     contextId: WebviewContextId,
     instance: number,
+    generation: number,
     direction: "in" | "out",
     message: unknown,
 ): void {
@@ -123,7 +152,9 @@ function traceHandshake(
             ? (message as { type?: unknown }).type
             : undefined;
     if (typeof type !== "string" || !HANDSHAKE_TRACED_TYPES.has(type)) return;
-    console.error(`${HANDSHAKE_TRACE_PREFIX} ${contextId}#${instance} ${direction} ${type}`);
+    console.error(
+        `${HANDSHAKE_TRACE_PREFIX} ${contextId}#${instance}.${generation} ${direction} ${type}`,
+    );
 }
 
 /**
@@ -169,6 +200,11 @@ export function wrapWebviewForCapture(
     // Allocated per wrap rather than per message, so every line this wrapper ever emits carries the
     // same number and a pair that disagrees is a genuinely different boundary object.
     const instance = ++webviewWrapperCount;
+    // How many documents have announced themselves behind this one wrapper. Read through
+    // `documentGeneration` rather than directly: a post traced before any `ready` belongs to the
+    // first document, not to a zeroth one that never existed.
+    let announcedDocuments = 0;
+    const documentGeneration = (): number => Math.max(announcedDocuments, 1);
     return {
         get options() {
             return webview.options;
@@ -195,7 +231,10 @@ export function wrapWebviewForCapture(
         ): vscode.Disposable =>
             webview.onDidReceiveMessage(
                 (message: unknown) => {
-                    traceHandshake(contextId, instance, "in", message);
+                    // Counted before the line is emitted, so the reload's own `ready` prints under
+                    // the generation it opens rather than under the one it replaced.
+                    if (isOpeningAsk(message)) announcedDocuments += 1;
+                    traceHandshake(contextId, instance, documentGeneration(), "in", message);
                     return listener.call(thisArgs, message);
                 },
                 undefined,
@@ -204,7 +243,7 @@ export function wrapWebviewForCapture(
         asWebviewUri: (localResource: vscode.Uri) => webview.asWebviewUri(localResource),
         postMessage: (message: unknown): Thenable<boolean> => {
             sink.record(contextId, message);
-            traceHandshake(contextId, instance, "out", message);
+            traceHandshake(contextId, instance, documentGeneration(), "out", message);
             return webview.postMessage(message);
         },
     };

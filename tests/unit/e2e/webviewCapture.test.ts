@@ -164,7 +164,7 @@ describe("wrapWebviewForCapture: handshake trace", () => {
                 "the listener outlives whoever owned it",
         ).toBe(ownDisposables);
         expect(lines, "the ask must be traced, naming context, instance and direction").toEqual([
-            "[intelligit-e2e] handshake commit-panel#1 in ready",
+            "[intelligit-e2e] handshake commit-panel#1.1 in ready",
         ]);
     });
 
@@ -189,7 +189,7 @@ describe("wrapWebviewForCapture: handshake trace", () => {
             lines,
             "only the two handshake types may be traced: a line per message would evict the " +
                 "handshake from the dump's bounded console trail",
-        ).toEqual(["[intelligit-e2e] handshake commit-panel#1 out setRepositories"]);
+        ).toEqual(["[intelligit-e2e] handshake commit-panel#1.1 out setRepositories"]);
     });
 
     /**
@@ -229,9 +229,9 @@ describe("wrapWebviewForCapture: handshake trace", () => {
                 "split in postToWebview, and differing ones convict it -- a trace that cannot " +
                 "tell those apart is why four investigations ended without an answer",
         ).toEqual([
-            "[intelligit-e2e] handshake commit-panel#1 in ready",
-            "[intelligit-e2e] handshake commit-panel#2 out setRepositories",
-            "[intelligit-e2e] handshake commit-panel#2 in ready",
+            "[intelligit-e2e] handshake commit-panel#1.1 in ready",
+            "[intelligit-e2e] handshake commit-panel#2.1 out setRepositories",
+            "[intelligit-e2e] handshake commit-panel#2.1 in ready",
         ]);
     });
 
