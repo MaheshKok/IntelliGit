@@ -235,6 +235,61 @@ describe("wrapWebviewForCapture: handshake trace", () => {
         ]);
     });
 
+    /**
+     * The case the instance number cannot reach, and wrongly claimed to have excluded.
+     *
+     * `webviewWrapperCount` increments inside `wrapWebviewForCapture`, which runs once per
+     * `resolveWebviewView`. VS Code reloads a hidden view's document WITHOUT re-running
+     * `resolveWebviewView` -- `CommitPanelViewProvider.handleReadyMessage`'s own comment is built
+     * on that fact -- so a reload keeps one wrapper, and therefore one number. Two documents then
+     * print byte-identically to one, which means "the host answered a document generation that no
+     * longer exists" cannot be told apart from "the host answered the live document".
+     *
+     * That is precisely the pair the 2026-08-25 dumps left open. Identical numbers across a matched
+     * in/out pair do acquit the record-versus-sender split in `postToWebview`, but the surviving
+     * explanation is NOT "VS Code dropped a post it acknowledged" alone: a stale document
+     * generation survives with it, and no field in the line separates them.
+     *
+     * A fresh document always opens its handshake at `attempt: 1`; a re-ask from a document that is
+     * still alive carries a higher number. Counting only a literal `1` is deliberate -- the failure
+     * direction is an undercount (a reload that goes unreported), never a phantom reload, and for a
+     * line whose job is to convict, a false conviction is the more expensive mistake.
+     */
+    it("distinguishes two document generations behind one wrapped view", () => {
+        const fake = makeFakeWebview();
+        const wrapped = wrapWebviewForCapture(
+            fake.webview,
+            "commit-panel",
+            new WebviewCaptureSink(),
+        );
+
+        const lines = tracedLines(() => {
+            wrapped.onDidReceiveMessage(() => undefined);
+            // Document generation one: opening ask, then a re-ask from that same live document.
+            fake.receive({ type: "ready", attempt: 1 });
+            fake.receive({ type: "ready", attempt: 2 });
+            void wrapped.postMessage({ type: "setRepositories", repositories: [] });
+            // VS Code reloads the document behind the same view. `resolveWebviewView` does not run,
+            // so nothing re-wraps -- but the script does re-run, and its counter restarts at one.
+            fake.receive({ type: "ready", attempt: 1 });
+            void wrapped.postMessage({ type: "setRepositories", repositories: [] });
+        });
+
+        expect(
+            lines,
+            "a reload behind a live view must change the traced document generation: the wrapper " +
+                "number cannot, because it counts resolves and a reload is not one -- so without " +
+                "this field an answer posted into a dead document reads exactly like an answer " +
+                "the live document received and ignored",
+        ).toEqual([
+            "[intelligit-e2e] handshake commit-panel#1.1 in ready",
+            "[intelligit-e2e] handshake commit-panel#1.1 in ready",
+            "[intelligit-e2e] handshake commit-panel#1.1 out setRepositories",
+            "[intelligit-e2e] handshake commit-panel#1.2 in ready",
+            "[intelligit-e2e] handshake commit-panel#1.2 out setRepositories",
+        ]);
+    });
+
     it("never puts a payload in the trace", () => {
         const fake = makeFakeWebview();
         const wrapped = wrapWebviewForCapture(
