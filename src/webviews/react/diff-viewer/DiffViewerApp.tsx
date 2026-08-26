@@ -17,6 +17,7 @@ import {
     connectorChannelSpan,
     LINE_HEIGHT_PX,
     ribbonPathD,
+    scrollRangePx,
     type DiffVerticalLayout,
     type RibbonSpan,
     type SegmentPaneLines,
@@ -40,6 +41,7 @@ import {
     DIFF_PANES,
     segmentClassName,
     segmentRibbonMarker,
+    soleSidedPane,
     type DiffPane,
     type SegmentMarker,
 } from "./segmentMarkers";
@@ -342,6 +344,31 @@ function DiffRibbonLayer({
     );
 }
 
+/** Root class list. The modifier is what widens the surviving pane of a one-sided file. */
+function viewerRootClass(singlePane: DiffPane | null): string {
+    return singlePane === null
+        ? "diff-core diff-viewer"
+        : "diff-core diff-viewer diff-viewer-single";
+}
+
+/** The pane header labels -- one per pane actually on screen. */
+function DiffPaneMetaRow({
+    singlePane,
+    leftLabel,
+    rightLabel,
+}: {
+    singlePane: DiffPane | null;
+    leftLabel: string;
+    rightLabel: string;
+}): React.ReactElement {
+    return (
+        <div className="diff-pane-meta-row">
+            {singlePane === "right" ? null : <div className="diff-pane-meta">{leftLabel}</div>}
+            {singlePane === "left" ? null : <div className="diff-pane-meta">{rightLabel}</div>}
+        </div>
+    );
+}
+
 /** Hosts a pure, read-only two-pane diff with only view toggles. */
 export function App(): React.ReactElement {
     const [data, setData] = useState<DiffViewerData | null>(null);
@@ -445,6 +472,16 @@ export function App(): React.ReactElement {
                 })),
         [renderedSegments],
     );
+
+    // Never collapse away the pane bound to the live document. A one-sided file whose
+    // surviving side is the read-only one would otherwise unmount the editing surface --
+    // the user loses the ability to type into the file the viewer opened for editing,
+    // which is a strictly worse trade than an empty column.
+    const singlePane = useMemo(() => {
+        const sole = soleSidedPane(segments);
+        if (sole === null) return null;
+        return data?.editablePane === undefined || data.editablePane === sole ? sole : null;
+    }, [data?.editablePane, segments]);
 
     const maxLineLength = useMemo(() => {
         let max = 1;
@@ -780,7 +817,11 @@ export function App(): React.ReactElement {
 
     return (
         <SyntaxHighlightProvider value={syntaxHighlightState}>
-            <div className="diff-core diff-viewer" style={rootStyle} data-testid="diff-viewer-root">
+            <div
+                className={viewerRootClass(singlePane)}
+                style={rootStyle}
+                data-testid="diff-viewer-root"
+            >
                 <div className="diff-toolbar">
                     <div className="toolbar-left">
                         <button
@@ -820,10 +861,11 @@ export function App(): React.ReactElement {
                         </span>
                     ) : null}
                 </div>
-                <div className="diff-pane-meta-row">
-                    <div className="diff-pane-meta">{data.leftLabel}</div>
-                    <div className="diff-pane-meta">{data.rightLabel}</div>
-                </div>
+                <DiffPaneMetaRow
+                    singlePane={singlePane}
+                    leftLabel={data.leftLabel}
+                    rightLabel={data.rightLabel}
+                />
                 {error ? (
                     <div className="error-message diff-error-banner" role="alert">
                         {t("diff.error.load", { error })}
@@ -833,83 +875,92 @@ export function App(): React.ReactElement {
                     <div ref={contentRef} className="diff-content" onScrollCapture={handleScroll}>
                         <div ref={viewportElementRef} className="diff-viewport">
                             <div className="diff-columns">
-                                <div
-                                    ref={(element) => {
-                                        columnRefs.current.left = element;
-                                    }}
-                                    className="diff-pane diff-pane-left"
-                                    data-testid="diff-pane-left"
-                                >
-                                    {data.editablePane === "left" &&
-                                    data.editableText !== undefined &&
-                                    data.documentVersion !== undefined ? (
-                                        <EditableDiffPane
-                                            side="left"
-                                            text={data.editableText}
-                                            documentVersion={data.documentVersion}
-                                            reseedToken={data.editableReseedToken ?? 0}
-                                            renderedSegments={renderedSegments}
-                                            highlightWords={highlightWords}
-                                            onEdit={handleEdit}
-                                            onDraftLayoutChange={handleDraftLayoutChange}
-                                            onHorizontalScroll={syncHorizontalScroll}
-                                        />
-                                    ) : (
-                                        renderedSegments.map((item) => (
-                                            <DiffPaneBlock
-                                                key={`left-${item.index}`}
-                                                segment={item.segment}
+                                {singlePane === "right" ? null : (
+                                    <div
+                                        ref={(element) => {
+                                            columnRefs.current.left = element;
+                                        }}
+                                        className="diff-pane diff-pane-left"
+                                        data-testid="diff-pane-left"
+                                    >
+                                        {data.editablePane === "left" &&
+                                        data.editableText !== undefined &&
+                                        data.documentVersion !== undefined ? (
+                                            <EditableDiffPane
                                                 side="left"
-                                                lineCount={item.paneLines.left}
-                                                lineNumbers={item.lineNumbers.left}
+                                                text={data.editableText}
+                                                documentVersion={data.documentVersion}
+                                                reseedToken={data.editableReseedToken ?? 0}
+                                                renderedSegments={renderedSegments}
                                                 highlightWords={highlightWords}
+                                                onEdit={handleEdit}
+                                                onDraftLayoutChange={handleDraftLayoutChange}
+                                                onHorizontalScroll={syncHorizontalScroll}
                                             />
-                                        ))
-                                    )}
-                                </div>
-                                <div
-                                    ref={(element) => {
-                                        columnRefs.current.right = element;
-                                    }}
-                                    className="diff-pane diff-pane-right"
-                                    data-testid="diff-pane-right"
-                                >
-                                    {data.editablePane === "right" &&
-                                    data.editableText !== undefined &&
-                                    data.documentVersion !== undefined ? (
-                                        <EditableDiffPane
-                                            side="right"
-                                            text={data.editableText}
-                                            documentVersion={data.documentVersion}
-                                            reseedToken={data.editableReseedToken ?? 0}
-                                            renderedSegments={renderedSegments}
-                                            highlightWords={highlightWords}
-                                            onEdit={handleEdit}
-                                            onDraftLayoutChange={handleDraftLayoutChange}
-                                            onHorizontalScroll={syncHorizontalScroll}
-                                        />
-                                    ) : (
-                                        renderedSegments.map((item) => (
-                                            <DiffPaneBlock
-                                                key={`right-${item.index}`}
-                                                segment={item.segment}
+                                        ) : (
+                                            renderedSegments.map((item) => (
+                                                <DiffPaneBlock
+                                                    key={`left-${item.index}`}
+                                                    segment={item.segment}
+                                                    side="left"
+                                                    lineCount={item.paneLines.left}
+                                                    lineNumbers={item.lineNumbers.left}
+                                                    highlightWords={highlightWords}
+                                                />
+                                            ))
+                                        )}
+                                    </div>
+                                )}
+                                {singlePane === "left" ? null : (
+                                    <div
+                                        ref={(element) => {
+                                            columnRefs.current.right = element;
+                                        }}
+                                        className="diff-pane diff-pane-right"
+                                        data-testid="diff-pane-right"
+                                    >
+                                        {data.editablePane === "right" &&
+                                        data.editableText !== undefined &&
+                                        data.documentVersion !== undefined ? (
+                                            <EditableDiffPane
                                                 side="right"
-                                                lineCount={item.paneLines.right}
-                                                lineNumbers={item.lineNumbers.right}
+                                                text={data.editableText}
+                                                documentVersion={data.documentVersion}
+                                                reseedToken={data.editableReseedToken ?? 0}
+                                                renderedSegments={renderedSegments}
                                                 highlightWords={highlightWords}
+                                                onEdit={handleEdit}
+                                                onDraftLayoutChange={handleDraftLayoutChange}
+                                                onHorizontalScroll={syncHorizontalScroll}
                                             />
-                                        ))
-                                    )}
-                                </div>
+                                        ) : (
+                                            renderedSegments.map((item) => (
+                                                <DiffPaneBlock
+                                                    key={`right-${item.index}`}
+                                                    segment={item.segment}
+                                                    side="right"
+                                                    lineCount={item.paneLines.right}
+                                                    lineNumbers={item.lineNumbers.right}
+                                                    highlightWords={highlightWords}
+                                                />
+                                            ))
+                                        )}
+                                    </div>
+                                )}
                             </div>
-                            <DiffRibbonLayer
-                                ribbons={ribbonIndices}
-                                registerPath={registerRibbonPath}
-                            />
+                            {/* A ribbon connects two positions. With one pane there is no
+                                second position to connect to, so the layer would draw every
+                                hunk as a path from a column that is not on screen. */}
+                            {singlePane === null ? (
+                                <DiffRibbonLayer
+                                    ribbons={ribbonIndices}
+                                    registerPath={registerRibbonPath}
+                                />
+                            ) : null}
                         </div>
                         <div
                             className="diff-vscroll-spacer"
-                            style={{ height: layout.canonicalTotalPx }}
+                            style={{ height: scrollRangePx(layout.canonicalTotalPx) }}
                             aria-hidden="true"
                         />
                     </div>
@@ -924,7 +975,7 @@ export function App(): React.ReactElement {
                         // confidently at blank space. Taller than the viewport, this
                         // exceeds the box and the stripe is the full track, as it should
                         // be. Same number as the spacer, because it is the same range.
-                        style={{ maxHeight: layout.canonicalTotalPx }}
+                        style={{ maxHeight: scrollRangePx(layout.canonicalTotalPx) }}
                     >
                         {stripeMarks.map((mark) => (
                             <div

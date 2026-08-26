@@ -9,6 +9,7 @@ import {
     paneOffsetForCanonical,
     ribbonOutlineD,
     ribbonPathD,
+    scrollRangePx,
     type PaneId,
     type SegmentPaneLines,
 } from "../../../src/webviews/react/diff-core/mergeScrollLayout";
@@ -32,6 +33,16 @@ describe("buildVerticalLayout", () => {
         expect(layout.canonicalTopPx).toEqual([0, 60, 120]);
         expect(layout.canonicalHPx).toEqual([60, 60, 40]);
         expect(layout.canonicalTotalPx).toBe(160);
+        // The trailing rows hang off the SCROLL RANGE, never off the canonical space the
+        // line above pins -- pad that and every pane offset and ribbon extent moves with it.
+        expect(scrollRangePx(layout.canonicalTotalPx)).toBe(220);
+    });
+
+    it("hangs three blank rows below the document so the last line is not flush with the edge", () => {
+        // Literals, not `TRAILING_ROWS * LINE_HEIGHT_PX`: an expectation built from the
+        // constant it polices passes just as happily when that constant is zero.
+        expect(scrollRangePx(0)).toBe(60);
+        expect(scrollRangePx(800)).toBe(860);
     });
 
     it("advances each pane by its own natural height, not the canonical height", () => {

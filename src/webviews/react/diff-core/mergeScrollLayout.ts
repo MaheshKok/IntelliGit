@@ -8,6 +8,23 @@
 /** Editor row height in pixels, matched to the `.code-line` CSS line-height. */
 export const LINE_HEIGHT_PX = 20;
 
+/**
+ * Blank rows kept below the last line of a diff. Without them the final line sits
+ * flush against the bottom of the viewport, which reads as a truncated file and
+ * leaves the last line awkward to put under the cursor.
+ *
+ * They are added to the SCROLL RANGE only, never to `canonicalTotalPx`. That number
+ * is the canonical space every pane offset, hunk extent and connector ribbon is
+ * derived from, so padding it would move real geometry rather than simply letting
+ * the scroller travel further than the document.
+ */
+export const TRAILING_ROWS = 3;
+
+/** The scrollable length of a diff: the document, plus the trailing blank rows. */
+export function scrollRangePx(canonicalTotalPx: number): number {
+    return canonicalTotalPx + TRAILING_ROWS * LINE_HEIGHT_PX;
+}
+
 /** A consumer-defined pane identifier. Pane order is supplied to the engine. */
 export type PaneId = string;
 

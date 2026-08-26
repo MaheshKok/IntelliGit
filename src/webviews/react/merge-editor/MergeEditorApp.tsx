@@ -60,6 +60,7 @@ import {
     LINE_HEIGHT_PX,
     ribbonOutlineD,
     ribbonPathD,
+    scrollRangePx,
     type DiffVerticalLayout,
     type RibbonSpan,
     type SegmentPaneLines,
@@ -908,7 +909,10 @@ export function App() {
             const extent = layout.hunkCanonical.get(id);
             if (!extent) return;
             // Center the hunk's canonical extent in the viewport, clamped to range.
-            const maxScroll = Math.max(0, layout.canonicalTotalPx - viewportHRef.current);
+            const maxScroll = Math.max(
+                0,
+                scrollRangePx(layout.canonicalTotalPx) - viewportHRef.current,
+            );
             const top = Math.max(
                 0,
                 Math.min(extent.top + extent.height / 2 - viewportHRef.current / 2, maxScroll),
@@ -1452,7 +1456,7 @@ export function App() {
                         </div>
                         <div
                             className="merge-vscroll-spacer"
-                            style={{ height: layout.canonicalTotalPx }}
+                            style={{ height: scrollRangePx(layout.canonicalTotalPx) }}
                             aria-hidden="true"
                         />
                     </div>

@@ -3,7 +3,10 @@
 import { act } from "react";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { MAX_DIFF_LINES } from "../../../src/diff/diffBudgets";
-import { LINE_HEIGHT_PX } from "../../../src/webviews/react/diff-core/mergeScrollLayout";
+import {
+    LINE_HEIGHT_PX,
+    TRAILING_ROWS,
+} from "../../../src/webviews/react/diff-core/mergeScrollLayout";
 import { flush } from "../../helpers/reactDomTestUtils";
 import { installWebviewI18n } from "../../helpers/webviewI18nTestUtils";
 
@@ -486,9 +489,10 @@ describe("DiffViewerApp read-only contract", () => {
         await flush();
 
         expect(
-            document.querySelectorAll(".diff-pane-left .code-line"),
-            "the premise: an added file's immutable pane renders no rows",
-        ).toHaveLength(0);
+            document.querySelector(".diff-pane-left"),
+            "the premise: an added file has no left pane at all, so nothing below it is " +
+                "measuring an empty column",
+        ).toBeNull();
 
         const spacer = document.querySelector<HTMLElement>(".diff-vscroll-spacer");
         const editablePane = document.querySelector(".diff-pane-right");
@@ -496,7 +500,95 @@ describe("DiffViewerApp read-only contract", () => {
         expect(editablePane?.querySelectorAll(".code-line")).toHaveLength(40);
         expect(editablePane?.querySelector(".code-lines")).not.toBeNull();
         expect(editablePane?.querySelector("textarea")).toBeNull();
-        expect(spacer?.style.height, "the block rows own the canonical scroll range").toBe("800px");
+        expect(
+            spacer?.style.height,
+            "the block rows own the canonical scroll range, plus the trailing blank rows",
+        ).toBe("860px");
+    });
+
+    it("collapses a file that exists on one side only to the pane that holds it", async () => {
+        // Every line of an added file is on the right and every line of a deleted file is on
+        // the left, so the other pane is an empty column as tall as the file with a border
+        // down it -- and a ribbon from each hunk running into it. Both directions are mounted
+        // because they are separate branches of the same derivation, and a collapse that only
+        // ever fired one way would pass a test carrying only that way.
+        installVsCodeMock();
+        createRootHost();
+        await act(async () => {
+            await import("../../../src/webviews/react/diff-viewer/DiffViewerApp");
+        });
+        await flush();
+
+        const lines = ["first();", "second();", "third();"];
+        dispatchHostMessage({
+            type: "setDiffData",
+            data: {
+                ...diffFixture,
+                segments: [{ type: "changed" as const, left: [], right: lines }],
+            },
+        });
+        await flush();
+
+        expect(document.querySelector(".diff-pane-left")).toBeNull();
+        expect(document.querySelectorAll(".diff-pane-right .code-line")).toHaveLength(3);
+        expect(
+            document.querySelector(".diff-viewer")?.classList.contains("diff-viewer-single"),
+            "the surviving pane only widens if the grid is told to carry one track",
+        ).toBe(true);
+        expect(
+            document.querySelectorAll(".diff-pane-meta"),
+            "two labels over one pane read as a two-pane header with a pane missing",
+        ).toHaveLength(1);
+        expect(
+            document.querySelector(".diff-ribbon-layer"),
+            "a ribbon connects two positions, and there is only one pane to land in",
+        ).toBeNull();
+
+        dispatchHostMessage({
+            type: "setDiffData",
+            data: {
+                ...diffFixture,
+                segments: [{ type: "changed" as const, left: lines, right: [] }],
+            },
+        });
+        await flush();
+
+        expect(document.querySelector(".diff-pane-right")).toBeNull();
+        expect(document.querySelectorAll(".diff-pane-left .code-line")).toHaveLength(3);
+        expect(document.querySelectorAll(".diff-pane-meta")).toHaveLength(1);
+    });
+
+    it("keeps both panes when collapsing would unmount the editable one", async () => {
+        // The collapse removes a pane, and one pane is bound to the live VS Code document.
+        // Dropping that one takes the user's editing surface away -- a strictly worse outcome
+        // than the empty column the collapse exists to remove, and one no assertion about the
+        // surviving side would notice, since the surviving side renders correctly either way.
+        installVsCodeMock();
+        createRootHost();
+        await act(async () => {
+            await import("../../../src/webviews/react/diff-viewer/DiffViewerApp");
+        });
+        await flush();
+
+        const added = ["alpha();", "beta();"];
+        dispatchHostMessage({
+            type: "setDiffData",
+            data: {
+                ...diffFixture,
+                segments: [{ type: "changed" as const, left: [], right: added }],
+                editablePane: "left" as const,
+                editableText: "",
+                documentVersion: 1,
+                editableReseedToken: 0,
+            },
+        });
+        await flush();
+
+        expect(document.querySelector(".diff-pane-left")).not.toBeNull();
+        expect(document.querySelector(".diff-pane-right")).not.toBeNull();
+        expect(
+            document.querySelector(".diff-viewer")?.classList.contains("diff-viewer-single"),
+        ).toBe(false);
     });
 
     it("marks an editable pane's blocks with the segment state its immutable peer gets", async () => {
@@ -585,7 +677,7 @@ describe("DiffViewerApp read-only contract", () => {
         const editablePane = document.querySelector(".diff-pane-left");
         expect(editablePane?.querySelectorAll(".line-number-row")).toHaveLength(40);
         expect(editablePane?.querySelectorAll(".code-line")).toHaveLength(40);
-        expect(spacer?.style.height).toBe("800px");
+        expect(spacer?.style.height).toBe("860px");
     });
 
     it("renders an editable pane over a zero-segment payload without crashing", async () => {
@@ -858,7 +950,7 @@ describe("DiffViewerApp read-only contract", () => {
         expect(editingBlock?.style.containIntrinsicSize).toBe(
             `auto ${draftLines.length * LINE_HEIGHT_PX}px`,
         );
-        expect(spacer?.style.height).toBe(`${draftLines.length * LINE_HEIGHT_PX}px`);
+        expect(spacer?.style.height).toBe("200px");
     });
 
     it("keeps the anti-vacuity selectors present in the merge app", async () => {
@@ -1021,19 +1113,70 @@ describe("DiffViewerApp scroll viewport and ribbons", () => {
             "the spacer is the scroller's whole scroll range; nested inside the clipped, fixed-height viewport it contributes none",
         ).toContain("diff-content");
         expect(spacer?.parentElement?.className).not.toContain("diff-viewport");
-        expect(spacer?.style.height).toBe(`${CANONICAL_TOTAL_PX}px`);
+        // 39 rows of document, then the three trailing blank rows the scroller adds.
+        expect(spacer?.style.height).toBe("840px");
         expect(
             content.style.getPropertyValue("--diff-viewport-h"),
             "without the measured height the viewport cannot cancel itself out of flow in pixels",
         ).toBe(`${VIEWPORT_H}px`);
     });
 
+    it("marks where a one-sided hunk sits in the pane that holds none of it", async () => {
+        // The empty side knows only that it is empty, so the rule's hue has to come from its
+        // counterpart. Both directions are mounted deliberately: a marker that read its own
+        // side returns nothing for either gap, and a fixture carrying only one direction
+        // cannot tell "reads the counterpart" apart from "reads whichever side has rows".
+        // The two-sided hunk in the middle is the negative case -- it has rows of its own to
+        // paint, so a rule there would be a second marker for a hunk already marked.
+        installVsCodeMock();
+        createRootHost();
+        await act(async () => {
+            await import("../../../src/webviews/react/diff-viewer/DiffViewerApp");
+        });
+        await flush();
+        dispatchHostMessage({
+            type: "setDiffData",
+            data: {
+                ...diffFixture,
+                segments: [
+                    { type: "common" as const, left: ["shared();"], right: ["shared();"] },
+                    { type: "changed" as const, left: ["gone();"], right: [] },
+                    { type: "changed" as const, left: ["before();"], right: ["after();"] },
+                    { type: "changed" as const, left: [], right: ["added();"] },
+                ],
+            },
+        });
+        await flush();
+
+        const gapsOf = (pane: string): string[][] =>
+            [...document.querySelectorAll<HTMLElement>(`${pane} .segment`)].map((block) =>
+                [...block.classList].filter((name) => name.startsWith("diff-gap-")),
+            );
+
+        expect(
+            gapsOf(".diff-pane-right"),
+            "the pane that lost the lines marks the position they were removed from",
+        ).toEqual([[], ["diff-gap-deleted"], [], []]);
+        expect(
+            gapsOf(".diff-pane-left"),
+            "the pane that never held the lines marks the position they were inserted at",
+        ).toEqual([[], [], [], ["diff-gap-inserted"]]);
+
+        // The rule buys its visibility without buying height: that height is the canonical
+        // space both panes are aligned through, so a marker that grew the block would move
+        // every offset below it and drag the connector ribbons with it.
+        const gap = document.querySelector<HTMLElement>(".diff-pane-left .diff-gap-inserted");
+        expect(gap?.querySelectorAll(".code-line-content")).toHaveLength(0);
+        expect(gap?.style.containIntrinsicSize).toBe("auto 0px");
+    });
+
     it("gives the counterpart of a one-sided hunk no rows and no intrinsic height", async () => {
-        // What licenses `diff-viewer.css` to style `.diff-segment-empty` with nothing at
-        // all. Each pane is sized from its own line count, so this block is zero pixels
-        // tall and any background declared on it is paint that can never render. Switch
-        // the panes back to filler rows and this fails here, before a blank band appears
-        // in a screenshot nobody reads as wrong.
+        // What licenses `diff-viewer.css` to give `.diff-segment-empty` no BACKGROUND, and
+        // to mark its position with a spread shadow instead. Each pane is sized from its own
+        // line count, so this block is zero pixels tall: a background on it is paint that can
+        // never render, while a shadow paints outside the border box and does. Switch the
+        // panes back to filler rows and this fails here, before a blank band appears in a
+        // screenshot nobody reads as wrong.
         await mountScrollFixture();
 
         const empties = [...document.querySelectorAll<HTMLElement>(".diff-segment-empty")];
@@ -1150,15 +1293,21 @@ describe("DiffViewerApp scroll viewport and ribbons", () => {
             "the stripe's track and the scroller's spacer are the same range; a stripe measured against anything else points at the wrong rows",
         ).toBe(spacer?.style.height);
 
-        // Deletion-only hunk: canonical top 100, height 60, of a 780px range.
+        // The divisor is the scroll range, not the 780px document: the scroller carries a
+        // trailing screen so the last line can clear the viewport, and the marks are shares
+        // of what actually scrolls. Spelt as a literal rather than read back from the
+        // layout so a change to the padding has to be restated here to pass.
+        const RANGE_PX = 780 + TRAILING_ROWS * LINE_HEIGHT_PX;
+
+        // Deletion-only hunk: canonical top 100, height 60.
         expect(marks[0].classList.contains("diff-change-deleted")).toBe(true);
-        expect(Number.parseFloat(marks[0].style.top)).toBeCloseTo((100 / 780) * 100, 4);
-        expect(Number.parseFloat(marks[0].style.height)).toBeCloseTo((60 / 780) * 100, 4);
+        expect(Number.parseFloat(marks[0].style.top)).toBeCloseTo((100 / RANGE_PX) * 100, 4);
+        expect(Number.parseFloat(marks[0].style.height)).toBeCloseTo((60 / RANGE_PX) * 100, 4);
 
         // Insertion-only hunk: canonical top 260, height 120.
         expect(marks[1].classList.contains("diff-change-inserted")).toBe(true);
-        expect(Number.parseFloat(marks[1].style.top)).toBeCloseTo((260 / 780) * 100, 4);
-        expect(Number.parseFloat(marks[1].style.height)).toBeCloseTo((120 / 780) * 100, 4);
+        expect(Number.parseFloat(marks[1].style.top)).toBeCloseTo((260 / RANGE_PX) * 100, 4);
+        expect(Number.parseFloat(marks[1].style.height)).toBeCloseTo((120 / RANGE_PX) * 100, 4);
     });
 
     it("scrolls to the change a mark points at when it is clicked", async () => {

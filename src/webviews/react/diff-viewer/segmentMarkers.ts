@@ -47,9 +47,32 @@ export function segmentMarker(segment: DiffSegment, side: DiffPane): SegmentMark
 }
 
 /** The full class attribute for one side of one segment's block. */
+/** The rule marking where a one-sided hunk sits in the pane that holds none of it. */
+export type SegmentGapMarker = "diff-gap-inserted" | "diff-gap-deleted";
+
+/**
+ * Classifies the collapsed position of a one-sided hunk, from the side that has no rows.
+ *
+ * That side cannot say what changed -- `segmentMarker` only ever calls it
+ * `diff-segment-empty`, because emptiness is all it can see of itself. Its counterpart
+ * can: content was either inserted at this position or removed from it. Returning null
+ * for every other segment keeps the rule off two-sided hunks, which need no marker
+ * because they have rows of their own to paint.
+ */
+export function segmentGapMarker(segment: DiffSegment, side: DiffPane): SegmentGapMarker | null {
+    if (segmentMarker(segment, side) !== "diff-segment-empty") return null;
+    const counterpart = segmentMarker(segment, side === "left" ? "right" : "left");
+    if (counterpart === "diff-segment-inserted") return "diff-gap-inserted";
+    return counterpart === "diff-segment-deleted" ? "diff-gap-deleted" : null;
+}
+
 export function segmentClassName(segment: DiffSegment, side: DiffPane): string {
     const marker = segmentMarker(segment, side);
-    return marker === null ? "segment-common" : `diff-segment-changed ${marker}`;
+    if (marker === null) return "segment-common";
+    const gap = segmentGapMarker(segment, side);
+    return gap === null
+        ? `diff-segment-changed ${marker}`
+        : `diff-segment-changed ${marker} ${gap}`;
 }
 
 /**
@@ -65,6 +88,29 @@ export function segmentClassName(segment: DiffSegment, side: DiffPane): string {
  * rows, and a ribbon whose only state were `empty` would be a connector for a segment
  * with nothing on either side.
  */
+/**
+ * The one pane a whole-file change lives in, or null when both panes hold content.
+ *
+ * An added file puts every line on the right and a deleted file puts every line on the
+ * left; in both cases the other pane is an empty column the size of the file, and every
+ * ribbon runs to it. Derived from the segments instead of a host-supplied flag: the
+ * segments already state which sides have lines, and a flag restating that could differ
+ * from what is being rendered right next to it.
+ *
+ * A file with no lines at all is not one-sided -- there is nothing to show in either
+ * pane, so collapsing would just pick a side arbitrarily.
+ */
+export function soleSidedPane(segments: readonly DiffSegment[]): DiffPane | null {
+    let left = 0;
+    let right = 0;
+    for (const segment of segments) {
+        left += segment.left.length;
+        right += segment.right.length;
+    }
+    if (left === 0 && right > 0) return "right";
+    return right === 0 && left > 0 ? "left" : null;
+}
+
 export function segmentRibbonMarker(segment: DiffSegment): SegmentMarker | null {
     const right = segmentMarker(segment, "right");
     if (right === null) return null;

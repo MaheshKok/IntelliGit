@@ -181,6 +181,23 @@
     background: transparent;
 }
 
+/* A one-sided file (added or deleted) renders one pane, so the grid carries one track and
+   the connector channel closes: a gutter between a pane and nothing is dead width, and the
+   pane walls that frame that channel have no channel left to frame. `soleSidedPane` in
+   segmentMarkers.ts decides this, and DiffViewerApp mounts only the surviving column --
+   the rule here is what makes the survivor take the width the other one gave up. */
+.diff-viewer-single .diff-columns,
+.diff-viewer-single .diff-pane-meta-row {
+    grid-template-columns: minmax(0, 1fr);
+    column-gap: 0;
+}
+
+.diff-viewer-single .diff-pane-left,
+.diff-viewer-single .diff-pane-right {
+    border-right: 0;
+    border-left: 0;
+}
+
 /* Both walls of the connector channel, not one seam between two touching panes: with a
    gap between them a single border reads as an edge belonging to whichever pane drew
    it, and the channel looks like padding rather than a lane the ribbons run in. */
@@ -280,14 +297,35 @@
     background: var(--diff-modified-wash, transparent);
 }
 
-/* .diff-segment-empty is deliberately unpainted. Each pane is sized from its own line
-   count (`paneLines[side]` in DiffViewerApp.tsx), so the counterpart of a one-sided
-   hunk is zero rows and therefore zero pixels tall: any background declared on it
-   would be a rule that can never render. The hunk is legible anyway -- the opposite
-   pane carries the coloured edge bar and the ribbon lands on this side's collapsed
-   position. `tests/integration/webviews/diff-viewer.integration.test.tsx` pins the
-   zero height, so a later switch to filler rows fails there rather than silently
-   turning this into a blank band. */
+/* .diff-segment-empty declares no BACKGROUND, and cannot: each pane is sized from its own
+   line count (`paneLines[side]` in DiffViewerApp.tsx), so the counterpart of a one-sided
+   hunk is zero rows and therefore zero pixels tall, and a background on a zero-height box
+   is a rule that can never render. `tests/integration/webviews/diff-viewer.integration.test.tsx`
+   pins that zero height, so a later switch to filler rows fails there rather than silently
+   turning this into a blank band.
+
+   It does get a RULE, though, which is a different thing. Leaving the position unmarked
+   meant a reader who saw a gap had to trace the connector across to the other pane to
+   learn whether content was inserted there or removed from there -- the affordance
+   PyCharm draws as a thin line at the collapsed position. A spread box-shadow paints
+   outside the border box without entering layout, so a 0px block still renders a 2px
+   rule and the canonical geometry every pane offset and ribbon is derived from is
+   untouched. The hue comes from the counterpart's state, since this side has none, and it
+   is the counterpart's WASH rather than its accent: the accent is the strength the rail
+   ticks are painted at, which on a full-width rule reads as a bar across the pane instead
+   of a marker beside it. */
+.diff-viewer .diff-gap-inserted,
+.diff-viewer .diff-gap-deleted {
+    box-shadow: 0 0 0 1px var(--diff-gap-hue);
+}
+
+.diff-viewer .diff-gap-inserted {
+    --diff-gap-hue: var(--diff-inserted-wash);
+}
+
+.diff-viewer .diff-gap-deleted {
+    --diff-gap-hue: var(--diff-deleted-wash);
+}
 
 /* Which words changed, marked the way the merge editor marks them: a darker fill of
    the block's own hue behind the fragment, and nothing else. No underline -- the fill
