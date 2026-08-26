@@ -207,7 +207,23 @@ beforeAll(() => {
     });
 });
 
-afterEach(() => {
+afterEach(async () => {
+    // Unmount before detaching, and detach before resetting the module registry -- each case
+    // imports the app again, and `vi.resetModules()` makes that a NEW module instance with a
+    // root of its own. Dropping the host out of `document.body` only hides the old one: its
+    // effects were never cleaned up, so its `message` listener still answers, and the next
+    // case's `setDiffData` is re-rendered by every App this file has mounted so far.
+    //
+    // The ceiling-sized case is where that bill arrives, because it is the one payload big
+    // enough for the multiplier to show: 2.8s alone, 10.7s as the 40th mount on this machine,
+    // and 36.6s on the Windows runner, which is over the 30s ceiling and how CI found it.
+    //
+    // Imported rather than tracked at the call sites: the module is already cached here, so
+    // this returns the very instance the case mounted rather than making a second one.
+    const app = await import("../../../src/webviews/react/diff-viewer/DiffViewerApp");
+    await act(async () => {
+        app.root?.unmount();
+    });
     document.body.replaceChildren();
     vi.clearAllMocks();
     vi.resetModules();
@@ -355,6 +371,39 @@ describe("DiffViewerApp read-only contract", () => {
         expect(meta[1]?.querySelector(".diff-pane-lock")).not.toBeNull();
         click(document.querySelector<HTMLElement>(".diff-pane-right .segment"));
         expect(notice()).not.toBeNull();
+    });
+
+    // The invariant `afterEach` depends on, asserted where it can fail loudly. Without it the
+    // leak is invisible locally -- every case still passes, only slower -- and the first thing
+    // to notice is the ceiling-sized case timing out at 30s on the Windows runner, which names
+    // a render budget rather than a listener that outlived its root.
+    it("stops answering host messages once its root is unmounted", async () => {
+        installVsCodeMock();
+        const host = createRootHost();
+        let app!: typeof import("../../../src/webviews/react/diff-viewer/DiffViewerApp");
+        await act(async () => {
+            app = await import("../../../src/webviews/react/diff-viewer/DiffViewerApp");
+        });
+        await flush();
+        dispatchHostMessage({ type: "setDiffData", data: diffFixture });
+        await flush();
+        expect(
+            host.querySelector(".diff-pane-left"),
+            "the app never mounted, so the unmount below would prove nothing",
+        ).not.toBeNull();
+
+        await act(async () => {
+            app.root?.unmount();
+        });
+        // `host` is detached from the page but still reachable from here -- exactly the state
+        // every case used to leave behind. A listener that outlived its root keeps rendering
+        // into it, so the payload below is what the next case would be paying for.
+        dispatchHostMessage({ type: "setDiffData", data: diffFixture });
+        await flush();
+        expect(
+            host.querySelector(".diff-pane-left"),
+            "an unmounted app still rebuilt its panes from a host message, so every case this file runs leaves another live listener answering the next one's payload",
+        ).toBeNull();
     });
 
     // Windowing/virtualization must not remove off-screen rows, because VS Code find only searches
@@ -755,6 +804,39 @@ describe("DiffViewerApp read-only contract", () => {
         expect(
             document.querySelector(".diff-viewer")?.classList.contains("diff-viewer-single"),
         ).toBe(false);
+    });
+
+    // `editablePane` is the host's intent; `editableText` and `documentVersion` are what make
+    // an edit expressible, and `handleRevertHunk` needs all three. Between them the panes
+    // already fall back to read-only blocks, and an arrow drawn on the intent alone is a
+    // button that looks live and returns on its handler's first line -- the one failure a
+    // user cannot tell apart from a broken revert.
+    //
+    // Both partial shapes are mounted, not just the empty one: a gate that checked only
+    // `editableText` passes a text-without-version fixture while leaving the same dead
+    // button on screen, and one case cannot tell the two halves of the condition apart.
+    it.each([
+        ["neither the text nor the version", {}],
+        ["the text but no version", { editableText: "shared();\nafter();" }],
+        ["the version but no text", { documentVersion: 4 }],
+    ])("draws no revert arrow on a pane the host named but sent %s for", async (_name, partial) => {
+        createRootHost();
+        await act(async () => {
+            await import("../../../src/webviews/react/diff-viewer/DiffViewerApp");
+        });
+        await flush();
+        dispatchHostMessage({
+            type: "setDiffData",
+            data: { ...diffFixture, editablePane: "right" as const, ...partial },
+        });
+        await flush();
+
+        expect(
+            document.querySelector(".diff-pane-right")?.querySelector("textarea"),
+            "the pane itself is read-only without a document, which is what makes the arrow a lie",
+        ).toBeNull();
+        expect(document.querySelectorAll(".diff-hunk-revert")).toHaveLength(0);
+        expect(document.querySelector(".diff-action-layer")).toBeNull();
     });
 
     it("reverts one hunk by writing the other pane's lines over it", async () => {

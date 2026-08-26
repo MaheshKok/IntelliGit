@@ -142,7 +142,11 @@ describe("buildStripeMarks", () => {
     });
 
     it("returns nothing for an unmeasured layout rather than marks at NaN", () => {
-        expect(buildStripeMarks([], layoutFor([]))).toEqual([]);
+        // Through `marksFor` like every other case. Called directly it read as a deliberate
+        // two-argument call, which is exactly the shape this suite cannot typecheck: the
+        // guard returns before `viewportPx` is used, so a missing third argument passes
+        // here and says nothing about the callers that do reach the division.
+        expect(marksFor([])).toEqual([]);
     });
 });
 

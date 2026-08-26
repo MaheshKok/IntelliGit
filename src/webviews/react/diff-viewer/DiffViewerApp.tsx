@@ -714,6 +714,29 @@ function DiffHunkActionLayer({
     );
 }
 
+/**
+ * The pane a revert can actually be written to, as opposed to the one the host named.
+ *
+ * `editablePane` is intent; `editableText` and `documentVersion` are what make an edit
+ * expressible, and `handleRevertHunk` returns on its first line without all three. The
+ * panes already fall back to read-only blocks in that gap, so an arrow drawn on the
+ * intent alone is a button that looks live, reads as a broken revert when pressed, and
+ * reports nothing. One resolved value, so the arrow and the handler cannot disagree.
+ *
+ * The two editable-pane mounts keep their own inline form of this check rather than
+ * reading it from here: they pass `editableText` and `documentVersion` on as props, so
+ * they need the narrowing the inline conditions perform, which a `DiffPane | undefined`
+ * cannot carry.
+ *
+ * Module scope rather than inline in `App`: these three conditions count toward `App`'s
+ * cyclomatic complexity, which the lint ceiling already holds at its limit.
+ */
+function revertablePaneOf(data: DiffViewerData | null): DiffPane | undefined {
+    return data?.editableText !== undefined && data.documentVersion !== undefined
+        ? data.editablePane
+        : undefined;
+}
+
 /** Hosts a pure, read-only two-pane diff with only view toggles. */
 export function App(): React.ReactElement {
     const [data, setData] = useState<DiffViewerData | null>(null);
@@ -835,12 +858,15 @@ export function App(): React.ReactElement {
         return data?.editablePane === undefined || data.editablePane === sole ? sole : null;
     }, [data?.editablePane, segments]);
 
+    /** See `revertablePaneOf`: the host's named pane, narrowed to one an edit can reach. */
+    const revertablePane = useMemo(() => revertablePaneOf(data), [data]);
+
     // No arrows on a collapsed one-sided file: there is no channel between panes to stand
     // in, and "revert the whole file" is a delete or a restore, not a block replacement.
     // Whether there is an editable pane at all is NOT re-checked here -- `DiffHunkActionLayer`
-    // decides that, because it needs the pane for the arrow's direction anyway. A second copy
-    // of the same condition cannot be shown to be doing anything, since removing either one
-    // leaves the other answering.
+    // decides that from `revertablePane`, because it needs the pane for the arrow's direction
+    // anyway. A second copy of the same condition cannot be shown to be doing anything, since
+    // removing either one leaves the other answering.
     const actionHunks = useMemo(
         () =>
             singlePane === null
@@ -1434,7 +1460,7 @@ export function App(): React.ReactElement {
                             ) : null}
                             <DiffHunkActionLayer
                                 hunks={actionHunks}
-                                editablePane={data.editablePane}
+                                editablePane={revertablePane}
                                 onRevert={handleRevertHunk}
                                 registerButton={registerActionButton}
                             />
@@ -1494,4 +1520,17 @@ export function App(): React.ReactElement {
 }
 
 const container = document.getElementById("root");
-if (container) createRoot(container).render(<App />);
+
+/**
+ * The mounted root, exported so whoever owns the page can take the app back down.
+ *
+ * `null` when there is no `#root`, which is every import that is not the webview itself.
+ * The webview never unmounts -- the editor disposes the whole document instead -- so this
+ * exists for callers that mount the module more than once in one page. Integration tests
+ * do exactly that, once per case, and without a handle they cannot undo it: an App that is
+ * never unmounted keeps the `message` listener its effect registered, so a later
+ * `setDiffData` is re-rendered by every instance the file has mounted so far, each one
+ * still holding the full fibre tree of a diff nothing can see any more.
+ */
+export const root = container ? createRoot(container) : null;
+root?.render(<App />);
