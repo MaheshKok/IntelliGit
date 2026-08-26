@@ -70,6 +70,7 @@ interface Props {
     onCommitHover?: (commit: Commit, event: React.MouseEvent) => void;
     onCommitUnhover?: () => void;
     commitChecks?: ReadonlyMap<string, CommitChecksSnapshot | "loading">;
+    /** Requests checks for the supplied hashes; `force` bypasses the host/provider cache. */
     onRequestCommitChecks?: (hashes: string[], force?: boolean) => void;
     onOpenCommitCheckUrl?: (url: string) => void;
     onSignInForCommitChecks?: (host: string) => void;
@@ -418,10 +419,17 @@ export function CommitList({
         requestedCommitHashes,
     ]);
 
-    /** Keeps row-triggered loading aligned with this surface's full exact-viewport demand. */
-    const handleRequestCommitChecksFromRow = useCallback(() => {
-        onRequestCommitChecks?.(requestedCommitHashes, false);
-    }, [onRequestCommitChecks, requestedCommitHashes]);
+    /** Keeps row-triggered loading aligned with viewport demand or a single forced refresh. */
+    const handleRequestCommitChecksFromRow = useCallback(
+        (hash: string, force?: boolean) => {
+            if (force) {
+                onRequestCommitChecks?.([hash], true);
+                return;
+            }
+            onRequestCommitChecks?.(requestedCommitHashes, false);
+        },
+        [onRequestCommitChecks, requestedCommitHashes],
+    );
 
     const branchScopeLabel = selectedBranch
         ? t("commit.scope.branch", { branch: selectedBranch })

@@ -2,6 +2,7 @@ import React from "react";
 import { createPortal } from "react-dom";
 import { FiCheckCircle, FiMinusCircle } from "react-icons/fi";
 import { IoIosCloseCircleOutline } from "react-icons/io";
+import { VscRefresh } from "react-icons/vsc";
 import type { CommitChecksSnapshot, CommitCheckState } from "../../../types";
 import { t } from "../shared/i18n";
 import { JETBRAINS_UI, SHADOW, Z_INDEX } from "../shared/tokens";
@@ -12,7 +13,8 @@ export type CommitChecksValue = CommitChecksSnapshot | "loading";
 interface Props {
     hash: string;
     checks?: CommitChecksValue;
-    onRequestChecks: (hash: string) => void;
+    /** Requests this commit's checks; `force` bypasses the host/provider cache. */
+    onRequestChecks: (hash: string, force?: boolean) => void;
     onOpenCheckUrl: (url: string) => void;
     /** Sign in to the snapshot's `signInHost` from the popover (recoverable `unavailable` only). */
     onSignIn?: (host: string) => void;
@@ -142,6 +144,7 @@ export function CommitChecksButton({
                         hash={hash}
                         checks={checks}
                         position={position}
+                        onRequestChecks={onRequestChecks}
                         onOpenCheckUrl={onOpenCheckUrl}
                         onSignIn={onSignIn}
                     />,
@@ -157,6 +160,7 @@ function CommitChecksPanel({
     hash,
     checks,
     position,
+    onRequestChecks,
     onOpenCheckUrl,
     onSignIn,
 }: {
@@ -164,6 +168,8 @@ function CommitChecksPanel({
     hash: string;
     checks?: CommitChecksValue;
     position: PanelPosition;
+    /** Requests this commit's checks; `force` bypasses the host/provider cache. */
+    onRequestChecks: (hash: string, force?: boolean) => void;
     onOpenCheckUrl: (url: string) => void;
     onSignIn?: (host: string) => void;
 }): React.ReactElement {
@@ -219,8 +225,23 @@ function CommitChecksPanel({
             />
             <div style={panelStyle}>
                 <div style={titleStyle}>
-                    {t("commit.checks.title")}
-                    <span style={panelHashStyle}>{hash.slice(0, 7)}</span>
+                    <span>
+                        {t("commit.checks.title")}
+                        <span style={panelHashStyle}>{hash.slice(0, 7)}</span>
+                    </span>
+                    <button
+                        type="button"
+                        aria-label={t("common.refresh")}
+                        title={t("common.refresh")}
+                        disabled={checks === "loading"}
+                        onClick={() => onRequestChecks(hash, true)}
+                        style={{
+                            ...refreshButtonStyle,
+                            ...(checks === "loading" ? refreshButtonDisabledStyle : {}),
+                        }}
+                    >
+                        <VscRefresh size={14} aria-hidden="true" focusable="false" />
+                    </button>
                 </div>
                 <div style={bodyStyle}>
                     {checks === "loading" || !checks ? (
@@ -408,6 +429,30 @@ const titleStyle: React.CSSProperties = {
     fontWeight: 700,
     background: "var(--vscode-textLink-foreground)",
     color: "var(--vscode-button-foreground)",
+    position: "relative",
+};
+
+const refreshButtonStyle: React.CSSProperties = {
+    position: "absolute",
+    top: "50%",
+    right: 8,
+    transform: "translateY(-50%)",
+    width: 22,
+    height: 22,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    border: "none",
+    borderRadius: 4,
+    background: "transparent",
+    color: "inherit",
+    padding: 0,
+    cursor: "pointer",
+};
+
+const refreshButtonDisabledStyle: React.CSSProperties = {
+    opacity: 0.6,
+    cursor: "default",
 };
 
 const panelHashStyle: React.CSSProperties = {
