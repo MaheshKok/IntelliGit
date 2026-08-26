@@ -371,7 +371,7 @@
     "diff.newlineDifference": "Los archivos solo difieren en el formato de salto de línea",
     "diff.error.load": "No se pudo cargar el diff: {error}",
     "diff.loading": "Cargando diff...",
-    "diff.editable.blockHint": "Haga doble clic o pulse Intro para editar",
+    "diff.editable.blockHint": "Haga clic para editar",
     "diff.editable.editingAria": "Editar bloque del árbol de trabajo",
     "diff.editable.revertHunk": "Revertir este cambio",
     "diff.readOnly.pane": "Este lado es de solo lectura"

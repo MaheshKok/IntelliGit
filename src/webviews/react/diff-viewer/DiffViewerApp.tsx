@@ -24,17 +24,13 @@ import {
 } from "../diff-core/mergeScrollLayout";
 import { buildLineNumberValues } from "../diff-core/lineNumbers";
 import {
+    alignScrollOverlays,
     applyPaneOffsets,
     paneOffsetsForCanonical,
     syncHorizontalScroll as syncHorizontalScrollCore,
     updateSharedScrollbar as updateSharedScrollbarCore,
 } from "../diff-core/scrollSync";
-import {
-    CodeBlock,
-    intrinsicSizeStyle,
-    LineNumbers,
-    type LineNumberSpec,
-} from "../diff-core/segments";
+import { CodeBlock, intrinsicSizeStyle, type LineNumberSpec } from "../diff-core/segments";
 import { IconChevronDown, IconEye, IconFilter, IconLock } from "../merge-editor/icons";
 import { splitEditedText } from "../merge-editor/mergeState";
 import {
@@ -112,6 +108,7 @@ function DiffPaneBlock({
 interface EditableBlockDraft {
     index: number;
     text: string;
+    caretOffset: number;
     sourceText: string;
     startLine: number;
     lineCount: number;
@@ -123,6 +120,22 @@ interface EditableBlockLayout {
     side: DiffPane;
     index: number;
     rowCount: number;
+    /**
+     * Longest line in the draft, in characters.
+     *
+     * The shared scroll extent is measured from the diff's own text, which stops describing the
+     * pane the moment someone types a line longer than anything the diff contained: the code
+     * plane and the shared scrollbar both refuse to travel that far, so the caret runs off the
+     * right edge with nothing able to follow it.
+     */
+    maxLineLength: number;
+}
+
+/** Longest line in a block, in characters — the block's contribution to the shared extent. */
+function longestLine(lines: readonly string[]): number {
+    let max = 0;
+    for (const line of lines) max = Math.max(max, line.length);
+    return max;
 }
 
 /** Replaces one line-addressed display block in the LF-normalized document text. */
@@ -166,6 +179,43 @@ function paneStartLine(
         .reduce((total, previous) => total + previous.segment[side].length, 0);
 }
 
+/** Syntax highlighting splits a source line into spans, so rebuild its block-local text offset. */
+function caretOffsetWithinBlock(block: HTMLElement, clientX: number, clientY: number): number {
+    try {
+        const position = document.caretPositionFromPoint?.(clientX, clientY);
+        const range = position ? undefined : document.caretRangeFromPoint?.(clientX, clientY);
+        const node = position?.offsetNode ?? range?.startContainer;
+        const offset = position?.offset ?? range?.startOffset;
+        if (node?.nodeType !== Node.TEXT_NODE || offset === undefined) return 0;
+
+        const row = node.parentElement?.closest<HTMLElement>(".code-line");
+        const codeLines = row?.parentElement;
+        if (
+            !row?.classList.contains("real-code-line") ||
+            !codeLines?.classList.contains("code-lines") ||
+            !block.contains(row)
+        ) {
+            return 0;
+        }
+
+        const rows = [...codeLines.querySelectorAll<HTMLElement>(":scope > .code-line")];
+        const rowIndex = rows.indexOf(row);
+        if (rowIndex < 0) return 0;
+
+        const rowRange = document.createRange();
+        rowRange.selectNodeContents(row);
+        rowRange.setEnd(node, offset);
+        return (
+            rows
+                .slice(0, rowIndex)
+                .reduce((total, previous) => total + (previous.textContent?.length ?? 0) + 1, 0) +
+            rowRange.toString().length
+        );
+    } catch {
+        return 0;
+    }
+}
+
 /** Renders editable display blocks while keeping document writes delegated to the host. */
 function EditableDiffPane({
     side,
@@ -194,11 +244,15 @@ function EditableDiffPane({
     onHorizontalScroll: (left: number, source: HTMLElement) => void;
 }): React.ReactElement {
     const [draft, setDraft] = useState<EditableBlockDraft | null>(null);
+    const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+    const editingIndexRef = useRef<number | null>(null);
     const isComposingRef = useRef(false);
     const reseedDuringCompositionRef = useRef(false);
     const lineNumberSide = side === "left" ? "right" : "left";
+    const draftLines = useMemo(() => draft?.text.split("\n") ?? [], [draft?.text]);
 
     const clearDraft = useCallback(() => {
+        editingIndexRef.current = null;
         setDraft(null);
         onDraftLayoutChange(null);
     }, [onDraftLayoutChange]);
@@ -216,12 +270,32 @@ function EditableDiffPane({
 
     useEffect(() => () => onDraftLayoutChange(null), [onDraftLayoutChange]);
 
+    const editingDraftIndex = draft?.index;
+    const editingCaretOffset = draft?.caretOffset;
+    useEffect(() => {
+        if (editingDraftIndex === undefined || editingCaretOffset === undefined) return;
+        const textarea = textareaRef.current;
+        textarea?.setSelectionRange(editingCaretOffset, editingCaretOffset);
+
+        // A block can be opened while the panes are already scrolled sideways. The overlay is
+        // born at scroll 0 and only a scroll event would align it, so align this one directly --
+        // otherwise the first caret of the session lands on the wrong column and stays there
+        // until something happens to scroll. Directly, and not through `onHorizontalScroll`:
+        // that driver coalesces into a frame, and a frame pending on nothing but this would
+        // swallow the next real scroll to arrive before it.
+        const codeLines = textarea?.parentElement?.querySelector<HTMLElement>(".code-lines");
+        if (textarea && codeLines) alignScrollOverlays([textarea], codeLines.scrollLeft);
+    }, [editingCaretOffset, editingDraftIndex]);
+
     const startEditing = useCallback(
-        (item: RenderedSegment) => {
+        (item: RenderedSegment, caretOffset = 0) => {
+            if (editingIndexRef.current === item.index) return;
+            editingIndexRef.current = item.index;
             const startLine = paneStartLine(renderedSegments, item.index, side);
             const nextDraft = {
                 index: item.index,
                 text: item.segment[side].join("\n"),
+                caretOffset,
                 sourceText: text,
                 startLine,
                 lineCount: item.segment[side].length,
@@ -233,6 +307,7 @@ function EditableDiffPane({
                 side,
                 index: item.index,
                 rowCount: Math.max(nextDraft.lineCount, 1),
+                maxLineLength: longestLine(item.segment[side]),
             });
         },
         [documentVersion, onDraftLayoutChange, renderedSegments, reseedToken, side, text],
@@ -262,17 +337,23 @@ function EditableDiffPane({
                 const lineCount = item.paneLines[side];
 
                 if (isEditing && draft) {
-                    const rowCount = Math.max(draft.text.split("\n").length, lineCount, 1);
+                    const rowCount = Math.max(draftLines.length, lineCount, 1);
                     return (
                         <div
                             key={`editable-${side}-${item.index}`}
-                            className={`code-block line-numbers-${lineNumberSide} diff-editing-block editing`}
+                            className={`segment diff-editing-block editing line-numbers-${lineNumberSide}`}
                             style={intrinsicSizeStyle(rowCount)}
                         >
-                            {lineNumberSide === "left" ? (
-                                <LineNumbers primary={item.lineNumbers[side].primary} />
-                            ) : null}
+                            <CodeBlock
+                                lines={draftLines}
+                                lineCount={rowCount}
+                                lineNumbers={item.lineNumbers[side]}
+                                lineNumberSide={lineNumberSide}
+                                wordHighlight={highlightWords}
+                                compareLines={compareLines}
+                            />
                             <textarea
+                                ref={textareaRef}
                                 className="diff-edit-textarea"
                                 data-testid={`diff-pane-${side}-editable`}
                                 aria-label={t("diff.editable.editingAria")}
@@ -293,15 +374,13 @@ function EditableDiffPane({
                                 }}
                                 onChange={(event) => {
                                     const nextText = event.target.value;
+                                    const nextLines = nextText.split("\n");
                                     setDraft({ ...draft, text: nextText });
                                     onDraftLayoutChange({
                                         side,
                                         index: draft.index,
-                                        rowCount: Math.max(
-                                            nextText.split("\n").length,
-                                            draft.lineCount,
-                                            1,
-                                        ),
+                                        rowCount: Math.max(nextLines.length, draft.lineCount, 1),
+                                        maxLineLength: longestLine(nextLines),
                                     });
                                 }}
                                 onBlur={commitDraft}
@@ -320,9 +399,6 @@ function EditableDiffPane({
                                     )
                                 }
                             />
-                            {lineNumberSide === "right" ? (
-                                <LineNumbers primary={item.lineNumbers[side].primary} />
-                            ) : null}
                         </div>
                     );
                 }
@@ -333,6 +409,17 @@ function EditableDiffPane({
                         key={`editable-${side}-${item.index}`}
                         className={`segment diff-editable-block ${segmentClassName(item.segment, side)}`}
                         style={style}
+                        onClick={(event) => {
+                            if (window.getSelection()?.isCollapsed === false) return;
+                            startEditing(
+                                item,
+                                caretOffsetWithinBlock(
+                                    event.currentTarget,
+                                    event.clientX,
+                                    event.clientY,
+                                ),
+                            );
+                        }}
                         onDoubleClick={() => startEditing(item)}
                         onKeyDown={(event) => {
                             if (event.key !== "Enter" && event.key !== "F2") return;
@@ -613,11 +700,18 @@ export function App(): React.ReactElement {
     const maxLineLength = useMemo(() => {
         let max = 1;
         for (const segment of segments) {
-            for (const line of segment.left) max = Math.max(max, line.length);
-            for (const line of segment.right) max = Math.max(max, line.length);
+            max = Math.max(max, longestLine(segment.left), longestLine(segment.right));
         }
-        return max;
-    }, [segments]);
+        // An open draft is part of the pane's width even though it is not part of the diff.
+        // Without it, typing past the diff's own longest line leaves the code plane and the
+        // shared scrollbar unable to travel to the caret, so it scrolls off the right edge and
+        // the overlay is dragged back to a position that cannot show it.
+        return Math.max(max, editingBlock?.maxLineLength ?? 0);
+        // Depends on the layout object, not on the one field read from it: narrowing the
+        // dependency would put the optional chain in `App`'s own body, where the complexity
+        // budget is spent, rather than in this callback's. The recompute it costs per keystroke
+        // is a pass of `.length` reads over text that is already being re-rendered anyway.
+    }, [editingBlock, segments]);
 
     const syncHorizontalScroll = useCallback((left: number, source?: HTMLElement | null) => {
         syncHorizontalScrollCore(
@@ -631,6 +725,14 @@ export function App(): React.ReactElement {
             left,
             source,
         );
+
+        for (const pane of DIFF_PANES) {
+            alignScrollOverlays(
+                columnRefs.current[pane]?.querySelectorAll<HTMLElement>(".diff-edit-textarea") ??
+                    [],
+                left,
+            );
+        }
     }, []);
 
     // Cache the viewport box and expose its height as a CSS var so the sticky

@@ -362,7 +362,7 @@
     "diff.newlineDifference": "Dateien unterscheiden sich nur durch die Zeilenumbruchformatierung",
     "diff.error.load": "Diff konnte nicht geladen werden: {error}",
     "diff.loading": "Diff wird geladen...",
-    "diff.editable.blockHint": "Doppelklicken Sie oder drücken Sie die Eingabetaste, um zu bearbeiten",
+    "diff.editable.blockHint": "Klicken Sie zum Bearbeiten",
     "diff.editable.editingAria": "Arbeitsbereichsblock bearbeiten",
     "diff.editable.revertHunk": "Diese Änderung rückgängig machen",
     "diff.readOnly.pane": "Diese Seite ist schreibgeschützt"

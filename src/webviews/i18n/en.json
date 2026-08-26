@@ -311,7 +311,7 @@
     "diff.readOnly.pane": "This side is read only",
     "diff.error.load": "Failed to load diff: {error}",
     "diff.loading": "Loading diff...",
-    "diff.editable.blockHint": "Double-click or press Enter to edit",
+    "diff.editable.blockHint": "Click to edit",
     "diff.editable.editingAria": "Edit working tree block",
     "diff.editable.revertHunk": "Revert this change",
     "mergeSession.title": "Conflicts",

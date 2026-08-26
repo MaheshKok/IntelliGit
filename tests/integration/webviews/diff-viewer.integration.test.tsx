@@ -80,6 +80,12 @@ function editBlock(index: number): HTMLTextAreaElement {
     return textarea as HTMLTextAreaElement;
 }
 
+function firstTextNode(element: Element): Text {
+    const node = document.createTreeWalker(element, NodeFilter.SHOW_TEXT).nextNode();
+    if (!(node instanceof Text)) throw new Error("Expected highlighted code text");
+    return node;
+}
+
 /** Updates the controlled textarea through the same input event as a user edit. */
 function setDraftText(textarea: HTMLTextAreaElement, next: string): void {
     const valueSetter = Object.getOwnPropertyDescriptor(
@@ -417,7 +423,7 @@ describe("DiffViewerApp read-only contract", () => {
         const textarea = editBlock(1);
         expect(textarea.value).toBe("before();");
         expect(
-            document.querySelectorAll(".diff-pane-left .code-block.editing .line-number"),
+            document.querySelectorAll(".diff-pane-left .diff-editing-block.editing .line-number"),
         ).toHaveLength(1);
         expect(document.querySelectorAll(".diff-pane-left .diff-editable-block")).toHaveLength(1);
     });
@@ -1098,14 +1104,14 @@ describe("DiffViewerApp read-only contract", () => {
         expect(sentDeltas(vscode)).toEqual([]);
     });
 
-    it("opens editable blocks from Enter and F2 with their editing announcements", async () => {
+    it("opens editable blocks from Enter and F2 with their click announcement", async () => {
         installVsCodeMock();
         await mountEditablePane("shared();\nbefore();", 1);
 
         const block = document.querySelector<HTMLElement>(".diff-pane-left .diff-editable-block");
         expect(block?.getAttribute("role")).toBe("group");
-        expect(block?.getAttribute("aria-label")).toBe("Double-click or press Enter to edit");
-        expect(block?.title).toBe("Double-click or press Enter to edit");
+        expect(block?.getAttribute("aria-label")).toBe("Click to edit");
+        expect(block?.title).toBe("Click to edit");
 
         act(() => {
             block?.focus();
@@ -1137,6 +1143,107 @@ describe("DiffViewerApp read-only contract", () => {
         });
         expect(f2.defaultPrevented).toBe(true);
         expect(document.querySelector("[data-testid='diff-pane-left-editable']")).not.toBeNull();
+    });
+
+    it("opens a block from one click at its clicked code character and keeps highlighted rows", async () => {
+        installVsCodeMock();
+        await mountEditablePane("first();\nsecond();", 1, [
+            {
+                type: "common" as const,
+                left: ["first();", "second();"],
+                right: ["first();", "second();"],
+            },
+        ]);
+
+        const block = document.querySelector<HTMLElement>(".diff-pane-left .diff-editable-block");
+        const row = block?.querySelectorAll(".code-line")[1];
+        expect(row).toBeDefined();
+        const textNode = firstTextNode(row as Element);
+        Object.defineProperty(document, "caretPositionFromPoint", {
+            configurable: true,
+            value: () => ({ offsetNode: textNode, offset: 2 }),
+        });
+        try {
+            act(() => {
+                block?.dispatchEvent(
+                    new MouseEvent("click", { bubbles: true, clientX: 8, clientY: 24 }),
+                );
+            });
+            await flush();
+        } finally {
+            Reflect.deleteProperty(document, "caretPositionFromPoint");
+        }
+
+        const textarea = document.querySelector<HTMLTextAreaElement>(
+            "[data-testid='diff-pane-left-editable']",
+        );
+        const editingBlock = textarea?.closest<HTMLElement>(".diff-editing-block");
+        expect(textarea).not.toBeNull();
+        expect(textarea?.selectionStart).toBe("first();".length + 1 + 2);
+        expect(textarea?.selectionEnd).toBe("first();".length + 1 + 2);
+        expect(editingBlock?.querySelectorAll(".code-line")).toHaveLength(2);
+    });
+
+    it("does not open an editable block when diff text is selected", async () => {
+        installVsCodeMock();
+        await mountEditablePane("shared();\nbefore();", 1);
+
+        const block = document.querySelector<HTMLElement>(".diff-pane-left .diff-editable-block");
+        const selection = window.getSelection();
+        const range = document.createRange();
+        range.selectNodeContents(block as HTMLElement);
+        selection?.removeAllRanges();
+        selection?.addRange(range);
+        act(() => {
+            block?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+
+        expect(document.querySelector("[data-testid='diff-pane-left-editable']")).toBeNull();
+        selection?.removeAllRanges();
+    });
+
+    it("keeps the click-created caret when the following double click re-enters the block", async () => {
+        installVsCodeMock();
+        await mountEditablePane("shared();\nbefore();", 1);
+
+        const block = document.querySelector<HTMLElement>(".diff-pane-left .diff-editable-block");
+        const textNode = firstTextNode(block as HTMLElement);
+        Object.defineProperty(document, "caretPositionFromPoint", {
+            configurable: true,
+            value: () => ({ offsetNode: textNode, offset: 2 }),
+        });
+        try {
+            act(() => {
+                block?.dispatchEvent(
+                    new MouseEvent("click", { bubbles: true, clientX: 8, clientY: 4 }),
+                );
+                block?.dispatchEvent(
+                    new MouseEvent("dblclick", { bubbles: true, clientX: 8, clientY: 4 }),
+                );
+            });
+            await flush();
+        } finally {
+            Reflect.deleteProperty(document, "caretPositionFromPoint");
+        }
+
+        const textarea = document.querySelector<HTMLTextAreaElement>(
+            "[data-testid='diff-pane-left-editable']",
+        );
+        expect(textarea?.value).toBe("shared();");
+        expect(textarea?.selectionStart).toBe(2);
+    });
+
+    it("does not reset an open draft when its textarea is clicked", async () => {
+        installVsCodeMock();
+        await mountEditablePane("shared();\nbefore();", 1);
+
+        const textarea = editBlock(1);
+        setDraftText(textarea, "draft();");
+        act(() => {
+            textarea.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+
+        expect(textarea.value).toBe("draft();");
     });
 
     it("synchronizes an edit textarea with peer code lines in both directions", async () => {
@@ -1195,6 +1302,30 @@ describe("DiffViewerApp read-only contract", () => {
             `auto ${draftLines.length * LINE_HEIGHT_PX}px`,
         );
         expect(spacer?.style.height).toBe("200px");
+    });
+
+    it("widens the shared scroll plane for a draft line longer than the diff's own", async () => {
+        // `--diff-line-min-width` sizes every pane's scroll track, and it is measured from the
+        // diff's text -- which stops describing the pane the moment someone types past the
+        // longest line the diff contained. The code plane and the shared scrollbar then both
+        // refuse to travel that far, so the caret runs off the right edge with nothing able to
+        // follow it there, and the overlay is pulled back to a position that cannot show it.
+        installVsCodeMock();
+        await mountEditablePane("before();", 1, [
+            { type: "changed" as const, left: ["before();"], right: ["after();"] },
+        ]);
+
+        const carrier = document.querySelector<HTMLElement>("[style*='--diff-line-min-width']");
+        expect(carrier, "the element publishing the shared extent").not.toBeNull();
+        const before = carrier?.style.getPropertyValue("--diff-line-min-width");
+
+        const textarea = editBlock(0);
+        setDraftText(textarea, "x".repeat(400));
+
+        expect(carrier?.style.getPropertyValue("--diff-line-min-width")).toBe("calc(400ch + 18px)");
+        expect(before, "and it really did have to grow to get there").not.toBe(
+            "calc(400ch + 18px)",
+        );
     });
 
     it("keeps the anti-vacuity selectors present in the merge app", async () => {

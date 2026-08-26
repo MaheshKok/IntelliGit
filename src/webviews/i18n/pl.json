@@ -380,7 +380,7 @@
     "diff.newlineDifference": "Pliki różnią się tylko formatem znaków końca linii",
     "diff.error.load": "Nie udało się załadować różnic: {error}",
     "diff.loading": "Ładowanie różnic...",
-    "diff.editable.blockHint": "Kliknij dwukrotnie lub naciśnij Enter, aby edytować",
+    "diff.editable.blockHint": "Kliknij, aby edytować",
     "diff.editable.editingAria": "Edytuj blok drzewa roboczego",
     "diff.editable.revertHunk": "Cofnij tę zmianę",
     "diff.readOnly.pane": "Ta strona jest tylko do odczytu"

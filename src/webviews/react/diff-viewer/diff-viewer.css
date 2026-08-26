@@ -593,32 +593,65 @@
         color-mix(in srgb, var(--vscode-focusBorder, var(--diff-editor-fg)) 25%, transparent);
 }
 
-.code-block.diff-editing-block.editing {
+.diff-editing-block {
+    position: relative;
+}
+
+.diff-editing-block.editing {
     background: color-mix(
         in srgb,
         var(--diff-editor-bg) 88%,
         var(--vscode-focusBorder, var(--diff-editor-fg)) 12%
     );
-}
-
-/* This is one active block, so it shares its segment's gutter and row count while retaining the
-   native horizontal behavior that follows the caret. The display path stays in `.code-lines` and
-   the edit path feeds its native scroll position back through the shared scrollbar. */
-.diff-edit-textarea {
-    box-sizing: border-box;
-    width: 100%;
-    min-width: 0;
-    min-height: 20px;
-    padding: 0 9px;
-    border: 0;
+    /* The focus ring belongs to the block, not to the text layer above it: that layer is
+       translated horizontally to stay level with the code (see `syncHorizontalScroll`), and a
+       ring riding along would slide off the block it is supposed to be outlining. */
     outline: 1px solid
         color-mix(in srgb, var(--vscode-focusBorder, var(--diff-editor-fg)) 55%, transparent);
     outline-offset: -1px;
+}
+
+/* The syntax-painted block stays in flow; the native control above it owns caret, selection, and
+   IME without repainting the code in one flat form-control colour. */
+.diff-editing-block .code-block {
+    pointer-events: none;
+}
+
+.diff-editing-block .diff-edit-textarea {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: var(--diff-line-number-gutter);
+    box-sizing: border-box;
+    /* Deliberately NOT widened to `--diff-line-min-width`. Sizing this layer to the shared
+       scroll extent makes its own content fit, which pins its `scrollLeft` at 0 while every
+       `.code-lines` scrolls -- measured 400px of caret drift. Left at the visible width it is
+       a real scroll container: the browser follows the caret when a long line is typed, and
+       `onScroll` feeds that back into the shared position. */
+    min-height: 20px;
+    padding: 0 9px;
+    border: 0;
+    outline: 0;
     resize: none;
-    color: var(--diff-editor-fg);
-    background: var(--diff-editor-bg);
+    color: transparent;
+    -webkit-text-fill-color: transparent;
+    caret-color: var(--vscode-editorCursor-foreground, var(--diff-editor-fg));
+    background: transparent;
     font: inherit;
     line-height: 20px;
     white-space: pre;
     overflow: hidden;
+}
+
+.diff-editing-block.line-numbers-right .diff-edit-textarea {
+    right: calc(var(--diff-line-number-gutter) + var(--diff-action-gutter));
+    left: 0;
+}
+
+.diff-editing-block .diff-edit-textarea::selection {
+    background: var(
+        --vscode-editor-selectionBackground,
+        color-mix(in srgb, var(--vscode-focusBorder, var(--diff-editor-fg)) 48%, transparent)
+    );
 }
