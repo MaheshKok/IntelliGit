@@ -5,6 +5,12 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.28.1] - 2026-08-26
+
+### Changed
+
+- The diagnostic trail the end-to-end suite prints when the Changes panel fails to appear now names which generation of the panel's document each line belongs to. This changes nothing about the extension itself — the trail is produced only while the test control channel is active, and never in a normal install — but it closes a gap that sent four investigations of the intermittent blank Changes panel down the wrong path. Every line already carried a number identifying the panel it came from, and identical numbers on a matched question-and-answer pair were read as proof that the extension had answered the panel that asked. They could not prove that. The number is assigned once per view, and VS Code can rebuild a hidden view's document without rebuilding the view around it, so every document that ever lives behind one view shares a single number. An answer sent to a document that no longer exists therefore looked exactly like an answer the live document received and ignored, and the evidence collected through that number could never tell the two apart. It can now. The blank panel itself is not fixed by this — what changes is that the next occurrence can say which of those two things happened, which is what picking the right fix requires.
+
 ## [0.28.0] - 2026-08-25
 
 ### Added
