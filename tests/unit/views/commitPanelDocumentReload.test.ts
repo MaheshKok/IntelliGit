@@ -145,6 +145,12 @@ async function ask(view: ReloadableView, attempt: number): Promise<void> {
     await flushMicrotasks();
 }
 
+/** A `ready` with no `attempt` at all -- what a producer predating the field sends. */
+async function askWithoutCount(view: ReloadableView): Promise<void> {
+    view.messages.fire({ type: "ready" });
+    await flushMicrotasks();
+}
+
 describe("commit panel document reload", () => {
     it("rebinds the document channel when a second document keeps asking after being answered", async () => {
         const provider = createCommitPanelProvider();
@@ -199,5 +205,23 @@ describe("commit panel document reload", () => {
             "the rescue re-sets webview.html, which itself creates a document that announces " +
                 "itself -- so a budget that re-arms per generation reloads the panel forever",
         ).toBe(afterResolve + 1);
+    });
+
+    it("counts no documents at all when ready carries no attempt", async () => {
+        const provider = createCommitPanelProvider();
+        const view = createReloadableWebviewView();
+        provider.resolveWebviewView(view.webviewView, INERT_CONTEXT, INERT_TOKEN);
+        const afterResolve = view.htmlAssignments();
+
+        await askWithoutCount(view);
+        await askWithoutCount(view);
+        await ask(view, 2);
+
+        expect(
+            view.htmlAssignments(),
+            "`attempt` is untrusted webview input; reading a missing count as a NEW DOCUMENT would " +
+                "let a producer that predates the field earn a rebind and reload a working panel. " +
+                "Only the literal 1 counts as a document announcing itself",
+        ).toBe(afterResolve);
     });
 });
