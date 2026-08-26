@@ -31,9 +31,14 @@ interface FakeWebview {
     delivered: unknown[];
     setPostMessageResult(result: Thenable<boolean>): void;
     /**
-     * Delivers `message` to whatever listener the code under test subscribed, and returns that
-     * listener's own return value. The real host is the only producer of inbound messages, so this
-     * stands in for it -- a wrapper that swallowed the listener, or its result, fails here.
+     * Delivers `message` to EVERY listener the code under test subscribed, in registration order,
+     * and returns the last one's return value. The real host is the only producer of inbound
+     * messages, so this stands in for it -- a wrapper that swallowed the listener, or its result,
+     * fails here.
+     *
+     * Listeners are kept in an array rather than one slot because `vscode.Webview` fires all of
+     * them: a single slot cannot tell one subscription from several, which is exactly the
+     * distinction the per-subscription/per-message split below turns on.
      */
     receive(message: unknown): unknown;
     /** The `disposables` array the subscriber passed, if any. VS Code appends the subscription to
@@ -44,7 +49,7 @@ interface FakeWebview {
 /** A controllable double for `vscode.Webview` that records what it actually received. */
 function makeFakeWebview(): FakeWebview {
     let nextResult: Thenable<boolean> = Promise.resolve(true);
-    let listener: ((message: unknown) => unknown) | undefined;
+    let listeners: Array<(message: unknown) => unknown> = [];
     let disposablesPassed: vscode.Disposable[] | undefined;
     const delivered: unknown[] = [];
     const webview = {
@@ -56,9 +61,13 @@ function makeFakeWebview(): FakeWebview {
             _thisArgs?: unknown,
             disposables?: vscode.Disposable[],
         ) => {
-            listener = handler;
+            listeners.push(handler);
             disposablesPassed = disposables;
-            return { dispose: () => undefined };
+            return {
+                dispose: () => {
+                    listeners = listeners.filter((entry) => entry !== handler);
+                },
+            };
         },
         asWebviewUri: (uri: vscode.Uri) => uri,
         postMessage: (message: unknown) => {
@@ -74,12 +83,14 @@ function makeFakeWebview(): FakeWebview {
             nextResult = result;
         },
         receive(message: unknown): unknown {
-            if (!listener) {
+            if (listeners.length === 0) {
                 throw new Error(
                     "makeFakeWebview.receive: nothing has subscribed to onDidReceiveMessage yet.",
                 );
             }
-            return listener(message);
+            let result: unknown;
+            for (const entry of [...listeners]) result = entry(message);
+            return result;
         },
         subscribedDisposables: () => disposablesPassed,
     };
@@ -164,7 +175,7 @@ describe("wrapWebviewForCapture: handshake trace", () => {
                 "the listener outlives whoever owned it",
         ).toBe(ownDisposables);
         expect(lines, "the ask must be traced, naming context, instance and direction").toEqual([
-            "[intelligit-e2e] handshake commit-panel#1 in ready",
+            "[intelligit-e2e] handshake commit-panel#1.1 in ready",
         ]);
     });
 
@@ -189,7 +200,7 @@ describe("wrapWebviewForCapture: handshake trace", () => {
             lines,
             "only the two handshake types may be traced: a line per message would evict the " +
                 "handshake from the dump's bounded console trail",
-        ).toEqual(["[intelligit-e2e] handshake commit-panel#1 out setRepositories"]);
+        ).toEqual(["[intelligit-e2e] handshake commit-panel#1.1 out setRepositories"]);
     });
 
     /**
@@ -229,9 +240,113 @@ describe("wrapWebviewForCapture: handshake trace", () => {
                 "split in postToWebview, and differing ones convict it -- a trace that cannot " +
                 "tell those apart is why four investigations ended without an answer",
         ).toEqual([
-            "[intelligit-e2e] handshake commit-panel#1 in ready",
-            "[intelligit-e2e] handshake commit-panel#2 out setRepositories",
-            "[intelligit-e2e] handshake commit-panel#2 in ready",
+            "[intelligit-e2e] handshake commit-panel#1.1 in ready",
+            "[intelligit-e2e] handshake commit-panel#2.1 out setRepositories",
+            "[intelligit-e2e] handshake commit-panel#2.1 in ready",
+        ]);
+    });
+
+    /**
+     * The case the instance number cannot reach, and wrongly claimed to have excluded.
+     *
+     * `webviewWrapperCount` increments inside `wrapWebviewForCapture`, which runs once per
+     * `resolveWebviewView`. VS Code reloads a hidden view's document WITHOUT re-running
+     * `resolveWebviewView` -- `CommitPanelViewProvider.handleReadyMessage`'s own comment is built
+     * on that fact -- so a reload keeps one wrapper, and therefore one number. Two documents then
+     * print byte-identically to one, which means "the host answered a document generation that no
+     * longer exists" cannot be told apart from "the host answered the live document".
+     *
+     * That is precisely the pair the 2026-08-25 dumps left open. Identical numbers across a matched
+     * in/out pair do acquit the record-versus-sender split in `postToWebview`, but the surviving
+     * explanation is NOT "VS Code dropped a post it acknowledged" alone: a stale document
+     * generation survives with it, and no field in the line separates them.
+     *
+     * A fresh document always opens its handshake at `attempt: 1`; a re-ask from a document that is
+     * still alive carries a higher number. Counting only a literal `1` is deliberate -- the failure
+     * direction is an undercount (a reload that goes unreported), never a phantom reload, and for a
+     * line whose job is to convict, a false conviction is the more expensive mistake.
+     */
+    it("distinguishes two document generations behind one wrapped view", () => {
+        const fake = makeFakeWebview();
+        const wrapped = wrapWebviewForCapture(
+            fake.webview,
+            "commit-panel",
+            new WebviewCaptureSink(),
+        );
+
+        const lines = tracedLines(() => {
+            wrapped.onDidReceiveMessage(() => undefined);
+            // Document generation one: opening ask, then a re-ask from that same live document.
+            fake.receive({ type: "ready", attempt: 1 });
+            fake.receive({ type: "ready", attempt: 2 });
+            void wrapped.postMessage({ type: "setRepositories", repositories: [] });
+            // VS Code reloads the document behind the same view. `resolveWebviewView` does not run,
+            // so nothing re-wraps -- but the script does re-run, and its counter restarts at one.
+            fake.receive({ type: "ready", attempt: 1 });
+            void wrapped.postMessage({ type: "setRepositories", repositories: [] });
+        });
+
+        expect(
+            lines,
+            "a reload behind a live view must change the traced document generation: the wrapper " +
+                "number cannot, because it counts resolves and a reload is not one -- so without " +
+                "this field an answer posted into a dead document reads exactly like an answer " +
+                "the live document received and ignored",
+        ).toEqual([
+            "[intelligit-e2e] handshake commit-panel#1.1 in ready",
+            "[intelligit-e2e] handshake commit-panel#1.1 in ready",
+            "[intelligit-e2e] handshake commit-panel#1.1 out setRepositories",
+            "[intelligit-e2e] handshake commit-panel#1.2 in ready",
+            "[intelligit-e2e] handshake commit-panel#1.2 out setRepositories",
+        ]);
+    });
+
+    /**
+     * One message is one event, however many listeners are subscribed to it.
+     *
+     * `onDidReceiveMessage` is a per-SUBSCRIPTION wrapper, so a tap installed inside it runs once
+     * per registered listener rather than once per message. Two subscriptions on one webview then
+     * counted a single opening `ready` twice and printed its line twice -- a generation that
+     * advances by two per reload, and a phantom generation for a reload that never happened.
+     *
+     * Two live subscriptions on one webview is not hypothetical: `SwitchableWebviewViewProvider`
+     * re-resolves a retained view against a new provider, and a provider that discards the
+     * `Disposable` its own `onDidReceiveMessage` returned leaves the previous one attached.
+     *
+     * The direction matters. This field exists to CONVICT a stale document generation, so an
+     * overcount is the expensive failure: it accuses a reload that did not occur, and every
+     * conclusion drawn from the accusation is wrong. An undercount only leaves the next dump as
+     * mute as the last, which is recoverable.
+     */
+    it("counts one inbound message once however many listeners are subscribed", () => {
+        const fake = makeFakeWebview();
+        const wrapped = wrapWebviewForCapture(
+            fake.webview,
+            "commit-panel",
+            new WebviewCaptureSink(),
+        );
+
+        const lines = tracedLines(() => {
+            wrapped.onDidReceiveMessage(() => undefined);
+            wrapped.onDidReceiveMessage(() => undefined);
+            fake.receive({ type: "ready", attempt: 1 });
+            void wrapped.postMessage({ type: "setRepositories", repositories: [] });
+            // A second document opens. With a per-subscription tap the generation would already be
+            // at three here, having counted the first reload twice.
+            fake.receive({ type: "ready", attempt: 1 });
+            void wrapped.postMessage({ type: "setRepositories", repositories: [] });
+        });
+
+        expect(
+            lines,
+            "two subscriptions on one webview traced a single message twice and advanced the " +
+                "document generation twice, so the field that exists to convict a stale " +
+                "generation would convict a reload that never happened",
+        ).toEqual([
+            "[intelligit-e2e] handshake commit-panel#1.1 in ready",
+            "[intelligit-e2e] handshake commit-panel#1.1 out setRepositories",
+            "[intelligit-e2e] handshake commit-panel#1.2 in ready",
+            "[intelligit-e2e] handshake commit-panel#1.2 out setRepositories",
         ]);
     });
 
