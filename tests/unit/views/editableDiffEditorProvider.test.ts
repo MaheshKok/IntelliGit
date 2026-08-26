@@ -27,7 +27,11 @@ const mocks = vi.hoisted(() => {
         executeCommand: vi.fn(),
         applyEdit: vi.fn(),
         writeFile: vi.fn(),
-        save: vi.fn(),
+        // Resolves a boolean for the same reason `postMessage` below does: `TextDocument.save`
+        // reports a refused save by RESOLVING false, never by rejecting, so a bare `vi.fn()`
+        // resolving `undefined` is a value the contract cannot produce — and one that reads as
+        // failure to any code that checks it.
+        save: vi.fn().mockResolvedValue(true),
         registerCustomEditorProvider: vi.fn(() => ({ dispose: vi.fn() })),
         logGitOpsWarning: vi.fn(),
         // Resolves a boolean because the real `postMessage` does, and that return value is
@@ -161,6 +165,18 @@ describe("EditableDiffEditorProvider", () => {
         mocks.sendWebviewMessage({ type: "ready" });
         await settle();
     };
+    const sendEdit = async (text: string, baseVersion = documentVersion): Promise<void> => {
+        await mocks.sendWebviewMessage({
+            type: "editText",
+            delta: {
+                startOffset: 0,
+                endOffset: 5,
+                text,
+                baseVersion,
+                baseReseedToken: tokenNow(),
+            },
+        });
+    };
 
     beforeEach(() => {
         vi.clearAllMocks();
@@ -244,31 +260,39 @@ describe("EditableDiffEditorProvider", () => {
             "data.onSessionDisposed",
         );
 
-        await mocks.sendWebviewMessage({
-            type: "editText",
-            delta: {
-                startOffset: 0,
-                endOffset: 5,
-                text: "dirty",
-                baseVersion: documentVersion,
-                baseReseedToken: tokenNow(),
-            },
-        });
+        vi.useFakeTimers();
+        try {
+            await sendEdit("dirty");
+            await vi.advanceTimersByTimeAsync(0);
 
-        expect(document.getText()).toBe("dirty();\n");
-        // The edit must reach the file ONLY as a WorkspaceEdit against the live document:
-        // that is what leaves the buffer dirty and the file on disk untouched until the user
-        // saves. Asserting the `diskText` literal instead would compare a const to itself and
-        // pass no matter what this provider did, so the disk oracle is the write APIs it must
-        // not reach for.
-        expect(mocks.applyEdit).toHaveBeenCalledOnce();
-        expect(mocks.writeFile).not.toHaveBeenCalled();
-        expect(mocks.save).not.toHaveBeenCalled();
-        expect(
-            mocks.executeCommand.mock.calls.some(
-                ([command]) => typeof command === "string" && /save/i.test(command),
-            ),
-        ).toBe(false);
+            expect(document.getText()).toBe("dirty();\n");
+            // The edit must reach the file ONLY as a WorkspaceEdit against the live document:
+            // that is what leaves the buffer dirty and the file on disk untouched until the user
+            // saves. Asserting the `diskText` literal instead would compare a const to itself and
+            // pass no matter what this provider did, so the disk oracle is the write APIs it must
+            // not reach for.
+            expect(mocks.applyEdit).toHaveBeenCalledOnce();
+            expect(mocks.writeFile).not.toHaveBeenCalled();
+            expect(mocks.save).not.toHaveBeenCalled();
+            expect(
+                mocks.executeCommand.mock.calls.some(
+                    ([command]) => typeof command === "string" && /save/i.test(command),
+                ),
+            ).toBe(false);
+
+            await vi.advanceTimersByTimeAsync(2000);
+            expect(mocks.save).toHaveBeenCalledOnce();
+            // The other direction of the same guard. A save that succeeded must say nothing:
+            // without this, a check inverted to treat `true` as the failure would leave every
+            // test in this file green while every ordinary save wrote a warning to the user's
+            // output channel.
+            expect(mocks.logGitOpsWarning).not.toHaveBeenCalledWith(
+                "editableDiffEditorProvider.autoSave",
+                expect.anything(),
+            );
+        } finally {
+            vi.useRealTimers();
+        }
         await vi.waitFor(() => {
             expect(mocks.postMessage).toHaveBeenLastCalledWith(
                 expect.objectContaining({
@@ -294,6 +318,132 @@ describe("EditableDiffEditorProvider", () => {
                 }),
             );
         });
+    });
+
+    it("restarts the auto-save window after another landed edit", async () => {
+        const provider = newProvider();
+        await provider.open(uri as never, openDescriptor);
+        await resolveAndBoot(provider);
+
+        vi.useFakeTimers();
+        try {
+            await sendEdit("first");
+            await vi.advanceTimersByTimeAsync(1000);
+            await sendEdit("again");
+            await vi.advanceTimersByTimeAsync(1000);
+
+            expect(mocks.save).not.toHaveBeenCalled();
+
+            await vi.advanceTimersByTimeAsync(1000);
+            expect(mocks.save).toHaveBeenCalledOnce();
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it("does not save when the document is clean when the auto-save timer fires", async () => {
+        const provider = newProvider();
+        await provider.open(uri as never, openDescriptor);
+        await resolveAndBoot(provider);
+
+        vi.useFakeTimers();
+        try {
+            await sendEdit("clean");
+            await vi.advanceTimersByTimeAsync(0);
+            documentDirty = false;
+
+            await vi.advanceTimersByTimeAsync(2000);
+            expect(mocks.save).not.toHaveBeenCalled();
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it("does not arm auto-save for a rejected delta", async () => {
+        const provider = newProvider();
+        await provider.open(uri as never, openDescriptor);
+        await resolveAndBoot(provider);
+
+        vi.useFakeTimers();
+        try {
+            await sendEdit("dropped", documentVersion - 1);
+            await vi.advanceTimersByTimeAsync(2000);
+
+            expect(mocks.save).not.toHaveBeenCalled();
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it("cancels auto-save when the editable diff session is disposed", async () => {
+        const provider = newProvider();
+        await provider.open(uri as never, openDescriptor);
+        await resolveAndBoot(provider);
+
+        vi.useFakeTimers();
+        try {
+            await sendEdit("gone");
+            await vi.advanceTimersByTimeAsync(0);
+            expect(vi.getTimerCount()).toBe(1);
+            mocks.firePanelDispose();
+            expect(vi.getTimerCount()).toBe(0);
+
+            await vi.advanceTimersByTimeAsync(2000);
+            expect(mocks.save).not.toHaveBeenCalled();
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it("logs and swallows an auto-save failure", async () => {
+        const provider = newProvider();
+        await provider.open(uri as never, openDescriptor);
+        await resolveAndBoot(provider);
+        const error = new Error("save failed");
+        mocks.save.mockRejectedValueOnce(error);
+
+        vi.useFakeTimers();
+        try {
+            await sendEdit("error");
+            await vi.advanceTimersByTimeAsync(2000);
+
+            expect(mocks.logGitOpsWarning).toHaveBeenCalledWith(
+                "editableDiffEditorProvider.autoSave",
+                error,
+            );
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    // The failure shape the `catch` above cannot see. `TextDocument.save` resolves `false` for a
+    // refused save — a read-only file, a full disk, a folder that vanished — and rejects only for
+    // an exceptional fault, so the whole ordinary failure surface arrives as a resolved value.
+    // The document is still dirty afterwards and the timer has already been cleared, so nothing
+    // retries: the user believes their edit is on disk and it is not. This is the same swallowed
+    // boolean the `postMessage` mock at the top of this file carries a comment about, and it was
+    // written into this provider once already.
+    it("logs an auto-save the editor refuses without rejecting", async () => {
+        const provider = newProvider();
+        await provider.open(uri as never, openDescriptor);
+        await resolveAndBoot(provider);
+        mocks.save.mockResolvedValueOnce(false);
+
+        vi.useFakeTimers();
+        try {
+            await sendEdit("refused");
+            await vi.advanceTimersByTimeAsync(2000);
+
+            expect(mocks.save).toHaveBeenCalledOnce();
+            expect(mocks.logGitOpsWarning).toHaveBeenCalledWith(
+                "editableDiffEditorProvider.autoSave",
+                expect.objectContaining({
+                    message: "VS Code reported the document save as failed.",
+                }),
+            );
+        } finally {
+            vi.useRealTimers();
+        }
     });
 
     it("advances the reseed token for an external change but not for its own edit", async () => {

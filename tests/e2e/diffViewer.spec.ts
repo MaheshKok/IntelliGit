@@ -9,6 +9,7 @@
 // controlChannelRoundTrip.spec.ts establish the precedent for a standalone spec with its own launch
 // sequence outside that matrix.
 
+import { readFile } from "node:fs/promises";
 import path from "node:path";
 
 import type { ElectronApplication, FrameLocator } from "@playwright/test";
@@ -149,6 +150,46 @@ test.describe("diff viewer", () => {
             // still focused, and still holds what was typed.
             await expect(textarea).toBeFocused();
             await expect(textarea).toHaveValue(headText);
+        } finally {
+            await electronApp.close();
+        }
+    });
+
+    // Auto-save's own assembled leg, and the same gap the case above closes for the re-diff. The
+    // unit suite proves a timer fires and calls `document.save()` against a mocked document; a
+    // mock cannot say whether the bytes reached the filesystem, and every failure this feature
+    // exists to survive — a refused save, a document that was never dirty, a session disposed
+    // first — is a question about a real editor holding a real file. Its own launch rather than
+    // an extra assertion on the case above, so a broken save reds auto-save alone instead of
+    // muddying which of the two features regressed.
+    test("saves the edited file to disk after the typing stops", async ({ fixtureWorkspace }) => {
+        test.setTimeout(120_000);
+        const { electronApp, diffFrame } = await openDiffViewer(fixtureWorkspace);
+        const filePath = path.join(fixtureWorkspace.workspace.root, DIRTY_FIXTURE.mutablePath);
+
+        try {
+            // The oracle is the file, so it has to start out NOT holding what we type — the dirty
+            // fixture leaves an unstaged edit here, and asserting `toContain` against text that
+            // was already present would pass with the feature removed.
+            const typed = "autosaved by the diff viewer";
+            expect(await readFile(filePath, "utf-8")).not.toContain(typed);
+
+            const block = diffFrame
+                .locator('[data-testid="diff-pane-right"] .diff-editable-block')
+                .first();
+            await block.click();
+
+            const textarea = diffFrame.locator('[data-testid="diff-pane-right-editable"]');
+            await expect(textarea).toBeFocused();
+            await textarea.fill(typed);
+
+            // Covers the whole chain and nothing shorter: the webview's 1 s post, the host's
+            // WorkspaceEdit, the 2 s auto-save timer armed by it, and VS Code writing the buffer
+            // out. Read from disk directly rather than through the control channel, which has no
+            // operation for file contents.
+            await expect
+                .poll(() => readFile(filePath, "utf-8"), { timeout: 30_000 })
+                .toContain(typed);
         } finally {
             await electronApp.close();
         }
