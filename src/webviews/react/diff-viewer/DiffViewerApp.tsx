@@ -14,9 +14,11 @@ import { detectTheme, initShiki, isShikiReady, langForPath } from "../diff-core/
 import { SyntaxHighlightProvider } from "../diff-core/syntaxHighlightContext";
 import {
     buildVerticalLayout,
+    connectorChannelSpan,
     LINE_HEIGHT_PX,
     ribbonPathD,
     type DiffVerticalLayout,
+    type RibbonSpan,
     type SegmentPaneLines,
 } from "../diff-core/mergeScrollLayout";
 import { buildLineNumberValues } from "../diff-core/lineNumbers";
@@ -34,16 +36,17 @@ import {
 } from "../diff-core/segments";
 import { IconChevronDown, IconEye, IconFilter } from "../merge-editor/icons";
 import { splitEditedText } from "../merge-editor/mergeState";
-import { DIFF_PANES, segmentClassName, type DiffPane } from "./segmentMarkers";
+import {
+    DIFF_PANES,
+    segmentClassName,
+    segmentRibbonMarker,
+    type DiffPane,
+    type SegmentMarker,
+} from "./segmentMarkers";
 import { adjacentChangeIndex, buildStripeMarks } from "./changeStripe";
 import "./diff-viewer.css";
 
 const LINE_PADDING_PX = 18;
-// Fractions of the viewport width where a ribbon stops running flat and bends.
-// The two panes meet at the halfway point, so the S-bend straddles it in a
-// narrow strip and the band reads as flat under each pane's rows.
-const RIBBON_CURVE_START = 0.48;
-const RIBBON_CURVE_END = 0.52;
 
 interface RenderedSegment {
     segment: DiffSegment;
@@ -283,7 +286,7 @@ function EditableDiffPane({
                 return (
                     <div
                         key={`editable-${side}-${item.index}`}
-                        className="segment diff-editable-block"
+                        className={`segment diff-editable-block ${segmentClassName(item.segment, side)}`}
                         style={style}
                         onDoubleClick={() => startEditing(item)}
                         onKeyDown={(event) => {
@@ -320,19 +323,19 @@ function EditableDiffPane({
  * same factor, which is only correct while one pane stays the taller one.
  */
 function DiffRibbonLayer({
-    indices,
+    ribbons,
     registerPath,
 }: {
-    indices: readonly number[];
+    ribbons: readonly { index: number; marker: SegmentMarker | null }[];
     registerPath: (index: number, element: SVGPathElement | null) => void;
 }): React.ReactElement {
     return (
         <svg className="diff-ribbon-layer" aria-hidden="true">
-            {indices.map((index) => (
+            {ribbons.map(({ index, marker }) => (
                 <path
                     key={`ribbon-${index}`}
                     ref={(element) => registerPath(index, element)}
-                    className="diff-ribbon"
+                    className={`diff-ribbon ${marker ?? ""}`}
                 />
             ))}
         </svg>
@@ -360,9 +363,15 @@ export function App(): React.ReactElement {
     const scrollSyncRef = useRef({ raf: 0, left: 0 });
     const layoutRef = useRef<DiffVerticalLayout<DiffPane> | null>(null);
     // Viewport box in px: the height clamps pane offsets and culls offscreen
-    // ribbons, the width supplies the ribbon layer's user-unit span. Measured on
-    // layout/resize so the per-frame draw only recomputes y.
-    const viewportRef = useRef({ height: 0, width: 0 });
+    // ribbons, and `channel` is the empty gutter between the two panes -- the only
+    // x range a connector is ever drawn in. Measured on layout/resize so the
+    // per-frame draw only recomputes y. The channel starts empty so a draw racing
+    // the first measure paints a zero-width band rather than one spanning the
+    // whole viewport, which is the defect this replaced.
+    const viewportRef = useRef<{ height: number; channel: RibbonSpan }>({
+        height: 0,
+        channel: connectorChannelSpan(0, 0),
+    });
     const ribbonPaths = useMemo(() => new Map<number, SVGPathElement>(), []);
     const handleDraftLayoutChange = useCallback((layout: EditableBlockLayout | null) => {
         setEditingBlock(layout);
@@ -430,7 +439,10 @@ export function App(): React.ReactElement {
         () =>
             renderedSegments
                 .filter((item) => item.segment.type === "changed")
-                .map((item) => item.index),
+                .map((item) => ({
+                    index: item.index,
+                    marker: segmentRibbonMarker(item.segment),
+                })),
         [renderedSegments],
     );
 
@@ -460,12 +472,30 @@ export function App(): React.ReactElement {
     // Cache the viewport box and expose its height as a CSS var so the sticky
     // viewport's negative margin cancels exactly its own height, leaving the
     // scroll range at canonicalTotalPx.
+    //
+    // The connector channel is measured here too, from the panes' own boxes rather than
+    // recomputed from the column template: --diff-connector-gutter is a CSS decision,
+    // and arithmetic that re-derives it here would keep returning a stale answer if the
+    // grid changed, which is the failure mode that put the ribbons across the code in
+    // the first place. Reading two rects per resize, not per frame, keeps it off the
+    // scroll path.
     const measureViewport = useCallback(() => {
         const content = contentRef.current;
         if (!content) return;
         const height = content.clientHeight;
-        const width = viewportElementRef.current?.clientWidth ?? 0;
-        viewportRef.current = { height, width };
+        const viewport = viewportElementRef.current;
+        const width = viewport?.clientWidth ?? 0;
+        const left = columnRefs.current.left?.getBoundingClientRect();
+        const right = columnRefs.current.right?.getBoundingClientRect();
+        const origin = viewport?.getBoundingClientRect().left ?? 0;
+        // Before the panes have laid out there is no channel to measure. A zero-width
+        // span at the midpoint draws nothing rather than falling back to the full
+        // width, so a ribbon can never appear over the code even for one frame.
+        const channel = connectorChannelSpan(
+            left ? left.right - origin : width / 2,
+            right ? right.left - origin : width / 2,
+        );
+        viewportRef.current = { height, channel };
         content.style.setProperty("--diff-viewport-h", `${height}px`);
     }, []);
 
@@ -479,14 +509,8 @@ export function App(): React.ReactElement {
             currentLayout: DiffVerticalLayout<DiffPane>,
             offsets: Readonly<Record<DiffPane, number>>,
             viewportH: number,
-            viewportW: number,
+            span: RibbonSpan,
         ) => {
-            const span = {
-                x0: 0,
-                curveX0: viewportW * RIBBON_CURVE_START,
-                curveX1: viewportW * RIBBON_CURVE_END,
-                x1: viewportW,
-            };
             for (const [index, path] of ribbonPaths) {
                 if (index >= currentLayout.canonicalTopPx.length) continue;
                 const leftTop = currentLayout.paneTopPx.left[index] - offsets.left;
@@ -514,7 +538,7 @@ export function App(): React.ReactElement {
         const content = contentRef.current;
         const currentLayout = layoutRef.current;
         if (!content || !currentLayout) return;
-        const { height: viewportH, width: viewportW } = viewportRef.current;
+        const { height: viewportH, channel } = viewportRef.current;
         const offsets = paneOffsetsForCanonical(
             currentLayout,
             DIFF_PANES,
@@ -522,7 +546,7 @@ export function App(): React.ReactElement {
             viewportH,
         );
         applyPaneOffsets(DIFF_PANES, (pane) => columnRefs.current[pane], offsets);
-        drawRibbons(currentLayout, offsets, viewportH, viewportW);
+        drawRibbons(currentLayout, offsets, viewportH, channel);
     }, [drawRibbons]);
 
     const registerRibbonPath = useCallback(
@@ -879,7 +903,7 @@ export function App(): React.ReactElement {
                                 </div>
                             </div>
                             <DiffRibbonLayer
-                                indices={ribbonIndices}
+                                ribbons={ribbonIndices}
                                 registerPath={registerRibbonPath}
                             />
                         </div>

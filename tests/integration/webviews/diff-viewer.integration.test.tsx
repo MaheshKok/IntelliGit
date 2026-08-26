@@ -499,6 +499,66 @@ describe("DiffViewerApp read-only contract", () => {
         expect(spacer?.style.height, "the block rows own the canonical scroll range").toBe("800px");
     });
 
+    it("marks an editable pane's blocks with the segment state its immutable peer gets", async () => {
+        // The block wash and the edge bar are keyed on diff-segment-* (diff-viewer.css:246-280),
+        // and the editable pane renders through its own branch rather than DiffPaneBlock -- so
+        // nothing but this pins the two branches to one classification. It matters on the right
+        // specifically: editablePaneForSides sends the worktree side down the editable branch,
+        // and the worktree is the RIGHT side for every ordinary HEAD-vs-working-tree diff, which
+        // is the pane a user watches render its word fragments with no wash behind them.
+        installVsCodeMock();
+        createRootHost();
+        await act(async () => {
+            await import("../../../src/webviews/react/diff-viewer/DiffViewerApp");
+        });
+        await flush();
+
+        // The one-sided hunks are what make the pane argument load-bearing: a two-sided hunk
+        // reads `modified` from either side, so on its own it cannot tell a correct call from
+        // one that classifies the editable pane against its counterpart.
+        dispatchHostMessage({
+            type: "setDiffData",
+            data: {
+                ...diffFixture,
+                segments: [
+                    { type: "common" as const, left: ["shared();"], right: ["shared();"] },
+                    { type: "changed" as const, left: ["before();"], right: ["after();"] },
+                    { type: "changed" as const, left: ["gone();"], right: [] },
+                    { type: "changed" as const, left: [], right: ["added();"] },
+                ],
+                editablePane: "right" as const,
+                editableText: "shared();\nafter();\nadded();",
+                documentVersion: 1,
+                editableReseedToken: 0,
+            },
+        });
+        await flush();
+
+        const statesOf = (pane: string): string[][] =>
+            [...document.querySelectorAll<HTMLElement>(`${pane} .segment`)].map((block) =>
+                [...block.classList].filter((name) => name.startsWith("diff-segment-")).sort(),
+            );
+
+        expect(
+            statesOf(".diff-pane-left"),
+            "the premise: the immutable pane marks every changed hunk from its own side",
+        ).toEqual([
+            [],
+            ["diff-segment-changed", "diff-segment-modified"],
+            ["diff-segment-changed", "diff-segment-deleted"],
+            ["diff-segment-changed", "diff-segment-empty"],
+        ]);
+        expect(
+            statesOf(".diff-pane-right"),
+            "the editable pane classifies from its own side, or no wash or edge bar can paint",
+        ).toEqual([
+            [],
+            ["diff-segment-changed", "diff-segment-modified"],
+            ["diff-segment-changed", "diff-segment-empty"],
+            ["diff-segment-changed", "diff-segment-inserted"],
+        ]);
+    });
+
     it("keeps terminal-newline metadata out of the editable pane's aligned row count", async () => {
         installVsCodeMock();
         createRootHost();

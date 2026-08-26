@@ -18,8 +18,15 @@
        by name, and every hue below has to be read by a rule or it fails there as a
        dead declaration. */
     --diff-ok: var(--merge-ok, var(--vscode-charts-green, #79c18d));
-    --diff-danger: var(--merge-danger, var(--vscode-errorForeground, #d86c6c));
     --diff-info: var(--merge-info, var(--vscode-terminal-ansiCyan, #58b5c9));
+    /* The deleted state reads this, not --diff-muted. Those were the same colour until
+       deletions went red, and --diff-muted is still the secondary TEXT hue (the pane
+       labels in diff-viewer.css and the line-number blend below), so the two had to
+       come apart before either could move. */
+    --diff-deleted-hue: var(
+        --merge-deleted-hue,
+        color-mix(in srgb, var(--vscode-charts-red, #c74e39) 78%, var(--diff-muted) 22%)
+    );
     --diff-line-number-gutter: var(--merge-line-number-gutter, 33px);
     --diff-line-min-width: var(--merge-line-min-width, 0px);
     --diff-action-gutter: var(--merge-action-gutter, 44px);
@@ -32,16 +39,14 @@
     /* Word-fragment tint at the merge surface's own strength, and the only paint
        alias diff-core still owns. The merge editor declares --pycharm-modified, so
        there this reads through to the identical value it always had.
-       The fallback leg is `transparent`, not a colour, and that is the whole of the
-       read-only surface's palette decision: a background behind code text spends
-       contrast the syntax palette has no budget for. VS Code's light themes colour
-       the number token #098658, which measures 4.60:1 on the plain editor
-       background -- 0.10 above the 4.5 floor the non-pixel contrast oracle enforces
-       -- so any wash under a code row drops it below (measured 4.3-4.4 across
-       light-modern and hc-light at a mix as faint as 4%). A read-only pane
-       therefore marks changes at the block edge and underlines changed fragments;
-       see diff-viewer.css. An editable surface can afford the filled body because
-       each fragment there is a click target, not only a marker. */
+       The fallback leg is `transparent` so a surface that does not declare the tint
+       renders no background at all rather than `initial`. The read-only viewer does
+       declare one -- at this same strength, under its own name -- because inheriting
+       through here would tie the two surfaces together at exactly the point they are
+       allowed to diverge: a background behind code text spends contrast the syntax
+       palette has little of (VS Code's light themes colour the number token #098658,
+       which measures 4.60:1 on the plain editor background against a 4.5 floor), and
+       diff-viewer.css carries the swept table and the decision to spend it. */
     --diff-pycharm-modified: var(--pycharm-modified, transparent);
 }
 

@@ -7,6 +7,7 @@ import {
     DIFF_PANES,
     SEGMENT_MARKERS,
     segmentMarker,
+    segmentRibbonMarker,
 } from "../../../src/webviews/react/diff-viewer/segmentMarkers";
 import { HOST_CONTEXT_FIXTURES } from "../../visual/hostContextFixtures";
 
@@ -95,5 +96,25 @@ describe("diff-viewer visual fixture coverage", () => {
             "diff-segment-deleted": ["left"],
             "diff-segment-inserted": ["right"],
         });
+    });
+
+    it("gives each connector the state of the side that holds rows", () => {
+        // A ribbon spans both panes, so it takes one state where a pane block takes two.
+        // The bug this pins is the one the viewer shipped with: with no state at all,
+        // every connector drew in --diff-info, so the band leading to an insertion was
+        // cyan while the block it landed on was green. A classifier that answered
+        // `diff-segment-empty` for a one-sided hunk would reintroduce it in a quieter
+        // form -- that state has no ribbon rule, so it would silently take the base fill,
+        // which is the same cyan.
+        const observed = new Set<string>();
+        for (const segment of recordedSegments()) {
+            const marker = segmentRibbonMarker(segment);
+            if (marker !== null) observed.add(marker);
+        }
+
+        expect(
+            [...observed].sort(),
+            "the recorded fixture's connectors no longer cover every changed state, or one of them classifies to `empty`; either way a hunk's band is drawn in a hue that disagrees with the block it joins, and nothing else measures it",
+        ).toEqual([...SEGMENT_MARKERS].filter((marker) => marker !== "diff-segment-empty").sort());
     });
 });

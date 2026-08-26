@@ -51,3 +51,22 @@ export function segmentClassName(segment: DiffSegment, side: DiffPane): string {
     const marker = segmentMarker(segment, side);
     return marker === null ? "segment-common" : `diff-segment-changed ${marker}`;
 }
+
+/**
+ * The single state a segment's connector ribbon reads as.
+ *
+ * A ribbon spans both panes, so unlike a pane block it cannot be in two states at once:
+ * the side that holds rows decides it, and a two-sided hunk is a modification. Without
+ * this the ribbon has no state at all and every hunk's connector is drawn in one hue,
+ * which is what made an insertion's band read as a modification's -- the merge editor
+ * colours its own connectors per variant (`merge-editor.css:446-457`).
+ *
+ * `diff-segment-empty` is never returned: it is the state of the side that holds no
+ * rows, and a ribbon whose only state were `empty` would be a connector for a segment
+ * with nothing on either side.
+ */
+export function segmentRibbonMarker(segment: DiffSegment): SegmentMarker | null {
+    const right = segmentMarker(segment, "right");
+    if (right === null) return null;
+    return right === "diff-segment-empty" ? segmentMarker(segment, "left") : right;
+}

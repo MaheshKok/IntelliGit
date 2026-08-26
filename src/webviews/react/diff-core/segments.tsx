@@ -5,6 +5,7 @@
 import React, { useMemo } from "react";
 import {
     alignCompareLinesForWordDiff,
+    bridgeChangedWordRuns,
     buildWordDiffMask,
     tokenSimilarityRatio,
     tokenizeWordDiff,
@@ -90,18 +91,23 @@ const HighlightedLine = React.memo(function HighlightedLine({
 });
 
 /** Expands a token-level word-diff mask into per-character masks. */
-function buildChangedCharMasks(
+export function buildChangedCharMasks(
     line: string,
     compareLine: string,
 ): { changed: boolean[]; whitespace: boolean[] } {
     const tokens = tokenizeWordDiff(line);
-    const changedMask = buildWordDiffMask(line, compareLine);
+    const { changed: changedMask, bridged } = bridgeChangedWordRuns(
+        tokens,
+        buildWordDiffMask(line, compareLine),
+    );
     const changed: boolean[] = [];
     const whitespace: boolean[] = [];
     for (let i = 0; i < tokens.length; i++) {
         const token = tokens[i];
         const isChanged = changedMask[i];
-        const isWhitespace = /^\s+$/.test(token);
+        // A bridged gap is interior to one changed run, so it takes that run's colour.
+        // The neutral whitespace tint is for whitespace that is itself the change.
+        const isWhitespace = /^\s+$/.test(token) && !bridged[i];
         for (let c = 0; c < token.length; c++) {
             changed.push(isChanged);
             whitespace.push(isWhitespace);

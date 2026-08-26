@@ -5,6 +5,7 @@
 import { describe, expect, it } from "vitest";
 import {
     buildVerticalLayout,
+    connectorChannelSpan,
     paneOffsetForCanonical,
     ribbonOutlineD,
     ribbonPathD,
@@ -130,6 +131,52 @@ describe("paneOffsetForCanonical", () => {
         expect(visibleExtent("left", conflictBottom).bottom).toBe(0);
         expect(visibleExtent("middle", conflictBottom).bottom).toBe(0);
         expect(visibleExtent("right", conflictBottom).bottom).toBe(0);
+    });
+});
+
+// The two-pane viewer's connector span. The invariant is containment, not shape:
+// a band that reaches outside the empty channel is drawn ON TOP OF code, which is
+// exactly what shipped before -- the viewer passed `x0 = 0, x1 = viewportWidth`,
+// every connector spanned the whole viewport, and nothing caught it because a
+// translucent SVG over the code changes no computed style and the contrast oracle
+// reads computed styles. So the assertions below are on the extreme x's of the
+// rendered path, not only on the returned struct.
+describe("connectorChannelSpan", () => {
+    /** Every x coordinate in an SVG path `d`, in order. */
+    const pathXs = (d: string): number[] =>
+        [...d.matchAll(/(-?[\d.]+),(-?[\d.]+)/g)].map((match) => Number(match[1]));
+
+    it("spans the channel exactly, with no flat run outside either pane edge", () => {
+        expect(connectorChannelSpan(600, 628)).toEqual({
+            x0: 600,
+            curveX0: 600,
+            curveX1: 628,
+            x1: 628,
+        });
+    });
+
+    it("normalises reversed pane edges, so a right-to-left layout still bends inward", () => {
+        expect(connectorChannelSpan(628, 600)).toEqual(connectorChannelSpan(600, 628));
+    });
+
+    it("collapses to a zero-width seam before the panes have laid out", () => {
+        expect(connectorChannelSpan(0, 0)).toEqual({ x0: 0, curveX0: 0, curveX1: 0, x1: 0 });
+    });
+
+    it("keeps every point of the drawn band inside the channel, never over a pane", () => {
+        const span = connectorChannelSpan(600, 628);
+        // Unbalanced hunk (left 40px tall, right 60px) — the case that bends hardest.
+        const xs = pathXs(ribbonPathD(span, 100, 140, 220, 280));
+        expect(Math.min(...xs)).toBe(600);
+        expect(Math.max(...xs)).toBe(628);
+    });
+
+    it("keeps the outline inside the channel too, so a resolved hunk cannot stroke over code", () => {
+        const span = connectorChannelSpan(600, 628);
+        const xs = pathXs(ribbonOutlineD(span, 100, 140, 220, 280));
+        // The outline insets its closing rails by 0.5px to keep the stroke inside.
+        expect(Math.min(...xs)).toBeGreaterThanOrEqual(600);
+        expect(Math.max(...xs)).toBeLessThanOrEqual(628);
     });
 });
 

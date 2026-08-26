@@ -169,6 +169,27 @@ export interface RibbonSpan {
 }
 
 /**
+ * The span a two-pane connector is drawn across: the empty channel between the panes,
+ * and nothing outside it. `paneEdge` and `nextPaneEdge` are the facing inner edges, in
+ * the ribbon layer's own coordinates.
+ *
+ * The whole channel bends -- there are no flat runs, because a flat run is the part of
+ * a ribbon that lies UNDER a pane, and a two-pane viewer has no room for one. That is
+ * the defect this replaces: the viewer passed `x0 = 0, x1 = viewportWidth`, so every
+ * band ran the full width and composited over both panes' code instead of bridging a
+ * gap. Nothing failed, because a translucent SVG drawn on top changes no computed
+ * style and the contrast oracle reads computed styles.
+ *
+ * Argument order is not trusted: the edges come from two DOM rects, and a right-to-left
+ * layout hands them back the other way round.
+ */
+export function connectorChannelSpan(paneEdge: number, nextPaneEdge: number): RibbonSpan {
+    const x0 = Math.min(paneEdge, nextPaneEdge);
+    const x1 = Math.max(paneEdge, nextPaneEdge);
+    return { x0, curveX0: x0, curveX1: x1, x1 };
+}
+
+/**
  * Builds the filled SVG path joining two adjacent pane extents. The 30% / 70%
  * Bézier controls preserve the measured IntelliJ curve-trapezium geometry.
  */

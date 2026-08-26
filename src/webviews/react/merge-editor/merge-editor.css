@@ -24,6 +24,35 @@
     --merge-danger: var(--vscode-errorForeground, #d86c6c);
     --merge-ok: var(--vscode-charts-green, #79c18d);
     --merge-info: var(--vscode-terminal-ansiCyan, #58b5c9);
+    /* The deleted state's own hue, and the reason it is a separate token rather than
+       --merge-danger or --merge-muted.
+       Not --merge-muted: that one is also the secondary TEXT colour (six `color:` rules
+       below, plus the line-number blend in diff-core.css), so repointing it would turn
+       every muted label red. The deleted state needed its own name before it could stop
+       being grey.
+       Not --merge-danger either: red already means CONFLICT on this surface, and a merge
+       can show a deleted hunk and a conflict hunk in the same scroll. VS Code themes hand
+       out one red -- Dark Modern gives errorForeground #f85149 and charts-red #f14c4c --
+       so reading a second red token would not have separated them. Blending the muted hue
+       back in by 22% is what does, and it holds on any theme because both legs are the
+       live theme's own tokens rather than a hard-coded pair.
+       Measured on dark-modern, the worst case, as 8-bit channel distance from the
+       conflict hue:
+
+         charts-red alone          7, 5, 3     indistinguishable
+         charts-red + 22% muted   26,13,21     distinct
+         the 15% block wash        4, 1, 3     converges
+
+       The wash row is not a tuning failure and no percentage fixes it: at 15% both
+       states are 85% editor background, so ANY two reds meet there. The separation has
+       to live where the hue is painted at full strength -- the edge bar, the connector
+       stroke, and the hunk bracket -- which is where a hunk's state is read anyway, and
+       where the numbers above say it is real. */
+    --merge-deleted-hue: color-mix(
+        in srgb,
+        var(--vscode-charts-red, #c74e39) 78%,
+        var(--merge-muted) 22%
+    );
     /* Status pills are 11px, so the hue alone cannot carry them: no host warning
        or success token clears 4.5:1 on a light theme. Mixing toward the editor
        foreground pulls each hue to the high-contrast end of whichever theme is
@@ -40,12 +69,16 @@
     --pycharm-conflict: color-mix(in srgb, var(--merge-danger) 30%, var(--merge-editor-bg));
     --pycharm-inserted: color-mix(in srgb, var(--merge-ok) 30%, var(--merge-editor-bg));
     --pycharm-modified: color-mix(in srgb, var(--merge-info) 30%, var(--merge-editor-bg));
-    --pycharm-deleted: color-mix(in srgb, var(--merge-muted) 30%, var(--merge-editor-bg));
+    --pycharm-deleted: color-mix(in srgb, var(--merge-deleted-hue) 30%, var(--merge-editor-bg));
     --merge-conflict-block-bg: color-mix(in srgb, var(--merge-danger) 15%, var(--merge-editor-bg));
     --merge-conflict-ribbon-bg: var(--merge-conflict-block-bg);
     --merge-inserted-block-bg: color-mix(in srgb, var(--merge-ok) 15%, var(--merge-editor-bg));
     --merge-modified-block-bg: color-mix(in srgb, var(--merge-info) 15%, var(--merge-editor-bg));
-    --merge-deleted-block-bg: color-mix(in srgb, var(--merge-muted) 15%, var(--merge-editor-bg));
+    --merge-deleted-block-bg: color-mix(
+        in srgb,
+        var(--merge-deleted-hue) 15%,
+        var(--merge-editor-bg)
+    );
     --merge-pane-boundary: color-mix(in srgb, var(--merge-editor-fg) 24%, var(--merge-editor-bg));
     --merge-hunk-boundary: color-mix(in srgb, var(--merge-border) 72%, transparent);
     --merge-hunk-boundary-width: 1px;
@@ -453,7 +486,7 @@
 }
 .merge-connector.variant-deletion {
     fill: var(--merge-deleted-block-bg);
-    stroke: color-mix(in srgb, var(--merge-deleted-block-bg) 45%, var(--merge-muted) 55%);
+    stroke: color-mix(in srgb, var(--merge-deleted-block-bg) 45%, var(--merge-deleted-hue) 55%);
 }
 /* Settled sides (accepted / discarded) trade the filled band for PyCharm's
    dotted contour: an unfilled outline tracing the source block, the divider
@@ -474,7 +507,7 @@
     stroke: color-mix(in srgb, var(--merge-modified-block-bg) 45%, var(--merge-info) 55%);
 }
 .merge-connector.variant-deletion.connector-resolved {
-    stroke: color-mix(in srgb, var(--merge-deleted-block-bg) 45%, var(--merge-muted) 55%);
+    stroke: color-mix(in srgb, var(--merge-deleted-block-bg) 45%, var(--merge-deleted-hue) 55%);
 }
 .merge-content::-webkit-scrollbar {
     width: 9px;

@@ -19,8 +19,16 @@ const SEGMENT_MARKERS_SOURCE = resolve(
     "../../../src/webviews/react/diff-viewer/segmentMarkers.ts",
 );
 
-/** Semantic hues a diff surface is allowed to draw a change colour from. */
-const HUE_TOKENS = ["--diff-ok", "--diff-danger", "--diff-info", "--diff-muted"] as const;
+/**
+ * Semantic hues a diff surface is allowed to draw a change colour from.
+ *
+ * Neither --diff-muted nor --diff-danger is one of them. --diff-muted was the deleted
+ * state's hue and is still the secondary TEXT hue, so leaving it here would let deleted
+ * quietly go back to grey while every guard stayed green. --diff-danger was the second
+ * red: the merge surface's conflict hue, borrowed by the viewer for deletions before
+ * --diff-deleted-hue was split out. One token per job, in both directions.
+ */
+const HUE_TOKENS = ["--diff-ok", "--diff-info", "--diff-deleted-hue"] as const;
 
 /**
  * The changed-segment state each stripe tone points at. The stripe exists so a reader can
@@ -55,12 +63,12 @@ const ROWLESS_STATES: readonly string[] = ["diff-segment-empty"];
  * declares its own conflict colours, so the only rule that could read a --diff-*
  * conflict alias is one painting a danger hue under an unrelated state.
  *
- * The three block washes are the contrast defect itself. Syntax tokens are coloured
- * for the plain editor background; VS Code's light themes give the number token
- * #098658, which measures 4.60:1 on white against a 4.5 floor, so a wash as faint as
- * a 4% mix measured 4.3-4.4 in light-modern and hc-light. No percentage is both
- * visible and legal, which makes re-declaring one a silent regression rather than a
- * tuning choice -- and the tuning is exactly what someone reaches for first.
+ * The three block washes are a second name for a colour `--diff-*-wash` already owns.
+ * Two names for one wash is how the surface ends up painting a block twice at two
+ * strengths, and it is the shape someone reaches for when copying a rule across from
+ * merge-editor.css, which really does call them `--merge-*-block-bg`. The viewer reads
+ * the strength from those merge tokens instead (see the strength guard above), so a
+ * local alias would be a value that agrees with the merge surface only by luck.
  */
 const FORBIDDEN_ALIASES = [
     "--diff-conflict-block-bg",
@@ -199,24 +207,135 @@ describe("diff-core palette", () => {
         ).toEqual(emittedStates().filter((state) => !ROWLESS_STATES.includes(state)));
     });
 
-    it("paints no background under any changed-segment block", () => {
-        // The load-bearing assertion of this palette. A background under a code row is
-        // measurable contrast loss no wash percentage escapes (4.3-4.4 at a 4% mix in
-        // light-modern and hc-light, against a 4.5 floor), so the marker moved to the
-        // block edge and no state kept a wash -- including the rowless counterpart of a
-        // one-sided hunk, whose band could never render at zero height anyway.
-        const painted = [...stateRules(viewerCss)]
-            .filter(([, body]) => propertyIn(body, "background") !== null)
-            .map(([state]) => state)
-            .sort();
-
-        expect(
-            painted,
-            "a changed-segment state painted a background; every glyph above it loses contrast, and the light themes have none to spare",
-        ).toEqual([]);
+    it("washes a changed-segment block only through a token that degrades to nothing", () => {
+        // Every wash reaches the block through `var(--diff-*-wash, transparent)` and never
+        // as a literal colour. The fallback is what makes the palette recoverable: a token
+        // that fails to resolve leaves the block bare and legible, where a literal would
+        // keep painting under the glyphs with no way to turn it off per theme. It is also
+        // the seam a theme gate is reinstated through if the contrast cost recorded in
+        // knownFindings.json is ever judged too high -- declaring the tokens behind a
+        // theme selector then restores the bare light themes with no rule change here.
+        for (const [state, body] of stateRules(viewerCss)) {
+            const background = propertyIn(body, "background");
+            if (background === null) continue;
+            expect(
+                background,
+                `${state} paints '${background}' as a literal; a background under a code glyph must come from a var() that falls back to \`transparent\`, or it can never be withdrawn per theme`,
+            ).toMatch(/^var\(\s*--diff-[a-z-]+-wash\s*,\s*transparent\s*\)$/);
+        }
     });
 
-    it("underlines changed word fragments instead of tinting them", () => {
+    it("mixes every wash from the merge surface's own hue at its own strength", () => {
+        // "Same colours as the merge editor" is only auditable if the numbers are compared
+        // rather than copied: a percentage typed into both files drifts the moment one is
+        // tuned, and nothing here would notice, because both surfaces would still be
+        // internally consistent. So each viewer strength is checked against the merge
+        // token it mirrors, read out of merge-editor.css at run time.
+        //
+        // This replaces the theme gate that used to live here. The gate said no wash may
+        // reach a light theme, because light themes have no contrast headroom for one --
+        // still true, and still measured (see the ladder in diff-viewer.css). It was
+        // dropped deliberately in favour of matching the merge surface everywhere, with
+        // the resulting contrast findings recorded in knownFindings.json. That is what
+        // makes this a decision with a cost rather than an oversight, and it is why the
+        // baseline entries must never be treated as noise to be regenerated: a finding
+        // beyond them is still a failure.
+        const mergeCss = stripComments(readFileSync(MERGE_EDITOR_CSS, "utf8"));
+        const percentOf = (source: string, token: string, where: string): number => {
+            const declaration = declarationOf(source, token);
+            expect(declaration, `${token} is not declared in ${where}`).toBeTruthy();
+            const percent = /\)\s*(\d+(?:\.\d+)?)%/.exec(declaration ?? "");
+            expect(
+                percent,
+                `${token} in ${where} is no longer a color-mix percentage, so the two surfaces can no longer be compared by this guard`,
+            ).toBeTruthy();
+            return Number(percent?.[1]);
+        };
+        // The hue half of the same comparison. A strength check alone would have let the
+        // deleted state go red on one surface and stay grey on the other -- both files
+        // internally consistent, both at 15%, and the product showing one state in two
+        // colours. The token NAMES are compared with their surface prefix stripped, so
+        // --diff-deleted-hue matches --merge-deleted-hue and a rename on one side that
+        // is not mirrored on the other fails here rather than in a screenshot.
+        const hueOf = (source: string, token: string, where: string): string => {
+            const hue = /var\(\s*(--[a-z0-9-]+)/.exec(declarationOf(source, token) ?? "");
+            expect(
+                hue,
+                `${token} in ${where} no longer mixes from a var() hue, so the two surfaces can no longer be compared by this guard`,
+            ).toBeTruthy();
+            return (hue?.[1] ?? "").replace(/^--(?:diff|merge|pycharm)-/, "");
+        };
+
+        const pairs: readonly (readonly [string, string])[] = [
+            ["--diff-inserted-wash", "--merge-inserted-block-bg"],
+            ["--diff-deleted-wash", "--merge-deleted-block-bg"],
+            ["--diff-modified-wash", "--merge-modified-block-bg"],
+            ["--diff-word-wash", "--pycharm-modified"],
+        ];
+        for (const [viewerToken, mergeToken] of pairs) {
+            expect(
+                percentOf(viewerCss, viewerToken, "diff-viewer.css"),
+                `${viewerToken} no longer mixes at the same strength as ${mergeToken}, so the read-only viewer and the merge editor paint the same state two different shades`,
+            ).toBe(percentOf(mergeCss, mergeToken, "merge-editor.css"));
+            expect(
+                hueOf(viewerCss, viewerToken, "diff-viewer.css"),
+                `${viewerToken} no longer mixes the same hue as ${mergeToken}, so the two surfaces paint one state in two different colours`,
+            ).toBe(hueOf(mergeCss, mergeToken, "merge-editor.css"));
+        }
+    });
+
+    it("gives the deleted state a red of its own, apart from the conflict red and the muted text", () => {
+        // Deletions went red at the user's request. Two collisions had to be avoided to do
+        // it, and both are the shape a later simplification reaches for:
+        //
+        //   --merge-muted  is ALSO the secondary text hue (six `color:` rules in
+        //                  merge-editor.css, the pane labels in diff-viewer.css, the
+        //                  line-number blend in diff-core.css). Repointing it would have
+        //                  turned every muted label red, so the deleted state needed a
+        //                  token of its own before it could stop being grey.
+        //   --merge-danger is the CONFLICT hue, and a merge can show a deleted hunk and a
+        //                  conflict hunk in one scroll. Reading it here would make the two
+        //                  states one colour -- and a second red theme token would not
+        //                  help, because themes ship one red (Dark Modern: errorForeground
+        //                  #f85149, charts-red #f14c4c).
+        //
+        // What separates them is the muted leg blended back in, which is why this asserts
+        // the hue is a mix rather than only that it is a different name.
+        const mergeSource = stripComments(readFileSync(MERGE_EDITOR_CSS, "utf8"));
+        const declaration = declarationOf(mergeSource, "--merge-deleted-hue");
+        expect(
+            declaration,
+            "--merge-deleted-hue is gone; the deleted state now reads whatever token replaced it, which is either the conflict red or the muted text hue",
+        ).toBeTruthy();
+
+        const read = [...(declaration ?? "").matchAll(/var\(\s*(--[a-z0-9-]+)/g)].map(
+            (match) => match[1],
+        );
+        expect(
+            read,
+            `--merge-deleted-hue reads ${read.join(", ")}; reading --merge-danger makes a deleted hunk indistinguishable from a conflict`,
+        ).not.toContain("--merge-danger");
+        expect(
+            read,
+            "--merge-deleted-hue no longer blends the muted hue in, so nothing keeps it duller than the conflict red on a theme whose reds coincide",
+        ).toContain("--merge-muted");
+
+        for (const [file, source, hue, muted] of [
+            ["merge-editor.css", mergeSource, "--merge-deleted-hue", "--merge-muted"],
+            ["diff-core.css", css, "--diff-deleted-hue", "--diff-muted"],
+        ] as const) {
+            expect(
+                declarationOf(source, hue),
+                `${hue} is not declared in ${file}, so the deleted state falls back to whatever the other surface happens to define`,
+            ).toBeTruthy();
+            expect(
+                declarationOf(source, hue),
+                `${hue} in ${file} resolves to ${muted} outright, which is the grey it was split away from -- deletions would silently go back to looking unchanged-but-dimmed`,
+            ).not.toMatch(new RegExp(`^\\s*var\\(\\s*${muted}\\s*\\)\\s*$`));
+        }
+    });
+
+    it("marks a changed word fragment with a darker fill of the block's hue, and nothing else", () => {
         const rule = /\.diff-viewer\s+\.word-diff-change\s*\{([^}]*)\}/.exec(viewerCss);
         expect(
             rule,
@@ -224,14 +343,41 @@ describe("diff-core palette", () => {
         ).toBeTruthy();
 
         const body = (rule?.[1] ?? "") as string;
+        const background = propertyIn(body, "background");
+        expect(
+            background,
+            "changed fragments have no fill, so on a theme that can pay for one there is no per-word marker at all",
+        ).toMatch(/^var\(\s*--diff-word-wash\s*,\s*transparent\s*\)$/);
+
+        // The underline this replaced is not a style preference to restore: the fill is
+        // the merge editor's own marker, and two markers for one fragment read as two
+        // different kinds of change.
         expect(
             propertyIn(body, "text-decoration-line"),
-            "changed fragments lost their underline, which is the viewer's only per-word signal",
-        ).toBe("underline");
-        expect(
-            propertyIn(body, "background"),
-            "the viewer tinted changed fragments after all; a background behind a code glyph is the contrast defect the block wash was removed for",
+            "changed fragments underline again; the fill is the marker, and the surface this one mirrors draws no underline",
         ).toBeNull();
+
+        // The two-tone is the whole point of the request: the fragment must sit DARKER
+        // than the block it is inside, the way merge-editor.css pairs its 15% block
+        // background with a 30% --pycharm-* fragment. Unifying the two tokens would keep
+        // every other assertion here green and make the changed word invisible.
+        const mixPercent = (token: string): number => {
+            const declaration = new RegExp(`${token}\\s*:\\s*([^;]*);`).exec(viewerCss);
+            expect(
+                declaration,
+                `${token} is never declared, so the two-tone has no dark leg`,
+            ).toBeTruthy();
+            const percent = /\)\s*(\d+(?:\.\d+)?)%/.exec((declaration?.[1] ?? "") as string);
+            expect(
+                percent,
+                `${token} is not a color-mix percentage this guard can compare`,
+            ).toBeTruthy();
+            return Number(percent?.[1]);
+        };
+        expect(
+            mixPercent("--diff-word-wash"),
+            "the changed fragment is no darker than the block around it, so the two-tone collapsed and the word-level marker disappeared into the hunk",
+        ).toBeGreaterThan(mixPercent("--diff-modified-wash"));
     });
 
     it("fills the connector ribbon from a semantic hue, not a wash", () => {
@@ -254,8 +400,14 @@ describe("diff-core palette", () => {
 
         for (const tone of STRIPE_TONES) {
             const markHue = hueIn(propertyIn(changes.get(tone) ?? "", "background"));
+            // Read the hue from --diff-segment-hue, not box-shadow: the block's shadow is
+            // one shared --diff-segment-shadow for every state, and the state's own colour
+            // is the custom property that shadow resolves through.
             const blockHue = hueIn(
-                propertyIn(states.get(STRIPE_TONE_STATES[tone] as string) ?? "", "box-shadow"),
+                propertyIn(
+                    states.get(STRIPE_TONE_STATES[tone] as string) ?? "",
+                    "--diff-segment-hue",
+                ),
             );
             expect(
                 markHue,
@@ -284,6 +436,54 @@ describe("diff-core palette", () => {
             painted,
             "a .diff-change-* rule paints a tone buildStripeMarks never returns",
         ).toEqual([...STRIPE_TONES].sort());
+    });
+
+    it("brackets a changed hunk above and below, not only at its leading edge", () => {
+        // The merge editor's hunk layout is a rule at the top AND the bottom of the block
+        // (merge-editor.css:588-590). Only the pixel baselines would otherwise notice one
+        // going missing, and those run in the review container -- so a bracket dropped
+        // while editing the shadow list would reach a local green with nothing said.
+        // Split on top-level commas so the commas inside color-mix() do not read as
+        // separate shadows.
+        const shadow = declarationOf(viewerCss, "--diff-segment-shadow");
+        expect(
+            shadow,
+            "--diff-segment-shadow is no longer declared; every changed-segment rule reads it, so their box-shadow becomes invalid and the blocks lose both the edge bar and the bracket",
+        ).toBeTruthy();
+
+        const parts = (shadow ?? "").split(/,(?![^()]*\))/).map((part) => part.trim());
+        const edge = parts.filter((part) => /^inset\s+[\d.]+px\s+0/.test(part));
+        const above = parts.filter((part) => /^inset\s+0\s+[\d.]+px/.test(part));
+        const below = parts.filter((part) => /^inset\s+0\s+(?:-[\d.]+px|calc\(\s*-)/.test(part));
+
+        expect(
+            { edge: edge.length, above: above.length, below: below.length },
+            `--diff-segment-shadow draws ${parts.length} shadows (${parts.join(" | ")}); a changed hunk needs its leading edge bar plus one rule above and one below, or it stops reading as a bounded block the way the merge editor's hunks do`,
+        ).toEqual({ edge: 1, above: 1, below: 1 });
+    });
+
+    it("draws a connector in a different hue for every state a segment can classify to", () => {
+        // The base .diff-ribbon rule above is one fill, and a state with no rule of its own
+        // inherits it silently: that is how every connector came to be drawn in --diff-info
+        // while the blocks they joined were green, grey and cyan. Counting DISTINCT fills
+        // rather than checking each rule exists is what makes that failure visible -- a
+        // state added later with no rule collides with the base fill and drops the count.
+        const base = /\.diff-ribbon\s*\{([^}]*)\}/.exec(viewerCss);
+        const baseFill = propertyIn((base?.[1] ?? "") as string, "fill");
+        expect(baseFill, ".diff-ribbon declares no fill at all").toBeTruthy();
+
+        const overrides = new Map(
+            [...viewerCss.matchAll(/\.diff-ribbon\.(diff-segment-[a-z]+)\s*\{([^}]*)\}/g)].map(
+                ([, state, body]) => [state as string, propertyIn(body as string, "fill")],
+            ),
+        );
+        const states = emittedStates().filter((state) => !ROWLESS_STATES.includes(state));
+        const fills = states.map((state) => overrides.get(state) ?? baseFill);
+
+        expect(
+            new Set(fills).size,
+            `the connector renders ${new Set(fills).size} hues for ${states.length} states (${states.map((state, at) => `${state}->${fills[at]}`).join(", ")}); a state with no .diff-ribbon rule of its own takes the base fill, so its band leads to a block painted in a different colour`,
+        ).toBe(states.length);
     });
 
     it("declares no --diff-* alias that nothing reads", () => {
