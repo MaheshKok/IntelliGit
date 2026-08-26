@@ -97,10 +97,12 @@ function createMultiListenerWebviewView(): {
     readonly messages: ListenerRegistry;
     readonly disposals: ListenerRegistry;
     readonly visibilityChanges: ListenerRegistry;
+    readonly posted: unknown[];
 } {
     const messages = new ListenerRegistry();
     const disposals = new ListenerRegistry();
     const visibilityChanges = new ListenerRegistry();
+    const posted: unknown[] = [];
 
     const webview = {
         options: {} as vscode.WebviewOptions,
@@ -108,7 +110,10 @@ function createMultiListenerWebviewView(): {
         cspSource: "vscode-webview://webview-resolve-subscriptions-test",
         asWebviewUri: (uri: vscode.Uri) => uri,
         onDidReceiveMessage: messages.register,
-        postMessage: () => Promise.resolve(true),
+        postMessage: (message: unknown) => {
+            posted.push(message);
+            return Promise.resolve(true);
+        },
     };
 
     const webviewView = {
@@ -120,7 +125,12 @@ function createMultiListenerWebviewView(): {
         onDidChangeVisibility: visibilityChanges.register,
     } as unknown as vscode.WebviewView;
 
-    return { webviewView, messages, disposals, visibilityChanges };
+    return { webviewView, messages, disposals, visibilityChanges, posted };
+}
+
+/** Drains synchronously-queued microtasks -- the commit panel's message listener is `async`. */
+function flushMicrotasks(): Promise<void> {
+    return new Promise((resolve) => setImmediate(resolve));
 }
 
 function createOnboardingProvider(): OnboardingViewProvider {
@@ -184,12 +194,26 @@ describe("webview provider resolve subscriptions", () => {
         ).toBe(1);
     });
 
-    it("leaves no onboarding listener behind after the no-repository -> repository handover", () => {
+    it("leaves no onboarding listener behind after the no-repository -> repository handover", async () => {
         const view = createMultiListenerWebviewView();
         const switchable = new SwitchableWebviewViewProvider(createOnboardingProvider());
         switchable.resolveWebviewView(view.webviewView, INERT_CONTEXT, INERT_TOKEN);
 
         switchable.setProvider(createCommitPanelProvider());
+
+        // Asserted BEFORE the leak checks below, deliberately. This fix has two failure directions
+        // -- retiring too little (the leak) and retiring too much (a deaf panel) -- and a listener
+        // COUNT reads zero under both, so whichever assertion runs first is the only one a
+        // mutation can name. This one owns the over-retirement direction; the count below owns the
+        // leak. `ready` is the incoming provider's own handshake, and onboarding ignores it.
+        view.messages.fire({ type: "ready" });
+        await flushMicrotasks();
+
+        expect(
+            view.posted.length,
+            "the handover left NO live commit-panel listener: a `ready` message reached nothing, " +
+                "so the incoming provider never answered its own document",
+        ).toBeGreaterThan(0);
 
         expect(
             view.messages.size,

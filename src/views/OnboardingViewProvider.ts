@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import { randomBytes } from "crypto";
 import { escapeHtmlAttr, escapeHtmlText } from "./webviewHtml";
+import { disposeAll } from "./shared/themeListeners";
 
 /**
  * Startup context that determines which onboarding call-to-action commands are exposed.
@@ -18,6 +19,16 @@ export class OnboardingViewProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = "intelligit.onboarding";
 
     private view?: vscode.WebviewView;
+
+    /**
+     * Subscriptions installed by the most recent {@link resolveWebviewView}.
+     *
+     * VS Code can resolve the same `WebviewView` more than once, and
+     * `SwitchableWebviewViewProvider.setProvider` re-resolves a retained view against a different
+     * provider, so a discarded `Disposable` leaves the previous resolve's listener live on a
+     * document this provider no longer renders.
+     */
+    private readonly viewDisposables: vscode.Disposable[] = [];
 
     /**
      * Configures onboarding content for the current activation state.
@@ -44,32 +55,48 @@ export class OnboardingViewProvider implements vscode.WebviewViewProvider {
         _context: vscode.WebviewViewResolveContext,
         _token: vscode.CancellationToken,
     ): void {
+        this.disposeViewSubscriptions();
         this.view = webviewView;
         webviewView.webview.options = {
             enableScripts: true,
             localResourceRoots: [vscode.Uri.joinPath(this.extensionUri, "media")],
         };
 
-        webviewView.onDidDispose(() => {
-            this.view = undefined;
-        });
+        this.viewDisposables.push(
+            webviewView.onDidDispose(() => {
+                this.view = undefined;
+            }),
+        );
 
-        webviewView.webview.onDidReceiveMessage((msg) => {
-            const type = this.getMessageType(msg);
-            switch (type) {
-                case "cloneRepository":
-                    void vscode.commands.executeCommand("intelligit.cloneRepository");
-                    break;
-                case "openFolder":
-                    void vscode.commands.executeCommand("intelligit.openFolder");
-                    break;
-                case "initializeRepository":
-                    void vscode.commands.executeCommand("intelligit.initializeRepository");
-                    break;
-            }
-        });
+        this.viewDisposables.push(
+            webviewView.webview.onDidReceiveMessage((msg) => {
+                const type = this.getMessageType(msg);
+                switch (type) {
+                    case "cloneRepository":
+                        void vscode.commands.executeCommand("intelligit.cloneRepository");
+                        break;
+                    case "openFolder":
+                        void vscode.commands.executeCommand("intelligit.openFolder");
+                        break;
+                    case "initializeRepository":
+                        void vscode.commands.executeCommand("intelligit.initializeRepository");
+                        break;
+                }
+            }),
+        );
 
         webviewView.webview.html = this.getHtml(webviewView.webview);
+    }
+
+    /**
+     * Retires every listener the last {@link resolveWebviewView} installed on its view.
+     *
+     * Called at the top of each resolve, and by `SwitchableWebviewViewProvider.setProvider` when
+     * another provider takes over the view: a retired provider must stop acting on messages from a
+     * document it no longer owns.
+     */
+    disposeViewSubscriptions(): void {
+        disposeAll(this.viewDisposables);
     }
 
     /**

@@ -189,6 +189,15 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
     private activeRepositoryRoot: string | null = null;
     private visibleRefreshCount = 0;
     private themeChangeDisposables: vscode.Disposable[] = [];
+    /**
+     * Subscriptions installed by the most recent {@link resolveWebviewView}.
+     *
+     * VS Code can resolve the same `WebviewView` more than once, and
+     * `SwitchableWebviewViewProvider.setProvider` re-resolves a retained view against a different
+     * provider, so a discarded `Disposable` leaves the previous resolve's listener live on a
+     * document this provider no longer renders.
+     */
+    private readonly viewDisposables: vscode.Disposable[] = [];
     private readonly iconTheme: IconThemeService;
     private readonly PAGE_SIZE = 500;
     private branches: Branch[] = [];
@@ -1127,6 +1136,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         _token: vscode.CancellationToken,
     ): void {
         this.disposeThemeChangeDisposables();
+        this.disposeViewSubscriptions();
         this.iconTheme.dispose();
         this.view = webviewView;
         this.lastPostedPayload = undefined;
@@ -1137,42 +1147,48 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         this.iconTheme.attachWebview(webviewView.webview);
         this.registerThemeChangeListeners();
         const thisView = webviewView;
-        webviewView.onDidDispose(() => {
-            if (this.view === thisView) {
-                this.view = undefined;
-                this.iconTheme.dispose();
-                this.disposeThemeChangeDisposables();
-            }
-        });
-        webviewView.webview.onDidReceiveMessage(async (msg) => {
-            const message: unknown = msg;
-            try {
-                // Inside the try, not before it. Adoption reads state owned by VS Code rather than
-                // by this provider, so it can raise; raising ahead of the try rejected this async
-                // listener before `handleMessage` ran, which posted nothing, showed nothing and
-                // logged nothing. Every retry then died at the same line, so a panel waiting on
-                // hydration stayed blank while looking, from every angle, like a host that had
-                // simply gone quiet.
-                this.adoptLiveSender(thisView);
-                await this.handleMessage(message);
-            } catch (err) {
-                const errorMessage = getErrorMessage(err);
-                vscode.window.showErrorMessage(errorMessage);
-                this.postToWebview({
-                    type: "error",
-                    ...this.repositoryScopeForError(message),
-                    message: errorMessage,
-                });
-            }
-        });
+        this.viewDisposables.push(
+            webviewView.onDidDispose(() => {
+                if (this.view === thisView) {
+                    this.view = undefined;
+                    this.iconTheme.dispose();
+                    this.disposeThemeChangeDisposables();
+                }
+            }),
+        );
+        this.viewDisposables.push(
+            webviewView.webview.onDidReceiveMessage(async (msg) => {
+                const message: unknown = msg;
+                try {
+                    // Inside the try, not before it. Adoption reads state owned by VS Code rather
+                    // than by this provider, so it can raise; raising ahead of the try rejected
+                    // this async listener before `handleMessage` ran, which posted nothing, showed
+                    // nothing and logged nothing. Every retry then died at the same line, so a
+                    // panel waiting on hydration stayed blank while looking, from every angle, like
+                    // a host that had simply gone quiet.
+                    this.adoptLiveSender(thisView);
+                    await this.handleMessage(message);
+                } catch (err) {
+                    const errorMessage = getErrorMessage(err);
+                    vscode.window.showErrorMessage(errorMessage);
+                    this.postToWebview({
+                        type: "error",
+                        ...this.repositoryScopeForError(message),
+                        message: errorMessage,
+                    });
+                }
+            }),
+        );
         webviewView.webview.html = this.getHtml(webviewView.webview);
-        webviewView.onDidChangeVisibility(() => {
-            if (!webviewView.visible) return;
-            const runtime = this.getActiveRuntime();
-            if (!runtime) return;
-            void this.postWorkingTreeSnapshot(runtime).catch(() => {});
-            this.refreshAllRepositoriesWithErrorHandling(true);
-        });
+        this.viewDisposables.push(
+            webviewView.onDidChangeVisibility(() => {
+                if (!webviewView.visible) return;
+                const runtime = this.getActiveRuntime();
+                if (!runtime) return;
+                void this.postWorkingTreeSnapshot(runtime).catch(() => {});
+                this.refreshAllRepositoriesWithErrorHandling(true);
+            }),
+        );
         // Deliberately NOT hydrating the repository list here. `handleReadyMessage` calls
         // `postRepositoryListHydration()` unconditionally, and `ready` always follows a resolve --
         // it is sent by the very webview this method creates. Hydrating here posted a byte-identical
@@ -2241,6 +2257,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         this.disposeAllRuntimeWatchers();
         this.iconTheme.dispose();
         this.disposeThemeChangeDisposables();
+        this.disposeViewSubscriptions();
         this._onDidChangeFileCount.dispose();
         this._onDidChangeWorkingTree.dispose();
         this._onCommitSelected.dispose();
@@ -2360,6 +2377,17 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
     }
     private disposeThemeChangeDisposables(): void {
         disposeAll(this.themeChangeDisposables);
+    }
+
+    /**
+     * Retires every listener the last {@link resolveWebviewView} installed on its view.
+     *
+     * Called at the top of each resolve, and by `SwitchableWebviewViewProvider.setProvider` when
+     * another provider takes over the view: a retired provider must stop acting on messages from a
+     * document it no longer owns.
+     */
+    disposeViewSubscriptions(): void {
+        disposeAll(this.viewDisposables);
     }
 
     /**
