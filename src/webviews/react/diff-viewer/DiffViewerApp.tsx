@@ -39,6 +39,7 @@ import { IconChevronDown, IconEye, IconFilter, IconLock } from "../merge-editor/
 import { splitEditedText } from "../merge-editor/mergeState";
 import {
     DIFF_PANES,
+    revertArrowPane,
     segmentClassName,
     segmentRibbonMarker,
     soleSidedPane,
@@ -667,10 +668,10 @@ export function App(): React.ReactElement {
     // Each side's extent comes from that pane's own geometry: a deletion-only
     // hunk followed by an insertion-only one flips which pane is taller, and a
     // shared canonical extent would misdraw one of them.
-    // Each arrow stands beside the hunk in the pane it WRITES INTO, not at the canonical
-    // position: those differ by exactly the rows the other pane has and this one does not,
-    // which is every hunk the button exists for. A hunk the editable pane holds no rows of
-    // still gets one, at the collapsed position the reverted lines would be inserted at.
+    // Each arrow stands beside the hunk in the pane the change CAME FROM, not at the canonical
+    // position and not beside the pane it writes into: those three differ by exactly the rows
+    // one pane has and the other does not, which is every hunk the button exists for. See
+    // `revertArrowPane` for which hunk kind that leaves standing on a collapsed seam.
     const drawActions = useCallback(
         (
             currentLayout: DiffVerticalLayout<DiffPane>,
@@ -678,8 +679,9 @@ export function App(): React.ReactElement {
             viewportH: number,
             span: RibbonSpan,
         ) => {
-            const pane = data?.editablePane;
-            if (pane === undefined) return;
+            const editablePane = data?.editablePane;
+            if (editablePane === undefined) return;
+            const pane = revertArrowPane(editablePane);
             const centre = (span.x0 + span.x1) / 2;
             for (const [index, button] of actionButtons) {
                 if (index >= currentLayout.canonicalTopPx.length) continue;

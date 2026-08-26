@@ -111,6 +111,30 @@ export function soleSidedPane(segments: readonly DiffSegment[]): DiffPane | null
     return right === 0 && left > 0 ? "left" : null;
 }
 
+/**
+ * The pane a hunk's revert arrow is vertically aligned to.
+ *
+ * The arrow WRITES INTO the editable pane, but it stands beside the SOURCE pane -- the rows
+ * the change came from, which are exactly the rows it copies. That is where the eye already
+ * is: reverting a hunk is a decision about the lines being brought back, not about the lines
+ * that are about to be overwritten.
+ *
+ * This is a choice between two collapses, not an escape from one. Neither side always holds
+ * rows: a pure deletion is empty on the editable side, a pure insertion is empty on the
+ * source side, and whichever side is empty puts the arrow on a zero-height seam between two
+ * unrelated lines. Aligning to the source moves that collapse off deletions and onto
+ * insertions -- deliberately, because deletions and modifications are the hunks whose source
+ * rows are the thing the button copies, and an insertion's revert is a delete with no source
+ * rows to point at in the first place.
+ *
+ * Only the vertical placement moves. The arrow's direction glyph still points at the pane it
+ * writes into (`DiffHunkActionLayer`), and its horizontal position is still the connector
+ * channel's centre -- it stands between the panes, level with the source hunk.
+ */
+export function revertArrowPane(editablePane: DiffPane): DiffPane {
+    return editablePane === "left" ? "right" : "left";
+}
+
 export function segmentRibbonMarker(segment: DiffSegment): SegmentMarker | null {
     const right = segmentMarker(segment, "right");
     if (right === null) return null;
