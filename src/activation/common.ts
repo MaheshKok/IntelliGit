@@ -40,6 +40,32 @@ export function setViewContext(key: string, value: boolean): Thenable<unknown> {
 }
 
 /**
+ * A view provider that can retire the listeners it installed on a view it no longer renders.
+ *
+ * `vscode.WebviewViewProvider` has no disposal contract, so the handover below tests for this
+ * member structurally. A provider that does not implement it simply keeps whatever it registered --
+ * which is the pre-existing behavior, not a new failure mode.
+ */
+interface RetiresViewSubscriptions {
+    disposeViewSubscriptions(): void;
+}
+
+/**
+ * Reports whether a provider can retire its per-view subscriptions.
+ *
+ * The E2E capture seam wraps providers in a forwarding `Proxy` that binds methods to the real
+ * target, so this check and the call it guards both survive a captured provider.
+ */
+function retiresViewSubscriptions(
+    provider: vscode.WebviewViewProvider,
+): provider is vscode.WebviewViewProvider & RetiresViewSubscriptions {
+    return (
+        typeof (provider as Partial<RetiresViewSubscriptions>).disposeViewSubscriptions ===
+        "function"
+    );
+}
+
+/**
  * Keeps a registered webview view ID stable while swapping the provider that renders it.
  *
  * No-repository mode uses this wrapper for onboarding views that can later become
@@ -80,6 +106,13 @@ export class SwitchableWebviewViewProvider implements vscode.WebviewViewProvider
      * subscription; this only changes which provider receives future resolves.
      */
     setProvider(provider: vscode.WebviewViewProvider): void {
+        // Before the swap, not after: the outgoing provider's listeners sit on the SAME webview the
+        // incoming one is about to re-resolve. Each provider only disposes its own subscriptions on
+        // re-resolve, so nothing else in this handover can retire the provider being replaced --
+        // leaving it live to act on messages from a document another provider now renders.
+        if (this.resolved && retiresViewSubscriptions(this.currentProvider)) {
+            this.currentProvider.disposeViewSubscriptions();
+        }
         this.currentProvider = provider;
         if (!this.resolved) return;
         void provider.resolveWebviewView(

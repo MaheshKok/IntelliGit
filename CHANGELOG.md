@@ -5,7 +5,7 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.29.0] - 2026-08-25
+## [0.29.0] - 2026-08-26
 
 ### Added
 
@@ -18,6 +18,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Deletions are drawn in red rather than a neutral grey. Red had been kept out of the viewer on the reasoning that a two-pane diff has no conflicts to paint, which conflated red with conflict: a diff has no conflicts, but it does have removals, and the PyCharm scheme this surface follows draws those red. Colour is still carried on the edge of a block and on the changed fragments within a line rather than as a wash behind the code, because a tint behind text spends contrast the syntax palette has no room for — the contrast floor these views are held to is 4.5:1, and VS Code's light themes colour the number token at 4.60:1.
+
+## [0.28.1] - 2026-08-26
+
+### Changed
+
+- When the end-to-end tests fail because the Changes panel never appeared, they print a short diagnostic trail. Each line now says which version of the panel's page it came from.
+
+  This does not change the extension. The trail is only printed while the test control channel is on, never in a normal install.
+
+  Why it was needed: every line already had a number, but that number names the view, not the page inside it. VS Code can reload a hidden view's page without rebuilding the view, so every page behind one view shared the same number. That made two different things look identical — the extension answering the live page, and the extension answering a page that no longer exists. Four investigations into the intermittent blank Changes panel could not tell them apart.
+
+  The blank panel is still not fixed. What changes is that the next time it happens, the trail can say which of the two went wrong, which is what picking the right fix needs.
 
 ## [0.28.0] - 2026-08-25
 
