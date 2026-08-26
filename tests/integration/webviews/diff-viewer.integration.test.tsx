@@ -3,10 +3,7 @@
 import { act } from "react";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { MAX_DIFF_LINES } from "../../../src/diff/diffBudgets";
-import {
-    LINE_HEIGHT_PX,
-    TRAILING_ROWS,
-} from "../../../src/webviews/react/diff-core/mergeScrollLayout";
+import { LINE_HEIGHT_PX } from "../../../src/webviews/react/diff-core/mergeScrollLayout";
 import { flush } from "../../helpers/reactDomTestUtils";
 import { installWebviewI18n } from "../../helpers/webviewI18nTestUtils";
 
@@ -229,6 +226,129 @@ describe("DiffViewerApp read-only contract", () => {
         expect(document.querySelector(".result-edit-textarea")).toBeNull();
         expect(document.querySelector(".result-editable")).toBeNull();
         expect(document.querySelector("textarea")).toBeNull();
+    });
+
+    it("locks all and only the panes that are read only", async () => {
+        installVsCodeMock();
+        await mountRightEditable("shared();\nafter();", diffFixture.segments);
+
+        const locksFor = (side: "left" | "right"): HTMLElement[] => {
+            const meta = document.querySelectorAll<HTMLElement>(".diff-pane-meta");
+            return [
+                ...(meta[side === "left" ? 0 : 1]?.querySelectorAll<HTMLElement>(
+                    ".diff-pane-lock",
+                ) ?? []),
+            ];
+        };
+
+        expect(locksFor("left")).toHaveLength(1);
+        expect(locksFor("right")).toHaveLength(0);
+        expect(
+            locksFor("left").map((lock) => [lock.title, lock.getAttribute("aria-label")]),
+        ).toEqual([["This side is read only", "This side is read only"]]);
+
+        dispatchHostMessage({
+            type: "setDiffData",
+            data: {
+                ...diffFixture,
+                editablePane: "left" as const,
+                editableText: "shared();\nbefore();",
+                documentVersion: 4,
+                editableReseedToken: 0,
+            },
+        });
+        await flush();
+
+        expect(locksFor("left")).toHaveLength(0);
+        expect(locksFor("right")).toHaveLength(1);
+
+        dispatchHostMessage({ type: "setDiffData", data: diffFixture });
+        await flush();
+
+        expect(locksFor("left")).toHaveLength(1);
+        expect(locksFor("right")).toHaveLength(1);
+    });
+
+    it("shows and restarts the inline read-only notice only for read-only blocks", async () => {
+        installVsCodeMock();
+        await mountRightEditable("shared();\nafter();", diffFixture.segments);
+
+        const readOnlyBlock = document.querySelector<HTMLElement>(".diff-pane-left .segment");
+        const editableBlock = document.querySelector<HTMLElement>(
+            ".diff-pane-right .diff-editable-block",
+        );
+        expect(readOnlyBlock).not.toBeNull();
+        expect(editableBlock).not.toBeNull();
+        const notice = (): HTMLElement | null => document.querySelector(".diff-readonly-notice");
+        const click = (element: HTMLElement | null): void => {
+            act(() => {
+                element?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+            });
+        };
+
+        vi.useFakeTimers();
+        try {
+            click(editableBlock);
+            expect(notice()).toBeNull();
+
+            click(readOnlyBlock);
+            expect(notice()?.getAttribute("role")).toBe("status");
+            expect(notice()?.textContent).toBe("This side is read only");
+
+            act(() => {
+                vi.advanceTimersByTime(2499);
+            });
+            click(readOnlyBlock);
+            act(() => {
+                vi.advanceTimersByTime(2499);
+            });
+            expect(notice()).not.toBeNull();
+
+            act(() => {
+                vi.advanceTimersByTime(1);
+            });
+            expect(notice()).toBeNull();
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    // The lock and the notice answer the same question -- "can I type here?" -- from two
+    // different places: the lock from `editablePane`, the notice from whichever pane actually
+    // rendered read-only blocks. Those two disagree when a payload names an editable side but
+    // omits the document behind it, and a pane that shows no lock must not then answer a click
+    // with "this side is read only".
+    it("keeps the lock and the read-only notice agreeing when the editable payload is incomplete", async () => {
+        installVsCodeMock();
+        await mountRightEditable("shared();\nafter();", diffFixture.segments);
+
+        dispatchHostMessage({
+            type: "setDiffData",
+            data: { ...diffFixture, editablePane: "left" as const },
+        });
+        await flush();
+
+        const meta = document.querySelectorAll<HTMLElement>(".diff-pane-meta");
+        const notice = (): HTMLElement | null => document.querySelector(".diff-readonly-notice");
+        const click = (element: HTMLElement | null): void => {
+            act(() => {
+                element?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+            });
+        };
+
+        // No document behind it, so the left pane renders immutable blocks despite being named
+        // editable -- the exact state the two signals could disagree in.
+        expect(document.querySelector(".diff-pane-left .diff-editable-block")).toBeNull();
+        const leftBlock = document.querySelector<HTMLElement>(".diff-pane-left .segment");
+        expect(leftBlock).not.toBeNull();
+
+        expect(meta[0]?.querySelector(".diff-pane-lock")).toBeNull();
+        click(leftBlock);
+        expect(notice()).toBeNull();
+
+        expect(meta[1]?.querySelector(".diff-pane-lock")).not.toBeNull();
+        click(document.querySelector<HTMLElement>(".diff-pane-right .segment"));
+        expect(notice()).not.toBeNull();
     });
 
     // Windowing/virtualization must not remove off-screen rows, because VS Code find only searches
@@ -1419,8 +1539,10 @@ describe("DiffViewerApp scroll viewport and ribbons", () => {
 
         // The divisor is the scroll range, not the 780px document: the scroller carries a
         // trailing screen so the last line can clear the viewport, and the marks are shares
-        // of what actually scrolls. Spelt as a literal rather than read back from the
-        // layout so a change to the padding has to be restated here to pass.
+        // of what actually scrolls. The three padding rows are restated here rather than
+        // imported, so changing the padding has to be restated here to pass -- reading it
+        // back from the layout would let the same mistake pass on both sides.
+        const TRAILING_ROWS = 3;
         const RANGE_PX = 780 + TRAILING_ROWS * LINE_HEIGHT_PX;
 
         // Deletion-only hunk: canonical top 100, height 60.

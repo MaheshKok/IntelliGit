@@ -355,5 +355,6 @@
     "diff.loading": "차이점 로드 중...",
     "diff.editable.blockHint": "두 번 클릭하거나 Enter 키를 눌러 편집",
     "diff.editable.editingAria": "작업 트리 블록 편집",
-    "diff.editable.revertHunk": "이 변경 내용 되돌리기"
+    "diff.editable.revertHunk": "이 변경 내용 되돌리기",
+    "diff.readOnly.pane": "이쪽은 읽기 전용입니다"
 }

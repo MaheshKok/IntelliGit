@@ -364,5 +364,6 @@
     "diff.loading": "Diff wird geladen...",
     "diff.editable.blockHint": "Doppelklicken Sie oder drücken Sie die Eingabetaste, um zu bearbeiten",
     "diff.editable.editingAria": "Arbeitsbereichsblock bearbeiten",
-    "diff.editable.revertHunk": "Diese Änderung rückgängig machen"
+    "diff.editable.revertHunk": "Diese Änderung rückgängig machen",
+    "diff.readOnly.pane": "Diese Seite ist schreibgeschützt"
 }

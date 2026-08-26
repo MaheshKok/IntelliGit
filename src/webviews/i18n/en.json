@@ -308,6 +308,7 @@
     "merge.error.retry": "Retry",
     "merge.loading": "Loading conflict data...",
     "diff.newlineDifference": "Files differ only by newline formatting",
+    "diff.readOnly.pane": "This side is read only",
     "diff.error.load": "Failed to load diff: {error}",
     "diff.loading": "Loading diff...",
     "diff.editable.blockHint": "Double-click or press Enter to edit",

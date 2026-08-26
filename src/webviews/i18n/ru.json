@@ -382,5 +382,6 @@
     "diff.loading": "Загрузка сравнения...",
     "diff.editable.blockHint": "Дважды щелкните или нажмите Enter, чтобы изменить",
     "diff.editable.editingAria": "Изменить блок рабочего дерева",
-    "diff.editable.revertHunk": "Отменить это изменение"
+    "diff.editable.revertHunk": "Отменить это изменение",
+    "diff.readOnly.pane": "Эта сторона доступна только для чтения"
 }

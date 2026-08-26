@@ -355,5 +355,6 @@
     "diff.loading": "正在加载差异...",
     "diff.editable.blockHint": "双击或按 Enter 键进行编辑",
     "diff.editable.editingAria": "编辑工作树块",
-    "diff.editable.revertHunk": "撤销此更改"
+    "diff.editable.revertHunk": "撤销此更改",
+    "diff.readOnly.pane": "此侧为只读"
 }

@@ -35,7 +35,7 @@ import {
     LineNumbers,
     type LineNumberSpec,
 } from "../diff-core/segments";
-import { IconChevronDown, IconEye, IconFilter } from "../merge-editor/icons";
+import { IconChevronDown, IconEye, IconFilter, IconLock } from "../merge-editor/icons";
 import { splitEditedText } from "../merge-editor/mergeState";
 import {
     DIFF_PANES,
@@ -49,6 +49,19 @@ import { adjacentChangeIndex, buildStripeMarks } from "./changeStripe";
 import "./diff-viewer.css";
 
 const LINE_PADDING_PX = 18;
+const READ_ONLY_NOTICE_MS = 2500;
+
+function isReadOnlyPane(editablePane: DiffPane | undefined, pane: DiffPane): boolean {
+    return editablePane !== pane;
+}
+
+function clearReadOnlyNoticeTimer(
+    timerRef: React.MutableRefObject<ReturnType<typeof window.setTimeout> | null>,
+): void {
+    if (timerRef.current === null) return;
+    window.clearTimeout(timerRef.current);
+    timerRef.current = null;
+}
 
 interface RenderedSegment {
     segment: DiffSegment;
@@ -65,12 +78,14 @@ function DiffPaneBlock({
     lineCount,
     lineNumbers,
     highlightWords,
+    onAttemptEdit,
 }: {
     segment: DiffSegment;
     side: DiffPane;
     lineCount: number;
     lineNumbers: LineNumberSpec;
     highlightWords: boolean;
+    onAttemptEdit?: () => void;
 }): React.ReactElement {
     const lines = segment[side];
     const compareLines = segment[side === "left" ? "right" : "left"];
@@ -79,6 +94,7 @@ function DiffPaneBlock({
         <div
             className={`segment ${segmentClassName(segment, side)}`}
             style={intrinsicSizeStyle(lineCount)}
+            onClick={onAttemptEdit}
         >
             <CodeBlock
                 lines={lines}
@@ -380,17 +396,45 @@ function viewerRootClass(singlePane: DiffPane | null): string {
 /** The pane header labels -- one per pane actually on screen. */
 function DiffPaneMetaRow({
     singlePane,
+    editablePane,
     leftLabel,
     rightLabel,
 }: {
     singlePane: DiffPane | null;
+    editablePane: DiffPane | undefined;
     leftLabel: string;
     rightLabel: string;
 }): React.ReactElement {
     return (
         <div className="diff-pane-meta-row">
-            {singlePane === "right" ? null : <div className="diff-pane-meta">{leftLabel}</div>}
-            {singlePane === "left" ? null : <div className="diff-pane-meta">{rightLabel}</div>}
+            {singlePane === "right" ? null : (
+                <div className="diff-pane-meta">
+                    {isReadOnlyPane(editablePane, "left") ? (
+                        <span
+                            className="toolbar-icon diff-pane-lock"
+                            title={t("diff.readOnly.pane")}
+                            aria-label={t("diff.readOnly.pane")}
+                        >
+                            <IconLock />
+                        </span>
+                    ) : null}
+                    {leftLabel}
+                </div>
+            )}
+            {singlePane === "left" ? null : (
+                <div className="diff-pane-meta">
+                    {isReadOnlyPane(editablePane, "right") ? (
+                        <span
+                            className="toolbar-icon diff-pane-lock"
+                            title={t("diff.readOnly.pane")}
+                            aria-label={t("diff.readOnly.pane")}
+                        >
+                            <IconLock />
+                        </span>
+                    ) : null}
+                    {rightLabel}
+                </div>
+            )}
         </div>
     );
 }
@@ -441,6 +485,7 @@ function DiffHunkActionLayer({
 export function App(): React.ReactElement {
     const [data, setData] = useState<DiffViewerData | null>(null);
     const [error, setError] = useState<string | null>(null);
+    const [readOnlyNotice, setReadOnlyNotice] = useState(false);
     const [ignoreMode, setIgnoreMode] = useState<"none" | "whitespace">("none");
     const [highlightWords, setHighlightWords] = useState(true);
     const [editingBlock, setEditingBlock] = useState<EditableBlockLayout | null>(null);
@@ -456,6 +501,7 @@ export function App(): React.ReactElement {
     const lastPaneClientWidthRef = useRef(0);
     const verticalFrameRef = useRef(0);
     const scrollSyncRef = useRef({ raf: 0, left: 0 });
+    const readOnlyNoticeTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
     const layoutRef = useRef<DiffVerticalLayout<DiffPane> | null>(null);
     // Viewport box in px: the height clamps pane offsets and culls offscreen
     // ribbons, and `channel` is the empty gutter between the two panes -- the only
@@ -834,6 +880,19 @@ export function App(): React.ReactElement {
         [data, handleEdit, renderedSegments],
     );
 
+    const handleReadOnlyAttempt = useCallback(() => {
+        clearReadOnlyNoticeTimer(readOnlyNoticeTimerRef);
+        setReadOnlyNotice(true);
+        readOnlyNoticeTimerRef.current = window.setTimeout(() => {
+            readOnlyNoticeTimerRef.current = null;
+            setReadOnlyNotice(false);
+        }, READ_ONLY_NOTICE_MS);
+    }, []);
+
+    useEffect(() => {
+        return () => clearReadOnlyNoticeTimer(readOnlyNoticeTimerRef);
+    }, []);
+
     useEffect(() => {
         const handler = (event: MessageEvent<InboundMessage>) => {
             if (event.data.type === "setDiffData") {
@@ -1006,9 +1065,15 @@ export function App(): React.ReactElement {
                             {t("diff.newlineDifference")}
                         </span>
                     ) : null}
+                    {readOnlyNotice ? (
+                        <span className="diff-readonly-notice" role="status">
+                            {t("diff.readOnly.pane")}
+                        </span>
+                    ) : null}
                 </div>
                 <DiffPaneMetaRow
                     singlePane={singlePane}
+                    editablePane={data.editablePane}
                     leftLabel={data.leftLabel}
                     rightLabel={data.rightLabel}
                 />
@@ -1052,6 +1117,11 @@ export function App(): React.ReactElement {
                                                     lineCount={item.paneLines.left}
                                                     lineNumbers={item.lineNumbers.left}
                                                     highlightWords={highlightWords}
+                                                    onAttemptEdit={
+                                                        isReadOnlyPane(data.editablePane, "left")
+                                                            ? handleReadOnlyAttempt
+                                                            : undefined
+                                                    }
                                                 />
                                             ))
                                         )}
@@ -1088,6 +1158,11 @@ export function App(): React.ReactElement {
                                                     lineCount={item.paneLines.right}
                                                     lineNumbers={item.lineNumbers.right}
                                                     highlightWords={highlightWords}
+                                                    onAttemptEdit={
+                                                        isReadOnlyPane(data.editablePane, "right")
+                                                            ? handleReadOnlyAttempt
+                                                            : undefined
+                                                    }
                                                 />
                                             ))
                                         )}

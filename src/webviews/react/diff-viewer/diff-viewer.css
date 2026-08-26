@@ -74,6 +74,18 @@
     height: 12px;
 }
 
+.diff-pane-lock {
+    /* Spacing and baseline are CSS here rather than a JSX `{" "}`, because that space is
+       emitted whether or not the lock is, so it indents the label of every pane including
+       the editable one. `.toolbar-icon` is inline-flex, so the 12px box sits ON the text
+       baseline and hangs above the 11px label's midline; -2px drops it back onto it. Kept
+       inline rather than making `.diff-pane-meta` a flex row, which would take the
+       ellipsis truncation of a long path with it. */
+    margin-right: 4px;
+    opacity: 0.64;
+    vertical-align: -2px;
+}
+
 .dropdown-icon {
     opacity: 0.7;
     margin-left: -1px;
@@ -100,7 +112,8 @@
     white-space: nowrap;
 }
 
-.diff-newline-marker {
+.diff-newline-marker,
+.diff-readonly-notice {
     padding: 1px 6px;
     border: 1px solid var(--diff-pane-boundary);
     border-radius: 8px;

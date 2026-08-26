@@ -48,7 +48,7 @@ export function segmentMarker(segment: DiffSegment, side: DiffPane): SegmentMark
 
 /** The full class attribute for one side of one segment's block. */
 /** The rule marking where a one-sided hunk sits in the pane that holds none of it. */
-export type SegmentGapMarker = "diff-gap-inserted" | "diff-gap-deleted";
+type SegmentGapMarker = "diff-gap-inserted" | "diff-gap-deleted";
 
 /**
  * Classifies the collapsed position of a one-sided hunk, from the side that has no rows.
@@ -59,7 +59,7 @@ export type SegmentGapMarker = "diff-gap-inserted" | "diff-gap-deleted";
  * for every other segment keeps the rule off two-sided hunks, which need no marker
  * because they have rows of their own to paint.
  */
-export function segmentGapMarker(segment: DiffSegment, side: DiffPane): SegmentGapMarker | null {
+function segmentGapMarker(segment: DiffSegment, side: DiffPane): SegmentGapMarker | null {
     if (segmentMarker(segment, side) !== "diff-segment-empty") return null;
     const counterpart = segmentMarker(segment, side === "left" ? "right" : "left");
     if (counterpart === "diff-segment-inserted") return "diff-gap-inserted";

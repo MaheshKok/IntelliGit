@@ -18,7 +18,7 @@ export const LINE_HEIGHT_PX = 20;
  * derived from, so padding it would move real geometry rather than simply letting
  * the scroller travel further than the document.
  */
-export const TRAILING_ROWS = 3;
+const TRAILING_ROWS = 3;
 
 /** The scrollable length of a diff: the document, plus the trailing blank rows. */
 export function scrollRangePx(canonicalTotalPx: number): number {
