@@ -863,6 +863,22 @@ describe("EditableDiffEditorProvider", () => {
         expect(panel.title).toBe("closed");
     });
 
+    it("releases the diff session once when both owners tear the session down", async () => {
+        const onSessionDisposed = vi.fn();
+        const provider = newProvider();
+        await provider.open(uri as never, { ...openDescriptor, onSessionDisposed });
+        await resolveAndBoot(provider);
+
+        // Closing the window with an editor open runs both: activation disposal walks every
+        // session it still holds, and VS Code then destroys the panel. Provider teardown
+        // drops the map entry but cannot unhook the panel listener, so the listener still
+        // fires and disposes a session that is already dead.
+        provider.dispose();
+        mocks.firePanelDispose();
+
+        expect(onSessionDisposed).toHaveBeenCalledOnce();
+    });
+
     it("rejects a second delta that was measured against a stale document version", async () => {
         documentText = "hello";
         documentVersion = 7;

@@ -360,6 +360,12 @@ class EditableDiffSession {
     }
 
     dispose(): void {
+        // Two owners call this: the panel's own `onDidDispose` and the provider's teardown
+        // over every live session. Both fire when the window closes with an editor open, so
+        // the second call would hand `onSessionDisposed` a second time -- harmless today only
+        // because the diff service's `onPanelDisposed` happens to be idempotent, which is not
+        // a property this side gets to assume.
+        if (this.disposed) return;
         this.disposed = true;
         if (this.autoSaveTimer !== undefined) clearTimeout(this.autoSaveTimer);
         for (const disposable of this.disposables) disposable.dispose();

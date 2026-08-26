@@ -53,6 +53,11 @@ const missing = { status: "missing" as const };
 describe("openEditableDiff", () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        // `clearAllMocks` wipes the call log but NOT the queued one-shot results (verified on
+        // vitest 4.1.10). The history cases below return before loading a side at all, so
+        // without this reset their two unused values would sit at the head of the next test's
+        // queue and be read as its own.
+        mocks.loadDiffSide.mockReset();
         mocks.loadDiffSide
             .mockResolvedValueOnce(loaded("historical\n"))
             .mockResolvedValueOnce(loaded("saved\n"));
