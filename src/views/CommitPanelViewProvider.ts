@@ -110,6 +110,20 @@ function isHydrationReAsk(attempt: unknown): boolean {
 }
 
 /**
+ * Whether a `ready` message is a document announcing itself rather than re-asking.
+ *
+ * Deliberately not the negation of {@link isHydrationReAsk}, because the two questions fail safe
+ * in OPPOSITE directions. A re-ask that is misread as a first announcement costs one redundant
+ * Git read; a malformed or absent count that is misread as a NEW DOCUMENT would let
+ * {@link CommitPanelViewProvider.handleReadyMessage} reload a panel that was working. So this one
+ * is strictly the literal 1: a producer that predates the field, or sends a string, or sends 0,
+ * counts as no document at all and simply never earns a rebind.
+ */
+function isOpeningAsk(attempt: unknown): boolean {
+    return attempt === 1;
+}
+
+/**
  * Whether a root event can change what an expanded repository row shows.
  *
  * The row watcher this replaced was a `createFileSystemWatcher`, so it only ever saw disk
@@ -216,6 +230,14 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
      * runtime caches a re-ask is answered from. Never reset: a later mount that re-asks is served
      * from those same caches, so what matters is that SOME attempt filled them, not which one. */
     private startupReadCompleted = false;
+    /** How many documents have announced themselves behind the CURRENT view, counted by opening
+     * asks. VS Code can rebuild a hidden view's document without re-running `resolveWebviewView`,
+     * and a remount of the React shell looks identical from here, so this is the only host-side
+     * signal that the thing on the other end of the channel is not the thing that was resolved. */
+    private documentGeneration = 0;
+    /** Whether this resolve has already spent its single document rebind -- see
+     * {@link rebindDocument} for why the budget cannot be per-generation. */
+    private rebindSpent = false;
     private readonly _onDidChangeFileCount = new vscode.EventEmitter<number>();
     readonly onDidChangeFileCount = this._onDidChangeFileCount.event;
     private readonly _onDidChangeWorkingTree = new vscode.EventEmitter<void>();
@@ -1140,6 +1162,11 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         this.iconTheme.dispose();
         this.view = webviewView;
         this.lastPostedPayload = undefined;
+        // A resolve is a new view, so its document count starts over and its rebind budget is
+        // refilled. Both are scoped to the view rather than to the provider on purpose: the
+        // failure they guard is one view outliving the document it was resolved with.
+        this.documentGeneration = 0;
+        this.rebindSpent = false;
         webviewView.webview.options = {
             enableScripts: true,
             localResourceRoots: [vscode.Uri.joinPath(this.extensionUri, "dist")],
@@ -1540,6 +1567,18 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
      * stop asking after fifteen tries and leave the panel blank for the rest of the session.
      */
     private async handleReadyMessage(attempt?: unknown): Promise<void> {
+        if (isOpeningAsk(attempt)) this.documentGeneration += 1;
+        // A document that is not the one this view was resolved with, that has been answered, and
+        // that is asking again: its answers are not reaching it, and no number of further answers
+        // down the same channel will. Rebuild the document instead and let it re-announce.
+        //
+        // Nothing else is posted on this path. The rescue tears down the document that would have
+        // received them, and the replacement sends its own opening ask, which is served by the
+        // ordinary hydration below.
+        if (isHydrationReAsk(attempt) && this.documentGeneration > 1 && !this.rebindSpent) {
+            this.rebindDocument();
+            return;
+        }
         // A fresh webview context has received nothing, so any commit-detail post made during
         // this handler must never be suppressed as a duplicate of what the PREVIOUS context was
         // sent. `ready` fires again whenever VS Code tears this view down while it is hidden and
@@ -2188,6 +2227,29 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         this.view = sender;
         this.iconTheme.attachWebview(sender.webview);
         this.registerThemeChangeListeners();
+    }
+
+    /**
+     * Rebuilds the view's document so it is bound to the channel this provider posts into.
+     *
+     * Re-setting `html` is the only lever the extension host has here. `postToWebview` already
+     * reaches `this.view.webview` -- the live object, never a stale handle -- so when a document
+     * keeps asking after being answered, the answers are leaving correctly and arriving nowhere.
+     * Replacing the document is what puts a listener back on the other end.
+     *
+     * The budget is one per resolve, and it is a hard ceiling rather than a tuning choice: the
+     * new document announces itself with its own opening ask, which raises
+     * {@link documentGeneration} again. A per-generation budget would therefore re-arm on the
+     * very document it just created, and a replacement that also failed to bind would reload the
+     * panel forever. Spending it once converts an unbounded silent failure into a single
+     * recovery attempt; if that attempt fails the panel is blank, which is where it already was.
+     */
+    private rebindDocument(): void {
+        const view = this.view;
+        if (!view) return;
+        this.rebindSpent = true;
+        this.lastPostedPayload = undefined;
+        view.webview.html = this.getHtml(view.webview);
     }
 
     /**
