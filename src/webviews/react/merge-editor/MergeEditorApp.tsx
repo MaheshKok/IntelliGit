@@ -277,6 +277,10 @@ export function App() {
     // live theme switch, so re-reading the body class on every render buys
     // nothing — reopen the merge editor to pick up a changed theme.
     const [shikiTheme] = useState(() => detectTheme());
+    // The same height `viewportHRef` caches, kept in state as well because the scroll
+    // spacer is sized from it during render -- a ref alone would leave the spacer stale
+    // until some other change happened to re-render.
+    const [viewportHeight, setViewportHeight] = useState(0);
     const segments = state.data?.segments ?? EMPTY_SEGMENTS;
     const isShelfSession = state.data?.sessionKind === "shelf";
     const filePath = state.data?.filePath;
@@ -327,14 +331,15 @@ export function App() {
         );
     }, []);
 
-    // Cache the viewport height (clamps pane offsets, culls ribbons) and expose
-    // it as a CSS var so the sticky viewport's negative margin cancels its own
-    // height, leaving the scroll range at exactly canonicalTotalPx.
+    // Cache the viewport height (clamps pane offsets, culls ribbons) and expose it as a
+    // CSS var so the sticky viewport's negative margin cancels its own height, leaving
+    // the scroll range at whatever the spacer says -- `scrollRangePx`, and nothing else.
     const measureViewport = useCallback(() => {
         const content = mergeContentRef.current;
         if (!content) return;
         const h = content.clientHeight;
         viewportHRef.current = h;
+        setViewportHeight(h);
         content.style.setProperty("--merge-viewport-h", `${h}px`);
     }, []);
 
@@ -475,7 +480,7 @@ export function App() {
         if (!layout || !content) return;
         const viewportH = viewportHRef.current;
         const scroll = content.scrollTop;
-        const offsets = paneOffsetsForCanonical(layout, MERGE_PANES, scroll, viewportH);
+        const offsets = paneOffsetsForCanonical(layout, MERGE_PANES, scroll);
         applyPaneOffsets(MERGE_PANES, (pane) => columnRefs.current[pane], offsets);
         drawConnectors(offsets, viewportH);
     }, [drawConnectors]);
@@ -911,7 +916,7 @@ export function App() {
             // Center the hunk's canonical extent in the viewport, clamped to range.
             const maxScroll = Math.max(
                 0,
-                scrollRangePx(layout.canonicalTotalPx) - viewportHRef.current,
+                scrollRangePx(layout.canonicalTotalPx, viewportHRef.current) - viewportHRef.current,
             );
             const top = Math.max(
                 0,
@@ -1456,7 +1461,9 @@ export function App() {
                         </div>
                         <div
                             className="merge-vscroll-spacer"
-                            style={{ height: scrollRangePx(layout.canonicalTotalPx) }}
+                            style={{
+                                height: scrollRangePx(layout.canonicalTotalPx, viewportHeight),
+                            }}
                             aria-hidden="true"
                         />
                     </div>

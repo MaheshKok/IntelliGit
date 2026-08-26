@@ -194,4 +194,44 @@ test.describe("diff viewer", () => {
             await electronApp.close();
         }
     });
+
+    // `scrollRangePx` is unit-proven, but the arithmetic being right says nothing about it
+    // reaching the spacer that sizes the scroller: a call site passing a hardcoded 0 typechecks
+    // and ships the old range. Only a real window has a viewport height at all — jsdom reports
+    // `clientHeight` 0 for everything, so the integration suite cannot tell the two apart.
+    test("scrolls the last line of a diff out of sight", async ({ fixtureWorkspace }) => {
+        test.setTimeout(120_000);
+        const { electronApp, diffFrame } = await openDiffViewer(fixtureWorkspace);
+
+        try {
+            const content = diffFrame.locator(".diff-content");
+            const lastLine = diffFrame
+                .locator('[data-testid="diff-pane-left"] .real-code-line')
+                .last();
+            await expect(lastLine).toBeVisible();
+
+            // Drive the scroller the way the user's wheel does and let it settle, rather than
+            // computing a target here — a target derived from `scrollRangePx` would be the same
+            // arithmetic the assertion is meant to be independent of.
+            await content.evaluate((element) => {
+                element.scrollTop = element.scrollHeight;
+            });
+
+            // "Out of sight" as the user means it: the last line has travelled past the top edge
+            // of the scrolling viewport, not merely lifted off the bottom one. Three trailing
+            // rows leave it parked just above the bottom edge, well inside the box.
+            await expect
+                .poll(async () => {
+                    const [lineBox, contentBox] = await Promise.all([
+                        lastLine.boundingBox(),
+                        content.boundingBox(),
+                    ]);
+                    if (!lineBox || !contentBox) return null;
+                    return lineBox.y + lineBox.height - contentBox.y;
+                })
+                .toBeLessThanOrEqual(0);
+        } finally {
+            await electronApp.close();
+        }
+    });
 });

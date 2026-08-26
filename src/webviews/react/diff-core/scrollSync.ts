@@ -18,13 +18,9 @@ export function paneOffsetsForCanonical<Pane extends PaneId>(
     layout: DiffVerticalLayout<Pane>,
     paneIds: readonly Pane[],
     canonicalScroll: number,
-    viewportH: number,
 ): Record<Pane, number> {
     return Object.fromEntries(
-        paneIds.map((pane) => [
-            pane,
-            paneOffsetForCanonical(layout, pane, canonicalScroll, viewportH),
-        ]),
+        paneIds.map((pane) => [pane, paneOffsetForCanonical(layout, pane, canonicalScroll)]),
     ) as Record<Pane, number>;
 }
 

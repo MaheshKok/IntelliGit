@@ -724,6 +724,10 @@ export function App(): React.ReactElement {
     const [editingBlock, setEditingBlock] = useState<EditableBlockLayout | null>(null);
     const [shikiReady, setShikiReady] = useState(() => isShikiReady());
     const [shikiTheme] = useState(() => detectTheme());
+    // The same height `viewportRef` caches, kept in state as well because the scroll
+    // spacer and the overview rail are sized from it during render -- a ref alone would
+    // leave both stale until some other change happened to re-render.
+    const [viewportHeight, setViewportHeight] = useState(0);
     const vscode = useMemo(() => getVsCodeApi<OutboundMessage, unknown>(), []);
 
     const contentRef = useRef<HTMLDivElement | null>(null);
@@ -794,7 +798,10 @@ export function App(): React.ReactElement {
         [editingBlock, renderedSegments],
     );
     const layout = useMemo(() => buildVerticalLayout(paneLines, DIFF_PANES), [paneLines]);
-    const stripeMarks = useMemo(() => buildStripeMarks(segments, layout), [segments, layout]);
+    const stripeMarks = useMemo(
+        () => buildStripeMarks(segments, layout, viewportHeight),
+        [segments, layout, viewportHeight],
+    );
 
     // The scroll range is `canonicalTotalPx` and the stripe is measured against the same
     // number, so a mark's segment top is already the scrollTop that puts it at the fold.
@@ -883,8 +890,8 @@ export function App(): React.ReactElement {
     }, []);
 
     // Cache the viewport box and expose its height as a CSS var so the sticky
-    // viewport's negative margin cancels exactly its own height, leaving the
-    // scroll range at canonicalTotalPx.
+    // viewport's negative margin cancels exactly its own height, leaving the scroll
+    // range at whatever the spacer says -- `scrollRangePx`, and nothing else.
     //
     // The connector channel is measured here too, from the panes' own boxes rather than
     // recomputed from the column template: --diff-connector-gutter is a CSS decision,
@@ -909,6 +916,7 @@ export function App(): React.ReactElement {
             right ? right.left - origin : width / 2,
         );
         viewportRef.current = { height, channel };
+        setViewportHeight(height);
         content.style.setProperty("--diff-viewport-h", `${height}px`);
     }, []);
 
@@ -986,12 +994,7 @@ export function App(): React.ReactElement {
         const currentLayout = layoutRef.current;
         if (!content || !currentLayout) return;
         const { height: viewportH, channel } = viewportRef.current;
-        const offsets = paneOffsetsForCanonical(
-            currentLayout,
-            DIFF_PANES,
-            content.scrollTop,
-            viewportH,
-        );
+        const offsets = paneOffsetsForCanonical(currentLayout, DIFF_PANES, content.scrollTop);
         applyPaneOffsets(DIFF_PANES, (pane) => columnRefs.current[pane], offsets);
         drawRibbons(currentLayout, offsets, viewportH, channel);
         drawActions(currentLayout, offsets, viewportH, channel);
@@ -1438,7 +1441,9 @@ export function App(): React.ReactElement {
                         </div>
                         <div
                             className="diff-vscroll-spacer"
-                            style={{ height: scrollRangePx(layout.canonicalTotalPx) }}
+                            style={{
+                                height: scrollRangePx(layout.canonicalTotalPx, viewportHeight),
+                            }}
                             aria-hidden="true"
                         />
                     </div>
@@ -1453,7 +1458,7 @@ export function App(): React.ReactElement {
                         // confidently at blank space. Taller than the viewport, this
                         // exceeds the box and the stripe is the full track, as it should
                         // be. Same number as the spacer, because it is the same range.
-                        style={{ maxHeight: scrollRangePx(layout.canonicalTotalPx) }}
+                        style={{ maxHeight: scrollRangePx(layout.canonicalTotalPx, viewportHeight) }}
                     >
                         {stripeMarks.map((mark) => (
                             <div

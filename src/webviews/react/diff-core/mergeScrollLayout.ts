@@ -9,20 +9,30 @@
 export const LINE_HEIGHT_PX = 20;
 
 /**
- * Blank rows kept below the last line of a diff. Without them the final line sits
- * flush against the bottom of the viewport, which reads as a truncated file and
- * leaves the last line awkward to put under the cursor.
- *
- * They are added to the SCROLL RANGE only, never to `canonicalTotalPx`. That number
- * is the canonical space every pane offset, hunk extent and connector ribbon is
- * derived from, so padding it would move real geometry rather than simply letting
- * the scroller travel further than the document.
+ * The floor for the trailing space, in rows, used until the viewport has been measured.
+ * On the first paint there is no measurement yet, and a trailing space of zero would put
+ * the last line flush against the bottom edge — which reads as a truncated file.
  */
 const TRAILING_ROWS = 3;
 
-/** The scrollable length of a diff: the document, plus the trailing blank rows. */
-export function scrollRangePx(canonicalTotalPx: number): number {
-    return canonicalTotalPx + TRAILING_ROWS * LINE_HEIGHT_PX;
+/**
+ * The scrollable length of a diff: the document, plus a whole viewport of empty space
+ * below it.
+ *
+ * A viewport's worth is what lets the last line scroll up to the top edge and then out
+ * of sight, the way a code editor behaves. A few fixed rows only ever lifted the final
+ * line clear of the bottom bezel, so a long file still ended abruptly against the frame.
+ *
+ * The trailing space is added to the SCROLL RANGE only, never to `canonicalTotalPx`.
+ * That number is the canonical space every pane offset, hunk extent and connector ribbon
+ * is derived from, so padding it would move real geometry rather than simply letting the
+ * scroller travel further than the document.
+ *
+ * `viewportPx` is required rather than defaulted: a caller that has not threaded the
+ * measurement through would otherwise silently keep the old, too-short range.
+ */
+export function scrollRangePx(canonicalTotalPx: number, viewportPx: number): number {
+    return canonicalTotalPx + Math.max(viewportPx, TRAILING_ROWS * LINE_HEIGHT_PX);
 }
 
 /** A consumer-defined pane identifier. Pane order is supplied to the engine. */
@@ -153,13 +163,23 @@ function clamp(value: number, min: number, max: number): number {
 
 /**
  * Maps canonical scroll to one pane's translated offset. The pane advances
- * proportionally inside a segment and clamps to its own scrollable extent.
+ * proportionally inside a segment and clamps to its own full height.
+ *
+ * Its own FULL height, not `height - viewportH`. The shorter cap stopped a pane the moment its
+ * last screenful reached the bottom edge, so past that point the scrollbar kept travelling while
+ * the code stood still — the last lines pinned against the frame, which is what reads as a file
+ * cut off at the bottom. `scrollRangePx` hangs a whole viewport of empty space below the
+ * document; this is the half that lets the panes actually move through it.
+ *
+ * The viewport height is deliberately not a parameter. It was one, and it was the thing making
+ * the cap wrong; taking it back would also let a caller pass `undefined` into the arithmetic,
+ * where `total - undefined` is `NaN` and every comparison against it is false — a clamp that
+ * silently stops clamping.
  */
 export function paneOffsetForCanonical<Pane extends PaneId>(
     layout: DiffVerticalLayout<Pane>,
     pane: Pane,
     canonicalScroll: number,
-    viewportH: number,
 ): number {
     const { canonicalTopPx, canonicalHPx, paneTopPx, paneHPx, paneTotalPx } = layout;
     if (canonicalTopPx.length === 0) return 0;
@@ -167,8 +187,7 @@ export function paneOffsetForCanonical<Pane extends PaneId>(
     const segmentHeight = canonicalHPx[i];
     const fraction = segmentHeight > 0 ? (canonicalScroll - canonicalTopPx[i]) / segmentHeight : 0;
     const raw = paneTopPx[pane][i] + fraction * paneHPx[pane][i];
-    const maxOffset = Math.max(0, paneTotalPx[pane] - viewportH);
-    return clamp(raw, 0, maxOffset);
+    return clamp(raw, 0, paneTotalPx[pane]);
 }
 
 /** Horizontal control-point proximity (fraction of the divider strip). */

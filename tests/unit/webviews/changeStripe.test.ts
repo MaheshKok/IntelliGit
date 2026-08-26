@@ -32,8 +32,18 @@ function layoutFor(segments: readonly DiffSegment[]) {
     );
 }
 
-const marksFor = (segments: readonly DiffSegment[]) =>
-    buildStripeMarks(segments, layoutFor(segments));
+/**
+ * The stripe divides by the scroll range, which is the document plus a whole trailing
+ * viewport. Most cases here are about which segment a mark points at, not where it lands,
+ * so they take the unmeasured viewport: `scrollRangePx` floors that at three rows, which
+ * is a known 60px rather than a number that has to be restated in every expectation.
+ * The cases that ARE about position pass a viewport of their own.
+ */
+const marksFor = (segments: readonly DiffSegment[], viewportPx = 0) =>
+    buildStripeMarks(segments, layoutFor(segments), viewportPx);
+
+/** The floor `scrollRangePx` applies when nothing has been measured: 3 rows of 20px. */
+const UNMEASURED_PAD_PX = 60;
 
 describe("buildStripeMarks", () => {
     it("draws each change in the hue of the block it points at", () => {
@@ -78,9 +88,16 @@ describe("buildStripeMarks", () => {
 
         const marks = marksFor(segments);
 
+        // 200 common rows then the change: the mark's top is 4000px into a 4020px document,
+        // and the range it is a share of carries the trailing pad on top of that. The exact
+        // number is pinned rather than a "near the bottom" band, because the defect above
+        // puts this mark at zero and any band loose enough to survive a padding change would
+        // also survive that. It does NOT reach 100%: the blank screen below the last line is
+        // part of what scrolls, so the final change sits above the end of the track.
+        const RANGE_PX = 201 * 20 + UNMEASURED_PAD_PX;
         expect(marks).toHaveLength(1);
-        expect(marks[0].topPct).toBeGreaterThan(99);
-        expect(marks[0].topPct + marks[0].heightPct).toBeCloseTo(100, 5);
+        expect(marks[0].topPct).toBeCloseTo((4000 / RANGE_PX) * 100, 5);
+        expect(marks[0].topPct + marks[0].heightPct).toBeCloseTo((4020 / RANGE_PX) * 100, 5);
     });
 
     it("puts a change at the start of a long file at the top of the stripe", () => {

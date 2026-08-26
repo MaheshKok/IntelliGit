@@ -1769,8 +1769,11 @@ describe("DiffViewerApp scroll viewport and ribbons", () => {
             "the spacer is the scroller's whole scroll range; nested inside the clipped, fixed-height viewport it contributes none",
         ).toContain("diff-content");
         expect(spacer?.parentElement?.className).not.toContain("diff-viewport");
-        // 39 rows of document, then the three trailing blank rows the scroller adds.
-        expect(spacer?.style.height).toBe("840px");
+        // 39 rows of document (780px), then a whole viewport of trailing space (VIEWPORT_H is
+        // 300) so the last line can be scrolled clear off the top rather than merely lifted off
+        // the bottom bezel. A literal, not `780 + VIEWPORT_H`: an expectation assembled from the
+        // same two numbers the code adds together agrees with any arrangement of them.
+        expect(spacer?.style.height).toBe("1080px");
         expect(
             content.style.getPropertyValue("--diff-viewport-h"),
             "without the measured height the viewport cannot cancel itself out of flow in pixels",
@@ -1941,9 +1944,6 @@ describe("DiffViewerApp scroll viewport and ribbons", () => {
         ).not.toBe(before.rightTop - after.rightTop);
     });
 
-    // The stripe needs no viewport measurement -- it is a share of the canonical range,
-    // not of the visible box -- but it reads the same layout as the ribbons, so it is
-    // measured against the same fixture rather than a second one that could disagree.
     it("marks each change in the scrollbar channel at its share of the scroll range", async () => {
         await mountScrollFixture();
 
@@ -1969,12 +1969,11 @@ describe("DiffViewerApp scroll viewport and ribbons", () => {
         ).toBe(spacer?.style.height);
 
         // The divisor is the scroll range, not the 780px document: the scroller carries a
-        // trailing screen so the last line can clear the viewport, and the marks are shares
-        // of what actually scrolls. The three padding rows are restated here rather than
-        // imported, so changing the padding has to be restated here to pass -- reading it
-        // back from the layout would let the same mistake pass on both sides.
-        const TRAILING_ROWS = 3;
-        const RANGE_PX = 780 + TRAILING_ROWS * LINE_HEIGHT_PX;
+        // whole trailing viewport so the last line can scroll clear off the top, and the
+        // marks are shares of what actually scrolls. A literal, not `780 + VIEWPORT_H`: an
+        // expectation assembled from the same two numbers the code adds together agrees
+        // with any arrangement of them, and this is the number the spacer is sized to.
+        const RANGE_PX = 1080;
 
         // Deletion-only hunk: canonical top 100, height 60.
         expect(marks[0].classList.contains("diff-change-deleted")).toBe(true);

@@ -35,14 +35,29 @@ describe("buildVerticalLayout", () => {
         expect(layout.canonicalTotalPx).toBe(160);
         // The trailing rows hang off the SCROLL RANGE, never off the canonical space the
         // line above pins -- pad that and every pane offset and ribbon extent moves with it.
-        expect(scrollRangePx(layout.canonicalTotalPx)).toBe(220);
+        expect(scrollRangePx(layout.canonicalTotalPx, 0)).toBe(220);
     });
 
-    it("hangs three blank rows below the document so the last line is not flush with the edge", () => {
-        // Literals, not `TRAILING_ROWS * LINE_HEIGHT_PX`: an expectation built from the
-        // constant it polices passes just as happily when that constant is zero.
-        expect(scrollRangePx(0)).toBe(60);
-        expect(scrollRangePx(800)).toBe(860);
+    it("hangs a whole viewport below the document so the last line can be scrolled out of sight", () => {
+        // The trailing space is what the scroller can travel past the end, so a viewport's
+        // worth of it means the final line reaches the top edge and then leaves — three fixed
+        // rows only ever lifted it clear of the bottom, which still reads as a cut-off file.
+        //
+        // Literals, not `TRAILING_ROWS * LINE_HEIGHT_PX` or the argument echoed back: an
+        // expectation built from the constant it polices passes just as happily when that
+        // constant is zero, and one built from `viewportPx` passes when the document is
+        // dropped from the sum.
+        expect(scrollRangePx(800, 500)).toBe(1300);
+        expect(scrollRangePx(0, 500)).toBe(500);
+    });
+
+    it("keeps three blank rows as the floor before the viewport has been measured", () => {
+        // `measureViewport` has not run on the first paint, and a viewport of 0 would make the
+        // scroll range the document exactly — the last line flush against the bottom edge,
+        // which is the state this trailing space exists to prevent.
+        expect(scrollRangePx(800, 0)).toBe(860);
+        expect(scrollRangePx(800, 40)).toBe(860);
+        expect(scrollRangePx(800, 61)).toBe(861);
     });
 
     it("advances each pane by its own natural height, not the canonical height", () => {
@@ -64,47 +79,60 @@ describe("buildVerticalLayout", () => {
         const layout = buildVerticalLayout([], ["left", "middle", "right"] as const);
         expect(layout.canonicalTotalPx).toBe(0);
         expect(layout.paneTotalPx).toEqual({ left: 0, middle: 0, right: 0 });
-        expect(paneOffsetForCanonical(layout, "left", 0, 100)).toBe(0);
+        expect(paneOffsetForCanonical(layout, "left", 0)).toBe(0);
     });
 });
 
 describe("paneOffsetForCanonical", () => {
     const layout = buildVerticalLayout(FIXTURE, ["left", "middle", "right"] as const);
-    const VIEWPORT = 40; // small enough that clamping does not swallow the proportional range
 
     it("aligns all panes at their own top on a segment boundary", () => {
         // Canonical 60 is the top of the conflict segment: each pane sits at its
         // own seg1 top (60), so unchanged code above the hunk stays in lockstep.
-        expect(paneOffsetForCanonical(layout, "left", 60, VIEWPORT)).toBe(60);
-        expect(paneOffsetForCanonical(layout, "middle", 60, VIEWPORT)).toBe(60);
-        expect(paneOffsetForCanonical(layout, "right", 60, VIEWPORT)).toBe(60);
+        expect(paneOffsetForCanonical(layout, "left", 60)).toBe(60);
+        expect(paneOffsetForCanonical(layout, "middle", 60)).toBe(60);
+        expect(paneOffsetForCanonical(layout, "right", 60)).toBe(60);
     });
 
     it("diverges proportionally to each pane's height mid-hunk", () => {
         // Halfway through the conflict (canonical 90 = 60 + 60/2): left advances
         // 10 (20/2), middle 30 (60/2), right 20 (40/2). A `-` interpolation would
         // yield 50 for the left pane instead of 70.
-        expect(paneOffsetForCanonical(layout, "left", 90, VIEWPORT)).toBe(70);
-        expect(paneOffsetForCanonical(layout, "middle", 90, VIEWPORT)).toBe(90);
-        expect(paneOffsetForCanonical(layout, "right", 90, VIEWPORT)).toBe(80);
+        expect(paneOffsetForCanonical(layout, "left", 90)).toBe(70);
+        expect(paneOffsetForCanonical(layout, "middle", 90)).toBe(90);
+        expect(paneOffsetForCanonical(layout, "right", 90)).toBe(80);
     });
 
     it("re-aligns panes at the next boundary after an unbalanced hunk", () => {
-        expect(paneOffsetForCanonical(layout, "left", 120, VIEWPORT)).toBe(80);
-        expect(paneOffsetForCanonical(layout, "middle", 120, VIEWPORT)).toBe(120);
-        expect(paneOffsetForCanonical(layout, "right", 120, VIEWPORT)).toBe(100);
+        expect(paneOffsetForCanonical(layout, "left", 120)).toBe(80);
+        expect(paneOffsetForCanonical(layout, "middle", 120)).toBe(120);
+        expect(paneOffsetForCanonical(layout, "right", 120)).toBe(100);
     });
 
-    it("clamps to each pane's max offset at the document end", () => {
-        // Beyond the last boundary every pane clamps to totalPx - viewportH.
-        expect(paneOffsetForCanonical(layout, "left", 160, VIEWPORT)).toBe(80); // 120-40
-        expect(paneOffsetForCanonical(layout, "middle", 160, VIEWPORT)).toBe(120); // 160-40
-        expect(paneOffsetForCanonical(layout, "right", 160, VIEWPORT)).toBe(100); // 140-40
+    it("lets every pane translate its whole height, clear off the top of the viewport", () => {
+        // A pane stopped at `totalPx - viewportH` leaves its last screenful pinned against the
+        // bottom edge no matter how far the scroller travels -- the scrollbar moves and the code
+        // does not. Each pane's own full height is the limit, so the last line goes out of sight.
+        expect(paneOffsetForCanonical(layout, "left", 160)).toBe(120);
+        expect(paneOffsetForCanonical(layout, "middle", 160)).toBe(160);
+        expect(paneOffsetForCanonical(layout, "right", 160)).toBe(140);
+
+        // And no further. 160 is exactly the end of the canonical space, where the interpolation
+        // already lands on each pane's own total -- so it alone cannot tell a working upper bound
+        // from a missing one. A window shorter than the trailing-row floor makes the scroll range
+        // outrun the document, which is how a scroll position past the end is reached at all;
+        // unbounded, each pane would sail on at its own rate and stop agreeing with the others.
+        expect(paneOffsetForCanonical(layout, "left", 400)).toBe(120);
+        expect(paneOffsetForCanonical(layout, "middle", 400)).toBe(160);
+        expect(paneOffsetForCanonical(layout, "right", 400)).toBe(140);
     });
 
-    it("never returns a negative offset when the viewport exceeds content", () => {
-        expect(paneOffsetForCanonical(layout, "middle", 0, 5000)).toBe(0);
-        expect(paneOffsetForCanonical(layout, "left", 90, 5000)).toBe(0);
+    it("never returns a negative offset", () => {
+        expect(paneOffsetForCanonical(layout, "middle", 0)).toBe(0);
+        // A document far shorter than the window still scrolls: the trailing space is a whole
+        // viewport, so there is real travel to spend even here, and the offset tracks it rather
+        // than being pinned to zero by a window taller than the file.
+        expect(paneOffsetForCanonical(layout, "left", 90)).toBe(70);
     });
 
     it("keeps large unbalanced hunk boundaries stable while scrolling", () => {
@@ -120,12 +148,11 @@ describe("paneOffsetForCanonical", () => {
             ],
             ["left", "middle", "right"] as const,
         );
-        const viewport = 200;
         const conflictIndex = 1;
         const conflictTop = largeLayout.canonicalTopPx[conflictIndex];
         const conflictBottom = conflictTop + largeLayout.canonicalHPx[conflictIndex];
         const visibleExtent = (pane: PaneId, canonicalScroll: number) => {
-            const offset = paneOffsetForCanonical(largeLayout, pane, canonicalScroll, viewport);
+            const offset = paneOffsetForCanonical(largeLayout, pane, canonicalScroll);
             const top = largeLayout.paneTopPx[pane][conflictIndex] - offset;
             return { top, bottom: top + largeLayout.paneHPx[pane][conflictIndex] };
         };

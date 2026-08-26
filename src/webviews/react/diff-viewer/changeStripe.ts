@@ -2,14 +2,16 @@
 //
 // The two panes share a single scroller, so a reader who has not scrolled cannot tell
 // where the changes sit -- or whether any exist below the fold at all. The stripe answers
-// that from the layout the scroller is already sized by: `scrollRangePx(canonicalTotalPx)`
-// IS the scroll range (`.diff-vscroll-spacer` is that tall), so a segment's fraction of it
-// is its fraction of the scrollbar, with no second measurement to keep in sync.
+// that from the numbers the scroller is already sized by: `scrollRangePx(canonicalTotalPx,
+// viewportPx)` IS the scroll range (`.diff-vscroll-spacer` is that tall), so a segment's
+// fraction of it is its fraction of the scrollbar, with no second measurement to keep in sync.
 //
-// It is the padded range, not the document height. The scroller carries a trailing screen
-// so the last line can clear the viewport, and dividing by the document height instead
-// would push every mark down by exactly that padding -- furthest at the bottom, where a
-// mark is hardest to check against the code it claims to point at.
+// It is the padded range, not the document height. The scroller carries a whole trailing
+// viewport so the last line can scroll clear off the top, and dividing by the document
+// height instead would push every mark down by exactly that padding -- furthest at the
+// bottom, where a mark is hardest to check against the code it claims to point at. The
+// viewport is threaded in for that reason alone: the padding is no longer a constant, so a
+// stripe that did not see the measurement would disagree with the spacer on every resize.
 //
 // The tone comes from `segmentMarker` rather than a second classification. The whole
 // point of a mark beside the scrollbar is that its colour matches the block it points at,
@@ -65,11 +67,13 @@ const TONE_BY_RIGHT_MARKER: Record<SegmentMarker, StripeTone> = {
 export function buildStripeMarks(
     segments: readonly DiffSegment[],
     layout: DiffVerticalLayout<DiffPane>,
+    viewportPx: number,
 ): StripeMark[] {
-    // Guard on the document height, not the padded range: the padding is a constant, so
-    // `scrollRangePx` is never zero and an unmeasured layout would sail past a check on it.
+    // Guard on the document height, not the padded range: the padding has a floor of its
+    // own, so `scrollRangePx` is never zero and an unmeasured layout would sail past a
+    // check on it.
     if (layout.canonicalTotalPx <= 0) return [];
-    const total = scrollRangePx(layout.canonicalTotalPx);
+    const total = scrollRangePx(layout.canonicalTotalPx, viewportPx);
 
     const marks: StripeMark[] = [];
     segments.forEach((segment, index) => {

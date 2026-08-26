@@ -29,7 +29,13 @@ describe("diff-core scroll synchronization", () => {
             paneIds,
         );
 
-        expect(paneOffsetsForCanonical(layout, paneIds, 20, 20)).toEqual({ left: 0, right: 20 });
+        // A third of the way through the only segment, so each pane has advanced a third of its
+        // own height: the tall side 20 of 60, the short side 6.67 of 20. The short side used to
+        // read 0 here, clamped flat by a cap of `height - viewportH` that a one-line pane in a
+        // 20px viewport reduces to nothing — the pane simply refused to move.
+        const offsets = paneOffsetsForCanonical(layout, paneIds, 20);
+        expect(offsets.right).toBe(20);
+        expect(offsets.left).toBeCloseTo(20 / 3, 6);
     });
 
     it("applies translated offsets to every mounted pane", () => {

@@ -1412,6 +1412,64 @@ describe("MergeEditorApp", () => {
         expect(bottomScroll?.parentElement).toBe(document.querySelector(".merge-content-shell"));
     });
 
+    // The three-pane half of "the last line must scroll out of sight". `scrollRangePx` is proven
+    // arithmetically in tests/unit/merge/mergeScrollLayout.test.ts; what that cannot see is
+    // whether the measured viewport ever reaches the spacer the scroller is sized from -- a call
+    // site passing a constant 0, or one reading the height from a ref (which does not re-render),
+    // both typecheck and both ship a diff whose last line stays pinned near the bottom edge.
+    //
+    // Two heights rather than one absolute expectation: the delta is independent of both the
+    // document's own canonical height and the trailing-row floor, so this stays honest if either
+    // changes. jsdom reports `clientHeight` 0 for every element and ships no ResizeObserver, so
+    // both have to be supplied here.
+    it("grows the scroll spacer by exactly the viewport height it was measured at", async () => {
+        installVsCodeMock();
+        createRootHost();
+
+        let notifyResize: (() => void) | undefined;
+        vi.stubGlobal(
+            "ResizeObserver",
+            class {
+                constructor(callback: () => void) {
+                    notifyResize = callback;
+                }
+                observe(): void {}
+                disconnect(): void {}
+            },
+        );
+
+        try {
+            await act(async () => {
+                await import("../../../src/webviews/react/merge-editor/MergeEditorApp");
+            });
+            await flush();
+            dispatchHostMessage({ type: "setConflictData", data: twoConflictData() });
+            await flush();
+
+            const content = document.querySelector<HTMLElement>(".merge-content");
+            const spacer = document.querySelector<HTMLElement>(".merge-vscroll-spacer");
+            if (!content || !spacer || !notifyResize) throw new Error("merge scroller not mounted");
+
+            const measureAt = async (viewportHeight: number): Promise<number> => {
+                Object.defineProperty(content, "clientHeight", {
+                    configurable: true,
+                    value: viewportHeight,
+                });
+                await act(async () => {
+                    notifyResize?.();
+                });
+                await flush();
+                return Number.parseFloat(spacer.style.height);
+            };
+
+            const shortViewport = await measureAt(600);
+            const tallViewport = await measureAt(900);
+            expect(tallViewport - shortViewport).toBe(300);
+        } finally {
+            vi.unstubAllGlobals();
+        }
+    });
+
     it("treats auto-merged hunks as resolved and applies the merged lines", async () => {
         const vscode = installVsCodeMock();
         createRootHost();

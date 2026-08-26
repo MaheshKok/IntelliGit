@@ -23,8 +23,8 @@ describe("diff-core pane layouts", () => {
         expect(layout.paneHPx).toEqual({ ours: [20, 40], result: [60, 40] });
         expect(layout.paneTotalPx).toEqual({ ours: 60, result: 100 });
         expect(layout.hunkCanonical.get(7)).toEqual({ top: 0, height: 60 });
-        expect(paneOffsetForCanonical(layout, "ours", 30, 20)).toBe(10);
-        expect(paneOffsetForCanonical(layout, "result", 30, 20)).toBe(30);
+        expect(paneOffsetForCanonical(layout, "ours", 30)).toBe(10);
+        expect(paneOffsetForCanonical(layout, "result", 30)).toBe(30);
 
         expect(ribbonPathD({ x0: 0, curveX0: 10, curveX1: 20, x1: 30 }, 0, 20, 10, 30)).toBe(
             "M 0,0 L 10,0 C 13,0 17,10 20,10 L 30,10" +
