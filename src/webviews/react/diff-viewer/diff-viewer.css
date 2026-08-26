@@ -367,6 +367,60 @@
     overflow: visible;
 }
 
+/* The revert arrows sit in the same channel as the ribbons and above them, so an arrow is
+   never swallowed by the band it belongs to. The layer itself takes no pointer events --
+   it spans the whole viewport, and a transparent sheet over both panes would eat every
+   click on the code -- while each button takes its own back. Buttons start hidden and are
+   revealed by the scroll driver: their position is set in the frame after layout, and an
+   unpositioned button would flash stacked at the top of the viewport first. */
+.diff-action-layer {
+    position: absolute;
+    inset: 0;
+    z-index: 5;
+    pointer-events: none;
+}
+
+.diff-hunk-revert {
+    position: absolute;
+    /* Hidden until the scroll driver places it; revealed as `flex`, which is also what
+       centres the glyph in its 20px box. */
+    display: none;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    transform: translateX(-50%);
+    border: none;
+    border-radius: 3px;
+    background: transparent;
+    color: color-mix(in srgb, var(--diff-editor-fg) 84%, transparent);
+    /* The merge editor's gutter glyph is 18px bold monospace in a 24px button; this box is
+       one code row tall, so the glyph steps down with it. The ceiling is arithmetic, not
+       taste: a text range's client rect is the FONT box (ascent+descent, ~1.29em -- never
+       `line-height`), so 20px of row allows 20/1.29 = 15.5px, and anything above that
+       overflows wherever `.diff-viewport` clips at the top of the scroller.
+       `.hunk-action-glyph` in merge-editor.css carries the measurement and why it was
+       invisible on macOS. 14px lands under the ceiling at 18.1px AND on the documented
+       type scale, so the glyph needs no exemption from tests/webview/unit/type-scale.test.ts. */
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-size: 14px;
+    font-weight: 700;
+    line-height: 1;
+    cursor: pointer;
+    pointer-events: auto;
+}
+
+.diff-hunk-revert:hover {
+    background: color-mix(in srgb, var(--diff-editor-fg) 12%, transparent);
+    color: var(--diff-editor-fg);
+}
+
+.diff-hunk-revert:focus-visible {
+    outline: 1px solid var(--vscode-focusBorder, var(--diff-info));
+    outline-offset: -1px;
+}
+
 /* The connector fills with the semantic hue itself, not a wash of it: it carries its
    own alpha, so drawing it from a fragment tint made it a near-background band that
    the 0.18 opacity then erased entirely.

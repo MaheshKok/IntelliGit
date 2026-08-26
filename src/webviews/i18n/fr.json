@@ -372,5 +372,6 @@
     "diff.error.load": "Échec du chargement du diff : {error}",
     "diff.loading": "Chargement du diff...",
     "diff.editable.blockHint": "Double-cliquez ou appuyez sur Entrée pour modifier",
-    "diff.editable.editingAria": "Modifier le bloc de l’arborescence de travail"
+    "diff.editable.editingAria": "Modifier le bloc de l’arborescence de travail",
+    "diff.editable.revertHunk": "Annuler cette modification"
 }

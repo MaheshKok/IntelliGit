@@ -354,5 +354,6 @@
     "diff.error.load": "차이점을 로드하지 못했습니다: {error}",
     "diff.loading": "차이점 로드 중...",
     "diff.editable.blockHint": "두 번 클릭하거나 Enter 키를 눌러 편집",
-    "diff.editable.editingAria": "작업 트리 블록 편집"
+    "diff.editable.editingAria": "작업 트리 블록 편집",
+    "diff.editable.revertHunk": "이 변경 내용 되돌리기"
 }

@@ -109,16 +109,44 @@ interface EditableBlockLayout {
 }
 
 /** Replaces one line-addressed display block in the LF-normalized document text. */
+function replaceBlockLines(
+    sourceText: string,
+    startLine: number,
+    lineCount: number,
+    replacement: readonly string[],
+): string {
+    const lines = sourceText.split("\n");
+    lines.splice(startLine, lineCount, ...replacement);
+    return lines.join("\n");
+}
+
+/**
+ * Same replacement, from edited TEXT rather than from lines.
+ *
+ * A caller that already holds lines goes to `replaceBlockLines` instead of joining them for
+ * this one to split again: that round trip cannot add information and can lose it, since
+ * `splitEditedText` splits on `/\r?\n/` and would eat a CR the lines were carrying. The two
+ * agree on the empty case -- `splitEditedText("")` is no lines, not one blank one -- so
+ * that is not what separates them.
+ */
 function replaceBlockText(
     sourceText: string,
     startLine: number,
     lineCount: number,
     editedText: string,
 ): string {
-    const lines = sourceText.split("\n");
-    const editedLines = splitEditedText(editedText);
-    lines.splice(startLine, lineCount, ...editedLines);
-    return lines.join("\n");
+    return replaceBlockLines(sourceText, startLine, lineCount, splitEditedText(editedText));
+}
+
+/** Line offset of a segment within one pane's own document text. */
+function paneStartLine(
+    renderedSegments: readonly RenderedSegment[],
+    index: number,
+    side: DiffPane,
+): number {
+    return renderedSegments
+        .slice(0, index)
+        .reduce((total, previous) => total + previous.segment[side].length, 0);
 }
 
 /** Renders editable display blocks while keeping document writes delegated to the host. */
@@ -173,9 +201,7 @@ function EditableDiffPane({
 
     const startEditing = useCallback(
         (item: RenderedSegment) => {
-            const startLine = renderedSegments
-                .slice(0, item.index)
-                .reduce((total, previous) => total + previous.segment[side].length, 0);
+            const startLine = paneStartLine(renderedSegments, item.index, side);
             const nextDraft = {
                 index: item.index,
                 text: item.segment[side].join("\n"),
@@ -369,6 +395,48 @@ function DiffPaneMetaRow({
     );
 }
 
+/**
+ * The per-hunk revert arrows, in the connector channel between the panes.
+ *
+ * Positioned by the scroll driver in viewport pixels rather than by React, for the reason
+ * the ribbons are: the two columns are translated independently, so a button's place is a
+ * function of the editable pane's own offset and changes every frame of a scroll. Nothing
+ * renders when there is no editable pane -- a commit diff has no file to write back to --
+ * and nothing renders for a collapsed one-sided file either, where there is no channel to
+ * stand in and reverting the whole file is a delete, not an edit.
+ */
+function DiffHunkActionLayer({
+    hunks,
+    editablePane,
+    onRevert,
+    registerButton,
+}: {
+    hunks: readonly number[];
+    editablePane: DiffPane | undefined;
+    onRevert: (index: number) => void;
+    registerButton: (index: number, element: HTMLButtonElement | null) => void;
+}): React.ReactElement | null {
+    if (editablePane === undefined || hunks.length === 0) return null;
+    return (
+        <div className="diff-action-layer">
+            {hunks.map((index) => (
+                <button
+                    key={`revert-${index}`}
+                    ref={(element) => registerButton(index, element)}
+                    type="button"
+                    className="diff-hunk-revert"
+                    data-testid={`diff-revert-${index}`}
+                    title={t("diff.editable.revertHunk")}
+                    aria-label={t("diff.editable.revertHunk")}
+                    onClick={() => onRevert(index)}
+                >
+                    {editablePane === "right" ? "\u00bb" : "\u00ab"}
+                </button>
+            ))}
+        </div>
+    );
+}
+
 /** Hosts a pure, read-only two-pane diff with only view toggles. */
 export function App(): React.ReactElement {
     const [data, setData] = useState<DiffViewerData | null>(null);
@@ -400,6 +468,7 @@ export function App(): React.ReactElement {
         channel: connectorChannelSpan(0, 0),
     });
     const ribbonPaths = useMemo(() => new Map<number, SVGPathElement>(), []);
+    const actionButtons = useMemo(() => new Map<number, HTMLButtonElement>(), []);
     const handleDraftLayoutChange = useCallback((layout: EditableBlockLayout | null) => {
         setEditingBlock(layout);
     }, []);
@@ -483,6 +552,17 @@ export function App(): React.ReactElement {
         return data?.editablePane === undefined || data.editablePane === sole ? sole : null;
     }, [data?.editablePane, segments]);
 
+    // No arrows on a collapsed one-sided file: there is no channel between panes to stand
+    // in, and "revert the whole file" is a delete or a restore, not a block replacement.
+    // Whether there is an editable pane at all is NOT re-checked here -- `DiffHunkActionLayer`
+    // decides that, because it needs the pane for the arrow's direction anyway. A second copy
+    // of the same condition cannot be shown to be doing anything, since removing either one
+    // leaves the other answering.
+    const actionHunks = useMemo(
+        () => (singlePane === null ? ribbonIndices.map((ribbon) => ribbon.index) : []),
+        [ribbonIndices, singlePane],
+    );
+
     const maxLineLength = useMemo(() => {
         let max = 1;
         for (const segment of segments) {
@@ -541,6 +621,39 @@ export function App(): React.ReactElement {
     // Each side's extent comes from that pane's own geometry: a deletion-only
     // hunk followed by an insertion-only one flips which pane is taller, and a
     // shared canonical extent would misdraw one of them.
+    // Each arrow stands beside the hunk in the pane it WRITES INTO, not at the canonical
+    // position: those differ by exactly the rows the other pane has and this one does not,
+    // which is every hunk the button exists for. A hunk the editable pane holds no rows of
+    // still gets one, at the collapsed position the reverted lines would be inserted at.
+    const drawActions = useCallback(
+        (
+            currentLayout: DiffVerticalLayout<DiffPane>,
+            offsets: Readonly<Record<DiffPane, number>>,
+            viewportH: number,
+            span: RibbonSpan,
+        ) => {
+            const pane = data?.editablePane;
+            if (pane === undefined) return;
+            const centre = (span.x0 + span.x1) / 2;
+            for (const [index, button] of actionButtons) {
+                if (index >= currentLayout.canonicalTopPx.length) continue;
+                const top = currentLayout.paneTopPx[pane][index] - offsets[pane];
+                const bottom = top + currentLayout.paneHPx[pane][index];
+                if (bottom < 0 || top > viewportH) {
+                    button.style.display = "none";
+                    continue;
+                }
+                // Not `""`: that clears the inline property and hands the button back to
+                // the stylesheet, which hides it. The ribbons get away with it only because
+                // nothing declares a display for them.
+                button.style.display = "flex";
+                button.style.top = `${top}px`;
+                button.style.left = `${centre}px`;
+            }
+        },
+        [actionButtons, data?.editablePane],
+    );
+
     const drawRibbons = useCallback(
         (
             currentLayout: DiffVerticalLayout<DiffPane>,
@@ -584,7 +697,8 @@ export function App(): React.ReactElement {
         );
         applyPaneOffsets(DIFF_PANES, (pane) => columnRefs.current[pane], offsets);
         drawRibbons(currentLayout, offsets, viewportH, channel);
-    }, [drawRibbons]);
+        drawActions(currentLayout, offsets, viewportH, channel);
+    }, [drawActions, drawRibbons]);
 
     const registerRibbonPath = useCallback(
         (index: number, element: SVGPathElement | null) => {
@@ -592,6 +706,14 @@ export function App(): React.ReactElement {
             else ribbonPaths.delete(index);
         },
         [ribbonPaths],
+    );
+
+    const registerActionButton = useCallback(
+        (index: number, element: HTMLButtonElement | null) => {
+            if (element) actionButtons.set(index, element);
+            else actionButtons.delete(index);
+        },
+        [actionButtons],
     );
 
     const scheduleVerticalFrame = useCallback(() => {
@@ -686,6 +808,30 @@ export function App(): React.ReactElement {
             });
         },
         [data?.editablePane, vscode],
+    );
+
+    // Reverting is a document edit, deliberately: it goes down the same offset-diff and
+    // `editText` path a typed block commit does, so it lands in VS Code's undo stack, is
+    // stamped with the version and reseed token the draft machinery already uses to reject
+    // a stale write, and needs no second host command to review.
+    const handleRevertHunk = useCallback(
+        (index: number) => {
+            const pane = data?.editablePane;
+            const sourceText = data?.editableText;
+            const version = data?.documentVersion;
+            if (pane === undefined || sourceText === undefined || version === undefined) return;
+            const item = renderedSegments[index];
+            if (item === undefined) return;
+            const nextText = replaceBlockLines(
+                sourceText,
+                paneStartLine(renderedSegments, index, pane),
+                item.segment[pane].length,
+                item.segment[pane === "left" ? "right" : "left"],
+            );
+            if (nextText === sourceText) return;
+            handleEdit(sourceText, nextText, version, data?.editableReseedToken ?? 0);
+        },
+        [data, handleEdit, renderedSegments],
     );
 
     useEffect(() => {
@@ -957,6 +1103,12 @@ export function App(): React.ReactElement {
                                     registerPath={registerRibbonPath}
                                 />
                             ) : null}
+                            <DiffHunkActionLayer
+                                hunks={actionHunks}
+                                editablePane={data.editablePane}
+                                onRevert={handleRevertHunk}
+                                registerButton={registerActionButton}
+                            />
                         </div>
                         <div
                             className="diff-vscroll-spacer"

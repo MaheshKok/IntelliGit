@@ -372,5 +372,6 @@
     "diff.error.load": "Falha ao carregar o diff: {error}",
     "diff.loading": "A carregar o diff...",
     "diff.editable.blockHint": "Faça duplo clique ou prima Enter para editar",
-    "diff.editable.editingAria": "Editar bloco da árvore de trabalho"
+    "diff.editable.editingAria": "Editar bloco da árvore de trabalho",
+    "diff.editable.revertHunk": "Reverter esta alteração"
 }

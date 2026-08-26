@@ -110,6 +110,46 @@ interface SentDelta {
     text: string;
 }
 
+/** The document text one posted delta produces when the host applies it. */
+function applyDelta(sourceText: string, delta: SentDelta): string {
+    return sourceText.slice(0, delta.startOffset) + delta.text + sourceText.slice(delta.endOffset);
+}
+
+/** Clicks the revert arrow standing beside segment `index`. */
+function clickRevert(index: number): void {
+    const button = document.querySelector<HTMLButtonElement>(
+        `[data-testid="diff-revert-${index}"]`,
+    );
+    expect(
+        button,
+        `revert arrow for segment ${index} must exist before it can be clicked`,
+    ).not.toBeNull();
+    act(() => {
+        button?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+}
+
+/** Mounts the app with the RIGHT pane document-backed, as a working-tree diff is. */
+async function mountRightEditable(editableText: string, segments: unknown): Promise<void> {
+    createRootHost();
+    await act(async () => {
+        await import("../../../src/webviews/react/diff-viewer/DiffViewerApp");
+    });
+    await flush();
+    dispatchHostMessage({
+        type: "setDiffData",
+        data: {
+            ...diffFixture,
+            segments,
+            editablePane: "right" as const,
+            editableText,
+            documentVersion: 4,
+            editableReseedToken: 0,
+        },
+    });
+    await flush();
+}
+
 /** Every edit delta posted to the host, in order. */
 function sentDeltas(vscode: MockVsCodeApi): SentDelta[] {
     return vscode.postMessage.mock.calls
@@ -589,6 +629,90 @@ describe("DiffViewerApp read-only contract", () => {
         expect(
             document.querySelector(".diff-viewer")?.classList.contains("diff-viewer-single"),
         ).toBe(false);
+    });
+
+    it("reverts one hunk by writing the other pane's lines over it", async () => {
+        // One fixture carrying all three hunk shapes, because they are three different
+        // splices and only their middle case is symmetric. Asserted as the document the
+        // host would end up with rather than as offsets: an off-by-one in a delta reads as
+        // a plausible number, and as a visibly wrong file.
+        const vscode = installVsCodeMock();
+        const segments = [
+            { type: "common" as const, left: ["keep();"], right: ["keep();"] },
+            { type: "changed" as const, left: ["gone();"], right: [] },
+            { type: "changed" as const, left: ["before();"], right: ["after();"] },
+            { type: "changed" as const, left: [], right: ["added();"] },
+        ];
+        const source = "keep();\nafter();\nadded();";
+        await mountRightEditable(source, segments);
+
+        expect(
+            document.querySelectorAll(".diff-hunk-revert"),
+            "one arrow per changed hunk, none on the unchanged segment",
+        ).toHaveLength(3);
+
+        clickRevert(2);
+        clickRevert(1);
+        clickRevert(3);
+
+        const deltas = sentDeltas(vscode);
+        expect(deltas.map((delta) => applyDelta(source, delta))).toEqual([
+            "keep();\nbefore();\nadded();",
+            "keep();\ngone();\nafter();\nadded();",
+            // No trailing blank line: a hunk the other pane holds nothing of reverts to
+            // nothing, which is not the same splice as replacing it with empty text.
+            "keep();\nafter();",
+        ]);
+        expect(
+            deltas.map((delta) => [delta.baseVersion, delta.baseReseedToken]),
+            "a revert is stamped like any other edit, so a stale one is rejected the same way",
+        ).toEqual([
+            [4, 0],
+            [4, 0],
+            [4, 0],
+        ]);
+    });
+
+    it("points the revert arrow at the pane it writes into", async () => {
+        // Direction is not decoration: the arrow says which side is about to be overwritten,
+        // and the editable side is the right one for a working-tree diff and the left one for
+        // a stash or shelf diff.
+        installVsCodeMock();
+        await mountEditablePane("shared();\nbefore();", 1);
+
+        expect(
+            [...document.querySelectorAll(".diff-hunk-revert")].map((button) => button.textContent),
+        ).toEqual(["\u00ab"]);
+    });
+
+    it("offers no revert where there is nothing to write into", async () => {
+        // A commit diff has no file behind it, so there is no document a revert could land
+        // in; a collapsed one-sided file has no channel for the arrow to stand in, and
+        // "revert the whole file" is a delete or a restore rather than a block replacement.
+        installVsCodeMock();
+        createRootHost();
+        await act(async () => {
+            await import("../../../src/webviews/react/diff-viewer/DiffViewerApp");
+        });
+        await flush();
+
+        dispatchHostMessage({ type: "setDiffData", data: diffFixture });
+        await flush();
+        expect(document.querySelectorAll(".diff-hunk-revert")).toHaveLength(0);
+
+        dispatchHostMessage({
+            type: "setDiffData",
+            data: {
+                ...diffFixture,
+                segments: [{ type: "changed" as const, left: [], right: ["added();"] }],
+                editablePane: "right" as const,
+                editableText: "added();",
+                documentVersion: 1,
+                editableReseedToken: 0,
+            },
+        });
+        await flush();
+        expect(document.querySelectorAll(".diff-hunk-revert")).toHaveLength(0);
     });
 
     it("marks an editable pane's blocks with the segment state its immutable peer gets", async () => {
