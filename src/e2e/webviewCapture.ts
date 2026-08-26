@@ -205,6 +205,25 @@ export function wrapWebviewForCapture(
     // first document, not to a zeroth one that never existed.
     let announcedDocuments = 0;
     const documentGeneration = (): number => Math.max(announcedDocuments, 1);
+    // Subscribed ONCE here, not inside `onDidReceiveMessage` below. That method is a
+    // per-SUBSCRIPTION wrapper, so a tap placed inside it runs once per registered listener rather
+    // than once per message -- and `vscode.Webview` fires every listener. Two subscriptions on one
+    // webview therefore counted a single opening `ready` twice and advanced the generation twice,
+    // which is the one failure direction this field must not have: it exists to convict a stale
+    // document generation, and an overcount convicts a reload that never happened.
+    //
+    // Registered before any caller can subscribe, so the count and the line still land ahead of the
+    // handler that acts on the message. Never disposed, deliberately: the tap must outlive any
+    // individual subscription, since a provider that re-resolves disposes its own listener and
+    // registers another, and a tap tied to one of those would stop tracing when it went. Nothing
+    // here allocates unless `isE2eControlChannelActive()` already gated this wrapper into
+    // existence.
+    webview.onDidReceiveMessage((message: unknown) => {
+        // Counted before the line is emitted, so the reload's own `ready` prints under the
+        // generation it opens rather than under the one it replaced.
+        if (isOpeningAsk(message)) announcedDocuments += 1;
+        traceHandshake(contextId, instance, documentGeneration(), "in", message);
+    });
     return {
         get options() {
             return webview.options;
@@ -221,25 +240,16 @@ export function wrapWebviewForCapture(
         get cspSource() {
             return webview.cspSource;
         },
-        // Wrapped rather than merely bound, so the INBOUND leg is observable too. The listener is
-        // invoked unchanged and its return value passed straight back: this must stay a tap on the
-        // wire, never a filter on it.
+        // Forwarded untouched. The INBOUND leg is observed by the single tap installed above
+        // instead of here, so this stays a plain pass-through: a subscription must reach the real
+        // webview with its own `thisArgs` and `disposables` intact, and its return value must come
+        // straight back. A tap on the wire, never a filter on it -- and never a per-subscription
+        // multiplier on what the wire is counted to have carried.
         onDidReceiveMessage: (
             listener: (message: unknown) => unknown,
             thisArgs?: unknown,
             disposables?: vscode.Disposable[],
-        ): vscode.Disposable =>
-            webview.onDidReceiveMessage(
-                (message: unknown) => {
-                    // Counted before the line is emitted, so the reload's own `ready` prints under
-                    // the generation it opens rather than under the one it replaced.
-                    if (isOpeningAsk(message)) announcedDocuments += 1;
-                    traceHandshake(contextId, instance, documentGeneration(), "in", message);
-                    return listener.call(thisArgs, message);
-                },
-                undefined,
-                disposables,
-            ),
+        ): vscode.Disposable => webview.onDidReceiveMessage(listener, thisArgs, disposables),
         asWebviewUri: (localResource: vscode.Uri) => webview.asWebviewUri(localResource),
         postMessage: (message: unknown): Thenable<boolean> => {
             sink.record(contextId, message);
