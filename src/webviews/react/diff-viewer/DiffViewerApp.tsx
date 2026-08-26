@@ -1458,7 +1458,9 @@ export function App(): React.ReactElement {
                         // confidently at blank space. Taller than the viewport, this
                         // exceeds the box and the stripe is the full track, as it should
                         // be. Same number as the spacer, because it is the same range.
-                        style={{ maxHeight: scrollRangePx(layout.canonicalTotalPx, viewportHeight) }}
+                        style={{
+                            maxHeight: scrollRangePx(layout.canonicalTotalPx, viewportHeight),
+                        }}
                     >
                         {stripeMarks.map((mark) => (
                             <div

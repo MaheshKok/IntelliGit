@@ -5,6 +5,27 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.30.0] - 2026-08-26
+
+### Added
+
+- Each changed block has a revert arrow. Click it to send that block back to the other side.
+- An open block re-diffs as you type, so the colours keep up with the edit.
+- An edited pane saves itself two seconds after you stop typing.
+- A file that exists on one side only now collapses to a single pane, with a marker where the missing side would be.
+
+### Changed
+
+- Diff blocks are painted the same way as the merge editor's.
+- Clicking a read-only pane says it is read-only instead of doing nothing.
+- One click puts the caret in an editable block. The block keeps its colours while you type, and no longer gets a box drawn around it.
+- A diff scrolls until its last line leaves the top of the screen, like a code editor.
+
+### Fixed
+
+- The revert arrow sits on the pane the change came from.
+- An editable diff session is released once instead of twice.
+
 ## [0.29.0] - 2026-08-26
 
 ### Added
