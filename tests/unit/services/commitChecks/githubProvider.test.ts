@@ -218,10 +218,10 @@ describe("GitHubProvider", () => {
             (call) => call[0] as string,
         );
         expect(calledUrls[0]).toBe(
-            "https://api.github.com/repos/owner/repo/commits/abc1234/check-runs?per_page=100",
+            "https://api.github.com/repos/owner/repo/commits/abc1234/check-runs?per_page=100&filter=latest&page=1",
         );
         expect(calledUrls[1]).toBe(
-            "https://api.github.com/repos/owner/repo/commits/abc1234/statuses?per_page=100",
+            "https://api.github.com/repos/owner/repo/commits/abc1234/status?per_page=100&page=1",
         );
         for (const call of (fetchJson as ReturnType<typeof vi.fn>).mock.calls) {
             const headers = call[1] as Record<string, string>;
@@ -475,7 +475,7 @@ describe("GitHubProvider", () => {
         // transport error and hide the actionable one.
         const provider = new GitHubProvider(
             vi.fn(async (url: string) => {
-                if (url.includes("/statuses")) throw new HttpError(401, "HTTP 401: Bad", {});
+                if (url.includes("/status?")) throw new HttpError(401, "HTTP 401: Bad", {});
                 throw new Error("HTTP request timed out");
             }),
         );
@@ -499,7 +499,7 @@ describe("GitHubProvider", () => {
 
     it("still normalizes when only one endpoint rejects", async () => {
         const fetchJson: FetchJson = vi.fn(async (url: string) => {
-            if (url.includes("/statuses")) throw new Error("statuses 500");
+            if (url.includes("/status?")) throw new Error("statuses 500");
             return {
                 check_runs: [{ name: "CI / build", status: "completed", conclusion: "success" }],
             };
@@ -515,7 +515,7 @@ describe("GitHubProvider", () => {
     it("admits a row the default filter drops when a custom ciCdPattern matches it", async () => {
         // "sonarcloud" is not a built-in CI/CD term; a custom include pattern keeps it.
         const fetchJson: FetchJson = vi.fn(async (url: string) => {
-            if (url.includes("/statuses")) return [{ context: "sonarcloud", state: "success" }];
+            if (url.includes("/status?")) return [{ context: "sonarcloud", state: "success" }];
             return { check_runs: [] };
         });
         const provider = new GitHubProvider(fetchJson, /sonarcloud/i);
@@ -527,7 +527,7 @@ describe("GitHubProvider", () => {
 
     it("drops a default-CI row when a narrow custom ciCdPattern excludes it", async () => {
         const fetchJson: FetchJson = vi.fn(async (url: string) => {
-            if (url.includes("/statuses")) return [];
+            if (url.includes("/status?")) return [];
             return {
                 check_runs: [{ name: "CI / build", status: "completed", conclusion: "success" }],
             };
