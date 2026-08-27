@@ -35,7 +35,8 @@ interface Props {
     showAuthor?: boolean;
     showDate?: boolean;
     checks?: CommitChecksValue;
-    onRequestChecks?: (hash: string) => void;
+    /** Requests this commit's checks; `force` bypasses the host/provider cache. */
+    onRequestChecks?: (hash: string, force?: boolean) => void;
     onOpenCheckUrl?: (url: string) => void;
     onSignIn?: (host: string) => void;
 }

@@ -218,15 +218,142 @@ describe("GitHubProvider", () => {
             (call) => call[0] as string,
         );
         expect(calledUrls[0]).toBe(
-            "https://api.github.com/repos/owner/repo/commits/abc1234/check-runs?per_page=100",
+            "https://api.github.com/repos/owner/repo/commits/abc1234/check-runs?per_page=100&filter=latest&page=1",
         );
         expect(calledUrls[1]).toBe(
-            "https://api.github.com/repos/owner/repo/commits/abc1234/statuses?per_page=100",
+            "https://api.github.com/repos/owner/repo/commits/abc1234/status?per_page=100&page=1",
         );
         for (const call of (fetchJson as ReturnType<typeof vi.fn>).mock.calls) {
             const headers = call[1] as Record<string, string>;
             expect(headers.Authorization).toBe("Bearer gh-token");
         }
+    });
+
+    it("fetches every page of GitHub check runs and combined statuses", async () => {
+        const checkRuns = Array.from({ length: 101 }, (_, index) => ({
+            name: `CI / check ${index}`,
+            status: "completed",
+            conclusion: "success",
+        }));
+        const statuses = Array.from({ length: 101 }, (_, index) => ({
+            context: `CI status ${index}`,
+            state: "success",
+        }));
+        const fetchJson = fetchReturning((url) => {
+            const parsed = new URL(url);
+            const page = Number(parsed.searchParams.get("page") ?? "1");
+            const start = (page - 1) * 100;
+            if (parsed.pathname.endsWith("/check-runs")) {
+                return {
+                    total_count: checkRuns.length,
+                    check_runs: checkRuns.slice(start, start + 100),
+                };
+            }
+            return {
+                state: "success",
+                total_count: statuses.length,
+                statuses: statuses.slice(start, start + 100),
+            };
+        });
+        const provider = new GitHubProvider(fetchJson);
+
+        const snapshot = await provider.getChecks(githubRef, "abc1234");
+
+        expect(snapshot.items).toHaveLength(202);
+        expect(fetchJson).toHaveBeenCalledTimes(4);
+        const calledUrls = (fetchJson as ReturnType<typeof vi.fn>).mock.calls.map(
+            (call) => call[0] as string,
+        );
+        expect(calledUrls).toEqual(
+            expect.arrayContaining([
+                "https://api.github.com/repos/owner/repo/commits/abc1234/check-runs?per_page=100&filter=latest&page=1",
+                "https://api.github.com/repos/owner/repo/commits/abc1234/check-runs?per_page=100&filter=latest&page=2",
+                "https://api.github.com/repos/owner/repo/commits/abc1234/status?per_page=100&page=1",
+                "https://api.github.com/repos/owner/repo/commits/abc1234/status?per_page=100&page=2",
+            ]),
+        );
+        expect(calledUrls.some((url) => url.includes("/statuses?"))).toBe(false);
+        expect(calledUrls.some((url) => url.includes("page=3"))).toBe(false);
+    });
+
+    it("uses GitHub's combined status so old pending history cannot keep a completed context pending", async () => {
+        const fetchJson = fetchReturning((url) => {
+            if (url.includes("/check-runs")) return { total_count: 0, check_runs: [] };
+            if (url.includes("/statuses?")) {
+                return [
+                    { context: "CI / build", state: "success" },
+                    { context: "CI / build", state: "pending" },
+                ];
+            }
+            return {
+                state: "success",
+                total_count: 1,
+                statuses: [{ context: "CI / build", state: "success" }],
+            };
+        });
+        const provider = new GitHubProvider(fetchJson);
+
+        const snapshot = await provider.getChecks(githubRef, "abc1234");
+
+        expect(snapshot.state).toBe("success");
+        expect(snapshot.items).toHaveLength(1);
+        expect(snapshot.items[0]).toMatchObject({ name: "CI / build", state: "success" });
+        const calledUrls = (fetchJson as ReturnType<typeof vi.fn>).mock.calls.map(
+            (call) => call[0] as string,
+        );
+        expect(calledUrls.some((url) => url.includes("/statuses?"))).toBe(false);
+    });
+
+    it("discards an endpoint's earlier pages when a later page fails", async () => {
+        const firstPageChecks = Array.from({ length: 100 }, (_, index) => ({
+            name: `CI / check ${index}`,
+            status: "completed",
+            conclusion: "success",
+        }));
+        const fetchJson = vi.fn(async (url: string) => {
+            const parsed = new URL(url);
+            if (parsed.pathname.endsWith("/check-runs")) {
+                if (parsed.searchParams.get("page") === "2") throw new Error("page 2 failed");
+                return { total_count: 101, check_runs: firstPageChecks };
+            }
+            return {
+                state: "success",
+                total_count: 1,
+                statuses: [{ context: "CI / status", state: "success" }],
+            };
+        });
+        const provider = new GitHubProvider(fetchJson);
+
+        const snapshot = await provider.getChecks(githubRef, "abc1234");
+
+        expect(snapshot.state).toBe("success");
+        expect(snapshot.items).toEqual([
+            expect.objectContaining({ name: "CI / status", state: "success" }),
+        ]);
+    });
+
+    it("keeps sign-in recovery when a later page rejects the GitHub session", async () => {
+        const firstPageChecks = Array.from({ length: 100 }, (_, index) => ({
+            name: `CI / check ${index}`,
+            status: "completed",
+            conclusion: "success",
+        }));
+        const fetchJson = vi.fn(async (url: string) => {
+            const parsed = new URL(url);
+            if (parsed.pathname.endsWith("/check-runs")) {
+                if (parsed.searchParams.get("page") === "2") {
+                    throw new HttpError(401, "HTTP 401: Bad credentials", {});
+                }
+                return { total_count: 101, check_runs: firstPageChecks };
+            }
+            throw new Error("status endpoint failed");
+        });
+        const provider = new GitHubProvider(fetchJson);
+
+        const snapshot = await provider.getChecks(githubRef, "abc1234");
+
+        expect(snapshot.state).toBe("unavailable");
+        expect(snapshot.signInHost).toBe("github.com");
     });
 
     it("does not prompt or fetch when no GitHub session already exists", async () => {
@@ -348,7 +475,7 @@ describe("GitHubProvider", () => {
         // transport error and hide the actionable one.
         const provider = new GitHubProvider(
             vi.fn(async (url: string) => {
-                if (url.includes("/statuses")) throw new HttpError(401, "HTTP 401: Bad", {});
+                if (url.includes("/status?")) throw new HttpError(401, "HTTP 401: Bad", {});
                 throw new Error("HTTP request timed out");
             }),
         );
@@ -372,7 +499,7 @@ describe("GitHubProvider", () => {
 
     it("still normalizes when only one endpoint rejects", async () => {
         const fetchJson: FetchJson = vi.fn(async (url: string) => {
-            if (url.includes("/statuses")) throw new Error("statuses 500");
+            if (url.includes("/status?")) throw new Error("statuses 500");
             return {
                 check_runs: [{ name: "CI / build", status: "completed", conclusion: "success" }],
             };
@@ -388,7 +515,7 @@ describe("GitHubProvider", () => {
     it("admits a row the default filter drops when a custom ciCdPattern matches it", async () => {
         // "sonarcloud" is not a built-in CI/CD term; a custom include pattern keeps it.
         const fetchJson: FetchJson = vi.fn(async (url: string) => {
-            if (url.includes("/statuses")) return [{ context: "sonarcloud", state: "success" }];
+            if (url.includes("/status?")) return [{ context: "sonarcloud", state: "success" }];
             return { check_runs: [] };
         });
         const provider = new GitHubProvider(fetchJson, /sonarcloud/i);
@@ -400,7 +527,7 @@ describe("GitHubProvider", () => {
 
     it("drops a default-CI row when a narrow custom ciCdPattern excludes it", async () => {
         const fetchJson: FetchJson = vi.fn(async (url: string) => {
-            if (url.includes("/statuses")) return [];
+            if (url.includes("/status?")) return [];
             return {
                 check_runs: [{ name: "CI / build", status: "completed", conclusion: "success" }],
             };

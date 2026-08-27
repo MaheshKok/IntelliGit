@@ -5,6 +5,17 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.30.0] - 2026-08-27
+
+### Added
+
+- GitHub commit checks now have a Refresh button that shows when new results are loading, so you can update them without reopening the commit.
+
+### Fixed
+
+- GitHub commit checks now show every check, including commits with lots of checks.
+- Finished GitHub workflows no longer stay stuck as "In progress", and the loading spinner stops when the latest checks are complete.
+
 ## [0.29.0] - 2026-08-26
 
 ### Added

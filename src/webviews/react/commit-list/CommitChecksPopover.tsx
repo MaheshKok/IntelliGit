@@ -2,8 +2,10 @@ import React from "react";
 import { createPortal } from "react-dom";
 import { FiCheckCircle, FiMinusCircle } from "react-icons/fi";
 import { IoIosCloseCircleOutline } from "react-icons/io";
+import { VscRefresh } from "react-icons/vsc";
 import type { CommitChecksSnapshot, CommitCheckState } from "../../../types";
 import { t } from "../shared/i18n";
+import { SPIN_KEYFRAMES } from "../shared/components/iconStyles";
 import { JETBRAINS_UI, SHADOW, Z_INDEX } from "../shared/tokens";
 
 /** Commit-check data cached by hash, including the in-flight marker used while GitHub responds. */
@@ -12,7 +14,8 @@ export type CommitChecksValue = CommitChecksSnapshot | "loading";
 interface Props {
     hash: string;
     checks?: CommitChecksValue;
-    onRequestChecks: (hash: string) => void;
+    /** Requests this commit's checks; `force` bypasses the host/provider cache. */
+    onRequestChecks: (hash: string, force?: boolean) => void;
     onOpenCheckUrl: (url: string) => void;
     /** Sign in to the snapshot's `signInHost` from the popover (recoverable `unavailable` only). */
     onSignIn?: (host: string) => void;
@@ -23,6 +26,16 @@ const PANEL_MIN_WIDTH = 310;
 const PANEL_MIN_HEIGHT = 190;
 const PANEL_TEXT_MAX_WIDTH = 340;
 const PANEL_MAX_HEIGHT = 360;
+const REFRESH_MOTION_STYLES = `${SPIN_KEYFRAMES}
+[data-refreshing="true"] svg {
+    animation: intelligit-spin 0.8s linear infinite;
+    transform-box: fill-box;
+    transform-origin: center;
+    will-change: transform;
+}
+@media (prefers-reduced-motion: reduce) {
+    [data-refreshing="true"] svg { animation: none !important; }
+}`;
 
 type PanelPlacement = "left" | "right";
 type VerticalPlacement = "above" | "below" | "center";
@@ -45,11 +58,29 @@ export function CommitChecksButton({
     const buttonRef = React.useRef<HTMLButtonElement>(null);
     const panelRef = React.useRef<HTMLDivElement>(null);
     const [position, setPosition] = React.useState<PanelPosition | null>(null);
+    const [refreshRequest, setRefreshRequest] = React.useState<{
+        hash: string;
+        snapshot: CommitChecksSnapshot | undefined;
+    } | null>(null);
     const closePanel = React.useCallback(() => setPosition(null), []);
+    const refreshing =
+        refreshRequest?.hash === hash &&
+        (checks === "loading" || checks === refreshRequest.snapshot);
+    const displayedChecks =
+        refreshing && refreshRequest.snapshot ? refreshRequest.snapshot : checks;
 
     const state = checks && checks !== "loading" ? checks.state : "pending";
     const buttonLabel = t("commit.checks.title");
     const buttonTitle = checks && checks !== "loading" ? checks.summary : buttonLabel;
+
+    const requestRefresh = (): void => {
+        if (refreshing) return;
+        setRefreshRequest({
+            hash,
+            snapshot: checks && checks !== "loading" ? checks : undefined,
+        });
+        onRequestChecks(hash, true);
+    };
 
     const openPanel = (): void => {
         const button = buttonRef.current;
@@ -140,8 +171,10 @@ export function CommitChecksButton({
                     <CommitChecksPanel
                         panelRef={panelRef}
                         hash={hash}
-                        checks={checks}
+                        checks={displayedChecks}
                         position={position}
+                        refreshing={refreshing}
+                        onRefresh={requestRefresh}
                         onOpenCheckUrl={onOpenCheckUrl}
                         onSignIn={onSignIn}
                     />,
@@ -157,6 +190,8 @@ function CommitChecksPanel({
     hash,
     checks,
     position,
+    refreshing,
+    onRefresh,
     onOpenCheckUrl,
     onSignIn,
 }: {
@@ -164,10 +199,14 @@ function CommitChecksPanel({
     hash: string;
     checks?: CommitChecksValue;
     position: PanelPosition;
+    refreshing: boolean;
+    /** Starts local refresh feedback before asking the host for a forced snapshot. */
+    onRefresh: () => void;
     onOpenCheckUrl: (url: string) => void;
     onSignIn?: (host: string) => void;
 }): React.ReactElement {
     const snapshot = checks && checks !== "loading" ? checks : undefined;
+    const refreshDisabled = checks === "loading" || refreshing;
     const signInHost =
         snapshot && snapshot.state === "unavailable" ? snapshot.signInHost : undefined;
     const transform = `${position.placement === "left" ? "translateX(-100%) " : ""}${
@@ -195,6 +234,7 @@ function CommitChecksPanel({
             onClick={(event) => event.stopPropagation()}
             data-testid="commit-checks-popover"
         >
+            <style>{REFRESH_MOTION_STYLES}</style>
             <span
                 aria-hidden="true"
                 data-testid="commit-checks-popover-caret-border"
@@ -219,10 +259,31 @@ function CommitChecksPanel({
             />
             <div style={panelStyle}>
                 <div style={titleStyle}>
-                    {t("commit.checks.title")}
-                    <span style={panelHashStyle}>{hash.slice(0, 7)}</span>
+                    <span>
+                        {t("commit.checks.title")}
+                        <span style={panelHashStyle}>{hash.slice(0, 7)}</span>
+                    </span>
+                    <button
+                        type="button"
+                        aria-label={t("common.refresh")}
+                        title={t("common.refresh")}
+                        disabled={refreshDisabled}
+                        onClick={onRefresh}
+                        data-refreshing={String(refreshing)}
+                        style={{
+                            ...refreshButtonStyle,
+                            ...(refreshDisabled ? refreshButtonDisabledStyle : {}),
+                        }}
+                    >
+                        <VscRefresh size={14} aria-hidden="true" focusable="false" />
+                    </button>
                 </div>
-                <div style={bodyStyle}>
+                {refreshing ? (
+                    <div role="status" aria-live="polite" style={refreshStatusStyle}>
+                        {t("commit.checks.loading")}
+                    </div>
+                ) : null}
+                <div style={bodyStyle} aria-busy={refreshing}>
                     {checks === "loading" || !checks ? (
                         <div style={emptyStyle}>{t("commit.checks.loading")}</div>
                     ) : snapshot && snapshot.items.length > 0 ? (
@@ -408,6 +469,36 @@ const titleStyle: React.CSSProperties = {
     fontWeight: 700,
     background: "var(--vscode-textLink-foreground)",
     color: "var(--vscode-button-foreground)",
+    position: "relative",
+};
+
+const refreshButtonStyle: React.CSSProperties = {
+    position: "absolute",
+    top: "50%",
+    right: 8,
+    transform: "translateY(-50%)",
+    width: 22,
+    height: 22,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    border: "none",
+    borderRadius: 4,
+    background: "transparent",
+    color: "inherit",
+    padding: 0,
+    cursor: "pointer",
+};
+
+const refreshButtonDisabledStyle: React.CSSProperties = {
+    opacity: 0.6,
+    cursor: "default",
+};
+
+const refreshStatusStyle: React.CSSProperties = {
+    color: JETBRAINS_UI.color.muted,
+    fontSize: 12,
+    padding: "10px 18px 0",
 };
 
 const panelHashStyle: React.CSSProperties = {

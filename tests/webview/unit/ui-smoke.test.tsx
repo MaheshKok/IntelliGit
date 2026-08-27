@@ -786,6 +786,13 @@ describe("webview ui smoke", () => {
         expect(document.body.textContent).toContain("GitGuardian Security Checks");
         expect(document.body.textContent).toContain("Code Review Skipped");
         expect(document.body.textContent).not.toContain("All checks passed");
+        const refreshButton = document.body.querySelector(
+            'button[aria-label="Refresh"]',
+        ) as HTMLButtonElement;
+        expect(refreshButton).not.toBeNull();
+        expect(refreshButton.disabled).toBe(false);
+        act(() => refreshButton.click());
+        expect(onRequestChecks).toHaveBeenCalledWith("abc1234", true);
         const popover = document.body.querySelector('[data-testid="commit-checks-popover"]');
         const panel = popover?.querySelector("div");
         const caretBorder = document.body.querySelector(
@@ -821,7 +828,7 @@ describe("webview ui smoke", () => {
             link?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
         });
 
-        expect(onRequestChecks).not.toHaveBeenCalled();
+        expect(onRequestChecks).toHaveBeenCalledTimes(1);
         expect(onOpenCheckUrl).toHaveBeenCalledWith("https://example.test/security");
 
         act(() => {
@@ -939,6 +946,111 @@ describe("webview ui smoke", () => {
         expect(spinnerAnimation?.getAttribute("type")).toBe("rotate");
         expect(spinnerAnimation?.getAttribute("repeatCount")).toBe("indefinite");
         unmount(pendingMounted.root, pendingMounted.container);
+    });
+
+    it("disables commit-check refresh while that commit is loading", () => {
+        const onRequestChecks = vi.fn();
+        const mounted = mount(
+            <CommitChecksButton
+                hash="loading123"
+                checks="loading"
+                onRequestChecks={onRequestChecks}
+                onOpenCheckUrl={vi.fn()}
+            />,
+        );
+        const trigger = mounted.container.querySelector("button") as HTMLButtonElement;
+        act(() => trigger.click());
+
+        const refreshButton = document.body.querySelector(
+            'button[aria-label="Refresh"]',
+        ) as HTMLButtonElement;
+        expect(refreshButton).not.toBeNull();
+        expect(refreshButton.disabled).toBe(true);
+        act(() => refreshButton.click());
+        expect(onRequestChecks).not.toHaveBeenCalled();
+
+        unmount(mounted.root, mounted.container);
+    });
+
+    it("keeps visible commit checks and refresh feedback until a new snapshot arrives", () => {
+        const onRequestChecks = vi.fn();
+        const hash = "refresh123";
+        const currentSnapshot: CommitChecksSnapshot = {
+            hash,
+            state: "success",
+            summary: "Existing checks passed",
+            items: [
+                {
+                    name: "Existing check",
+                    description: "The displayed result remains visible while refreshing.",
+                    state: "success",
+                    source: "status",
+                },
+            ],
+        };
+        const nextSnapshot: CommitChecksSnapshot = {
+            ...currentSnapshot,
+            summary: "Updated checks passed",
+            items: [{ ...currentSnapshot.items[0], name: "Updated check" }],
+        };
+        const unavailableSnapshot: CommitChecksSnapshot = {
+            hash,
+            state: "unavailable",
+            summary: "Checks unavailable",
+            error: "Sign in to refresh checks.",
+            items: [],
+        };
+        const render = (checks: CommitChecksSnapshot | "loading"): React.ReactElement => (
+            <CommitChecksButton
+                hash={hash}
+                checks={checks}
+                onRequestChecks={onRequestChecks}
+                onOpenCheckUrl={vi.fn()}
+            />
+        );
+        const mounted = mount(render(currentSnapshot));
+        const trigger = mounted.container.querySelector("button") as HTMLButtonElement;
+        act(() => trigger.click());
+        const refreshButton = document.body.querySelector(
+            'button[aria-label="Refresh"]',
+        ) as HTMLButtonElement;
+
+        act(() => refreshButton.click());
+        expect(onRequestChecks).toHaveBeenCalledExactlyOnceWith(hash, true);
+        expect(refreshButton.disabled).toBe(true);
+        expect(refreshButton.dataset.refreshing).toBe("true");
+        const status = document.body.querySelector('[role="status"]');
+        expect(status?.textContent).toBe("Loading checks...");
+        expect(status?.closest('[aria-busy="true"]')).toBeNull();
+        expect(document.body.querySelector('[aria-busy="true"]')).not.toBeNull();
+        expect(document.body.textContent).toContain("Existing check");
+        const refreshStyles = Array.from(document.querySelectorAll("style")).find((style) =>
+            style.textContent?.includes('[data-refreshing="true"] svg'),
+        )?.textContent;
+        expect(refreshStyles).toContain("animation: intelligit-spin");
+        expect(refreshStyles).toContain("@media (prefers-reduced-motion: reduce)");
+
+        act(() => mounted.root.render(render("loading")));
+        expect(document.body.querySelector('[role="status"]')).not.toBeNull();
+        expect(document.body.textContent).toContain("Existing check");
+
+        act(() => refreshButton.click());
+        expect(onRequestChecks).toHaveBeenCalledOnce();
+
+        act(() => mounted.root.render(render(currentSnapshot)));
+        expect(document.body.querySelector('[role="status"]')).not.toBeNull();
+
+        act(() => mounted.root.render(render(nextSnapshot)));
+        expect(refreshButton.disabled).toBe(false);
+        expect(document.body.querySelector('[role="status"]')).toBeNull();
+        expect(document.body.textContent).toContain("Updated check");
+
+        act(() => refreshButton.click());
+        act(() => mounted.root.render(render(unavailableSnapshot)));
+        expect(refreshButton.disabled).toBe(false);
+        expect(document.body.querySelector('[role="status"]')).toBeNull();
+        expect(document.body.textContent).toContain("Sign in to refresh checks.");
+        unmount(mounted.root, mounted.container);
     });
 
     it("offers a host-targeted Sign in button only for a recoverable unavailable snapshot", () => {
