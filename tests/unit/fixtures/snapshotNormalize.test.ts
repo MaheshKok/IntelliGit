@@ -35,6 +35,22 @@ import { captured, notCaptured } from "../../fixtures/repo/snapshotTypes";
 import { seedFixtureTemplate, type FixtureTemplate } from "../../fixtures/repo/seed";
 import { removeScratchDirectories } from "../../helpers/scratchDirectories";
 
+/**
+ * The two tests below each seed a git template and then copy the whole tree -- `.git` included --
+ * twice. That is thousands of tiny files, and on Windows every one of them goes through Defender,
+ * so the same work costs an order of magnitude more there than anywhere else. Measured on one
+ * commit's runners (run 33092933861): 713ms on ubuntu-latest, 906ms on macos-latest, 7096ms on
+ * windows-latest. The next run on the same branch (33098964139) took the whole file from 14.3s to
+ * 65.7s with no change to it or anything it imports, and killed this suite's first test at the
+ * 30s default -- a 4.6x swing that is runner IO variance, not a regression.
+ *
+ * The number guards nothing. These tests assert that two normalized snapshots are deep-equal, not
+ * how long a copy takes, so headroom costs nothing when they pass and only delays a genuine hang.
+ * Sized at roughly 12x the measured Windows cost rather than at that bad day, because one
+ * observed swing is a floor on the variance, not a ceiling.
+ */
+const COPY_HEAVY_TIMEOUT_MS = 90_000;
+
 describe("normalizeSnapshot -- two raw copies of one seed compare equal (step 8's real scenario)", () => {
     let scratchDirs: string[] = [];
     let template: FixtureTemplate | undefined;
@@ -44,104 +60,112 @@ describe("normalizeSnapshot -- two raw copies of one seed compare equal (step 8'
         scratchDirs = [];
         if (template) await removeScratchDirectories(template.home);
         template = undefined;
-    }, 30_000);
+    }, COPY_HEAVY_TIMEOUT_MS);
 
-    it("normalizes two independent copies of the same template to a deep-equal snapshot", async () => {
-        const seedDest = await mkdtemp(path.join(tmpdir(), "intelligit-normalize-seed-"));
-        scratchDirs.push(seedDest);
-        template = await seedFixtureTemplate(seedDest);
+    it(
+        "normalizes two independent copies of the same template to a deep-equal snapshot",
+        async () => {
+            const seedDest = await mkdtemp(path.join(tmpdir(), "intelligit-normalize-seed-"));
+            scratchDirs.push(seedDest);
+            template = await seedFixtureTemplate(seedDest);
 
-        const copy1Dest = await mkdtemp(path.join(tmpdir(), "intelligit-normalize-copy1-"));
-        const copy2Dest = await mkdtemp(path.join(tmpdir(), "intelligit-normalize-copy2-"));
-        await removeScratchDirectories(copy1Dest);
-        await removeScratchDirectories(copy2Dest);
-        scratchDirs.push(copy1Dest, copy2Dest);
-        await cp(seedDest, copy1Dest, {
-            recursive: true,
-            preserveTimestamps: true,
-            verbatimSymlinks: true,
-        });
-        await cp(seedDest, copy2Dest, {
-            recursive: true,
-            preserveTimestamps: true,
-            verbatimSymlinks: true,
-        });
+            const copy1Dest = await mkdtemp(path.join(tmpdir(), "intelligit-normalize-copy1-"));
+            const copy2Dest = await mkdtemp(path.join(tmpdir(), "intelligit-normalize-copy2-"));
+            await removeScratchDirectories(copy1Dest);
+            await removeScratchDirectories(copy2Dest);
+            scratchDirs.push(copy1Dest, copy2Dest);
+            await cp(seedDest, copy1Dest, {
+                recursive: true,
+                preserveTimestamps: true,
+                verbatimSymlinks: true,
+            });
+            await cp(seedDest, copy2Dest, {
+                recursive: true,
+                preserveTimestamps: true,
+                verbatimSymlinks: true,
+            });
 
-        const roots1 = {
-            root: path.join(copy1Dest, "workspace"),
-            originRoot: path.join(copy1Dest, "origin.git"),
-            profileDir: "/nonexistent/profile-1",
-        };
-        const roots2 = {
-            root: path.join(copy2Dest, "workspace"),
-            originRoot: path.join(copy2Dest, "origin.git"),
-            profileDir: "/nonexistent/profile-2",
-        };
+            const roots1 = {
+                root: path.join(copy1Dest, "workspace"),
+                originRoot: path.join(copy1Dest, "origin.git"),
+                profileDir: "/nonexistent/profile-1",
+            };
+            const roots2 = {
+                root: path.join(copy2Dest, "workspace"),
+                originRoot: path.join(copy2Dest, "origin.git"),
+                profileDir: "/nonexistent/profile-2",
+            };
 
-        const [snap1, snap2] = await Promise.all([
-            snapshotWorkspace({ ...roots1, env: template.env }),
-            snapshotWorkspace({ ...roots2, env: template.env }),
-        ]);
+            const [snap1, snap2] = await Promise.all([
+                snapshotWorkspace({ ...roots1, env: template.env }),
+                snapshotWorkspace({ ...roots2, env: template.env }),
+            ]);
 
-        const norm1 = normalizeSnapshot(snap1, roots1);
-        const norm2 = normalizeSnapshot(snap2, roots2);
+            const norm1 = normalizeSnapshot(snap1, roots1);
+            const norm2 = normalizeSnapshot(snap2, roots2);
 
-        expect(norm1).toEqual(norm2);
-        // And the un-normalized inputs must genuinely have differed -- otherwise this proves
-        // nothing about normalization, only that two identical things are identical.
-        expect(snap1.workspace.repoRoot).not.toBe(snap2.workspace.repoRoot);
-    }, 30_000);
+            expect(norm1).toEqual(norm2);
+            // And the un-normalized inputs must genuinely have differed -- otherwise this proves
+            // nothing about normalization, only that two identical things are identical.
+            expect(snap1.workspace.repoRoot).not.toBe(snap2.workspace.repoRoot);
+        },
+        COPY_HEAVY_TIMEOUT_MS,
+    );
 
-    it("RED-proof: a real divergence between the two copies survives normalization", async () => {
-        const seedDest = await mkdtemp(path.join(tmpdir(), "intelligit-normalize-seed-red-"));
-        scratchDirs.push(seedDest);
-        template = await seedFixtureTemplate(seedDest);
+    it(
+        "RED-proof: a real divergence between the two copies survives normalization",
+        async () => {
+            const seedDest = await mkdtemp(path.join(tmpdir(), "intelligit-normalize-seed-red-"));
+            scratchDirs.push(seedDest);
+            template = await seedFixtureTemplate(seedDest);
 
-        const copy1Dest = await mkdtemp(path.join(tmpdir(), "intelligit-normalize-red-copy1-"));
-        const copy2Dest = await mkdtemp(path.join(tmpdir(), "intelligit-normalize-red-copy2-"));
-        await removeScratchDirectories(copy1Dest);
-        await removeScratchDirectories(copy2Dest);
-        scratchDirs.push(copy1Dest, copy2Dest);
-        await cp(seedDest, copy1Dest, {
-            recursive: true,
-            preserveTimestamps: true,
-            verbatimSymlinks: true,
-        });
-        await cp(seedDest, copy2Dest, {
-            recursive: true,
-            preserveTimestamps: true,
-            verbatimSymlinks: true,
-        });
+            const copy1Dest = await mkdtemp(path.join(tmpdir(), "intelligit-normalize-red-copy1-"));
+            const copy2Dest = await mkdtemp(path.join(tmpdir(), "intelligit-normalize-red-copy2-"));
+            await removeScratchDirectories(copy1Dest);
+            await removeScratchDirectories(copy2Dest);
+            scratchDirs.push(copy1Dest, copy2Dest);
+            await cp(seedDest, copy1Dest, {
+                recursive: true,
+                preserveTimestamps: true,
+                verbatimSymlinks: true,
+            });
+            await cp(seedDest, copy2Dest, {
+                recursive: true,
+                preserveTimestamps: true,
+                verbatimSymlinks: true,
+            });
 
-        // Deliberately break copy2: add an extra untracked file that copy1 never gets.
-        await writeFile(
-            path.join(copy2Dest, "workspace", "only-in-copy2.txt"),
-            "divergence\n",
-            "utf8",
-        );
+            // Deliberately break copy2: add an extra untracked file that copy1 never gets.
+            await writeFile(
+                path.join(copy2Dest, "workspace", "only-in-copy2.txt"),
+                "divergence\n",
+                "utf8",
+            );
 
-        const roots1 = {
-            root: path.join(copy1Dest, "workspace"),
-            originRoot: path.join(copy1Dest, "origin.git"),
-            profileDir: "/nonexistent/profile-1",
-        };
-        const roots2 = {
-            root: path.join(copy2Dest, "workspace"),
-            originRoot: path.join(copy2Dest, "origin.git"),
-            profileDir: "/nonexistent/profile-2",
-        };
+            const roots1 = {
+                root: path.join(copy1Dest, "workspace"),
+                originRoot: path.join(copy1Dest, "origin.git"),
+                profileDir: "/nonexistent/profile-1",
+            };
+            const roots2 = {
+                root: path.join(copy2Dest, "workspace"),
+                originRoot: path.join(copy2Dest, "origin.git"),
+                profileDir: "/nonexistent/profile-2",
+            };
 
-        const [snap1, snap2] = await Promise.all([
-            snapshotWorkspace({ ...roots1, env: template.env }),
-            snapshotWorkspace({ ...roots2, env: template.env }),
-        ]);
-        const norm1 = normalizeSnapshot(snap1, roots1);
-        const norm2 = normalizeSnapshot(snap2, roots2);
+            const [snap1, snap2] = await Promise.all([
+                snapshotWorkspace({ ...roots1, env: template.env }),
+                snapshotWorkspace({ ...roots2, env: template.env }),
+            ]);
+            const norm1 = normalizeSnapshot(snap1, roots1);
+            const norm2 = normalizeSnapshot(snap2, roots2);
 
-        // Same comparison as the healthy test above (`toEqual`); it now fails, proving the
-        // oracle is sensitive to a real, planted difference rather than always trivially equal.
-        expect(norm1).not.toEqual(norm2);
-    }, 30_000);
+            // Same comparison as the healthy test above (`toEqual`); it now fails, proving the
+            // oracle is sensitive to a real, planted difference rather than always trivially equal.
+            expect(norm1).not.toEqual(norm2);
+        },
+        COPY_HEAVY_TIMEOUT_MS,
+    );
 });
 
 describe("normalizeSnapshot -- placeholder rewriting", () => {
