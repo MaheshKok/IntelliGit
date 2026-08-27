@@ -374,5 +374,9 @@
     "diff.editable.blockHint": "Haga clic para editar",
     "diff.editable.editingAria": "Editar bloque del árbol de trabajo",
     "diff.editable.revertHunk": "Revertir este cambio",
-    "diff.readOnly.pane": "Este lado es de solo lectura"
+    "diff.readOnly.pane": "Este lado es de solo lectura",
+    "diff.toolbar.prevChange.title": "Cambio anterior (Alt+↑)",
+    "diff.toolbar.prevChange.label": "Cambio anterior",
+    "diff.toolbar.nextChange.title": "Cambio siguiente (Alt+↓)",
+    "diff.toolbar.nextChange.label": "Cambio siguiente"
 }

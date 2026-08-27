@@ -383,5 +383,9 @@
     "diff.editable.blockHint": "Kliknij, aby edytować",
     "diff.editable.editingAria": "Edytuj blok drzewa roboczego",
     "diff.editable.revertHunk": "Cofnij tę zmianę",
-    "diff.readOnly.pane": "Ta strona jest tylko do odczytu"
+    "diff.readOnly.pane": "Ta strona jest tylko do odczytu",
+    "diff.toolbar.prevChange.title": "Poprzednia zmiana (Alt+↑)",
+    "diff.toolbar.prevChange.label": "Poprzednia zmiana",
+    "diff.toolbar.nextChange.title": "Następna zmiana (Alt+↓)",
+    "diff.toolbar.nextChange.label": "Następna zmiana"
 }

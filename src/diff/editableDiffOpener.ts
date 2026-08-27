@@ -1,5 +1,6 @@
 import { exceedsDiffBudget } from "./diffBudgets";
 import {
+    documentIdForSides,
     editablePaneForSides,
     labelForDiffSide,
     type EditableDiffDescriptor,
@@ -104,6 +105,7 @@ export async function openEditableDiff(
         leftLabel: labelForDiffSide(request.left),
         rightLabel: labelForDiffSide(request.right),
         languageId: request.languageId,
+        documentId: documentIdForSides(request.left, request.right),
         editablePane,
         immutableText: editablePane === "left" ? viewerRight.text : viewerLeft.text,
         onSessionDisposed: () => session.dispose(),

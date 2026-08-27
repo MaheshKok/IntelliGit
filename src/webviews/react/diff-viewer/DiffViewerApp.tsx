@@ -31,7 +31,13 @@ import {
     updateSharedScrollbar as updateSharedScrollbarCore,
 } from "../diff-core/scrollSync";
 import { CodeBlock, intrinsicSizeStyle, type LineNumberSpec } from "../diff-core/segments";
-import { IconChevronDown, IconEye, IconFilter, IconLock } from "../merge-editor/icons";
+import {
+    IconChevronDown,
+    IconChevronUp,
+    IconEye,
+    IconFilter,
+    IconLock,
+} from "../merge-editor/icons";
 import { splitEditedText } from "../merge-editor/mergeState";
 import {
     DIFF_PANES,
@@ -737,6 +743,67 @@ function revertablePaneOf(data: DiffViewerData | null): DiffPane | undefined {
         : undefined;
 }
 
+/**
+ * Which document is on screen, as opposed to which payload delivered it.
+ *
+ * The viewer panel is a singleton, so opening a second file from the changed-files list
+ * reuses the live webview: nothing remounts, and the scroll box keeps the offset the
+ * previous file was left at. The second file then opens partway into itself, or past its
+ * own end, which is the view that reads as one file's diff bleeding into another's.
+ *
+ * Both labels count, not only the path -- one file against two different revisions is two
+ * different diffs, which is what the file-history entry point opens. What must NOT count is
+ * anything that changes while one document stays on screen: the segments, the
+ * ignore-whitespace mode and the load error all re-post constantly, and keying on those
+ * would throw the reader back to line 1 on every whitespace toggle.
+ *
+ * `documentId` leads because the labels are not always enough to tell two diffs apart: a
+ * shelf entry is captioned `Shelved` whatever it holds, so two shelved versions of one file
+ * agree on all three of the other fields. Hosts that can be more specific put that here, and
+ * a host that cannot is no worse off than before.
+ *
+ * `JSON.stringify` rather than joining on a separator, because every separator a path
+ * or a label is allowed to contain lets two different documents spell one key -- and
+ * "Working tree" already contains a space. Quoting the fields removes the question
+ * instead of answering it once per separator.
+ */
+function documentIdentityOf(data: DiffViewerData | null): string | null {
+    return data === null
+        ? null
+        : JSON.stringify([data.documentId ?? null, data.path, data.leftLabel, data.rightLabel]);
+}
+
+/**
+ * The file's path as breadcrumbs, for hosts whose own chrome does not already show it.
+ *
+ * Renders nothing under a custom text editor, where VS Code's breadcrumb bar sits directly
+ * above the webview and says the same thing one line higher. The panel opened from the
+ * changed-files list has no breadcrumb bar at all, which is the gap this fills -- and it
+ * fills it in the same shape, so the two entry points read alike.
+ *
+ * The separators are drawn by CSS rather than by elements of their own: they carry no
+ * information the segments do not, and the path stays one continuous string to select or
+ * copy.
+ */
+function DiffPathRow({
+    path,
+    hostShowsPath,
+}: {
+    path: string;
+    hostShowsPath?: boolean;
+}): React.ReactElement | null {
+    if (hostShowsPath) return null;
+    return (
+        <span className="diff-breadcrumbs" data-testid="diff-breadcrumbs">
+            {path.split("/").map((segment, index) => (
+                <span className="diff-breadcrumb" key={`${index}-${segment}`}>
+                    {segment}
+                </span>
+            ))}
+        </span>
+    );
+}
+
 /** Hosts a pure, read-only two-pane diff with only view toggles. */
 export function App(): React.ReactElement {
     const [data, setData] = useState<DiffViewerData | null>(null);
@@ -835,6 +902,27 @@ export function App(): React.ReactElement {
             content.scrollTop = layout.canonicalTopPx[index] ?? 0;
         },
         [layout],
+    );
+
+    /**
+     * Moves to the next or previous change, and reports whether there was one to move to.
+     *
+     * One definition for the toolbar arrows and the Alt+Arrow keys, because "next change"
+     * from a given scroll position is a single answer -- two copies would be two answers
+     * the moment either one's boundary handling was touched. The boolean is what lets the
+     * key handler leave the event alone at the last change instead of swallowing a key it
+     * did nothing with.
+     */
+    const jumpToAdjacentChange = useCallback(
+        (direction: 1 | -1): boolean => {
+            const content = contentRef.current;
+            if (!content) return false;
+            const index = adjacentChangeIndex(stripeMarks, layout, content.scrollTop, direction);
+            if (index === undefined) return false;
+            jumpToSegment(index);
+            return true;
+        },
+        [jumpToSegment, layout, stripeMarks],
     );
     layoutRef.current = layout;
     const ribbonIndices = useMemo(
@@ -1206,21 +1294,11 @@ export function App(): React.ReactElement {
             ) {
                 return;
             }
-            const content = contentRef.current;
-            if (!content) return;
-            const index = adjacentChangeIndex(
-                stripeMarks,
-                layout,
-                content.scrollTop,
-                event.key === "ArrowDown" ? 1 : -1,
-            );
-            if (index === undefined) return;
-            event.preventDefault();
-            jumpToSegment(index);
+            if (jumpToAdjacentChange(event.key === "ArrowDown" ? 1 : -1)) event.preventDefault();
         };
         window.addEventListener("keydown", handler);
         return () => window.removeEventListener("keydown", handler);
-    }, [jumpToSegment, layout, stripeMarks]);
+    }, [jumpToAdjacentChange]);
 
     useEffect(() => {
         if (shikiReady) return;
@@ -1234,6 +1312,25 @@ export function App(): React.ReactElement {
         const timer = window.setTimeout(runInit, 0);
         return () => window.clearTimeout(timer);
     }, [shikiReady]);
+
+    // Both axes: a long line in the file just closed leaves the next one scrolled sideways
+    // just as readily as it leaves it scrolled down, and the horizontal offset lives in a
+    // ref shared by both panes rather than on the element this resets.
+    const resetViewport = useCallback(() => {
+        const content = contentRef.current;
+        if (!content) return;
+        content.scrollTop = 0;
+        syncHorizontalScroll(0);
+        scheduleVerticalFrame();
+    }, [scheduleVerticalFrame, syncHorizontalScroll]);
+
+    // Keyed on the document rather than on `data`, which is what makes this a reset per file
+    // instead of a reset per payload: the key is the whole mechanism, so the identity string
+    // is where the behaviour lives and this effect is only the write.
+    const documentKey = documentIdentityOf(data);
+    useLayoutEffect(() => {
+        resetViewport();
+    }, [documentKey, resetViewport]);
 
     // Runs before paint so `--diff-viewport-h` (which sizes the sticky viewport
     // and its margin-bottom cancel) is committed on the first frame — otherwise
@@ -1309,6 +1406,31 @@ export function App(): React.ReactElement {
             >
                 <div className="diff-toolbar">
                     <div className="toolbar-left">
+                        <div className="toolbar-nav-group">
+                            <button
+                                type="button"
+                                className="toolbar-icon-btn"
+                                data-testid="diff-prev-change"
+                                onClick={() => jumpToAdjacentChange(-1)}
+                                title={t("diff.toolbar.prevChange.title")}
+                                aria-label={t("diff.toolbar.prevChange.label")}
+                                disabled={stripeMarks.length === 0}
+                            >
+                                <IconChevronUp />
+                            </button>
+                            <button
+                                type="button"
+                                className="toolbar-icon-btn"
+                                data-testid="diff-next-change"
+                                onClick={() => jumpToAdjacentChange(1)}
+                                title={t("diff.toolbar.nextChange.title")}
+                                aria-label={t("diff.toolbar.nextChange.label")}
+                                disabled={stripeMarks.length === 0}
+                            >
+                                <IconChevronDown />
+                            </button>
+                        </div>
+                        <div className="toolbar-separator" />
                         <button
                             type="button"
                             className="toolbar-btn subtle dropdown"
@@ -1339,7 +1461,7 @@ export function App(): React.ReactElement {
                     </div>
                 </div>
                 <div className="diff-header">
-                    <span className="file-path">{data.path}</span>
+                    <DiffPathRow path={data.path} hostShowsPath={data.hostShowsPath} />
                     {data.newlineDifference ? (
                         <span className="diff-newline-marker" role="status">
                             {t("diff.newlineDifference")}

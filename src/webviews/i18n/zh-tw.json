@@ -356,5 +356,9 @@
     "diff.editable.blockHint": "按一下即可編輯",
     "diff.editable.editingAria": "編輯工作樹區塊",
     "diff.editable.revertHunk": "復原這項變更",
-    "diff.readOnly.pane": "此側為唯讀"
+    "diff.readOnly.pane": "此側為唯讀",
+    "diff.toolbar.prevChange.title": "上一處變更 (Alt+↑)",
+    "diff.toolbar.prevChange.label": "上一處變更",
+    "diff.toolbar.nextChange.title": "下一處變更 (Alt+↓)",
+    "diff.toolbar.nextChange.label": "下一處變更"
 }

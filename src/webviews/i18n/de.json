@@ -365,5 +365,9 @@
     "diff.editable.blockHint": "Klicken Sie zum Bearbeiten",
     "diff.editable.editingAria": "Arbeitsbereichsblock bearbeiten",
     "diff.editable.revertHunk": "Diese Änderung rückgängig machen",
-    "diff.readOnly.pane": "Diese Seite ist schreibgeschützt"
+    "diff.readOnly.pane": "Diese Seite ist schreibgeschützt",
+    "diff.toolbar.prevChange.title": "Vorherige Änderung (Alt+↑)",
+    "diff.toolbar.prevChange.label": "Vorherige Änderung",
+    "diff.toolbar.nextChange.title": "Nächste Änderung (Alt+↓)",
+    "diff.toolbar.nextChange.label": "Nächste Änderung"
 }

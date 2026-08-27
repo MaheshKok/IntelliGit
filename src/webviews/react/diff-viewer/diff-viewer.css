@@ -35,6 +35,47 @@
     min-width: 0;
 }
 
+/* Same shape as the merge editor's conflict navigation, because it is the same move. */
+.toolbar-nav-group {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+}
+
+.toolbar-separator {
+    width: 1px;
+    height: 16px;
+    margin: 0 4px;
+    background: color-mix(in srgb, var(--diff-border) 80%, transparent);
+}
+
+.toolbar-icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 24px;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--vscode-foreground);
+    line-height: 1;
+    opacity: 0.9;
+    cursor: pointer;
+}
+
+.toolbar-icon-btn:hover:not(:disabled) {
+    background: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.12));
+    border-color: color-mix(in srgb, var(--diff-border) 80%, transparent);
+    opacity: 1;
+}
+
+.toolbar-icon-btn:disabled {
+    opacity: 0.45;
+    cursor: default;
+}
+
 .toolbar-btn {
     min-height: 24px;
     padding: 0 7px;
@@ -102,14 +143,64 @@
     flex-shrink: 0;
 }
 
-.file-path {
+/* Nothing left to show once the host draws its own breadcrumbs and no marker is active.
+   Without this the row still claims its height and its bottom border, leaving an empty
+   strip where the path used to be. */
+.diff-header:empty {
+    display: none;
+}
+
+.diff-breadcrumbs {
+    display: flex;
+    align-items: center;
     min-width: 0;
     overflow: hidden;
-    color: var(--vscode-foreground);
-    font-size: 14px;
-    font-weight: 600;
-    text-overflow: ellipsis;
+    color: var(--vscode-breadcrumb-foreground, var(--vscode-descriptionForeground));
+    font-size: 13px;
     white-space: nowrap;
+}
+
+/* A directory gives up its width long before the filename does -- see `:last-child` below
+   for why the two numbers are lopsided rather than 0 and 1. */
+.diff-breadcrumb {
+    flex-shrink: 999;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Drawn rather than marked up: the chevron says nothing the segments do not, and a
+   separator element between every pair would break selecting the path as one string. */
+.diff-breadcrumb + .diff-breadcrumb::before {
+    content: "›";
+    margin: 0 4px;
+    opacity: 0.7;
+}
+
+/* The file's own name is what the reader came for; the directories above it are context.
+   VS Code's own breadcrumb bar draws the same emphasis.
+
+   Shrink order, not shrink permission, is what the lopsided pair buys. `overflow: hidden`
+   above already drops every segment's automatic minimum size to zero, so all of them can
+   shrink -- and flex hands out the deficit in proportion to content width, which gives the
+   biggest cut to the longest segment. The filename carries the extension and is usually the
+   longest, so an even split ellipsises the one segment being bolded first and leaves the
+   directories it was meant to be read against fully legible.
+
+   `999` against `1` sends effectively the whole deficit to the directories. It is not `0`,
+   which would forbid the filename to shrink at all: flex freezes an item once it reaches
+   its minimum and re-distributes the rest, so at `1` the directories collapse first and the
+   filename ellipsises only after they are spent -- while at `0` a long name in a narrow
+   panel, or any file at the repository root where the name is the ONLY segment, would
+   overflow and be cut off square by `.diff-breadcrumbs`, with no ellipsis to say so.
+
+   `harnessSmoke.spec.ts` covers the ORDER against a real squeeze. The `1`-against-`0` half
+   has no test: reproducing it needs the strip narrower than the filename alone, and the
+   strip floors at about that width however it is squeezed. Change this number by argument,
+   not by a green run. */
+.diff-breadcrumb:last-child {
+    flex-shrink: 1;
+    color: var(--vscode-foreground);
+    font-weight: 600;
 }
 
 .diff-newline-marker,

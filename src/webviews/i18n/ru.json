@@ -383,5 +383,9 @@
     "diff.editable.blockHint": "Щелкните, чтобы изменить",
     "diff.editable.editingAria": "Изменить блок рабочего дерева",
     "diff.editable.revertHunk": "Отменить это изменение",
-    "diff.readOnly.pane": "Эта сторона доступна только для чтения"
+    "diff.readOnly.pane": "Эта сторона доступна только для чтения",
+    "diff.toolbar.prevChange.title": "Предыдущее изменение (Alt+↑)",
+    "diff.toolbar.prevChange.label": "Предыдущее изменение",
+    "diff.toolbar.nextChange.title": "Следующее изменение (Alt+↓)",
+    "diff.toolbar.nextChange.label": "Следующее изменение"
 }

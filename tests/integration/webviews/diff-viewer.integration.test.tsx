@@ -1749,6 +1749,8 @@ const scrollFixture = {
 const CANONICAL_TOTAL_PX = 39 * LINE_HEIGHT_PX;
 /** Canonical scroll position halfway through the deletion-only hunk. */
 const MID_HUNK_SCROLL_PX = 130;
+/** A sideways position, as a long line in one file leaves the panes for the next one. */
+const SIDEWAYS_SCROLL_PX = 240;
 /** Left advances by its own 3 rows at that point; right, having none, does not. */
 const LEFT_OFFSET_AT_MID_HUNK_PX = 130;
 const RIGHT_OFFSET_AT_MID_HUNK_PX = 100;
@@ -1813,6 +1815,41 @@ function scrollTo(content: HTMLElement, top: number): void {
     Object.defineProperty(content, "scrollTop", { configurable: true, value: top });
     act(() => {
         content.dispatchEvent(new Event("scroll", { bubbles: false }));
+    });
+}
+
+/**
+ * Backs `scrollTop` with a real cell for the rest of one case, and returns the scroll move.
+ *
+ * jsdom performs no layout, so its own `scrollTop` reads back 0 however it is assigned --
+ * which collapses "the viewer scrolled back to the top" and "the viewer did nothing at
+ * all" into the same observation. `scrollTo` above pins the position for cases that only
+ * ever read it forward; these cases have to read the position back afterwards, so the
+ * property has to remember what was written to it.
+ */
+function trackedScrollTo(content: HTMLElement): (top: number) => void {
+    let top = 0;
+    Object.defineProperty(content, "scrollTop", {
+        configurable: true,
+        get: () => top,
+        set: (value: number) => {
+            top = value;
+        },
+    });
+    return (value: number) => {
+        top = value;
+        act(() => {
+            content.dispatchEvent(new Event("scroll", { bubbles: false }));
+        });
+    };
+}
+
+/** Presses one toolbar button through the same click a pointer would send. */
+function clickToolbar(testId: string): void {
+    const button = document.querySelector<HTMLButtonElement>(`[data-testid='${testId}']`);
+    expect(button, `${testId} must exist before it can be clicked`).not.toBeNull();
+    act(() => {
+        button?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
 }
 
@@ -2093,5 +2130,222 @@ describe("DiffViewerApp scroll viewport and ribbons", () => {
             scrolled,
             "clicking the insertion mark should scroll to the insertion hunk's own canonical top",
         ).toEqual([260]);
+    });
+
+    // The viewer panel is a singleton: opening a second file from the changed-files list
+    // reuses the live webview and posts a new payload into it, so nothing unmounts and no
+    // DOM state is discarded on the way. The scroll box is the one piece of that state the
+    // user sees immediately -- the second file opens wherever the first one was left.
+    it("returns to the top when the host hands it a different document", async () => {
+        const { content } = await mountScrollFixture();
+        trackedScrollTo(content)(MID_HUNK_SCROLL_PX);
+
+        dispatchHostMessage({
+            type: "setDiffData",
+            data: { ...scrollFixture, path: "src/second-file.ts" },
+        });
+        await flush();
+
+        expect(
+            content.scrollTop,
+            "the second file opened at the first file's scroll offset -- the panel is reused, so the scroll box keeps whatever the previous document left in it",
+        ).toBe(0);
+    });
+
+    // The other direction, and the reason the reset is keyed on which document is on screen
+    // rather than on a payload arriving. The same document is re-posted often -- a
+    // whitespace toggle, a refresh after the file changed on disk, a load error -- and each
+    // of those would otherwise throw the reader back to line 1 mid-read.
+    it("leaves the reader where they were when the same document is re-posted", async () => {
+        const { content } = await mountScrollFixture();
+        trackedScrollTo(content)(MID_HUNK_SCROLL_PX);
+
+        dispatchHostMessage({
+            type: "setDiffData",
+            data: { ...scrollFixture, ignoreWhitespace: true },
+        });
+        await flush();
+
+        expect(
+            content.scrollTop,
+            "re-posting the document already on screen scrolled it back to the top",
+        ).toBe(MID_HUNK_SCROLL_PX);
+    });
+
+    // Same file, different revisions -- what the shelf and file-history entry points open,
+    // and what the path alone cannot tell apart. This is the half of the identity key the
+    // two cases above would let anyone delete.
+    it("returns to the top when the same file is shown against a different revision", async () => {
+        const { content } = await mountScrollFixture();
+        trackedScrollTo(content)(MID_HUNK_SCROLL_PX);
+
+        dispatchHostMessage({
+            type: "setDiffData",
+            data: { ...scrollFixture, leftLabel: "8ba1f10" },
+        });
+        await flush();
+
+        expect(
+            content.scrollTop,
+            "another revision of the same file is another diff, and it opened at the previous one's offset",
+        ).toBe(0);
+    });
+
+    // Two shelved versions of one file agree on every field the cases above vary: the path is
+    // the same file and both captions are the constant `Shelved`, so the labels cannot tell
+    // them apart and only the host-supplied id can. Without it the singleton keeps the first
+    // entry's offset for the second, which is the reported defect on the one entry point
+    // whose labels never differ.
+    it("returns to the top when two documents differ only by the id the host supplies", async () => {
+        const { content } = await mountScrollFixture();
+        trackedScrollTo(content)(MID_HUNK_SCROLL_PX);
+
+        dispatchHostMessage({
+            type: "setDiffData",
+            data: { ...scrollFixture, documentId: '["shelf-b:1:baseToShelved:left","..."]' },
+        });
+        await flush();
+
+        expect(
+            content.scrollTop,
+            "a second shelf entry for the same file opened at the first one's offset -- identical path and captions, different diff",
+        ).toBe(0);
+    });
+
+    // The other axis of the same reset, and the one no case above can see: all three read
+    // `scrollTop` back, so deleting `syncHorizontalScroll(0)` leaves every one of them green
+    // while the next file still opens scrolled sideways off its own first column.
+    //
+    // The shared scrollbar is the observable rather than a pane, because `syncHorizontalScroll`
+    // clamps each pane to `scrollWidth - clientWidth` -- both zero under jsdom, which has no
+    // layout -- and writes the shared bar the raw position instead.
+    it("returns to the left edge when the host hands it a different document", async () => {
+        const { content } = await mountScrollFixture();
+        trackedScrollTo(content)(MID_HUNK_SCROLL_PX);
+        const sharedBar = document.querySelector<HTMLElement>(".diff-horizontal-scroll");
+        expect(sharedBar).not.toBeNull();
+
+        const raf = vi.spyOn(globalThis, "requestAnimationFrame").mockImplementation((callback) => {
+            callback(0);
+            return 0;
+        });
+        try {
+            act(() => {
+                (sharedBar as HTMLElement).scrollLeft = SIDEWAYS_SCROLL_PX;
+                sharedBar?.dispatchEvent(new Event("scroll", { bubbles: true }));
+            });
+            // Without this the case proves nothing: if the position never took, the reset has
+            // nothing to undo and the assertion below would read 0 either way.
+            expect(
+                sharedBar?.scrollLeft,
+                "the reader has to be scrolled sideways before a reset of that axis can be observed",
+            ).toBe(SIDEWAYS_SCROLL_PX);
+
+            dispatchHostMessage({
+                type: "setDiffData",
+                data: { ...scrollFixture, path: "src/second-file.ts" },
+            });
+            await flush();
+
+            expect(
+                sharedBar?.scrollLeft,
+                "a long line in the file just closed left the next one scrolled off its own first column",
+            ).toBe(0);
+        } finally {
+            raf.mockRestore();
+        }
+    });
+
+    // The same jump the Alt+Arrow keys make, reached by pointer. Both call one function, so
+    // what this pins that the key cases do not is that the buttons are wired to it at all.
+    it("walks the changes from the toolbar arrows and stops at both ends", async () => {
+        const { content } = await mountScrollFixture();
+        trackedScrollTo(content)(0);
+
+        // The fixture's two changed segments sit at canonical 100 and 260; see its table.
+        clickToolbar("diff-next-change");
+        expect(content.scrollTop, "the first press should land on the first change").toBe(100);
+        clickToolbar("diff-next-change");
+        expect(content.scrollTop, "the second press should land on the next one").toBe(260);
+        clickToolbar("diff-next-change");
+        expect(
+            content.scrollTop,
+            "nothing lies past the last change, so the arrow should hold there rather than wrap to the top",
+        ).toBe(260);
+
+        clickToolbar("diff-prev-change");
+        expect(content.scrollTop, "the up arrow should walk back to the previous change").toBe(100);
+        clickToolbar("diff-prev-change");
+        expect(
+            content.scrollTop,
+            "nothing lies above the first change, so the up arrow should hold there",
+        ).toBe(100);
+    });
+
+    it("disables both arrows on a file with no changes to walk", async () => {
+        installVsCodeMock();
+        createRootHost();
+        await act(async () => {
+            await import("../../../src/webviews/react/diff-viewer/DiffViewerApp");
+        });
+        await flush();
+        dispatchHostMessage({
+            type: "setDiffData",
+            data: {
+                ...scrollFixture,
+                segments: [
+                    { type: "common" as const, left: rows("same", 40), right: rows("same", 40) },
+                ],
+            },
+        });
+        await flush();
+
+        for (const testId of ["diff-prev-change", "diff-next-change"]) {
+            expect(
+                document.querySelector<HTMLButtonElement>(`[data-testid='${testId}']`)?.disabled,
+                `${testId} offers a jump on a file with nowhere to jump to`,
+            ).toBe(true);
+        }
+    });
+});
+
+describe("DiffViewerApp file path header", () => {
+    async function mountWith(overrides: Record<string, unknown>): Promise<void> {
+        installVsCodeMock();
+        createRootHost();
+        await act(async () => {
+            await import("../../../src/webviews/react/diff-viewer/DiffViewerApp");
+        });
+        await flush();
+        dispatchHostMessage({ type: "setDiffData", data: { ...diffFixture, ...overrides } });
+        await flush();
+    }
+
+    it("draws the path as breadcrumbs for a host that has no breadcrumb bar of its own", async () => {
+        await mountWith({ path: "tests/unit/views/example.test.ts" });
+
+        const crumbs = document.querySelector("[data-testid='diff-breadcrumbs']");
+        expect(
+            crumbs,
+            "the viewer panel opened from the changed-files list has no breadcrumb bar above it, so it draws its own",
+        ).not.toBeNull();
+        expect(
+            [...(crumbs?.querySelectorAll(".diff-breadcrumb") ?? [])].map(
+                (part) => part.textContent,
+            ),
+        ).toEqual(["tests", "unit", "views", "example.test.ts"]);
+    });
+
+    it("leaves the path to a host that already shows it", async () => {
+        await mountWith({ hostShowsPath: true });
+
+        expect(
+            document.querySelector("[data-testid='diff-breadcrumbs']"),
+            "a custom text editor sits directly under VS Code's own breadcrumb bar, so this row repeats it one line lower",
+        ).toBeNull();
+        expect(
+            document.body.textContent,
+            "the path is gone from the breadcrumbs but still written into the header some other way",
+        ).not.toContain(diffFixture.path);
     });
 });

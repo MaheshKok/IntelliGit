@@ -31,7 +31,11 @@ import {
     type LoadedDiffSide as ViewerDiffSide,
 } from "../diff/sideLoader";
 import { openEditableDiff } from "../diff/editableDiffOpener";
-import { labelForDiffSide, type EditableDiffSession } from "../diff/editableDiffTypes";
+import {
+    documentIdForSides,
+    labelForDiffSide,
+    type EditableDiffSession,
+} from "../diff/editableDiffTypes";
 import {
     subscribeToRepositoryWorkingTreeChanges,
     type RepositoryWorkingTreeChange,
@@ -317,6 +321,7 @@ export async function openUnifiedDiff(
         leftLabel: labelForDiffSide(request.left),
         rightLabel: labelForDiffSide(request.right),
         languageId: request.languageId,
+        documentId: documentIdForSides(request.left, request.right),
         leftText: left.text,
         rightText: right.text,
         sessionGeneration: session.generation,
@@ -546,6 +551,7 @@ async function refreshUnifiedDiffSession(session: ActiveUnifiedDiffSession): Pro
             leftLabel: labelForDiffSide(session.descriptor.left),
             rightLabel: labelForDiffSide(session.descriptor.right),
             languageId: session.descriptor.languageId,
+            documentId: documentIdForSides(session.descriptor.left, session.descriptor.right),
             leftText: left.text,
             rightText: right.text,
             sessionGeneration: generation,

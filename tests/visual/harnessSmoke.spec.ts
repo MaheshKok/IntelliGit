@@ -154,6 +154,108 @@ test.describe("production webview harness", () => {
         }
     });
 
+    // The clipping oracle cannot see this one, structurally: it exempts any element that
+    // carries `text-overflow: ellipsis` outright, and every breadcrumb carries it -- so a
+    // segment cut square by the strip above it is exempted by a declaration that did nothing
+    // for it. `clippingCollector.spec.ts` pins that exemption on purpose. The pixel baselines
+    // record whatever shrink order shipped, the same way they once recorded a ribbon veil.
+    // So the shrink rules only have an oracle if it reads live geometry, which is this.
+    //
+    // The squeeze is applied here rather than left to the narrow projects because the wide
+    // ones would not overflow at all, and a containment assertion over content that fits is
+    // a pass that proves nothing. It is a fraction of the trail's own measured width rather
+    // than a pixel count, so it means the same thing in all eight projects whatever their
+    // font measures.
+    //
+    // What this does NOT cover: `.diff-breadcrumb:last-child` also carries `flex-shrink: 1`
+    // rather than `0`, so that a filename with no directories left to spend ellipsises
+    // instead of being cut square. Witnessing that needs the strip narrower than the
+    // filename alone, and the strip will not go there -- squeezing it directly, clamping it
+    // with `max-width`, and narrowing `.diff-header` around it all floor at roughly the
+    // filename's own width. So that half of the rule is argued in the CSS comment and has no
+    // oracle here; only the shrink ORDER below does.
+    test("diff-viewer spends a squeezed breadcrumb trail on the directories, not on the filename", async ({
+        mountHarness,
+        page,
+    }) => {
+        await mountHarness("diff-viewer", { webviewFixture: "clean.json" });
+
+        await expect.poll(() => page.locator(".diff-breadcrumb").count()).toBeGreaterThan(0);
+        const measured = await page.evaluate(() => {
+            const strip = document.querySelector<HTMLElement>('[data-testid="diff-breadcrumbs"]');
+            const row = strip?.parentElement;
+            if (!strip || !row) return null;
+            const natural = strip.scrollWidth;
+
+            // The squeeze goes on the ROW, not on the strip: a width set on a flex item is
+            // only a hypothetical main size that the algorithm may overrule, and measured, it
+            // did -- the strip ignored both `width` and `max-width` set on itself. Narrowing
+            // the container is the real case anyway, since what shrinks in production is the
+            // panel, not the trail inside it.
+            const at = (px: number) => {
+                const target = `${Math.round(px)}px`;
+                row.style.width = target;
+                row.style.maxWidth = target;
+                row.style.minWidth = "0";
+                void row.offsetWidth;
+                const box = strip.getBoundingClientRect();
+                return {
+                    width: box.width,
+                    right: box.right,
+                    segments: [...strip.querySelectorAll<HTMLElement>(".diff-breadcrumb")].map(
+                        (element) => ({
+                            text: element.textContent ?? "",
+                            right: element.getBoundingClientRect().right,
+                            // Not `textContent` length: a segment reduced to an ellipsis still
+                            // reports its whole string, which is exactly the blindness that
+                            // lets a truncation regression read as fine.
+                            truncated: element.scrollWidth > element.clientWidth + 1,
+                        }),
+                    ),
+                };
+            };
+
+            return { natural, roomy: at(natural * 0.6) };
+        });
+
+        expect(measured, "the viewer drew no breadcrumb strip to measure").not.toBeNull();
+        const strip = measured as NonNullable<typeof measured>;
+
+        // Anti-vacuity. A one-segment fixture has no directories to spend, and a strip that
+        // never actually narrowed would satisfy every assertion below by simply fitting.
+        expect(
+            strip.roomy.segments.length,
+            "the recorded fixture's path is not deep enough to have a shrink order at all",
+        ).toBeGreaterThan(2);
+        expect(
+            strip.roomy.width,
+            "the strip did not narrow, so nothing had to shrink",
+        ).toBeLessThan(strip.natural);
+
+        // The deficit lands on the directories. Under one shared shrink factor flex splits it
+        // in proportion to content width, and the filename -- carrying the extension, usually
+        // the longest segment -- would be the first thing ellipsised away.
+        const filename = strip.roomy.segments[strip.roomy.segments.length - 1]!;
+        expect(
+            filename.truncated,
+            `the filename "${filename.text}" was truncated while directories still had width to give`,
+        ).toBe(false);
+        expect(
+            strip.roomy.segments.slice(0, -1).some((segment) => segment.truncated),
+            "no directory truncated either, so the squeeze never forced a choice and the order is untested",
+        ).toBe(true);
+
+        // Nothing is painted outside the strip on the way there. `.diff-breadcrumbs` hides its
+        // overflow and paints no ellipsis of its own, so a segment that runs past this edge is
+        // cut off square with nothing to say it was cut.
+        for (const segment of strip.roomy.segments) {
+            expect(
+                segment.right,
+                `"${segment.text}" is painted past the strip's right edge, so it is cut square with no ellipsis`,
+            ).toBeLessThanOrEqual(strip.roomy.right + 1);
+        }
+    });
+
     test("can fail: an unroutable asset request is rejected instead of becoming a silent 404", async ({
         mountHarness,
         page,
