@@ -998,6 +998,17 @@ export function App(): React.ReactElement {
     // decides that from `revertablePane`, because it needs the pane for the arrow's direction
     // anyway. A second copy of the same condition cannot be shown to be doing anything, since
     // removing either one leaves the other answering.
+    //
+    // Nor is an in-flight edit gated here. A revert clicked while a delta is unacknowledged is
+    // stamped with the version the webview currently believes, exactly like a keystroke, and the
+    // host settles it: a stale `baseVersion` reseeds (`EditableDiffEditorProvider.applyEdit`),
+    // and a stale token is dropped and logged. Nothing lands on the wrong text, which is why
+    // three same-version reverts are pinned as correct rather than tolerated.
+    //
+    // Emptying this list until an acknowledgement arrives would be worse in two ways. The token
+    // path is the NORMAL case while a reseed is in flight and it produces no echo at all, so the
+    // arrows would have nothing to wait for and would stay gone. And an empty list unmounts every
+    // button, so each debounced post would flash the whole strip away and back.
     const actionHunks = useMemo(
         () =>
             singlePane === null
