@@ -56,6 +56,7 @@ import {
     sameEffectiveEditableBlockLayout,
     type EditableBlockLayout,
 } from "./editableDraftLayout";
+import { EditableSegmentBlock, type EditableSegmentItem } from "./EditableSegmentBlock";
 import "./diff-viewer.css";
 
 const LINE_PADDING_PX = 18;
@@ -121,16 +122,10 @@ function clearReadOnlyNoticeTimer(
     timerRef.current = null;
 }
 
-interface RenderedSegment {
-    segment: DiffSegment;
-    index: number;
-    paneLines: Record<DiffPane, number>;
-    lineNumbers: Record<DiffPane, LineNumberSpec>;
-    canonicalLineCount: number;
-}
+type RenderedSegment = EditableSegmentItem;
 
 /** Renders one read-only side of one aligned diff segment. */
-function DiffPaneBlock({
+const DiffPaneBlock = React.memo(function DiffPaneBlock({
     segment,
     side,
     lineCount,
@@ -161,7 +156,7 @@ function DiffPaneBlock({
             />
         </div>
     );
-}
+});
 
 interface EditableBlockDraft {
     indices: readonly number[];
@@ -285,43 +280,6 @@ function editedPaneLines(
 
 function isAvailableActionHunk(index: number, editingBlock: EditableBlockLayout | null): boolean {
     return editingBlock === null || !editingBlock.indices.includes(index);
-}
-
-/** Syntax highlighting splits a source line into spans, so rebuild its block-local text offset. */
-function caretOffsetWithinBlock(block: HTMLElement, clientX: number, clientY: number): number {
-    try {
-        const position = document.caretPositionFromPoint?.(clientX, clientY);
-        const range = position ? undefined : document.caretRangeFromPoint?.(clientX, clientY);
-        const node = position?.offsetNode ?? range?.startContainer;
-        const offset = position?.offset ?? range?.startOffset;
-        if (node?.nodeType !== Node.TEXT_NODE || offset === undefined) return 0;
-
-        const row = node.parentElement?.closest<HTMLElement>(".code-line");
-        const codeLines = row?.parentElement;
-        if (
-            !row?.classList.contains("real-code-line") ||
-            !codeLines?.classList.contains("code-lines") ||
-            !block.contains(row)
-        ) {
-            return 0;
-        }
-
-        const rows = [...codeLines.querySelectorAll<HTMLElement>(":scope > .code-line")];
-        const rowIndex = rows.indexOf(row);
-        if (rowIndex < 0) return 0;
-
-        const rowRange = document.createRange();
-        rowRange.selectNodeContents(row);
-        rowRange.setEnd(node, offset);
-        return (
-            rows
-                .slice(0, rowIndex)
-                .reduce((total, previous) => total + (previous.textContent?.length ?? 0) + 1, 0) +
-            rowRange.toString().length
-        );
-    } catch {
-        return 0;
-    }
 }
 
 /** Renders editable display blocks while keeping document writes delegated to the host. */
@@ -523,10 +481,8 @@ function EditableDiffPane({
     return (
         <>
             {renderedSegments.map((item) => {
-                const lines = item.segment[side];
-                const compareLines = item.segment[side === "left" ? "right" : "left"];
                 const isEditing = draft !== null && draft.indices.includes(item.index);
-                const lineCount = item.paneLines[side];
+                const compareLines = item.segment[side === "left" ? "right" : "left"];
 
                 if (isEditing && draft) {
                     if (draft.indices[0] !== item.index) return null;
@@ -606,43 +562,15 @@ function EditableDiffPane({
                     );
                 }
 
-                const style = intrinsicSizeStyle(lineCount);
                 return (
-                    <div
+                    <EditableSegmentBlock
                         key={`editable-${side}-${item.index}`}
-                        className={`segment diff-editable-block ${segmentClassName(item.segment, side)}`}
-                        style={style}
-                        onClick={(event) => {
-                            if (window.getSelection()?.isCollapsed === false) return;
-                            startEditing(
-                                item,
-                                caretOffsetWithinBlock(
-                                    event.currentTarget,
-                                    event.clientX,
-                                    event.clientY,
-                                ),
-                            );
-                        }}
-                        onDoubleClick={() => startEditing(item)}
-                        onKeyDown={(event) => {
-                            if (event.key !== "Enter" && event.key !== "F2") return;
-                            event.preventDefault();
-                            startEditing(item);
-                        }}
-                        role="group"
-                        tabIndex={0}
-                        title={t("diff.editable.blockHint")}
-                        aria-label={t("diff.editable.blockHint")}
-                    >
-                        <CodeBlock
-                            lines={lines}
-                            lineCount={lineCount}
-                            lineNumbers={item.lineNumbers[side]}
-                            lineNumberSide={lineNumberSide}
-                            wordHighlight={highlightWords}
-                            compareLines={compareLines}
-                        />
-                    </div>
+                        item={item}
+                        side={side}
+                        lineNumberSide={lineNumberSide}
+                        highlightWords={highlightWords}
+                        onStartEditing={startEditing}
+                    />
                 );
             })}
         </>

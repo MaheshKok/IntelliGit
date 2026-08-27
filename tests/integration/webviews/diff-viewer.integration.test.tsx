@@ -1296,9 +1296,12 @@ describe("DiffViewerApp read-only contract", () => {
         });
 
         const f2 = new KeyboardEvent("keydown", { key: "F2", bubbles: true, cancelable: true });
+        const reopenedBlock = document.querySelector<HTMLElement>(
+            ".diff-pane-left .diff-editable-block",
+        );
         act(() => {
-            block?.focus();
-            block?.dispatchEvent(f2);
+            reopenedBlock?.focus();
+            reopenedBlock?.dispatchEvent(f2);
         });
         expect(f2.defaultPrevented).toBe(true);
         expect(document.querySelector("[data-testid='diff-pane-left-editable']")).not.toBeNull();
