@@ -66,6 +66,8 @@ export function CommitChecksButton({
     const refreshing =
         refreshRequest?.hash === hash &&
         (checks === "loading" || checks === refreshRequest.snapshot);
+    const displayedChecks =
+        refreshing && refreshRequest.snapshot ? refreshRequest.snapshot : checks;
 
     const state = checks && checks !== "loading" ? checks.state : "pending";
     const buttonLabel = t("commit.checks.title");
@@ -169,7 +171,7 @@ export function CommitChecksButton({
                     <CommitChecksPanel
                         panelRef={panelRef}
                         hash={hash}
-                        checks={checks}
+                        checks={displayedChecks}
                         position={position}
                         refreshing={refreshing}
                         onRefresh={requestRefresh}
