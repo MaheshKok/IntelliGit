@@ -224,6 +224,8 @@ const COMMAND_ENTRIES = [
         mutating: true,
         notCovered: COMMAND_NOT_COVERED,
     },
+    { kind: "command", id: "intelligit.diff.showInIntelliGit", mutating: false },
+    { kind: "command", id: "intelligit.diff.showInVsCode", mutating: false },
     { kind: "command", id: "intelligit.compareWithRevision", mutating: false },
     { kind: "command", id: "intelligit.compareWithBranch", mutating: false },
     { kind: "command", id: "intelligit.commitFileCompareWithLocal", mutating: false },

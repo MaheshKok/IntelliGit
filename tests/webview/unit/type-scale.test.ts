@@ -38,6 +38,11 @@ const EXEMPT: ReadonlyArray<{ file: string; size: number; why: string }> = [
         why: "`.hunk-action-glyph` draws the accept/reject marks as text. It is an icon that happens to be a character, sized to the hunk gutter, and reads as an affordance rather than as a label. 18 is the ceiling, not a taste call: a text range's client rect is the FONT box (ascent+descent ≈ 1.29em), so the glyph must stay under 24px/1.29 to fit its 24px `.action-btn`. The previous 22.5 produced a 29px font box that overflowed the scrolling ancestor wherever an action row sat flush against its top edge.",
     },
     {
+        file: "react/diff-viewer/diff-viewer.css",
+        size: 21,
+        why: "`.diff-hunk-revert` draws the per-hunk revert control as a `»` character. Same case as `.hunk-action-glyph` above: an icon that happens to be text, sized to the action strip it stands in rather than to anything a reader reads. 21 is the ceiling for a 30px strip, not a taste call -- the font box is ascent+descent ≈ 1.29em, so the glyph must stay under 30/1.29 = 23.2px or it overflows `.diff-viewport` wherever a hunk sits flush against the top of the scroller.",
+    },
+    {
         file: "react/shared/components/ReviewPromptCard.css",
         size: 26,
         why: "`.review-prompt-star` draws the rating control as ★ characters. The size is the hit target of a five-star row, not type — at any size on the scale the stars are too small to aim at.",

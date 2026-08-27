@@ -20,6 +20,11 @@
             "accessibleNames": [],
             "zeroSize": []
         },
+        "de/diff-viewer": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
         "de/merge-conflict-session": {
             "clipping": [],
             "accessibleNames": [],
@@ -56,6 +61,11 @@
             "zeroSize": []
         },
         "en/commit-panel": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "en/diff-viewer": {
             "clipping": [],
             "accessibleNames": [],
             "zeroSize": []
@@ -100,6 +110,11 @@
             "accessibleNames": [],
             "zeroSize": []
         },
+        "es/diff-viewer": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
         "es/merge-conflict-session": {
             "clipping": [],
             "accessibleNames": [],
@@ -136,6 +151,11 @@
             "zeroSize": []
         },
         "fr/commit-panel": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "fr/diff-viewer": {
             "clipping": [],
             "accessibleNames": [],
             "zeroSize": []
@@ -180,6 +200,11 @@
             "accessibleNames": [],
             "zeroSize": []
         },
+        "ja/diff-viewer": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
         "ja/merge-conflict-session": {
             "clipping": [],
             "accessibleNames": [],
@@ -216,6 +241,11 @@
             "zeroSize": []
         },
         "ko/commit-panel": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "ko/diff-viewer": {
             "clipping": [],
             "accessibleNames": [],
             "zeroSize": []
@@ -260,6 +290,11 @@
             "accessibleNames": [],
             "zeroSize": []
         },
+        "pl/diff-viewer": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
         "pl/merge-conflict-session": {
             "clipping": [],
             "accessibleNames": [],
@@ -296,6 +331,11 @@
             "zeroSize": []
         },
         "pt-br/commit-panel": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "pt-br/diff-viewer": {
             "clipping": [],
             "accessibleNames": [],
             "zeroSize": []
@@ -340,6 +380,11 @@
             "accessibleNames": [],
             "zeroSize": []
         },
+        "pt-pt/diff-viewer": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
         "pt-pt/merge-conflict-session": {
             "clipping": [],
             "accessibleNames": [],
@@ -376,6 +421,11 @@
             "zeroSize": []
         },
         "ru/commit-panel": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "ru/diff-viewer": {
             "clipping": [],
             "accessibleNames": [],
             "zeroSize": []
@@ -420,6 +470,11 @@
             "accessibleNames": [],
             "zeroSize": []
         },
+        "zh-cn/diff-viewer": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
         "zh-cn/merge-conflict-session": {
             "clipping": [],
             "accessibleNames": [],
@@ -456,6 +511,11 @@
             "zeroSize": []
         },
         "zh-tw/commit-panel": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "zh-tw/diff-viewer": {
             "clipping": [],
             "accessibleNames": [],
             "zeroSize": []
@@ -502,6 +562,11 @@
             "accessibleNames": [],
             "zeroSize": []
         },
+        "de/diff-viewer": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
         "de/merge-conflict-session": {
             "clipping": [],
             "accessibleNames": [],
@@ -538,6 +603,11 @@
             "zeroSize": []
         },
         "en/commit-panel": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "en/diff-viewer": {
             "clipping": [],
             "accessibleNames": [],
             "zeroSize": []
@@ -582,6 +652,11 @@
             "accessibleNames": [],
             "zeroSize": []
         },
+        "es/diff-viewer": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
         "es/merge-conflict-session": {
             "clipping": [],
             "accessibleNames": [],
@@ -618,6 +693,11 @@
             "zeroSize": []
         },
         "fr/commit-panel": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "fr/diff-viewer": {
             "clipping": [],
             "accessibleNames": [],
             "zeroSize": []
@@ -662,6 +742,11 @@
             "accessibleNames": [],
             "zeroSize": []
         },
+        "ja/diff-viewer": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
         "ja/merge-conflict-session": {
             "clipping": [],
             "accessibleNames": [],
@@ -698,6 +783,11 @@
             "zeroSize": []
         },
         "ko/commit-panel": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "ko/diff-viewer": {
             "clipping": [],
             "accessibleNames": [],
             "zeroSize": []
@@ -742,6 +832,11 @@
             "accessibleNames": [],
             "zeroSize": []
         },
+        "pl/diff-viewer": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
         "pl/merge-conflict-session": {
             "clipping": [],
             "accessibleNames": [],
@@ -778,6 +873,11 @@
             "zeroSize": []
         },
         "pt-br/commit-panel": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "pt-br/diff-viewer": {
             "clipping": [],
             "accessibleNames": [],
             "zeroSize": []
@@ -822,6 +922,11 @@
             "accessibleNames": [],
             "zeroSize": []
         },
+        "pt-pt/diff-viewer": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
         "pt-pt/merge-conflict-session": {
             "clipping": [],
             "accessibleNames": [],
@@ -858,6 +963,11 @@
             "zeroSize": []
         },
         "ru/commit-panel": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "ru/diff-viewer": {
             "clipping": [],
             "accessibleNames": [],
             "zeroSize": []
@@ -902,6 +1012,11 @@
             "accessibleNames": [],
             "zeroSize": []
         },
+        "zh-cn/diff-viewer": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
         "zh-cn/merge-conflict-session": {
             "clipping": [],
             "accessibleNames": [],
@@ -938,6 +1053,11 @@
             "zeroSize": []
         },
         "zh-tw/commit-panel": {
+            "clipping": [],
+            "accessibleNames": [],
+            "zeroSize": []
+        },
+        "zh-tw/diff-viewer": {
             "clipping": [],
             "accessibleNames": [],
             "zeroSize": []

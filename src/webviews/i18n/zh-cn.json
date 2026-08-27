@@ -353,6 +353,12 @@
     "diff.newlineDifference": "文件仅换行格式不同",
     "diff.error.load": "无法加载差异：{error}",
     "diff.loading": "正在加载差异...",
-    "diff.editable.blockHint": "双击或按 Enter 键进行编辑",
-    "diff.editable.editingAria": "编辑工作树块"
+    "diff.editable.blockHint": "单击以编辑",
+    "diff.editable.editingAria": "编辑工作树块",
+    "diff.editable.revertHunk": "撤销此更改",
+    "diff.readOnly.pane": "此侧为只读",
+    "diff.toolbar.prevChange.title": "上一处更改 (Alt+↑)",
+    "diff.toolbar.prevChange.label": "上一处更改",
+    "diff.toolbar.nextChange.title": "下一处更改 (Alt+↓)",
+    "diff.toolbar.nextChange.label": "下一处更改"
 }

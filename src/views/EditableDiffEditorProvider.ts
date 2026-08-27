@@ -186,6 +186,7 @@ class EditableDiffSession {
     private ignoreWhitespace = false;
     private disposed = false;
     private editQueue: Promise<void> = Promise.resolve();
+    private autoSaveTimer: ReturnType<typeof setTimeout> | undefined;
     private renderScheduled = false;
     /**
      * Whether the last payload this session tried to publish failed to reach the webview.
@@ -359,7 +360,14 @@ class EditableDiffSession {
     }
 
     dispose(): void {
+        // Two owners call this: the panel's own `onDidDispose` and the provider's teardown
+        // over every live session. Both fire when the window closes with an editor open, so
+        // the second call would hand `onSessionDisposed` a second time -- harmless today only
+        // because the diff service's `onPanelDisposed` happens to be idempotent, which is not
+        // a property this side gets to assume.
+        if (this.disposed) return;
         this.disposed = true;
+        if (this.autoSaveTimer !== undefined) clearTimeout(this.autoSaveTimer);
         for (const disposable of this.disposables) disposable.dispose();
         this.descriptor.onSessionDisposed?.();
     }
@@ -374,6 +382,7 @@ class EditableDiffSession {
             leftLabel: this.descriptor.leftLabel,
             rightLabel: this.descriptor.rightLabel,
             languageId: this.descriptor.languageId,
+            documentId: this.descriptor.documentId,
             ...computeDiffSegments(leftText, rightText, {
                 ignoreWhitespace: this.ignoreWhitespace,
             }),
@@ -507,6 +516,32 @@ class EditableDiffSession {
                 new Error("VS Code rejected the document edit."),
             );
             await this.reseed();
+            return;
+        }
+        this.scheduleAutoSave();
+    }
+
+    private scheduleAutoSave(): void {
+        if (this.autoSaveTimer !== undefined) clearTimeout(this.autoSaveTimer);
+        this.autoSaveTimer = setTimeout(() => {
+            this.autoSaveTimer = undefined;
+            void this.saveIfDirty();
+        }, 2000);
+    }
+
+    private async saveIfDirty(): Promise<void> {
+        if (this.disposed || !this.document.isDirty) return;
+        try {
+            // `save` reports a refused save by RESOLVING false — a read-only file, a full disk, a
+            // folder that vanished — and rejects only for an exceptional fault, so the ordinary
+            // failure surface never reaches the `catch`. Nothing retries afterwards: the timer has
+            // already cleared itself and the next arm needs another landed edit, so an unread
+            // `false` leaves the user believing an edit is on disk that is not.
+            if (!(await this.document.save())) {
+                throw new Error("VS Code reported the document save as failed.");
+            }
+        } catch (error) {
+            logGitOpsWarning("editableDiffEditorProvider.autoSave", error);
         }
     }
 

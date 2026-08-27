@@ -2,7 +2,7 @@
     "name": "intelligit",
     "displayName": "IntelliGit",
     "description": "%extension.description%",
-    "version": "0.30.0",
+    "version": "0.31.0",
     "publisher": "MaheshKok",
     "icon": "media/intelligit-icon.png",
     "license": "MIT",
@@ -145,6 +145,18 @@
             ]
         },
         "commands": [
+            {
+                "command": "intelligit.diff.showInIntelliGit",
+                "title": "%command.diffShowInIntelliGit%",
+                "category": "%intelligit%",
+                "icon": "$(git-compare)"
+            },
+            {
+                "command": "intelligit.diff.showInVsCode",
+                "title": "%command.diffShowInVsCode%",
+                "category": "%intelligit%",
+                "icon": "$(diff)"
+            },
             {
                 "command": "intelligit.showGitLog",
                 "title": "%command.showGitLog%",
@@ -620,6 +632,14 @@
         "menus": {
             "commandPalette": [
                 {
+                    "command": "intelligit.diff.showInIntelliGit",
+                    "when": "intelligit.diffSwitchable"
+                },
+                {
+                    "command": "intelligit.diff.showInVsCode",
+                    "when": "intelligit.diffSwitchable"
+                },
+                {
                     "command": "intelligit.refresh.color",
                     "when": "false"
                 },
@@ -674,6 +694,18 @@
                 {
                     "command": "intelligit.graph.push.color",
                     "when": "false"
+                }
+            ],
+            "editor/title": [
+                {
+                    "command": "intelligit.diff.showInIntelliGit",
+                    "when": "intelligit.diffSwitchable",
+                    "group": "navigation@1"
+                },
+                {
+                    "command": "intelligit.diff.showInVsCode",
+                    "when": "intelligit.diffSwitchable",
+                    "group": "navigation@2"
                 }
             ],
             "editor/context": [

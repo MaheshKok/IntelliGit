@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
     openEditableDiffEditor: vi.fn(),
     executeCommand: vi.fn(),
     logGitOpsWarning: vi.fn(),
+    trackDiffTab: vi.fn(async () => undefined),
 }));
 
 vi.mock("vscode", () => ({ commands: { executeCommand: mocks.executeCommand } }));
@@ -25,6 +26,9 @@ vi.mock("../../../src/git/executor", () => ({
 }));
 vi.mock("../../../src/git/operationSupport", () => ({
     logGitOpsWarning: mocks.logGitOpsWarning,
+}));
+vi.mock("../../../src/diff/diffViewSwitch", () => ({
+    trackDiffTab: mocks.trackDiffTab,
 }));
 vi.mock("../../../src/services/repositoryChangeEvents", () => ({
     subscribeToRepositoryWorkingTreeChanges: () => ({
@@ -53,6 +57,11 @@ const missing = { status: "missing" as const };
 describe("openEditableDiff", () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        // `clearAllMocks` wipes the call log but NOT the queued one-shot results (verified on
+        // vitest 4.1.10). The history cases below return before loading a side at all, so
+        // without this reset their two unused values would sit at the head of the next test's
+        // queue and be read as its own.
+        mocks.loadDiffSide.mockReset();
         mocks.loadDiffSide
             .mockResolvedValueOnce(loaded("historical\n"))
             .mockResolvedValueOnce(loaded("saved\n"));
@@ -98,6 +107,9 @@ describe("openEditableDiff", () => {
                     immutableText,
                 }),
             );
+            // The tab is on screen, so the title-bar buttons have somewhere to send it. The
+            // superseded case below asserts the other direction of the same rule.
+            expect(mocks.trackDiffTab, "a landed diff was never recorded").toHaveBeenCalledOnce();
         },
     );
 
@@ -132,6 +144,57 @@ describe("openEditableDiff", () => {
 
         expect(mocks.openEditableDiffEditor).not.toHaveBeenCalled();
         expect(nativeDelegate).toHaveBeenCalledOnce();
+    });
+
+    // The title-bar switch, not a capability check: this diff is one the viewer would happily
+    // render, and it still has to end up native because the reader asked for that. Asserted
+    // together with the load count, because honouring the request only after both sides have
+    // been read would look identical from the delegate alone.
+    it("sends a diff the viewer could render to the native editor when the reader asks for it", async () => {
+        const nativeDelegate = vi.fn(async () => undefined);
+
+        await openEditableDiff(
+            {
+                repoRoot: "/repo",
+                path: "src/a.ts",
+                left: { kind: "ref", ref: "HEAD" },
+                right: { kind: "worktree" },
+                languageId: "typescript",
+                title: "Diff",
+                fileUri,
+            },
+            nativeDelegate,
+            beginEditableDiffSession,
+            "vscode",
+        );
+
+        expect(nativeDelegate).toHaveBeenCalledOnce();
+        expect(mocks.openEditableDiffEditor).not.toHaveBeenCalled();
+        expect(
+            mocks.loadDiffSide,
+            "both sides were read for a diff that was always going somewhere else",
+        ).not.toHaveBeenCalled();
+    });
+
+    it("still opens the viewer when no surface is forced", async () => {
+        const nativeDelegate = vi.fn(async () => undefined);
+
+        await openEditableDiff(
+            {
+                repoRoot: "/repo",
+                path: "src/a.ts",
+                left: { kind: "ref", ref: "HEAD" },
+                right: { kind: "worktree" },
+                languageId: "typescript",
+                title: "Diff",
+                fileUri,
+            },
+            nativeDelegate,
+            beginEditableDiffSession,
+        );
+
+        expect(mocks.openEditableDiffEditor).toHaveBeenCalledOnce();
+        expect(nativeDelegate).not.toHaveBeenCalled();
     });
 
     it("keeps an added file in the editable editor when only the immutable side is missing", async () => {
@@ -252,5 +315,12 @@ describe("openEditableDiff", () => {
 
         expect(secondDelegate).toHaveBeenCalledOnce();
         expect(firstDelegate).not.toHaveBeenCalled();
+        // Only the second open put a tab on screen. Recording the first as well would bind the
+        // tab now in front -- the file the reader actually clicked -- to the diff they clicked
+        // away from, so its title-bar button would reopen the wrong file.
+        expect(
+            mocks.trackDiffTab,
+            "the superseded open was recorded as though it had landed a tab",
+        ).toHaveBeenCalledOnce();
     });
 });

@@ -380,6 +380,12 @@
     "diff.newlineDifference": "Файлы различаются только форматом перевода строк",
     "diff.error.load": "Не удалось загрузить сравнение: {error}",
     "diff.loading": "Загрузка сравнения...",
-    "diff.editable.blockHint": "Дважды щелкните или нажмите Enter, чтобы изменить",
-    "diff.editable.editingAria": "Изменить блок рабочего дерева"
+    "diff.editable.blockHint": "Щелкните, чтобы изменить",
+    "diff.editable.editingAria": "Изменить блок рабочего дерева",
+    "diff.editable.revertHunk": "Отменить это изменение",
+    "diff.readOnly.pane": "Эта сторона доступна только для чтения",
+    "diff.toolbar.prevChange.title": "Предыдущее изменение (Alt+↑)",
+    "diff.toolbar.prevChange.label": "Предыдущее изменение",
+    "diff.toolbar.nextChange.title": "Следующее изменение (Alt+↓)",
+    "diff.toolbar.nextChange.label": "Следующее изменение"
 }

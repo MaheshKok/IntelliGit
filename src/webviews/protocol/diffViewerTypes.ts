@@ -45,6 +45,16 @@ export interface DiffViewerData {
     ignoreWhitespace: boolean;
     /** Active refresh failure while the displayed snapshots remain valid. */
     loadError?: string;
+    /**
+     * Tells this diff apart from another one the labels would spell identically.
+     *
+     * The viewer resets the reader's position when the document changes and holds it when
+     * the same document is re-posted, so it needs to know which it is looking at. Path and
+     * labels answer that for a revision comparison and not for a shelf entry, where every
+     * caption is the constant `Shelved`. Hosts that can say more say it here; the field is
+     * optional because a host with nothing further to add is not wrong, only less specific.
+     */
+    documentId?: string;
     /** Pane bound to the live VS Code document in a custom text editor. */
     editablePane?: "left" | "right";
     /** Current document text; only supplied when `editablePane` is present. */

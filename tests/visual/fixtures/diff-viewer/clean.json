@@ -8,7 +8,7 @@
             "message": {
                 "type": "setDiffData",
                 "data": {
-                    "path": "diff-viewer.ts",
+                    "path": "src/webviews/react/diff-viewer/DiffViewerApp.tsx",
                     "leftLabel": "HEAD",
                     "rightLabel": "Working tree",
                     "languageId": "typescript",

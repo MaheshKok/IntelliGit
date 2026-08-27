@@ -353,6 +353,12 @@
     "diff.newlineDifference": "파일은 줄 바꿈 형식만 다릅니다",
     "diff.error.load": "차이점을 로드하지 못했습니다: {error}",
     "diff.loading": "차이점 로드 중...",
-    "diff.editable.blockHint": "두 번 클릭하거나 Enter 키를 눌러 편집",
-    "diff.editable.editingAria": "작업 트리 블록 편집"
+    "diff.editable.blockHint": "클릭하여 편집",
+    "diff.editable.editingAria": "작업 트리 블록 편집",
+    "diff.editable.revertHunk": "이 변경 내용 되돌리기",
+    "diff.readOnly.pane": "이쪽은 읽기 전용입니다",
+    "diff.toolbar.prevChange.title": "이전 변경 사항 (Alt+↑)",
+    "diff.toolbar.prevChange.label": "이전 변경 사항",
+    "diff.toolbar.nextChange.title": "다음 변경 사항 (Alt+↓)",
+    "diff.toolbar.nextChange.label": "다음 변경 사항"
 }

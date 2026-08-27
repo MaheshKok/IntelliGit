@@ -87,5 +87,7 @@
     "configuration.commitCheckState.enum.allChecked": "默认选中提交面板中的初始文件和新发现的文件。",
     "configuration.commitCheckState.enum.noneChecked": "默认不选中提交面板中的初始文件和新发现的文件（默认值）。",
     "configuration.commitCheckState.enum.preserveSelection": "恢复每个存储库之前选中的文件；新发现的文件保持未选中状态。",
-    "configuration.commitCheckState.markdownDescription": "控制提交面板加载或发现新路径时如何选中文件。`allChecked` 选中初始文件和新文件，`noneChecked` 不选中这些文件（默认值），`preserveSelection` 恢复每个存储库之前的选择，同时不选中新文件。显式选择会在刷新时保留。更改在重新加载窗口后生效。"
+    "configuration.commitCheckState.markdownDescription": "控制提交面板加载或发现新路径时如何选中文件。`allChecked` 选中初始文件和新文件，`noneChecked` 不选中这些文件（默认值），`preserveSelection` 恢复每个存储库之前的选择，同时不选中新文件。显式选择会在刷新时保留。更改在重新加载窗口后生效。",
+    "command.diffShowInIntelliGit": "在 IntelliGit 中显示差异",
+    "command.diffShowInVsCode": "在 VS Code 中显示差异"
 }

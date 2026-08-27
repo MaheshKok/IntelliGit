@@ -8,6 +8,33 @@
 /** Editor row height in pixels, matched to the `.code-line` CSS line-height. */
 export const LINE_HEIGHT_PX = 20;
 
+/**
+ * The floor for the trailing space, in rows, used until the viewport has been measured.
+ * On the first paint there is no measurement yet, and a trailing space of zero would put
+ * the last line flush against the bottom edge — which reads as a truncated file.
+ */
+const TRAILING_ROWS = 3;
+
+/**
+ * The scrollable length of a diff: the document, plus a whole viewport of empty space
+ * below it.
+ *
+ * A viewport's worth is what lets the last line scroll up to the top edge and then out
+ * of sight, the way a code editor behaves. A few fixed rows only ever lifted the final
+ * line clear of the bottom bezel, so a long file still ended abruptly against the frame.
+ *
+ * The trailing space is added to the SCROLL RANGE only, never to `canonicalTotalPx`.
+ * That number is the canonical space every pane offset, hunk extent and connector ribbon
+ * is derived from, so padding it would move real geometry rather than simply letting the
+ * scroller travel further than the document.
+ *
+ * `viewportPx` is required rather than defaulted: a caller that has not threaded the
+ * measurement through would otherwise silently keep the old, too-short range.
+ */
+export function scrollRangePx(canonicalTotalPx: number, viewportPx: number): number {
+    return canonicalTotalPx + Math.max(viewportPx, TRAILING_ROWS * LINE_HEIGHT_PX);
+}
+
 /** A consumer-defined pane identifier. Pane order is supplied to the engine. */
 export type PaneId = string;
 
@@ -136,13 +163,23 @@ function clamp(value: number, min: number, max: number): number {
 
 /**
  * Maps canonical scroll to one pane's translated offset. The pane advances
- * proportionally inside a segment and clamps to its own scrollable extent.
+ * proportionally inside a segment and clamps to its own full height.
+ *
+ * Its own FULL height, not `height - viewportH`. The shorter cap stopped a pane the moment its
+ * last screenful reached the bottom edge, so past that point the scrollbar kept travelling while
+ * the code stood still — the last lines pinned against the frame, which is what reads as a file
+ * cut off at the bottom. `scrollRangePx` hangs a whole viewport of empty space below the
+ * document; this is the half that lets the panes actually move through it.
+ *
+ * The viewport height is deliberately not a parameter. It was one, and it was the thing making
+ * the cap wrong; taking it back would also let a caller pass `undefined` into the arithmetic,
+ * where `total - undefined` is `NaN` and every comparison against it is false — a clamp that
+ * silently stops clamping.
  */
 export function paneOffsetForCanonical<Pane extends PaneId>(
     layout: DiffVerticalLayout<Pane>,
     pane: Pane,
     canonicalScroll: number,
-    viewportH: number,
 ): number {
     const { canonicalTopPx, canonicalHPx, paneTopPx, paneHPx, paneTotalPx } = layout;
     if (canonicalTopPx.length === 0) return 0;
@@ -150,8 +187,7 @@ export function paneOffsetForCanonical<Pane extends PaneId>(
     const segmentHeight = canonicalHPx[i];
     const fraction = segmentHeight > 0 ? (canonicalScroll - canonicalTopPx[i]) / segmentHeight : 0;
     const raw = paneTopPx[pane][i] + fraction * paneHPx[pane][i];
-    const maxOffset = Math.max(0, paneTotalPx[pane] - viewportH);
-    return clamp(raw, 0, maxOffset);
+    return clamp(raw, 0, paneTotalPx[pane]);
 }
 
 /** Horizontal control-point proximity (fraction of the divider strip). */
@@ -166,6 +202,27 @@ export interface RibbonSpan {
     curveX0: number;
     curveX1: number;
     x1: number;
+}
+
+/**
+ * The span a two-pane connector is drawn across: the empty channel between the panes,
+ * and nothing outside it. `paneEdge` and `nextPaneEdge` are the facing inner edges, in
+ * the ribbon layer's own coordinates.
+ *
+ * The whole channel bends -- there are no flat runs, because a flat run is the part of
+ * a ribbon that lies UNDER a pane, and a two-pane viewer has no room for one. That is
+ * the defect this replaces: the viewer passed `x0 = 0, x1 = viewportWidth`, so every
+ * band ran the full width and composited over both panes' code instead of bridging a
+ * gap. Nothing failed, because a translucent SVG drawn on top changes no computed
+ * style and the contrast oracle reads computed styles.
+ *
+ * Argument order is not trusted: the edges come from two DOM rects, and a right-to-left
+ * layout hands them back the other way round.
+ */
+export function connectorChannelSpan(paneEdge: number, nextPaneEdge: number): RibbonSpan {
+    const x0 = Math.min(paneEdge, nextPaneEdge);
+    const x1 = Math.max(paneEdge, nextPaneEdge);
+    return { x0, curveX0: x0, curveX1: x1, x1 };
 }
 
 /**

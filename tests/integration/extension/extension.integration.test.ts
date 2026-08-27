@@ -756,6 +756,15 @@ vi.mock("vscode", () => ({
         createTerminal,
         createOutputChannel,
         withProgress,
+        // Activation registers the diff view-switch buttons, which listen here. Stable API
+        // since 1.67, so the double owes it the same shape rather than the production code
+        // owing it a guard: a guard would silently drop the buttons if it ever went missing.
+        tabGroups: {
+            activeTabGroup: { activeTab: undefined },
+            close: vi.fn(async () => true),
+            onDidChangeTabs: vi.fn(() => ({ dispose: vi.fn() })),
+            onDidChangeTabGroups: vi.fn(() => ({ dispose: vi.fn() })),
+        },
     },
     workspace: {
         get workspaceFolders() {

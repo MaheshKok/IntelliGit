@@ -27,6 +27,8 @@ export interface DiffViewerPanelOptions {
     rightLabel: string;
     /** Syntax language id supplied by the host. */
     languageId: string;
+    /** Distinguishes two diffs whose path and labels read the same; see `DiffViewerData`. */
+    documentId?: string;
     /** Already-loaded left source text. */
     leftText: string;
     /** Already-loaded right source text. */
@@ -49,6 +51,7 @@ interface DiffViewerSnapshot {
     leftLabel: string;
     rightLabel: string;
     languageId: string;
+    documentId?: string;
     leftText: string;
     rightText: string;
 }
@@ -246,6 +249,7 @@ export class DiffViewerPanel {
             leftLabel: options.leftLabel,
             rightLabel: options.rightLabel,
             languageId: options.languageId,
+            documentId: options.documentId,
             leftText: options.leftText,
             rightText: options.rightText,
         };

@@ -11,7 +11,13 @@ import { describe, expect, it } from "vitest";
  * than a literal being restated in a second place.
  */
 const ROOT = path.resolve(__dirname, "../../..");
-const read = (rel: string): string => fs.readFileSync(path.join(ROOT, rel), "utf-8");
+/**
+ * Comments are stripped, because every matcher below reads declarations. A comment explaining
+ * why a rule does NOT use some property otherwise reads as the rule using it, and a comment
+ * containing a brace ends the rule early for `ruleBody`.
+ */
+const read = (rel: string): string =>
+    fs.readFileSync(path.join(ROOT, rel), "utf-8").replace(/\/\*[\s\S]*?\*\//g, "");
 
 const CORE_CSS = read("src/webviews/react/diff-core/diff-core.css");
 const VIEWER_CSS = read("src/webviews/react/diff-viewer/diff-viewer.css");
@@ -23,6 +29,22 @@ function ruleBody(css: string, selector: string): string {
     const match = new RegExp(`(?:^|\\n)${escaped}\\s*\\{([^}]*)\\}`).exec(css);
     if (!match) throw new Error(`no rule for ${selector}`);
     return match[1];
+}
+
+/** Every top-level rule whose selector names the editable-block family, selector and body. */
+function editableBlockRules(css: string): { selector: string; body: string }[] {
+    return (
+        [...css.matchAll(/(?:^|\n)([^{}\n][^{}]*)\{([^}]*)\}/g)]
+            .map((match) => ({ selector: match[1].trim(), body: match[2] }))
+            // Pseudo-ELEMENTS paint something other than the block's own box -- `::selection` fills
+            // the selected glyphs and has to. Pseudo-classes stay in scope: `:hover` is exactly where
+            // a ring comes back.
+            .filter(
+                (rule) =>
+                    /\.diff-edit(able|ing)-block/.test(rule.selector) &&
+                    !rule.selector.includes("::"),
+            )
+    );
 }
 
 function declaration(css: string, selector: string, property: string): string {
@@ -43,6 +65,16 @@ function verticalPadding(shorthand: string): [number, number] {
     return [parts[0], parts.length >= 3 ? parts[2] : parts[0]];
 }
 
+/** Left and right of a shorthand `padding`, in px. */
+function horizontalPadding(shorthand: string): [number, number] {
+    const parts = shorthand.split(/\s+/).map((part) => {
+        const value = Number.parseFloat(part);
+        if (Number.isNaN(value)) throw new Error(`non-numeric padding component ${part}`);
+        return value;
+    });
+    return [parts.length === 1 ? parts[0] : (parts[3] ?? parts[1]), parts[1]];
+}
+
 describe("editable diff pane geometry", () => {
     it("gives the editable pane the same vertical padding as the rows it aligns with", () => {
         // Any vertical padding offsets every line in this pane against its counterpart in the
@@ -50,9 +82,19 @@ describe("editable diff pane geometry", () => {
         // 0-based multiples of the line height. It also eats into a border-box height that is
         // exactly `lines x line-height`, pushing the last rows into a scrollbar of the
         // textarea's own inside a viewport that clips it.
-        expect(verticalPadding(declaration(VIEWER_CSS, ".diff-edit-textarea", "padding"))).toEqual(
-            verticalPadding(declaration(CORE_CSS, ".code-line", "padding")),
-        );
+        expect(
+            verticalPadding(
+                declaration(VIEWER_CSS, ".diff-editing-block .diff-edit-textarea", "padding"),
+            ),
+        ).toEqual(verticalPadding(declaration(CORE_CSS, ".code-line", "padding")));
+    });
+
+    it("gives the editable pane the same horizontal padding as the rows it aligns with", () => {
+        expect(
+            horizontalPadding(
+                declaration(VIEWER_CSS, ".diff-editing-block .diff-edit-textarea", "padding"),
+            ),
+        ).toEqual(horizontalPadding(declaration(CORE_CSS, ".code-line", "padding")));
     });
 
     it("draws the editable pane's line boxes at the height the layout math assumes", () => {
@@ -65,7 +107,11 @@ describe("editable diff pane geometry", () => {
         // `var(--diff-line-height, 20px)` named a property nothing in the repo ever defines,
         // which reads as configurable while being a constant, and would silently break this
         // agreement the day someone did define it.
-        const paneLineHeight = declaration(VIEWER_CSS, ".diff-edit-textarea", "line-height");
+        const paneLineHeight = declaration(
+            VIEWER_CSS,
+            ".diff-editing-block .diff-edit-textarea",
+            "line-height",
+        );
         const rowLineHeight = declaration(CORE_CSS, ".code-line", "line-height");
         const layoutPx = /LINE_HEIGHT_PX\s*=\s*(\d+)/.exec(LAYOUT_TS)?.[1];
 
@@ -85,6 +131,92 @@ describe("editable diff pane geometry", () => {
         // them back. `hidden` on both axes, not `overflow-y`: a classic horizontal scrollbar
         // takes its ~15px out of a border-box height that is exactly lines x line-height,
         // which re-creates the vertical overflow the exact height was supposed to remove.
-        expect(declaration(VIEWER_CSS, ".diff-edit-textarea", "overflow")).toBe("hidden");
+        expect(declaration(VIEWER_CSS, ".diff-editing-block .diff-edit-textarea", "overflow")).toBe(
+            "hidden",
+        );
+    });
+
+    it("insets the editable pane from the code block's named gutter contract", () => {
+        const leftInset = declaration(
+            VIEWER_CSS,
+            ".diff-editing-block .diff-edit-textarea",
+            "left",
+        );
+        const rightInset = declaration(
+            VIEWER_CSS,
+            ".diff-editing-block.line-numbers-right .diff-edit-textarea",
+            "right",
+        );
+
+        // Both insets clear the WHOLE number column, action strip included, because the strip is
+        // cut out of that column on both panes -- the revert arrow stands in the pane opposite
+        // the editable one, and the columns stay equal so the two code bodies still line up. An
+        // inset that cleared only `--diff-line-number-gutter` would leave the textarea overlapping
+        // its own pane's strip by exactly the arrow's width.
+        for (const inset of [leftInset, rightInset]) {
+            expect(inset).toContain("var(--diff-line-number-gutter)");
+            expect(inset).toContain("var(--diff-action-gutter)");
+            expect(inset).not.toMatch(/\d+px/);
+        }
+    });
+
+    it("never sizes the interaction layer to the shared scroll extent", () => {
+        // `--diff-line-min-width` is the widest line across BOTH panes, and every `.code-lines`
+        // grid track is sized to it so the panes scroll in lockstep. Sizing this layer to it as
+        // well looks like the same contract and is the opposite of it: a textarea wide enough
+        // to hold its own content has a `scrollLeft` pinned at 0, so `syncHorizontalScroll`
+        // cannot move it while the code scrolls underneath. Measured in a browser: 400px of
+        // drift, a click landing five characters from the glyph under the pointer. It also
+        // removes the browser's own caret-follow, because a textarea with nothing to scroll
+        // has no way to bring a long line's caret back into view.
+        //
+        // Left at the visible width the layer is a real scroll container, and the part of the
+        // shared position it cannot reach is carried as a translation instead — see the
+        // `shortfall` in `syncHorizontalScroll`. Asserted over the whole declaration block
+        // rather than one property because the failure is "sized to the extent", which
+        // `min-width`, `width`, and `padding-right` can each express.
+        expect(ruleBody(VIEWER_CSS, ".diff-editing-block .diff-edit-textarea")).not.toContain(
+            "--diff-line-min-width",
+        );
+    });
+
+    it("draws no box around a block that is hovered or being typed into", () => {
+        // An editable block is a stretch of the file, not a form control: a hover ring, an
+        // outline while typing, or a tint of its own all fence it off from the code it belongs
+        // to. The caret says where the typing is going and `cursor: text` says the block can be
+        // entered, which is the whole affordance.
+        //
+        // Asserted across every rule in the family rather than by naming the two that used to
+        // paint: a ring re-added under any other selector -- hover, focus-within, a state class
+        // -- puts the box back just as visibly, and a test that banned only the old selectors
+        // would not see it.
+        expect(declaration(VIEWER_CSS, ".diff-editable-block", "cursor")).toBe("text");
+
+        for (const rule of editableBlockRules(VIEWER_CSS)) {
+            for (const [, property, value] of rule.body.matchAll(
+                /(?:^|;)\s*(outline|box-shadow|border|background|background-color)\s*:\s*([^;]+)/g,
+            )) {
+                expect(
+                    value.trim(),
+                    `${rule.selector} paints ${property} — an editable block carries no box`,
+                ).toMatch(/^(0|none|transparent)$/);
+            }
+        }
+    });
+
+    it("keeps the native interaction layer transparent over the shared highlighted scroll plane", () => {
+        const textarea = ".diff-editing-block .diff-edit-textarea";
+
+        expect(declaration(VIEWER_CSS, textarea, "color")).toBe("transparent");
+        expect(declaration(VIEWER_CSS, textarea, "-webkit-text-fill-color")).toBe("transparent");
+        expect(declaration(VIEWER_CSS, textarea, "caret-color")).toContain(
+            "--vscode-editorCursor-foreground",
+        );
+        expect(declaration(VIEWER_CSS, ".diff-editing-block .code-block", "pointer-events")).toBe(
+            "none",
+        );
+        expect(declaration(VIEWER_CSS, `${textarea}::selection`, "background")).toContain(
+            "--vscode-editor-selectionBackground",
+        );
     });
 });

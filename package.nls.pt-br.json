@@ -87,5 +87,7 @@
     "configuration.commitCheckState.enum.allChecked": "Marque por padrão os arquivos iniciais e recém-detectados no painel de commits.",
     "configuration.commitCheckState.enum.noneChecked": "Deixe por padrão os arquivos iniciais e recém-detectados desmarcados no painel de commits (padrão).",
     "configuration.commitCheckState.enum.preserveSelection": "Restaure a seleção anterior de arquivos marcados para cada repositório; os arquivos recém-detectados permanecem desmarcados.",
-    "configuration.commitCheckState.markdownDescription": "Controla como os arquivos são marcados quando o painel de commits é carregado ou detecta novos caminhos. `allChecked` marca os arquivos iniciais e novos, `noneChecked` os deixa desmarcados (padrão) e `preserveSelection` restaura a seleção anterior de cada repositório enquanto deixa os novos arquivos desmarcados. As escolhas explícitas são preservadas durante a atualização. As alterações entram em vigor depois que a janela é recarregada."
+    "configuration.commitCheckState.markdownDescription": "Controla como os arquivos são marcados quando o painel de commits é carregado ou detecta novos caminhos. `allChecked` marca os arquivos iniciais e novos, `noneChecked` os deixa desmarcados (padrão) e `preserveSelection` restaura a seleção anterior de cada repositório enquanto deixa os novos arquivos desmarcados. As escolhas explícitas são preservadas durante a atualização. As alterações entram em vigor depois que a janela é recarregada.",
+    "command.diffShowInIntelliGit": "Mostrar diferença no IntelliGit",
+    "command.diffShowInVsCode": "Mostrar diferença no VS Code"
 }

@@ -5,6 +5,36 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.31.0] - 2026-08-27
+
+### Added
+
+- Each changed block has a revert arrow. Click it to send that block back to the other side.
+- An open block re-diffs as you type, so the colours keep up with the edit.
+- An edited pane saves itself two seconds after you stop typing.
+- A file that exists on one side only now collapses to a single pane, with a marker where the missing side would be.
+- Up and down buttons jump to the next and previous change, on Alt+Up and Alt+Down.
+- Two buttons in the editor title bar switch a diff between the IntelliGit viewer and VS Code's own.
+
+### Changed
+
+- Diff blocks are painted the same way as the merge editor's.
+- Clicking a read-only pane puts a caret where you clicked, and refuses the edit next to it instead of doing nothing.
+- One click puts the caret in an editable block. The block keeps its colours while you type, and no longer gets a box drawn around it.
+- A diff scrolls until its last line leaves the top of the screen, like a code editor.
+- Commits in the pane headers are shown as seven characters instead of forty.
+- The revert arrow sits on the pane the change came from, next to that pane's line number, in the same green as the change stripe.
+
+### Removed
+
+- The file path above the toolbar. The tab title and VS Code's breadcrumb bar already name the file.
+
+### Fixed
+
+- Opening a second file from the changed-files list no longer keeps the previous file's scroll position.
+- A read-only pane no longer draws a box around itself when you click it.
+- An editable diff session is released once instead of twice.
+
 ## [0.30.0] - 2026-08-27
 
 ### Added

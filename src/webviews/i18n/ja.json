@@ -353,6 +353,12 @@
     "diff.newlineDifference": "ファイルは改行形式のみ異なります",
     "diff.error.load": "差分の読み込みに失敗しました: {error}",
     "diff.loading": "差分を読み込み中…",
-    "diff.editable.blockHint": "ダブルクリックするか Enter キーを押して編集",
-    "diff.editable.editingAria": "作業ツリーのブロックを編集"
+    "diff.editable.blockHint": "クリックして編集",
+    "diff.editable.editingAria": "作業ツリーのブロックを編集",
+    "diff.editable.revertHunk": "この変更を元に戻す",
+    "diff.readOnly.pane": "この側は読み取り専用です",
+    "diff.toolbar.prevChange.title": "前の変更 (Alt+↑)",
+    "diff.toolbar.prevChange.label": "前の変更",
+    "diff.toolbar.nextChange.title": "次の変更 (Alt+↓)",
+    "diff.toolbar.nextChange.label": "次の変更"
 }

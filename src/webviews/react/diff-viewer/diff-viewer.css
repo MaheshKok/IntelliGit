@@ -3,8 +3,19 @@
 .diff-viewer {
     --diff-toolbar-bg: var(--vscode-sideBar-background, var(--diff-editor-bg));
     --diff-header-bg: var(--vscode-editorGroupHeader-tabsBackground, var(--diff-editor-bg));
+    /* The empty channel between the panes, and the only place a connector is drawn.
+       Without it the panes met flush and the ribbon layer had no gap to cross, so it
+       spanned the whole viewport and composited over both panes' code -- see the note
+       on .diff-ribbon. Sized against the 33px line-number gutter so the surface reads
+       as one set of channels rather than a wide gap and a narrow one. Any grid that
+       must stay column-aligned with the panes carries the same gap. */
+    --diff-connector-gutter: 28px;
     display: flex;
     flex-direction: column;
+    /* The containing block `.diff-readonly-notice` positions against. The root rather than a
+       pane, because the notice follows the caret and the caret's rect is already in viewport
+       coordinates -- one origin to subtract, not one per pane. */
+    position: relative;
     height: 100vh;
     overflow: hidden;
     color: var(--diff-editor-fg);
@@ -26,6 +37,47 @@
     align-items: center;
     gap: 4px;
     min-width: 0;
+}
+
+/* Same shape as the merge editor's conflict navigation, because it is the same move. */
+.toolbar-nav-group {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+}
+
+.toolbar-separator {
+    width: 1px;
+    height: 16px;
+    margin: 0 4px;
+    background: color-mix(in srgb, var(--diff-border) 80%, transparent);
+}
+
+.toolbar-icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 24px;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--vscode-foreground);
+    line-height: 1;
+    opacity: 0.9;
+    cursor: pointer;
+}
+
+.toolbar-icon-btn:hover:not(:disabled) {
+    background: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.12));
+    border-color: color-mix(in srgb, var(--diff-border) 80%, transparent);
+    opacity: 1;
+}
+
+.toolbar-icon-btn:disabled {
+    opacity: 0.45;
+    cursor: default;
 }
 
 .toolbar-btn {
@@ -67,11 +119,26 @@
     height: 12px;
 }
 
+.diff-pane-lock {
+    /* Spacing and baseline are CSS here rather than a JSX `{" "}`, because that space is
+       emitted whether or not the lock is, so it indents the label of every pane including
+       the editable one. `.toolbar-icon` is inline-flex, so the 12px box sits ON the text
+       baseline and hangs above the 11px label's midline; -2px drops it back onto it. Kept
+       inline rather than making `.diff-pane-meta` a flex row, which would take the
+       ellipsis truncation of a long path with it. */
+    margin-right: 4px;
+    opacity: 0.64;
+    vertical-align: -2px;
+}
+
 .dropdown-icon {
     opacity: 0.7;
     margin-left: -1px;
 }
 
+/* Sits above `.diff-toolbar`, so it draws no bottom rule of its own: the toolbar's own
+   border already separates the two strips from the panes, and a second line between two
+   bands that already differ in background reads as clutter rather than structure. */
 .diff-header {
     display: flex;
     align-items: center;
@@ -79,18 +146,14 @@
     min-height: 34px;
     padding: 4px 10px;
     background: var(--diff-header-bg);
-    border-bottom: 1px solid var(--diff-border);
     flex-shrink: 0;
 }
 
-.file-path {
-    min-width: 0;
-    overflow: hidden;
-    color: var(--vscode-foreground);
-    font-size: 14px;
-    font-weight: 600;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+/* The header holds only occasional markers now that the path row is gone, so most files
+   give it nothing at all. Without this it would still claim its height and its background,
+   leaving an empty strip above the toolbar on every clean diff. */
+.diff-header:empty {
+    display: none;
 }
 
 .diff-newline-marker {
@@ -102,9 +165,29 @@
     white-space: nowrap;
 }
 
+/* Placed at the caret by inline `left`/`top`, against `.diff-viewer` as the containing
+   block. `pointer-events: none` because it appears under the pointer the moment the reader
+   tries to type: a bubble that could be hovered or clicked would take the next keystroke's
+   target with it. The hover-widget tokens rather than the header's, since this is the same
+   kind of thing VS Code paints over code and must stay legible against it. */
+.diff-readonly-notice {
+    position: absolute;
+    z-index: 5;
+    margin-top: 18px;
+    padding: 2px 8px;
+    border: 1px solid var(--vscode-editorHoverWidget-border, var(--diff-pane-boundary));
+    border-radius: 4px;
+    background: var(--vscode-editorHoverWidget-background, var(--diff-header-bg));
+    color: var(--vscode-editorHoverWidget-foreground, var(--diff-editor-fg));
+    font-size: 12px;
+    white-space: nowrap;
+    pointer-events: none;
+}
+
 .diff-pane-meta-row {
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    column-gap: var(--diff-connector-gutter);
     min-height: 24px;
     background: color-mix(in srgb, var(--diff-editor-bg) 92%, #000 8%);
     border-bottom: 1px solid var(--diff-border);
@@ -164,64 +247,222 @@
     position: relative;
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    column-gap: var(--diff-connector-gutter);
     min-height: 0;
 }
 
 .diff-pane {
     min-width: 0;
     background: transparent;
+    /* A read-only pane is `contentEditable` so that clicking it places a real caret, which
+       makes it focusable, which makes Chromium ring the whole pane. The ring says "this is a
+       form control" about a stretch of a file that is not one, and it frames the pane rather
+       than the line the reader clicked. Same call as `.diff-edit-textarea` below: the caret is
+       the focus affordance here, so it is the caret that must stay visible, not a box. */
+    outline: 0;
 }
 
-.diff-pane + .diff-pane {
+/* A one-sided file (added or deleted) renders one pane, so the grid carries one track and
+   the connector channel closes: a gutter between a pane and nothing is dead width, and the
+   pane walls that frame that channel have no channel left to frame. `soleSidedPane` in
+   segmentMarkers.ts decides this, and DiffViewerApp mounts only the surviving column --
+   the rule here is what makes the survivor take the width the other one gave up. */
+.diff-viewer-single .diff-columns,
+.diff-viewer-single .diff-pane-meta-row {
+    grid-template-columns: minmax(0, 1fr);
+    column-gap: 0;
+}
+
+.diff-viewer-single .diff-pane-left,
+.diff-viewer-single .diff-pane-right {
+    border-right: 0;
+    border-left: 0;
+}
+
+/* Both walls of the connector channel, not one seam between two touching panes: with a
+   gap between them a single border reads as an edge belonging to whichever pane drew
+   it, and the channel looks like padding rather than a lane the ribbons run in. */
+.diff-pane-left {
+    border-right: 1px solid var(--diff-pane-boundary);
+}
+
+.diff-pane-right {
     border-left: 1px solid var(--diff-pane-boundary);
 }
 
-/* A changed block is marked at its edge, never underneath its code.
-   The wash this replaced is not a taste question, it is arithmetic: syntax tokens
-   are coloured for the plain editor background, and VS Code's light themes give
-   the number token #098658, which measures 4.60:1 on white -- 0.10 above the 4.5
-   floor `tests/visual/oracles/contrast.ts` enforces. A mix as faint as 4% took it
-   to 4.3-4.4 in light-modern and hc-light, so there is no wash percentage that is
-   both visible and legal here, and baselining the finding would pin a real
-   regression the pixel gate exists to catch.
-   An inset box-shadow paints inside the block's own border box, so the bar costs
-   the code no width and the line-number gutter no room, and it never lands under a
-   glyph: the code rows start 9px in and the gutter's digits are right-aligned
-   20px in. Contrast is untouched because nothing moved behind any text. */
+/* A changed block is marked at its edge on every theme, and washed behind its code at
+   the merge editor's own strength: block at 15%, changed word fragment at 30%, mixed
+   toward the live editor background exactly as merge-editor.css:40-48 mixes
+   --merge-*-block-bg and --pycharm-*. The two surfaces read as one product because
+   they are literally the same two numbers.
+   These strengths cost contrast, and that cost is accepted deliberately rather than
+   discovered later. Laddered through tests/visual/nonPixelOracles.spec.ts, counting
+   only findings NEW against this surface's baseline (which recorded none):
+
+     block/word   failing projects
+       7% / 14%   light-modern x2, hc-light x2
+      10% / 20%   same four
+      15% / 30%   all eight
+
+   The cause is arithmetic, not a tuning miss: syntax tokens are coloured for the plain
+   editor background, and VS Code's light themes give the number token #098658, which
+   measures 4.60:1 on white against a 4.5 floor. Any wash behind it spends that 0.10.
+   Light themes never clear the floor at any visible percentage; dark themes clear it up
+   to 7%/14% and not beyond.
+   The alternative shapes were measured and offered -- a theme-gated wash that leaves
+   light themes with the edge bar alone, or a non-background ring on light -- and the
+   full merge strength on every theme was chosen over both, with the resulting findings
+   recorded in tests/visual/fixtures/knownFindings.json. Those entries are the accepted
+   cost of matching the merge surface, NOT noise: a NEW finding beyond them still fails,
+   which is what keeps this a decision rather than a hole.
+   Note the merge editor is not itself evidence these strengths are safe. It carries no
+   baselined contrast findings, but its visual fixture is `one / two / three /
+   TWO-MAIN` -- no numeric tokens, so the token closest to the floor never reaches its
+   sampler. This surface renders `const x = 0;` on every row and does exercise it.
+   The wash lands on the block's own background; the edge bar stays an inset box-shadow,
+   which paints inside the border box and so still costs the code no width and the
+   line-number gutter no room. */
+.diff-viewer {
+    --diff-inserted-wash: color-mix(in srgb, var(--diff-ok) 15%, var(--diff-editor-bg));
+    --diff-deleted-wash: color-mix(in srgb, var(--diff-deleted-hue) 15%, var(--diff-editor-bg));
+    --diff-modified-wash: color-mix(in srgb, var(--diff-info) 15%, var(--diff-editor-bg));
+    --diff-word-wash: color-mix(in srgb, var(--diff-info) 30%, var(--diff-editor-bg));
+    /* One number for the revert arrow's box AND the strip reserved for it, because a strip
+       narrower than its glyph clips it and a wider one leaves the arrow floating away from
+       the number it annotates. `App` feeds this same token to
+       `--diff-viewer-action-gutter`, so widening the arrow widens its lane. */
+    --diff-revert-arrow-size: 30px;
+}
+
+/* The action strip, PyCharm's layout: an empty lane between a pane's code and its line
+   numbers, holding that pane's per-hunk revert arrow.
+
+   diff-core sizes the numbers-on-the-right column as `line-number-gutter + action-gutter`
+   and pads the numbers away from the code by the action gutter, which is the merge editor's
+   44px strip. The viewer's other pane numbers on the LEFT and diff-core has no mirrored rule
+   -- the merge editor's middle pane numbers on the left too and must NOT gain a strip (its
+   ribbon geometry reads that column's width back as `gutterWidth(middle, false)`). So the
+   mirror is declared here, under `.diff-viewer`, where it reaches only this surface.
+   `padding-right` rather than `padding-left`: the strip stays next to the code on both
+   sides, which is the whole point -- the arrow annotates a line, not a gap. */
+.diff-viewer .code-block.line-numbers-left {
+    grid-template-columns:
+        calc(var(--diff-line-number-gutter) + var(--diff-action-gutter))
+        minmax(0, 1fr);
+}
+
+.diff-viewer .code-block.line-numbers-left .line-number-row {
+    padding-right: var(--diff-action-gutter);
+}
+
+/* The merge editor's hunk layout, ported to a block that carries one pane rather than
+   three: a 2px rule above and below every changed hunk in the block's own hue, faded
+   the way that surface fades it -- 30% toward the editor background, then 76% opacity
+   (merge-editor.css:596-607, whose --merge-hunk-boundary reads --pycharm-* at 76%).
+   It is drawn as an inset shadow for the same reason the merge editor draws it that
+   way: a border or margin would add height per hunk, and this block's height is the
+   scroll geometry both panes and the connector ribbons are laid out from.
+   Unlike the wash, a bracket costs no contrast -- it is a rule at the block's edge, not
+   a background under a glyph -- so it lands on every theme, and it is the layout signal
+   a light theme gets in place of the wash it cannot pay for.
+   The whole shadow list lives on the marker class as a token because box-shadow does
+   not accumulate across rules: a second rule declaring one would REPLACE the edge bar,
+   not add to it. The marker still paints nothing itself, which is what
+   `tests/unit/visual/diffCorePalette.test.ts` requires of it. */
+.diff-viewer .diff-segment-changed {
+    --diff-hunk-bracket: color-mix(
+        in srgb,
+        color-mix(in srgb, var(--diff-segment-hue, transparent) 30%, var(--diff-editor-bg)) 76%,
+        transparent
+    );
+    --diff-segment-shadow:
+        inset 3px 0 0 var(--diff-segment-hue, transparent),
+        inset 0 2px 0 0 var(--diff-hunk-bracket), inset 0 -2px 0 0 var(--diff-hunk-bracket);
+}
+
+/* One hue per state, read three times by the shadow above. Each background keeps a
+   `transparent` fallback leg -- the same shape diff-core.css uses for
+   --diff-pycharm-modified -- so a theme that stops declaring the token loses the wash
+   and keeps the edge bar, instead of painting `initial` over the code. That leg is also
+   the seam a per-theme gate would be reinstated through, if the contrast cost recorded
+   above is ever reconsidered. */
 .diff-viewer .diff-segment-inserted {
-    box-shadow: inset 3px 0 0 var(--diff-ok);
+    --diff-segment-hue: var(--diff-ok);
+    box-shadow: var(--diff-segment-shadow);
+    background: var(--diff-inserted-wash, transparent);
 }
 
 .diff-viewer .diff-segment-deleted {
-    box-shadow: inset 3px 0 0 var(--diff-danger);
+    --diff-segment-hue: var(--diff-deleted-hue);
+    box-shadow: var(--diff-segment-shadow);
+    background: var(--diff-deleted-wash, transparent);
 }
 
 .diff-viewer .diff-segment-modified {
-    box-shadow: inset 3px 0 0 var(--diff-info);
+    --diff-segment-hue: var(--diff-info);
+    box-shadow: var(--diff-segment-shadow);
+    background: var(--diff-modified-wash, transparent);
 }
 
-/* .diff-segment-empty is deliberately unpainted. Each pane is sized from its own line
-   count (`paneLines[side]` in DiffViewerApp.tsx), so the counterpart of a one-sided
-   hunk is zero rows and therefore zero pixels tall: any background declared on it
-   would be a rule that can never render. The hunk is legible anyway -- the opposite
-   pane carries the coloured edge bar and the ribbon lands on this side's collapsed
-   position. `tests/integration/webviews/diff-viewer.integration.test.tsx` pins the
-   zero height, so a later switch to filler rows fails there rather than silently
-   turning this into a blank band. */
+/* .diff-segment-empty declares no BACKGROUND, and cannot: each pane is sized from its own
+   line count (`paneLines[side]` in DiffViewerApp.tsx), so the counterpart of a one-sided
+   hunk is zero rows and therefore zero pixels tall, and a background on a zero-height box
+   is a rule that can never render. `tests/integration/webviews/diff-viewer.integration.test.tsx`
+   pins that zero height, so a later switch to filler rows fails there rather than silently
+   turning this into a blank band.
 
-/* Which words changed, marked beside the glyphs instead of behind them, for the
-   same reason the block wash is gone. Only a two-sided hunk renders these spans at
-   all: `WordDiffLine` returns a plain highlighted line when the compared line is
-   empty (src/webviews/react/diff-core/segments.tsx:158), so a one-sided hunk has
-   nothing to underline and the modified state is the only one that can carry them.
-   The tint the merge editor paints here is inherited as `transparent` through
-   --diff-pycharm-modified, which merge-editor.css overrides for itself. */
+   It does get a RULE, though, which is a different thing. Leaving the position unmarked
+   meant a reader who saw a gap had to trace the connector across to the other pane to
+   learn whether content was inserted there or removed from there -- the affordance
+   PyCharm draws as a thin line at the collapsed position. A spread box-shadow paints
+   outside the border box without entering layout, so a 0px block still renders a 2px
+   rule and the canonical geometry every pane offset and ribbon is derived from is
+   untouched. The hue comes from the counterpart's state, since this side has none, and it
+   is the counterpart's WASH rather than its accent: the accent is the strength the rail
+   ticks are painted at, which on a full-width rule reads as a bar across the pane instead
+   of a marker beside it. */
+.diff-viewer .diff-gap-inserted,
+.diff-viewer .diff-gap-deleted {
+    box-shadow: 0 0 0 1px var(--diff-gap-hue);
+}
+
+.diff-viewer .diff-gap-inserted {
+    --diff-gap-hue: var(--diff-inserted-wash);
+}
+
+.diff-viewer .diff-gap-deleted {
+    --diff-gap-hue: var(--diff-deleted-wash);
+}
+
+/* Which words changed, marked the way the merge editor marks them: a darker fill of
+   the block's own hue behind the fragment, and nothing else. No underline -- the fill
+   IS the marker, exactly as merge-editor.css:1030-1050 marks one.
+   The strength is that surface's own 30%, on every theme. What that costs was laddered
+   on this token alone, through nonPixelOracles.spec.ts, counting only findings NEW
+   against the diff-viewer baseline (which recorded none):
+
+     word fill    failing projects
+        6%        light-modern x2, hc-light x2   (4 contrast findings each)
+       10%        same four
+       14%        same four
+       18%        + dark-modern x2
+       30%        all eight
+
+   So 14% was the strongest fill dark-modern cleared and no fill at all was legal on a
+   light theme. 30% was chosen over both alternatives anyway -- see the wash comment
+   above for the arithmetic behind the light-theme floor and for why the merge editor's
+   own clean baseline is not evidence of safety here. The resulting findings are
+   recorded in tests/visual/fixtures/knownFindings.json, so a NEW one still fails.
+   Only a two-sided hunk renders these spans at all: `WordDiffLine` returns a plain
+   highlighted line when the compared line is empty
+   (src/webviews/react/diff-core/segments.tsx:158), so a one-sided hunk has nothing to
+   mark and the modified state is the only one that can carry them -- which is why one
+   --diff-info tint covers it rather than a colour per variant.
+   This overrides diff-core's `.word-diff-change` on specificity (0,2,0 over 0,1,0);
+   that rule reads --diff-pycharm-modified, which only merge-editor.css declares. */
 .diff-viewer .word-diff-change {
-    text-decoration-line: underline;
-    text-decoration-color: var(--diff-info);
-    text-decoration-thickness: 2px;
-    text-decoration-skip-ink: none;
-    text-underline-offset: 2px;
+    background: var(--diff-word-wash, transparent);
+    border-radius: 2px;
 }
 
 .diff-ribbon-layer {
@@ -233,14 +474,109 @@
     overflow: visible;
 }
 
-/* The connector fills with the semantic hue itself, not a wash of it. A ribbon
-   crosses the gap between the panes and lands on nothing but the editor
-   background, so it carries its own alpha and needs a colour with saturation left
-   in it; drawing it from a fragment tint made it a near-background band that the
-   0.18 opacity then erased entirely. */
+/* The arrows are placed in viewport coordinates and drawn above the ribbons, so an arrow
+   standing in a pane's action strip is never swallowed by the band running past it. The
+   layer itself takes no pointer events -- it spans the whole viewport, and a transparent
+   sheet over both panes would eat every click on the code -- while each button takes its
+   own back. Buttons start hidden and are revealed by the scroll driver: their position is
+   set in the frame after layout, and an unpositioned button would flash stacked at the top
+   of the viewport first. */
+.diff-action-layer {
+    position: absolute;
+    inset: 0;
+    z-index: 5;
+    pointer-events: none;
+}
+
+.diff-hunk-revert {
+    position: absolute;
+    /* Hidden until the scroll driver places it; revealed as `flex`, which is also what
+       centres the glyph in its box. */
+    display: none;
+    align-items: center;
+    justify-content: center;
+    width: var(--diff-revert-arrow-size);
+    height: var(--diff-revert-arrow-size);
+    padding: 0;
+    /* The vertical half of the same placement, and the only half that is a constant: the driver
+       sets `top` to the centre of the hunk's first line-number row, and this pulls the box up by
+       half its own height so it centres on that row. Written as `translate` rather than folded
+       into `transform`, because `transform` is the pane-dependent horizontal decision the driver
+       owns -- an inline one would overwrite a `transform` declared here, and the two properties
+       compose instead. */
+    translate: 0 -50%;
+    /* No `transform` here on purpose. The scroll driver sets `left` and `transform` together
+       (`revertArrowX`), because `left` on its own does not say which of this box's edges it
+       names -- the strip starts at the left pane's number column and ends at the right
+       pane's, so the two anchor from opposite edges. A default here would be a third opinion
+       that is right half the time. */
+    border: none;
+    border-radius: 3px;
+    background: transparent;
+    /* The semantic hue itself, not a wash of it, and the same one the inserted stripe and the
+       inserted connector already carry -- this arrow writes a hunk back into the editable pane,
+       so it reads as the same act those two mark. A muted foreground grey made it look like
+       chrome that happened to sit in the channel. */
+    color: var(--diff-ok);
+    /* The glyph scales with its box: both are `--diff-revert-arrow-size` x 1.5 of what they
+       were, so the arrow reads at the size it was asked for instead of rattling around in a
+       wider lane. The ceiling is arithmetic, not taste: a text range's client rect is the FONT
+       box (ascent+descent, ~1.29em -- never `line-height`), so a 30px box allows 30/1.29 =
+       23.2px, and anything above that overflows wherever `.diff-viewport` clips at the top of
+       the scroller. `.hunk-action-glyph` in merge-editor.css carries the measurement and why it
+       was invisible on macOS. 21px lands under that ceiling at a 27.1px font box.
+       It is off the type scale, which is why tests/webview/unit/type-scale.test.ts carries an
+       exemption for it: `»` is an icon that happens to be a character, sized to the strip it
+       stands in rather than to anything a reader reads. */
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-size: 21px;
+    font-weight: 700;
+    line-height: 1;
+    cursor: pointer;
+    pointer-events: auto;
+}
+
+/* Hover brightens the plate behind the glyph and leaves the hue alone. Swapping to the editor
+   foreground here would make the arrow lose the colour that says what it does at the exact
+   moment the pointer is on it. */
+.diff-hunk-revert:hover {
+    background: color-mix(in srgb, var(--diff-ok) 18%, transparent);
+}
+
+.diff-hunk-revert:focus-visible {
+    outline: 1px solid var(--vscode-focusBorder, var(--diff-info));
+    outline-offset: -1px;
+}
+
+/* The connector fills with the semantic hue itself, not a wash of it: it carries its
+   own alpha, so drawing it from a fragment tint made it a near-background band that
+   the 0.18 opacity then erased entirely.
+   One fill per variant, the way the merge editor colours its own connectors
+   (merge-editor.css:446-457). This rule is the modification case and the fallback for
+   a ribbon whose segment classifies to nothing; the two below are the one-sided hunks.
+   Before they existed every connector was drawn in --diff-info, so an insertion's band
+   and a modification's band were the same cyan and the variant hue on the block it
+   joined disagreed with the band leading to it.
+   The band really does land on nothing but the editor background now, because
+   --diff-connector-gutter gives it a channel to cross. It did not before: the span ran
+   the full viewport width (`span.x0 = 0`, `span.x1 = viewportW`), and with this layer
+   the last child of .diff-viewport the band composited OVER both panes' code at 0.18 --
+   a veil on the glyphs that the contrast oracle cannot see, because that oracle reads
+   computed styles and an SVG painted on top changes none of them. The panes met flush,
+   so there was no gap for a connector to cross and the comment here described an
+   intent the geometry never had. `connectorChannelSpan` is now the only source of that
+   span; stacking order stopped mattering once the paths cannot reach the code. */
 .diff-ribbon {
     fill: var(--diff-info);
     opacity: 0.18;
+}
+
+.diff-ribbon.diff-segment-inserted {
+    fill: var(--diff-ok);
+}
+
+.diff-ribbon.diff-segment-deleted {
+    fill: var(--diff-deleted-hue);
 }
 
 .diff-vscroll-spacer {
@@ -304,7 +640,7 @@
 }
 
 .diff-change-deleted {
-    background: var(--diff-danger);
+    background: var(--diff-deleted-hue);
 }
 
 .diff-change-modified {
@@ -362,41 +698,61 @@
     text-align: left;
 }
 
+/* The only affordance an editable block carries. A ring on hover and an outline plus a tint while
+   typing drew a form control around a stretch of code, which is the one thing this pane is not:
+   the block is part of the file, and the caret is what says where the typing is going. */
 .diff-editable-block {
     cursor: text;
 }
 
-.diff-editable-block:hover .code-lines {
-    box-shadow: inset 0 0 0 1px
-        color-mix(in srgb, var(--vscode-focusBorder, var(--diff-editor-fg)) 25%, transparent);
+.diff-editing-block {
+    position: relative;
 }
 
-.code-block.diff-editing-block.editing {
-    background: color-mix(
-        in srgb,
-        var(--diff-editor-bg) 88%,
-        var(--vscode-focusBorder, var(--diff-editor-fg)) 12%
-    );
+/* The syntax-painted block stays in flow; the native control above it owns caret, selection, and
+   IME without repainting the code in one flat form-control colour. */
+.diff-editing-block .code-block {
+    pointer-events: none;
 }
 
-/* This is one active block, so it shares its segment's gutter and row count while retaining the
-   native horizontal behavior that follows the caret. The display path stays in `.code-lines` and
-   the edit path feeds its native scroll position back through the shared scrollbar. */
-.diff-edit-textarea {
+.diff-editing-block .diff-edit-textarea {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    /* Clears the action strip as well as the numbers. Both panes reserve a strip so the two
+       code columns stay the same width -- only one of them ever holds an arrow, but a diff
+       whose sides measured differently would read as a layout bug, not as an empty lane. */
+    left: calc(var(--diff-line-number-gutter) + var(--diff-action-gutter));
     box-sizing: border-box;
-    width: 100%;
-    min-width: 0;
+    /* Deliberately NOT widened to `--diff-line-min-width`. Sizing this layer to the shared
+       scroll extent makes its own content fit, which pins its `scrollLeft` at 0 while every
+       `.code-lines` scrolls -- measured 400px of caret drift. Left at the visible width it is
+       a real scroll container: the browser follows the caret when a long line is typed, and
+       `onScroll` feeds that back into the shared position. */
     min-height: 20px;
     padding: 0 9px;
     border: 0;
-    outline: 1px solid
-        color-mix(in srgb, var(--vscode-focusBorder, var(--diff-editor-fg)) 55%, transparent);
-    outline-offset: -1px;
+    outline: 0;
     resize: none;
-    color: var(--diff-editor-fg);
-    background: var(--diff-editor-bg);
+    color: transparent;
+    -webkit-text-fill-color: transparent;
+    caret-color: var(--vscode-editorCursor-foreground, var(--diff-editor-fg));
+    background: transparent;
     font: inherit;
     line-height: 20px;
     white-space: pre;
     overflow: hidden;
+}
+
+.diff-editing-block.line-numbers-right .diff-edit-textarea {
+    right: calc(var(--diff-line-number-gutter) + var(--diff-action-gutter));
+    left: 0;
+}
+
+.diff-editing-block .diff-edit-textarea::selection {
+    background: var(
+        --vscode-editor-selectionBackground,
+        color-mix(in srgb, var(--vscode-focusBorder, var(--diff-editor-fg)) 48%, transparent)
+    );
 }

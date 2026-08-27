@@ -371,6 +371,12 @@
     "diff.newlineDifference": "Les fichiers diffèrent uniquement par le format des sauts de ligne",
     "diff.error.load": "Échec du chargement du diff : {error}",
     "diff.loading": "Chargement du diff...",
-    "diff.editable.blockHint": "Double-cliquez ou appuyez sur Entrée pour modifier",
-    "diff.editable.editingAria": "Modifier le bloc de l’arborescence de travail"
+    "diff.editable.blockHint": "Cliquez pour modifier",
+    "diff.editable.editingAria": "Modifier le bloc de l’arborescence de travail",
+    "diff.editable.revertHunk": "Annuler cette modification",
+    "diff.readOnly.pane": "Ce côté est en lecture seule",
+    "diff.toolbar.prevChange.title": "Modification précédente (Alt+↑)",
+    "diff.toolbar.prevChange.label": "Modification précédente",
+    "diff.toolbar.nextChange.title": "Modification suivante (Alt+↓)",
+    "diff.toolbar.nextChange.label": "Modification suivante"
 }

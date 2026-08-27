@@ -18,13 +18,9 @@ export function paneOffsetsForCanonical<Pane extends PaneId>(
     layout: DiffVerticalLayout<Pane>,
     paneIds: readonly Pane[],
     canonicalScroll: number,
-    viewportH: number,
 ): Record<Pane, number> {
     return Object.fromEntries(
-        paneIds.map((pane) => [
-            pane,
-            paneOffsetForCanonical(layout, pane, canonicalScroll, viewportH),
-        ]),
+        paneIds.map((pane) => [pane, paneOffsetForCanonical(layout, pane, canonicalScroll)]),
     ) as Record<Pane, number>;
 }
 
@@ -73,6 +69,28 @@ export function syncHorizontalScroll<Pane extends PaneId>(
 }
 
 /**
+ * Keeps a text layer that floats over a code plane level with the glyphs beneath it.
+ *
+ * `syncHorizontalScroll` clamps every scroller to its own content, which is the right thing for
+ * panes -- each `.code-lines` track is sized to the widest line in the view, so they all reach
+ * the same position. An overlaid `<textarea>` cannot: its scroll extent is only its own longest
+ * line, so it stops short and the invisible text it holds stops lining up with the code it is
+ * supposed to be sitting on. A caret then lands on a different character than the one under the
+ * pointer -- measured at 400px, five characters, on a diff with one long line elsewhere.
+ *
+ * The part of the position the overlay could not scroll to is carried as a translation instead.
+ * When it *can* reach the position -- a long draft line, or the browser scrolling the caret back
+ * into view -- the shortfall is zero and no transform is applied at all, leaving the native
+ * scroll to do the work and keeping the two mechanisms from fighting.
+ */
+export function alignScrollOverlays(overlays: Iterable<HTMLElement>, left: number): void {
+    for (const overlay of overlays) {
+        const shortfall = overlay.scrollLeft - left;
+        overlay.style.transform = shortfall === 0 ? "" : `translateX(${shortfall}px)`;
+    }
+}
+
+/**
  * Sizes and exposes the synthetic shared horizontal scrollbar from the widest
  * line and the narrowest mounted pane, preserving the old skipped-layout
  * fallback when content-visibility reports no client width.
@@ -106,6 +124,12 @@ export function updateSharedScrollbar<Pane extends PaneId>(
         lastPaneClientWidth.current = minClientWidth;
     }
     sharedInner.style.width = `calc(100% + ${maxLineLength}ch + ${linePaddingPx}px - ${minClientWidth}px)`;
+    // Un-hide before measuring, every time. `hidden` is `display: none`, so a bar hidden by an
+    // earlier call reports a zero-width box AND a zero-width inner -- which computes a zero
+    // scroll range, which hides it again. The state latches: once a view has no overflow, no
+    // later widening can ever bring the bar back. Reachable as soon as the extent can grow
+    // after mount, which an open editing draft does.
+    sharedBar.hidden = false;
     const maxScroll = Math.max(0, sharedInner.offsetWidth - sharedBar.clientWidth);
     sharedBar.hidden = maxScroll < 1;
     if (currentLeft > maxScroll) syncToLeft(maxScroll);

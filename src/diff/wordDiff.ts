@@ -286,3 +286,37 @@ export function buildWordDiffMask(line: string, compareLine: string): boolean[] 
 
     return mask;
 }
+
+/**
+ * Closes whitespace-only holes that sit between two changed tokens.
+ *
+ * The token LCS pairs a space with a space, so on a line where most words changed the
+ * mask comes back as word/hole/word/hole and the fragment fill renders as speckle
+ * instead of one block. The gap is an artifact of tokenizing, not a real unchanged
+ * region: nothing meaningful survived between two changed words.
+ *
+ * Only interior runs are bridged. Whitespace at either end, and whitespace flanked by
+ * genuinely unchanged text, stays unmarked -- a leading-indent change is a real change
+ * that `buildWordDiffMask` already reports on its own, and `bridged` keeps the two
+ * apart so a caller can still tint that one neutrally.
+ */
+export function bridgeChangedWordRuns(
+    tokens: string[],
+    mask: boolean[],
+): { changed: boolean[]; bridged: boolean[] } {
+    const changed = [...mask];
+    const bridged = tokens.map(() => false);
+
+    // Flanks read from the incoming mask rather than from `changed`. Today the two agree:
+    // `tokenizeWordDiff` takes whitespace greedily, so two bridgeable tokens are never
+    // adjacent and no bridge can qualify the next one. Reading the untouched mask keeps
+    // that true without depending on the tokenizer to stay greedy.
+    for (let i = 1; i < tokens.length - 1; i++) {
+        if (mask[i] || !mask[i - 1] || !mask[i + 1]) continue;
+        if (!/^\s+$/.test(tokens[i])) continue;
+        changed[i] = true;
+        bridged[i] = true;
+    }
+
+    return { changed, bridged };
+}

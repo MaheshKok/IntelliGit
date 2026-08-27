@@ -87,5 +87,7 @@
     "configuration.commitCheckState.enum.allChecked": "Domyślnie zaznacz początkowe i nowo wykryte pliki w panelu zatwierdzania.",
     "configuration.commitCheckState.enum.noneChecked": "Domyślnie pozostaw początkowe i nowo wykryte pliki niezaznaczone w panelu zatwierdzania (domyślnie).",
     "configuration.commitCheckState.enum.preserveSelection": "Przywróć poprzedni wybór zaznaczonych plików dla każdego repozytorium; nowo wykryte pliki pozostaną niezaznaczone.",
-    "configuration.commitCheckState.markdownDescription": "Określa sposób zaznaczania plików podczas ładowania panelu zatwierdzania lub wykrywania nowych ścieżek. `allChecked` zaznacza pliki początkowe i nowe, `noneChecked` pozostawia je niezaznaczone (domyślnie), a `preserveSelection` przywraca poprzedni wybór dla każdego repozytorium, pozostawiając nowe pliki niezaznaczone. Jawne wybory są zachowywane podczas odświeżania. Zmiany zaczynają obowiązywać po ponownym załadowaniu okna."
+    "configuration.commitCheckState.markdownDescription": "Określa sposób zaznaczania plików podczas ładowania panelu zatwierdzania lub wykrywania nowych ścieżek. `allChecked` zaznacza pliki początkowe i nowe, `noneChecked` pozostawia je niezaznaczone (domyślnie), a `preserveSelection` przywraca poprzedni wybór dla każdego repozytorium, pozostawiając nowe pliki niezaznaczone. Jawne wybory są zachowywane podczas odświeżania. Zmiany zaczynają obowiązywać po ponownym załadowaniu okna.",
+    "command.diffShowInIntelliGit": "Pokaż różnice w IntelliGit",
+    "command.diffShowInVsCode": "Pokaż różnice w VS Code"
 }

@@ -47,7 +47,132 @@ export function segmentMarker(segment: DiffSegment, side: DiffPane): SegmentMark
 }
 
 /** The full class attribute for one side of one segment's block. */
+/** The rule marking where a one-sided hunk sits in the pane that holds none of it. */
+type SegmentGapMarker = "diff-gap-inserted" | "diff-gap-deleted";
+
+/**
+ * Classifies the collapsed position of a one-sided hunk, from the side that has no rows.
+ *
+ * That side cannot say what changed -- `segmentMarker` only ever calls it
+ * `diff-segment-empty`, because emptiness is all it can see of itself. Its counterpart
+ * can: content was either inserted at this position or removed from it. Returning null
+ * for every other segment keeps the rule off two-sided hunks, which need no marker
+ * because they have rows of their own to paint.
+ */
+function segmentGapMarker(segment: DiffSegment, side: DiffPane): SegmentGapMarker | null {
+    if (segmentMarker(segment, side) !== "diff-segment-empty") return null;
+    const counterpart = segmentMarker(segment, side === "left" ? "right" : "left");
+    if (counterpart === "diff-segment-inserted") return "diff-gap-inserted";
+    return counterpart === "diff-segment-deleted" ? "diff-gap-deleted" : null;
+}
+
 export function segmentClassName(segment: DiffSegment, side: DiffPane): string {
     const marker = segmentMarker(segment, side);
-    return marker === null ? "segment-common" : `diff-segment-changed ${marker}`;
+    if (marker === null) return "segment-common";
+    const gap = segmentGapMarker(segment, side);
+    return gap === null
+        ? `diff-segment-changed ${marker}`
+        : `diff-segment-changed ${marker} ${gap}`;
+}
+
+/**
+ * The one pane a whole-file change lives in, or null when both panes hold content.
+ *
+ * An added file puts every line on the right and a deleted file puts every line on the
+ * left; in both cases the other pane is an empty column the size of the file, and every
+ * ribbon runs to it. Derived from the segments instead of a host-supplied flag: the
+ * segments already state which sides have lines, and a flag restating that could differ
+ * from what is being rendered right next to it.
+ *
+ * A file with no lines at all is not one-sided -- there is nothing to show in either
+ * pane, so collapsing would just pick a side arbitrarily.
+ */
+export function soleSidedPane(segments: readonly DiffSegment[]): DiffPane | null {
+    let left = 0;
+    let right = 0;
+    for (const segment of segments) {
+        left += segment.left.length;
+        right += segment.right.length;
+    }
+    if (left === 0 && right > 0) return "right";
+    return right === 0 && left > 0 ? "left" : null;
+}
+
+/**
+ * The pane a hunk's revert arrow is vertically aligned to.
+ *
+ * The arrow WRITES INTO the editable pane, but it stands beside the SOURCE pane -- the rows
+ * the change came from, which are exactly the rows it copies. That is where the eye already
+ * is: reverting a hunk is a decision about the lines being brought back, not about the lines
+ * that are about to be overwritten.
+ *
+ * This is a choice between two collapses, not an escape from one. Neither side always holds
+ * rows: a pure deletion is empty on the editable side, a pure insertion is empty on the
+ * source side, and whichever side is empty puts the arrow on a zero-height seam between two
+ * unrelated lines. Aligning to the source moves that collapse off deletions and onto
+ * insertions -- deliberately, because deletions and modifications are the hunks whose source
+ * rows are the thing the button copies, and an insertion's revert is a delete with no source
+ * rows to point at in the first place.
+ *
+ * Only the vertical placement moves. The arrow's direction glyph still points at the pane it
+ * writes into (`DiffHunkActionLayer`), and `revertArrowX` decides where across that pane's
+ * own action strip it stands.
+ */
+export function revertArrowPane(editablePane: DiffPane): DiffPane {
+    return editablePane === "left" ? "right" : "left";
+}
+
+/** Where a revert arrow's box sits in its pane's action strip, as inline style values. */
+export interface RevertArrowX {
+    /** The strip's anchor edge, in the action layer's own coordinates. */
+    leftPx: number;
+    /** Which of the box's own edges lands on `leftPx`. */
+    transform: string;
+}
+
+/**
+ * The arrow's horizontal placement: inside its pane's action strip, between that pane's code
+ * and its line numbers -- not in the connector channel between the panes.
+ *
+ * This is PyCharm's layout, and it is the one the merge editor already uses via
+ * `--merge-action-gutter`. The arrow is read together with a line number -- "revert the hunk
+ * at 305" -- so it belongs against that number, and standing between the code and the numbers
+ * puts it there on either pane without the eye having to work out which side of the channel a
+ * floating glyph annotates.
+ *
+ * `stripAnchorPx` is the code-side edge of that pane's number column, measured off the rendered
+ * column (`measureViewport`). Measured rather than derived: computing it from the connector
+ * channel and a column width put the arrow one pixel past the strip, because the channel is
+ * measured from the pane's box and the pane's 1px right border sits outside the column.
+ *
+ * The box is placed by transform rather than by subtracting its own width, so nothing here has
+ * to agree with the 20px in `diff-viewer.css`: `leftPx` names the edge, and the transform names
+ * which of the box's own edges meets it. The two panes anchor from opposite edges because each
+ * pane's strip is on the side of its numbers that faces its own code -- the left pane's numbers
+ * sit at its right edge, the right pane's at its left.
+ */
+export function revertArrowX(pane: DiffPane, stripAnchorPx: number): RevertArrowX {
+    return {
+        leftPx: stripAnchorPx,
+        transform: pane === "left" ? "translateX(0)" : "translateX(-100%)",
+    };
+}
+
+/**
+ * The single state a segment's connector ribbon reads as.
+ *
+ * A ribbon spans both panes, so unlike a pane block it cannot be in two states at once:
+ * the side that holds rows decides it, and a two-sided hunk is a modification. Without
+ * this the ribbon has no state at all and every hunk's connector is drawn in one hue,
+ * which is what made an insertion's band read as a modification's -- the merge editor
+ * colours its own connectors per variant (`merge-editor.css:446-457`).
+ *
+ * `diff-segment-empty` is never returned: it is the state of the side that holds no
+ * rows, and a ribbon whose only state were `empty` would be a connector for a segment
+ * with nothing on either side.
+ */
+export function segmentRibbonMarker(segment: DiffSegment): SegmentMarker | null {
+    const right = segmentMarker(segment, "right");
+    if (right === null) return null;
+    return right === "diff-segment-empty" ? segmentMarker(segment, "left") : right;
 }

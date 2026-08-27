@@ -126,7 +126,12 @@ export async function recordDiffViewerWebviewFixture(
 
     const panelOptions: DiffViewerPanelOptions = {
         extensionUri: createFakeExtensionUri(),
-        path: "diff-viewer.ts",
+        // Deliberately a deep path, not a bare filename: the viewer renders the path as
+        // breadcrumbs, so a single segment exercises exactly one of them and leaves the
+        // separators, the shrink order between directories and filename, and every
+        // truncation rule with no oracle at all. Long enough that the narrow projects have
+        // to shrink it, which is the case those rules exist for.
+        path: "src/webviews/react/diff-viewer/DiffViewerApp.tsx",
         leftLabel: "HEAD",
         rightLabel: "Working tree",
         languageId: "typescript",

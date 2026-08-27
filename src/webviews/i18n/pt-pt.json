@@ -371,6 +371,12 @@
     "diff.newlineDifference": "Os ficheiros diferem apenas na formatação das quebras de linha",
     "diff.error.load": "Falha ao carregar o diff: {error}",
     "diff.loading": "A carregar o diff...",
-    "diff.editable.blockHint": "Faça duplo clique ou prima Enter para editar",
-    "diff.editable.editingAria": "Editar bloco da árvore de trabalho"
+    "diff.editable.blockHint": "Clique para editar",
+    "diff.editable.editingAria": "Editar bloco da árvore de trabalho",
+    "diff.editable.revertHunk": "Reverter esta alteração",
+    "diff.readOnly.pane": "Este lado é só de leitura",
+    "diff.toolbar.prevChange.title": "Alteração anterior (Alt+↑)",
+    "diff.toolbar.prevChange.label": "Alteração anterior",
+    "diff.toolbar.nextChange.title": "Alteração seguinte (Alt+↓)",
+    "diff.toolbar.nextChange.label": "Alteração seguinte"
 }
