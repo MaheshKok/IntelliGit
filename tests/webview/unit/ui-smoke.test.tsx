@@ -1000,7 +1000,7 @@ describe("webview ui smoke", () => {
             error: "Sign in to refresh checks.",
             items: [],
         };
-        const render = (checks: CommitChecksSnapshot): React.ReactElement => (
+        const render = (checks: CommitChecksSnapshot | "loading"): React.ReactElement => (
             <CommitChecksButton
                 hash={hash}
                 checks={checks}
@@ -1029,6 +1029,10 @@ describe("webview ui smoke", () => {
         )?.textContent;
         expect(refreshStyles).toContain("animation: intelligit-spin");
         expect(refreshStyles).toContain("@media (prefers-reduced-motion: reduce)");
+
+        act(() => mounted.root.render(render("loading")));
+        expect(document.body.querySelector('[role="status"]')).not.toBeNull();
+        expect(document.body.textContent).toContain("Existing check");
 
         act(() => refreshButton.click());
         expect(onRequestChecks).toHaveBeenCalledOnce();
