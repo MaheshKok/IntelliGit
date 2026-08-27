@@ -320,11 +320,10 @@ describe("EditableDiffEditorProvider", () => {
         });
     });
 
-    // Two fields that exist only because this host is a tab rather than a panel. `hostShowsPath`
-    // is what stops the viewer drawing a path row one line under VS Code's own breadcrumb bar,
-    // and `documentId` is what lets the viewer tell this document from the last one it was
-    // handed -- both are set here and nowhere else, so nothing but this asserts they ship.
-    it("tells the viewer the host already names the file, and which document this is", async () => {
+    // `documentId` is what lets the viewer tell this document from the last one it was handed,
+    // and it is threaded from the descriptor here and nowhere else, so nothing but this asserts
+    // it ships.
+    it("tells the viewer which document this is", async () => {
         const provider = newProvider();
         await provider.open(uri as never, { ...openDescriptor, documentId: '["HEAD","worktree"]' });
         await resolveAndBoot(provider);
@@ -332,10 +331,7 @@ describe("EditableDiffEditorProvider", () => {
         expect(mocks.postMessage).toHaveBeenLastCalledWith(
             expect.objectContaining({
                 type: "setDiffData",
-                data: expect.objectContaining({
-                    hostShowsPath: true,
-                    documentId: '["HEAD","worktree"]',
-                }),
+                data: expect.objectContaining({ documentId: '["HEAD","worktree"]' }),
             }),
         );
     });

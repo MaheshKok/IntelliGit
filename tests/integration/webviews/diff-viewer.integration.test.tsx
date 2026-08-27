@@ -929,6 +929,47 @@ describe("DiffViewerApp read-only contract", () => {
         ).toEqual(["\u00ab"]);
     });
 
+    it("butts each arrow against the channel edge of the pane it copies from", async () => {
+        // `revertArrowX` decides the placement and is proven directly in
+        // tests/unit/webviews/revertArrowPane.test.ts. What is asserted here is only the wiring
+        // that carries its answer onto the button -- the seam the extraction created. It needs
+        // the geometry harness because the placement is written by the scroll driver, which
+        // runs inside a rAF and reads a viewport jsdom lays out as zero-sized; without the
+        // harness both inline properties stay empty and any assertion on them passes vacuously
+        // for the wrong reason. `transform` is the half read back: it distinguishes the two
+        // sides on its own, whereas `left` collapses to 0 for both once the panes measure zero.
+        vi.spyOn(globalThis, "requestAnimationFrame").mockImplementation((callback) => {
+            callback(0);
+            return 0;
+        });
+        Object.defineProperty(HTMLElement.prototype, "clientHeight", {
+            configurable: true,
+            get: () => VIEWPORT_H,
+        });
+        try {
+            installVsCodeMock();
+            await mountRightEditable("keep();\nafter();", [
+                { type: "common" as const, left: ["keep();"], right: ["keep();"] },
+                { type: "changed" as const, left: ["before();"], right: ["after();"] },
+            ]);
+            act(() => {
+                document
+                    .querySelector<HTMLElement>(".diff-content")
+                    ?.dispatchEvent(new Event("scroll", { bubbles: false }));
+            });
+
+            expect(
+                [...document.querySelectorAll<HTMLElement>(".diff-hunk-revert")].map(
+                    (button) => button.style.transform,
+                ),
+                "the right pane is editable, so the arrow stands beside the left one",
+            ).toEqual(["translateX(0)"]);
+        } finally {
+            Reflect.deleteProperty(HTMLElement.prototype, "clientHeight");
+            vi.restoreAllMocks();
+        }
+    });
+
     it("offers no revert where there is nothing to write into", async () => {
         // A commit diff has no file behind it, so there is no document a revert could land
         // in; a collapsed one-sided file has no channel for the arrow to stand in, and
@@ -2357,49 +2398,25 @@ describe("DiffViewerApp file path header", () => {
         await flush();
     }
 
-    it("draws the path as breadcrumbs for a host that has no breadcrumb bar of its own", async () => {
-        await mountWith({ path: "tests/unit/views/example.test.ts" });
+    // Both hosts name the file above the webview already -- the custom editor sits under VS
+    // Code's breadcrumb bar, and the panel opened from a commit's file list carries the full
+    // path in its tab title (`DiffViewerPanel.panelTitle`). The viewer drawing it again one
+    // line lower was a second caption for the same string.
+    //
+    // The assertion is on the rendered text and not on the deleted markup, because a selector
+    // that no longer matches anything passes the moment the element is renamed. Searching the
+    // whole body for the path itself is the claim: whatever a path row were rebuilt as, it
+    // would have to write the path somewhere to be one.
+    it("leaves naming the file to the host, drawing no path row of its own", async () => {
+        const path = "tests/unit/views/example.test.ts";
+        await mountWith({ path });
 
-        const crumbs = document.querySelector("[data-testid='diff-breadcrumbs']");
-        expect(
-            crumbs,
-            "the viewer panel opened from the changed-files list has no breadcrumb bar above it, so it draws its own",
-        ).not.toBeNull();
-        expect(
-            [...(crumbs?.querySelectorAll(".diff-breadcrumb") ?? [])].map(
-                (part) => part.textContent,
-            ),
-        ).toEqual(["tests", "unit", "views", "example.test.ts"]);
-    });
-
-    it("puts the path above the toolbar, where the other entry point's host draws it", async () => {
-        await mountWith({ path: "tests/unit/views/example.test.ts" });
-
-        const crumbs = document.querySelector("[data-testid='diff-breadcrumbs']");
-        const toolbar = document.querySelector(".diff-toolbar");
-        expect(crumbs, "no breadcrumbs to place").not.toBeNull();
-        expect(toolbar, "no toolbar to place them against").not.toBeNull();
-        // DOCUMENT_POSITION_FOLLOWING: the toolbar comes after the crumbs. Asserted as
-        // document order rather than as a pixel offset because that is the claim -- the
-        // custom editor's path comes from VS Code's breadcrumb bar, which is above
-        // everything the webview draws, and this row has to land in the same place for the
-        // two entry points to read as one screen.
-        expect(
-            Boolean(crumbs!.compareDocumentPosition(toolbar!) & Node.DOCUMENT_POSITION_FOLLOWING),
-            "the path row is drawn below the toolbar, so this entry point reads as a different screen from the custom editor",
-        ).toBe(true);
-    });
-
-    it("leaves the path to a host that already shows it", async () => {
-        await mountWith({ hostShowsPath: true });
-
-        expect(
-            document.querySelector("[data-testid='diff-breadcrumbs']"),
-            "a custom text editor sits directly under VS Code's own breadcrumb bar, so this row repeats it one line lower",
-        ).toBeNull();
         expect(
             document.body.textContent,
-            "the path is gone from the breadcrumbs but still written into the header some other way",
-        ).not.toContain(diffFixture.path);
+            "the viewer wrote the path into its own chrome, one line under the host's",
+        ).not.toContain(path);
+        // Anti-vacuity: the body has to hold the diff for the absence above to mean anything.
+        // An unmounted or blank viewer contains no path either.
+        expect(document.querySelector(".diff-toolbar"), "the viewer did not render").not.toBeNull();
     });
 });

@@ -383,10 +383,6 @@ class EditableDiffSession {
             rightLabel: this.descriptor.rightLabel,
             languageId: this.descriptor.languageId,
             documentId: this.descriptor.documentId,
-            // A custom text editor is a tab, so VS Code's breadcrumb bar already names the
-            // file directly above the webview. The viewer's own path row would repeat it
-            // one line lower.
-            hostShowsPath: true,
             ...computeDiffSegments(leftText, rightText, {
                 ignoreWhitespace: this.ignoreWhitespace,
             }),

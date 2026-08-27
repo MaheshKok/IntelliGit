@@ -55,15 +55,6 @@ export interface DiffViewerData {
      * optional because a host with nothing further to add is not wrong, only less specific.
      */
     documentId?: string;
-    /**
-     * True when the host's own chrome already names this file above the viewer.
-     *
-     * A custom text editor sits under VS Code's breadcrumb bar, which shows the path
-     * already; a webview panel has no breadcrumbs of its own. The viewer draws its own path
-     * row only for the hosts that lack one, so the editor is not captioned twice with the
-     * same string.
-     */
-    hostShowsPath?: boolean;
     /** Pane bound to the live VS Code document in a custom text editor. */
     editablePane?: "left" | "right";
     /** Current document text; only supplied when `editablePane` is present. */

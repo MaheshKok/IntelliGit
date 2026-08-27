@@ -149,64 +149,11 @@
     flex-shrink: 0;
 }
 
-/* Nothing left to show once the host draws its own breadcrumbs and no marker is active.
-   Without this the row still claims its height and its bottom border, leaving an empty
-   strip where the path used to be. */
+/* The header holds only occasional markers now that the path row is gone, so most files
+   give it nothing at all. Without this it would still claim its height and its background,
+   leaving an empty strip above the toolbar on every clean diff. */
 .diff-header:empty {
     display: none;
-}
-
-.diff-breadcrumbs {
-    display: flex;
-    align-items: center;
-    min-width: 0;
-    overflow: hidden;
-    color: var(--vscode-breadcrumb-foreground, var(--vscode-descriptionForeground));
-    font-size: 13px;
-    white-space: nowrap;
-}
-
-/* A directory gives up its width long before the filename does -- see `:last-child` below
-   for why the two numbers are lopsided rather than 0 and 1. */
-.diff-breadcrumb {
-    flex-shrink: 999;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-/* Drawn rather than marked up: the chevron says nothing the segments do not, and a
-   separator element between every pair would break selecting the path as one string. */
-.diff-breadcrumb + .diff-breadcrumb::before {
-    content: "›";
-    margin: 0 4px;
-    opacity: 0.7;
-}
-
-/* The file's own name is what the reader came for; the directories above it are context.
-   VS Code's own breadcrumb bar draws the same emphasis.
-
-   Shrink order, not shrink permission, is what the lopsided pair buys. `overflow: hidden`
-   above already drops every segment's automatic minimum size to zero, so all of them can
-   shrink -- and flex hands out the deficit in proportion to content width, which gives the
-   biggest cut to the longest segment. The filename carries the extension and is usually the
-   longest, so an even split ellipsises the one segment being bolded first and leaves the
-   directories it was meant to be read against fully legible.
-
-   `999` against `1` sends effectively the whole deficit to the directories. It is not `0`,
-   which would forbid the filename to shrink at all: flex freezes an item once it reaches
-   its minimum and re-distributes the rest, so at `1` the directories collapse first and the
-   filename ellipsises only after they are spent -- while at `0` a long name in a narrow
-   panel, or any file at the repository root where the name is the ONLY segment, would
-   overflow and be cut off square by `.diff-breadcrumbs`, with no ellipsis to say so.
-
-   `harnessSmoke.spec.ts` covers the ORDER against a real squeeze. The `1`-against-`0` half
-   has no test: reproducing it needs the strip narrower than the filename alone, and the
-   strip floors at about that width however it is squeezed. Change this number by argument,
-   not by a green run. */
-.diff-breadcrumb:last-child {
-    flex-shrink: 1;
-    color: var(--vscode-foreground);
-    font-weight: 600;
 }
 
 .diff-newline-marker {
@@ -307,6 +254,12 @@
 .diff-pane {
     min-width: 0;
     background: transparent;
+    /* A read-only pane is `contentEditable` so that clicking it places a real caret, which
+       makes it focusable, which makes Chromium ring the whole pane. The ring says "this is a
+       form control" about a stretch of a file that is not one, and it frames the pane rather
+       than the line the reader clicked. Same call as `.diff-edit-textarea` below: the caret is
+       the focus affordance here, so it is the caret that must stay visible, not a box. */
+    outline: 0;
 }
 
 /* A one-sided file (added or deleted) renders one pane, so the grid carries one track and
@@ -518,11 +471,18 @@
     width: 20px;
     height: 20px;
     padding: 0;
-    transform: translateX(-50%);
+    /* No `transform` here on purpose. The scroll driver sets `left` and `transform` together
+       (`revertArrowX`), because `left` on its own does not say which of this box's edges it
+       names -- the arrow hangs off the left of the channel beside one pane and off the right
+       beside the other. A default here would be a third opinion that is right half the time. */
     border: none;
     border-radius: 3px;
     background: transparent;
-    color: color-mix(in srgb, var(--diff-editor-fg) 84%, transparent);
+    /* The semantic hue itself, not a wash of it, and the same one the inserted stripe and the
+       inserted connector already carry -- this arrow writes a hunk back into the editable pane,
+       so it reads as the same act those two mark. A muted foreground grey made it look like
+       chrome that happened to sit in the channel. */
+    color: var(--diff-ok);
     /* The merge editor's gutter glyph is 18px bold monospace in a 24px button; this box is
        one code row tall, so the glyph steps down with it. The ceiling is arithmetic, not
        taste: a text range's client rect is the FONT box (ascent+descent, ~1.29em -- never
@@ -539,9 +499,11 @@
     pointer-events: auto;
 }
 
+/* Hover brightens the plate behind the glyph and leaves the hue alone. Swapping to the editor
+   foreground here would make the arrow lose the colour that says what it does at the exact
+   moment the pointer is on it. */
 .diff-hunk-revert:hover {
-    background: color-mix(in srgb, var(--diff-editor-fg) 12%, transparent);
-    color: var(--diff-editor-fg);
+    background: color-mix(in srgb, var(--diff-ok) 18%, transparent);
 }
 
 .diff-hunk-revert:focus-visible {

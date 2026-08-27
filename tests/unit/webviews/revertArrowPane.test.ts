@@ -1,12 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
     buildVerticalLayout,
+    connectorChannelSpan,
     type SegmentPaneLines,
 } from "../../../src/webviews/react/diff-core/mergeScrollLayout";
 import {
     DIFF_PANES,
     revertArrowPane,
+    revertArrowX,
     type DiffPane,
+    type RevertArrowX,
 } from "../../../src/webviews/react/diff-viewer/segmentMarkers";
 
 /**
@@ -58,5 +61,62 @@ describe("revert arrow placement", () => {
         // make the arrow's on-screen test degenerate.
         expect(layout.paneHPx[pane][1], "the arrow spans the rows it copies").toBe(60);
         expect(layout.paneHPx.right[1], "which the editable side does not have").toBe(0);
+    });
+});
+
+/**
+ * Where the same arrow sits horizontally.
+ *
+ * `revertArrowX` returns a `left` and a `transform`, and neither half means anything alone --
+ * `left` names a channel edge and the transform names which of the box's own edges lands on it.
+ * Both are therefore read back here as the box's resulting edges rather than compared as raw
+ * strings, so a pair that is individually plausible but jointly wrong cannot pass.
+ */
+describe("revert arrow horizontal placement", () => {
+    // A 28px channel -- `--diff-connector-gutter` -- between two panes, in the action layer's
+    // own coordinates: x0 is the left pane's inner edge, x1 the right pane's.
+    const channel = connectorChannelSpan(600, 628);
+    /** `.diff-hunk-revert`'s width in diff-viewer.css. The stylesheet is the source; this is a
+     *  reader of it, which is why the production code offsets by transform and never by 20. */
+    const BOX = 20;
+
+    /** The box's own edges once a browser has applied the returned `left` and `transform`. */
+    const boxEdges = ({ leftPx, transform }: RevertArrowX) => {
+        const shift: Record<string, number | undefined> = {
+            "translateX(0)": 0,
+            "translateX(-100%)": -BOX,
+        };
+        const dx = shift[transform];
+        // A transform this test cannot resolve is a placement it cannot judge, so it fails here
+        // rather than silently treating the unknown case as zero.
+        expect(dx, `unhandled transform ${transform}`).toBeDefined();
+        return { left: leftPx + dx!, right: leftPx + dx! + BOX };
+    };
+
+    it("butts the arrow against the pane it stands beside", () => {
+        expect(boxEdges(revertArrowX(channel, "left")).left, "flush with the left pane").toBe(600);
+        expect(boxEdges(revertArrowX(channel, "right")).right, "flush with the right pane").toBe(
+            628,
+        );
+    });
+
+    it("keeps the whole box inside the channel from either side", () => {
+        // The half a swapped transform breaks. `x0` paired with `translateX(-100%)` still reads
+        // as "anchored to the left pane" and still returns a plausible number, but it hangs the
+        // glyph back over the line numbers it was supposed to sit beside.
+        for (const pane of DIFF_PANES) {
+            const { left, right } = boxEdges(revertArrowX(channel, pane));
+            expect(left, `${pane} arrow's left edge`).toBeGreaterThanOrEqual(channel.x0);
+            expect(right, `${pane} arrow's right edge`).toBeLessThanOrEqual(channel.x1);
+        }
+    });
+
+    it("never floats the arrow at the channel's midpoint again", () => {
+        // The behaviour this replaced, named so that restoring it cannot pass quietly: a 20px box
+        // centred in a 28px channel begins at 604, and neither side may land there.
+        const centred = (channel.x0 + channel.x1) / 2 - BOX / 2;
+        for (const pane of DIFF_PANES) {
+            expect(boxEdges(revertArrowX(channel, pane)).left, `${pane} arrow`).not.toBe(centred);
+        }
     });
 });

@@ -42,6 +42,7 @@ import { splitEditedText } from "../merge-editor/mergeState";
 import {
     DIFF_PANES,
     revertArrowPane,
+    revertArrowX,
     segmentClassName,
     segmentRibbonMarker,
     soleSidedPane,
@@ -818,37 +819,6 @@ function documentIdentityOf(data: DiffViewerData | null): string | null {
         : JSON.stringify([data.documentId ?? null, data.path, data.leftLabel, data.rightLabel]);
 }
 
-/**
- * The file's path as breadcrumbs, for hosts whose own chrome does not already show it.
- *
- * Renders nothing under a custom text editor, where VS Code's breadcrumb bar sits directly
- * above the webview and says the same thing one line higher. The panel opened from the
- * changed-files list has no breadcrumb bar at all, which is the gap this fills -- and it
- * fills it in the same shape, so the two entry points read alike.
- *
- * The separators are drawn by CSS rather than by elements of their own: they carry no
- * information the segments do not, and the path stays one continuous string to select or
- * copy.
- */
-function DiffPathRow({
-    path,
-    hostShowsPath,
-}: {
-    path: string;
-    hostShowsPath?: boolean;
-}): React.ReactElement | null {
-    if (hostShowsPath) return null;
-    return (
-        <span className="diff-breadcrumbs" data-testid="diff-breadcrumbs">
-            {path.split("/").map((segment, index) => (
-                <span className="diff-breadcrumb" key={`${index}-${segment}`}>
-                    {segment}
-                </span>
-            ))}
-        </span>
-    );
-}
-
 /** Hosts a pure, read-only two-pane diff with only view toggles. */
 export function App(): React.ReactElement {
     const [data, setData] = useState<DiffViewerData | null>(null);
@@ -1104,7 +1074,7 @@ export function App(): React.ReactElement {
             const editablePane = data?.editablePane;
             if (editablePane === undefined) return;
             const pane = revertArrowPane(editablePane);
-            const centre = (span.x0 + span.x1) / 2;
+            const { leftPx, transform } = revertArrowX(span, pane);
             for (const [index, button] of actionButtons) {
                 if (index >= currentLayout.canonicalTopPx.length) continue;
                 const top = currentLayout.paneTopPx[pane][index] - offsets[pane];
@@ -1118,7 +1088,12 @@ export function App(): React.ReactElement {
                 // nothing declares a display for them.
                 button.style.display = "flex";
                 button.style.top = `${top}px`;
-                button.style.left = `${centre}px`;
+                button.style.left = `${leftPx}px`;
+                // Set here rather than in the stylesheet because it is half of one placement
+                // decision: `left` alone is meaningless without knowing which of the box's
+                // edges it names, and splitting the pair across two files is how the two
+                // drift apart.
+                button.style.transform = transform;
             }
         },
         [actionButtons, data?.editablePane],
@@ -1488,12 +1463,13 @@ export function App(): React.ReactElement {
                 style={rootStyle}
                 data-testid="diff-viewer-root"
             >
-                {/* Above the toolbar, not below it: the custom editor's entry point gets its
-                    path from VS Code's own breadcrumb bar, which sits above everything the
-                    webview draws. Putting this row anywhere else makes the two entry points
-                    read as two different screens for the same job. */}
+                {/* No path row. Both entry points already name the file above the webview --
+                    the custom editor sits under VS Code's own breadcrumb bar, and the panel
+                    opened from a commit's file list carries the full path in its tab title
+                    (`DiffViewerPanel.panelTitle`) -- so a row here was a second caption for
+                    the same string, one line lower. The header stays for the markers that
+                    have nowhere else to go. */}
                 <div className="diff-header">
-                    <DiffPathRow path={data.path} hostShowsPath={data.hostShowsPath} />
                     {data.newlineDifference ? (
                         <span className="diff-newline-marker" role="status">
                             {t("diff.newlineDifference")}

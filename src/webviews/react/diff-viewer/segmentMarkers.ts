@@ -7,6 +7,7 @@
 // recorded fixture can be run through directly, which is what
 // `tests/unit/visual/diffViewerFixtureCoverage.test.ts` does.
 
+import type { RibbonSpan } from "../diff-core/mergeScrollLayout";
 import type { DiffSegment } from "../../protocol/diffViewerTypes";
 
 /** The two sides a diff viewer payload is rendered into, in render order. */
@@ -115,11 +116,39 @@ export function soleSidedPane(segments: readonly DiffSegment[]): DiffPane | null
  * rows to point at in the first place.
  *
  * Only the vertical placement moves. The arrow's direction glyph still points at the pane it
- * writes into (`DiffHunkActionLayer`), and its horizontal position is still the connector
- * channel's centre -- it stands between the panes, level with the source hunk.
+ * writes into (`DiffHunkActionLayer`), and it still stands in the connector channel between
+ * the panes -- `revertArrowX` decides where across that channel.
  */
 export function revertArrowPane(editablePane: DiffPane): DiffPane {
     return editablePane === "left" ? "right" : "left";
+}
+
+/** Where a revert arrow's box hangs in the connector channel, as inline style values. */
+export interface RevertArrowX {
+    /** The channel edge the box is anchored to, in the action layer's own coordinates. */
+    leftPx: number;
+    /** Which of the box's own edges lands on `leftPx`. */
+    transform: string;
+}
+
+/**
+ * The arrow's horizontal placement: butted against the inner edge of the pane it stands
+ * beside, not floating at the channel's midpoint.
+ *
+ * The arrow is read together with a line number -- "revert the hunk at 305" -- and a glyph
+ * centred in the 28px channel touches neither number, so the eye has to pick which side it
+ * annotates before it can act on it. Anchoring it to the source pane's edge answers that for
+ * free, and it is the same pane `revertArrowPane` already aligns the arrow to vertically, so
+ * both axes now say the same thing about which rows the button is about.
+ *
+ * The offset is a transform rather than a subtracted width because the box is 20px in
+ * `diff-viewer.css` and nothing here should have to agree with that number: `leftPx` names
+ * the channel edge, the transform names which of the box's own edges meets it.
+ */
+export function revertArrowX(span: RibbonSpan, pane: DiffPane): RevertArrowX {
+    return pane === "left"
+        ? { leftPx: span.x0, transform: "translateX(0)" }
+        : { leftPx: span.x1, transform: "translateX(-100%)" };
 }
 
 /**
