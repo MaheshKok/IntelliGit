@@ -10,7 +10,9 @@ const layoutCalls = vi.hoisted(() => vi.fn());
 
 vi.mock("../../../src/webviews/react/diff-core/mergeScrollLayout", async (importOriginal) => {
     const actual =
-        await importOriginal<typeof import("../../../src/webviews/react/diff-core/mergeScrollLayout")>();
+        await importOriginal<
+            typeof import("../../../src/webviews/react/diff-core/mergeScrollLayout")
+        >();
     return {
         ...actual,
         buildVerticalLayout: (...args: Parameters<typeof actual.buildVerticalLayout>) => {
@@ -71,6 +73,41 @@ function editMessages(vscode: MockVsCodeApi): unknown[] {
         .filter((message) => message.type === "editText");
 }
 
+/** Mounts the large editable fixture and opens its first changed right-side block. */
+async function openPerformanceDraft(): Promise<{
+    fixture: ReturnType<typeof buildEditableDiffPerformanceFixture>;
+    root: HTMLElement;
+    textarea: HTMLTextAreaElement;
+}> {
+    const fixture = buildEditableDiffPerformanceFixture();
+    createRootHost();
+    await act(async () => {
+        await import("../../../src/webviews/react/diff-viewer/DiffViewerApp");
+    });
+    await flush();
+    dispatchHostMessage({ type: "setDiffData", data: fixture.data });
+    await flush();
+
+    const changedBlock = document.querySelector<HTMLElement>(
+        ".diff-pane-right .diff-editable-block.diff-segment-changed",
+    );
+    expect(changedBlock, "large fixture must expose a changed right-side block").not.toBeNull();
+    act(() => {
+        changedBlock?.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+    });
+    const textarea = document.querySelector<HTMLTextAreaElement>(
+        "[data-testid='diff-pane-right-editable']",
+    );
+    expect(textarea).not.toBeNull();
+    const root = document.querySelector<HTMLElement>("[data-testid='diff-viewer-root']");
+    expect(root).not.toBeNull();
+    return {
+        fixture,
+        root: root as HTMLElement,
+        textarea: textarea as HTMLTextAreaElement,
+    };
+}
+
 beforeAll(() => {
     Object.defineProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT", {
         value: true,
@@ -125,9 +162,7 @@ describe("editable diff performance", () => {
         expect(editable.value).toBe(nextText);
         expect(editMessages(vscode)).toHaveLength(0);
         await flush();
-        expect(layoutCalls.mock.calls.length).toBe(
-            beforeInputLayoutCalls,
-        );
+        expect(layoutCalls.mock.calls.length).toBe(beforeInputLayoutCalls);
 
         act(() => {
             vi.advanceTimersByTime(999);
@@ -138,5 +173,42 @@ describe("editable diff performance", () => {
             vi.advanceTimersByTime(1);
         });
         expect(editMessages(vscode)).toHaveLength(1);
+    });
+
+    it("rebuilds layout when the active draft gains a row", async () => {
+        installVsCodeMock();
+        vi.useFakeTimers();
+        const { textarea } = await openPerformanceDraft();
+        const beforeInputLayoutCalls = layoutCalls.mock.calls.length;
+
+        setDraftText(textarea, `${textarea.value}\nnew draft row`);
+        await flush();
+
+        expect(textarea.rows).toBe(2);
+        expect(layoutCalls.mock.calls.length).toBe(beforeInputLayoutCalls + 1);
+    });
+
+    it("expands the shared horizontal extent when the draft crosses the base width", async () => {
+        installVsCodeMock();
+        vi.useFakeTimers();
+        const { fixture, root, textarea } = await openPerformanceDraft();
+        let baseMaxLineLength = 1;
+        for (const segment of fixture.data.segments) {
+            for (const line of [...segment.left, ...segment.right]) {
+                baseMaxLineLength = Math.max(baseMaxLineLength, line.length);
+            }
+        }
+        const beforeInputLayoutCalls = layoutCalls.mock.calls.length;
+        const beforeWidth = root.style.getPropertyValue("--diff-line-min-width");
+        const nextMaxLineLength = baseMaxLineLength + 1;
+
+        setDraftText(textarea, "x".repeat(nextMaxLineLength));
+        await flush();
+
+        expect(root.style.getPropertyValue("--diff-line-min-width")).toBe(
+            `calc(${nextMaxLineLength}ch + 18px)`,
+        );
+        expect(beforeWidth).toBe(`calc(${baseMaxLineLength}ch + 18px)`);
+        expect(layoutCalls.mock.calls.length).toBe(beforeInputLayoutCalls + 1);
     });
 });

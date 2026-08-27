@@ -50,6 +50,12 @@ import {
     type SegmentMarker,
 } from "./segmentMarkers";
 import { adjacentChangeIndex, buildStripeMarks } from "./changeStripe";
+import {
+    baseMaxLineLengthForSegments,
+    effectiveMaxLineLength,
+    sameEffectiveEditableBlockLayout,
+    type EditableBlockLayout,
+} from "./editableDraftLayout";
 import "./diff-viewer.css";
 
 const LINE_PADDING_PX = 18;
@@ -168,26 +174,20 @@ interface EditableBlockDraft {
     token: number;
 }
 
-interface EditableBlockLayout {
-    side: DiffPane;
-    indices: readonly number[];
-    rowCount: number;
-    /**
-     * Longest line in the draft, in characters.
-     *
-     * The shared scroll extent is measured from the diff's own text, which stops describing the
-     * pane the moment someone types a line longer than anything the diff contained: the code
-     * plane and the shared scrollbar both refuse to travel that far, so the caret runs off the
-     * right edge with nothing able to follow it.
-     */
-    maxLineLength: number;
-}
-
 /** Longest line in a block, in characters — the block's contribution to the shared extent. */
 function longestLine(lines: readonly string[]): number {
     let max = 0;
     for (const line of lines) max = Math.max(max, line.length);
     return max;
+}
+
+/** Selects the state layout only when a draft change affects whole-view geometry. */
+function nextEditingBlockState(
+    previous: EditableBlockLayout | null,
+    next: EditableBlockLayout | null,
+    baseMaxLineLength: number,
+): EditableBlockLayout | null {
+    return sameEffectiveEditableBlockLayout(previous, next, baseMaxLineLength) ? previous : next;
 }
 
 /** Replaces one line-addressed display block in the LF-normalized document text. */
@@ -833,6 +833,8 @@ export function App(): React.ReactElement {
     const [ignoreMode, setIgnoreMode] = useState<"none" | "whitespace">("none");
     const [highlightWords, setHighlightWords] = useState(true);
     const [editingBlock, setEditingBlock] = useState<EditableBlockLayout | null>(null);
+    const latestEditingBlockRef = useRef<EditableBlockLayout | null>(null);
+    const baseMaxLineLengthRef = useRef(1);
     const [shikiReady, setShikiReady] = useState(() => isShikiReady());
     const [shikiTheme] = useState(() => detectTheme());
     // The same height `viewportRef` caches, kept in state as well because the scroll
@@ -882,10 +884,15 @@ export function App(): React.ReactElement {
     const ribbonPaths = useMemo(() => new Map<number, SVGPathElement>(), []);
     const actionButtons = useMemo(() => new Map<number, HTMLButtonElement>(), []);
     const handleDraftLayoutChange = useCallback((layout: EditableBlockLayout | null) => {
-        setEditingBlock(layout);
+        latestEditingBlockRef.current = layout;
+        setEditingBlock((previous) =>
+            nextEditingBlockState(previous, layout, baseMaxLineLengthRef.current),
+        );
     }, []);
 
     const segments = useMemo(() => data?.segments ?? [], [data]);
+    const baseMaxLineLength = useMemo(() => baseMaxLineLengthForSegments(segments), [segments]);
+    baseMaxLineLengthRef.current = baseMaxLineLength;
     const syntaxHighlightState = useMemo(
         () => ({
             ready: shikiReady,
@@ -1019,21 +1026,10 @@ export function App(): React.ReactElement {
         [editingBlock, ribbonIndices, singlePane],
     );
 
-    const maxLineLength = useMemo(() => {
-        let max = 1;
-        for (const segment of segments) {
-            max = Math.max(max, longestLine(segment.left), longestLine(segment.right));
-        }
-        // An open draft is part of the pane's width even though it is not part of the diff.
-        // Without it, typing past the diff's own longest line leaves the code plane and the
-        // shared scrollbar unable to travel to the caret, so it scrolls off the right edge and
-        // the overlay is dragged back to a position that cannot show it.
-        return Math.max(max, editingBlock?.maxLineLength ?? 0);
-        // Depends on the layout object, not on the one field read from it: narrowing the
-        // dependency would put the optional chain in `App`'s own body, where the complexity
-        // budget is spent, rather than in this callback's. The recompute it costs per keystroke
-        // is a pass of `.length` reads over text that is already being re-rendered anyway.
-    }, [editingBlock, segments]);
+    // An open draft is part of the pane's width even though it is not part of the diff. The ref
+    // keeps this O(1) on ordinary input and preserves a draft width when a later host echo lowers
+    // the base extent.
+    const maxLineLength = effectiveMaxLineLength(baseMaxLineLength, latestEditingBlockRef.current);
 
     const syncHorizontalScroll = useCallback((left: number, source?: HTMLElement | null) => {
         syncHorizontalScrollCore(
