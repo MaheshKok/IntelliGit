@@ -448,7 +448,13 @@ function EditableDiffPane({
                 caretOffset: textareaRef.current?.selectionStart ?? draft.caretOffset,
                 sourceText: text,
                 version: documentVersion,
-                lineCount: lastPostedText.split("\n").length,
+                // The same splitter the post itself went through. `replaceBlockText` runs
+                // `splitEditedText`, which reads empty text as a deleted block -- no lines,
+                // not one blank one -- so a plain `split` would claim the emptied block still
+                // occupies a line of the echoed document. That line belongs to the NEXT
+                // segment: the re-anchor would swallow it, and the reader's replacement text
+                // would then overwrite a hunk they never touched.
+                lineCount: splitEditedText(lastPostedText).length,
             },
             renderedSegments,
             side,

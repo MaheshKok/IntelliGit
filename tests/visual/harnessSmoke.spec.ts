@@ -159,6 +159,12 @@ test.describe("production webview harness", () => {
     // The contrast oracle is blind to it too -- an outline changes no foreground/background
     // pair around a glyph. So the only oracle that sits at this layer is a live focus.
     //
+    // The focus is taken by a real POINTER CLICK, not `element.focus()`. The claim in the test
+    // name is that clicking a line places a caret there, and a programmatic focus cannot say
+    // anything about the click: it reaches the pane whether or not the code under the pointer
+    // does. Anything painted over the text -- an action strip, a hunk control, a decoration --
+    // would swallow the click and leave a `focus()` version of this test green.
+    //
     // Both halves are asserted, in this order, because they fail in opposite directions and a
     // single count could not tell them apart. Losing `contentEditable` takes the caret away
     // and the pane stops being focusable; losing `outline: 0` brings the ring back. Asserting
@@ -170,15 +176,23 @@ test.describe("production webview harness", () => {
     }) => {
         await mountHarness("diff-viewer", { webviewFixture: "clean.json" });
 
-        await expect.poll(() => page.locator('[data-testid="diff-pane-left"]').count()).toBe(1);
+        const paneLocator = page.locator('[data-testid="diff-pane-left"]');
+        await expect.poll(() => paneLocator.count()).toBe(1);
+        // A line carrying actual glyphs, so the caret lands in text rather than in the empty
+        // run past the end of a blank row, where a hit test has nothing to resolve against.
+        await paneLocator.locator(".code-line-content").filter({ hasText: /\S/ }).first().click();
+
         const measured = await page.evaluate(() => {
             const pane = document.querySelector<HTMLElement>('[data-testid="diff-pane-left"]');
             if (!pane) return null;
-            pane.focus();
             const style = getComputedStyle(pane);
+            const anchor = document.getSelection()?.anchorNode ?? null;
             return {
                 editable: pane.isContentEditable,
                 focused: document.activeElement === pane,
+                // Where the click actually left the caret. `focused` alone cannot answer that:
+                // a click intercepted by an overlay inside the pane still focuses the pane.
+                caretInPane: anchor !== null && pane.contains(anchor),
                 outlineStyle: style.outlineStyle,
                 outlineWidth: style.outlineWidth,
             };
@@ -192,6 +206,10 @@ test.describe("production webview harness", () => {
         expect(
             measured?.focused,
             "the pane did not take focus, so any outline assertion below would be vacuous",
+        ).toBe(true);
+        expect(
+            measured?.caretInPane,
+            "the click focused the pane but left the caret outside it",
         ).toBe(true);
         // Chromium's default ring on a focused contentEditable computes to `auto`; suppressed
         // it computes to `none`. Width is asserted too because a UA that rings with a plain

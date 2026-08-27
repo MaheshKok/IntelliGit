@@ -283,7 +283,10 @@ async function openUnifiedDiffOnce(
     // there: this is the reader asking for the other surface, not a check on what we can render.
     if (preferredView === "vscode") {
         await transitionToNativeFallback(session);
-        return true;
+        // Every landing re-checks currency for the reason the success path spells out below:
+        // the fallback awaits too, so a newer request can win the front tab while this one is
+        // inside it, and `transitionToNativeFallback` opens nothing at all once superseded.
+        return isCurrentUnifiedDiffSession(session);
     }
     const executor =
         request.left.kind === "ref" || request.right.kind === "ref"
@@ -322,7 +325,7 @@ async function openUnifiedDiffOnce(
         if (!isCurrentUnifiedDiffSession(session)) return false;
         logGitOpsWarning("diffService.openUnifiedDiff.resolve", error);
         await transitionToNativeFallback(session);
-        return true;
+        return isCurrentUnifiedDiffSession(session);
     }
 
     // Every outcome the viewer cannot render ends at the native editor: a side that
@@ -332,7 +335,7 @@ async function openUnifiedDiffOnce(
     const bothMissing = leftResult?.status === "missing" && rightResult?.status === "missing";
     if (!left || !right || bothMissing || overBudget) {
         await transitionToNativeFallback(session);
-        return true;
+        return isCurrentUnifiedDiffSession(session);
     }
 
     // Keep decoded sides for 3.6 partial re-resolution; the raw bytes are no longer needed

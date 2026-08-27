@@ -1653,6 +1653,62 @@ describe("DiffViewerApp read-only contract", () => {
             expect(sentDeltaVersions(vscode)).toEqual([1, 2]);
         });
 
+        // An emptied block posts NO lines, not one blank one: `replaceBlockText` runs the
+        // draft through `splitEditedText`, which reads "" as a deleted block. The re-anchor
+        // that follows the echo has to measure it the same way. Counting one line there claims
+        // the deleted block still occupies a row of the shorter document -- and that row now
+        // belongs to the segment BELOW it, so the draft silently adopts a hunk the reader
+        // never opened and the replacement they type overwrites it.
+        it("keeps the following hunk out of a draft whose own block was emptied", async () => {
+            const vscode = installVsCodeMock();
+            // The emptied hunk is deliberately not the last one -- a final hunk has nothing
+            // after it for an over-wide range to reach into, so it cannot witness this.
+            await mountEditablePane("head();\ngone();\ntail();", 1, [
+                { type: "common" as const, left: ["head();"], right: ["head();"] },
+                { type: "changed" as const, left: ["gone();"], right: ["other();"] },
+                { type: "common" as const, left: ["tail();"], right: ["tail();"] },
+            ]);
+            vi.useFakeTimers();
+
+            const textarea = editBlock(1);
+            setDraftText(textarea, "");
+            act(() => {
+                vi.advanceTimersByTime(1000);
+            });
+
+            // The host applied the deletion and echoes the shorter document back. The reader
+            // has not left the block, so the draft is still open and re-anchors against it.
+            dispatchHostMessage({
+                type: "setDiffData",
+                data: {
+                    ...diffFixture,
+                    segments: [
+                        { type: "common" as const, left: ["head();"], right: ["head();"] },
+                        { type: "changed" as const, left: [], right: ["other();"] },
+                        { type: "common" as const, left: ["tail();"], right: ["tail();"] },
+                    ],
+                    editablePane: "left" as const,
+                    editableText: "head();\ntail();",
+                    documentVersion: 2,
+                    editableReseedToken: 0,
+                },
+            });
+            await flush();
+
+            setDraftText(textarea, "replacement();");
+            act(() => {
+                vi.advanceTimersByTime(1000);
+            });
+
+            const deltas = sentDeltas(vscode);
+            expect(deltas, "the deletion and the replacement typed after it").toHaveLength(2);
+            // Asserted as the document the host ends up with, not as offsets: an off-by-one in
+            // the re-anchored range reads as a plausible number and as a destroyed line.
+            expect(applyDelta("head();\ntail();", deltas[1])).toBe(
+                "head();\nreplacement();\ntail();",
+            );
+        });
+
         it("still clears a draft when a foreign payload changes its token", async () => {
             installVsCodeMock();
             await mountEditablePane("shared();\nbefore();", 1);

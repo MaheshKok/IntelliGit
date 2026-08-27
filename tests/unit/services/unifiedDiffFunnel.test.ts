@@ -171,6 +171,58 @@ describe("unified diff funnel", () => {
         ).toHaveBeenCalledOnce();
     });
 
+    // The same rule at the other landing, and the one the test above cannot reach: there the
+    // loser was inside the PANEL, here it is inside the native fallback, awaiting the delegate
+    // that opens VS Code's own diff. Both are awaits a newer request can arrive during, and
+    // both leave the loser having drawn nothing a reader can see -- `transitionToNativeFallback`
+    // declines outright once the session it was handed has been cancelled. Reporting a landed
+    // tab from either would bind the winner's tab to the loser's reopen thunk.
+    // Every way in is driven, not just the cheapest one: the three landings are three separate
+    // returns, and a single case leaves the other two free to report a tab they never drew.
+    it.each([
+        // Honoured before either side loads -- the reader asked for the other surface.
+        ["the reader asked for the native diff", () => request(), "vscode" as const],
+        ["a side load rejects", () => request(rejectingProvider("left", "boom")), undefined],
+        // Both sides absent is the viewer's own refusal rather than a thrown load, so it is the
+        // only one of the three that reaches the last landing.
+        [
+            "the path is absent from both sides",
+            () =>
+                request(
+                    provider("left", { status: "missing" }),
+                    provider("right", { status: "missing" }),
+                ),
+            undefined,
+        ],
+    ])(
+        "records no tab when %s and a newer request cancels the fallback mid-flight",
+        async (_reason, makeRequest, preferredView) => {
+            const insideDelegate = deferred<undefined>();
+            const held = deferred<undefined>();
+            const supersededDelegate = vi.fn(async () => {
+                insideDelegate.resolve(undefined);
+                await held.promise;
+            });
+            const winningDelegate = vi.fn(async () => undefined);
+
+            const superseded = openUnifiedDiff(makeRequest(), supersededDelegate, preferredView);
+            await insideDelegate.promise;
+            await openUnifiedDiff(request(), winningDelegate, "vscode");
+            held.resolve(undefined);
+            await superseded;
+
+            expect(
+                supersededDelegate,
+                "the first fallback never ran, so it was already stale rather than superseded",
+            ).toHaveBeenCalledOnce();
+            expect(winningDelegate).toHaveBeenCalledOnce();
+            expect(
+                mocks.trackDiffTab,
+                "the fallback superseded mid-flight was recorded as though it had landed a tab",
+            ).toHaveBeenCalledOnce();
+        },
+    );
+
     it("keeps a confirmed missing side in the viewer as empty text", async () => {
         const nativeDelegate = vi.fn(async () => undefined);
 

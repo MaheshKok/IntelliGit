@@ -77,7 +77,19 @@ async function openEditableDiffOnce(
     );
     if (!editablePane || preferredView === "vscode") {
         await session.fallback();
-        return true;
+        // The same contract every landing here reports under, and the same one the read-only
+        // funnel reports under: a request that drew nothing must not claim a tab, or the
+        // caller binds the winner's tab to this request's reopen thunk and the switch buttons
+        // reopen a document the reader never asked for.
+        //
+        // Measured: on THIS surface it cannot currently come back false. `fallback()` releases
+        // the loading slot before it awaits the native delegate, and an editable session claims
+        // no viewer panel, so nothing cancels it inside its own fallback -- a mutant reverting
+        // all six landings to a bare `true` survives the whole suite. It is kept because the
+        // funnel's identical window is real and proven, and the two surfaces answer the same
+        // question; what makes this one unreachable is the slot ordering, not the absence of
+        // the race. Move that release after the await and this becomes load-bearing.
+        return session.isCurrent();
     }
 
     const executor =
@@ -104,7 +116,7 @@ async function openEditableDiffOnce(
     } catch (error) {
         logGitOpsWarning("editableDiffOpener.openEditableDiff.resolve", error);
         await session.fallback();
-        return true;
+        return session.isCurrent();
     }
 
     const editableSide = editablePane === "left" ? left : right;
@@ -121,13 +133,13 @@ async function openEditableDiffOnce(
         editableSide.status !== "loaded"
     ) {
         await session.fallback();
-        return true;
+        return session.isCurrent();
     }
     const viewerLeft = toViewerSide(left);
     const viewerRight = toViewerSide(right);
     if (exceedsDiffBudget(viewerLeft, viewerRight)) {
         await session.fallback();
-        return true;
+        return session.isCurrent();
     }
 
     const descriptor: EditableDiffDescriptor = {
@@ -152,8 +164,8 @@ async function openEditableDiffOnce(
         // rethrowing surfaced an error toast and left the user with no diff at all.
         logGitOpsWarning("editableDiffOpener.openEditableDiff.open", error);
         await session.fallback();
-        return true;
+        return session.isCurrent();
     }
     session.refreshIfPending();
-    return true;
+    return session.isCurrent();
 }
