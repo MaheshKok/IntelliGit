@@ -498,6 +498,13 @@
     width: var(--diff-revert-arrow-size);
     height: var(--diff-revert-arrow-size);
     padding: 0;
+    /* The vertical half of the same placement, and the only half that is a constant: the driver
+       sets `top` to the centre of the hunk's first line-number row, and this pulls the box up by
+       half its own height so it centres on that row. Written as `translate` rather than folded
+       into `transform`, because `transform` is the pane-dependent horizontal decision the driver
+       owns -- an inline one would overwrite a `transform` declared here, and the two properties
+       compose instead. */
+    translate: 0 -50%;
     /* No `transform` here on purpose. The scroll driver sets `left` and `transform` together
        (`revertArrowX`), because `left` on its own does not say which of this box's edges it
        names -- the strip starts at the left pane's number column and ends at the right

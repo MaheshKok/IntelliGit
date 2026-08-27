@@ -122,7 +122,7 @@ test.describe("revert arrow placement", () => {
                 return held >= 3;
             });
 
-            const geometry = await page.evaluate(() => {
+            const geometry = await page.evaluate((measuredPane) => {
                 const box = (element: Element | null) => {
                     if (element === null) return null;
                     const { left, right, width } = element.getBoundingClientRect();
@@ -154,10 +154,43 @@ test.describe("revert arrow placement", () => {
                         const button = element.getBoundingClientRect();
                         return { glyph: glyph.height, button: button.height };
                     }),
+                    // Every arrow paired with the row it annotates, resolved by the segment
+                    // index its own testid carries rather than by list position -- only some
+                    // segments are hunks, so the Nth arrow is not the Nth segment.
+                    //
+                    // Both boxes are read inside this one evaluate because they only mean
+                    // something together: two round trips could straddle a scroll or a resize
+                    // and compare an arrow from one layout against a row from another.
+                    rows: visible.map((element) => {
+                        const index = Number(
+                            (element.getAttribute("data-testid") ?? "").replace("diff-revert-", ""),
+                        );
+                        const segments = document
+                            .querySelector(`[data-testid="diff-pane-${measuredPane}"]`)
+                            ?.querySelectorAll(".segment");
+                        const segment = segments?.[index] ?? null;
+                        // A hunk whose rows exist only in the editable pane collapses to a
+                        // zero-height seam here and has no row: the segment's own box is then
+                        // what the arrow is meant to centre on.
+                        const target =
+                            segment?.querySelector(".line-number-row") ?? segment ?? null;
+                        if (target === null) return { index, arrow: null, target: null };
+                        const a = element.getBoundingClientRect();
+                        const t = target.getBoundingClientRect();
+                        return {
+                            index,
+                            arrow: { centre: a.top + a.height / 2, height: a.height },
+                            target: { centre: t.top + t.height / 2, height: t.height },
+                        };
+                    }),
+                    segmentCount:
+                        document
+                            .querySelector(`[data-testid="diff-pane-${measuredPane}"]`)
+                            ?.querySelectorAll(".segment").length ?? 0,
                     left: paneParts("left"),
                     right: paneParts("right"),
                 };
-            });
+            }, arrowPane);
 
             const { left, right } = geometry;
             expect(left.column, "the left pane's number column").not.toBeNull();
@@ -205,6 +238,38 @@ test.describe("revert arrow placement", () => {
             for (const [index, arrow] of geometry.arrows.entries()) {
                 expect(arrow!.left, `arrow ${index} left edge`).toBe(strip.left);
                 expect(arrow!.right, `arrow ${index} right edge`).toBe(strip.right);
+            }
+
+            // The vertical half. An arrow that lands beside the wrong ROW is as wrong as one in
+            // the wrong lane, and until now nothing looked: the horizontal assertions above pass
+            // identically whether the box is centred on its hunk's first line number or hanging
+            // 10px past it into the next one.
+            //
+            // Pairing an arrow to a row by index is only sound if the pane renders one
+            // `.segment` per payload segment, so that is asserted rather than assumed -- a pane
+            // that wraps its blocks in an extra `.segment` would shift every pairing by one and
+            // still produce plausible-looking numbers.
+            expect(geometry.segmentCount, "one rendered segment per payload segment").toBe(
+                (recordedDiffData().segments as readonly unknown[]).length,
+            );
+
+            for (const pairing of geometry.rows) {
+                expect(
+                    pairing.target,
+                    `arrow ${pairing.index} annotates a segment that rendered no box`,
+                ).not.toBeNull();
+                // The precondition that makes this test able to fail at all: centring and
+                // top-aligning are the same placement when the box is the height of the row.
+                // They differ here by half of 30 - 20, so a regression to `top = hunk top` moves
+                // the arrow 5px and this assertion sees it.
+                expect(
+                    pairing.arrow!.height,
+                    `arrow ${pairing.index} is taller than the row it centres on`,
+                ).toBeGreaterThan(pairing.target!.height);
+                expect(
+                    pairing.arrow!.centre,
+                    `arrow ${pairing.index} centred on its hunk's first line-number row`,
+                ).toBeCloseTo(pairing.target!.centre, 1);
             }
         });
     }

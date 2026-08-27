@@ -863,14 +863,21 @@ export function App(): React.ReactElement {
     // where its action strip begins, and so where the revert arrow stands. Measured off the
     // rendered column rather than computed from `--diff-line-number-gutter`, which is a
     // `max(33px, calc(Nch + 12px))` token a custom property hands back unresolved.
+    // `lineRowPx` is one rendered line-number row's height, which is the other half of where the
+    // arrow stands: it centres on the hunk's FIRST row, not on the hunk's top edge. Measured for
+    // the same reason as the anchor -- the 20px lives in diff-core.css, and a copy of it here is
+    // a number that silently drifts the day the code metrics change. Zero until the first
+    // measure, which degrades to the old top-alignment rather than to a wild offset.
     const viewportRef = useRef<{
         height: number;
         channel: RibbonSpan;
         stripAnchorPx: Record<DiffPane, number>;
+        lineRowPx: number;
     }>({
         height: 0,
         channel: connectorChannelSpan(0, 0),
         stripAnchorPx: { left: 0, right: 0 },
+        lineRowPx: 0,
     });
     const ribbonPaths = useMemo(() => new Map<number, SVGPathElement>(), []);
     const actionButtons = useMemo(() => new Map<number, HTMLButtonElement>(), []);
@@ -1086,7 +1093,16 @@ export function App(): React.ReactElement {
             return (pane === "left" ? column.left : column.right) - origin;
         };
         const stripAnchorPx = { left: stripAnchor("left"), right: stripAnchor("right") };
-        viewportRef.current = { height, channel, stripAnchorPx };
+        // Any rendered row will do -- every pane shares one set of code metrics, and the row box
+        // carries no vertical padding, so its height IS the line box. Same guard as the anchor:
+        // a skipped or not-yet-mounted column keeps the previous reading instead of collapsing
+        // every arrow onto its hunk's top edge for a frame.
+        const rowHeight = content
+            .querySelector<HTMLElement>(".line-number-row")
+            ?.getBoundingClientRect().height;
+        const lineRowPx =
+            rowHeight === undefined || rowHeight === 0 ? viewportRef.current.lineRowPx : rowHeight;
+        viewportRef.current = { height, channel, stripAnchorPx, lineRowPx };
         setViewportHeight(height);
         content.style.setProperty("--diff-viewport-h", `${height}px`);
     }, []);
@@ -1119,7 +1135,8 @@ export function App(): React.ReactElement {
             for (const [index, button] of actionButtons) {
                 if (index >= currentLayout.canonicalTopPx.length) continue;
                 const top = currentLayout.paneTopPx[pane][index] - offsets[pane];
-                const bottom = top + currentLayout.paneHPx[pane][index];
+                const paneH = currentLayout.paneHPx[pane][index];
+                const bottom = top + paneH;
                 if (bottom < 0 || top > viewportH) {
                     button.style.display = "none";
                     continue;
@@ -1128,7 +1145,22 @@ export function App(): React.ReactElement {
                 // the stylesheet, which hides it. The ribbons get away with it only because
                 // nothing declares a display for them.
                 button.style.display = "flex";
-                button.style.top = `${top}px`;
+                // PyCharm's placement: the box centres on the hunk's FIRST line-number row, not
+                // on the hunk's top edge. Top-aligning a 30px box to a 20px row hangs it 10px
+                // into the row below, so the arrow reads as annotating the wrong number and the
+                // hunk's boundary cuts across the middle of the glyph; centred, that boundary
+                // grazes the top of the icon instead.
+                //
+                // `top` names the row's centre and `.diff-hunk-revert`'s `translate` centres the
+                // box on it -- the same split as the horizontal half, where `left` names the
+                // edge and the transform names which of the box's own edges meets it. Nothing
+                // here has to agree with the 30px in diff-viewer.css.
+                //
+                // The clamp is not defensive. A hunk whose rows exist only in the EDITABLE pane
+                // collapses to a zero-height seam in the pane the arrow stands in, and there is
+                // no row to centre on; clamping to that pane's own height centres the arrow on
+                // the seam, which is where the hunk actually is.
+                button.style.top = `${top + Math.min(paneH, viewportRef.current.lineRowPx) / 2}px`;
                 button.style.left = `${leftPx}px`;
                 // Set here rather than in the stylesheet because it is half of one placement
                 // decision: `left` alone is meaningless without knowing which of the box's
