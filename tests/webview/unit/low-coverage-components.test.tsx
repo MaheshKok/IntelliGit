@@ -689,6 +689,81 @@ describe("low coverage components", () => {
         }
     });
 
+    it("CommitList force-refreshes only the commit whose popover action was clicked", async () => {
+        const onRequestCommitChecks = vi.fn();
+        const commits: Commit[] = ["1111111", "2222222"].map((hash, index) => ({
+            hash,
+            shortHash: hash,
+            message: `Commit ${index}`,
+            author: "Mahesh",
+            email: "m@example.com",
+            date: "2026-02-19T00:00:00Z",
+            parentHashes: [],
+            refs: [],
+        }));
+        const snapshots = new Map(
+            commits.map((commit) => [
+                commit.hash,
+                {
+                    hash: commit.hash,
+                    state: "success" as const,
+                    summary: "All checks passed",
+                    items: [
+                        {
+                            name: "CI / build",
+                            state: "success" as const,
+                            source: "check-run" as const,
+                        },
+                    ],
+                },
+            ]),
+        );
+        const clientHeight = vi
+            .spyOn(HTMLElement.prototype, "clientHeight", "get")
+            .mockReturnValue(ROW_HEIGHT * commits.length);
+        let mounted: ReturnType<typeof mount> | undefined;
+        try {
+            mounted = mount(
+                <CommitList
+                    commits={commits}
+                    selectedHash={null}
+                    filterText=""
+                    hasMore={false}
+                    unpushedHashes={new Set()}
+                    selectedBranch={null}
+                    onSelectCommit={vi.fn()}
+                    onFilterText={vi.fn()}
+                    onLoadMore={vi.fn()}
+                    onCommitAction={vi.fn()}
+                    commitChecks={snapshots}
+                    onRequestCommitChecks={onRequestCommitChecks}
+                    onOpenCommitCheckUrl={vi.fn()}
+                />,
+            );
+            await flush();
+            expect(onRequestCommitChecks).toHaveBeenLastCalledWith(
+                commits.map((commit) => commit.hash),
+                false,
+            );
+            onRequestCommitChecks.mockClear();
+
+            const trigger = mounted.container.querySelector(
+                `[data-testid="commit-checks-button-${commits[0].hash}"]`,
+            ) as HTMLButtonElement;
+            act(() => trigger.click());
+            const refreshButton = document.body.querySelector(
+                'button[aria-label="Refresh"]',
+            ) as HTMLButtonElement;
+            expect(refreshButton).not.toBeNull();
+            act(() => refreshButton.click());
+
+            expect(onRequestCommitChecks.mock.calls).toEqual([[[commits[0].hash], true]]);
+        } finally {
+            if (mounted) unmount(mounted.root, mounted.container);
+            clientHeight.mockRestore();
+        }
+    });
+
     it("CommitList clears previous demand when check callbacks are disabled", async () => {
         const onRequestCommitChecks = vi.fn();
         const commit: Commit = {

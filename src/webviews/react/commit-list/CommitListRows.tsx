@@ -31,7 +31,8 @@ interface CommitListRowsProps {
     showDate: boolean;
     commitChecks?: ReadonlyMap<string, CommitChecksSnapshot | "loading">;
     onSelectCommit: (hash: string) => void;
-    onRequestCommitChecks?: (hash: string) => void;
+    /** Requests a commit's checks; `force` bypasses the host/provider cache. */
+    onRequestCommitChecks?: (hash: string, force?: boolean) => void;
     onOpenCommitCheckUrl?: (url: string) => void;
     onSignInForCommitChecks?: (host: string) => void;
     onCommitHover?: (commit: Commit, event: React.MouseEvent) => void;

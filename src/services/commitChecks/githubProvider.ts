@@ -40,6 +40,8 @@ interface GitHubStatus {
     target_url?: unknown;
 }
 
+const GITHUB_PAGE_SIZE = 100;
+
 /** Parses GitHub.com remote URLs from HTTPS, SSH, and scp-like Git remotes. */
 export function parseGithubRemoteUrl(remoteUrl: string): GitHubRepoRef | null {
     const trimmed = remoteUrl.trim();
@@ -137,8 +139,8 @@ export class GitHubProvider implements CommitChecksProvider {
         )}/commits/${encodeURIComponent(hash)}`;
 
         const [checkRunsResult, statusesResult] = await Promise.allSettled([
-            this.fetchJson(`${base}/check-runs?per_page=100`, headers),
-            this.fetchJson(`${base}/statuses?per_page=100`, headers),
+            fetchAllCheckRuns(this.fetchJson, base, headers),
+            fetchAllStatuses(this.fetchJson, base, headers),
         ]);
 
         if (checkRunsResult.status === "rejected" && statusesResult.status === "rejected") {
@@ -171,6 +173,81 @@ export class GitHubProvider implements CommitChecksProvider {
             this.ciCdPattern,
         );
     }
+}
+
+/**
+ * Fetches every check-run page advertised by GitHub.
+ *
+ * The promise rejects when any page fails, so callers never normalize a partial check-run
+ * collection as a successful endpoint result.
+ *
+ * @param fetchJson - Authenticated HTTP boundary used for each sequential page request.
+ * @param base - Commit API URL without an endpoint suffix.
+ * @param headers - Authenticated GitHub request headers.
+ * @returns A combined check-run payload suitable for the normalizer.
+ */
+async function fetchAllCheckRuns(
+    fetchJson: FetchJson,
+    base: string,
+    headers: Record<string, string>,
+): Promise<{ check_runs: GitHubCheckRun[] }> {
+    const firstPage = await fetchJson(
+        `${base}/check-runs?per_page=${GITHUB_PAGE_SIZE}&filter=latest&page=1`,
+        headers,
+    );
+    const checkRuns = readCheckRuns(firstPage);
+    for (let page = 2; page <= pageCount(firstPage); page += 1) {
+        const response = await fetchJson(
+            `${base}/check-runs?per_page=${GITHUB_PAGE_SIZE}&filter=latest&page=${page}`,
+            headers,
+        );
+        checkRuns.push(...readCheckRuns(response));
+    }
+    return { check_runs: checkRuns };
+}
+
+/**
+ * Fetches every page from GitHub's combined-status endpoint as one atomic result.
+ *
+ * The promise rejects when any page fails, discarding earlier pages so endpoint degradation is
+ * handled by the provider's independent settled-result logic.
+ *
+ * @param fetchJson - Authenticated HTTP boundary used for each sequential page request.
+ * @param base - Commit API URL without an endpoint suffix.
+ * @param headers - Authenticated GitHub request headers.
+ * @returns A combined status payload suitable for the normalizer.
+ */
+async function fetchAllStatuses(
+    fetchJson: FetchJson,
+    base: string,
+    headers: Record<string, string>,
+): Promise<{ statuses: GitHubStatus[] }> {
+    const firstPage = await fetchJson(
+        `${base}/status?per_page=${GITHUB_PAGE_SIZE}&page=1`,
+        headers,
+    );
+    const statuses = readStatuses(firstPage);
+    for (let page = 2; page <= pageCount(firstPage); page += 1) {
+        const response = await fetchJson(
+            `${base}/status?per_page=${GITHUB_PAGE_SIZE}&page=${page}`,
+            headers,
+        );
+        statuses.push(...readStatuses(response));
+    }
+    return { statuses };
+}
+
+/**
+ * Returns the number of pages advertised by a GitHub paginated response.
+ *
+ * @param value - First-page payload from a paginated endpoint.
+ * @returns At least one page, even when the payload has no usable total count.
+ */
+function pageCount(value: unknown): number {
+    if (!value || typeof value !== "object") return 1;
+    const totalCount = (value as { total_count?: unknown }).total_count;
+    if (typeof totalCount !== "number" || !Number.isFinite(totalCount)) return 1;
+    return Math.max(1, Math.ceil(totalCount / GITHUB_PAGE_SIZE));
 }
 
 /**
