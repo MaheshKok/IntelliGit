@@ -17,6 +17,8 @@
         "intelligit.conflictAcceptYours",
         "intelligit.createWorktreeFromBranch",
         "intelligit.deleteBranch",
+        "intelligit.diff.showInIntelliGit",
+        "intelligit.diff.showInVsCode",
         "intelligit.dockWindow",
         "intelligit.fileDelete",
         "intelligit.fileJumpToSource",

@@ -87,5 +87,7 @@
     "configuration.commitCheckState.enum.allChecked": "커밋 패널에서 초기 파일과 새로 발견된 파일을 기본적으로 선택합니다.",
     "configuration.commitCheckState.enum.noneChecked": "커밋 패널에서 초기 파일과 새로 발견된 파일을 기본적으로 선택하지 않습니다(기본값).",
     "configuration.commitCheckState.enum.preserveSelection": "각 저장소의 이전 선택 파일을 복원합니다. 새로 발견된 파일은 선택하지 않은 상태로 유지됩니다.",
-    "configuration.commitCheckState.markdownDescription": "커밋 패널을 로드하거나 새 경로를 발견할 때 파일을 선택하는 방식을 제어합니다. `allChecked`는 초기 파일과 새 파일을 선택하고, `noneChecked`는 선택하지 않은 상태로 두며(기본값), `preserveSelection`은 각 저장소의 이전 선택을 복원하면서 새 파일은 선택하지 않은 상태로 둡니다. 명시적으로 선택한 항목은 새로 고치는 동안 유지됩니다. 변경 사항은 창을 다시 로드한 후 적용됩니다."
+    "configuration.commitCheckState.markdownDescription": "커밋 패널을 로드하거나 새 경로를 발견할 때 파일을 선택하는 방식을 제어합니다. `allChecked`는 초기 파일과 새 파일을 선택하고, `noneChecked`는 선택하지 않은 상태로 두며(기본값), `preserveSelection`은 각 저장소의 이전 선택을 복원하면서 새 파일은 선택하지 않은 상태로 둡니다. 명시적으로 선택한 항목은 새로 고치는 동안 유지됩니다. 변경 사항은 창을 다시 로드한 후 적용됩니다.",
+    "command.diffShowInIntelliGit": "IntelliGit에서 차이점 표시",
+    "command.diffShowInVsCode": "VS Code에서 차이점 표시"
 }

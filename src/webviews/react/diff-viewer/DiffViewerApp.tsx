@@ -54,8 +54,56 @@ import "./diff-viewer.css";
 const LINE_PADDING_PX = 18;
 const READ_ONLY_NOTICE_MS = 2500;
 
+/**
+ * Where the refusal is spoken when the caret cannot be measured -- a keyboard-only attempt
+ * with no selection, or a collapsed range the browser reports as an empty rect at the origin.
+ * Just inside the top-left of the panes, so the notice is still visibly ABOUT the diff rather
+ * than pinned to a corner of the window.
+ */
+const READ_ONLY_NOTICE_FALLBACK_POINT = { x: 12, y: 12 } as const;
+
 function isReadOnlyPane(editablePane: DiffPane | undefined, pane: DiffPane): boolean {
     return editablePane !== pane;
+}
+
+/** The document a pane is editing, once both halves of it have actually arrived. */
+interface PaneEditor {
+    readonly text: string;
+    readonly version: number;
+}
+
+/**
+ * The real editing surface this pane puts on screen, or `null` when it renders read-only blocks.
+ *
+ * Not the same question as `isReadOnlyPane`, which answers from `editablePane` alone: a
+ * payload can name an editable side and omit the document behind it, and then the named pane
+ * still renders read-only blocks. The caret follows what was actually rendered, because a
+ * pane with no editing surface must not swallow keystrokes as if it had one.
+ *
+ * Returns the document rather than a boolean so the two fields are proven present once, here,
+ * instead of at each of the places that then have to hand them to the editor.
+ */
+function paneEditor(data: DiffViewerData, pane: DiffPane): PaneEditor | null {
+    if (data.editablePane !== pane) return null;
+    if (data.editableText === undefined || data.documentVersion === undefined) return null;
+    return { text: data.editableText, version: data.documentVersion };
+}
+
+/** Where the caret sits, so the notice can be spoken next to it rather than in the header. */
+interface CaretPoint {
+    readonly x: number;
+    readonly y: number;
+}
+
+function caretPointWithin(host: HTMLElement): CaretPoint | null {
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) return null;
+    const rect = selection.getRangeAt(0).getBoundingClientRect();
+    const hostRect = host.getBoundingClientRect();
+    // A collapsed range at the very start of a line can measure zero on both axes, which
+    // would pin the notice to the viewer's top-left corner rather than to the caret.
+    if (rect.width === 0 && rect.height === 0 && rect.x === 0 && rect.y === 0) return null;
+    return { x: rect.left - hostRect.left, y: rect.top - hostRect.top };
 }
 
 function clearReadOnlyNoticeTimer(
@@ -81,14 +129,12 @@ function DiffPaneBlock({
     lineCount,
     lineNumbers,
     highlightWords,
-    onAttemptEdit,
 }: {
     segment: DiffSegment;
     side: DiffPane;
     lineCount: number;
     lineNumbers: LineNumberSpec;
     highlightWords: boolean;
-    onAttemptEdit?: () => void;
 }): React.ReactElement {
     const lines = segment[side];
     const compareLines = segment[side === "left" ? "right" : "left"];
@@ -97,7 +143,6 @@ function DiffPaneBlock({
         <div
             className={`segment ${segmentClassName(segment, side)}`}
             style={intrinsicSizeStyle(lineCount)}
-            onClick={onAttemptEdit}
         >
             <CodeBlock
                 lines={lines}
@@ -808,7 +853,7 @@ function DiffPathRow({
 export function App(): React.ReactElement {
     const [data, setData] = useState<DiffViewerData | null>(null);
     const [error, setError] = useState<string | null>(null);
-    const [readOnlyNotice, setReadOnlyNotice] = useState(false);
+    const [readOnlyNotice, setReadOnlyNotice] = useState<CaretPoint | null>(null);
     const [ignoreMode, setIgnoreMode] = useState<"none" | "whitespace">("none");
     const [highlightWords, setHighlightWords] = useState(true);
     const [editingBlock, setEditingBlock] = useState<EditableBlockLayout | null>(null);
@@ -823,6 +868,8 @@ export function App(): React.ReactElement {
     const contentRef = useRef<HTMLDivElement | null>(null);
     const viewportElementRef = useRef<HTMLDivElement | null>(null);
     const columnRefs = useRef<Record<DiffPane, HTMLDivElement | null>>({ left: null, right: null });
+    /** The positioning context the read-only notice is placed against. */
+    const rootRef = useRef<HTMLDivElement | null>(null);
     const horizontalScrollRef = useRef<HTMLDivElement | null>(null);
     const horizontalScrollInnerRef = useRef<HTMLDivElement | null>(null);
     const lastPaneClientWidthRef = useRef(0);
@@ -948,6 +995,10 @@ export function App(): React.ReactElement {
 
     /** See `revertablePaneOf`: the host's named pane, narrowed to one an edit can reach. */
     const revertablePane = useMemo(() => revertablePaneOf(data), [data]);
+
+    /** See `paneEditor`: which side, if either, actually has an editing surface to render. */
+    const leftEditor = data ? paneEditor(data, "left") : null;
+    const rightEditor = data ? paneEditor(data, "right") : null;
 
     // No arrows on a collapsed one-sided file: there is no channel between panes to stand
     // in, and "revert the whole file" is a delete or a restore, not a block replacement.
@@ -1248,18 +1299,50 @@ export function App(): React.ReactElement {
         [data, handleEdit, renderedSegments],
     );
 
-    const handleReadOnlyAttempt = useCallback(() => {
+    const handleReadOnlyAttempt = useCallback((at: CaretPoint | null) => {
         clearReadOnlyNoticeTimer(readOnlyNoticeTimerRef);
-        setReadOnlyNotice(true);
+        setReadOnlyNotice(at ?? READ_ONLY_NOTICE_FALLBACK_POINT);
         readOnlyNoticeTimerRef.current = window.setTimeout(() => {
             readOnlyNoticeTimerRef.current = null;
-            setReadOnlyNotice(false);
+            setReadOnlyNotice(null);
         }, READ_ONLY_NOTICE_MS);
     }, []);
 
     useEffect(() => {
         return () => clearReadOnlyNoticeTimer(readOnlyNoticeTimerRef);
     }, []);
+
+    /**
+     * A caret in the read-only pane, and a refusal when the reader tries to type into it.
+     *
+     * `contentEditable` is what puts a real caret on a plain div -- clicking places it, the
+     * arrow keys move it, and a selection spans lines the way it does in the editable pane.
+     * Every actual edit is then refused at `beforeinput`, which the browser raises for
+     * typing, paste, cut, delete and drop alike. Enumerating those as keystrokes instead
+     * would cover the ones remembered on the day it was written; this covers whatever the
+     * browser itself counts as changing the text.
+     */
+    useEffect(() => {
+        if (!data) return;
+        const host = rootRef.current;
+        const disposers = DIFF_PANES.filter((pane) => !paneEditor(data, pane)).map((pane) => {
+            const element = columnRefs.current[pane];
+            if (!element) return () => undefined;
+            // Refuse on every pane that carries the caret, but only ACCUSE on the ones the
+            // lock icon also calls read-only. A payload that names an editable side and
+            // omits the document behind it renders immutable blocks on that side too: it
+            // must still swallow the keystroke -- there is nowhere to save it -- while
+            // staying silent, or the notice would contradict its own pane's missing lock.
+            const refuse = (event: Event): void => {
+                event.preventDefault();
+                if (!isReadOnlyPane(data.editablePane, pane)) return;
+                handleReadOnlyAttempt(host ? caretPointWithin(host) : null);
+            };
+            element.addEventListener("beforeinput", refuse);
+            return () => element.removeEventListener("beforeinput", refuse);
+        });
+        return () => disposers.forEach((dispose) => dispose());
+    }, [data, handleReadOnlyAttempt]);
 
     useEffect(() => {
         const handler = (event: MessageEvent<InboundMessage>) => {
@@ -1400,10 +1483,35 @@ export function App(): React.ReactElement {
     return (
         <SyntaxHighlightProvider value={syntaxHighlightState}>
             <div
+                ref={rootRef}
                 className={viewerRootClass(singlePane)}
                 style={rootStyle}
                 data-testid="diff-viewer-root"
             >
+                {/* Above the toolbar, not below it: the custom editor's entry point gets its
+                    path from VS Code's own breadcrumb bar, which sits above everything the
+                    webview draws. Putting this row anywhere else makes the two entry points
+                    read as two different screens for the same job. */}
+                <div className="diff-header">
+                    <DiffPathRow path={data.path} hostShowsPath={data.hostShowsPath} />
+                    {data.newlineDifference ? (
+                        <span className="diff-newline-marker" role="status">
+                            {t("diff.newlineDifference")}
+                        </span>
+                    ) : null}
+                </div>
+                {/* Beside the caret rather than up in the header, because the refusal answers
+                    something the reader just did with their hands at that spot -- a status
+                    line one band away reads as belonging to the file, not to the keystroke. */}
+                {readOnlyNotice ? (
+                    <span
+                        className="diff-readonly-notice"
+                        role="status"
+                        style={{ left: `${readOnlyNotice.x}px`, top: `${readOnlyNotice.y}px` }}
+                    >
+                        {t("diff.readOnly.pane")}
+                    </span>
+                ) : null}
                 <div className="diff-toolbar">
                     <div className="toolbar-left">
                         <div className="toolbar-nav-group">
@@ -1460,19 +1568,6 @@ export function App(): React.ReactElement {
                         </button>
                     </div>
                 </div>
-                <div className="diff-header">
-                    <DiffPathRow path={data.path} hostShowsPath={data.hostShowsPath} />
-                    {data.newlineDifference ? (
-                        <span className="diff-newline-marker" role="status">
-                            {t("diff.newlineDifference")}
-                        </span>
-                    ) : null}
-                    {readOnlyNotice ? (
-                        <span className="diff-readonly-notice" role="status">
-                            {t("diff.readOnly.pane")}
-                        </span>
-                    ) : null}
-                </div>
                 <DiffPaneMetaRow
                     singlePane={singlePane}
                     editablePane={data.editablePane}
@@ -1495,14 +1590,16 @@ export function App(): React.ReactElement {
                                         }}
                                         className="diff-pane diff-pane-left"
                                         data-testid="diff-pane-left"
+                                        contentEditable={!leftEditor}
+                                        suppressContentEditableWarning
+                                        spellCheck={false}
+                                        aria-readonly={!leftEditor}
                                     >
-                                        {data.editablePane === "left" &&
-                                        data.editableText !== undefined &&
-                                        data.documentVersion !== undefined ? (
+                                        {leftEditor ? (
                                             <EditableDiffPane
                                                 side="left"
-                                                text={data.editableText}
-                                                documentVersion={data.documentVersion}
+                                                text={leftEditor.text}
+                                                documentVersion={leftEditor.version}
                                                 reseedToken={data.editableReseedToken ?? 0}
                                                 renderedSegments={renderedSegments}
                                                 highlightWords={highlightWords}
@@ -1519,11 +1616,6 @@ export function App(): React.ReactElement {
                                                     lineCount={item.paneLines.left}
                                                     lineNumbers={item.lineNumbers.left}
                                                     highlightWords={highlightWords}
-                                                    onAttemptEdit={
-                                                        isReadOnlyPane(data.editablePane, "left")
-                                                            ? handleReadOnlyAttempt
-                                                            : undefined
-                                                    }
                                                 />
                                             ))
                                         )}
@@ -1536,14 +1628,16 @@ export function App(): React.ReactElement {
                                         }}
                                         className="diff-pane diff-pane-right"
                                         data-testid="diff-pane-right"
+                                        contentEditable={!rightEditor}
+                                        suppressContentEditableWarning
+                                        spellCheck={false}
+                                        aria-readonly={!rightEditor}
                                     >
-                                        {data.editablePane === "right" &&
-                                        data.editableText !== undefined &&
-                                        data.documentVersion !== undefined ? (
+                                        {rightEditor ? (
                                             <EditableDiffPane
                                                 side="right"
-                                                text={data.editableText}
-                                                documentVersion={data.documentVersion}
+                                                text={rightEditor.text}
+                                                documentVersion={rightEditor.version}
                                                 reseedToken={data.editableReseedToken ?? 0}
                                                 renderedSegments={renderedSegments}
                                                 highlightWords={highlightWords}
@@ -1560,11 +1654,6 @@ export function App(): React.ReactElement {
                                                     lineCount={item.paneLines.right}
                                                     lineNumbers={item.lineNumbers.right}
                                                     highlightWords={highlightWords}
-                                                    onAttemptEdit={
-                                                        isReadOnlyPane(data.editablePane, "right")
-                                                            ? handleReadOnlyAttempt
-                                                            : undefined
-                                                    }
                                                 />
                                             ))
                                         )}

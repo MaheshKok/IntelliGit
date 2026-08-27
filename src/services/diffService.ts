@@ -31,6 +31,7 @@ import {
     type LoadedDiffSide as ViewerDiffSide,
 } from "../diff/sideLoader";
 import { openEditableDiff } from "../diff/editableDiffOpener";
+import { trackDiffTab, type DiffViewKind } from "../diff/diffViewSwitch";
 import {
     documentIdForSides,
     labelForDiffSide,
@@ -248,15 +249,42 @@ export function getRepoRelativeFilePathFromUri(uri: vscode.Uri, repoRoot: string
 
 /**
  * Opens one read-only diff in the IntelliGit viewer, falling back to the caller's exact native
- * behaviour for anything the viewer cannot render. There is no user-facing choice of viewer:
- * `nativeDelegate` exists for content the viewer must refuse — binary, invalid UTF-8, symlink,
- * submodule, or over-budget sides — not as a preference.
+ * behaviour for anything the viewer cannot render, and remembers the tab it landed in so the
+ * title-bar buttons can move it to the other surface.
+ *
+ * `nativeDelegate` is still not a preference: it exists for content the viewer must refuse —
+ * binary, invalid UTF-8, symlink, submodule, or over-budget sides. `preferredView` is the
+ * preference, and it arrives only from those buttons.
  */
 export async function openUnifiedDiff(
     request: UnifiedDiffRequest,
     nativeDelegate: NativeDiffDelegate,
+    preferredView?: DiffViewKind,
 ): Promise<void> {
+    if (!(await openUnifiedDiffOnce(request, nativeDelegate, preferredView))) return;
+    await trackDiffTab((view) => openUnifiedDiff(request, nativeDelegate, view));
+}
+
+/**
+ * Opens the diff, reporting whether it put a tab on screen.
+ *
+ * Split from the tracking above so the answer is given per return rather than inferred from a
+ * `finally`, which cannot tell a diff that opened from one a newer request superseded mid-load.
+ * Superseded requests land nothing, so recording them would bind whichever tab is in front --
+ * the file the reader actually clicked -- to the diff they clicked away from.
+ */
+async function openUnifiedDiffOnce(
+    request: UnifiedDiffRequest,
+    nativeDelegate: NativeDiffDelegate,
+    preferredView: DiffViewKind | undefined,
+): Promise<boolean> {
     const session = beginUnifiedDiffSession(request, nativeDelegate);
+    // Honoured before either side loads, for the same reason the editable opener honours it
+    // there: this is the reader asking for the other surface, not a check on what we can render.
+    if (preferredView === "vscode") {
+        await transitionToNativeFallback(session);
+        return true;
+    }
     const executor =
         request.left.kind === "ref" || request.right.kind === "ref"
             ? new GitExecutor(request.repoRoot)
@@ -275,7 +303,7 @@ export async function openUnifiedDiff(
             side: request.left,
             executor,
         });
-        if (!isCurrentUnifiedDiffSession(session, loadGeneration)) return;
+        if (!isCurrentUnifiedDiffSession(session, loadGeneration)) return false;
         if (leftResult.status === "loaded" || leftResult.status === "missing") {
             left = toViewerSide(leftResult);
             rightResult = await loadDiffSide({
@@ -284,17 +312,17 @@ export async function openUnifiedDiff(
                 side: request.right,
                 executor,
             });
-            if (!isCurrentUnifiedDiffSession(session, loadGeneration)) return;
+            if (!isCurrentUnifiedDiffSession(session, loadGeneration)) return false;
             if (rightResult.status === "loaded" || rightResult.status === "missing") {
                 right = toViewerSide(rightResult);
                 overBudget = exceedsDiffBudget(left, right);
             }
         }
     } catch (error) {
-        if (!isCurrentUnifiedDiffSession(session)) return;
+        if (!isCurrentUnifiedDiffSession(session)) return false;
         logGitOpsWarning("diffService.openUnifiedDiff.resolve", error);
         await transitionToNativeFallback(session);
-        return;
+        return true;
     }
 
     // Every outcome the viewer cannot render ends at the native editor: a side that
@@ -304,7 +332,7 @@ export async function openUnifiedDiff(
     const bothMissing = leftResult?.status === "missing" && rightResult?.status === "missing";
     if (!left || !right || bothMissing || overBudget) {
         await transitionToNativeFallback(session);
-        return;
+        return true;
     }
 
     // Keep decoded sides for 3.6 partial re-resolution; the raw bytes are no longer needed
@@ -313,7 +341,7 @@ export async function openUnifiedDiff(
     // protects each published snapshot from mutation.
     session.sideSnapshots.left = freezeDiffSide(left);
     session.sideSnapshots.right = freezeDiffSide(right);
-    if (!isCurrentUnifiedDiffSession(session)) return;
+    if (!isCurrentUnifiedDiffSession(session)) return false;
 
     await openDiffViewer({
         path: request.path,
@@ -331,6 +359,12 @@ export async function openUnifiedDiff(
         session.refreshPending = false;
         requestUnifiedDiffRefresh(session);
     }
+    // openDiffViewer awaits, so a newer request can start and win the panel while this one is
+    // inside it -- the panel is a singleton and declines a stale generation. Re-check here so a
+    // request that drew nothing never reports a landed tab: the caller would otherwise bind the
+    // winner's tab to this request's reopen thunk, and the switch buttons would then reopen a
+    // document the reader never asked for.
+    return isCurrentUnifiedDiffSession(session);
 }
 
 interface BeginUnifiedDiffSessionOptions {

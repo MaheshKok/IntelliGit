@@ -291,11 +291,18 @@ describe("DiffViewerApp read-only contract", () => {
         expect(locksFor("right")).toHaveLength(1);
     });
 
-    it("shows and restarts the inline read-only notice only for read-only blocks", async () => {
+    // PyCharm's read-only diff pane answers a click by placing a caret and saying nothing --
+    // the reader is allowed to point at a line, select it, copy it. Only an actual attempt to
+    // change the text earns the refusal. So the two halves are asserted together and in this
+    // order: a click that stays silent is the half that regresses invisibly, because the old
+    // click-shows-it contract still passes every "the notice appears" assertion.
+    it("answers a click on a read-only pane with a caret and a typing attempt with the notice", async () => {
         installVsCodeMock();
         await mountRightEditable("shared();\nafter();", diffFixture.segments);
 
+        const readOnlyPane = document.querySelector<HTMLElement>(".diff-pane-left");
         const readOnlyBlock = document.querySelector<HTMLElement>(".diff-pane-left .segment");
+        const editablePane = document.querySelector<HTMLElement>(".diff-pane-right");
         const editableBlock = document.querySelector<HTMLElement>(
             ".diff-pane-right .diff-editable-block",
         );
@@ -307,20 +314,43 @@ describe("DiffViewerApp read-only contract", () => {
                 element?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
             });
         };
+        // `beforeinput` is what the browser raises for typing, paste, cut, delete and drop
+        // alike, so refusing it covers every way in without enumerating keystrokes.
+        const type = (element: HTMLElement | null): boolean => {
+            const event = new Event("beforeinput", { bubbles: true, cancelable: true });
+            act(() => {
+                element?.dispatchEvent(event);
+            });
+            return event.defaultPrevented;
+        };
+
+        // The caret half: the pane has to be a place a caret can land at all, and pointing at
+        // it must not accuse the reader of anything.
+        expect(
+            readOnlyPane?.getAttribute("contenteditable"),
+            "the read-only pane takes no caret, so a click cannot place one",
+        ).toBe("true");
+        expect(readOnlyPane?.getAttribute("aria-readonly")).toBe("true");
+        click(readOnlyBlock);
+        expect(
+            notice(),
+            "a plain click refused the reader, which is the old contract, not PyCharm's",
+        ).toBeNull();
 
         vi.useFakeTimers();
         try {
-            click(editableBlock);
+            // The editable pane keeps its own listeners; nothing here may cancel them.
+            expect(type(editableBlock), "the editable pane refused its own edit").toBe(false);
             expect(notice()).toBeNull();
 
-            click(readOnlyBlock);
+            expect(type(readOnlyBlock), "the read-only pane let the edit through").toBe(true);
             expect(notice()?.getAttribute("role")).toBe("status");
             expect(notice()?.textContent).toBe("This side is read only");
 
             act(() => {
                 vi.advanceTimersByTime(2499);
             });
-            click(readOnlyBlock);
+            type(readOnlyBlock);
             act(() => {
                 vi.advanceTimersByTime(2499);
             });
@@ -333,13 +363,17 @@ describe("DiffViewerApp read-only contract", () => {
         } finally {
             vi.useRealTimers();
         }
+        expect(
+            editablePane?.getAttribute("contenteditable"),
+            "the editable pane took a caret of its own, over the top of its real editor",
+        ).toBe("false");
     });
 
     // The lock and the notice answer the same question -- "can I type here?" -- from two
     // different places: the lock from `editablePane`, the notice from whichever pane actually
     // rendered read-only blocks. Those two disagree when a payload names an editable side but
-    // omits the document behind it, and a pane that shows no lock must not then answer a click
-    // with "this side is read only".
+    // omits the document behind it, and a pane that shows no lock must not then answer a
+    // typing attempt with "this side is read only".
     it("keeps the lock and the read-only notice agreeing when the editable payload is incomplete", async () => {
         installVsCodeMock();
         await mountRightEditable("shared();\nafter();", diffFixture.segments);
@@ -352,9 +386,11 @@ describe("DiffViewerApp read-only contract", () => {
 
         const meta = document.querySelectorAll<HTMLElement>(".diff-pane-meta");
         const notice = (): HTMLElement | null => document.querySelector(".diff-readonly-notice");
-        const click = (element: HTMLElement | null): void => {
+        const type = (element: HTMLElement | null): void => {
             act(() => {
-                element?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+                element?.dispatchEvent(
+                    new Event("beforeinput", { bubbles: true, cancelable: true }),
+                );
             });
         };
 
@@ -365,11 +401,11 @@ describe("DiffViewerApp read-only contract", () => {
         expect(leftBlock).not.toBeNull();
 
         expect(meta[0]?.querySelector(".diff-pane-lock")).toBeNull();
-        click(leftBlock);
+        type(leftBlock);
         expect(notice()).toBeNull();
 
         expect(meta[1]?.querySelector(".diff-pane-lock")).not.toBeNull();
-        click(document.querySelector<HTMLElement>(".diff-pane-right .segment"));
+        type(document.querySelector<HTMLElement>(".diff-pane-right .segment"));
         expect(notice()).not.toBeNull();
     });
 
@@ -2334,6 +2370,24 @@ describe("DiffViewerApp file path header", () => {
                 (part) => part.textContent,
             ),
         ).toEqual(["tests", "unit", "views", "example.test.ts"]);
+    });
+
+    it("puts the path above the toolbar, where the other entry point's host draws it", async () => {
+        await mountWith({ path: "tests/unit/views/example.test.ts" });
+
+        const crumbs = document.querySelector("[data-testid='diff-breadcrumbs']");
+        const toolbar = document.querySelector(".diff-toolbar");
+        expect(crumbs, "no breadcrumbs to place").not.toBeNull();
+        expect(toolbar, "no toolbar to place them against").not.toBeNull();
+        // DOCUMENT_POSITION_FOLLOWING: the toolbar comes after the crumbs. Asserted as
+        // document order rather than as a pixel offset because that is the claim -- the
+        // custom editor's path comes from VS Code's breadcrumb bar, which is above
+        // everything the webview draws, and this row has to land in the same place for the
+        // two entry points to read as one screen.
+        expect(
+            Boolean(crumbs!.compareDocumentPosition(toolbar!) & Node.DOCUMENT_POSITION_FOLLOWING),
+            "the path row is drawn below the toolbar, so this entry point reads as a different screen from the custom editor",
+        ).toBe(true);
     });
 
     it("leaves the path to a host that already shows it", async () => {

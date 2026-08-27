@@ -87,5 +87,7 @@
     "configuration.commitCheckState.enum.allChecked": "Marcar de forma predeterminada los archivos iniciales y los nuevos detectados en el panel de confirmación.",
     "configuration.commitCheckState.enum.noneChecked": "Dejar desmarcados de forma predeterminada los archivos iniciales y los nuevos detectados en el panel de confirmación (valor predeterminado).",
     "configuration.commitCheckState.enum.preserveSelection": "Restaurar la selección anterior de archivos marcados para cada repositorio; los archivos nuevos detectados permanecen desmarcados.",
-    "configuration.commitCheckState.markdownDescription": "Controla cómo se marcan los archivos cuando el panel de confirmación se carga o detecta nuevas rutas. `allChecked` marca los archivos iniciales y nuevos, `noneChecked` los deja desmarcados (valor predeterminado) y `preserveSelection` restaura la selección anterior de cada repositorio mientras deja desmarcados los archivos nuevos. Las elecciones explícitas se conservan durante la actualización. Los cambios surten efecto después de volver a cargar la ventana."
+    "configuration.commitCheckState.markdownDescription": "Controla cómo se marcan los archivos cuando el panel de confirmación se carga o detecta nuevas rutas. `allChecked` marca los archivos iniciales y nuevos, `noneChecked` los deja desmarcados (valor predeterminado) y `preserveSelection` restaura la selección anterior de cada repositorio mientras deja desmarcados los archivos nuevos. Las elecciones explícitas se conservan durante la actualización. Los cambios surten efecto después de volver a cargar la ventana.",
+    "command.diffShowInIntelliGit": "Mostrar diferencia en IntelliGit",
+    "command.diffShowInVsCode": "Mostrar diferencia en VS Code"
 }

@@ -12,6 +12,10 @@
     --diff-connector-gutter: 28px;
     display: flex;
     flex-direction: column;
+    /* The containing block `.diff-readonly-notice` positions against. The root rather than a
+       pane, because the notice follows the caret and the caret's rect is already in viewport
+       coordinates -- one origin to subtract, not one per pane. */
+    position: relative;
     height: 100vh;
     overflow: hidden;
     color: var(--diff-editor-fg);
@@ -132,6 +136,9 @@
     margin-left: -1px;
 }
 
+/* Sits above `.diff-toolbar`, so it draws no bottom rule of its own: the toolbar's own
+   border already separates the two strips from the panes, and a second line between two
+   bands that already differ in background reads as clutter rather than structure. */
 .diff-header {
     display: flex;
     align-items: center;
@@ -139,7 +146,6 @@
     min-height: 34px;
     padding: 4px 10px;
     background: var(--diff-header-bg);
-    border-bottom: 1px solid var(--diff-border);
     flex-shrink: 0;
 }
 
@@ -203,14 +209,32 @@
     font-weight: 600;
 }
 
-.diff-newline-marker,
-.diff-readonly-notice {
+.diff-newline-marker {
     padding: 1px 6px;
     border: 1px solid var(--diff-pane-boundary);
     border-radius: 8px;
     color: var(--diff-muted);
     font-size: 11px;
     white-space: nowrap;
+}
+
+/* Placed at the caret by inline `left`/`top`, against `.diff-viewer` as the containing
+   block. `pointer-events: none` because it appears under the pointer the moment the reader
+   tries to type: a bubble that could be hovered or clicked would take the next keystroke's
+   target with it. The hover-widget tokens rather than the header's, since this is the same
+   kind of thing VS Code paints over code and must stay legible against it. */
+.diff-readonly-notice {
+    position: absolute;
+    z-index: 5;
+    margin-top: 18px;
+    padding: 2px 8px;
+    border: 1px solid var(--vscode-editorHoverWidget-border, var(--diff-pane-boundary));
+    border-radius: 4px;
+    background: var(--vscode-editorHoverWidget-background, var(--diff-header-bg));
+    color: var(--vscode-editorHoverWidget-foreground, var(--diff-editor-fg));
+    font-size: 12px;
+    white-space: nowrap;
+    pointer-events: none;
 }
 
 .diff-pane-meta-row {
