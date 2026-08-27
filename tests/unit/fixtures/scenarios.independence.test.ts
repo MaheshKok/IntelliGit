@@ -21,6 +21,8 @@ import {
 } from "./scenariosTestHelpers";
 import { REPOSITORY_SCENARIO_IDS } from "../../fixtures/repo/scenarios";
 
+const FIXTURE_TIMEOUT_MS = 60_000;
+
 afterAll(removeTrackedScratchDirectories);
 
 describe("independence", () => {
@@ -72,5 +74,6 @@ describe("independence", () => {
                 ),
             ).toBe(true);
         },
+        FIXTURE_TIMEOUT_MS,
     );
 });

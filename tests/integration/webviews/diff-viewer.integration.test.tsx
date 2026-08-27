@@ -1406,27 +1406,28 @@ describe("DiffViewerApp read-only contract", () => {
     });
 
     it("synchronizes an edit textarea with peer code lines in both directions", async () => {
-        installVsCodeMock();
-        await mountEditablePane("shared();\nbefore();", 1);
-
-        const textarea = editBlock(1);
-        const counterpart = document.querySelector<HTMLElement>(".diff-pane-right .code-lines");
-        const sharedBar = document.querySelector<HTMLElement>(".diff-horizontal-scroll");
-        expect(counterpart).not.toBeNull();
-        expect(sharedBar).not.toBeNull();
-        Object.defineProperties(counterpart as HTMLElement, {
-            clientWidth: { configurable: true, value: 20 },
-            scrollWidth: { configurable: true, value: 100 },
-        });
-        Object.defineProperties(textarea, {
-            clientWidth: { configurable: true, value: 20 },
-            scrollWidth: { configurable: true, value: 100 },
-        });
         const raf = vi.spyOn(globalThis, "requestAnimationFrame").mockImplementation((callback) => {
             callback(0);
             return 0;
         });
         try {
+            installVsCodeMock();
+            await mountEditablePane("shared();\nbefore();", 1);
+
+            const textarea = editBlock(1);
+            const counterpart = document.querySelector<HTMLElement>(".diff-pane-right .code-lines");
+            const sharedBar = document.querySelector<HTMLElement>(".diff-horizontal-scroll");
+            expect(counterpart).not.toBeNull();
+            expect(sharedBar).not.toBeNull();
+            Object.defineProperties(counterpart as HTMLElement, {
+                clientWidth: { configurable: true, value: 20 },
+                scrollWidth: { configurable: true, value: 100 },
+            });
+            Object.defineProperties(textarea, {
+                clientWidth: { configurable: true, value: 20 },
+                scrollWidth: { configurable: true, value: 100 },
+            });
+
             act(() => {
                 textarea.scrollLeft = 37;
                 textarea.dispatchEvent(new Event("scroll", { bubbles: true }));
