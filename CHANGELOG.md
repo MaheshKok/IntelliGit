@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- GitHub commit checks now have a Refresh button, so you can get the latest results without reopening the commit.
+- GitHub commit checks now have a Refresh button that shows when new results are loading, so you can update them without reopening the commit.
 
 ### Fixed
 

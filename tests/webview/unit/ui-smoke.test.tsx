@@ -972,6 +972,83 @@ describe("webview ui smoke", () => {
         unmount(mounted.root, mounted.container);
     });
 
+    it("keeps visible commit checks and refresh feedback until a new snapshot arrives", () => {
+        const onRequestChecks = vi.fn();
+        const hash = "refresh123";
+        const currentSnapshot: CommitChecksSnapshot = {
+            hash,
+            state: "success",
+            summary: "Existing checks passed",
+            items: [
+                {
+                    name: "Existing check",
+                    description: "The displayed result remains visible while refreshing.",
+                    state: "success",
+                    source: "status",
+                },
+            ],
+        };
+        const nextSnapshot: CommitChecksSnapshot = {
+            ...currentSnapshot,
+            summary: "Updated checks passed",
+            items: [{ ...currentSnapshot.items[0], name: "Updated check" }],
+        };
+        const unavailableSnapshot: CommitChecksSnapshot = {
+            hash,
+            state: "unavailable",
+            summary: "Checks unavailable",
+            error: "Sign in to refresh checks.",
+            items: [],
+        };
+        const render = (checks: CommitChecksSnapshot): React.ReactElement => (
+            <CommitChecksButton
+                hash={hash}
+                checks={checks}
+                onRequestChecks={onRequestChecks}
+                onOpenCheckUrl={vi.fn()}
+            />
+        );
+        const mounted = mount(render(currentSnapshot));
+        const trigger = mounted.container.querySelector("button") as HTMLButtonElement;
+        act(() => trigger.click());
+        const refreshButton = document.body.querySelector(
+            'button[aria-label="Refresh"]',
+        ) as HTMLButtonElement;
+
+        act(() => refreshButton.click());
+        expect(onRequestChecks).toHaveBeenCalledExactlyOnceWith(hash, true);
+        expect(refreshButton.disabled).toBe(true);
+        expect(refreshButton.dataset.refreshing).toBe("true");
+        const status = document.body.querySelector('[role="status"]');
+        expect(status?.textContent).toBe("Loading checks...");
+        expect(status?.closest('[aria-busy="true"]')).toBeNull();
+        expect(document.body.querySelector('[aria-busy="true"]')).not.toBeNull();
+        expect(document.body.textContent).toContain("Existing check");
+        const refreshStyles = Array.from(document.querySelectorAll("style")).find((style) =>
+            style.textContent?.includes('[data-refreshing="true"] svg'),
+        )?.textContent;
+        expect(refreshStyles).toContain("animation: intelligit-spin");
+        expect(refreshStyles).toContain("@media (prefers-reduced-motion: reduce)");
+
+        act(() => refreshButton.click());
+        expect(onRequestChecks).toHaveBeenCalledOnce();
+
+        act(() => mounted.root.render(render(currentSnapshot)));
+        expect(document.body.querySelector('[role="status"]')).not.toBeNull();
+
+        act(() => mounted.root.render(render(nextSnapshot)));
+        expect(refreshButton.disabled).toBe(false);
+        expect(document.body.querySelector('[role="status"]')).toBeNull();
+        expect(document.body.textContent).toContain("Updated check");
+
+        act(() => refreshButton.click());
+        act(() => mounted.root.render(render(unavailableSnapshot)));
+        expect(refreshButton.disabled).toBe(false);
+        expect(document.body.querySelector('[role="status"]')).toBeNull();
+        expect(document.body.textContent).toContain("Sign in to refresh checks.");
+        unmount(mounted.root, mounted.container);
+    });
+
     it("offers a host-targeted Sign in button only for a recoverable unavailable snapshot", () => {
         const onRequestChecks = vi.fn();
         const onOpenCheckUrl = vi.fn();

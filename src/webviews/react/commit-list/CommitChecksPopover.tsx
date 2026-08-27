@@ -5,6 +5,7 @@ import { IoIosCloseCircleOutline } from "react-icons/io";
 import { VscRefresh } from "react-icons/vsc";
 import type { CommitChecksSnapshot, CommitCheckState } from "../../../types";
 import { t } from "../shared/i18n";
+import { SPIN_KEYFRAMES } from "../shared/components/iconStyles";
 import { JETBRAINS_UI, SHADOW, Z_INDEX } from "../shared/tokens";
 
 /** Commit-check data cached by hash, including the in-flight marker used while GitHub responds. */
@@ -25,6 +26,16 @@ const PANEL_MIN_WIDTH = 310;
 const PANEL_MIN_HEIGHT = 190;
 const PANEL_TEXT_MAX_WIDTH = 340;
 const PANEL_MAX_HEIGHT = 360;
+const REFRESH_MOTION_STYLES = `${SPIN_KEYFRAMES}
+[data-refreshing="true"] svg {
+    animation: intelligit-spin 0.8s linear infinite;
+    transform-box: fill-box;
+    transform-origin: center;
+    will-change: transform;
+}
+@media (prefers-reduced-motion: reduce) {
+    [data-refreshing="true"] svg { animation: none !important; }
+}`;
 
 type PanelPlacement = "left" | "right";
 type VerticalPlacement = "above" | "below" | "center";
@@ -47,11 +58,27 @@ export function CommitChecksButton({
     const buttonRef = React.useRef<HTMLButtonElement>(null);
     const panelRef = React.useRef<HTMLDivElement>(null);
     const [position, setPosition] = React.useState<PanelPosition | null>(null);
+    const [refreshRequest, setRefreshRequest] = React.useState<{
+        hash: string;
+        snapshot: CommitChecksSnapshot | undefined;
+    } | null>(null);
     const closePanel = React.useCallback(() => setPosition(null), []);
+    const refreshing =
+        refreshRequest?.hash === hash &&
+        (checks === "loading" || checks === refreshRequest.snapshot);
 
     const state = checks && checks !== "loading" ? checks.state : "pending";
     const buttonLabel = t("commit.checks.title");
     const buttonTitle = checks && checks !== "loading" ? checks.summary : buttonLabel;
+
+    const requestRefresh = (): void => {
+        if (refreshing) return;
+        setRefreshRequest({
+            hash,
+            snapshot: checks && checks !== "loading" ? checks : undefined,
+        });
+        onRequestChecks(hash, true);
+    };
 
     const openPanel = (): void => {
         const button = buttonRef.current;
@@ -144,7 +171,8 @@ export function CommitChecksButton({
                         hash={hash}
                         checks={checks}
                         position={position}
-                        onRequestChecks={onRequestChecks}
+                        refreshing={refreshing}
+                        onRefresh={requestRefresh}
                         onOpenCheckUrl={onOpenCheckUrl}
                         onSignIn={onSignIn}
                     />,
@@ -160,7 +188,8 @@ function CommitChecksPanel({
     hash,
     checks,
     position,
-    onRequestChecks,
+    refreshing,
+    onRefresh,
     onOpenCheckUrl,
     onSignIn,
 }: {
@@ -168,12 +197,14 @@ function CommitChecksPanel({
     hash: string;
     checks?: CommitChecksValue;
     position: PanelPosition;
-    /** Requests this commit's checks; `force` bypasses the host/provider cache. */
-    onRequestChecks: (hash: string, force?: boolean) => void;
+    refreshing: boolean;
+    /** Starts local refresh feedback before asking the host for a forced snapshot. */
+    onRefresh: () => void;
     onOpenCheckUrl: (url: string) => void;
     onSignIn?: (host: string) => void;
 }): React.ReactElement {
     const snapshot = checks && checks !== "loading" ? checks : undefined;
+    const refreshDisabled = checks === "loading" || refreshing;
     const signInHost =
         snapshot && snapshot.state === "unavailable" ? snapshot.signInHost : undefined;
     const transform = `${position.placement === "left" ? "translateX(-100%) " : ""}${
@@ -201,6 +232,7 @@ function CommitChecksPanel({
             onClick={(event) => event.stopPropagation()}
             data-testid="commit-checks-popover"
         >
+            <style>{REFRESH_MOTION_STYLES}</style>
             <span
                 aria-hidden="true"
                 data-testid="commit-checks-popover-caret-border"
@@ -233,17 +265,23 @@ function CommitChecksPanel({
                         type="button"
                         aria-label={t("common.refresh")}
                         title={t("common.refresh")}
-                        disabled={checks === "loading"}
-                        onClick={() => onRequestChecks(hash, true)}
+                        disabled={refreshDisabled}
+                        onClick={onRefresh}
+                        data-refreshing={String(refreshing)}
                         style={{
                             ...refreshButtonStyle,
-                            ...(checks === "loading" ? refreshButtonDisabledStyle : {}),
+                            ...(refreshDisabled ? refreshButtonDisabledStyle : {}),
                         }}
                     >
                         <VscRefresh size={14} aria-hidden="true" focusable="false" />
                     </button>
                 </div>
-                <div style={bodyStyle}>
+                {refreshing ? (
+                    <div role="status" aria-live="polite" style={refreshStatusStyle}>
+                        {t("commit.checks.loading")}
+                    </div>
+                ) : null}
+                <div style={bodyStyle} aria-busy={refreshing}>
                     {checks === "loading" || !checks ? (
                         <div style={emptyStyle}>{t("commit.checks.loading")}</div>
                     ) : snapshot && snapshot.items.length > 0 ? (
@@ -453,6 +491,12 @@ const refreshButtonStyle: React.CSSProperties = {
 const refreshButtonDisabledStyle: React.CSSProperties = {
     opacity: 0.6,
     cursor: "default",
+};
+
+const refreshStatusStyle: React.CSSProperties = {
+    color: JETBRAINS_UI.color.muted,
+    fontSize: 12,
+    padding: "10px 18px 0",
 };
 
 const panelHashStyle: React.CSSProperties = {
