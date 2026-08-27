@@ -80,11 +80,11 @@ describe("revert arrow horizontal placement", () => {
     // own coordinates: x0 is the left pane's outer edge, x1 the right pane's. Nothing under
     // test reads it; it is here so the assertions can say the arrow is NOT in it.
     const channel = connectorChannelSpan(600, 628);
-    /** Each pane's whole number column: 33px of numbers plus a 20px action strip. */
-    const COLUMN = 53;
+    /** Each pane's whole number column: 33px of numbers plus a 30px action strip. */
+    const COLUMN = 63;
     /** `.diff-hunk-revert`'s width in diff-viewer.css. The stylesheet is the source; this is a
-     *  reader of it, which is why the production code offsets by transform and never by 20. */
-    const BOX = 20;
+     *  reader of it, which is why the production code offsets by transform and never by 30. */
+    const BOX = 30;
 
     /**
      * What `measureViewport` reads off each rendered column: the edge of that pane's numbers
@@ -115,8 +115,8 @@ describe("revert arrow horizontal placement", () => {
     it("stands the arrow in the strip between its pane's code and that pane's numbers", () => {
         // Written as both edges of each box rather than as one, because a single correct edge
         // is what a swapped transform still produces.
-        expect(arrow("left"), "left pane arrow").toEqual({ left: 547, right: 567 });
-        expect(arrow("right"), "right pane arrow").toEqual({ left: 661, right: 681 });
+        expect(arrow("left"), "left pane arrow").toEqual({ left: 537, right: 567 });
+        expect(arrow("right"), "right pane arrow").toEqual({ left: 661, right: 691 });
     });
 
     it("butts the arrow against the code on either pane", () => {

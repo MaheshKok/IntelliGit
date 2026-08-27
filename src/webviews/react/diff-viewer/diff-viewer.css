@@ -331,7 +331,7 @@
        narrower than its glyph clips it and a wider one leaves the arrow floating away from
        the number it annotates. `App` feeds this same token to
        `--diff-viewer-action-gutter`, so widening the arrow widens its lane. */
-    --diff-revert-arrow-size: 20px;
+    --diff-revert-arrow-size: 30px;
 }
 
 /* The action strip, PyCharm's layout: an empty lane between a pane's code and its line
@@ -491,7 +491,7 @@
 .diff-hunk-revert {
     position: absolute;
     /* Hidden until the scroll driver places it; revealed as `flex`, which is also what
-       centres the glyph in its 20px box. */
+       centres the glyph in its box. */
     display: none;
     align-items: center;
     justify-content: center;
@@ -511,16 +511,18 @@
        so it reads as the same act those two mark. A muted foreground grey made it look like
        chrome that happened to sit in the channel. */
     color: var(--diff-ok);
-    /* The merge editor's gutter glyph is 18px bold monospace in a 24px button; this box is
-       one code row tall, so the glyph steps down with it. The ceiling is arithmetic, not
-       taste: a text range's client rect is the FONT box (ascent+descent, ~1.29em -- never
-       `line-height`), so 20px of row allows 20/1.29 = 15.5px, and anything above that
-       overflows wherever `.diff-viewport` clips at the top of the scroller.
-       `.hunk-action-glyph` in merge-editor.css carries the measurement and why it was
-       invisible on macOS. 14px lands under the ceiling at 18.1px AND on the documented
-       type scale, so the glyph needs no exemption from tests/webview/unit/type-scale.test.ts. */
+    /* The glyph scales with its box: both are `--diff-revert-arrow-size` x 1.5 of what they
+       were, so the arrow reads at the size it was asked for instead of rattling around in a
+       wider lane. The ceiling is arithmetic, not taste: a text range's client rect is the FONT
+       box (ascent+descent, ~1.29em -- never `line-height`), so a 30px box allows 30/1.29 =
+       23.2px, and anything above that overflows wherever `.diff-viewport` clips at the top of
+       the scroller. `.hunk-action-glyph` in merge-editor.css carries the measurement and why it
+       was invisible on macOS. 21px lands under that ceiling at a 27.1px font box.
+       It is off the type scale, which is why tests/webview/unit/type-scale.test.ts carries an
+       exemption for it: `»` is an icon that happens to be a character, sized to the strip it
+       stands in rather than to anything a reader reads. */
     font-family: var(--vscode-editor-font-family, monospace);
-    font-size: 14px;
+    font-size: 21px;
     font-weight: 700;
     line-height: 1;
     cursor: pointer;

@@ -139,10 +139,21 @@ test.describe("revert arrow placement", () => {
                         number: box(document.querySelector(`${root} .line-number`)),
                     };
                 };
+                const visible = [...document.querySelectorAll(".diff-hunk-revert")].filter(
+                    (element) => getComputedStyle(element).display !== "none",
+                );
                 return {
-                    arrows: [...document.querySelectorAll(".diff-hunk-revert")]
-                        .filter((element) => getComputedStyle(element).display !== "none")
-                        .map((element) => box(element)),
+                    arrows: visible.map((element) => box(element)),
+                    // The glyph's own font box, which is what actually overflows. A text range's
+                    // client rect is ascent+descent (~1.29em), never `line-height`, so this is
+                    // the measurement the font-size ceiling in diff-viewer.css is derived from.
+                    glyphs: visible.map((element) => {
+                        const range = document.createRange();
+                        range.selectNodeContents(element);
+                        const glyph = range.getBoundingClientRect();
+                        const button = element.getBoundingClientRect();
+                        return { glyph: glyph.height, button: button.height };
+                    }),
                     left: paneParts("left"),
                     right: paneParts("right"),
                 };
@@ -168,13 +179,27 @@ test.describe("revert arrow placement", () => {
                 right: { left: right.number!.right, right: right.column!.right },
             };
 
-            expect(strips.left.right - strips.left.left, "the left pane's action strip").toBe(20);
+            // 30px: `--diff-revert-arrow-size`, which sizes the arrow's box and the lane cut for
+            // it from the same number, so the two can never drift into a clipped glyph or a
+            // button floating away from the line it annotates.
+            expect(strips.left.right - strips.left.left, "the left pane's action strip").toBe(30);
             expect(strips.right.right - strips.right.left, "the right pane's action strip").toBe(
-                20,
+                30,
             );
             expect(right.column!.width, "both panes reserve the same column").toBe(
                 left.column!.width,
             );
+
+            // The glyph is sized to its box, so growing the box grows the glyph -- and a glyph
+            // taller than the box it is centred in overflows `.diff-viewport` wherever a hunk
+            // sits flush against the top of the scroller, which is where it goes invisible
+            // rather than merely looking wrong. Nothing else measures this: the recorded
+            // fixture draws no arrow, so the clipping collector never sees one.
+            for (const [index, { glyph, button }] of geometry.glyphs.entries()) {
+                expect(glyph, `arrow ${index} glyph inside its own box`).toBeLessThanOrEqual(
+                    button,
+                );
+            }
 
             const strip = strips[arrowPane];
             for (const [index, arrow] of geometry.arrows.entries()) {
