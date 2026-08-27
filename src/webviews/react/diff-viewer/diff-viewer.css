@@ -327,6 +327,32 @@
     --diff-deleted-wash: color-mix(in srgb, var(--diff-deleted-hue) 15%, var(--diff-editor-bg));
     --diff-modified-wash: color-mix(in srgb, var(--diff-info) 15%, var(--diff-editor-bg));
     --diff-word-wash: color-mix(in srgb, var(--diff-info) 30%, var(--diff-editor-bg));
+    /* One number for the revert arrow's box AND the strip reserved for it, because a strip
+       narrower than its glyph clips it and a wider one leaves the arrow floating away from
+       the number it annotates. `App` feeds this same token to
+       `--diff-viewer-action-gutter`, so widening the arrow widens its lane. */
+    --diff-revert-arrow-size: 20px;
+}
+
+/* The action strip, PyCharm's layout: an empty lane between a pane's code and its line
+   numbers, holding that pane's per-hunk revert arrow.
+
+   diff-core sizes the numbers-on-the-right column as `line-number-gutter + action-gutter`
+   and pads the numbers away from the code by the action gutter, which is the merge editor's
+   44px strip. The viewer's other pane numbers on the LEFT and diff-core has no mirrored rule
+   -- the merge editor's middle pane numbers on the left too and must NOT gain a strip (its
+   ribbon geometry reads that column's width back as `gutterWidth(middle, false)`). So the
+   mirror is declared here, under `.diff-viewer`, where it reaches only this surface.
+   `padding-right` rather than `padding-left`: the strip stays next to the code on both
+   sides, which is the whole point -- the arrow annotates a line, not a gap. */
+.diff-viewer .code-block.line-numbers-left {
+    grid-template-columns:
+        calc(var(--diff-line-number-gutter) + var(--diff-action-gutter))
+        minmax(0, 1fr);
+}
+
+.diff-viewer .code-block.line-numbers-left .line-number-row {
+    padding-right: var(--diff-action-gutter);
 }
 
 /* The merge editor's hunk layout, ported to a block that carries one pane rather than
@@ -448,12 +474,13 @@
     overflow: visible;
 }
 
-/* The revert arrows sit in the same channel as the ribbons and above them, so an arrow is
-   never swallowed by the band it belongs to. The layer itself takes no pointer events --
-   it spans the whole viewport, and a transparent sheet over both panes would eat every
-   click on the code -- while each button takes its own back. Buttons start hidden and are
-   revealed by the scroll driver: their position is set in the frame after layout, and an
-   unpositioned button would flash stacked at the top of the viewport first. */
+/* The arrows are placed in viewport coordinates and drawn above the ribbons, so an arrow
+   standing in a pane's action strip is never swallowed by the band running past it. The
+   layer itself takes no pointer events -- it spans the whole viewport, and a transparent
+   sheet over both panes would eat every click on the code -- while each button takes its
+   own back. Buttons start hidden and are revealed by the scroll driver: their position is
+   set in the frame after layout, and an unpositioned button would flash stacked at the top
+   of the viewport first. */
 .diff-action-layer {
     position: absolute;
     inset: 0;
@@ -468,13 +495,14 @@
     display: none;
     align-items: center;
     justify-content: center;
-    width: 20px;
-    height: 20px;
+    width: var(--diff-revert-arrow-size);
+    height: var(--diff-revert-arrow-size);
     padding: 0;
     /* No `transform` here on purpose. The scroll driver sets `left` and `transform` together
        (`revertArrowX`), because `left` on its own does not say which of this box's edges it
-       names -- the arrow hangs off the left of the channel beside one pane and off the right
-       beside the other. A default here would be a third opinion that is right half the time. */
+       names -- the strip starts at the left pane's number column and ends at the right
+       pane's, so the two anchor from opposite edges. A default here would be a third opinion
+       that is right half the time. */
     border: none;
     border-radius: 3px;
     background: transparent;
@@ -683,7 +711,10 @@
     top: 0;
     right: 0;
     bottom: 0;
-    left: var(--diff-line-number-gutter);
+    /* Clears the action strip as well as the numbers. Both panes reserve a strip so the two
+       code columns stay the same width -- only one of them ever holds an arrow, but a diff
+       whose sides measured differently would read as a layout bug, not as an empty lane. */
+    left: calc(var(--diff-line-number-gutter) + var(--diff-action-gutter));
     box-sizing: border-box;
     /* Deliberately NOT widened to `--diff-line-min-width`. Sizing this layer to the shared
        scroll extent makes its own content fit, which pins its `scrollLeft` at 0 while every

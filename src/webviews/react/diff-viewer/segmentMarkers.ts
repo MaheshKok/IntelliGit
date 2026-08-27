@@ -7,7 +7,6 @@
 // recorded fixture can be run through directly, which is what
 // `tests/unit/visual/diffViewerFixtureCoverage.test.ts` does.
 
-import type { RibbonSpan } from "../diff-core/mergeScrollLayout";
 import type { DiffSegment } from "../../protocol/diffViewerTypes";
 
 /** The two sides a diff viewer payload is rendered into, in render order. */
@@ -116,39 +115,47 @@ export function soleSidedPane(segments: readonly DiffSegment[]): DiffPane | null
  * rows to point at in the first place.
  *
  * Only the vertical placement moves. The arrow's direction glyph still points at the pane it
- * writes into (`DiffHunkActionLayer`), and it still stands in the connector channel between
- * the panes -- `revertArrowX` decides where across that channel.
+ * writes into (`DiffHunkActionLayer`), and `revertArrowX` decides where across that pane's
+ * own action strip it stands.
  */
 export function revertArrowPane(editablePane: DiffPane): DiffPane {
     return editablePane === "left" ? "right" : "left";
 }
 
-/** Where a revert arrow's box hangs in the connector channel, as inline style values. */
+/** Where a revert arrow's box sits in its pane's action strip, as inline style values. */
 export interface RevertArrowX {
-    /** The channel edge the box is anchored to, in the action layer's own coordinates. */
+    /** The strip's anchor edge, in the action layer's own coordinates. */
     leftPx: number;
     /** Which of the box's own edges lands on `leftPx`. */
     transform: string;
 }
 
 /**
- * The arrow's horizontal placement: butted against the inner edge of the pane it stands
- * beside, not floating at the channel's midpoint.
+ * The arrow's horizontal placement: inside its pane's action strip, between that pane's code
+ * and its line numbers -- not in the connector channel between the panes.
  *
- * The arrow is read together with a line number -- "revert the hunk at 305" -- and a glyph
- * centred in the 28px channel touches neither number, so the eye has to pick which side it
- * annotates before it can act on it. Anchoring it to the source pane's edge answers that for
- * free, and it is the same pane `revertArrowPane` already aligns the arrow to vertically, so
- * both axes now say the same thing about which rows the button is about.
+ * This is PyCharm's layout, and it is the one the merge editor already uses via
+ * `--merge-action-gutter`. The arrow is read together with a line number -- "revert the hunk
+ * at 305" -- so it belongs against that number, and standing between the code and the numbers
+ * puts it there on either pane without the eye having to work out which side of the channel a
+ * floating glyph annotates.
  *
- * The offset is a transform rather than a subtracted width because the box is 20px in
- * `diff-viewer.css` and nothing here should have to agree with that number: `leftPx` names
- * the channel edge, the transform names which of the box's own edges meets it.
+ * `stripAnchorPx` is the code-side edge of that pane's number column, measured off the rendered
+ * column (`measureViewport`). Measured rather than derived: computing it from the connector
+ * channel and a column width put the arrow one pixel past the strip, because the channel is
+ * measured from the pane's box and the pane's 1px right border sits outside the column.
+ *
+ * The box is placed by transform rather than by subtracting its own width, so nothing here has
+ * to agree with the 20px in `diff-viewer.css`: `leftPx` names the edge, and the transform names
+ * which of the box's own edges meets it. The two panes anchor from opposite edges because each
+ * pane's strip is on the side of its numbers that faces its own code -- the left pane's numbers
+ * sit at its right edge, the right pane's at its left.
  */
-export function revertArrowX(span: RibbonSpan, pane: DiffPane): RevertArrowX {
-    return pane === "left"
-        ? { leftPx: span.x0, transform: "translateX(0)" }
-        : { leftPx: span.x1, transform: "translateX(-100%)" };
+export function revertArrowX(pane: DiffPane, stripAnchorPx: number): RevertArrowX {
+    return {
+        leftPx: stripAnchorPx,
+        transform: pane === "left" ? "translateX(0)" : "translateX(-100%)",
+    };
 }
 
 /**

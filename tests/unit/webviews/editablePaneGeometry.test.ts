@@ -148,10 +148,16 @@ describe("editable diff pane geometry", () => {
             "right",
         );
 
-        expect(leftInset).toBe("var(--diff-line-number-gutter)");
-        expect(rightInset).toContain("var(--diff-line-number-gutter)");
-        expect(rightInset).toContain("var(--diff-action-gutter)");
-        expect(rightInset).not.toMatch(/\d+px/);
+        // Both insets clear the WHOLE number column, action strip included, because the strip is
+        // cut out of that column on both panes -- the revert arrow stands in the pane opposite
+        // the editable one, and the columns stay equal so the two code bodies still line up. An
+        // inset that cleared only `--diff-line-number-gutter` would leave the textarea overlapping
+        // its own pane's strip by exactly the arrow's width.
+        for (const inset of [leftInset, rightInset]) {
+            expect(inset).toContain("var(--diff-line-number-gutter)");
+            expect(inset).toContain("var(--diff-action-gutter)");
+            expect(inset).not.toMatch(/\d+px/);
+        }
     });
 
     it("never sizes the interaction layer to the shared scroll extent", () => {

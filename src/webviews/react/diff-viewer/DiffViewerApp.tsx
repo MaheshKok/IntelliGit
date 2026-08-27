@@ -853,9 +853,18 @@ export function App(): React.ReactElement {
     // per-frame draw only recomputes y. The channel starts empty so a draw racing
     // the first measure paints a zero-width band rather than one spanning the
     // whole viewport, which is the defect this replaced.
-    const viewportRef = useRef<{ height: number; channel: RibbonSpan }>({
+    // `stripAnchorPx` is the edge of each pane's number column that touches that pane's code:
+    // where its action strip begins, and so where the revert arrow stands. Measured off the
+    // rendered column rather than computed from `--diff-line-number-gutter`, which is a
+    // `max(33px, calc(Nch + 12px))` token a custom property hands back unresolved.
+    const viewportRef = useRef<{
+        height: number;
+        channel: RibbonSpan;
+        stripAnchorPx: Record<DiffPane, number>;
+    }>({
         height: 0,
         channel: connectorChannelSpan(0, 0),
+        stripAnchorPx: { left: 0, right: 0 },
     });
     const ribbonPaths = useMemo(() => new Map<number, SVGPathElement>(), []);
     const actionButtons = useMemo(() => new Map<number, HTMLButtonElement>(), []);
@@ -1050,7 +1059,28 @@ export function App(): React.ReactElement {
             left ? left.right - origin : width / 2,
             right ? right.left - origin : width / 2,
         );
-        viewportRef.current = { height, channel };
+        // The arrow's own anchor, read off the number column rather than derived from the
+        // channel: `channel` is measured from the PANE's box, and the pane's 1px right border
+        // sits outside the column, so `x0 - columnWidth` lands one pixel past the strip. That
+        // is invisible on a screenshot and exactly the kind of drift that survives a review.
+        //
+        // `content-visibility: auto` can leave a skipped block unmeasured (the merge editor's
+        // `gutterWidth` guards the same case), so a zero-width rect keeps the previous anchor:
+        // the arrow stays where it already was for that frame instead of slamming to the
+        // viewport edge and back.
+        const previous = viewportRef.current.stripAnchorPx;
+        const stripAnchor = (pane: DiffPane): number => {
+            const column = columnRefs.current[pane]
+                ?.querySelector<HTMLElement>(".line-numbers")
+                ?.getBoundingClientRect();
+            if (!column || column.width === 0) return previous[pane];
+            // Each pane's strip is the edge of its column that touches its own code: the left
+            // pane numbers on its right, so the code stops at the column's left edge; the
+            // right pane numbers on its left, so the code starts at the column's right edge.
+            return (pane === "left" ? column.left : column.right) - origin;
+        };
+        const stripAnchorPx = { left: stripAnchor("left"), right: stripAnchor("right") };
+        viewportRef.current = { height, channel, stripAnchorPx };
         setViewportHeight(height);
         content.style.setProperty("--diff-viewport-h", `${height}px`);
     }, []);
@@ -1069,12 +1099,17 @@ export function App(): React.ReactElement {
             currentLayout: DiffVerticalLayout<DiffPane>,
             offsets: Readonly<Record<DiffPane, number>>,
             viewportH: number,
-            span: RibbonSpan,
         ) => {
             const editablePane = data?.editablePane;
             if (editablePane === undefined) return;
             const pane = revertArrowPane(editablePane);
-            const { leftPx, transform } = revertArrowX(span, pane);
+            // Takes no `RibbonSpan`, unlike `drawRibbons`. The arrow does not live in the
+            // channel between the panes: it stands inside one pane's own action strip, so its
+            // anchor is that pane's measured column edge and nothing about the gap.
+            const { leftPx, transform } = revertArrowX(
+                pane,
+                viewportRef.current.stripAnchorPx[pane],
+            );
             for (const [index, button] of actionButtons) {
                 if (index >= currentLayout.canonicalTopPx.length) continue;
                 const top = currentLayout.paneTopPx[pane][index] - offsets[pane];
@@ -1137,7 +1172,7 @@ export function App(): React.ReactElement {
         const offsets = paneOffsetsForCanonical(currentLayout, DIFF_PANES, content.scrollTop);
         applyPaneOffsets(DIFF_PANES, (pane) => columnRefs.current[pane], offsets);
         drawRibbons(currentLayout, offsets, viewportH, channel);
-        drawActions(currentLayout, offsets, viewportH, channel);
+        drawActions(currentLayout, offsets, viewportH);
     }, [drawActions, drawRibbons]);
 
     const registerRibbonPath = useCallback(
@@ -1394,10 +1429,17 @@ export function App(): React.ReactElement {
     // and its margin-bottom cancel) is committed on the first frame — otherwise
     // the scrollbar would flash one viewport too long before a post-paint
     // measure.
+    // `revertablePane` is a dependency because it opens and closes the action strip, which
+    // changes every number column's width without changing `layout` at all. The panel is a
+    // singleton: a second file arriving with the same shape but a different editability keeps
+    // one `layout` identity, so measuring on `layout` alone never re-read the columns for the
+    // new payload at all. This pass still cannot see the strip it just opened -- see the
+    // observer below, which is what finally places the arrow -- but it is what re-reads the
+    // rest of the viewport geometry when only editability moved.
     useLayoutEffect(() => {
         measureViewport();
         scheduleVerticalFrame();
-    }, [layout, measureViewport, scheduleVerticalFrame]);
+    }, [layout, measureViewport, revertablePane, scheduleVerticalFrame]);
 
     useEffect(() => {
         const raf = requestAnimationFrame(updateHorizontalScrollWidth);
@@ -1418,8 +1460,29 @@ export function App(): React.ReactElement {
             updateHorizontalScrollWidth();
         });
         observer.observe(content);
+        // Each pane's number column is observed too, and that is what actually places the arrow.
+        // The strip's width is NOT readable on the commit that opens it: the root already
+        // computes `--diff-viewer-action-gutter: 20px` while the code block below it still
+        // reports `grid-template-columns: 541px 33px`, and a `getBoundingClientRect` on the
+        // column returns that stale 33 rather than flushing it -- the segments carry
+        // `content-visibility: auto`, so the pane that did NOT change its DOM keeps last frame's
+        // geometry. Measuring again on the next frame was not enough either; the observer is,
+        // because it fires off the resize itself, whenever the browser gets round to it.
+        // `content` cannot stand in for this: opening the strip moves a boundary inside it and
+        // leaves its own box exactly the same size.
+        for (const pane of DIFF_PANES) {
+            const column = columnRefs.current[pane]?.querySelector(".line-numbers");
+            if (column) observer.observe(column);
+        }
         return () => observer.disconnect();
-    }, [hasDiffData, measureViewport, scheduleVerticalFrame, updateHorizontalScrollWidth]);
+    }, [
+        hasDiffData,
+        layout,
+        measureViewport,
+        revertablePane,
+        scheduleVerticalFrame,
+        updateHorizontalScrollWidth,
+    ]);
 
     useEffect(() => {
         const scrollSyncState = scrollSyncRef.current;
@@ -1452,7 +1515,12 @@ export function App(): React.ReactElement {
     const rootStyle = {
         "--diff-line-number-gutter": `max(33px, calc(${gutterDigits}ch + 12px))`,
         "--diff-line-min-width": `calc(${maxLineLength}ch + ${LINE_PADDING_PX}px)`,
-        "--diff-viewer-action-gutter": "0px",
+        // Only an arrow needs the strip, so the lane opens on exactly the value the arrow is
+        // drawn from -- `revertablePane`, not `data.editablePane`. Reading the host's intent
+        // here instead would leave a payload that names an editable side without the document
+        // behind it holding two empty lanes open for a button that never renders. A
+        // commit-to-commit diff keeps it at zero for the same reason.
+        "--diff-viewer-action-gutter": revertablePane ? "var(--diff-revert-arrow-size)" : "0px",
     } as React.CSSProperties;
 
     return (
