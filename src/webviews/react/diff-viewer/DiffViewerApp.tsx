@@ -197,13 +197,10 @@ interface EditableDraftRun {
     readonly maxLineLength: number;
     /** The rendered host segments the run covers, in document order. */
     readonly items: readonly RenderedSegment[];
-    /**
-     * Whether the draft's rows are, line for line, the host rows the run replaces.
-     *
-     * True from the moment an echo lands: the draft has stopped adding or removing anything, so
-     * the run can be painted and measured as the host cut it rather than as one coalesced block.
-     */
-    readonly hostBacked: boolean;
+    /** Every row the run puts on screen, in order: host prefix, then the draft, then host suffix. */
+    readonly displayLines: string[];
+    /** The opposite pane's line for each display row, for word-level marking. */
+    readonly displayCompareLines: string[];
 }
 
 /** Longest line in a block, in characters — the block's contribution to the shared extent. */
@@ -370,13 +367,18 @@ function editableDraftRun(
     const draftLines = draft.text.split("\n");
     const suffixLines = runLines.slice(suffixStart);
     const displayLines = [...prefixLines, ...draftLines, ...suffixLines];
-    const replacedLines = runLines.slice(prefixEnd, suffixStart);
+    // The compare lines the host aligned to the rows the draft replaces. A draft that has grown
+    // has rows past the end of that slice, and they have nothing to be compared against yet.
+    const replacedCompareLines = alignedRunCompareLines.slice(prefixEnd, suffixStart);
 
     return {
         items,
-        hostBacked:
-            replacedLines.length === draftLines.length &&
-            replacedLines.every((line, offset) => line === draftLines[offset]),
+        displayLines,
+        displayCompareLines: [
+            ...alignedRunCompareLines.slice(0, prefixEnd),
+            ...draftLines.map((_line, offset) => replacedCompareLines[offset] ?? ""),
+            ...alignedRunCompareLines.slice(suffixStart),
+        ],
         firstIndex,
         indices: draft.indices,
         runStartLine,
@@ -456,6 +458,47 @@ function editableRunRows(
     const first = editingBlock.indices[0];
     if (remaining > 0 && first !== undefined) rows.set(first, (rows.get(first) ?? 0) + remaining);
     return rows;
+}
+
+/** One host segment's share of an open draft's rows, ready to render. */
+interface EditableRunBlock {
+    readonly renderKey: number;
+    readonly className: string;
+    readonly lines: string[];
+    readonly compareLines: string[];
+    /** One-based source line of this block's first row, on the edited pane. */
+    readonly startLine: number;
+}
+
+/**
+ * Cuts an open draft's rows back along the host's own segment boundaries.
+ *
+ * The rows are the draft's, because the reader owns them for the whole debounce window and must
+ * keep seeing what they typed. The paint and the row counts are the host's, through the same
+ * distribution the whole-view layout measures with -- so a line the host still calls common is
+ * never washed as changed merely because an open draft happens to sit over it, and paint cannot
+ * drift from geometry.
+ */
+function editableRunBlocks(
+    run: EditableDraftRun,
+    side: DiffPane,
+    renderedSegments: readonly RenderedSegment[],
+): EditableRunBlock[] {
+    const rows = editableRunRows(draftLayoutOf(run, side), renderedSegments);
+    const blocks: EditableRunBlock[] = [];
+    let offset = 0;
+    for (const item of run.items) {
+        const count = rows.get(item.index) ?? 0;
+        blocks.push({
+            renderKey: item.renderKey,
+            className: segmentClassName(item.segment, side),
+            lines: run.displayLines.slice(offset, offset + count),
+            compareLines: run.displayCompareLines.slice(offset, offset + count),
+            startLine: run.runStartLine + offset + 1,
+        });
+        offset += count;
+    }
+    return blocks;
 }
 
 /** Substitutes the edited pane's row count for one segment the open draft has taken over. */
@@ -705,11 +748,14 @@ function EditableDiffPane({
 
                 if (isEditing && draft && activeRun) {
                     if (activeRun.firstIndex !== item.index) return null;
-                    // A settled draft that spans several host segments is drawn as those
-                    // segments. One representative class stretched over the whole run washes
-                    // every untouched line in it -- which, for the first click into a file with
-                    // no local edits yet, is the entire file.
-                    const splitRun = activeRun.hostBacked && activeRun.indices.length > 1;
+                    // A draft that spans several host segments is drawn as those segments. One
+                    // representative class stretched over the whole run washes every untouched
+                    // line in it -- which, for the first click into a file with no local edits
+                    // yet, is the entire file.
+                    const splitRun = activeRun.indices.length > 1;
+                    const runBlocks = splitRun
+                        ? editableRunBlocks(activeRun, side, renderedSegments)
+                        : [];
                     return (
                         <div
                             key={draft.editSessionKey}
@@ -717,20 +763,24 @@ function EditableDiffPane({
                             style={intrinsicSizeStyle(activeRun.rowCount)}
                         >
                             {splitRun ? (
-                                activeRun.items.map((runItem) => (
+                                runBlocks.map((runBlock) => (
                                     <div
-                                        key={runItem.renderKey}
-                                        className={`diff-editable-block diff-editing-static ${segmentClassName(runItem.segment, side)}`}
+                                        key={runBlock.renderKey}
+                                        className={`diff-editable-block diff-editing-static ${runBlock.className}`}
                                     >
                                         <CodeBlock
-                                            lines={runItem.segment[side]}
-                                            lineCount={runItem.paneLines[side]}
-                                            lineNumbers={runItem.lineNumbers[side]}
+                                            lines={runBlock.lines}
+                                            lineCount={runBlock.lines.length}
+                                            lineNumbers={{
+                                                primary: buildLineNumberValues(
+                                                    runBlock.startLine,
+                                                    runBlock.lines.length,
+                                                    runBlock.lines.length,
+                                                ),
+                                            }}
                                             lineNumberSide={lineNumberSide}
                                             wordHighlight={highlightWords}
-                                            compareLines={
-                                                runItem.segment[side === "left" ? "right" : "left"]
-                                            }
+                                            compareLines={runBlock.compareLines}
                                         />
                                     </div>
                                 ))
