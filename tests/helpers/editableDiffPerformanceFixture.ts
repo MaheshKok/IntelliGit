@@ -13,7 +13,7 @@ export function buildEditableDiffPerformanceFixture(): EditableDiffPerformanceFi
         { length: 2_300 },
         (_, index) => "const value_" + index + " = " + index + ";",
     );
-    leftLines[0] = "const horizontal_sentinel = \"" + "x".repeat(200) + "\";";
+    leftLines[0] = 'const horizontal_sentinel = "' + "x".repeat(200) + '";';
     const rightLines = leftLines.map((line, index) =>
         index % 12 === 6 ? line + " // working tree" : line,
     );
