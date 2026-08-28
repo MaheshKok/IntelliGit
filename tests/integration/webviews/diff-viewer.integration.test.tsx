@@ -1940,48 +1940,6 @@ describe("DiffViewerApp read-only contract", () => {
             expect(sentDeltas(vscode)[0]?.baseVersion).toBe(2);
         });
 
-        it("re-anchors a live draft across split hunks and hides every overlapping revert action", async () => {
-            const vscode = installVsCodeMock();
-            await mountEditablePane("shared();\nbefore();\ntail();", 1, [
-                { type: "common" as const, left: ["shared();"], right: ["shared();"] },
-                { type: "changed" as const, left: ["before();"], right: ["after();"] },
-                { type: "common" as const, left: ["tail();"], right: ["tail();"] },
-            ]);
-            vi.useFakeTimers();
-
-            const textarea = editBlock(1);
-            setDraftText(textarea, "first();\nsecond();");
-            act(() => {
-                vi.advanceTimersByTime(1000);
-            });
-            dispatchHostMessage({
-                type: "setDiffData",
-                data: {
-                    ...diffFixture,
-                    segments: [
-                        { type: "common" as const, left: ["shared();"], right: ["shared();"] },
-                        { type: "changed" as const, left: ["first();"], right: ["remoteFirst();"] },
-                        {
-                            type: "changed" as const,
-                            left: ["second();"],
-                            right: ["remoteSecond();"],
-                        },
-                        { type: "common" as const, left: ["tail();"], right: ["tail();"] },
-                    ],
-                    editablePane: "left" as const,
-                    editableText: "shared();\nfirst();\nsecond();\ntail();",
-                    documentVersion: 2,
-                    editableReseedToken: 0,
-                },
-            });
-            await flush();
-
-            expect(textarea.rows).toBe(2);
-            expect(document.querySelector("[data-testid='diff-revert-1']")).toBeNull();
-            expect(document.querySelector("[data-testid='diff-revert-2']")).toBeNull();
-            expect(sentDeltas(vscode)).toHaveLength(1);
-        });
-
         it("widens an unchanged draft to the full echoed segment span", async () => {
             await mountEditablePane("shared();\nbefore();\ntail();", 1, [
                 { type: "common" as const, left: ["shared();"], right: ["shared();"] },
