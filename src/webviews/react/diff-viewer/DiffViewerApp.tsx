@@ -29,6 +29,7 @@ import {
     syncHorizontalScroll as syncHorizontalScrollCore,
     updateSharedScrollbar as updateSharedScrollbarCore,
 } from "../diff-core/scrollSync";
+import { buildLineNumberValues } from "../diff-core/lineNumbers";
 import { CodeBlock, intrinsicSizeStyle, type LineNumberSpec } from "../diff-core/segments";
 import {
     IconChevronDown,
@@ -284,10 +285,6 @@ function editedPaneLines(
     };
 }
 
-function isAvailableActionHunk(index: number, editingBlock: EditableBlockLayout | null): boolean {
-    return editingBlock === null || !editingBlock.indices.includes(index);
-}
-
 /** Renders editable display blocks while keeping document writes delegated to the host. */
 function EditableDiffPane({
     side,
@@ -519,13 +516,19 @@ function EditableDiffPane({
                     return (
                         <div
                             key={draft.editSessionKey}
-                            className={`segment diff-editing-block editing line-numbers-${lineNumberSide}`}
+                            className={`segment diff-editing-block editing ${segmentClassName(item.segment, side)} line-numbers-${lineNumberSide}`}
                             style={intrinsicSizeStyle(rowCount)}
                         >
                             <CodeBlock
                                 lines={draftLines}
                                 lineCount={rowCount}
-                                lineNumbers={item.lineNumbers[side]}
+                                lineNumbers={{
+                                    primary: buildLineNumberValues(
+                                        draft.startLine + 1,
+                                        draftLines.length,
+                                        rowCount,
+                                    ),
+                                }}
                                 lineNumberSide={lineNumberSide}
                                 wordHighlight={highlightWords}
                                 compareLines={compareLines}
@@ -962,9 +965,8 @@ export function App(): React.ReactElement {
             singlePane === null
                 ? ribbonIndices
                       .map((ribbon) => ribbon.index)
-                      .filter((index) => isAvailableActionHunk(index, editingBlock))
                 : [],
-        [editingBlock, ribbonIndices, singlePane],
+        [ribbonIndices, singlePane],
     );
 
     // An open draft is part of the pane's width even though it is not part of the diff. The ref
