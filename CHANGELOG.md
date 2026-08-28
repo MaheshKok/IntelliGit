@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A diff scrolls until its last line leaves the top of the screen, like a code editor.
 - Commits in the pane headers are shown as seven characters instead of forty.
 - The revert arrow sits on the pane the change came from, next to that pane's line number, in the same green as the change stripe.
+- Editable diffs now reuse unchanged blocks and keep the active edit in place while the live diff updates, reducing typing work in large files.
 
 ### Removed
 
