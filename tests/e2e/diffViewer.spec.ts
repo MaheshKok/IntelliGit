@@ -155,6 +155,83 @@ test.describe("diff viewer", () => {
         }
     });
 
+    test("scrolls the focused right editor horizontally without drawing a control box", async ({
+        fixtureWorkspace,
+    }) => {
+        test.setTimeout(120_000);
+        const { electronApp, diffFrame } = await openDiffViewer(fixtureWorkspace);
+
+        try {
+            const block = diffFrame
+                .locator(
+                    '[data-testid="diff-pane-right"] .diff-editable-block.diff-segment-changed:not(.diff-segment-empty)',
+                )
+                .first();
+            await expect(block).toBeVisible();
+            await block.click();
+
+            const textarea = diffFrame.locator('[data-testid="diff-pane-right-editable"]');
+            await expect(textarea).toBeFocused();
+            await textarea.fill(`horizontal-${"0123456789".repeat(80)}`);
+            await expect
+                .poll(() =>
+                    textarea.evaluate((element) => element.scrollWidth > element.clientWidth),
+                )
+                .toBe(true);
+
+            const focusedStyle = await textarea.evaluate((element) => {
+                const style = getComputedStyle(element);
+                return {
+                    borderTopWidth: style.borderTopWidth,
+                    outlineStyle: style.outlineStyle,
+                    outlineWidth: style.outlineWidth,
+                    overflowX: style.overflowX,
+                    overflowY: style.overflowY,
+                };
+            });
+            expect(focusedStyle).toEqual({
+                borderTopWidth: "0px",
+                outlineStyle: "none",
+                outlineWidth: "0px",
+                overflowX: "auto",
+                overflowY: "hidden",
+            });
+
+            // Filling moves the caret to the long line's end and may scroll there by itself.
+            // Return every synchronized surface to zero before the real wheel gesture so the
+            // assertion proves the textarea can START a horizontal scroll, not merely mirror one.
+            await textarea.evaluate((element) => {
+                const control = element as HTMLTextAreaElement;
+                control.setSelectionRange(0, 0);
+                control.scrollLeft = 0;
+                control.dispatchEvent(new Event("scroll", { bubbles: true }));
+            });
+            await expect.poll(() => textarea.evaluate((element) => element.scrollLeft)).toBe(0);
+
+            const box = await textarea.boundingBox();
+            expect(box, "the focused textarea must have a wheel target").not.toBeNull();
+            const page = await electronApp.firstWindow();
+            await page.mouse.move((box?.x ?? 0) + 20, (box?.y ?? 0) + 10);
+            await page.mouse.wheel(420, 0);
+
+            const textareaScrollLeft = () =>
+                textarea.evaluate((element) => Math.round(element.scrollLeft));
+            await expect.poll(textareaScrollLeft).toBeGreaterThan(0);
+            const peerCodeLines = diffFrame
+                .locator('[data-testid="diff-pane-left"] .code-lines')
+                .first();
+            const sharedScrollbar = diffFrame.locator(".diff-horizontal-scroll");
+            await expect
+                .poll(() => peerCodeLines.evaluate((element) => Math.round(element.scrollLeft)))
+                .toBe(await textareaScrollLeft());
+            await expect
+                .poll(() => sharedScrollbar.evaluate((element) => Math.round(element.scrollLeft)))
+                .toBe(await textareaScrollLeft());
+        } finally {
+            await electronApp.close();
+        }
+    });
+
     test("keeps a changed active block fully visible after the live re-diff", async ({
         fixtureWorkspace,
     }) => {

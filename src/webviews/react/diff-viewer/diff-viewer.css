@@ -742,7 +742,13 @@
     font: inherit;
     line-height: 20px;
     white-space: pre;
-    overflow: hidden;
+    overflow: auto hidden;
+    scrollbar-width: none;
+}
+
+.diff-editing-block .diff-edit-textarea::-webkit-scrollbar {
+    width: 0;
+    height: 0;
 }
 
 .diff-editing-block.line-numbers-right .diff-edit-textarea {

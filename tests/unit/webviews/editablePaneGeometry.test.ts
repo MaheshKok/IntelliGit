@@ -130,6 +130,16 @@ describe("editable diff pane geometry", () => {
         expect(declaration(VIEWER_CSS, ".diff-editing-block .diff-edit-textarea", "overflow")).toBe(
             "auto hidden",
         );
+        expect(
+            declaration(VIEWER_CSS, ".diff-editing-block .diff-edit-textarea", "scrollbar-width"),
+        ).toBe("none");
+        expect(
+            declaration(
+                VIEWER_CSS,
+                ".diff-editing-block .diff-edit-textarea::-webkit-scrollbar",
+                "height",
+            ),
+        ).toBe("0");
     });
 
     it("insets the editable pane from the code block's named gutter contract", () => {

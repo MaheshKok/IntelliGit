@@ -1726,6 +1726,67 @@ describe("DiffViewerApp read-only contract", () => {
             ).toEqual(["prefix();", "suffix();"]);
         });
 
+        it("aligns word highlighting before splitting a coalesced echoed draft", async () => {
+            installVsCodeMock();
+            await mountRightEditable("unrelated();\nvalue = 1;", [
+                {
+                    type: "common" as const,
+                    left: ["unrelated();"],
+                    right: ["unrelated();"],
+                },
+                {
+                    type: "changed" as const,
+                    left: ["value = 3;"],
+                    right: ["value = 1;"],
+                },
+            ]);
+            vi.useFakeTimers();
+
+            const changedBlock = document.querySelectorAll<HTMLElement>(
+                ".diff-pane-right .diff-editable-block",
+            )[1];
+            act(() => {
+                changedBlock?.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+            });
+            const textarea = document.querySelector<HTMLTextAreaElement>(
+                "[data-testid='diff-pane-right-editable']",
+            );
+            expect(textarea).not.toBeNull();
+            setDraftText(textarea as HTMLTextAreaElement, "value = 2;");
+            act(() => {
+                vi.advanceTimersByTime(1000);
+            });
+
+            dispatchHostMessage({
+                type: "setDiffData",
+                data: {
+                    ...diffFixture,
+                    // The editable side has an unrelated coalesced prefix while the peer side
+                    // has only the line that should be compared with the exact active draft.
+                    segments: [
+                        {
+                            type: "changed" as const,
+                            left: ["value = 3;"],
+                            right: ["unrelated();", "value = 2;"],
+                        },
+                    ],
+                    editablePane: "right" as const,
+                    editableText: "unrelated();\nvalue = 2;",
+                    documentVersion: 5,
+                    editableReseedToken: 0,
+                },
+            });
+            await flush();
+
+            expect(
+                Array.from(
+                    document.querySelectorAll<HTMLElement>(".diff-editing-draft .word-diff-change"),
+                    (change) => change.textContent,
+                ),
+                "the active row must compare with its aligned peer instead of an empty row",
+            ).toEqual(["2"]);
+        });
+
         it("preserves active visual state when a same-token echo splits its changed hunk", async () => {
             const vscode = installVsCodeMock();
             await mountEditablePane("headOne();\nheadTwo();\nbefore();\ntail();", 1, [
@@ -2089,7 +2150,7 @@ describe("DiffViewerApp read-only contract", () => {
             expect(sentDeltas(vscode)[0]?.baseVersion).toBe(2);
         });
 
-        it("widens an unchanged draft to the full echoed segment span", async () => {
+        it("keeps an unchanged draft bounded inside a coalesced echoed segment", async () => {
             await mountEditablePane("shared();\nbefore();\ntail();", 1, [
                 { type: "common" as const, left: ["shared();"], right: ["shared();"] },
                 { type: "changed" as const, left: ["before();"], right: ["after();"] },
@@ -2123,8 +2184,21 @@ describe("DiffViewerApp read-only contract", () => {
             });
             await flush();
 
-            expect(textarea.value).toBe("neighbour();\nposted();");
-            expect(textarea.rows).toBe(2);
+            expect(textarea.value).toBe("posted();");
+            expect(textarea.rows).toBe(1);
+            expect(
+                textarea.closest<HTMLElement>(".diff-editing-block")?.style.containIntrinsicSize,
+            ).toBe("auto 40px");
+            expect(
+                Array.from(
+                    textarea
+                        .closest<HTMLElement>(".diff-editing-block")
+                        ?.querySelectorAll<HTMLElement>(
+                            ".diff-editable-block .code-line-content",
+                        ) ?? [],
+                    (line) => line.textContent,
+                ),
+            ).toEqual(["neighbour();"]);
         });
     });
 });
