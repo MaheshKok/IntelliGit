@@ -2976,4 +2976,127 @@ describe("DiffViewerApp settled draft spanning several host segments", () => {
             "an edit that changes no line count changes no geometry either, so the read-only pane must not move while it is typed",
         ).toBe("translateY(-180px)");
     });
+
+    it("paints only the changed rows while the draft is still ahead of the host", async () => {
+        const textarea = await mountSettledWholeFileDraft();
+        setDraftText(textarea, settledRunText.replace("NEW();", "NEWER();"));
+        const editingBlock = textarea.closest<HTMLElement>(".diff-editing-block");
+
+        expect(
+            {
+                wrapperChanged: editingBlock?.classList.contains("diff-segment-changed"),
+                changedRows: [
+                    ...(editingBlock?.querySelectorAll(
+                        ".diff-segment-changed .code-line-content",
+                    ) ?? []),
+                ].map((row) => row.textContent),
+            },
+            "the reader gets a full debounce window between one keystroke and the host's answer, so the run has to keep the host's segment cuts across it; falling back to one representative class for that window washes every untouched line in the file green again",
+        ).toEqual({ wrapperChanged: false, changedRows: ["NEWER();"] });
+    });
+});
+
+/**
+ * The segmentation an echo hands back for a hunk that was ALREADY changed before the reader
+ * touched it, and which their own edit then cut into changed / common / changed.
+ */
+const reeditRunSegments = [
+    { type: "common" as const, left: rows("head", 3), right: rows("head", 3) },
+    { type: "changed" as const, left: ["old();"], right: ["newA();"] },
+    { type: "common" as const, left: ["keep();"], right: ["keep();"] },
+    { type: "changed" as const, left: [], right: ["newB();"] },
+    { type: "common" as const, left: rows("tail", 30), right: rows("tail", 30) },
+];
+const reeditRunText = [
+    ...rows("head", 3),
+    "newA();",
+    "keep();",
+    "newB();",
+    ...rows("tail", 30),
+].join("\n");
+
+/** Opens a hunk that already carried a diff, edits it, and lets the host re-cut it underneath. */
+async function mountReeditedChangedHunk(): Promise<HTMLTextAreaElement> {
+    installVsCodeMock();
+    await mountRightEditable(
+        [...rows("head", 3), "newA();", "newB();", ...rows("tail", 30)].join("\n"),
+        [
+            { type: "common" as const, left: rows("head", 3), right: rows("head", 3) },
+            { type: "changed" as const, left: ["old();"], right: ["newA();", "newB();"] },
+            { type: "common" as const, left: rows("tail", 30), right: rows("tail", 30) },
+        ],
+    );
+
+    const changedBlock = [
+        ...document.querySelectorAll<HTMLElement>(".diff-pane-right .diff-editable-block"),
+    ].find((block) =>
+        [...block.querySelectorAll(".code-line-content")].some(
+            (row) => row.textContent === "newA();",
+        ),
+    );
+    expect(changedBlock, "the fixture must open with one already-changed hunk").not.toBeUndefined();
+    act(() => {
+        changedBlock?.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+    });
+    const textarea = document.querySelector<HTMLTextAreaElement>(
+        "[data-testid='diff-pane-right-editable']",
+    );
+    expect(textarea, "double-clicking an already-changed hunk must open it").not.toBeNull();
+    setDraftText(textarea as HTMLTextAreaElement, "newA();\nkeep();\nnewB();");
+
+    dispatchHostMessage({
+        type: "setDiffData",
+        data: {
+            ...diffFixture,
+            segments: reeditRunSegments,
+            editablePane: "right" as const,
+            editableText: reeditRunText,
+            documentVersion: 5,
+            editableReseedToken: 0,
+        },
+    });
+    await flush();
+    return textarea as HTMLTextAreaElement;
+}
+
+describe("DiffViewerApp editing a hunk that already carried a diff", () => {
+    beforeEach(() => {
+        Object.defineProperty(HTMLElement.prototype, "clientHeight", {
+            configurable: true,
+            get: () => VIEWPORT_H,
+        });
+        Object.defineProperty(HTMLElement.prototype, "clientWidth", {
+            configurable: true,
+            get: () => VIEWPORT_W,
+        });
+        vi.spyOn(globalThis, "requestAnimationFrame").mockImplementation((callback) => {
+            callback(0);
+            return 0;
+        });
+    });
+
+    afterEach(() => {
+        Reflect.deleteProperty(HTMLElement.prototype, "clientHeight");
+        Reflect.deleteProperty(HTMLElement.prototype, "clientWidth");
+        vi.restoreAllMocks();
+    });
+
+    it("keeps the host's segment cuts when the reader types into it again", async () => {
+        const textarea = await mountReeditedChangedHunk();
+        // The reader carries on typing in the hunk they were already editing.
+        setDraftText(textarea, "newA();\nkeep();\nnewB2();");
+        const editingBlock = textarea.closest<HTMLElement>(".diff-editing-block");
+
+        expect(
+            {
+                wrapperChanged: editingBlock?.classList.contains("diff-segment-changed"),
+                changedRows: [
+                    ...(editingBlock?.querySelectorAll(
+                        ".diff-segment-changed .code-line-content",
+                    ) ?? []),
+                ].map((row) => row.textContent),
+            },
+            "`keep();` is a line the host calls common; the run must not repaint it as changed just because the draft covering it has moved ahead of the host again",
+        ).toEqual({ wrapperChanged: false, changedRows: ["newA();", "newB2();"] });
+    });
 });
