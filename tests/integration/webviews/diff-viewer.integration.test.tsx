@@ -1640,6 +1640,92 @@ describe("DiffViewerApp read-only contract", () => {
             expect(sentDeltaVersions(vscode)).toEqual([1, 2]);
         });
 
+        it("keeps a deleted right-pane draft isolated when its same-token echo absorbs a neighboring line", async () => {
+            const vscode = installVsCodeMock();
+            await mountRightEditable("prefix();\nremove();\nkept();\nsuffix();", [
+                { type: "common" as const, left: ["prefix();"], right: ["prefix();"] },
+                {
+                    type: "changed" as const,
+                    left: ["remoteRemove();", "remoteKept();"],
+                    right: ["remove();", "kept();"],
+                },
+                { type: "common" as const, left: ["suffix();"], right: ["suffix();"] },
+            ]);
+            vi.useFakeTimers();
+
+            const editableBlocks = document.querySelectorAll<HTMLElement>(
+                ".diff-pane-right .diff-editable-block",
+            );
+            const changedBlock = editableBlocks[1];
+            expect(
+                changedBlock,
+                "the deleted lines must begin in their own editable block",
+            ).toBeDefined();
+            act(() => {
+                changedBlock.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+            });
+            const textarea = document.querySelector<HTMLTextAreaElement>(
+                "[data-testid='diff-pane-right-editable']",
+            );
+            expect(textarea).not.toBeNull();
+
+            setDraftText(textarea as HTMLTextAreaElement, "kept();");
+            act(() => {
+                textarea?.focus();
+                textarea?.setSelectionRange(1, 5);
+                vi.advanceTimersByTime(1000);
+            });
+            expect(
+                sentDeltas(vscode),
+                "the host echo must acknowledge an actual deletion",
+            ).toHaveLength(1);
+
+            dispatchHostMessage({
+                type: "setDiffData",
+                data: {
+                    ...diffFixture,
+                    // The host's splitter may group the posted `kept();` line with its unchanged
+                    // prefix. That neighboring line was never part of the user's draft.
+                    segments: [
+                        {
+                            type: "changed" as const,
+                            left: ["remotePrefix();", "remoteKept();"],
+                            right: ["prefix();", "kept();"],
+                        },
+                        { type: "common" as const, left: ["suffix();"], right: ["suffix();"] },
+                    ],
+                    editablePane: "right" as const,
+                    editableText: "prefix();\nkept();\nsuffix();",
+                    documentVersion: 5,
+                    editableReseedToken: 0,
+                },
+            });
+            await flush();
+
+            expect(
+                document.querySelector<HTMLTextAreaElement>(
+                    "[data-testid='diff-pane-right-editable']",
+                ),
+                "a same-token echo must retain the existing right-pane textarea",
+            ).toBe(textarea);
+            expect(document.activeElement, "the isolated draft must retain focus").toBe(textarea);
+            expect(
+                textarea?.value,
+                "the echoed hunk widened the draft with its unrelated prefix",
+            ).toBe("kept();");
+            expect(textarea?.selectionStart).toBe(1);
+            expect(textarea?.selectionEnd).toBe(5);
+            expect(
+                Array.from(
+                    document.querySelectorAll<HTMLElement>(
+                        ".diff-pane-right .diff-editable-block .code-line-content",
+                    ),
+                    (line) => line.textContent,
+                ),
+                "prefix and suffix must remain static code rows outside the active textarea",
+            ).toEqual(["prefix();", "suffix();"]);
+        });
+
         it("preserves active visual state when a same-token echo splits its changed hunk", async () => {
             const vscode = installVsCodeMock();
             await mountEditablePane("headOne();\nheadTwo();\nbefore();\ntail();", 1, [
