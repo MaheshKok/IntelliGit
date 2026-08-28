@@ -1536,6 +1536,22 @@ describe("DiffViewerApp read-only contract", () => {
             ]);
         });
 
+        it("keeps a changed active block styled and revertable", async () => {
+            installVsCodeMock();
+            await mountEditablePane("shared();\nbefore();", 1);
+
+            const textarea = editBlock(1);
+            const editingBlock = textarea.closest<HTMLElement>(".diff-editing-block");
+
+            expect(
+                {
+                    changed: editingBlock?.classList.contains("diff-segment-changed"),
+                    revertVisible: document.querySelector("[data-testid='diff-revert-1']") !== null,
+                },
+                "opening a changed hunk must keep both its visual change marker and revert arrow",
+            ).toEqual({ changed: true, revertVisible: true });
+        });
+
         it("restarts the debounce window instead of queuing another post", async () => {
             const vscode = installVsCodeMock();
             await mountEditablePane("shared();\nbefore();", 1);
@@ -1624,21 +1640,25 @@ describe("DiffViewerApp read-only contract", () => {
             expect(sentDeltaVersions(vscode)).toEqual([1, 2]);
         });
 
-        it("moves the same textarea when a same-token echo splits an earlier display hunk", async () => {
+        it("preserves active visual state when a same-token echo splits its changed hunk", async () => {
             const vscode = installVsCodeMock();
             await mountEditablePane("headOne();\nheadTwo();\nbefore();\ntail();", 1, [
                 {
                     type: "common" as const,
-                    left: ["headOne();", "headTwo();"],
-                    right: ["headOne();", "headTwo();"],
+                    left: ["headOne();"],
+                    right: ["headOne();"],
                 },
-                { type: "changed" as const, left: ["before();"], right: ["after();"] },
+                {
+                    type: "changed" as const,
+                    left: ["headTwo();", "before();"],
+                    right: ["remoteHeadTwo();", "after();"],
+                },
                 { type: "common" as const, left: ["tail();"], right: ["tail();"] },
             ]);
             vi.useFakeTimers();
 
             const textarea = editBlock(1);
-            setDraftText(textarea, "first();");
+            setDraftText(textarea, "headTwo();\nfirst();");
             act(() => {
                 vi.advanceTimersByTime(1000);
             });
@@ -1668,7 +1688,25 @@ describe("DiffViewerApp read-only contract", () => {
                 document.querySelector("[data-testid='diff-pane-left-editable']"),
                 "split re-anchor must move the existing textarea instead of remounting it",
             ).toBe(textarea);
-            expect(textarea.value).toBe("first();");
+            expect(textarea.value).toBe("headTwo();\nfirst();");
+            const editingBlock = textarea.closest<HTMLElement>(".diff-editing-block");
+            expect(
+                {
+                    lineNumbers: [...(editingBlock?.querySelectorAll(".line-number") ?? [])].map(
+                        (lineNumber) => lineNumber.textContent,
+                    ),
+                    changed: editingBlock?.classList.contains("diff-segment-changed"),
+                    revertVisible: [1, 2].map(
+                        (index) =>
+                            document.querySelector(`[data-testid='diff-revert-${index}']`) !== null,
+                    ),
+                },
+                "the active draft must keep its full changed surface and sequential line numbers across both hunks",
+            ).toEqual({
+                lineNumbers: ["2", "3"],
+                changed: true,
+                revertVisible: [true, true],
+            });
             expect(sentDeltas(vscode)).toHaveLength(1);
         });
 
