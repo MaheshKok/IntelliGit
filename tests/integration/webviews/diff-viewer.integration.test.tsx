@@ -1587,6 +1587,9 @@ describe("DiffViewerApp read-only contract", () => {
             const textarea = editBlock(1);
             setDraftText(textarea, "first();");
             act(() => {
+                textarea.setSelectionRange(1, 5);
+            });
+            act(() => {
                 vi.advanceTimersByTime(1000);
             });
             dispatchHostMessage({
@@ -1611,12 +1614,106 @@ describe("DiffViewerApp read-only contract", () => {
             expect(echoedTextarea).toBe(textarea);
             expect(document.activeElement).toBe(textarea);
             expect(echoedTextarea?.value).toBe("first();");
+            expect(echoedTextarea?.selectionStart).toBe(1);
+            expect(echoedTextarea?.selectionEnd).toBe(5);
 
             setDraftText(textarea, "second();");
             act(() => {
                 vi.advanceTimersByTime(1000);
             });
             expect(sentDeltaVersions(vscode)).toEqual([1, 2]);
+        });
+
+        it("moves the same textarea when a same-token echo splits an earlier display hunk", async () => {
+            const vscode = installVsCodeMock();
+            await mountEditablePane("headOne();\nheadTwo();\nbefore();\ntail();", 1, [
+                {
+                    type: "common" as const,
+                    left: ["headOne();", "headTwo();"],
+                    right: ["headOne();", "headTwo();"],
+                },
+                { type: "changed" as const, left: ["before();"], right: ["after();"] },
+                { type: "common" as const, left: ["tail();"], right: ["tail();"] },
+            ]);
+            vi.useFakeTimers();
+
+            const textarea = editBlock(1);
+            setDraftText(textarea, "first();");
+            act(() => {
+                vi.advanceTimersByTime(1000);
+            });
+            dispatchHostMessage({
+                type: "setDiffData",
+                data: {
+                    ...diffFixture,
+                    segments: [
+                        { type: "common" as const, left: ["headOne();"], right: ["headOne();"] },
+                        {
+                            type: "changed" as const,
+                            left: ["headTwo();"],
+                            right: ["remoteHeadTwo();"],
+                        },
+                        { type: "changed" as const, left: ["first();"], right: ["after();"] },
+                        { type: "common" as const, left: ["tail();"], right: ["tail();"] },
+                    ],
+                    editablePane: "left" as const,
+                    editableText: "headOne();\nheadTwo();\nfirst();\ntail();",
+                    documentVersion: 2,
+                    editableReseedToken: 0,
+                },
+            });
+            await flush();
+
+            expect(
+                document.querySelector("[data-testid='diff-pane-left-editable']"),
+                "split re-anchor must move the existing textarea instead of remounting it",
+            ).toBe(textarea);
+            expect(textarea.value).toBe("first();");
+            expect(sentDeltas(vscode)).toHaveLength(1);
+        });
+
+        it("activates an unchanged inactive block against the newest host document", async () => {
+            const vscode = installVsCodeMock();
+            await mountEditablePane("before();\ntail();", 1, [
+                { type: "changed" as const, left: ["before();"], right: ["after();"] },
+                { type: "common" as const, left: ["tail();"], right: ["tail();"] },
+            ]);
+            vi.useFakeTimers();
+
+            dispatchHostMessage({
+                type: "setDiffData",
+                data: {
+                    ...diffFixture,
+                    segments: [
+                        { type: "changed" as const, left: ["hostBefore();"], right: ["after();"] },
+                        { type: "common" as const, left: ["tail();"], right: ["tail();"] },
+                    ],
+                    editablePane: "left" as const,
+                    editableText: "hostBefore();\ntail();",
+                    documentVersion: 2,
+                    editableReseedToken: 0,
+                },
+            });
+            await flush();
+            expect(
+                document.querySelector(".diff-pane-left")?.textContent,
+                "changed host content must stay authoritative after reconciliation",
+            ).toContain("hostBefore();");
+
+            const textarea = editBlock(1);
+            setDraftText(textarea, "localTail();");
+            act(() => {
+                vi.advanceTimersByTime(1000);
+            });
+
+            const [delta] = sentDeltas(vscode);
+            expect(delta?.baseVersion, "post-echo activation must use the new host version").toBe(
+                2,
+            );
+            expect(
+                applyDelta("hostBefore();\ntail();", delta),
+                "post-echo activation must derive its delta from the new host source text",
+            ).toBe("hostBefore();\nlocalTail();");
         });
 
         // Typing resumes the instant the first post goes out, so the second debounce is armed
@@ -1760,6 +1857,49 @@ describe("DiffViewerApp read-only contract", () => {
             expect(applyDelta("shared();\nbefore();", sentDeltas(vscode)[0])).toBe(
                 "shared();\ncomposed();",
             );
+        });
+
+        it("keeps the composition draft alive across a same-token host echo", async () => {
+            const vscode = installVsCodeMock();
+            await mountEditablePane("shared();\nbefore();", 1);
+            vi.useFakeTimers();
+
+            const textarea = editBlock(1);
+            act(() => {
+                textarea.dispatchEvent(new Event("compositionstart", { bubbles: true }));
+            });
+            setDraftText(textarea, "composed();");
+            dispatchHostMessage({
+                type: "setDiffData",
+                data: {
+                    ...diffFixture,
+                    editablePane: "left" as const,
+                    editableText: "shared();\nbefore();",
+                    documentVersion: 2,
+                    editableReseedToken: 0,
+                },
+            });
+            await flush();
+
+            expect(
+                document.querySelector("[data-testid='diff-pane-left-editable']"),
+                "same-token echo must not destroy the composing textarea",
+            ).toBe(textarea);
+            expect(textarea.value, "same-token echo must retain the composition draft").toBe(
+                "composed();",
+            );
+            act(() => {
+                vi.advanceTimersByTime(1000);
+            });
+            expect(sentDeltas(vscode), "composition must still block the debounced post").toEqual(
+                [],
+            );
+
+            act(() => {
+                textarea.dispatchEvent(new Event("compositionend", { bubbles: true }));
+                vi.advanceTimersByTime(1000);
+            });
+            expect(sentDeltas(vscode)[0]?.baseVersion).toBe(2);
         });
 
         it("re-anchors a live draft across split hunks and hides every overlapping revert action", async () => {

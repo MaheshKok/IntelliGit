@@ -1,12 +1,16 @@
 // @vitest-environment jsdom
 
-import { act } from "react";
+import React, { act } from "react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { computeDiffSegments } from "../../../src/diff/diffSegments";
+import type { EditableSegmentBlockProps } from "../../../src/webviews/react/diff-viewer/EditableSegmentBlock";
 import { flush } from "../../helpers/reactDomTestUtils";
 import { installWebviewI18n } from "../../helpers/webviewI18nTestUtils";
 import { buildEditableDiffPerformanceFixture } from "../../helpers/editableDiffPerformanceFixture";
+import { timingBudgetsApply } from "../../helpers/timingBudgets";
 
 const layoutCalls = vi.hoisted(() => vi.fn());
+const inactiveEditableBlockRenders = vi.hoisted(() => vi.fn());
 
 vi.mock("../../../src/webviews/react/diff-core/mergeScrollLayout", async (importOriginal) => {
     const actual =
@@ -19,6 +23,31 @@ vi.mock("../../../src/webviews/react/diff-core/mergeScrollLayout", async (import
             layoutCalls(args[0]);
             return actual.buildVerticalLayout(...args);
         },
+    };
+});
+
+vi.mock("../../../src/webviews/react/diff-viewer/EditableSegmentBlock", async (importOriginal) => {
+    const actual =
+        await importOriginal<
+            typeof import("../../../src/webviews/react/diff-viewer/EditableSegmentBlock")
+        >();
+    return {
+        ...actual,
+        EditableSegmentBlock: React.memo(function EditableSegmentBlockRenderSpy({
+            item,
+            side,
+            onStartEditing,
+        }: EditableSegmentBlockProps): React.ReactElement {
+            inactiveEditableBlockRenders();
+            return (
+                <div
+                    className={`segment diff-editable-block diff-segment-${item.segment.type}`}
+                    onDoubleClick={() => onStartEditing(item)}
+                >
+                    {item.segment[side].join("\n")}
+                </div>
+            );
+        }),
     };
 });
 
@@ -173,6 +202,59 @@ describe("editable diff performance", () => {
             vi.advanceTimersByTime(1);
         });
         expect(editMessages(vscode)).toHaveLength(1);
+    });
+
+    it("preserves the active editor and avoids rendering unchanged inactive shells for a large host echo", async () => {
+        const vscode = installVsCodeMock();
+        vi.useFakeTimers();
+        const { fixture, textarea } = await openPerformanceDraft();
+        const originalText = textarea.value;
+        const draftText = `${originalText} // local edit`;
+
+        setDraftText(textarea, draftText);
+        act(() => {
+            textarea.focus();
+            textarea.setSelectionRange(3, 8);
+            vi.advanceTimersByTime(1000);
+        });
+        expect(editMessages(vscode)).toHaveLength(1);
+
+        const echoedText = fixture.rightText.replace(originalText, draftText);
+        expect(echoedText, "the echo must contain the posted large-fixture edit").not.toBe(
+            fixture.rightText,
+        );
+        inactiveEditableBlockRenders.mockClear();
+        const echoStartedAt = performance.now();
+        dispatchHostMessage({
+            type: "setDiffData",
+            data: {
+                ...fixture.data,
+                ...computeDiffSegments(fixture.leftText, echoedText),
+                editableText: echoedText,
+                documentVersion: 2,
+                editableReseedToken: 0,
+            },
+        });
+        await flush();
+        const echoCommitMs = performance.now() - echoStartedAt;
+
+        const echoedTextarea = document.querySelector<HTMLTextAreaElement>(
+            "[data-testid='diff-pane-right-editable']",
+        );
+        expect(echoedTextarea, "large echo must retain the exact active textarea node").toBe(
+            textarea,
+        );
+        expect(document.activeElement, "large echo must retain textarea focus").toBe(textarea);
+        expect(echoedTextarea?.value, "large echo must retain the local draft").toBe(draftText);
+        expect(echoedTextarea?.selectionStart, "large echo must retain selection start").toBe(3);
+        expect(echoedTextarea?.selectionEnd, "large echo must retain selection end").toBe(8);
+        expect(
+            inactiveEditableBlockRenders,
+            "unchanged inactive editable shells must not render for the large echo",
+        ).not.toHaveBeenCalled();
+        if (timingBudgetsApply) {
+            expect(echoCommitMs, "large inbound echo commit").toBeLessThan(50);
+        }
     });
 
     it("rebuilds layout when the active draft gains a row", async () => {

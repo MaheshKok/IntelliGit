@@ -22,7 +22,6 @@ import {
     type RibbonSpan,
     type SegmentPaneLines,
 } from "../diff-core/mergeScrollLayout";
-import { buildLineNumberValues } from "../diff-core/lineNumbers";
 import {
     alignScrollOverlays,
     applyPaneOffsets,
@@ -57,6 +56,12 @@ import {
     type EditableBlockLayout,
 } from "./editableDraftLayout";
 import { EditableSegmentBlock, type EditableSegmentItem } from "./EditableSegmentBlock";
+import { reconcileDiffViewerData } from "./reconcileDiffSegments";
+import {
+    buildRenderedSegments,
+    createRenderedSegmentCache,
+    type RenderedSegment,
+} from "./renderedDiffSegments";
 import "./diff-viewer.css";
 
 const LINE_PADDING_PX = 18;
@@ -122,8 +127,6 @@ function clearReadOnlyNoticeTimer(
     timerRef.current = null;
 }
 
-type RenderedSegment = EditableSegmentItem;
-
 /** Renders one read-only side of one aligned diff segment. */
 const DiffPaneBlock = React.memo(function DiffPaneBlock({
     segment,
@@ -159,9 +162,12 @@ const DiffPaneBlock = React.memo(function DiffPaneBlock({
 });
 
 interface EditableBlockDraft {
+    /** Stable React identity for the continuous active edit session. */
+    editSessionKey: string;
     indices: readonly number[];
     text: string;
-    caretOffset: number;
+    selectionStart: number;
+    selectionEnd: number;
     sourceText: string;
     startLine: number;
     lineCount: number;
@@ -315,10 +321,20 @@ function EditableDiffPane({
     const debounceTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
     const lastPostedTextRef = useRef<string | null>(null);
     const draftRef = useRef<EditableBlockDraft | null>(null);
+    const nextEditSessionKeyRef = useRef(0);
     const isComposingRef = useRef(false);
     const reseedDuringCompositionRef = useRef(false);
+    const textRef = useRef(text);
+    const documentVersionRef = useRef(documentVersion);
+    const reseedTokenRef = useRef(reseedToken);
+    const renderedSegmentsRef = useRef<readonly RenderedSegment[]>(renderedSegments);
     const lineNumberSide = side === "left" ? "right" : "left";
     const draftLines = useMemo(() => draft?.text.split("\n") ?? [], [draft?.text]);
+
+    textRef.current = text;
+    documentVersionRef.current = documentVersion;
+    reseedTokenRef.current = reseedToken;
+    renderedSegmentsRef.current = renderedSegments;
 
     const clearDebounceTimer = useCallback(() => {
         if (debounceTimerRef.current === null) return;
@@ -353,11 +369,18 @@ function EditableDiffPane({
     );
 
     const editingDraftIndex = draft?.indices[0];
-    const editingCaretOffset = draft?.caretOffset;
+    const editingSelectionStart = draft?.selectionStart;
+    const editingSelectionEnd = draft?.selectionEnd;
     useEffect(() => {
-        if (editingDraftIndex === undefined || editingCaretOffset === undefined) return;
+        if (
+            editingDraftIndex === undefined ||
+            editingSelectionStart === undefined ||
+            editingSelectionEnd === undefined
+        ) {
+            return;
+        }
         const textarea = textareaRef.current;
-        textarea?.setSelectionRange(editingCaretOffset, editingCaretOffset);
+        textarea?.setSelectionRange(editingSelectionStart, editingSelectionEnd);
 
         // A block can be opened while the panes are already scrolled sideways. The overlay is
         // born at scroll 0 and only a scroll event would align it, so align this one directly --
@@ -367,7 +390,7 @@ function EditableDiffPane({
         // swallow the next real scroll to arrive before it.
         const codeLines = textarea?.parentElement?.querySelector<HTMLElement>(".code-lines");
         if (textarea && codeLines) alignScrollOverlays([textarea], codeLines.scrollLeft);
-    }, [editingCaretOffset, editingDraftIndex]);
+    }, [editingDraftIndex, editingSelectionEnd, editingSelectionStart]);
 
     // The debounced post reads the draft as it stands when the timer FIRES, never the one it was
     // armed with. Typing resumes the moment the first post goes out, so the next window is armed
@@ -403,8 +426,9 @@ function EditableDiffPane({
         const nextDraft = reanchorDraft(
             {
                 ...draft,
-                caretOffset: textareaRef.current?.selectionStart ?? draft.caretOffset,
-                sourceText: text,
+                selectionStart: textareaRef.current?.selectionStart ?? draft.selectionStart,
+                selectionEnd: textareaRef.current?.selectionEnd ?? draft.selectionEnd,
+                sourceText: textRef.current,
                 version: documentVersion,
                 // The same splitter the post itself went through. `replaceBlockText` runs
                 // `splitEditedText`, which reads empty text as a deleted block -- no lines,
@@ -430,31 +454,36 @@ function EditableDiffPane({
         });
     }, [documentVersion, draft, onDraftLayoutChange, renderedSegments, reseedToken, side, text]);
 
+    /** Starts a session from the latest host model without changing its callback identity. */
     const startEditing = useCallback(
-        (item: RenderedSegment, caretOffset = 0) => {
-            if (editingIndexRef.current === item.index) return;
-            editingIndexRef.current = item.index;
+        (item: EditableSegmentItem, caretOffset = 0) => {
+            const currentRenderedSegments = renderedSegmentsRef.current;
+            const currentItem = currentRenderedSegments[item.index] ?? item;
+            if (editingIndexRef.current === currentItem.index) return;
+            editingIndexRef.current = currentItem.index;
             lastPostedTextRef.current = null;
-            const startLine = paneStartLine(renderedSegments, item.index, side);
+            const startLine = paneStartLine(currentRenderedSegments, currentItem.index, side);
             const nextDraft = {
-                indices: [item.index],
-                text: item.segment[side].join("\n"),
-                caretOffset,
-                sourceText: text,
+                editSessionKey: `edit-session-${nextEditSessionKeyRef.current++}`,
+                indices: [currentItem.index],
+                text: currentItem.segment[side].join("\n"),
+                selectionStart: caretOffset,
+                selectionEnd: caretOffset,
+                sourceText: textRef.current,
                 startLine,
-                lineCount: item.segment[side].length,
-                version: documentVersion,
-                token: reseedToken,
+                lineCount: currentItem.segment[side].length,
+                version: documentVersionRef.current,
+                token: reseedTokenRef.current,
             };
             setDraft(nextDraft);
             onDraftLayoutChange({
                 side,
                 indices: nextDraft.indices,
                 rowCount: Math.max(nextDraft.lineCount, 1),
-                maxLineLength: longestLine(item.segment[side]),
+                maxLineLength: longestLine(currentItem.segment[side]),
             });
         },
-        [documentVersion, onDraftLayoutChange, renderedSegments, reseedToken, side, text],
+        [onDraftLayoutChange, side],
     );
 
     const commitDraft = useCallback(() => {
@@ -489,7 +518,7 @@ function EditableDiffPane({
                     const rowCount = Math.max(draftLines.length, 1);
                     return (
                         <div
-                            key={`editable-${side}-${item.index}`}
+                            key={draft.editSessionKey}
                             className={`segment diff-editing-block editing line-numbers-${lineNumberSide}`}
                             style={intrinsicSizeStyle(rowCount)}
                         >
@@ -564,7 +593,7 @@ function EditableDiffPane({
 
                 return (
                     <EditableSegmentBlock
-                        key={`editable-${side}-${item.index}`}
+                        key={item.renderKey}
                         item={item}
                         side={side}
                         lineNumberSide={lineNumberSide}
@@ -770,6 +799,7 @@ export function App(): React.ReactElement {
     // leave both stale until some other change happened to re-render.
     const [viewportHeight, setViewportHeight] = useState(0);
     const vscode = useMemo(() => getVsCodeApi<OutboundMessage, unknown>(), []);
+    const renderedSegmentCache = useMemo(createRenderedSegmentCache, []);
 
     const contentRef = useRef<HTMLDivElement | null>(null);
     const viewportElementRef = useRef<HTMLDivElement | null>(null);
@@ -830,27 +860,10 @@ export function App(): React.ReactElement {
         [data?.languageId, data?.path, shikiReady, shikiTheme],
     );
 
-    const renderedSegments = useMemo<RenderedSegment[]>(() => {
-        let leftCursor = 1;
-        let rightCursor = 1;
-        return segments.map((segment, index) => {
-            const leftCount = segment.left.length;
-            const rightCount = segment.right.length;
-            const item = {
-                segment,
-                index,
-                paneLines: { left: leftCount, right: rightCount },
-                lineNumbers: {
-                    left: { primary: buildLineNumberValues(leftCursor, leftCount, leftCount) },
-                    right: { primary: buildLineNumberValues(rightCursor, rightCount, rightCount) },
-                },
-                canonicalLineCount: Math.max(leftCount, rightCount, 1),
-            } satisfies RenderedSegment;
-            leftCursor += leftCount;
-            rightCursor += rightCount;
-            return item;
-        });
-    }, [segments]);
+    const renderedSegments = useMemo(
+        () => buildRenderedSegments(segments, renderedSegmentCache),
+        [renderedSegmentCache, segments],
+    );
 
     const paneLines = useMemo<SegmentPaneLines<DiffPane>[]>(
         () =>
@@ -1332,7 +1345,7 @@ export function App(): React.ReactElement {
             if (event.data.type === "setDiffData") {
                 setError(event.data.data.loadError ?? null);
                 setIgnoreMode(event.data.data.ignoreWhitespace ? "whitespace" : "none");
-                setData(event.data.data);
+                setData((previous) => reconcileDiffViewerData(previous, event.data.data));
             }
         };
         window.addEventListener("message", handler);
@@ -1627,7 +1640,7 @@ export function App(): React.ReactElement {
                                         ) : (
                                             renderedSegments.map((item) => (
                                                 <DiffPaneBlock
-                                                    key={`left-${item.index}`}
+                                                    key={`left-${item.renderKey}`}
                                                     segment={item.segment}
                                                     side="left"
                                                     lineCount={item.paneLines.left}
@@ -1665,7 +1678,7 @@ export function App(): React.ReactElement {
                                         ) : (
                                             renderedSegments.map((item) => (
                                                 <DiffPaneBlock
-                                                    key={`right-${item.index}`}
+                                                    key={`right-${item.renderKey}`}
                                                     segment={item.segment}
                                                     side="right"
                                                     lineCount={item.paneLines.right}
