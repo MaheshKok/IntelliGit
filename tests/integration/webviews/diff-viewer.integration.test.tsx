@@ -1710,6 +1710,69 @@ describe("DiffViewerApp read-only contract", () => {
             expect(sentDeltas(vscode)).toHaveLength(1);
         });
 
+        it("keeps a changed active draft marked when its echoed first segment becomes common", async () => {
+            const vscode = installVsCodeMock();
+            await mountEditablePane("mutable original", 1, [
+                {
+                    type: "changed" as const,
+                    left: ["mutable original"],
+                    right: ["remote original"],
+                },
+            ]);
+            vi.useFakeTimers();
+
+            const textarea = editBlock(0);
+            setDraftText(textarea, "mutable original\nlocal");
+            act(() => {
+                vi.advanceTimersByTime(1000);
+            });
+            dispatchHostMessage({
+                type: "setDiffData",
+                data: {
+                    ...diffFixture,
+                    segments: [
+                        {
+                            type: "common" as const,
+                            left: ["mutable original"],
+                            right: ["mutable original"],
+                        },
+                        { type: "changed" as const, left: ["local"], right: ["remote local"] },
+                    ],
+                    editablePane: "left" as const,
+                    editableText: "mutable original\nlocal",
+                    documentVersion: 2,
+                    editableReseedToken: 0,
+                },
+            });
+            await flush();
+
+            const echoedTextarea = document.querySelector<HTMLTextAreaElement>(
+                "[data-testid='diff-pane-left-editable']",
+            );
+            const editingBlock = textarea.closest<HTMLElement>(".diff-editing-block");
+            expect(
+                {
+                    textareaRetained: echoedTextarea === textarea,
+                    focused: document.activeElement === textarea,
+                    value: textarea.value,
+                    lineNumbers: [...(editingBlock?.querySelectorAll(".line-number") ?? [])].map(
+                        (lineNumber) => lineNumber.textContent,
+                    ),
+                    changed: editingBlock?.classList.contains("diff-segment-changed"),
+                    revertVisible: document.querySelector("[data-testid='diff-revert-1']") !== null,
+                },
+                "an echoed common prefix must not erase the active draft's changed surface",
+            ).toEqual({
+                textareaRetained: true,
+                focused: true,
+                value: "mutable original\nlocal",
+                lineNumbers: ["1", "2"],
+                changed: true,
+                revertVisible: true,
+            });
+            expect(sentDeltas(vscode)).toHaveLength(1);
+        });
+
         it("activates an unchanged inactive block against the newest host document", async () => {
             const vscode = installVsCodeMock();
             await mountEditablePane("before();\ntail();", 1, [

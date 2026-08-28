@@ -504,6 +504,19 @@ function EditableDiffPane({
         }
     }, [clearDebounceTimer, clearDraft, draft, onEdit, reseedToken]);
 
+    const draftIndices = draft?.indices;
+    const activeSegmentClassName = useMemo(() => {
+        if (draftIndices === undefined) return null;
+        const activeIndices = new Set(draftIndices);
+        // A host echo can split one active range into common and changed segments. Prefer the
+        // changed representative, while keeping this scan off the ordinary keystroke path.
+        const representative =
+            renderedSegments.find(
+                ({ index, segment }) => activeIndices.has(index) && segment.type === "changed",
+            ) ?? renderedSegments.find(({ index }) => activeIndices.has(index));
+        return representative === undefined ? null : segmentClassName(representative.segment, side);
+    }, [draftIndices, renderedSegments, side]);
+
     return (
         <>
             {renderedSegments.map((item) => {
@@ -516,7 +529,7 @@ function EditableDiffPane({
                     return (
                         <div
                             key={draft.editSessionKey}
-                            className={`segment diff-editing-block editing ${segmentClassName(item.segment, side)} line-numbers-${lineNumberSide}`}
+                            className={`segment diff-editing-block editing ${activeSegmentClassName ?? segmentClassName(item.segment, side)} line-numbers-${lineNumberSide}`}
                             style={intrinsicSizeStyle(rowCount)}
                         >
                             <CodeBlock
@@ -961,11 +974,7 @@ export function App(): React.ReactElement {
     // arrows would have nothing to wait for and would stay gone. And an empty list unmounts every
     // button, so each debounced post would flash the whole strip away and back.
     const actionHunks = useMemo(
-        () =>
-            singlePane === null
-                ? ribbonIndices
-                      .map((ribbon) => ribbon.index)
-                : [],
+        () => (singlePane === null ? ribbonIndices.map((ribbon) => ribbon.index) : []),
         [ribbonIndices, singlePane],
     );
 

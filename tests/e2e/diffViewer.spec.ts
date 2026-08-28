@@ -155,6 +155,76 @@ test.describe("diff viewer", () => {
         }
     });
 
+    test("keeps a changed active block fully visible after the live re-diff", async ({
+        fixtureWorkspace,
+    }) => {
+        test.setTimeout(120_000);
+        const { electronApp, diffFrame } = await openDiffViewer(fixtureWorkspace);
+        const filePath = path.join(fixtureWorkspace.workspace.root, DIRTY_FIXTURE.mutablePath);
+
+        try {
+            const block = diffFrame
+                .locator(
+                    '[data-testid="diff-pane-right"] .diff-editable-block.diff-segment-changed:not(.diff-segment-empty)',
+                )
+                .first();
+            await expect(block).toBeVisible();
+            const visibleArrows = diffFrame.locator(".diff-hunk-revert:visible");
+            const arrowsBefore = await visibleArrows.count();
+            expect(
+                arrowsBefore,
+                "the fixture's changed hunk must expose a revert arrow",
+            ).toBeGreaterThan(0);
+            const visibleArrowTestIds = () =>
+                visibleArrows.evaluateAll((arrows) =>
+                    arrows
+                        .map((arrow) => arrow.getAttribute("data-testid"))
+                        .filter((testId): testId is string => testId !== null),
+                );
+            const arrowTestIdsBefore = await visibleArrowTestIds();
+            await block.click();
+
+            const textarea = diffFrame.locator('[data-testid="diff-pane-right-editable"]');
+            await expect(textarea).toBeFocused();
+            const activeChangedBlock = diffFrame.locator(
+                '[data-testid="diff-pane-right"] .diff-editing-block.diff-segment-changed',
+            );
+            await expect(activeChangedBlock).toBeVisible();
+            await expect(visibleArrows).toHaveCount(arrowsBefore);
+
+            const headText = (
+                await diffFrame
+                    .locator(
+                        '[data-testid="diff-pane-left"] .diff-segment-changed:not(.diff-segment-empty) .code-lines',
+                    )
+                    .first()
+                    .innerText()
+            ).trim();
+            expect(headText, "the corresponding HEAD hunk must carry text").not.toBe("");
+            const typed = `${headText}\nlive-echo-visual-state`;
+            await textarea.fill(typed);
+
+            // The draft renders immediately, but its revert-action identity can only change after
+            // the returned host payload re-segments this hunk into its common HEAD prefix and the
+            // added line. That payload must preserve the active surface without another-pane click.
+            await expect
+                .poll(visibleArrowTestIds, { timeout: 20_000 })
+                .not.toEqual(arrowTestIdsBefore);
+            await expect
+                .poll(() => readFile(filePath, "utf-8"), { timeout: 30_000 })
+                .toContain(typed);
+            await expect(activeChangedBlock).toBeVisible();
+            await expect(textarea).toBeFocused();
+            await expect(textarea).toHaveValue(typed);
+            await expect(activeChangedBlock.locator(".line-number")).toHaveCount(
+                typed.split("\n").length,
+            );
+            await expect(visibleArrows).not.toHaveCount(0);
+        } finally {
+            await electronApp.close();
+        }
+    });
+
     // Auto-save's own assembled leg, and the same gap the case above closes for the re-diff. The
     // unit suite proves a timer fires and calls `document.save()` against a mocked document; a
     // mock cannot say whether the bytes reached the filesystem, and every failure this feature
