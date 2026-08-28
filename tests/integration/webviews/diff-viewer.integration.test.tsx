@@ -1842,16 +1842,20 @@ describe("DiffViewerApp read-only contract", () => {
                     lineNumbers: [...(editingBlock?.querySelectorAll(".line-number") ?? [])].map(
                         (lineNumber) => lineNumber.textContent,
                     ),
-                    changed: editingBlock?.classList.contains("diff-segment-changed"),
+                    changedRows: [
+                        ...(editingBlock?.querySelectorAll(
+                            ".diff-segment-changed .code-line-content",
+                        ) ?? []),
+                    ].map((row) => row.textContent),
                     revertVisible: [1, 2].map(
                         (index) =>
                             document.querySelector(`[data-testid='diff-revert-${index}']`) !== null,
                     ),
                 },
-                "the active draft must keep its full changed surface and sequential line numbers across both hunks",
+                "both hunks the draft spans are changed, so the draft keeps a changed surface over all of it, with sequential line numbers across the two",
             ).toEqual({
                 lineNumbers: ["2", "3"],
-                changed: true,
+                changedRows: ["headTwo();", "first();"],
                 revertVisible: [true, true],
             });
             expect(sentDeltas(vscode)).toHaveLength(1);
@@ -1905,16 +1909,20 @@ describe("DiffViewerApp read-only contract", () => {
                     lineNumbers: [...(editingBlock?.querySelectorAll(".line-number") ?? [])].map(
                         (lineNumber) => lineNumber.textContent,
                     ),
-                    changed: editingBlock?.classList.contains("diff-segment-changed"),
+                    changedRows: [
+                        ...(editingBlock?.querySelectorAll(
+                            ".diff-segment-changed .code-line-content",
+                        ) ?? []),
+                    ].map((row) => row.textContent),
                     revertVisible: document.querySelector("[data-testid='diff-revert-1']") !== null,
                 },
-                "an echoed common prefix must not erase the active draft's changed surface",
+                "an echoed common prefix keeps its own paint: the draft is still open over both rows, but only the row the host calls changed is marked",
             ).toEqual({
                 textareaRetained: true,
                 focused: true,
                 value: "mutable original\nlocal",
                 lineNumbers: ["1", "2"],
-                changed: true,
+                changedRows: ["local"],
                 revertVisible: true,
             });
             expect(sentDeltas(vscode)).toHaveLength(1);
@@ -2837,5 +2845,135 @@ describe("DiffViewerApp file path header", () => {
         // Anti-vacuity: the body has to hold the diff for the absence above to mean anything.
         // An unmounted or blank viewer contains no path either.
         expect(document.querySelector(".diff-toolbar"), "the viewer did not render").not.toBeNull();
+    });
+});
+
+// --- A draft whose rows have settled back into the host's own segments ---
+
+/**
+ * The segmentation an echo hands back once a whole-file draft has posted one inserted line.
+ *
+ * A file with no local edits opens as ONE common segment, so the first click makes the entire
+ * file the draft. What comes back is cut into three, while the draft still spans all of it.
+ */
+const settledRunSegments = [
+    { type: "common" as const, left: ["head0;"], right: ["head0;"] },
+    { type: "changed" as const, left: [], right: ["NEW();"] },
+    { type: "common" as const, left: rows("tail", 20), right: rows("tail", 20) },
+];
+const settledRunText = ["head0;", "NEW();", ...rows("tail", 20)].join("\n");
+
+/** Opens a clean file as one whole-file draft and lets the host echo re-segment it underneath. */
+async function mountSettledWholeFileDraft(): Promise<HTMLTextAreaElement> {
+    installVsCodeMock();
+    const cleanLines = ["head0;", ...rows("tail", 20)];
+    await mountRightEditable(cleanLines.join("\n"), [
+        { type: "common" as const, left: cleanLines, right: cleanLines },
+    ]);
+
+    const block = document.querySelector<HTMLElement>(".diff-pane-right .diff-editable-block");
+    act(() => {
+        block?.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+    });
+    const textarea = document.querySelector<HTMLTextAreaElement>(
+        "[data-testid='diff-pane-right-editable']",
+    );
+    expect(textarea, "a file with no local edits must open as one whole-file draft").not.toBeNull();
+    setDraftText(textarea as HTMLTextAreaElement, settledRunText);
+
+    dispatchHostMessage({
+        type: "setDiffData",
+        data: {
+            ...diffFixture,
+            segments: settledRunSegments,
+            editablePane: "right" as const,
+            editableText: settledRunText,
+            documentVersion: 5,
+            editableReseedToken: 0,
+        },
+    });
+    await flush();
+    return textarea as HTMLTextAreaElement;
+}
+
+describe("DiffViewerApp settled draft spanning several host segments", () => {
+    beforeEach(() => {
+        Object.defineProperty(HTMLElement.prototype, "clientHeight", {
+            configurable: true,
+            get: () => VIEWPORT_H,
+        });
+        Object.defineProperty(HTMLElement.prototype, "clientWidth", {
+            configurable: true,
+            get: () => VIEWPORT_W,
+        });
+        vi.spyOn(globalThis, "requestAnimationFrame").mockImplementation((callback) => {
+            callback(0);
+            return 0;
+        });
+    });
+
+    afterEach(() => {
+        Reflect.deleteProperty(HTMLElement.prototype, "clientHeight");
+        Reflect.deleteProperty(HTMLElement.prototype, "clientWidth");
+        vi.restoreAllMocks();
+    });
+
+    it("paints only the host's changed rows inside a settled whole-file draft", async () => {
+        const textarea = await mountSettledWholeFileDraft();
+        const editingBlock = textarea.closest<HTMLElement>(".diff-editing-block");
+
+        expect(
+            {
+                wrapperChanged: editingBlock?.classList.contains("diff-segment-changed"),
+                changedRows: [
+                    ...(editingBlock?.querySelectorAll(
+                        ".diff-segment-changed .code-line-content",
+                    ) ?? []),
+                ].map((row) => row.textContent),
+            },
+            "a draft that has settled back onto its host rows must wear the host's own segment cuts; one representative class on the outer block washes every untouched line in the file",
+        ).toEqual({ wrapperChanged: false, changedRows: ["NEW();"] });
+    });
+
+    it("holds the read-only pane at the host's alignment while a settled draft is open", async () => {
+        await mountSettledWholeFileDraft();
+        const content = document.querySelector<HTMLElement>(".diff-content");
+        expect(content).not.toBeNull();
+
+        scrollTo(content as HTMLElement, 200);
+
+        expect(
+            document.querySelector<HTMLElement>(".diff-pane-left")?.style.transform,
+            "collapsing a settled run's rows onto its first segment rewrites the canonical table the read-only pane maps through, and drops that pane 171px above where the host put it",
+        ).toBe("translateY(-180px)");
+    });
+
+    it("shows the typed text, not the host's, while the draft is still ahead of the host", async () => {
+        const textarea = await mountSettledWholeFileDraft();
+        // The next keystroke lands a full debounce window before the host can echo it. The rows
+        // under the caret belong to the draft for that whole window; drawing the run as the host
+        // still has it would take the reader's own typing off the screen until the echo arrived.
+        setDraftText(textarea, settledRunText.replace("NEW();", "NEWER();"));
+
+        const editingBlock = textarea.closest<HTMLElement>(".diff-editing-block");
+        const shown = [...(editingBlock?.querySelectorAll(".code-line-content") ?? [])].map(
+            (row) => row.textContent,
+        );
+        expect(shown, "the typed row must be the one rendered").toContain("NEWER();");
+        expect(shown, "the superseded host row must be gone").not.toContain("NEW();");
+    });
+
+    it("holds the read-only pane at the host's alignment while the draft is ahead of the host", async () => {
+        const textarea = await mountSettledWholeFileDraft();
+        setDraftText(textarea, settledRunText.replace("NEW();", "NEWER();"));
+        const content = document.querySelector<HTMLElement>(".diff-content");
+        expect(content).not.toBeNull();
+
+        scrollTo(content as HTMLElement, 200);
+
+        expect(
+            document.querySelector<HTMLElement>(".diff-pane-left")?.style.transform,
+            "an edit that changes no line count changes no geometry either, so the read-only pane must not move while it is typed",
+        ).toBe("translateY(-180px)");
     });
 });

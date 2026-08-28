@@ -195,6 +195,15 @@ interface EditableDraftRun {
     readonly suffixCompareLines: string[];
     readonly rowCount: number;
     readonly maxLineLength: number;
+    /** The rendered host segments the run covers, in document order. */
+    readonly items: readonly RenderedSegment[];
+    /**
+     * Whether the draft's rows are, line for line, the host rows the run replaces.
+     *
+     * True from the moment an echo lands: the draft has stopped adding or removing anything, so
+     * the run can be painted and measured as the host cut it rather than as one coalesced block.
+     */
+    readonly hostBacked: boolean;
 }
 
 /** Longest line in a block, in characters — the block's contribution to the shared extent. */
@@ -361,8 +370,13 @@ function editableDraftRun(
     const draftLines = draft.text.split("\n");
     const suffixLines = runLines.slice(suffixStart);
     const displayLines = [...prefixLines, ...draftLines, ...suffixLines];
+    const replacedLines = runLines.slice(prefixEnd, suffixStart);
 
     return {
+        items,
+        hostBacked:
+            replacedLines.length === draftLines.length &&
+            replacedLines.every((line, offset) => line === draftLines[offset]),
         firstIndex,
         indices: draft.indices,
         runStartLine,
@@ -406,16 +420,53 @@ function reanchorDraft(
     return { ...draft, indices, startLine: nextStartLine, lineCount: nextLineCount };
 }
 
+/** The whole-view geometry one active run contributes, in the shape the app keeps in state. */
+function draftLayoutOf(run: EditableDraftRun, side: DiffPane): EditableBlockLayout {
+    return {
+        side,
+        indices: run.indices,
+        rowCount: run.rowCount,
+        maxLineLength: run.maxLineLength,
+    };
+}
+
+/**
+ * Spreads an open draft's rows back across the host segments its run covers.
+ *
+ * Every segment keeps its own host rows for as long as the draft has rows to pay for them, so the
+ * canonical table stays the one the host's segmentation produced -- and the READ-ONLY pane, which
+ * maps its own offset through that table, keeps standing beside the lines it is meant to. Only
+ * the difference the draft has not posted yet has to land somewhere, and it lands on the run's
+ * first segment: the block the textarea itself is anchored to.
+ */
+function editableRunRows(
+    editingBlock: EditableBlockLayout,
+    renderedSegments: readonly RenderedSegment[],
+): Map<number, number> {
+    const rows = new Map<number, number>();
+    let remaining = editingBlock.rowCount;
+    for (const index of editingBlock.indices) {
+        const own = Math.min(
+            renderedSegments[index]?.paneLines[editingBlock.side] ?? 0,
+            Math.max(remaining, 0),
+        );
+        rows.set(index, own);
+        remaining -= own;
+    }
+    const first = editingBlock.indices[0];
+    if (remaining > 0 && first !== undefined) rows.set(first, (rows.get(first) ?? 0) + remaining);
+    return rows;
+}
+
+/** Substitutes the edited pane's row count for one segment the open draft has taken over. */
 function editedPaneLines(
     paneLines: Record<DiffPane, number>,
     index: number,
     editingBlock: EditableBlockLayout | null,
+    runRows: Map<number, number>,
 ): Record<DiffPane, number> {
     if (editingBlock === null || !editingBlock.indices.includes(index)) return paneLines;
-    return {
-        ...paneLines,
-        [editingBlock.side]: editingBlock.indices[0] === index ? editingBlock.rowCount : 0,
-    };
+    return { ...paneLines, [editingBlock.side]: runRows.get(index) ?? 0 };
 }
 
 /** Renders editable display blocks while keeping document writes delegated to the host. */
@@ -521,9 +572,10 @@ function EditableDiffPane({
         // until something happens to scroll. Directly, and not through `onHorizontalScroll`:
         // that driver coalesces into a frame, and a frame pending on nothing but this would
         // swallow the next real scroll to arrive before it.
-        const codeLines = textarea?.parentElement?.querySelector<HTMLElement>(
-            ".diff-editing-draft .code-lines",
-        );
+        // Any row block in the run will do: every `.code-lines` in the view is held at one shared
+        // horizontal position, and a settled run is drawn as its host segments with no single
+        // draft block to name.
+        const codeLines = textarea?.parentElement?.querySelector<HTMLElement>(".code-lines");
         if (textarea && codeLines) alignScrollOverlays([textarea], codeLines.scrollLeft);
     }, [editingDraftIndex, editingSelectionEnd, editingSelectionStart]);
 
@@ -581,12 +633,7 @@ function EditableDiffPane({
         editingIndexRef.current = nextDraft.indices[0];
         setDraft(nextDraft);
         const nextRun = editableDraftRun(nextDraft, renderedSegments, side);
-        onDraftLayoutChange({
-            side,
-            indices: nextRun.indices,
-            rowCount: nextRun.rowCount,
-            maxLineLength: nextRun.maxLineLength,
-        });
+        onDraftLayoutChange(draftLayoutOf(nextRun, side));
     }, [documentVersion, draft, onDraftLayoutChange, renderedSegments, reseedToken, side, text]);
 
     /** Starts a session from the latest host model without changing its callback identity. */
@@ -612,12 +659,7 @@ function EditableDiffPane({
             };
             setDraft(nextDraft);
             const nextRun = editableDraftRun(nextDraft, currentRenderedSegments, side);
-            onDraftLayoutChange({
-                side,
-                indices: nextRun.indices,
-                rowCount: nextRun.rowCount,
-                maxLineLength: nextRun.maxLineLength,
-            });
+            onDraftLayoutChange(draftLayoutOf(nextRun, side));
         },
         [onDraftLayoutChange, side],
     );
@@ -663,70 +705,99 @@ function EditableDiffPane({
 
                 if (isEditing && draft && activeRun) {
                     if (activeRun.firstIndex !== item.index) return null;
+                    // A settled draft that spans several host segments is drawn as those
+                    // segments. One representative class stretched over the whole run washes
+                    // every untouched line in it -- which, for the first click into a file with
+                    // no local edits yet, is the entire file.
+                    const splitRun = activeRun.hostBacked && activeRun.indices.length > 1;
                     return (
                         <div
                             key={draft.editSessionKey}
-                            className={`segment diff-editing-block editing ${activeSegmentClassName ?? segmentClassName(item.segment, side)} line-numbers-${lineNumberSide}`}
+                            className={`segment diff-editing-block editing ${splitRun ? "" : (activeSegmentClassName ?? segmentClassName(item.segment, side))} line-numbers-${lineNumberSide}`}
                             style={intrinsicSizeStyle(activeRun.rowCount)}
                         >
-                            {activeRun.prefixLines.length > 0 ? (
-                                <div
-                                    key="static-prefix"
-                                    className="diff-editable-block diff-editing-static"
-                                >
-                                    <CodeBlock
-                                        lines={activeRun.prefixLines}
-                                        lineCount={activeRun.prefixLines.length}
-                                        lineNumbers={{
-                                            primary: buildLineNumberValues(
-                                                activeRun.runStartLine + 1,
-                                                activeRun.prefixLines.length,
-                                                activeRun.prefixLines.length,
-                                            ),
-                                        }}
-                                        lineNumberSide={lineNumberSide}
-                                        wordHighlight={highlightWords}
-                                        compareLines={activeRun.prefixCompareLines}
-                                    />
-                                </div>
-                            ) : null}
-                            <div key="draft" className="diff-editing-draft">
-                                <CodeBlock
-                                    lines={activeRun.draftLines}
-                                    lineCount={activeRun.draftLines.length}
-                                    lineNumbers={{
-                                        primary: buildLineNumberValues(
-                                            draft.startLine + 1,
-                                            activeRun.draftLines.length,
-                                            activeRun.draftLines.length,
-                                        ),
-                                    }}
-                                    lineNumberSide={lineNumberSide}
-                                    wordHighlight={highlightWords}
-                                    compareLines={activeRun.draftCompareLines}
-                                />
-                            </div>
-                            {activeRun.suffixLines.length > 0 ? (
-                                <div
-                                    key="static-suffix"
-                                    className="diff-editable-block diff-editing-static"
-                                >
-                                    <CodeBlock
-                                        lines={activeRun.suffixLines}
-                                        lineCount={activeRun.suffixLines.length}
-                                        lineNumbers={{
-                                            primary: buildLineNumberValues(
-                                                draft.startLine + activeRun.draftLines.length + 1,
-                                                activeRun.suffixLines.length,
-                                                activeRun.suffixLines.length,
-                                            ),
-                                        }}
-                                        lineNumberSide={lineNumberSide}
-                                        wordHighlight={highlightWords}
-                                        compareLines={activeRun.suffixCompareLines}
-                                    />
-                                </div>
-                            ) : null}
+                            {splitRun ? (
+                                activeRun.items.map((runItem) => (
+                                    <div
+                                        key={runItem.renderKey}
+                                        className={`diff-editable-block diff-editing-static ${segmentClassName(runItem.segment, side)}`}
+                                    >
+                                        <CodeBlock
+                                            lines={runItem.segment[side]}
+                                            lineCount={runItem.paneLines[side]}
+                                            lineNumbers={runItem.lineNumbers[side]}
+                                            lineNumberSide={lineNumberSide}
+                                            wordHighlight={highlightWords}
+                                            compareLines={
+                                                runItem.segment[side === "left" ? "right" : "left"]
+                                            }
+                                        />
+                                    </div>
+                                ))
+                            ) : (
+                                <>
+                                    {activeRun.prefixLines.length > 0 ? (
+                                        <div
+                                            key="static-prefix"
+                                            className="diff-editable-block diff-editing-static"
+                                        >
+                                            <CodeBlock
+                                                lines={activeRun.prefixLines}
+                                                lineCount={activeRun.prefixLines.length}
+                                                lineNumbers={{
+                                                    primary: buildLineNumberValues(
+                                                        activeRun.runStartLine + 1,
+                                                        activeRun.prefixLines.length,
+                                                        activeRun.prefixLines.length,
+                                                    ),
+                                                }}
+                                                lineNumberSide={lineNumberSide}
+                                                wordHighlight={highlightWords}
+                                                compareLines={activeRun.prefixCompareLines}
+                                            />
+                                        </div>
+                                    ) : null}
+                                    <div key="draft" className="diff-editing-draft">
+                                        <CodeBlock
+                                            lines={activeRun.draftLines}
+                                            lineCount={activeRun.draftLines.length}
+                                            lineNumbers={{
+                                                primary: buildLineNumberValues(
+                                                    draft.startLine + 1,
+                                                    activeRun.draftLines.length,
+                                                    activeRun.draftLines.length,
+                                                ),
+                                            }}
+                                            lineNumberSide={lineNumberSide}
+                                            wordHighlight={highlightWords}
+                                            compareLines={activeRun.draftCompareLines}
+                                        />
+                                    </div>
+                                    {activeRun.suffixLines.length > 0 ? (
+                                        <div
+                                            key="static-suffix"
+                                            className="diff-editable-block diff-editing-static"
+                                        >
+                                            <CodeBlock
+                                                lines={activeRun.suffixLines}
+                                                lineCount={activeRun.suffixLines.length}
+                                                lineNumbers={{
+                                                    primary: buildLineNumberValues(
+                                                        draft.startLine +
+                                                            activeRun.draftLines.length +
+                                                            1,
+                                                        activeRun.suffixLines.length,
+                                                        activeRun.suffixLines.length,
+                                                    ),
+                                                }}
+                                                lineNumberSide={lineNumberSide}
+                                                wordHighlight={highlightWords}
+                                                compareLines={activeRun.suffixCompareLines}
+                                            />
+                                        </div>
+                                    ) : null}
+                                </>
+                            )}
                             <textarea
                                 key="textarea"
                                 ref={textareaRef}
@@ -764,12 +835,7 @@ function EditableDiffPane({
                                         renderedSegments,
                                         side,
                                     );
-                                    onDraftLayoutChange({
-                                        side,
-                                        indices: nextRun.indices,
-                                        rowCount: nextRun.rowCount,
-                                        maxLineLength: nextRun.maxLineLength,
-                                    });
+                                    onDraftLayoutChange(draftLayoutOf(nextRun, side));
                                     restartDebouncedPost();
                                 }}
                                 onBlur={commitDraft}
@@ -1066,15 +1132,17 @@ export function App(): React.ReactElement {
         [renderedSegmentCache, segments],
     );
 
-    const paneLines = useMemo<SegmentPaneLines<DiffPane>[]>(
-        () =>
-            renderedSegments.map((item) => ({
-                paneLines: editedPaneLines(item.paneLines, item.index, editingBlock),
-                conflict: item.segment.type === "changed",
-                id: item.segment.type === "changed" ? item.index : undefined,
-            })),
-        [editingBlock, renderedSegments],
-    );
+    const paneLines = useMemo<SegmentPaneLines<DiffPane>[]>(() => {
+        const runRows =
+            editingBlock === null
+                ? new Map<number, number>()
+                : editableRunRows(editingBlock, renderedSegments);
+        return renderedSegments.map((item) => ({
+            paneLines: editedPaneLines(item.paneLines, item.index, editingBlock, runRows),
+            conflict: item.segment.type === "changed",
+            id: item.segment.type === "changed" ? item.index : undefined,
+        }));
+    }, [editingBlock, renderedSegments]);
     const layout = useMemo(() => buildVerticalLayout(paneLines, DIFF_PANES), [paneLines]);
     const stripeMarks = useMemo(
         () => buildStripeMarks(segments, layout, viewportHeight),
