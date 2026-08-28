@@ -1787,6 +1787,22 @@ describe("DiffViewerApp read-only contract", () => {
             ).toEqual(["2"]);
         });
 
+        it("marks a row with no counterpart as changed over its whole length", async () => {
+            installVsCodeMock();
+            await mountRightEditable("kept();\nadded();", [
+                { type: "common" as const, left: ["kept();"], right: ["kept();"] },
+                { type: "changed" as const, left: [], right: ["added();"] },
+            ]);
+
+            expect(
+                Array.from(
+                    document.querySelectorAll<HTMLElement>(".diff-pane-right .word-diff-change"),
+                    (change) => change.textContent,
+                ).join(""),
+                "an inserted row has no HEAD line to line up against, so every character of it is new; leaving it unmarked paints a row that is a change in its entirety exactly like the untouched rows beside it, and the reader loses the lighter fill that tells them where inside the block their change actually is",
+            ).toBe("added();");
+        });
+
         it("preserves active visual state when a same-token echo splits its changed hunk", async () => {
             const vscode = installVsCodeMock();
             await mountEditablePane("headOne();\nheadTwo();\nbefore();\ntail();", 1, [
