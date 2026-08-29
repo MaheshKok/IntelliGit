@@ -415,6 +415,28 @@ describe("diff-core palette", () => {
         ).toBeGreaterThan(strengthOf(declarationOf(viewerCss, "--diff-modified-wash")));
     });
 
+    it("paints a two-sided modification red on the left and green on the editable right", () => {
+        /** Returns the pane-specific modified-state rule body, failing if it is absent. */
+        const paneRule = (pane: "left" | "right"): string => {
+            const match = new RegExp(
+                `\\.diff-viewer\\s+\\.diff-pane-${pane}\\s+\\.diff-segment-modified\\s*\\{([^}]*)\\}`,
+            ).exec(viewerCss);
+            expect(
+                match,
+                `the ${pane} pane has no presentation override for a two-sided modification, so both panes fall back to the same teal state even though the left represents removed text and the editable right represents added text`,
+            ).toBeTruthy();
+            return match?.[1] ?? "";
+        };
+
+        const left = paneRule("left");
+        expect(hueIn(propertyIn(left, "--diff-segment-hue"))).toBe("--diff-deleted-hue");
+        expect(propertyIn(left, "background")).toBe("var(--diff-deleted-wash, transparent)");
+
+        const right = paneRule("right");
+        expect(hueIn(propertyIn(right, "--diff-segment-hue"))).toBe("--diff-ok");
+        expect(propertyIn(right, "background")).toBe("var(--diff-inserted-wash, transparent)");
+    });
+
     it("fills the connector ribbon from a semantic hue, not a wash", () => {
         const rule = /\.diff-ribbon\s*\{([^}]*)\}/.exec(viewerCss);
         const fill = propertyIn((rule?.[1] ?? "") as string, "fill");

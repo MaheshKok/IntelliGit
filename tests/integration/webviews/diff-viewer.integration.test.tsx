@@ -3118,6 +3118,96 @@ describe("DiffViewerApp settled draft spanning several host segments", () => {
             "the reader gets a full debounce window between one keystroke and the host's answer, so the run has to keep the host's segment cuts across it; falling back to one representative class for that window washes every untouched line in the file green again",
         ).toEqual({ wrapperChanged: false, changedRows: ["NEWER();"] });
     });
+
+    it("reanchors a same-token echo before the next animation frame can paint it", async () => {
+        const textarea = await mountSettledWholeFileDraft();
+        vi.useFakeTimers();
+        setDraftText(textarea, settledRunText.replace("NEW();", "NEWER();"));
+        act(() => {
+            vi.advanceTimersByTime(1000);
+        });
+
+        const frames: Array<{ wrapperChanged: boolean; changedRows: string[] }> = [];
+        vi.mocked(globalThis.requestAnimationFrame).mockImplementation((callback) => {
+            const editingBlock = textarea.closest<HTMLElement>(".diff-editing-block");
+            frames.push({
+                wrapperChanged: editingBlock?.classList.contains("diff-segment-changed") ?? false,
+                changedRows: [
+                    ...(editingBlock?.querySelectorAll(
+                        ".diff-segment-changed .code-line-content",
+                    ) ?? []),
+                ].map((row) => row.textContent ?? ""),
+            });
+            callback(0);
+            return 0;
+        });
+
+        dispatchHostMessage({
+            type: "setDiffData",
+            data: {
+                ...diffFixture,
+                segments: [
+                    { type: "common" as const, left: ["head0;"], right: ["head0;"] },
+                    { type: "changed" as const, left: [], right: ["NEWER();"] },
+                    { type: "common" as const, left: rows("tail", 20), right: rows("tail", 20) },
+                ],
+                editablePane: "right" as const,
+                editableText: settledRunText.replace("NEW();", "NEWER();"),
+                documentVersion: 6,
+                editableReseedToken: 0,
+            },
+        });
+        await flush();
+
+        expect(frames.length, "the host echo did not reach an animation frame").toBeGreaterThan(0);
+        expect(
+            frames,
+            "the first browser frame after a same-token echo must already use the reanchored host cuts; one frame with the old draft indices is the intermediate diff flash",
+        ).toEqual(frames.map(() => ({ wrapperChanged: false, changedRows: ["NEWER();"] })));
+    });
+
+    it("keeps the active changed row mounted across its same-token echo", async () => {
+        const textarea = await mountSettledWholeFileDraft();
+        const editingBlock = textarea.closest<HTMLElement>(".diff-editing-block");
+        const changedRow = editingBlock?.querySelector<HTMLElement>(
+            ".diff-segment-changed .code-line",
+        );
+        expect(changedRow, "the settled active run must contain one changed row").not.toBeNull();
+
+        vi.useFakeTimers();
+        setDraftText(textarea, settledRunText.replace("NEW();", "NEWER();"));
+        act(() => {
+            vi.advanceTimersByTime(1000);
+        });
+        dispatchHostMessage({
+            type: "setDiffData",
+            data: {
+                ...diffFixture,
+                segments: [
+                    { type: "common" as const, left: ["head0;"], right: ["head0;"] },
+                    { type: "changed" as const, left: [], right: ["NEWER();"] },
+                    { type: "common" as const, left: rows("tail", 20), right: rows("tail", 20) },
+                ],
+                editablePane: "right" as const,
+                editableText: settledRunText.replace("NEW();", "NEWER();"),
+                documentVersion: 6,
+                editableReseedToken: 0,
+            },
+        });
+        await flush();
+
+        const echoedChangedRow = textarea
+            .closest<HTMLElement>(".diff-editing-block")
+            ?.querySelector<HTMLElement>(".diff-segment-changed .code-line");
+        expect(
+            changedRow?.isConnected,
+            "the active changed row was detached during its echo, which is the visible hunk flicker",
+        ).toBe(true);
+        expect(
+            echoedChangedRow,
+            "the active changed row was replaced instead of being patched in place",
+        ).toBe(changedRow);
+    });
 });
 
 /**
