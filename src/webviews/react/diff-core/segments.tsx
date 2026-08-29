@@ -7,7 +7,6 @@ import {
     alignCompareLinesForWordDiff,
     bridgeChangedWordRuns,
     buildWordDiffMask,
-    tokenSimilarityRatio,
     tokenizeWordDiff,
 } from "../../../diff/wordDiff";
 import { highlightLine } from "./shikiHighlighter";
@@ -169,14 +168,17 @@ const WordDiffLine = React.memo(function WordDiffLine({
     const ctx = useSyntaxHighlightState();
     if (!line) return <>{` `}</>;
     if (line === compareLine) return <HighlightedLine line={line} />;
-    // The similarity floor stops two barely related lines being marked word by word, which reads
-    // as speckle rather than as a change. A row with no counterpart at all gives it nothing to
-    // weigh: that row is new in its entirety, and `buildWordDiffMask` already says so on its own,
-    // because an empty compare line shares no token with anything. Bouncing it here instead left
-    // the one row the reader is hunting for painted exactly like the untouched rows beside it.
-    if (compareLine && tokenSimilarityRatio(line, compareLine) < 0.28) {
-        return <HighlightedLine line={line} />;
-    }
+    // There is deliberately no similarity floor here. One stood at 0.28 to stop "speckle" -- a
+    // mask alternating mark/gap/mark across a row, which reads as noise rather than as a change.
+    // Measured against real pairs, the floor selects for the opposite of that. Speckle comes from
+    // lines that are highly similar and share their punctuation: `a.b(c).d(e).f(g)` against
+    // `z.y(x).w(v).u(t)` scores 0.500 and yields NINE one-character runs, and it sailed over the
+    // floor every time. What the floor actually caught was the low-similarity pairs, and those
+    // cannot speckle -- few shared tokens means few unchanged islands, so they resolve to a
+    // single clean run. `" * "` against `" * ey lets see how it goes"` scores 0.143 and is one
+    // 23-character run, and bouncing it painted the one row the reader was hunting for exactly
+    // like the untouched rows beside it. `bridgeChangedWordRuns` is what actually suppresses
+    // speckle, and it runs below on every line regardless.
     const spans = coloredSpansForLine(line, ctx);
     if (spans.length === 0) return <>{` `}</>;
     const { changed, whitespace } = buildChangedCharMasks(line, compareLine);
@@ -256,11 +258,6 @@ export interface CodeBlockProps {
     compareLines?: string[];
 }
 
-function rowKey(lineNumbers: LineNumberSpec, line: string, row: number): string {
-    const primary = lineNumbers.primary[row] ?? "gap";
-    return `${primary}-${row}-${line}`;
-}
-
 /** Renders syntax-colored lines, word-diff overlays, and line numbers. */
 export const CodeBlock = React.memo(
     function CodeBlock({
@@ -295,7 +292,17 @@ export const CodeBlock = React.memo(
                         const isReal = rowIsReal[i] ?? false;
                         return (
                             <div
-                                key={rowKey(lineNumbers, line, i)}
+                                // Positional, and deliberately so. The key was once
+                                // `${lineNumber}-${row}-${text}`, which is stable only while the
+                                // document is. Insert a line and every row below it renumbers --
+                                // correctly -- so every one of those rows drew a new key and React
+                                // discarded its node instead of patching the number on it. While
+                                // typing, the host echoes about once a second, so that was the
+                                // whole page below the caret being torn down and rebuilt at that
+                                // rate: the flicker. A row here is its position in this block and
+                                // nothing else; the number and the text are what it DISPLAYS, and
+                                // both belong in props, where a change repaints one row.
+                                key={i}
                                 className={`code-line ${
                                     isReal ? "real-code-line" : "padding-code-line"
                                 }`}

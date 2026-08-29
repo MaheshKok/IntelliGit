@@ -251,9 +251,13 @@ export function alignCompareLinesForWordDiff(lines: string[], compareLines: stri
     let j = 0;
     for (const action of actions) {
         if (action === "pair") {
-            // Only pair lines for word-diff if they are at least moderately similar.
-            aligned[i] =
-                tokenSimilarityRatio(lines[i], compareLines[j]) >= 0.28 ? compareLines[j] : "";
+            // Whatever the alignment paired is what the row is compared against, however weakly
+            // it scored. Blanking a weak pair here reported the row as new in its entirety, which
+            // marks its shared prefix along with the part that actually changed -- strictly less
+            // information than comparing with the counterpart the alignment already chose. The
+            // equal-length path above never reached this filter, so the same two lines were
+            // marked differently depending only on how many rows the hunk happened to have.
+            aligned[i] = compareLines[j];
             i++;
             j++;
         } else if (action === "skipA") {

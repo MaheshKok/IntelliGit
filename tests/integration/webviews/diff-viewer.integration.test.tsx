@@ -1803,25 +1803,23 @@ describe("DiffViewerApp read-only contract", () => {
             ).toBe("added();");
         });
 
-        it("leaves two rows that share nothing but a counterpart unmarked", async () => {
-            // The opposite direction of the test above, and the reason the similarity floor
-            // exists at all. A row that HAS a counterpart is weighed against it, and two
-            // lines with almost no token in common produce a mask that alternates character
-            // by character -- speckle, not a change. Only a row with NO counterpart skips
-            // the floor, because there is nothing to weigh and the whole row is new.
-            // Without this, widening the exemption to every row keeps the test above green.
+        it("marks only what grew when a row's counterpart is a short shared prefix", async () => {
+            // A comment line that gained a sentence. `tokenSimilarityRatio` scores this pair at
+            // 0.143, which the old 0.28 floor bounced, so the row rendered exactly like the
+            // untouched rows around it -- the reported bug.
             //
-            // The pair is chosen to sit just UNDER the floor rather than nowhere near it:
-            // `tokenSimilarityRatio` scores these two at 0.250 against a floor of 0.28, and
-            // they do share tokens. Two lines with nothing whatever in common would pass
-            // this test with the floor lowered to almost anything.
+            // This asserts BOTH failure directions at once, which is why it is one test and not
+            // two. Restore the floor and the marks vanish (`""`). Blank the compare line instead
+            // of using it -- the other tempting shortcut, since an unpaired row IS marked whole --
+            // and the shared `" * "` prefix is swept into the mark too. Only comparing against
+            // the counterpart the alignment actually chose yields the added text alone.
             installVsCodeMock();
-            await mountRightEditable("kept();\nconst total = 0;", [
+            await mountRightEditable("kept();\n * ey lets see how it goes", [
                 { type: "common" as const, left: ["kept();"], right: ["kept();"] },
                 {
                     type: "changed" as const,
-                    left: ["throw new RangeError(bound);"],
-                    right: ["const total = 0;"],
+                    left: [" * "],
+                    right: [" * ey lets see how it goes"],
                 },
             ]);
 
@@ -1830,8 +1828,87 @@ describe("DiffViewerApp read-only contract", () => {
                     document.querySelectorAll<HTMLElement>(".diff-pane-right .word-diff-change"),
                     (change) => change.textContent,
                 ).join(""),
-                "two barely related lines were marked word by word, which renders as speckle across the row rather than as the fragment that changed",
-            ).toBe("");
+                "the added sentence must carry the lighter fill while the shared comment prefix stays plain; an empty result means the row was bounced before it was ever weighed, and a result including the leading ' * ' means the counterpart was discarded rather than compared against",
+            ).toBe("ey lets see how it goes");
+        });
+
+        it("compares against the aligned counterpart when the two sides differ in length", async () => {
+            // The same pair as above, in a hunk whose sides hold different row counts.
+            // `alignCompareLinesForWordDiff` short-circuits when the counts are equal and only
+            // runs its alignment when they differ, and that second path carried a 0.28 filter of
+            // its own. So identical content was marked one way or the other depending purely on
+            // how many rows the hunk happened to have. Both paths must now agree.
+            installVsCodeMock();
+            await mountRightEditable("kept();\n * ey lets see how it goes", [
+                { type: "common" as const, left: ["kept();"], right: ["kept();"] },
+                {
+                    type: "changed" as const,
+                    left: [" * ", "dropped();"],
+                    right: [" * ey lets see how it goes"],
+                },
+            ]);
+
+            expect(
+                Array.from(
+                    document.querySelectorAll<HTMLElement>(".diff-pane-right .word-diff-change"),
+                    (change) => change.textContent,
+                ).join(""),
+                "the unequal-length alignment path discarded a counterpart the equal-length path would have used, so the same two lines mark differently depending on the hunk's row counts",
+            ).toBe("ey lets see how it goes");
+        });
+
+        it("keeps the rows below an insertion alive when the echo renumbers them", async () => {
+            // The reader pressed Enter, so every line after the insertion renumbers. Renumbering
+            // is correct. Rebuilding those rows is not: `rowKey` folded the line number and the
+            // row's own text into each React key, so a one-line insertion handed every row below
+            // it a brand-new key and React discarded the nodes instead of patching them. On a
+            // real file that is the whole page below the caret being torn down and re-created
+            // once per echo -- roughly once a second while typing -- which is the reported
+            // flicker. Row identity is the oracle because it is what a repaint actually is;
+            // asserting the rendered text would stay green through every teardown.
+            installVsCodeMock();
+            await mountRightEditable("a();\nb();\nc();\nd();", [
+                { type: "common" as const, left: ["a();"], right: ["a();"] },
+                { type: "changed" as const, left: ["x();"], right: ["b();"] },
+                { type: "common" as const, left: ["c();", "d();"], right: ["c();", "d();"] },
+            ]);
+
+            const rowsBefore = Array.from(
+                document.querySelectorAll<HTMLElement>(".diff-pane-right .code-line"),
+            );
+            const tailRow = rowsBefore[rowsBefore.length - 1];
+            expect(tailRow, "the fixture must render a trailing unchanged row").toBeDefined();
+
+            // The assertion below deliberately names a row BELOW the edit, not the edited row
+            // itself. `reconcileDiffSegments` never preserves a segment whose content changed,
+            // so the edited block draws a fresh `renderKey` and remounts on every echo by
+            // design -- one block, and while editing it sits behind the draft textarea anyway.
+            // The defect was everything AFTER it going down with it.
+            dispatchHostMessage({
+                type: "setDiffData",
+                data: {
+                    ...diffFixture,
+                    segments: [
+                        { type: "common" as const, left: ["a();"], right: ["a();"] },
+                        { type: "changed" as const, left: ["x();"], right: ["bb();", "NEW();"] },
+                        {
+                            type: "common" as const,
+                            left: ["c();", "d();"],
+                            right: ["c();", "d();"],
+                        },
+                    ],
+                    editablePane: "right" as const,
+                    editableText: "a();\nbb();\nNEW();\nc();\nd();",
+                    documentVersion: 5,
+                    editableReseedToken: 0,
+                },
+            });
+            await flush();
+
+            expect(
+                tailRow?.isConnected,
+                "the last unchanged row only shifted its line number, so React must patch that node rather than discard it; a detached node means every row below the insertion was re-created, which is the repaint the reader sees as flicker",
+            ).toBe(true);
         });
 
         it("preserves active visual state when a same-token echo splits its changed hunk", async () => {
