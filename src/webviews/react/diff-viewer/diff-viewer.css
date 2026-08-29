@@ -426,6 +426,19 @@
     background: var(--diff-modified-wash, transparent);
 }
 
+/* A two-sided hunk is semantically modified, but each pane still communicates direction:
+   removed text on the left and added text on the editable right. The inherited word wash
+   follows the same override, preserving the lighter inner red/green marker. */
+.diff-viewer .diff-pane-left .diff-segment-modified {
+    --diff-segment-hue: var(--diff-deleted-hue);
+    background: var(--diff-deleted-wash, transparent);
+}
+
+.diff-viewer .diff-pane-right .diff-segment-modified {
+    --diff-segment-hue: var(--diff-ok);
+    background: var(--diff-inserted-wash, transparent);
+}
+
 /* .diff-segment-empty declares no BACKGROUND, and cannot: each pane is sized from its own
    line count (`paneLines[side]` in DiffViewerApp.tsx), so the counterpart of a one-sided
    hunk is zero rows and therefore zero pixels tall, and a background on a zero-height box

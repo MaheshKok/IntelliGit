@@ -462,7 +462,6 @@ function editableRunRows(
 
 /** One host segment's share of an open draft's rows, ready to render. */
 interface EditableRunBlock {
-    readonly renderKey: number;
     readonly className: string;
     readonly lines: string[];
     readonly compareLines: string[];
@@ -490,7 +489,6 @@ function editableRunBlocks(
     for (const item of run.items) {
         const count = rows.get(item.index) ?? 0;
         blocks.push({
-            renderKey: item.renderKey,
             className: segmentClassName(item.segment, side),
             lines: run.displayLines.slice(offset, offset + count),
             compareLines: run.displayCompareLines.slice(offset, offset + count),
@@ -763,9 +761,12 @@ function EditableDiffPane({
                             style={intrinsicSizeStyle(activeRun.rowCount)}
                         >
                             {splitRun ? (
-                                runBlocks.map((runBlock) => (
+                                // The edit-session wrapper owns this list's lifetime. Host segment
+                                // identities are allowed to churn on every echo, so position is the
+                                // stable identity here; inactive segments keep their host keys.
+                                runBlocks.map((runBlock, runBlockIndex) => (
                                     <div
-                                        key={runBlock.renderKey}
+                                        key={runBlockIndex}
                                         className={`diff-editable-block diff-editing-static ${runBlock.className}`}
                                     >
                                         <CodeBlock
