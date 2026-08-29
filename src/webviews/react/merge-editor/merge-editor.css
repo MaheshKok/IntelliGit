@@ -22,6 +22,7 @@
        defines nothing. */
     --merge-warning: var(--vscode-editorWarning-foreground, #f2c572);
     --merge-danger: var(--vscode-errorForeground, #d86c6c);
+    --merge-conflict-hue: color-mix(in srgb, var(--merge-danger) 88%, var(--merge-editor-fg));
     --merge-ok: var(--vscode-charts-green, #79c18d);
     --merge-info: var(--vscode-terminal-ansiCyan, #58b5c9);
     /* The deleted state's own hue, and the reason it is a separate token rather than
@@ -66,11 +67,11 @@
        and a dark theme keeps the Darcula-weight band without a second palette.
        The block wash is the faded row tint; the pycharm-* pair is the same
        family at word-fragment strength on top of it (see .word-diff-change). */
-    --pycharm-conflict: color-mix(in srgb, var(--merge-danger) 30%, var(--merge-editor-bg));
+    --pycharm-conflict: color-mix(in srgb, var(--merge-conflict-hue) 30%, var(--merge-editor-bg));
     --pycharm-inserted: color-mix(in srgb, var(--merge-ok) 30%, var(--merge-editor-bg));
     --pycharm-modified: color-mix(in srgb, var(--merge-info) 30%, var(--merge-editor-bg));
     --pycharm-deleted: color-mix(in srgb, var(--merge-deleted-hue) 30%, var(--merge-editor-bg));
-    --merge-conflict-block-bg: color-mix(in srgb, var(--merge-danger) 15%, var(--merge-editor-bg));
+    --merge-conflict-block-bg: color-mix(in srgb, var(--merge-conflict-hue) 15%, var(--merge-editor-bg));
     --merge-conflict-ribbon-bg: var(--merge-conflict-block-bg);
     --merge-inserted-block-bg: color-mix(in srgb, var(--merge-ok) 15%, var(--merge-editor-bg));
     --merge-modified-block-bg: color-mix(in srgb, var(--merge-info) 15%, var(--merge-editor-bg));
