@@ -609,4 +609,23 @@ describe("diff-core palette", () => {
             ).toBeTruthy();
         }
     });
+
+    it("softens the conflict hue before the 15% block and 30% word washes", () => {
+        // The host error token is intentionally vivid because it normally paints tiny
+        // diagnostics and icons. Mixing it straight into a multi-line conflict creates
+        // the saturated red slab seen in the regression screenshot. PyCharm keeps the
+        // same semantic red but softens it toward the editor foreground before applying
+        // the row and word strengths, so both layers remain one adaptive theme family.
+        const mergeCss = stripComments(readFileSync(MERGE_EDITOR_CSS, "utf8"));
+        expect(
+            declarationOf(mergeCss, "--merge-conflict-hue"),
+            "the merge conflict palette still feeds the vivid host error token directly into large painted regions",
+        ).toBe("color-mix(in srgb, var(--merge-danger) 88%, var(--merge-editor-fg))");
+        expect(declarationOf(mergeCss, "--merge-conflict-block-bg")).toBe(
+            "color-mix(in srgb, var(--merge-conflict-hue) 15%, var(--merge-editor-bg))",
+        );
+        expect(declarationOf(mergeCss, "--pycharm-conflict")).toBe(
+            "color-mix(in srgb, var(--merge-conflict-hue) 30%, var(--merge-editor-bg))",
+        );
+    });
 });
