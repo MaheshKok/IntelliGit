@@ -101,15 +101,13 @@ test.describe("diff viewer", () => {
     });
 
     // The one leg the unit and integration suites structurally cannot cover. Each is proven on its
-    // own side of the wall: the webview posts a delta a second after the last keystroke and
+    // own side of the wall: the webview posts a delta 500ms after the last keystroke and
     // re-bases when the payload returns (diff-viewer.integration.test.tsx), and the host applies
     // it and re-renders without minting a fresh reseed token
     // (editableDiffEditorProvider.test.ts). Neither executes the trip, and both stub the half they
     // do not own -- so a webview that posted into nothing, or a host that answered a message
     // nobody sent, would leave both suites green.
-    test("re-diffs an edited block a second after the typing stops", async ({
-        fixtureWorkspace,
-    }) => {
+    test("re-diffs an edited block 500ms after the typing stops", async ({ fixtureWorkspace }) => {
         test.setTimeout(120_000);
         const { electronApp, diffFrame } = await openDiffViewer(fixtureWorkspace);
 
@@ -152,6 +150,114 @@ test.describe("diff viewer", () => {
             // still focused, and still holds what was typed.
             await expect(textarea).toBeFocused();
             await expect(textarea).toHaveValue(headText);
+        } finally {
+            await electronApp.close();
+        }
+    });
+
+    test("keeps repeated Enter rows on their inserted hunk before the next echo", async ({
+        fixtureWorkspace,
+    }) => {
+        test.setTimeout(120_000);
+        const targetPath = "repeated-enter.ts";
+        const filePath = path.join(fixtureWorkspace.workspace.root, targetPath);
+        const cleanLines = ["head0;", "importOne();", "importTwo();", "after();"];
+        await writeFile(filePath, `${cleanLines.join("\n")}\n`, "utf-8");
+        await runGit(
+            fixtureWorkspace.workspace.root,
+            ["add", targetPath],
+            fixtureWorkspace.workspace.env,
+        );
+        await runGit(
+            fixtureWorkspace.workspace.root,
+            ["commit", "-m", "seed repeated Enter fixture"],
+            fixtureWorkspace.workspace.env,
+        );
+        await writeFile(
+            filePath,
+            `${[...cleanLines.slice(0, -1), "afterChanged();"].join("\n")}\n`,
+            "utf-8",
+        );
+
+        const { electronApp, diffFrame } = await openDiffViewer(fixtureWorkspace, targetPath);
+
+        try {
+            const commonBlock = diffFrame
+                .locator(
+                    '[data-testid="diff-pane-right"] .diff-editable-block:not(.diff-segment-changed)',
+                )
+                .first();
+            await expect(commonBlock).toBeVisible();
+            await commonBlock.click();
+
+            const textarea = diffFrame.locator('[data-testid="diff-pane-right-editable"]');
+            await expect(textarea).toBeFocused();
+            const firstDraft = await textarea.inputValue();
+            const firstBlankDraft = firstDraft.replace("head0;\n", "head0;\n\n");
+            const firstCaret = firstBlankDraft.indexOf("importOne();") - 1;
+            await textarea.evaluate(
+                (element, edit) => {
+                    const textareaElement = element as HTMLTextAreaElement;
+                    const setter = Object.getOwnPropertyDescriptor(
+                        HTMLTextAreaElement.prototype,
+                        "value",
+                    )?.set;
+                    setter?.call(textareaElement, edit.text);
+                    textareaElement.setSelectionRange(edit.caret, edit.caret);
+                    textareaElement.dispatchEvent(
+                        new InputEvent("input", { bubbles: true, inputType: "insertLineBreak" }),
+                    );
+                },
+                { text: firstBlankDraft, caret: firstCaret },
+            );
+
+            await expect
+                .poll(() => readFile(filePath, "utf-8"), { timeout: 30_000 })
+                .toContain("head0;\n\nimportOne();");
+            await expect(
+                diffFrame.locator(".diff-editing-block .diff-segment-changed"),
+            ).toBeVisible();
+
+            const echoedDraft = await textarea.inputValue();
+            const insertionCaret = echoedDraft.indexOf("importOne();") - 1;
+            const tenBlankDraft = `${echoedDraft.slice(0, insertionCaret)}${"\n".repeat(9)}${echoedDraft.slice(insertionCaret)}`;
+            const tenBlankCaret = insertionCaret + 9;
+            await textarea.evaluate(
+                (element, edit) => {
+                    const textareaElement = element as HTMLTextAreaElement;
+                    const setter = Object.getOwnPropertyDescriptor(
+                        HTMLTextAreaElement.prototype,
+                        "value",
+                    )?.set;
+                    setter?.call(textareaElement, edit.text);
+                    textareaElement.setSelectionRange(edit.caret, edit.caret);
+                    textareaElement.dispatchEvent(
+                        new InputEvent("input", { bubbles: true, inputType: "insertLineBreak" }),
+                    );
+                },
+                { text: tenBlankDraft, caret: tenBlankCaret },
+            );
+            const immediatePaint = await diffFrame
+                .locator(".diff-editing-block")
+                .evaluate((block) => ({
+                    changedRows: block.querySelectorAll(".diff-segment-changed .code-line-content")
+                        .length,
+                    changedText: Array.from(
+                        block.querySelectorAll(".diff-segment-changed .code-line-content"),
+                        (row) => row.textContent ?? "",
+                    ),
+                }));
+
+            expect(
+                immediatePaint.changedRows,
+                "all ten blank rows must stay on the insertion segment before the 500ms host echo",
+            ).toBe(10);
+            for (const unchanged of ["importOne();", "importTwo();"]) {
+                expect(
+                    immediatePaint.changedText,
+                    `${unchanged} was pulled into the inserted-row paint`,
+                ).not.toContain(unchanged);
+            }
         } finally {
             await electronApp.close();
         }
@@ -458,7 +564,7 @@ test.describe("diff viewer", () => {
                 Math.round(element.getBoundingClientRect().top),
             );
 
-            // Step 2 -- after the one-second edit/host echo, "scroll the screen all the way to
+            // Step 2 -- after the 500ms edit/host echo, "scroll the screen all the way to
             // line 75". Scrolled by bringing the
             // target block into view rather than to `scrollHeight`: the scroller carries a
             // trailing spacer (see "scrolls the last line of a diff out of sight"), so parking at

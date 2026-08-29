@@ -10,6 +10,7 @@ function layout(overrides: Partial<EditableBlockLayout> = {}): EditableBlockLayo
         side: "right",
         indices: [4, 7],
         rowCount: 3,
+        pendingGrowthTargetIndex: 7,
         maxLineLength: 18,
         ...overrides,
     };
@@ -44,6 +45,7 @@ describe("sameEffectiveEditableBlockLayout", () => {
         ["row count", { rowCount: 4 }],
         ["side", { side: "left" as const }],
         ["indices", { indices: [4, 8] }],
+        ["pending growth target", { pendingGrowthTargetIndex: 4 }],
     ])("detects a change in %s", (_label, change) => {
         expect(sameEffectiveEditableBlockLayout(layout(), layout(change), 20)).toBe(false);
     });

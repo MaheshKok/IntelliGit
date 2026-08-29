@@ -5,14 +5,17 @@ import type { DiffPane } from "./segmentMarkers";
  * The geometry contributed by the currently edited block to the whole diff view.
  *
  * `indices` identifies the aligned segment range, `rowCount` controls vertical layout, and
- * `maxLineLength` contributes to the shared horizontal extent. The draft may change its text
- * without changing any of these values, so callers can retain the previous state object when the
- * effective whole-view geometry remains unchanged.
+ * `maxLineLength` contributes to the shared horizontal extent. `pendingGrowthTargetIndex` keeps
+ * paint and geometry on the same host segment while unposted rows are pending. The draft may
+ * change its text without changing any of these values, so callers can retain the previous state
+ * object when the effective whole-view geometry remains unchanged.
  */
 export interface EditableBlockLayout {
     readonly side: DiffPane;
     readonly indices: readonly number[];
     readonly rowCount: number;
+    /** Active host segment that owns rows beyond the latest echoed run. */
+    readonly pendingGrowthTargetIndex: number | null;
     /** Longest line in the draft, in UTF-16 code units. */
     readonly maxLineLength: number;
 }
@@ -58,7 +61,13 @@ export function sameEffectiveEditableBlockLayout(
 ): boolean {
     if (previous === next) return true;
     if (previous === null || next === null) return false;
-    if (previous.side !== next.side || previous.rowCount !== next.rowCount) return false;
+    if (
+        previous.side !== next.side ||
+        previous.rowCount !== next.rowCount ||
+        previous.pendingGrowthTargetIndex !== next.pendingGrowthTargetIndex
+    ) {
+        return false;
+    }
     if (!sameIndices(previous.indices, next.indices)) return false;
     return (
         Math.max(baseMaxLineLength, previous.maxLineLength) ===

@@ -1878,7 +1878,7 @@ describe("DiffViewerApp read-only contract", () => {
             // row's own text into each React key, so a one-line insertion handed every row below
             // it a brand-new key and React discarded the nodes instead of patching them. On a
             // real file that is the whole page below the caret being torn down and re-created
-            // once per echo -- roughly once a second while typing -- which is the reported
+            // once per echo -- on the editor's debounce cadence while typing -- which is the reported
             // flicker. Row identity is the oracle because it is what a repaint actually is;
             // asserting the rendered text would stay green through every teardown.
             installVsCodeMock();
@@ -2243,7 +2243,7 @@ describe("DiffViewerApp read-only contract", () => {
 
             act(() => {
                 textarea.dispatchEvent(new Event("compositionend", { bubbles: true }));
-                vi.advanceTimersByTime(999);
+                vi.advanceTimersByTime(499);
             });
             expect(sentDeltas(vscode)).toEqual([]);
             act(() => {
@@ -3121,6 +3121,9 @@ describe("DiffViewerApp settled draft spanning several host segments", () => {
         );
         const caretBeforeSuffix = tenBlankRows.indexOf(settledBlankSuffix[0]) - 1;
         setDraftText(textarea, tenBlankRows, caretBeforeSuffix);
+        // Once growth belongs to the insertion, an ordinary edit and caret move elsewhere in the
+        // same pending window must not migrate those rows to the newly touched common segment.
+        setDraftText(textarea, tenBlankRows.replace("head0;", "HEAD0;"), 1);
 
         const editingBlock = textarea.closest<HTMLElement>(".diff-editing-block");
         const changedRows = [
@@ -3135,6 +3138,61 @@ describe("DiffViewerApp settled draft spanning several host segments", () => {
             expect(changedRows, `${unchanged} was pulled into the insertion paint`).not.toContain(
                 unchanged,
             );
+        }
+    });
+
+    it("rebases newer blank growth onto the inserted segment when the first echo lands", async () => {
+        const vscode = installVsCodeMock();
+        const cleanLines = ["head0;", ...settledBlankSuffix];
+        await mountRightEditable(cleanLines.join("\n"), [
+            { type: "common" as const, left: cleanLines, right: cleanLines },
+        ]);
+
+        const block = document.querySelector<HTMLElement>(".diff-pane-right .diff-editable-block");
+        act(() => {
+            block?.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+        });
+        const textarea = document.querySelector<HTMLTextAreaElement>(
+            "[data-testid='diff-pane-right-editable']",
+        );
+        expect(textarea).not.toBeNull();
+
+        const firstBlankText = ["head0;", "", ...settledBlankSuffix].join("\n");
+        setDraftText(
+            textarea as HTMLTextAreaElement,
+            firstBlankText,
+            firstBlankText.indexOf(settledBlankSuffix[0]) - 1,
+        );
+        await vi.waitFor(() => {
+            expect(sentDeltas(vscode)).toHaveLength(1);
+        });
+
+        const secondBlankText = ["head0;", "", "", ...settledBlankSuffix].join("\n");
+        setDraftText(
+            textarea as HTMLTextAreaElement,
+            secondBlankText,
+            secondBlankText.indexOf(settledBlankSuffix[0]) - 1,
+        );
+        dispatchHostMessage({
+            type: "setDiffData",
+            data: {
+                ...diffFixture,
+                segments: settledBlankRunSegments,
+                editablePane: "right" as const,
+                editableText: firstBlankText,
+                documentVersion: 5,
+                editableReseedToken: 0,
+            },
+        });
+        await flush();
+
+        const editingBlock = textarea?.closest<HTMLElement>(".diff-editing-block");
+        const changedRows = [
+            ...(editingBlock?.querySelectorAll(".diff-segment-changed .code-line-content") ?? []),
+        ].map((row) => row.textContent ?? "");
+        expect(changedRows).toEqual(["\u00a0", "\u00a0"]);
+        for (const unchanged of settledBlankSuffix) {
+            expect(changedRows).not.toContain(unchanged);
         }
     });
 

@@ -173,6 +173,10 @@ interface EditableBlockDraft {
     sourceText: string;
     startLine: number;
     lineCount: number;
+    /** Stable zero-based host line used to remap pending growth after an echo resegments the run. */
+    pendingGrowthAnchorLine: number | null;
+    /** Frozen host segment that owns the current unposted positive row surplus. */
+    pendingGrowthTargetIndex: number | null;
     version: number;
     token: number;
 }
@@ -195,6 +199,8 @@ interface EditableDraftRun {
     readonly suffixCompareLines: string[];
     readonly rowCount: number;
     readonly maxLineLength: number;
+    /** Frozen host segment that owns the current unposted positive row surplus. */
+    readonly pendingGrowthTargetIndex: number | null;
     /** The rendered host segments the run covers, in document order. */
     readonly items: readonly RenderedSegment[];
     /** Every row the run puts on screen, in order: host prefix, then the draft, then host suffix. */
@@ -390,7 +396,97 @@ function editableDraftRun(
         suffixCompareLines: alignedRunCompareLines.slice(suffixStart),
         rowCount: displayLines.length,
         maxLineLength: longestLine(displayLines),
+        pendingGrowthTargetIndex: draft.pendingGrowthTargetIndex,
     };
+}
+
+/** Counts draft rows that the active host run has not echoed yet. */
+function pendingGrowthRows(run: EditableDraftRun, side: DiffPane): number {
+    let hostRows = 0;
+    for (const item of run.items) hostRows += item.paneLines[side];
+    return Math.max(run.rowCount - hostRows, 0);
+}
+
+/** One active host segment and its zero-based row span inside the editable run. */
+interface PendingGrowthRowTarget {
+    readonly index: number;
+    readonly startRow: number;
+    readonly rowCount: number;
+}
+
+/**
+ * Resolves one run-relative host row to an active segment.
+ *
+ * A zero-row segment at an exact boundary is the explicit insertion target; otherwise the
+ * containing non-empty segment owns the row. Returning the first active item is the bounded
+ * fallback when the coordinate sits outside the echoed host run.
+ */
+function pendingGrowthTargetAtRunRow(
+    run: EditableDraftRun,
+    side: DiffPane,
+    runRow: number,
+): PendingGrowthRowTarget | null {
+    let cursor = 0;
+    let first: PendingGrowthRowTarget | null = null;
+    let containing: PendingGrowthRowTarget | null = null;
+
+    for (const item of run.items) {
+        const rowCount = item.paneLines[side];
+        const target = { index: item.index, startRow: cursor, rowCount };
+        first ??= target;
+        if (rowCount === 0 && cursor === runRow) return target;
+        if (rowCount > 0 && cursor <= runRow && runRow < cursor + rowCount) {
+            containing ??= target;
+        }
+        cursor += rowCount;
+    }
+
+    return containing ?? first;
+}
+
+/**
+ * Freezes the first positive growth at a stable document row inside its resolved host segment.
+ *
+ * The pre-growth coordinate selects the segment. Clamping the live caret row into that segment
+ * preserves the insertion boundary when the original host exposed only one broad common segment,
+ * while an already echoed insertion anchors to its own existing row.
+ */
+function pendingGrowthAnchorAtCaret(
+    run: EditableDraftRun,
+    side: DiffPane,
+    draftText: string,
+    caretOffset: number,
+    surplusRows: number,
+): number {
+    let draftRow = 0;
+    const boundedCaret = Math.min(Math.max(caretOffset, 0), draftText.length);
+    for (let offset = 0; offset < boundedCaret; offset++) {
+        if (draftText.charCodeAt(offset) === 10) draftRow++;
+    }
+    const caretRunRow = run.prefixLines.length + draftRow;
+    const target = pendingGrowthTargetAtRunRow(run, side, Math.max(caretRunRow - surplusRows, 0));
+    if (target === null) return run.runStartLine + Math.max(caretRunRow - surplusRows, 0);
+    const anchorRunRow =
+        target.rowCount === 0
+            ? target.startRow
+            : Math.min(
+                  Math.max(caretRunRow, target.startRow),
+                  target.startRow + target.rowCount - 1,
+              );
+    return run.runStartLine + anchorRunRow;
+}
+
+/** Remaps a frozen document-row anchor to the current host segmentation of the active run. */
+function pendingGrowthTargetAtAnchor(
+    run: EditableDraftRun,
+    side: DiffPane,
+    anchorLine: number,
+): number | null {
+    return (
+        pendingGrowthTargetAtRunRow(run, side, anchorLine - run.runStartLine)?.index ??
+        run.indices[0] ??
+        null
+    );
 }
 
 /** Re-finds an exact draft range after its own edit changes the host diff segmentation. */
@@ -428,6 +524,7 @@ function draftLayoutOf(run: EditableDraftRun, side: DiffPane): EditableBlockLayo
         side,
         indices: run.indices,
         rowCount: run.rowCount,
+        pendingGrowthTargetIndex: run.pendingGrowthTargetIndex,
         maxLineLength: run.maxLineLength,
     };
 }
@@ -438,8 +535,8 @@ function draftLayoutOf(run: EditableDraftRun, side: DiffPane): EditableBlockLayo
  * Every segment keeps its own host rows for as long as the draft has rows to pay for them, so the
  * canonical table stays the one the host's segmentation produced -- and the READ-ONLY pane, which
  * maps its own offset through that table, keeps standing beside the lines it is meant to. Only
- * the difference the draft has not posted yet has to land somewhere, and it lands on the run's
- * first segment: the block the textarea itself is anchored to.
+ * the difference the draft has not posted yet has to land somewhere. It stays on the host segment
+ * resolved from the caret when that positive surplus first appeared.
  */
 function editableRunRows(
     editingBlock: EditableBlockLayout,
@@ -456,7 +553,14 @@ function editableRunRows(
         remaining -= own;
     }
     const first = editingBlock.indices[0];
-    if (remaining > 0 && first !== undefined) rows.set(first, (rows.get(first) ?? 0) + remaining);
+    const target =
+        editingBlock.pendingGrowthTargetIndex !== null &&
+        editingBlock.indices.includes(editingBlock.pendingGrowthTargetIndex)
+            ? editingBlock.pendingGrowthTargetIndex
+            : first;
+    if (remaining > 0 && target !== undefined) {
+        rows.set(target, (rows.get(target) ?? 0) + remaining);
+    }
     return rows;
 }
 
@@ -656,14 +760,14 @@ function EditableDiffPane({
             if (nextText === current.sourceText) return;
             lastPostedTextRef.current = current.text;
             onEdit(current.sourceText, nextText, current.version, current.token);
-        }, 1000);
+        }, 500);
     }, [clearDebounceTimer, onEdit, reseedToken]);
 
     useEffect(() => {
         if (draft === null || draft.token !== reseedToken || draft.version === documentVersion)
             return;
         const lastPostedText = lastPostedTextRef.current ?? draft.text;
-        const nextDraft = reanchorDraft(
+        const reanchoredDraft = reanchorDraft(
             {
                 ...draft,
                 selectionStart: textareaRef.current?.selectionStart ?? draft.selectionStart,
@@ -683,6 +787,19 @@ function EditableDiffPane({
             text,
             lastPostedText,
         );
+        const reanchoredRun = editableDraftRun(reanchoredDraft, renderedSegments, side);
+        const stillGrowing = pendingGrowthRows(reanchoredRun, side) > 0;
+        const pendingGrowthAnchorLine = stillGrowing
+            ? reanchoredDraft.pendingGrowthAnchorLine
+            : null;
+        const nextDraft = {
+            ...reanchoredDraft,
+            pendingGrowthAnchorLine,
+            pendingGrowthTargetIndex:
+                pendingGrowthAnchorLine === null
+                    ? null
+                    : pendingGrowthTargetAtAnchor(reanchoredRun, side, pendingGrowthAnchorLine),
+        };
         editingIndexRef.current = nextDraft.indices[0];
         setDraft(nextDraft);
         const nextRun = editableDraftRun(nextDraft, renderedSegments, side);
@@ -707,6 +824,8 @@ function EditableDiffPane({
                 sourceText: textRef.current,
                 startLine,
                 lineCount: currentItem.segment[side].length,
+                pendingGrowthAnchorLine: null,
+                pendingGrowthTargetIndex: null,
                 version: documentVersionRef.current,
                 token: reseedTokenRef.current,
             };
@@ -888,7 +1007,37 @@ function EditableDiffPane({
                                 }}
                                 onChange={(event) => {
                                     const nextText = event.target.value;
-                                    const nextDraft = { ...draft, text: nextText };
+                                    const textDraft = { ...draft, text: nextText };
+                                    const textRun = editableDraftRun(
+                                        textDraft,
+                                        renderedSegments,
+                                        side,
+                                    );
+                                    const surplusRows = pendingGrowthRows(textRun, side);
+                                    const pendingGrowthAnchorLine =
+                                        surplusRows === 0
+                                            ? null
+                                            : (draft.pendingGrowthAnchorLine ??
+                                              pendingGrowthAnchorAtCaret(
+                                                  textRun,
+                                                  side,
+                                                  nextText,
+                                                  event.target.selectionStart,
+                                                  surplusRows,
+                                              ));
+                                    const pendingGrowthTargetIndex =
+                                        pendingGrowthAnchorLine === null
+                                            ? null
+                                            : pendingGrowthTargetAtAnchor(
+                                                  textRun,
+                                                  side,
+                                                  pendingGrowthAnchorLine,
+                                              );
+                                    const nextDraft = {
+                                        ...textDraft,
+                                        pendingGrowthAnchorLine,
+                                        pendingGrowthTargetIndex,
+                                    };
                                     setDraft(nextDraft);
                                     const nextRun = editableDraftRun(
                                         nextDraft,

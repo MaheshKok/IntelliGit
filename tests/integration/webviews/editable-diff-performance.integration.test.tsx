@@ -194,7 +194,7 @@ describe("editable diff performance", () => {
         expect(layoutCalls.mock.calls.length).toBe(beforeInputLayoutCalls);
 
         act(() => {
-            vi.advanceTimersByTime(999);
+            vi.advanceTimersByTime(499);
         });
         expect(editMessages(vscode)).toHaveLength(0);
 
@@ -215,7 +215,7 @@ describe("editable diff performance", () => {
         act(() => {
             textarea.focus();
             textarea.setSelectionRange(3, 8);
-            vi.advanceTimersByTime(1000);
+            vi.advanceTimersByTime(500);
         });
         expect(editMessages(vscode)).toHaveLength(1);
 
