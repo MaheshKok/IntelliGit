@@ -9,11 +9,12 @@
 // controlChannelRoundTrip.spec.ts establish the precedent for a standalone spec with its own launch
 // sequence outside that matrix.
 
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import type { ElectronApplication, FrameLocator } from "@playwright/test";
 
+import { runGit } from "../fixtures/repo/gitRun";
 import { DIRTY_FIXTURE } from "../fixtures/repo/scenarios";
 import { waitForE2eChannelReady } from "./controlChannelClient";
 import { expect, test, type FixtureWorkspaceFixture } from "./fixtureWorkspace";
@@ -30,6 +31,7 @@ const REPO_ROOT = path.resolve(__dirname, "../..");
 /** Launches the workspace, clicks the changed file, and returns the revealed viewer frame. */
 async function openDiffViewer(
     fixtureWorkspace: FixtureWorkspaceFixture,
+    targetPath: string = DIRTY_FIXTURE.mutablePath,
 ): Promise<{ electronApp: ElectronApplication; diffFrame: FrameLocator }> {
     const executablePath = await resolveVSCodeExecutable(REPO_ROOT);
     const electronApp = await launchFixtureWorkspace({
@@ -51,7 +53,7 @@ async function openDiffViewer(
     const sidebarFrame = await intelliGitView.reveal();
     const changesPanel = new ChangesPanel(sidebarFrame);
 
-    const changedRow = changesPanel.changedFileRow(DIRTY_FIXTURE.mutablePath);
+    const changedRow = changesPanel.changedFileRow(targetPath);
     await expect(changedRow).toBeVisible();
     await changedRow.click();
 
@@ -232,7 +234,7 @@ test.describe("diff viewer", () => {
         }
     });
 
-    test("keeps a changed active block fully visible after the live re-diff", async ({
+    test("paints only the changed part of the active block after the live re-diff", async ({
         fixtureWorkspace,
     }) => {
         test.setTimeout(120_000);
@@ -263,10 +265,15 @@ test.describe("diff viewer", () => {
 
             const textarea = diffFrame.locator('[data-testid="diff-pane-right-editable"]');
             await expect(textarea).toBeFocused();
-            const activeChangedBlock = diffFrame.locator(
-                '[data-testid="diff-pane-right"] .diff-editing-block.diff-segment-changed',
+            const activeBlock = diffFrame.locator(
+                '[data-testid="diff-pane-right"] .diff-editing-block',
             );
-            await expect(activeChangedBlock).toBeVisible();
+            // `diff-segment-changed` is the paint itself -- it declares --diff-word-wash and
+            // --diff-hunk-bracket (diff-viewer.css:389), and those cascade, so an ancestor
+            // carrying it washes every row beneath. One host segment means one changed block,
+            // and the paint belongs on the block itself.
+            await expect(activeBlock).toBeVisible();
+            await expect(activeBlock).toHaveClass(/diff-segment-changed/);
             await expect(visibleArrows).toHaveCount(arrowsBefore);
 
             const headText = (
@@ -290,12 +297,22 @@ test.describe("diff viewer", () => {
             await expect
                 .poll(() => readFile(filePath, "utf-8"), { timeout: 30_000 })
                 .toContain(typed);
-            await expect(activeChangedBlock).toBeVisible();
+            // The echo cuts this run into the HEAD line it now shares and the line that was
+            // added, and each keeps its own paint. Three separate claims because they fail
+            // separately: the wash returning to the wrapper, the changed child losing its
+            // paint, and the run re-coalescing so the shared line has no unpainted block of
+            // its own. Asserting only "something is painted changed" would pass all three.
+            await expect(activeBlock).toBeVisible();
+            await expect(activeBlock).not.toHaveClass(/diff-segment-changed/);
+            await expect(
+                activeBlock.locator(".diff-editable-block.diff-segment-changed"),
+            ).toHaveCount(1);
+            await expect(
+                activeBlock.locator(".diff-editable-block:not(.diff-segment-changed)"),
+            ).toHaveCount(1);
             await expect(textarea).toBeFocused();
             await expect(textarea).toHaveValue(typed);
-            await expect(activeChangedBlock.locator(".line-number")).toHaveCount(
-                typed.split("\n").length,
-            );
+            await expect(activeBlock.locator(".line-number")).toHaveCount(typed.split("\n").length);
             await expect(visibleArrows).not.toHaveCount(0);
         } finally {
             await electronApp.close();
@@ -377,6 +394,211 @@ test.describe("diff viewer", () => {
                     return lineBox.y + lineBox.height - contentBox.y;
                 })
                 .toBeLessThanOrEqual(0);
+        } finally {
+            await electronApp.close();
+        }
+    });
+
+    // The caret dragging the viewport back to a block the user has scrolled away from. Every
+    // layer below this one is structurally blind to it: jsdom implements neither focus scrolling
+    // nor `setSelectionRange`'s scroll-into-view, so the integration suite cannot observe a
+    // viewport move at all, and the route-based visual harness has a real engine but a stubbed
+    // host, so nothing there moves a draft between two blocks a full screen apart.
+    //
+    // The fixture is built here rather than in `scenarios.ts` because the defect needs a file
+    // tall enough to scroll the first draft entirely out of view -- the dirty fixture's one-line
+    // file is always on screen, where a scroll restore is a no-op and the bug cannot show.
+    test("keeps the viewport on the block just clicked, not the one the caret came from", async ({
+        fixtureWorkspace,
+    }) => {
+        test.setTimeout(180_000);
+        const scrollPath = "scroll-fixture.txt";
+        const workspaceRoot = fixtureWorkspace.workspace.root;
+        const gitEnv = fixtureWorkspace.workspace.env;
+        const filePath = path.join(workspaceRoot, scrollPath);
+
+        // HEAD side: tall enough that a block near the top leaves the viewport entirely.
+        const headLines = Array.from({ length: 140 }, (_, index) => `line ${index + 1};`);
+        await writeFile(filePath, `${headLines.join("\n")}\n`, "utf-8");
+        await runGit(workspaceRoot, ["add", scrollPath], gitEnv);
+        await runGit(workspaceRoot, ["commit", "-m", "seed a scrollable file"], gitEnv);
+
+        // Working-tree side: three separated one-line changes, so the diff is several blocks and
+        // the first of them sits near the top -- the user's "line 18".
+        const workingLines = [...headLines];
+        workingLines[17] = "line 18; edited";
+        workingLines[74] = "line 75; edited";
+        workingLines[119] = "line 120; edited";
+        await writeFile(filePath, `${workingLines.join("\n")}\n`, "utf-8");
+
+        const { electronApp, diffFrame } = await openDiffViewer(fixtureWorkspace, scrollPath);
+
+        try {
+            const content = diffFrame.locator(".diff-content");
+            const block = diffFrame
+                .locator(
+                    '[data-testid="diff-pane-right"] .diff-editable-block.diff-segment-changed:not(.diff-segment-empty)',
+                )
+                .first();
+            await expect(block).toBeVisible();
+
+            // Step 1 -- "put cursor at line 18".
+            await block.click();
+            const textarea = diffFrame.locator('[data-testid="diff-pane-right-editable"]');
+            await expect(textarea).toBeFocused();
+            const firstDraftTop = await textarea.evaluate((element) =>
+                Math.round(element.getBoundingClientRect().top),
+            );
+
+            // Step 2 -- "scroll the screen all the way to line 75". Scrolled by bringing the
+            // target block into view rather than to `scrollHeight`: the scroller carries a
+            // trailing spacer (see "scrolls the last line of a diff out of sight"), so parking at
+            // the very bottom leaves NOTHING on screen, and Playwright's click would then scroll
+            // the block into view itself -- a viewport move by the test harness, indistinguishable
+            // from the one this test exists to catch.
+            const lastBlock = diffFrame
+                .locator(
+                    '[data-testid="diff-pane-right"] .diff-editable-block.diff-segment-changed:not(.diff-segment-empty)',
+                )
+                .last();
+            // Centred by arithmetic against `.diff-content` itself rather than
+            // `scrollIntoViewIfNeeded`, which picks the nearest scrollable ancestor and here
+            // scrolled something else entirely, leaving `.diff-content` at 0.
+            await lastBlock.evaluate((element) => {
+                const scroller = element.closest<HTMLElement>(".diff-content");
+                if (scroller === null) throw new Error("no .diff-content ancestor to scroll");
+                const delta =
+                    element.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
+                scroller.scrollTop += delta - scroller.clientHeight / 2;
+            });
+            const parked = await content.evaluate((element) => Math.round(element.scrollTop));
+            expect(
+                parked,
+                "the fixture must be tall enough to scroll the first draft out of view",
+            ).toBeGreaterThan(400);
+            const parkedDraftTop = await textarea.evaluate((element) =>
+                Math.round(element.getBoundingClientRect().bottom),
+            );
+            const contentTop = await content.evaluate((element) =>
+                Math.round(element.getBoundingClientRect().top),
+            );
+            expect(
+                parkedDraftTop,
+                "the precondition is that the first draft is now off-screen above the fold",
+            ).toBeLessThan(contentTop);
+
+            // Step 3 -- "try to put cursor" down there. The click moves the draft to a block the
+            // first one is nowhere near: the overlay textarea is unmounted from one block and
+            // mounted into another, and `autoFocus` plus the selection-restore effect
+            // (DiffViewerApp.tsx:601) both fire against the new node.
+            await expect(lastBlock).toBeVisible();
+            await lastBlock.click();
+            await expect(textarea).toBeFocused();
+
+            const settled = await content.evaluate((element) => Math.round(element.scrollTop));
+            const secondDraftTop = await textarea.evaluate((element) =>
+                Math.round(element.getBoundingClientRect().top),
+            );
+            expect(
+                settled,
+                `clicking a block near the bottom must leave the viewport there, not scroll back to the block the caret came from (parked at ${parked}, settled at ${settled}, first draft top ${firstDraftTop}, second draft top ${secondDraftTop})`,
+            ).toBeGreaterThan(parked - 100);
+        } finally {
+            await electronApp.close();
+        }
+    });
+
+    // The same complaint against the other topology: ONE tall changed block, so the second click
+    // lands INSIDE the draft that is already open instead of moving it to a different block. The
+    // caret then moves without React ever unmounting the textarea, which is the only path where a
+    // stale `setSelectionRange` (DiffViewerApp.tsx:601) could pull the caret -- and the viewport
+    // with it -- back to where the caret started. The case above cannot reach that path.
+    test("moves the caret down a tall block instead of snapping it back", async ({
+        fixtureWorkspace,
+    }) => {
+        test.setTimeout(180_000);
+        const scrollPath = "tall-block.txt";
+        const workspaceRoot = fixtureWorkspace.workspace.root;
+        const gitEnv = fixtureWorkspace.workspace.env;
+        const filePath = path.join(workspaceRoot, scrollPath);
+
+        const headLines = Array.from({ length: 140 }, (_, index) => `line ${index + 1};`);
+        await writeFile(filePath, `${headLines.join("\n")}\n`, "utf-8");
+        await runGit(workspaceRoot, ["add", scrollPath], gitEnv);
+        await runGit(workspaceRoot, ["commit", "-m", "seed a tall-block file"], gitEnv);
+
+        // One contiguous changed region, taller than the viewport: every line from 10 to 130.
+        const workingLines = headLines.map((line, index) =>
+            index >= 9 && index < 130 ? `${line} edited` : line,
+        );
+        await writeFile(filePath, `${workingLines.join("\n")}\n`, "utf-8");
+
+        const { electronApp, diffFrame } = await openDiffViewer(fixtureWorkspace, scrollPath);
+        const page = await electronApp.firstWindow();
+
+        try {
+            const content = diffFrame.locator(".diff-content");
+            const block = diffFrame
+                .locator(
+                    '[data-testid="diff-pane-right"] .diff-editable-block.diff-segment-changed:not(.diff-segment-empty)',
+                )
+                .first();
+            await expect(block).toBeVisible();
+            await block.click({ position: { x: 60, y: 30 } });
+
+            const textarea = diffFrame.locator('[data-testid="diff-pane-right-editable"]');
+            await expect(textarea).toBeFocused();
+            const caretBefore = await textarea.evaluate(
+                (element) => (element as HTMLTextAreaElement).selectionStart,
+            );
+
+            // Scroll well down the block, still inside it.
+            await content.evaluate((element) => {
+                element.scrollTop += 1200;
+            });
+            const parked = await content.evaluate((element) => Math.round(element.scrollTop));
+            expect(parked, "the block must be taller than one viewport").toBeGreaterThan(1000);
+
+            // Clicked by page coordinate rather than by locator: a locator click auto-scrolls the
+            // element into view, and the element here is a textarea taller than the viewport, so
+            // the harness would move the very scroll position under measurement.
+            const [contentBox, textareaBox] = await Promise.all([
+                content.boundingBox(),
+                textarea.boundingBox(),
+            ]);
+            expect(contentBox, "the scroller must have a box to click into").not.toBeNull();
+            expect(textareaBox, "the open draft must have a box to click into").not.toBeNull();
+            // Aimed at the textarea's OWN box, clipped to the part of it currently on screen: the
+            // draft is taller than the viewport, so its box midpoint is off-screen, and a guess at
+            // the pane's left edge lands in the line-number gutter rather than the editing surface.
+            const clickX = (textareaBox?.x ?? 0) + 40;
+            const visibleTop = Math.max(textareaBox?.y ?? 0, contentBox?.y ?? 0);
+            const visibleBottom = Math.min(
+                (textareaBox?.y ?? 0) + (textareaBox?.height ?? 0),
+                (contentBox?.y ?? 0) + (contentBox?.height ?? 0),
+            );
+            expect(
+                visibleBottom - visibleTop,
+                "part of the draft must be on screen to click into",
+            ).toBeGreaterThan(40);
+            await page.mouse.click(clickX, (visibleTop + visibleBottom) / 2);
+            await expect(
+                textarea,
+                "clicking inside the open draft must keep it open, not dismiss it",
+            ).toBeFocused();
+
+            const settled = await content.evaluate((element) => Math.round(element.scrollTop));
+            const caretAfter = await textarea.evaluate(
+                (element) => (element as HTMLTextAreaElement).selectionStart,
+            );
+            expect(
+                caretAfter,
+                `clicking further down the same draft must move the caret forward, not restore where it started (before ${caretBefore}, after ${caretAfter})`,
+            ).toBeGreaterThan(caretBefore);
+            expect(
+                settled,
+                `the caret moved within one draft, so nothing may scroll the viewport back (parked at ${parked}, settled at ${settled})`,
+            ).toBeGreaterThan(parked - 100);
         } finally {
             await electronApp.close();
         }
