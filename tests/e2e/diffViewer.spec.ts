@@ -446,11 +446,20 @@ test.describe("diff viewer", () => {
             await block.click();
             const textarea = diffFrame.locator('[data-testid="diff-pane-right-editable"]');
             await expect(textarea).toBeFocused();
-            const firstDraftTop = await textarea.evaluate((element) =>
+            const echoMarker = "viewport-after-live-echo;";
+            const typed = `${await textarea.inputValue()}\n${echoMarker}`;
+            await textarea.fill(typed);
+            await expect
+                .poll(() => readFile(filePath, "utf-8"), { timeout: 30_000 })
+                .toContain(echoMarker);
+            const echoedDiff = diffFrame.getByText(echoMarker, { exact: true });
+            await expect(echoedDiff).toBeVisible();
+            const echoedDiffTop = await echoedDiff.evaluate((element) =>
                 Math.round(element.getBoundingClientRect().top),
             );
 
-            // Step 2 -- "scroll the screen all the way to line 75". Scrolled by bringing the
+            // Step 2 -- after the one-second edit/host echo, "scroll the screen all the way to
+            // line 75". Scrolled by bringing the
             // target block into view rather than to `scrollHeight`: the scroller carries a
             // trailing spacer (see "scrolls the last line of a diff out of sight"), so parking at
             // the very bottom leaves NOTHING on screen, and Playwright's click would then scroll
@@ -476,15 +485,15 @@ test.describe("diff viewer", () => {
                 parked,
                 "the fixture must be tall enough to scroll the first draft out of view",
             ).toBeGreaterThan(400);
-            const parkedDraftTop = await textarea.evaluate((element) =>
+            const parkedEchoedDiffBottom = await echoedDiff.evaluate((element) =>
                 Math.round(element.getBoundingClientRect().bottom),
             );
             const contentTop = await content.evaluate((element) =>
                 Math.round(element.getBoundingClientRect().top),
             );
             expect(
-                parkedDraftTop,
-                "the precondition is that the first draft is now off-screen above the fold",
+                parkedEchoedDiffBottom,
+                "the precondition is that the newly echoed diff is now off-screen above the fold",
             ).toBeLessThan(contentTop);
 
             // Step 3 -- "try to put cursor" down there. The click moves the draft to a block the
@@ -501,19 +510,17 @@ test.describe("diff viewer", () => {
             );
             expect(
                 settled,
-                `clicking a block near the bottom must leave the viewport there, not scroll back to the block the caret came from (parked at ${parked}, settled at ${settled}, first draft top ${firstDraftTop}, second draft top ${secondDraftTop})`,
+                `clicking a block near the bottom must leave the viewport there, not scroll back to the newly echoed diff (parked at ${parked}, settled at ${settled}, echoed diff top ${echoedDiffTop}, second draft top ${secondDraftTop})`,
             ).toBeGreaterThan(parked - 100);
         } finally {
             await electronApp.close();
         }
     });
 
-    // The same complaint against the other topology: ONE tall changed block, so the second click
-    // lands INSIDE the draft that is already open instead of moving it to a different block. The
-    // caret then moves without React ever unmounting the textarea, which is the only path where a
-    // stale `setSelectionRange` (DiffViewerApp.tsx:601) could pull the caret -- and the viewport
-    // with it -- back to where the caret started. The case above cannot reach that path.
-    test("moves the caret down a tall block instead of snapping it back", async ({
+    // A live echo can split one tall active draft into common rows plus a small new diff. The first
+    // click into those common rows closes the old overlay; the next opens the clicked block. Neither
+    // focus transition may drag the outer viewport back to the newly echoed diff.
+    test("keeps the viewport at the clicked line after a live re-diff", async ({
         fixtureWorkspace,
     }) => {
         test.setTimeout(180_000);
@@ -544,61 +551,103 @@ test.describe("diff viewer", () => {
                 )
                 .first();
             await expect(block).toBeVisible();
+            const visibleArrows = diffFrame.locator(".diff-hunk-revert:visible");
+            const visibleArrowTestIds = () =>
+                visibleArrows.evaluateAll((arrows) =>
+                    arrows
+                        .map((arrow) => arrow.getAttribute("data-testid"))
+                        .filter((testId): testId is string => testId !== null),
+                );
+            const arrowTestIdsBefore = await visibleArrowTestIds();
             await block.click({ position: { x: 60, y: 30 } });
 
             const textarea = diffFrame.locator('[data-testid="diff-pane-right-editable"]');
             await expect(textarea).toBeFocused();
-            const caretBefore = await textarea.evaluate(
-                (element) => (element as HTMLTextAreaElement).selectionStart,
+            const echoMarker = "tall-block-after-live-echo;";
+            const typed = `${headLines.slice(9, 130).join("\n")}\n${echoMarker}`;
+            await textarea.fill(typed);
+            await expect
+                .poll(visibleArrowTestIds, { timeout: 20_000 })
+                .not.toEqual(arrowTestIdsBefore);
+            await expect
+                .poll(() => readFile(filePath, "utf-8"), { timeout: 30_000 })
+                .toContain(echoMarker);
+            await expect(textarea).toBeFocused();
+            await expect(textarea).toHaveValue(typed);
+            await textarea.evaluate(
+                () =>
+                    new Promise<void>((resolve) => {
+                        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+                    }),
             );
 
-            // Scroll well down the block, still inside it.
-            await content.evaluate((element) => {
-                element.scrollTop += 1200;
+            // The echo collapses the active draft to the newly inserted line near the bottom.
+            // Scroll to a common line near the top and click it by page coordinate: a locator click
+            // would scroll its target into view and contaminate the viewport measurement.
+            const clickedLine = diffFrame
+                .locator('[data-testid="diff-pane-right"]')
+                .getByText("line 18;", { exact: true });
+            const parked = await clickedLine.evaluate((element) => {
+                const scroller = element.closest<HTMLElement>(".diff-content");
+                if (scroller === null) throw new Error("no .diff-content ancestor to scroll");
+                const delta =
+                    element.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
+                scroller.scrollTop += delta - scroller.clientHeight / 2;
+                return Math.round(scroller.scrollTop);
             });
-            const parked = await content.evaluate((element) => Math.round(element.scrollTop));
-            expect(parked, "the block must be taller than one viewport").toBeGreaterThan(1000);
-
-            // Clicked by page coordinate rather than by locator: a locator click auto-scrolls the
-            // element into view, and the element here is a textarea taller than the viewport, so
-            // the harness would move the very scroll position under measurement.
-            const [contentBox, textareaBox] = await Promise.all([
-                content.boundingBox(),
-                textarea.boundingBox(),
-            ]);
-            expect(contentBox, "the scroller must have a box to click into").not.toBeNull();
-            expect(textareaBox, "the open draft must have a box to click into").not.toBeNull();
-            // Aimed at the textarea's OWN box, clipped to the part of it currently on screen: the
-            // draft is taller than the viewport, so its box midpoint is off-screen, and a guess at
-            // the pane's left edge lands in the line-number gutter rather than the editing surface.
-            const clickX = (textareaBox?.x ?? 0) + 40;
-            const visibleTop = Math.max(textareaBox?.y ?? 0, contentBox?.y ?? 0);
-            const visibleBottom = Math.min(
-                (textareaBox?.y ?? 0) + (textareaBox?.height ?? 0),
-                (contentBox?.y ?? 0) + (contentBox?.height ?? 0),
+            await content.evaluate(
+                () =>
+                    new Promise<void>((resolve) => {
+                        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+                    }),
+            );
+            const settledAfterScroll = await content.evaluate((element) =>
+                Math.round(element.scrollTop),
             );
             expect(
-                visibleBottom - visibleTop,
-                "part of the draft must be on screen to click into",
-            ).toBeGreaterThan(40);
-            await page.mouse.click(clickX, (visibleTop + visibleBottom) / 2);
+                Math.abs(settledAfterScroll - parked),
+                `scrolling away after the live echo must stay put before the click (parked at ${parked}, settled at ${settledAfterScroll})`,
+            ).toBeLessThan(100);
+            const [contentBox, clickedLineBox] = await Promise.all([
+                content.boundingBox(),
+                clickedLine.boundingBox(),
+            ]);
+            expect(contentBox, "the scroller must have a box to click into").not.toBeNull();
+            expect(clickedLineBox, "the target line must have a box to click into").not.toBeNull();
+            await page.mouse.click(
+                (clickedLineBox?.x ?? 0) + Math.min(40, (clickedLineBox?.width ?? 42) - 2),
+                (clickedLineBox?.y ?? 0) + (clickedLineBox?.height ?? 0) / 2,
+            );
+            await expect(textarea).toHaveCount(0);
+            const settledAfterBlur = await content.evaluate((element) =>
+                Math.round(element.scrollTop),
+            );
+            expect(
+                Math.abs(settledAfterBlur - parked),
+                `closing the old draft at line 18 must not jump to the newly echoed diff (parked at ${parked}, settled at ${settledAfterBlur})`,
+            ).toBeLessThan(100);
+            const reopenedBlock = diffFrame
+                .locator('[data-testid="diff-pane-right"] .diff-editable-block')
+                .filter({ hasText: "line 18;" })
+                .first();
+            await reopenedBlock.click({ position: { x: 80, y: 10 } });
             await expect(
                 textarea,
-                "clicking inside the open draft must keep it open, not dismiss it",
+                "clicking a common line after the echo must put the caret in that line",
             ).toBeFocused();
 
             const settled = await content.evaluate((element) => Math.round(element.scrollTop));
-            const caretAfter = await textarea.evaluate(
+            const caret = await textarea.evaluate(
                 (element) => (element as HTMLTextAreaElement).selectionStart,
             );
             expect(
-                caretAfter,
-                `clicking further down the same draft must move the caret forward, not restore where it started (before ${caretBefore}, after ${caretAfter})`,
-            ).toBeGreaterThan(caretBefore);
+                caret,
+                "the caret must land after the start of the clicked line",
+            ).toBeGreaterThan(0);
             expect(
-                settled,
-                `the caret moved within one draft, so nothing may scroll the viewport back (parked at ${parked}, settled at ${settled})`,
-            ).toBeGreaterThan(parked - 100);
+                Math.abs(settled - parked),
+                `the caret is on line 18, so the viewport must not jump to the newly echoed diff (parked at ${parked}, settled at ${settled})`,
+            ).toBeLessThan(100);
         } finally {
             await electronApp.close();
         }

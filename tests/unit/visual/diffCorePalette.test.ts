@@ -415,26 +415,32 @@ describe("diff-core palette", () => {
         ).toBeGreaterThan(strengthOf(declarationOf(viewerCss, "--diff-modified-wash")));
     });
 
-    it("paints a two-sided modification red on the left and green on the editable right", () => {
-        /** Returns the pane-specific modified-state rule body, failing if it is absent. */
+    it("keeps a two-sided modification dark while coloring only its changed words by pane", () => {
+        const modified = stateRules(viewerCss).get("diff-segment-modified") ?? "";
+        expect(hueIn(propertyIn(modified, "--diff-segment-hue"))).toBe("--diff-info");
+        expect(propertyIn(modified, "background")).toBe("var(--diff-modified-wash, transparent)");
+
+        /** Returns the pane-specific modified-word rule body, failing if it is absent. */
         const paneRule = (pane: "left" | "right"): string => {
             const match = new RegExp(
                 `\\.diff-viewer\\s+\\.diff-pane-${pane}\\s+\\.diff-segment-modified\\s*\\{([^}]*)\\}`,
             ).exec(viewerCss);
             expect(
                 match,
-                `the ${pane} pane has no presentation override for a two-sided modification, so both panes fall back to the same teal state even though the left represents removed text and the editable right represents added text`,
+                `the ${pane} pane has no word-level override for a two-sided modification`,
             ).toBeTruthy();
             return match?.[1] ?? "";
         };
 
         const left = paneRule("left");
-        expect(hueIn(propertyIn(left, "--diff-segment-hue"))).toBe("--diff-deleted-hue");
-        expect(propertyIn(left, "background")).toBe("var(--diff-deleted-wash, transparent)");
+        expect(propertyIn(left, "--diff-segment-hue")).toBeNull();
+        expect(propertyIn(left, "background")).toBeNull();
+        expect(hueIn(propertyIn(left, "--diff-word-wash"))).toBe("--diff-deleted-hue");
 
         const right = paneRule("right");
-        expect(hueIn(propertyIn(right, "--diff-segment-hue"))).toBe("--diff-ok");
-        expect(propertyIn(right, "background")).toBe("var(--diff-inserted-wash, transparent)");
+        expect(propertyIn(right, "--diff-segment-hue")).toBeNull();
+        expect(propertyIn(right, "background")).toBeNull();
+        expect(hueIn(propertyIn(right, "--diff-word-wash"))).toBe("--diff-ok");
     });
 
     it("fills the connector ribbon from a semantic hue, not a wash", () => {

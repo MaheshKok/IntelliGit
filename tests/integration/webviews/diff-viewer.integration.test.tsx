@@ -1346,6 +1346,20 @@ describe("DiffViewerApp read-only contract", () => {
         expect(editingBlock?.querySelectorAll(".code-line")).toHaveLength(2);
     });
 
+    it("focuses a newly opened edit session without scrolling the diff viewport", async () => {
+        installVsCodeMock();
+        await mountEditablePane("shared();\nbefore();", 1);
+        const focus = vi.spyOn(HTMLTextAreaElement.prototype, "focus");
+
+        const textarea = editBlock(1);
+
+        expect(document.activeElement).toBe(textarea);
+        expect(
+            focus,
+            "plain textarea.focus() and React autoFocus may scroll the outer diff back to the active hunk",
+        ).toHaveBeenCalledWith({ preventScroll: true });
+    });
+
     it("does not open an editable block when diff text is selected", async () => {
         installVsCodeMock();
         await mountEditablePane("shared();\nbefore();", 1);
