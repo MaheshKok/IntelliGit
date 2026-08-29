@@ -1803,6 +1803,37 @@ describe("DiffViewerApp read-only contract", () => {
             ).toBe("added();");
         });
 
+        it("leaves two rows that share nothing but a counterpart unmarked", async () => {
+            // The opposite direction of the test above, and the reason the similarity floor
+            // exists at all. A row that HAS a counterpart is weighed against it, and two
+            // lines with almost no token in common produce a mask that alternates character
+            // by character -- speckle, not a change. Only a row with NO counterpart skips
+            // the floor, because there is nothing to weigh and the whole row is new.
+            // Without this, widening the exemption to every row keeps the test above green.
+            //
+            // The pair is chosen to sit just UNDER the floor rather than nowhere near it:
+            // `tokenSimilarityRatio` scores these two at 0.250 against a floor of 0.28, and
+            // they do share tokens. Two lines with nothing whatever in common would pass
+            // this test with the floor lowered to almost anything.
+            installVsCodeMock();
+            await mountRightEditable("kept();\nconst total = 0;", [
+                { type: "common" as const, left: ["kept();"], right: ["kept();"] },
+                {
+                    type: "changed" as const,
+                    left: ["throw new RangeError(bound);"],
+                    right: ["const total = 0;"],
+                },
+            ]);
+
+            expect(
+                Array.from(
+                    document.querySelectorAll<HTMLElement>(".diff-pane-right .word-diff-change"),
+                    (change) => change.textContent,
+                ).join(""),
+                "two barely related lines were marked word by word, which renders as speckle across the row rather than as the fragment that changed",
+            ).toBe("");
+        });
+
         it("preserves active visual state when a same-token echo splits its changed hunk", async () => {
             const vscode = installVsCodeMock();
             await mountEditablePane("headOne();\nheadTwo();\nbefore();\ntail();", 1, [

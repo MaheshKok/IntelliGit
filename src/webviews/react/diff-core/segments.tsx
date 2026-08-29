@@ -168,9 +168,15 @@ const WordDiffLine = React.memo(function WordDiffLine({
 }): React.ReactElement {
     const ctx = useSyntaxHighlightState();
     if (!line) return <>{` `}</>;
-    if (line === compareLine || !compareLine) return <HighlightedLine line={line} />;
-    const similarity = tokenSimilarityRatio(line, compareLine);
-    if (similarity < 0.28) return <HighlightedLine line={line} />;
+    if (line === compareLine) return <HighlightedLine line={line} />;
+    // The similarity floor stops two barely related lines being marked word by word, which reads
+    // as speckle rather than as a change. A row with no counterpart at all gives it nothing to
+    // weigh: that row is new in its entirety, and `buildWordDiffMask` already says so on its own,
+    // because an empty compare line shares no token with anything. Bouncing it here instead left
+    // the one row the reader is hunting for painted exactly like the untouched rows beside it.
+    if (compareLine && tokenSimilarityRatio(line, compareLine) < 0.28) {
+        return <HighlightedLine line={line} />;
+    }
     const spans = coloredSpansForLine(line, ctx);
     if (spans.length === 0) return <>{` `}</>;
     const { changed, whitespace } = buildChangedCharMasks(line, compareLine);

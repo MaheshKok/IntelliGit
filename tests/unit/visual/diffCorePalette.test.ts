@@ -380,6 +380,41 @@ describe("diff-core palette", () => {
         ).toBeGreaterThan(mixPercent("--diff-modified-wash"));
     });
 
+    it("re-mixes the word fragment from the block's own hue, on the element that owns it", () => {
+        // The mark used to be a fixed --diff-info tint, which was correct while only a
+        // two-sided hunk could carry one. A one-sided hunk carries them now, so a fixed
+        // cyan fragment lands inside a green insertion or a red deletion -- the two-tone
+        // reads as a different kind of change rather than as the changed words.
+        //
+        // WHERE the override sits is the whole substance of it, which is why this asserts
+        // the rule body and not just the file. A var() inside a custom property is
+        // substituted on the element that DECLARES it: the same declaration moved onto
+        // `.diff-viewer` resolves --diff-segment-hue at the root, finds nothing, and every
+        // mark silently falls back to one colour. That mutation changes no percentage, no
+        // hue token and no selector this file otherwise checks -- it is invisible to every
+        // other assertion here, and it is the shape a later tidy-up reaches for.
+        const changed = stateRules(viewerCss).get(MARKER_CLASS) ?? "";
+        const override = propertyIn(changed, "--diff-word-wash");
+        expect(
+            override,
+            `.${MARKER_CLASS} does not re-declare --diff-word-wash, so the word mark keeps the root's fixed tint and a changed fragment inside a one-sided hunk is painted in another state's colour`,
+        ).toBeTruthy();
+        expect(
+            hueIn(override),
+            "the override no longer mixes from --diff-segment-hue, so it paints one colour for every state and the block-relative two-tone is gone",
+        ).toBe("--diff-segment-hue");
+
+        // Both legs of the two-tone have to move together. The block wash and the mark now
+        // read the SAME hue, so a mark mixed at the block's own strength is not merely
+        // faint inside it -- it is the identical colour, and invisible.
+        const strengthOf = (value: string | null): number =>
+            Number(/\)\s*(\d+(?:\.\d+)?)%/.exec(value ?? "")?.[1]);
+        expect(
+            strengthOf(override),
+            "the override mixes its hue at the block's own strength, so a changed fragment is the exact colour of the block around it",
+        ).toBeGreaterThan(strengthOf(declarationOf(viewerCss, "--diff-modified-wash")));
+    });
+
     it("fills the connector ribbon from a semantic hue, not a wash", () => {
         const rule = /\.diff-ribbon\s*\{([^}]*)\}/.exec(viewerCss);
         const fill = propertyIn((rule?.[1] ?? "") as string, "fill");
