@@ -87,13 +87,14 @@ function firstTextNode(element: Element): Text {
 }
 
 /** Updates the controlled textarea through the same input event as a user edit. */
-function setDraftText(textarea: HTMLTextAreaElement, next: string): void {
+function setDraftText(textarea: HTMLTextAreaElement, next: string, caret?: number): void {
     const valueSetter = Object.getOwnPropertyDescriptor(
         HTMLTextAreaElement.prototype,
         "value",
     )?.set;
     act(() => {
         valueSetter?.call(textarea, next);
+        if (caret !== undefined) textarea.setSelectionRange(caret, caret);
         textarea.dispatchEvent(new Event("input", { bubbles: true }));
     });
 }
@@ -1524,7 +1525,7 @@ describe("DiffViewerApp read-only contract", () => {
             vi.useRealTimers();
         });
 
-        it("posts an edited block once after a one-second debounce", async () => {
+        it("posts an edited block once after a 500ms debounce", async () => {
             const vscode = installVsCodeMock();
             await mountEditablePane("shared();\nbefore();", 1);
             vi.useFakeTimers();
@@ -1532,7 +1533,7 @@ describe("DiffViewerApp read-only contract", () => {
             const textarea = editBlock(1);
             setDraftText(textarea, "after();");
             act(() => {
-                vi.advanceTimersByTime(999);
+                vi.advanceTimersByTime(499);
             });
             expect(sentDeltas(vscode)).toEqual([]);
 
@@ -1574,22 +1575,22 @@ describe("DiffViewerApp read-only contract", () => {
             const textarea = editBlock(1);
             setDraftText(textarea, "first();");
             act(() => {
-                vi.advanceTimersByTime(750);
+                vi.advanceTimersByTime(375);
             });
             setDraftText(textarea, "second();");
             act(() => {
-                vi.advanceTimersByTime(250);
+                vi.advanceTimersByTime(125);
             });
             expect(sentDeltas(vscode)).toEqual([]);
 
             act(() => {
-                vi.advanceTimersByTime(750);
+                vi.advanceTimersByTime(375);
             });
             expect(applyDelta("shared();\nbefore();", sentDeltas(vscode)[0])).toBe(
                 "shared();\nsecond();",
             );
             act(() => {
-                vi.advanceTimersByTime(1000);
+                vi.advanceTimersByTime(500);
             });
             expect(sentDeltas(vscode)).toHaveLength(1);
         });
@@ -3000,6 +3001,13 @@ const settledRunSegments = [
     { type: "common" as const, left: rows("tail", 20), right: rows("tail", 20) },
 ];
 const settledRunText = ["head0;", "NEW();", ...rows("tail", 20)].join("\n");
+const settledBlankSuffix = ["importOne();", "importTwo();", "after();"];
+const settledBlankRunSegments = [
+    { type: "common" as const, left: ["head0;"], right: ["head0;"] },
+    { type: "changed" as const, left: [], right: [""] },
+    { type: "common" as const, left: settledBlankSuffix, right: settledBlankSuffix },
+];
+const settledBlankRunText = ["head0;", "", ...settledBlankSuffix].join("\n");
 
 /** Opens a clean file as one whole-file draft and lets the host echo re-segment it underneath. */
 async function mountSettledWholeFileDraft(): Promise<HTMLTextAreaElement> {
@@ -3026,6 +3034,39 @@ async function mountSettledWholeFileDraft(): Promise<HTMLTextAreaElement> {
             segments: settledRunSegments,
             editablePane: "right" as const,
             editableText: settledRunText,
+            documentVersion: 5,
+            editableReseedToken: 0,
+        },
+    });
+    await flush();
+    return textarea as HTMLTextAreaElement;
+}
+
+/** Opens a clean file, inserts one blank row, and applies the host's segmented echo. */
+async function mountSettledBlankLineDraft(): Promise<HTMLTextAreaElement> {
+    installVsCodeMock();
+    const cleanLines = ["head0;", ...settledBlankSuffix];
+    await mountRightEditable(cleanLines.join("\n"), [
+        { type: "common" as const, left: cleanLines, right: cleanLines },
+    ]);
+
+    const block = document.querySelector<HTMLElement>(".diff-pane-right .diff-editable-block");
+    act(() => {
+        block?.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+    });
+    const textarea = document.querySelector<HTMLTextAreaElement>(
+        "[data-testid='diff-pane-right-editable']",
+    );
+    expect(textarea, "the clean file must open as one whole-file draft").not.toBeNull();
+    setDraftText(textarea as HTMLTextAreaElement, settledBlankRunText);
+
+    dispatchHostMessage({
+        type: "setDiffData",
+        data: {
+            ...diffFixture,
+            segments: settledBlankRunSegments,
+            editablePane: "right" as const,
+            editableText: settledBlankRunText,
             documentVersion: 5,
             editableReseedToken: 0,
         },
@@ -3071,6 +3112,30 @@ describe("DiffViewerApp settled draft spanning several host segments", () => {
             },
             "a draft that has settled back onto its host rows must wear the host's own segment cuts; one representative class on the outer block washes every untouched line in the file",
         ).toEqual({ wrapperChanged: false, changedRows: ["NEW();"] });
+    });
+
+    it("keeps repeated Enter growth on the inserted blank segment", async () => {
+        const textarea = await mountSettledBlankLineDraft();
+        const tenBlankRows = ["head0;", ...Array<string>(10).fill(""), ...settledBlankSuffix].join(
+            "\n",
+        );
+        const caretBeforeSuffix = tenBlankRows.indexOf(settledBlankSuffix[0]) - 1;
+        setDraftText(textarea, tenBlankRows, caretBeforeSuffix);
+
+        const editingBlock = textarea.closest<HTMLElement>(".diff-editing-block");
+        const changedRows = [
+            ...(editingBlock?.querySelectorAll(".diff-segment-changed .code-line-content") ?? []),
+        ].map((row) => row.textContent ?? "");
+
+        expect(
+            changedRows,
+            "pressing Enter on an already inserted blank row must grow that insertion; unchanged imports and following text must keep their common paint",
+        ).toEqual(Array<string>(10).fill("\u00a0"));
+        for (const unchanged of settledBlankSuffix) {
+            expect(changedRows, `${unchanged} was pulled into the insertion paint`).not.toContain(
+                unchanged,
+            );
+        }
     });
 
     it("holds the read-only pane at the host's alignment while a settled draft is open", async () => {
