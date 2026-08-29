@@ -617,14 +617,22 @@ describe("diff-core palette", () => {
         // same semantic red but softens it toward the editor foreground before applying
         // the row and word strengths, so both layers remain one adaptive theme family.
         const mergeCss = stripComments(readFileSync(MERGE_EDITOR_CSS, "utf8"));
+
+        /** Returns a declaration with formatter-only whitespace collapsed. */
+        const compactDeclaration = (name: string): string | null =>
+            declarationOf(mergeCss, name)
+                ?.replace(/\s+/g, " ")
+                .replace(/\(\s+/g, "(")
+                .replace(/\s+\)/g, ")") ?? null;
+
         expect(
-            declarationOf(mergeCss, "--merge-conflict-hue"),
+            compactDeclaration("--merge-conflict-hue"),
             "the merge conflict palette still feeds the vivid host error token directly into large painted regions",
         ).toBe("color-mix(in srgb, var(--merge-danger) 88%, var(--merge-editor-fg))");
-        expect(declarationOf(mergeCss, "--merge-conflict-block-bg")).toBe(
+        expect(compactDeclaration("--merge-conflict-block-bg")).toBe(
             "color-mix(in srgb, var(--merge-conflict-hue) 15%, var(--merge-editor-bg))",
         );
-        expect(declarationOf(mergeCss, "--pycharm-conflict")).toBe(
+        expect(compactDeclaration("--pycharm-conflict")).toBe(
             "color-mix(in srgb, var(--merge-conflict-hue) 30%, var(--merge-editor-bg))",
         );
     });
