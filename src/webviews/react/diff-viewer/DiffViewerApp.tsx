@@ -539,6 +539,7 @@ function EditableDiffPane({
 }): React.ReactElement {
     const [draft, setDraft] = useState<EditableBlockDraft | null>(null);
     const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+    const seededSelectionSessionKeyRef = useRef<string | null>(null);
     const editingIndexRef = useRef<number | null>(null);
     const debounceTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
     const lastPostedTextRef = useRef<string | null>(null);
@@ -551,6 +552,11 @@ function EditableDiffPane({
     const reseedTokenRef = useRef(reseedToken);
     const renderedSegmentsRef = useRef<readonly RenderedSegment[]>(renderedSegments);
     const lineNumberSide = side === "left" ? "right" : "left";
+    /** Captures each mounted draft editor and restores focus without moving the diff viewport. */
+    const focusTextarea = useCallback((textarea: HTMLTextAreaElement | null) => {
+        textareaRef.current = textarea;
+        textarea?.focus({ preventScroll: true });
+    }, []);
     const activeRun = useMemo(
         () => (draft === null ? null : editableDraftRun(draft, renderedSegments, side)),
         [draft, renderedSegments, side],
@@ -594,18 +600,24 @@ function EditableDiffPane({
     );
 
     const editingDraftIndex = draft?.indices[0];
+    const editingSessionKey = draft?.editSessionKey;
     const editingSelectionStart = draft?.selectionStart;
     const editingSelectionEnd = draft?.selectionEnd;
     useEffect(() => {
         if (
             editingDraftIndex === undefined ||
+            editingSessionKey === undefined ||
             editingSelectionStart === undefined ||
             editingSelectionEnd === undefined
         ) {
             return;
         }
         const textarea = textareaRef.current;
-        textarea?.setSelectionRange(editingSelectionStart, editingSelectionEnd);
+        if (textarea === null) return;
+        if (seededSelectionSessionKeyRef.current !== editingSessionKey) {
+            seededSelectionSessionKeyRef.current = editingSessionKey;
+            textarea.setSelectionRange(editingSelectionStart, editingSelectionEnd);
+        }
 
         // A block can be opened while the panes are already scrolled sideways. The overlay is
         // born at scroll 0 and only a scroll event would align it, so align this one directly --
@@ -616,9 +628,9 @@ function EditableDiffPane({
         // Any row block in the run will do: every `.code-lines` in the view is held at one shared
         // horizontal position, and a settled run is drawn as its host segments with no single
         // draft block to name.
-        const codeLines = textarea?.parentElement?.querySelector<HTMLElement>(".code-lines");
-        if (textarea && codeLines) alignScrollOverlays([textarea], codeLines.scrollLeft);
-    }, [editingDraftIndex, editingSelectionEnd, editingSelectionStart]);
+        const codeLines = textarea.parentElement?.querySelector<HTMLElement>(".code-lines");
+        if (codeLines) alignScrollOverlays([textarea], codeLines.scrollLeft);
+    }, [editingDraftIndex, editingSelectionEnd, editingSelectionStart, editingSessionKey]);
 
     // The debounced post reads the draft as it stands when the timer FIRES, never the one it was
     // armed with. Typing resumes the moment the first post goes out, so the next window is armed
@@ -851,7 +863,7 @@ function EditableDiffPane({
                             )}
                             <textarea
                                 key="textarea"
-                                ref={textareaRef}
+                                ref={focusTextarea}
                                 className="diff-edit-textarea"
                                 data-testid={`diff-pane-${side}-editable`}
                                 aria-label={t("diff.editable.editingAria")}
@@ -861,9 +873,6 @@ function EditableDiffPane({
                                     top: activeRun.prefixLines.length * LINE_HEIGHT_PX,
                                     bottom: activeRun.suffixLines.length * LINE_HEIGHT_PX,
                                 }}
-                                // Deliberate: edit mode opens from a user action and should focus the draft textarea.
-                                // react-doctor-disable-next-line react-doctor/no-autofocus
-                                autoFocus
                                 spellCheck={false}
                                 onCompositionStart={() => {
                                     isComposingRef.current = true;

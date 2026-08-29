@@ -382,10 +382,10 @@
    in a browser: declared on the ancestor the span computes the fallback, declared
    alongside the hue it computes the hue. The marker classes below set --diff-segment-hue
    on this same element, so the substitution finds it and the resolved colour inherits
-   down to the span -- a lighter green inside an inserted block, a lighter red inside a
-   deleted one, and inside a modified block the tint it always had, whose hue IS
-   --diff-info. The root keeps that --diff-info mix as the base for a mark outside any
-   changed block. */
+   down to the span -- a lighter green inside an inserted block and a lighter red inside a
+   deleted one. Modified blocks use --diff-info by default; the pane-specific rules below
+   override only their word wash, leaving their block hue and background modified. The root
+   keeps the --diff-info mix as the base for a mark outside any changed block. */
 .diff-viewer .diff-segment-changed {
     --diff-word-wash: color-mix(
         in srgb,
@@ -426,17 +426,14 @@
     background: var(--diff-modified-wash, transparent);
 }
 
-/* A two-sided hunk is semantically modified, but each pane still communicates direction:
-   removed text on the left and added text on the editable right. The inherited word wash
-   follows the same override, preserving the lighter inner red/green marker. */
+/* A two-sided hunk remains modified at block level. Only changed words communicate direction:
+   removed text on the left and added text on the editable right. */
 .diff-viewer .diff-pane-left .diff-segment-modified {
-    --diff-segment-hue: var(--diff-deleted-hue);
-    background: var(--diff-deleted-wash, transparent);
+    --diff-word-wash: color-mix(in srgb, var(--diff-deleted-hue) 30%, var(--diff-editor-bg));
 }
 
 .diff-viewer .diff-pane-right .diff-segment-modified {
-    --diff-segment-hue: var(--diff-ok);
-    background: var(--diff-inserted-wash, transparent);
+    --diff-word-wash: color-mix(in srgb, var(--diff-ok) 30%, var(--diff-editor-bg));
 }
 
 /* .diff-segment-empty declares no BACKGROUND, and cannot: each pane is sized from its own
@@ -491,11 +488,11 @@
    A one-sided hunk carries these spans too. `WordDiffLine` weighs the similarity floor
    only when there IS a counterpart to weigh (src/webviews/react/diff-core/segments.tsx),
    so a row with nothing opposite it is marked over its whole length -- it is new in its
-   entirety. That is why --diff-word-wash follows the block's own --diff-segment-hue
-   rather than a fixed --diff-info, through the override on `.diff-segment-changed` above:
-   inside a modified block the tint is the one this table was measured with, because that
-   block's hue IS --diff-info, and inside the one-sided blocks it is a lighter green or a
-   lighter red at the same 30%.
+   entirety. That is why --diff-word-wash follows the block's own --diff-segment-hue by
+   default rather than a fixed --diff-info: one-sided blocks get a lighter green or red at
+   the same 30%. Two-sided modified blocks keep --diff-info for the block itself while the
+   pane-specific rules above override only the word wash to show removed text on the left
+   and added text on the right.
    Marking one-sided rows enlarged the recorded population, and the ladder above did not
    predict it because at the time no one-sided row could carry a fill at all. Measured on
    the diff-viewer fixture, whose segments 1 and 3 are one-sided:
