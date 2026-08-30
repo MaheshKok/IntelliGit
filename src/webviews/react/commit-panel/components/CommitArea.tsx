@@ -223,6 +223,7 @@ export function CommitArea({
             </Box>
             <Flex align="center" gap="8px" p="6px 8px 8px">
                 <Button
+                    data-testid="commit-action-commit"
                     variant="primary"
                     size="sm"
                     onClick={isCommitDisabled ? undefined : onCommit}
@@ -234,6 +235,7 @@ export function CommitArea({
                     {isAmend ? t("commit.action.amend") : t("commit.action.commit")}
                 </Button>
                 <Button
+                    data-testid="commit-action-push"
                     variant="primary"
                     size="sm"
                     onClick={onPush}
