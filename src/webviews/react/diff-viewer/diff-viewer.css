@@ -408,14 +408,39 @@
    and keeps the edge bar, instead of painting `initial` over the code. That leg is also
    the seam a per-theme gate would be reinstated through, if the contrast cost recorded
    above is ever reconsidered. */
+/* Both one-sided states neutralise the word wash, and the reason is the same for each: the
+   block already says the whole line changed, so a mark that covers the whole line says it
+   twice. The wash below is 15% of the state's hue; --diff-word-wash is 30% of that SAME hue,
+   so the glyphs came out in a darker box of one colour inside a lighter band of it. Measured
+   on the diff-viewer fixture before this line existed: 42/42 marks inside a one-sided hunk
+   painted a second tint (24 inserted, 18 deleted) -- dark-modern block 47,58,46 against mark
+   63,84,62, light-modern 225,237,225 against 195,220,194.
+
+   `transparent` rather than deleting the declaration: `.diff-segment-changed` (:389) sets the
+   hue-derived mix on this same element and ties at (0,2,0), so the override has to be a real
+   value that wins on source order. It does -- these two rules sit after it -- and the tie is
+   why `tests/visual/wholeLineWordFill.spec.ts` measures the painted result in a browser rather
+   than reading the stylesheet: `tests/unit/visual/diffCorePalette.test.ts` never reads
+   --diff-word-wash out of a state rule, so it stays green whether these lines are here or not
+   and cannot witness a reorder that silently restores the double tint.
+
+   Scoped to the ONE-SIDED states on purpose. A row whose counterpart is padding also exists
+   inside a two-sided `.diff-segment-modified` hunk with unequal line counts, and there the
+   full-length mark is the only thing separating "this line was removed" from "this line was
+   changed" -- the block wash there is --diff-info for both panes. That is also why this is not
+   fixed in `WordDiffLine` by skipping an empty counterpart: the component can see that a row
+   has nothing opposite it, but not which block it is sitting in, and the mark is meaningless in
+   one and load-bearing in the other. */
 .diff-viewer .diff-segment-inserted {
     --diff-segment-hue: var(--diff-ok);
+    --diff-word-wash: transparent;
     box-shadow: var(--diff-segment-shadow);
     background: var(--diff-inserted-wash, transparent);
 }
 
 .diff-viewer .diff-segment-deleted {
     --diff-segment-hue: var(--diff-deleted-hue);
+    --diff-word-wash: transparent;
     box-shadow: var(--diff-segment-shadow);
     background: var(--diff-deleted-wash, transparent);
 }
@@ -485,32 +510,38 @@
    above for the arithmetic behind the light-theme floor and for why the merge editor's
    own clean baseline is not evidence of safety here. The resulting findings are
    recorded in tests/visual/fixtures/knownFindings.json, so a NEW one still fails.
-   A one-sided hunk carries these spans too. `WordDiffLine` weighs the similarity floor
-   only when there IS a counterpart to weigh (src/webviews/react/diff-core/segments.tsx),
-   so a row with nothing opposite it is marked over its whole length -- it is new in its
-   entirety. That is why --diff-word-wash follows the block's own --diff-segment-hue by
-   default rather than a fixed --diff-info: one-sided blocks get a lighter green or red at
-   the same 30%. Two-sided modified blocks keep --diff-info for the block itself while the
-   pane-specific rules above override only the word wash to show removed text on the left
-   and added text on the right.
-   Marking one-sided rows enlarged the recorded population, and the ladder above did not
-   predict it because at the time no one-sided row could carry a fill at all. Measured on
-   the diff-viewer fixture, whose segments 1 and 3 are one-sided:
+   A one-sided hunk still RENDERS these spans -- `WordDiffLine` marks a row with nothing
+   opposite it over its whole length, because `buildChangedCharMasks` compares against an
+   empty counterpart (src/webviews/react/diff-core/segments.tsx:169-185) -- but the
+   one-sided state rules above paint them `transparent`, so the fill lands only where it
+   answers something. On a one-sided row it answered nothing: every word changed, and a
+   mark covering every word distinguishes nothing from nothing while spending a second
+   tint of the hue the block is already washed in.
+   Two-sided modified blocks keep --diff-info for the block itself while the pane-specific
+   rules above override only the word wash, showing removed text on the left and added text
+   on the right. That is the case the fill exists for, and --diff-word-wash still follows
+   the block's own --diff-segment-hue by default so a mark in any block that does declare
+   one is painted in that block's colour rather than a fixed --diff-info.
+
+   The ladder above therefore describes the population again. Marking one-sided rows had
+   enlarged it -- the ladder could not predict that, because when it was measured no
+   one-sided row could carry a fill at all -- and neutralising them gives that back.
+   Measured on the diff-viewer fixture, whose segments 1 and 3 are one-sided, when the
+   marks were added:
 
      dark-modern x2   +11 new, -4 gone   (net +7)
      hc-black x2       +7 new,  0 gone   (net +7)
      light-modern x2  +14 new, -14 gone  (net 0)
      hc-light x2      +14 new, -14 gone  (net 0)
 
-   The light themes trade one finding for another rather than gaining any: those rows were
-   already failing behind the 15% block wash, and the mark only re-keys them one span
-   deeper. The dark themes are where the count really grows, because 15% cleared the floor
-   there and 30% does not. This is the same cost the wash comment above accepted, applied
-   to more rows -- not a second kind of cost -- so it is recorded here and baselined rather
-   than gated away. A row inside a one-sided block is marked over its whole length, and
-   that still reads as a two-tone rather than as a uniformly brighter block: the fill
-   follows the glyph runs, so the marked text sits lighter against the block wash that
-   continues past the end of the line. The recorded baseline screenshots show it.
+   The light themes traded one finding for another rather than gaining any: those rows were
+   already failing behind the 15% block wash, and the mark only re-keyed them one span
+   deeper. The dark themes were where the count grew, because 15% cleared the floor there
+   and 30% does not. knownFindings.json is re-recorded alongside this change and moves back
+   along the same axis -- `findingsBaseline.ts:44` fails a RESOLVED finding exactly as
+   loudly as a new one, so the reduction is a reviewed edit rather than silent drift.
+   What remains recorded is the cost of the block wash itself, which the comment above
+   accepts and this change does not touch.
    This overrides diff-core's `.word-diff-change` on specificity (0,2,0 over 0,1,0);
    that rule reads --diff-pycharm-modified, which only merge-editor.css declares. */
 .diff-viewer .word-diff-change {

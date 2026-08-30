@@ -60,12 +60,21 @@ function rows(prefix: string, count: number): string[] {
  * still classify to the full marker set, because that failure is invisible: the fixture
  * renders, screenshots cleanly, and simply omits a state.
  *
- * The two-sided hunk is what produces `.word-diff-change` spans at all -- `WordDiffLine`
- * returns a plain highlighted line when the compared line is empty
- * (src/webviews/react/diff-core/segments.tsx:158), so one-sided hunks render none of
- * them, and a marker no context renders is a marker no oracle can measure. Its first
- * row changes the keyword rather than the value, so the underline runs beneath the
- * darkest foreground token the viewer paints.
+ * The two-sided hunk is what produces `.word-diff-change` spans that MEAN anything. Every
+ * hunk here renders them -- `WordDiffLine`'s early return reads `if (!line)`, the current
+ * row being empty, which is a padding row, not `compareLine`
+ * (src/webviews/react/diff-core/segments.tsx:169-170) -- so a one-sided row compares against
+ * an empty counterpart and masks over its whole length. Measured on this fixture at
+ * dark-modern-wide: 42 spans inside one-sided hunks (24 across 2 inserted blocks, 18 across
+ * 2 deleted), against 6 across the 3 two-sided blocks -- the one-sided rows produce SEVEN
+ * times the marks and none of the meaning, which is the whole shape of the defect.
+ * Only the two-sided spans answer "which words changed"; the one-sided ones cover the whole
+ * line and are painted `transparent` by the state rules in diff-viewer.css, which
+ * `tests/visual/wholeLineWordFill.spec.ts` asserts in a browser. This fixture is the context
+ * both halves of that assertion are measured against, so it must keep carrying both kinds.
+ * The two-sided hunk's first row changes the keyword rather than the value, putting the fill
+ * behind the darkest foreground token the viewer paints -- the worst contrast pair available,
+ * which is the point of choosing it.
  */
 const DIFF_VIEWER_SHARED_HEAD = rows("hd", 3);
 const DIFF_VIEWER_REMOVED_ONLY = rows("rm", 3);
