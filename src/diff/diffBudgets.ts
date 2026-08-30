@@ -62,9 +62,13 @@
  *
  * Neither number describes the product, so raising the targets to admit them would only make
  * the gate unable to see a real regression. What still runs everywhere is the deterministic
- * half -- payload byte size, line counts, DP-cell and pathological rejection -- plus the
+ * half -- payload byte size, line counts, DP-cell and pathological rejection -- the
  * host-agnostic 15 s / 10 s bounds in `merge-editor-performance.integration.test.tsx`, which
- * exist to catch a quadratic re-render rather than to time one.
+ * exist to catch a quadratic re-render rather than to time one, and `MAX_DIFF_RENDER_GROWTH`
+ * below, which catches the same thing far closer in by comparing two tiers of one run against
+ * each other instead of against a clock. The render reading that used to sit here as an
+ * absolute is the one number this paragraph has now outlived: it was suspended on every
+ * runner and flaky on the host it was calibrated on.
  */
 
 /** Maximum bytes permitted for one diff side, derived as 2 x 105,047. */
@@ -87,8 +91,69 @@ export const MAX_DIFF_COMPUTE_MS = 59;
  */
 export const MAX_DIFF_PAYLOAD_BYTES = 439_048;
 
-/** Maximum accepted-tier webview render time, derived as ceil(2 x 2,806.205). */
-export const MAX_DIFF_RENDER_MS = 5_613;
+/**
+ * Maximum ratio of large-tier to typical-tier webview render time, in one run.
+ *
+ * This replaces an absolute `MAX_DIFF_RENDER_MS = 5_613`, which could not tell a slow host
+ * from a slow renderer and so gated nothing anywhere: `ubuntu-latest` read 6,555.914 ms
+ * against it (see above), which is why the compatibility matrix suspends the wall-clock
+ * budgets entirely -- and on the calibration host it failed under ordinary contention.
+ * Measured here across 15 runs with the CPU saturated (load average 175 mean, 217 peak),
+ * every large-tier reading exceeded 5,613 ms, and two runs tripped it on the TYPICAL tier
+ * first, at 5,707.657 ms and 5,670.985 ms. Raising the number would have admitted a real
+ * regression instead; the fault was measuring wall-clock at all.
+ *
+ * A same-run ratio removes the host. Across a 3.5x slowdown of the absolute readings, this
+ * ratio moved 2%:
+ *
+ *     tier            quiet (n=15)              saturated (n=13)
+ *     large, absolute mean 3,116 ms  cv 2.1%    mean 10,838 ms  cv 7.8%
+ *     large / typical mean 2.05      cv 3.2%    mean 2.09       cv 5.4%
+ *                     range 1.93-2.18           range 1.88-2.32
+ *
+ * `typical` is the denominator rather than `small` because the ratio has to divide by a
+ * stable number: `small` renders in ~608 ms quiet, where the ~104 ms of fixed per-render
+ * overhead is a sixth of the reading, and large/small is measurably noisier in both
+ * conditions (cv 6.7% quiet, 10.4% saturated) despite cancelling the same host speed.
+ *
+ * The threshold still sees the regression it exists for. The tiers are 1,161 and 2,464 lines,
+ * so a linear pipeline predicts 2.12 -- which is what is measured -- and `(2464/1161)^2 = 4.50`
+ * is what a quadratic re-render approaches. It only approaches it: fixed per-render overhead
+ * dilutes the ratio, and that overhead is ~150 ms idle but ~1.2 s under saturation, so
+ * rebuilding each measured pair as a quadratic (`diffRenderGrowth.test.ts`) yields as little as
+ * 3.76. A quadratic injected into `CodeBlock` for real -- each rendered line scanning its own
+ * block -- measured lower still, 3.43x (2,977 ms against 10,200 ms), because a block-local n^2 sums
+ * to less than the whole document's. The threshold has to clear the measured figure rather than
+ * the ideal one, so 2.9 sits between the worst innocent reading (2.32) and that injected
+ * quadratic: 1.25x above anything measured and 1.18x below a regression it caught. The margin
+ * leans to the innocent side deliberately -- a false red is the failure being fixed here, and a
+ * real quadratic clears the bar by more than contention ever did. Unlike the absolute it replaces,
+ * this needs no suspension on CI, so the render path is gated on runners where it previously
+ * was not gated at all.
+ */
+export const MAX_DIFF_RENDER_GROWTH = 2.9;
+
+/**
+ * Reports whether render time grew faster with input size than a linear pipeline would.
+ *
+ * Throws rather than answering on a reading that is not a positive finite number -- zero,
+ * negative, NaN and Infinity all mean the clock produced nothing usable. `!Number.isFinite(ms)`
+ * rather than the `ms <= 0` a lint rule suggests: `NaN <= 0` is false, so that rewrite would
+ * quietly admit the one reading most likely to appear when timing breaks.
+ *
+ * Both answers would be wrong on such a reading:
+ * `true` blames the renderer for a clock that measured nothing, and `false` drops the gate
+ * silently, which is the failure this function was written to end.
+ */
+export function exceedsRenderGrowth(largeMs: number, typicalMs: number): boolean {
+    const unusable = (ms: number): boolean => !Number.isFinite(ms) || ms <= 0;
+    if (unusable(largeMs) || unusable(typicalMs)) {
+        throw new Error(
+            `render growth needs two positive finite readings, got large=${largeMs}ms typical=${typicalMs}ms`,
+        );
+    }
+    return largeMs / typicalMs > MAX_DIFF_RENDER_GROWTH;
+}
 
 /**
  * Approximates the serialized payload from the two decoded sides, before segments exist.
