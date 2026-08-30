@@ -45,7 +45,17 @@ interface BlockChrome {
     readonly outerAlpha: number;
 }
 
+/**
+ * The width below which every line in both fixtures overflows its pane, measured: at 320px the
+ * diff viewer's bar scrolls 43px and the merge editor's 113px, while at 1200px both fixtures fit
+ * and the bar collapses entirely -- `scrollWidth` AND `clientWidth` both 0, so it is not merely
+ * unscrolled but unlaid-out. Any value strictly between the two project widths separates them;
+ * 1000 is far enough from both that a small layout change cannot silently reclassify a project.
+ */
+const LINES_OVERFLOW_BELOW = 1000;
+
 interface Chrome {
+    readonly viewportWidth: number;
     readonly barFound: boolean;
     readonly barMaxScroll: number;
     readonly thumbAlpha: number;
@@ -117,6 +127,7 @@ async function readChrome(
         );
 
         return {
+            viewportWidth: window.innerWidth,
             barFound: bar !== null,
             barMaxScroll: bar === null ? 0 : Math.round(bar.scrollWidth - bar.clientWidth),
             thumbAlpha:
@@ -138,6 +149,23 @@ test.describe("diff chrome visibility", () => {
             const chrome = await readChrome(page, bar);
 
             expect(chrome.barFound, `${bar} is not mounted, so nothing was measured`).toBe(true);
+
+            // `barFound` plus a thumb colour is not evidence the user has a bar to grab. The
+            // thumb's colour is a property of the CSS rule and resolves even on a bar with no
+            // extent at all: measured at 1200px, where this element is 0x0 -- scrollWidth and
+            // clientWidth both zero -- `::-webkit-scrollbar-thumb` still reports alpha 0.24. So a
+            // regression that collapsed the bar at every width would keep both assertions green.
+            // Asserted only below the overflow width, because at 1200px having nothing to scroll
+            // is the correct answer rather than a defect.
+            if (chrome.viewportWidth < LINES_OVERFLOW_BELOW) {
+                expect(
+                    chrome.barMaxScroll,
+                    `${bar} is mounted at ${chrome.viewportWidth}px, where every line overflows ` +
+                        `its pane, but reports nothing to scroll -- so the thumb assertion below ` +
+                        `is measuring a bar the user can never reach`,
+                ).toBeGreaterThan(0);
+            }
+
             expect(
                 chrome.thumbAlpha,
                 `${bar} paints no thumb: the bar scrolls ${chrome.barMaxScroll}px and the user ` +

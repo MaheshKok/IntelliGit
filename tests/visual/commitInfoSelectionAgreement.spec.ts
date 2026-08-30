@@ -106,6 +106,23 @@ test.describe("commit-info selection agreement", () => {
                 ).toBe(true);
             }
 
+            // The third precondition, and the same shape as the two above. `denies` compares
+            // against one literal, so a pane that mounts carrying no `data-pane-state` at all
+            // reads as "not denying" and passes while this oracle has read nothing.
+            //
+            // Deliberately NOT an allowlist of recognized states. Requiring the value to be one
+            // of {"detail","loading"} would contradict the invariant stated at the top of this
+            // file -- any honest non-denial is fine, and a future branch such as a failed-fetch
+            // "error" state is a non-denial too. What is asserted is only that there IS a state
+            // to compare against, which is a claim about the oracle rather than about the pane.
+            if (found.paneMounted) {
+                expect(
+                    found.paneState,
+                    `${context} mounts a commit-info pane carrying no data-pane-state, so the ` +
+                        `agreement below compares against nothing: ${JSON.stringify(found)}`,
+                ).not.toBeNull();
+            }
+
             const denies = found.paneMounted && found.paneState === "empty";
             expect(
                 denies,

@@ -31,6 +31,8 @@ interface Fit {
     readonly labelLeft: number;
     readonly labelRight: number;
     readonly truncated: boolean;
+    readonly scrollWidth: number;
+    readonly clientWidth: number;
     readonly textOverflow: string;
     readonly clipper: { readonly testid: string | null; left: number; right: number } | null;
     readonly fieldWidth: number;
@@ -75,6 +77,8 @@ async function measure(page: import("@playwright/test").Page, label: string, fie
                 // The browser's own report that it had to cut the text, which is exactly the
                 // condition under which it paints the ellipsis.
                 truncated: element.scrollWidth > element.clientWidth,
+                scrollWidth: element.scrollWidth,
+                clientWidth: element.clientWidth,
                 textOverflow: style.textOverflow,
                 clipper,
                 fieldWidth: wrapper?.getBoundingClientRect().width ?? -1,
@@ -82,6 +86,30 @@ async function measure(page: import("@playwright/test").Page, label: string, fie
         },
         [label, field] as const,
     );
+}
+
+/**
+ * Both guards below are conditional invariants: they only say anything about a label the pane
+ * actually had to cut. Expressing that as `if (!fit.truncated) return` put the early exit BEFORE
+ * the only `expect()` in each test, which is indistinguishable from passing -- a fixture that
+ * stopped overflowing would turn both green while measuring nothing, and the ellipsis and
+ * shrink-order regressions they exist for would ship behind a green suite.
+ *
+ * Requiring truncation instead costs nothing today: measured on this fixture, the label overflows
+ * in all eight projects -- 108px of text in 106px at 320px, and in 40px at 1200px, the wide panes
+ * squeezing it harder because the search field claims its 420px basis first. So the precondition
+ * is a property of the fixture rather than of whichever project happens to run, and no viewport
+ * needs pinning here to guarantee it. If it ever stops holding, that is the fixture losing its
+ * ability to reproduce the defect, which is worth a failure rather than a silent skip.
+ */
+function requireTruncated(fit: Fit): void {
+    expect(
+        fit.truncated,
+        `"${fit.title}" is not truncated at this pane width (${fit.scrollWidth}px of text in ` +
+            `${fit.clientWidth}px of box), so the guard below measures nothing. Either the fixture ` +
+            `stopped overflowing or the label was given room; both need a look before this test is ` +
+            `trusted again.`,
+    ).toBe(true);
 }
 
 test.describe("branch-scope label fit", () => {
@@ -118,7 +146,7 @@ test.describe("branch-scope label fit", () => {
         // Separate from the test above on purpose. Making the label shrinkable is what stops the
         // hard cut, and it is also what could hide the text with no affordance at all; the two
         // failures are different edits and must not collapse into one count.
-        if (!fit.truncated) return;
+        requireTruncated(fit);
         expect(
             fit.textOverflow,
             `"${fit.title}" is truncated but paints no ellipsis, so the text just stops`,
@@ -137,7 +165,7 @@ test.describe("branch-scope label fit", () => {
         // 420px-basis search field take a fifth of any deficit out of a ~108px label -- truncating
         // it on panes that fit it today while the field still had 250px to give. Stated without a
         // viewport number so it holds at every pane width the user can drag to.
-        if (!fit.truncated) return;
+        requireTruncated(fit);
         const floor = FILTER_INPUT_WRAP_STYLE.minWidth as number;
         expect(
             Math.round(fit.fieldWidth),
