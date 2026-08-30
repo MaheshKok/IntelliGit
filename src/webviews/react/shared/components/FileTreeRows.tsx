@@ -13,7 +13,7 @@ import { VscCheckbox } from "./VscCheckbox";
 import { ChevronIcon } from "./Icons";
 import { resolveFolderIcon } from "../utils/folderIcons";
 import { getLeafName, getParentPath } from "../utils/path";
-import { JETBRAINS_UI } from "../tokens";
+import { JETBRAINS_UI, SHADOW } from "../tokens";
 import { t } from "../i18n";
 import { countFiles, type TreeEntry, type TreeFolder } from "../fileTree";
 
@@ -463,6 +463,9 @@ function treeFileVisuals(isSelected: boolean, isDragSelected: boolean) {
                 ? JETBRAINS_UI.color.selected
                 : "var(--intelligit-pycharm-selected)"
             : JETBRAINS_UI.color.hover,
+        // Both highlight states get the ring, because both resolve to a host-owned
+        // fill that stock themes set as low as 1.15:1 against the panel.
+        boxShadow: hasHighlight ? SHADOW.selectedRing : undefined,
     };
 }
 
@@ -657,6 +660,14 @@ function TreeFileRowImpl({
                       : undefined
             }
             bg={visuals.background}
+            // A 1px inner ring, not a stripe. The background alone cannot carry the
+            // state: it resolves to a host colour that three of the four captured
+            // themes set under 1.5:1 against the panel, so a selected row had no
+            // visible boundary there. DESIGN.md still bans a >1px colored edge as a
+            // row accent, which is why this is a hairline and why it is a box-shadow
+            // rather than a border — the row's height is fixed and a border would
+            // shift its content. See SHADOW.selectedRing.
+            boxShadow={visuals.boxShadow}
             color={
                 isCommitPanel
                     ? isDragSelected
@@ -664,11 +675,6 @@ function TreeFileRowImpl({
                         : "var(--intelligit-pycharm-foreground)"
                     : visuals.color
             }
-            // No selection stripe. A selected row already carries the full
-            // Selection Indigo background and its paired foreground, so the 2px
-            // inset accent that used to sit here restated a state the row had
-            // already made obvious — and DESIGN.md bans a >1px colored edge as a
-            // row accent outright.
             _hover={{
                 bg: isCommitPanel
                     ? isDragSelected

@@ -62,10 +62,18 @@ const RING_GEOMETRY = "inset 0 0 0 1px ";
 
 const hostFixtures = readdirSync(HOST_FIXTURE_DIR).filter((name) => name.endsWith(".json"));
 
-/** The declaration block of one rule in a plain CSS string. */
+/**
+ * The declaration block of one rule in a plain CSS string.
+ *
+ * Comments are stripped first: they may carry braces, and a comment sitting between
+ * two declarations would otherwise hide the second one from `declaration` below --
+ * which reads a value as absent rather than erroring, so it would report a missing
+ * ring that is in fact present.
+ */
 function ruleBody(css: string, selector: string): string {
+    const withoutComments = css.replace(/\/\*[\s\S]*?\*\//g, "");
     const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const match = new RegExp(`${escaped}\\s*\\{([^}]*)\\}`).exec(css);
+    const match = new RegExp(`${escaped}\\s*\\{([^}]*)\\}`).exec(withoutComments);
     if (!match) throw new Error(`no \`${selector}\` rule in the stylesheet`);
     return match[1];
 }
@@ -252,7 +260,9 @@ const SELECTION_SITES = [
                 renderSubtree={() => null}
             />
         ),
-        find: (container: HTMLElement) => container.firstElementChild as HTMLElement | null,
+        // The stash row is nested inside the tree container rather than being its
+        // first child, so address it by the role it advertises.
+        find: (container: HTMLElement) => container.querySelector<HTMLElement>('[role="treeitem"]'),
     },
 ] as const;
 

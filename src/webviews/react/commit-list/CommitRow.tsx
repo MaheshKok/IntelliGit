@@ -410,6 +410,9 @@ function CommitRowInner({
                 ? `2px solid ${laneColor ?? JETBRAINS_UI.color.head}`
                 : "2px solid transparent",
             background: isSelected ? JETBRAINS_UI.color.selected : "transparent",
+            // The fill alone cannot carry the state: it is a host colour that three of
+            // four stock themes set under 1.5:1 against the panel. See SHADOW.selectedRing.
+            boxShadow: isSelected ? SHADOW.selectedRing : undefined,
             color: isSelected
                 ? JETBRAINS_UI.color.selectedForeground
                 : isMergeCommit

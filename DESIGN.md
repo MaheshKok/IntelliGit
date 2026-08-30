@@ -128,6 +128,7 @@ components:
     textColor: "{colors.selection-foreground}"
     rounded: "{rounded.selected}"
     height: "{spacing.row}"
+    ring: "inset 0 0 0 1px {colors.focus-azure}"
 ---
 
 # Design System: IntelliGit
@@ -268,7 +269,7 @@ Cards are essentially absent, and that is deliberate. Content lives in flat list
 ### Rows / Trees
 
 - **Height:** 24px, fixed. Tree indent is 18px per level.
-- **Selected:** Selection Indigo background at 5px radius with Selection Foreground text — a slightly softer corner than controls, so selection reads as a highlight rather than a button.
+- **Selected:** Selection Indigo background at 5px radius with Selection Foreground text — a slightly softer corner than controls, so selection reads as a highlight rather than a button — *plus a 1px inner ring in Focus Azure*. The ring is not decoration. The background resolves to `--vscode-list-activeSelectionBackground`, a color the host owns; VS Code's own list widget pairs that fill with an outline drawn on top, so stock themes are free to pick a fill with almost no contrast, and they do. Measured against the panel: Light Modern 1.15:1, HC Light 1.18:1, Dark Modern 1.48:1 — all under the 3:1 WCAG 1.4.11 asks of a non-text state indicator, and HC Light, the theme that exists for contrast, was the worst of them. The fill cannot carry the state alone, so the ring carries it. It is an inset `box-shadow` rather than a border because rows are fixed-height and a border would shift their content, and rather than an outline because tree rows already draw a focus outline at the same -1px offset.
 - **Hover:** A translucent host hover wash. Never a border; a border on hover causes 1px layout shift.
 - **Status:** Always a colored glyph *plus* a label or letter code. Color alone is never the carrier.
 

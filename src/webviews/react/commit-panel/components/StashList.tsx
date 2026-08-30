@@ -7,6 +7,7 @@ import type { StashEntry, WorkingFile } from "../../../../types";
 import { ChevronIcon } from "../../shared/components/Icons";
 import { t } from "../../shared/i18n";
 import { formatDateTime } from "../../shared/date";
+import { SHADOW } from "../../shared/tokens";
 
 /** State and callbacks for the keyboard-navigable stash row tree. */
 export interface StashListProps {
@@ -112,6 +113,10 @@ export function StashList({
                                         ? "var(--intelligit-pycharm-selected)"
                                         : "transparent"
                                 }
+                                // The fill is host-owned and near-invisible on three of
+                                // four stock themes, so the row's boundary comes from
+                                // the ring. See SHADOW.selectedRing.
+                                boxShadow={isSelected ? SHADOW.selectedRing : undefined}
                                 _hover={{
                                     bg: isSelected
                                         ? "var(--intelligit-pycharm-selected)"

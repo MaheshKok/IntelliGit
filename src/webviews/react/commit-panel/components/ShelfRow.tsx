@@ -4,6 +4,7 @@ import type { ShelfEntry } from "../../../protocol/commitPanelMessages";
 import { ChevronIcon } from "../../shared/components/Icons";
 import { formatDateTime } from "../../shared/date";
 import { t } from "../../shared/i18n";
+import { SHADOW } from "../../shared/tokens";
 
 /** Context-menu actions supported by an individual shelf row. */
 export type ShelfContextAction =
@@ -99,6 +100,9 @@ export function ShelfRow({
                     : "var(--intelligit-pycharm-foreground)"
             }
             bg={state.selected ? "var(--intelligit-pycharm-selected)" : "transparent"}
+            // The fill is host-owned and near-invisible on three of four stock themes,
+            // so the row's boundary comes from the ring. See SHADOW.selectedRing.
+            boxShadow={state.selected ? SHADOW.selectedRing : undefined}
             _hover={{
                 bg: state.selected
                     ? "var(--intelligit-pycharm-selected)"
