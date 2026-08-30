@@ -326,6 +326,9 @@
     --diff-inserted-wash: color-mix(in srgb, var(--diff-ok) 15%, var(--diff-editor-bg));
     --diff-deleted-wash: color-mix(in srgb, var(--diff-deleted-hue) 15%, var(--diff-editor-bg));
     --diff-modified-wash: color-mix(in srgb, var(--diff-info) 15%, var(--diff-editor-bg));
+    /* The base tint, for a mark outside any changed block. `.diff-segment-changed`
+       re-declares this from the block's own hue -- see the comment there for why the
+       override cannot live here. */
     --diff-word-wash: color-mix(in srgb, var(--diff-info) 30%, var(--diff-editor-bg));
     /* One number for the revert arrow's box AND the strip reserved for it, because a strip
        narrower than its glyph clips it and a wider one leaves the arrow floating away from
@@ -368,8 +371,27 @@
    The whole shadow list lives on the marker class as a token because box-shadow does
    not accumulate across rules: a second rule declaring one would REPLACE the edge bar,
    not add to it. The marker still paints nothing itself, which is what
-   `tests/unit/visual/diffCorePalette.test.ts` requires of it. */
+   `tests/unit/visual/diffCorePalette.test.ts` requires of it.
+
+   --diff-word-wash is re-declared here for the same structural reason, and it is worth
+   spelling out because it looks like it belongs beside the other washes on `.diff-viewer`.
+   It cannot live there. A var() inside a custom property is substituted on the element
+   that DECLARES the property, not on the one that finally uses it -- so a
+   `var(--diff-segment-hue)` written on the root resolves at the root, where no hue is
+   declared, and every word mark in the file comes out the one fallback colour. Measured
+   in a browser: declared on the ancestor the span computes the fallback, declared
+   alongside the hue it computes the hue. The marker classes below set --diff-segment-hue
+   on this same element, so the substitution finds it and the resolved colour inherits
+   down to the span -- a lighter green inside an inserted block and a lighter red inside a
+   deleted one. Modified blocks use --diff-info by default; the pane-specific rules below
+   override only their word wash, leaving their block hue and background modified. The root
+   keeps the --diff-info mix as the base for a mark outside any changed block. */
 .diff-viewer .diff-segment-changed {
+    --diff-word-wash: color-mix(
+        in srgb,
+        var(--diff-segment-hue, var(--diff-info)) 30%,
+        var(--diff-editor-bg)
+    );
     --diff-hunk-bracket: color-mix(
         in srgb,
         color-mix(in srgb, var(--diff-segment-hue, transparent) 30%, var(--diff-editor-bg)) 76%,
@@ -402,6 +424,16 @@
     --diff-segment-hue: var(--diff-info);
     box-shadow: var(--diff-segment-shadow);
     background: var(--diff-modified-wash, transparent);
+}
+
+/* A two-sided hunk remains modified at block level. Only changed words communicate direction:
+   removed text on the left and added text on the editable right. */
+.diff-viewer .diff-pane-left .diff-segment-modified {
+    --diff-word-wash: color-mix(in srgb, var(--diff-deleted-hue) 30%, var(--diff-editor-bg));
+}
+
+.diff-viewer .diff-pane-right .diff-segment-modified {
+    --diff-word-wash: color-mix(in srgb, var(--diff-ok) 30%, var(--diff-editor-bg));
 }
 
 /* .diff-segment-empty declares no BACKGROUND, and cannot: each pane is sized from its own
@@ -453,11 +485,32 @@
    above for the arithmetic behind the light-theme floor and for why the merge editor's
    own clean baseline is not evidence of safety here. The resulting findings are
    recorded in tests/visual/fixtures/knownFindings.json, so a NEW one still fails.
-   Only a two-sided hunk renders these spans at all: `WordDiffLine` returns a plain
-   highlighted line when the compared line is empty
-   (src/webviews/react/diff-core/segments.tsx:158), so a one-sided hunk has nothing to
-   mark and the modified state is the only one that can carry them -- which is why one
-   --diff-info tint covers it rather than a colour per variant.
+   A one-sided hunk carries these spans too. `WordDiffLine` weighs the similarity floor
+   only when there IS a counterpart to weigh (src/webviews/react/diff-core/segments.tsx),
+   so a row with nothing opposite it is marked over its whole length -- it is new in its
+   entirety. That is why --diff-word-wash follows the block's own --diff-segment-hue by
+   default rather than a fixed --diff-info: one-sided blocks get a lighter green or red at
+   the same 30%. Two-sided modified blocks keep --diff-info for the block itself while the
+   pane-specific rules above override only the word wash to show removed text on the left
+   and added text on the right.
+   Marking one-sided rows enlarged the recorded population, and the ladder above did not
+   predict it because at the time no one-sided row could carry a fill at all. Measured on
+   the diff-viewer fixture, whose segments 1 and 3 are one-sided:
+
+     dark-modern x2   +11 new, -4 gone   (net +7)
+     hc-black x2       +7 new,  0 gone   (net +7)
+     light-modern x2  +14 new, -14 gone  (net 0)
+     hc-light x2      +14 new, -14 gone  (net 0)
+
+   The light themes trade one finding for another rather than gaining any: those rows were
+   already failing behind the 15% block wash, and the mark only re-keys them one span
+   deeper. The dark themes are where the count really grows, because 15% cleared the floor
+   there and 30% does not. This is the same cost the wash comment above accepted, applied
+   to more rows -- not a second kind of cost -- so it is recorded here and baselined rather
+   than gated away. A row inside a one-sided block is marked over its whole length, and
+   that still reads as a two-tone rather than as a uniformly brighter block: the fill
+   follows the glyph runs, so the marked text sits lighter against the block wash that
+   continues past the end of the line. The recorded baseline screenshots show it.
    This overrides diff-core's `.word-diff-change` on specificity (0,2,0 over 0,1,0);
    that rule reads --diff-pycharm-modified, which only merge-editor.css declares. */
 .diff-viewer .word-diff-change {
@@ -742,7 +795,13 @@
     font: inherit;
     line-height: 20px;
     white-space: pre;
-    overflow: hidden;
+    overflow: auto hidden;
+    scrollbar-width: none;
+}
+
+.diff-editing-block .diff-edit-textarea::-webkit-scrollbar {
+    width: 0;
+    height: 0;
 }
 
 .diff-editing-block.line-numbers-right .diff-edit-textarea {

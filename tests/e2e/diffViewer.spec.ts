@@ -9,11 +9,12 @@
 // controlChannelRoundTrip.spec.ts establish the precedent for a standalone spec with its own launch
 // sequence outside that matrix.
 
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import type { ElectronApplication, FrameLocator } from "@playwright/test";
+import type { ElectronApplication, FrameLocator, Locator } from "@playwright/test";
 
+import { runGit } from "../fixtures/repo/gitRun";
 import { DIRTY_FIXTURE } from "../fixtures/repo/scenarios";
 import { waitForE2eChannelReady } from "./controlChannelClient";
 import { expect, test, type FixtureWorkspaceFixture } from "./fixtureWorkspace";
@@ -30,6 +31,7 @@ const REPO_ROOT = path.resolve(__dirname, "../..");
 /** Launches the workspace, clicks the changed file, and returns the revealed viewer frame. */
 async function openDiffViewer(
     fixtureWorkspace: FixtureWorkspaceFixture,
+    targetPath: string = DIRTY_FIXTURE.mutablePath,
 ): Promise<{ electronApp: ElectronApplication; diffFrame: FrameLocator }> {
     const executablePath = await resolveVSCodeExecutable(REPO_ROOT);
     const electronApp = await launchFixtureWorkspace({
@@ -51,7 +53,7 @@ async function openDiffViewer(
     const sidebarFrame = await intelliGitView.reveal();
     const changesPanel = new ChangesPanel(sidebarFrame);
 
-    const changedRow = changesPanel.changedFileRow(DIRTY_FIXTURE.mutablePath);
+    const changedRow = changesPanel.changedFileRow(targetPath);
     await expect(changedRow).toBeVisible();
     await changedRow.click();
 
@@ -61,6 +63,22 @@ async function openDiffViewer(
     await expect(diffFrame.locator('[data-testid="diff-viewer-root"]')).toBeVisible();
 
     return { electronApp, diffFrame };
+}
+
+/** Applies one controlled textarea draft through the browser's native input boundary. */
+async function applyDraft(
+    textarea: Locator,
+    edit: { readonly text: string; readonly caret: number },
+): Promise<void> {
+    await textarea.evaluate((element, next) => {
+        const textareaElement = element as HTMLTextAreaElement;
+        const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;
+        setter?.call(textareaElement, next.text);
+        textareaElement.setSelectionRange(next.caret, next.caret);
+        textareaElement.dispatchEvent(
+            new InputEvent("input", { bubbles: true, inputType: "insertLineBreak" }),
+        );
+    }, edit);
 }
 
 test.describe("diff viewer", () => {
@@ -99,15 +117,13 @@ test.describe("diff viewer", () => {
     });
 
     // The one leg the unit and integration suites structurally cannot cover. Each is proven on its
-    // own side of the wall: the webview posts a delta a second after the last keystroke and
+    // own side of the wall: the webview posts a delta 500ms after the last keystroke and
     // re-bases when the payload returns (diff-viewer.integration.test.tsx), and the host applies
     // it and re-renders without minting a fresh reseed token
     // (editableDiffEditorProvider.test.ts). Neither executes the trip, and both stub the half they
     // do not own -- so a webview that posted into nothing, or a host that answered a message
     // nobody sent, would leave both suites green.
-    test("re-diffs an edited block a second after the typing stops", async ({
-        fixtureWorkspace,
-    }) => {
+    test("re-diffs an edited block 500ms after the typing stops", async ({ fixtureWorkspace }) => {
         test.setTimeout(120_000);
         const { electronApp, diffFrame } = await openDiffViewer(fixtureWorkspace);
 
@@ -150,6 +166,254 @@ test.describe("diff viewer", () => {
             // still focused, and still holds what was typed.
             await expect(textarea).toBeFocused();
             await expect(textarea).toHaveValue(headText);
+        } finally {
+            await electronApp.close();
+        }
+    });
+
+    test("keeps repeated Enter rows on their inserted hunk before the next echo", async ({
+        fixtureWorkspace,
+    }) => {
+        test.setTimeout(120_000);
+        const targetPath = "repeated-enter.ts";
+        const filePath = path.join(fixtureWorkspace.workspace.root, targetPath);
+        const cleanLines = ["head0;", "importOne();", "importTwo();", "after();"];
+        await writeFile(filePath, `${cleanLines.join("\n")}\n`, "utf-8");
+        await runGit(
+            fixtureWorkspace.workspace.root,
+            ["add", targetPath],
+            fixtureWorkspace.workspace.env,
+        );
+        await runGit(
+            fixtureWorkspace.workspace.root,
+            ["commit", "-m", "seed repeated Enter fixture"],
+            fixtureWorkspace.workspace.env,
+        );
+        await writeFile(
+            filePath,
+            `${[...cleanLines.slice(0, -1), "afterChanged();"].join("\n")}\n`,
+            "utf-8",
+        );
+
+        const { electronApp, diffFrame } = await openDiffViewer(fixtureWorkspace, targetPath);
+
+        try {
+            const commonBlock = diffFrame
+                .locator(
+                    '[data-testid="diff-pane-right"] .diff-editable-block:not(.diff-segment-changed)',
+                )
+                .first();
+            await expect(commonBlock).toBeVisible();
+            await commonBlock.click();
+
+            const textarea = diffFrame.locator('[data-testid="diff-pane-right-editable"]');
+            await expect(textarea).toBeFocused();
+            const firstDraft = await textarea.inputValue();
+            const firstBlankDraft = firstDraft.replace("head0;\n", "head0;\n\n");
+            const firstCaret = firstBlankDraft.indexOf("importOne();") - 1;
+            await applyDraft(textarea, { text: firstBlankDraft, caret: firstCaret });
+
+            await expect
+                .poll(() => readFile(filePath, "utf-8"), { timeout: 30_000 })
+                .toContain("head0;\n\nimportOne();");
+            await expect(
+                diffFrame.locator(".diff-editing-block .diff-segment-changed"),
+            ).toBeVisible();
+
+            const echoedDraft = await textarea.inputValue();
+            const insertionCaret = echoedDraft.indexOf("importOne();") - 1;
+            const tenBlankDraft = `${echoedDraft.slice(0, insertionCaret)}${"\n".repeat(9)}${echoedDraft.slice(insertionCaret)}`;
+            const tenBlankCaret = insertionCaret + 9;
+            await applyDraft(textarea, { text: tenBlankDraft, caret: tenBlankCaret });
+            const immediatePaint = await diffFrame
+                .locator(".diff-editing-block")
+                .evaluate((block) => ({
+                    changedRows: block.querySelectorAll(".diff-segment-changed .code-line-content")
+                        .length,
+                    changedText: Array.from(
+                        block.querySelectorAll(".diff-segment-changed .code-line-content"),
+                        (row) => row.textContent ?? "",
+                    ),
+                }));
+
+            expect(
+                immediatePaint.changedRows,
+                "all ten blank rows must stay on the insertion segment before the 500ms host echo",
+            ).toBe(10);
+            for (const unchanged of ["importOne();", "importTwo();"]) {
+                expect(
+                    immediatePaint.changedText,
+                    `${unchanged} was pulled into the inserted-row paint`,
+                ).not.toContain(unchanged);
+            }
+        } finally {
+            await electronApp.close();
+        }
+    });
+
+    test("scrolls the focused right editor horizontally without drawing a control box", async ({
+        fixtureWorkspace,
+    }) => {
+        test.setTimeout(120_000);
+        const { electronApp, diffFrame } = await openDiffViewer(fixtureWorkspace);
+
+        try {
+            const block = diffFrame
+                .locator(
+                    '[data-testid="diff-pane-right"] .diff-editable-block.diff-segment-changed:not(.diff-segment-empty)',
+                )
+                .first();
+            await expect(block).toBeVisible();
+            await block.click();
+
+            const textarea = diffFrame.locator('[data-testid="diff-pane-right-editable"]');
+            await expect(textarea).toBeFocused();
+            await textarea.fill(`horizontal-${"0123456789".repeat(80)}`);
+            await expect
+                .poll(() =>
+                    textarea.evaluate((element) => element.scrollWidth > element.clientWidth),
+                )
+                .toBe(true);
+
+            const focusedStyle = await textarea.evaluate((element) => {
+                const style = getComputedStyle(element);
+                return {
+                    borderTopWidth: style.borderTopWidth,
+                    outlineStyle: style.outlineStyle,
+                    outlineWidth: style.outlineWidth,
+                    overflowX: style.overflowX,
+                    overflowY: style.overflowY,
+                };
+            });
+            expect(focusedStyle).toEqual({
+                borderTopWidth: "0px",
+                outlineStyle: "none",
+                outlineWidth: "0px",
+                overflowX: "auto",
+                overflowY: "hidden",
+            });
+
+            // Filling moves the caret to the long line's end and may scroll there by itself.
+            // Return every synchronized surface to zero before the real wheel gesture so the
+            // assertion proves the textarea can START a horizontal scroll, not merely mirror one.
+            await textarea.evaluate((element) => {
+                const control = element as HTMLTextAreaElement;
+                control.setSelectionRange(0, 0);
+                control.scrollLeft = 0;
+                control.dispatchEvent(new Event("scroll", { bubbles: true }));
+            });
+            await expect.poll(() => textarea.evaluate((element) => element.scrollLeft)).toBe(0);
+
+            const box = await textarea.boundingBox();
+            expect(box, "the focused textarea must have a wheel target").not.toBeNull();
+            const page = await electronApp.firstWindow();
+            await page.mouse.move((box?.x ?? 0) + 20, (box?.y ?? 0) + 10);
+            await page.mouse.wheel(420, 0);
+
+            const textareaScrollLeft = () =>
+                textarea.evaluate((element) => Math.round(element.scrollLeft));
+            await expect.poll(textareaScrollLeft).toBeGreaterThan(0);
+            const peerCodeLines = diffFrame
+                .locator('[data-testid="diff-pane-left"] .code-lines')
+                .first();
+            const sharedScrollbar = diffFrame.locator(".diff-horizontal-scroll");
+            await expect
+                .poll(async () => {
+                    const [textareaLeft, peerLeft, sharedLeft] = await Promise.all([
+                        textareaScrollLeft(),
+                        peerCodeLines.evaluate((element) => Math.round(element.scrollLeft)),
+                        sharedScrollbar.evaluate((element) => Math.round(element.scrollLeft)),
+                    ]);
+                    return (
+                        textareaLeft > 0 && peerLeft === textareaLeft && sharedLeft === textareaLeft
+                    );
+                })
+                .toBe(true);
+        } finally {
+            await electronApp.close();
+        }
+    });
+
+    test("paints only the changed part of the active block after the live re-diff", async ({
+        fixtureWorkspace,
+    }) => {
+        test.setTimeout(120_000);
+        const { electronApp, diffFrame } = await openDiffViewer(fixtureWorkspace);
+        const filePath = path.join(fixtureWorkspace.workspace.root, DIRTY_FIXTURE.mutablePath);
+
+        try {
+            const block = diffFrame
+                .locator(
+                    '[data-testid="diff-pane-right"] .diff-editable-block.diff-segment-changed:not(.diff-segment-empty)',
+                )
+                .first();
+            await expect(block).toBeVisible();
+            const visibleArrows = diffFrame.locator(".diff-hunk-revert:visible");
+            const arrowsBefore = await visibleArrows.count();
+            expect(
+                arrowsBefore,
+                "the fixture's changed hunk must expose a revert arrow",
+            ).toBeGreaterThan(0);
+            const visibleArrowTestIds = () =>
+                visibleArrows.evaluateAll((arrows) =>
+                    arrows
+                        .map((arrow) => arrow.getAttribute("data-testid"))
+                        .filter((testId): testId is string => testId !== null),
+                );
+            const arrowTestIdsBefore = await visibleArrowTestIds();
+            await block.click();
+
+            const textarea = diffFrame.locator('[data-testid="diff-pane-right-editable"]');
+            await expect(textarea).toBeFocused();
+            const activeBlock = diffFrame.locator(
+                '[data-testid="diff-pane-right"] .diff-editing-block',
+            );
+            // `diff-segment-changed` is the paint itself -- it declares --diff-word-wash and
+            // --diff-hunk-bracket (diff-viewer.css:389), and those cascade, so an ancestor
+            // carrying it washes every row beneath. One host segment means one changed block,
+            // and the paint belongs on the block itself.
+            await expect(activeBlock).toBeVisible();
+            await expect(activeBlock).toHaveClass(/diff-segment-changed/);
+            await expect(visibleArrows).toHaveCount(arrowsBefore);
+
+            const headText = (
+                await diffFrame
+                    .locator(
+                        '[data-testid="diff-pane-left"] .diff-segment-changed:not(.diff-segment-empty) .code-lines',
+                    )
+                    .first()
+                    .innerText()
+            ).trim();
+            expect(headText, "the corresponding HEAD hunk must carry text").not.toBe("");
+            const typed = `${headText}\nlive-echo-visual-state`;
+            await textarea.fill(typed);
+
+            // The draft renders immediately, but its revert-action identity can only change after
+            // the returned host payload re-segments this hunk into its common HEAD prefix and the
+            // added line. That payload must preserve the active surface without another-pane click.
+            await expect
+                .poll(visibleArrowTestIds, { timeout: 20_000 })
+                .not.toEqual(arrowTestIdsBefore);
+            await expect
+                .poll(() => readFile(filePath, "utf-8"), { timeout: 30_000 })
+                .toContain(typed);
+            // The echo cuts this run into the HEAD line it now shares and the line that was
+            // added, and each keeps its own paint. Three separate claims because they fail
+            // separately: the wash returning to the wrapper, the changed child losing its
+            // paint, and the run re-coalescing so the shared line has no unpainted block of
+            // its own. Asserting only "something is painted changed" would pass all three.
+            await expect(activeBlock).toBeVisible();
+            await expect(activeBlock).not.toHaveClass(/diff-segment-changed/);
+            await expect(
+                activeBlock.locator(".diff-editable-block.diff-segment-changed"),
+            ).toHaveCount(1);
+            await expect(
+                activeBlock.locator(".diff-editable-block:not(.diff-segment-changed)"),
+            ).toHaveCount(1);
+            await expect(textarea).toBeFocused();
+            await expect(textarea).toHaveValue(typed);
+            await expect(activeBlock.locator(".line-number")).toHaveCount(typed.split("\n").length);
+            await expect(visibleArrows).not.toHaveCount(0);
         } finally {
             await electronApp.close();
         }
@@ -230,6 +494,260 @@ test.describe("diff viewer", () => {
                     return lineBox.y + lineBox.height - contentBox.y;
                 })
                 .toBeLessThanOrEqual(0);
+        } finally {
+            await electronApp.close();
+        }
+    });
+
+    // The caret dragging the viewport back to a block the user has scrolled away from. Every
+    // layer below this one is structurally blind to it: jsdom implements neither focus scrolling
+    // nor `setSelectionRange`'s scroll-into-view, so the integration suite cannot observe a
+    // viewport move at all, and the route-based visual harness has a real engine but a stubbed
+    // host, so nothing there moves a draft between two blocks a full screen apart.
+    //
+    // The fixture is built here rather than in `scenarios.ts` because the defect needs a file
+    // tall enough to scroll the first draft entirely out of view -- the dirty fixture's one-line
+    // file is always on screen, where a scroll restore is a no-op and the bug cannot show.
+    test("keeps the viewport on the block just clicked, not the one the caret came from", async ({
+        fixtureWorkspace,
+    }) => {
+        test.setTimeout(180_000);
+        const scrollPath = "scroll-fixture.txt";
+        const workspaceRoot = fixtureWorkspace.workspace.root;
+        const gitEnv = fixtureWorkspace.workspace.env;
+        const filePath = path.join(workspaceRoot, scrollPath);
+
+        // HEAD side: tall enough that a block near the top leaves the viewport entirely.
+        const headLines = Array.from({ length: 140 }, (_, index) => `line ${index + 1};`);
+        await writeFile(filePath, `${headLines.join("\n")}\n`, "utf-8");
+        await runGit(workspaceRoot, ["add", scrollPath], gitEnv);
+        await runGit(workspaceRoot, ["commit", "-m", "seed a scrollable file"], gitEnv);
+
+        // Working-tree side: three separated one-line changes, so the diff is several blocks and
+        // the first of them sits near the top -- the user's "line 18".
+        const workingLines = [...headLines];
+        workingLines[17] = "line 18; edited";
+        workingLines[74] = "line 75; edited";
+        workingLines[119] = "line 120; edited";
+        await writeFile(filePath, `${workingLines.join("\n")}\n`, "utf-8");
+
+        const { electronApp, diffFrame } = await openDiffViewer(fixtureWorkspace, scrollPath);
+
+        try {
+            const content = diffFrame.locator(".diff-content");
+            const block = diffFrame
+                .locator(
+                    '[data-testid="diff-pane-right"] .diff-editable-block.diff-segment-changed:not(.diff-segment-empty)',
+                )
+                .first();
+            await expect(block).toBeVisible();
+
+            // Step 1 -- "put cursor at line 18".
+            await block.click();
+            const textarea = diffFrame.locator('[data-testid="diff-pane-right-editable"]');
+            await expect(textarea).toBeFocused();
+            const echoMarker = "viewport-after-live-echo;";
+            const typed = `${await textarea.inputValue()}\n${echoMarker}`;
+            await textarea.fill(typed);
+            await expect
+                .poll(() => readFile(filePath, "utf-8"), { timeout: 30_000 })
+                .toContain(echoMarker);
+            const echoedDiff = diffFrame.getByText(echoMarker, { exact: true });
+            await expect(echoedDiff).toBeVisible();
+            const echoedDiffTop = await echoedDiff.evaluate((element) =>
+                Math.round(element.getBoundingClientRect().top),
+            );
+
+            // Step 2 -- after the 500ms edit/host echo, "scroll the screen all the way to
+            // line 75". Scrolled by bringing the
+            // target block into view rather than to `scrollHeight`: the scroller carries a
+            // trailing spacer (see "scrolls the last line of a diff out of sight"), so parking at
+            // the very bottom leaves NOTHING on screen, and Playwright's click would then scroll
+            // the block into view itself -- a viewport move by the test harness, indistinguishable
+            // from the one this test exists to catch.
+            const lastBlock = diffFrame
+                .locator(
+                    '[data-testid="diff-pane-right"] .diff-editable-block.diff-segment-changed:not(.diff-segment-empty)',
+                )
+                .last();
+            // Centred by arithmetic against `.diff-content` itself rather than
+            // `scrollIntoViewIfNeeded`, which picks the nearest scrollable ancestor and here
+            // scrolled something else entirely, leaving `.diff-content` at 0.
+            await lastBlock.evaluate((element) => {
+                const scroller = element.closest<HTMLElement>(".diff-content");
+                if (scroller === null) throw new Error("no .diff-content ancestor to scroll");
+                const delta =
+                    element.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
+                scroller.scrollTop += delta - scroller.clientHeight / 2;
+            });
+            const parked = await content.evaluate((element) => Math.round(element.scrollTop));
+            expect(
+                parked,
+                "the fixture must be tall enough to scroll the first draft out of view",
+            ).toBeGreaterThan(400);
+            const parkedEchoedDiffBottom = await echoedDiff.evaluate((element) =>
+                Math.round(element.getBoundingClientRect().bottom),
+            );
+            const contentTop = await content.evaluate((element) =>
+                Math.round(element.getBoundingClientRect().top),
+            );
+            expect(
+                parkedEchoedDiffBottom,
+                "the precondition is that the newly echoed diff is now off-screen above the fold",
+            ).toBeLessThan(contentTop);
+
+            // Step 3 -- "try to put cursor" down there. The click moves the draft to a block the
+            // first one is nowhere near: the overlay textarea is unmounted from one block and
+            // mounted into another, and `autoFocus` plus the selection-restore effect
+            // (DiffViewerApp.tsx:601) both fire against the new node.
+            await expect(lastBlock).toBeVisible();
+            await lastBlock.click();
+            await expect(textarea).toBeFocused();
+
+            const settled = await content.evaluate((element) => Math.round(element.scrollTop));
+            const secondDraftTop = await textarea.evaluate((element) =>
+                Math.round(element.getBoundingClientRect().top),
+            );
+            expect(
+                settled,
+                `clicking a block near the bottom must leave the viewport there, not scroll back to the newly echoed diff (parked at ${parked}, settled at ${settled}, echoed diff top ${echoedDiffTop}, second draft top ${secondDraftTop})`,
+            ).toBeGreaterThan(parked - 100);
+        } finally {
+            await electronApp.close();
+        }
+    });
+
+    // A live echo can split one tall active draft into common rows plus a small new diff. The first
+    // click into those common rows closes the old overlay; the next opens the clicked block. Neither
+    // focus transition may drag the outer viewport back to the newly echoed diff.
+    test("keeps the viewport at the clicked line after a live re-diff", async ({
+        fixtureWorkspace,
+    }) => {
+        test.setTimeout(180_000);
+        const scrollPath = "tall-block.txt";
+        const workspaceRoot = fixtureWorkspace.workspace.root;
+        const gitEnv = fixtureWorkspace.workspace.env;
+        const filePath = path.join(workspaceRoot, scrollPath);
+
+        const headLines = Array.from({ length: 140 }, (_, index) => `line ${index + 1};`);
+        await writeFile(filePath, `${headLines.join("\n")}\n`, "utf-8");
+        await runGit(workspaceRoot, ["add", scrollPath], gitEnv);
+        await runGit(workspaceRoot, ["commit", "-m", "seed a tall-block file"], gitEnv);
+
+        // One contiguous changed region, taller than the viewport: every line from 10 to 130.
+        const workingLines = headLines.map((line, index) =>
+            index >= 9 && index < 130 ? `${line} edited` : line,
+        );
+        await writeFile(filePath, `${workingLines.join("\n")}\n`, "utf-8");
+
+        const { electronApp, diffFrame } = await openDiffViewer(fixtureWorkspace, scrollPath);
+        const page = await electronApp.firstWindow();
+
+        try {
+            const content = diffFrame.locator(".diff-content");
+            const block = diffFrame
+                .locator(
+                    '[data-testid="diff-pane-right"] .diff-editable-block.diff-segment-changed:not(.diff-segment-empty)',
+                )
+                .first();
+            await expect(block).toBeVisible();
+            const visibleArrows = diffFrame.locator(".diff-hunk-revert:visible");
+            const visibleArrowTestIds = () =>
+                visibleArrows.evaluateAll((arrows) =>
+                    arrows
+                        .map((arrow) => arrow.getAttribute("data-testid"))
+                        .filter((testId): testId is string => testId !== null),
+                );
+            const arrowTestIdsBefore = await visibleArrowTestIds();
+            await block.click({ position: { x: 60, y: 30 } });
+
+            const textarea = diffFrame.locator('[data-testid="diff-pane-right-editable"]');
+            await expect(textarea).toBeFocused();
+            const echoMarker = "tall-block-after-live-echo;";
+            const typed = `${headLines.slice(9, 130).join("\n")}\n${echoMarker}`;
+            await textarea.fill(typed);
+            await expect
+                .poll(visibleArrowTestIds, { timeout: 20_000 })
+                .not.toEqual(arrowTestIdsBefore);
+            await expect
+                .poll(() => readFile(filePath, "utf-8"), { timeout: 30_000 })
+                .toContain(echoMarker);
+            await expect(textarea).toBeFocused();
+            await expect(textarea).toHaveValue(typed);
+            await textarea.evaluate(
+                () =>
+                    new Promise<void>((resolve) => {
+                        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+                    }),
+            );
+
+            // The echo collapses the active draft to the newly inserted line near the bottom.
+            // Scroll to a common line near the top and click it by page coordinate: a locator click
+            // would scroll its target into view and contaminate the viewport measurement.
+            const clickedLine = diffFrame
+                .locator('[data-testid="diff-pane-right"]')
+                .getByText("line 18;", { exact: true });
+            const parked = await clickedLine.evaluate((element) => {
+                const scroller = element.closest<HTMLElement>(".diff-content");
+                if (scroller === null) throw new Error("no .diff-content ancestor to scroll");
+                const delta =
+                    element.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
+                scroller.scrollTop += delta - scroller.clientHeight / 2;
+                return Math.round(scroller.scrollTop);
+            });
+            await content.evaluate(
+                () =>
+                    new Promise<void>((resolve) => {
+                        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+                    }),
+            );
+            const settledAfterScroll = await content.evaluate((element) =>
+                Math.round(element.scrollTop),
+            );
+            expect(
+                Math.abs(settledAfterScroll - parked),
+                `scrolling away after the live echo must stay put before the click (parked at ${parked}, settled at ${settledAfterScroll})`,
+            ).toBeLessThan(100);
+            const [contentBox, clickedLineBox] = await Promise.all([
+                content.boundingBox(),
+                clickedLine.boundingBox(),
+            ]);
+            expect(contentBox, "the scroller must have a box to click into").not.toBeNull();
+            expect(clickedLineBox, "the target line must have a box to click into").not.toBeNull();
+            await page.mouse.click(
+                (clickedLineBox?.x ?? 0) + Math.min(40, (clickedLineBox?.width ?? 42) - 2),
+                (clickedLineBox?.y ?? 0) + (clickedLineBox?.height ?? 0) / 2,
+            );
+            await expect(textarea).toHaveCount(0);
+            const settledAfterBlur = await content.evaluate((element) =>
+                Math.round(element.scrollTop),
+            );
+            expect(
+                Math.abs(settledAfterBlur - parked),
+                `closing the old draft at line 18 must not jump to the newly echoed diff (parked at ${parked}, settled at ${settledAfterBlur})`,
+            ).toBeLessThan(100);
+            const reopenedBlock = diffFrame
+                .locator('[data-testid="diff-pane-right"] .diff-editable-block')
+                .filter({ hasText: "line 18;" })
+                .first();
+            await reopenedBlock.click({ position: { x: 80, y: 10 } });
+            await expect(
+                textarea,
+                "clicking a common line after the echo must put the caret in that line",
+            ).toBeFocused();
+
+            const settled = await content.evaluate((element) => Math.round(element.scrollTop));
+            const caret = await textarea.evaluate(
+                (element) => (element as HTMLTextAreaElement).selectionStart,
+            );
+            expect(
+                caret,
+                "the caret must land after the start of the clicked line",
+            ).toBeGreaterThan(0);
+            expect(
+                Math.abs(settled - parked),
+                `the caret is on line 18, so the viewport must not jump to the newly echoed diff (parked at ${parked}, settled at ${settled})`,
+            ).toBeLessThan(100);
         } finally {
             await electronApp.close();
         }

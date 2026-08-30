@@ -22,7 +22,6 @@ import {
     type RibbonSpan,
     type SegmentPaneLines,
 } from "../diff-core/mergeScrollLayout";
-import { buildLineNumberValues } from "../diff-core/lineNumbers";
 import {
     alignScrollOverlays,
     applyPaneOffsets,
@@ -30,6 +29,7 @@ import {
     syncHorizontalScroll as syncHorizontalScrollCore,
     updateSharedScrollbar as updateSharedScrollbarCore,
 } from "../diff-core/scrollSync";
+import { buildLineNumberValues } from "../diff-core/lineNumbers";
 import { CodeBlock, intrinsicSizeStyle, type LineNumberSpec } from "../diff-core/segments";
 import {
     IconChevronDown,
@@ -50,6 +50,19 @@ import {
     type SegmentMarker,
 } from "./segmentMarkers";
 import { adjacentChangeIndex, buildStripeMarks } from "./changeStripe";
+import {
+    baseMaxLineLengthForSegments,
+    effectiveMaxLineLength,
+    sameEffectiveEditableBlockLayout,
+    type EditableBlockLayout,
+} from "./editableDraftLayout";
+import { EditableSegmentBlock, type EditableSegmentItem } from "./EditableSegmentBlock";
+import { reconcileDiffViewerData } from "./reconcileDiffSegments";
+import {
+    buildRenderedSegments,
+    createRenderedSegmentCache,
+    type RenderedSegment,
+} from "./renderedDiffSegments";
 import "./diff-viewer.css";
 
 const LINE_PADDING_PX = 18;
@@ -115,30 +128,23 @@ function clearReadOnlyNoticeTimer(
     timerRef.current = null;
 }
 
-interface RenderedSegment {
-    segment: DiffSegment;
-    index: number;
-    paneLines: Record<DiffPane, number>;
-    lineNumbers: Record<DiffPane, LineNumberSpec>;
-    canonicalLineCount: number;
-}
-
 /** Renders one read-only side of one aligned diff segment. */
-function DiffPaneBlock({
+const DiffPaneBlock = React.memo(function DiffPaneBlock({
     segment,
     side,
+    compareLines,
     lineCount,
     lineNumbers,
     highlightWords,
 }: {
     segment: DiffSegment;
     side: DiffPane;
+    compareLines: string[];
     lineCount: number;
     lineNumbers: LineNumberSpec;
     highlightWords: boolean;
 }): React.ReactElement {
     const lines = segment[side];
-    const compareLines = segment[side === "left" ? "right" : "left"];
 
     return (
         <div
@@ -155,32 +161,52 @@ function DiffPaneBlock({
             />
         </div>
     );
-}
+});
 
 interface EditableBlockDraft {
+    /** Stable React identity for the continuous active edit session. */
+    editSessionKey: string;
     indices: readonly number[];
     text: string;
-    caretOffset: number;
+    selectionStart: number;
+    selectionEnd: number;
     sourceText: string;
     startLine: number;
     lineCount: number;
+    /** Stable zero-based host line used to remap pending growth after an echo resegments the run. */
+    pendingGrowthAnchorLine: number | null;
+    /** Frozen host segment that owns the current unposted positive row surplus. */
+    pendingGrowthTargetIndex: number | null;
     version: number;
     token: number;
 }
 
-interface EditableBlockLayout {
-    side: DiffPane;
-    indices: readonly number[];
-    rowCount: number;
-    /**
-     * Longest line in the draft, in characters.
-     *
-     * The shared scroll extent is measured from the diff's own text, which stops describing the
-     * pane the moment someone types a line longer than anything the diff contained: the code
-     * plane and the shared scrollbar both refuse to travel that far, so the caret runs off the
-     * right edge with nothing able to follow it.
-     */
-    maxLineLength: number;
+/**
+ * The host-backed rows that share an active draft's rendered run.
+ *
+ * A fresh diff can coalesce an exact draft with neighboring host rows. The run keeps those rows
+ * in one outer segment for layout, while prefix and suffix stay outside the native textarea.
+ */
+interface EditableDraftRun {
+    readonly firstIndex: number;
+    readonly indices: readonly number[];
+    readonly runStartLine: number;
+    readonly prefixLines: string[];
+    readonly draftLines: string[];
+    readonly suffixLines: string[];
+    readonly prefixCompareLines: string[];
+    readonly draftCompareLines: string[];
+    readonly suffixCompareLines: string[];
+    readonly rowCount: number;
+    readonly maxLineLength: number;
+    /** Frozen host segment that owns the current unposted positive row surplus. */
+    readonly pendingGrowthTargetIndex: number | null;
+    /** The rendered host segments the run covers, in document order. */
+    readonly items: readonly RenderedSegment[];
+    /** Every row the run puts on screen, in order: host prefix, then the draft, then host suffix. */
+    readonly displayLines: string[];
+    /** The opposite pane's line for each display row, for word-level marking. */
+    readonly displayCompareLines: string[];
 }
 
 /** Longest line in a block, in characters — the block's contribution to the shared extent. */
@@ -188,6 +214,15 @@ function longestLine(lines: readonly string[]): number {
     let max = 0;
     for (const line of lines) max = Math.max(max, line.length);
     return max;
+}
+
+/** Selects the state layout only when a draft change affects whole-view geometry. */
+function nextEditingBlockState(
+    previous: EditableBlockLayout | null,
+    next: EditableBlockLayout | null,
+    baseMaxLineLength: number,
+): EditableBlockLayout | null {
+    return sameEffectiveEditableBlockLayout(previous, next, baseMaxLineLength) ? previous : next;
 }
 
 /** Replaces one line-addressed display block in the LF-normalized document text. */
@@ -231,7 +266,225 @@ function paneStartLine(
         .reduce((total, previous) => total + previous.segment[side].length, 0);
 }
 
-/** Re-finds a draft's display segments after its own edit changes the diff's segmentation. */
+/**
+ * Finds an echoed draft in its next host document, preferring the closest repeated occurrence.
+ *
+ * The same line sequence can appear several times in a file, so the previous draft coordinate is
+ * the tie-breaker. A missing sequence leaves the caller to retain its bounded old coordinate.
+ */
+function nearestPostedLineSequence(
+    lines: readonly string[],
+    postedLines: readonly string[],
+    previousStartLine: number,
+): number | null {
+    let nearest: number | null = null;
+    for (let start = 0; start + postedLines.length <= lines.length; start++) {
+        let matches = true;
+        for (let offset = 0; offset < postedLines.length; offset++) {
+            if (lines[start + offset] !== postedLines[offset]) {
+                matches = false;
+                break;
+            }
+        }
+        if (
+            matches &&
+            (nearest === null ||
+                Math.abs(start - previousStartLine) < Math.abs(nearest - previousStartLine))
+        ) {
+            nearest = start;
+        }
+    }
+    return nearest;
+}
+
+/**
+ * Records rendered segments that contain an exact draft range without expanding that range.
+ *
+ * Empty drafts select a zero-line boundary hunk when one exists; otherwise they anchor to the
+ * following row (or the previous final row) so an insertion control still has one outer segment.
+ */
+function segmentIndicesForDraftRange(
+    renderedSegments: readonly RenderedSegment[],
+    side: DiffPane,
+    startLine: number,
+    lineCount: number,
+): number[] {
+    const rangeEnd = startLine + lineCount;
+    const indices: number[] = [];
+    let cursor = 0;
+    let followingIndex: number | undefined;
+    let previousIndex: number | undefined;
+
+    for (const item of renderedSegments) {
+        const segmentLineCount = item.segment[side].length;
+        const nextCursor = cursor + segmentLineCount;
+        if (lineCount === 0) {
+            if (segmentLineCount === 0 && cursor === startLine) {
+                indices.push(item.index);
+            } else if (
+                segmentLineCount > 0 &&
+                cursor === startLine &&
+                followingIndex === undefined
+            ) {
+                followingIndex = item.index;
+            }
+            if (segmentLineCount > 0 && nextCursor === startLine) previousIndex = item.index;
+        } else if (segmentLineCount === 0) {
+            if (cursor >= startLine && cursor <= rangeEnd) indices.push(item.index);
+        } else if (cursor < rangeEnd && startLine < nextCursor) {
+            indices.push(item.index);
+        }
+        cursor = nextCursor;
+    }
+
+    if (lineCount > 0 || indices.length > 0) return indices;
+    if (followingIndex !== undefined) return [followingIndex];
+    return previousIndex === undefined ? [] : [previousIndex];
+}
+
+/**
+ * Splits a coalesced active run into immutable host rows and the exact editable draft rows.
+ *
+ * The outer run still carries the combined geometry, while the native control is positioned only
+ * over `draftLines`; host prefix/suffix lines retain their syntax-painted CodeBlock rendering.
+ */
+function editableDraftRun(
+    draft: EditableBlockDraft,
+    renderedSegments: readonly RenderedSegment[],
+    side: DiffPane,
+): EditableDraftRun {
+    const activeIndices = new Set(draft.indices);
+    const items = renderedSegments.filter(({ index }) => activeIndices.has(index));
+    const firstIndex = draft.indices[0] ?? 0;
+    const runStartLine =
+        items.length === 0
+            ? draft.startLine
+            : paneStartLine(renderedSegments, items[0].index, side);
+    const runLines = items.flatMap((item) => item.segment[side]);
+    const alignedRunCompareLines = items.flatMap((item) => item.alignedCompareLines[side]);
+    const prefixEnd = Math.min(Math.max(draft.startLine - runStartLine, 0), runLines.length);
+    const suffixStart = Math.min(Math.max(prefixEnd + draft.lineCount, prefixEnd), runLines.length);
+    const prefixLines = runLines.slice(0, prefixEnd);
+    const draftLines = draft.text.split("\n");
+    const suffixLines = runLines.slice(suffixStart);
+    const displayLines = [...prefixLines, ...draftLines, ...suffixLines];
+    // The compare lines the host aligned to the rows the draft replaces. A draft that has grown
+    // has rows past the end of that slice, and they have nothing to be compared against yet.
+    const replacedCompareLines = alignedRunCompareLines.slice(prefixEnd, suffixStart);
+
+    return {
+        items,
+        displayLines,
+        displayCompareLines: [
+            ...alignedRunCompareLines.slice(0, prefixEnd),
+            ...draftLines.map((_line, offset) => replacedCompareLines[offset] ?? ""),
+            ...alignedRunCompareLines.slice(suffixStart),
+        ],
+        firstIndex,
+        indices: draft.indices,
+        runStartLine,
+        prefixLines,
+        draftLines,
+        suffixLines,
+        prefixCompareLines: alignedRunCompareLines.slice(0, prefixEnd),
+        draftCompareLines: alignedRunCompareLines.slice(prefixEnd, suffixStart),
+        suffixCompareLines: alignedRunCompareLines.slice(suffixStart),
+        rowCount: displayLines.length,
+        maxLineLength: longestLine(displayLines),
+        pendingGrowthTargetIndex: draft.pendingGrowthTargetIndex,
+    };
+}
+
+/** Counts draft rows that the active host run has not echoed yet. */
+function pendingGrowthRows(run: EditableDraftRun, side: DiffPane): number {
+    let hostRows = 0;
+    for (const item of run.items) hostRows += item.paneLines[side];
+    return Math.max(run.rowCount - hostRows, 0);
+}
+
+/** One active host segment and its zero-based row span inside the editable run. */
+interface PendingGrowthRowTarget {
+    readonly index: number;
+    readonly startRow: number;
+    readonly rowCount: number;
+}
+
+/**
+ * Resolves one run-relative host row to an active segment.
+ *
+ * A zero-row segment at an exact boundary is the explicit insertion target; otherwise the
+ * containing non-empty segment owns the row. Returning the first active item is the bounded
+ * fallback when the coordinate sits outside the echoed host run.
+ */
+function pendingGrowthTargetAtRunRow(
+    run: EditableDraftRun,
+    side: DiffPane,
+    runRow: number,
+): PendingGrowthRowTarget | null {
+    let cursor = 0;
+    let first: PendingGrowthRowTarget | null = null;
+    let containing: PendingGrowthRowTarget | null = null;
+
+    for (const item of run.items) {
+        const rowCount = item.paneLines[side];
+        const target = { index: item.index, startRow: cursor, rowCount };
+        first ??= target;
+        if (rowCount === 0 && cursor === runRow) return target;
+        if (rowCount > 0 && cursor <= runRow && runRow < cursor + rowCount) {
+            containing ??= target;
+        }
+        cursor += rowCount;
+    }
+
+    return containing ?? first;
+}
+
+/**
+ * Freezes the first positive growth at a stable document row inside its resolved host segment.
+ *
+ * The pre-growth coordinate selects the segment. Clamping the live caret row into that segment
+ * preserves the insertion boundary when the original host exposed only one broad common segment,
+ * while an already echoed insertion anchors to its own existing row.
+ */
+function pendingGrowthAnchorAtCaret(
+    run: EditableDraftRun,
+    side: DiffPane,
+    draftText: string,
+    caretOffset: number,
+    surplusRows: number,
+): number {
+    let draftRow = 0;
+    const boundedCaret = Math.min(Math.max(caretOffset, 0), draftText.length);
+    for (let offset = 0; offset < boundedCaret; offset++) {
+        if (draftText.charCodeAt(offset) === 10) draftRow++;
+    }
+    const caretRunRow = run.prefixLines.length + draftRow;
+    const target = pendingGrowthTargetAtRunRow(run, side, Math.max(caretRunRow - surplusRows, 0));
+    if (target === null) return run.runStartLine + Math.max(caretRunRow - surplusRows, 0);
+    const anchorRunRow =
+        target.rowCount === 0
+            ? target.startRow
+            : Math.min(
+                  Math.max(caretRunRow, target.startRow),
+                  target.startRow + target.rowCount - 1,
+              );
+    return run.runStartLine + anchorRunRow;
+}
+
+/** Remaps a frozen document-row anchor to the current host segmentation of the active run. */
+function pendingGrowthTargetAtAnchor(
+    run: EditableDraftRun,
+    side: DiffPane,
+    anchorLine: number,
+): number | null {
+    return (
+        pendingGrowthTargetAtRunRow(run, side, anchorLine - run.runStartLine)?.index ??
+        run.indices[0] ??
+        null
+    );
+}
+
+/** Re-finds an exact draft range after its own edit changes the host diff segmentation. */
 function reanchorDraft(
     draft: EditableBlockDraft,
     renderedSegments: readonly RenderedSegment[],
@@ -239,89 +492,121 @@ function reanchorDraft(
     text: string,
     lastPostedText: string,
 ): EditableBlockDraft {
-    const rangeEnd = draft.startLine + draft.lineCount;
-    const indices: number[] = [];
-    let cursor = 0;
-    let runStart = 0;
-    let runEnd = 0;
+    const textLines = splitEditedText(text);
+    const postedLines = splitEditedText(lastPostedText);
+    const fallbackStart = Math.min(
+        Math.max(draft.startLine, 0),
+        Math.max(textLines.length - postedLines.length, 0),
+    );
+    const nextStartLine =
+        postedLines.length === 0
+            ? Math.min(Math.max(draft.startLine, 0), textLines.length)
+            : (nearestPostedLineSequence(textLines, postedLines, draft.startLine) ?? fallbackStart);
+    const nextLineCount = postedLines.length;
+    const indices = segmentIndicesForDraftRange(
+        renderedSegments,
+        side,
+        nextStartLine,
+        nextLineCount,
+    );
 
-    for (const item of renderedSegments) {
-        const nextCursor = cursor + item.segment[side].length;
-        if (cursor < rangeEnd && draft.startLine < nextCursor) {
-            if (indices.length === 0) runStart = cursor;
-            indices.push(item.index);
-            runEnd = nextCursor;
-        }
-        cursor = nextCursor;
-    }
+    return { ...draft, indices, startLine: nextStartLine, lineCount: nextLineCount };
+}
 
-    if (indices.length === 0) return draft;
-    const nextStartLine = Math.min(draft.startLine, runStart);
-    const nextLineCount = Math.max(rangeEnd, runEnd) - nextStartLine;
-    const widened = nextStartLine !== draft.startLine || nextLineCount !== draft.lineCount;
-    const nextDraft = { ...draft, indices, startLine: nextStartLine, lineCount: nextLineCount };
-
-    if (!widened || draft.text !== lastPostedText) return nextDraft;
+/** The whole-view geometry one active run contributes, in the shape the app keeps in state. */
+function draftLayoutOf(run: EditableDraftRun, side: DiffPane): EditableBlockLayout {
     return {
-        ...nextDraft,
-        text: text
-            .split("\n")
-            .slice(nextStartLine, nextStartLine + nextLineCount)
-            .join("\n"),
+        side,
+        indices: run.indices,
+        rowCount: run.rowCount,
+        pendingGrowthTargetIndex: run.pendingGrowthTargetIndex,
+        maxLineLength: run.maxLineLength,
     };
 }
 
+/**
+ * Spreads an open draft's rows back across the host segments its run covers.
+ *
+ * Every segment keeps its own host rows for as long as the draft has rows to pay for them, so the
+ * canonical table stays the one the host's segmentation produced -- and the READ-ONLY pane, which
+ * maps its own offset through that table, keeps standing beside the lines it is meant to. Only
+ * the difference the draft has not posted yet has to land somewhere. It stays on the host segment
+ * resolved from the caret when that positive surplus first appeared.
+ */
+function editableRunRows(
+    editingBlock: EditableBlockLayout,
+    renderedSegments: readonly RenderedSegment[],
+): Map<number, number> {
+    const rows = new Map<number, number>();
+    let remaining = editingBlock.rowCount;
+    for (const index of editingBlock.indices) {
+        const own = Math.min(
+            renderedSegments[index]?.paneLines[editingBlock.side] ?? 0,
+            Math.max(remaining, 0),
+        );
+        rows.set(index, own);
+        remaining -= own;
+    }
+    const first = editingBlock.indices[0];
+    const target =
+        editingBlock.pendingGrowthTargetIndex !== null &&
+        editingBlock.indices.includes(editingBlock.pendingGrowthTargetIndex)
+            ? editingBlock.pendingGrowthTargetIndex
+            : first;
+    if (remaining > 0 && target !== undefined) {
+        rows.set(target, (rows.get(target) ?? 0) + remaining);
+    }
+    return rows;
+}
+
+/** One host segment's share of an open draft's rows, ready to render. */
+interface EditableRunBlock {
+    readonly className: string;
+    readonly lines: string[];
+    readonly compareLines: string[];
+    /** One-based source line of this block's first row, on the edited pane. */
+    readonly startLine: number;
+}
+
+/**
+ * Cuts an open draft's rows back along the host's own segment boundaries.
+ *
+ * The rows are the draft's, because the reader owns them for the whole debounce window and must
+ * keep seeing what they typed. The paint and the row counts are the host's, through the same
+ * distribution the whole-view layout measures with -- so a line the host still calls common is
+ * never washed as changed merely because an open draft happens to sit over it, and paint cannot
+ * drift from geometry.
+ */
+function editableRunBlocks(
+    run: EditableDraftRun,
+    side: DiffPane,
+    renderedSegments: readonly RenderedSegment[],
+): EditableRunBlock[] {
+    const rows = editableRunRows(draftLayoutOf(run, side), renderedSegments);
+    const blocks: EditableRunBlock[] = [];
+    let offset = 0;
+    for (const item of run.items) {
+        const count = rows.get(item.index) ?? 0;
+        blocks.push({
+            className: segmentClassName(item.segment, side),
+            lines: run.displayLines.slice(offset, offset + count),
+            compareLines: run.displayCompareLines.slice(offset, offset + count),
+            startLine: run.runStartLine + offset + 1,
+        });
+        offset += count;
+    }
+    return blocks;
+}
+
+/** Substitutes the edited pane's row count for one segment the open draft has taken over. */
 function editedPaneLines(
     paneLines: Record<DiffPane, number>,
     index: number,
     editingBlock: EditableBlockLayout | null,
+    runRows: Map<number, number>,
 ): Record<DiffPane, number> {
     if (editingBlock === null || !editingBlock.indices.includes(index)) return paneLines;
-    return {
-        ...paneLines,
-        [editingBlock.side]: editingBlock.indices[0] === index ? editingBlock.rowCount : 0,
-    };
-}
-
-function isAvailableActionHunk(index: number, editingBlock: EditableBlockLayout | null): boolean {
-    return editingBlock === null || !editingBlock.indices.includes(index);
-}
-
-/** Syntax highlighting splits a source line into spans, so rebuild its block-local text offset. */
-function caretOffsetWithinBlock(block: HTMLElement, clientX: number, clientY: number): number {
-    try {
-        const position = document.caretPositionFromPoint?.(clientX, clientY);
-        const range = position ? undefined : document.caretRangeFromPoint?.(clientX, clientY);
-        const node = position?.offsetNode ?? range?.startContainer;
-        const offset = position?.offset ?? range?.startOffset;
-        if (node?.nodeType !== Node.TEXT_NODE || offset === undefined) return 0;
-
-        const row = node.parentElement?.closest<HTMLElement>(".code-line");
-        const codeLines = row?.parentElement;
-        if (
-            !row?.classList.contains("real-code-line") ||
-            !codeLines?.classList.contains("code-lines") ||
-            !block.contains(row)
-        ) {
-            return 0;
-        }
-
-        const rows = [...codeLines.querySelectorAll<HTMLElement>(":scope > .code-line")];
-        const rowIndex = rows.indexOf(row);
-        if (rowIndex < 0) return 0;
-
-        const rowRange = document.createRange();
-        rowRange.selectNodeContents(row);
-        rowRange.setEnd(node, offset);
-        return (
-            rows
-                .slice(0, rowIndex)
-                .reduce((total, previous) => total + (previous.textContent?.length ?? 0) + 1, 0) +
-            rowRange.toString().length
-        );
-    } catch {
-        return 0;
-    }
+    return { ...paneLines, [editingBlock.side]: runRows.get(index) ?? 0 };
 }
 
 /** Renders editable display blocks while keeping document writes delegated to the host. */
@@ -353,14 +638,33 @@ function EditableDiffPane({
 }): React.ReactElement {
     const [draft, setDraft] = useState<EditableBlockDraft | null>(null);
     const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+    const seededSelectionSessionKeyRef = useRef<string | null>(null);
     const editingIndexRef = useRef<number | null>(null);
     const debounceTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
     const lastPostedTextRef = useRef<string | null>(null);
     const draftRef = useRef<EditableBlockDraft | null>(null);
+    const nextEditSessionKeyRef = useRef(0);
     const isComposingRef = useRef(false);
     const reseedDuringCompositionRef = useRef(false);
+    const textRef = useRef(text);
+    const documentVersionRef = useRef(documentVersion);
+    const reseedTokenRef = useRef(reseedToken);
+    const renderedSegmentsRef = useRef<readonly RenderedSegment[]>(renderedSegments);
     const lineNumberSide = side === "left" ? "right" : "left";
-    const draftLines = useMemo(() => draft?.text.split("\n") ?? [], [draft?.text]);
+    /** Captures each mounted draft editor and restores focus without moving the diff viewport. */
+    const focusTextarea = useCallback((textarea: HTMLTextAreaElement | null) => {
+        textareaRef.current = textarea;
+        textarea?.focus({ preventScroll: true });
+    }, []);
+    const activeRun = useMemo(
+        () => (draft === null ? null : editableDraftRun(draft, renderedSegments, side)),
+        [draft, renderedSegments, side],
+    );
+
+    textRef.current = text;
+    documentVersionRef.current = documentVersion;
+    reseedTokenRef.current = reseedToken;
+    renderedSegmentsRef.current = renderedSegments;
 
     const clearDebounceTimer = useCallback(() => {
         if (debounceTimerRef.current === null) return;
@@ -395,11 +699,24 @@ function EditableDiffPane({
     );
 
     const editingDraftIndex = draft?.indices[0];
-    const editingCaretOffset = draft?.caretOffset;
+    const editingSessionKey = draft?.editSessionKey;
+    const editingSelectionStart = draft?.selectionStart;
+    const editingSelectionEnd = draft?.selectionEnd;
     useEffect(() => {
-        if (editingDraftIndex === undefined || editingCaretOffset === undefined) return;
+        if (
+            editingDraftIndex === undefined ||
+            editingSessionKey === undefined ||
+            editingSelectionStart === undefined ||
+            editingSelectionEnd === undefined
+        ) {
+            return;
+        }
         const textarea = textareaRef.current;
-        textarea?.setSelectionRange(editingCaretOffset, editingCaretOffset);
+        if (textarea === null) return;
+        if (seededSelectionSessionKeyRef.current !== editingSessionKey) {
+            seededSelectionSessionKeyRef.current = editingSessionKey;
+            textarea.setSelectionRange(editingSelectionStart, editingSelectionEnd);
+        }
 
         // A block can be opened while the panes are already scrolled sideways. The overlay is
         // born at scroll 0 and only a scroll event would align it, so align this one directly --
@@ -407,9 +724,12 @@ function EditableDiffPane({
         // until something happens to scroll. Directly, and not through `onHorizontalScroll`:
         // that driver coalesces into a frame, and a frame pending on nothing but this would
         // swallow the next real scroll to arrive before it.
-        const codeLines = textarea?.parentElement?.querySelector<HTMLElement>(".code-lines");
-        if (textarea && codeLines) alignScrollOverlays([textarea], codeLines.scrollLeft);
-    }, [editingCaretOffset, editingDraftIndex]);
+        // Any row block in the run will do: every `.code-lines` in the view is held at one shared
+        // horizontal position, and a settled run is drawn as its host segments with no single
+        // draft block to name.
+        const codeLines = textarea.parentElement?.querySelector<HTMLElement>(".code-lines");
+        if (codeLines) alignScrollOverlays([textarea], codeLines.scrollLeft);
+    }, [editingDraftIndex, editingSelectionEnd, editingSelectionStart, editingSessionKey]);
 
     // The debounced post reads the draft as it stands when the timer FIRES, never the one it was
     // armed with. Typing resumes the moment the first post goes out, so the next window is armed
@@ -435,18 +755,19 @@ function EditableDiffPane({
             if (nextText === current.sourceText) return;
             lastPostedTextRef.current = current.text;
             onEdit(current.sourceText, nextText, current.version, current.token);
-        }, 1000);
+        }, 500);
     }, [clearDebounceTimer, onEdit, reseedToken]);
 
     useEffect(() => {
         if (draft === null || draft.token !== reseedToken || draft.version === documentVersion)
             return;
         const lastPostedText = lastPostedTextRef.current ?? draft.text;
-        const nextDraft = reanchorDraft(
+        const reanchoredDraft = reanchorDraft(
             {
                 ...draft,
-                caretOffset: textareaRef.current?.selectionStart ?? draft.caretOffset,
-                sourceText: text,
+                selectionStart: textareaRef.current?.selectionStart ?? draft.selectionStart,
+                selectionEnd: textareaRef.current?.selectionEnd ?? draft.selectionEnd,
+                sourceText: textRef.current,
                 version: documentVersion,
                 // The same splitter the post itself went through. `replaceBlockText` runs
                 // `splitEditedText`, which reads empty text as a deleted block -- no lines,
@@ -461,42 +782,53 @@ function EditableDiffPane({
             text,
             lastPostedText,
         );
+        const reanchoredRun = editableDraftRun(reanchoredDraft, renderedSegments, side);
+        const stillGrowing = pendingGrowthRows(reanchoredRun, side) > 0;
+        const pendingGrowthAnchorLine = stillGrowing
+            ? reanchoredDraft.pendingGrowthAnchorLine
+            : null;
+        const nextDraft = {
+            ...reanchoredDraft,
+            pendingGrowthAnchorLine,
+            pendingGrowthTargetIndex:
+                pendingGrowthAnchorLine === null
+                    ? null
+                    : pendingGrowthTargetAtAnchor(reanchoredRun, side, pendingGrowthAnchorLine),
+        };
         editingIndexRef.current = nextDraft.indices[0];
         setDraft(nextDraft);
-        const nextLines = nextDraft.text.split("\n");
-        onDraftLayoutChange({
-            side,
-            indices: nextDraft.indices,
-            rowCount: Math.max(nextLines.length, 1),
-            maxLineLength: longestLine(nextLines),
-        });
+        const nextRun = editableDraftRun(nextDraft, renderedSegments, side);
+        onDraftLayoutChange(draftLayoutOf(nextRun, side));
     }, [documentVersion, draft, onDraftLayoutChange, renderedSegments, reseedToken, side, text]);
 
+    /** Starts a session from the latest host model without changing its callback identity. */
     const startEditing = useCallback(
-        (item: RenderedSegment, caretOffset = 0) => {
-            if (editingIndexRef.current === item.index) return;
-            editingIndexRef.current = item.index;
+        (item: EditableSegmentItem, caretOffset = 0) => {
+            const currentRenderedSegments = renderedSegmentsRef.current;
+            const currentItem = currentRenderedSegments[item.index] ?? item;
+            if (editingIndexRef.current === currentItem.index) return;
+            editingIndexRef.current = currentItem.index;
             lastPostedTextRef.current = null;
-            const startLine = paneStartLine(renderedSegments, item.index, side);
+            const startLine = paneStartLine(currentRenderedSegments, currentItem.index, side);
             const nextDraft = {
-                indices: [item.index],
-                text: item.segment[side].join("\n"),
-                caretOffset,
-                sourceText: text,
+                editSessionKey: `edit-session-${nextEditSessionKeyRef.current++}`,
+                indices: [currentItem.index],
+                text: currentItem.segment[side].join("\n"),
+                selectionStart: caretOffset,
+                selectionEnd: caretOffset,
+                sourceText: textRef.current,
                 startLine,
-                lineCount: item.segment[side].length,
-                version: documentVersion,
-                token: reseedToken,
+                lineCount: currentItem.segment[side].length,
+                pendingGrowthAnchorLine: null,
+                pendingGrowthTargetIndex: null,
+                version: documentVersionRef.current,
+                token: reseedTokenRef.current,
             };
             setDraft(nextDraft);
-            onDraftLayoutChange({
-                side,
-                indices: nextDraft.indices,
-                rowCount: Math.max(nextDraft.lineCount, 1),
-                maxLineLength: longestLine(item.segment[side]),
-            });
+            const nextRun = editableDraftRun(nextDraft, currentRenderedSegments, side);
+            onDraftLayoutChange(draftLayoutOf(nextRun, side));
         },
-        [documentVersion, onDraftLayoutChange, renderedSegments, reseedToken, side, text],
+        [onDraftLayoutChange, side],
     );
 
     const commitDraft = useCallback(() => {
@@ -520,41 +852,141 @@ function EditableDiffPane({
         }
     }, [clearDebounceTimer, clearDraft, draft, onEdit, reseedToken]);
 
+    const draftIndices = draft?.indices;
+    const activeSegmentClassName = useMemo(() => {
+        if (draftIndices === undefined) return null;
+        const activeIndices = new Set(draftIndices);
+        // A host echo can split one active range into common and changed segments. Prefer the
+        // changed representative, while keeping this scan off the ordinary keystroke path.
+        const representative =
+            renderedSegments.find(
+                ({ index, segment }) => activeIndices.has(index) && segment.type === "changed",
+            ) ?? renderedSegments.find(({ index }) => activeIndices.has(index));
+        return representative === undefined ? null : segmentClassName(representative.segment, side);
+    }, [draftIndices, renderedSegments, side]);
+
     return (
         <>
             {renderedSegments.map((item) => {
-                const lines = item.segment[side];
-                const compareLines = item.segment[side === "left" ? "right" : "left"];
-                const isEditing = draft !== null && draft.indices.includes(item.index);
-                const lineCount = item.paneLines[side];
+                const isEditing = activeRun !== null && activeRun.indices.includes(item.index);
 
-                if (isEditing && draft) {
-                    if (draft.indices[0] !== item.index) return null;
-                    const rowCount = Math.max(draftLines.length, 1);
+                if (isEditing && draft && activeRun) {
+                    if (activeRun.firstIndex !== item.index) return null;
+                    // A draft that spans several host segments is drawn as those segments. One
+                    // representative class stretched over the whole run washes every untouched
+                    // line in it -- which, for the first click into a file with no local edits
+                    // yet, is the entire file.
+                    const splitRun = activeRun.indices.length > 1;
+                    const runBlocks = splitRun
+                        ? editableRunBlocks(activeRun, side, renderedSegments)
+                        : [];
                     return (
                         <div
-                            key={`editable-${side}-${item.index}`}
-                            className={`segment diff-editing-block editing line-numbers-${lineNumberSide}`}
-                            style={intrinsicSizeStyle(rowCount)}
+                            key={draft.editSessionKey}
+                            className={`segment diff-editing-block editing ${splitRun ? "" : (activeSegmentClassName ?? segmentClassName(item.segment, side))} line-numbers-${lineNumberSide}`}
+                            style={intrinsicSizeStyle(activeRun.rowCount)}
                         >
-                            <CodeBlock
-                                lines={draftLines}
-                                lineCount={rowCount}
-                                lineNumbers={item.lineNumbers[side]}
-                                lineNumberSide={lineNumberSide}
-                                wordHighlight={highlightWords}
-                                compareLines={compareLines}
-                            />
+                            {splitRun ? (
+                                // The edit-session wrapper owns this list's lifetime. Host segment
+                                // identities are allowed to churn on every echo, so position is the
+                                // stable identity here; inactive segments keep their host keys.
+                                runBlocks.map((runBlock, runBlockIndex) => (
+                                    <div
+                                        key={runBlockIndex}
+                                        className={`diff-editable-block diff-editing-static ${runBlock.className}`}
+                                    >
+                                        <CodeBlock
+                                            lines={runBlock.lines}
+                                            lineCount={runBlock.lines.length}
+                                            lineNumbers={{
+                                                primary: buildLineNumberValues(
+                                                    runBlock.startLine,
+                                                    runBlock.lines.length,
+                                                    runBlock.lines.length,
+                                                ),
+                                            }}
+                                            lineNumberSide={lineNumberSide}
+                                            wordHighlight={highlightWords}
+                                            compareLines={runBlock.compareLines}
+                                        />
+                                    </div>
+                                ))
+                            ) : (
+                                <>
+                                    {activeRun.prefixLines.length > 0 ? (
+                                        <div
+                                            key="static-prefix"
+                                            className="diff-editable-block diff-editing-static"
+                                        >
+                                            <CodeBlock
+                                                lines={activeRun.prefixLines}
+                                                lineCount={activeRun.prefixLines.length}
+                                                lineNumbers={{
+                                                    primary: buildLineNumberValues(
+                                                        activeRun.runStartLine + 1,
+                                                        activeRun.prefixLines.length,
+                                                        activeRun.prefixLines.length,
+                                                    ),
+                                                }}
+                                                lineNumberSide={lineNumberSide}
+                                                wordHighlight={highlightWords}
+                                                compareLines={activeRun.prefixCompareLines}
+                                            />
+                                        </div>
+                                    ) : null}
+                                    <div key="draft" className="diff-editing-draft">
+                                        <CodeBlock
+                                            lines={activeRun.draftLines}
+                                            lineCount={activeRun.draftLines.length}
+                                            lineNumbers={{
+                                                primary: buildLineNumberValues(
+                                                    draft.startLine + 1,
+                                                    activeRun.draftLines.length,
+                                                    activeRun.draftLines.length,
+                                                ),
+                                            }}
+                                            lineNumberSide={lineNumberSide}
+                                            wordHighlight={highlightWords}
+                                            compareLines={activeRun.draftCompareLines}
+                                        />
+                                    </div>
+                                    {activeRun.suffixLines.length > 0 ? (
+                                        <div
+                                            key="static-suffix"
+                                            className="diff-editable-block diff-editing-static"
+                                        >
+                                            <CodeBlock
+                                                lines={activeRun.suffixLines}
+                                                lineCount={activeRun.suffixLines.length}
+                                                lineNumbers={{
+                                                    primary: buildLineNumberValues(
+                                                        draft.startLine +
+                                                            activeRun.draftLines.length +
+                                                            1,
+                                                        activeRun.suffixLines.length,
+                                                        activeRun.suffixLines.length,
+                                                    ),
+                                                }}
+                                                lineNumberSide={lineNumberSide}
+                                                wordHighlight={highlightWords}
+                                                compareLines={activeRun.suffixCompareLines}
+                                            />
+                                        </div>
+                                    ) : null}
+                                </>
+                            )}
                             <textarea
-                                ref={textareaRef}
+                                key="textarea"
+                                ref={focusTextarea}
                                 className="diff-edit-textarea"
                                 data-testid={`diff-pane-${side}-editable`}
                                 aria-label={t("diff.editable.editingAria")}
                                 value={draft.text}
-                                rows={rowCount}
-                                // Deliberate: edit mode opens from a user action and should focus the draft textarea.
-                                // react-doctor-disable-next-line react-doctor/no-autofocus
-                                autoFocus
+                                rows={activeRun.draftLines.length}
+                                style={{
+                                    top: activeRun.prefixLines.length * LINE_HEIGHT_PX,
+                                    bottom: activeRun.suffixLines.length * LINE_HEIGHT_PX,
+                                }}
                                 spellCheck={false}
                                 onCompositionStart={() => {
                                     isComposingRef.current = true;
@@ -570,20 +1002,44 @@ function EditableDiffPane({
                                 }}
                                 onChange={(event) => {
                                     const nextText = event.target.value;
-                                    const nextLines = nextText.split("\n");
-                                    const nextDraft = { ...draft, text: nextText };
-                                    setDraft(nextDraft);
-                                    onDraftLayoutChange({
+                                    const textDraft = { ...draft, text: nextText };
+                                    const textRun = editableDraftRun(
+                                        textDraft,
+                                        renderedSegments,
                                         side,
-                                        indices: draft.indices,
-                                        // The draft's own lines, never the block it replaces: the
-                                        // row count reported here is what the pane's geometry is
-                                        // built from, and the render below sizes the block from
-                                        // these same lines. Holding the pre-edit height would keep
-                                        // the two disagreeing until the echo re-based them.
-                                        rowCount: Math.max(nextLines.length, 1),
-                                        maxLineLength: longestLine(nextLines),
-                                    });
+                                    );
+                                    const surplusRows = pendingGrowthRows(textRun, side);
+                                    const pendingGrowthAnchorLine =
+                                        surplusRows === 0
+                                            ? null
+                                            : (draft.pendingGrowthAnchorLine ??
+                                              pendingGrowthAnchorAtCaret(
+                                                  textRun,
+                                                  side,
+                                                  nextText,
+                                                  event.target.selectionStart,
+                                                  surplusRows,
+                                              ));
+                                    const pendingGrowthTargetIndex =
+                                        pendingGrowthAnchorLine === null
+                                            ? null
+                                            : pendingGrowthTargetAtAnchor(
+                                                  textRun,
+                                                  side,
+                                                  pendingGrowthAnchorLine,
+                                              );
+                                    const nextDraft = {
+                                        ...textDraft,
+                                        pendingGrowthAnchorLine,
+                                        pendingGrowthTargetIndex,
+                                    };
+                                    setDraft(nextDraft);
+                                    onDraftLayoutChange(
+                                        draftLayoutOf(
+                                            { ...textRun, pendingGrowthTargetIndex },
+                                            side,
+                                        ),
+                                    );
                                     restartDebouncedPost();
                                 }}
                                 onBlur={commitDraft}
@@ -606,43 +1062,15 @@ function EditableDiffPane({
                     );
                 }
 
-                const style = intrinsicSizeStyle(lineCount);
                 return (
-                    <div
-                        key={`editable-${side}-${item.index}`}
-                        className={`segment diff-editable-block ${segmentClassName(item.segment, side)}`}
-                        style={style}
-                        onClick={(event) => {
-                            if (window.getSelection()?.isCollapsed === false) return;
-                            startEditing(
-                                item,
-                                caretOffsetWithinBlock(
-                                    event.currentTarget,
-                                    event.clientX,
-                                    event.clientY,
-                                ),
-                            );
-                        }}
-                        onDoubleClick={() => startEditing(item)}
-                        onKeyDown={(event) => {
-                            if (event.key !== "Enter" && event.key !== "F2") return;
-                            event.preventDefault();
-                            startEditing(item);
-                        }}
-                        role="group"
-                        tabIndex={0}
-                        title={t("diff.editable.blockHint")}
-                        aria-label={t("diff.editable.blockHint")}
-                    >
-                        <CodeBlock
-                            lines={lines}
-                            lineCount={lineCount}
-                            lineNumbers={item.lineNumbers[side]}
-                            lineNumberSide={lineNumberSide}
-                            wordHighlight={highlightWords}
-                            compareLines={compareLines}
-                        />
-                    </div>
+                    <EditableSegmentBlock
+                        key={item.renderKey}
+                        item={item}
+                        side={side}
+                        lineNumberSide={lineNumberSide}
+                        highlightWords={highlightWords}
+                        onStartEditing={startEditing}
+                    />
                 );
             })}
         </>
@@ -833,6 +1261,8 @@ export function App(): React.ReactElement {
     const [ignoreMode, setIgnoreMode] = useState<"none" | "whitespace">("none");
     const [highlightWords, setHighlightWords] = useState(true);
     const [editingBlock, setEditingBlock] = useState<EditableBlockLayout | null>(null);
+    const latestEditingBlockRef = useRef<EditableBlockLayout | null>(null);
+    const baseMaxLineLengthRef = useRef(1);
     const [shikiReady, setShikiReady] = useState(() => isShikiReady());
     const [shikiTheme] = useState(() => detectTheme());
     // The same height `viewportRef` caches, kept in state as well because the scroll
@@ -840,6 +1270,7 @@ export function App(): React.ReactElement {
     // leave both stale until some other change happened to re-render.
     const [viewportHeight, setViewportHeight] = useState(0);
     const vscode = useMemo(() => getVsCodeApi<OutboundMessage, unknown>(), []);
+    const renderedSegmentCache = useMemo(createRenderedSegmentCache, []);
 
     const contentRef = useRef<HTMLDivElement | null>(null);
     const viewportElementRef = useRef<HTMLDivElement | null>(null);
@@ -882,10 +1313,15 @@ export function App(): React.ReactElement {
     const ribbonPaths = useMemo(() => new Map<number, SVGPathElement>(), []);
     const actionButtons = useMemo(() => new Map<number, HTMLButtonElement>(), []);
     const handleDraftLayoutChange = useCallback((layout: EditableBlockLayout | null) => {
-        setEditingBlock(layout);
+        latestEditingBlockRef.current = layout;
+        setEditingBlock((previous) =>
+            nextEditingBlockState(previous, layout, baseMaxLineLengthRef.current),
+        );
     }, []);
 
     const segments = useMemo(() => data?.segments ?? [], [data]);
+    const baseMaxLineLength = useMemo(() => baseMaxLineLengthForSegments(segments), [segments]);
+    baseMaxLineLengthRef.current = baseMaxLineLength;
     const syntaxHighlightState = useMemo(
         () => ({
             ready: shikiReady,
@@ -895,37 +1331,22 @@ export function App(): React.ReactElement {
         [data?.languageId, data?.path, shikiReady, shikiTheme],
     );
 
-    const renderedSegments = useMemo<RenderedSegment[]>(() => {
-        let leftCursor = 1;
-        let rightCursor = 1;
-        return segments.map((segment, index) => {
-            const leftCount = segment.left.length;
-            const rightCount = segment.right.length;
-            const item = {
-                segment,
-                index,
-                paneLines: { left: leftCount, right: rightCount },
-                lineNumbers: {
-                    left: { primary: buildLineNumberValues(leftCursor, leftCount, leftCount) },
-                    right: { primary: buildLineNumberValues(rightCursor, rightCount, rightCount) },
-                },
-                canonicalLineCount: Math.max(leftCount, rightCount, 1),
-            } satisfies RenderedSegment;
-            leftCursor += leftCount;
-            rightCursor += rightCount;
-            return item;
-        });
-    }, [segments]);
-
-    const paneLines = useMemo<SegmentPaneLines<DiffPane>[]>(
-        () =>
-            renderedSegments.map((item) => ({
-                paneLines: editedPaneLines(item.paneLines, item.index, editingBlock),
-                conflict: item.segment.type === "changed",
-                id: item.segment.type === "changed" ? item.index : undefined,
-            })),
-        [editingBlock, renderedSegments],
+    const renderedSegments = useMemo(
+        () => buildRenderedSegments(segments, renderedSegmentCache),
+        [renderedSegmentCache, segments],
     );
+
+    const paneLines = useMemo<SegmentPaneLines<DiffPane>[]>(() => {
+        const runRows =
+            editingBlock === null
+                ? new Map<number, number>()
+                : editableRunRows(editingBlock, renderedSegments);
+        return renderedSegments.map((item) => ({
+            paneLines: editedPaneLines(item.paneLines, item.index, editingBlock, runRows),
+            conflict: item.segment.type === "changed",
+            id: item.segment.type === "changed" ? item.index : undefined,
+        }));
+    }, [editingBlock, renderedSegments]);
     const layout = useMemo(() => buildVerticalLayout(paneLines, DIFF_PANES), [paneLines]);
     const stripeMarks = useMemo(
         () => buildStripeMarks(segments, layout, viewportHeight),
@@ -1010,30 +1431,14 @@ export function App(): React.ReactElement {
     // arrows would have nothing to wait for and would stay gone. And an empty list unmounts every
     // button, so each debounced post would flash the whole strip away and back.
     const actionHunks = useMemo(
-        () =>
-            singlePane === null
-                ? ribbonIndices
-                      .map((ribbon) => ribbon.index)
-                      .filter((index) => isAvailableActionHunk(index, editingBlock))
-                : [],
-        [editingBlock, ribbonIndices, singlePane],
+        () => (singlePane === null ? ribbonIndices.map((ribbon) => ribbon.index) : []),
+        [ribbonIndices, singlePane],
     );
 
-    const maxLineLength = useMemo(() => {
-        let max = 1;
-        for (const segment of segments) {
-            max = Math.max(max, longestLine(segment.left), longestLine(segment.right));
-        }
-        // An open draft is part of the pane's width even though it is not part of the diff.
-        // Without it, typing past the diff's own longest line leaves the code plane and the
-        // shared scrollbar unable to travel to the caret, so it scrolls off the right edge and
-        // the overlay is dragged back to a position that cannot show it.
-        return Math.max(max, editingBlock?.maxLineLength ?? 0);
-        // Depends on the layout object, not on the one field read from it: narrowing the
-        // dependency would put the optional chain in `App`'s own body, where the complexity
-        // budget is spent, rather than in this callback's. The recompute it costs per keystroke
-        // is a pass of `.length` reads over text that is already being re-rendered anyway.
-    }, [editingBlock, segments]);
+    // An open draft is part of the pane's width even though it is not part of the diff. The ref
+    // keeps this O(1) on ordinary input and preserves a draft width when a later host echo lowers
+    // the base extent.
+    const maxLineLength = effectiveMaxLineLength(baseMaxLineLength, latestEditingBlockRef.current);
 
     const syncHorizontalScroll = useCallback((left: number, source?: HTMLElement | null) => {
         syncHorizontalScrollCore(
@@ -1408,7 +1813,7 @@ export function App(): React.ReactElement {
             if (event.data.type === "setDiffData") {
                 setError(event.data.data.loadError ?? null);
                 setIgnoreMode(event.data.data.ignoreWhitespace ? "whitespace" : "none");
-                setData(event.data.data);
+                setData((previous) => reconcileDiffViewerData(previous, event.data.data));
             }
         };
         window.addEventListener("message", handler);
@@ -1703,9 +2108,10 @@ export function App(): React.ReactElement {
                                         ) : (
                                             renderedSegments.map((item) => (
                                                 <DiffPaneBlock
-                                                    key={`left-${item.index}`}
+                                                    key={`left-${item.renderKey}`}
                                                     segment={item.segment}
                                                     side="left"
+                                                    compareLines={item.alignedCompareLines.left}
                                                     lineCount={item.paneLines.left}
                                                     lineNumbers={item.lineNumbers.left}
                                                     highlightWords={highlightWords}
@@ -1741,9 +2147,10 @@ export function App(): React.ReactElement {
                                         ) : (
                                             renderedSegments.map((item) => (
                                                 <DiffPaneBlock
-                                                    key={`right-${item.index}`}
+                                                    key={`right-${item.renderKey}`}
                                                     segment={item.segment}
                                                     side="right"
+                                                    compareLines={item.alignedCompareLines.right}
                                                     lineCount={item.paneLines.right}
                                                     lineNumbers={item.lineNumbers.right}
                                                     highlightWords={highlightWords}

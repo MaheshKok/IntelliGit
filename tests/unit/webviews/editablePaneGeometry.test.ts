@@ -124,16 +124,22 @@ describe("editable diff pane geometry", () => {
         ).toBe(`${layoutPx}px`);
     });
 
-    it("keeps the active block textarea out of its own scroll range", () => {
-        // The app sizes this pane to hold every line box it renders, so any scrolling it does
-        // is scrolling the driver cannot see — it translates the column, never the textarea —
-        // and one wheel tick shifts every row against the opposite pane with nothing to put
-        // them back. `hidden` on both axes, not `overflow-y`: a classic horizontal scrollbar
-        // takes its ~15px out of a border-box height that is exactly lines x line-height,
-        // which re-creates the vertical overflow the exact height was supposed to remove.
+    it("lets the active block textarea begin horizontal scrolling without vertical overflow", () => {
+        // The visible-width textarea owns native caret-follow and must therefore be horizontally
+        // scrollable. Its exact line-height contract still leaves no vertical range to expose.
         expect(declaration(VIEWER_CSS, ".diff-editing-block .diff-edit-textarea", "overflow")).toBe(
-            "hidden",
+            "auto hidden",
         );
+        expect(
+            declaration(VIEWER_CSS, ".diff-editing-block .diff-edit-textarea", "scrollbar-width"),
+        ).toBe("none");
+        expect(
+            declaration(
+                VIEWER_CSS,
+                ".diff-editing-block .diff-edit-textarea::-webkit-scrollbar",
+                "height",
+            ),
+        ).toBe("0");
     });
 
     it("insets the editable pane from the code block's named gutter contract", () => {

@@ -5,6 +5,21 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.31.1] - 2026-08-30
+
+### Changed
+
+- Editable diffs now refresh half a second after typing instead of one second.
+- Unchanged diff blocks are reused across live updates, reducing redraw work in large files.
+- Merge conflicts use a softer PyCharm-style dark red derived from the active VS Code theme.
+
+### Fixed
+
+- Editable panes keep their block fills, line numbers and revert arrows while focus moves and the live diff refreshes.
+- Selection deletion and horizontal scrolling work without drawing a focus box or snapping the viewport.
+- Intermediate live diffs no longer flicker, jump to the last change or repaint unchanged lines below an insertion.
+- Repeated blank-line insertions stay attached to the new hunk instead of highlighting the following unchanged lines.
+
 ## [0.31.0] - 2026-08-27
 
 ### Added

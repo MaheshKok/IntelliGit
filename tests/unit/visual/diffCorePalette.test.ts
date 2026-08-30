@@ -380,6 +380,69 @@ describe("diff-core palette", () => {
         ).toBeGreaterThan(mixPercent("--diff-modified-wash"));
     });
 
+    it("re-mixes the word fragment from the block's own hue, on the element that owns it", () => {
+        // The mark used to be a fixed --diff-info tint, which was correct while only a
+        // two-sided hunk could carry one. A one-sided hunk carries them now, so a fixed
+        // cyan fragment lands inside a green insertion or a red deletion -- the two-tone
+        // reads as a different kind of change rather than as the changed words.
+        //
+        // WHERE the override sits is the whole substance of it, which is why this asserts
+        // the rule body and not just the file. A var() inside a custom property is
+        // substituted on the element that DECLARES it: the same declaration moved onto
+        // `.diff-viewer` resolves --diff-segment-hue at the root, finds nothing, and every
+        // mark silently falls back to one colour. That mutation changes no percentage, no
+        // hue token and no selector this file otherwise checks -- it is invisible to every
+        // other assertion here, and it is the shape a later tidy-up reaches for.
+        const changed = stateRules(viewerCss).get(MARKER_CLASS) ?? "";
+        const override = propertyIn(changed, "--diff-word-wash");
+        expect(
+            override,
+            `.${MARKER_CLASS} does not re-declare --diff-word-wash, so the word mark keeps the root's fixed tint and a changed fragment inside a one-sided hunk is painted in another state's colour`,
+        ).toBeTruthy();
+        expect(
+            hueIn(override),
+            "the override no longer mixes from --diff-segment-hue, so it paints one colour for every state and the block-relative two-tone is gone",
+        ).toBe("--diff-segment-hue");
+
+        // Both legs of the two-tone have to move together. The block wash and the mark now
+        // read the SAME hue, so a mark mixed at the block's own strength is not merely
+        // faint inside it -- it is the identical colour, and invisible.
+        const strengthOf = (value: string | null): number =>
+            Number(/\)\s*(\d+(?:\.\d+)?)%/.exec(value ?? "")?.[1]);
+        expect(
+            strengthOf(override),
+            "the override mixes its hue at the block's own strength, so a changed fragment is the exact colour of the block around it",
+        ).toBeGreaterThan(strengthOf(declarationOf(viewerCss, "--diff-modified-wash")));
+    });
+
+    it("keeps a two-sided modification dark while coloring only its changed words by pane", () => {
+        const modified = stateRules(viewerCss).get("diff-segment-modified") ?? "";
+        expect(hueIn(propertyIn(modified, "--diff-segment-hue"))).toBe("--diff-info");
+        expect(propertyIn(modified, "background")).toBe("var(--diff-modified-wash, transparent)");
+
+        /** Returns the pane-specific modified-word rule body, failing if it is absent. */
+        const paneRule = (pane: "left" | "right"): string => {
+            const match = new RegExp(
+                `\\.diff-viewer\\s+\\.diff-pane-${pane}\\s+\\.diff-segment-modified\\s*\\{([^}]*)\\}`,
+            ).exec(viewerCss);
+            expect(
+                match,
+                `the ${pane} pane has no word-level override for a two-sided modification`,
+            ).toBeTruthy();
+            return match?.[1] ?? "";
+        };
+
+        const left = paneRule("left");
+        expect(propertyIn(left, "--diff-segment-hue")).toBeNull();
+        expect(propertyIn(left, "background")).toBeNull();
+        expect(hueIn(propertyIn(left, "--diff-word-wash"))).toBe("--diff-deleted-hue");
+
+        const right = paneRule("right");
+        expect(propertyIn(right, "--diff-segment-hue")).toBeNull();
+        expect(propertyIn(right, "background")).toBeNull();
+        expect(hueIn(propertyIn(right, "--diff-word-wash"))).toBe("--diff-ok");
+    });
+
     it("fills the connector ribbon from a semantic hue, not a wash", () => {
         const rule = /\.diff-ribbon\s*\{([^}]*)\}/.exec(viewerCss);
         const fill = propertyIn((rule?.[1] ?? "") as string, "fill");
@@ -545,5 +608,32 @@ describe("diff-core palette", () => {
                 `${override} is no longer declared in merge-editor.css, so the merge surface would fall through to the diff-core defaults and its pixels would move`,
             ).toBeTruthy();
         }
+    });
+
+    it("softens the conflict hue before the 15% block and 30% word washes", () => {
+        // The host error token is intentionally vivid because it normally paints tiny
+        // diagnostics and icons. Mixing it straight into a multi-line conflict creates
+        // the saturated red slab seen in the regression screenshot. PyCharm keeps the
+        // same semantic red but softens it toward the editor foreground before applying
+        // the row and word strengths, so both layers remain one adaptive theme family.
+        const mergeCss = stripComments(readFileSync(MERGE_EDITOR_CSS, "utf8"));
+
+        /** Returns a declaration with formatter-only whitespace collapsed. */
+        const compactDeclaration = (name: string): string | null =>
+            declarationOf(mergeCss, name)
+                ?.replace(/\s+/g, " ")
+                .replace(/\(\s+/g, "(")
+                .replace(/\s+\)/g, ")") ?? null;
+
+        expect(
+            compactDeclaration("--merge-conflict-hue"),
+            "the merge conflict palette still feeds the vivid host error token directly into large painted regions",
+        ).toBe("color-mix(in srgb, var(--merge-danger) 88%, var(--merge-editor-fg))");
+        expect(compactDeclaration("--merge-conflict-block-bg")).toBe(
+            "color-mix(in srgb, var(--merge-conflict-hue) 15%, var(--merge-editor-bg))",
+        );
+        expect(compactDeclaration("--pycharm-conflict")).toBe(
+            "color-mix(in srgb, var(--merge-conflict-hue) 30%, var(--merge-editor-bg))",
+        );
     });
 });
