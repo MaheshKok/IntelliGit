@@ -1443,6 +1443,172 @@ describe("webview ui smoke", () => {
         expect(headerText("Unversioned Files")).not.toContain("-");
     });
 
+    /**
+     * A file whose index copy and working-tree copy both changed arrives from
+     * `getStatus()` as two entries sharing one path -- `git status --porcelain` emits
+     * `MM name`, pinned by tests/unit/git/gitops/status.test.ts:321. `staged` reaches
+     * the row closure at FileTree.tsx:161 but is spent entirely on a React key, and
+     * the shared `TreeRowFile` shape has no `staged` field, so both rows paint the
+     * same icon, name, `M` badge, tooltip, checkbox and click target.
+     *
+     * The section header is NOT the bug. It counts distinct paths on purpose, in
+     * three places, and the host persists that number for the accordion and title
+     * badges. "3 files" agrees with `git diff --stat` and with the path-keyed
+     * checkbox that governs both rows at once. The last test here pins that, so a
+     * later "make the count match the rows" edit goes red instead of quietly
+     * splitting the three count surfaces apart.
+     */
+    function renderFileTree(files: WorkingFile[]): React.ReactElement {
+        const noop = vi.fn();
+        return (
+            <FileTree
+                files={files}
+                groupByDir={false}
+                showIgnoredFiles={false}
+                checkedPaths={new Set()}
+                onToggleFile={noop}
+                onToggleFolder={noop}
+                onToggleSection={noop}
+                isAllChecked={() => false}
+                isSomeChecked={() => false}
+                onFileClick={noop}
+                onTrackUnversionedFiles={noop}
+                expandAllSignal={0}
+                collapseAllSignal={0}
+            />
+        );
+    }
+
+    function fileRowsFor(container: HTMLElement, path: string): HTMLElement[] {
+        return Array.from(container.querySelectorAll<HTMLElement>("[data-vscode-context]")).filter(
+            (row) =>
+                (JSON.parse(row.dataset.vscodeContext ?? "{}") as { filePath?: string })
+                    .filePath === path,
+        );
+    }
+
+    function rowTexts(container: HTMLElement, path: string): string[] {
+        return fileRowsFor(container, path).map((row) =>
+            (row.textContent ?? "").replace(/\s+/g, " ").trim(),
+        );
+    }
+
+    function renderIntoContainer(files: WorkingFile[]): HTMLElement {
+        const container = document.createElement("div");
+        container.innerHTML = renderUi(renderFileTree(files));
+        return container;
+    }
+
+    // Identical diff counts on both entries, deliberately. With the counts that a
+    // real partially-staged file happens to produce (+1 -1 staged against +1
+    // unstaged) a distinctness assertion passes with no fix at all, because the
+    // numbers differ. Making them identical removes that false green: nothing but a
+    // staged/unstaged marker can separate these two rows.
+    const PARTIALLY_STAGED: WorkingFile[] = [
+        { path: "mutable.txt", status: "M", staged: true, additions: 1, deletions: 1 },
+        { path: "mutable.txt", status: "M", staged: false, additions: 1, deletions: 1 },
+        { path: "other.txt", status: "M", staged: false, additions: 1, deletions: 0 },
+    ];
+
+    it("renders the two rows of a partially staged file distinguishably", () => {
+        const texts = rowTexts(renderIntoContainer(PARTIALLY_STAGED), "mutable.txt");
+
+        expect(texts).toHaveLength(2);
+        expect(
+            new Set(texts).size,
+            `both rows of a partially staged file render the same text: "${texts[0]}". ` +
+                `One is the staged copy and one is the working-tree copy, and the row says ` +
+                `neither.`,
+        ).toBe(2);
+    });
+
+    it("attaches the staged marker to the staged entry, not the unstaged one", () => {
+        const container = renderIntoContainer(PARTIALLY_STAGED);
+        const rows = fileRowsFor(container, "mutable.txt");
+        const text = (row: HTMLElement): string => (row.textContent ?? "").replace(/\s+/g, " ");
+
+        // The rows arrive in the order the entries were given, so the first is the
+        // staged one. Without this the previous test would pass on a marker attached
+        // to the wrong row -- two distinct texts, both lies.
+        expect(text(rows[0]), `staged row text: "${text(rows[0])}"`).toContain("Staged");
+        expect(text(rows[1]), `unstaged row text: "${text(rows[1])}"`).toContain("Unstaged");
+    });
+
+    it("leaves a file listed once unmarked", () => {
+        const [text] = rowTexts(renderIntoContainer(PARTIALLY_STAGED), "other.txt");
+
+        // Guards the too-loose direction: every WorkingFile carries `staged`, so
+        // marking every row is the easy over-fix, and it would put "Unstaged" on every
+        // ordinary row in the panel. The marker is information only where a path is
+        // listed twice, and only the list knows that.
+        expect(text, `a file listed once rendered a marker: "${text}"`).not.toMatch(
+            /Staged|Unstaged/,
+        );
+    });
+
+    it("counts distinct paths in the Changes header, not status entries", () => {
+        const container = renderIntoContainer(PARTIALLY_STAGED);
+        const header = Array.from(container.querySelectorAll("div"))
+            .filter((node) => node.textContent?.includes("Changes") ?? false)
+            .sort((a, b) => (a.textContent ?? "").length - (b.textContent ?? "").length)[0];
+
+        // Pinning test: no production change stands behind it. Two paths across three
+        // status entries must read "2 files", because the same unique-path rule feeds
+        // the repository-accordion badge and the persisted view-title badge. Flipping
+        // this to the entry count would make three count surfaces disagree with each
+        // other and all three disagree with `git diff --stat`.
+        expect(
+            header?.textContent,
+            "the Changes header must count paths, not status entries",
+        ).toContain("2 files");
+    });
+
+    it("drops the marker when a path stops being listed twice", () => {
+        // The SSR tests above render once, so they cannot see a stale memo. The
+        // duplicate-path set feeds a `useCallback` whose result is cached by
+        // `fileWiringsByFile`; that map recomputes whenever `entries` changes, so a
+        // missing dependency would serve a stale marker through a fresh map. Staging
+        // the rest of the file is exactly that transition.
+        const mounted = mount(
+            <ChakraProvider theme={theme}>{renderFileTree(PARTIALLY_STAGED)}</ChakraProvider>,
+        );
+        try {
+            expect(rowTexts(mounted.container, "mutable.txt")).toHaveLength(2);
+
+            act(() => {
+                mounted.root.render(
+                    <ChakraProvider theme={theme}>
+                        {renderFileTree([
+                            {
+                                path: "mutable.txt",
+                                status: "M",
+                                staged: true,
+                                additions: 1,
+                                deletions: 1,
+                            },
+                            {
+                                path: "other.txt",
+                                status: "M",
+                                staged: false,
+                                additions: 1,
+                                deletions: 0,
+                            },
+                        ])}
+                    </ChakraProvider>,
+                );
+            });
+
+            const [text] = rowTexts(mounted.container, "mutable.txt");
+            expect(
+                text,
+                `after the working-tree copy was staged the path is listed once, but its row ` +
+                    `still reads: "${text}"`,
+            ).not.toMatch(/Staged|Unstaged/);
+        } finally {
+            unmount(mounted.root, mounted.container);
+        }
+    });
+
     it("shows ignored files only when view option is enabled", () => {
         const noop = vi.fn();
         const files: WorkingFile[] = [
