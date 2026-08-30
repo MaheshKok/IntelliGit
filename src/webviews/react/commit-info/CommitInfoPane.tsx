@@ -186,6 +186,8 @@ export function CommitInfoPane({
     return (
         <Flex
             ref={containerRef}
+            data-testid="commit-info-pane"
+            data-pane-state="detail"
             direction="column"
             h="100%"
             overflow="hidden"
@@ -225,6 +227,8 @@ export function CommitInfoPane({
 function CommitInfoLoadingPane({ bottomHeight }: { bottomHeight: number }): React.ReactElement {
     return (
         <Flex
+            data-testid="commit-info-pane"
+            data-pane-state="loading"
             direction="column"
             h="100%"
             overflow="hidden"
@@ -261,6 +265,8 @@ function CommitInfoLoadingPane({ bottomHeight }: { bottomHeight: number }): Reac
 function NoCommitSelection(): React.ReactElement {
     return (
         <Box
+            data-testid="commit-info-pane"
+            data-pane-state="empty"
             p="8px 12px"
             color="var(--vscode-descriptionForeground)"
             fontFamily={SYSTEM_FONT_STACK}
