@@ -234,6 +234,18 @@ export async function collectOracleInputs(page: Page): Promise<CollectedOracleIn
             if (getComputedStyle(element).visibility === "hidden") {
                 return false;
             }
+            // The screen-reader-only idiom: a 1x1 box with its paint area collapsed to nothing,
+            // deliberately left `visible` and opaque so assistive tech still reads it. Its text
+            // overflows that 1px box by construction, so every such label measured as clipped
+            // text -- a defect report for a string no sighted user was ever meant to see. A
+            // fully-collapsed `clip` rect is specific to this pattern; `clip` is deprecated for
+            // any other purpose, and it matched exactly the two labels and nothing else on the
+            // page it was measured against. Deliberately narrow: an element clipped to a
+            // non-empty rect is still painted and still reported, which `partly-clipped` in
+            // clippingCollector.spec.ts pins -- widening this to any clipped element turns it red.
+            if (getComputedStyle(element).clip === "rect(0px, 0px, 0px, 0px)") {
+                return false;
+            }
             let node: Element | null = element;
             while (node !== null) {
                 if (getComputedStyle(node).opacity === "0") {

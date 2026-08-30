@@ -89,6 +89,8 @@ const CASES = `
 `;
 
 const CLIP_CASES = `
+    <div data-testid="clip-control" style="width:200px">Plain text carrying no clip at all</div>
+
     <span data-testid="sr-only-label"
           style="position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0, 0, 0, 0);white-space:nowrap;border:0">Loading commit details</span>
 
@@ -179,9 +181,16 @@ test.describe("clipping collector truncation affordance", () => {
         const axesFor = axesForIn(await collectOracleInputs(page));
 
         expect({
+            clipControl: axesFor("clip-control"),
             srOnlyLabel: axesFor("sr-only-label"),
             partlyClipped: axesFor("partly-clipped"),
         }).toEqual({
+            // Carries no `clip`, fits its box, and exists so this fixture always has at least
+            // one candidate. Without it, a widened exemption drops BOTH remaining elements and
+            // `assertNonEmptyCandidates` throws first -- the run still goes red, but on the
+            // collector's own guard rather than on `partlyClipped`, so the assertion below is
+            // never reached and proves nothing. Found by mutating, not by review.
+            clipControl: [],
             // Never measured: the collector must drop it before it can be scored at all.
             srOnlyLabel: ["exempt"],
             // Clipped to a visible 40px window and cut off by an ancestor with no affordance.
