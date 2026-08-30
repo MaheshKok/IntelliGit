@@ -718,8 +718,24 @@
     font-size: var(--diff-code-font-size, var(--vscode-editor-font-size, 13px));
 }
 
+/* All three parts, not just the sizing one. Styling `::-webkit-scrollbar` at all opts
+   the scroller out of Chromium's default appearance, so declaring only the height left
+   the thumb and track to paint nothing: the bar was mounted, 9px tall and scrolling
+   43px at 320px, and completely invisible. The merge editor's bar carries the identical
+   block (merge-editor.css:715-726); this one was extracted from it without them. */
 .diff-horizontal-scroll::-webkit-scrollbar {
     height: 9px;
+}
+
+.diff-horizontal-scroll::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.diff-horizontal-scroll::-webkit-scrollbar-thumb {
+    background: color-mix(in srgb, var(--diff-editor-fg) 24%, transparent);
+    border-radius: 6px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
 }
 
 .diff-loading {
