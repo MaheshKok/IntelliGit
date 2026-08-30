@@ -419,7 +419,15 @@ async function buildMainAndTopicHistory(history: HistoryEnv): Promise<{
     await writeTrackedFile(root, "conflict.txt", "one\ntwo\nthree\n");
     const conflictBase = await commitAll(history, "Add conflict target");
 
-    await writeTrackedFile(root, "conflict.txt", "one\nTWO-MAIN\nthree\n");
+    // `BOTH-ADD` is appended on BOTH sides on purpose, and it is what makes the merge carry a
+    // wholly-inserted hunk at all. Git marks the append region as an add/add conflict whose base
+    // section is empty; `computeEqualEnds` then trims the line the two sides share, which leaves
+    // ours' core empty against an empty base and theirs' core holding one line
+    // (conflictParser.ts:331-338). That is the only shape that yields `baseLines: []`, which is
+    // what `sideVariantClass` turns into `variant-insertion` (merge-editor/segments.tsx:181).
+    // A line only THEIRS appends would not do it: git merges that cleanly and emits no conflict
+    // block, so no segment exists to carry the state.
+    await writeTrackedFile(root, "conflict.txt", "one\nTWO-MAIN\nthree\nBOTH-ADD\n");
     const mainConflictEdit = await commitAll(history, "Modify conflict target on main");
 
     await writeTrackedFile(root, "fork.txt", "fork\n");
@@ -469,12 +477,23 @@ async function buildFeatureBranch(history: HistoryEnv, featureBase: string): Pro
 
 /** Branches `conflict/with-main` from `conflictBase` and edits the same line of `conflict.txt`
  * that `main`'s own `mainConflictEdit` commit touched, from the same ancestor -- a real,
- * mergeable-only-with-conflict-markers divergence, not a synthetic label. */
+ * mergeable-only-with-conflict-markers divergence, not a synthetic label.
+ *
+ * Two divergences, not one, because the merge fixture has to carry both marked states the
+ * editor can paint. Line two is the two-sided one: `TWO-MAIN` against `TWO-CONFLICT` over a
+ * common `two`, which stays a true `conflict` and is the CONTROL every word-mark assertion
+ * needs. The append is the one-sided one: both sides add `BOTH-ADD`, and only this branch adds
+ * `THEIRS-ONLY-ADD` after it, which resolves to a `theirs-only` segment with an empty base --
+ * see the comment on the `BOTH-ADD` write for why both sides have to append for that to work. */
 async function buildConflictingBranch(history: HistoryEnv, conflictBase: string): Promise<string> {
     const { root, env } = history;
     await git(root, ["branch", FIXTURE_REFS.conflicting, conflictBase], env);
     await git(root, ["checkout", "--quiet", FIXTURE_REFS.conflicting], env);
-    await writeTrackedFile(root, "conflict.txt", "one\nTWO-CONFLICT\nthree\n");
+    await writeTrackedFile(
+        root,
+        "conflict.txt",
+        "one\nTWO-CONFLICT\nthree\nBOTH-ADD\nTHEIRS-ONLY-ADD\n",
+    );
     const conflictCommit = await commitAll(history, "Conflicting edit");
     await git(root, ["checkout", "--quiet", FIXTURE_REFS.main], env);
     return conflictCommit;
