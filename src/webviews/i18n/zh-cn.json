@@ -211,7 +211,7 @@
     "merge.pane.result": "结果 {path}",
     "merge.footer.useFileOurs": "使用我们的文件",
     "merge.footer.useFileTheirs": "使用他们的文件",
-    "merge.footer.hint": "`N`/`P` 解决冲突 • `Ctrl/Cmd+Enter` 应用",
+    "merge.footer.hint": "N/P 解决冲突 • Ctrl/Cmd+Enter 应用",
     "merge.header.autoResolved": "{count} 个自动解决",
     "merge.footer.apply": "应用（{resolved}/{total}）",
     "merge.kind.leftOnly": "仅左",

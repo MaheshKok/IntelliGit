@@ -223,7 +223,7 @@
     "merge.pane.result": "Resultado {path}",
     "merge.footer.useFileOurs": "Usar archivo 'Ours'",
     "merge.footer.useFileTheirs": "Usar archivo 'Theirs'",
-    "merge.footer.hint": "`N`/`P` conflictos de navegación • `Ctrl/Cmd+Enter` aplicar",
+    "merge.footer.hint": "N/P conflictos de navegación • Ctrl/Cmd+Enter aplicar",
     "merge.header.autoResolved": "{count} resueltos automáticamente",
     "merge.footer.apply": "Aplicar ({resolved}/{total})",
     "merge.kind.leftOnly": "Solo izquierda",

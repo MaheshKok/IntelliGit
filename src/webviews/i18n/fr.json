@@ -223,7 +223,7 @@
     "merge.pane.result": "Résultat {path}",
     "merge.footer.useFileOurs": "Utilisez le fichier Ours",
     "merge.footer.useFileTheirs": "Utiliser le fichier Leurs",
-    "merge.footer.hint": "`N`/`P` pour naviguer entre les conflits • `Ctrl/Cmd+Entrée` pour appliquer",
+    "merge.footer.hint": "N/P pour naviguer entre les conflits • Ctrl/Cmd+Entrée pour appliquer",
     "merge.header.autoResolved": "{count} résolus automatiquement",
     "merge.footer.apply": "Appliquer ({resolved}/{total})",
     "merge.kind.leftOnly": "Gauche uniquement",

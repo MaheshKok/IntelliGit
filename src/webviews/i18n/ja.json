@@ -211,7 +211,7 @@
     "merge.pane.result": "結果 {path}",
     "merge.footer.useFileOurs": "自分側のファイルを使用",
     "merge.footer.useFileTheirs": "相手側のファイルを使用",
-    "merge.footer.hint": "`N`/`P`で競合をナビゲート • `Ctrl/Cmd+Enter`で適用",
+    "merge.footer.hint": "N/Pで競合をナビゲート • Ctrl/Cmd+Enterで適用",
     "merge.header.autoResolved": "{count} 件自動解決",
     "merge.footer.apply": "適用（{resolved}/{total}）",
     "merge.kind.leftOnly": "左のみ",

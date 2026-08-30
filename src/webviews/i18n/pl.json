@@ -229,7 +229,7 @@
     "merge.pane.result": "Wynik {path}",
     "merge.footer.useFileOurs": "Użyj pliku Ours",
     "merge.footer.useFileTheirs": "Użyj pliku Ich",
-    "merge.footer.hint": "`N`/`P` nawiguje w konfliktach • Zastosuj `Ctrl/Cmd+Enter`",
+    "merge.footer.hint": "N/P nawiguje w konfliktach • Zastosuj Ctrl/Cmd+Enter",
     "merge.header.autoResolved": "{count} rozwiązane automatycznie",
     "merge.footer.apply": "Zastosuj ({resolved}/{total})",
     "merge.kind.leftOnly": "Tylko lewy",

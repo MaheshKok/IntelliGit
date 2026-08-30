@@ -229,7 +229,7 @@
     "merge.pane.result": "Результат {path}",
     "merge.footer.useFileOurs": "Используйте наш файл",
     "merge.footer.useFileTheirs": "Используйте их файлы.",
-    "merge.footer.hint": "`N`/`P` для навигации по конфликтам • `Ctrl/Cmd+Enter` для применения",
+    "merge.footer.hint": "N/P для навигации по конфликтам • Ctrl/Cmd+Enter для применения",
     "merge.header.autoResolved": "{count} разрешено автоматически",
     "merge.footer.apply": "Применить ({resolved}/{total})",
     "merge.kind.leftOnly": "Только слева",
