@@ -24,14 +24,19 @@ vi.mock("../../../src/webviews/react/diff-core/segments", async (importOriginal)
     };
 });
 
-function item(rightLine: string): EditableSegmentItem {
-    const lineNumbers: LineNumberSpec = { primary: [1] };
+function item(right: string | string[]): EditableSegmentItem {
+    const rightLines = typeof right === "string" ? [right] : right;
+    const lineNumbers: LineNumberSpec = { primary: rightLines.map((_, index) => index + 1) };
     return {
-        segment: { type: "changed", left: ["before"], right: [rightLine] },
+        segment: {
+            type: "changed",
+            left: rightLines.map(() => "before"),
+            right: rightLines,
+        },
         index: 0,
-        paneLines: { left: 1, right: 1 },
+        paneLines: { left: rightLines.length, right: rightLines.length },
         lineNumbers: { left: lineNumbers, right: lineNumbers },
-        canonicalLineCount: 1,
+        canonicalLineCount: rightLines.length,
     };
 }
 
@@ -62,10 +67,44 @@ beforeAll(() => {
 });
 
 afterEach(() => {
+    Reflect.deleteProperty(document, "caretPositionFromPoint");
     vi.clearAllMocks();
 });
 
 describe("EditableSegmentBlock render isolation", () => {
+    it("counts an empty preceding source line as zero caret positions", () => {
+        const renderedItem = item(["", "plain"]);
+        const onStartEditing = vi.fn();
+        const mounted = mount(
+            <EditableSegmentBlock
+                item={renderedItem}
+                side="right"
+                lineNumberSide="left"
+                highlightWords
+                onStartEditing={onStartEditing}
+            />,
+        );
+        const rows = mounted.container.querySelectorAll<HTMLElement>(
+            ".code-lines > .real-code-line",
+        );
+        const textNode = document
+            .createTreeWalker(rows[1], NodeFilter.SHOW_TEXT)
+            .nextNode() as Text;
+        Object.defineProperty(document, "caretPositionFromPoint", {
+            configurable: true,
+            value: () => ({ offsetNode: textNode, offset: 2 }),
+        });
+
+        act(() => {
+            mounted.container
+                .querySelector<HTMLElement>(".diff-editable-block")
+                ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+
+        expect(onStartEditing).toHaveBeenCalledWith(renderedItem, 3);
+        unmount(mounted.root, mounted.container);
+    });
+
     it("does not render for an unrelated parent update but does render when the item changes", () => {
         const initialItem = item("after");
         const changedItem = item("rendered");
