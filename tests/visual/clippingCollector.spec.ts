@@ -94,6 +94,9 @@ const CLIP_CASES = `
     <span data-testid="sr-only-label"
           style="position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0, 0, 0, 0);white-space:nowrap;border:0">Loading commit details</span>
 
+    <span data-testid="sr-only-wrapper"
+          style="position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0, 0, 0, 0);white-space:nowrap;border:0"><span data-testid="sr-only-nested">Loading commit details</span></span>
+
     <div style="width:80px;height:20px;overflow:hidden;position:relative">
         <span data-testid="partly-clipped"
               style="position:absolute;top:0;left:0;white-space:nowrap;clip:rect(0px, 40px, 20px, 0px)">Long enough text to overflow its box</span>
@@ -162,6 +165,13 @@ test.describe("clipping collector truncation affordance", () => {
      * rects, which is exactly why neither the `getClientRects()` check nor the `visibility` and
      * `opacity` checks above it caught this.
      *
+     * That same property is why the check has to walk. `clip` does not inherit, so text nested one
+     * level inside the idiom computes `clip: auto` and reports rects of its own while the wrapper
+     * paints neither it nor itself -- an element-only check let it straight back into the candidate
+     * set. `srOnlyNested` is that shape, and it is a live one rather than a hypothetical: the
+     * production idiom passes its label as the wrapper's direct child today, so nothing in the app
+     * currently nests it, and the first component that does would have reopened the hole silently.
+     *
      * The second fixture is the direction that keeps the exemption honest, and it is the reason
      * the check tests for a fully-collapsed rect rather than for the presence of `clip` at all:
      * an element clipped to a NON-empty rect is still painted, still partly readable, and still
@@ -183,6 +193,7 @@ test.describe("clipping collector truncation affordance", () => {
         expect({
             clipControl: axesFor("clip-control"),
             srOnlyLabel: axesFor("sr-only-label"),
+            srOnlyNested: axesFor("sr-only-nested"),
             partlyClipped: axesFor("partly-clipped"),
         }).toEqual({
             // Carries no `clip`, fits its box, and exists so this fixture always has at least
@@ -193,6 +204,12 @@ test.describe("clipping collector truncation affordance", () => {
             clipControl: [],
             // Never measured: the collector must drop it before it can be scored at all.
             srOnlyLabel: ["exempt"],
+            // The same idiom with the text one level down, which is the shape an element-only
+            // check cannot see: `clip` does not inherit, so this span computes `clip: auto` and
+            // reports its own client rects, while the wrapper's collapsed rect paints neither.
+            // Before the ancestor walk it was collected and scored as unreachable text -- a
+            // defect report for a string that is, correctly, invisible.
+            srOnlyNested: ["exempt"],
             // Clipped to a visible 40px window and cut off by an ancestor with no affordance.
             // Still a real defect, and still reported.
             partlyClipped: ["horizontal"],
