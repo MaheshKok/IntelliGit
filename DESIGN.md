@@ -234,6 +234,7 @@ The system is **flat at rest and lifts only to float**. Anchored surfaces — pa
 - **Dialog** (`box-shadow: 0 10px 28px rgba(0,0,0,0.42)`): Modal dialogs, including the interactive-rebase dialog.
 - **Drag** (`box-shadow: 0 18px 46px rgba(0,0,0,0.5)`): The lifted state of a row being dragged, most visibly during rebase reordering. The heaviest shadow in the system, and the only one attached to a direct-manipulation gesture.
 - **Inset Hairline** (`box-shadow: inset 0 0 0 1px rgba(160,189,237,0.14)`): Not elevation. A borderless 1px inner edge for surfaces that need definition without consuming layout space.
+- **Selected Ring** (`box-shadow: inset 0 0 0 1px var(--vscode-focusBorder)`): Not elevation. The boundary of a selected row, and the one shadow value that lands on an anchored surface — see Rows / Trees for why it is an inset shadow rather than the border the Float-Or-Flat Rule would otherwise ask for. It is not decoration: the host's own selection fill measures 1.15:1 against the panel on Light Modern and 1.18:1 on HC Light, so without this ring a selected row has no visible boundary at all on most stock themes.
 
 ### Named Rules
 
@@ -241,7 +242,7 @@ The system is **flat at rest and lifts only to float**. Anchored surfaces — pa
 
 **The Darkness-Not-Blur Rule.** These shadows are dark and relatively tight because they sit on a dark panel. Do not soften them toward a light-UI look. If a shadow reads as a soft gray halo rather than a cast shadow, the alpha is too low and the blur is too large.
 
-**The Vocabulary Is A Token Rule.** The five values live in `SHADOW` in `shared/tokens.ts` and are referenced, never retyped. Written as literals at each float site they had no arbiter, and four of the five surfaces ended up wearing the wrong lift: the commit tooltip took Dialog, the CI-status popover took Drag — the heaviest in the system, on a surface that follows the cursor — the unstash dialog invented a sixth value, and the branch drag preview took the lightest. Lift is how the user reads distance from the page, so a popover casting a drag shadow is a false statement about the layer, not a cosmetic slip.
+**The Vocabulary Is A Token Rule.** The six values live in `SHADOW` in `shared/tokens.ts` and are referenced, never retyped. Written as literals at each float site they had no arbiter, and four of the five surfaces ended up wearing the wrong lift: the commit tooltip took Dialog, the CI-status popover took Drag — the heaviest in the system, on a surface that follows the cursor — the unstash dialog invented a value of its own, and the branch drag preview took the lightest. Lift is how the user reads distance from the page, so a popover casting a drag shadow is a false statement about the layer, not a cosmetic slip.
 
 ## 5. Components
 
