@@ -624,6 +624,7 @@ export function CommitGraphPanel({
                         <CommitInfoPane
                             detail={selectedDetail}
                             loading={state.commitDetailLoading}
+                            hasSelection={selectedHash !== null}
                             folderIcon={commitFolderIcon}
                             folderExpandedIcon={commitFolderExpandedIcon}
                             folderIconsByName={commitFolderIconsByName}

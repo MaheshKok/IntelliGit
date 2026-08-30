@@ -46,7 +46,16 @@ import { expect, test } from "./playwright/harnessPage";
  */
 const CONTEXTS = ["undocked", "commit-graph-card"] as const;
 
+/**
+ * The width at or above which both contexts lay the pane out, measured: at 1200px `undocked` and
+ * `commit-graph-card` each mount it, and at 320px neither does. Any value strictly between the
+ * two project widths separates them; 1000 is far enough from both that a small change to either
+ * does not silently reclassify a project.
+ */
+const PANE_IS_LAID_OUT_ABOVE = 1000;
+
 interface Agreement {
+    readonly innerWidth: number;
     readonly currentRows: number;
     readonly paneMounted: boolean;
     readonly paneState: string | null;
@@ -60,6 +69,7 @@ async function readAgreement(page: import("@playwright/test").Page): Promise<Agr
         const viewport = document.querySelector("[data-testid='commit-list-viewport']");
         const pane = document.querySelector("[data-testid='commit-info-pane']");
         return {
+            innerWidth: window.innerWidth,
             currentRows: viewport ? viewport.querySelectorAll("[aria-current='true']").length : 0,
             paneMounted: pane !== null,
             paneState: pane?.getAttribute("data-pane-state") ?? null,
@@ -83,6 +93,18 @@ test.describe("commit-info selection agreement", () => {
                 found.currentRows,
                 `${context} marks no commit row aria-current, so the agreement below asserts nothing`,
             ).toBe(1);
+
+            // Without this, deleting the pane would turn the agreement below green: `denies` is
+            // false when nothing is mounted, so "no pane at all" and "a pane that agrees" would be
+            // the same result. Asserted only where the pane is laid out, because the narrow
+            // projects drop it legitimately.
+            if (found.innerWidth >= PANE_IS_LAID_OUT_ABOVE) {
+                expect(
+                    found.paneMounted,
+                    `${context} lays out no commit-info pane at ${found.innerWidth}px, so the ` +
+                        `agreement below cannot fail: ${JSON.stringify(found)}`,
+                ).toBe(true);
+            }
 
             const denies = found.paneMounted && found.paneState === "empty";
             expect(

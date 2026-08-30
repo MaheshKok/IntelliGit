@@ -37,6 +37,15 @@ interface CommitScopedSelection {
 interface CommitInfoPaneProps {
     detail: CommitDetail | null;
     loading?: boolean;
+    /**
+     * Whether a commit is selected on the same screen, independent of whether its detail has
+     * arrived. Surfaces that show a graph beside this pane auto-select their newest commit and
+     * then wait on the host for the detail; without this the pane cannot tell that window apart
+     * from a genuinely empty selection and denies a row it is drawing as current. Left optional
+     * and defaulting to false for the standalone commit-info view, which has no graph to disagree
+     * with and mirrors the host's selection through `loading` alone.
+     */
+    hasSelection?: boolean;
     folderIcon?: ThemeTreeIcon;
     folderExpandedIcon?: ThemeTreeIcon;
     folderIconsByName?: ThemeFolderIconMap;
@@ -104,6 +113,7 @@ function CommitRefRow({
 export function CommitInfoPane({
     detail,
     loading = false,
+    hasSelection = false,
     folderIcon,
     folderExpandedIcon,
     folderIconsByName,
@@ -176,7 +186,14 @@ export function CommitInfoPane({
     }, []);
 
     if (!detail) {
-        return loading ? (
+        // `hasSelection` counts as loading, not as an empty selection. A graph beside this pane
+        // auto-selects its newest commit and only then asks the host for the detail, so between
+        // those two moments a row is drawn `aria-current` while `loading` is still false --
+        // and the host's own bare `clearCommitDetail` can arrive later still and clear a
+        // transient flag, which is why the state is derived from the selection rather than
+        // set at the moment of selecting. "No commit selected" is now reserved for the case
+        // it describes.
+        return loading || hasSelection ? (
             <CommitInfoLoadingPane bottomHeight={bottomHeight} />
         ) : (
             <NoCommitSelection />
