@@ -211,6 +211,50 @@ describe("localization catalogs", () => {
         }
     });
 
+    it("keeps unparsed markdown out of webview catalog strings", () => {
+        // Webview catalog values reach the DOM as JSX text nodes -- the merge footer
+        // hint is `<span className="footer-hint">{t("merge.footer.hint")}</span>` at
+        // MergeEditorApp.tsx:1513. React prints a text node verbatim, and nothing
+        // under src/webviews parses markdown (there is no <kbd> anywhere in src/), so
+        // a delimiter authored here reaches the user as a literal glyph. The merge
+        // footer shipped twelve catalogs reading "`N`/`P` navigate" on screen.
+        //
+        // Asserts the property, not the sentence: rewording the hint keeps this green,
+        // reintroducing a delimiter anywhere in any webview catalog turns it red.
+        const markdownDelimiters = [
+            { label: "code span", pattern: /`/u, sample: "press `N` to skip" },
+            { label: "bold", pattern: /\*\*[^*]+\*\*/u, sample: "press **N** to skip" },
+            {
+                label: "link",
+                pattern: /\[[^\]]+\]\([^)]+\)/u,
+                sample: "see [docs](https://example.com)",
+            },
+        ];
+
+        // No catalog currently violates the bold or link arms, so on real data those
+        // two can never fire and a typo in either regex would leave a dead assertion
+        // that looks like coverage. Prove each pattern still matches its own violation.
+        for (const { label, pattern, sample } of markdownDelimiters) {
+            expect(pattern.test(sample), `the ${label} pattern no longer matches ${sample}`).toBe(
+                true,
+            );
+        }
+
+        // "en" is prepended explicitly: runtimeLocales is the eleven translated
+        // locales and excludes the source catalog -- the very file the defect was
+        // reported in.
+        for (const locale of ["en", ...runtimeLocales]) {
+            const catalogPath = `src/webviews/i18n/${locale}.json`;
+            const values = collectStringValues(readJson<Catalog>(catalogPath));
+            for (const { label, pattern } of markdownDelimiters) {
+                expect(
+                    values.filter((value) => pattern.test(value)),
+                    `${catalogPath} contains ${label} markdown, which this webview renders as a literal glyph`,
+                ).toEqual([]);
+            }
+        }
+    });
+
     it("preserves literal Git tokens that users must copy exactly", () => {
         const source = readJson<Catalog>("l10n/bundle.l10n.json");
         const literalTokens = [
