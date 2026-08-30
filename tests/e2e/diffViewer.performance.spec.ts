@@ -23,6 +23,9 @@ const SENTINEL = "x".repeat(200);
 const FRAME_INTERVAL_COUNT = 120;
 const WARMUP_PAIRS = 10;
 const SAMPLED_PAIRS_PER_BATCH = 13;
+// Wall-clock equivalent of two 60 Hz frames. Deriving this from a ProMotion interval makes the
+// double-rAF ceiling stricter than the measured native editor it is meant to benchmark against.
+const MAX_EDITABLE_P95_MS = 1000 / 30;
 const WORKBENCH_MODIFIER = process.platform === "darwin" ? "Meta" : "Control";
 const PAIRED_ROUND_ORDERS = [
     ["native", "custom"],
@@ -1028,7 +1031,7 @@ test.describe("editable diff viewer performance", () => {
             expect(customMetrics.p95Ms).toBeLessThanOrEqual(
                 nativeMetrics.p95Ms + nativeMetrics.frameIntervalMs,
             );
-            expect(customMetrics.p95Ms).toBeLessThanOrEqual(nativeMetrics.frameIntervalMs * 2);
+            expect(customMetrics.p95Ms).toBeLessThanOrEqual(MAX_EDITABLE_P95_MS);
             expect(customMetrics.longTasksMs.filter((duration) => duration > 50)).toEqual([]);
             expect(hostEcho.totalVisibleMs).toBeLessThanOrEqual(1_250);
             expect(hostEcho.inboundToAfterPaintMs).toBeLessThanOrEqual(50);
