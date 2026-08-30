@@ -95,12 +95,12 @@ async function measure(page: import("@playwright/test").Page, label: string, fie
  * stopped overflowing would turn both green while measuring nothing, and the ellipsis and
  * shrink-order regressions they exist for would ship behind a green suite.
  *
- * Requiring truncation instead costs nothing today: measured on this fixture, the label overflows
- * in all eight projects -- 108px of text in 106px at 320px, and in 40px at 1200px, the wide panes
- * squeezing it harder because the search field claims its 420px basis first. So the precondition
- * is a property of the fixture rather than of whichever project happens to run, and no viewport
- * needs pinning here to guarantee it. If it ever stops holding, that is the fixture losing its
- * ability to reproduce the defect, which is worth a failure rather than a silent skip.
+ * Requiring truncation instead is what `measureTruncated` below exists to guarantee, because the
+ * precondition does NOT hold everywhere on its own. It was first written as a property of the
+ * fixture, on a measurement taken only on macOS: 108px of text in a 106px box at 320px. That is a
+ * margin of two pixels, and the Linux container draws the same string at 101px in a 101px box, so
+ * all four narrow projects failed there on a label that genuinely fits. The claim was true; the
+ * font it was measured in was not the only one.
  */
 function requireTruncated(fit: Fit): void {
     expect(
@@ -110,6 +110,41 @@ function requireTruncated(fit: Fit): void {
             `stopped overflowing or the label was given room; both need a look before this test is ` +
             `trusted again.`,
     ).toBe(true);
+}
+
+/** How far the pane may be narrowed hunting for truncation, and in what steps. */
+const SHRINK_FLOOR_PX = 240;
+const SHRINK_STEP_PX = 20;
+
+/**
+ * Measures the label at a pane width that actually had to cut it, narrowing the pane until it does.
+ *
+ * The room the label gets is not monotonic in the pane width, so no single number is safe to pin.
+ * Measured on this fixture: 62px of overflow at 1200px, 91px at 700px, then NONE at 420px and
+ * 360px -- widths where the search field still sits above its floor and the label keeps its full
+ * 108px -- then 2px at 320px and 42px again at 280px. Wide panes squeeze hardest because the field
+ * claims its 420px basis first, and 320px, the narrow projects' own width, lands on the far lip of
+ * that trough with almost nothing to spare. Shrinking walks off the lip in whatever font is
+ * rendering, which is the part a fixed width cannot do. A pane that still will not truncate by the
+ * floor falls through to the same guard, so losing the precondition stays a failure, not a skip.
+ */
+async function measureTruncated(
+    page: import("@playwright/test").Page,
+    label: string,
+    field: string,
+): Promise<Fit> {
+    const viewport = page.viewportSize();
+    let fit: Fit = await measure(page, label, field);
+    for (
+        let width = (viewport?.width ?? SHRINK_FLOOR_PX) - SHRINK_STEP_PX;
+        !fit.truncated && width >= SHRINK_FLOOR_PX;
+        width -= SHRINK_STEP_PX
+    ) {
+        await page.setViewportSize({ width, height: viewport?.height ?? 720 });
+        fit = await measure(page, label, field);
+    }
+    requireTruncated(fit);
+    return fit;
 }
 
 test.describe("branch-scope label fit", () => {
@@ -141,12 +176,10 @@ test.describe("branch-scope label fit", () => {
 
     test("shows an ellipsis whenever it is truncated", async ({ mountHarness, page }) => {
         await mountHarness("undocked", { webviewFixture: HOST_CONTEXT_FIXTURES.undocked });
-        const fit: Fit = await measure(page, LABEL, FIELD);
-
         // Separate from the test above on purpose. Making the label shrinkable is what stops the
         // hard cut, and it is also what could hide the text with no affordance at all; the two
         // failures are different edits and must not collapse into one count.
-        requireTruncated(fit);
+        const fit: Fit = await measureTruncated(page, LABEL, FIELD);
         expect(
             fit.textOverflow,
             `"${fit.title}" is truncated but paints no ellipsis, so the text just stops`,
@@ -158,14 +191,12 @@ test.describe("branch-scope label fit", () => {
         page,
     }) => {
         await mountHarness("undocked", { webviewFixture: HOST_CONTEXT_FIXTURES.undocked });
-        const fit: Fit = await measure(page, LABEL, FIELD);
-
         // The regression guard for the fix, and the reason the fix is two edits rather than one.
         // Flex shrink is weighted by flex-basis, so simply dropping `flex-shrink: 0` would let a
         // 420px-basis search field take a fifth of any deficit out of a ~108px label -- truncating
         // it on panes that fit it today while the field still had 250px to give. Stated without a
         // viewport number so it holds at every pane width the user can drag to.
-        requireTruncated(fit);
+        const fit: Fit = await measureTruncated(page, LABEL, FIELD);
         const floor = FILTER_INPUT_WRAP_STYLE.minWidth as number;
         expect(
             Math.round(fit.fieldWidth),
