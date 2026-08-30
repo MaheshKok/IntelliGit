@@ -927,11 +927,11 @@ test.describe("editable diff viewer performance", () => {
             expect(initialOpenMs.custom).not.toBeNull();
 
             const allBatches = [...batches.native, ...batches.custom];
-            const expectedKeySamples = sampledPairsPerSurface * 2;
+            const expectedKeySamplesPerBatch = SAMPLED_PAIRS_PER_BATCH * 2;
             const useEventTiming = allBatches.every(
                 (batch) =>
                     batch.support.eventTiming &&
-                    batch.eventTimingMs.length >= expectedKeySamples / 4,
+                    batch.eventTimingMs.length >= expectedKeySamplesPerBatch,
             );
             const measurement: Measurement = useEventTiming ? "event-timing" : "double-raf";
             const metrics = (["native", "custom"] as const).map((surface) => {
@@ -1017,7 +1017,9 @@ test.describe("editable diff viewer performance", () => {
                 for (const [index, batch] of surfaceBatches.entries()) {
                     if (batch.trace?.supported === true) {
                         await testInfo.attach(`${surface}-sample-batch-${index + 1}-trace.json`, {
-                            body: JSON.stringify(batch.trace),
+                            body: JSON.stringify({
+                                taskDurationsMs: batch.trace.taskDurationsMs,
+                            }),
                             contentType: "application/json",
                         });
                     }

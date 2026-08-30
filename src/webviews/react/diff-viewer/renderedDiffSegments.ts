@@ -1,3 +1,4 @@
+import { alignCompareLinesForWordDiff } from "../../../diff/wordDiff";
 import type { DiffSegment } from "../../protocol/diffViewerTypes";
 import { buildLineNumberValues } from "../diff-core/lineNumbers";
 import type { LineNumberSpec } from "../diff-core/segments";
@@ -6,6 +7,11 @@ import type { LineNumberSpec } from "../diff-core/segments";
 export interface RenderedSegment {
     readonly segment: DiffSegment;
     readonly index: number;
+    /** Word-diff counterparts computed once for this stable host segment identity. */
+    readonly alignedCompareLines: {
+        readonly left: string[];
+        readonly right: string[];
+    };
     readonly paneLines: { readonly left: number; readonly right: number };
     readonly lineNumbers: { readonly left: LineNumberSpec; readonly right: LineNumberSpec };
     readonly canonicalLineCount: number;
@@ -43,6 +49,10 @@ export function buildRenderedSegments(
         const sourceStartLine = { left: leftStartLine, right: rightStartLine };
         const leftCount = segment.left.length;
         const rightCount = segment.right.length;
+        const alignedCompareLines = existing?.alignedCompareLines ?? {
+            left: alignCompareLinesForWordDiff(segment.left, segment.right),
+            right: alignCompareLinesForWordDiff(segment.right, segment.left),
+        };
 
         leftStartLine += leftCount;
         rightStartLine += rightCount;
@@ -58,6 +68,7 @@ export function buildRenderedSegments(
         const renderedSegment: RenderedSegment = {
             segment,
             index,
+            alignedCompareLines,
             paneLines: { left: leftCount, right: rightCount },
             lineNumbers: {
                 left: {

@@ -8,13 +8,20 @@ import { segmentClassName, type DiffPane } from "./segmentMarkers";
 export interface EditableSegmentItem {
     segment: DiffSegment;
     index: number;
+    /** Cached word-diff counterparts when the item comes from the rendered-segment model. */
+    alignedCompareLines?: { readonly left: string[]; readonly right: string[] };
     paneLines: Record<DiffPane, number>;
     lineNumbers: Record<DiffPane, LineNumberSpec>;
     canonicalLineCount: number;
 }
 
-/** Computes the text offset represented by a click in one syntax-highlighted segment. */
-function caretOffsetWithinBlock(block: HTMLElement, clientX: number, clientY: number): number {
+/** Computes the source-text offset represented by a click in one syntax-highlighted segment. */
+function caretOffsetWithinBlock(
+    block: HTMLElement,
+    sourceLines: readonly string[],
+    clientX: number,
+    clientY: number,
+): number {
     try {
         const position = document.caretPositionFromPoint?.(clientX, clientY);
         const range = position ? undefined : document.caretRangeFromPoint?.(clientX, clientY);
@@ -40,9 +47,9 @@ function caretOffsetWithinBlock(block: HTMLElement, clientX: number, clientY: nu
         rowRange.selectNodeContents(row);
         rowRange.setEnd(node, offset);
         return (
-            rows
+            sourceLines
                 .slice(0, rowIndex)
-                .reduce((total, previous) => total + (previous.textContent?.length ?? 0) + 1, 0) +
+                .reduce((total, previous) => total + previous.length + 1, 0) +
             rowRange.toString().length
         );
     } catch {
@@ -68,7 +75,8 @@ export const EditableSegmentBlock = React.memo(function EditableSegmentBlock({
     onStartEditing,
 }: EditableSegmentBlockProps): React.ReactElement {
     const lines = item.segment[side];
-    const compareLines = item.segment[side === "left" ? "right" : "left"];
+    const compareLines =
+        item.alignedCompareLines?.[side] ?? item.segment[side === "left" ? "right" : "left"];
     const lineCount = item.paneLines[side];
 
     return (
@@ -79,7 +87,12 @@ export const EditableSegmentBlock = React.memo(function EditableSegmentBlock({
                 if (window.getSelection()?.isCollapsed === false) return;
                 onStartEditing(
                     item,
-                    caretOffsetWithinBlock(event.currentTarget, event.clientX, event.clientY),
+                    caretOffsetWithinBlock(
+                        event.currentTarget,
+                        lines,
+                        event.clientX,
+                        event.clientY,
+                    ),
                 );
             }}
             onDoubleClick={() => onStartEditing(item)}

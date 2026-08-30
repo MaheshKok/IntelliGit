@@ -12,7 +12,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import type { ElectronApplication, FrameLocator } from "@playwright/test";
+import type { ElectronApplication, FrameLocator, Locator } from "@playwright/test";
 
 import { runGit } from "../fixtures/repo/gitRun";
 import { DIRTY_FIXTURE } from "../fixtures/repo/scenarios";
@@ -63,6 +63,22 @@ async function openDiffViewer(
     await expect(diffFrame.locator('[data-testid="diff-viewer-root"]')).toBeVisible();
 
     return { electronApp, diffFrame };
+}
+
+/** Applies one controlled textarea draft through the browser's native input boundary. */
+async function applyDraft(
+    textarea: Locator,
+    edit: { readonly text: string; readonly caret: number },
+): Promise<void> {
+    await textarea.evaluate((element, next) => {
+        const textareaElement = element as HTMLTextAreaElement;
+        const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;
+        setter?.call(textareaElement, next.text);
+        textareaElement.setSelectionRange(next.caret, next.caret);
+        textareaElement.dispatchEvent(
+            new InputEvent("input", { bubbles: true, inputType: "insertLineBreak" }),
+        );
+    }, edit);
 }
 
 test.describe("diff viewer", () => {
@@ -195,21 +211,7 @@ test.describe("diff viewer", () => {
             const firstDraft = await textarea.inputValue();
             const firstBlankDraft = firstDraft.replace("head0;\n", "head0;\n\n");
             const firstCaret = firstBlankDraft.indexOf("importOne();") - 1;
-            await textarea.evaluate(
-                (element, edit) => {
-                    const textareaElement = element as HTMLTextAreaElement;
-                    const setter = Object.getOwnPropertyDescriptor(
-                        HTMLTextAreaElement.prototype,
-                        "value",
-                    )?.set;
-                    setter?.call(textareaElement, edit.text);
-                    textareaElement.setSelectionRange(edit.caret, edit.caret);
-                    textareaElement.dispatchEvent(
-                        new InputEvent("input", { bubbles: true, inputType: "insertLineBreak" }),
-                    );
-                },
-                { text: firstBlankDraft, caret: firstCaret },
-            );
+            await applyDraft(textarea, { text: firstBlankDraft, caret: firstCaret });
 
             await expect
                 .poll(() => readFile(filePath, "utf-8"), { timeout: 30_000 })
@@ -222,21 +224,7 @@ test.describe("diff viewer", () => {
             const insertionCaret = echoedDraft.indexOf("importOne();") - 1;
             const tenBlankDraft = `${echoedDraft.slice(0, insertionCaret)}${"\n".repeat(9)}${echoedDraft.slice(insertionCaret)}`;
             const tenBlankCaret = insertionCaret + 9;
-            await textarea.evaluate(
-                (element, edit) => {
-                    const textareaElement = element as HTMLTextAreaElement;
-                    const setter = Object.getOwnPropertyDescriptor(
-                        HTMLTextAreaElement.prototype,
-                        "value",
-                    )?.set;
-                    setter?.call(textareaElement, edit.text);
-                    textareaElement.setSelectionRange(edit.caret, edit.caret);
-                    textareaElement.dispatchEvent(
-                        new InputEvent("input", { bubbles: true, inputType: "insertLineBreak" }),
-                    );
-                },
-                { text: tenBlankDraft, caret: tenBlankCaret },
-            );
+            await applyDraft(textarea, { text: tenBlankDraft, caret: tenBlankCaret });
             const immediatePaint = await diffFrame
                 .locator(".diff-editing-block")
                 .evaluate((block) => ({
@@ -330,11 +318,17 @@ test.describe("diff viewer", () => {
                 .first();
             const sharedScrollbar = diffFrame.locator(".diff-horizontal-scroll");
             await expect
-                .poll(() => peerCodeLines.evaluate((element) => Math.round(element.scrollLeft)))
-                .toBe(await textareaScrollLeft());
-            await expect
-                .poll(() => sharedScrollbar.evaluate((element) => Math.round(element.scrollLeft)))
-                .toBe(await textareaScrollLeft());
+                .poll(async () => {
+                    const [textareaLeft, peerLeft, sharedLeft] = await Promise.all([
+                        textareaScrollLeft(),
+                        peerCodeLines.evaluate((element) => Math.round(element.scrollLeft)),
+                        sharedScrollbar.evaluate((element) => Math.round(element.scrollLeft)),
+                    ]);
+                    return (
+                        textareaLeft > 0 && peerLeft === textareaLeft && sharedLeft === textareaLeft
+                    );
+                })
+                .toBe(true);
         } finally {
             await electronApp.close();
         }

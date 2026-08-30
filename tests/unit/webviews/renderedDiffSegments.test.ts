@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { alignCompareLinesForWordDiff } from "../../../src/diff/wordDiff";
 import type { DiffSegment } from "../../../src/webviews/protocol/diffViewerTypes";
 
 function segment(left: string[], right: string[]): DiffSegment {
@@ -54,6 +55,28 @@ describe("buildRenderedSegments", () => {
         expect(next[2].lineNumbers.right.primary).toEqual([3]);
         expect(next[2]).not.toBe(first[1]);
         expect(next[2].renderKey).toBe(first[1].renderKey);
+    });
+
+    it("reuses aligned comparison arrays when only source coordinates shift", async () => {
+        const { buildRenderedSegments, createRenderedSegmentCache } = await loadBuilder();
+        const cache = createRenderedSegmentCache();
+        const changed = segment(
+            ["alpha left", "beta left"],
+            ["alpha right", "inserted right", "beta right"],
+        );
+        const first = buildRenderedSegments([changed], cache)[0];
+
+        const shifted = buildRenderedSegments([segment(["prefix"], ["prefix"]), changed], cache)[1];
+
+        expect(shifted).not.toBe(first);
+        expect(shifted.alignedCompareLines.left).toBe(first.alignedCompareLines.left);
+        expect(shifted.alignedCompareLines.right).toBe(first.alignedCompareLines.right);
+        expect(shifted.alignedCompareLines.left).toEqual(
+            alignCompareLinesForWordDiff(changed.left, changed.right),
+        );
+        expect(shifted.alignedCompareLines.right).toEqual(
+            alignCompareLinesForWordDiff(changed.right, changed.left),
+        );
     });
 
     it("assigns distinct render keys to distinct equal segment objects", async () => {

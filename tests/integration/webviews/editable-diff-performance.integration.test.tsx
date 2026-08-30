@@ -11,6 +11,20 @@ import { timingBudgetsApply } from "../../helpers/timingBudgets";
 
 const layoutCalls = vi.hoisted(() => vi.fn());
 const inactiveEditableBlockRenders = vi.hoisted(() => vi.fn());
+const unequalLengthAlignmentCalls = vi.hoisted(() => vi.fn());
+
+vi.mock("../../../src/diff/wordDiff", async (importOriginal) => {
+    const actual = await importOriginal<typeof import("../../../src/diff/wordDiff")>();
+    return {
+        ...actual,
+        alignCompareLinesForWordDiff: (
+            ...args: Parameters<typeof actual.alignCompareLinesForWordDiff>
+        ) => {
+            if (args[0].length !== args[1].length) unequalLengthAlignmentCalls();
+            return actual.alignCompareLinesForWordDiff(...args);
+        },
+    };
+});
 
 vi.mock("../../../src/webviews/react/diff-core/mergeScrollLayout", async (importOriginal) => {
     const actual =
@@ -158,6 +172,54 @@ afterEach(async () => {
 });
 
 describe("editable diff performance", () => {
+    it("reuses cached asymmetric line alignment while typing", async () => {
+        installVsCodeMock();
+        vi.useFakeTimers();
+        const left = Array.from({ length: 200 }, (_, index) => `left ${index}`);
+        const right = Array.from({ length: 199 }, (_, index) => `right ${index}`);
+        const fixture = buildEditableDiffPerformanceFixture();
+        createRootHost();
+        await act(async () => {
+            await import("../../../src/webviews/react/diff-viewer/DiffViewerApp");
+        });
+        await flush();
+        dispatchHostMessage({
+            type: "setDiffData",
+            data: {
+                ...fixture.data,
+                segments: [{ type: "changed", left, right }],
+                editableText: right.join("\n"),
+            },
+        });
+        await flush();
+
+        expect(
+            unequalLengthAlignmentCalls,
+            "the asymmetric hunk must be aligned once per direction during its initial render",
+        ).toHaveBeenCalledTimes(2);
+
+        const changedBlock = document.querySelector<HTMLElement>(
+            ".diff-pane-right .diff-editable-block.diff-segment-changed",
+        );
+        expect(changedBlock).not.toBeNull();
+        act(() => {
+            changedBlock?.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+        });
+        const textarea = document.querySelector<HTMLTextAreaElement>(
+            "[data-testid='diff-pane-right-editable']",
+        );
+        expect(textarea).not.toBeNull();
+        const editable = textarea as HTMLTextAreaElement;
+        unequalLengthAlignmentCalls.mockClear();
+
+        setDraftText(editable, `${editable.value}!`);
+
+        expect(
+            unequalLengthAlignmentCalls,
+            "input update must reuse cached unequal-length alignment",
+        ).not.toHaveBeenCalled();
+    });
+
     it("keeps same-geometry typing out of the whole-view layout", async () => {
         const vscode = installVsCodeMock();
         const fixture = buildEditableDiffPerformanceFixture();

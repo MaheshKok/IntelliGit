@@ -38,7 +38,7 @@
        back in by 22% is what does, and it holds on any theme because both legs are the
        live theme's own tokens rather than a hard-coded pair.
        Measured on dark-modern, the worst case, as 8-bit channel distance from the
-       conflict hue:
+       pre-blend --merge-danger source hue:
 
          charts-red alone          7, 5, 3     indistinguishable
          charts-red + 22% muted   26,13,21     distinct

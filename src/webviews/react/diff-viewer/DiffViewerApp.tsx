@@ -2,7 +2,6 @@
 
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { alignCompareLinesForWordDiff } from "../../../diff/wordDiff";
 import type {
     DiffSegment,
     DiffViewerData,
@@ -133,18 +132,19 @@ function clearReadOnlyNoticeTimer(
 const DiffPaneBlock = React.memo(function DiffPaneBlock({
     segment,
     side,
+    compareLines,
     lineCount,
     lineNumbers,
     highlightWords,
 }: {
     segment: DiffSegment;
     side: DiffPane;
+    compareLines: string[];
     lineCount: number;
     lineNumbers: LineNumberSpec;
     highlightWords: boolean;
 }): React.ReactElement {
     const lines = segment[side];
-    const compareLines = segment[side === "left" ? "right" : "left"];
 
     return (
         <div
@@ -361,12 +361,7 @@ function editableDraftRun(
             ? draft.startLine
             : paneStartLine(renderedSegments, items[0].index, side);
     const runLines = items.flatMap((item) => item.segment[side]);
-    const alignedRunCompareLines = items.flatMap((item) =>
-        alignCompareLinesForWordDiff(
-            item.segment[side],
-            item.segment[side === "left" ? "right" : "left"],
-        ),
-    );
+    const alignedRunCompareLines = items.flatMap((item) => item.alignedCompareLines[side]);
     const prefixEnd = Math.min(Math.max(draft.startLine - runStartLine, 0), runLines.length);
     const suffixStart = Math.min(Math.max(prefixEnd + draft.lineCount, prefixEnd), runLines.length);
     const prefixLines = runLines.slice(0, prefixEnd);
@@ -1039,12 +1034,12 @@ function EditableDiffPane({
                                         pendingGrowthTargetIndex,
                                     };
                                     setDraft(nextDraft);
-                                    const nextRun = editableDraftRun(
-                                        nextDraft,
-                                        renderedSegments,
-                                        side,
+                                    onDraftLayoutChange(
+                                        draftLayoutOf(
+                                            { ...textRun, pendingGrowthTargetIndex },
+                                            side,
+                                        ),
                                     );
-                                    onDraftLayoutChange(draftLayoutOf(nextRun, side));
                                     restartDebouncedPost();
                                 }}
                                 onBlur={commitDraft}
@@ -2116,6 +2111,7 @@ export function App(): React.ReactElement {
                                                     key={`left-${item.renderKey}`}
                                                     segment={item.segment}
                                                     side="left"
+                                                    compareLines={item.alignedCompareLines.left}
                                                     lineCount={item.paneLines.left}
                                                     lineNumbers={item.lineNumbers.left}
                                                     highlightWords={highlightWords}
@@ -2154,6 +2150,7 @@ export function App(): React.ReactElement {
                                                     key={`right-${item.renderKey}`}
                                                     segment={item.segment}
                                                     side="right"
+                                                    compareLines={item.alignedCompareLines.right}
                                                     lineCount={item.paneLines.right}
                                                     lineNumbers={item.lineNumbers.right}
                                                     highlightWords={highlightWords}
