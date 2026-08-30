@@ -378,5 +378,7 @@
     "diff.toolbar.prevChange.title": "Modification précédente (Alt+↑)",
     "diff.toolbar.prevChange.label": "Modification précédente",
     "diff.toolbar.nextChange.title": "Modification suivante (Alt+↓)",
-    "diff.toolbar.nextChange.label": "Modification suivante"
+    "diff.toolbar.nextChange.label": "Modification suivante",
+    "commitPanel.staged": "Indexé",
+    "commitPanel.unstaged": "Non indexé"
 }

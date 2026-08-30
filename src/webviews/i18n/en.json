@@ -214,6 +214,8 @@
     },
     "commitPanel.noChanges": "No changes",
     "commitPanel.changes": "Changes",
+    "commitPanel.staged": "Staged",
+    "commitPanel.unstaged": "Unstaged",
     "commitPanel.unversionedFiles": "Unversioned Files",
     "commitPanel.ignoredFiles": "Ignored Files",
     "stash.empty": "No stashed changes",

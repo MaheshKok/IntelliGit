@@ -1459,25 +1459,27 @@ describe("webview ui smoke", () => {
      * splitting the three count surfaces apart.
      */
     function renderFileTree(files: WorkingFile[]): React.ReactElement {
-        const noop = vi.fn();
-        return (
-            <FileTree
-                files={files}
-                groupByDir={false}
-                showIgnoredFiles={false}
-                checkedPaths={new Set()}
-                onToggleFile={noop}
-                onToggleFolder={noop}
-                onToggleSection={noop}
-                isAllChecked={() => false}
-                isSomeChecked={() => false}
-                onFileClick={noop}
-                onTrackUnversionedFiles={noop}
-                expandAllSignal={0}
-                collapseAllSignal={0}
-            />
-        );
+        return <FileTree files={files} {...STABLE_FILE_TREE_PROPS} />;
     }
+
+    // Every prop but `files` keeps a stable identity across renders. The duplicate
+    // set feeds a `useCallback` that also depends on the handlers and the checked
+    // set, so minting a fresh `vi.fn()` or `new Set()` per render would rebuild that
+    // callback on identity alone and make a stale-dependency bug unreachable.
+    const STABLE_FILE_TREE_PROPS = {
+        groupByDir: false,
+        showIgnoredFiles: false,
+        checkedPaths: new Set<string>(),
+        onToggleFile: () => {},
+        onToggleFolder: () => {},
+        onToggleSection: () => {},
+        isAllChecked: () => false,
+        isSomeChecked: () => false,
+        onFileClick: () => {},
+        onTrackUnversionedFiles: () => {},
+        expandAllSignal: 0,
+        collapseAllSignal: 0,
+    } as const;
 
     function fileRowsFor(container: HTMLElement, path: string): HTMLElement[] {
         return Array.from(container.querySelectorAll<HTMLElement>("[data-vscode-context]")).filter(
@@ -1564,11 +1566,12 @@ describe("webview ui smoke", () => {
     });
 
     it("drops the marker when a path stops being listed twice", () => {
-        // The SSR tests above render once, so they cannot see a stale memo. The
-        // duplicate-path set feeds a `useCallback` whose result is cached by
-        // `fileWiringsByFile`; that map recomputes whenever `entries` changes, so a
-        // missing dependency would serve a stale marker through a fresh map. Staging
-        // the rest of the file is exactly that transition.
+        // The SSR tests above render once, so none of them covers the transition: a
+        // marker that appears correctly but never clears is invisible to them. The
+        // props are held identical across the two renders so only `files` moves.
+        // This does NOT prove the `splitPaths` dependency is required -- measured,
+        // dropping it stays green because `dragSelectedPaths` already changes with
+        // `files`. It proves the marker clears when the duplicate does.
         const mounted = mount(
             <ChakraProvider theme={theme}>{renderFileTree(PARTIALLY_STAGED)}</ChakraProvider>,
         );

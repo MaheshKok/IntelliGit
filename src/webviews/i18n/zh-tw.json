@@ -360,5 +360,7 @@
     "diff.toolbar.prevChange.title": "上一處變更 (Alt+↑)",
     "diff.toolbar.prevChange.label": "上一處變更",
     "diff.toolbar.nextChange.title": "下一處變更 (Alt+↓)",
-    "diff.toolbar.nextChange.label": "下一處變更"
+    "diff.toolbar.nextChange.label": "下一處變更",
+    "commitPanel.staged": "已暫存",
+    "commitPanel.unstaged": "未暫存"
 }

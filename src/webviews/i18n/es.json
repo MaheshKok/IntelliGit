@@ -378,5 +378,7 @@
     "diff.toolbar.prevChange.title": "Cambio anterior (Alt+↑)",
     "diff.toolbar.prevChange.label": "Cambio anterior",
     "diff.toolbar.nextChange.title": "Cambio siguiente (Alt+↓)",
-    "diff.toolbar.nextChange.label": "Cambio siguiente"
+    "diff.toolbar.nextChange.label": "Cambio siguiente",
+    "commitPanel.staged": "Preparado",
+    "commitPanel.unstaged": "No preparado"
 }

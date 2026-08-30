@@ -387,5 +387,7 @@
     "diff.toolbar.prevChange.title": "Предыдущее изменение (Alt+↑)",
     "diff.toolbar.prevChange.label": "Предыдущее изменение",
     "diff.toolbar.nextChange.title": "Следующее изменение (Alt+↓)",
-    "diff.toolbar.nextChange.label": "Следующее изменение"
+    "diff.toolbar.nextChange.label": "Следующее изменение",
+    "commitPanel.staged": "Подготовлено",
+    "commitPanel.unstaged": "Не подготовлено"
 }

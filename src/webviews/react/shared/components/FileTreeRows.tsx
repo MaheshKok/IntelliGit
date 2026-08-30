@@ -106,6 +106,13 @@ interface TreeFileWiring {
     isCurrent?: boolean;
     /** Current checkbox state when a caller supplies file-check wiring. */
     isChecked?: boolean;
+    /**
+     * Set only when this row is one of two sharing a path -- a partially staged file.
+     * Which side of the index a row shows is a fact about the LIST, not about the
+     * file, which is why it arrives as wiring rather than as a `TreeRowFile` field: a
+     * row alone on its path leaves this undefined and renders no marker.
+     */
+    stagedState?: "staged" | "unstaged";
     /** Toggles this file's checked state; absent wiring leaves no checkbox control. */
     onToggleCheck?: (path: string) => void;
     /** Reserves, renders, or omits the checkbox slot without changing row layout. */
@@ -604,6 +611,35 @@ function TreeFileStats({
     );
 }
 
+/**
+ * Which side of the index a row belongs to, rendered only for a path the bucket
+ * lists twice. Without it the two entries of a partially staged file are
+ * indistinguishable on screen. `FileTree` decides when to pass it; see
+ * `splitStagedPaths` there.
+ */
+function TreeFileStagedMarker({
+    stagedState,
+    rowOverridesForeground,
+}: {
+    stagedState?: "staged" | "unstaged";
+    rowOverridesForeground: boolean;
+}): React.ReactElement | null {
+    if (!stagedState) return null;
+    return (
+        <Box
+            as="span"
+            flexShrink={0}
+            fontSize="11px"
+            // Drained on a highlighted row for the same reason TreeFileStats drains
+            // its counts: the muted token is picked against the panel background and
+            // is not readable on the selection background.
+            color={rowOverridesForeground ? undefined : "var(--intelligit-pycharm-muted)"}
+        >
+            {t(stagedState === "staged" ? "commitPanel.staged" : "commitPanel.unstaged")}
+        </Box>
+    );
+}
+
 function TreeFileRowImpl({
     file,
     depth,
@@ -713,6 +749,10 @@ function TreeFileRowImpl({
             <TreeFileCheckbox file={file} wiring={wiring} />
             <TreeFileIcon status={file.status} icon={file.icon} />
             <TreeFileLabel file={file} parentPath={parentPath} showParentPath={showParentPath} />
+            <TreeFileStagedMarker
+                stagedState={wiring.stagedState}
+                rowOverridesForeground={visuals.background !== undefined}
+            />
             <TreeFileStats
                 file={file}
                 rowVariant={rowVariant}

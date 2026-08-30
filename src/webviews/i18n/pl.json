@@ -387,5 +387,7 @@
     "diff.toolbar.prevChange.title": "Poprzednia zmiana (Alt+↑)",
     "diff.toolbar.prevChange.label": "Poprzednia zmiana",
     "diff.toolbar.nextChange.title": "Następna zmiana (Alt+↓)",
-    "diff.toolbar.nextChange.label": "Następna zmiana"
+    "diff.toolbar.nextChange.label": "Następna zmiana",
+    "commitPanel.staged": "W indeksie",
+    "commitPanel.unstaged": "Poza indeksem"
 }

@@ -378,5 +378,7 @@
     "diff.toolbar.prevChange.title": "Alteração anterior (Alt+↑)",
     "diff.toolbar.prevChange.label": "Alteração anterior",
     "diff.toolbar.nextChange.title": "Próxima alteração (Alt+↓)",
-    "diff.toolbar.nextChange.label": "Próxima alteração"
+    "diff.toolbar.nextChange.label": "Próxima alteração",
+    "commitPanel.staged": "Preparado",
+    "commitPanel.unstaged": "Não preparado"
 }
