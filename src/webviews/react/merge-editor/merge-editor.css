@@ -1068,10 +1068,41 @@
 .change-conflict .word-diff-change {
     background: var(--pycharm-conflict);
 }
+/* A wholly inserted hunk neutralises its word fill, for the reason the diff viewer
+   neutralises its own (diff-viewer.css:411-433): the band already says the whole line is
+   new, so a mark covering the whole line says it twice. `--merge-inserted-block-bg` is 15%
+   of --merge-ok (:80) and --pycharm-inserted is 30% of that SAME hue (:71), so the glyphs
+   came out in a darker box of one colour inside a lighter band of it. Both are `color-mix`
+   against an opaque background, so neither is a translucent overlay -- they are two opaque
+   shades, which is why the pair reads as a second tint rather than as depth.
+
+   Measured on the merge fixture before this rule changed: 2/2 marks inside the one-sided
+   hunk painted a tint the band did not carry, in `conflict-theirs` and `conflict-result`.
+   The result-pane half was the worse one -- :816-821 forces the unchanged column
+   transparent and has no word-fill counterpart, so that mark was an opaque fill over a band
+   painting nothing at all.
+
+   `transparent` rather than deleting the declaration: diff-core.css:231 paints every
+   `.word-diff-change` in `--diff-pycharm-modified`, so removing this rule would leave the
+   marks in the MODIFIED hue rather than unpainted.
+
+   `.conflict-result.edited` is listed explicitly because :1082 ties this rule's (0,3,0) and
+   sits later, so it would otherwise win back the fill for an edited result pane. Inside a
+   `variant-insertion` that mark is vacuous on every reachable path: `resultCompareBaseline`
+   (segments.tsx:163-173) returns `theirsLines`, `oursLines` or `baseLines`, and a
+   `variant-insertion` has `baseLines === []` by definition (segments.tsx:181) with the
+   non-changed side empty too, since `ours-only`/`theirs-only` means the other side never
+   edited. No committed fixture drives a result-pane edit, so that selector is reasoned from
+   the comparison baseline rather than measured.
+
+   Scoped to `variant-insertion` on purpose, and NOT extended to `.variant-deletion` (:1079):
+   a deletion hunk's sides carry no lines to mark, so it has no word runs to double-paint,
+   and a rule there would neutralise nothing while looking like it gated something. */
 .variant-insertion .conflict-ours .word-diff-change,
 .variant-insertion .conflict-theirs .word-diff-change,
-.variant-insertion .conflict-result .word-diff-change {
-    background: var(--pycharm-inserted);
+.variant-insertion .conflict-result .word-diff-change,
+.variant-insertion .conflict-result.edited .word-diff-change {
+    background: transparent;
 }
 .variant-modification .word-diff-change {
     background: var(--pycharm-modified);
