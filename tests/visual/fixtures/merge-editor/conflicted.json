@@ -33,8 +33,19 @@
                         {
                             "type": "common",
                             "lines": [
-                                "three"
+                                "three",
+                                "BOTH-ADD"
                             ]
+                        },
+                        {
+                            "type": "conflict",
+                            "id": 1,
+                            "changeKind": "theirs-only",
+                            "oursLines": [],
+                            "theirsLines": [
+                                "THEIRS-ONLY-ADD"
+                            ],
+                            "baseLines": []
                         }
                     ],
                     "oursLabel": "main",

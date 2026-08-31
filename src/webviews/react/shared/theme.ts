@@ -108,6 +108,11 @@ export function useIsLightTheme(): boolean {
         };
         observer.observe(document.documentElement, options);
         observer.observe(document.body, options);
+        // Not an initializer -- `useState(isLightTheme)` above already seeds the first render.
+        // This closes the window between that render and the observers attaching: a theme swap
+        // landing in the gap produces no future mutation for the observer to see, so without
+        // this re-read the hook would report the old theme for the rest of the session.
+        // react-doctor-disable-next-line react-doctor/no-initialize-state
         sync();
         return () => observer.disconnect();
     }, []);

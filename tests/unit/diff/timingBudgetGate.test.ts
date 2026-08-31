@@ -78,7 +78,7 @@ describe("wall-clock budget gate: the invokers that suspend it", () => {
         expect(block, "the compatibility workflow must still have a `Run tests` step").not.toBe("");
         expect(
             block,
-            "this matrix runs on shared ubuntu/macos/windows runners, none of which is the host the budgets in `src/diff/diffBudgets.ts` were measured on -- the same commit read 6,555.914 ms against a 5,613 ms target here while the macOS leg passed",
+            "this matrix runs on shared ubuntu/macos/windows runners, none of which is the host the budgets in `src/diff/diffBudgets.ts` were measured on -- `MAX_DIFF_COMPUTE_MS` is 59 ms and GitHub's x86 runner read 209.875 ms for the same computation. The render budget that used to be the other half of this reason is gone: it was an absolute wall-clock target, replaced by `MAX_DIFF_RENDER_GROWTH`, which compares two tiers of one run and so needs no suspension anywhere",
         ).toContain(`${FLAG}: "1"`);
         expect(
             block,

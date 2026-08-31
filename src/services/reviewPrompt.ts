@@ -292,11 +292,32 @@ export class ReviewPromptService {
         if (this.latchPath) await rm(this.latchPath, { force: true });
 
         const state = this.context.globalState;
-        for (const key of Object.values(KEYS)) await state.update(key, undefined);
+        // `if (!arm) return` below is not a skip path this await can duck under: clearing is
+        // the work, and it must land whether or not the armed seed follows it.
+        //
+        // `allSettled` rather than `all`. `all` rejects on its FIRST failure and leaves the
+        // siblings running unobserved, so `resetState` releases the cycle queue -- see the
+        // `this.queue` assignment above -- while `state.update(key, undefined)` calls are still
+        // in flight, and a late clear then lands an `undefined` on top of the counter the next
+        // cycle has already written. A second rejection arriving after `all` had settled is
+        // also unhandled, which fails the whole run rather than this one command.
+        // react-doctor-disable-next-line react-doctor/async-defer-await
+        const cleared = await Promise.allSettled(
+            Object.values(KEYS).map((key) => state.update(key, undefined)),
+        );
+        // The caller still learns about the first failure; it just learns after the rest land.
+        for (const outcome of cleared) {
+            if (outcome.status === "rejected") throw outcome.reason;
+        }
         if (!arm) return;
 
         // One short of every threshold, matching the seed the gating tests use, so the
         // very next successful commit or push crosses it.
+        //
+        // Sequential on purpose. `Promise.all` here would let a crash mid-arm persist an
+        // arbitrary subset -- an armed `activeDays` with no `installedAt`, say -- and the
+        // gating tests read this as one coherent state, not as four independent keys.
+        // react-doctor-disable-next-line react-doctor/async-parallel
         await state.update(KEYS.successOps, MIN_SUCCESS_OPS - 1);
         await state.update(KEYS.activeDays, MIN_ACTIVE_DAYS);
         await state.update(KEYS.lastActiveDay, dayKey(this.now()));
@@ -307,6 +328,11 @@ export class ReviewPromptService {
     async whenIdle(): Promise<void> {
         for (let attempt = 0; attempt < 100; attempt += 1) {
             const seen = this.scheduled;
+            // Both awaits are the point of the loop, not a cost to defer: settling the queue
+            // is what lets new work be scheduled, and the guard below asks whether any was.
+            // Checking `this.scheduled` before awaiting would compare the counter to itself.
+            // react-doctor-disable-next-line react-doctor/async-defer-await
+            // react-doctor-disable-next-line react-doctor/async-await-in-loop
             await this.queue;
             await this.prompts;
             if (this.scheduled === seen) return;
@@ -322,12 +348,20 @@ export class ReviewPromptService {
 
     private async runCycle(): Promise<void> {
         if (this.decided) return;
+        // `shouldAsk` reads the very counters `countOperation` just incremented, so the
+        // guard depends on this await having already landed. Deferring it below the guard
+        // would test the previous cycle's totals and ask one operation late, forever.
+        // react-doctor-disable-next-line react-doctor/async-defer-await
         await this.countOperation();
         if (!(await this.shouldAsk())) return;
 
         // Claimed before any await so a second cycle queued behind this one cannot
         // observe a stale "not yet asked" state.
         this.askedThisSession = true;
+        // The latch check below is a re-read that only means anything once the reservation
+        // has landed: it asks whether another window decided during this await. Hoisting it
+        // above would answer for the moment before the gap it exists to cover.
+        // react-doctor-disable-next-line react-doctor/async-defer-await
         await this.reserveAsk();
 
         // The reservation is several awaits long; another window may have landed a
@@ -379,6 +413,10 @@ export class ReviewPromptService {
      */
     private async reserveAsk(): Promise<void> {
         const state = this.context.globalState;
+        // Sequential so a crash leaves a defined prefix. `askCount` first is what makes the
+        // documented trade above hold: parallel writes could persist `snoozedUntil` without
+        // the matching `askCount`, which is a silent free ask rather than a spent one.
+        // react-doctor-disable-next-line react-doctor/async-parallel
         await state.update(KEYS.askCount, readCounter(state.get(KEYS.askCount), 0) + 1);
         await state.update(KEYS.lastAskAt, this.now());
         await state.update(KEYS.snoozedUntil, this.now() + SNOOZE_MS);

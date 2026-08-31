@@ -13,7 +13,7 @@ import { VscCheckbox } from "./VscCheckbox";
 import { ChevronIcon } from "./Icons";
 import { resolveFolderIcon } from "../utils/folderIcons";
 import { getLeafName, getParentPath } from "../utils/path";
-import { JETBRAINS_UI } from "../tokens";
+import { JETBRAINS_UI, SHADOW } from "../tokens";
 import { t } from "../i18n";
 import { countFiles, type TreeEntry, type TreeFolder } from "../fileTree";
 
@@ -106,6 +106,13 @@ interface TreeFileWiring {
     isCurrent?: boolean;
     /** Current checkbox state when a caller supplies file-check wiring. */
     isChecked?: boolean;
+    /**
+     * Set only when this row is one of two sharing a path -- a partially staged file.
+     * Which side of the index a row shows is a fact about the LIST, not about the
+     * file, which is why it arrives as wiring rather than as a `TreeRowFile` field: a
+     * row alone on its path leaves this undefined and renders no marker.
+     */
+    stagedState?: "staged" | "unstaged";
     /** Toggles this file's checked state; absent wiring leaves no checkbox control. */
     onToggleCheck?: (path: string) => void;
     /** Reserves, renders, or omits the checkbox slot without changing row layout. */
@@ -463,6 +470,9 @@ function treeFileVisuals(isSelected: boolean, isDragSelected: boolean) {
                 ? JETBRAINS_UI.color.selected
                 : "var(--intelligit-pycharm-selected)"
             : JETBRAINS_UI.color.hover,
+        // Both highlight states get the ring, because both resolve to a host-owned
+        // fill that stock themes set as low as 1.15:1 against the panel.
+        boxShadow: hasHighlight ? SHADOW.selectedRing : undefined,
     };
 }
 
@@ -601,6 +611,35 @@ function TreeFileStats({
     );
 }
 
+/**
+ * Which side of the index a row belongs to, rendered only for a path the bucket
+ * lists twice. Without it the two entries of a partially staged file are
+ * indistinguishable on screen. `FileTree` decides when to pass it; see
+ * `splitStagedPaths` there.
+ */
+function TreeFileStagedMarker({
+    stagedState,
+    rowOverridesForeground,
+}: {
+    stagedState?: "staged" | "unstaged";
+    rowOverridesForeground: boolean;
+}): React.ReactElement | null {
+    if (!stagedState) return null;
+    return (
+        <Box
+            as="span"
+            flexShrink={0}
+            fontSize="11px"
+            // Drained on a highlighted row for the same reason TreeFileStats drains
+            // its counts: the muted token is picked against the panel background and
+            // is not readable on the selection background.
+            color={rowOverridesForeground ? undefined : "var(--intelligit-pycharm-muted)"}
+        >
+            {t(stagedState === "staged" ? "commitPanel.staged" : "commitPanel.unstaged")}
+        </Box>
+    );
+}
+
 function TreeFileRowImpl({
     file,
     depth,
@@ -657,6 +696,14 @@ function TreeFileRowImpl({
                       : undefined
             }
             bg={visuals.background}
+            // A 1px inner ring, not a stripe. The background alone cannot carry the
+            // state: it resolves to a host colour that three of the four captured
+            // themes set under 1.5:1 against the panel, so a selected row had no
+            // visible boundary there. DESIGN.md still bans a >1px colored edge as a
+            // row accent, which is why this is a hairline and why it is a box-shadow
+            // rather than a border — the row's height is fixed and a border would
+            // shift its content. See SHADOW.selectedRing.
+            boxShadow={visuals.boxShadow}
             color={
                 isCommitPanel
                     ? isDragSelected
@@ -664,11 +711,6 @@ function TreeFileRowImpl({
                         : "var(--intelligit-pycharm-foreground)"
                     : visuals.color
             }
-            // No selection stripe. A selected row already carries the full
-            // Selection Indigo background and its paired foreground, so the 2px
-            // inset accent that used to sit here restated a state the row had
-            // already made obvious — and DESIGN.md bans a >1px colored edge as a
-            // row accent outright.
             _hover={{
                 bg: isCommitPanel
                     ? isDragSelected
@@ -707,6 +749,10 @@ function TreeFileRowImpl({
             <TreeFileCheckbox file={file} wiring={wiring} />
             <TreeFileIcon status={file.status} icon={file.icon} />
             <TreeFileLabel file={file} parentPath={parentPath} showParentPath={showParentPath} />
+            <TreeFileStagedMarker
+                stagedState={wiring.stagedState}
+                rowOverridesForeground={visuals.background !== undefined}
+            />
             <TreeFileStats
                 file={file}
                 rowVariant={rowVariant}

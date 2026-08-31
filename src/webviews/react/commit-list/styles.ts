@@ -59,9 +59,17 @@ export const FILTER_ICON_STYLE: CSSProperties = {
 
 export const FILTER_INPUT_WRAP_STYLE: CSSProperties = {
     position: "relative",
-    flex: "0 1 420px",
+    // The field, not the branch-scope label beside it, yields first. Flex shrink is
+    // weighted by flex-basis, so a 420px basis against the label's ~108px would take
+    // a fifth of any deficit out of the label while the field still had 250px to
+    // give — truncating the label on panes that fit it today. Basing the field at its
+    // own floor and letting it grow makes it the last item to freeze. The 420px cap
+    // is the width `0 1 420px` already resolved to whenever there was room (grow was
+    // 0, so the old 460px cap was unreachable), so every layout that fits renders
+    // identically.
+    flex: "1 1 170px",
     minWidth: 170,
-    maxWidth: 460,
+    maxWidth: 420,
 };
 
 /**
@@ -124,7 +132,17 @@ export const BRANCH_SCOPE_STYLE: CSSProperties = {
     // else in the row sat at 6px.
     color: JETBRAINS_UI.color.muted,
     fontSize: "11px",
-    flexShrink: 0,
+    // Shrinkable on purpose. `flex-shrink: 0` held this label at its full content
+    // width, so once the filter bar ran out of room the span extended past the bar and
+    // the pane's own `overflow: hidden` cut it mid-glyph — the `text-overflow:
+    // ellipsis` above never fired, because an element that is never shrunk never
+    // overflows ITSELF. The `title` on the span still carries the full string.
+    //
+    // `min-width: 0` is inert today and no test covers it — removing it keeps the
+    // suite green, measured. It is here because the automatic minimum size is only 0
+    // while `overflow` stays non-visible: setting `overflow: visible` above would
+    // restore `min-width: auto` and this whole defect with it, silently.
+    minWidth: 0,
 };
 
 /** Creates a header row offset that keeps text columns aligned after the graph lanes. */

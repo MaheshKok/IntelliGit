@@ -234,9 +234,33 @@ export async function collectOracleInputs(page: Page): Promise<CollectedOracleIn
             if (getComputedStyle(element).visibility === "hidden") {
                 return false;
             }
+            // Both remaining checks walk, and for the same reason: neither property inherits, so
+            // the element's own computed value cannot carry an ancestor's, yet both hide the
+            // element visually when set anywhere above it.
+            //
+            // `opacity: 0` on an ancestor composites the whole subtree away.
+            //
+            // `clip: rect(0px, 0px, 0px, 0px)` is the screen-reader-only idiom: a 1x1 box with
+            // its paint area collapsed to nothing, deliberately left `visible` and opaque so
+            // assistive tech still reads it. Its text overflows that 1px box by construction, so
+            // every such label measured as clipped text -- a defect report for a string no
+            // sighted user was ever meant to see. `clip` is paint-only, so a DESCENDANT of a
+            // collapsed wrapper still generates a box, still returns client rects, and still
+            // computes its own `clip` as `auto`: checking only the element let any text nested one
+            // level inside the idiom back into the candidate set, invisible and scored.
+            // `sr-only-nested` in clippingCollector.spec.ts pins that case.
+            //
+            // Deliberately narrow, and the rect is why: an element clipped to a NON-empty rect is
+            // still painted and still reported, which `partly-clipped` pins -- widening either
+            // check to any clipped element turns it red. `clip` is deprecated for every purpose
+            // other than this idiom, so a fully-collapsed rect is a reliable signature for it.
             let node: Element | null = element;
             while (node !== null) {
-                if (getComputedStyle(node).opacity === "0") {
+                const ancestor = getComputedStyle(node);
+                if (ancestor.opacity === "0") {
+                    return false;
+                }
+                if (ancestor.clip === "rect(0px, 0px, 0px, 0px)") {
                     return false;
                 }
                 node = node.parentElement;

@@ -125,7 +125,22 @@
     text-align: right;
     min-height: 20px;
     line-height: 20px;
-    border-left: 1px solid transparent;
+    /* The seam between the numbers and the code they number. Exactly one 1px border per
+       row, always on the code-facing side, so the row keeps the width the reserved-but-
+       never-coloured `border-left` gave it and only which edge carries it changes.
+       Without a colour here `.code-lines` clips an overflowing line mid-glyph flush
+       against a line number with nothing marking where the code stops -- and at 320px
+       every line overflows. `--diff-pane-boundary` is the separator hue this shell
+       already draws boundaries with, so no new colour enters the palette. */
+    border-right: 1px solid var(--diff-pane-boundary);
+}
+
+/* Gutter on the right means the code is to its LEFT, so the seam moves with the code.
+   Painting a fixed side in both orientations would draw this line down the pane's outer
+   edge instead, doubling the pane boundary already drawn there. */
+.code-block.line-numbers-right .line-number {
+    border-right: 0;
+    border-left: 1px solid var(--diff-pane-boundary);
 }
 
 .line-number-primary {

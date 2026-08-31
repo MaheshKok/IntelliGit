@@ -55,6 +55,7 @@ import {
 import { REPOSITORY_SCENARIOS, type ScenarioWorkspace } from "../../../fixtures/repo/scenarios";
 import { createScratchWorkspaces } from "../../fixtures/scratchWorkspaces";
 import { removeScratchDirectories } from "../../../helpers/scratchDirectories";
+import { withWindowsHeadroom } from "../../../setup/platformTimeouts";
 
 const execFileAsync = promisify(execFile);
 
@@ -182,7 +183,7 @@ describe("shelf-conflict-editor webview recorder", () => {
             () => SHELF_CONFLICTED_SCENARIO.prepare(path.join(parentDir, "root-a")),
             () => SHELF_CONFLICTED_SCENARIO.prepare(path.join(parentDir, "root-b")),
         );
-    }, 60_000);
+    }, withWindowsHeadroom(60_000));
 
     afterAll(async () => {
         await scratch.removeAll();

@@ -211,7 +211,7 @@
     "merge.pane.result": "結果 {path}",
     "merge.footer.useFileOurs": "使用我方檔案",
     "merge.footer.useFileTheirs": "使用他方檔案",
-    "merge.footer.hint": "`N`/`P` 解決衝突 • `Ctrl/Cmd+Enter` 應用",
+    "merge.footer.hint": "N/P 解決衝突 • Ctrl/Cmd+Enter 應用",
     "merge.header.autoResolved": "{count} 個自動解決",
     "merge.footer.apply": "套用（{resolved}/{total}）",
     "merge.kind.leftOnly": "僅左",
@@ -360,5 +360,7 @@
     "diff.toolbar.prevChange.title": "上一處變更 (Alt+↑)",
     "diff.toolbar.prevChange.label": "上一處變更",
     "diff.toolbar.nextChange.title": "下一處變更 (Alt+↓)",
-    "diff.toolbar.nextChange.label": "下一處變更"
+    "diff.toolbar.nextChange.label": "下一處變更",
+    "commitPanel.staged": "已暫存",
+    "commitPanel.unstaged": "未暫存"
 }

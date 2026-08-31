@@ -48,6 +48,7 @@ import {
 } from "../../../visual/recorder/workspaceConfigurationDouble";
 import { createScratchWorkspaces } from "../../fixtures/scratchWorkspaces";
 import { removeScratchDirectories } from "../../../helpers/scratchDirectories";
+import { withWindowsHeadroom } from "../../../setup/platformTimeouts";
 
 const MID_REBASE_SCENARIO = REPOSITORY_SCENARIOS.find(
     (scenario) => scenario.id === UNDOCKED_MID_REBASE_SCENARIO,
@@ -113,7 +114,7 @@ describe("undocked webview recorder", () => {
             () => MID_REBASE_SCENARIO.prepare(path.join(parentDir, "root-a")),
             () => MID_REBASE_SCENARIO.prepare(path.join(parentDir, "root-b")),
         );
-    }, 60_000);
+    }, withWindowsHeadroom(60_000));
 
     afterAll(async () => {
         await scratch.removeAll();

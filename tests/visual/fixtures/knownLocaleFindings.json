@@ -33,7 +33,9 @@
         "de/merge-editor": {
             "clipping": [],
             "accessibleNames": [],
-            "zeroSize": []
+            "zeroSize": [
+                "div.segment.segment-conflict.change-theirs-only.variant-insertion.resolved (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(4))"
+            ]
         },
         "de/shelf-conflict-editor": {
             "clipping": [],
@@ -78,7 +80,9 @@
         "en/merge-editor": {
             "clipping": [],
             "accessibleNames": [],
-            "zeroSize": []
+            "zeroSize": [
+                "div.segment.segment-conflict.change-theirs-only.variant-insertion.resolved (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(4))"
+            ]
         },
         "en/shelf-conflict-editor": {
             "clipping": [],
@@ -121,9 +125,13 @@
             "zeroSize": []
         },
         "es/merge-editor": {
-            "clipping": [],
+            "clipping": [
+                "span.merge-stat-pill.warn (#root > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(2) > span:nth-of-type(3))"
+            ],
             "accessibleNames": [],
-            "zeroSize": []
+            "zeroSize": [
+                "div.segment.segment-conflict.change-theirs-only.variant-insertion.resolved (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(4))"
+            ]
         },
         "es/shelf-conflict-editor": {
             "clipping": [],
@@ -166,9 +174,13 @@
             "zeroSize": []
         },
         "fr/merge-editor": {
-            "clipping": [],
+            "clipping": [
+                "span.merge-stat-pill.warn (#root > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(2) > span:nth-of-type(3))"
+            ],
             "accessibleNames": [],
-            "zeroSize": []
+            "zeroSize": [
+                "div.segment.segment-conflict.change-theirs-only.variant-insertion.resolved (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(4))"
+            ]
         },
         "fr/shelf-conflict-editor": {
             "clipping": [],
@@ -213,7 +225,9 @@
         "ja/merge-editor": {
             "clipping": [],
             "accessibleNames": [],
-            "zeroSize": []
+            "zeroSize": [
+                "div.segment.segment-conflict.change-theirs-only.variant-insertion.resolved (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(4))"
+            ]
         },
         "ja/shelf-conflict-editor": {
             "clipping": [],
@@ -258,7 +272,9 @@
         "ko/merge-editor": {
             "clipping": [],
             "accessibleNames": [],
-            "zeroSize": []
+            "zeroSize": [
+                "div.segment.segment-conflict.change-theirs-only.variant-insertion.resolved (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(4))"
+            ]
         },
         "ko/shelf-conflict-editor": {
             "clipping": [],
@@ -303,7 +319,9 @@
         "pl/merge-editor": {
             "clipping": [],
             "accessibleNames": [],
-            "zeroSize": []
+            "zeroSize": [
+                "div.segment.segment-conflict.change-theirs-only.variant-insertion.resolved (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(4))"
+            ]
         },
         "pl/shelf-conflict-editor": {
             "clipping": [],
@@ -346,9 +364,13 @@
             "zeroSize": []
         },
         "pt-br/merge-editor": {
-            "clipping": [],
+            "clipping": [
+                "span.merge-stat-pill.warn (#root > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(2) > span:nth-of-type(3))"
+            ],
             "accessibleNames": [],
-            "zeroSize": []
+            "zeroSize": [
+                "div.segment.segment-conflict.change-theirs-only.variant-insertion.resolved (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(4))"
+            ]
         },
         "pt-br/shelf-conflict-editor": {
             "clipping": [],
@@ -391,9 +413,13 @@
             "zeroSize": []
         },
         "pt-pt/merge-editor": {
-            "clipping": [],
+            "clipping": [
+                "span.merge-stat-pill.warn (#root > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(2) > span:nth-of-type(3))"
+            ],
             "accessibleNames": [],
-            "zeroSize": []
+            "zeroSize": [
+                "div.segment.segment-conflict.change-theirs-only.variant-insertion.resolved (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(4))"
+            ]
         },
         "pt-pt/shelf-conflict-editor": {
             "clipping": [],
@@ -436,9 +462,13 @@
             "zeroSize": []
         },
         "ru/merge-editor": {
-            "clipping": [],
+            "clipping": [
+                "span.merge-stat-pill.warn (#root > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(2) > span:nth-of-type(3))"
+            ],
             "accessibleNames": [],
-            "zeroSize": []
+            "zeroSize": [
+                "div.segment.segment-conflict.change-theirs-only.variant-insertion.resolved (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(4))"
+            ]
         },
         "ru/shelf-conflict-editor": {
             "clipping": [],
@@ -483,7 +513,9 @@
         "zh-cn/merge-editor": {
             "clipping": [],
             "accessibleNames": [],
-            "zeroSize": []
+            "zeroSize": [
+                "div.segment.segment-conflict.change-theirs-only.variant-insertion.resolved (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(4))"
+            ]
         },
         "zh-cn/shelf-conflict-editor": {
             "clipping": [],
@@ -528,7 +560,9 @@
         "zh-tw/merge-editor": {
             "clipping": [],
             "accessibleNames": [],
-            "zeroSize": []
+            "zeroSize": [
+                "div.segment.segment-conflict.change-theirs-only.variant-insertion.resolved (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(4))"
+            ]
         },
         "zh-tw/shelf-conflict-editor": {
             "clipping": [],
@@ -575,7 +609,9 @@
         "de/merge-editor": {
             "clipping": [],
             "accessibleNames": [],
-            "zeroSize": []
+            "zeroSize": [
+                "div.segment.segment-conflict.change-theirs-only.variant-insertion.resolved (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(4))"
+            ]
         },
         "de/shelf-conflict-editor": {
             "clipping": [],
@@ -620,7 +656,9 @@
         "en/merge-editor": {
             "clipping": [],
             "accessibleNames": [],
-            "zeroSize": []
+            "zeroSize": [
+                "div.segment.segment-conflict.change-theirs-only.variant-insertion.resolved (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(4))"
+            ]
         },
         "en/shelf-conflict-editor": {
             "clipping": [],
@@ -665,7 +703,9 @@
         "es/merge-editor": {
             "clipping": [],
             "accessibleNames": [],
-            "zeroSize": []
+            "zeroSize": [
+                "div.segment.segment-conflict.change-theirs-only.variant-insertion.resolved (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(4))"
+            ]
         },
         "es/shelf-conflict-editor": {
             "clipping": [],
@@ -710,7 +750,9 @@
         "fr/merge-editor": {
             "clipping": [],
             "accessibleNames": [],
-            "zeroSize": []
+            "zeroSize": [
+                "div.segment.segment-conflict.change-theirs-only.variant-insertion.resolved (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(4))"
+            ]
         },
         "fr/shelf-conflict-editor": {
             "clipping": [],
@@ -755,7 +797,9 @@
         "ja/merge-editor": {
             "clipping": [],
             "accessibleNames": [],
-            "zeroSize": []
+            "zeroSize": [
+                "div.segment.segment-conflict.change-theirs-only.variant-insertion.resolved (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(4))"
+            ]
         },
         "ja/shelf-conflict-editor": {
             "clipping": [],
@@ -800,7 +844,9 @@
         "ko/merge-editor": {
             "clipping": [],
             "accessibleNames": [],
-            "zeroSize": []
+            "zeroSize": [
+                "div.segment.segment-conflict.change-theirs-only.variant-insertion.resolved (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(4))"
+            ]
         },
         "ko/shelf-conflict-editor": {
             "clipping": [],
@@ -845,7 +891,9 @@
         "pl/merge-editor": {
             "clipping": [],
             "accessibleNames": [],
-            "zeroSize": []
+            "zeroSize": [
+                "div.segment.segment-conflict.change-theirs-only.variant-insertion.resolved (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(4))"
+            ]
         },
         "pl/shelf-conflict-editor": {
             "clipping": [],
@@ -890,7 +938,9 @@
         "pt-br/merge-editor": {
             "clipping": [],
             "accessibleNames": [],
-            "zeroSize": []
+            "zeroSize": [
+                "div.segment.segment-conflict.change-theirs-only.variant-insertion.resolved (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(4))"
+            ]
         },
         "pt-br/shelf-conflict-editor": {
             "clipping": [],
@@ -935,7 +985,9 @@
         "pt-pt/merge-editor": {
             "clipping": [],
             "accessibleNames": [],
-            "zeroSize": []
+            "zeroSize": [
+                "div.segment.segment-conflict.change-theirs-only.variant-insertion.resolved (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(4))"
+            ]
         },
         "pt-pt/shelf-conflict-editor": {
             "clipping": [],
@@ -980,7 +1032,9 @@
         "ru/merge-editor": {
             "clipping": [],
             "accessibleNames": [],
-            "zeroSize": []
+            "zeroSize": [
+                "div.segment.segment-conflict.change-theirs-only.variant-insertion.resolved (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(4))"
+            ]
         },
         "ru/shelf-conflict-editor": {
             "clipping": [],
@@ -1025,7 +1079,9 @@
         "zh-cn/merge-editor": {
             "clipping": [],
             "accessibleNames": [],
-            "zeroSize": []
+            "zeroSize": [
+                "div.segment.segment-conflict.change-theirs-only.variant-insertion.resolved (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(4))"
+            ]
         },
         "zh-cn/shelf-conflict-editor": {
             "clipping": [],
@@ -1070,7 +1126,9 @@
         "zh-tw/merge-editor": {
             "clipping": [],
             "accessibleNames": [],
-            "zeroSize": []
+            "zeroSize": [
+                "div.segment.segment-conflict.change-theirs-only.variant-insertion.resolved (#root > div:nth-of-type(1) > div:nth-of-type(4) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(4))"
+            ]
         },
         "zh-tw/shelf-conflict-editor": {
             "clipping": [],

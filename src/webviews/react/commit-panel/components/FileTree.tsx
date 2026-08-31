@@ -115,6 +115,29 @@ function countUniquePaths(files: WorkingFile[]): number {
     return paths.size;
 }
 
+/**
+ * Paths a bucket lists twice. A file whose index copy and working-tree copy both
+ * changed arrives from `getStatus()` as two entries sharing one path:
+ * `git status --porcelain` emits `MM name`, pinned by
+ * tests/unit/git/gitops/status.test.ts:321.
+ * Those rows are otherwise identical on screen: same name, same `M` badge, same
+ * tooltip, same checkbox, same diff on click. Each has to say which side of the
+ * index it belongs to.
+ *
+ * A path listed once stays out of this set. Every `WorkingFile` carries `staged`, so
+ * marking every row is the easy over-fix, and "Unstaged" on every ordinary row is
+ * noise rather than information. Only the list knows a path is duplicated.
+ */
+function splitStagedPaths(files: WorkingFile[]): Set<string> {
+    const seen = new Set<string>();
+    const split = new Set<string>();
+    for (const file of files) {
+        if (seen.has(file.path)) split.add(file.path);
+        else seen.add(file.path);
+    }
+    return split;
+}
+
 function sumStats(
     files: WorkingFile[],
     includeDeletions: boolean,
@@ -161,6 +184,7 @@ function FileSection({
         (file: WorkingFile) => `${file.path}:${file.staged ? "staged" : "unstaged"}`,
         [],
     );
+    const splitPaths = useMemo(() => splitStagedPaths(files), [files]);
     const fileWiring = useCallback(
         (file: WorkingFile, depth: number) => {
             const isRootRow = depth === 0;
@@ -187,6 +211,13 @@ function FileSection({
                 isChecked: checkedPaths.has(file.path),
                 onToggleCheck: onToggleFile,
                 checkboxVisibility,
+                // Spends the `staged` flag that already reaches this closure and is
+                // otherwise used only to build a distinct React key.
+                stagedState: splitPaths.has(file.path)
+                    ? file.staged
+                        ? ("staged" as const)
+                        : ("unstaged" as const)
+                    : undefined,
             };
         },
         [
@@ -198,6 +229,12 @@ function FileSection({
             onFileDragStart,
             onShelfFileDragStart,
             onToggleFile,
+            // Required, but no mutation can currently observe it: every `files` change
+            // already invalidates this callback through `dragSelectedPaths`, which
+            // `useFileDrag` derives from `unversioned`. Dropping it therefore stays
+            // green today and turns into a stale marker the moment that incidental
+            // chain changes, so it stays.
+            splitPaths,
         ],
     );
     const folderWiring = useCallback(

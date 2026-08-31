@@ -57,6 +57,7 @@ import {
 import { parseWebviewFixture } from "../../../visual/recorder/validateWebviewFixture";
 import { serializeWebviewFixture } from "../../../visual/recorder/webviewFixtureFile";
 import { createScratchWorkspaces } from "../../fixtures/scratchWorkspaces";
+import { withWindowsHeadroom } from "../../../setup/platformTimeouts";
 
 // Scratch-path bookkeeping and the settle-before-propagating seed live in one shared helper -- see
 // `scratchWorkspaces.ts` for the two directory leaks the obvious shapes here both cause. This one
@@ -97,7 +98,7 @@ describe("commit-panel webview recorder", () => {
             () => prepareDirtyWorkspace(path.join(parentDir, "root-a")),
             () => prepareDirtyWorkspace(path.join(parentDir, "root-b")),
         );
-    }, 60_000);
+    }, withWindowsHeadroom(60_000));
 
     afterAll(async () => {
         await scratch.removeAll();

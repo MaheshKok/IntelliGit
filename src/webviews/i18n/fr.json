@@ -223,7 +223,7 @@
     "merge.pane.result": "Résultat {path}",
     "merge.footer.useFileOurs": "Utilisez le fichier Ours",
     "merge.footer.useFileTheirs": "Utiliser le fichier Leurs",
-    "merge.footer.hint": "`N`/`P` pour naviguer entre les conflits • `Ctrl/Cmd+Entrée` pour appliquer",
+    "merge.footer.hint": "N/P pour naviguer entre les conflits • Ctrl/Cmd+Entrée pour appliquer",
     "merge.header.autoResolved": "{count} résolus automatiquement",
     "merge.footer.apply": "Appliquer ({resolved}/{total})",
     "merge.kind.leftOnly": "Gauche uniquement",
@@ -378,5 +378,7 @@
     "diff.toolbar.prevChange.title": "Modification précédente (Alt+↑)",
     "diff.toolbar.prevChange.label": "Modification précédente",
     "diff.toolbar.nextChange.title": "Modification suivante (Alt+↓)",
-    "diff.toolbar.nextChange.label": "Modification suivante"
+    "diff.toolbar.nextChange.label": "Modification suivante",
+    "commitPanel.staged": "Indexé",
+    "commitPanel.unstaged": "Non indexé"
 }

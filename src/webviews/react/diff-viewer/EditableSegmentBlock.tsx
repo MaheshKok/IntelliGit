@@ -66,6 +66,15 @@ export interface EditableSegmentBlockProps {
     onStartEditing: (item: EditableSegmentItem, caretOffset?: number) => void;
 }
 
+/**
+ * What opens the editor from the keyboard.
+ *
+ * Enter and Space are the WAI-ARIA button pattern, which `role="button"` below is a promise to
+ * honour; F2 is the rename/edit key VS Code already trains its users on. A set rather than a
+ * chain of `!==` so adding the next one costs a word instead of a branch.
+ */
+const EDITOR_OPEN_KEYS = new Set(["Enter", " ", "F2"]);
+
 /** Renders one inactive editable block. */
 export const EditableSegmentBlock = React.memo(function EditableSegmentBlock({
     item,
@@ -97,11 +106,19 @@ export const EditableSegmentBlock = React.memo(function EditableSegmentBlock({
             }}
             onDoubleClick={() => onStartEditing(item)}
             onKeyDown={(event) => {
-                if (event.key !== "Enter" && event.key !== "F2") return;
+                if (!EDITOR_OPEN_KEYS.has(event.key)) return;
+                // Space in particular: its default action scrolls, so a keyboard user who did
+                // not get `preventDefault` here would see the pane jump instead of the editor
+                // open -- a key that does something, just not the thing it was pressed for.
                 event.preventDefault();
                 onStartEditing(item);
             }}
-            role="group"
+            // A native <button> is invalid here twice over: its content model is phrasing
+            // content, and CodeBlock renders line <div>s; and a real button suppresses text
+            // selection, which the onClick above deliberately honours (it bails when the
+            // selection is non-collapsed) so a reader can copy code without opening the editor.
+            // react-doctor-disable-next-line react-doctor/prefer-tag-over-role
+            role="button"
             tabIndex={0}
             title={t("diff.editable.blockHint")}
             aria-label={t("diff.editable.blockHint")}

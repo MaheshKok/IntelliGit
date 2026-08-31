@@ -110,7 +110,11 @@ export function useCheckedFiles(
 
     useEffect(() => {
         if (repositoryRoot === undefined) {
+            // Not a chain: `repositoryRoot` and the file list arrive from the extension host,
+            // so nothing in this tree fired an event to do this work in. Both branches below
+            // return `previous` unchanged when nothing moved, so no render follows a no-op.
             // react-doctor-disable-next-line react-doctor/no-derived-state
+            // react-doctor-disable-next-line react-doctor/no-chain-state-updates
             setState((previous) => {
                 if (
                     previous.repositoryRoot === undefined &&
@@ -133,6 +137,9 @@ export function useCheckedFiles(
 
         // react-doctor-disable-next-line react-doctor/no-derived-state
         setState((previous) => {
+            // There is no event handler to move this into: the trigger is a host-pushed file
+            // list, and the branch below is reconciliation against it, not a click.
+            // react-doctor-disable-next-line react-doctor/no-event-handler
             if (previous.repositoryRoot !== repositoryRoot || !previous.hydrated) {
                 return {
                     repositoryRoot,
@@ -143,6 +150,8 @@ export function useCheckedFiles(
             }
 
             const nextCheckedPaths = new Set(pruneToKnownPaths(previous.checkedPaths, validPaths));
+            // Same host-pushed trigger as above -- newly appearing paths inherit the mode.
+            // react-doctor-disable-next-line react-doctor/no-event-handler
             if (mode === "allChecked") {
                 for (const path of validPaths) {
                     if (!previous.knownPaths.has(path)) nextCheckedPaths.add(path);

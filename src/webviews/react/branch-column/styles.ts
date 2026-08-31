@@ -1,7 +1,7 @@
 import type { CSSProperties } from "react";
 import { SYSTEM_FONT_STACK } from "../../../utils/constants";
 import { BASE_ICON_STYLE } from "../shared/components/iconStyles";
-import { JETBRAINS_UI } from "../shared/tokens";
+import { JETBRAINS_UI, SHADOW } from "../shared/tokens";
 
 export const TREE_INDENT_STEP = JETBRAINS_UI.size.treeIndent;
 export const BRANCH_TREE_INDENT_BASE = 18;
@@ -25,6 +25,9 @@ export const BRANCH_ROW_CLASS_CSS = `
         background: ${JETBRAINS_UI.color.selected} !important;
         color: ${JETBRAINS_UI.color.selectedForeground} !important;
         border-radius: ${JETBRAINS_UI.size.selectedRadius}px;
+        /* The fill is host-owned and measures as low as 1.15:1 against the panel,
+           so the boundary comes from the ring. See SHADOW.selectedRing. */
+        box-shadow: ${SHADOW.selectedRing};
     }
     .branch-row.selected:hover {
         background: ${JETBRAINS_UI.color.selected} !important;

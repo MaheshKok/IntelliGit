@@ -109,6 +109,9 @@ async function openShelfChangeDiff(
     const nativeDelegate: NativeDiffDelegate = async (cancellationToken) => {
         // Matches snapshotFor's own read condition: a local read only fires for the one case
         // that ever needed it, so a decline never triggers a needless filesystem/document probe.
+        // The cancellation guard below can only become true during this read, and
+        // `snapshotFor` consumes the result, so the await cannot move under it.
+        // react-doctor-disable-next-line react-doctor/async-defer-await
         const localSnapshot =
             !contents.binary && mode === "shelvedToLocal"
                 ? await readLocalSnapshot(deps.getWorkspaceRoot(), contents.path)

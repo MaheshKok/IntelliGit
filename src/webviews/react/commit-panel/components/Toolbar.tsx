@@ -50,6 +50,9 @@ interface Props {
  * PyCharm-style icon coloring, tooltip labels, the view-options menu, and the
  * temporary refresh spinner affordance.
  */
+// A toolbar's flags are its buttons' independent states -- spinning, filtering, empty,
+// grouped. They combine freely, so variants would enumerate the product rather than name it.
+// react-doctor-disable-next-line react-doctor/no-many-boolean-props
 export function Toolbar({
     onRefresh,
     isRefreshing,

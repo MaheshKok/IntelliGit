@@ -467,7 +467,11 @@ export function CommitList({
                             </button>
                         )}
                     </div>
-                    <span style={BRANCH_SCOPE_STYLE} title={branchScopeLabel}>
+                    <span
+                        data-testid="commit-branch-scope"
+                        style={BRANCH_SCOPE_STYLE}
+                        title={branchScopeLabel}
+                    >
                         {branchScopeLabel}
                     </span>
                 </div>

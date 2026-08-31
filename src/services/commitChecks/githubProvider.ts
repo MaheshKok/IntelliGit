@@ -197,6 +197,10 @@ async function fetchAllCheckRuns(
     );
     const checkRuns = readCheckRuns(firstPage);
     for (let page = 2; page <= pageCount(firstPage); page += 1) {
+        // Serial by GitHub's own instruction: concurrent requests from one user or client id
+        // trip the secondary rate limit, which answers 403 and costs the whole fetch. A page
+        // count in the low single digits is not worth trading that for.
+        // react-doctor-disable-next-line react-doctor/async-await-in-loop
         const response = await fetchJson(
             `${base}/check-runs?per_page=${GITHUB_PAGE_SIZE}&filter=latest&page=${page}`,
             headers,
@@ -228,6 +232,10 @@ async function fetchAllStatuses(
     );
     const statuses = readStatuses(firstPage);
     for (let page = 2; page <= pageCount(firstPage); page += 1) {
+        // Serial for the same reason as the check-runs pager above: GitHub's secondary rate
+        // limit penalises concurrent requests from one client, and the docstring's "each
+        // sequential page request" is this line.
+        // react-doctor-disable-next-line react-doctor/async-await-in-loop
         const response = await fetchJson(
             `${base}/status?per_page=${GITHUB_PAGE_SIZE}&page=${page}`,
             headers,

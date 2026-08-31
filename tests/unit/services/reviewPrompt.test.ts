@@ -692,6 +692,70 @@ describe("reviewPrompt", () => {
             expect(state.get(KEY.successOps)).toBe(1);
         });
 
+        it("holds the queue until every clear has settled, and still reports the failure", async () => {
+            // `Promise.all` rejects on its FIRST rejection and leaves the siblings running
+            // unobserved. `resetState` releases the cycle queue the moment it settles, so the
+            // still-pending clears land after the next cycle has already started writing --
+            // an `undefined` on top of a fresh counter -- and a second rejection arriving
+            // after `Promise.all` has settled is an unhandled one, which fails the whole run.
+            let releaseSlowClear = (): void => undefined;
+            const slowClear = new Promise<void>((resolve) => {
+                releaseSlowClear = resolve;
+            });
+            let inFlight = 0;
+            let inFlightWhenSettled = -1;
+
+            const flaky = {
+                get: <T>(key: string, fallback?: T): T | undefined => state.get(key, fallback),
+                setKeysForSync: (keys: readonly string[]): void => state.setKeysForSync(keys),
+                update: async (key: string, value: unknown): Promise<void> => {
+                    inFlight += 1;
+                    try {
+                        // First key in `KEYS` order fails; the last one is still writing.
+                        if (value === undefined && key === KEY.status) {
+                            throw new Error("globalState unavailable");
+                        }
+                        if (value === undefined && key === KEY.installedAt) await slowClear;
+                        await state.update(key, value);
+                    } finally {
+                        inFlight -= 1;
+                    }
+                },
+            };
+            const service = new ReviewPromptService(
+                {
+                    globalState: flaky as unknown as never,
+                    globalStorageUri: { fsPath: storageDir } as unknown as never,
+                } as never,
+                { now: () => clock },
+            );
+
+            const outcome = service.resetState(false).then(
+                () => {
+                    inFlightWhenSettled = inFlight;
+                    return "resolved";
+                },
+                (error: unknown) => {
+                    inFlightWhenSettled = inFlight;
+                    return (error as Error).message;
+                },
+            );
+            // Every microtask the early rejection could escape on, before the slow clear lands.
+            await new Promise((resolve) => setTimeout(resolve, 0));
+            releaseSlowClear();
+
+            expect(
+                await outcome,
+                "the first clear's rejection must still reach the caller, not be swallowed",
+            ).toBe("globalState unavailable");
+            expect(
+                inFlightWhenSettled,
+                "resetState settled with a clear still in flight, so the cycle queue was " +
+                    "released while `state.update(key, undefined)` was still writing. The next " +
+                    "queued cycle can now have its counter overwritten by a late clear.",
+            ).toBe(0);
+        });
+
         it("resets only after the modal is confirmed", async () => {
             const subscriptions: Array<{ dispose: () => void }> = [];
             await mkdir(path.dirname(latchPath()), { recursive: true });

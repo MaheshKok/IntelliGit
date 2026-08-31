@@ -386,6 +386,28 @@ export const SHADOW = {
     drag: "0 18px 46px rgba(0, 0, 0, 0.5)",
     /** Not elevation: a 1px inner edge for surfaces that cannot spend layout on a border. */
     insetHairline: "inset 0 0 0 1px rgba(160, 189, 237, 0.14)",
+    /**
+     * The boundary of a selected row. Also not elevation.
+     *
+     * `color.selected` is `--vscode-list-activeSelectionBackground`, which the HOST
+     * owns. VS Code's own list widget pairs that fill with an outline drawn on top,
+     * so its stock themes are free to pick a fill with almost no contrast — and they
+     * do. Measured against `color.panel`: Light Modern 1.15:1, HC Light 1.18:1, Dark
+     * Modern 1.48:1, all under the 3:1 WCAG 1.4.11 asks of a non-text state
+     * indicator. Reproducing the fill without the outline left a selected row with no
+     * visible boundary on three of four captured themes, so the ring has to come from
+     * here rather than from the host.
+     *
+     * `color.focus` because it is the one host colour VS Code contracts to be a
+     * visible border: 3.92 / 8.18 / 5.47 / 5.94 against the panel across the same
+     * four. `contrastActiveBorder` measured 2.40 in Light Modern and was rejected.
+     *
+     * A box-shadow rather than a border or an outline. Rows are fixed-height
+     * (`size.rowHeight` 24, `size.treeRowHeight` 22), so a border would resize the box
+     * and shift the row's content; an outline would collide with the `_focusVisible`
+     * outline the tree rows already draw at the same -1px offset.
+     */
+    selectedRing: `inset 0 0 0 1px ${JETBRAINS_UI.color.focus}`,
 } as const;
 
 /**

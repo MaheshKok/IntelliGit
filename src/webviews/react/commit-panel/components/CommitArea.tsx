@@ -57,6 +57,17 @@ const disabledButtonStyles = {
     opacity: 1,
 };
 
+// The width the tint above never declared. Chakra's CSS reset gives every element
+// `border-width: 0; border-style: solid` through a zero-specificity `:where(*, *::before,
+// *::after)` rule, and the `primary` variant declares no border to replace it (theme.ts:82-91),
+// so `borderColor` alone lands on a 0px border and paints nothing: a disabled Commit lost its
+// fill AND its edge and read as a line of grey text -- the opposite of the shape the comment
+// above promises. The two variants that get this right, `secondary` and `danger`, both win by
+// setting the `border` shorthand (theme.ts:100, theme.ts:163); this follows them. Reserved on
+// the ENABLED state too, and transparent there, so the button measures the same in both states
+// and becoming available cannot nudge its neighbour by the border's 2px.
+const RESERVED_BORDER = "1px solid transparent";
+
 /** Trims the upstream branch label used by the commit form branch indicator. */
 function getBranchIndicatorUpstream(
     currentBranchName: string | null,
@@ -223,17 +234,20 @@ export function CommitArea({
             </Box>
             <Flex align="center" gap="8px" p="6px 8px 8px">
                 <Button
+                    data-testid="commit-action-commit"
                     variant="primary"
                     size="sm"
                     onClick={isCommitDisabled ? undefined : onCommit}
                     isDisabled={isCommitDisabled}
                     fontSize="12px"
                     fontFamily={SYSTEM_FONT_STACK}
+                    border={RESERVED_BORDER}
                     _disabled={disabledButtonStyles}
                 >
                     {isAmend ? t("commit.action.amend") : t("commit.action.commit")}
                 </Button>
                 <Button
+                    data-testid="commit-action-push"
                     variant="primary"
                     size="sm"
                     onClick={onPush}
@@ -241,6 +255,7 @@ export function CommitArea({
                     aria-disabled={isPushVisuallyDisabled || undefined}
                     fontSize="12px"
                     fontFamily={SYSTEM_FONT_STACK}
+                    border={RESERVED_BORDER}
                     _disabled={disabledButtonStyles}
                     sx={isPushVisuallyDisabled ? disabledButtonStyles : undefined}
                 >

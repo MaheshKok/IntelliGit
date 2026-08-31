@@ -153,6 +153,42 @@ describe("EditableSegmentBlock render isolation", () => {
         unmount(mounted.root, mounted.container);
     });
 
+    // `role="button"` is a promise about the keyboard, not only about the label a screen reader
+    // reads out. The WAI-ARIA button pattern binds Enter AND Space, and Space is the one a
+    // native <button> also has to cancel by hand, because its default action scrolls the page.
+    // A pane that scrolls instead of opening the editor is the worst of both: the key does
+    // something, so nothing looks broken, and it is not what was asked for.
+    it.each([
+        ["Enter", "Enter"],
+        ["Space", " "],
+    ])("opens the editor on %s without letting the pane scroll", (_name, key) => {
+        const renderedItem = item("after");
+        const onStartEditing = vi.fn();
+        const mounted = mount(
+            <EditableSegmentBlock
+                item={renderedItem}
+                side="right"
+                lineNumberSide="left"
+                highlightWords
+                onStartEditing={onStartEditing}
+            />,
+        );
+        const event = new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true });
+
+        act(() => {
+            mounted.container
+                .querySelector<HTMLElement>(".diff-editable-block")
+                ?.dispatchEvent(event);
+        });
+
+        expect(onStartEditing, `${_name} must open the editor`).toHaveBeenCalledWith(renderedItem);
+        expect(
+            event.defaultPrevented,
+            `${_name} must be consumed here, or the browser also scrolls the diff pane`,
+        ).toBe(true);
+        unmount(mounted.root, mounted.container);
+    });
+
     it("does not render for an unrelated parent update but does render when the item changes", () => {
         const initialItem = item("after");
         const changedItem = item("rendered");

@@ -425,6 +425,7 @@ export function UndockedLayout(props: UndockedLayoutProps): React.ReactElement {
                                         <CommitInfoPane
                                             detail={selectedDetail}
                                             loading={commitDetailLoading}
+                                            hasSelection={selectedHash !== null}
                                             folderIcon={commitFolderIcon}
                                             folderExpandedIcon={commitFolderExpandedIcon}
                                             folderIconsByName={commitFolderIconsByName}

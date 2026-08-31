@@ -334,6 +334,9 @@ async function openStashFileDiff(
         title,
     };
     const nativeDelegate: NativeDiffDelegate = async (cancellationToken) => {
+        // The cancellation guard further down can only become true during these reads, and
+        // the snapshot below consumes `after`, so neither await can move under it.
+        // react-doctor-disable-next-line react-doctor/async-defer-await
         const after = await getStashAfterContentByHash(deps.gitOps, stashHash, filePath);
         const snapshot = await prepareStashLocalDiffSnapshot(workspaceRoot, filePath, stashLabel, {
             before: undefined,

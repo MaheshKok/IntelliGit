@@ -60,6 +60,7 @@ import { parseWebviewFixture } from "../../../visual/recorder/validateWebviewFix
 import { serializeWebviewFixture } from "../../../visual/recorder/webviewFixtureFile";
 import type { WebviewFixture } from "../../../visual/recorder/webviewFixtureTypes";
 import { createScratchWorkspaces } from "../../fixtures/scratchWorkspaces";
+import { withWindowsHeadroom } from "../../../setup/platformTimeouts";
 
 /** A real git commit hash (short or full, hex) -- what `GitOps.getLog` returns, never a
  * fabricated stand-in. Used to prove a `loadCommits` payload came from a real git service. */
@@ -108,7 +109,7 @@ describe("commit-graph webview recorders", () => {
             () => seedFixtureTemplate(path.join(parentDir, "root-a")),
             () => seedFixtureTemplate(path.join(parentDir, "root-b")),
         );
-    }, 60_000);
+    }, withWindowsHeadroom(60_000));
 
     afterAll(async () => {
         await scratch.removeAll();

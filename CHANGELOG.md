@@ -5,6 +5,18 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.31.2] - 2026-08-30
+
+### Fixed
+
+- A selected commit or stash entry now has a clear outline, so you can tell which row is selected in every theme.
+- The key hints at the bottom of the merge editor and the shelf conflict editor no longer show stray marks around each key name.
+- A file with both staged and unstaged changes now shows one row marked Staged and one marked Unstaged, instead of two rows that looked identical.
+- The branch label above the commit list trails off with dots when the panel is too narrow, instead of being cut off at the edge.
+- The diff viewer's horizontal scrollbar shows a handle you can grab at narrow widths, and a line now separates the line numbers from the code.
+- Disabled Commit and Push buttons keep a visible outline instead of reading as plain grey text.
+- The commit details pane no longer says no commit is selected while one is selected and its details are still loading.
+
 ## [0.31.1] - 2026-08-30
 
 ### Changed

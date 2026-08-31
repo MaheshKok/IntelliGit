@@ -42,6 +42,8 @@ interface CommitListRowsProps {
 }
 
 /** Renders the scroll viewport, graph canvas, visible commit rows, and load footer. */
+// Independent flags, most of them forwarded straight to `CommitRow`; see the note there.
+// react-doctor-disable-next-line react-doctor/no-many-boolean-props
 export function CommitListRows({
     commits,
     visibleCommits,
