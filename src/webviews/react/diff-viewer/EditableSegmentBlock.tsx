@@ -101,7 +101,12 @@ export const EditableSegmentBlock = React.memo(function EditableSegmentBlock({
                 event.preventDefault();
                 onStartEditing(item);
             }}
-            role="group"
+            // A native <button> is invalid here twice over: its content model is phrasing
+            // content, and CodeBlock renders line <div>s; and a real button suppresses text
+            // selection, which the onClick above deliberately honours (it bails when the
+            // selection is non-collapsed) so a reader can copy code without opening the editor.
+            // react-doctor-disable-next-line react-doctor/prefer-tag-over-role
+            role="button"
             tabIndex={0}
             title={t("diff.editable.blockHint")}
             aria-label={t("diff.editable.blockHint")}

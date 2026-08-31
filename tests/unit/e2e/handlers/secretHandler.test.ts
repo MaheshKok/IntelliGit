@@ -68,6 +68,11 @@ describe("handleSecretRequest: snapshot never carries the raw value", () => {
     });
 
     it("returns presence=true and a matching digest, with the raw value absent from the whole payload", async () => {
+        // A fabricated token, and the subject of the assertion rather than a credential: this
+        // test proves the raw value never appears in the response. It is shaped like a real
+        // GitLab PAT on purpose, because a fixture that does not look like a token cannot prove
+        // redaction works on one. Test file, so it ships to no browser.
+        // react-doctor-disable-next-line react-doctor/no-secrets-in-client-code
         const rawValue = "glpat-SUPER-SECRET-TOKEN-VALUE";
         const secrets = makeSecretStorage({ [ALLOWED_KEY]: rawValue });
 
@@ -97,6 +102,8 @@ describe("handleSecretRequest: snapshot never carries the raw value", () => {
 describe("handleSecretRequest: seed -> snapshot -> reset -> snapshot", () => {
     it("round-trips through the real SecretStorage", async () => {
         const secrets = makeSecretStorage();
+        // Fabricated token-shaped fixture for the round-trip assertion; see the note above.
+        // react-doctor-disable-next-line react-doctor/no-secrets-in-client-code
         const rawValue = "glpat-round-trip-token";
 
         const seedResponse = await handleSecretRequest(secrets, SALT, {

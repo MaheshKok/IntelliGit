@@ -377,7 +377,11 @@ function CommitMessageCell({
 }
 
 // Memo target kept local so the comparator and exported memoized row stay together.
+// The four flags are orthogonal, not a hidden variant enum: selection, push state, author
+// visibility and the graph toggle vary independently per row, so "named variants" would mean
+// sixteen of them. A row that can be selected AND unpushed AND author-hidden is ordinary.
 // react-doctor-disable-next-line react-doctor/no-multi-comp
+// react-doctor-disable-next-line react-doctor/no-many-boolean-props
 function CommitRowInner({
     commit,
     graphWidth,

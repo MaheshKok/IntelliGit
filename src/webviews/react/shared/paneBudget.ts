@@ -95,6 +95,10 @@ function pickHighestPriority(
     const nonDroppable = panes.filter((pane) => !order.has(pane.key));
     if (nonDroppable.length > 0) return nonDroppable[nonDroppable.length - 1];
     for (let index = dropOrder.length - 1; index >= 0; index -= 1) {
+        // "As your list grows" does not apply: panes are a compile-time constant set, 3 in
+        // CommitGraphPanel and 5 in SECTION_WIDTH_KEYS, and nothing appends at runtime. A Map
+        // here would cost more to build than the scan it replaces.
+        // react-doctor-disable-next-line react-doctor/js-index-maps
         const pane = panes.find((candidate) => candidate.key === dropOrder[index]);
         if (pane) return pane;
     }
@@ -122,8 +126,7 @@ export function resolvePaneBudget(
         const minimumTotal =
             sumWidths(visible, (pane) => pane.min) + dividerTotal(visible.length, divider);
         if (minimumTotal <= budget || visible.length === 1) break;
-        const paneIndex = visible.findIndex((pane) => pane.key === key);
-        if (paneIndex < 0) continue;
+        if (!visible.some((pane) => pane.key === key)) continue;
         hidden.push(key);
         visible = visible.filter((pane) => pane.key !== key);
     }
@@ -133,10 +136,8 @@ export function resolvePaneBudget(
     if (minimumTotal > budget) {
         const survivor = pickHighestPriority(visible, dropOrder);
         const finalWidths = { [survivor.key]: budget };
-        const finalHidden = [
-            ...hidden,
-            ...visible.filter((pane) => pane.key !== survivor.key).map((pane) => pane.key),
-        ];
+        const finalHidden = [...hidden];
+        for (const pane of visible) if (pane.key !== survivor.key) finalHidden.push(pane.key);
         return { widths: finalWidths, hidden: finalHidden };
     }
 

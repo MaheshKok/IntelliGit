@@ -345,7 +345,11 @@ describe("DiffViewerApp read-only contract", () => {
             expect(notice()).toBeNull();
 
             expect(type(readOnlyBlock), "the read-only pane let the edit through").toBe(true);
-            expect(notice()?.getAttribute("role")).toBe("status");
+            // Either spelling of the same announcement: `<output>` carries an implicit ARIA
+            // role of `status`, and jsdom does not compute implicit roles, so an attribute
+            // check alone would read a correct element as unannounced. A plain `<span>` or
+            // `<div>` matches neither and still fails.
+            expect(notice()?.matches('[role="status"], output')).toBe(true);
             expect(notice()?.textContent).toBe("This side is read only");
 
             act(() => {
@@ -1269,7 +1273,10 @@ describe("DiffViewerApp read-only contract", () => {
         await mountEditablePane("shared();\nbefore();", 1);
 
         const block = document.querySelector<HTMLElement>(".diff-pane-left .diff-editable-block");
-        expect(block?.getAttribute("role")).toBe("group");
+        // The block is activated by click, Enter and F2 and carries a tab stop, so it must
+        // announce as a control rather than as a grouping. `role="group"` with `tabIndex`
+        // was a focusable element that told a screen reader it did nothing.
+        expect(block?.matches('[role="button"], button')).toBe(true);
         expect(block?.getAttribute("aria-label")).toBe("Click to edit");
         expect(block?.title).toBe("Click to edit");
 

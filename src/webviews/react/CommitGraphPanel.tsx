@@ -243,6 +243,11 @@ export function CommitGraphPanel({
     vscode,
     stateKeyPrefix = "",
     sendReady = true,
+    // The domain state already IS a reducer, on the next line. The five `useState` calls the
+    // rule counts are the ones deliberately kept out of it: three measured pane widths, a
+    // visibility flag and a request id. Folding view geometry into the domain reducer would
+    // make every resize a domain action.
+    // react-doctor-disable-next-line react-doctor/prefer-useReducer
 }: Props): React.ReactElement {
     const [state, dispatch] = useReducer(commitGraphPanelReducer, initialCommitGraphPanelState);
     const {

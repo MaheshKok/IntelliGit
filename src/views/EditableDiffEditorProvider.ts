@@ -300,6 +300,10 @@ class EditableDiffSession {
             // every later keystroke with a token this session has already moved past —
             // accepted by the textarea, written nowhere, in silence and for good.
             const message: InboundMessage = { type: "setDiffData", data: this.buildData() };
+            // The token guard below asks whether a reseed landed while this post was in
+            // flight, so it is only answerable after the await; and `delivered` is what the
+            // lines under it record. Neither can be reordered.
+            // react-doctor-disable-next-line react-doctor/async-defer-await
             const delivered = await this.panel.webview.postMessage(message);
             // `postMessage` reports a DROPPED message by resolving `false`, not by rejecting.
             // Rejection is the disposed-panel case, where there is nothing left to recover;

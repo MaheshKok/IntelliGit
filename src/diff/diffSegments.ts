@@ -53,6 +53,9 @@ function splitText(text: string): SplitText {
 /** Returns true when two texts contain the same lines but differ in newline representation. */
 function hasNewlineDifference(left: SplitText, right: SplitText): boolean {
     if (left.lines.length !== right.lines.length) return false;
+    // The length guard the rule asks for is the line above; it reads the two statements
+    // separately and cannot see it.
+    // react-doctor-disable-next-line react-doctor/js-length-check-first
     if (!left.lines.every((line, index) => line === right.lines[index])) return false;
     return (
         left.meta.eol !== right.meta.eol || left.meta.terminalNewline !== right.meta.terminalNewline

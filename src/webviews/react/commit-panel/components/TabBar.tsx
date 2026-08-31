@@ -252,7 +252,7 @@ export function TabBar({
                                 style={{
                                     marginLeft: -2,
                                     marginRight: 2,
-                                    fontSize: 11,
+                                    fontSize: 12,
                                     color: "var(--intelligit-pycharm-foreground)",
                                 }}
                             >

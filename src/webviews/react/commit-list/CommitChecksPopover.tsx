@@ -279,9 +279,9 @@ function CommitChecksPanel({
                     </button>
                 </div>
                 {refreshing ? (
-                    <div role="status" aria-live="polite" style={refreshStatusStyle}>
+                    <output aria-live="polite" style={refreshStatusStyle}>
                         {t("commit.checks.loading")}
-                    </div>
+                    </output>
                 ) : null}
                 <div style={bodyStyle} aria-busy={refreshing}>
                     {checks === "loading" || !checks ? (
@@ -496,6 +496,10 @@ const refreshButtonDisabledStyle: React.CSSProperties = {
 };
 
 const refreshStatusStyle: React.CSSProperties = {
+    // `display` is explicit because this styles an `<output>`, which is inline by default --
+    // an inline box drops the vertical padding below, so the status would sit flush against
+    // the row above it. The element it replaced was a `<div>`.
+    display: "block",
     color: JETBRAINS_UI.color.muted,
     fontSize: 12,
     padding: "10px 18px 0",

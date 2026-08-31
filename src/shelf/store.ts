@@ -164,6 +164,10 @@ export class ShelfStore {
     /** Runs one storage mutation with the reusable nonce/heartbeat store lock. */
     async withLock<T>(operation: () => Promise<T>): Promise<T> {
         if (this.lockContext.getStore()) return operation();
+        // Ordered, not independent: the internal parent is created inside the root, and the
+        // lock file is created inside that parent. Running them together races directory
+        // creation against the very directories the next step needs to already exist.
+        // react-doctor-disable-next-line react-doctor/async-parallel
         await ensureShelfRoot(this.paths);
         await ensureShelfInternalParent(this.paths, path.join(".store-lock", STORE_LOCK_FILE));
         const release = await this.acquireWithBriefWait();

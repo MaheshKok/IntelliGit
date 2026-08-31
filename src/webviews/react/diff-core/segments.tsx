@@ -90,6 +90,11 @@ const HighlightedLine = React.memo(function HighlightedLine({
 });
 
 /** Expands a token-level word-diff mask into per-character masks. */
+// The rule protects Fast Refresh, which this project does not have: the webviews are
+// bundled by esbuild (`scripts/build.js`) with no react-refresh transform anywhere, so a
+// mixed module costs nothing here. The three helpers exported alongside the components are
+// each read only by them, and a separate module would buy separation without a consumer.
+// react-doctor-disable-next-line react-doctor/only-export-components
 export function buildChangedCharMasks(
     line: string,
     compareLine: string,
@@ -182,6 +187,11 @@ const WordDiffLine = React.memo(function WordDiffLine({
     const spans = coloredSpansForLine(line, ctx);
     if (spans.length === 0) return <>{` `}</>;
     const { changed, whitespace } = buildChangedCharMasks(line, compareLine);
+    // Not a component call: this returns a keyed array of `<span>`s, holds no state and runs
+    // no hooks, so there is nothing for React to remount and nothing for a user to lose.
+    // Wrapping it in a component would add one fibre per rendered LINE, on the hottest path
+    // the viewer has, to satisfy a naming pattern.
+    // react-doctor-disable-next-line react-doctor/no-render-in-render
     return <>{renderColoredSpansWithWordDiff(spans, changed, whitespace, "wd")}</>;
 });
 
@@ -208,6 +218,8 @@ function lineNumberValuesEqual(a: LineNumberValue[], b: LineNumberValue[]): bool
 }
 
 /** Value-compares two line-number specifications for memoized block updates. */
+// No Fast Refresh in this build; see the note on `buildChangedCharMasks`.
+// react-doctor-disable-next-line react-doctor/only-export-components
 export function lineNumberSpecEqual(a: LineNumberSpec, b: LineNumberSpec): boolean {
     if (a === b) return true;
     return lineNumberValuesEqual(a.primary, b.primary);
@@ -302,6 +314,8 @@ export const CodeBlock = React.memo(
                                 // rate: the flicker. A row here is its position in this block and
                                 // nothing else; the number and the text are what it DISPLAYS, and
                                 // both belong in props, where a change repaints one row.
+                                // react-doctor-disable-next-line react-doctor/no-array-index-key
+                                // react-doctor-disable-next-line react-doctor/no-array-index-as-key
                                 key={i}
                                 className={`code-line ${
                                     isReal ? "real-code-line" : "padding-code-line"
@@ -335,6 +349,8 @@ export const CodeBlock = React.memo(
 );
 
 /** Size hint that keeps content-visibility geometry equal to rendered rows. */
+// No Fast Refresh in this build; see the note on `buildChangedCharMasks`.
+// react-doctor-disable-next-line react-doctor/only-export-components
 export function intrinsicSizeStyle(lineCount: number): React.CSSProperties {
     return { containIntrinsicSize: `auto ${lineCount * LINE_HEIGHT_PX}px` };
 }

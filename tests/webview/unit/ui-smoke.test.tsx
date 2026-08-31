@@ -1019,7 +1019,9 @@ describe("webview ui smoke", () => {
         expect(onRequestChecks).toHaveBeenCalledExactlyOnceWith(hash, true);
         expect(refreshButton.disabled).toBe(true);
         expect(refreshButton.dataset.refreshing).toBe("true");
-        const status = document.body.querySelector('[role="status"]');
+        // `<output>` announces as `status` implicitly; jsdom resolves no implicit roles, so
+        // match either spelling and still fail on an element that announces as neither.
+        const status = document.body.querySelector('[role="status"], output');
         expect(status?.textContent).toBe("Loading checks...");
         expect(status?.closest('[aria-busy="true"]')).toBeNull();
         expect(document.body.querySelector('[aria-busy="true"]')).not.toBeNull();
@@ -1031,24 +1033,28 @@ describe("webview ui smoke", () => {
         expect(refreshStyles).toContain("@media (prefers-reduced-motion: reduce)");
 
         act(() => mounted.root.render(render("loading")));
-        expect(document.body.querySelector('[role="status"]')).not.toBeNull();
+        expect(document.body.querySelector('[role="status"], output')).not.toBeNull();
         expect(document.body.textContent).toContain("Existing check");
 
         act(() => refreshButton.click());
         expect(onRequestChecks).toHaveBeenCalledOnce();
 
         act(() => mounted.root.render(render(currentSnapshot)));
-        expect(document.body.querySelector('[role="status"]')).not.toBeNull();
+        expect(document.body.querySelector('[role="status"], output')).not.toBeNull();
 
         act(() => mounted.root.render(render(nextSnapshot)));
         expect(refreshButton.disabled).toBe(false);
-        expect(document.body.querySelector('[role="status"]')).toBeNull();
+        // `output` is in the selector for the same reason as the positive assertions above:
+        // without it this would stop being able to see a status that failed to clear.
+        expect(document.body.querySelector('[role="status"], output')).toBeNull();
         expect(document.body.textContent).toContain("Updated check");
 
         act(() => refreshButton.click());
         act(() => mounted.root.render(render(unavailableSnapshot)));
         expect(refreshButton.disabled).toBe(false);
-        expect(document.body.querySelector('[role="status"]')).toBeNull();
+        // `output` is in the selector for the same reason as the positive assertions above:
+        // without it this would stop being able to see a status that failed to clear.
+        expect(document.body.querySelector('[role="status"], output')).toBeNull();
         expect(document.body.textContent).toContain("Sign in to refresh checks.");
         unmount(mounted.root, mounted.container);
     });

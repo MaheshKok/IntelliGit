@@ -18,6 +18,9 @@ describe("digestSecret", () => {
     });
 
     it("never contains the raw value as a substring", () => {
+        // Fabricated token-shaped fixture. This test asserts the digest never contains it, so
+        // the literal is the thing under test, not a credential, and it ships to no browser.
+        // react-doctor-disable-next-line react-doctor/no-secrets-in-client-code
         const secret = "glpat-SUPERSECRET";
         const digest = digestSecret(secret, "salt-a");
         expect(digest).not.toContain(secret);

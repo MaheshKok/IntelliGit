@@ -569,8 +569,15 @@ async function refreshUnifiedDiffSession(session: ActiveUnifiedDiffSession): Pro
     const executor = needsGitExecutor ? new GitExecutor(session.descriptor.repoRoot) : undefined;
 
     try {
+        // Both generation guards ask whether a newer refresh superseded this one WHILE the
+        // read was in flight, so each is only answerable after its await; hoisting either
+        // one turns it into a check against a generation that cannot have moved yet. The
+        // two sides also share one `GitExecutor` against one repository, so they stay
+        // sequential regardless.
+        // react-doctor-disable-next-line react-doctor/async-defer-await
         const left = await resolveRefreshSide(session, "left", executor);
         if (!isCurrentUnifiedDiffSession(session, generation)) return;
+        // react-doctor-disable-next-line react-doctor/async-defer-await
         const right = await resolveRefreshSide(session, "right", executor);
         if (!isCurrentUnifiedDiffSession(session, generation)) return;
         if (exceedsDiffSnapshotBudget(left, right)) {
@@ -777,6 +784,10 @@ async function openDiffAgainstGitRef(
             fileUri,
         },
         async (cancellationToken) => {
+            // The guard below is a cancellation check, which can only become true DURING
+            // this read. Moving the await under it would leave the one window it covers
+            // uncovered and still open the editor on a cancelled request.
+            // react-doctor-disable-next-line react-doctor/async-defer-await
             const refContent = await gitOps.getFileContentAtRef(repoRelativeFilePath, trimmedRef);
             if (cancellationToken.isCancellationRequested) return;
             const leftUri = createReadonlyDiffUri(repoRelativeFilePath, refContent, trimmedRef);
