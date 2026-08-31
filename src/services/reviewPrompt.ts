@@ -294,8 +294,21 @@ export class ReviewPromptService {
         const state = this.context.globalState;
         // `if (!arm) return` below is not a skip path this await can duck under: clearing is
         // the work, and it must land whether or not the armed seed follows it.
+        //
+        // `allSettled` rather than `all`. `all` rejects on its FIRST failure and leaves the
+        // siblings running unobserved, so `resetState` releases the cycle queue -- see the
+        // `this.queue` assignment above -- while `state.update(key, undefined)` calls are still
+        // in flight, and a late clear then lands an `undefined` on top of the counter the next
+        // cycle has already written. A second rejection arriving after `all` had settled is
+        // also unhandled, which fails the whole run rather than this one command.
         // react-doctor-disable-next-line react-doctor/async-defer-await
-        await Promise.all(Object.values(KEYS).map((key) => state.update(key, undefined)));
+        const cleared = await Promise.allSettled(
+            Object.values(KEYS).map((key) => state.update(key, undefined)),
+        );
+        // The caller still learns about the first failure; it just learns after the rest land.
+        for (const outcome of cleared) {
+            if (outcome.status === "rejected") throw outcome.reason;
+        }
         if (!arm) return;
 
         // One short of every threshold, matching the seed the gating tests use, so the

@@ -15,14 +15,19 @@ import {
     type SegmentPaneLines,
 } from "../diff-core/mergeScrollLayout";
 import { DIFF_PANES, segmentRibbonMarker, soleSidedPane, type DiffPane } from "./segmentMarkers";
-import { adjacentChangeIndex, buildStripeMarks } from "./changeStripe";
+import { adjacentChangeIndex, buildStripeMarks, type StripeMark } from "./changeStripe";
+import type { SyntaxHighlightState } from "../diff-core/syntaxHighlightContext";
 import {
     baseMaxLineLengthForSegments,
     effectiveMaxLineLength,
     type EditableBlockLayout,
 } from "./editableDraftLayout";
 import { editableRunRows, editedPaneLines, nextEditingBlockState } from "./editableDraftSession";
-import { buildRenderedSegments, createRenderedSegmentCache } from "./renderedDiffSegments";
+import {
+    buildRenderedSegments,
+    createRenderedSegmentCache,
+    type RenderedSegment,
+} from "./renderedDiffSegments";
 
 /** The document a pane is editing, once both halves of it have actually arrived. */
 export interface PaneEditor {
@@ -71,6 +76,34 @@ function revertablePaneOf(data: DiffViewerData | null): DiffPane | undefined {
 }
 
 /**
+ * Everything `App` destructures out of one payload.
+ *
+ * Named rather than left to inference so the hook's surface is a declaration: fourteen members
+ * inferred from a return literal are fourteen members nothing states, and a change to any of
+ * them reads as an ordinary edit rather than as a change to what the component is handed.
+ */
+export interface DiffViewerModel {
+    readonly renderedSegments: RenderedSegment[];
+    readonly syntaxHighlightState: SyntaxHighlightState;
+    readonly layout: DiffVerticalLayout<DiffPane>;
+    readonly stripeMarks: StripeMark[];
+    readonly jumpToSegment: (index: number) => void;
+    /** Returns false when there was no change to move to, so the key handler can pass it on. */
+    readonly jumpToAdjacentChange: (direction: 1 | -1) => boolean;
+    readonly ribbonIndices: Array<{
+        index: number;
+        marker: ReturnType<typeof segmentRibbonMarker>;
+    }>;
+    readonly singlePane: DiffPane | null;
+    readonly revertablePane: DiffPane | undefined;
+    readonly leftEditor: PaneEditor | null;
+    readonly rightEditor: PaneEditor | null;
+    readonly actionHunks: number[];
+    readonly maxLineLength: number;
+    readonly handleDraftLayoutChange: (layout: EditableBlockLayout | null) => void;
+}
+
+/**
  * Derives one payload's whole render model.
  *
  * `contentRef` and `layoutRef` belong to `useDiffOverlayPainter` and are threaded through rather
@@ -83,7 +116,7 @@ export function useDiffViewerModel(
     contentRef: React.MutableRefObject<HTMLDivElement | null>,
     layoutRef: React.MutableRefObject<DiffVerticalLayout<DiffPane> | null>,
     viewportHeight: number,
-) {
+): DiffViewerModel {
     const [editingBlock, setEditingBlock] = useState<EditableBlockLayout | null>(null);
     const latestEditingBlockRef = useRef<EditableBlockLayout | null>(null);
     const baseMaxLineLengthRef = useRef(1);
