@@ -141,10 +141,64 @@ async function measureTruncated(
         width -= SHRINK_STEP_PX
     ) {
         await page.setViewportSize({ width, height: viewport?.height ?? 720 });
-        fit = await measure(page, label, field);
+        fit = await measureAfterResize(page, label, field, width);
     }
     requireTruncated(fit);
     return fit;
+}
+
+/**
+ * Measures only once the pane has actually re-laid-out at `width`.
+ *
+ * `setViewportSize` resolves when the BROWSER has resized, which is not the moment the page has
+ * laid out against the new size. The pane's width follows a resize listener, so a measurement
+ * taken in the same tick can still describe the layout before the resize -- reporting the new
+ * viewport width and the old pane width together, and with them a label that "fits" only because
+ * nothing has moved yet.
+ *
+ * That race is the best available explanation for what broke the `visual` job, and it is NOT
+ * proven. CI failed all four narrow projects at the shrink floor quoting "101px of text in 101px
+ * of box" -- the reading from 320px, a width the loop had already left -- which is what a loop
+ * that never sees its own resizes would report. Two of the four lost only one of their two tests,
+ * which is the shape of a race rather than of a fixture that stopped overflowing.
+ *
+ * What is NOT established is the race occurring here. Instrumented in the pinned container on an
+ * emulated `linux/amd64` host, a step to 300px reports the clipping pane ALREADY at 300px and
+ * already truncating, before any settling -- so this guard changes nothing locally, and reverting
+ * it leaves the whole suite green (516 passed, both ways). That host runs the suite in 24 minutes
+ * against CI's 4.8, and a resize the renderer has that much longer to apply is one it always wins.
+ * A slower box is not a weaker CI here; it is a different experiment, and it cannot host the bug.
+ *
+ * So CI is the only prover. If the diagnosis is right the job goes green; if it is wrong the poll
+ * below times out and names the pane that never adopted the width, which is a strictly better
+ * error than the one it replaces. Do not read a green local run as confirmation of either.
+ *
+ * Polling the CLIPPING ANCESTOR is the point: it is the box whose staleness produced the wrong
+ * answer, and `window.innerWidth` cannot stand in for it because that updates with the viewport,
+ * before the layout it is being used to vouch for. Failing to settle fails the test rather than
+ * measuring anyway -- a pane that never adopts the width is a broken harness, and measuring it
+ * regardless is precisely how the stale reading came to be blamed on the fixture.
+ */
+async function measureAfterResize(
+    page: import("@playwright/test").Page,
+    label: string,
+    field: string,
+    width: number,
+): Promise<Fit> {
+    await expect
+        .poll(
+            async () => {
+                const seen = await measure(page, label, field);
+                return Math.round((seen.clipper?.right ?? 0) - (seen.clipper?.left ?? 0));
+            },
+            {
+                message:
+                    `the ancestor clipping ${label} never re-laid-out at ${width}px, so every ` +
+                    `measurement taken here would describe the layout before the resize`,
+            },
+        )
+        .toBe(width);
+    return measure(page, label, field);
 }
 
 test.describe("branch-scope label fit", () => {
