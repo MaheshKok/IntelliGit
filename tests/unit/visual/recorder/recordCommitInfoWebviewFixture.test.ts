@@ -42,6 +42,7 @@ import {
 import { parseWebviewFixture } from "../../../visual/recorder/validateWebviewFixture";
 import { serializeWebviewFixture } from "../../../visual/recorder/webviewFixtureFile";
 import { createScratchWorkspaces } from "../../fixtures/scratchWorkspaces";
+import { withWindowsHeadroom } from "../../../setup/platformTimeouts";
 
 describe("recordCommitInfoWebviewFixture", () => {
     let parentDir: string;
@@ -62,7 +63,7 @@ describe("recordCommitInfoWebviewFixture", () => {
             () => seedFixtureTemplate(path.join(parentDir, "root-a")),
             () => seedFixtureTemplate(path.join(parentDir, "root-b")),
         );
-    }, 60_000);
+    }, withWindowsHeadroom(60_000));
 
     afterAll(async () => {
         await scratch.removeAll();

@@ -46,6 +46,7 @@ import {
 } from "../../../visual/recorder/workspaceConfigurationDouble";
 import { createScratchWorkspaces } from "../../fixtures/scratchWorkspaces";
 import { removeScratchDirectories } from "../../../helpers/scratchDirectories";
+import { withWindowsHeadroom } from "../../../setup/platformTimeouts";
 
 const CONFLICTED_SCENARIO = REPOSITORY_SCENARIOS.find((scenario) => scenario.id === "conflicted");
 if (!CONFLICTED_SCENARIO) {
@@ -116,7 +117,7 @@ describe("merge-editor webview recorder", () => {
             () => CONFLICTED_SCENARIO.prepare(path.join(parentDir, "root-a")),
             () => CONFLICTED_SCENARIO.prepare(path.join(parentDir, "root-b")),
         );
-    }, 60_000);
+    }, withWindowsHeadroom(60_000));
 
     afterAll(async () => {
         await scratch.removeAll();

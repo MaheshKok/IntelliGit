@@ -3,6 +3,8 @@
 
 import { defineConfig } from "vitest/config";
 
+import { harnessTimeouts } from "./tests/setup/platformTimeouts";
+
 export default defineConfig({
     test: {
         include: ["tests/**/*.test.ts", "tests/**/*.test.tsx"],
@@ -21,8 +23,14 @@ export default defineConfig({
         // git processes. Vitest's 5s default is comfortable until v8 coverage
         // instrumentation is layered on top, at which point the slowest of them time
         // out — which reads as a broken test rather than a slow one.
-        testTimeout: 30_000,
-        hookTimeout: 30_000,
+        //
+        // 30s has held on the Linux and macOS CI legs and never has on Windows, where the
+        // same work is filesystem- and subprocess-bound: three `Installed-package
+        // portability` runs in five days died on `Test timed out in 30000ms`, naming a
+        // different test each time and re-running green with no code change.
+        // `withWindowsHeadroom` carries the measurements, the reason the floor is 180s, and
+        // why "has held" is a weaker claim than it looks.
+        ...harnessTimeouts(),
         coverage: {
             provider: "v8",
             reporter: ["text", "html"],

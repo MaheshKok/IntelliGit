@@ -73,6 +73,7 @@ import {
     resetCreatedWebviewPanelsForTests,
 } from "../../../visual/recorder/webviewPanelDouble";
 import { createScratchWorkspaces } from "../../fixtures/scratchWorkspaces";
+import { withWindowsHeadroom } from "../../../setup/platformTimeouts";
 
 /** The real, exported `conflicted` `RepositoryScenario` -- reused directly rather than re-derived:
  * unlike `dirty` (the seeded template exactly as built, a two-line postcondition check),
@@ -146,7 +147,7 @@ describe("merge-conflict-session webview recorder", () => {
             () => prepareConflictedWorkspace(path.join(parentDir, "root-a")),
             () => prepareConflictedWorkspace(path.join(parentDir, "root-b")),
         );
-    }, 60_000);
+    }, withWindowsHeadroom(60_000));
 
     afterAll(async () => {
         await scratch.removeAll();
