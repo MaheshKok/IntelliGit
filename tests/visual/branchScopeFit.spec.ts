@@ -169,9 +169,11 @@ async function measureTruncated(
  * against CI's 4.8, and a resize the renderer has that much longer to apply is one it always wins.
  * A slower box is not a weaker CI here; it is a different experiment, and it cannot host the bug.
  *
- * So CI is the only prover. If the diagnosis is right the job goes green; if it is wrong the poll
- * below times out and names the pane that never adopted the width, which is a strictly better
- * error than the one it replaces. Do not read a green local run as confirmation of either.
+ * So CI was the only prover, and it has since ruled: run 33390003000 on 75e091f3 passed `visual`,
+ * with this guard the only change to this spec. Weigh that for what it is -- the red was seven
+ * failures across all four narrow projects, the green is one run, so this is confirmation rather
+ * than proof, and a single future red here is a reason to reopen the diagnosis, not to retry.
+ * A green LOCAL run remains worth nothing either way, for the reason in the paragraph above.
  *
  * Polling the CLIPPING ANCESTOR is the point: it is the box whose staleness produced the wrong
  * answer, and `window.innerWidth` cannot stand in for it because that updates with the viewport,
