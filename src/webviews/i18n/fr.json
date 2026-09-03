@@ -383,5 +383,6 @@
     "commitPanel.unstaged": "Non indexé",
     "shelf.list.empty.hint": "Mettez des modifications sur une étagère pour les écarter sans les valider.",
     "commitPanel.noChanges.hint": "Modifiez un fichier de l'espace de travail et il apparaîtra ici.",
-    "stash.empty.hint": "Le remisage conserve le travail non validé pour changer de branche proprement."
+    "stash.empty.hint": "Le remisage conserve le travail non validé pour changer de branche proprement.",
+    "commit.message.label": "Message de validation"
 }

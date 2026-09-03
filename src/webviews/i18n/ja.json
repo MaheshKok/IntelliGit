@@ -365,5 +365,6 @@
     "commitPanel.unstaged": "未ステージ",
     "shelf.list.empty.hint": "変更をシェルフに置くとコミットせずに脇に置いておけます。",
     "commitPanel.noChanges.hint": "ワークスペースのファイルを編集するとここに表示されます。",
-    "stash.empty.hint": "スタッシュは未コミットの作業を保存し、ブランチをきれいに切り替えられるようにします。"
+    "stash.empty.hint": "スタッシュは未コミットの作業を保存し、ブランチをきれいに切り替えられるようにします。",
+    "commit.message.label": "コミットメッセージ"
 }

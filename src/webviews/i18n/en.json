@@ -113,6 +113,7 @@
         "other": "{count} files"
     },
     "common.filesAndDate": "{files}, {date}",
+    "commit.message.label": "Commit Message",
     "commit.message.placeholder": "What changed and why?",
     "commit.message.generate": "Generate commit message",
     "commit.message.stopGeneration": "Stop commit message generation",

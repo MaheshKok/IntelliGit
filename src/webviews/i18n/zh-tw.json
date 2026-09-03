@@ -365,5 +365,6 @@
     "commitPanel.unstaged": "未暫存",
     "shelf.list.empty.hint": "將變更擱置可在不提交的情況下把它們放到一邊。",
     "commitPanel.noChanges.hint": "編輯工作區中的檔案後，它會顯示在這裡。",
-    "stash.empty.hint": "儲藏會保存未提交的工作，讓你可以乾淨地切換分支。"
+    "stash.empty.hint": "儲藏會保存未提交的工作，讓你可以乾淨地切換分支。",
+    "commit.message.label": "提交訊息"
 }

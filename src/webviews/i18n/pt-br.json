@@ -383,5 +383,6 @@
     "commitPanel.unstaged": "Não preparado",
     "shelf.list.empty.hint": "Coloque alterações na prateleira para deixá-las de lado sem confirmar.",
     "commitPanel.noChanges.hint": "Edite um arquivo no espaço de trabalho e ele aparecerá aqui.",
-    "stash.empty.hint": "O stash guarda o trabalho não confirmado para você trocar de branch sem conflitos."
+    "stash.empty.hint": "O stash guarda o trabalho não confirmado para você trocar de branch sem conflitos.",
+    "commit.message.label": "Mensagem de commit"
 }

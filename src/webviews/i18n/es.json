@@ -383,5 +383,6 @@
     "commitPanel.unstaged": "No preparado",
     "shelf.list.empty.hint": "Ponga cambios en un estante para apartarlos sin confirmar.",
     "commitPanel.noChanges.hint": "Edite un archivo del espacio de trabajo y aparecerá aquí.",
-    "stash.empty.hint": "El stash guarda el trabajo sin confirmar para que pueda cambiar de rama sin problemas."
+    "stash.empty.hint": "El stash guarda el trabajo sin confirmar para que pueda cambiar de rama sin problemas.",
+    "commit.message.label": "Mensaje de confirmación"
 }

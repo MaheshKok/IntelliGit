@@ -521,6 +521,37 @@ describe("webview ui smoke", () => {
         unmount(mounted.root, mounted.container);
     });
 
+    it("names the commit message box the same way the e2e locator asks for it", () => {
+        const noop = vi.fn();
+        const mounted = mount(
+            <ChakraProvider theme={theme}>
+                <CommitArea
+                    commitMessage=""
+                    isAmend={false}
+                    onMessageChange={noop}
+                    onAmendChange={noop}
+                    onCommit={noop}
+                    onPush={noop}
+                    canCommit={true}
+                    canPush={true}
+                    pushLabel="common.push"
+                    currentBranchName="main"
+                    currentBranchUpstream="origin/main"
+                    hasCommits={true}
+                    hasCheckedPaths={true}
+                />
+            </ChakraProvider>,
+        );
+        const textarea = mounted.container.querySelector("textarea") as HTMLTextAreaElement;
+        // tests/e2e/pageObjects/changesPanel.ts fills the box found by the accessible
+        // name "Commit Message". The name is aria-label when present and the
+        // placeholder otherwise, so this fails whichever way the copy drifts.
+        const accessibleName = textarea.getAttribute("aria-label") ?? textarea.placeholder;
+
+        expect(accessibleName).toBe("Commit Message");
+        unmount(mounted.root, mounted.container);
+    });
+
     it("uses commit history and checked paths to gate amend and idle generation", () => {
         const onGenerate = vi.fn();
         const noop = vi.fn();

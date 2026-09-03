@@ -392,5 +392,6 @@
     "commitPanel.unstaged": "Poza indeksem",
     "shelf.list.empty.hint": "Odłóż zmiany na półkę aby odsunąć je bez zatwierdzania.",
     "commitPanel.noChanges.hint": "Edytuj plik w obszarze roboczym i pojawi się tutaj.",
-    "stash.empty.hint": "Schowanie zapisuje niezatwierdzoną pracę i pozwala bezpiecznie przełączyć gałąź."
+    "stash.empty.hint": "Schowanie zapisuje niezatwierdzoną pracę i pozwala bezpiecznie przełączyć gałąź.",
+    "commit.message.label": "Komunikat commita"
 }
