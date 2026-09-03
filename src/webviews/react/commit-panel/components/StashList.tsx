@@ -7,7 +7,7 @@ import type { StashEntry, WorkingFile } from "../../../../types";
 import { ChevronIcon } from "../../shared/components/Icons";
 import { t } from "../../shared/i18n";
 import { formatDateTime } from "../../shared/date";
-import { SHADOW } from "../../shared/tokens";
+import { MOTION, SHADOW } from "../../shared/tokens";
 
 /** State and callbacks for the keyboard-navigable stash row tree. */
 export interface StashListProps {
@@ -69,7 +69,14 @@ export function StashList({
                     p="12px"
                     textAlign="center"
                 >
-                    {t("stash.empty")}
+                    <Box
+                        color="var(--intelligit-pycharm-foreground)"
+                        fontSize="13px"
+                        fontWeight={500}
+                    >
+                        {t("stash.empty")}
+                    </Box>
+                    <Box mt="2px">{t("stash.empty.hint")}</Box>
                 </Box>
             ) : (
                 stashes.map((stash) => {
@@ -98,7 +105,7 @@ export function StashList({
                                 px="6px"
                                 gap="6px"
                                 borderRadius="5px"
-                                transition="background-color 120ms ease-out"
+                                transition={`background-color ${MOTION.state}`}
                                 cursor="pointer"
                                 fontFamily={SYSTEM_FONT_STACK}
                                 fontSize="13px"

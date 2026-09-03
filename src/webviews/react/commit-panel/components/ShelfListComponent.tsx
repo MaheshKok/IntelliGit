@@ -94,7 +94,14 @@ export function ShelfList({
                     fontSize="12px"
                     color="var(--intelligit-pycharm-muted)"
                 >
-                    {t("shelf.list.empty")}
+                    <Box
+                        color="var(--intelligit-pycharm-foreground)"
+                        fontSize="13px"
+                        fontWeight={500}
+                    >
+                        {t("shelf.list.empty")}
+                    </Box>
+                    <Box mt="2px">{t("shelf.list.empty.hint")}</Box>
                 </Box>
             ) : (
                 <>

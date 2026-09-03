@@ -1,7 +1,7 @@
 import React from "react";
 import { LuGitBranch, LuSearch, LuTag, LuX } from "react-icons/lu";
 import type { CSSProperties } from "react";
-import { JETBRAINS_UI } from "../tokens";
+import { JETBRAINS_UI, MOTION } from "../tokens";
 import { BASE_ICON_STYLE, ICON_SIZE } from "./iconStyles";
 
 const CHEVRON_ICON_SIZE = 16;
@@ -165,7 +165,7 @@ export function ChevronIcon({ expanded }: { expanded: boolean }): React.ReactEle
                 opacity: 0.78,
                 transform: expanded ? "rotate(90deg)" : "rotate(0deg)",
                 transformOrigin: "center",
-                transition: "transform 0.1s",
+                transition: `transform ${MOTION.transform}`,
                 verticalAlign: "text-bottom",
             }}
         >

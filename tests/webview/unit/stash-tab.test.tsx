@@ -974,7 +974,7 @@ describe("StashTab", () => {
         const { root, container } = renderStashTab();
         expandStash(container, 1);
         expect(lastMessage()).toEqual({ type: "stashSelect", repositoryRoot: "/repo", index: 1 });
-        expect(stashSubtree(container).textContent).toContain("Loading...");
+        expect(stashSubtree(container).textContent).toContain("Loading…");
         expect(container.textContent).not.toContain("No files in this stashed change.");
 
         act(() => {

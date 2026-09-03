@@ -1,6 +1,6 @@
 import type { CSSProperties } from "react";
 import { ROW_HEIGHT } from "../graph";
-import { JETBRAINS_UI, Z_INDEX } from "../shared/tokens";
+import { JETBRAINS_UI, MOTION, Z_INDEX } from "../shared/tokens";
 
 export const AUTHOR_COL_WIDTH = 104;
 export const DATE_COL_WIDTH = 118;
@@ -83,9 +83,18 @@ export const FILTER_INPUT_WRAP_STYLE: CSSProperties = {
  */
 export const FILTER_INPUT_CLASS = "commit-filter-input";
 
+/**
+ * Hover feedback for commit rows. A class rather than React state so a pointer
+ * sweeping the list never re-renders a row; the selected row keeps its own fill.
+ */
+export const COMMIT_ROW_CLASS_CSS = `
+.commit-row { transition: background-color ${MOTION.state}; }
+.commit-row:hover:not([aria-current="true"]) { background-color: ${JETBRAINS_UI.color.hover}; }
+`;
+
 export const FILTER_INPUT_CLASS_CSS = `
     .${FILTER_INPUT_CLASS}:focus-visible {
-        outline-color: var(--vscode-focusBorder, #007acc);
+        outline-color: ${JETBRAINS_UI.color.focus};
     }
 `;
 
@@ -155,7 +164,6 @@ export function headerRowStyle(graphWidth: number): CSSProperties {
         borderBottom: `1px solid ${JETBRAINS_UI.color.border}`,
         background: "color-mix(in srgb, var(--vscode-editor-background, #2b3342) 86%, #000 14%)",
         color: JETBRAINS_UI.color.muted,
-        opacity: 0.88,
         paddingLeft: graphWidth,
         paddingRight: ROW_SIDE_PADDING,
         flexShrink: 0,

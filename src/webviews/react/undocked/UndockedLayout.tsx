@@ -21,6 +21,7 @@ import { CommitList } from "../CommitList";
 import { CommitInfoPane } from "../commit-info/CommitInfoPane";
 import theme from "../commit-panel/theme";
 import { t } from "../shared/i18n";
+import { JETBRAINS_UI } from "../shared/tokens";
 import { ThemeIconFontFaces } from "../shared/components/ThemeIconFontFaces";
 import { CommitPanelPane } from "./CommitPanelPane";
 import { RepositoryColumn } from "./RepositoryColumn";
@@ -239,7 +240,7 @@ export function UndockedLayout(props: UndockedLayoutProps): React.ReactElement {
                                     onRepositoryDividerMouseDown(e);
                                 }}
                                 onKeyDown={onRepositoryDividerKeyDown}
-                                _hover={{ bg: "var(--vscode-focusBorder, #007acc)" }}
+                                _hover={{ bg: JETBRAINS_UI.color.focus }}
                             />
                         </>
                     )}
@@ -293,7 +294,7 @@ export function UndockedLayout(props: UndockedLayoutProps): React.ReactElement {
                                     onLeftCommitPanelDividerMouseDown(e);
                                 }}
                                 onKeyDown={onLeftCommitPanelDividerKeyDown}
-                                _hover={{ bg: "var(--vscode-focusBorder, #007acc)" }}
+                                _hover={{ bg: JETBRAINS_UI.color.focus }}
                             />
                         </>
                     )}
@@ -456,7 +457,7 @@ export function UndockedLayout(props: UndockedLayoutProps): React.ReactElement {
                                     onRightCommitPanelDividerMouseDown(e);
                                 }}
                                 onKeyDown={onRightCommitPanelDividerKeyDown}
-                                _hover={{ bg: "var(--vscode-focusBorder, #007acc)" }}
+                                _hover={{ bg: JETBRAINS_UI.color.focus }}
                             />
 
                             <CommitPanelPane

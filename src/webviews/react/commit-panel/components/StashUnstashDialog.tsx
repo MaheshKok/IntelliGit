@@ -4,7 +4,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { Button, Checkbox, Flex } from "@chakra-ui/react";
 import { isValidBranchName } from "../../../../utils/gitRefs";
 import { t } from "../../shared/i18n";
-import { JETBRAINS_UI, SHADOW, Z_INDEX } from "../../shared/tokens";
+import { JETBRAINS_UI, SHADOW, TYPE_SCALE, Z_INDEX } from "../../shared/tokens";
 
 /** Props for the compact unstash dialog owned by StashTab. */
 export interface StashUnstashDialogProps {
@@ -117,7 +117,12 @@ export function StashUnstashDialog({
                 color="var(--intelligit-pycharm-foreground)"
                 boxShadow={SHADOW.dialog}
             >
-                <Flex as="h2" id="stash-unstash-title" fontSize="14px" fontWeight={600}>
+                <Flex
+                    as="h2"
+                    id="stash-unstash-title"
+                    fontSize={`${TYPE_SCALE.dialogTitle}px`}
+                    fontWeight={600}
+                >
                     {t("stash.action.unstash")}
                 </Flex>
                 <Flex direction="column" gap="4px">

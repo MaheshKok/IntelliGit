@@ -411,6 +411,19 @@ export const SHADOW = {
 } as const;
 
 /**
+ * The one motion voice for state changes. Under 150ms because a pointer sweeping a
+ * toolbar or a list crosses several targets; an exponential ease-out so the change
+ * lands instead of drifting. Reduced motion is honoured once, globally, by the
+ * Chakra theme in `commit-panel/theme.ts`; plain-CSS webviews carry their own rule.
+ */
+export const MOTION = {
+    /** Hover, focus, and selection fills. */
+    state: "120ms cubic-bezier(0.25, 1, 0.5, 1)",
+    /** Chevron rotation and other small transforms. */
+    transform: "100ms cubic-bezier(0.25, 1, 0.5, 1)",
+} as const;
+
+/**
  * Maps Git porcelain status codes to VS Code git-decoration theme colors.
  *
  * Each entry uses a VS Code theme variable with a JetBrains-matching fallback.

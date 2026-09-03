@@ -4,7 +4,7 @@ import type { ShelfEntry } from "../../../protocol/commitPanelMessages";
 import { ChevronIcon } from "../../shared/components/Icons";
 import { formatDateTime } from "../../shared/date";
 import { t } from "../../shared/i18n";
-import { SHADOW } from "../../shared/tokens";
+import { MOTION, SHADOW } from "../../shared/tokens";
 
 /** Context-menu actions supported by an individual shelf row. */
 export type ShelfContextAction =
@@ -89,7 +89,7 @@ export function ShelfRow({
             px="6px"
             gap="6px"
             borderRadius="5px"
-            transition="background-color 120ms ease-out"
+            transition={`background-color ${MOTION.state}`}
             cursor="pointer"
             fontSize="13px"
             textAlign="left"

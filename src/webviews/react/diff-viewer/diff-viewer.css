@@ -57,7 +57,7 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 22px;
+    width: 24px;
     height: 24px;
     padding: 0;
     border: 1px solid transparent;
@@ -159,7 +159,7 @@
 .diff-newline-marker {
     padding: 1px 6px;
     border: 1px solid var(--diff-pane-boundary);
-    border-radius: 8px;
+    border-radius: 999px;
     color: var(--diff-muted);
     font-size: 11px;
     white-space: nowrap;
@@ -595,7 +595,7 @@
        pane's, so the two anchor from opposite edges. A default here would be a third opinion
        that is right half the time. */
     border: none;
-    border-radius: 3px;
+    border-radius: 4px;
     background: transparent;
     /* The semantic hue itself, not a wash of it, and the same one the inserted stripe and the
        inserted connector already carry -- this arrow writes a hunk back into the editable pane,
@@ -764,7 +764,7 @@
 
 .diff-horizontal-scroll::-webkit-scrollbar-thumb {
     background: color-mix(in srgb, var(--diff-editor-fg) 24%, transparent);
-    border-radius: 6px;
+    border-radius: 999px;
     border: 2px solid transparent;
     background-clip: padding-box;
 }

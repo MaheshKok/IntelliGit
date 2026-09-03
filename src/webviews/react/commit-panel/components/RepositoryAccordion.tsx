@@ -19,7 +19,7 @@ import { canRunCommitAction } from "../commitEligibility";
 import { ChevronIcon, WorktreeSmallIcon } from "../../shared/components/Icons";
 import { t } from "../../shared/i18n";
 import type { CommitPanelAction, RepositoryCommitPanelState } from "../types";
-import { Z_INDEX } from "../../shared/tokens";
+import { JETBRAINS_UI, MOTION, Z_INDEX } from "../../shared/tokens";
 
 interface Props {
     repository: RepositoryCommitPanelState;
@@ -458,7 +458,7 @@ export function RepositoryAccordion({
                 bg="var(--intelligit-pycharm-panel)"
                 color="var(--intelligit-pycharm-foreground)"
                 textAlign="left"
-                transition="background-color 120ms ease-out"
+                transition={`background-color ${MOTION.state}`}
                 _hover={{ bg: "var(--intelligit-pycharm-selected-hover)" }}
                 onClick={() => onToggleExpanded(repository.root)}
                 aria-expanded={isExpanded}
@@ -546,7 +546,7 @@ export function RepositoryAccordion({
                     fontSize="11px"
                     bg="var(--vscode-badge-background, rgba(255, 255, 255, 0.12))"
                     color="var(--vscode-badge-foreground, #d6dbe5)"
-                    borderRadius="999px"
+                    borderRadius={`${JETBRAINS_UI.size.pillRadius}px`}
                 >
                     {repository.changedFileCount}
                 </Box>

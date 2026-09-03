@@ -165,8 +165,17 @@ function getRefAccent(kind: "branch" | "tag", name: string): string {
 
 function RefBadge({ kind, name }: { kind: "branch" | "tag"; name: string }): React.ReactElement {
     const accent = getRefAccent(kind, name);
+    // A tag is a fixed point, a branch a moving one; the hairline in the tag's own hue
+    // is the one thing that tells the two chips apart before the glyph is read.
+    const style =
+        kind === "tag"
+            ? {
+                  ...REF_BADGE_STYLE,
+                  boxShadow: `inset 0 0 0 1px color-mix(in srgb, ${accent} 45%, transparent)`,
+              }
+            : REF_BADGE_STYLE;
     return (
-        <span style={REF_BADGE_STYLE} title={name}>
+        <span style={style} title={name}>
             <span style={REF_BADGE_ICON_STYLE}>
                 <RefTypeIcon kind={kind} size={11} branchColor={accent} tagColor={accent} />
             </span>
@@ -413,7 +422,8 @@ function CommitRowInner({
             borderLeft: isUnpushed
                 ? `2px solid ${laneColor ?? JETBRAINS_UI.color.head}`
                 : "2px solid transparent",
-            background: isSelected ? JETBRAINS_UI.color.selected : "transparent",
+            // Unselected rows leave the fill to the `.commit-row` hover rule.
+            background: isSelected ? JETBRAINS_UI.color.selected : undefined,
             // The fill alone cannot carry the state: it is a host colour that three of
             // four stock themes set under 1.5:1 against the panel. See SHADOW.selectedRing.
             boxShadow: isSelected ? SHADOW.selectedRing : undefined,
@@ -466,6 +476,7 @@ function CommitRowInner({
             // Native button would wrap nested commit-check controls; keep the row div keyboard-activated.
             // react-doctor-disable-next-line react-doctor/prefer-tag-over-role
             role="button"
+            className="commit-row"
             tabIndex={0}
             aria-current={isSelected ? "true" : undefined}
             onClick={handleSelect}

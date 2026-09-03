@@ -2,7 +2,7 @@ import React, { useRef, useState } from "react";
 import { Box, Button, Flex, Input } from "@chakra-ui/react";
 import { t } from "../../shared/i18n";
 import { restoreShelfDialogFocus, useShelfDialogFocus } from "./ShelfDialogFocus";
-import { Z_INDEX } from "../../shared/tokens";
+import { TYPE_SCALE, Z_INDEX } from "../../shared/tokens";
 
 interface RenameStructuralDialogProps {
     path: string;
@@ -58,7 +58,12 @@ export function RenameStructuralDialog({
                 borderRadius="4px"
                 bg="var(--intelligit-pycharm-panel)"
             >
-                <Box as="h2" id="rename-local-title" fontSize="14px" fontWeight={600}>
+                <Box
+                    as="h2"
+                    id="rename-local-title"
+                    fontSize={`${TYPE_SCALE.dialogTitle}px`}
+                    fontWeight={600}
+                >
                     {t("shelf.dialog.renameLocal.title")}
                 </Box>
                 <Input

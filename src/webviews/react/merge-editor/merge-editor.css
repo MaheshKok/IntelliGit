@@ -119,7 +119,7 @@
     background: var(--vscode-button-background);
     color: var(--vscode-button-foreground);
     border: 1px solid var(--merge-border);
-    border-radius: 2px;
+    border-radius: 4px;
     cursor: pointer;
     font-size: 12px;
 }
@@ -248,7 +248,7 @@
     gap: 5px;
     height: 20px;
     padding: 0 8px;
-    border-radius: 10px;
+    border-radius: 999px;
     border: 1px solid color-mix(in srgb, var(--merge-warning) 35%, transparent);
     background: color-mix(in srgb, var(--merge-warning) 8%, transparent);
     color: var(--merge-warning-text);
@@ -319,7 +319,7 @@
     align-items: center;
     height: 20px;
     padding: 0 8px;
-    border-radius: 10px;
+    border-radius: 999px;
     border: 1px solid color-mix(in srgb, var(--merge-border) 85%, transparent);
     background: color-mix(in srgb, var(--merge-editor-fg) 3%, transparent);
     color: var(--merge-muted);
@@ -523,7 +523,7 @@
 }
 .merge-content::-webkit-scrollbar-thumb {
     background: color-mix(in srgb, var(--merge-editor-fg) 22%, transparent);
-    border-radius: 6px;
+    border-radius: 999px;
     border: 2px solid transparent;
     background-clip: padding-box;
 }
@@ -720,7 +720,7 @@
 }
 .merge-horizontal-scroll::-webkit-scrollbar-thumb {
     background: color-mix(in srgb, var(--merge-editor-fg) 24%, transparent);
-    border-radius: 6px;
+    border-radius: 999px;
     border: 2px solid transparent;
     background-clip: padding-box;
 }
@@ -754,7 +754,7 @@
     width: 20px;
     height: 24px;
     border: none;
-    border-radius: 3px;
+    border-radius: 4px;
     cursor: pointer;
     display: flex;
     align-items: center;
@@ -999,6 +999,9 @@
 }
 .footer-left {
     flex: 1 1 auto;
+    /* Four actions plus a hint at 320px: let the group wrap onto a second row rather
+       than clip the last button under a long de/es/ru label. */
+    flex-wrap: wrap;
 }
 .footer-right {
     /* Same shape as .toolbar-right: the primary action must be allowed to give way at
@@ -1006,13 +1009,15 @@
     flex: 0 1 auto;
 }
 .footer-btn {
-    min-height: 22px;
-    padding: 0 12px;
+    /* 24px tall and 12px type: the same control size as every other button in the
+       product. The footer used to run a size smaller than the toolbar above it. */
+    min-height: 24px;
+    padding: 0 10px;
     border: 1px solid color-mix(in srgb, var(--merge-border) 90%, transparent);
-    border-radius: 2px;
+    border-radius: 4px;
     cursor: pointer;
-    font-size: 11px;
-    line-height: 20px;
+    font-size: 12px;
+    line-height: 22px;
     /* `.footer-right` wrapping only moves .footer-left and .footer-right relative to each
        other -- it does nothing for a single over-long button, which is a flex item here and
        so keeps its automatic minimum size, and which a user agent stylesheet keeps on one
@@ -1054,6 +1059,15 @@
 }
 .footer-btn.danger:hover {
     background: color-mix(in srgb, var(--vscode-errorForeground, #f48771) 18%, transparent);
+}
+/* Abort sits alone at the far left as a quiet red-text action: destructive, but not
+   competing with Apply for the eye. The fill only appears on hover. */
+.footer-btn.danger.ghost {
+    background: transparent;
+    border-color: transparent;
+}
+.footer-btn.danger.ghost:hover {
+    background: color-mix(in srgb, var(--vscode-errorForeground, #f48771) 12%, transparent);
 }
 .footer-hint {
     color: var(--merge-muted);

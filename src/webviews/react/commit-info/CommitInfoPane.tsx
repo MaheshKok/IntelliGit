@@ -7,7 +7,6 @@ import { useDragResize } from "../commit-panel/hooks/useDragResize";
 import { RefTypeIcon } from "../shared/components/RefTypeIcon";
 import { FileTreeRows } from "../shared/components/FileTreeRows";
 import { SectionHeader } from "../shared/components/SectionHeader";
-import { SPIN_KEYFRAMES } from "../shared/components/iconStyles";
 import { splitCommitRefs } from "../shared/utils/refs";
 import { JETBRAINS_UI } from "../shared/tokens";
 import { t } from "../shared/i18n";
@@ -254,7 +253,6 @@ function CommitInfoLoadingPane({ bottomHeight }: { bottomHeight: number }): Reac
             fontFamily={SYSTEM_FONT_STACK}
             fontSize="13px"
         >
-            <style>{SPIN_KEYFRAMES}</style>
             <SectionHeader
                 variant="commit-info"
                 label={t("commitInfo.changedFiles")}
@@ -314,19 +312,29 @@ function LoadingSection({
             h={h}
             minH="40px"
             display="flex"
-            alignItems="center"
-            justifyContent="center"
-            position="relative"
+            flexDirection="column"
+            gap="8px"
+            p="10px 12px"
             role="status"
             aria-live="polite"
         >
             <Box as="span" style={VISUALLY_HIDDEN_STYLE}>
                 {label}
             </Box>
-            <LoadingSpinner />
+            {SKELETON_BAR_WIDTHS.map((width) => (
+                <Box key={width} style={{ ...SKELETON_BAR_STYLE, width }} />
+            ))}
         </Box>
     );
 }
+
+/** Three static placeholder lines where the file rows and details will land. */
+const SKELETON_BAR_WIDTHS = ["72%", "48%", "60%"] as const;
+const SKELETON_BAR_STYLE: React.CSSProperties = {
+    height: 10,
+    borderRadius: JETBRAINS_UI.size.badgeRadius,
+    background: "color-mix(in srgb, var(--vscode-foreground) 10%, transparent)",
+};
 
 function CommitChangedFilesPanel({
     detail,
@@ -578,27 +586,5 @@ function CommitRefGroup({
                 ))}
             </Flex>
         </Box>
-    );
-}
-
-function LoadingSpinner(): React.ReactElement {
-    return (
-        <svg
-            width={18}
-            height={18}
-            viewBox="0 0 24 24"
-            aria-hidden="true"
-            style={{
-                animation: "intelligit-spin 0.8s linear infinite",
-                color: "var(--vscode-charts-yellow, #e5c07b)",
-                transformBox: "fill-box",
-                transformOrigin: "center",
-            }}
-        >
-            <path
-                fill="currentColor"
-                d="M12,23a9.63,9.63,0,0,1-8-9.5,9.51,9.51,0,0,1,6.79-9.1A1.66,1.66,0,0,0,12,2.81h0a1.67,1.67,0,0,0-1.94-1.64A11,11,0,0,0,12,23Z"
-            />
-        </svg>
     );
 }

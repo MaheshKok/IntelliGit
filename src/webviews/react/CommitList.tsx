@@ -28,6 +28,7 @@ import {
     FILTER_CLEAR_BUTTON_STYLE,
     FILTER_ICON_STYLE,
     FILTER_INPUT_CLASS,
+    COMMIT_ROW_CLASS_CSS,
     FILTER_INPUT_CLASS_CSS,
     FILTER_INPUT_STYLE,
     FILTER_INPUT_WRAP_STYLE,
@@ -441,6 +442,7 @@ export function CommitList({
 
     return (
         <div style={ROOT_STYLE}>
+            <style>{COMMIT_ROW_CLASS_CSS}</style>
             {showSearch ? (
                 <div style={FILTER_BAR_STYLE}>
                     <style>{FILTER_INPUT_CLASS_CSS}</style>

@@ -1487,6 +1487,15 @@ export function App() {
 
                 <div className="merge-footer">
                     <div className="footer-left">
+                        {!isShelfSession ? (
+                            <button
+                                type="button"
+                                className="footer-btn danger ghost"
+                                onClick={handleAbortMerge}
+                            >
+                                {t("merge.action.abortMerge")}
+                            </button>
+                        ) : null}
                         <button
                             type="button"
                             className="footer-btn secondary ghost"
@@ -1513,15 +1522,6 @@ export function App() {
                         <span className="footer-hint">{t("merge.footer.hint")}</span>
                     </div>
                     <div className="footer-right">
-                        {!isShelfSession ? (
-                            <button
-                                type="button"
-                                className="footer-btn danger"
-                                onClick={handleAbortMerge}
-                            >
-                                {t("merge.action.abortMerge")}
-                            </button>
-                        ) : null}
                         <button
                             type="button"
                             className="footer-btn secondary"

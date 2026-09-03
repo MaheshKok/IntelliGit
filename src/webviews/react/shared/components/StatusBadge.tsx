@@ -3,7 +3,7 @@
 
 import React from "react";
 import { Box } from "@chakra-ui/react";
-import { GIT_STATUS_COLORS, GIT_STATUS_LABELS } from "../tokens";
+import { GIT_STATUS_COLORS, GIT_STATUS_LABELS, JETBRAINS_UI } from "../tokens";
 import { getSettings } from "../settings";
 import { t } from "../i18n";
 
@@ -55,7 +55,9 @@ function StatusBadgeInner({ status, inheritColor = false }: Props): React.ReactE
         ? undefined
         : iconStyle === "standard"
           ? "var(--vscode-foreground)"
-          : (PYCHARM_STATUS_COLORS[status] ?? GIT_STATUS_COLORS[status] ?? "#888");
+          : (PYCHARM_STATUS_COLORS[status] ??
+            GIT_STATUS_COLORS[status] ??
+            JETBRAINS_UI.color.muted);
     const labelKey = STATUS_LABEL_KEYS[status];
     const label = labelKey ? t(labelKey) : (GIT_STATUS_LABELS[status] ?? status);
     const letter = status === "?" ? "U" : status === "!" ? "I" : status;

@@ -369,7 +369,7 @@ describe("BranchColumn integration", () => {
             "Open Worktree",
             "Delete Worktree",
             "Lock Worktree",
-            "Move Worktree...",
+            "Move Worktree…",
         ]);
 
         const moveItem = contextMenuItems().find((item) => item.textContent?.includes("Move"));
@@ -396,7 +396,7 @@ describe("BranchColumn integration", () => {
             "Open Worktree",
             "Delete Worktree",
             "Unlock Worktree",
-            "Move Worktree...",
+            "Move Worktree…",
         ]);
 
         unmount(root, container);

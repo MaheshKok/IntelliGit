@@ -477,7 +477,10 @@ export function FileTree({
                 p="8px 12px"
                 textAlign="center"
             >
-                {t("commitPanel.noChanges")}
+                <Box color="var(--intelligit-pycharm-foreground)" fontSize="13px" fontWeight={500}>
+                    {t("commitPanel.noChanges")}
+                </Box>
+                <Box mt="2px">{t("commitPanel.noChanges.hint")}</Box>
             </Box>
         );
     }

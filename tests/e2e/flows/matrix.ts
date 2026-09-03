@@ -643,7 +643,7 @@ export const FLOW_MATRIX: readonly FlowRow[] = [
             const menu = frame.getByRole("menu");
             await menu
                 .getByRole("menuitem", {
-                    name: "Interactively Rebase from Here...",
+                    name: "Interactively Rebase from Here…",
                     exact: true,
                 })
                 .press("Enter");
@@ -1059,7 +1059,7 @@ export const FLOW_MATRIX: readonly FlowRow[] = [
             const menu = frame.getByRole("menu");
             await menu
                 .getByRole("menuitem", {
-                    name: "Interactively Rebase from Here...",
+                    name: "Interactively Rebase from Here…",
                     exact: true,
                 })
                 .press("Enter");

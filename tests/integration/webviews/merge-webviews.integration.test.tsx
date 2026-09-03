@@ -192,7 +192,7 @@ describe("MergeConflictSessionApp", () => {
 
         clickButton("Accept Yours");
         clickButton("Accept Theirs");
-        clickButton("Merge...");
+        clickButton("Merge…");
         clickButton("Refresh");
         clickButton("Abort Merge");
         clickButton("Close");
