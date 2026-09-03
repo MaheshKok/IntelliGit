@@ -9,8 +9,9 @@
 }
 
 .session-header {
+    /* dialogTitle on the type scale; 700 was the only bold-black weight in the product. */
     font-size: 14px;
-    font-weight: 700;
+    font-weight: 600;
 }
 
 .session-subtitle {
@@ -156,11 +157,17 @@
     gap: 8px;
 }
 
+/* The destructive action sits alone at the bottom of the stack, not beside Merge. */
+.action-column .action-btn.danger {
+    margin-top: auto;
+}
+
 .action-btn,
 .close-btn {
-    height: 30px;
+    height: 28px;
     border: 1px solid var(--vscode-button-border, transparent);
-    border-radius: 3px;
+    border-radius: 4px;
+    font-size: 12px;
     background: var(--vscode-button-secondaryBackground);
     color: var(--vscode-button-secondaryForeground);
     cursor: pointer;
@@ -192,6 +199,15 @@
 
 .action-btn.danger:hover {
     background: color-mix(in srgb, var(--vscode-errorForeground, #f48771) 18%, transparent);
+}
+
+.action-btn.danger.ghost {
+    background: transparent;
+    border-color: transparent;
+}
+
+.action-btn.danger.ghost:hover {
+    background: color-mix(in srgb, var(--vscode-errorForeground, #f48771) 12%, transparent);
 }
 
 .action-btn:disabled {

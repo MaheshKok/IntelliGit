@@ -1,7 +1,7 @@
 import type { CSSProperties } from "react";
 import { SYSTEM_FONT_STACK } from "../../../utils/constants";
 import { BASE_ICON_STYLE } from "../shared/components/iconStyles";
-import { JETBRAINS_UI, SHADOW } from "../shared/tokens";
+import { JETBRAINS_UI, MOTION, SHADOW } from "../shared/tokens";
 
 export const TREE_INDENT_STEP = JETBRAINS_UI.size.treeIndent;
 export const BRANCH_TREE_INDENT_BASE = 18;
@@ -40,7 +40,7 @@ export const BRANCH_ROW_CLASS_CSS = `
         color: var(--vscode-gitDecoration-deletedResourceForeground, #c74e39) !important;
     }
     .branch-search-input:focus-visible {
-        outline-color: var(--vscode-focusBorder, #007acc);
+        outline-color: ${JETBRAINS_UI.color.focus};
     }
 `;
 
@@ -226,6 +226,6 @@ export function getChevronIconStyle(expanded: boolean): CSSProperties {
         ...BASE_ICON_STYLE,
         opacity: 0.68,
         transform: expanded ? "rotate(90deg)" : "rotate(0deg)",
-        transition: "transform 0.1s",
+        transition: `transform ${MOTION.transform}`,
     };
 }

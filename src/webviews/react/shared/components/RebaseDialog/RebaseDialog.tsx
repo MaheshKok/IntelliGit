@@ -20,7 +20,7 @@ import {
 } from "./rebaseDialogState";
 import type { RebaseDialogProps, RebaseEntryMutation } from "./types";
 import "./RebaseDialog.css";
-import { Z_INDEX } from "../../tokens";
+import { TYPE_SCALE, Z_INDEX } from "../../tokens";
 
 const ACTIONS: readonly RebaseAction[] = ["pick", "reword", "squash", "fixup", "drop"];
 
@@ -203,7 +203,12 @@ export function RebaseDialog({
                 color="var(--intelligit-pycharm-foreground)"
                 onKeyDown={trapFocus}
             >
-                <Box as="h2" id="rebase-title" fontSize="14px" fontWeight={600}>
+                <Box
+                    as="h2"
+                    id="rebase-title"
+                    fontSize={`${TYPE_SCALE.dialogTitle}px`}
+                    fontWeight={600}
+                >
                     {t("rebase.dialog.title")}
                 </Box>
                 {commits.some((commit) => commit.isPushed) && (

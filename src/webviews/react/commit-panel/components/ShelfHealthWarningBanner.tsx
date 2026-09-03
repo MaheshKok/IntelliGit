@@ -3,7 +3,7 @@ import { Box, Button, Flex } from "@chakra-ui/react";
 import type { ShelfHealthWarning } from "../../../protocol/commitPanelMessages";
 import { t } from "../../shared/i18n";
 import { restoreShelfDialogFocus, useShelfDialogFocus } from "./ShelfDialogFocus";
-import { Z_INDEX } from "../../shared/tokens";
+import { TYPE_SCALE, Z_INDEX } from "../../shared/tokens";
 
 /** Compact warning banner plus a details dialog for observable shelf health. */
 export function ShelfHealthWarningBanner({
@@ -82,7 +82,12 @@ export function ShelfHealthWarningBanner({
                         borderRadius="4px"
                         bg="var(--intelligit-pycharm-panel)"
                     >
-                        <Box as="h2" id="shelf-health-title" fontSize="14px" fontWeight={600}>
+                        <Box
+                            as="h2"
+                            id="shelf-health-title"
+                            fontSize={`${TYPE_SCALE.dialogTitle}px`}
+                            fontWeight={600}
+                        >
                             {t("shelf.health.title")}
                         </Box>
                         {warnings.map((warning) => (

@@ -3,7 +3,7 @@ import { Box, Button, Checkbox, Flex, Input } from "@chakra-ui/react";
 import type { WorkingFile } from "../../../../types";
 import { t } from "../../shared/i18n";
 import { restoreShelfDialogFocus, useShelfDialogFocus } from "./ShelfDialogFocus";
-import { Z_INDEX } from "../../shared/tokens";
+import { TYPE_SCALE, Z_INDEX } from "../../shared/tokens";
 
 /** User-supplied shelf metadata and selected working-tree paths. */
 export interface ShelveDialogSubmit {
@@ -84,7 +84,12 @@ export function ShelveDialog({
                 bg="var(--intelligit-pycharm-panel)"
                 color="var(--intelligit-pycharm-foreground)"
             >
-                <Box as="h2" id="shelve-title" fontSize="14px" fontWeight={600}>
+                <Box
+                    as="h2"
+                    id="shelve-title"
+                    fontSize={`${TYPE_SCALE.dialogTitle}px`}
+                    fontWeight={600}
+                >
                     {t("shelf.dialog.shelve.title")}
                 </Box>
                 <Input

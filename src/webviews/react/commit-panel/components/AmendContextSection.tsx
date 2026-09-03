@@ -7,6 +7,7 @@ import type { AmendBranchCommitSummary } from "../../../../types";
 import { formatDateTime } from "../../shared/date";
 import { SYSTEM_FONT_STACK } from "../../../../utils/constants";
 import { t } from "../../shared/i18n";
+import { JETBRAINS_UI } from "../../shared/tokens";
 
 interface Props {
     commits: AmendBranchCommitSummary[];
@@ -80,7 +81,7 @@ export function AmendContextSection({ commits, historyLoaded }: Props): React.Re
                             gap="6px"
                             px="6px"
                             py="3px"
-                            borderRadius="3px"
+                            borderRadius={`${JETBRAINS_UI.size.badgeRadius}px`}
                             fontSize="11px"
                             fontFamily={SYSTEM_FONT_STACK}
                             lineHeight="1.35"

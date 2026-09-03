@@ -521,6 +521,37 @@ describe("webview ui smoke", () => {
         unmount(mounted.root, mounted.container);
     });
 
+    it("names the commit message box the same way the e2e locator asks for it", () => {
+        const noop = vi.fn();
+        const mounted = mount(
+            <ChakraProvider theme={theme}>
+                <CommitArea
+                    commitMessage=""
+                    isAmend={false}
+                    onMessageChange={noop}
+                    onAmendChange={noop}
+                    onCommit={noop}
+                    onPush={noop}
+                    canCommit={true}
+                    canPush={true}
+                    pushLabel="common.push"
+                    currentBranchName="main"
+                    currentBranchUpstream="origin/main"
+                    hasCommits={true}
+                    hasCheckedPaths={true}
+                />
+            </ChakraProvider>,
+        );
+        const textarea = mounted.container.querySelector("textarea") as HTMLTextAreaElement;
+        // tests/e2e/pageObjects/changesPanel.ts fills the box found by the accessible
+        // name "Commit Message". The name is aria-label when present and the
+        // placeholder otherwise, so this fails whichever way the copy drifts.
+        const accessibleName = textarea.getAttribute("aria-label") ?? textarea.placeholder;
+
+        expect(accessibleName).toBe("Commit Message");
+        unmount(mounted.root, mounted.container);
+    });
+
     it("uses commit history and checked paths to gate amend and idle generation", () => {
         const onGenerate = vi.fn();
         const noop = vi.fn();
@@ -941,10 +972,11 @@ describe("webview ui smoke", () => {
                 onOpenCheckUrl={onOpenCheckUrl}
             />,
         );
+        // Pending is a static glyph: one spinner per pending row ignored reduced-motion.
         const pendingIcon = pendingMounted.container.querySelector("svg") as SVGElement;
-        const spinnerAnimation = pendingIcon.querySelector("animateTransform");
-        expect(spinnerAnimation?.getAttribute("type")).toBe("rotate");
-        expect(spinnerAnimation?.getAttribute("repeatCount")).toBe("indefinite");
+        expect(pendingIcon).not.toBeNull();
+        expect(pendingIcon.querySelector("animateTransform")).toBeNull();
+        expect(pendingIcon.style.animation).toBe("");
         unmount(pendingMounted.root, pendingMounted.container);
     });
 
@@ -1022,7 +1054,7 @@ describe("webview ui smoke", () => {
         // `<output>` announces as `status` implicitly; jsdom resolves no implicit roles, so
         // match either spelling and still fail on an element that announces as neither.
         const status = document.body.querySelector('[role="status"], output');
-        expect(status?.textContent).toBe("Loading checks...");
+        expect(status?.textContent).toBe("Loading checks…");
         expect(status?.closest('[aria-busy="true"]')).toBeNull();
         expect(document.body.querySelector('[aria-busy="true"]')).not.toBeNull();
         expect(document.body.textContent).toContain("Existing check");
@@ -1030,7 +1062,14 @@ describe("webview ui smoke", () => {
             style.textContent?.includes('[data-refreshing="true"] svg'),
         )?.textContent;
         expect(refreshStyles).toContain("animation: intelligit-spin");
-        expect(refreshStyles).toContain("@media (prefers-reduced-motion: reduce)");
+        // Reduced motion is honoured once, by the theme's global rule, not per spinner.
+        const reducedMotion = (theme.styles?.global as Record<string, Record<string, unknown>>)[
+            "@media (prefers-reduced-motion: reduce)"
+        ];
+        expect(reducedMotion?.["*, *::before, *::after"]).toMatchObject({
+            animation: "none !important",
+            transition: "none !important",
+        });
 
         act(() => mounted.root.render(render("loading")));
         expect(document.body.querySelector('[role="status"], output')).not.toBeNull();
@@ -1220,7 +1259,7 @@ describe("webview ui smoke", () => {
         expect(html).toContain("Refresh");
         expect(html).toContain("View Options");
         expect(html).toContain("Abort Merge");
-        expect(html).toContain("Branch: main -&gt; origin/main");
+        expect(html).toContain("Branch: main → origin/main");
         expect(html).not.toContain("Commit and Push");
         const commitActionIndex = html.indexOf("Commit");
         const pushActionIndex = html.indexOf("Push");
@@ -1343,7 +1382,7 @@ describe("webview ui smoke", () => {
                 currentBranchUpstream="origin/main"
             />,
         );
-        expect(upstreamCommitHtml).toContain("Branch: master -&gt; origin/main");
+        expect(upstreamCommitHtml).toContain("Branch: master → origin/main");
 
         const refreshingToolbarHtml = renderUi(
             <Toolbar

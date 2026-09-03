@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Box, Button, Flex } from "@chakra-ui/react";
 import type { ReviewPromptDecision, ReviewPromptTarget } from "../../../protocol/commitGraphTypes";
 import { t } from "../i18n";
-import { Z_INDEX } from "../tokens";
+import { JETBRAINS_UI, TYPE_SCALE, Z_INDEX } from "../tokens";
 import "./ReviewPromptCard.css";
 
 /** Ratings at or above this go straight to the marketplace; below it, the card asks what is wrong. */
@@ -77,12 +77,17 @@ export function ReviewPromptCard({ onAnswer }: ReviewPromptCardProps): React.Rea
                 p="20px"
                 textAlign="center"
                 border="1px solid var(--intelligit-pycharm-border)"
-                borderRadius="6px"
+                borderRadius={`${JETBRAINS_UI.size.floatingRadius}px`}
                 bg="var(--intelligit-pycharm-panel)"
                 color="var(--intelligit-pycharm-foreground)"
                 boxShadow="0 8px 32px rgba(0, 0, 0, 0.32)"
             >
-                <Box as="h2" id="review-prompt-title" fontSize="14px" fontWeight={600}>
+                <Box
+                    as="h2"
+                    id="review-prompt-title"
+                    fontSize={`${TYPE_SCALE.dialogTitle}px`}
+                    fontWeight={600}
+                >
                     {rating === undefined ? t("review.card.title") : t("review.card.unhappyTitle")}
                 </Box>
                 <Box fontSize="12px" opacity={0.85}>

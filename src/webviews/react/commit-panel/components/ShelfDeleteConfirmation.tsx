@@ -3,7 +3,7 @@ import { Box, Button, Flex } from "@chakra-ui/react";
 import type { ShelfEntry } from "../../../protocol/commitPanelMessages";
 import { t } from "../../shared/i18n";
 import { restoreShelfDialogFocus, useShelfDialogFocus } from "./ShelfDialogFocus";
-import { Z_INDEX } from "../../shared/tokens";
+import { TYPE_SCALE, Z_INDEX } from "../../shared/tokens";
 
 interface ShelfDeleteConfirmationProps {
     shelf: ShelfEntry;
@@ -57,7 +57,12 @@ export function ShelfDeleteConfirmation({
                 borderRadius="4px"
                 bg="var(--intelligit-pycharm-panel)"
             >
-                <Box as="h2" id="delete-shelf-title" fontSize="14px" fontWeight={600}>
+                <Box
+                    as="h2"
+                    id="delete-shelf-title"
+                    fontSize={`${TYPE_SCALE.dialogTitle}px`}
+                    fontWeight={600}
+                >
                     {t("shelf.dialog.delete.title")}
                 </Box>
                 <Box fontSize="12px">{shelf.metadata.name}</Box>

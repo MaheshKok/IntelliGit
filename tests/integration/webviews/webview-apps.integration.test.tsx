@@ -263,7 +263,7 @@ describe("CommitPanelApp integration", () => {
         }
 
         const textarea = document.querySelector(
-            'textarea[placeholder="Commit Message"]',
+            'textarea[placeholder="What changed and why?"]',
         ) as HTMLTextAreaElement;
         fireInput(textarea, "feat: integration");
         fireClick(
@@ -504,7 +504,7 @@ describe("CommitPanelApp integration", () => {
         expect(document.querySelector('[title="README.md"]')).toBeTruthy();
         expect(document.querySelector('[title="package.json"]')).toBeTruthy();
         let refreshingButton = document.querySelector(
-            'button[aria-label="Refreshing..."][data-refreshing="true"]',
+            'button[aria-label="Refreshing…"][data-refreshing="true"]',
         ) as HTMLButtonElement | null;
         expect(refreshingButton).toBeTruthy();
         expect(refreshingButton?.disabled).toBe(true);
@@ -536,7 +536,7 @@ describe("CommitPanelApp integration", () => {
         expect(document.querySelector('[title="README.md"]')).toBeTruthy();
         expect(document.querySelector('[title="package.json"]')).toBeTruthy();
         refreshingButton = document.querySelector(
-            'button[aria-label="Refreshing..."][data-refreshing="true"]',
+            'button[aria-label="Refreshing…"][data-refreshing="true"]',
         ) as HTMLButtonElement | null;
         expect(refreshingButton).toBeTruthy();
 
@@ -545,7 +545,7 @@ describe("CommitPanelApp integration", () => {
         });
         await flush();
         expect(
-            document.querySelector('button[aria-label="Refreshing..."][data-refreshing="true"]'),
+            document.querySelector('button[aria-label="Refreshing…"][data-refreshing="true"]'),
         ).toBeTruthy();
         expect(document.querySelector('[title="README.md"]')).toBeTruthy();
 
@@ -554,7 +554,7 @@ describe("CommitPanelApp integration", () => {
         });
         await flush();
 
-        expect(document.querySelector('button[aria-label="Refreshing..."]')).toBeNull();
+        expect(document.querySelector('button[aria-label="Refreshing…"]')).toBeNull();
         expect(document.querySelector('button[aria-label="Refresh"]')).toBeTruthy();
         expect(document.querySelector('[title="README.md"]')).toBeTruthy();
         expect(document.querySelector('[title="package.json"]')).toBeTruthy();
@@ -1193,15 +1193,19 @@ describe("CommitInfoApp integration", () => {
         expect(document.body.textContent).not.toContain("No commit selected");
         expect(document.body.textContent).toContain("Changed Files");
         expect(document.body.textContent).toContain("Commit Details");
+        // The loading pane is a static skeleton: nothing spins while the detail loads.
         const loadingSpinners = Array.from(document.querySelectorAll("svg")).filter((svg) =>
             svg.style.animation.includes("intelligit-spin"),
         );
-        expect(loadingSpinners).toHaveLength(2);
+        expect(loadingSpinners).toHaveLength(0);
         const loadingStatuses = Array.from(document.querySelectorAll('[role="status"]'));
         expect(loadingStatuses).toHaveLength(2);
-        expect(loadingStatuses[0].textContent).toContain("Loading...");
+        for (const status of loadingStatuses) {
+            expect(status.querySelectorAll("div"), "three placeholder bars").toHaveLength(3);
+        }
+        expect(loadingStatuses[0].textContent).toContain("Loading…");
         expect(loadingStatuses[0].textContent).toContain("Changed Files");
-        expect(loadingStatuses[1].textContent).toContain("Loading...");
+        expect(loadingStatuses[1].textContent).toContain("Loading…");
         expect(loadingStatuses[1].textContent).toContain("Commit Details");
     });
 });

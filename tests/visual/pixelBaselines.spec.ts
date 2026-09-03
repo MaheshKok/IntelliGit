@@ -21,17 +21,18 @@ test.describe("pixel baseline screenshots", () => {
             await page.evaluate(async () => {
                 // toHaveScreenshot's animations: "disabled" finishes CSS animations and
                 // transitions, but SMIL runs on a separate timeline it never touches. The
-                // pending-checks spinner in CommitChecksPopover is inlined SMIL
-                // (<animateTransform repeatCount="indefinite">), so on the commit-graph
-                // screens it rotates forever and Playwright cannot get two consecutive
-                // matching frames -- it gives up after 5s having written nothing, or worse,
-                // happens to catch two matching frames and records a baseline at an
-                // arbitrary rotation that no later run can reproduce.
+                // pending-checks spinner in CommitChecksPopover used to be inlined SMIL
+                // (<animateTransform repeatCount="indefinite">): on the commit-graph screens
+                // it rotated forever and Playwright could not get two consecutive matching
+                // frames -- it gave up after 5s having written nothing, or worse, caught two
+                // matching frames and recorded a baseline at an arbitrary rotation that no
+                // later run could reproduce. The webviews ship no SMIL today; the pin stays
+                // so the next inlined icon cannot bring the flake back.
                 //
                 // Pinning each timeline to t=0 fixes the phase rather than the speed. A still
                 // image can never assert that an animation runs, so nothing is lost here that
-                // a screenshot could have caught: colour, size, position and presence of the
-                // spinner are all still compared.
+                // a screenshot could have caught: colour, size, position and presence are
+                // all still compared.
                 for (const svg of document.querySelectorAll("svg")) {
                     svg.pauseAnimations();
                     svg.setCurrentTime(0);

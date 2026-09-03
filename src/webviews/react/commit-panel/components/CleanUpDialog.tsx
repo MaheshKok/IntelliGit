@@ -3,7 +3,7 @@ import { Box, Button, Checkbox, Flex, Input } from "@chakra-ui/react";
 import type { ShelfEntry } from "../../../protocol/commitPanelMessages";
 import { t } from "../../shared/i18n";
 import { restoreShelfDialogFocus, useShelfDialogFocus } from "./ShelfDialogFocus";
-import { Z_INDEX } from "../../shared/tokens";
+import { TYPE_SCALE, Z_INDEX } from "../../shared/tokens";
 
 interface CleanUpDialogProps {
     shelves: ShelfEntry[];
@@ -87,7 +87,12 @@ export function CleanUpDialog({
                 bg="var(--intelligit-pycharm-panel)"
                 color="var(--intelligit-pycharm-foreground)"
             >
-                <Box as="h2" id="cleanup-shelf-title" fontSize="14px" fontWeight={600}>
+                <Box
+                    as="h2"
+                    id="cleanup-shelf-title"
+                    fontSize={`${TYPE_SCALE.dialogTitle}px`}
+                    fontWeight={600}
+                >
                     {t("shelf.dialog.cleanup.title")}
                 </Box>
                 <Box fontSize="12px" color="var(--intelligit-pycharm-muted)">

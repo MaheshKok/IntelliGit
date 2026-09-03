@@ -2,7 +2,7 @@
 
 import { extendTheme } from "@chakra-ui/react";
 import { SYSTEM_FONT_STACK } from "../../../utils/constants";
-import { JETBRAINS_UI } from "../shared/tokens";
+import { JETBRAINS_UI, MOTION } from "../shared/tokens";
 
 const { color, size } = JETBRAINS_UI;
 
@@ -74,6 +74,15 @@ const theme = extendTheme({
                 color: "var(--intelligit-pycharm-foreground)",
                 background: "var(--intelligit-pycharm-panel)",
             },
+            // One rule for every Chakra webview: hover fills, chevrons, and the refresh
+            // spinners all stop when the user asked the OS for less motion. The
+            // spinning button still reports its state through `disabled` and its label.
+            "@media (prefers-reduced-motion: reduce)": {
+                "*, *::before, *::after": {
+                    transition: "none !important",
+                    animation: "none !important",
+                },
+            },
         },
     },
     components: {
@@ -124,8 +133,7 @@ const theme = extendTheme({
                     // toolbar-hover token darkens or lightens as the theme requires.
                     // 120ms is under the product register's 150-250ms ceiling
                     // because a pointer sweeping a toolbar crosses several buttons.
-                    transition: "background-color 120ms cubic-bezier(0.25, 1, 0.5, 1)",
-                    "@media (prefers-reduced-motion: reduce)": { transition: "none" },
+                    transition: `background-color ${MOTION.state}`,
                     _hover: {
                         bg: "var(--intelligit-pycharm-toolbar-hover)",
                         color: "var(--intelligit-pycharm-foreground)",

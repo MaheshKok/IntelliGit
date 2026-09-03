@@ -5,6 +5,28 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.32.0] - 2026-09-03
+
+### Added
+
+- Empty lists for changes, stashes and shelves now show a short title and a hint about what to do next.
+- Hovered rows, buttons and chevrons change with one short, consistent motion. If your system asks for reduced motion, nothing moves at all.
+
+### Changed
+
+- Loading spinners are gone. The commit details pane shows grey placeholder bars while it loads, and a check that is still running shows a small clock.
+- The commit message box now asks "What changed and why?" instead of "Commit Message".
+- Menu items and labels use a real ellipsis (…) and arrow (→) in every language.
+- Buttons in the merge editor, the diff viewer and the conflicts view are the same height and corner shape as the rest of the product.
+- Abort Merge is a quiet red action at the far left of the merge editor footer, and at the bottom of the conflicts view, away from Apply and Merge.
+- A commit row lights up softly when you hover it, and a tag badge has a thin ring so it stands out from a branch badge.
+- The undocked view no longer paints a lone repository as selected.
+
+### Fixed
+
+- At very narrow widths the merge editor footer wraps its buttons instead of cutting off the last one in German, Spanish and Russian.
+- The conflicts view no longer shows an empty folder label for files at the root of the repository.
+
 ## [0.31.2] - 2026-08-30
 
 ### Fixed

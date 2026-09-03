@@ -34,6 +34,12 @@ colors:
   lane-denim: "#5a86d6"
   lane-orchid: "#c084d2"
   lane-brass: "#d0b35a"
+  menu-surface: "#2b2d30"
+  menu-border: "#43454a"
+  menu-foreground: "#bbbfc4"
+  menu-divider: "#3e4042"
+  menu-muted: "#6e7074"
+  menu-selected: "#2e436e"
 typography:
   title:
     fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
@@ -68,6 +74,9 @@ typography:
 rounded:
   control: "4px"
   selected: "5px"
+  floating: "5px"
+  badge: "3px"
+  pill: "999px"
   hairline: "1px"
 spacing:
   hair: "2px"

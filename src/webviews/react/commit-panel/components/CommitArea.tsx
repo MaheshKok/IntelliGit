@@ -204,6 +204,10 @@ export function CommitArea({
                     value={commitMessage}
                     onChange={(e) => onMessageChange(e.target.value)}
                     readOnly={isGenerationActive}
+                    // The placeholder is a hint, not a name: it asks a question and
+                    // moves with the copy. Name the field explicitly so assistive
+                    // tech and the e2e locator keep a stable handle on it.
+                    aria-label={t("commit.message.label")}
                     placeholder={t("commit.message.placeholder")}
                     resize="none"
                     w="100%"

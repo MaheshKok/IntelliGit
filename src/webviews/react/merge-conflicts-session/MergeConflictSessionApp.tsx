@@ -11,10 +11,10 @@ function getVsCodeApi() {
     return getSharedVsCodeApi<OutboundMessage, unknown>();
 }
 
-/** Returns the display directory for a conflicted path, using `.` at repo root. */
+/** Returns the display directory for a conflicted path; empty at the repo root. */
 function directoryName(filePath: string): string {
     const idx = filePath.lastIndexOf("/");
-    if (idx <= 0) return ".";
+    if (idx <= 0) return "";
     return filePath.slice(0, idx);
 }
 
@@ -179,7 +179,9 @@ function App() {
             >
                 <td className="name-cell" title={file.path}>
                     <span className="file-name">{fileName(file.path)}</span>
-                    <span className="file-path">{directoryName(file.path)}</span>
+                    {directoryName(file.path) ? (
+                        <span className="file-path">{directoryName(file.path)}</span>
+                    ) : null}
                 </td>
                 <td title={file.ours}>{file.ours}</td>
                 <td title={file.theirs}>{file.theirs}</td>
@@ -222,9 +224,13 @@ function App() {
                             {groupByDirectory
                                 ? groupedFiles.map(([dir, items]) => (
                                       <React.Fragment key={dir}>
-                                          <tr className="group-row">
-                                              <td colSpan={3}>{dir}</td>
-                                          </tr>
+                                          {/* Files at the repo root have no directory, and an
+                                              empty group row is just a blank stripe. */}
+                                          {dir ? (
+                                              <tr className="group-row">
+                                                  <td colSpan={3}>{dir}</td>
+                                              </tr>
+                                          ) : null}
                                           {items.map(renderRow)}
                                       </React.Fragment>
                                   ))
@@ -234,6 +240,14 @@ function App() {
                 </div>
 
                 <div className="action-column">
+                    <button
+                        type="button"
+                        className="action-btn primary"
+                        disabled={!selectedFile}
+                        onClick={() => selectedFile && openMerge(selectedFile.path)}
+                    >
+                        {t("mergeSession.merge")}
+                    </button>
                     <button
                         type="button"
                         className="action-btn"
@@ -250,18 +264,10 @@ function App() {
                     >
                         {t("mergeSession.acceptTheirs")}
                     </button>
-                    <button
-                        type="button"
-                        className="action-btn primary"
-                        disabled={!selectedFile}
-                        onClick={() => selectedFile && openMerge(selectedFile.path)}
-                    >
-                        {t("mergeSession.merge")}
-                    </button>
                     <button type="button" className="action-btn" onClick={refresh}>
                         {t("common.refresh")}
                     </button>
-                    <button type="button" className="action-btn danger" onClick={abortMerge}>
+                    <button type="button" className="action-btn danger ghost" onClick={abortMerge}>
                         {t("merge.action.abortMerge")}
                     </button>
                 </div>

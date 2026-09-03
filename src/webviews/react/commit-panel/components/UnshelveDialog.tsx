@@ -3,7 +3,7 @@ import { Box, Button, Checkbox, Flex } from "@chakra-ui/react";
 import type { ShelfFileEntry } from "../../../../shelf/model";
 import { t } from "../../shared/i18n";
 import { restoreShelfDialogFocus, useShelfDialogFocus } from "./ShelfDialogFocus";
-import { Z_INDEX } from "../../shared/tokens";
+import { TYPE_SCALE, Z_INDEX } from "../../shared/tokens";
 
 /** Whole-entry selection and remove-on-success choice for flattened unshelve. */
 export interface UnshelveDialogSubmit {
@@ -88,7 +88,12 @@ export function UnshelveDialog({
                 bg="var(--intelligit-pycharm-panel)"
                 color="var(--intelligit-pycharm-foreground)"
             >
-                <Box as="h2" id="unshelve-title" fontSize="14px" fontWeight={600}>
+                <Box
+                    as="h2"
+                    id="unshelve-title"
+                    fontSize={`${TYPE_SCALE.dialogTitle}px`}
+                    fontWeight={600}
+                >
                     {t("shelf.dialog.unshelve.title")}
                 </Box>
                 <Box fontSize="12px" color="var(--intelligit-pycharm-muted)">

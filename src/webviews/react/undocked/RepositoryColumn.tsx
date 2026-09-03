@@ -34,6 +34,8 @@ export function RepositoryColumn({
         >
             {repositories.map((repository) => {
                 const isSelected = repository.root === selectedRepositoryRoot;
+                // A lone repository has nothing to be chosen against; the fill would only shout.
+                const paintSelected = isSelected && repositories.length > 1;
                 return (
                     <Box
                         as="button"
@@ -50,12 +52,12 @@ export function RepositoryColumn({
                         border={0}
                         borderBottom="1px solid var(--vscode-panel-border)"
                         bg={
-                            isSelected
+                            paintSelected
                                 ? "var(--vscode-list-activeSelectionBackground)"
                                 : "transparent"
                         }
                         color={
-                            isSelected
+                            paintSelected
                                 ? "var(--vscode-list-activeSelectionForeground)"
                                 : "var(--vscode-sideBar-foreground)"
                         }
@@ -63,7 +65,7 @@ export function RepositoryColumn({
                         cursor="pointer"
                         onClick={() => onSelectRepository(repository.root)}
                         _hover={{
-                            bg: isSelected
+                            bg: paintSelected
                                 ? "var(--vscode-list-activeSelectionBackground)"
                                 : "var(--vscode-list-hoverBackground)",
                         }}
