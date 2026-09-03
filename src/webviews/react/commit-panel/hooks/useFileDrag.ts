@@ -85,7 +85,7 @@ export function useFileDrag({
                 const badge = document.createElement("div");
                 badge.textContent = String(paths.length);
                 // The host's badge pair, not the brand blue: a count is a badge everywhere else.
-                badge.style.cssText = `position:absolute;left:-9999px;background:var(--vscode-badge-background);color:var(--vscode-badge-foreground);font-size:11px;font-weight:700;min-width:18px;height:18px;border-radius:${JETBRAINS_UI.size.pillRadius}px;display:flex;align-items:center;justify-content:center;padding:0 5px;line-height:1`;
+                badge.style.cssText = `position:absolute;left:-9999px;background:var(--vscode-badge-background, rgba(255, 255, 255, 0.12));color:var(--vscode-badge-foreground, #d6dbe5);font-size:11px;font-weight:700;min-width:18px;height:18px;border-radius:${JETBRAINS_UI.size.pillRadius}px;display:flex;align-items:center;justify-content:center;padding:0 5px;line-height:1`;
                 document.body.appendChild(badge);
                 event.dataTransfer.setDragImage(badge, 0, 0);
                 requestAnimationFrame(() => badge.remove());

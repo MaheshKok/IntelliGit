@@ -224,9 +224,13 @@ function App() {
                             {groupByDirectory
                                 ? groupedFiles.map(([dir, items]) => (
                                       <React.Fragment key={dir}>
-                                          <tr className="group-row">
-                                              <td colSpan={3}>{dir}</td>
-                                          </tr>
+                                          {/* Files at the repo root have no directory, and an
+                                              empty group row is just a blank stripe. */}
+                                          {dir ? (
+                                              <tr className="group-row">
+                                                  <td colSpan={3}>{dir}</td>
+                                              </tr>
+                                          ) : null}
                                           {items.map(renderRow)}
                                       </React.Fragment>
                                   ))

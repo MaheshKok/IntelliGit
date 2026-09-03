@@ -65,7 +65,7 @@ export function RepositoryColumn({
                         cursor="pointer"
                         onClick={() => onSelectRepository(repository.root)}
                         _hover={{
-                            bg: isSelected
+                            bg: paintSelected
                                 ? "var(--vscode-list-activeSelectionBackground)"
                                 : "var(--vscode-list-hoverBackground)",
                         }}

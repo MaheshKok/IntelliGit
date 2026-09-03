@@ -311,6 +311,10 @@ function LoadingSection({
             flex={flex}
             h={h}
             minH="40px"
+            // Three bars plus gaps and padding need 66px. The details pane drags down to
+            // 70px, so scroll the skeleton the way the loaded body does rather than let the
+            // last bar be cut off by the section's own overflow:hidden.
+            overflowY="auto"
             display="flex"
             flexDirection="column"
             gap="8px"
@@ -333,7 +337,7 @@ const SKELETON_BAR_WIDTHS = ["72%", "48%", "60%"] as const;
 const SKELETON_BAR_STYLE: React.CSSProperties = {
     height: 10,
     borderRadius: JETBRAINS_UI.size.badgeRadius,
-    background: "color-mix(in srgb, var(--vscode-foreground) 10%, transparent)",
+    background: `color-mix(in srgb, ${JETBRAINS_UI.color.foreground} 10%, transparent)`,
 };
 
 function CommitChangedFilesPanel({
