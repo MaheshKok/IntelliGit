@@ -109,7 +109,9 @@ export function Toolbar({
         <Flex
             align="center"
             gap="2px"
-            px="6px"
+            px="8px"
+            py="3px"
+            rowGap="4px"
             minH={`${JETBRAINS_UI.size.toolbarHeight}px`}
             bg="var(--intelligit-pycharm-panel)"
             borderBottom="1px solid var(--intelligit-pycharm-border)"

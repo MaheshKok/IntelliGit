@@ -521,7 +521,7 @@ describe("webview ui smoke", () => {
         unmount(mounted.root, mounted.container);
     });
 
-    it("names the commit message box the same way the e2e locator asks for it", () => {
+    it("associates the visible commit message label and preserves its accessible name", () => {
         const noop = vi.fn();
         const mounted = mount(
             <ChakraProvider theme={theme}>
@@ -543,12 +543,13 @@ describe("webview ui smoke", () => {
             </ChakraProvider>,
         );
         const textarea = mounted.container.querySelector("textarea") as HTMLTextAreaElement;
-        // tests/e2e/pageObjects/changesPanel.ts fills the box found by the accessible
-        // name "Commit Message". The name is aria-label when present and the
-        // placeholder otherwise, so this fails whichever way the copy drifts.
-        const accessibleName = textarea.getAttribute("aria-label") ?? textarea.placeholder;
+        const visibleLabel = mounted.container.querySelector(
+            'label[for="commit-area-message"]',
+        ) as HTMLLabelElement;
 
-        expect(accessibleName).toBe("Commit Message");
+        expect(visibleLabel.textContent).toBe("Commit Message");
+        expect(textarea.id).toBe(visibleLabel.htmlFor);
+        expect(textarea.getAttribute("aria-label")).toBe("Commit Message");
         unmount(mounted.root, mounted.container);
     });
 

@@ -16,7 +16,7 @@ export function CommitTab(props: CommitTabProps): React.ReactElement {
         height: bottomHeight,
         onMouseDown: onDragMouseDown,
         onKeyDown: onDragKeyDown,
-    } = useDragResize(170, 110, containerRef);
+    } = useDragResize(220, 180, containerRef);
     const controller = useCommitTabController(props);
     return (
         <CommitTabLayout

@@ -87,6 +87,13 @@ const theme = extendTheme({
     },
     components: {
         Button: {
+            baseStyle: {
+                _focusVisible: {
+                    outline: "2px solid var(--intelligit-pycharm-blue)",
+                    outlineOffset: "-1px",
+                    boxShadow: "none",
+                },
+            },
             variants: {
                 primary: {
                     bg: "var(--intelligit-pycharm-primary)",
