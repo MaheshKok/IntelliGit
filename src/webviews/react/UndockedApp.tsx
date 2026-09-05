@@ -16,7 +16,7 @@ import {
 } from "./undocked/commitPanelState";
 import { canRunCommitAction } from "./commit-panel/commitEligibility";
 import {
-    computeEqualSectionWidths,
+    computeDefaultSectionWidths,
     migrateSectionWidths,
     normalizeSectionWidths,
     sectionWidthsAreClose,
@@ -165,14 +165,23 @@ function graphReducer(state: GraphState, action: GraphAction): GraphState {
     }
 }
 
-function readInitialWidths(): SectionWidths {
+interface InitialSectionWidths {
+    readonly widths: SectionWidths;
+    readonly hasLocalPreferences: boolean;
+}
+
+/**
+ * Reads validated webview-local widths and records whether they came from persistence.
+ * Invalid or inaccessible state falls back to responsive defaults without marking them user-owned.
+ */
+function readInitialWidths(): InitialSectionWidths {
     try {
         const state = vscode.getState();
         const migrated = migrateSectionWidths(state);
-        if (migrated) return migrated;
-        return computeEqualSectionWidths();
+        if (migrated) return { widths: migrated, hasLocalPreferences: true };
+        return { widths: computeDefaultSectionWidths(), hasLocalPreferences: false };
     } catch {
-        return computeEqualSectionWidths();
+        return { widths: computeDefaultSectionWidths(), hasLocalPreferences: false };
     }
 }
 
@@ -212,25 +221,30 @@ function App(): React.ReactElement {
     const currentBranchName = currentBranch?.name ?? null;
     const currentBranchHeadHash = currentBranch?.hash ?? null;
 
+    const initialWidths = useRef<InitialSectionWidths | null>(null);
+    if (!initialWidths.current) initialWidths.current = readInitialWidths();
+
+    // Tracks whether resize should preserve proportions from local state, a host
+    // restore, or a divider edit instead of recomputing untouched defaults.
+    const widthsHaveUserPreferencesRef = useRef(initialWidths.current.hasLocalPreferences);
+
     // Guards the cross-session width persistence: stays false until either the
     // extension restores saved widths or the user actually drags a divider.
-    // This prevents the initial equal widths (computed before restore) from
+    // This prevents the initial default widths (computed before restore) from
     // being sent back to the extension and clobbering the persisted values.
     const widthsHydratedRef = useRef(false);
     const markWidthsHydrated = useCallback(() => {
+        widthsHaveUserPreferencesRef.current = true;
         widthsHydratedRef.current = true;
     }, []);
 
-    const initialWidths = useRef<SectionWidths | null>(null);
-    if (!initialWidths.current) initialWidths.current = readInitialWidths();
-
     const [sectionWidths, setSectionWidthsState] = useState<SectionWidths>(
-        () => initialWidths.current!,
+        () => initialWidths.current!.widths,
     );
     const { repositoryWidth, branchWidth, graphWidth, infoWidth, commitPanelWidth } = sectionWidths;
     const layoutRef = useRef<HTMLDivElement | null>(null);
     const [sectionLayout, setSectionLayout] = useState<SectionLayout>(() =>
-        normalizeSectionWidths(initialWidths.current!),
+        normalizeSectionWidths(initialWidths.current!.widths),
     );
     const sectionWidthsRef = useRef(sectionWidths);
     sectionWidthsRef.current = sectionWidths;
@@ -247,7 +261,10 @@ function App(): React.ReactElement {
             const measuredWidth = layoutRef.current?.clientWidth;
             const totalWidth =
                 typeof measuredWidth === "number" && measuredWidth > 0 ? measuredWidth : undefined;
-            const normalized = normalizeSectionWidths(sectionWidthsRef.current, totalWidth);
+            const preferredWidths = widthsHaveUserPreferencesRef.current
+                ? sectionWidthsRef.current
+                : computeDefaultSectionWidths(totalWidth);
+            const normalized = normalizeSectionWidths(preferredWidths, totalWidth);
             setSectionLayout(normalized);
             // While every pane fits, keep the stored preferences equal to the rendered
             // widths. A divider drag applies its delta in preference space, so if the two
@@ -405,6 +422,8 @@ function App(): React.ReactElement {
 
     // --- Persist column widths ---
     useEffect(() => {
+        // Untouched defaults reflow with the viewport and must not become restored preferences.
+        if (!widthsHaveUserPreferencesRef.current) return;
         try {
             const prev = vscode.getState() ?? {};
             vscode.setState({
@@ -423,7 +442,7 @@ function App(): React.ReactElement {
     // --- Send column widths to extension for cross-session persistence ---
     const widthSendTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
     useEffect(() => {
-        // Never persist until hydrated, otherwise the pre-restore equal widths
+        // Never persist until hydrated, otherwise the pre-restore default widths
         // would overwrite the user's saved widths in the extension.
         if (!widthsHydratedRef.current) return;
         if (widthSendTimer.current) clearTimeout(widthSendTimer.current);

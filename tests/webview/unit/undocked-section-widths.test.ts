@@ -1,25 +1,40 @@
 import { describe, expect, it } from "vitest";
 import {
-    computeEqualSectionWidths,
+    computeDefaultSectionWidths,
     migrateSectionWidths,
     normalizeSectionWidths,
 } from "../../../src/webviews/react/undocked/sectionWidths";
 import { resizeSectionPair } from "../../../src/webviews/react/undocked/useColumnPairDrag";
 
 describe("undocked section widths", () => {
-    it("reserves a persisted repository selector width within the five-pane layout budget", () => {
-        const widths = computeEqualSectionWidths(1200);
+    it("prioritizes history in the default five-pane layout budget", () => {
+        const widths = computeDefaultSectionWidths(1200);
 
         expect(widths).toEqual({
             repositoryWidth: 168,
-            branchWidth: 254,
-            graphWidth: 254,
-            infoWidth: 254,
-            commitPanelWidth: 254,
+            branchWidth: 220,
+            graphWidth: 316,
+            infoWidth: 220,
+            commitPanelWidth: 260,
         });
         const normalized = normalizeSectionWidths(widths, 1200);
         expect(Object.values(normalized.widths).reduce((sum, width) => sum + width, 0)).toBe(1184);
         expect(normalized.hidden).toEqual([]);
+    });
+
+    it("restores history emphasis after a narrow first render widens", () => {
+        const preferences = computeDefaultSectionWidths(320);
+        expect(normalizeSectionWidths(preferences, 320).widths).toEqual({ graphWidth: 320 });
+        expect(normalizeSectionWidths(preferences, 1200)).toEqual({
+            widths: {
+                repositoryWidth: 168,
+                branchWidth: 220,
+                graphWidth: 316,
+                infoWidth: 220,
+                commitPanelWidth: 260,
+            },
+            hidden: [],
+        });
     });
 
     it("migrates four-pane persisted layouts with the repository default", () => {

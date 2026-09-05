@@ -45,10 +45,13 @@ export interface SectionLayout {
 }
 
 /**
- * Computes the default repository selector plus equal widths for the four main
- * sections after subtracting the four divider pixels from the supplied total.
+ * Computes preferred pane widths after reserving space for four dividers.
+ *
+ * Supporting panes keep their readable preferred widths while the graph receives
+ * the remaining space. The existing budget resolver still enforces minimums,
+ * dropping panes in its established order when this preference does not fit.
  */
-export function computeEqualSectionWidths(totalWidth?: number): SectionWidths {
+export function computeDefaultSectionWidths(totalWidth?: number): SectionWidths {
     if (typeof window === "undefined" && typeof totalWidth !== "number") {
         return fallbackSectionWidths();
     }
@@ -58,14 +61,22 @@ export function computeEqualSectionWidths(totalWidth?: number): SectionWidths {
         return fallbackSectionWidths();
     }
 
-    const repositoryWidth = Math.min(DEFAULT_REPOSITORY_WIDTH, available / SECTION_COUNT);
-    const equalWidth = Math.max(0, (available - repositoryWidth) / (SECTION_COUNT - 1));
+    const repositoryWidth = DEFAULT_REPOSITORY_WIDTH;
+    const branchWidth = 220;
+    const infoWidth = 220;
+    const commitPanelWidth = 260;
+    // Preserve history emphasis when a narrow first render later widens. The budget
+    // resolver projects these preferences into the currently available space.
+    const graphWidth = Math.max(
+        316,
+        available - repositoryWidth - branchWidth - infoWidth - commitPanelWidth,
+    );
     return {
         repositoryWidth,
-        branchWidth: equalWidth,
-        graphWidth: equalWidth,
-        infoWidth: equalWidth,
-        commitPanelWidth: equalWidth,
+        branchWidth,
+        graphWidth,
+        infoWidth,
+        commitPanelWidth,
     };
 }
 
@@ -173,7 +184,7 @@ function sectionLayoutFromBudget(budget: PaneBudget): SectionLayout {
 /** Projects persisted preferences into a usable, possibly hidden render layout. */
 export function normalizeSectionWidths(widths: SectionWidths, totalWidth?: number): SectionLayout {
     const available = getTotalSectionWidth(totalWidth);
-    const preferred = sumWidths(widths) > 0 ? widths : computeEqualSectionWidths(totalWidth);
+    const preferred = sumWidths(widths) > 0 ? widths : computeDefaultSectionWidths(totalWidth);
     const minimums = sectionMinimums();
     const budget = resolvePaneBudget(
         available,

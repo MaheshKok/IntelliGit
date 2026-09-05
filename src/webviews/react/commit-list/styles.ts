@@ -7,12 +7,12 @@ export const DATE_COL_WIDTH = 118;
 export const CHECKS_COL_WIDTH = 28;
 /** Gap between the fixed metadata columns in rows and their header. */
 export const METADATA_COLUMN_MARGIN = 4;
-/** Minimum width reserved for readable commit-message text before metadata. */
-const MESSAGE_MIN_WIDTH = 120;
+/** Minimum width reserved for the message cell, including refs, before metadata. */
+const MESSAGE_MIN_WIDTH = 180;
 export const ROW_SIDE_PADDING = 8;
 
 /**
- * Chooses the metadata columns that fit beside the minimum readable commit message.
+ * Chooses the metadata columns that fit beside the minimum message-and-ref cell.
  *
  * The thresholds are derived from the fixed metadata widths and their shared margin,
  * including the optional checks column, so a width change cannot silently make
@@ -42,8 +42,8 @@ export const ROOT_STYLE: CSSProperties = {
 };
 
 export const FILTER_BAR_STYLE: CSSProperties = {
-    minHeight: 30,
-    padding: "3px 8px",
+    minHeight: 32,
+    padding: "2px 8px",
     borderBottom: `1px solid ${JETBRAINS_UI.color.border}`,
     background: JETBRAINS_UI.color.toolbar,
     display: "flex",
@@ -78,7 +78,7 @@ export const FILTER_INPUT_WRAP_STYLE: CSSProperties = {
  * The field previously set `outline: none` and defined no focus style, so a
  * keyboard user tabbing into the commit graph had no way to see where focus
  * had landed — WCAG 2.4.7. The transparent outline reserves the ring's space so
- * focusing does not shift the 20px-tall field, and `:focus-visible` only paints
+ * focusing does not shift the 26px-tall field, and `:focus-visible` only paints
  * it for keyboard entry, never for a click.
  */
 export const FILTER_INPUT_CLASS = "commit-filter-input";
@@ -90,6 +90,10 @@ export const FILTER_INPUT_CLASS = "commit-filter-input";
 export const COMMIT_ROW_CLASS_CSS = `
 .commit-row { transition: background-color ${MOTION.state}; }
 .commit-row:hover:not([aria-current="true"]) { background-color: ${JETBRAINS_UI.color.hover}; }
+.commit-filter-input::placeholder {
+    color: var(--vscode-input-placeholderForeground, ${JETBRAINS_UI.color.muted});
+    opacity: 1;
+}
 `;
 
 export const FILTER_INPUT_CLASS_CSS = `
@@ -100,7 +104,7 @@ export const FILTER_INPUT_CLASS_CSS = `
 
 export const FILTER_INPUT_STYLE: CSSProperties = {
     width: "100%",
-    height: 20,
+    height: 26,
     padding: "0 22px 0 8px",
     background: JETBRAINS_UI.color.input,
     color: "var(--vscode-input-foreground)",
@@ -161,8 +165,9 @@ export function headerRowStyle(graphWidth: number): CSSProperties {
         alignItems: "center",
         height: 22,
         fontSize: "11px",
+        fontWeight: 500,
         borderBottom: `1px solid ${JETBRAINS_UI.color.border}`,
-        background: "color-mix(in srgb, var(--vscode-editor-background, #2b3342) 86%, #000 14%)",
+        background: JETBRAINS_UI.color.toolbar,
         color: JETBRAINS_UI.color.muted,
         paddingLeft: graphWidth,
         paddingRight: ROW_SIDE_PADDING,

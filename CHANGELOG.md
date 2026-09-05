@@ -5,6 +5,16 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.32.1] - 2026-09-05
+
+### Changed
+
+- The default undocked layout gives commit history more room, even after resizing or reopening the window. Saved pane sizes still work as before.
+- The commit message box is larger and has a clear label. The Generate button now sits above the writing area.
+- Commit and Apply stand out as the main actions. Push and Pop use a quieter style.
+- Search boxes, toolbars and section headings have more consistent spacing. Search hints and keyboard focus are easier to see across themes.
+- Commit messages and branch or tag labels get more room before author and date columns appear.
+
 ## [0.32.0] - 2026-09-03
 
 ### Added

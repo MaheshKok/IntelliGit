@@ -270,11 +270,18 @@ The whole component vocabulary is **tight and instrumental**: every control read
 
 Cards are essentially absent, and that is deliberate. Content lives in flat lists, trees, and panes separated by 1px rules and tonal steps. Where a bounded region is genuinely needed (a dialog body, a conflict band), it is a 4px-radius region with a 1px Divider Steel border and no shadow. **Nested cards are prohibited.**
 
+### Workbench composition
+
+The default undocked layout gives history the remaining width after reserving 168px for repositories, 220px for branches, 220px for details, and 260px for the commit panel. At 1200px, the graph receives 316px after the four 4px dividers. Saved pane widths override these defaults; existing minimum widths, drag behavior, and narrow-window pane priorities still apply. Author and date columns appear only when the commit-message cell can retain at least 180px, so secondary metadata does not consume the space gained by history.
+
+Search fields use a 26px control inside the 32px toolbar rhythm. Section titles, counts, and totals have separate spacing and weight so supporting information does not compete with the task. Data rows retain their 22px tree and 24px graph geometry.
+
 ### Inputs / Fields
 
 - **Style:** Input Well background — the darkest surface in the system, so fields read as recessed — with a 1px input border and 4px radius.
 - **Focus:** Border shifts to Focus Azure. No glow, no size change.
-- **Commit message box:** The one input allowed to grow. It is the primary writing surface in the product and gets vertical room the other controls do not.
+- **Search hints:** Placeholder color comes from the host input-placeholder token, with an explicit opacity of 1. Chakra's system color mode must not determine contrast inside a VS Code-themed input.
+- **Commit message box:** The primary writing surface starts at a 220px composer height, with a 180px minimum. A visible localized label names the textarea; Generate/Stop sits beside the label, outside the writing area. The action row wraps as needed for translated labels. Commit is primary and Push is secondary.
 
 ### Rows / Trees
 

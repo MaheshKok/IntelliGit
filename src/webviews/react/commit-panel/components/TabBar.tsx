@@ -53,7 +53,7 @@ interface Props {
 }
 
 const sharedTabStyles = {
-    px: "14px",
+    px: "12px",
     py: "6px",
     minH: "32px",
     fontSize: "12px",
@@ -63,6 +63,7 @@ const sharedTabStyles = {
     // holding the label on one line costs nothing and no glyph is ever clipped.
     whiteSpace: "nowrap",
     fontWeight: 600,
+    letterSpacing: "0.01em",
     color: "var(--intelligit-pycharm-foreground)",
     opacity: 0.75,
     borderBottom: "2px solid transparent",
