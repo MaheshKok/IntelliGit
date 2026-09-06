@@ -1028,102 +1028,118 @@ describe("UndockedApp integration", () => {
         vi.useRealTimers();
     });
 
-    it("does not restore untouched v0.32 defaults as user widths after a reload", async () => {
-        vi.resetModules();
-        vi.useFakeTimers();
-        Object.defineProperty(window, "innerWidth", {
-            configurable: true,
-            value: 1200,
-        });
+    it.each([
+        {
+            name: "fresh state",
+            initialPersistedState: {},
+            expectNoPersistedWidths: true,
+        },
+        {
+            name: "untouched v0.32 defaults",
+            initialPersistedState: {
+                repositoryWidth: 168,
+                branchWidth: 254,
+                graphWidth: 254,
+                infoWidth: 254,
+                commitPanelWidth: 254,
+            },
+            expectNoPersistedWidths: false,
+        },
+    ])(
+        "does not restore $name as user widths after a reload",
+        async ({ initialPersistedState, expectNoPersistedWidths }) => {
+            vi.resetModules();
+            vi.useFakeTimers();
+            Object.defineProperty(window, "innerWidth", {
+                configurable: true,
+                value: 1200,
+            });
 
-        let persistedState: Record<string, unknown> = {
-            repositoryWidth: 168,
-            branchWidth: 254,
-            graphWidth: 254,
-            infoWidth: 254,
-            commitPanelWidth: 254,
-        };
-        const firstVsCode = installVsCodeMock(persistedState);
-        firstVsCode.setState.mockImplementation((next: Record<string, unknown>) => {
-            persistedState = next;
-            firstVsCode.getState.mockReturnValue(persistedState);
-        });
-        createRootHost();
-        mockUndockedChildren();
+            let persistedState: Record<string, unknown> = { ...initialPersistedState };
+            const firstVsCode = installVsCodeMock(persistedState);
+            firstVsCode.setState.mockImplementation((next: Record<string, unknown>) => {
+                persistedState = next;
+                firstVsCode.getState.mockReturnValue(persistedState);
+            });
+            createRootHost();
+            mockUndockedChildren();
 
-        await import("../../../src/webviews/react/UndockedApp");
-        await flush();
+            await import("../../../src/webviews/react/UndockedApp");
+            await flush();
 
-        expect(persistedState).toEqual(
-            expect.objectContaining({
-                groupByDir: expect.any(Boolean),
-                showIgnoredFiles: expect.any(Boolean),
-            }),
-        );
-
-        document.body.innerHTML = "";
-        vi.resetModules();
-        const secondVsCode = installVsCodeMock(persistedState);
-        createRootHost();
-        mockUndockedChildren();
-
-        await import("../../../src/webviews/react/UndockedApp");
-        await flush();
-
-        Object.defineProperty(window, "innerWidth", {
-            configurable: true,
-            value: 1800,
-        });
-        act(() => {
-            window.dispatchEvent(new Event("resize"));
-        });
-        await flush();
-
-        const widthOf = (testId: string): number => {
-            const element = document.querySelector(`[data-testid="${testId}"]`) as HTMLElement;
-            if (!element) throw new Error(`missing ${testId}`);
-            return Number.parseFloat(element.style.width);
-        };
-        expect(
-            [
-                "undocked-repository-section",
-                "undocked-commit-panel-section",
-                "undocked-branch-section",
-                "undocked-graph-section",
-                "undocked-info-section",
-            ].map(widthOf),
-        ).toEqual([168, 260, 220, 916, 220]);
-        expect(persistedState).not.toHaveProperty("repositoryWidth");
-
-        secondVsCode.setState.mockClear();
-        act(() => {
-            window.dispatchEvent(
-                new MessageEvent("message", {
-                    data: {
-                        type: "columnWidths",
-                        repositoryWidth: 144,
-                        branchWidth: 220,
-                        graphWidth: 320,
-                        infoWidth: 220,
-                        commitPanelWidth: 280,
-                    },
+            expect(persistedState).toEqual(
+                expect.objectContaining({
+                    groupByDir: expect.any(Boolean),
+                    showIgnoredFiles: expect.any(Boolean),
                 }),
             );
-        });
-        await flush();
 
-        expect(secondVsCode.setState).toHaveBeenCalledWith(
-            expect.objectContaining({
-                repositoryWidth: 144,
-                branchWidth: 220,
-                graphWidth: 320,
-                infoWidth: 220,
-                commitPanelWidth: 280,
-            }),
-        );
-        vi.clearAllTimers();
-        vi.useRealTimers();
-    });
+            document.body.innerHTML = "";
+            vi.resetModules();
+            const secondVsCode = installVsCodeMock(persistedState);
+            createRootHost();
+            mockUndockedChildren();
+
+            await import("../../../src/webviews/react/UndockedApp");
+            await flush();
+
+            Object.defineProperty(window, "innerWidth", {
+                configurable: true,
+                value: 1800,
+            });
+            act(() => {
+                window.dispatchEvent(new Event("resize"));
+            });
+            await flush();
+
+            const widthOf = (testId: string): number => {
+                const element = document.querySelector(`[data-testid="${testId}"]`) as HTMLElement;
+                if (!element) throw new Error(`missing ${testId}`);
+                return Number.parseFloat(element.style.width);
+            };
+            expect(
+                [
+                    "undocked-repository-section",
+                    "undocked-commit-panel-section",
+                    "undocked-branch-section",
+                    "undocked-graph-section",
+                    "undocked-info-section",
+                ].map(widthOf),
+            ).toEqual([168, 260, 220, 916, 220]);
+            if (expectNoPersistedWidths) {
+                expect(persistedState).not.toHaveProperty("repositoryWidth");
+            }
+
+            secondVsCode.setState.mockClear();
+            act(() => {
+                window.dispatchEvent(
+                    new MessageEvent("message", {
+                        data: {
+                            type: "columnWidths",
+                            repositoryWidth: 144,
+                            branchWidth: 220,
+                            graphWidth: 320,
+                            infoWidth: 220,
+                            commitPanelWidth: 280,
+                        },
+                    }),
+                );
+            });
+            await flush();
+
+            expect(secondVsCode.setState).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    repositoryWidth: 144,
+                    branchWidth: 220,
+                    graphWidth: 320,
+                    infoWidth: 220,
+                    commitPanelWidth: 280,
+                }),
+            );
+            vi.clearAllTimers();
+            vi.useRealTimers();
+        },
+    );
 
     it("preserves locally restored widths when the viewport grows", async () => {
         vi.resetModules();
