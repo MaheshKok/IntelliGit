@@ -24,8 +24,10 @@ export function formatDateTime(
     try {
         const d = new Date(iso);
         if (Number.isNaN(d.getTime())) return iso;
+        // `hour12` beats `hourCycle` in Intl, so it is cleared: an `undefined`
+        // option reads as absent and cannot override the user's clock.
         const clock: Intl.DateTimeFormatOptions =
-            getSettings().timeFormat === "24h" ? { hourCycle: "h23" } : {};
+            getSettings().timeFormat === "24h" ? { hour12: undefined, hourCycle: "h23" } : {};
         return d.toLocaleDateString("en-US", { ...options, ...clock });
     } catch {
         return iso;

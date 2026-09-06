@@ -39,4 +39,13 @@ describe("formatDateTime time format", () => {
         expect(out).not.toMatch(/[AP]M/);
         expect(out).toMatch(new RegExp(`\\b0?${hour24}:05\\b`));
     });
+
+    it("the 24h setting wins over a caller's hour12: true", () => {
+        // Intl lets `hour12` override `hourCycle`, so a caller option would
+        // silently defeat the user's setting unless the formatter strips it.
+        vi.stubGlobal("window", { intelligitSettings: { timeFormat: "24h" } });
+        const out = formatDateTime(ISO, { hour: "numeric", minute: "2-digit", hour12: true });
+        expect(out, "hour12 from the caller must not restore AM/PM").not.toMatch(/[AP]M/);
+        expect(out).toMatch(new RegExp(`\\b0?${hour24}:05\\b`));
+    });
 });
