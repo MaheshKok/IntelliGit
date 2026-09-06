@@ -203,4 +203,26 @@ describe("commit list column resize", () => {
 
         unmount(root, container);
     });
+
+    it("shows a full-height guide with the live width while dragging, and none at rest", async () => {
+        const { root, container } = renderList();
+        await flush();
+
+        const guide = () => container.querySelector('[data-testid="commit-column-guide"]');
+        expect(guide()).toBeNull();
+        expect(handle(container, "author").hasAttribute("data-resizing")).toBe(false);
+
+        drag(handle(container, "author"), 500, 460, false);
+
+        expect(handle(container, "author").getAttribute("data-resizing")).toBe("true");
+        expect(guide()?.textContent).toBe(`${AUTHOR_COL_WIDTH + 40}px`);
+
+        act(() => {
+            document.dispatchEvent(new MouseEvent("mouseup", { clientX: 460 }));
+        });
+        expect(guide()).toBeNull();
+        expect(handle(container, "author").hasAttribute("data-resizing")).toBe(false);
+
+        unmount(root, container);
+    });
 });

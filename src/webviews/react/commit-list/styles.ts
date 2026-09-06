@@ -47,6 +47,8 @@ export const ROOT_STYLE: CSSProperties = {
     display: "flex",
     flexDirection: "column",
     height: "100%",
+    // Containing block for the column-resize guide, which spans the whole list.
+    position: "relative",
     background: JETBRAINS_UI.color.editor,
     color: JETBRAINS_UI.color.foreground,
 };
@@ -100,9 +102,44 @@ export const FILTER_INPUT_CLASS = "commit-filter-input";
 export const COMMIT_ROW_CLASS_CSS = `
 .commit-row { transition: background-color ${MOTION.state}; }
 .commit-row:hover:not([aria-current="true"]) { background-color: ${JETBRAINS_UI.color.hover}; }
-.commit-column-resize { border: 0; padding: 0; background-color: transparent; transition: background-color ${MOTION.state}; }
-.commit-column-resize:hover { background-color: ${JETBRAINS_UI.color.border}; }
+.commit-column-resize { border: 0; padding: 0; background-color: transparent; }
+.commit-column-resize::before,
+.commit-column-resize::after { content: ""; position: absolute; left: 50%; pointer-events: none; }
+.commit-column-resize::before {
+    top: 50%; width: 3px; height: 10px; transform: translate(-50%, -50%);
+    border-left: 1px solid ${JETBRAINS_UI.color.muted}; border-right: 1px solid ${JETBRAINS_UI.color.muted};
+    opacity: 0.55; transition: opacity ${MOTION.state};
+}
+.commit-column-resize::after {
+    top: 2px; bottom: 2px; width: 2px; border-radius: 1px; transform: translateX(-50%) scaleY(0);
+    background: ${JETBRAINS_UI.color.focus};
+    box-shadow: 0 0 6px color-mix(in srgb, ${JETBRAINS_UI.color.focus} 55%, transparent);
+    opacity: 0; transition: transform ${MOTION.transform}, opacity ${MOTION.state};
+}
+.commit-column-resize:hover::before,
+.commit-column-resize:focus-visible::before,
+.commit-column-resize[data-resizing]::before { opacity: 0; }
+.commit-column-resize:hover::after,
+.commit-column-resize:focus-visible::after,
+.commit-column-resize[data-resizing]::after { transform: translateX(-50%) scaleY(1); opacity: 1; }
 .commit-column-resize:focus-visible { outline: 1px solid ${JETBRAINS_UI.color.focus}; outline-offset: -1px; }
+.commit-column-guide {
+    position: absolute; top: 0; bottom: 0; width: 2px; pointer-events: none; z-index: ${Z_INDEX.tooltip};
+    background: linear-gradient(to bottom, ${JETBRAINS_UI.color.focus} 0%, ${JETBRAINS_UI.color.focus} 55%, transparent 100%);
+    box-shadow: 0 0 8px color-mix(in srgb, ${JETBRAINS_UI.color.focus} 45%, transparent);
+    animation: commit-column-guide-in ${MOTION.state};
+}
+@keyframes commit-column-guide-in { from { opacity: 0; } }
+.commit-column-guide-badge {
+    position: absolute; top: 4px; left: 8px; padding: 1px 7px; white-space: nowrap;
+    font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums; line-height: 14px;
+    color: ${JETBRAINS_UI.color.foreground}; background: ${JETBRAINS_UI.color.tooltipBackground};
+    border: 1px solid ${JETBRAINS_UI.color.tooltipBorder}; border-radius: ${JETBRAINS_UI.size.pillRadius}px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.28);
+}
+@media (prefers-reduced-motion: reduce) {
+    .commit-column-resize::before, .commit-column-resize::after, .commit-column-guide { transition: none; animation: none; }
+}
 .commit-filter-input::placeholder {
     color: var(--vscode-input-placeholderForeground, ${JETBRAINS_UI.color.muted});
     opacity: 1;

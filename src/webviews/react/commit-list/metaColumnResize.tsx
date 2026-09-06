@@ -100,6 +100,8 @@ function persistMetaColumnWidths(widths: MetaColumnWidths): void {
 
 interface MetaColumnResizeApi {
     widths: MetaColumnWidths;
+    /** The column under an active pointer drag, so the list can paint a guide for it. */
+    resizing: MetaColumnKey | null;
     startResize: (key: MetaColumnKey, event: React.MouseEvent) => void;
     /** Moves one divider by `delta` pixels (negative widens) and persists the result. */
     nudgeColumn: (key: MetaColumnKey, delta: number) => void;
@@ -116,6 +118,7 @@ export function useMetaColumnWidths(
     showChecks: boolean,
 ): MetaColumnResizeApi {
     const [stored, setStored] = useState(readStoredMetaColumnWidths);
+    const [resizing, setResizing] = useState<MetaColumnKey | null>(null);
     const widths = useMemo(
         () => fitMetaColumnWidths(stored, availableWidth, showChecks),
         [stored, availableWidth, showChecks],
@@ -165,12 +168,14 @@ export function useMetaColumnWidths(
             document.body.style.cursor = previousCursor;
             document.body.style.userSelect = previousUserSelect;
             cleanupRef.current = null;
+            setResizing(null);
         };
 
         document.addEventListener("mousemove", onMouseMove);
         document.addEventListener("mouseup", onMouseUp);
         document.body.style.cursor = "col-resize";
         document.body.style.userSelect = "none";
+        setResizing(key);
     }, []);
 
     const nudgeColumn = useCallback(
@@ -196,7 +201,24 @@ export function useMetaColumnWidths(
         [commit],
     );
 
-    return { widths, startResize, nudgeColumn, resetColumn };
+    return { widths, resizing, startResize, nudgeColumn, resetColumn };
+}
+
+/**
+ * Distance from the list's right edge to the left edge of `key`, where its
+ * divider sits. Pure arithmetic over the same widths the header lays out with,
+ * so a guide drawn here tracks the divider through a drag without measuring.
+ */
+export function metaColumnEdgeOffset(
+    key: MetaColumnKey,
+    widths: MetaColumnWidths,
+    showDate: boolean,
+    showChecks: boolean,
+    sidePadding: number,
+): number {
+    const checks = showChecks ? CHECKS_COL_WIDTH + METADATA_COLUMN_MARGIN : 0;
+    const date = key === "author" && showDate ? widths.date + METADATA_COLUMN_MARGIN : 0;
+    return sidePadding + checks + date + widths[key];
 }
 
 const HANDLE_STYLE: React.CSSProperties = {
@@ -211,6 +233,8 @@ const HANDLE_STYLE: React.CSSProperties = {
 interface ColumnResizeHandleProps {
     column: MetaColumnKey;
     label: string;
+    /** True while this divider is being dragged; the stylesheet keys its lit state on it. */
+    active: boolean;
     onResizeStart: (key: MetaColumnKey, event: React.MouseEvent) => void;
     onNudge: (key: MetaColumnKey, delta: number) => void;
     onReset: (key: MetaColumnKey) => void;
@@ -220,10 +244,13 @@ interface ColumnResizeHandleProps {
  * Header divider that resizes the column to its right: drag it, or focus it and
  * use the arrow keys. Double-click restores the default. A button, like the
  * undocked layout's dividers, so it is focusable without extra ARIA plumbing.
+ * At rest it shows a small grip so the affordance is discoverable; hover, focus,
+ * and drag light it up (see `COMMIT_ROW_CLASS_CSS`).
  */
 export function ColumnResizeHandle({
     column,
     label,
+    active,
     onResizeStart,
     onNudge,
     onReset,
@@ -233,6 +260,7 @@ export function ColumnResizeHandle({
             type="button"
             className="commit-column-resize"
             data-testid={`commit-column-resize-${column}`}
+            data-resizing={active ? "true" : undefined}
             aria-label={t("a11y.resizeColumn", { column: label })}
             style={HANDLE_STYLE}
             onMouseDown={(event) => onResizeStart(column, event)}

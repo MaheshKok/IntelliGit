@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
     fitMetaColumnWidths,
     META_COLUMN_WIDTHS_STORAGE_KEY,
+    metaColumnEdgeOffset,
     MIN_META_COL_WIDTH,
     readStoredMetaColumnWidths,
     resizeMetaColumn,
@@ -98,6 +99,21 @@ describe("fitMetaColumnWidths", () => {
         const fitted = fitMetaColumnWidths({ author: 104, date: 300 }, 500, false);
         expect(fitted).toEqual({ author: 104, date: 208 });
         expect(visibleMetaColumns(500, false, fitted)).toEqual({ author: true, date: true });
+    });
+});
+
+describe("metaColumnEdgeOffset", () => {
+    // Header layout, right to left: side padding, [checks + margin], date, [margin, author].
+    const widths = { author: 104, date: 118 };
+
+    it("places the date divider past the padding and any checks column", () => {
+        expect(metaColumnEdgeOffset("date", widths, true, false, 8)).toBe(8 + 118);
+        expect(metaColumnEdgeOffset("date", widths, true, true, 8)).toBe(8 + 28 + 4 + 118);
+    });
+
+    it("places the author divider past the date column only while date is shown", () => {
+        expect(metaColumnEdgeOffset("author", widths, true, false, 8)).toBe(8 + 118 + 4 + 104);
+        expect(metaColumnEdgeOffset("author", widths, false, false, 8)).toBe(8 + 104);
     });
 });
 

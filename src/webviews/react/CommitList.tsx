@@ -9,7 +9,11 @@ import { ContextMenu } from "./shared/components/ContextMenu";
 import { ClearIcon, SearchIcon } from "./shared/components/Icons";
 import { getCommitMenuItems } from "./commit-list/commitMenu";
 import { CommitListRows } from "./commit-list/CommitListRows";
-import { ColumnResizeHandle, useMetaColumnWidths } from "./commit-list/metaColumnResize";
+import {
+    ColumnResizeHandle,
+    metaColumnEdgeOffset,
+    useMetaColumnWidths,
+} from "./commit-list/metaColumnResize";
 import {
     commitHashesMatch,
     MAX_COMMIT_CHECK_RETRIES_PER_HASH,
@@ -278,6 +282,7 @@ export function CommitList({
     const metaAvailableWidth = viewportWidth - graphWidth - ROW_SIDE_PADDING - 2;
     const {
         widths: metaWidths,
+        resizing: resizingColumn,
         startResize: startColumnResize,
         nudgeColumn,
         resetColumn,
@@ -289,6 +294,17 @@ export function CommitList({
     );
     const showAuthor = showAuthorDate && measuredMetaColumns.author;
     const showDate = showAuthorDate && measuredMetaColumns.date;
+    // Centred on the divider: the 2px guide straddles the column's left edge.
+    const resizeGuideRight =
+        resizingColumn === null
+            ? null
+            : metaColumnEdgeOffset(
+                  resizingColumn,
+                  metaWidths,
+                  showDate,
+                  showChecksColumn,
+                  ROW_SIDE_PADDING,
+              ) - 1;
 
     const requestedCommitHashes = useMemo(
         () =>
@@ -452,6 +468,18 @@ export function CommitList({
     return (
         <div style={ROOT_STYLE}>
             <style>{COMMIT_ROW_CLASS_CSS}</style>
+            {resizingColumn !== null && resizeGuideRight !== null ? (
+                <div
+                    className="commit-column-guide"
+                    data-testid="commit-column-guide"
+                    aria-hidden="true"
+                    style={{ right: resizeGuideRight }}
+                >
+                    <span className="commit-column-guide-badge">
+                        {metaWidths[resizingColumn]}px
+                    </span>
+                </div>
+            ) : null}
             {showSearch ? (
                 <div style={FILTER_BAR_STYLE}>
                     <style>{FILTER_INPUT_CLASS_CSS}</style>
@@ -502,6 +530,7 @@ export function CommitList({
                             <ColumnResizeHandle
                                 column="author"
                                 label={t("commit.list.header.author")}
+                                active={resizingColumn === "author"}
                                 onResizeStart={startColumnResize}
                                 onNudge={nudgeColumn}
                                 onReset={resetColumn}
@@ -521,6 +550,7 @@ export function CommitList({
                             <ColumnResizeHandle
                                 column="date"
                                 label={t("commit.list.header.date")}
+                                active={resizingColumn === "date"}
                                 onResizeStart={startColumnResize}
                                 onNudge={nudgeColumn}
                                 onReset={resetColumn}
