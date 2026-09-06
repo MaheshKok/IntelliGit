@@ -47,10 +47,20 @@ export const ROOT_STYLE: CSSProperties = {
     display: "flex",
     flexDirection: "column",
     height: "100%",
-    // Containing block for the column-resize guide, which spans the whole list.
-    position: "relative",
     background: JETBRAINS_UI.color.editor,
     color: JETBRAINS_UI.color.foreground,
+};
+
+/**
+ * Header plus rows. Containing block for the column-resize guide, so the guide
+ * starts at the header and never runs up into the search bar above it.
+ */
+export const LIST_BODY_STYLE: CSSProperties = {
+    position: "relative",
+    display: "flex",
+    flexDirection: "column",
+    flex: 1,
+    minHeight: 0,
 };
 
 export const FILTER_BAR_STYLE: CSSProperties = {
@@ -131,7 +141,7 @@ export const COMMIT_ROW_CLASS_CSS = `
 }
 @keyframes commit-column-guide-in { from { opacity: 0; } }
 .commit-column-guide-badge {
-    position: absolute; top: 4px; left: 8px; padding: 1px 7px; white-space: nowrap;
+    position: absolute; top: 2px; left: 8px; padding: 1px 7px; white-space: nowrap;
     font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums; line-height: 14px;
     color: ${JETBRAINS_UI.color.foreground}; background: ${JETBRAINS_UI.color.tooltipBackground};
     border: 1px solid ${JETBRAINS_UI.color.tooltipBorder}; border-radius: ${JETBRAINS_UI.size.pillRadius}px;

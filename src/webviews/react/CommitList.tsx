@@ -36,6 +36,7 @@ import {
     FILTER_INPUT_STYLE,
     FILTER_INPUT_WRAP_STYLE,
     headerRowStyle,
+    LIST_BODY_STYLE,
     METADATA_COLUMN_MARGIN,
     ROOT_STYLE,
     ROW_SIDE_PADDING,
@@ -468,18 +469,6 @@ export function CommitList({
     return (
         <div style={ROOT_STYLE}>
             <style>{COMMIT_ROW_CLASS_CSS}</style>
-            {resizingColumn !== null && resizeGuideRight !== null ? (
-                <div
-                    className="commit-column-guide"
-                    data-testid="commit-column-guide"
-                    aria-hidden="true"
-                    style={{ right: resizeGuideRight }}
-                >
-                    <span className="commit-column-guide-badge">
-                        {metaWidths[resizingColumn]}px
-                    </span>
-                </div>
-            ) : null}
             {showSearch ? (
                 <div style={FILTER_BAR_STYLE}>
                     <style>{FILTER_INPUT_CLASS_CSS}</style>
@@ -516,83 +505,100 @@ export function CommitList({
                 </div>
             ) : null}
 
-            {headerLabel ? null : (
-                <div style={headerRowStyle(graphWidth)}>
-                    <span style={{ flex: 1 }}>{t("commit.list.header.commit")}</span>
-                    {showAuthor && (
-                        <span
-                            style={{
-                                width: metaWidths.author,
-                                textAlign: "right",
-                                position: "relative",
-                            }}
-                        >
-                            <ColumnResizeHandle
-                                column="author"
-                                label={t("commit.list.header.author")}
-                                active={resizingColumn === "author"}
-                                onResizeStart={startColumnResize}
-                                onNudge={nudgeColumn}
-                                onReset={resetColumn}
-                            />
-                            {t("commit.list.header.author")}
+            <div style={LIST_BODY_STYLE}>
+                {resizingColumn !== null && resizeGuideRight !== null ? (
+                    <div
+                        className="commit-column-guide"
+                        data-testid="commit-column-guide"
+                        aria-hidden="true"
+                        style={{ right: resizeGuideRight }}
+                    >
+                        <span className="commit-column-guide-badge">
+                            {metaWidths[resizingColumn]}px
                         </span>
-                    )}
-                    {showDate && (
-                        <span
-                            style={{
-                                width: metaWidths.date,
-                                textAlign: "right",
-                                marginLeft: METADATA_COLUMN_MARGIN,
-                                position: "relative",
-                            }}
-                        >
-                            <ColumnResizeHandle
-                                column="date"
-                                label={t("commit.list.header.date")}
-                                active={resizingColumn === "date"}
-                                onResizeStart={startColumnResize}
-                                onNudge={nudgeColumn}
-                                onReset={resetColumn}
+                    </div>
+                ) : null}
+                {headerLabel ? null : (
+                    <div style={headerRowStyle(graphWidth)}>
+                        <span style={{ flex: 1 }}>{t("commit.list.header.commit")}</span>
+                        {showAuthor && (
+                            <span
+                                style={{
+                                    width: metaWidths.author,
+                                    textAlign: "right",
+                                    position: "relative",
+                                }}
+                            >
+                                <ColumnResizeHandle
+                                    column="author"
+                                    label={t("commit.list.header.author")}
+                                    active={resizingColumn === "author"}
+                                    onResizeStart={startColumnResize}
+                                    onNudge={nudgeColumn}
+                                    onReset={resetColumn}
+                                />
+                                {t("commit.list.header.author")}
+                            </span>
+                        )}
+                        {showDate && (
+                            <span
+                                style={{
+                                    width: metaWidths.date,
+                                    textAlign: "right",
+                                    marginLeft: METADATA_COLUMN_MARGIN,
+                                    position: "relative",
+                                }}
+                            >
+                                <ColumnResizeHandle
+                                    column="date"
+                                    label={t("commit.list.header.date")}
+                                    active={resizingColumn === "date"}
+                                    onResizeStart={startColumnResize}
+                                    onNudge={nudgeColumn}
+                                    onReset={resetColumn}
+                                />
+                                {t("commit.list.header.date")}
+                            </span>
+                        )}
+                        {showAuthorDate && onRequestCommitChecks && onOpenCommitCheckUrl ? (
+                            <span
+                                style={{
+                                    width: CHECKS_COL_WIDTH,
+                                    marginLeft: METADATA_COLUMN_MARGIN,
+                                }}
                             />
-                            {t("commit.list.header.date")}
-                        </span>
-                    )}
-                    {showAuthorDate && onRequestCommitChecks && onOpenCommitCheckUrl ? (
-                        <span
-                            style={{ width: CHECKS_COL_WIDTH, marginLeft: METADATA_COLUMN_MARGIN }}
-                        />
-                    ) : null}
-                </div>
-            )}
+                        ) : null}
+                    </div>
+                )}
 
-            <CommitListRows
-                commits={commits}
-                visibleCommits={renderedCommits}
-                visibleRange={visibleRange}
-                graphWidth={graphWidth}
-                graphRows={graphRows}
-                canvasRef={canvasRef}
-                setViewportNode={setViewportNode}
-                selectedHash={selectedHash}
-                unpushedHashes={unpushedHashes}
-                isUnpushedCommit={isUnpushedCommit}
-                hasMore={hasMore}
-                showAuthor={showAuthor}
-                showDate={showDate}
-                metaWidths={metaWidths}
-                commitChecks={commitChecks}
-                onSelectCommit={onSelectCommit}
-                onRequestCommitChecks={
-                    onRequestCommitChecks ? handleRequestCommitChecksFromRow : undefined
-                }
-                onOpenCommitCheckUrl={onOpenCommitCheckUrl}
-                onSignInForCommitChecks={onSignInForCommitChecks}
-                onCommitHover={onCommitHover}
-                onCommitUnhover={onCommitUnhover}
-                onRowContextMenu={handleRowContextMenu}
-                onScroll={handleScroll}
-            />
+                <CommitListRows
+                    commits={commits}
+                    visibleCommits={renderedCommits}
+                    visibleRange={visibleRange}
+                    graphWidth={graphWidth}
+                    graphRows={graphRows}
+                    canvasRef={canvasRef}
+                    setViewportNode={setViewportNode}
+                    selectedHash={selectedHash}
+                    unpushedHashes={unpushedHashes}
+                    isUnpushedCommit={isUnpushedCommit}
+                    hasMore={hasMore}
+                    showAuthor={showAuthor}
+                    showDate={showDate}
+                    metaWidths={metaWidths}
+                    commitChecks={commitChecks}
+                    onSelectCommit={onSelectCommit}
+                    onRequestCommitChecks={
+                        onRequestCommitChecks ? handleRequestCommitChecksFromRow : undefined
+                    }
+                    onOpenCommitCheckUrl={onOpenCommitCheckUrl}
+                    onSignInForCommitChecks={onSignInForCommitChecks}
+                    onCommitHover={onCommitHover}
+                    onCommitUnhover={onCommitUnhover}
+                    onRowContextMenu={handleRowContextMenu}
+                    onScroll={handleScroll}
+                />
+            </div>
 
             {contextMenu && (
                 <ContextMenu

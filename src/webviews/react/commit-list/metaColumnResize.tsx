@@ -147,6 +147,12 @@ export function useMetaColumnWidths(
         const previousUserSelect = document.body.style.userSelect;
 
         const onMouseMove = (ev: MouseEvent) => {
+            // The button came up outside the webview, where no mouseup reaches us:
+            // the first move back inside with no button held ends the drag.
+            if (ev.buttons === 0) {
+                onMouseUp();
+                return;
+            }
             const layout = layoutRef.current;
             latest = resizeMetaColumn(
                 startWidths,
@@ -165,6 +171,7 @@ export function useMetaColumnWidths(
         cleanupRef.current = () => {
             document.removeEventListener("mousemove", onMouseMove);
             document.removeEventListener("mouseup", onMouseUp);
+            window.removeEventListener("blur", onMouseUp);
             document.body.style.cursor = previousCursor;
             document.body.style.userSelect = previousUserSelect;
             cleanupRef.current = null;
@@ -173,6 +180,7 @@ export function useMetaColumnWidths(
 
         document.addEventListener("mousemove", onMouseMove);
         document.addEventListener("mouseup", onMouseUp);
+        window.addEventListener("blur", onMouseUp);
         document.body.style.cursor = "col-resize";
         document.body.style.userSelect = "none";
         setResizing(key);

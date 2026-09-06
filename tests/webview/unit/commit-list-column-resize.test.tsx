@@ -78,7 +78,7 @@ function drag(el: HTMLElement, fromX: number, toX: number, release = true): void
         );
     });
     act(() => {
-        document.dispatchEvent(new MouseEvent("mousemove", { clientX: toX }));
+        document.dispatchEvent(new MouseEvent("mousemove", { clientX: toX, buttons: 1 }));
     });
     if (release) {
         act(() => {
@@ -222,6 +222,44 @@ describe("commit list column resize", () => {
         });
         expect(guide()).toBeNull();
         expect(handle(container, "author").hasAttribute("data-resizing")).toBe(false);
+
+        unmount(root, container);
+    });
+
+    it("the guide starts at the header, below the search bar", async () => {
+        const { root, container } = renderList();
+        await flush();
+
+        drag(handle(container, "author"), 500, 460, false);
+
+        const guide = container.querySelector('[data-testid="commit-column-guide"]');
+        const searchBox = container.querySelector('input[type="text"]');
+        const header = handle(container, "author").parentElement?.parentElement;
+        expect(guide?.parentElement).toBe(header?.parentElement);
+        expect(guide?.parentElement?.contains(searchBox)).toBe(false);
+
+        act(() => {
+            document.dispatchEvent(new MouseEvent("mouseup", { clientX: 460 }));
+        });
+        unmount(root, container);
+    });
+
+    it("a button released outside the webview ends the drag on the next move", async () => {
+        const { root, container } = renderList();
+        await flush();
+
+        drag(handle(container, "author"), 500, 460, false);
+        act(() => {
+            document.dispatchEvent(new MouseEvent("mousemove", { clientX: 470, buttons: 0 }));
+        });
+
+        expect(container.querySelector('[data-testid="commit-column-guide"]')).toBeNull();
+        expect(document.body.style.cursor).toBe("");
+        expect(authorCell(container).style.width).toBe(`${AUTHOR_COL_WIDTH + 40}px`);
+        expect(JSON.parse(localStorage.getItem(META_COLUMN_WIDTHS_STORAGE_KEY) ?? "{}")).toEqual({
+            author: AUTHOR_COL_WIDTH + 40,
+            date: DATE_COL_WIDTH,
+        });
 
         unmount(root, container);
     });
