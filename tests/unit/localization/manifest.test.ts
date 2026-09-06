@@ -646,4 +646,34 @@ describe("extension manifest", () => {
             expect(nls[key]).toBeTruthy();
         }
     });
+
+    it("contributes the commit-list time format setting defaulting to the 12-hour clock", () => {
+        const manifest = JSON.parse(
+            readFileSync(path.join(process.cwd(), "package.json"), "utf8"),
+        ) as ExtensionManifest;
+        const setting = manifest.contributes?.configuration?.properties?.["intelligit.timeFormat"];
+
+        expect(setting).toMatchObject({
+            type: "string",
+            enum: ["12h", "24h"],
+            default: "12h",
+            scope: "window",
+            markdownDescription: "%configuration.timeFormat.markdownDescription%",
+        });
+        expect(setting?.enumDescriptions).toEqual([
+            "%configuration.timeFormat.enum.12h%",
+            "%configuration.timeFormat.enum.24h%",
+        ]);
+
+        const nls = JSON.parse(
+            readFileSync(path.join(process.cwd(), "package.nls.json"), "utf8"),
+        ) as Record<string, string>;
+        for (const key of [
+            "configuration.timeFormat.enum.12h",
+            "configuration.timeFormat.enum.24h",
+            "configuration.timeFormat.markdownDescription",
+        ]) {
+            expect(nls[key]).toBeTruthy();
+        }
+    });
 });

@@ -4,28 +4,38 @@ import { JETBRAINS_UI, MOTION, Z_INDEX } from "../shared/tokens";
 
 export const AUTHOR_COL_WIDTH = 104;
 export const DATE_COL_WIDTH = 118;
+/** The two user-resizable metadata columns to the right of the commit message. */
+export type MetaColumnKey = "author" | "date";
+/** Current pixel width of each metadata column. */
+export type MetaColumnWidths = Record<MetaColumnKey, number>;
+/** Default widths; the user can drag either column and the choice persists. */
+export const DEFAULT_META_COLUMN_WIDTHS: MetaColumnWidths = {
+    author: AUTHOR_COL_WIDTH,
+    date: DATE_COL_WIDTH,
+};
 export const CHECKS_COL_WIDTH = 28;
 /** Gap between the fixed metadata columns in rows and their header. */
 export const METADATA_COLUMN_MARGIN = 4;
 /** Minimum width reserved for the message cell, including refs, before metadata. */
-const MESSAGE_MIN_WIDTH = 180;
+export const MESSAGE_MIN_WIDTH = 180;
 export const ROW_SIDE_PADDING = 8;
 
 /**
  * Chooses the metadata columns that fit beside the minimum message-and-ref cell.
  *
- * The thresholds are derived from the fixed metadata widths and their shared margin,
+ * The thresholds are derived from the current metadata widths and their shared margin,
  * including the optional checks column, so a width change cannot silently make
  * the message cell collapse again.
  */
 export function visibleMetaColumns(
     availableWidth: number,
     showChecks: boolean,
+    widths: MetaColumnWidths = DEFAULT_META_COLUMN_WIDTHS,
 ): { author: boolean; date: boolean } {
     const checksWidth = showChecks ? CHECKS_COL_WIDTH + METADATA_COLUMN_MARGIN : 0;
     const authorThreshold =
-        MESSAGE_MIN_WIDTH + AUTHOR_COL_WIDTH + METADATA_COLUMN_MARGIN + checksWidth;
-    const bothColumnsThreshold = authorThreshold + DATE_COL_WIDTH + METADATA_COLUMN_MARGIN;
+        MESSAGE_MIN_WIDTH + widths.author + METADATA_COLUMN_MARGIN + checksWidth;
+    const bothColumnsThreshold = authorThreshold + widths.date + METADATA_COLUMN_MARGIN;
 
     return {
         author: availableWidth >= authorThreshold,
@@ -39,6 +49,18 @@ export const ROOT_STYLE: CSSProperties = {
     height: "100%",
     background: JETBRAINS_UI.color.editor,
     color: JETBRAINS_UI.color.foreground,
+};
+
+/**
+ * Header plus rows. Containing block for the column-resize guide, so the guide
+ * starts at the header and never runs up into the search bar above it.
+ */
+export const LIST_BODY_STYLE: CSSProperties = {
+    position: "relative",
+    display: "flex",
+    flexDirection: "column",
+    flex: 1,
+    minHeight: 0,
 };
 
 export const FILTER_BAR_STYLE: CSSProperties = {
@@ -90,6 +112,37 @@ export const FILTER_INPUT_CLASS = "commit-filter-input";
 export const COMMIT_ROW_CLASS_CSS = `
 .commit-row { transition: background-color ${MOTION.state}; }
 .commit-row:hover:not([aria-current="true"]) { background-color: ${JETBRAINS_UI.color.hover}; }
+.commit-column-resize { border: 0; padding: 0; background-color: transparent; }
+.commit-column-resize::before,
+.commit-column-resize::after { content: ""; position: absolute; left: 50%; pointer-events: none; }
+.commit-column-resize::before {
+    top: 50%; width: 3px; height: 10px; transform: translate(-50%, -50%);
+    border-left: 1px solid ${JETBRAINS_UI.color.muted}; border-right: 1px solid ${JETBRAINS_UI.color.muted};
+    opacity: 0.55; transition: opacity ${MOTION.state};
+}
+.commit-column-resize::after {
+    top: 2px; bottom: 2px; width: 2px; border-radius: 1px; transform: translateX(-50%) scaleY(0);
+    background: ${JETBRAINS_UI.color.focus};
+    box-shadow: 0 0 6px color-mix(in srgb, ${JETBRAINS_UI.color.focus} 55%, transparent);
+    opacity: 0; transition: transform ${MOTION.transform}, opacity ${MOTION.state};
+}
+.commit-column-resize:hover::before,
+.commit-column-resize:focus-visible::before,
+.commit-column-resize[data-resizing]::before { opacity: 0; }
+.commit-column-resize:hover::after,
+.commit-column-resize:focus-visible::after,
+.commit-column-resize[data-resizing]::after { transform: translateX(-50%) scaleY(1); opacity: 1; }
+.commit-column-resize:focus-visible { outline: 1px solid ${JETBRAINS_UI.color.focus}; outline-offset: -1px; }
+.commit-column-guide {
+    position: absolute; top: 0; bottom: 0; width: 2px; pointer-events: none; z-index: ${Z_INDEX.tooltip};
+    background: linear-gradient(to bottom, ${JETBRAINS_UI.color.focus} 0%, ${JETBRAINS_UI.color.focus} 55%, transparent 100%);
+    box-shadow: 0 0 8px color-mix(in srgb, ${JETBRAINS_UI.color.focus} 45%, transparent);
+    animation: commit-column-guide-in ${MOTION.state};
+}
+@keyframes commit-column-guide-in { from { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+    .commit-column-resize::before, .commit-column-resize::after, .commit-column-guide { transition: none; animation: none; }
+}
 .commit-filter-input::placeholder {
     color: var(--vscode-input-placeholderForeground, ${JETBRAINS_UI.color.muted});
     opacity: 1;

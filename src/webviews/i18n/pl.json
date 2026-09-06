@@ -337,6 +337,7 @@
     "stash.fileAction.editSource": "Edytuj źródło",
     "stash.fileAction.cherryPickSelectedChanges": "Cherry-pick wybranych zmian",
     "a11y.resizeRepositoryColumn": "Zmień rozmiar kolumny repozytorium",
+    "a11y.resizeColumn": "Zmień rozmiar kolumny {column}",
     "commit.message.generate": "Wygeneruj komunikat commita",
     "commit.message.stopGeneration": "Zatrzymaj generowanie komunikatu commita",
     "rebase.dialog.title": "Zmienianie bazy commitów",

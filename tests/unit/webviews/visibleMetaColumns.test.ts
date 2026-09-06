@@ -25,6 +25,15 @@ describe("visibleMetaColumns", () => {
         expect(visibleMetaColumns(202, true)).toEqual({ author: false, date: false });
     });
 
+    // A user-resized column moves both breakpoints by exactly its extra width.
+    it("derives both thresholds from custom column widths", () => {
+        const widths = { author: 204, date: 118 };
+        expect(visibleMetaColumns(420, true, widths)).toEqual({ author: true, date: false });
+        expect(visibleMetaColumns(419, true, widths)).toEqual({ author: false, date: false });
+        expect(visibleMetaColumns(542, true, widths)).toEqual({ author: true, date: true });
+        expect(visibleMetaColumns(541, true, widths)).toEqual({ author: true, date: false });
+    });
+
     // Hiding checks must reclaim its width at both metadata breakpoints.
     it("reclaims the checks-column budget when the checks column is hidden", () => {
         expect(visibleMetaColumns(288, false)).toEqual({ author: true, date: false });

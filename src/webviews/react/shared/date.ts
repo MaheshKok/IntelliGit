@@ -1,3 +1,5 @@
+import { getSettings } from "./settings";
+
 const DEFAULT_DATE_OPTIONS: Intl.DateTimeFormatOptions = {
     month: "numeric",
     day: "numeric",
@@ -11,6 +13,9 @@ const DEFAULT_DATE_OPTIONS: Intl.DateTimeFormatOptions = {
  *
  * Invalid or unformattable inputs are returned unchanged so backend-provided
  * timestamps remain visible instead of disappearing behind a formatting error.
+ *
+ * The `intelligit.timeFormat` setting picks the clock: `h23` is used for 24h
+ * rather than `hour12: false`, which some engines render midnight as "24:00".
  */
 export function formatDateTime(
     iso: string,
@@ -19,7 +24,11 @@ export function formatDateTime(
     try {
         const d = new Date(iso);
         if (Number.isNaN(d.getTime())) return iso;
-        return d.toLocaleDateString("en-US", options);
+        // `hour12` beats `hourCycle` in Intl, so it is cleared: an `undefined`
+        // option reads as absent and cannot override the user's clock.
+        const clock: Intl.DateTimeFormatOptions =
+            getSettings().timeFormat === "24h" ? { hour12: undefined, hourCycle: "h23" } : {};
+        return d.toLocaleDateString("en-US", { ...options, ...clock });
     } catch {
         return iso;
     }

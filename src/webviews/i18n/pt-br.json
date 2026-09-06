@@ -330,6 +330,7 @@
     "stash.fileAction.editSource": "Editar fonte",
     "stash.fileAction.cherryPickSelectedChanges": "Fazer cherry-pick das alterações selecionadas",
     "a11y.resizeRepositoryColumn": "Redimensionar a coluna do repositório",
+    "a11y.resizeColumn": "Redimensionar a coluna {column}",
     "commit.message.generate": "Gerar mensagem de commit",
     "commit.message.stopGeneration": "Parar a geração da mensagem de commit",
     "rebase.dialog.title": "Fazendo rebase dos commits",

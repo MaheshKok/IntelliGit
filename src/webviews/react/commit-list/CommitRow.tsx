@@ -34,6 +34,8 @@ interface Props {
     onUnhover?: () => void;
     showAuthor?: boolean;
     showDate?: boolean;
+    authorWidth?: number;
+    dateWidth?: number;
     checks?: CommitChecksValue;
     /** Requests this commit's checks; `force` bypasses the host/provider cache. */
     onRequestChecks?: (hash: string, force?: boolean) => void;
@@ -403,6 +405,8 @@ function CommitRowInner({
     onUnhover,
     showAuthor = true,
     showDate = true,
+    authorWidth = AUTHOR_COL_WIDTH,
+    dateWidth = DATE_COL_WIDTH,
     checks,
     onRequestChecks,
     onOpenCheckUrl,
@@ -437,7 +441,7 @@ function CommitRowInner({
     );
     const authorStyle = React.useMemo<React.CSSProperties>(
         () => ({
-            width: AUTHOR_COL_WIDTH,
+            width: authorWidth,
             textAlign: "right",
             opacity: isMergeCommit ? 1 : 0.7,
             overflow: "hidden",
@@ -445,18 +449,20 @@ function CommitRowInner({
             flexShrink: 0,
             marginLeft: METADATA_COLUMN_MARGIN,
         }),
-        [isMergeCommit],
+        [authorWidth, isMergeCommit],
     );
     const dateStyle = React.useMemo<React.CSSProperties>(
         () => ({
-            width: DATE_COL_WIDTH,
+            width: dateWidth,
             textAlign: "right",
             opacity: isMergeCommit ? 0.8 : 0.5,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
             flexShrink: 0,
             marginLeft: METADATA_COLUMN_MARGIN,
             fontSize: "12px",
         }),
-        [isMergeCommit],
+        [dateWidth, isMergeCommit],
     );
     const handleSelect = React.useCallback(() => {
         onSelect(commit.hash);
@@ -519,6 +525,8 @@ function areEqual(prev: Props, next: Props): boolean {
         prev.graphWidth === next.graphWidth &&
         prev.showAuthor === next.showAuthor &&
         prev.showDate === next.showDate &&
+        prev.authorWidth === next.authorWidth &&
+        prev.dateWidth === next.dateWidth &&
         prev.checks === next.checks &&
         prev.onRequestChecks === next.onRequestChecks &&
         prev.onOpenCheckUrl === next.onOpenCheckUrl &&

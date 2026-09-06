@@ -10,6 +10,8 @@ export interface IntelligitSettings {
     iconStyle: "color" | "standard";
     commitWindowPosition: "left" | "right";
     commitCheckState: CommitFileCheckMode;
+    /** Clock used by `formatDateTime`; `24h` drops the AM/PM marker. */
+    timeFormat: "12h" | "24h";
 }
 
 /** Exact commit-file selection modes accepted from the host bootstrap payload. */
@@ -28,6 +30,7 @@ export const getSettings = (): IntelligitSettings => {
         iconStyle: "standard",
         commitWindowPosition: "left",
         commitCheckState: "noneChecked",
+        timeFormat: "12h",
     };
     if (typeof window !== "undefined") {
         const settings = (window as Window & { intelligitSettings?: unknown }).intelligitSettings;
@@ -51,6 +54,7 @@ export const getSettings = (): IntelligitSettings => {
                     settingsObj.commitCheckState === "noneChecked"
                         ? settingsObj.commitCheckState
                         : "noneChecked",
+                timeFormat: settingsObj.timeFormat === "24h" ? "24h" : "12h",
             };
         }
     }
