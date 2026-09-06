@@ -1028,7 +1028,7 @@ describe("UndockedApp integration", () => {
         vi.useRealTimers();
     });
 
-    it("does not restore untouched defaults as user widths after a reload", async () => {
+    it("does not restore untouched v0.32 defaults as user widths after a reload", async () => {
         vi.resetModules();
         vi.useFakeTimers();
         Object.defineProperty(window, "innerWidth", {
@@ -1036,7 +1036,13 @@ describe("UndockedApp integration", () => {
             value: 1200,
         });
 
-        let persistedState: Record<string, unknown> = {};
+        let persistedState: Record<string, unknown> = {
+            repositoryWidth: 168,
+            branchWidth: 254,
+            graphWidth: 254,
+            infoWidth: 254,
+            commitPanelWidth: 254,
+        };
         const firstVsCode = installVsCodeMock(persistedState);
         firstVsCode.setState.mockImplementation((next: Record<string, unknown>) => {
             persistedState = next;
