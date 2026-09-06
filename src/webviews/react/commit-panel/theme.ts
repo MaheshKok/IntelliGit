@@ -2,7 +2,7 @@
 
 import { extendTheme } from "@chakra-ui/react";
 import { SYSTEM_FONT_STACK } from "../../../utils/constants";
-import { JETBRAINS_UI, MOTION } from "../shared/tokens";
+import { JETBRAINS_UI } from "../shared/tokens";
 
 const { color, size } = JETBRAINS_UI;
 
@@ -90,9 +90,17 @@ const theme = extendTheme({
         },
     },
     components: {
+        Textarea: {
+            baseStyle: { transitionProperty: "none" },
+        },
         Button: {
             baseStyle: {
-                transition: `background-color ${MOTION.state}, border-color ${MOTION.state}, color ${MOTION.state}`,
+                // Native controls change fill immediately; only tab/content motion interpolates.
+                transition: "none",
+                transitionProperty: "none",
+                _active: {
+                    boxShadow: "inset 0 0 0 1px currentColor",
+                },
                 _focusVisible: {
                     outline: "2px solid var(--intelligit-pycharm-blue)",
                     outlineOffset: "-1px",
@@ -143,9 +151,7 @@ const theme = extendTheme({
                     // survive the theme. The old `rgba(255,255,255,0.06)` lightened
                     // an already-light toolbar into invisibility; the host's own
                     // toolbar-hover token darkens or lightens as the theme requires.
-                    // 120ms is under the product register's 150-250ms ceiling
-                    // because a pointer sweeping a toolbar crosses several buttons.
-                    transition: `background-color ${MOTION.state}`,
+                    transition: "none",
                     _hover: {
                         bg: "var(--intelligit-pycharm-toolbar-hover)",
                         color: "var(--intelligit-pycharm-foreground)",
