@@ -14,6 +14,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Commit and Apply stand out as the main actions. Push and Pop use a quieter style.
 - Search boxes, toolbars and section headings have more consistent spacing. Search hints and keyboard focus are easier to see across themes.
 - Commit messages and branch or tag labels get more room before author and date columns appear.
+- Tabs and buttons use short animations. Reduced motion settings are respected.
+
+### Fixed
+
+- Old default pane sizes no longer get mistaken for custom sizes when reopening the undocked view.
 
 ## [0.32.0] - 2026-09-03
 

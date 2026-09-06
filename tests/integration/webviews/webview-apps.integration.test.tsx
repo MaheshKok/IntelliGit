@@ -1116,11 +1116,11 @@ describe("UndockedApp integration", () => {
                     new MessageEvent("message", {
                         data: {
                             type: "columnWidths",
-                            repositoryWidth: 144,
+                            repositoryWidth: 168,
                             branchWidth: 220,
-                            graphWidth: 320,
+                            graphWidth: 916,
                             infoWidth: 220,
-                            commitPanelWidth: 280,
+                            commitPanelWidth: 260,
                         },
                     }),
                 );
@@ -1129,11 +1129,12 @@ describe("UndockedApp integration", () => {
 
             expect(secondVsCode.setState).toHaveBeenCalledWith(
                 expect.objectContaining({
-                    repositoryWidth: 144,
+                    repositoryWidth: 168,
                     branchWidth: 220,
-                    graphWidth: 320,
+                    graphWidth: 916,
                     infoWidth: 220,
-                    commitPanelWidth: 280,
+                    commitPanelWidth: 260,
+                    sectionWidthsOwnership: "user-v1",
                 }),
             );
             vi.clearAllTimers();
@@ -1141,20 +1142,50 @@ describe("UndockedApp integration", () => {
         },
     );
 
-    it("preserves locally restored widths when the viewport grows", async () => {
+    it.each([
+        {
+            name: "unmarked custom widths",
+            persistedState: {
+                repositoryWidth: 144,
+                branchWidth: 220,
+                graphWidth: 320,
+                infoWidth: 220,
+                commitPanelWidth: 280,
+            },
+            restoredWidths: [144, 280, 220, 320, 220],
+        },
+        {
+            name: "marked widths matching the v0.32 defaults",
+            persistedState: {
+                repositoryWidth: 168,
+                branchWidth: 254,
+                graphWidth: 254,
+                infoWidth: 254,
+                commitPanelWidth: 254,
+                sectionWidthsOwnership: "user-v1",
+            },
+            restoredWidths: [168, 254, 254, 254, 254],
+        },
+        {
+            name: "widths with an unknown ownership marker",
+            persistedState: {
+                repositoryWidth: 168,
+                branchWidth: 254,
+                graphWidth: 254,
+                infoWidth: 254,
+                commitPanelWidth: 254,
+                sectionWidthsOwnership: "future-v2",
+            },
+            restoredWidths: [168, 254, 254, 254, 254],
+        },
+    ])("preserves $name when the viewport grows", async ({ persistedState, restoredWidths }) => {
         vi.resetModules();
         Object.defineProperty(window, "innerWidth", {
             configurable: true,
             value: 1200,
         });
 
-        installVsCodeMock({
-            repositoryWidth: 144,
-            branchWidth: 220,
-            graphWidth: 320,
-            infoWidth: 220,
-            commitPanelWidth: 280,
-        });
+        installVsCodeMock(persistedState);
         createRootHost();
         mockUndockedChildren();
 
@@ -1173,7 +1204,6 @@ describe("UndockedApp integration", () => {
             "undocked-graph-section",
             "undocked-info-section",
         ];
-        const restoredWidths = [144, 280, 220, 320, 220];
         expect(sectionIds.map(widthOf)).toEqual(restoredWidths);
 
         Object.defineProperty(window, "innerWidth", {

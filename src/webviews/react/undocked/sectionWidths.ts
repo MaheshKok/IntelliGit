@@ -5,6 +5,7 @@ const DEFAULT_REPOSITORY_WIDTH = 168;
 const DIVIDER_WIDTH = 4;
 const SECTION_COUNT = 5;
 const TOTAL_DIVIDER_WIDTH = (SECTION_COUNT - 1) * DIVIDER_WIDTH;
+const LEGACY_DEFAULT_EPSILON = 1e-6;
 const SECTION_WIDTH_KEYS = [
     "repositoryWidth",
     "branchWidth",
@@ -164,6 +165,34 @@ export function migrateSectionWidths(value: unknown): SectionWidths | undefined 
         infoWidth,
         commitPanelWidth,
     };
+}
+
+/**
+ * Identifies complete raw width records produced by the v0.32.0 equal-share generator.
+ *
+ * The narrow serialization tolerance avoids treating incomplete or manually adjusted
+ * records as untouched defaults. Callers must validate/migrate the record separately.
+ */
+export function isLegacyDefaultSectionWidths(value: unknown): boolean {
+    if (!value || typeof value !== "object") return false;
+    const record = value as Record<string, unknown>;
+    if (
+        !SECTION_WIDTH_KEYS.every(
+            (key) => typeof record[key] === "number" && Number.isFinite(record[key]),
+        )
+    ) {
+        return false;
+    }
+
+    const widths = record as unknown as SectionWidths;
+    const total = sumWidths(widths);
+    const expectedRepositoryWidth = Math.min(DEFAULT_REPOSITORY_WIDTH, total / SECTION_COUNT);
+    const expectedOtherWidth = (total - expectedRepositoryWidth) / (SECTION_COUNT - 1);
+
+    return SECTION_WIDTH_KEYS.every((key) => {
+        const expected = key === "repositoryWidth" ? expectedRepositoryWidth : expectedOtherWidth;
+        return Math.abs(widths[key] - expected) <= LEGACY_DEFAULT_EPSILON;
+    });
 }
 
 function sectionLayoutFromBudget(budget: PaneBudget): SectionLayout {

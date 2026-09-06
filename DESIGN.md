@@ -158,7 +158,7 @@ This system explicitly rejects **GitKraken-style visual maximalism**. Heavy cust
 - Dense by design: 24px rows, 13px base type, 4px radius, 14px icons
 - Flat at rest — shadows are reserved for layers that float
 - Status is never carried by color alone; a glyph or label always accompanies it
-- Near-zero motion; the one transition in the system is a 0.1s transform
+- Brief feedback: 100ms tab underlines and chevrons, 120ms control fills, and a 180ms opacity settle when switching Commit/Stash/Shelf tabs. No entrance on initial load, no pane-resize animation, and no virtualized-row stagger. Reduced motion makes state changes immediate.
 - Ships in 12 languages, so every layout must survive ~1.4× English string length
 
 ## 2. Colors

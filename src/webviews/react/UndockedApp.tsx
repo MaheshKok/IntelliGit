@@ -17,6 +17,7 @@ import {
 import { canRunCommitAction } from "./commit-panel/commitEligibility";
 import {
     computeDefaultSectionWidths,
+    isLegacyDefaultSectionWidths,
     migrateSectionWidths,
     normalizeSectionWidths,
     sectionWidthsAreClose,
@@ -49,6 +50,7 @@ import { useRebaseDialogController } from "./shared/hooks/useRebaseDialogControl
 
 const vscode = getVsCodeApi<UnifiedOutbound, Record<string, unknown>>();
 const KEYBOARD_RESIZE_STEP = 16;
+const SECTION_WIDTHS_USER_OWNERSHIP = "user-v1";
 
 type RebaseDialogMessage = Extract<UnifiedInbound, { type: "showRebaseDialog" }>;
 
@@ -171,14 +173,24 @@ interface InitialSectionWidths {
 }
 
 /**
- * Reads validated webview-local widths and records whether they came from persistence.
- * Invalid or inaccessible state falls back to responsive defaults without marking them user-owned.
+ * Reads validated webview-local widths and determines whether they are user-owned.
+ *
+ * Complete unmarked v0.32.0 generator records are recomputed responsively. Any ownership
+ * marker, including an unknown future marker, conservatively preserves validated widths.
  */
 function readInitialWidths(): InitialSectionWidths {
     try {
         const state = vscode.getState();
         const migrated = migrateSectionWidths(state);
-        if (migrated) return { widths: migrated, hasLocalPreferences: true };
+        if (migrated) {
+            const hasOwnershipMarker =
+                state !== null &&
+                typeof state === "object" &&
+                Object.prototype.hasOwnProperty.call(state, "sectionWidthsOwnership");
+            if (hasOwnershipMarker || !isLegacyDefaultSectionWidths(state)) {
+                return { widths: migrated, hasLocalPreferences: true };
+            }
+        }
         return { widths: computeDefaultSectionWidths(), hasLocalPreferences: false };
     } catch {
         return { widths: computeDefaultSectionWidths(), hasLocalPreferences: false };
@@ -227,6 +239,7 @@ function App(): React.ReactElement {
     // Tracks whether resize should preserve proportions from local state, a host
     // restore, or a divider edit instead of recomputing untouched defaults.
     const widthsHaveUserPreferencesRef = useRef(initialWidths.current.hasLocalPreferences);
+    const [widthOwnershipRevision, setWidthOwnershipRevision] = useState(0);
 
     // Guards the cross-session width persistence: stays false until either the
     // extension restores saved widths or the user actually drags a divider.
@@ -236,6 +249,7 @@ function App(): React.ReactElement {
     const markWidthsHydrated = useCallback(() => {
         widthsHaveUserPreferencesRef.current = true;
         widthsHydratedRef.current = true;
+        setWidthOwnershipRevision((revision) => revision + 1);
     }, []);
 
     const [sectionWidths, setSectionWidthsState] = useState<SectionWidths>(
@@ -433,11 +447,19 @@ function App(): React.ReactElement {
                 graphWidth,
                 infoWidth,
                 commitPanelWidth,
+                sectionWidthsOwnership: SECTION_WIDTHS_USER_OWNERSHIP,
             });
         } catch {
             /* ignore */
         }
-    }, [repositoryWidth, branchWidth, graphWidth, infoWidth, commitPanelWidth]);
+    }, [
+        repositoryWidth,
+        branchWidth,
+        graphWidth,
+        infoWidth,
+        commitPanelWidth,
+        widthOwnershipRevision,
+    ]);
 
     // --- Send column widths to extension for cross-session persistence ---
     const widthSendTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
