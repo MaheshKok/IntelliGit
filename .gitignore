@@ -193,3 +193,5 @@ AGENTS.md
 # .vsix, because vsce packages the working directory (see .vscodeignore).
 graphify-out/
 .mcp.json
+
+.github/agents/
