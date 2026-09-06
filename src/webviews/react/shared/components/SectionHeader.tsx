@@ -114,11 +114,11 @@ function CommitPanelSectionHeader({
         <SectionHeading>
             <Flex
                 align="center"
-                gap="4px"
-                px="6px"
-                py="2px"
+                gap="6px"
+                px="8px"
+                py="3px"
                 mx="4px"
-                my="1px"
+                my="2px"
                 borderRadius={`${JETBRAINS_UI.size.selectedRadius}px`}
                 cursor="pointer"
                 userSelect="none"

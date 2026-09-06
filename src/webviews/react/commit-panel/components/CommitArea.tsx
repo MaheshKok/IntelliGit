@@ -8,7 +8,7 @@ import { VscCheckbox } from "../../shared/components/VscCheckbox";
 import { ToolbarIconButton } from "../../shared/components/ToolbarIconButton";
 import { SYSTEM_FONT_STACK } from "../../../../utils/constants";
 import { t } from "../../shared/i18n";
-import { JETBRAINS_UI, Z_INDEX } from "../../shared/tokens";
+import { JETBRAINS_UI } from "../../shared/tokens";
 
 /** The host lifecycle states that fence commit-message generation controls. */
 export type CommitMessageGenerationStatus = "idle" | "requested" | "running";
@@ -172,35 +172,42 @@ export function CommitArea({
                     {t("commit.amend")}
                 </Box>
             </Flex>
-            <Box px="8px" flex={1} overflow="hidden" position="relative">
-                {/* Above the focused textarea, whose Chakra outline variant raises itself to z-index 1. */}
-                <Box
-                    position="absolute"
-                    top="4px"
-                    right="12px"
-                    zIndex={Z_INDEX.sticky}
-                    // An icon button has nothing to cut, copy, or paste; without this the
-                    // webview's native editing menu opens over it.
-                    onContextMenu={(event) => event.preventDefault()}
-                >
-                    {isGenerationActive ? (
-                        <ToolbarIconButton
-                            label={t("commit.message.stopGeneration")}
-                            icon={<VscDebugStop size={16} />}
-                            onClick={onCancelGeneration}
-                            color="var(--vscode-errorForeground)"
-                        />
-                    ) : (
-                        <ToolbarIconButton
-                            label={t("commit.message.generate")}
-                            icon={<VscSparkle size={16} />}
-                            onClick={onGenerateMessage}
-                            disabled={isGenerateDisabled}
-                            color="var(--intelligit-pycharm-blue)"
-                        />
-                    )}
-                </Box>
+            <Flex direction="column" px="10px" pb="6px" gap="4px" flex={1} overflow="hidden">
+                <Flex align="center" justify="space-between" minH="20px">
+                    <Box
+                        as="label"
+                        htmlFor="commit-area-message"
+                        fontSize="12px"
+                        fontWeight={600}
+                        color="var(--intelligit-pycharm-foreground)"
+                    >
+                        {t("commit.message.label")}
+                    </Box>
+                    <Box
+                        // An icon button has nothing to cut, copy, or paste; without this the
+                        // webview's native editing menu opens over it.
+                        onContextMenu={(event) => event.preventDefault()}
+                    >
+                        {isGenerationActive ? (
+                            <ToolbarIconButton
+                                label={t("commit.message.stopGeneration")}
+                                icon={<VscDebugStop size={16} />}
+                                onClick={onCancelGeneration}
+                                color="var(--vscode-errorForeground)"
+                            />
+                        ) : (
+                            <ToolbarIconButton
+                                label={t("commit.message.generate")}
+                                icon={<VscSparkle size={16} />}
+                                onClick={onGenerateMessage}
+                                disabled={isGenerateDisabled}
+                                color="var(--intelligit-pycharm-blue)"
+                            />
+                        )}
+                    </Box>
+                </Flex>
                 <Textarea
+                    id="commit-area-message"
                     value={commitMessage}
                     onChange={(e) => onMessageChange(e.target.value)}
                     readOnly={isGenerationActive}
@@ -211,17 +218,18 @@ export function CommitArea({
                     placeholder={t("commit.message.placeholder")}
                     resize="none"
                     w="100%"
-                    h="100%"
+                    flex={1}
+                    minH={0}
                     bg="var(--intelligit-pycharm-input)"
                     color="var(--intelligit-pycharm-foreground)"
                     border="1px solid"
                     borderColor="var(--intelligit-pycharm-input-border)"
                     borderRadius={`${JETBRAINS_UI.size.radius}px`}
                     p="6px 8px"
-                    pr="32px"
                     aria-busy={isGenerationActive}
                     fontFamily={SYSTEM_FONT_STACK}
                     fontSize="12px"
+                    lineHeight={1.5}
                     // The host owns placeholder contrast. The fixed
                     // `rgba(214,219,229,0.48)` this replaced was a light grey
                     // tuned for a dark well; on a light theme it left the
@@ -235,8 +243,8 @@ export function CommitArea({
                     // draws one.
                     _focus={{ borderColor: "var(--intelligit-pycharm-blue)" }}
                 />
-            </Box>
-            <Flex align="center" gap="8px" p="6px 8px 8px">
+            </Flex>
+            <Flex align="center" gap="8px" px="10px" pt="6px" pb="10px" flexWrap="wrap">
                 <Button
                     data-testid="commit-action-commit"
                     variant="primary"
@@ -252,14 +260,13 @@ export function CommitArea({
                 </Button>
                 <Button
                     data-testid="commit-action-push"
-                    variant="primary"
+                    variant="secondary"
                     size="sm"
                     onClick={onPush}
                     isDisabled={isPushButtonDisabled}
                     aria-disabled={isPushVisuallyDisabled || undefined}
                     fontSize="12px"
                     fontFamily={SYSTEM_FONT_STACK}
-                    border={RESERVED_BORDER}
                     _disabled={disabledButtonStyles}
                     sx={isPushVisuallyDisabled ? disabledButtonStyles : undefined}
                 >

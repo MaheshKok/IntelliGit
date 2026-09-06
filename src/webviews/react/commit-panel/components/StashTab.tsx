@@ -528,7 +528,10 @@ export function StashTab({
             <Flex
                 align="center"
                 gap="8px"
-                p="6px 8px 8px"
+                px="10px"
+                pt="6px"
+                pb="10px"
+                flexWrap="wrap"
                 borderTop="1px solid var(--intelligit-pycharm-border)"
                 bg="var(--intelligit-pycharm-panel)"
             >
@@ -547,7 +550,7 @@ export function StashTab({
                     {t("common.apply")}
                 </Button>
                 <Button
-                    variant="primary"
+                    variant="secondary"
                     size="sm"
                     onClick={() => {
                         if (displayedSelectedIndex !== null) {

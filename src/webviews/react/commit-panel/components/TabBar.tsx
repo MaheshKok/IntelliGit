@@ -15,7 +15,7 @@ import {
 import { getSettings } from "../../shared/settings";
 import { DISABLED_GLYPH_COLOR } from "../../shared/components/ToolbarIconButton";
 import { t } from "../../shared/i18n";
-import { JETBRAINS_UI, TOOLBAR_ICON_ACCENTS } from "../../shared/tokens";
+import { JETBRAINS_UI, MOTION, TOOLBAR_ICON_ACCENTS } from "../../shared/tokens";
 
 interface Props {
     stashCount: number;
@@ -53,7 +53,7 @@ interface Props {
 }
 
 const sharedTabStyles = {
-    px: "14px",
+    px: "12px",
     py: "6px",
     minH: "32px",
     fontSize: "12px",
@@ -63,13 +63,29 @@ const sharedTabStyles = {
     // holding the label on one line costs nothing and no glyph is ever clipped.
     whiteSpace: "nowrap",
     fontWeight: 600,
+    letterSpacing: "0.01em",
     color: "var(--intelligit-pycharm-foreground)",
     opacity: 0.75,
     borderBottom: "2px solid transparent",
     borderRadius: 0,
+    position: "relative",
+    transition: `background-color ${MOTION.state}, opacity ${MOTION.state}`,
+    _after: {
+        content: '""',
+        position: "absolute",
+        left: 0,
+        right: 0,
+        bottom: "-2px",
+        height: "2px",
+        bg: "var(--intelligit-pycharm-blue)",
+        pointerEvents: "none",
+        transform: "scaleX(0.35)",
+        opacity: 0,
+        transition: `transform ${MOTION.transform}, opacity ${MOTION.state}`,
+    },
     _selected: {
         opacity: 1,
-        borderBottomColor: "var(--intelligit-pycharm-blue)",
+        _after: { transform: "scaleX(1)", opacity: 1 },
     },
     // The host's own list hover, not a fixed white wash. At 2% the old value was
     // already the faintest feedback in the product on a dark theme, and on a
@@ -83,6 +99,8 @@ const sharedTabStyles = {
  *
  * Callers provide already-wired panel content, allowing the tab shell to stay
  * presentation-only while reflecting the current stash count in the stash label.
+ * Panel content remains mounted; only navigation after the first render animates,
+ * with the shared theme suppressing motion when the host requests reduced motion.
  */
 export function TabBar({
     stashCount,
@@ -103,6 +121,8 @@ export function TabBar({
     onShelfDragOver,
     onShelfDrop,
 }: Props): React.ReactElement {
+    // Only user navigation animates; initial content appears immediately and stays mounted.
+    const [hasSwitchedTabs, setHasSwitchedTabs] = React.useState(false);
     const tabs: Array<{ key: string; label: string; content: React.ReactNode }> = [
         { key: "commit", label: t("commit.tab.commit"), content: commitContent },
         {
@@ -129,6 +149,7 @@ export function TabBar({
 
     return (
         <Tabs
+            onChange={() => setHasSwitchedTabs(true)}
             variant="unstyled"
             display="flex"
             flexDirection="column"
@@ -307,6 +328,11 @@ export function TabBar({
                 {tabs.map((tab) => (
                     <TabPanel
                         key={tab.key}
+                        animation={
+                            hasSwitchedTabs
+                                ? "intelligit-tab-enter 180ms cubic-bezier(0.16, 1, 0.3, 1)"
+                                : "none"
+                        }
                         p={0}
                         flex={1}
                         display="flex"

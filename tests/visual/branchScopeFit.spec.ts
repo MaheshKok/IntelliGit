@@ -115,6 +115,8 @@ function requireTruncated(fit: Fit): void {
 /** How far the pane may be narrowed hunting for truncation, and in what steps. */
 const SHRINK_FLOOR_PX = 240;
 const SHRINK_STEP_PX = 20;
+/** At this viewport width, history is the only visible undocked pane. */
+const SINGLE_PANE_VIEWPORT_PX = 320;
 
 /**
  * Measures the label at a pane width that actually had to cut it, narrowing the pane until it does.
@@ -127,6 +129,10 @@ const SHRINK_STEP_PX = 20;
  * that trough with almost nothing to spare. Shrinking walks off the lip in whatever font is
  * rendering, which is the part a fixed width cannot do. A pane that still will not truncate by the
  * floor falls through to the same guard, so losing the precondition stays a failure, not a skip.
+ *
+ * If the initial label fits, enter the single-pane viewport range before narrowing. Only there
+ * does the clipping pane fill the viewport, which is the width `measureAfterResize` verifies.
+ * Wider workbenches divide the viewport among several panes.
  */
 async function measureTruncated(
     page: import("@playwright/test").Page,
@@ -136,7 +142,8 @@ async function measureTruncated(
     const viewport = page.viewportSize();
     let fit: Fit = await measure(page, label, field);
     for (
-        let width = (viewport?.width ?? SHRINK_FLOOR_PX) - SHRINK_STEP_PX;
+        let width =
+            Math.min(viewport?.width ?? SHRINK_FLOOR_PX, SINGLE_PANE_VIEWPORT_PX) - SHRINK_STEP_PX;
         !fit.truncated && width >= SHRINK_FLOOR_PX;
         width -= SHRINK_STEP_PX
     ) {

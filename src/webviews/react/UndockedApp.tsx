@@ -16,7 +16,8 @@ import {
 } from "./undocked/commitPanelState";
 import { canRunCommitAction } from "./commit-panel/commitEligibility";
 import {
-    computeEqualSectionWidths,
+    computeDefaultSectionWidths,
+    isLegacyDefaultSectionWidths,
     migrateSectionWidths,
     normalizeSectionWidths,
     sectionWidthsAreClose,
@@ -49,6 +50,7 @@ import { useRebaseDialogController } from "./shared/hooks/useRebaseDialogControl
 
 const vscode = getVsCodeApi<UnifiedOutbound, Record<string, unknown>>();
 const KEYBOARD_RESIZE_STEP = 16;
+const SECTION_WIDTHS_USER_OWNERSHIP = "user-v1";
 
 type RebaseDialogMessage = Extract<UnifiedInbound, { type: "showRebaseDialog" }>;
 
@@ -165,14 +167,33 @@ function graphReducer(state: GraphState, action: GraphAction): GraphState {
     }
 }
 
-function readInitialWidths(): SectionWidths {
+interface InitialSectionWidths {
+    readonly widths: SectionWidths;
+    readonly hasLocalPreferences: boolean;
+}
+
+/**
+ * Reads validated webview-local widths and determines whether they are user-owned.
+ *
+ * Complete unmarked v0.32.0 generator records are recomputed responsively. Any ownership
+ * marker, including an unknown future marker, conservatively preserves validated widths.
+ */
+function readInitialWidths(): InitialSectionWidths {
     try {
         const state = vscode.getState();
         const migrated = migrateSectionWidths(state);
-        if (migrated) return migrated;
-        return computeEqualSectionWidths();
+        if (migrated) {
+            const hasOwnershipMarker =
+                state !== null &&
+                typeof state === "object" &&
+                Object.prototype.hasOwnProperty.call(state, "sectionWidthsOwnership");
+            if (hasOwnershipMarker || !isLegacyDefaultSectionWidths(state)) {
+                return { widths: migrated, hasLocalPreferences: true };
+            }
+        }
+        return { widths: computeDefaultSectionWidths(), hasLocalPreferences: false };
     } catch {
-        return computeEqualSectionWidths();
+        return { widths: computeDefaultSectionWidths(), hasLocalPreferences: false };
     }
 }
 
@@ -212,25 +233,32 @@ function App(): React.ReactElement {
     const currentBranchName = currentBranch?.name ?? null;
     const currentBranchHeadHash = currentBranch?.hash ?? null;
 
+    const initialWidths = useRef<InitialSectionWidths | null>(null);
+    if (!initialWidths.current) initialWidths.current = readInitialWidths();
+
+    // Tracks whether resize should preserve proportions from local state, a host
+    // restore, or a divider edit instead of recomputing untouched defaults.
+    const widthsHaveUserPreferencesRef = useRef(initialWidths.current.hasLocalPreferences);
+    const [widthOwnershipRevision, setWidthOwnershipRevision] = useState(0);
+
     // Guards the cross-session width persistence: stays false until either the
     // extension restores saved widths or the user actually drags a divider.
-    // This prevents the initial equal widths (computed before restore) from
+    // This prevents the initial default widths (computed before restore) from
     // being sent back to the extension and clobbering the persisted values.
     const widthsHydratedRef = useRef(false);
     const markWidthsHydrated = useCallback(() => {
+        widthsHaveUserPreferencesRef.current = true;
         widthsHydratedRef.current = true;
+        setWidthOwnershipRevision((revision) => revision + 1);
     }, []);
 
-    const initialWidths = useRef<SectionWidths | null>(null);
-    if (!initialWidths.current) initialWidths.current = readInitialWidths();
-
     const [sectionWidths, setSectionWidthsState] = useState<SectionWidths>(
-        () => initialWidths.current!,
+        () => initialWidths.current!.widths,
     );
     const { repositoryWidth, branchWidth, graphWidth, infoWidth, commitPanelWidth } = sectionWidths;
     const layoutRef = useRef<HTMLDivElement | null>(null);
     const [sectionLayout, setSectionLayout] = useState<SectionLayout>(() =>
-        normalizeSectionWidths(initialWidths.current!),
+        normalizeSectionWidths(initialWidths.current!.widths),
     );
     const sectionWidthsRef = useRef(sectionWidths);
     sectionWidthsRef.current = sectionWidths;
@@ -247,7 +275,10 @@ function App(): React.ReactElement {
             const measuredWidth = layoutRef.current?.clientWidth;
             const totalWidth =
                 typeof measuredWidth === "number" && measuredWidth > 0 ? measuredWidth : undefined;
-            const normalized = normalizeSectionWidths(sectionWidthsRef.current, totalWidth);
+            const preferredWidths = widthsHaveUserPreferencesRef.current
+                ? sectionWidthsRef.current
+                : computeDefaultSectionWidths(totalWidth);
+            const normalized = normalizeSectionWidths(preferredWidths, totalWidth);
             setSectionLayout(normalized);
             // While every pane fits, keep the stored preferences equal to the rendered
             // widths. A divider drag applies its delta in preference space, so if the two
@@ -405,6 +436,8 @@ function App(): React.ReactElement {
 
     // --- Persist column widths ---
     useEffect(() => {
+        // Untouched defaults reflow with the viewport and must not become restored preferences.
+        if (!widthsHaveUserPreferencesRef.current) return;
         try {
             const prev = vscode.getState() ?? {};
             vscode.setState({
@@ -414,16 +447,24 @@ function App(): React.ReactElement {
                 graphWidth,
                 infoWidth,
                 commitPanelWidth,
+                sectionWidthsOwnership: SECTION_WIDTHS_USER_OWNERSHIP,
             });
         } catch {
             /* ignore */
         }
-    }, [repositoryWidth, branchWidth, graphWidth, infoWidth, commitPanelWidth]);
+    }, [
+        repositoryWidth,
+        branchWidth,
+        graphWidth,
+        infoWidth,
+        commitPanelWidth,
+        widthOwnershipRevision,
+    ]);
 
     // --- Send column widths to extension for cross-session persistence ---
     const widthSendTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
     useEffect(() => {
-        // Never persist until hydrated, otherwise the pre-restore equal widths
+        // Never persist until hydrated, otherwise the pre-restore default widths
         // would overwrite the user's saved widths in the extension.
         if (!widthsHydratedRef.current) return;
         if (widthSendTimer.current) clearTimeout(widthSendTimer.current);

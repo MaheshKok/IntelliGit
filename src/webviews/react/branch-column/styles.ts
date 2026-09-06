@@ -42,6 +42,10 @@ export const BRANCH_ROW_CLASS_CSS = `
     .branch-search-input:focus-visible {
         outline-color: ${JETBRAINS_UI.color.focus};
     }
+    .branch-search-input::placeholder {
+        color: var(--vscode-input-placeholderForeground, ${JETBRAINS_UI.color.muted});
+        opacity: 1;
+    }
 `;
 
 export const PANEL_STYLE: CSSProperties = {
@@ -56,11 +60,11 @@ export const PANEL_STYLE: CSSProperties = {
 };
 
 export const SEARCH_CONTAINER_STYLE: CSSProperties = {
-    minHeight: 30,
+    minHeight: 32,
     display: "flex",
     alignItems: "center",
     gap: 6,
-    padding: "3px 8px",
+    padding: "2px 8px",
     color: JETBRAINS_UI.color.muted,
     background: JETBRAINS_UI.color.toolbar,
     borderBottom: `1px solid ${JETBRAINS_UI.color.border}`,
@@ -70,7 +74,7 @@ export const SEARCH_CONTAINER_STYLE: CSSProperties = {
 export const SEARCH_INPUT_STYLE: CSSProperties = {
     flex: 1,
     minWidth: 0,
-    height: 20,
+    height: 26,
     borderRadius: JETBRAINS_UI.size.radius,
     border: `1px solid ${JETBRAINS_UI.color.inputBorder}`,
     background: JETBRAINS_UI.color.input,
@@ -156,10 +160,10 @@ export const SECTION_HEADER_STYLE: CSSProperties = {
     ...ROW_STYLE,
     fontWeight: 600,
     fontSize: "13px",
-    opacity: 0.82,
+    opacity: 0.9,
     paddingLeft: 8,
-    marginTop: 1,
-    marginBottom: 0,
+    marginTop: 6,
+    marginBottom: 2,
 };
 
 // The section header is a flex row, so its label needs `minWidth: 0` to be allowed to shrink at

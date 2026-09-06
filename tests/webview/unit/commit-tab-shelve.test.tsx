@@ -276,7 +276,7 @@ describe("CommitTab shelving", () => {
                 new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "ArrowUp" }),
             ),
         );
-        expect(getComputedStyle(bottomArea).height).toBe("120px");
+        expect(getComputedStyle(bottomArea).height).toBe("190px");
         act(() =>
             separator.dispatchEvent(
                 new KeyboardEvent("keydown", {
@@ -286,7 +286,7 @@ describe("CommitTab shelving", () => {
                 }),
             ),
         );
-        expect(getComputedStyle(bottomArea).height).toBe("110px");
+        expect(getComputedStyle(bottomArea).height).toBe("180px");
         act(() =>
             separator.dispatchEvent(
                 new KeyboardEvent("keydown", {
@@ -296,7 +296,7 @@ describe("CommitTab shelving", () => {
                 }),
             ),
         );
-        expect(getComputedStyle(bottomArea).height).toBe("110px");
+        expect(getComputedStyle(bottomArea).height).toBe("180px");
         act(() => {
             for (let count = 0; count < 50; count += 1) {
                 separator.dispatchEvent(

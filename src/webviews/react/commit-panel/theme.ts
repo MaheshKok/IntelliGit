@@ -60,6 +60,10 @@ const theme = extendTheme({
     styles: {
         global: {
             ":root": HOST_TOKENS,
+            "@keyframes intelligit-tab-enter": {
+                from: { opacity: 0.94 },
+                to: { opacity: 1 },
+            },
             "*, *::before, *::after": {
                 boxSizing: "border-box",
                 margin: 0,
@@ -87,6 +91,14 @@ const theme = extendTheme({
     },
     components: {
         Button: {
+            baseStyle: {
+                transition: `background-color ${MOTION.state}, border-color ${MOTION.state}, color ${MOTION.state}`,
+                _focusVisible: {
+                    outline: "2px solid var(--intelligit-pycharm-blue)",
+                    outlineOffset: "-1px",
+                    boxShadow: "none",
+                },
+            },
             variants: {
                 primary: {
                     bg: "var(--intelligit-pycharm-primary)",
