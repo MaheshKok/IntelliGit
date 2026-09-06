@@ -13,6 +13,7 @@ const DEFAULTS = {
     iconStyle: "standard",
     commitWindowPosition: "left",
     commitCheckState: "noneChecked",
+    timeFormat: "12h",
 } as const;
 
 function stubWindowSettings(intelligitSettings: unknown): void {
@@ -204,6 +205,21 @@ describe("getSettings: commitCheckState accepts only exact modes", () => {
     );
 });
 
+describe("getSettings: timeFormat is 24h only on exact match", () => {
+    it('returns "24h" for exactly "24h"', () => {
+        stubWindowSettings({ timeFormat: "24h" });
+        expect(getSettings().timeFormat).toBe("24h");
+    });
+
+    it.each([undefined, null, "12h", "24H", "24", 24, true])(
+        "falls back to 12h for malformed or unknown value %p",
+        (timeFormat) => {
+            stubWindowSettings({ timeFormat });
+            expect(getSettings().timeFormat).toBe("12h");
+        },
+    );
+});
+
 describe("getSettings: full payload and stability", () => {
     it("maps a fully valid payload field-by-field", () => {
         stubWindowSettings({
@@ -212,6 +228,7 @@ describe("getSettings: full payload and stability", () => {
             iconStyle: "color",
             commitWindowPosition: "right",
             commitCheckState: "preserveSelection",
+            timeFormat: "24h",
         });
         expect(getSettings()).toEqual({
             hoverDelay: 120,
@@ -219,6 +236,7 @@ describe("getSettings: full payload and stability", () => {
             iconStyle: "color",
             commitWindowPosition: "right",
             commitCheckState: "preserveSelection",
+            timeFormat: "24h",
         });
     });
 

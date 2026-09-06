@@ -9,6 +9,7 @@ import { ContextMenu } from "./shared/components/ContextMenu";
 import { ClearIcon, SearchIcon } from "./shared/components/Icons";
 import { getCommitMenuItems } from "./commit-list/commitMenu";
 import { CommitListRows } from "./commit-list/CommitListRows";
+import { ColumnResizeHandle, useMetaColumnWidths } from "./commit-list/metaColumnResize";
 import {
     commitHashesMatch,
     MAX_COMMIT_CHECK_RETRIES_PER_HASH,
@@ -20,10 +21,8 @@ import { JETBRAINS_UI } from "./shared/tokens";
 import { resolveLanePalette, useIsLightTheme } from "./shared/theme";
 import { t } from "./shared/i18n";
 import {
-    AUTHOR_COL_WIDTH,
     BRANCH_SCOPE_STYLE,
     CHECKS_COL_WIDTH,
-    DATE_COL_WIDTH,
     FILTER_BAR_STYLE,
     FILTER_CLEAR_BUTTON_STYLE,
     FILTER_ICON_STYLE,
@@ -274,9 +273,19 @@ export function CommitList({
         };
     }, [commits.length, scrollTop, viewportHeight]);
 
+    const showChecksColumn =
+        showAuthorDate && Boolean(onRequestCommitChecks && onOpenCommitCheckUrl);
+    const metaAvailableWidth = viewportWidth - graphWidth - ROW_SIDE_PADDING - 2;
+    const {
+        widths: metaWidths,
+        startResize: startColumnResize,
+        nudgeColumn,
+        resetColumn,
+    } = useMetaColumnWidths(metaAvailableWidth, showChecksColumn);
     const measuredMetaColumns = visibleMetaColumns(
-        viewportWidth - graphWidth - ROW_SIDE_PADDING - 2,
-        showAuthorDate && Boolean(onRequestCommitChecks && onOpenCommitCheckUrl),
+        metaAvailableWidth,
+        showChecksColumn,
+        metaWidths,
     );
     const showAuthor = showAuthorDate && measuredMetaColumns.author;
     const showDate = showAuthorDate && measuredMetaColumns.date;
@@ -483,18 +492,39 @@ export function CommitList({
                 <div style={headerRowStyle(graphWidth)}>
                     <span style={{ flex: 1 }}>{t("commit.list.header.commit")}</span>
                     {showAuthor && (
-                        <span style={{ width: AUTHOR_COL_WIDTH, textAlign: "right" }}>
+                        <span
+                            style={{
+                                width: metaWidths.author,
+                                textAlign: "right",
+                                position: "relative",
+                            }}
+                        >
+                            <ColumnResizeHandle
+                                column="author"
+                                label={t("commit.list.header.author")}
+                                onResizeStart={startColumnResize}
+                                onNudge={nudgeColumn}
+                                onReset={resetColumn}
+                            />
                             {t("commit.list.header.author")}
                         </span>
                     )}
                     {showDate && (
                         <span
                             style={{
-                                width: DATE_COL_WIDTH,
+                                width: metaWidths.date,
                                 textAlign: "right",
                                 marginLeft: METADATA_COLUMN_MARGIN,
+                                position: "relative",
                             }}
                         >
+                            <ColumnResizeHandle
+                                column="date"
+                                label={t("commit.list.header.date")}
+                                onResizeStart={startColumnResize}
+                                onNudge={nudgeColumn}
+                                onReset={resetColumn}
+                            />
                             {t("commit.list.header.date")}
                         </span>
                     )}
@@ -520,6 +550,7 @@ export function CommitList({
                 hasMore={hasMore}
                 showAuthor={showAuthor}
                 showDate={showDate}
+                metaWidths={metaWidths}
                 commitChecks={commitChecks}
                 onSelectCommit={onSelectCommit}
                 onRequestCommitChecks={

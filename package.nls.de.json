@@ -88,6 +88,9 @@
     "configuration.commitCheckState.enum.noneChecked": "Anfängliche und neu erkannte Dateien im Commit-Panel standardmäßig deaktiviert lassen (Standard).",
     "configuration.commitCheckState.enum.preserveSelection": "Die vorherige Auswahl aktivierter Dateien für jedes Repository wiederherstellen; neu erkannte Dateien bleiben deaktiviert.",
     "configuration.commitCheckState.markdownDescription": "Steuert, wie Dateien aktiviert werden, wenn das Commit-Panel geladen wird oder neue Pfade erkennt. `allChecked` aktiviert anfängliche und neue Dateien, `noneChecked` lässt sie deaktiviert (Standard), und `preserveSelection` stellt die vorherige Auswahl jedes Repositorys wieder her, während neue Dateien deaktiviert bleiben. Explizite Auswahlen bleiben bei Aktualisierungen erhalten. Änderungen werden nach dem erneuten Laden des Fensters wirksam.",
+    "configuration.timeFormat.enum.12h": "12-Stunden-Uhr mit AM/PM (Standard).",
+    "configuration.timeFormat.enum.24h": "24-Stunden-Uhr.",
+    "configuration.timeFormat.markdownDescription": "Uhrzeitformat für Commit-Daten in der IntelliGit-Commit-Liste und den Details. `12h` zeigt eine 12-Stunden-Uhr mit AM/PM (Standard), `24h` eine 24-Stunden-Uhr. Änderungen werden nach einem Neuladen des Fensters wirksam.",
     "command.diffShowInIntelliGit": "Diff in IntelliGit anzeigen",
     "command.diffShowInVsCode": "Diff in VS Code anzeigen"
 }

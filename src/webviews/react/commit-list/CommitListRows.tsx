@@ -12,6 +12,7 @@ import {
     CANVAS_STYLE,
     contentContainerStyle,
     LOADING_MORE_STYLE,
+    type MetaColumnWidths,
     SCROLL_VIEWPORT_STYLE,
 } from "./styles";
 
@@ -29,6 +30,7 @@ interface CommitListRowsProps {
     hasMore: boolean;
     showAuthor: boolean;
     showDate: boolean;
+    metaWidths: MetaColumnWidths;
     commitChecks?: ReadonlyMap<string, CommitChecksSnapshot | "loading">;
     onSelectCommit: (hash: string) => void;
     /** Requests a commit's checks; `force` bypasses the host/provider cache. */
@@ -57,6 +59,7 @@ export function CommitListRows({
     hasMore,
     showAuthor,
     showDate,
+    metaWidths,
     commitChecks,
     onSelectCommit,
     onRequestCommitChecks,
@@ -102,6 +105,8 @@ export function CommitListRows({
                                 onUnhover={onCommitUnhover}
                                 showAuthor={showAuthor}
                                 showDate={showDate}
+                                authorWidth={metaWidths.author}
+                                dateWidth={metaWidths.date}
                                 checks={commitChecks?.get(commit.hash)}
                                 onRequestChecks={onRequestCommitChecks}
                                 onOpenCheckUrl={onOpenCommitCheckUrl}

@@ -999,6 +999,20 @@
                     "default": "auto",
                     "markdownDescription": "%configuration.commitWindowPosition.markdownDescription%"
                 },
+                "intelligit.timeFormat": {
+                    "type": "string",
+                    "enum": [
+                        "12h",
+                        "24h"
+                    ],
+                    "enumDescriptions": [
+                        "%configuration.timeFormat.enum.12h%",
+                        "%configuration.timeFormat.enum.24h%"
+                    ],
+                    "default": "12h",
+                    "scope": "window",
+                    "markdownDescription": "%configuration.timeFormat.markdownDescription%"
+                },
                 "intelligit.commitCheckState": {
                     "type": "string",
                     "enum": [

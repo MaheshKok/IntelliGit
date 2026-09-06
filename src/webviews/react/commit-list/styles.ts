@@ -4,28 +4,38 @@ import { JETBRAINS_UI, MOTION, Z_INDEX } from "../shared/tokens";
 
 export const AUTHOR_COL_WIDTH = 104;
 export const DATE_COL_WIDTH = 118;
+/** The two user-resizable metadata columns to the right of the commit message. */
+export type MetaColumnKey = "author" | "date";
+/** Current pixel width of each metadata column. */
+export type MetaColumnWidths = Record<MetaColumnKey, number>;
+/** Default widths; the user can drag either column and the choice persists. */
+export const DEFAULT_META_COLUMN_WIDTHS: MetaColumnWidths = {
+    author: AUTHOR_COL_WIDTH,
+    date: DATE_COL_WIDTH,
+};
 export const CHECKS_COL_WIDTH = 28;
 /** Gap between the fixed metadata columns in rows and their header. */
 export const METADATA_COLUMN_MARGIN = 4;
 /** Minimum width reserved for the message cell, including refs, before metadata. */
-const MESSAGE_MIN_WIDTH = 180;
+export const MESSAGE_MIN_WIDTH = 180;
 export const ROW_SIDE_PADDING = 8;
 
 /**
  * Chooses the metadata columns that fit beside the minimum message-and-ref cell.
  *
- * The thresholds are derived from the fixed metadata widths and their shared margin,
+ * The thresholds are derived from the current metadata widths and their shared margin,
  * including the optional checks column, so a width change cannot silently make
  * the message cell collapse again.
  */
 export function visibleMetaColumns(
     availableWidth: number,
     showChecks: boolean,
+    widths: MetaColumnWidths = DEFAULT_META_COLUMN_WIDTHS,
 ): { author: boolean; date: boolean } {
     const checksWidth = showChecks ? CHECKS_COL_WIDTH + METADATA_COLUMN_MARGIN : 0;
     const authorThreshold =
-        MESSAGE_MIN_WIDTH + AUTHOR_COL_WIDTH + METADATA_COLUMN_MARGIN + checksWidth;
-    const bothColumnsThreshold = authorThreshold + DATE_COL_WIDTH + METADATA_COLUMN_MARGIN;
+        MESSAGE_MIN_WIDTH + widths.author + METADATA_COLUMN_MARGIN + checksWidth;
+    const bothColumnsThreshold = authorThreshold + widths.date + METADATA_COLUMN_MARGIN;
 
     return {
         author: availableWidth >= authorThreshold,
@@ -90,6 +100,9 @@ export const FILTER_INPUT_CLASS = "commit-filter-input";
 export const COMMIT_ROW_CLASS_CSS = `
 .commit-row { transition: background-color ${MOTION.state}; }
 .commit-row:hover:not([aria-current="true"]) { background-color: ${JETBRAINS_UI.color.hover}; }
+.commit-column-resize { border: 0; padding: 0; background-color: transparent; transition: background-color ${MOTION.state}; }
+.commit-column-resize:hover { background-color: ${JETBRAINS_UI.color.border}; }
+.commit-column-resize:focus-visible { outline: 1px solid ${JETBRAINS_UI.color.focus}; outline-offset: -1px; }
 .commit-filter-input::placeholder {
     color: var(--vscode-input-placeholderForeground, ${JETBRAINS_UI.color.muted});
     opacity: 1;

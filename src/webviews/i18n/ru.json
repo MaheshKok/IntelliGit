@@ -337,6 +337,7 @@
     "stash.fileAction.editSource": "Редактировать исходный файл",
     "stash.fileAction.cherryPickSelectedChanges": "Выполнить cherry-pick выбранных изменений",
     "a11y.resizeRepositoryColumn": "Изменить размер столбца репозитория",
+    "a11y.resizeColumn": "Изменить размер столбца {column}",
     "commit.message.generate": "Сгенерировать сообщение коммита",
     "commit.message.stopGeneration": "Остановить генерацию сообщения коммита",
     "rebase.dialog.title": "Перебазирование коммитов",

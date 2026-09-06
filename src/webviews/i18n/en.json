@@ -106,6 +106,7 @@
     "a11y.resizeCommitList": "Resize commit list",
     "a11y.resizeCommitPanel": "Resize commit panel",
     "a11y.resizeRepositoryColumn": "Resize repository column",
+    "a11y.resizeColumn": "Resize {column} column",
     "common.branches": "Branches",
     "common.tags": "Tags",
     "common.fileCount": {

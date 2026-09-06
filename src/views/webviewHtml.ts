@@ -33,6 +33,7 @@ type WebviewSettings = {
     iconStyle: "color" | "standard";
     commitWindowPosition: "left" | "right";
     commitCheckState: CommitFileCheckMode;
+    timeFormat: "12h" | "24h";
 };
 
 type CommitFileCheckMode = "allChecked" | "noneChecked" | "preserveSelection";
@@ -62,8 +63,14 @@ export function buildWebviewShellHtml({
         .map((styleUri) => `    <link rel="stylesheet" href="${escapeHtmlAttr(String(styleUri))}">`)
         .join("\n");
     const i18nPayload = getWebviewI18nPayload();
-    const { hoverDelay, tooltipsEnabled, iconStyle, commitWindowPosition, commitCheckState } =
-        readWebviewSettings();
+    const {
+        hoverDelay,
+        tooltipsEnabled,
+        iconStyle,
+        commitWindowPosition,
+        commitCheckState,
+        timeFormat,
+    } = readWebviewSettings();
 
     const settingsPayload = scriptSafeJson({
         hoverDelay,
@@ -71,6 +78,7 @@ export function buildWebviewShellHtml({
         iconStyle,
         commitWindowPosition,
         commitCheckState,
+        timeFormat,
     });
     const i18nPayloadJson = scriptSafeJson(i18nPayload);
     const e2eBootstrapScript = buildE2eBootstrapScript(
@@ -167,6 +175,7 @@ function readWebviewSettings(): WebviewSettings {
         iconStyle: "standard",
         commitWindowPosition: "left",
         commitCheckState: "noneChecked",
+        timeFormat: "12h",
     };
 
     try {
@@ -186,6 +195,7 @@ function readWebviewSettings(): WebviewSettings {
                 rawCommitCheckState === "noneChecked"
                     ? rawCommitCheckState
                     : defaults.commitCheckState,
+            timeFormat: config.get?.<string>("intelligit.timeFormat") === "24h" ? "24h" : "12h",
         };
     } catch {
         return defaults;

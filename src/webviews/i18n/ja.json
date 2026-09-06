@@ -316,6 +316,7 @@
     "stash.fileAction.editSource": "ソースを編集",
     "stash.fileAction.cherryPickSelectedChanges": "選択した変更をチェリーピック",
     "a11y.resizeRepositoryColumn": "リポジトリ列のサイズを変更",
+    "a11y.resizeColumn": "{column}列のサイズを変更",
     "commit.message.generate": "コミットメッセージを生成",
     "commit.message.stopGeneration": "コミットメッセージの生成を停止",
     "rebase.dialog.title": "コミットをリベース中",
