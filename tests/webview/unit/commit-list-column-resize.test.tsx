@@ -204,7 +204,7 @@ describe("commit list column resize", () => {
         unmount(root, container);
     });
 
-    it("shows a full-height guide with the live width while dragging, and none at rest", async () => {
+    it("shows a bare full-height guide while dragging, and none at rest", async () => {
         const { root, container } = renderList();
         await flush();
 
@@ -215,7 +215,9 @@ describe("commit list column resize", () => {
         drag(handle(container, "author"), 500, 460, false);
 
         expect(handle(container, "author").getAttribute("data-resizing")).toBe("true");
-        expect(guide()?.textContent).toBe(`${AUTHOR_COL_WIDTH + 40}px`);
+        expect(guide()).not.toBeNull();
+        // No width readout beside the line: the line alone is the feedback.
+        expect(guide()?.textContent).toBe("");
 
         act(() => {
             document.dispatchEvent(new MouseEvent("mouseup", { clientX: 460 }));

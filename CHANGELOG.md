@@ -5,6 +5,13 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.32.2] - 2026-09-06
+
+### Added
+
+- You can now make the Author and Date columns in the commit list wider or narrower. Drag the small grip on the left edge of a column heading. A blue line follows your drag so you can see where the column will end. Double-click the grip to go back to the default width, or focus it and use the left and right arrow keys. IntelliGit remembers your widths.
+- A new `intelligit.timeFormat` setting shows commit times on a 24-hour clock (14:30 instead of 2:30 PM). The 12-hour clock stays the default. Reload the window after changing it.
+
 ## [0.32.1] - 2026-09-05
 
 ### Changed

@@ -140,13 +140,6 @@ export const COMMIT_ROW_CLASS_CSS = `
     animation: commit-column-guide-in ${MOTION.state};
 }
 @keyframes commit-column-guide-in { from { opacity: 0; } }
-.commit-column-guide-badge {
-    position: absolute; top: 2px; left: 8px; padding: 1px 7px; white-space: nowrap;
-    font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums; line-height: 14px;
-    color: ${JETBRAINS_UI.color.foreground}; background: ${JETBRAINS_UI.color.tooltipBackground};
-    border: 1px solid ${JETBRAINS_UI.color.tooltipBorder}; border-radius: ${JETBRAINS_UI.size.pillRadius}px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.28);
-}
 @media (prefers-reduced-motion: reduce) {
     .commit-column-resize::before, .commit-column-resize::after, .commit-column-guide { transition: none; animation: none; }
 }

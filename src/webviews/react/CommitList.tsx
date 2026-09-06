@@ -512,11 +512,7 @@ export function CommitList({
                         data-testid="commit-column-guide"
                         aria-hidden="true"
                         style={{ right: resizeGuideRight }}
-                    >
-                        <span className="commit-column-guide-badge">
-                            {metaWidths[resizingColumn]}px
-                        </span>
-                    </div>
+                    />
                 ) : null}
                 {headerLabel ? null : (
                     <div style={headerRowStyle(graphWidth)}>
