@@ -62,19 +62,18 @@ const sharedTabStyles = {
     // and shifted the whole panel down. The row wraps instead (see the Flex below), so
     // holding the label on one line costs nothing and no glyph is ever clipped.
     whiteSpace: "nowrap",
-    fontWeight: 600,
-    letterSpacing: "0.01em",
-    color: "var(--intelligit-pycharm-foreground)",
-    opacity: 0.75,
+    fontWeight: 500,
+    color: "var(--intelligit-pycharm-muted)",
+    opacity: 1,
     borderBottom: "2px solid transparent",
     borderRadius: 0,
     position: "relative",
-    transition: `background-color ${MOTION.state}, opacity ${MOTION.state}`,
+    transition: `opacity ${MOTION.state}`,
     _after: {
         content: '""',
         position: "absolute",
-        left: 0,
-        right: 0,
+        left: "12px",
+        right: "12px",
         bottom: "-2px",
         height: "2px",
         bg: "var(--intelligit-pycharm-blue)",
@@ -84,6 +83,8 @@ const sharedTabStyles = {
         transition: `transform ${MOTION.transform}, opacity ${MOTION.state}`,
     },
     _selected: {
+        color: "var(--intelligit-pycharm-foreground)",
+        fontWeight: 600,
         opacity: 1,
         _after: { transform: "scaleX(1)", opacity: 1 },
     },
@@ -91,7 +92,7 @@ const sharedTabStyles = {
     // already the faintest feedback in the product on a dark theme, and on a
     // light one it lightened an unselected tab toward the panel it sits on —
     // hover made the tab harder to see, not easier.
-    _hover: { opacity: 0.9, bg: JETBRAINS_UI.color.hover },
+    _hover: { color: JETBRAINS_UI.color.foreground, bg: JETBRAINS_UI.color.hover },
 } as const;
 
 /**

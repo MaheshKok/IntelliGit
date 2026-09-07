@@ -176,6 +176,19 @@ feature allows you to undock the Git window and move it to another screen. The
 commit panel, branch tree, graph lanes, changed-file tree, and commit details
 stay in one layout, with dock/undock support for monitor-heavy workflows.
 
+Open **IntelliGit: Show Git Log**, then use the **Undock...** button in the Graph
+view's toolbar to choose **Undock in Editor Tab** or **Undock in New Window**.
+The button is available in both Graph views, including when the sidebar Graph
+is moved into the bottom panel. With Graph in that panel, VS Code's existing
+**Ctrl+J** shortcut (**Cmd+J** on macOS) toggles the panel; **Undock...** is the
+button that opens the full workbench.
+
+To show or hide this button, search VS Code Settings for
+`intelligit.undockableWindowButtonVisability`. It defaults to `true`; set it to
+`false` to hide the button in both Graph views. Both standard and color icons
+are supported. This setting controls button visibility; `intelligit.undockableWindow`
+controls whether **Show Git Log** opens the unified editor tab.
+
 ### Publish Branch
 
 ![IntelliGit publish branch provider picker for GitHub, GitLab, Bitbucket Cloud, and Bitbucket Server](media/screenshots/publish-branch.png)
@@ -231,6 +244,9 @@ Configure IntelliGit from VS Code Settings or `settings.json`.
 
     // Open IntelliGit as a unified editor tab when Show Git Log is invoked.
     "intelligit.undockableWindow": false,
+
+    // Show the Undock... toolbar button in both Graph views; false hides it.
+    "intelligit.undockableWindowButtonVisability": true,
 
     // Clear commit drafts after local commits; false retains the draft.
     "intelligit.clearLastCommit": true,

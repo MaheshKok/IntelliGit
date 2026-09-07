@@ -17,8 +17,9 @@ jobs:
         # Four shards currently mean four container builds and four VS Code downloads. With ten
         # rows, that almost certainly costs more wall-clock than one run; the matrix is
         # infrastructure for when the suite grows, not a present-day speedup. The suite it runs is
-        # also the same one the PR tier runs today -- `test:e2e` is the ten implemented flows, and
-        # the other 77 mutating surfaces in `tests/e2e/coverage-manifest.ts` are still `notCovered`.
+        # also the same one the PR tier runs today -- `test:e2e` runs the ten implemented flows
+        # plus the native Undock shortcut regression. The other 77 mutating surfaces in
+        # `tests/e2e/coverage-manifest.ts` are still `notCovered`.
         strategy:
             fail-fast: false
             matrix:
