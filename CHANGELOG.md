@@ -14,7 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- The Undock shortcut is now available on both IntelliGit graph views, including when the sidebar Graph is moved into the bottom panel. Both icon styles and the existing button-visibility setting are supported.
+- Restored the **Undock...** toolbar button in both IntelliGit Graph views, including when the sidebar Graph is moved into the bottom panel opened with VS Code's existing **Ctrl+J** shortcut (**Cmd+J** on macOS). The button offers **Undock in Editor Tab** and **Undock in New Window**. The existing `intelligit.undockableWindowButtonVisability` setting defaults to `true`; set it to `false` to hide the button. Both standard and color icons are supported.
 
 ## [0.32.2] - 2026-09-06
 
