@@ -130,6 +130,11 @@ export const MAX_DIFF_PAYLOAD_BYTES = 439_048;
  * real quadratic clears the bar by more than contention ever did. Unlike the absolute it replaces,
  * this needs no suspension on CI, so the render path is gated on runners where it previously
  * was not gated at all.
+ *
+ * Restated 2026-09-07 after the native commit-input bridge grew the large tier: it now stands at
+ * 2,558 lines (`countLines`) against 1,172, so a linear pipeline predicts 2.18 and a quadratic
+ * approaches `(2558/1172)^2 = 4.76`. Scaling the worst innocent reading from 2.32 to about 2.39
+ * leaves it 1.21x below the threshold, which is unchanged.
  */
 export const MAX_DIFF_RENDER_GROWTH = 2.9;
 

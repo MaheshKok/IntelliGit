@@ -382,7 +382,7 @@ describe("core utilities", () => {
     it("shared style helpers and tokens expose expected values", () => {
         expect(getChevronIconStyle(true).transform).toContain("90deg");
         expect(getChevronIconStyle(false).transform).toContain("0deg");
-        expect(headerRowStyle(120).paddingLeft).toBe(120);
+        expect(headerRowStyle(120).paddingLeft).toBe(128);
         expect(contentContainerStyle(5).height).toBe(120);
         expect(GIT_STATUS_COLORS.M).toContain("--vscode-gitDecoration");
         expect(GIT_STATUS_LABELS["?"]).toBe("Unversioned");

@@ -5,6 +5,20 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.32.4] - 2026-09-07
+
+### Added
+
+- Commit messages written by other extensions into VS Code's own Source Control box now show up in IntelliGit's commit box too, and the other way round.
+
+### Changed
+
+- Loading your last commit message now also keeps it after a window reload.
+
+### Fixed
+
+- In the full workbench, a selected branch is highlighted from its own name instead of across the whole column, and a selected commit keeps a little space between the highlight and its message.
+
 ## [0.32.3] - 2026-09-07
 
 ### Changed

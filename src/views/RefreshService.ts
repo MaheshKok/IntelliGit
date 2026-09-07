@@ -3,7 +3,6 @@
 // (branches + graph + panel + conflicts) refresh cycles,
 // plus subscriptions to shared root filesystem and Git-state watchers.
 
-import * as path from "path";
 import * as vscode from "vscode";
 import { GitOps } from "../git/operations";
 import type { Branch, GitWorktree } from "../types";
@@ -12,6 +11,11 @@ import { CommitPanelViewProvider } from "./CommitPanelViewProvider";
 import { MergeConflictsTreeProvider } from "./MergeConflictsTreeProvider";
 import type { UndockedViewProvider } from "./UndockedViewProvider";
 import type { WorktreeService } from "../services/worktreeService";
+import {
+    normalizedPath,
+    type VsCodeGitExtension,
+    type VsCodeGitRepository,
+} from "./nativeCommitInputBridge";
 import {
     publishRepositoryWorkingTreeChange,
     subscribeToRepositoryWorkingTreeChanges,
@@ -36,28 +40,6 @@ export interface RefreshServiceDeps {
     onBranchesUpdated: (branches: Branch[]) => void;
     onWorktreesUpdated?: (worktrees: GitWorktree[]) => void;
     getUndocked?: () => UndockedViewProvider | undefined;
-}
-
-/** Minimal VS Code Git extension API surface consumed by refresh wiring. */
-interface VsCodeGitExtension {
-    getAPI(version: 1): VsCodeGitApi;
-}
-
-/** Repository events exposed by VS Code's built-in Git extension. */
-interface VsCodeGitApi {
-    repositories: VsCodeGitRepository[];
-    onDidOpenRepository?: (
-        listener: (repository: VsCodeGitRepository) => unknown,
-    ) => vscode.Disposable;
-    onDidCloseRepository?: (
-        listener: (repository: VsCodeGitRepository) => unknown,
-    ) => vscode.Disposable;
-}
-
-/** VS Code Git repository handle used for root matching and state-change events. */
-interface VsCodeGitRepository {
-    rootUri: vscode.Uri;
-    onDidChangeState?: (listener: () => unknown) => vscode.Disposable;
 }
 
 /**
@@ -328,15 +310,4 @@ export class RefreshService implements vscode.Disposable {
             disposable.dispose();
         }
     }
-}
-
-/**
- * Normalizes paths for repository identity comparisons across platforms.
- *
- * VS Code Git API repository roots and the extension's selected root can differ in spelling or
- * case on Windows, so refresh listener registration compares resolved normalized identities.
- */
-function normalizedPath(value: string): string {
-    const normalized = path.resolve(value);
-    return process.platform === "win32" ? normalized.toLowerCase() : normalized;
 }

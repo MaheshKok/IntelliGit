@@ -101,6 +101,10 @@ import {
 } from "./panelFileActions";
 import { abortMergeWithConfirmation } from "./mergeAbort";
 import { ShelfConflictEditorPanel } from "./ShelfConflictEditorPanel";
+import {
+    NativeCommitInputBridge,
+    type NativeCommitInputBridgeOptions,
+} from "./nativeCommitInputBridge";
 interface PersistedColumnWidths {
     repositoryWidth: number;
     branchWidth: number;
@@ -129,6 +133,12 @@ interface UndockedViewProviderOptions {
     commitChecksProviders?: readonly CommitChecksProvider[];
     /** Shared activation-owned coordinator; undocked providers never construct their own. */
     commitMessageGenerationCoordinator?: CommitMessageGenerationCoordinator;
+    nativeCommitInputBridgeFactory?: (
+        options: NativeCommitInputBridgeOptions,
+    ) => Pick<
+        NativeCommitInputBridge,
+        "attach" | "detach" | "setFromPanel" | "setVisible" | "dispose"
+    >;
 }
 
 /**
@@ -189,6 +199,11 @@ export class UndockedViewProvider {
     private readonly shelfServiceForRepository?: (root: string) => ShelfService | undefined;
     private readonly shelfRemoveOnUnshelve: boolean;
     private readonly commitMessageGenerationCoordinator?: CommitMessageGenerationCoordinator;
+    private readonly nativeCommitInputBridge: Pick<
+        NativeCommitInputBridge,
+        "attach" | "detach" | "setFromPanel" | "setVisible" | "dispose"
+    >;
+    private bridgedRoots = new Set<string>();
     private shelfService?: ShelfService;
     private readonly iconTheme: IconThemeService;
     private repoRootUri: vscode.Uri;
@@ -335,6 +350,33 @@ export class UndockedViewProvider {
         this.shelfService = this.shelfServiceForRepository?.(this.selectedRepositoryRoot);
         this.executor?.setRoot(this.selectedRepositoryRoot);
         this.iconTheme = new IconThemeService(this.extensionUri);
+        this.nativeCommitInputBridge = (
+            options.nativeCommitInputBridgeFactory ??
+            ((bridgeOptions) => new NativeCommitInputBridge(bridgeOptions))
+        )({
+            readDraft: (root) => this.getStoredCommitDraft(root),
+            persistDraft: (root, text) => {
+                try {
+                    void Promise.resolve(
+                        this.workspaceState?.update(
+                            this.getCommitDraftStorageKey(root),
+                            text || undefined,
+                        ),
+                    ).catch((error: unknown) => {
+                        console.error("[IntelliGit] Failed to persist commit draft:", error);
+                    });
+                } catch (error: unknown) {
+                    console.error("[IntelliGit] Failed to persist commit draft:", error);
+                }
+            },
+            onNativeChange: (root, message) => {
+                this.postToWebview({
+                    type: "restoreCommitDraft",
+                    repositoryRoot: root,
+                    message,
+                });
+            },
+        });
         this.commitChecks = new CommitChecksCoordinator(
             this.gitOps,
             options.commitChecksProviders ?? [
@@ -352,6 +394,7 @@ export class UndockedViewProvider {
                 settingsFingerprint: commitChecksSettingsFingerprint(commitChecksSettings),
             },
         );
+        this.syncBridgeRoots();
     }
 
     /**
@@ -384,6 +427,7 @@ export class UndockedViewProvider {
         selectedRepositoryRoot = this.selectedRepositoryRoot,
     ): void {
         this.repositories = repositories;
+        this.syncBridgeRoots();
         const selected =
             this.findRepository(selectedRepositoryRoot) ??
             this.findRepository(this.selectedRepositoryRoot) ??
@@ -416,6 +460,15 @@ export class UndockedViewProvider {
             return;
         }
         this.sendRepositories();
+    }
+
+    private syncBridgeRoots(): void {
+        const nextRoots = new Set(this.repositories.map((repository) => repository.root));
+        for (const root of this.bridgedRoots) {
+            if (!nextRoots.has(root)) this.nativeCommitInputBridge.detach(root);
+        }
+        for (const root of nextRoots) this.nativeCommitInputBridge.attach(root);
+        this.bridgedRoots = nextRoots;
     }
 
     /**
@@ -691,9 +744,11 @@ export class UndockedViewProvider {
         this.iconTheme.attachWebview(this.panel.webview);
         this.registerThemeChangeListeners();
         this.panel.webview.html = this.getHtml(this.panel.webview);
+        this.nativeCommitInputBridge.setVisible(this.panel.visible);
         this.panel.onDidDispose(() => {
             this.commitCheckDemandSeq += 1;
             this.commitMessageGenerationCoordinator?.dropHost(this.commitMessageGenerationHost);
+            this.nativeCommitInputBridge.setVisible(false);
             this.panel = undefined;
             this.iconTheme.dispose();
             this.disposeThemeChangeDisposables();
@@ -711,6 +766,7 @@ export class UndockedViewProvider {
         // Forward real panel visibility; the retained webview cannot trust
         // document.visibilityState, so demand must be gated by the host signal.
         this.panel.onDidChangeViewState(() => {
+            this.nativeCommitInputBridge.setVisible(this.panel?.visible ?? false);
             this.postToWebview({
                 type: "setViewVisibility",
                 visible: this.panel?.visible ?? false,
@@ -723,6 +779,7 @@ export class UndockedViewProvider {
     dispose(): void {
         this.commitCheckDemandSeq += 1;
         this.commitMessageGenerationCoordinator?.dropHost(this.commitMessageGenerationHost);
+        this.nativeCommitInputBridge.dispose();
         this.iconTheme.dispose();
         this.disposeThemeChangeDisposables();
         this._onCommitSelected.dispose();
@@ -907,6 +964,7 @@ export class UndockedViewProvider {
                         clearCommitMessage = false;
                     }
                 }
+                if (clearCommitMessage) this.setFromPanelSafely(commitRepositoryRoot, "");
                 if (this.repoRootUri.fsPath !== commitRepositoryRoot) return;
                 this.postToWebview({
                     type: "committed",
@@ -1133,6 +1191,7 @@ export class UndockedViewProvider {
                 if (!repository) {
                     throw new Error("Unknown repository root received from webview.");
                 }
+                this.setFromPanelSafely(repository.root, message);
                 await this.workspaceState?.update(
                     this.getCommitDraftStorageKey(repository.root),
                     message || undefined,
@@ -1198,14 +1257,7 @@ export class UndockedViewProvider {
                 await publishBranchFromPanel(fileActionDeps);
                 break;
             case "getLastCommitMessage": {
-                const lastMsg = await this.gitOps
-                    .deriveFor(commitRepositoryRoot)
-                    .getLastCommitMessage();
-                this.postToWebview({
-                    type: "lastCommitMessage",
-                    repositoryRoot: commitRepositoryRoot,
-                    message: lastMsg,
-                });
+                await this.handleGetLastCommitMessage();
                 break;
             }
             case "getAmendBranchCommits": {
@@ -1995,6 +2047,33 @@ export class UndockedViewProvider {
         return (
             this.workspaceState?.get<string>(this.getCommitDraftStorageKey(repositoryRoot)) ?? ""
         );
+    }
+    private setFromPanelSafely(root: string | undefined, message: string): void {
+        if (!root) return;
+        try {
+            this.nativeCommitInputBridge.setFromPanel(root, message);
+        } catch (error: unknown) {
+            console.error("[IntelliGit] Failed to mirror commit draft:", error);
+        }
+    }
+    private async mirrorPanelText(root: string, message: string): Promise<void> {
+        this.setFromPanelSafely(root, message);
+        await this.workspaceState?.update(
+            this.getCommitDraftStorageKey(root),
+            message || undefined,
+        );
+    }
+    private async handleGetLastCommitMessage(): Promise<void> {
+        const repositoryRoot = this.selectedRepositoryRoot;
+        const switchSeq = this.repositorySwitchSeq;
+        const lastMsg = await this.gitOps.deriveFor(repositoryRoot).getLastCommitMessage();
+        if (this.repositorySwitchSeq !== switchSeq) return;
+        this.postToWebview({
+            type: "lastCommitMessage",
+            repositoryRoot,
+            message: lastMsg,
+        });
+        await this.mirrorPanelText(repositoryRoot, lastMsg);
     }
     /**
      * Sends validated persisted column widths before the webview performs layout writes.

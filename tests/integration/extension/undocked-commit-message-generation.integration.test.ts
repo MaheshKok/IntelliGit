@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { fixturePath } from "../../helpers/fixturePaths";
+import { createNoopNativeCommitInputBridge } from "../../helpers/nativeCommitInputBridgeDouble";
 
 // Every root here is resolved through `fixturePath` rather than written as a POSIX-shaped
 // literal. `/repo-a` is not an absolute path on Windows: production joins it with `.git`
@@ -205,6 +206,7 @@ async function createProvider() {
             ],
             selectedRepositoryRoot: REPO_A,
             commitMessageGenerationCoordinator: coordinator,
+            nativeCommitInputBridgeFactory: createNoopNativeCommitInputBridge,
         } as never,
     );
     provider.open();

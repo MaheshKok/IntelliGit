@@ -14,7 +14,9 @@ import { t } from "../shared/i18n";
 import {
     BRANCH_SECTION_GUIDE_STYLE,
     BRANCH_SECTION_GUIDE_WRAPPER_STYLE,
+    BRANCH_ROW_PAINT_INSET,
     BRANCH_TREE_INDENT_STEP,
+    branchRowPaintStyle,
     DEFAULT_BRANCH_ICON_YELLOW,
     HEAD_LABEL_STYLE,
     HEAD_ROW_STYLE,
@@ -288,7 +290,11 @@ function WorktreeRow({
                     if (!worktree.isCurrent) onOpenContextMenu(event.currentTarget, worktree);
                 }
             }}
-            style={{ ...ROW_STYLE, paddingLeft: TREE_INDENT_STEP }}
+            style={{
+                ...ROW_STYLE,
+                paddingLeft: TREE_INDENT_STEP,
+                ...branchRowPaintStyle(TREE_INDENT_STEP - BRANCH_ROW_PAINT_INSET),
+            }}
         >
             {worktree.isCurrent ? (
                 <WorktreeSmallIcon color={DEFAULT_BRANCH_ICON_YELLOW} />

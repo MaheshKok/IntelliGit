@@ -8,11 +8,12 @@
  * four HTTP-backed commit-check providers, two of which receive a credential store. Passing an
  * empty provider list is what prevents provider construction; disabling the coordinator is what
  * prevents a future check read from reaching providers. Only one of those two is visible in the
- * payload, so `buildUndockedProviderConstructorArguments` -- the COMPLETE argument tuple, spread at
+ * payload, so `buildUndockedProviderConstructorArguments` -- the complete policy tuple, spread at
  * the single construction site -- is the exact-value oracle, and
- * `buildUndockedProviderConstructorOptions` is the policy it carries. See the tuple builder's own
- * comment for the mutation that proved an argument list at the call site is not covered by an
- * assertion on the policy object alone.
+ * `buildUndockedProviderConstructorOptions` is the policy it carries. The local construction
+ * wrapper adds only the test-only no-op native-input bridge. See the tuple builder's own comment
+ * for the mutation that proved an argument list at the call site is not covered by an assertion on
+ * the policy object alone.
  *
  * The `mid-rebase` postcondition is checked before opening the panel. The panel and capture sink are
  * process-wide test seams, while the provider owns a retained panel reference, so every recording
@@ -43,6 +44,7 @@ import { throwingDouble } from "./throwingDouble";
 import { buildWebviewFixture } from "./webviewFixtureFile";
 import type { WebviewFixture } from "./webviewFixtureTypes";
 import { getCreatedWebviewPanels, resetCreatedWebviewPanelsForTests } from "./webviewPanelDouble";
+import { createNoopNativeCommitInputBridge } from "../../helpers/nativeCommitInputBridgeDouble";
 import {
     resetFakeWorkspaceConfigurationForTests,
     setFakeWorkspaceConfiguration,
@@ -131,9 +133,22 @@ function createInertSecretStorage(): vscode.SecretStorage {
 
 type UndockedConstructorArguments = ConstructorParameters<typeof UndockedViewProvider>;
 
+function createRecordingUndockedViewProvider(
+    ...args: UndockedConstructorArguments
+): UndockedViewProvider {
+    const options = args[7];
+    args[7] = {
+        ...options,
+        nativeCommitInputBridgeFactory:
+            options?.nativeCommitInputBridgeFactory ?? createNoopNativeCommitInputBridge,
+    };
+    return new UndockedViewProvider(...args);
+}
+
 /**
- * The COMPLETE positional argument tuple the recorder hands to `new UndockedViewProvider(...)`,
- * so that assembling those arguments has exactly ONE oracled choke point.
+ * The complete positional policy tuple the recorder hands to its local construction wrapper, so
+ * that assembling those arguments has exactly ONE oracled choke point. The wrapper adds only the
+ * test-only no-op native-input bridge before construction.
  *
  * Without this, `buildUndockedProviderConstructorOptions` is a trap dressed as an oracle: it proves
  * what the builder RETURNS, not what the constructor RECEIVES. Adversarial review confirmed the
@@ -224,10 +239,11 @@ export async function recordUndockedWebviewFixture(
             );
         }
 
-        // Spread a built tuple rather than listing arguments here: see
+        // Spread the built policy tuple rather than listing arguments here: see
         // buildUndockedProviderConstructorArguments for why an argument list at this site is an
-        // un-oracled seam that adversarial review walked straight through.
-        const provider = new UndockedViewProvider(
+        // un-oracled seam that adversarial review walked straight through. The wrapper adds only
+        // the no-op native-input bridge used by test and recorder construction.
+        const provider = createRecordingUndockedViewProvider(
             ...buildUndockedProviderConstructorArguments({ repoRoot: options.repoRoot, gitOps }),
         );
 

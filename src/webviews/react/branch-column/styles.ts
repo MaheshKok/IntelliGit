@@ -10,9 +10,6 @@ export const BRANCH_TREE_GUIDE_BASE = BRANCH_TREE_INDENT_BASE + 16 / 2;
 export const DEFAULT_BRANCH_ICON_YELLOW = "var(--vscode-charts-yellow, #f2c94c)";
 
 export const BRANCH_ROW_CLASS_CSS = `
-    .branch-row:hover {
-        background: ${JETBRAINS_UI.color.hover} !important;
-    }
     button.branch-row {
         width: 100%;
         border: none;
@@ -21,17 +18,31 @@ export const BRANCH_ROW_CLASS_CSS = `
         font: inherit;
         text-align: left;
     }
-    .branch-row.selected {
-        background: ${JETBRAINS_UI.color.selected} !important;
-        color: ${JETBRAINS_UI.color.selectedForeground} !important;
+    /* Hover and selection paint on a box that starts before the row's first glyph
+       (see branchRowPaintStyle), not on the row itself: the row spans the pane and
+       indents with padding, so painting it ran the ring across the indent guides. */
+    .branch-row::after {
+        content: "";
+        position: absolute;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        left: var(--branch-row-paint-left, 0px);
         border-radius: ${JETBRAINS_UI.size.selectedRadius}px;
+        pointer-events: none;
+        z-index: -1;
+    }
+    .branch-row:hover::after {
+        background: ${JETBRAINS_UI.color.hover};
+    }
+    .branch-row.selected {
+        color: ${JETBRAINS_UI.color.selectedForeground} !important;
+    }
+    .branch-row.selected::after {
+        background: ${JETBRAINS_UI.color.selected};
         /* The fill is host-owned and measures as low as 1.15:1 against the panel,
            so the boundary comes from the ring. See SHADOW.selectedRing. */
         box-shadow: ${SHADOW.selectedRing};
-    }
-    .branch-row.selected:hover {
-        background: ${JETBRAINS_UI.color.selected} !important;
-        color: ${JETBRAINS_UI.color.selectedForeground} !important;
     }
     .branch-track-push {
         color: var(--vscode-gitDecoration-addedResourceForeground, #73c991) !important;
@@ -133,7 +144,19 @@ export const ROW_STYLE: CSSProperties = {
     whiteSpace: "nowrap",
     overflow: "hidden",
     lineHeight: "20px",
+    // Own stacking context, so the `::after` paint at z-index -1 sits under the
+    // row's content instead of under the panel.
+    isolation: "isolate",
 };
+
+/** Room kept between the paint's left edge and the row's first glyph. */
+export const BRANCH_ROW_PAINT_INSET = 8;
+
+/** Where a row's hover/selection paint starts, read by `.branch-row::after`. */
+export function branchRowPaintStyle(paintLeft: number): CSSProperties {
+    // React forwards `--*` keys to `style.setProperty`; CSSProperties has no slot for them.
+    return { "--branch-row-paint-left": `${paintLeft}px` } as CSSProperties;
+}
 
 export const INDENT_GUIDE_STYLE: CSSProperties = {
     position: "absolute",

@@ -15,9 +15,11 @@ import { resolveFolderIcon } from "../../shared/utils/folderIcons";
 import { getSettings } from "../../shared/settings";
 import { t } from "../../shared/i18n";
 import {
+    BRANCH_ROW_PAINT_INSET,
     BRANCH_TREE_GUIDE_BASE,
     BRANCH_TREE_INDENT_BASE,
     BRANCH_TREE_INDENT_STEP,
+    branchRowPaintStyle,
     DEFAULT_BRANCH_ICON_YELLOW,
     INDENT_GUIDE_STYLE,
     NODE_LABEL_STYLE,
@@ -54,6 +56,9 @@ const BRANCH_ICON_SPACER_STYLE: React.CSSProperties = {
     marginRight: 4,
     flexShrink: 0,
 };
+/** How far the spacer above pushes a branch row's icon past the indent. */
+const BRANCH_ICON_SPACER_ADVANCE =
+    Number(BRANCH_ICON_SPACER_STYLE.width) + Number(BRANCH_ICON_SPACER_STYLE.marginRight);
 
 /** Recursive branch-row inputs shared by folder rows and concrete branch rows. */
 interface Props {
@@ -216,13 +221,16 @@ export function BranchTreeNodeRow({
     const isFolder = node.children.length > 0 && !node.branch;
     const folderKey = `${prefix}/${node.label}`;
     const isExpanded = expandedFolders.has(folderKey);
-    const rowStyle = React.useMemo<React.CSSProperties>(
-        () => ({
-            ...ROW_STYLE,
-            paddingLeft: BRANCH_TREE_INDENT_BASE + depth * BRANCH_TREE_INDENT_STEP,
-        }),
-        [depth],
-    );
+    const rowStyle = React.useMemo<React.CSSProperties>(() => {
+        const indent = BRANCH_TREE_INDENT_BASE + depth * BRANCH_TREE_INDENT_STEP;
+        // The first glyph is a folder's chevron at the indent, or a branch's icon after
+        // the chevron-sized spacer. A folder's innermost guide sits 6px before its
+        // chevron, so that paint stops 4px short instead of crossing the guide.
+        const paintLeft = isFolder
+            ? indent - 4
+            : indent + BRANCH_ICON_SPACER_ADVANCE - BRANCH_ROW_PAINT_INSET;
+        return { ...ROW_STYLE, paddingLeft: indent, ...branchRowPaintStyle(paintLeft) };
+    }, [depth, isFolder]);
 
     if (isFolder) {
         const resolvedFolderIcon = resolveFolderIcon(
