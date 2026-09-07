@@ -900,6 +900,113 @@ describe("UndockedApp integration", () => {
         }));
     }
 
+    it.each(["left", "right"])(
+        "hides only the single-repository column with commit panel on the %s",
+        async (position) => {
+            vi.resetModules();
+            Object.defineProperty(window, "innerWidth", { configurable: true, value: 1200 });
+            const vscode = installVsCodeMock({
+                repositoryWidth: 144,
+                branchWidth: 220,
+                graphWidth: 320,
+                infoWidth: 220,
+                commitPanelWidth: 280,
+                sectionWidthsOwnership: "user-v1",
+            });
+            createRootHost();
+            mockUndockedChildren();
+            await import("../../../src/webviews/react/UndockedApp");
+            await flush();
+            const selector = '[data-testid="undocked-repository-section"]';
+            const divider = '[data-testid="undocked-repository-divider"]';
+            const readWidths = () =>
+                Array.from(document.querySelectorAll<HTMLElement>('[data-testid$="-section"]')).map(
+                    (element) => Number.parseFloat(element.style.width),
+                );
+            const before = readWidths();
+            const readyCalls = vscode.postMessage.mock.calls.filter(
+                ([message]) => message.type === "ready",
+            ).length;
+            const savedWidths = vscode.setState.mock.calls.length;
+            expect(document.querySelector(selector)).not.toBeNull();
+            act(() => {
+                window.dispatchEvent(
+                    new MessageEvent("message", {
+                        data: { type: "settings", commitWindowPosition: position },
+                    }),
+                );
+                window.dispatchEvent(
+                    new MessageEvent("message", {
+                        data: {
+                            type: "repositories",
+                            repositories: [{ root: "/repo-a", label: "Repo A" }],
+                            selectedRepositoryRoot: "/repo-a",
+                        },
+                    }),
+                );
+            });
+            await flush();
+            expect(
+                document.querySelector(selector),
+                "single repo has no repository column",
+            ).toBeNull();
+            expect(document.querySelector(divider), "single repo has no orphan divider").toBeNull();
+            expect(readWidths().reduce((total, width) => total + width, 0) + 12).toBeCloseTo(1200);
+            act(() => {
+                window.dispatchEvent(
+                    new MessageEvent("message", {
+                        data: {
+                            type: "repositories",
+                            repositories: [
+                                { root: "/repo-a", label: "Repo A" },
+                                { root: "/repo-b", label: "Repo B" },
+                            ],
+                            selectedRepositoryRoot: "/repo-a",
+                        },
+                    }),
+                );
+            });
+            await flush();
+            expect(
+                document.querySelector(selector),
+                "multiple repos retain repository column",
+            ).not.toBeNull();
+            expect(document.querySelector(divider)).not.toBeNull();
+            expect(readWidths().sort((a, b) => a - b)).toEqual(before.sort((a, b) => a - b));
+            expect(
+                document.querySelectorAll('[data-testid="undocked-repository-row"]'),
+            ).toHaveLength(2);
+            expect(
+                vscode.postMessage.mock.calls.filter(
+                    ([message]) => message.type === "selectRepository",
+                ),
+            ).toHaveLength(0);
+            act(() => {
+                window.dispatchEvent(
+                    new MessageEvent("message", {
+                        data: {
+                            type: "repositories",
+                            repositories: [{ root: "/repo-b", label: "Repo B" }],
+                            selectedRepositoryRoot: "/repo-b",
+                        },
+                    }),
+                );
+            });
+            await flush();
+            expect(document.querySelector(selector)).toBeNull();
+            expect(document.querySelector(divider)).toBeNull();
+            expect(
+                vscode.postMessage.mock.calls.filter(([message]) => message.type === "ready"),
+            ).toHaveLength(readyCalls);
+            expect(
+                vscode.postMessage.mock.calls.filter(
+                    ([message]) => message.type === "columnWidths",
+                ),
+            ).toHaveLength(0);
+            expect(vscode.setState.mock.calls).toHaveLength(savedWidths);
+        },
+    );
+
     it("keeps support panes at their defaults until a drag and preserves dragged proportions", async () => {
         vi.resetModules();
         vi.useFakeTimers();

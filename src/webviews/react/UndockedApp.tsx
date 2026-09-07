@@ -203,6 +203,10 @@ function App(): React.ReactElement {
     // --- Graph-side state ---
     const [graphState, graphDispatch] = useReducer(graphReducer, initialGraphState);
     const [repositories, setRepositories] = useState<RepositoryViewIdentity[]>([]);
+    const showRepository = repositories.length !== 1;
+    // Keep the width-restoration callback stable so list changes do not resend ready.
+    const showRepositoryRef = useRef(showRepository);
+    showRepositoryRef.current = showRepository;
     const [selectedRepositoryRoot, setSelectedRepositoryRoot] = useState<string | null>(null);
     const {
         commits,
@@ -258,7 +262,7 @@ function App(): React.ReactElement {
     const { repositoryWidth, branchWidth, graphWidth, infoWidth, commitPanelWidth } = sectionWidths;
     const layoutRef = useRef<HTMLDivElement | null>(null);
     const [sectionLayout, setSectionLayout] = useState<SectionLayout>(() =>
-        normalizeSectionWidths(initialWidths.current!.widths),
+        normalizeSectionWidths(initialWidths.current!.widths, undefined, showRepository),
     );
     const sectionWidthsRef = useRef(sectionWidths);
     sectionWidthsRef.current = sectionWidths;
@@ -267,7 +271,7 @@ function App(): React.ReactElement {
         const measuredWidth = layoutRef.current?.clientWidth;
         const totalWidth =
             typeof measuredWidth === "number" && measuredWidth > 0 ? measuredWidth : undefined;
-        setSectionLayout(normalizeSectionWidths(next, totalWidth));
+        setSectionLayout(normalizeSectionWidths(next, totalWidth, showRepositoryRef.current));
     }, []);
 
     useEffect(() => {
@@ -278,7 +282,7 @@ function App(): React.ReactElement {
             const preferredWidths = widthsHaveUserPreferencesRef.current
                 ? sectionWidthsRef.current
                 : computeDefaultSectionWidths(totalWidth);
-            const normalized = normalizeSectionWidths(preferredWidths, totalWidth);
+            const normalized = normalizeSectionWidths(preferredWidths, totalWidth, showRepository);
             setSectionLayout(normalized);
             // While every pane fits, keep the stored preferences equal to the rendered
             // widths. A divider drag applies its delta in preference space, so if the two
@@ -311,7 +315,7 @@ function App(): React.ReactElement {
             window.visualViewport?.removeEventListener("resize", normalizeForCurrentWidth);
             resizeObserver?.disconnect();
         };
-    }, [setSectionWidths]);
+    }, [setSectionWidths, showRepository]);
 
     // --- Commit-panel state ---
     const [cpState, reactCpDispatch] = useReducer(commitPanelReducer, initialCommitPanelState);

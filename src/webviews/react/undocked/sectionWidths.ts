@@ -210,22 +210,35 @@ function sectionLayoutFromBudget(budget: PaneBudget): SectionLayout {
     };
 }
 
-/** Projects persisted preferences into a usable, possibly hidden render layout. */
-export function normalizeSectionWidths(widths: SectionWidths, totalWidth?: number): SectionLayout {
+/**
+ * Projects saved preferences into the visible layout without mutating them.
+ * Excluding the repository pane also releases its divider budget; its saved width
+ * remains available when multiple repositories need the selector again.
+ */
+export function normalizeSectionWidths(
+    widths: SectionWidths,
+    totalWidth?: number,
+    showRepository = true,
+): SectionLayout {
     const available = getTotalSectionWidth(totalWidth);
     const preferred = sumWidths(widths) > 0 ? widths : computeDefaultSectionWidths(totalWidth);
     const minimums = sectionMinimums();
     const budget = resolvePaneBudget(
         available,
-        SECTION_WIDTH_KEYS.map((key) => ({
-            key,
-            min: minimums[key],
-            preferred: preferred[key],
-        })),
+        SECTION_WIDTH_KEYS.filter((key) => showRepository || key !== "repositoryWidth").map(
+            (key) => ({
+                key,
+                min: minimums[key],
+                preferred: preferred[key],
+            }),
+        ),
         SECTION_DROP_ORDER,
         DIVIDER_WIDTH,
     );
-    return sectionLayoutFromBudget(budget);
+    return sectionLayoutFromBudget({
+        ...budget,
+        hidden: showRepository ? budget.hidden : ["repositoryWidth", ...budget.hidden],
+    });
 }
 
 /** Compares pane widths with a sub-pixel tolerance to avoid resize loops. */
