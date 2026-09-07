@@ -59,6 +59,23 @@ for (const iconStyle of ["color", "standard"]) {
             await window.keyboard.press("Enter");
             await window.getByRole("option", { name: /^Undock in Editor Tab/ }).click();
             await expect(window.getByRole("tab", { name: /IntelliGit — workspace/ })).toBeVisible();
+            // A tab title alone can pass while its webview is still blank.
+            await expect
+                .poll(
+                    async () => {
+                        const visible = await Promise.all(
+                            window.frames().map((frame) =>
+                                frame
+                                    .getByTestId("undocked-graph-section")
+                                    .isVisible()
+                                    .catch(() => false),
+                            ),
+                        );
+                        return visible.some(Boolean);
+                    },
+                    { timeout: 30_000 },
+                )
+                .toBe(true);
             await window.screenshot({ path: testInfo.outputPath("opened-workbench.png") });
         } finally {
             await electronApp.close();
