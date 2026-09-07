@@ -92,7 +92,7 @@ function declaration(body: string, property: string): string | null {
  * absent -- which is the whole failure mode the second half of this file guards.
  */
 function selectionSignals(): string[] {
-    const body = ruleBody(BRANCH_ROW_CLASS_CSS, ".branch-row.selected");
+    const body = ruleBody(BRANCH_ROW_CLASS_CSS, ".branch-row.selected::after");
     const fill = declaration(body, "background");
     const ring = declaration(body, "box-shadow");
     return [
@@ -143,7 +143,7 @@ describe("a selected row is distinguishable from an unselected one", () => {
 
     it("draws the indicator as a 1px inner ring, so no row reflows", () => {
         const ring = declaration(
-            ruleBody(BRANCH_ROW_CLASS_CSS, ".branch-row.selected"),
+            ruleBody(BRANCH_ROW_CLASS_CSS, ".branch-row.selected::after"),
             "box-shadow",
         );
         expect(

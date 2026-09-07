@@ -419,6 +419,7 @@ function CommitRowInner({
             display: "flex",
             alignItems: "center",
             marginLeft: graphWidth,
+            paddingLeft: ROW_SIDE_PADDING,
             paddingRight: ROW_SIDE_PADDING,
             cursor: "pointer",
             fontSize: "12px",

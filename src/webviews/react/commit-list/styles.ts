@@ -222,7 +222,7 @@ export function headerRowStyle(graphWidth: number): CSSProperties {
         borderBottom: `1px solid ${JETBRAINS_UI.color.border}`,
         background: JETBRAINS_UI.color.toolbar,
         color: JETBRAINS_UI.color.muted,
-        paddingLeft: graphWidth,
+        paddingLeft: graphWidth + ROW_SIDE_PADDING,
         paddingRight: ROW_SIDE_PADDING,
         flexShrink: 0,
     };

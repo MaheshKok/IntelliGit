@@ -15,6 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Loading your last commit message now also keeps it after a window reload.
 
+### Fixed
+
+- In the full workbench, a selected branch is highlighted from its own name instead of across the whole column, and a selected commit keeps a little space between the highlight and its message.
+
 ## [0.32.3] - 2026-09-07
 
 ### Changed
