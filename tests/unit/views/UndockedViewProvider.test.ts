@@ -72,6 +72,10 @@ import {
     setFakeWorkspaceConfiguration,
 } from "../../visual/recorder/workspaceConfigurationDouble";
 import { removeScratchDirectories } from "../../helpers/scratchDirectories";
+import { createNoopNativeCommitInputBridge } from "../../helpers/nativeCommitInputBridgeDouble";
+import type * as vscode from "vscode";
+import * as vscodeRuntime from "vscode";
+import type { NativeCommitInputBridgeOptions } from "../../../src/views/nativeCommitInputBridge";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === "object" && value !== null;
@@ -107,6 +111,113 @@ function setCommitDetailMessages(posted: readonly unknown[]): Record<string, unk
     );
 }
 
+interface BridgeHarness {
+    options?: NativeCommitInputBridgeOptions;
+    attached: string[];
+    detached: string[];
+    visible: boolean[];
+    setFromPanel: Array<{ root: string; message: string }>;
+    disposed: boolean;
+    throwOnSet: boolean;
+    order: string[];
+}
+
+function createRecordingWorkspaceState(
+    initial: Record<string, unknown> = {},
+    order: string[] = [],
+) {
+    const values = new Map(Object.entries(initial));
+    const events: string[] = [];
+    return {
+        values,
+        events,
+        state: {
+            get: ((key: string, defaultValue?: unknown) =>
+                values.has(key) ? values.get(key) : defaultValue) as vscode.Memento["get"],
+            update: async (key: string, value: unknown): Promise<void> => {
+                events.push(`persist:${key}:${String(value)}`);
+                order.push("persist");
+                if (value === undefined) values.delete(key);
+                else values.set(key, value);
+            },
+            keys: (): readonly string[] => [...values.keys()],
+        } as vscode.Memento,
+    };
+}
+
+function createBridgeFactory(harness: BridgeHarness) {
+    return (options: NativeCommitInputBridgeOptions) => {
+        harness.options = options;
+        return {
+            attach: (root: string): void => harness.attached.push(root),
+            detach: (root: string): void => harness.detached.push(root),
+            setFromPanel: (root: string, message: string): void => {
+                if (harness.throwOnSet) throw new Error("native setter failed");
+                harness.setFromPanel.push({ root, message });
+                harness.order.push("bridge");
+            },
+            setVisible: (visible: boolean): void => harness.visible.push(visible),
+            dispose: (): void => {
+                harness.disposed = true;
+            },
+        };
+    };
+}
+
+function createTestUndockedViewProvider(
+    ...args: ConstructorParameters<typeof UndockedViewProvider>
+): UndockedViewProvider {
+    const options = args[7];
+    args[7] = {
+        ...options,
+        nativeCommitInputBridgeFactory:
+            options?.nativeCommitInputBridgeFactory ?? createNoopNativeCommitInputBridge,
+    };
+    return new UndockedViewProvider(...args);
+}
+
+function createBridgeProvider(
+    root = "/repo-a",
+    repositories = [
+        { root, label: root, kind: "repository" as const },
+        { root: "/repo-b", label: "/repo-b", kind: "repository" as const },
+    ],
+) {
+    const bridge: BridgeHarness = {
+        attached: [],
+        detached: [],
+        visible: [],
+        setFromPanel: [],
+        disposed: false,
+        throwOnSet: false,
+        order: [],
+    };
+    const workspace = createRecordingWorkspaceState({}, bridge.order);
+    const gitOps = new GitOps(new GitExecutor(root));
+    const args = [
+        ...buildUndockedProviderConstructorArguments({
+            repoRoot: root,
+            gitOps,
+        }),
+    ];
+    args[4] = workspace.state;
+    args[7] = {
+        ...(args[7] as object),
+        repositories,
+        nativeCommitInputBridgeFactory: createBridgeFactory(bridge),
+    };
+    const provider = createTestUndockedViewProvider(...args);
+    return { bridge, provider, workspace, root, repositories, gitOps };
+}
+
+function openTestPanel(provider: UndockedViewProvider): FakeWebviewPanel {
+    resetCreatedWebviewPanelsForTests();
+    provider.open();
+    const panel = getCreatedWebviewPanels().at(-1);
+    if (!panel) throw new Error("provider did not open a webview panel");
+    return panel;
+}
+
 /**
  * Replaces `panel.webview.postMessage` -- which the shared double discards unconditionally -- with a
  * local recorder, and returns the array it appends to. See this file's own header for why the plain
@@ -140,7 +251,7 @@ describe("UndockedViewProvider commit-detail re-post on webview reload", () => {
                 );
                 setFakeWorkspaceConfiguration(buildUndockedWorkspaceConfiguration());
 
-                const provider = new UndockedViewProvider(
+                const provider = createTestUndockedViewProvider(
                     ...buildUndockedProviderConstructorArguments({
                         repoRoot: template.root,
                         gitOps,
@@ -205,4 +316,177 @@ describe("UndockedViewProvider commit-detail re-post on webview reload", () => {
             }
         },
     );
+});
+
+describe("UndockedViewProvider native commit bridge wiring", () => {
+    it("saveCommitDraft calls setFromPanel before persistence", async () => {
+        const { bridge, provider, workspace, root } = createBridgeProvider();
+        const panel = openTestPanel(provider);
+
+        await panel.receiveMessage({
+            type: "saveCommitDraft",
+            repositoryRoot: root,
+            message: "panel",
+        });
+
+        expect(bridge.setFromPanel).toEqual([{ root, message: "panel" }]);
+        expect(bridge.order).toEqual(["bridge", "persist"]);
+        expect(workspace.values.get(`commitDraft:${root}`)).toBe("panel");
+        provider.dispose();
+        resetCreatedWebviewPanelsForTests();
+    });
+
+    it("native change persists and posts restoreCommitDraft synchronously", () => {
+        const { bridge, provider, workspace, root } = createBridgeProvider();
+        const panel = openTestPanel(provider);
+        const posted: unknown[] = [];
+        panel.webview.postMessage = (message: unknown) => {
+            posted.push(message);
+            return Promise.resolve(true);
+        };
+        const callbacks = bridge.options;
+        if (!callbacks) throw new Error("bridge factory did not receive callbacks");
+
+        callbacks.persistDraft(root, "native");
+        callbacks.onNativeChange(root, "native");
+
+        expect(bridge.order).toEqual(["persist"]);
+        expect(workspace.values.get(`commitDraft:${root}`)).toBe("native");
+        expect(posted.at(-1)).toEqual({
+            type: "restoreCommitDraft",
+            repositoryRoot: root,
+            message: "native",
+        });
+        provider.dispose();
+        resetCreatedWebviewPanelsForTests();
+    });
+
+    it("saveCommitDraft still persists when the bridge throws", async () => {
+        const { bridge, provider, workspace, root } = createBridgeProvider();
+        bridge.throwOnSet = true;
+        const panel = openTestPanel(provider);
+
+        await panel.receiveMessage({
+            type: "saveCommitDraft",
+            repositoryRoot: root,
+            message: "safe",
+        });
+
+        expect(workspace.values.get(`commitDraft:${root}`)).toBe("safe");
+        provider.dispose();
+        resetCreatedWebviewPanelsForTests();
+    });
+
+    it("successful clear-on-commit clears native input while panel is hidden", async () => {
+        setFakeWorkspaceConfiguration(buildUndockedWorkspaceConfiguration());
+        const { bridge, provider, root, gitOps } = createBridgeProvider();
+        const panel = openTestPanel(provider);
+        panel.setVisible(false);
+        vi.spyOn(gitOps, "deriveFor").mockReturnValue({
+            commit: () => Promise.resolve(),
+        } as GitOps);
+        vi.spyOn(provider as never, "refreshCommitPanelData" as never).mockResolvedValue(undefined);
+        const window = vscodeRuntime.window as unknown as Record<string, unknown>;
+        const vscodeNamespace = vscodeRuntime as unknown as Record<string, unknown>;
+        vscodeNamespace.ProgressLocation = { Notification: 15 };
+        window.withProgress = async (
+            _options: unknown,
+            task: (progress: unknown) => Promise<void>,
+        ) => task({ report: (): void => {} });
+        window.showInformationMessage = (): undefined => undefined;
+        await panel.receiveMessage({ type: "commit", message: "commit" });
+
+        expect(bridge.setFromPanel).toContainEqual({ root, message: "" });
+        provider.dispose();
+        resetCreatedWebviewPanelsForTests();
+        delete window.withProgress;
+        delete window.showInformationMessage;
+        delete vscodeNamespace.ProgressLocation;
+        resetFakeWorkspaceConfigurationForTests();
+    });
+
+    it("getLastCommitMessage mirrors loaded text to native input and store", async () => {
+        const { bridge, provider, workspace, root, gitOps } = createBridgeProvider();
+        vi.spyOn(gitOps, "deriveFor").mockReturnValue({
+            getLastCommitMessage: () => Promise.resolve("last message"),
+        } as GitOps);
+        const panel = openTestPanel(provider);
+
+        await panel.receiveMessage({ type: "getLastCommitMessage" });
+
+        expect(bridge.setFromPanel).toContainEqual({ root, message: "last message" });
+        expect(workspace.values.get(`commitDraft:${root}`)).toBe("last message");
+        provider.dispose();
+        resetCreatedWebviewPanelsForTests();
+    });
+
+    it("drops a last-message reply after A to B to A switch with newer draft", async () => {
+        const rootA = "/repo-a";
+        const rootB = "/repo-b";
+        const { bridge, provider, workspace, repositories, gitOps } = createBridgeProvider(rootA);
+        const panel = openTestPanel(provider);
+        const posted: unknown[] = [];
+        panel.webview.postMessage = (message: unknown) => {
+            posted.push(message);
+            return Promise.resolve(true);
+        };
+        const reply = Promise.withResolvers<string>();
+        vi.spyOn(gitOps, "deriveFor").mockReturnValue({
+            getLastCommitMessage: () => reply.promise,
+        } as GitOps);
+        const request = panel.receiveMessage({ type: "getLastCommitMessage" });
+        vi.spyOn(provider as never, "reloadSelectedRepository" as never).mockResolvedValue(
+            undefined,
+        );
+        provider.setRepositories(repositories, rootB);
+        provider.setRepositories(repositories, rootA);
+        await workspace.state.update(`commitDraft:${rootA}`, "newer draft");
+        reply.resolve("stale last message");
+        await request;
+
+        expect(bridge.setFromPanel).toEqual([]);
+        expect(workspace.values.get(`commitDraft:${rootA}`)).toBe("newer draft");
+        expect(
+            posted.filter((message) => isRecord(message) && message.type === "lastCommitMessage"),
+        ).toEqual([]);
+        provider.dispose();
+        resetCreatedWebviewPanelsForTests();
+    });
+
+    it("constructor and identical setRepositories attach every initial root", () => {
+        const { bridge, provider, repositories } = createBridgeProvider();
+
+        expect(bridge.attached).toEqual(repositories.map((repository) => repository.root));
+        expect(bridge.detached).toEqual([]);
+
+        provider.setRepositories(repositories, repositories[0]?.root);
+
+        expect(bridge.detached).toEqual([]);
+        provider.dispose();
+        resetCreatedWebviewPanelsForTests();
+    });
+
+    it("setRepositories detaches a removed root and attaches an added one", () => {
+        const { bridge, provider, repositories } = createBridgeProvider();
+        const repoC = { root: "/repo-c", label: "/repo-c", kind: "repository" as const };
+
+        provider.setRepositories([...repositories.slice(0, 1), repoC]);
+
+        expect(bridge.detached).toEqual(["/repo-b"]);
+        expect(bridge.attached.slice(2)).toEqual(["/repo-a", "/repo-c"]);
+        provider.dispose();
+        resetCreatedWebviewPanelsForTests();
+    });
+
+    it("visibility toggles and disposal reach the bridge", () => {
+        const { bridge, provider } = createBridgeProvider();
+        const panel = openTestPanel(provider);
+        panel.setVisible(false);
+        panel.setVisible(true);
+        provider.dispose();
+
+        expect(bridge.visible).toEqual([true, false, true, false]);
+        expect(bridge.disposed).toBe(true);
+        resetCreatedWebviewPanelsForTests();
+    });
 });

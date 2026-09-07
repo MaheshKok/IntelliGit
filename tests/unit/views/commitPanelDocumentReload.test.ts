@@ -53,6 +53,7 @@ import { createFakeExtensionUri } from "../../visual/recorder/commitInfoVscodeDo
 import { GitExecutor } from "../../../src/git/executor";
 import { GitOps } from "../../../src/git/operations";
 import { CommitPanelViewProvider } from "../../../src/views/CommitPanelViewProvider";
+import { createNoopNativeCommitInputBridge } from "../../helpers/nativeCommitInputBridgeDouble";
 
 const INERT_CONTEXT = {} as vscode.WebviewViewResolveContext;
 const INERT_TOKEN = {} as vscode.CancellationToken;
@@ -136,6 +137,14 @@ function createCommitPanelProvider(): CommitPanelViewProvider {
     return new CommitPanelViewProvider(
         createFakeExtensionUri(),
         new GitOps(new GitExecutor("/fake/repo")),
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        createNoopNativeCommitInputBridge,
     );
 }
 

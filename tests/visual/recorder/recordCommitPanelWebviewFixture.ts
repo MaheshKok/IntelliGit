@@ -5,8 +5,8 @@
  * `clean`: this view renders working-tree state, so recording against `clean` would capture an
  * empty panel and prove nothing (SPEC-phase2c-iv-c.md's own "Scope" section).
  *
- * **Construction (`src/activation/repositoryMode.ts:305-315`), nine positional arguments.** Every
- * argument below is a deliberate choice:
+ * **Construction (`src/activation/repositoryMode.ts:305-315`), nine positional arguments plus a
+ * tenth, test-only one.** Every argument below is a deliberate choice:
  *
  *  - `extensionUri` -- `createFakeExtensionUri()`, as the commit-graph recorder does.
  *  - `gitOps` -- a real `GitOps` over the REAL prepared `dirty` workspace, its executor pinned to
@@ -25,6 +25,9 @@
  *    mirroring `buildProviderOptions` in `recordCommitGraphWebviewFixture.ts` (Phase 2c-iv-b), the
  *    established answer to "an end-to-end assertion cannot tell this decision apart from a wrong
  *    one".
+ *  - `nativeCommitInputBridgeFactory` -- {@link createNoopNativeCommitInputBridge}. Production
+ *    passes nothing and gets the real `NativeCommitInputBridge`, which polls VS Code's Source
+ *    Control input box on a timer this recorder never disposes; a recording has no such box.
  *
  * **The watcher that is never constructed.** This recorder was specified on the belief that the
  * constructor reaches `registerRuntimeWatcher` (`CommitPanelViewProvider.ts:746`) and therefore
@@ -59,6 +62,7 @@ import { CommitPanelViewProvider } from "../../../src/views/CommitPanelViewProvi
 import type { ShelfService } from "../../../src/services/shelfService";
 import type { CommitMessageGenerationCoordinator } from "../../../src/ai/commitMessageGenerationCoordinator";
 import type { PlaceholderRoots } from "../../fixtures/repo/placeholderCanonicalization";
+import { createNoopNativeCommitInputBridge } from "../../helpers/nativeCommitInputBridgeDouble";
 import { canonicalizeCapturedMessages } from "./canonicalizeCapturedMessages";
 import { loadRecordingBranches } from "./recordingBranches";
 import { toGitEnvironment } from "./recordingGitEnvironment";
@@ -221,6 +225,7 @@ export async function recordCommitPanelWebviewFixture(
         constructorOptions.shelfRemoveOnUnshelve,
         constructorOptions.commitMessageGenerationCoordinator,
         constructorOptions.interactiveRebaseStorageRoot,
+        createNoopNativeCommitInputBridge,
     );
     const capturedProvider = captureWebviewViewProvider(provider, COMMIT_PANEL_CONTEXT_ID);
 

@@ -39,6 +39,10 @@ import { IconThemeService } from "./shared/IconThemeService";
 import { isRedundantPost, serializeWebviewPayload } from "./shared/postedPayload";
 import { registerThemeChangeListeners, disposeAll } from "./shared/themeListeners";
 import {
+    NativeCommitInputBridge,
+    type NativeCommitInputBridgeOptions,
+} from "./nativeCommitInputBridge";
+import {
     subscribeToRepositoryWorkingTreeChanges,
     type RepositoryWorkingTreeChange,
 } from "../services/repositoryChangeEvents";
@@ -212,6 +216,10 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
      * document this provider no longer renders.
      */
     private readonly viewDisposables: vscode.Disposable[] = [];
+    private readonly nativeCommitInputBridge: Pick<
+        NativeCommitInputBridge,
+        "attach" | "detach" | "setFromPanel" | "setVisible" | "dispose"
+    >;
     private readonly iconTheme: IconThemeService;
     private readonly PAGE_SIZE = 500;
     private branches: Branch[] = [];
@@ -307,8 +315,40 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         private readonly shelfRemoveOnUnshelve: boolean = true,
         private readonly commitMessageGenerationCoordinator?: CommitMessageGenerationCoordinator,
         private readonly interactiveRebaseStorageRoot?: string,
+        nativeCommitInputBridgeFactory?: (
+            options: NativeCommitInputBridgeOptions,
+        ) => Pick<
+            NativeCommitInputBridge,
+            "attach" | "detach" | "setFromPanel" | "setVisible" | "dispose"
+        >,
     ) {
         this.iconTheme = new IconThemeService(this.extensionUri);
+        this.nativeCommitInputBridge = (
+            nativeCommitInputBridgeFactory ?? ((options) => new NativeCommitInputBridge(options))
+        )({
+            readDraft: (root) => this.getStoredCommitDraft(this.runtimes.get(root)),
+            persistDraft: (root, text) => {
+                try {
+                    void Promise.resolve(
+                        this.workspaceState?.update(
+                            this.getCommitDraftStorageKey(this.runtimes.get(root)),
+                            text || undefined,
+                        ),
+                    ).catch((error: unknown) => {
+                        console.error("[IntelliGit] Failed to persist commit draft:", error);
+                    });
+                } catch (error: unknown) {
+                    console.error("[IntelliGit] Failed to persist commit draft:", error);
+                }
+            },
+            onNativeChange: (root, message) => {
+                this.postToWebview({
+                    type: "restoreCommitDraft",
+                    repositoryRoot: root,
+                    message,
+                });
+            },
+        });
         this.loadStoredChangedFileCounts();
         if (repoRootUri) {
             this.setRepositoriesInternal(
@@ -352,6 +392,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         }
         this.disposeAllRuntimeWatchers();
         this.expandedRepositoryRoots.clear();
+        for (const root of this.runtimes.keys()) this.nativeCommitInputBridge.detach(root);
         this.runtimes.clear();
         this.setRepositoriesInternal(
             [this.repositoryFromUri(repoRootUri)],
@@ -391,6 +432,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             this.expandedRepositoryRoots.delete(root);
             this.disposeRuntimeWatcher(root);
             this.invalidateRuntime(runtime);
+            this.nativeCommitInputBridge.detach(root);
             this.runtimes.delete(root);
         }
 
@@ -412,6 +454,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             );
             runtime.lastKnownChangedFileCount = this.getStoredChangedFileCount(runtime);
             this.runtimes.set(repository.root, runtime);
+            this.nativeCommitInputBridge.attach(repository.root);
         }
 
         this.repositories = repositories;
@@ -935,6 +978,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                         clearCommitMessage = false;
                     }
                 }
+                if (clearCommitMessage) this.setFromPanelSafely(runtime?.repository.root, "");
                 this.postToWebview({
                     type: "committed",
                     clearCommitMessage,
@@ -1176,6 +1220,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         const thisView = webviewView;
         this.viewDisposables.push(
             webviewView.onDidDispose(() => {
+                this.nativeCommitInputBridge.setVisible(false);
                 if (this.view === thisView) {
                     this.view = undefined;
                     this.iconTheme.dispose();
@@ -1207,9 +1252,12 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             }),
         );
         webviewView.webview.html = this.getHtml(webviewView.webview);
+        this.nativeCommitInputBridge.setVisible(readVisible(webviewView) === true);
         this.viewDisposables.push(
             webviewView.onDidChangeVisibility(() => {
-                if (!webviewView.visible) return;
+                const visible = readVisible(webviewView) === true;
+                this.nativeCommitInputBridge.setVisible(visible);
+                if (!visible) return;
                 const runtime = this.getActiveRuntime();
                 if (!runtime) return;
                 void this.postWorkingTreeSnapshot(runtime).catch(() => {});
@@ -1615,11 +1663,26 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 this.startupReadCompleted = true;
             }
         }
-        this.postToWebview({
-            type: "restoreCommitDraft",
-            ...(runtime ? { repositoryRoot: runtime.repository.root } : {}),
-            message: this.getStoredCommitDraft(runtime),
-        });
+        for (const candidate of this.runtimes.values()) {
+            if (candidate === runtime) continue;
+            this.postToWebview({
+                type: "restoreCommitDraft",
+                repositoryRoot: candidate.repository.root,
+                message: this.getStoredCommitDraft(candidate),
+            });
+        }
+        if (runtime) {
+            this.postToWebview({
+                type: "restoreCommitDraft",
+                repositoryRoot: runtime.repository.root,
+                message: this.getStoredCommitDraft(runtime),
+            });
+        } else {
+            this.postToWebview({
+                type: "restoreCommitDraft",
+                message: this.getStoredCommitDraft(),
+            });
+        }
     }
     /** Updates ignored-file visibility for the addressed runtime and refreshes that runtime's data. */
     private async handleSetShowIgnoredFilesMessage(
@@ -1845,6 +1908,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             case "saveCommitDraft": {
                 const runtime = scopedRuntime();
                 const message = assertString(msg.message, "message");
+                this.setFromPanelForRuntime(runtime, message);
                 await this.workspaceState?.update(
                     this.getCommitDraftStorageKey(runtime),
                     message || undefined,
@@ -1924,6 +1988,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                     ...(runtime ? { repositoryRoot: runtime.repository.root } : {}),
                     message: lastMsg,
                 });
+                await this.mirrorPanelTextForRuntime(runtime, lastMsg);
                 break;
             }
             case "getAmendBranchCommits": {
@@ -2311,11 +2376,40 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
     private getStoredCommitDraft(runtime?: CommitPanelRepositoryRuntime): string {
         return this.workspaceState?.get<string>(this.getCommitDraftStorageKey(runtime)) ?? "";
     }
+    private setFromPanelSafely(root: string | undefined, message: string): void {
+        if (!root) return;
+        try {
+            this.nativeCommitInputBridge.setFromPanel(root, message);
+        } catch (error: unknown) {
+            console.error("[IntelliGit] Failed to mirror commit draft:", error);
+        }
+    }
+    private setFromPanelForRuntime(
+        runtime: CommitPanelRepositoryRuntime | undefined,
+        message: string,
+    ): void {
+        this.setFromPanelSafely(runtime?.repository.root, message);
+    }
+    private async mirrorPanelTextForRuntime(
+        runtime: CommitPanelRepositoryRuntime | undefined,
+        message: string,
+    ): Promise<void> {
+        if (!runtime) return;
+        await this.mirrorPanelText(runtime.repository.root, message);
+    }
+    private async mirrorPanelText(root: string, message: string): Promise<void> {
+        this.setFromPanelSafely(root, message);
+        await this.workspaceState?.update(
+            this.getCommitDraftStorageKey(this.runtimes.get(root)),
+            message || undefined,
+        );
+    }
     /**
      * Releases theme listeners, icon resources, and event emitters owned by the Changes provider.
      */
     dispose(): void {
         this.commitMessageGenerationCoordinator?.dropHost(this.commitMessageGenerationHost);
+        this.nativeCommitInputBridge.dispose();
         this.disposeAllRuntimeWatchers();
         this.iconTheme.dispose();
         this.disposeThemeChangeDisposables();

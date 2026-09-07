@@ -46,6 +46,7 @@ import { createCommitInfoVscodeDouble } from "../../visual/recorder/commitInfoVs
 vi.mock("vscode", () => createCommitInfoVscodeDouble());
 
 import type * as vscode from "vscode";
+import * as vscodeRuntime from "vscode";
 import {
     createFakeExtensionUri,
     createFakeUriFromPath,
@@ -57,6 +58,7 @@ import {
     affectsExpandedRow,
 } from "../../../src/views/CommitPanelViewProvider";
 import type { RepositoryWorkingTreeChange } from "../../../src/services/repositoryChangeEvents";
+import type { DiscoveredRepository } from "../../../src/services/repositoryDiscovery";
 import {
     buildCommitPanelConstructorOptions,
     createEmptyWorkspaceMemento,
@@ -65,8 +67,10 @@ import { toGitEnvironment } from "../../visual/recorder/recordingGitEnvironment"
 import { assertDirtyPostcondition } from "../../fixtures/repo/scenarios";
 import { seedFixtureTemplate, type FixtureTemplate } from "../../fixtures/repo/seed";
 import { createScratchWorkspaces } from "../fixtures/scratchWorkspaces";
+import { createNoopNativeCommitInputBridge } from "../../helpers/nativeCommitInputBridgeDouble";
 import type { CommitDetail } from "../../../src/types";
 import type { CommitGraphInbound } from "../../../src/webviews/protocol/commitGraphTypes";
+import type { NativeCommitInputBridgeOptions } from "../../../src/views/nativeCommitInputBridge";
 
 /** A resolve-context/token stand-in `resolveWebviewView` never reads -- same reasoning as
  * `recordCommitPanelWebviewFixture.ts`'s own `INERT_RESOLVE_CONTEXT`/`INERT_CANCELLATION_TOKEN`. */
@@ -118,9 +122,12 @@ function createInspectableCommitPanelWebviewView(
     readonly posted: unknown[];
     receiveMessage(message: unknown): Promise<void>;
     disposeView(): void;
+    setVisible(visible: boolean): void;
 } {
     let messageHandler: ((message: unknown) => unknown) | undefined;
     let disposeHandler: (() => void) | undefined;
+    let visibilityHandler: (() => void) | undefined;
+    let currentVisible = visible;
     const posted: unknown[] = [];
 
     const webview = {
@@ -144,16 +151,19 @@ function createInspectableCommitPanelWebviewView(
     const webviewView = {
         webview,
         get visible(): boolean {
-            if (visible === "disposed") {
+            if (currentVisible === "disposed") {
                 throw new Error("Webview is disposed");
             }
-            return visible;
+            return currentVisible;
         },
         onDidDispose: (listener: () => void) => {
             disposeHandler = listener;
             return inertDisposable();
         },
-        onDidChangeVisibility: () => inertDisposable(),
+        onDidChangeVisibility: (listener: () => void) => {
+            visibilityHandler = listener;
+            return inertDisposable();
+        },
     } as unknown as vscode.WebviewView;
 
     return {
@@ -177,6 +187,10 @@ function createInspectableCommitPanelWebviewView(
             }
             disposeHandler();
         },
+        setVisible: (nextVisible: boolean): void => {
+            currentVisible = nextVisible;
+            visibilityHandler?.();
+        },
     };
 }
 
@@ -188,6 +202,100 @@ function messagesOfType(posted: readonly unknown[], type: string): Record<string
     return posted.filter(
         (message): message is Record<string, unknown> => isRecord(message) && message.type === type,
     );
+}
+
+interface BridgeHarness {
+    options?: NativeCommitInputBridgeOptions;
+    attached: string[];
+    detached: string[];
+    visible: boolean[];
+    setFromPanel: Array<{ root: string; message: string }>;
+    disposed: boolean;
+    throwOnSet: boolean;
+    order: string[];
+}
+
+function createBridgeFactory(harness: BridgeHarness) {
+    return (options: NativeCommitInputBridgeOptions) => {
+        harness.options = options;
+        return {
+            attach: (root: string): void => harness.attached.push(root),
+            detach: (root: string): void => harness.detached.push(root),
+            setFromPanel: (root: string, message: string): void => {
+                if (harness.throwOnSet) throw new Error("native setter failed");
+                harness.setFromPanel.push({ root, message });
+                harness.order.push("bridge");
+            },
+            setVisible: (visible: boolean): void => harness.visible.push(visible),
+            dispose: (): void => {
+                harness.disposed = true;
+            },
+        };
+    };
+}
+
+function createTestCommitPanelViewProvider(
+    ...args: ConstructorParameters<typeof CommitPanelViewProvider>
+): CommitPanelViewProvider {
+    args[9] ??= createNoopNativeCommitInputBridge;
+    return new CommitPanelViewProvider(...args);
+}
+
+function createRecordingWorkspaceState(
+    initial: Record<string, unknown> = {},
+    order: string[] = [],
+): {
+    state: vscode.Memento;
+    values: Map<string, unknown>;
+    events: string[];
+} {
+    const values = new Map(Object.entries(initial));
+    const events: string[] = [];
+    return {
+        values,
+        events,
+        state: {
+            get: ((key: string, defaultValue?: unknown) =>
+                values.has(key) ? values.get(key) : defaultValue) as vscode.Memento["get"],
+            update: async (key: string, value: unknown): Promise<void> => {
+                events.push(`persist:${key}:${String(value)}`);
+                order.push("persist");
+                if (value === undefined) values.delete(key);
+                else values.set(key, value);
+            },
+            keys: (): readonly string[] => [...values.keys()],
+        },
+    };
+}
+
+function createBridgeProvider(root = "/repo", initial: Record<string, unknown> = {}) {
+    const bridge: BridgeHarness = {
+        attached: [],
+        detached: [],
+        visible: [],
+        setFromPanel: [],
+        disposed: false,
+        throwOnSet: false,
+        order: [],
+    };
+    const workspace = createRecordingWorkspaceState(initial, bridge.order);
+    const scanInitialCollapsedCounts = vi
+        .spyOn(CommitPanelViewProvider.prototype as never, "scanInitialCollapsedCounts" as never)
+        .mockImplementation(() => undefined);
+    const provider = createTestCommitPanelViewProvider(
+        createFakeExtensionUri(),
+        new GitOps(new GitExecutor(root)),
+        createFakeUriFromPath(root),
+        workspace.state,
+        undefined,
+        undefined,
+        true,
+        undefined,
+        undefined,
+        createBridgeFactory(bridge),
+    );
+    scanInitialCollapsedCounts.mockRestore();
+    return { bridge, provider, workspace, root };
 }
 
 function sampleDetail(): CommitDetail {
@@ -238,7 +346,7 @@ describe("CommitPanelViewProvider reload re-post", () => {
             const gitOps = new GitOps(
                 new GitExecutor(workspace.root, undefined, toGitEnvironment(workspace.env)),
             );
-            const provider = new CommitPanelViewProvider(
+            const provider = createTestCommitPanelViewProvider(
                 createFakeExtensionUri(),
                 gitOps,
                 createFakeUriFromPath(workspace.root),
@@ -320,7 +428,7 @@ describe("CommitPanelViewProvider hydration re-ask", () => {
         const gitOps = new GitOps(
             new GitExecutor(workspace.root, undefined, toGitEnvironment(workspace.env)),
         );
-        const provider = new CommitPanelViewProvider(
+        const provider = createTestCommitPanelViewProvider(
             createFakeExtensionUri(),
             gitOps,
             createFakeUriFromPath(workspace.root),
@@ -397,7 +505,7 @@ describe("CommitPanelViewProvider hydration re-ask", () => {
         const gitOps = new GitOps(
             new GitExecutor(workspace.root, undefined, toGitEnvironment(workspace.env)),
         );
-        const provider = new CommitPanelViewProvider(
+        const provider = createTestCommitPanelViewProvider(
             createFakeExtensionUri(),
             gitOps,
             createFakeUriFromPath(workspace.root),
@@ -476,7 +584,7 @@ describe("CommitPanelViewProvider webview delivery failures", () => {
     } {
         const repoRoot = path.join(tmpdir(), "intelligit-delivery-failure-no-io");
         const constructorOptions = buildCommitPanelConstructorOptions();
-        const provider = new CommitPanelViewProvider(
+        const provider = createTestCommitPanelViewProvider(
             createFakeExtensionUri(),
             new GitOps(new GitExecutor(repoRoot)),
             createFakeUriFromPath(repoRoot),
@@ -579,7 +687,7 @@ describe("CommitPanelViewProvider hydration answers the webview that asked", () 
         const workspace = await prepareDirtyWorkspace(path.join(parentDir, "root"));
 
         const constructorOptions = buildCommitPanelConstructorOptions();
-        const provider = new CommitPanelViewProvider(
+        const provider = createTestCommitPanelViewProvider(
             createFakeExtensionUri(),
             new GitOps(new GitExecutor(workspace.root, undefined, toGitEnvironment(workspace.env))),
             createFakeUriFromPath(workspace.root),
@@ -620,7 +728,7 @@ describe("CommitPanelViewProvider hydration answers the webview that asked", () 
         const workspace = await prepareDirtyWorkspace(path.join(parentDir, "root"));
 
         const constructorOptions = buildCommitPanelConstructorOptions();
-        const provider = new CommitPanelViewProvider(
+        const provider = createTestCommitPanelViewProvider(
             createFakeExtensionUri(),
             new GitOps(new GitExecutor(workspace.root, undefined, toGitEnvironment(workspace.env))),
             createFakeUriFromPath(workspace.root),
@@ -665,7 +773,7 @@ describe("CommitPanelViewProvider hydration answers the webview that asked", () 
         const workspace = await prepareDirtyWorkspace(path.join(parentDir, "root"));
 
         const constructorOptions = buildCommitPanelConstructorOptions();
-        const provider = new CommitPanelViewProvider(
+        const provider = createTestCommitPanelViewProvider(
             createFakeExtensionUri(),
             new GitOps(new GitExecutor(workspace.root, undefined, toGitEnvironment(workspace.env))),
             createFakeUriFromPath(workspace.root),
@@ -719,7 +827,7 @@ describe("CommitPanelViewProvider hydration answers the webview that asked", () 
         const workspace = await prepareDirtyWorkspace(path.join(parentDir, "root"));
 
         const constructorOptions = buildCommitPanelConstructorOptions();
-        const provider = new CommitPanelViewProvider(
+        const provider = createTestCommitPanelViewProvider(
             createFakeExtensionUri(),
             new GitOps(new GitExecutor(workspace.root, undefined, toGitEnvironment(workspace.env))),
             createFakeUriFromPath(workspace.root),
@@ -758,7 +866,7 @@ describe("CommitPanelViewProvider hydration answers the webview that asked", () 
         const workspace = await prepareDirtyWorkspace(path.join(parentDir, "root"));
 
         const constructorOptions = buildCommitPanelConstructorOptions();
-        const provider = new CommitPanelViewProvider(
+        const provider = createTestCommitPanelViewProvider(
             createFakeExtensionUri(),
             new GitOps(new GitExecutor(workspace.root, undefined, toGitEnvironment(workspace.env))),
             createFakeUriFromPath(workspace.root),
@@ -810,7 +918,7 @@ describe("CommitPanelViewProvider hydration answers the webview that asked", () 
         const workspace = await prepareDirtyWorkspace(path.join(parentDir, "root"));
 
         const constructorOptions = buildCommitPanelConstructorOptions();
-        const provider = new CommitPanelViewProvider(
+        const provider = createTestCommitPanelViewProvider(
             createFakeExtensionUri(),
             new GitOps(new GitExecutor(workspace.root, undefined, toGitEnvironment(workspace.env))),
             createFakeUriFromPath(workspace.root),
@@ -846,7 +954,7 @@ describe("CommitPanelViewProvider hydration answers the webview that asked", () 
         const workspace = await prepareDirtyWorkspace(path.join(parentDir, "root"));
 
         const constructorOptions = buildCommitPanelConstructorOptions();
-        const provider = new CommitPanelViewProvider(
+        const provider = createTestCommitPanelViewProvider(
             createFakeExtensionUri(),
             new GitOps(new GitExecutor(workspace.root, undefined, toGitEnvironment(workspace.env))),
             createFakeUriFromPath(workspace.root),
@@ -905,7 +1013,7 @@ describe("CommitPanelViewProvider hydration answers the webview that asked", () 
         const workspace = await prepareDirtyWorkspace(path.join(parentDir, "root"));
 
         const constructorOptions = buildCommitPanelConstructorOptions();
-        const provider = new CommitPanelViewProvider(
+        const provider = createTestCommitPanelViewProvider(
             createFakeExtensionUri(),
             new GitOps(new GitExecutor(workspace.root, undefined, toGitEnvironment(workspace.env))),
             createFakeUriFromPath(workspace.root),
@@ -968,5 +1076,195 @@ describe("expanded-row refresh filter", () => {
     it("skips Git metadata, as the filesystem watcher it replaced did", () => {
         expect(affectsExpandedRow(event({ source: "git-index" }))).toBe(false);
         expect(affectsExpandedRow(event({ source: "git-state" }))).toBe(false);
+    });
+});
+
+describe("CommitPanelViewProvider native commit bridge wiring", () => {
+    it("saveCommitDraft calls setFromPanel for scoped root before persistence", async () => {
+        const { bridge, provider, workspace, root } = createBridgeProvider();
+        const view = createInspectableCommitPanelWebviewView();
+        provider.resolveWebviewView(view.webviewView, INERT_CONTEXT, INERT_TOKEN);
+
+        await view.receiveMessage({
+            type: "saveCommitDraft",
+            repositoryRoot: root,
+            message: "panel",
+        });
+
+        expect(bridge.setFromPanel).toEqual([{ root, message: "panel" }]);
+        expect(bridge.order).toEqual(["bridge", "persist"]);
+        expect(workspace.values.get(`commitDraft:${root}`)).toBe("panel");
+    });
+
+    it("saveCommitDraft still persists when the bridge throws", async () => {
+        const { bridge, provider, workspace, root } = createBridgeProvider();
+        bridge.throwOnSet = true;
+        const view = createInspectableCommitPanelWebviewView();
+        provider.resolveWebviewView(view.webviewView, INERT_CONTEXT, INERT_TOKEN);
+        const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+        await expect(
+            view.receiveMessage({
+                type: "saveCommitDraft",
+                repositoryRoot: root,
+                message: "safe",
+            }),
+        ).resolves.toBeUndefined();
+
+        expect(workspace.values.get(`commitDraft:${root}`)).toBe("safe");
+        expect(consoleError).toHaveBeenCalledTimes(1);
+        consoleError.mockRestore();
+    });
+
+    it("native change persists and posts restoreCommitDraft synchronously", () => {
+        const { bridge, provider, workspace, root } = createBridgeProvider();
+        const view = createInspectableCommitPanelWebviewView();
+        provider.resolveWebviewView(view.webviewView, INERT_CONTEXT, INERT_TOKEN);
+        const callbacks = bridge.options;
+        if (!callbacks) throw new Error("bridge factory did not receive callbacks");
+
+        callbacks.persistDraft(root, "native");
+        callbacks.onNativeChange(root, "native");
+
+        expect(bridge.order).toEqual(["persist"]);
+        expect(workspace.values.get(`commitDraft:${root}`)).toBe("native");
+        expect(messagesOfType(view.posted, "restoreCommitDraft").at(-1)).toEqual({
+            type: "restoreCommitDraft",
+            repositoryRoot: root,
+            message: "native",
+        });
+    });
+
+    it("reloaded webview restores an adopted native message instead of an older draft", async () => {
+        const root = "/reload-repo";
+        const { bridge, provider } = createBridgeProvider(root, {
+            [`commitDraft:${root}`]: "older",
+        });
+        const callbacks = bridge.options;
+        if (!callbacks) throw new Error("bridge factory did not receive callbacks");
+        callbacks.persistDraft(root, "adopted");
+        const view = createInspectableCommitPanelWebviewView();
+        provider.resolveWebviewView(view.webviewView, INERT_CONTEXT, INERT_TOKEN);
+        const privateProvider = provider as unknown as {
+            startupReadCompleted: boolean;
+            postWorkingTreeSnapshot: () => Promise<void>;
+            refreshAllRepositories: () => Promise<void>;
+            refreshGraphData: () => Promise<void>;
+        };
+        privateProvider.startupReadCompleted = true;
+        vi.spyOn(privateProvider, "postWorkingTreeSnapshot").mockResolvedValue(undefined);
+        vi.spyOn(privateProvider, "refreshAllRepositories").mockResolvedValue(undefined);
+        vi.spyOn(privateProvider, "refreshGraphData").mockResolvedValue(undefined);
+
+        await view.receiveMessage({ type: "ready", attempt: 2 });
+
+        expect(messagesOfType(view.posted, "restoreCommitDraft").at(-1)).toMatchObject({
+            repositoryRoot: root,
+            message: "adopted",
+        });
+    });
+
+    it("successful clear-on-commit clears native input while view is hidden", async () => {
+        const { bridge, provider, root } = createBridgeProvider();
+        const view = createInspectableCommitPanelWebviewView("delivered", false);
+        provider.resolveWebviewView(view.webviewView, INERT_CONTEXT, INERT_TOKEN);
+        const getConfiguration = vi
+            .spyOn(vscodeRuntime.workspace, "getConfiguration")
+            .mockReturnValue({ get: () => true } as never);
+        const runtimes = (provider as unknown as { runtimes: Map<string, unknown> }).runtimes;
+        const runtime = runtimes.get(root);
+        if (!runtime) throw new Error("runtime was not created");
+
+        await (
+            provider as unknown as {
+                actionDepsForRuntime: (runtime: unknown) => { postCommitted: () => Promise<void> };
+            }
+        )
+            .actionDepsForRuntime(runtime)
+            .postCommitted();
+        getConfiguration.mockRestore();
+
+        expect(bridge.setFromPanel).toContainEqual({ root, message: "" });
+    });
+
+    it("getLastCommitMessage mirrors loaded text to native input and store", async () => {
+        const { bridge, provider, workspace, root } = createBridgeProvider();
+        const gitOps = (provider as unknown as { gitOps: GitOps }).gitOps;
+        vi.spyOn(gitOps, "getLastCommitMessage").mockResolvedValue("last message");
+        const view = createInspectableCommitPanelWebviewView();
+        provider.resolveWebviewView(view.webviewView, INERT_CONTEXT, INERT_TOKEN);
+
+        await view.receiveMessage({ type: "getLastCommitMessage", repositoryRoot: root });
+
+        expect(bridge.setFromPanel).toContainEqual({ root, message: "last message" });
+        expect(workspace.values.get(`commitDraft:${root}`)).toBe("last message");
+        expect(messagesOfType(view.posted, "lastCommitMessage").at(-1)).toMatchObject({
+            repositoryRoot: root,
+            message: "last message",
+        });
+    });
+
+    it("ready restores every runtime with active repository last", async () => {
+        const rootA = "/repo-a";
+        const rootB = "/repo-b";
+        const { bridge, provider } = createBridgeProvider(rootA, {
+            [`commitDraft:${rootA}`]: "A",
+            [`commitDraft:${rootB}`]: "B",
+        });
+        const repositories: DiscoveredRepository[] = [
+            { root: rootA, label: "A", kind: "repository" },
+            { root: rootB, label: "B", kind: "repository" },
+        ];
+        provider.setRepositories(repositories, rootB);
+        const view = createInspectableCommitPanelWebviewView();
+        provider.resolveWebviewView(view.webviewView, INERT_CONTEXT, INERT_TOKEN);
+        const privateProvider = provider as unknown as {
+            startupReadCompleted: boolean;
+            postWorkingTreeSnapshot: () => Promise<void>;
+            refreshAllRepositories: () => Promise<void>;
+            refreshGraphData: () => Promise<void>;
+        };
+        privateProvider.startupReadCompleted = true;
+        vi.spyOn(privateProvider, "postWorkingTreeSnapshot").mockResolvedValue(undefined);
+        vi.spyOn(privateProvider, "refreshAllRepositories").mockResolvedValue(undefined);
+        vi.spyOn(privateProvider, "refreshGraphData").mockResolvedValue(undefined);
+
+        await view.receiveMessage({ type: "ready", attempt: 2 });
+
+        const restores = messagesOfType(view.posted, "restoreCommitDraft");
+        expect(restores.slice(-2).map((message) => message.repositoryRoot)).toEqual([rootA, rootB]);
+        expect(restores.slice(-2).map((message) => message.message)).toEqual(["A", "B"]);
+    });
+
+    it("setRepositories and a root reset detach dropped roots and attach new ones", () => {
+        const { bridge, provider, root } = createBridgeProvider();
+        const repoB: DiscoveredRepository = { root: "/repo-b", label: "B", kind: "repository" };
+
+        provider.setRepositories([repoB], repoB.root);
+
+        expect(bridge.detached).toEqual([root]);
+        expect(bridge.attached).toEqual([root, repoB.root]);
+
+        provider.setRepositoryRootUri(createFakeUriFromPath("/repo-c"));
+
+        expect(bridge.detached).toEqual([root, repoB.root]);
+        expect(bridge.attached).toEqual([root, repoB.root, "/repo-c"]);
+    });
+
+    it("visibility changes and disposal reach the bridge", () => {
+        const { bridge, provider } = createBridgeProvider();
+        const view = createInspectableCommitPanelWebviewView();
+        provider.resolveWebviewView(view.webviewView, INERT_CONTEXT, INERT_TOKEN);
+        const refreshAll = vi
+            .spyOn(provider as never, "refreshAllRepositoriesWithErrorHandling" as never)
+            .mockImplementation(() => undefined);
+        view.setVisible(false);
+        view.setVisible(true);
+        view.disposeView();
+        provider.dispose();
+        refreshAll.mockRestore();
+
+        expect(bridge.visible).toEqual([true, false, true, false]);
+        expect(bridge.disposed).toBe(true);
     });
 });

@@ -59,6 +59,7 @@ import { GitExecutor } from "../../../src/git/executor";
 import { GitOps } from "../../../src/git/operations";
 import { CommitPanelViewProvider } from "../../../src/views/CommitPanelViewProvider";
 import { OnboardingViewProvider } from "../../../src/views/OnboardingViewProvider";
+import { createNoopNativeCommitInputBridge } from "../../helpers/nativeCommitInputBridgeDouble";
 
 /** Resolve context/token stand-ins neither `resolveWebviewView` reads. */
 const INERT_CONTEXT = {} as vscode.WebviewViewResolveContext;
@@ -143,6 +144,14 @@ function createCommitPanelProvider(): CommitPanelViewProvider {
     return new CommitPanelViewProvider(
         createFakeExtensionUri(),
         new GitOps(new GitExecutor("/fake/repo")),
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        createNoopNativeCommitInputBridge,
     );
 }
 

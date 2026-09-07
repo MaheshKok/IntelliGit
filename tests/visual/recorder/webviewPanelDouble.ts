@@ -95,6 +95,8 @@ export interface FakeWebviewPanel {
     onDidChangeViewState(
         callback: (event: vscode.WebviewPanelOnDidChangeViewStateEvent) => void,
     ): vscode.Disposable;
+    /** Test-only visibility driver for host wiring assertions. */
+    setVisible(visible: boolean): void;
     /**
      * Synchronously invokes every listener registered through {@link onDidDispose}, in registration
      * order, each EXACTLY once -- including across repeated `dispose()` calls, which are idempotent
@@ -148,6 +150,7 @@ export function resetCreatedWebviewPanelsForTests(): void {
 export function createFakeWebviewPanel(): FakeWebviewPanel {
     let messageHandler: ((message: unknown) => unknown) | undefined;
     const disposeListeners: Array<() => void> = [];
+    const visibilityListeners: Array<() => void> = [];
     let disposed = false;
 
     const rawWebview: RawPanelWebview = {
@@ -172,7 +175,18 @@ export function createFakeWebviewPanel(): FakeWebviewPanel {
             disposeListeners.push(callback);
             return inertDisposable();
         },
-        onDidChangeViewState: (): vscode.Disposable => inertDisposable(),
+        onDidChangeViewState: (
+            callback: (event: vscode.WebviewPanelOnDidChangeViewStateEvent) => void,
+        ): vscode.Disposable => {
+            visibilityListeners.push(() =>
+                callback({ webviewPanel: panel as unknown as vscode.WebviewPanel }),
+            );
+            return inertDisposable();
+        },
+        setVisible: (visible: boolean): void => {
+            rawPanel.visible = visible;
+            for (const listener of [...visibilityListeners]) listener();
+        },
         dispose: (): void => {
             if (disposed) return;
             disposed = true;

@@ -163,19 +163,19 @@ describe("MergeEditorApp large document flow", () => {
             expect(document.querySelectorAll(".diff-pane .code-block").length).toBeGreaterThan(0);
         }
 
-        // `MAX_DIFF_RENDER_GROWTH` is derived from these two tiers standing in a 2.12:1 line
-        // ratio, so swapping either source silently redefines what the threshold means -- a
-        // larger `large` would raise the honest ratio and false-fire, a smaller one would raise
-        // the bar a real regression has to clear. Checked here because this is the only place
-        // that names the files.
+        // `MAX_DIFF_RENDER_GROWTH` is derived from these two tiers standing in a 2.18:1 line
+        // ratio; 2.12:1 was measured when they stood at 1,161/2,464 lines. Swapping either source
+        // silently redefines what the threshold means -- a larger `large` would raise the honest
+        // ratio and false-fire, a smaller one would raise the bar a real regression has to clear.
+        // Checked here because this is the only place that names the files.
         const lineRatio = lineCount.large / lineCount.typical;
         expect(
             lineRatio,
-            `the render growth threshold assumes a 2.12:1 line ratio between the large and ` +
+            `the render growth threshold assumes a 2.18:1 line ratio between the large and ` +
                 `typical tiers; these sources now stand at ${lineCount.large}:${lineCount.typical} ` +
                 `= ${lineRatio.toFixed(3)}:1, so the threshold no longer means what it was ` +
                 `derived to mean`,
-        ).toBeCloseTo(2.12, 1);
+        ).toBeCloseTo(2.18, 1);
 
         // Wall-clock is compared against the same run's smaller tier rather than against a
         // constant, so host speed cancels: under CPU saturation these readings inflate 3.5x
@@ -187,7 +187,8 @@ describe("MergeEditorApp large document flow", () => {
             `render time grew ${(renderMs.large / renderMs.typical).toFixed(2)}x from the ` +
                 `typical tier to the large one (${renderMs.typical.toFixed(0)}ms -> ` +
                 `${renderMs.large.toFixed(0)}ms) against a ${MAX_DIFF_RENDER_GROWTH}x ceiling. ` +
-                `A linear pipeline over these tiers measures 2.12x; a quadratic re-render ` +
+                `A linear pipeline over these tiers predicts 2.18x; 2.12x was measured when ` +
+                `the tiers stood at 1,161/2,464 lines. A quadratic re-render ` +
                 `measured 3.43x when one was injected. This ratio is host-independent, so a ` +
                 `slow machine is not an explanation for it`,
         ).toBe(false);

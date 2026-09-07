@@ -4,9 +4,25 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { removeScratchDirectories } from "../../helpers/scratchDirectories";
 import { COMMIT_CHECK_FANOUT_LIMIT } from "../../../src/views/commitCheckFanout";
+import { createNoopNativeCommitInputBridge } from "../../helpers/nativeCommitInputBridgeDouble";
 
 type MessageHandler = (message: unknown) => void | Promise<void>;
 type CommandHandler = (...args: unknown[]) => unknown;
+type UndockedViewProviderConstructor =
+    typeof import("../../../src/views/UndockedViewProvider").UndockedViewProvider;
+
+function createTestUndockedViewProvider(
+    Provider: UndockedViewProviderConstructor,
+    ...args: ConstructorParameters<UndockedViewProviderConstructor>
+): InstanceType<UndockedViewProviderConstructor> {
+    const options = args[7];
+    args[7] = {
+        ...options,
+        nativeCommitInputBridgeFactory:
+            options?.nativeCommitInputBridgeFactory ?? createNoopNativeCommitInputBridge,
+    };
+    return new Provider(...args);
+}
 
 class FakeEventEmitter<T> {
     private listeners: Array<(value: T) => void> = [];
@@ -2285,7 +2301,8 @@ describe("view providers integration", () => {
 
     it("UndockedViewProvider migrates legacy persisted column widths", async () => {
         const { UndockedViewProvider } = await import("../../../src/views/UndockedViewProvider");
-        const provider = new UndockedViewProvider(
+        const provider = createTestUndockedViewProvider(
+            UndockedViewProvider,
             { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
             makeGitOpsMock() as unknown as object,
             { fsPath: "/repo", path: "/repo" } as unknown as { fsPath: string; path: string },
@@ -2324,7 +2341,8 @@ describe("view providers integration", () => {
 
     it("UndockedViewProvider returns the webview rebase-dialog delivery result", async () => {
         const { UndockedViewProvider } = await import("../../../src/views/UndockedViewProvider");
-        const provider = new UndockedViewProvider(
+        const provider = createTestUndockedViewProvider(
+            UndockedViewProvider,
             { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
             makeGitOpsMock() as unknown as object,
             { fsPath: "/repo", path: "/repo" } as unknown as { fsPath: string; path: string },
@@ -2356,7 +2374,8 @@ describe("view providers integration", () => {
         const { UndockedViewProvider } = await import("../../../src/views/UndockedViewProvider");
         const gitOps = makeGitOpsMock();
         const workspaceStore = createMemento();
-        const provider = new UndockedViewProvider(
+        const provider = createTestUndockedViewProvider(
+            UndockedViewProvider,
             { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
             gitOps as unknown as object,
             { fsPath: "/repo", path: "/repo" } as unknown as { fsPath: string; path: string },
@@ -2402,7 +2421,8 @@ describe("view providers integration", () => {
             "commitDraft:/repo-a": "draft A",
             "commitDraft:/repo-b": "draft B",
         });
-        const provider = new UndockedViewProvider(
+        const provider = createTestUndockedViewProvider(
+            UndockedViewProvider,
             { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
             gitOps as unknown as object,
             { fsPath: "/repo-a", path: "/repo-a" } as unknown as { fsPath: string; path: string },
@@ -2451,7 +2471,8 @@ describe("view providers integration", () => {
         const { UndockedViewProvider } = await import("../../../src/views/UndockedViewProvider");
         const gitOps = makeGitOpsMock();
         const workspaceStore = createMemento({ "commitDraft:/repo": "stored draft" });
-        const provider = new UndockedViewProvider(
+        const provider = createTestUndockedViewProvider(
+            UndockedViewProvider,
             { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
             gitOps as unknown as object,
             { fsPath: "/repo", path: "/repo" } as unknown as { fsPath: string; path: string },
@@ -2761,7 +2782,8 @@ describe("view providers integration", () => {
             getShelfFiles: vi.fn(async () => []),
             getHealthWarnings: vi.fn(() => []),
         };
-        const provider = new UndockedViewProvider(
+        const provider = createTestUndockedViewProvider(
+            UndockedViewProvider,
             { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
             makeGitOpsMock() as unknown as object,
             { fsPath: "/repo", path: "/repo" } as unknown as { fsPath: string; path: string },
@@ -2894,7 +2916,8 @@ describe("view providers integration", () => {
             hasWholeIndexOperationInProgress: vi.fn(async () => false),
         }));
         const workspaceStore = createMemento({ "commitDraft:/repo-a": "draft A" });
-        const provider = new UndockedViewProvider(
+        const provider = createTestUndockedViewProvider(
+            UndockedViewProvider,
             { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
             gitOps as unknown as object,
             { fsPath: "/repo-a", path: "/repo-a" } as unknown as { fsPath: string; path: string },
@@ -3091,7 +3114,8 @@ describe("view providers integration", () => {
             hasWholeIndexOperationInProgress: vi.fn(async () => false),
         }));
         const workspaceStore = createMemento({ "commitDraft:/repo-a": "draft A" });
-        const provider = new UndockedViewProvider(
+        const provider = createTestUndockedViewProvider(
+            UndockedViewProvider,
             { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
             gitOps as unknown as object,
             { fsPath: "/repo-a", path: "/repo-a" } as unknown as { fsPath: string; path: string },
@@ -3166,7 +3190,8 @@ describe("view providers integration", () => {
 
     it("UndockedViewProvider drops stale commit-check replies after cache scope changes", async () => {
         const { UndockedViewProvider } = await import("../../../src/views/UndockedViewProvider");
-        const provider = new UndockedViewProvider(
+        const provider = createTestUndockedViewProvider(
+            UndockedViewProvider,
             { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
             makeGitOpsMock() as unknown as object,
             { fsPath: "/repo", path: "/repo" } as unknown as { fsPath: string; path: string },
@@ -3233,7 +3258,8 @@ describe("view providers integration", () => {
 
     it("UndockedViewProvider forwards forced commit-check refreshes", async () => {
         const { UndockedViewProvider } = await import("../../../src/views/UndockedViewProvider");
-        const provider = new UndockedViewProvider(
+        const provider = createTestUndockedViewProvider(
+            UndockedViewProvider,
             { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
             makeGitOpsMock() as unknown as object,
             { fsPath: "/repo", path: "/repo" } as unknown as { fsPath: string; path: string },
@@ -3284,7 +3310,8 @@ describe("view providers integration", () => {
 
     it("UndockedViewProvider deduplicates visible commit-check hashes", async () => {
         const { UndockedViewProvider } = await import("../../../src/views/UndockedViewProvider");
-        const provider = new UndockedViewProvider(
+        const provider = createTestUndockedViewProvider(
+            UndockedViewProvider,
             { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
             makeGitOpsMock() as unknown as object,
             { fsPath: "/repo", path: "/repo" } as unknown as { fsPath: string; path: string },
@@ -3333,7 +3360,8 @@ describe("view providers integration", () => {
 
     it("UndockedViewProvider replaces stale visible commit-check demand", async () => {
         const { UndockedViewProvider } = await import("../../../src/views/UndockedViewProvider");
-        const provider = new UndockedViewProvider(
+        const provider = createTestUndockedViewProvider(
+            UndockedViewProvider,
             { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
             makeGitOpsMock() as unknown as object,
             { fsPath: "/repo", path: "/repo" } as unknown as { fsPath: string; path: string },
@@ -3409,7 +3437,8 @@ describe("view providers integration", () => {
 
     it("UndockedViewProvider keeps outstanding viewport demand alive across a force retry", async () => {
         const { UndockedViewProvider } = await import("../../../src/views/UndockedViewProvider");
-        const provider = new UndockedViewProvider(
+        const provider = createTestUndockedViewProvider(
+            UndockedViewProvider,
             { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
             makeGitOpsMock() as unknown as object,
             { fsPath: "/repo", path: "/repo" } as unknown as { fsPath: string; path: string },
@@ -3494,7 +3523,8 @@ describe("view providers integration", () => {
 
     it("UndockedViewProvider invalidates visible demand when the panel disposes", async () => {
         const { UndockedViewProvider } = await import("../../../src/views/UndockedViewProvider");
-        const provider = new UndockedViewProvider(
+        const provider = createTestUndockedViewProvider(
+            UndockedViewProvider,
             { fsPath: "/ext", path: "/ext" } as unknown as ConstructorParameters<
                 typeof UndockedViewProvider
             >[0],
@@ -3593,7 +3623,8 @@ describe("view providers integration", () => {
                 }),
         );
         gitOps.getUnpushedCommitHashes.mockResolvedValue([]);
-        const provider = new UndockedViewProvider(
+        const provider = createTestUndockedViewProvider(
+            UndockedViewProvider,
             { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
             gitOps as unknown as object,
             { fsPath: "/repo", path: "/repo" } as unknown as { fsPath: string; path: string },
@@ -3669,7 +3700,8 @@ describe("view providers integration", () => {
 
     it("UndockedViewProvider rejects more than 200 visible commit-check hashes", async () => {
         const { UndockedViewProvider } = await import("../../../src/views/UndockedViewProvider");
-        const provider = new UndockedViewProvider(
+        const provider = createTestUndockedViewProvider(
+            UndockedViewProvider,
             { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
             makeGitOpsMock() as unknown as object,
             { fsPath: "/repo", path: "/repo" } as unknown as { fsPath: string; path: string },
@@ -3694,7 +3726,8 @@ describe("view providers integration", () => {
         const { UndockedViewProvider } = await import("../../../src/views/UndockedViewProvider");
         const gitOps = makeGitOpsMock();
         gitOps.getUnpushedCommitHashes.mockResolvedValue(["abc1234"]);
-        const provider = new UndockedViewProvider(
+        const provider = createTestUndockedViewProvider(
+            UndockedViewProvider,
             { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
             gitOps as unknown as object,
             { fsPath: "/repo", path: "/repo" } as unknown as { fsPath: string; path: string },
@@ -3899,7 +3932,8 @@ describe("view providers integration", () => {
 
     it("UndockedViewProvider sends initial and changed panel visibility to the webview", async () => {
         const { UndockedViewProvider } = await import("../../../src/views/UndockedViewProvider");
-        const provider = new UndockedViewProvider(
+        const provider = createTestUndockedViewProvider(
+            UndockedViewProvider,
             { fsPath: "/ext", path: "/ext" } as unknown as ConstructorParameters<
                 typeof UndockedViewProvider
             >[0],
@@ -5037,7 +5071,8 @@ describe("view providers integration", () => {
             repositoryRoot: "/repo",
         });
 
-        const undocked = new UndockedViewProvider(
+        const undocked = createTestUndockedViewProvider(
+            UndockedViewProvider,
             { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
             makeGitOpsMock() as unknown as object,
             { fsPath: "/repo", path: "/repo" } as unknown as { fsPath: string; path: string },
