@@ -23,6 +23,24 @@ describe("undocked section widths", () => {
         expect(normalized.hidden).toEqual([]);
     });
 
+    it("reclaims the repository pane and divider budget without changing saved preferences", () => {
+        const preferences = computeDefaultSectionWidths(1200);
+        const before = { ...preferences };
+        const single = normalizeSectionWidths(preferences, 1200, false);
+
+        expect(single.widths.repositoryWidth).toBeUndefined();
+        expect(single.hidden).toEqual(["repositoryWidth"]);
+        expect(
+            Object.values(single.widths).reduce((sum, width) => sum + width, 0) + 12,
+        ).toBeCloseTo(1200);
+        expect(single.widths.graphWidth).toBeGreaterThan(before.graphWidth);
+        expect(preferences).toEqual(before);
+        expect(normalizeSectionWidths(preferences, 1200, true)).toEqual(
+            normalizeSectionWidths(before, 1200),
+        );
+        expect(normalizeSectionWidths(preferences, 320, false).widths).toEqual({ graphWidth: 320 });
+    });
+
     it("restores history emphasis after a narrow first render widens", () => {
         const preferences = computeDefaultSectionWidths(320);
         expect(normalizeSectionWidths(preferences, 320).widths).toEqual({ graphWidth: 320 });

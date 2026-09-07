@@ -92,7 +92,7 @@
 
     display: flex;
     flex-direction: column;
-    height: 100vh;
+    height: 100dvh;
     overflow: hidden;
     color: var(--vscode-foreground);
     background: var(--merge-editor-bg);
@@ -133,8 +133,8 @@
     align-items: center;
     justify-content: space-between;
     gap: 8px;
-    min-height: 30px;
-    padding: 2px 8px;
+    min-height: 32px;
+    padding: 3px 10px;
     background: var(--merge-toolbar-bg);
     /* One seam, not two: the border already draws this edge from the theme's own
        foreground, so the old 25%-black inset shadow only doubled it — invisible on
@@ -283,20 +283,24 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 12px;
-    min-height: 34px;
-    padding: 4px 10px;
+    flex-wrap: wrap;
+    gap: 6px 16px;
+    min-height: 38px;
+    padding: 7px 12px;
     background: var(--merge-header-bg);
     border-bottom: 1px solid var(--merge-border);
     flex-shrink: 0;
 }
 .merge-title {
     display: flex;
-    align-items: center;
-    gap: 10px;
+    align-items: baseline;
+    flex: 1 1 260px;
+    flex-wrap: wrap;
+    gap: 2px 10px;
     min-width: 0;
 }
 .file-path {
+    max-width: 100%;
     font-weight: 600;
     font-size: 14px;
     color: var(--vscode-foreground);
@@ -312,14 +316,17 @@
 .merge-stats {
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
     gap: 6px;
+    margin-left: auto;
+    font-variant-numeric: tabular-nums;
 }
 .merge-stat-pill {
     display: inline-flex;
     align-items: center;
     height: 20px;
     padding: 0 8px;
-    border-radius: 999px;
+    border-radius: 3px;
     border: 1px solid color-mix(in srgb, var(--merge-border) 85%, transparent);
     background: color-mix(in srgb, var(--merge-editor-fg) 3%, transparent);
     color: var(--merge-muted);
@@ -340,7 +347,7 @@
 .pane-meta-row {
     display: flex;
     border-bottom: 1px solid color-mix(in srgb, var(--merge-border) 72%, transparent);
-    background: color-mix(in srgb, var(--merge-editor-bg) 92%, #000 8%);
+    background: var(--merge-toolbar-bg);
     min-height: 24px;
     flex-shrink: 0;
 }
@@ -1155,4 +1162,15 @@
     .footer-hint {
         display: none;
     }
+}
+
+/* Stationary feedback keeps toolbar targets stable while navigating source code. */
+.merge-editor button:focus-visible,
+.retry-btn:focus-visible {
+    outline: 2px solid var(--vscode-focusBorder, #6aa2ff);
+    outline-offset: -2px;
+}
+.merge-editor button:active:not(:disabled),
+.retry-btn:active:not(:disabled) {
+    box-shadow: inset 0 0 0 1px currentcolor;
 }

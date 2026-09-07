@@ -108,7 +108,7 @@ test.describe("workbench hierarchy", () => {
         }
     });
 
-    test("undocked default retains history emphasis after a narrow viewport widens", async ({
+    test("undocked multi-repository default retains history emphasis after a narrow viewport widens", async ({
         mountHarness,
         page,
     }, testInfo) => {
@@ -118,6 +118,22 @@ test.describe("workbench hierarchy", () => {
         );
         await page.setViewportSize({ width: 320, height: 800 });
         await mountHarness("undocked", { webviewFixture: "mid-rebase.json" });
+        // This check owns the five-pane default; single-repository space recovery
+        // is covered separately by undockedRepositoryColumn.spec.ts.
+        await page.evaluate(() => {
+            window.dispatchEvent(
+                new MessageEvent("message", {
+                    data: {
+                        type: "repositories",
+                        repositories: [
+                            { root: "<ROOT>", label: "workspace" },
+                            { root: "<SECOND_ROOT>", label: "second workspace" },
+                        ],
+                        selectedRepositoryRoot: "<ROOT>",
+                    },
+                }),
+            );
+        });
         await page.setViewportSize({ width: 1200, height: 800 });
         await expect(page.getByTestId("undocked-graph-section")).toHaveCSS("width", "316px");
         const sizes = await page.evaluate(() => {

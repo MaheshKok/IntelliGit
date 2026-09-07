@@ -5,6 +5,17 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.32.3] - 2026-09-07
+
+### Changed
+
+- The full workbench hides the repository column when only one repository is available, giving the remaining panes more room. Multi-repository selection and saved pane widths are preserved.
+- Commit controls, tabs, diff views, and merge screens have quieter surfaces, clearer spacing, and more visible keyboard focus. Merge actions and filenames fit better in narrow layouts, and reduced-motion preferences remain respected.
+
+### Fixed
+
+- Restored the **Undock...** toolbar button in both IntelliGit Graph views, including when the sidebar Graph is moved into the bottom panel opened with VS Code's existing **Ctrl+J** shortcut (**Cmd+J** on macOS). The button offers **Undock in Editor Tab** and **Undock in New Window**. The existing `intelligit.undockableWindowButtonVisability` setting defaults to `true`; set it to `false` to hide the button. Both standard and color icons are supported.
+
 ## [0.32.2] - 2026-09-06
 
 ### Added

@@ -134,8 +134,9 @@ export function CommitArea({
         >
             {branchLabel ? (
                 <Box
-                    px="8px"
+                    px="10px"
                     py="4px"
+                    bg="var(--intelligit-pycharm-header)"
                     fontSize="12px"
                     color="var(--vscode-descriptionForeground)"
                     borderBottom="1px solid var(--intelligit-pycharm-border)"
@@ -152,8 +153,8 @@ export function CommitArea({
                 htmlFor={amendCheckboxId}
                 align="center"
                 gap="5px"
-                px="8px"
-                py="3px"
+                px="10px"
+                py="4px"
                 fontSize="12px"
                 minH="24px"
                 cursor={isAmendDisabled ? "default" : "pointer"}
@@ -172,8 +173,20 @@ export function CommitArea({
                     {t("commit.amend")}
                 </Box>
             </Flex>
-            <Flex direction="column" px="10px" pb="6px" gap="4px" flex={1} overflow="hidden">
-                <Flex align="center" justify="space-between" minH="20px">
+            <Flex
+                direction="column"
+                mx="10px"
+                mb="6px"
+                p="4px"
+                gap="4px"
+                flex={1}
+                minH={0}
+                overflow="hidden"
+                bg="var(--intelligit-pycharm-header)"
+                border="1px solid var(--intelligit-pycharm-border)"
+                borderRadius={`${JETBRAINS_UI.size.floatingRadius}px`}
+            >
+                <Flex align="center" justify="space-between" minH="24px" px="4px">
                     <Box
                         as="label"
                         htmlFor="commit-area-message"
@@ -225,7 +238,7 @@ export function CommitArea({
                     border="1px solid"
                     borderColor="var(--intelligit-pycharm-input-border)"
                     borderRadius={`${JETBRAINS_UI.size.radius}px`}
-                    p="6px 8px"
+                    p="8px"
                     aria-busy={isGenerationActive}
                     fontFamily={SYSTEM_FONT_STACK}
                     fontSize="12px"
@@ -244,7 +257,7 @@ export function CommitArea({
                     _focus={{ borderColor: "var(--intelligit-pycharm-blue)" }}
                 />
             </Flex>
-            <Flex align="center" gap="8px" px="10px" pt="6px" pb="10px" flexWrap="wrap">
+            <Flex align="center" gap="8px" px="10px" pt="2px" pb="10px" flexWrap="wrap">
                 <Button
                     data-testid="commit-action-commit"
                     variant="primary"

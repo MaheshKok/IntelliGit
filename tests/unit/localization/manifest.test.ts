@@ -266,7 +266,7 @@ describe("extension manifest", () => {
             [
                 "intelligit.openUndocked",
                 "intelligit.openUndocked.color",
-                "view == intelligit.commitGraph && config.intelligit.undockableWindowButtonVisability",
+                "(view == intelligit.commitGraph || view == intelligit.sidebarGraph) && config.intelligit.undockableWindowButtonVisability",
                 "media/icons/undock-white.svg",
                 "media/icons/undock-color.svg",
             ],
@@ -587,7 +587,7 @@ describe("extension manifest", () => {
         }
     });
 
-    it("gates the undock view title button with a visible-by-default setting", () => {
+    it("exposes the undock shortcut on both graph views with a visible-by-default setting", () => {
         const manifest = JSON.parse(
             readFileSync(path.join(process.cwd(), "package.json"), "utf8"),
         ) as ExtensionManifest;
@@ -607,10 +607,10 @@ describe("extension manifest", () => {
             "%configuration.undockableWindowButtonVisability.markdownDescription%",
         );
         expect(undockButton?.when).toBe(
-            "view == intelligit.commitGraph && config.intelligit.undockableWindowButtonVisability && config.intelligit.icons != color",
+            "(view == intelligit.commitGraph || view == intelligit.sidebarGraph) && config.intelligit.undockableWindowButtonVisability && config.intelligit.icons != color",
         );
         expect(colorUndockButton?.when).toBe(
-            "view == intelligit.commitGraph && config.intelligit.undockableWindowButtonVisability && config.intelligit.icons == color",
+            "(view == intelligit.commitGraph || view == intelligit.sidebarGraph) && config.intelligit.undockableWindowButtonVisability && config.intelligit.icons == color",
         );
     });
 
