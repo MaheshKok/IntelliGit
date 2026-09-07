@@ -1981,14 +1981,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 break;
             }
             case "getLastCommitMessage": {
-                const runtime = scopedRuntime();
-                const lastMsg = await (runtime?.gitOps ?? this.gitOps).getLastCommitMessage();
-                this.postToWebview({
-                    type: "lastCommitMessage",
-                    ...(runtime ? { repositoryRoot: runtime.repository.root } : {}),
-                    message: lastMsg,
-                });
-                await this.mirrorPanelTextForRuntime(runtime, lastMsg);
+                await this.handleGetLastCommitMessage(scopedRuntime());
                 break;
             }
             case "getAmendBranchCommits": {
@@ -2396,6 +2389,21 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
     ): Promise<void> {
         if (!runtime) return;
         await this.mirrorPanelText(runtime.repository.root, message);
+    }
+    private async handleGetLastCommitMessage(
+        runtime: CommitPanelRepositoryRuntime | undefined,
+    ): Promise<void> {
+        const lastMsg = await (runtime?.gitOps ?? this.gitOps).getLastCommitMessage();
+        // The repository list can change during the await. A removed or replaced
+        // runtime must not post, and must not mirror: getCommitDraftStorageKey would
+        // fall back to the current repoRootUri and file this text under another repo.
+        if (runtime && this.runtimes.get(runtime.repository.root) !== runtime) return;
+        this.postToWebview({
+            type: "lastCommitMessage",
+            ...(runtime ? { repositoryRoot: runtime.repository.root } : {}),
+            message: lastMsg,
+        });
+        await this.mirrorPanelTextForRuntime(runtime, lastMsg);
     }
     private async mirrorPanelText(root: string, message: string): Promise<void> {
         this.setFromPanelSafely(root, message);

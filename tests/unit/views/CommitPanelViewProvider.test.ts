@@ -1204,6 +1204,35 @@ describe("CommitPanelViewProvider native commit bridge wiring", () => {
         });
     });
 
+    it("getLastCommitMessage drops a result whose repository was removed mid-flight", async () => {
+        const { bridge, provider, workspace, root } = createBridgeProvider();
+        const gitOps = (provider as unknown as { gitOps: GitOps }).gitOps;
+        let resolveLast: (message: string) => void = () => undefined;
+        vi.spyOn(gitOps, "getLastCommitMessage").mockReturnValue(
+            new Promise<string>((resolve) => {
+                resolveLast = resolve;
+            }),
+        );
+        const view = createInspectableCommitPanelWebviewView();
+        provider.resolveWebviewView(view.webviewView, INERT_CONTEXT, INERT_TOKEN);
+        const repoB: DiscoveredRepository = { root: "/repo-b", label: "B", kind: "repository" };
+
+        const pending = view.receiveMessage({ type: "getLastCommitMessage", repositoryRoot: root });
+        provider.setRepositories([repoB], repoB.root);
+        resolveLast("stale message");
+        await pending;
+
+        expect(
+            messagesOfType(view.posted, "lastCommitMessage"),
+            "a result for a removed repository must not reach the webview",
+        ).toEqual([]);
+        expect(bridge.setFromPanel.map((entry) => entry.message)).not.toContain("stale message");
+        expect(
+            [...workspace.values.values()],
+            "the removed repository's message must not land in any draft, least of all the new active one's",
+        ).not.toContain("stale message");
+    });
+
     it("ready restores every runtime with active repository last", async () => {
         const rootA = "/repo-a";
         const rootB = "/repo-b";
