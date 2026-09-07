@@ -1296,4 +1296,20 @@ describe("CommitPanelViewProvider native commit bridge wiring", () => {
         expect(bridge.visible).toEqual([true, false, true, false]);
         expect(bridge.disposed).toBe(true);
     });
+
+    it("a replaced view's disposal does not hide the bridge under the view that owns it", () => {
+        const { bridge, provider } = createBridgeProvider();
+        const replaced = createInspectableCommitPanelWebviewView("delivered", true);
+        provider.resolveWebviewView(replaced.webviewView, INERT_CONTEXT, INERT_TOKEN);
+        const onScreen = createInspectableCommitPanelWebviewView("delivered", true);
+        provider.resolveWebviewView(onScreen.webviewView, INERT_CONTEXT, INERT_TOKEN);
+
+        replaced.disposeView();
+
+        expect(
+            bridge.visible,
+            "the view on screen still owns the record, so the replaced view's disposal must not " +
+                "hide the native input polling underneath it",
+        ).toEqual([true, true]);
+    });
 });

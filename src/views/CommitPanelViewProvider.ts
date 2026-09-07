@@ -1220,8 +1220,8 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         const thisView = webviewView;
         this.viewDisposables.push(
             webviewView.onDidDispose(() => {
-                this.nativeCommitInputBridge.setVisible(false);
                 if (this.view === thisView) {
+                    this.nativeCommitInputBridge.setVisible(false);
                     this.view = undefined;
                     this.iconTheme.dispose();
                     this.disposeThemeChangeDisposables();
