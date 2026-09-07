@@ -254,7 +254,7 @@
     outline-offset: -2px;
 }
 .session-root button:active:not(:disabled) {
-    box-shadow: inset 0 0 0 1px currentColor;
+    box-shadow: inset 0 0 0 1px currentcolor;
 }
 
 @media (max-width: 600px) {

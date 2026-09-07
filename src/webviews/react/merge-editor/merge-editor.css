@@ -1172,5 +1172,5 @@
 }
 .merge-editor button:active:not(:disabled),
 .retry-btn:active:not(:disabled) {
-    box-shadow: inset 0 0 0 1px currentColor;
+    box-shadow: inset 0 0 0 1px currentcolor;
 }

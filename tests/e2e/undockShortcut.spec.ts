@@ -36,9 +36,14 @@ for (const iconStyle of ["color", "standard"]) {
             await expect(graphViews).toHaveCount(2);
             await graphViews.nth(1).click();
             await window.getByRole("option", { name: /^New Panel Entry/ }).click();
+            const panel = window.locator('[id="workbench.parts.panel"]');
+            // Close through native chrome so an embedded webview cannot consume the chord.
+            // Observe the closed panel before testing the user's Ctrl/Cmd+J reopening path.
+            await panel.getByRole("button", { name: /^Hide Panel/ }).click();
+            await expect(panel).toBeHidden();
             const modifier = process.platform === "darwin" ? "Meta" : "Control";
             await window.keyboard.press(`${modifier}+j`);
-            await window.keyboard.press(`${modifier}+j`);
+            await expect(panel).toBeVisible();
             await window.screenshot({ path: testInfo.outputPath("moved-graph.png") });
             await expect(
                 shortcut,

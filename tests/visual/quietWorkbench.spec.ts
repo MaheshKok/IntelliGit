@@ -31,10 +31,12 @@ test("merge identity and summaries stay readable without overlap", async ({
     }
     const path = page.locator(".merge-title .file-path");
     await expect(path).toBeVisible();
+    // Font metrics vary across hosts; the complete fixture filename must fit on each.
+    await expect(path).toHaveText("conflict.txt");
     expect(
-        (await path.boundingBox())?.width,
-        "filename must retain readable space",
-    ).toBeGreaterThan(70);
+        await path.evaluate((element) => element.scrollWidth <= element.clientWidth),
+        "filename must remain readable without clipping",
+    ).toBe(true);
 });
 
 for (const locale of ["en", "de", "ru"]) {
