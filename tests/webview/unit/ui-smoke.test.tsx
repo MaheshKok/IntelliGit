@@ -1350,6 +1350,29 @@ describe("webview ui smoke", () => {
         expect(dirtyPushButton.getAttribute("aria-disabled")).toBeNull();
         expect(dirtyPushableHtml).toContain('data-testid="push-ahead-count"');
         expect(dirtyPushableHtml).toContain("↑3");
+        expect(dirtyPushableHtml).not.toContain('data-testid="commit-action-push-options"');
+
+        const forcePushableHtml = renderToStaticMarkup(
+            <ChakraProvider theme={theme}>
+                <CommitArea
+                    commitMessage=""
+                    isAmend={false}
+                    onMessageChange={noop}
+                    onAmendChange={noop}
+                    onCommit={noop}
+                    onPush={noop}
+                    onForcePush={noop}
+                    canCommit={true}
+                    canPush={true}
+                    pushLabel="common.push"
+                    currentBranchAhead={3}
+                    currentBranchName="main"
+                    currentBranchUpstream="origin/main"
+                />
+            </ChakraProvider>,
+        );
+        expect(forcePushableHtml).toContain('data-testid="commit-action-push-options"');
+        expect(getButtonByText(forcePushableHtml, "Push↑3").disabled).toBe(false);
 
         const localOnlyCommitHtml = renderUi(
             <CommitArea

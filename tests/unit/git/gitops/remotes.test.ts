@@ -64,6 +64,30 @@ describe("GitOps", () => {
             expect(calls).toEqual([["rev-parse", "--abbrev-ref", "HEAD"], ["push"]]);
         });
 
+        it("calls git push --force-with-lease when a force push is requested", async () => {
+            const executor = createMockExecutor({});
+            const ops = new GitOps(executor);
+            await ops.push(true);
+
+            const calls = (executor.run as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0]);
+            expect(calls).toEqual([
+                ["rev-parse", "--abbrev-ref", "HEAD"],
+                ["push", "--force-with-lease"],
+            ]);
+        });
+
+        it("force pushes an explicit refspec when local and remote branch names differ", async () => {
+            const executor = createMockExecutor({
+                "rev-parse --abbrev-ref HEAD": "feature\n",
+                "rev-parse --abbrev-ref @{upstream}": "origin/renamed\n",
+            });
+            const ops = new GitOps(executor);
+            await ops.push(true);
+
+            const calls = (executor.run as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0]);
+            expect(calls.at(-1)).toEqual(["push", "--force-with-lease", "origin", "HEAD:renamed"]);
+        });
+
         it("retries with --set-upstream when push fails due to missing upstream and user confirms", async () => {
             const noUpstreamError = new Error(
                 [

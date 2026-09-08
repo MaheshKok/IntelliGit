@@ -92,6 +92,7 @@
     "Enter your GitLab Personal Access Token (requires read_repository scope)": "GitLab 개인 액세스 토큰을 입력하세요(read_repository 스코프 필요).",
     "Failed to initialize repository. Check folder permissions.": "저장소 초기화에 실패했습니다. 폴더 권한을 확인하세요.",
     "Fetching your GitHub repositories...": "GitHub 저장소를 가져오는 중...",
+    "Force push rewrites the remote branch history. Continue?": "강제 푸시는 원격 브랜치 기록을 다시 씁니다. 계속할까요?",
     "Git repositories found.": "Git 저장소가 발견되었습니다.",
     "GitLab authentication": "GitLab 인증",
     "Graph": "그래프",

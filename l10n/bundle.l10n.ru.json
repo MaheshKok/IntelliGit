@@ -92,6 +92,7 @@
     "Enter your GitLab Personal Access Token (requires read_repository scope)": "Введите свой персональный токен доступа GitLab (требуется область действия read_repository).",
     "Failed to initialize repository. Check folder permissions.": "Не удалось инициализировать репозиторий. Проверьте права доступа к папке.",
     "Fetching your GitHub repositories...": "Загрузка ваших репозиториев GitHub...",
+    "Force push rewrites the remote branch history. Continue?": "Принудительная отправка перезапишет историю удалённой ветки. Продолжить?",
     "Git repositories found.": "Найдены репозитории Git.",
     "GitLab authentication": "Аутентификация GitLab",
     "Graph": "График",

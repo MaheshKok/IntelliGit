@@ -309,6 +309,8 @@
     "common.openRepository": "Открыть репозиторий",
     "common.sync": "Синхронизировать",
     "commit.action.publishAndPush": "Опубликовать и отправить",
+    "commit.action.forcePush": "Принудительная отправка…",
+    "commit.action.pushOptions": "Параметры отправки",
     "commit.branchIndicator.local": "Ветка: {branch}",
     "commit.branchIndicator.tracking": "Ветка: {branch} → {upstream}",
     "commit.checks.signIn": "Sign in",

@@ -92,6 +92,7 @@
     "Enter your GitLab Personal Access Token (requires read_repository scope)": "Geben Sie Ihr persönliches GitLab-Zugriffstoken ein (erfordert die Berechtigung read_repository).",
     "Failed to initialize repository. Check folder permissions.": "Das Repository konnte nicht initialisiert werden. Überprüfen Sie die Ordnerberechtigungen.",
     "Fetching your GitHub repositories...": "Rufe deine GitHub-Repositories ab...",
+    "Force push rewrites the remote branch history. Continue?": "Ein Force-Push schreibt die Historie des Remote-Branches neu. Fortfahren?",
     "Git repositories found.": "Git-Repositories gefunden.",
     "GitLab authentication": "GitLab-Authentifizierung",
     "Graph": "Graph",

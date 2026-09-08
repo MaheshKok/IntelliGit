@@ -66,6 +66,7 @@ export interface UndockedActions {
     handleCancelGeneration: () => void;
     handleCommit: () => void;
     handlePush: () => void;
+    handleForcePush: () => void;
     handleOpenRepository: () => void;
     handleSync: () => void;
     handleFetch: () => void;
@@ -260,6 +261,10 @@ export function useUndockedActions(params: UseUndockedActionsParams): UndockedAc
         vscode.postMessage({ type: shouldPublishBranch ? "publishBranch" : "push" });
     }, [shouldPublishBranch]);
 
+    const handleForcePush = useCallback(() => {
+        vscode.postMessage({ type: "push", force: true });
+    }, []);
+
     const handleSync = useCallback(() => {
         vscode.postMessage({ type: "sync" });
     }, []);
@@ -300,6 +305,7 @@ export function useUndockedActions(params: UseUndockedActionsParams): UndockedAc
         handleCancelGeneration,
         handleCommit,
         handlePush,
+        handleForcePush,
         handleOpenRepository,
         handleSync,
         handleFetch,

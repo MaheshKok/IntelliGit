@@ -1854,7 +1854,11 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 await runGitOperationFromPanel(this.actionDepsForRuntime(scopedRuntime()), "pull");
                 break;
             case "push":
-                await runGitOperationFromPanel(this.actionDepsForRuntime(scopedRuntime()), "push");
+                await runGitOperationFromPanel(
+                    this.actionDepsForRuntime(scopedRuntime()),
+                    "push",
+                    msg.force === true,
+                );
                 break;
             case "sync":
                 await runGitOperationFromPanel(this.actionDepsForRuntime(scopedRuntime()), "sync");

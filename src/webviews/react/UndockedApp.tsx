@@ -598,6 +598,7 @@ function App(): React.ReactElement {
                 showIgnoredFiles={showIgnoredFiles}
                 canCommit={canCommit}
                 canPush={canPush}
+                canForcePush={!shouldPublishBranch}
                 pushLabel={pushLabel}
                 isAllChecked={isAllChecked}
                 isSomeChecked={isSomeChecked}
@@ -632,6 +633,7 @@ function App(): React.ReactElement {
                 handleCancelGeneration={actions.handleCancelGeneration}
                 handleCommit={actions.handleCommit}
                 handlePush={actions.handlePush}
+                handleForcePush={actions.handleForcePush}
                 handleOpenRepository={actions.handleOpenRepository}
                 handleSync={actions.handleSync}
                 handleFetch={actions.handleFetch}

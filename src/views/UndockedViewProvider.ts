@@ -1243,9 +1243,11 @@ export class UndockedViewProvider {
             }
             case "fetch":
             case "pull":
-            case "push":
             case "sync":
                 await runGitOperationFromPanel(actionDeps, msg.type);
+                break;
+            case "push":
+                await runGitOperationFromPanel(actionDeps, "push", msg.force === true);
                 break;
             case "openRepository":
                 await vscode.commands.executeCommand(

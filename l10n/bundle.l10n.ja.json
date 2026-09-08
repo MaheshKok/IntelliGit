@@ -92,6 +92,7 @@
     "Enter your GitLab Personal Access Token (requires read_repository scope)": "GitLabの個人アクセストークンを入力してください（read_repositoryスコープが必要です）",
     "Failed to initialize repository. Check folder permissions.": "リポジトリの初期化に失敗しました。フォルダのアクセス許可を確認してください。",
     "Fetching your GitHub repositories...": "GitHubリポジトリを取得しています...",
+    "Force push rewrites the remote branch history. Continue?": "強制プッシュはリモートブランチの履歴を書き換えます。続行しますか?",
     "Git repositories found.": "Gitリポジトリが見つかりました。",
     "GitLab authentication": "GitLab認証",
     "Graph": "グラフ",

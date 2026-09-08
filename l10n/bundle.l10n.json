@@ -132,6 +132,7 @@
     "Fetched successfully.": "Fetched successfully.",
     "Fetching...": "Fetching...",
     "Fetching your GitHub repositories...": "Fetching your GitHub repositories...",
+    "Force push rewrites the remote branch history. Continue?": "Force push rewrites the remote branch history. Continue?",
     "Git repositories found.": "Git repositories found.",
     "GitHub check": "GitHub check",
     "Checks unavailable": "Checks unavailable",

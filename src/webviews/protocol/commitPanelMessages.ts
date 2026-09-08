@@ -253,6 +253,11 @@ export type OutboundMessage =
     | RepositoryScopedMessage<{
           /** Command pushing the current branch to its upstream. */
           type: "push";
+          /**
+           * True asks for a `--force-with-lease` push, which the host confirms before it runs.
+           * Omitted or false keeps the ordinary fast-forward push.
+           */
+          force?: boolean;
       }>
     | RepositoryScopedMessage<{
           /** Command pulling the current branch and then pushing it. */

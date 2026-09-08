@@ -3,9 +3,10 @@
 
 import React from "react";
 import { Flex, Box, Textarea, Button } from "@chakra-ui/react";
-import { VscDebugStop, VscSparkle } from "react-icons/vsc";
+import { VscChevronDown, VscDebugStop, VscSparkle } from "react-icons/vsc";
 import { VscCheckbox } from "../../shared/components/VscCheckbox";
 import { ToolbarIconButton } from "../../shared/components/ToolbarIconButton";
+import { ContextMenu, type MenuItem } from "../../shared/components/ContextMenu";
 import { SYSTEM_FONT_STACK } from "../../../../utils/constants";
 import { t } from "../../shared/i18n";
 import { JETBRAINS_UI } from "../../shared/tokens";
@@ -20,6 +21,12 @@ interface Props {
     onAmendChange: (isAmend: boolean) => void;
     onCommit: () => void;
     onPush: () => void;
+    /**
+     * Requests a force push. Supplying it turns the Push button into a split button whose caret
+     * opens the push-mode menu; omitting it leaves the plain button, which is what an unpublished
+     * branch wants because there is no remote history to rewrite yet.
+     */
+    onForcePush?: () => void;
     canCommit: boolean;
     canPush: boolean;
     pushLabel: string;
@@ -92,6 +99,7 @@ export function CommitArea({
     onAmendChange,
     onCommit,
     onPush,
+    onForcePush,
     canCommit,
     canPush,
     pushLabel,
@@ -271,26 +279,115 @@ export function CommitArea({
                 >
                     {isAmend ? t("commit.action.amend") : t("commit.action.commit")}
                 </Button>
-                <Button
-                    data-testid="commit-action-push"
-                    variant="secondary"
-                    size="sm"
-                    onClick={onPush}
+                <PushAction
+                    onPush={onPush}
+                    onForcePush={onForcePush}
                     isDisabled={isPushButtonDisabled}
-                    aria-disabled={isPushVisuallyDisabled || undefined}
-                    fontSize="12px"
-                    fontFamily={SYSTEM_FONT_STACK}
-                    _disabled={disabledButtonStyles}
-                    sx={isPushVisuallyDisabled ? disabledButtonStyles : undefined}
-                >
-                    {t(pushLabel)}
-                    {currentBranchAhead > 0 ? (
-                        <Box as="span" data-testid="push-ahead-count" ml="4px">
-                            ↑{currentBranchAhead}
-                        </Box>
-                    ) : null}
-                </Button>
+                    isVisuallyDisabled={isPushVisuallyDisabled}
+                    pushLabel={pushLabel}
+                    currentBranchAhead={currentBranchAhead}
+                />
             </Flex>
         </Flex>
+    );
+}
+
+interface PushActionProps {
+    onPush: () => void;
+    /** Present only when a force push is meaningful; its absence removes the caret entirely. */
+    onForcePush?: () => void;
+    isDisabled: boolean;
+    isVisuallyDisabled: boolean;
+    pushLabel: string;
+    currentBranchAhead: number;
+}
+
+/**
+ * Renders the Push button, plus a caret that opens the push-mode menu when forcing is possible.
+ *
+ * The caret is a sibling button rather than a wrapper around the Push button so the primary action
+ * stays a single click, and so the ahead-count badge keeps its own accessible label.
+ */
+function PushAction({
+    onPush,
+    onForcePush,
+    isDisabled,
+    isVisuallyDisabled,
+    pushLabel,
+    currentBranchAhead,
+}: PushActionProps): React.ReactElement {
+    const [menuPosition, setMenuPosition] = React.useState<{ x: number; y: number } | null>(null);
+    const menuItems = React.useMemo<MenuItem[]>(
+        () => [
+            { label: t("common.push"), action: "push" },
+            { label: t("commit.action.forcePush"), action: "forcePush" },
+        ],
+        [],
+    );
+    const handleOpenMenu = React.useCallback((event: React.MouseEvent<HTMLButtonElement>) => {
+        const rect = event.currentTarget.getBoundingClientRect();
+        setMenuPosition({ x: rect.left, y: rect.bottom + 4 });
+    }, []);
+    const handleSelect = React.useCallback(
+        (action: string) => {
+            if (action === "push") onPush();
+            if (action === "forcePush") onForcePush?.();
+        },
+        [onForcePush, onPush],
+    );
+    return (
+        <>
+            <Button
+                data-testid="commit-action-push"
+                variant="secondary"
+                size="sm"
+                onClick={onPush}
+                isDisabled={isDisabled}
+                aria-disabled={isVisuallyDisabled || undefined}
+                fontSize="12px"
+                fontFamily={SYSTEM_FONT_STACK}
+                _disabled={disabledButtonStyles}
+                sx={isVisuallyDisabled ? disabledButtonStyles : undefined}
+            >
+                {t(pushLabel)}
+                {currentBranchAhead > 0 ? (
+                    <Box as="span" data-testid="push-ahead-count" ml="4px">
+                        ↑{currentBranchAhead}
+                    </Box>
+                ) : null}
+            </Button>
+            {onForcePush ? (
+                <Button
+                    data-testid="commit-action-push-options"
+                    aria-label={t("commit.action.pushOptions")}
+                    aria-haspopup="menu"
+                    title={t("commit.action.pushOptions")}
+                    variant="secondary"
+                    size="sm"
+                    onClick={handleOpenMenu}
+                    isDisabled={isDisabled}
+                    aria-disabled={isVisuallyDisabled || undefined}
+                    // The caret reads as attached to Push, so it drops the gap the parent Flex puts
+                    // between siblings and keeps only enough width for the glyph.
+                    ml="-6px"
+                    minW="20px"
+                    px="4px"
+                    _disabled={disabledButtonStyles}
+                    sx={isVisuallyDisabled ? disabledButtonStyles : undefined}
+                >
+                    <VscChevronDown size={12} />
+                </Button>
+            ) : null}
+            {menuPosition ? (
+                <ContextMenu
+                    x={menuPosition.x}
+                    y={menuPosition.y}
+                    minWidth={160}
+                    items={menuItems}
+                    onSelect={handleSelect}
+                    onClose={() => setMenuPosition(null)}
+                />
+            ) : null}
+        </>
     );
 }

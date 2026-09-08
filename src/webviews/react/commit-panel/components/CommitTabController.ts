@@ -44,6 +44,8 @@ export interface CommitTabProps {
     onCommit: () => void;
     canCommit: boolean;
     onPush: () => void;
+    /** Requests a force push; omitted when the current branch has no upstream to rewrite. */
+    onForcePush?: () => void;
     canPush: boolean;
     pushLabel: string;
     currentBranchAhead?: number;

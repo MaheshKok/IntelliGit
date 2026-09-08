@@ -717,6 +717,7 @@ export async function runGitOperationFromPanel(
         "gitOps" | "refreshData" | "refreshGraphData" | "fireWorkingTreeChanged" | "publishBranch"
     >,
     operation: CommitPanelGitOperation,
+    force: boolean = false,
 ): Promise<void> {
     if (
         (operation === "pull" || operation === "sync") &&
@@ -741,6 +742,11 @@ export async function runGitOperationFromPanel(
             return;
         }
     }
+
+    // Only a plain push carries the force flag: `fetch` never writes, and `pull`/`sync` rebase onto
+    // the remote rather than overwrite it, so forcing them would mean something never asked for.
+    const forcePush = force && operation === "push";
+    if (forcePush && !(await confirmForcePush())) return;
 
     const labels = {
         fetch: {
@@ -768,17 +774,17 @@ export async function runGitOperationFromPanel(
             } else if (operation === "pull") {
                 await deps.gitOps.pullRebase();
             } else if (operation === "push") {
-                await deps.gitOps.push();
+                await deps.gitOps.push(forcePush);
             } else {
                 await deps.gitOps.pullRebase();
-                await deps.gitOps.push();
+                await deps.gitOps.push(forcePush);
             }
         });
     } catch (err) {
         if (
             (operation === "push" || operation === "sync") &&
             (await promptRebaseAfterPushRejection(err, deps.gitOps, async () => {
-                await deps.gitOps.push();
+                await deps.gitOps.push(forcePush);
             }))
         ) {
             showTimedInformationMessage(labels.success);
@@ -794,6 +800,21 @@ export async function runGitOperationFromPanel(
     await deps.refreshData();
     await deps.refreshGraphData?.();
     deps.fireWorkingTreeChanged();
+}
+
+/**
+ * Confirms a history-rewriting push with a modal before anything reaches the remote.
+ *
+ * The dialog offers only the explicit "Force Push" action, so dismissing it declines the push.
+ */
+async function confirmForcePush(): Promise<boolean> {
+    const confirmLabel = vscode.l10n.t("Force Push");
+    const selection = await vscode.window.showWarningMessage(
+        vscode.l10n.t("Force push rewrites the remote branch history. Continue?"),
+        { modal: true },
+        confirmLabel,
+    );
+    return selection === confirmLabel;
 }
 
 /**

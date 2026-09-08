@@ -130,6 +130,7 @@ function CommitTabLayout({
                     onAmendChange={props.onAmendChange}
                     onCommit={props.onCommit}
                     onPush={props.onPush}
+                    onForcePush={props.onForcePush}
                     canCommit={props.canCommit}
                     canPush={props.canPush}
                     pushLabel={props.pushLabel}

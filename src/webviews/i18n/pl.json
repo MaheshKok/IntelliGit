@@ -309,6 +309,8 @@
     "common.openRepository": "Otwórz repozytorium",
     "common.sync": "Synchronizuj",
     "commit.action.publishAndPush": "Opublikuj i wypchnij",
+    "commit.action.forcePush": "Wymuś wypchnięcie…",
+    "commit.action.pushOptions": "Opcje wypychania",
     "commit.branchIndicator.local": "Gałąź: {branch}",
     "commit.branchIndicator.tracking": "Gałąź: {branch} → {upstream}",
     "commit.checks.signIn": "Sign in",

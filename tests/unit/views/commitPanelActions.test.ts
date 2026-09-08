@@ -221,6 +221,48 @@ describe("runGitOperationFromPanel", () => {
         expect(deps.fireWorkingTreeChanged).toHaveBeenCalledTimes(1);
     });
 
+    it("force pushes only after the rewrite is confirmed", async () => {
+        const gitOps = makeGitOps("origin/main");
+        const deps = makeDeps(gitOps);
+        vscodeMock.window.showWarningMessage.mockResolvedValueOnce("Force Push");
+
+        await runGitOperationFromPanel(deps, "push", true);
+
+        expect(vscodeMock.window.showWarningMessage).toHaveBeenCalledWith(
+            "Force push rewrites the remote branch history. Continue?",
+            { modal: true },
+            "Force Push",
+        );
+        expect(gitOps.push).toHaveBeenCalledWith(true);
+        expect(deps.refreshData).toHaveBeenCalledTimes(1);
+    });
+
+    it("leaves the remote untouched when the force-push confirmation is declined", async () => {
+        const gitOps = makeGitOps("origin/main");
+        const deps = makeDeps(gitOps);
+        vscodeMock.window.showWarningMessage.mockResolvedValueOnce(undefined);
+
+        await runGitOperationFromPanel(deps, "push", true);
+
+        expect(gitOps.push).not.toHaveBeenCalled();
+        expect(deps.refreshData).not.toHaveBeenCalled();
+        expect(deps.fireWorkingTreeChanged).not.toHaveBeenCalled();
+    });
+
+    it("pushes without force when force is not requested", async () => {
+        const gitOps = makeGitOps("origin/main");
+        const deps = makeDeps(gitOps);
+
+        await runGitOperationFromPanel(deps, "push");
+
+        expect(vscodeMock.window.showWarningMessage).not.toHaveBeenCalledWith(
+            "Force push rewrites the remote branch history. Continue?",
+            { modal: true },
+            "Force Push",
+        );
+        expect(gitOps.push).toHaveBeenCalledWith(false);
+    });
+
     it("does not offer publish branch automatically after a local-only commit", async () => {
         const gitOps = makeGitOps();
         const deps = makeDeps(gitOps);

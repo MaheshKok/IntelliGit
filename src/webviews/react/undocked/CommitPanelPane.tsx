@@ -29,6 +29,8 @@ interface CommitPanelPaneProps {
     onFetch: () => void;
     onPull: () => void;
     onPush: () => void;
+    /** Requests a force push; omitted when the current branch has no upstream to rewrite. */
+    onForcePush?: () => void;
     onOpenRepository: () => void;
     canPush: boolean;
     pushLabel: string;
@@ -65,6 +67,7 @@ export function CommitPanelPane({
     onFetch,
     onPull,
     onPush,
+    onForcePush,
     onOpenRepository,
     canPush,
     pushLabel,
@@ -121,6 +124,7 @@ export function CommitPanelPane({
                             onCommit={onCommit}
                             canCommit={canCommit}
                             onPush={onPush}
+                            onForcePush={onForcePush}
                             canPush={canPush}
                             pushLabel={pushLabel}
                             currentBranchName={cpState.currentBranchName}
