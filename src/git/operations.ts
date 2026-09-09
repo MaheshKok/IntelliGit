@@ -1094,7 +1094,13 @@ export class GitOps {
     async push(force: boolean = false): Promise<string> {
         const forceArgs = force ? ["--force-with-lease"] : [];
         const upstreamTarget = await this.resolveCurrentPushTarget();
-        if (upstreamTarget && upstreamTarget.remoteBranch !== upstreamTarget.localBranch) {
+        // A force push always names its ref. Under `push.default = matching` a bare `git push`
+        // selects every branch that exists on both sides, and the lease would then be applied to
+        // each of them, so a confirmed force push could rewrite branches nobody selected.
+        if (
+            upstreamTarget &&
+            (force || upstreamTarget.remoteBranch !== upstreamTarget.localBranch)
+        ) {
             return this.executor.run([
                 "push",
                 ...forceArgs,
