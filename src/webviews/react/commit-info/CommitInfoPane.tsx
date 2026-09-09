@@ -42,7 +42,7 @@ interface CommitInfoPaneProps {
      * then wait on the host for the detail; without this the pane cannot tell that window apart
      * from a genuinely empty selection and denies a row it is drawing as current. Left optional
      * and defaulting to false for the standalone commit-info view, which has no graph to disagree
-     * with and mirrors the host's selection through `loading` alone....
+     * with and mirrors the host's selection through `loading` alone...
      */
     hasSelection?: boolean;
     folderIcon?: ThemeTreeIcon;
