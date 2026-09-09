@@ -339,13 +339,17 @@ function PushAction({
         <>
             <Button
                 data-testid="commit-action-push"
-                variant="secondary"
+                variant="primary"
                 size="sm"
                 onClick={onPush}
                 isDisabled={isDisabled}
                 aria-disabled={isVisuallyDisabled || undefined}
                 fontSize="12px"
                 fontFamily={SYSTEM_FONT_STACK}
+                // `primary` declares no border, and the disabled styles below set only
+                // `borderColor`, so without this the disabled Push loses its fill AND its edge and
+                // reads as bare grey text. Same reservation Commit carries, for the same reason.
+                border={RESERVED_BORDER}
                 _disabled={disabledButtonStyles}
                 sx={isVisuallyDisabled ? disabledButtonStyles : undefined}
             >
@@ -362,7 +366,10 @@ function PushAction({
                     aria-label={t("commit.action.pushOptions")}
                     aria-haspopup="menu"
                     title={t("commit.action.pushOptions")}
-                    variant="secondary"
+                    // Matches Push, not the panel's other secondary buttons: the caret is the other
+                    // half of one split control, and a grey sliver against a blue button reads as a
+                    // separate action rather than as Push's own menu.
+                    variant="primary"
                     size="sm"
                     onClick={handleOpenMenu}
                     isDisabled={isDisabled}
@@ -372,6 +379,7 @@ function PushAction({
                     ml="-6px"
                     minW="20px"
                     px="4px"
+                    border={RESERVED_BORDER}
                     _disabled={disabledButtonStyles}
                     sx={isVisuallyDisabled ? disabledButtonStyles : undefined}
                 >
