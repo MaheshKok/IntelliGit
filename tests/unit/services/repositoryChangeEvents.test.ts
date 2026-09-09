@@ -39,6 +39,11 @@ const mocks = vi.hoisted(() => ({
         dispose: ReturnType<typeof vi.fn>;
     }>,
     fsWatchers: [] as unknown[],
+    /** Every directory handed to a watcher, by whichever route the platform takes. */
+    watchedPaths: [] as string[],
+    /** Per-root overrides for the two Git directory resolvers, keyed by normalized root. */
+    gitDirs: {} as Record<string, string>,
+    commonDirs: {} as Record<string, string>,
     documentChangeHandlers: [] as Array<(event: { document: FakeDocument }) => void>,
     documentSaveHandlers: [] as Array<(document: FakeDocument) => void>,
 }));
@@ -84,7 +89,8 @@ vi.mock("vscode", () => {
             onDidCreateFiles: vi.fn(() => disposable()),
             onDidDeleteFiles: vi.fn(() => disposable()),
             onDidRenameFiles: vi.fn(() => disposable()),
-            createFileSystemWatcher: vi.fn(() => {
+            createFileSystemWatcher: vi.fn((pattern: { baseUri: { fsPath: string } }) => {
+                mocks.watchedPaths.push(pattern.baseUri.fsPath);
                 const watcher = {
                     onDidChange: vi.fn(() => disposable()),
                     onDidCreate: vi.fn(() => disposable()),
@@ -104,14 +110,18 @@ vi.mock("vscode", () => {
 vi.mock("fs", async () => {
     const { EventEmitter: NodeEventEmitter } = await import("node:events");
     return {
-        watch: vi.fn(() => {
+        watch: vi.fn((target: string) => {
+            mocks.watchedPaths.push(target);
             const watcher = Object.assign(new NodeEventEmitter(), { close: vi.fn() });
             mocks.fsWatchers.push(watcher);
             return watcher;
         }),
     };
 });
-vi.mock("../../../src/git/gitDirectory", () => ({ resolveGitDir: () => "/repo/.git" }));
+vi.mock("../../../src/git/gitDirectory", () => ({
+    resolveGitDir: (root: string) => mocks.gitDirs[root] ?? "/repo/.git",
+    resolveGitCommonDir: (root: string) => mocks.commonDirs[root] ?? "/repo/.git",
+}));
 
 import { EventEmitter } from "node:events";
 import { subscribeToRepositoryWorkingTreeChanges } from "../../../src/services/repositoryChangeEvents";
@@ -120,6 +130,9 @@ afterEach(() => {
     mocks.disposables.length = 0;
     mocks.watchers.length = 0;
     mocks.fsWatchers.length = 0;
+    mocks.watchedPaths.length = 0;
+    for (const key of Object.keys(mocks.gitDirs)) delete mocks.gitDirs[key];
+    for (const key of Object.keys(mocks.commonDirs)) delete mocks.commonDirs[key];
     mocks.documentChangeHandlers.length = 0;
     mocks.documentSaveHandlers.length = 0;
     vi.clearAllMocks();
@@ -164,6 +177,26 @@ describe("repository working-tree changes", () => {
         } finally {
             canonical.dispose();
             alternate?.dispose();
+        }
+    });
+
+    // A linked worktree's own Git directory keeps `refs` permanently empty: Git writes every
+    // ref -- including the remote-tracking ref a push moves -- into the shared common
+    // directory. Watching the worktree's own `refs` arms a directory nothing ever writes to,
+    // so a push from a worktree publishes no `git-refs` event, no full refresh runs, and the
+    // branch column's ahead count keeps counting commits that are already pushed (#147).
+    it("watches the shared refs directory for a linked worktree, not the worktree's own", () => {
+        const worktree = fixtureRoot("/wt");
+        mocks.gitDirs[worktree] = path.join(fixtureRoot("/main"), ".git", "worktrees", "wt");
+        mocks.commonDirs[worktree] = path.join(fixtureRoot("/main"), ".git");
+        const subscription = subscribeToRepositoryWorkingTreeChanges(worktree, vi.fn());
+        try {
+            expect(
+                mocks.watchedPaths,
+                "the refs watcher is armed on the worktree's own Git directory, whose refs tree Git never writes to",
+            ).toContain(path.join(fixtureRoot("/main"), ".git", "refs"));
+        } finally {
+            subscription.dispose();
         }
     });
 

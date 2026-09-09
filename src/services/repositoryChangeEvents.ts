@@ -1,7 +1,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import * as vscode from "vscode";
-import { resolveGitDir } from "../git/gitDirectory";
+import { resolveGitCommonDir, resolveGitDir } from "../git/gitDirectory";
 import { logGitOpsWarning } from "../git/operationSupport";
 
 /** Sources whose existing watcher pathways can invalidate a repository diff snapshot. */
@@ -198,7 +198,10 @@ class RootWorkingTreeWatcher implements vscode.Disposable {
         }
 
         try {
-            const refsPath = path.join(gitDir, "refs");
+            // Refs are shared state, so they live in the common directory. A linked worktree's
+            // own `refs` tree exists but stays empty, and watching it would miss every ref a
+            // push or fetch moves.
+            const refsPath = path.join(resolveGitCommonDir(this.repoRoot), "refs");
             if (process.platform === "linux") {
                 const watcher = vscode.workspace.createFileSystemWatcher(
                     new vscode.RelativePattern(vscode.Uri.file(refsPath), "**/*"),
