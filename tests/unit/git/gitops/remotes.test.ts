@@ -64,16 +64,16 @@ describe("GitOps", () => {
             expect(calls).toEqual([["rev-parse", "--abbrev-ref", "HEAD"], ["push"]]);
         });
 
-        it("calls git push --force-with-lease when a force push is requested", async () => {
-            const executor = createMockExecutor({});
+        it("drops the force flag when no upstream target resolves", async () => {
+            const executor = createMockExecutor({ "rev-parse --abbrev-ref HEAD": "feature\n" });
             const ops = new GitOps(executor);
             await ops.push(true);
 
+            // A bare force push has no ref to lease, so `push.default = matching` would hand the
+            // lease to every branch it selects. Nothing resolved also means nothing to overwrite.
             const calls = (executor.run as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0]);
-            expect(calls).toEqual([
-                ["rev-parse", "--abbrev-ref", "HEAD"],
-                ["push", "--force-with-lease"],
-            ]);
+            expect(calls.at(-1)).toEqual(["push"]);
+            expect(calls).not.toContainEqual(["push", "--force-with-lease"]);
         });
 
         it("force pushes an explicit refspec when local and remote branch names differ", async () => {

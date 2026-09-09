@@ -1090,13 +1090,18 @@ export class GitOps {
      * `force` overwrites the remote branch with `--force-with-lease`, which refuses the push when the
      * remote has moved past the local remote-tracking ref. Plain `--force` is deliberately not offered:
      * it discards commits the caller has never seen. Callers must confirm with the user first.
+     *
+     * A force push only ever happens against a resolved upstream, so `force` is silently dropped
+     * when none resolves. That is the same reasoning as the `--set-upstream` fallback below: with no
+     * upstream there is no remote history to rewrite.
      */
     async push(force: boolean = false): Promise<string> {
-        const forceArgs = force ? ["--force-with-lease"] : [];
         const upstreamTarget = await this.resolveCurrentPushTarget();
-        // A force push always names its ref. Under `push.default = matching` a bare `git push`
-        // selects every branch that exists on both sides, and the lease would then be applied to
-        // each of them, so a confirmed force push could rewrite branches nobody selected.
+        // A force push always names its ref, which is why it needs the resolved upstream. Under
+        // `push.default = matching` a bare `git push` selects every branch that exists on both
+        // sides, and the lease would then be applied to each of them, so a bare force push could
+        // rewrite branches nobody selected.
+        const forceArgs = force && upstreamTarget ? ["--force-with-lease"] : [];
         if (
             upstreamTarget &&
             (force || upstreamTarget.remoteBranch !== upstreamTarget.localBranch)
