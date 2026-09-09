@@ -27,6 +27,7 @@ import {
     showDeletedBranchActions,
 } from "../services/gitHelpers";
 import { assertValidBranchName, assertValidRemoteName } from "../utils/gitRefs";
+import { runGitOperationFromPanel } from "../views/commitPanelActions";
 
 /**
  * Runtime services captured by branch context-menu command handlers.
@@ -58,15 +59,6 @@ export interface BranchCommandEntry {
     id: string;
     handler: (item: { branch?: Branch }) => Promise<void>;
 }
-
-const PYCHARM_MERGE_CONFIG_ARGS = [
-    "-c",
-    "credential.helper=",
-    "-c",
-    "core.quotepath=false",
-    "-c",
-    "log.showSignature=false",
-];
 
 /** Rebuilds a tracked remote ref after upstream parsing has validated remote and branch parts. */
 function buildTrackedRemoteRef(tracked: { remote: string; remoteBranch: string }): string {
@@ -158,17 +150,6 @@ async function promptAndOpenWorktree(branchName: string, worktreePath: string): 
         forceNewWindow: picked.forceNewWindow,
         forceReuseWindow: !picked.forceNewWindow,
     });
-}
-
-/**
- * Builds the merge invocation used by the PyCharm-style Update Branch action.
- *
- * The command intentionally disables credential helpers and Git quoting noise for this one merge so
- * update errors can be compacted into user-facing VS Code messages without changing repository
- * configuration.
- */
-function buildPycharmMergeArgs(remoteRef: string): string[] {
-    return [...PYCHARM_MERGE_CONFIG_ARGS, "merge", remoteRef, "--no-stat", "-v"];
 }
 
 /**
@@ -805,26 +786,29 @@ export function createBranchCommands(deps: BranchCommandDeps): BranchCommandEntr
                 const currentBranchName = getCurrentBranchName();
                 const isSelectedBranchCurrent = branch.isCurrent || currentBranchName === name;
                 const trackedRemoteRef = tracked ? buildTrackedRemoteRef(tracked) : undefined;
-                let mergeAttempted = false;
                 try {
+                    if (isSelectedBranchCurrent) {
+                        // #218: the Changes toolbar's Pull, the graph toolbar's Pull, and this
+                        // menu item are one intent, so they now run one operation. The shared
+                        // panel action brings its own uncommitted-changes guard, progress
+                        // notification, success message, and refresh, so this path returns
+                        // before the wrapper below rather than showing either of them twice.
+                        await runGitOperationFromPanel(
+                            {
+                                gitOps,
+                                refreshData: async () => {
+                                    await vscode.commands.executeCommand("intelligit.refresh");
+                                },
+                                fireWorkingTreeChanged: () => undefined,
+                            },
+                            "pull",
+                        );
+                        return;
+                    }
+
                     await runWithNotificationProgress(
                         vscode.l10n.t("Updating {branch}...", { branch: name }),
                         async () => {
-                            if (isSelectedBranchCurrent) {
-                                await executor.run([
-                                    "fetch",
-                                    tracked.remote,
-                                    "--recurse-submodules=no",
-                                    "--progress",
-                                    "--prune",
-                                ]);
-                                mergeAttempted = true;
-                                await executor.run(
-                                    buildPycharmMergeArgs(buildTrackedRemoteRef(tracked)),
-                                );
-                                return;
-                            }
-
                             await executor.run([
                                 "fetch",
                                 tracked.remote,
@@ -842,7 +826,6 @@ export function createBranchCommands(deps: BranchCommandDeps): BranchCommandEntr
                 } catch (err) {
                     if (
                         isSelectedBranchCurrent &&
-                        mergeAttempted &&
                         (await showUpdateConflictSession(trackedRemoteRef))
                     ) {
                         return;
