@@ -92,6 +92,10 @@ function createScopedExecutor(statusOutput: string): {
 
 describe("WorktreeService", () => {
     afterEach(async () => {
+        // `mockResolvedValueOnce` queues survive the test that set them. A row whose prompt
+        // never fires would hand its unconsumed answer to the next row, so a single defect
+        // reds two tests and the second red accuses the wrong code.
+        showWarningMessage.mockReset();
         includeFiles.value = [];
         await Promise.all(tempRoots.splice(0).map((root) => removeScratchDirectories(root)));
     });
@@ -314,6 +318,7 @@ describe("WorktreeService", () => {
         const scoped = createScopedExecutor("");
         const service = new WorktreeService(executor, () => fixturePath("/repo"), scoped.factory);
 
+        showWarningMessage.mockResolvedValueOnce("Delete Worktree");
         await service.removeWorktree(fixturePath("/worktrees/feature"));
 
         expect(scoped.runs).toHaveLength(1);
@@ -325,6 +330,36 @@ describe("WorktreeService", () => {
             fixturePath("/worktrees/feature"),
         ]);
         expect(executor.run).not.toHaveBeenCalledWith(expect.arrayContaining(["branch"]));
+    });
+
+    // Deleting a worktree throws away a checkout, and until now a clean one went without a
+    // word (#150). The dirty path already confirmed, so this covers the case that did not:
+    // declining must leave the worktree on disk.
+    it("asks before removing a clean worktree and leaves it alone when the answer is no", async () => {
+        const executor = createExecutor([
+            porcelainRecords([
+                { path: fixturePath("/repo"), branch: "main" },
+                { path: fixturePath("/worktrees/feature"), branch: "feature/x" },
+            ]),
+            "",
+            porcelain("main"),
+        ]);
+        const scoped = createScopedExecutor("");
+        const service = new WorktreeService(executor, () => fixturePath("/repo"), scoped.factory);
+
+        showWarningMessage.mockResolvedValueOnce(undefined);
+        const result = await service.removeWorktree(fixturePath("/worktrees/feature"));
+
+        expect(
+            showWarningMessage,
+            "a clean worktree was deleted without asking",
+        ).toHaveBeenCalled();
+        expect(result, "declining the prompt still removed the worktree").toBeUndefined();
+        expect(executor.run).not.toHaveBeenCalledWith([
+            "worktree",
+            "remove",
+            fixturePath("/worktrees/feature"),
+        ]);
     });
 
     it("requires explicit confirmation before force-removing a dirty worktree", async () => {

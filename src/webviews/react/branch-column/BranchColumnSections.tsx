@@ -272,7 +272,12 @@ function WorktreeRow({
 }): React.ReactElement {
     const label = getWorktreeLabel(worktree);
     const folderName = getPathBasename(worktree.path);
-    const activate = (): void => onAction?.("open", worktree.path);
+    // Opening the worktree already checked out offers a choice between reloading the window
+    // onto itself and opening a second window on the same folder. The context-menu handlers
+    // below already refuse for the current worktree; this keeps the click consistent with them.
+    const activate = (): void => {
+        if (!worktree.isCurrent) onAction?.("open", worktree.path);
+    };
     return (
         <button
             type="button"

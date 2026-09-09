@@ -133,7 +133,7 @@ export class WorktreeService implements vscode.Disposable {
         return this.refresh();
     }
 
-    /** Remove a non-current, non-main worktree after dirty-state confirmation. */
+    /** Remove a non-current, non-main worktree after confirmation. */
     async removeWorktree(worktreePath: string): Promise<GitWorktree[] | undefined> {
         const worktrees = await this.listWorktrees();
         const target = path.resolve(worktreePath);
@@ -145,15 +145,17 @@ export class WorktreeService implements vscode.Disposable {
 
         const dirtyOutput = await this.createExecutor(worktree.path).run(["status", "--porcelain"]);
         const force = dirtyOutput.trim().length > 0;
-        if (force) {
-            const confirm = vscode.l10n.t("Delete Worktree");
-            const picked = await vscode.window.showWarningMessage(
-                vscode.l10n.t("Worktree has uncommitted changes. Delete it anyway?"),
-                { modal: true },
-                confirm,
-            );
-            if (picked !== confirm) return undefined;
-        }
+        // Removing a worktree deletes a checkout, so both paths confirm. The dirty one keeps its
+        // stronger wording because it also discards uncommitted work.
+        const confirm = vscode.l10n.t("Delete Worktree");
+        const picked = await vscode.window.showWarningMessage(
+            force
+                ? vscode.l10n.t("Worktree has uncommitted changes. Delete it anyway?")
+                : vscode.l10n.t("Delete {path}?", { path: worktree.path }),
+            { modal: true },
+            confirm,
+        );
+        if (picked !== confirm) return undefined;
 
         await removeGitWorktree(this.executor, worktree.path, force);
         return this.refresh();
