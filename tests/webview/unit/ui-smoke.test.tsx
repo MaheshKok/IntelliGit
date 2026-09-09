@@ -1350,6 +1350,64 @@ describe("webview ui smoke", () => {
         expect(dirtyPushButton.getAttribute("aria-disabled")).toBeNull();
         expect(dirtyPushableHtml).toContain('data-testid="push-ahead-count"');
         expect(dirtyPushableHtml).toContain("↑3");
+        expect(dirtyPushableHtml).not.toContain('data-testid="commit-action-push-options"');
+
+        const forcePushableHtml = renderToStaticMarkup(
+            <ChakraProvider theme={theme}>
+                <CommitArea
+                    commitMessage=""
+                    isAmend={false}
+                    onMessageChange={noop}
+                    onAmendChange={noop}
+                    onCommit={noop}
+                    onPush={noop}
+                    onForcePush={noop}
+                    canCommit={true}
+                    canPush={true}
+                    pushLabel="common.push"
+                    currentBranchAhead={3}
+                    currentBranchName="main"
+                    currentBranchUpstream="origin/main"
+                />
+            </ChakraProvider>,
+        );
+        expect(forcePushableHtml).toContain('data-testid="commit-action-push-options"');
+        expect(getButtonByText(forcePushableHtml, "Push↑3").disabled).toBe(false);
+
+        // A tracked branch with nothing ahead disables the caret along with Push, deliberately.
+        // `canPush === false` here means `ahead === 0`, so a force push either does nothing
+        // (`behind === 0`) or replaces the remote with a strictly older HEAD — the one case
+        // `--force-with-lease` cannot refuse, because the lease matches the remote-tracking ref
+        // it is about to discard. Amending or rebasing always leaves `ahead > 0`, which is
+        // already enabled, so nothing legitimate is blocked. Flip this and the destructive path
+        // becomes reachable with no safety net.
+        const upToDateForceHtml = renderToStaticMarkup(
+            <ChakraProvider theme={theme}>
+                <CommitArea
+                    commitMessage=""
+                    isAmend={false}
+                    onMessageChange={noop}
+                    onAmendChange={noop}
+                    onCommit={noop}
+                    onPush={noop}
+                    onForcePush={noop}
+                    canCommit={true}
+                    canPush={false}
+                    pushLabel="common.push"
+                    currentBranchAhead={0}
+                    currentBranchName="main"
+                    currentBranchUpstream="origin/main"
+                />
+            </ChakraProvider>,
+        );
+        const upToDateContainer = document.createElement("div");
+        upToDateContainer.innerHTML = upToDateForceHtml;
+        const upToDateCaret = upToDateContainer.querySelector<HTMLButtonElement>(
+            '[data-testid="commit-action-push-options"]',
+        );
+        // `?.` on a missing caret yields undefined, which fails this too, so no null guard.
+        expect(upToDateCaret?.disabled).toBe(true);
+        expect(getButtonByText(upToDateForceHtml, "Push").disabled).toBe(true);
 
         const localOnlyCommitHtml = renderUi(
             <CommitArea

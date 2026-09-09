@@ -284,6 +284,14 @@ export function RepositoryAccordion({
         postRepositoryCommand(shouldPublishBranch ? "publishBranch" : "push");
     }, [postRepositoryCommand, shouldPublishBranch]);
 
+    const handleForcePush = useCallback(() => {
+        vscode.postMessage({
+            type: "push",
+            ...repositoryScope(repository.root),
+            force: true,
+        });
+    }, [repository.root, vscode]);
+
     const handleToggleShowIgnoredFiles = useCallback(() => {
         setShowIgnoredFiles((value) => !value);
     }, []);
@@ -308,6 +316,7 @@ export function RepositoryAccordion({
             onCommit={handleCommit}
             canCommit={canCommit}
             onPush={handlePush}
+            onForcePush={shouldPublishBranch ? undefined : handleForcePush}
             canPush={canPush}
             pushLabel={pushLabel}
             currentBranchAhead={repository.currentBranchAhead}

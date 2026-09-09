@@ -1086,18 +1086,35 @@ export class GitOps {
      * Pushes the current branch and optionally prompts to create upstream tracking on no-upstream errors.
      *
      * Remote and branch names are validated before the fallback `--set-upstream` push mutates tracking.
+     *
+     * `force` overwrites the remote branch with `--force-with-lease`, which refuses the push when the
+     * remote has moved past the local remote-tracking ref. Plain `--force` is deliberately not offered:
+     * it discards commits the caller has never seen. Callers must confirm with the user first.
+     *
+     * A force push only ever happens against a resolved upstream, so `force` is silently dropped
+     * when none resolves. That is the same reasoning as the `--set-upstream` fallback below: with no
+     * upstream there is no remote history to rewrite.
      */
-    async push(): Promise<string> {
+    async push(force: boolean = false): Promise<string> {
         const upstreamTarget = await this.resolveCurrentPushTarget();
-        if (upstreamTarget && upstreamTarget.remoteBranch !== upstreamTarget.localBranch) {
+        // A force push always names its ref, which is why it needs the resolved upstream. Under
+        // `push.default = matching` a bare `git push` selects every branch that exists on both
+        // sides, and the lease would then be applied to each of them, so a bare force push could
+        // rewrite branches nobody selected.
+        const forceArgs = force && upstreamTarget ? ["--force-with-lease"] : [];
+        if (
+            upstreamTarget &&
+            (force || upstreamTarget.remoteBranch !== upstreamTarget.localBranch)
+        ) {
             return this.executor.run([
                 "push",
+                ...forceArgs,
                 upstreamTarget.remote,
                 `HEAD:${upstreamTarget.remoteBranch}`,
             ]);
         }
         try {
-            return await this.executor.run(["push"]);
+            return await this.executor.run(["push", ...forceArgs]);
         } catch (err) {
             if (!isNoUpstreamPushError(err)) throw err;
             const branch = await this.resolveCurrentBranchNameForPush();
@@ -1109,6 +1126,7 @@ export class GitOps {
             if (!allowSetUpstream) {
                 throw new UpstreamPushDeclinedError();
             }
+            // The first push to a new upstream has nothing to overwrite, so force is dropped here.
             return this.executor.run(["push", "--set-upstream", remote, branch]);
         }
     }

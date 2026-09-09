@@ -64,6 +64,56 @@ describe("GitOps", () => {
             expect(calls).toEqual([["rev-parse", "--abbrev-ref", "HEAD"], ["push"]]);
         });
 
+        it("drops the force flag when no upstream target resolves", async () => {
+            const executor = createMockExecutor({ "rev-parse --abbrev-ref HEAD": "feature\n" });
+            const ops = new GitOps(executor);
+            await ops.push(true);
+
+            // A bare force push has no ref to lease, so `push.default = matching` would hand the
+            // lease to every branch it selects. Nothing resolved also means nothing to overwrite.
+            const calls = (executor.run as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0]);
+            expect(calls.at(-1)).toEqual(["push"]);
+            expect(calls).not.toContainEqual(["push", "--force-with-lease"]);
+        });
+
+        it("force pushes an explicit refspec when local and remote branch names differ", async () => {
+            const executor = createMockExecutor({
+                "rev-parse --abbrev-ref HEAD": "feature\n",
+                "rev-parse --abbrev-ref @{upstream}": "origin/renamed\n",
+            });
+            const ops = new GitOps(executor);
+            await ops.push(true);
+
+            const calls = (executor.run as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0]);
+            expect(calls.at(-1)).toEqual(["push", "--force-with-lease", "origin", "HEAD:renamed"]);
+        });
+
+        it("force pushes an explicit refspec when the upstream branch has the same name", async () => {
+            const executor = createMockExecutor({
+                "rev-parse --abbrev-ref HEAD": "feature\n",
+                "rev-parse --abbrev-ref @{upstream}": "origin/feature\n",
+            });
+            const ops = new GitOps(executor);
+            await ops.push(true);
+
+            // Naming the ref keeps `push.default = matching` from widening the lease to every
+            // branch that happens to exist on both sides.
+            const calls = (executor.run as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0]);
+            expect(calls.at(-1)).toEqual(["push", "--force-with-lease", "origin", "HEAD:feature"]);
+        });
+
+        it("keeps an ordinary push bare when the upstream branch has the same name", async () => {
+            const executor = createMockExecutor({
+                "rev-parse --abbrev-ref HEAD": "feature\n",
+                "rev-parse --abbrev-ref @{upstream}": "origin/feature\n",
+            });
+            const ops = new GitOps(executor);
+            await ops.push();
+
+            const calls = (executor.run as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0]);
+            expect(calls.at(-1)).toEqual(["push"]);
+        });
+
         it("retries with --set-upstream when push fails due to missing upstream and user confirms", async () => {
             const noUpstreamError = new Error(
                 [

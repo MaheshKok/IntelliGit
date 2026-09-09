@@ -5,6 +5,12 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.32.5] - 2026-09-08
+
+### Added
+
+- The Push button now has a small arrow beside it. Click the arrow to choose between a normal push and a force push. A force push rewrites the branch on the remote, so IntelliGit asks you to confirm before it runs, and it uses Git's lease check so a push is refused when the remote moved in a way IntelliGit has not seen. The arrow only appears once the branch has an upstream — there is nothing to overwrite before that.
+
 ## [0.32.4] - 2026-09-07
 
 ### Added

@@ -72,6 +72,8 @@ export interface UndockedLayoutProps {
     showIgnoredFiles: boolean;
     canCommit: boolean;
     canPush: boolean;
+    /** False when the current branch has no upstream, which leaves nothing to force over. */
+    canForcePush: boolean;
     pushLabel: string;
     isAllChecked: (files: WorkingFile[]) => boolean;
     isSomeChecked: (files: WorkingFile[]) => boolean;
@@ -106,6 +108,7 @@ export interface UndockedLayoutProps {
     handleCancelGeneration: () => void;
     handleCommit: () => void;
     handlePush: () => void;
+    handleForcePush: () => void;
     handleOpenRepository: () => void;
     handleSync: () => void;
     handleFetch: () => void;
@@ -163,6 +166,7 @@ export function UndockedLayout(props: UndockedLayoutProps): React.ReactElement {
         showIgnoredFiles,
         canCommit,
         canPush,
+        canForcePush,
         pushLabel,
         isAllChecked,
         isSomeChecked,
@@ -197,6 +201,7 @@ export function UndockedLayout(props: UndockedLayoutProps): React.ReactElement {
         handleCancelGeneration,
         handleCommit,
         handlePush,
+        handleForcePush,
         handleOpenRepository,
         handleSync,
         handleFetch,
@@ -268,6 +273,7 @@ export function UndockedLayout(props: UndockedLayoutProps): React.ReactElement {
                                 onFetch={handleFetch}
                                 onPull={handlePull}
                                 onPush={handlePush}
+                                onForcePush={canForcePush ? handleForcePush : undefined}
                                 onOpenRepository={handleOpenRepository}
                                 canPush={canPush}
                                 pushLabel={pushLabel}
@@ -480,6 +486,7 @@ export function UndockedLayout(props: UndockedLayoutProps): React.ReactElement {
                                 onFetch={handleFetch}
                                 onPull={handlePull}
                                 onPush={handlePush}
+                                onForcePush={canForcePush ? handleForcePush : undefined}
                                 onOpenRepository={handleOpenRepository}
                                 canPush={canPush}
                                 pushLabel={pushLabel}

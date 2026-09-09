@@ -92,6 +92,7 @@
     "Enter your GitLab Personal Access Token (requires read_repository scope)": "請輸入您的 GitLab 個人存取權令牌（需要 read_repository 權限）",
     "Failed to initialize repository. Check folder permissions.": "初始化儲存庫失敗。請檢查資料夾權限。",
     "Fetching your GitHub repositories...": "正在獲取您的 GitHub 程式碼庫…",
+    "Force push rewrites the remote branch history. Continue?": "強制推送會重寫遠端分支的歷史記錄。是否繼續？",
     "Git repositories found.": "已找到 Git 倉庫。",
     "GitLab authentication": "GitLab 身份驗證",
     "Graph": "圖形",

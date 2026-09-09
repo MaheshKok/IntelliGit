@@ -289,6 +289,8 @@
     "common.openRepository": "リポジトリを開く",
     "common.sync": "同期",
     "commit.action.publishAndPush": "公開してプッシュ",
+    "commit.action.forcePush": "強制プッシュ…",
+    "commit.action.pushOptions": "プッシュのオプション",
     "commit.branchIndicator.local": "ブランチ: {branch}",
     "commit.branchIndicator.tracking": "ブランチ: {branch} → {upstream}",
     "commit.checks.signIn": "Sign in",

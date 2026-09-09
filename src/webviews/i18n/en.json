@@ -125,6 +125,8 @@
     "commit.action.amendAndPush": "Amend commit and Push…",
     "commit.action.publishBranch": "Publish Branch…",
     "commit.action.publishAndPush": "Publish and Push",
+    "commit.action.forcePush": "Force Push…",
+    "commit.action.pushOptions": "Push options",
     "commit.branchIndicator.local": "Branch: {branch}",
     "commit.branchIndicator.tracking": "Branch: {branch} → {upstream}",
     "commit.search.placeholder": "Text or hash",

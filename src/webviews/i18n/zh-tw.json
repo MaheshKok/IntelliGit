@@ -288,6 +288,8 @@
     "common.openRepository": "開啟儲存庫",
     "common.sync": "同步",
     "commit.action.publishAndPush": "發佈並推送",
+    "commit.action.forcePush": "強制推送…",
+    "commit.action.pushOptions": "推送選項",
     "commit.branchIndicator.local": "分支：{branch}",
     "commit.branchIndicator.tracking": "分支：{branch} → {upstream}",
     "commit.checks.signIn": "Sign in",

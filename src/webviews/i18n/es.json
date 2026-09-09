@@ -303,6 +303,8 @@
     "common.openRepository": "Abrir repositorio",
     "common.sync": "Sincronizar",
     "commit.action.publishAndPush": "Publicar y enviar",
+    "commit.action.forcePush": "Forzar envío…",
+    "commit.action.pushOptions": "Opciones de envío",
     "commit.branchIndicator.local": "Rama: {branch}",
     "commit.branchIndicator.tracking": "Rama: {branch} → {upstream}",
     "commit.checks.signIn": "Sign in",
