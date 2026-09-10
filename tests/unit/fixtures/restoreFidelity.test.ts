@@ -25,8 +25,9 @@ import {
 } from "../../fixtures/repo/phase6Snapshot";
 import { removeScratchDirectories } from "../../helpers/scratchDirectories";
 import { git } from "./gitTestHelpers";
+import { withWindowsHeadroom } from "../../setup/platformTimeouts";
 
-const FIXTURE_TIMEOUT_MS = 60_000;
+const FIXTURE_TIMEOUT_MS = withWindowsHeadroom(60_000);
 
 interface SeededManifestFixture {
     readonly template: FixtureTemplate;

@@ -34,6 +34,7 @@ import type { FsEntry } from "../../fixtures/repo/snapshotTypes";
 import { captured, notCaptured } from "../../fixtures/repo/snapshotTypes";
 import { seedFixtureTemplate, type FixtureTemplate } from "../../fixtures/repo/seed";
 import { removeScratchDirectories } from "../../helpers/scratchDirectories";
+import { withWindowsHeadroom } from "../../setup/platformTimeouts";
 
 /**
  * The two tests below each seed a git template and then copy the whole tree -- `.git` included --
@@ -49,7 +50,7 @@ import { removeScratchDirectories } from "../../helpers/scratchDirectories";
  * Sized at roughly 12x the measured Windows cost rather than at that bad day, because one
  * observed swing is a floor on the variance, not a ceiling.
  */
-const COPY_HEAVY_TIMEOUT_MS = 90_000;
+const COPY_HEAVY_TIMEOUT_MS = withWindowsHeadroom(90_000);
 
 describe("normalizeSnapshot -- two raw copies of one seed compare equal (step 8's real scenario)", () => {
     let scratchDirs: string[] = [];

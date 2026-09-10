@@ -29,6 +29,7 @@ import {
 import { OVERLONG_NAMES_FAIL_REMOVAL } from "../../helpers/platformCapabilities";
 import { createScratchWorkspaces } from "./scratchWorkspaces";
 import { removeScratchDirectories } from "../../helpers/scratchDirectories";
+import { withWindowsHeadroom } from "../../setup/platformTimeouts";
 
 const execFileAsync = promisify(execFile);
 
@@ -76,7 +77,7 @@ describe("seedFixtureTemplate", () => {
         scratch.register(templateA.home);
         templateB = await seedFixtureTemplate(destinationB);
         scratch.register(templateB.home);
-    }, 60_000);
+    }, withWindowsHeadroom(60_000));
 
     afterAll(async () => {
         await scratch.removeAll();
@@ -443,7 +444,7 @@ describe("seedFixtureTemplate failure cleanup", () => {
         }
 
         expect(await readdir(homeParent)).toEqual([]);
-    }, 30_000);
+    });
 });
 
 /**

@@ -179,7 +179,7 @@ describe("manifest", () => {
 
             expect(observedUnexpected).toBeNull();
             expect(observedMissing + observedValid).toBeGreaterThan(0);
-        }, 30_000);
+        });
     });
 
     describe("hard failures -- distinct message per cause", () => {
@@ -426,7 +426,7 @@ describe("manifest", () => {
 
             const entries = await readdir(workDir);
             expect(entries).toEqual(["manifest.json"]);
-        }, 30_000);
+        });
     });
 
     describe("directory hygiene", () => {
