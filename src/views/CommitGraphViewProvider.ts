@@ -1,6 +1,6 @@
 // WebviewViewProvider for the bottom panel commit graph.
 // Loads the CommitGraphApp React app, handles pagination, branch filtering,
-// and posts selected commit hashes back to the extension host..
+// and posts selected commit hashes back to the extension host.
 
 import * as vscode from "vscode";
 import { GitOps } from "../git/operations";
