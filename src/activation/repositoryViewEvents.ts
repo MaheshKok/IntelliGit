@@ -198,6 +198,17 @@ export function registerRepositoryViewEvents(
     };
 
     /**
+     * Puts a branch picked in one graph onto the other, so the sidebar and bottom graphs always
+     * draw the same branch (#226). `filterByBranch` does not re-fire `onBranchFilterChanged`, so
+     * the mirrored pick cannot bounce back.
+     */
+    const mirrorBranchFilter =
+        (target: CommitGraphViewProvider) =>
+        (branch: string | null): void => {
+            void target.filterByBranch(branch);
+        };
+
+    /**
      * Forwards view-originated branch actions through registered VS Code commands.
      *
      * Branch names from webviews are matched against current branch state before
@@ -426,6 +437,8 @@ export function registerRepositoryViewEvents(
         commitGraph.onBranchFilterChanged(clearCommitDetail),
         sidebarGraph.onBranchFilterChanged(clearCommitDetail),
         commitPanel.onBranchFilterChanged(clearCommitDetail),
+        commitGraph.onBranchFilterChanged(mirrorBranchFilter(sidebarGraph)),
+        sidebarGraph.onBranchFilterChanged(mirrorBranchFilter(commitGraph)),
         commitGraph.onBranchAction(forwardBranchAction),
         sidebarGraph.onBranchAction(forwardBranchAction),
         commitPanel.onBranchAction(forwardBranchAction),
