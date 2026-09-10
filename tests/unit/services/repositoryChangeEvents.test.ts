@@ -25,7 +25,7 @@ const REPO_A = fixtureRoot("/repo-a");
 const REPO_B = fixtureRoot("/repo-b");
 
 /** The shape of a real `fs.FSWatcher` this suite depends on: an emitter that can be closed. */
-type FakeFsWatcher = EventEmitter & { close: ReturnType<typeof vi.fn> };
+type FakeFsWatcher = EventEmitter & { close: ReturnType<typeof vi.fn>; target: string };
 
 /** The two `TextDocument` members the workspace route reads. */
 type FakeDocument = { uri: { fsPath: string }; isDirty: boolean };
@@ -106,13 +106,19 @@ vi.mock("vscode", () => {
 
 // A real `EventEmitter`, not a stub with an `on` spy. The defect under test is Node's own
 // rule that an `error` event with no listener is rethrown as an uncaught exception, so a
-// hand-rolled fake would decide the outcome the assertion is supposed to measure.
+// hand-rolled fake would decide the outcome the assertion is supposed to measure. Node also
+// attaches the listener passed to `fs.watch` to that emitter's `change` event, so a test
+// reports a write inside a watched directory by emitting `change` on its handle.
 vi.mock("fs", async () => {
     const { EventEmitter: NodeEventEmitter } = await import("node:events");
     return {
-        watch: vi.fn((target: string) => {
+        watch: vi.fn((target: string, ...rest: unknown[]) => {
             mocks.watchedPaths.push(target);
-            const watcher = Object.assign(new NodeEventEmitter(), { close: vi.fn() });
+            const watcher = Object.assign(new NodeEventEmitter(), { close: vi.fn(), target });
+            const listener = rest.find(
+                (arg): arg is (...args: unknown[]) => void => typeof arg === "function",
+            );
+            if (listener) watcher.on("change", listener);
             mocks.fsWatchers.push(watcher);
             return watcher;
         }),
@@ -195,6 +201,43 @@ describe("repository working-tree changes", () => {
                 mocks.watchedPaths,
                 "the refs watcher is armed on the worktree's own Git directory, whose refs tree Git never writes to",
             ).toContain(path.join(fixtureRoot("/main"), ".git", "refs"));
+        } finally {
+            subscription.dispose();
+        }
+    });
+
+    // `packed-refs` is shared state too, but unlike `refs` a linked worktree's own Git directory
+    // has no copy of it: Git keeps the one file in the common directory. Deleting a packed ref --
+    // `fetch --prune` dropping a gone upstream, `push --delete` dropping its tracking ref -- leaves
+    // its only lasting change in that file, so a worktree whose watcher cannot see it keeps a
+    // stale ahead count. The common directory also holds the main checkout's own `HEAD` and
+    // `index`, which say nothing about this worktree and must not refresh it.
+    it("publishes a git-state change when a linked worktree's shared packed-refs is rewritten", () => {
+        const worktree = fixtureRoot("/wt");
+        const commonDir = path.join(fixtureRoot("/main"), ".git");
+        mocks.gitDirs[worktree] = path.join(commonDir, "worktrees", "wt");
+        mocks.commonDirs[worktree] = commonDir;
+        const listener = vi.fn();
+        const subscription = subscribeToRepositoryWorkingTreeChanges(worktree, listener);
+        try {
+            const commonDirWatcher = fsWatchers().find((watcher) => watcher.target === commonDir);
+            expect(
+                commonDirWatcher,
+                "nothing watches the common directory, the only place a linked worktree's packed-refs lives",
+            ).toBeDefined();
+
+            commonDirWatcher?.emit("change", "rename", "packed-refs");
+            expect(
+                listener,
+                "a packed-refs rewrite published no git-state change, so no full refresh recomputes the ahead count",
+            ).toHaveBeenCalledWith({ repoRoot: worktree, source: "git-state" });
+
+            listener.mockClear();
+            commonDirWatcher?.emit("change", "change", "HEAD");
+            expect(
+                listener,
+                "the main checkout's HEAD moved and refreshed a worktree whose HEAD did not",
+            ).not.toHaveBeenCalled();
         } finally {
             subscription.dispose();
         }
