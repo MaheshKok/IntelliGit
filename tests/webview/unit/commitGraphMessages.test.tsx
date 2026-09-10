@@ -3,7 +3,7 @@
 import React, { act, useMemo, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import { beforeAll, describe, expect, it, vi } from "vitest";
-import type { Commit } from "../../../src/types";
+import type { Commit, CommitDetail } from "../../../src/types";
 import type { InteractiveRebaseRangeCommit } from "../../../src/webviews/protocol/commitGraphTypes";
 import { useCommitGraphMessages } from "../../../src/webviews/react/commit-graph/useCommitGraphMessages";
 import type { CommitGraphPanelAction } from "../../../src/webviews/react/commit-graph/types";
@@ -383,6 +383,125 @@ describe("useCommitGraphMessages", () => {
                 root.unmount();
             });
             host.remove();
+        }
+    });
+});
+
+function makeDetail(hash: string): CommitDetail {
+    return { ...makeCommit(hash, `detail ${hash}`), body: "", files: [] };
+}
+
+function send(data: unknown): void {
+    act(() => {
+        window.dispatchEvent(new MessageEvent("message", { data }));
+    });
+}
+
+function page(...hashes: string[]) {
+    return {
+        type: "loadCommits",
+        append: false,
+        hasMore: false,
+        commits: hashes.map((hash) => makeCommit(hash, `commit ${hash}`)),
+    };
+}
+
+// #246: the host fans one commit's detail out to every commit list. A list still ringing its own
+// older pick showed a second selection ring beside the row whose changed files were on screen.
+describe("useCommitGraphMessages selection shared with other commit lists (#246)", () => {
+    async function mount(selectedHash: string | null) {
+        const host = document.createElement("div");
+        document.body.appendChild(host);
+        const root = createRoot(host);
+        const dispatch = vi.fn();
+        const postMessage = vi.fn();
+        await act(async () => {
+            root.render(
+                <Harness
+                    dispatch={dispatch}
+                    postMessage={postMessage}
+                    selectedHash={selectedHash}
+                />,
+            );
+        });
+        const unmount = async () => {
+            await act(async () => {
+                root.unmount();
+            });
+            host.remove();
+        };
+        return { dispatch, postMessage, unmount };
+    }
+
+    it("moves its ring to a commit picked in another list, instead of keeping its own older pick", async () => {
+        const { dispatch, unmount } = await mount("bb22");
+        try {
+            send(page("aa11", "bb22"));
+            send({ type: "setCommitDetail", detail: makeDetail("cc33") });
+            expect(
+                dispatch,
+                "the bottom graph kept ringing bb22 while the detail pane showed cc33, so two " +
+                    "commit lists showed a selection ring at once",
+            ).toHaveBeenCalledWith({ type: "selectCommit", hash: "cc33" });
+        } finally {
+            await unmount();
+        }
+    });
+
+    it("does not take the detail pane back on refresh when the picked commit is not in its own list", async () => {
+        const { dispatch, postMessage, unmount } = await mount("bb22");
+        try {
+            send(page("aa11", "bb22"));
+            send({ type: "setCommitDetail", detail: makeDetail("cc33") });
+            postMessage.mockClear();
+            send(page("aa11", "bb22"));
+            expect(
+                postMessage,
+                "a refresh replaced another list's pick with this list's first row and re-selected " +
+                    "it, pulling the detail pane away from the commit the user clicked",
+            ).not.toHaveBeenCalledWith(expect.objectContaining({ type: "selectCommit" }));
+            expect(
+                dispatch,
+                "a refresh arriving before the next render judged the list's old pick, not the " +
+                    "commit another list had just selected",
+            ).toHaveBeenLastCalledWith(
+                expect.objectContaining({ type: "loadCommits", selectedHash: "cc33" }),
+            );
+        } finally {
+            await unmount();
+        }
+    });
+
+    it("still falls back to its first row when its own pick disappears from a refresh", async () => {
+        const { postMessage, unmount } = await mount("bb22");
+        try {
+            send(page("aa11", "bb22"));
+            send(page("aa11"));
+            expect(
+                postMessage,
+                "the keep-another-list's-pick rule swallowed this list's own vanished pick, leaving " +
+                    "the detail pane on a commit the list no longer has",
+            ).toHaveBeenCalledWith({ type: "selectCommit", hash: "aa11" });
+        } finally {
+            await unmount();
+        }
+    });
+
+    it("keeps another list's pick of a commit it showed only before an earlier refresh", async () => {
+        const { postMessage, unmount } = await mount("bb22");
+        try {
+            send(page("aa11", "bb22"));
+            send(page("aa11"));
+            send({ type: "setCommitDetail", detail: makeDetail("bb22") });
+            postMessage.mockClear();
+            send(page("aa11"));
+            expect(
+                postMessage,
+                "the list judged bb22 by a page it no longer shows, so another list's pick of bb22 " +
+                    "was taken back on the next refresh",
+            ).not.toHaveBeenCalledWith(expect.objectContaining({ type: "selectCommit" }));
+        } finally {
+            await unmount();
         }
     });
 });
