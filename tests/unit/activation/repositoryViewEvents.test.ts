@@ -219,3 +219,98 @@ describe("registerUndockedCommitFileDiffHandler wiring (spec 3.7)", () => {
         );
     });
 });
+
+/**
+ * Regression cover for the second half of #226.
+ *
+ * The sidebar and bottom graphs are two instances of the same class, and each keeps its branch
+ * filter private. `intelligit.filterByBranch` (the branch tree's command) already drove both,
+ * but a branch clicked INSIDE one graph's own branch column only ever reached that instance --
+ * so the bottom panel could sit on one branch while the sidebar sat on another, which is the
+ * mismatch the issue screenshot shows.
+ *
+ * `filterByBranch` deliberately does not re-fire `onBranchFilterChanged` (see its own doc
+ * comment), so mirroring one graph's pick onto the other cannot bounce back and loop.
+ */
+describe("registerRepositoryViewEvents branch-filter mirroring (#226)", () => {
+    function wireTwoGraphs() {
+        const commitGraphFilter = fakeEmitter<string | null>();
+        const sidebarGraphFilter = fakeEmitter<string | null>();
+
+        const fakeGraph = (branchFilter: ReturnType<typeof fakeEmitter<string | null>>) => ({
+            onCommitSelected: fakeEmitter<string>().event,
+            onBranchFilterChanged: branchFilter.event,
+            onBranchAction: fakeEmitter<unknown>().event,
+            onCommitAction: fakeEmitter<unknown>().event,
+            onRebaseDialogSubmit: fakeEmitter<unknown>().event,
+            onRebaseDialogCancel: fakeEmitter<unknown>().event,
+            onOpenCommitFileDiff: fakeEmitter<{ commitHash: string; filePath: string }>().event,
+            filterByBranch: vi.fn(async () => undefined),
+            clearCommitDetail: vi.fn(),
+        });
+
+        const commitGraph = fakeGraph(commitGraphFilter);
+        const sidebarGraph = fakeGraph(sidebarGraphFilter);
+        const commitPanel = {
+            ...fakeGraph(fakeEmitter<string | null>()),
+            onRebaseControl: fakeEmitter<unknown>().event,
+        };
+        const commitInfo = {
+            onOpenCommitFileDiff: fakeEmitter<{ commitHash: string; filePath: string }>().event,
+            setCommitDetail: vi.fn(),
+            clear: vi.fn(),
+        };
+
+        const deps: RepositoryViewEventDeps = {
+            context: { subscriptions: [] } as unknown as vscode.ExtensionContext,
+            executor: {} as unknown as GitExecutor,
+            gitOps: {} as unknown as GitOps,
+            commitGraph: commitGraph as unknown as CommitGraphViewProvider,
+            sidebarGraph: sidebarGraph as unknown as CommitGraphViewProvider,
+            commitPanel: commitPanel as unknown as CommitPanelViewProvider,
+            commitInfo: commitInfo as unknown as CommitInfoViewProvider,
+            getRepoRoot: () => "/repo",
+            getCurrentBranches: () => [],
+            getCurrentWorktrees: () => [],
+            refreshService: () => ({ refreshAll: vi.fn() }) as unknown as RefreshService,
+            pendingRebaseDialogRequests: {} as unknown as PendingRebaseDialogRequests,
+            mutationGate: {} as unknown as RepositoryMutationGate,
+        };
+
+        registerRepositoryViewEvents(
+            deps,
+            vi.fn(async () => undefined),
+        );
+
+        return { commitGraph, sidebarGraph, commitGraphFilter, sidebarGraphFilter };
+    }
+
+    it("re-scopes the sidebar graph to a branch picked in the bottom graph", () => {
+        const { commitGraph, sidebarGraph, commitGraphFilter } = wireTwoGraphs();
+
+        commitGraphFilter.fire("feature/awesome");
+
+        expect(
+            sidebarGraph.filterByBranch,
+            "a branch picked in the bottom graph left the sidebar graph on its own separate " +
+                "filter, so the two panes drew different histories at the same time",
+        ).toHaveBeenCalledWith("feature/awesome");
+        expect(
+            commitGraph.filterByBranch,
+            "the originating graph must not be re-scoped by its own pick -- it has already " +
+                "applied it, so a mirror wired back to itself would reload the page it just drew",
+        ).not.toHaveBeenCalled();
+    });
+
+    it("re-scopes the bottom graph to a branch picked in the sidebar graph", () => {
+        const { commitGraph, sidebarGraphFilter } = wireTwoGraphs();
+
+        sidebarGraphFilter.fire(null);
+
+        expect(
+            commitGraph.filterByBranch,
+            "a pick in the sidebar graph did not reach the bottom graph, so the mirror only " +
+                "works in one direction",
+        ).toHaveBeenCalledWith(null);
+    });
+});
