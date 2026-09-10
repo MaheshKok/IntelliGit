@@ -20,8 +20,9 @@ import {
     trackScratchHome,
 } from "./scenariosTestHelpers";
 import { REPOSITORY_SCENARIO_IDS } from "../../fixtures/repo/scenarios";
+import { withWindowsHeadroom } from "../../setup/platformTimeouts";
 
-const FIXTURE_TIMEOUT_MS = 60_000;
+const FIXTURE_TIMEOUT_MS = withWindowsHeadroom(60_000);
 
 afterAll(removeTrackedScratchDirectories);
 
