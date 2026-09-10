@@ -170,6 +170,7 @@ class RootWorkingTreeWatcher implements vscode.Disposable {
     /** Registers the existing Git metadata paths that can move symbolic refs. */
     private registerGitWatchers(): void {
         const gitDir = resolveGitDir(this.repoRoot);
+        const commonDir = resolveGitCommonDir(this.repoRoot);
         const gitStateFiles = new Set([
             "HEAD",
             "FETCH_HEAD",
@@ -179,29 +180,18 @@ class RootWorkingTreeWatcher implements vscode.Disposable {
             "index",
         ]);
 
-        try {
-            this.retainFsWatcher(
-                fs.watch(gitDir, (_event, filename) => {
-                    const name = filename?.toString();
-                    if (!name) {
-                        this.fire({ repoRoot: this.repoRoot, source: "git-state" });
-                    } else if (gitStateFiles.has(name)) {
-                        this.fire({
-                            repoRoot: this.repoRoot,
-                            source: name === "index" ? "git-index" : "git-state",
-                        });
-                    }
-                }),
-            );
-        } catch {
-            /* .git may not be watchable for virtual roots or isolated test fixtures. */
-        }
+        this.watchGitStateFiles(gitDir, gitStateFiles);
+        // A linked worktree's Git directory has no `packed-refs`: Git keeps the one file every
+        // worktree shares in the common directory, beside `refs`. That directory also holds the
+        // main checkout's own `HEAD` and `index`, so only `packed-refs` is taken from it. In a
+        // plain checkout the two are one directory, already watched above.
+        if (commonDir !== gitDir) this.watchGitStateFiles(commonDir, new Set(["packed-refs"]));
 
         try {
             // Refs are shared state, so they live in the common directory. A linked worktree's
             // own `refs` tree exists but stays empty, and watching it would miss every ref a
             // push or fetch moves.
-            const refsPath = path.join(resolveGitCommonDir(this.repoRoot), "refs");
+            const refsPath = path.join(commonDir, "refs");
             if (process.platform === "linux") {
                 const watcher = vscode.workspace.createFileSystemWatcher(
                     new vscode.RelativePattern(vscode.Uri.file(refsPath), "**/*"),
@@ -222,6 +212,27 @@ class RootWorkingTreeWatcher implements vscode.Disposable {
             }
         } catch {
             /* The refs directory may not exist yet or the platform may not support this watcher. */
+        }
+    }
+
+    /** Watches one Git directory for a change to any of `names`, or to an entry Node cannot name. */
+    private watchGitStateFiles(dir: string, names: ReadonlySet<string>): void {
+        try {
+            this.retainFsWatcher(
+                fs.watch(dir, (_event, filename) => {
+                    const name = filename?.toString();
+                    if (!name) {
+                        this.fire({ repoRoot: this.repoRoot, source: "git-state" });
+                    } else if (names.has(name)) {
+                        this.fire({
+                            repoRoot: this.repoRoot,
+                            source: name === "index" ? "git-index" : "git-state",
+                        });
+                    }
+                }),
+            );
+        } catch {
+            /* .git may not be watchable for virtual roots or isolated test fixtures. */
         }
     }
 
