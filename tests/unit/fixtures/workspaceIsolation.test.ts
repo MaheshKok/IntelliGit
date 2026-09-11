@@ -19,8 +19,9 @@ import {
 import { seedFixtureTemplate, type FixtureTemplate } from "../../fixtures/repo/seed";
 import { git } from "./gitTestHelpers";
 import { removeScratchDirectories } from "../../helpers/scratchDirectories";
+import { withWindowsHeadroom } from "../../setup/platformTimeouts";
 
-const FIXTURE_TIMEOUT_MS = 60_000;
+const FIXTURE_TIMEOUT_MS = withWindowsHeadroom(60_000);
 
 describe("Phase 6 step 35 -- workspace isolation", () => {
     let workspaces: FixtureWorkspace[] = [];

@@ -5,6 +5,13 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.32.6] - 2026-09-10
+
+### Fixed
+
+- In a Git worktree (an extra folder checked out from the same repository), pushing now clears the ↑ count of commits waiting to be pushed as soon as the push is done. Before, the old count stayed until something else made IntelliGit refresh.
+- A worktree now also updates straight away after other branch changes, such as a fetch or a deleted branch, even when they were made from another folder of the same repository.
+
 ## [0.32.5] - 2026-09-08
 
 ### Added
