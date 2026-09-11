@@ -228,6 +228,14 @@ function iconAccent(token: string, fallback: string): string {
 export const ICON_ACCENTS = {
     amber: iconAccent("--vscode-charts-yellow", "#f2c46d"),
     orange: iconAccent("--vscode-charts-orange", "#ff9e64"),
+    /**
+     * The fill of the sidebar Graph title's Pull, a static SVG no token can
+     * reach, so every Pull glyph can match it (#218). `orange` cannot: Dark
+     * Modern and Light Modern ship `--vscode-charts-orange` at 33% alpha,
+     * which thins it to a see-through brown. `NATIVE_ORANGE_CSS` supplies the
+     * light fill.
+     */
+    nativeOrange: "var(--intelligit-native-orange, #ff9e64)",
     sky: iconAccent("--vscode-charts-blue", "#8fd5ff"),
     cyan: iconAccent("--vscode-terminal-ansiCyan", "#4ec7d6"),
     violet: iconAccent("--vscode-charts-purple", "#c8a2ff"),
@@ -235,6 +243,13 @@ export const ICON_ACCENTS = {
     green: iconAccent("--vscode-charts-green", "#a6e3a1"),
     danger: iconAccent("--vscode-charts-red", "#ff4d4f"),
 } as const;
+
+/**
+ * Gives `ICON_ACCENTS.nativeOrange` the light SVG's fill on the theme kinds VS
+ * Code paints that file on. Every view that shows the accent renders it once.
+ */
+export const NATIVE_ORANGE_CSS =
+    "body.vscode-light,body.vscode-high-contrast-light{--intelligit-native-orange:#b35300}";
 
 /**
  * The accent each toolbar action wears, and the rule that keeps them apart.
@@ -260,8 +275,11 @@ export const TOOLBAR_ICON_ACCENTS = {
     sync: ICON_ACCENTS.violet,
     fetch: ICON_ACCENTS.cyan,
     /** Warm rather than blue only because open-repository has first claim on
-     * sky; one hue per bar leaves pull the other end. */
-    pull: ICON_ACCENTS.orange,
+     * sky; one hue per bar leaves pull the other end. The native orange
+     * because pull ships three times — here, as the branch menu's Update, and
+     * as a static SVG in the sidebar Graph title — and all three have to read
+     * as the same button (#218). */
+    pull: ICON_ACCENTS.nativeOrange,
     push: ICON_ACCENTS.green,
     /** Leaves the editor for the forge's own page. Sky because this action is
      * the one that ships twice — here and as a static SVG in the sidebar Graph

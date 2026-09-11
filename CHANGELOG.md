@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Update in the branch menu, used on the branch you have checked out, now does the same thing as the Pull buttons in the Changes toolbar and the graph toolbar. It pulls with rebase, so commits you have not pushed yet move on top of the new ones from the remote. When you have uncommitted changes, it stops and asks you to commit or stash them first. Before, it merged the remote branch instead, which could add an extra merge commit, and it did not check for uncommitted changes.
+- With icons set to color, the Pull button in the Changes toolbar and Update in the branch menu now use the same bright orange as the Pull button in the graph toolbar. Before, they used a dim, brownish orange, so the three Pull controls did not look like the same button.
 
 ## [0.32.7] - 2026-09-11
 
