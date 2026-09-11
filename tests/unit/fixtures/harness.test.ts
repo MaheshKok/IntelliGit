@@ -25,8 +25,9 @@ import { MANIFEST_SCHEMA_VERSION, writeFixtureManifest } from "../../fixtures/re
 import { seedFixtureTemplate, type FixtureTemplate } from "../../fixtures/repo/seed";
 import { git } from "./gitTestHelpers";
 import { removeScratchDirectories } from "../../helpers/scratchDirectories";
+import { withWindowsHeadroom } from "../../setup/platformTimeouts";
 
-const FIXTURE_TIMEOUT_MS = 30_000;
+const FIXTURE_TIMEOUT_MS = withWindowsHeadroom(30_000);
 
 describe("createFixtureWorkspace", () => {
     let cleanupDirs: string[] = [];

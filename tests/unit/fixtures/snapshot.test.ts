@@ -46,8 +46,9 @@ import {
 // `EBUSY: resource busy or locked, rmdir ...\not-a-repo` on the row whose own assertions had all
 // passed (#223). Retrying past writes the test does not control is what the helper exists for.
 import { removeScratchDirectories } from "../../helpers/scratchDirectories";
+import { withWindowsHeadroom } from "../../setup/platformTimeouts";
 
-const FIXTURE_TIMEOUT_MS = 30_000;
+const FIXTURE_TIMEOUT_MS = withWindowsHeadroom(30_000);
 const UNUSED_PROFILE_DIR = "/nonexistent/profile";
 
 function buildDurableStateSnapshot(

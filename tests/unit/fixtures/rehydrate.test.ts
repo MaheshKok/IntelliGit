@@ -33,9 +33,10 @@ import { DECLARED_REWRITES, rehydrateCopy } from "../../fixtures/repo/rehydrate"
 import { snapshotWorkspace, type PlaceholderRoots } from "../../fixtures/repo/snapshot";
 import { git } from "./gitTestHelpers";
 import { removeScratchDirectories } from "../../helpers/scratchDirectories";
+import { withWindowsHeadroom } from "../../setup/platformTimeouts";
 
 const execFileAsync = promisify(execFile);
-const FIXTURE_TIMEOUT_MS = 30_000;
+const FIXTURE_TIMEOUT_MS = withWindowsHeadroom(30_000);
 
 /** `grep -rIl` over `root` for the literal `needle`, tolerating grep's "no match" exit code (1)
  * as an empty result rather than a thrown error -- independent of any production code under test. */

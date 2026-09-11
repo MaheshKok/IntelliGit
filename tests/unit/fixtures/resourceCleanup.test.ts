@@ -14,8 +14,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createFixtureWorkspace, type FixtureWorkspace } from "../../fixtures/repo/harness";
 import { gitSpellingOf } from "../../helpers/gitPathSpelling";
 import { git } from "./gitTestHelpers";
+import { withWindowsHeadroom } from "../../setup/platformTimeouts";
 
-const FIXTURE_TIMEOUT_MS = 30_000;
+const FIXTURE_TIMEOUT_MS = withWindowsHeadroom(30_000);
 const execFileAsync = promisify(execFile);
 
 const { rmMock } = vi.hoisted(() => ({ rmMock: vi.fn() }));
