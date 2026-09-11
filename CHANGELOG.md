@@ -5,6 +5,13 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.32.7] - 2026-09-11
+
+### Fixed
+
+- Deleting a Git worktree (an extra folder checked out from the same repository) now always asks you to confirm first. Before, IntelliGit only asked when the worktree had uncommitted changes, so a worktree without any was deleted straight away.
+- Clicking the worktree you are already working in no longer asks whether to open it in the current window or in a new window. Both choices only opened the same folder again.
+
 ## [0.32.6] - 2026-09-10
 
 ### Fixed
