@@ -11,6 +11,7 @@ import type { HostFixture } from "../../e2e/hostFixtures/types";
 import {
     DEFAULT_HARNESS_WEBVIEW_SETTINGS,
     renderHarnessDocument,
+    type HarnessWebviewSettings,
 } from "../harness/renderHarnessDocument";
 import { hostContextFor } from "../harness/hostContexts";
 import { installAcquireVsCodeApiStub } from "../harness/acquireVsCodeApiStub";
@@ -65,7 +66,12 @@ interface HarnessWindow extends Window {
 interface MountHarness {
     (
         contextId: WebviewContextId,
-        options?: { readonly webviewFixture?: string; readonly locale?: string },
+        options?: {
+            readonly webviewFixture?: string;
+            readonly locale?: string;
+            /** Every other spec keeps the default "standard" glyphs, which paint no accent. */
+            readonly iconStyle?: HarnessWebviewSettings["iconStyle"];
+        },
     ): Promise<{
         readonly i18n: WebviewI18nPayload;
         readonly locale: string;
@@ -212,7 +218,10 @@ export const test = base.extend<VisualFixtures, VisualWorkerFixtures>({
                 context,
                 hostFixture,
                 i18n,
-                settings: DEFAULT_HARNESS_WEBVIEW_SETTINGS,
+                settings: {
+                    ...DEFAULT_HARNESS_WEBVIEW_SETTINGS,
+                    iconStyle: options?.iconStyle ?? DEFAULT_HARNESS_WEBVIEW_SETTINGS.iconStyle,
+                },
                 assetBaseUrl: `${HARNESS_ORIGIN}/dist`,
             });
 
