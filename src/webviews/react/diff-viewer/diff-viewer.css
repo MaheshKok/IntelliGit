@@ -23,6 +23,7 @@
 }
 
 .diff-toolbar {
+    font-family: var(--vscode-font-family, sans-serif);
     display: flex;
     flex-wrap: wrap;
     align-items: center;
@@ -44,6 +45,7 @@
 }
 
 .diff-difference-count {
+    font-size: 12px;
     margin-left: auto;
     padding-left: 12px;
     flex-shrink: 0;
@@ -93,6 +95,7 @@
 }
 
 .toolbar-btn {
+    font-family: inherit;
     min-height: 24px;
     padding: 0 7px;
     border: 1px solid transparent;

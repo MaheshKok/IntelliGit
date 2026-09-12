@@ -30,7 +30,6 @@ import {
     IconChevronDown,
     IconSpark,
     IconEye,
-    IconFilter,
     IconLock,
     IconWarning,
 } from "./icons";
@@ -900,11 +899,16 @@ export function App() {
         getVsCodeApi().postMessage({ type: "close" });
     }, []);
 
-    const handleToggleIgnoreMode = useCallback(() => {
-        const nextMode: "none" | "whitespace" = ignoreMode === "none" ? "whitespace" : "none";
-        setIgnoreMode(nextMode);
-        getVsCodeApi().postMessage({ type: "setIgnoreMode", mode: nextMode });
-    }, [ignoreMode]);
+    /** Requests a host reparse only when the selected whitespace policy changes. */
+    const handleToggleIgnoreMode = useCallback(
+        (event: React.ChangeEvent<HTMLSelectElement>) => {
+            const nextMode = event.currentTarget.value as "none" | "whitespace";
+            if (nextMode === ignoreMode) return;
+            setIgnoreMode(nextMode);
+            getVsCodeApi().postMessage({ type: "setIgnoreMode", mode: nextMode });
+        },
+        [ignoreMode],
+    );
 
     const jumpToConflict = useCallback(
         (id: number) => {
@@ -1001,7 +1005,7 @@ export function App() {
         const onKeyDown = (event: KeyboardEvent) => {
             const target = event.target as HTMLElement | null;
             const tag = target?.tagName;
-            if (tag === "INPUT" || tag === "TEXTAREA") return;
+            if (["INPUT", "TEXTAREA", "SELECT"].includes(tag ?? "")) return;
             const normalizedKey = event.key.toLowerCase();
             const hasCommandModifier = event.ctrlKey || event.metaKey;
             const plainKey = !hasCommandModifier && !event.altKey;
@@ -1139,17 +1143,6 @@ export function App() {
             >
                 <div className="merge-toolbar">
                     <div className="toolbar-left">
-                        <button
-                            type="button"
-                            className="toolbar-btn subtle"
-                            onClick={handleApplyNonConflicting}
-                            disabled={autoResolvedCount === 0}
-                        >
-                            <span className="toolbar-icon">
-                                <IconSpark />
-                            </span>
-                            {t("merge.toolbar.applyNonConflicting")}
-                        </button>
                         <div className="toolbar-nav-group">
                             <button
                                 type="button"
@@ -1173,22 +1166,18 @@ export function App() {
                             </button>
                         </div>
                         <div className="toolbar-separator" />
-                        <button
-                            type="button"
-                            className="toolbar-btn subtle dropdown"
-                            onClick={handleToggleIgnoreMode}
+                        <select
+                            className="toolbar-select"
+                            value={ignoreMode}
+                            onChange={handleToggleIgnoreMode}
                             title={t("merge.toolbar.ignoreMode.title")}
+                            aria-label={t("merge.toolbar.ignoreMode.title")}
                         >
-                            <span className="toolbar-icon">
-                                <IconFilter />
-                            </span>
-                            {ignoreMode === "none"
-                                ? t("merge.toolbar.ignoreMode.none")
-                                : t("merge.toolbar.ignoreMode.whitespace")}
-                            <span className="toolbar-icon dropdown-icon">
-                                <IconChevronDown />
-                            </span>
-                        </button>
+                            <option value="none">{t("merge.toolbar.ignoreMode.none")}</option>
+                            <option value="whitespace">
+                                {t("merge.toolbar.ignoreMode.whitespace")}
+                            </option>
+                        </select>
                         <button
                             type="button"
                             className={`toolbar-btn subtle ${highlightWords ? "active" : ""}`}
@@ -1204,65 +1193,53 @@ export function App() {
                             type="button"
                             className={`toolbar-btn subtle ${showDetails ? "active" : ""}`}
                             onClick={() => setShowDetails((v) => !v)}
-                            aria-pressed={showDetails}
+                            aria-expanded={showDetails}
+                            aria-controls="merge-details"
+                            title={t("merge.footer.hint")}
+                            aria-describedby="merge-keyboard-hint"
                         >
-                            {t("merge.toolbar.showDetails")}
+                            {showDetails
+                                ? t("merge.toolbar.hideDetails")
+                                : t("merge.toolbar.showDetails")}
                         </button>
-                    </div>
-
-                    <div className="toolbar-center">
-                        <span className="toolbar-status-pill">
-                            <span className="toolbar-icon">
-                                <IconWarning />
-                            </span>
-                            {t("merge.status.unresolved", { count: unresolved })}
-                        </span>
-                        <span className="toolbar-status-pill muted">
-                            {t("merge.status.resolved", { resolved, total })}
-                        </span>
-                        <span className="toolbar-status-pill muted">
-                            {t("merge.count.changes", { count: changeCount })}
-                        </span>
-                        {currentConflictIndex > 0 ? (
-                            <button
-                                type="button"
-                                className="toolbar-inline-link"
-                                onClick={() => {
-                                    if (nextUnresolvedId !== null) jumpToConflict(nextUnresolvedId);
-                                }}
-                                disabled={nextUnresolvedId === null}
-                                title={t("merge.toolbar.jumpUnresolved.title")}
-                            >
-                                {t("merge.status.hunk", { current: currentConflictIndex, total })}
-                            </button>
-                        ) : null}
-                    </div>
-
-                    <div className="toolbar-right">
+                        <div className="toolbar-separator" />
                         <button
                             type="button"
-                            className="toolbar-btn"
+                            className="toolbar-icon-btn"
+                            onClick={handleApplyNonConflicting}
+                            disabled={autoResolvedCount === 0}
+                            title={t("merge.toolbar.applyNonConflicting")}
+                            aria-label={t("merge.toolbar.applyNonConflicting")}
+                        >
+                            <IconSpark />
+                        </button>
+                        <button
+                            type="button"
+                            className="toolbar-icon-btn"
                             onClick={handleAcceptAllYours}
                             title={t("merge.toolbar.acceptAllYours.title")}
+                            aria-label={t("merge.toolbar.acceptAllYours.label")}
                         >
                             <span className="toolbar-icon">
                                 <IconArrowRight />
                             </span>
-                            {t("merge.toolbar.acceptAllYours.label")}
                         </button>
                         <button
                             type="button"
-                            className="toolbar-btn"
+                            className="toolbar-icon-btn"
                             onClick={handleAcceptAllTheirs}
                             title={t("merge.toolbar.acceptAllTheirs.title")}
+                            aria-label={t("merge.toolbar.acceptAllTheirs.label")}
                         >
                             <span className="toolbar-icon">
                                 <IconArrowLeft />
                             </span>
-                            {t("merge.toolbar.acceptAllTheirs.label")}
                         </button>
+                    </div>
+                    <div className="toolbar-right">
                         {/* Non-conflicting hunks are already applied by getResultLines. */}
                         <span
+                            id="merge-remaining-status"
                             className={`merge-remaining-status${unresolved === 0 ? " resolved" : ""}`}
                             role="status"
                         >
@@ -1281,12 +1258,36 @@ export function App() {
                     </div>
                 </div>
 
-                <div className="merge-header">
+                <div id="merge-details" className="merge-header" hidden={!showDetails}>
                     <div className="merge-title">
                         <span className="file-path">{state.data.filePath}</span>
                         <span className="conflict-counter">
                             {t("merge.header.conflictsResolved", { resolved, total })}
                         </span>
+                    </div>
+                    <div className="toolbar-center">
+                        <span className="toolbar-status-pill">
+                            <span className="toolbar-icon">
+                                <IconWarning />
+                            </span>
+                            {t("merge.status.unresolved", { count: unresolved })}
+                        </span>
+                        <span className="toolbar-status-pill muted">
+                            {t("merge.status.resolved", { resolved, total })}
+                        </span>
+                        {currentConflictIndex > 0 ? (
+                            <button
+                                type="button"
+                                className="toolbar-inline-link"
+                                onClick={() => {
+                                    if (nextUnresolvedId !== null) jumpToConflict(nextUnresolvedId);
+                                }}
+                                disabled={nextUnresolvedId === null}
+                                title={t("merge.toolbar.jumpUnresolved.title")}
+                            >
+                                {t("merge.status.hunk", { current: currentConflictIndex, total })}
+                            </button>
+                        ) : null}
                     </div>
                     <div className="merge-stats">
                         <span className="merge-stat-pill">
@@ -1311,24 +1312,17 @@ export function App() {
                             </span>
                             {t("merge.pane.changesFrom", { label: state.data.oursLabel })}
                         </span>
-                        <span className="pane-meta-right-group">
+                        <span className="pane-meta-right-group" hidden={!showDetails}>
                             <span className="pane-meta-counts">
                                 {t("merge.count.changes", { count: oursChanges })},{" "}
                                 {t("merge.count.conflicts", { count: total })}
                             </span>
-                            <button
-                                type="button"
-                                className="show-details"
-                                onClick={() => setShowDetails((v) => !v)}
-                            >
-                                {showDetails
-                                    ? t("merge.toolbar.hideDetails")
-                                    : t("merge.toolbar.showDetails")}
-                            </button>
                         </span>
                     </div>
                     <div className="pane-meta pane-meta-center">
-                        <span>{t("merge.pane.result", { path: state.data.filePath })}</span>
+                        <span title={state.data.filePath}>
+                            {t("merge.pane.result", { path: state.data.filePath })}
+                        </span>
                     </div>
                     <div className="pane-meta pane-meta-right">
                         <span className="pane-meta-label">
@@ -1337,20 +1331,11 @@ export function App() {
                             </span>
                             {t("merge.pane.changesFrom", { label: state.data.theirsLabel })}
                         </span>
-                        <span className="pane-meta-right-group">
+                        <span className="pane-meta-right-group" hidden={!showDetails}>
                             <span className="pane-meta-counts">
                                 {t("merge.count.changes", { count: theirsChanges })},{" "}
                                 {t("merge.count.conflicts", { count: total })}
                             </span>
-                            <button
-                                type="button"
-                                className="show-details"
-                                onClick={() => setShowDetails((v) => !v)}
-                            >
-                                {showDetails
-                                    ? t("merge.toolbar.hideDetails")
-                                    : t("merge.toolbar.showDetails")}
-                            </button>
                         </span>
                     </div>
                 </div>
@@ -1514,20 +1499,6 @@ export function App() {
                                 {t("merge.action.abortMerge")}
                             </button>
                         ) : null}
-                        <button
-                            type="button"
-                            className="footer-btn secondary ghost"
-                            onClick={handleBulkAcceptYours}
-                        >
-                            {t("merge.footer.useFileOurs")}
-                        </button>
-                        <button
-                            type="button"
-                            className="footer-btn secondary ghost"
-                            onClick={handleBulkAcceptTheirs}
-                        >
-                            {t("merge.footer.useFileTheirs")}
-                        </button>
                         {!isShelfSession ? (
                             <button
                                 type="button"
@@ -1537,9 +1508,25 @@ export function App() {
                                 {t("mergeSession.title")}
                             </button>
                         ) : null}
-                        <span className="footer-hint">{t("merge.footer.hint")}</span>
+                        <span id="merge-keyboard-hint" className="footer-hint">
+                            {t("merge.footer.hint")}
+                        </span>
                     </div>
                     <div className="footer-right">
+                        <button
+                            type="button"
+                            className="footer-btn secondary"
+                            onClick={handleBulkAcceptYours}
+                        >
+                            {t("merge.footer.useFileOurs")}
+                        </button>
+                        <button
+                            type="button"
+                            className="footer-btn secondary"
+                            onClick={handleBulkAcceptTheirs}
+                        >
+                            {t("merge.footer.useFileTheirs")}
+                        </button>
                         <button
                             type="button"
                             className="footer-btn secondary"
@@ -1552,8 +1539,9 @@ export function App() {
                             className={`footer-btn primary ${canApply ? "" : "disabled"}`}
                             onClick={handleApply}
                             disabled={!canApply}
+                            aria-describedby="merge-remaining-status"
                         >
-                            {t("merge.footer.apply", { resolved, total })}
+                            {t("common.apply")}
                         </button>
                     </div>
                 </div>

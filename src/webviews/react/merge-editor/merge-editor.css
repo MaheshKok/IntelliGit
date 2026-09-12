@@ -158,17 +158,13 @@
     flex: 1 1 auto;
 }
 .toolbar-center {
-    justify-content: center;
+    flex-wrap: wrap;
     flex: 0 1 auto;
     gap: 6px;
 }
 .toolbar-right {
-    /* Shrink, don't just grow. The `flex-wrap: wrap` above can only engage once this group
-       is allowed to fall below its max-content width, so with flex-shrink 0 it was a dead
-       rule: at 320px the group kept the full width of its two labels and overflowed the
-       toolbar instead of wrapping. English fits either way, which is why this only ever
-       showed up in translation. justify-content still parks it on the right. */
-    flex: 1 1 auto;
+    flex: 0 1 auto;
+    margin-left: auto;
     justify-content: flex-end;
 }
 
@@ -176,9 +172,10 @@
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    margin-left: 8px;
     max-width: 100%;
     color: var(--vscode-foreground);
+    font-variant-numeric: tabular-nums;
+    overflow-wrap: anywhere;
 }
 
 .merge-remaining-status.resolved {
@@ -248,25 +245,29 @@
     border-color: color-mix(in srgb, var(--vscode-button-background, #0e639c) 64%, transparent);
     opacity: 1;
 }
-.toolbar-btn.dropdown {
-    gap: 4px;
-}
-.toolbar-btn .dropdown-icon {
-    opacity: 0.7;
-    margin-left: -1px;
+.toolbar-select {
+    min-height: 24px;
+    min-width: 0;
+    max-width: 100%;
+    padding: 1px 4px;
+    border: 1px solid var(--vscode-dropdown-border, var(--merge-border));
+    border-radius: 4px;
+    background: var(--vscode-dropdown-background, var(--merge-toolbar-bg));
+    color: var(--vscode-dropdown-foreground, var(--vscode-foreground));
+    font: inherit;
 }
 .toolbar-status-pill {
     display: inline-flex;
     align-items: center;
     gap: 5px;
-    height: 20px;
+    min-height: 20px;
     padding: 0 8px;
     border-radius: 999px;
     border: 1px solid color-mix(in srgb, var(--merge-warning) 35%, transparent);
     background: color-mix(in srgb, var(--merge-warning) 8%, transparent);
     color: var(--merge-warning-text);
     font-size: 11px;
-    white-space: nowrap;
+    white-space: normal;
 }
 .toolbar-status-pill.muted {
     color: var(--merge-muted);
@@ -274,7 +275,7 @@
     background: color-mix(in srgb, var(--merge-editor-fg) 3%, transparent);
 }
 .toolbar-inline-link {
-    height: 20px;
+    min-height: 20px;
     padding: 0 6px;
     border: 1px solid transparent;
     border-radius: 4px;
@@ -304,6 +305,10 @@
     border-bottom: 1px solid var(--merge-border);
     flex-shrink: 0;
 }
+.merge-header[hidden],
+.pane-meta-right-group[hidden] {
+    display: none;
+}
 .merge-title {
     display: flex;
     align-items: baseline;
@@ -317,14 +322,14 @@
     font-weight: 600;
     font-size: 14px;
     color: var(--vscode-foreground);
-    white-space: nowrap;
+    overflow-wrap: anywhere;
     overflow: hidden;
     text-overflow: ellipsis;
 }
 .conflict-counter {
     color: var(--merge-muted);
     font-size: 12px;
-    white-space: nowrap;
+    overflow-wrap: anywhere;
 }
 .merge-stats {
     display: flex;
@@ -337,14 +342,14 @@
 .merge-stat-pill {
     display: inline-flex;
     align-items: center;
-    height: 20px;
+    min-height: 20px;
     padding: 0 8px;
     border-radius: 3px;
     border: 1px solid color-mix(in srgb, var(--merge-border) 85%, transparent);
     background: color-mix(in srgb, var(--merge-editor-fg) 3%, transparent);
     color: var(--merge-muted);
     font-size: 11px;
-    white-space: nowrap;
+    white-space: normal;
 }
 .merge-stat-pill.warn {
     color: var(--merge-warning-text);
@@ -368,6 +373,7 @@
     flex: 1;
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
     justify-content: space-between;
     gap: 8px;
     min-width: 0;
@@ -395,29 +401,16 @@
 }
 .pane-meta-counts {
     color: color-mix(in srgb, var(--merge-editor-fg) 62%, transparent);
-    white-space: nowrap;
+    overflow-wrap: anywhere;
 }
 .pane-meta-center {
     justify-content: center;
     color: color-mix(in srgb, var(--merge-editor-fg) 82%, transparent);
     font-weight: 500;
+    overflow-wrap: anywhere;
 }
 .pane-meta-right {
     border-right: none;
-}
-.show-details {
-    height: 20px;
-    padding: 0 4px;
-    border: 1px solid transparent;
-    border-radius: 4px;
-    background: transparent;
-    color: var(--merge-accent);
-    cursor: pointer;
-    font-size: 11px;
-}
-.show-details:hover {
-    text-decoration: underline;
-    background: color-mix(in srgb, var(--merge-accent) 6%, transparent);
 }
 
 .merge-content-shell {
@@ -1019,14 +1012,13 @@
 }
 .footer-left {
     flex: 1 1 auto;
-    /* Four actions plus a hint at 320px: let the group wrap onto a second row rather
-       than clip the last button under a long de/es/ru label. */
     flex-wrap: wrap;
 }
 .footer-right {
-    /* Same shape as .toolbar-right: the primary action must be allowed to give way at
-       narrow widths rather than push its label past the footer's edge. */
     flex: 0 1 auto;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    margin-left: auto;
 }
 .footer-btn {
     /* 24px tall and 12px type: the same control size as every other button in the
@@ -1059,8 +1051,8 @@
     cursor: not-allowed;
 }
 .footer-btn.secondary {
-    background: var(--vscode-button-secondaryBackground, rgba(128, 128, 128, 0.1));
-    color: var(--vscode-button-secondaryForeground, var(--vscode-foreground));
+    background: transparent;
+    color: var(--vscode-foreground);
 }
 .footer-btn.secondary:hover {
     background: var(--vscode-button-secondaryHoverBackground, rgba(128, 128, 128, 0.16));
@@ -1090,13 +1082,14 @@
     background: color-mix(in srgb, var(--vscode-errorForeground, #f48771) 12%, transparent);
 }
 .footer-hint {
-    color: var(--merge-muted);
-    /* 11px, the caption floor. At 10px this was the smallest text in the product,
-       in muted grey, carrying the keyboard hints for the conflict resolver. */
-    font-size: 11px;
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
     white-space: nowrap;
     overflow: hidden;
-    text-overflow: ellipsis;
+    clip-path: inset(50%);
 }
 
 .change-conflict .word-diff-change {
@@ -1162,23 +1155,9 @@
     background: color-mix(in srgb, var(--vscode-editor-foreground, #ccc) 10%, transparent);
 }
 
-@media (max-width: 1200px) {
-    .toolbar-center {
-        display: none;
-    }
-    .pane-meta-counts {
-        display: none;
-    }
-}
-
-@media (max-width: 980px) {
-    .footer-hint {
-        display: none;
-    }
-}
-
 /* Stationary feedback keeps toolbar targets stable while navigating source code. */
 .merge-editor button:focus-visible,
+.merge-editor select:focus-visible,
 .retry-btn:focus-visible {
     outline: 2px solid var(--vscode-focusBorder, #6aa2ff);
     outline-offset: -2px;
