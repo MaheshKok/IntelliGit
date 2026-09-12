@@ -217,8 +217,7 @@ function binary(stdout: string, stderr = "", exitCode = 0, truncated = false) {
 function input(
     hasPushedCommit = false,
     pushTarget:
-        | { remoteName: string; remoteHeadRef: string; upstreamOid: string }
-        | undefined = undefined,
+        { remoteName: string; remoteHeadRef: string; upstreamOid: string } | undefined = undefined,
     baseHash = BASE,
     selectedHash = baseHash,
 ) {

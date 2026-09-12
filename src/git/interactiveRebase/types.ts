@@ -61,11 +61,7 @@ export type RebaseSubmissionValidationResult =
 
 /** The durable lifecycle states for an IntelliGit-owned interactive rebase session. */
 export type RebaseSessionLifecycle =
-    | "starting"
-    | "running"
-    | "paused"
-    | "completed-pending-push"
-    | "done";
+    "starting" | "running" | "paused" | "completed-pending-push" | "done";
 
 /** The upstream destination pinned for an optional post-rebase force push. */
 export interface RebasePushTarget {
@@ -105,11 +101,7 @@ export interface RebaseSessionManifest {
 
 /** The typed reasons a persisted manifest cannot be treated as actionable state. */
 export type RebaseManifestAmbiguousReason =
-    | "corrupt"
-    | "truncated"
-    | "unknown-version"
-    | "invalid-schema"
-    | "unreadable";
+    "corrupt" | "truncated" | "unknown-version" | "invalid-schema" | "unreadable";
 
 /** The typed result of loading one durable interactive-rebase manifest. */
 export type RebaseManifestReadResult =

@@ -57,8 +57,7 @@ function readEcosystems(): readonly DependabotEcosystem[] {
     const ecosystems: DependabotEcosystem[] = [];
     let groups: Map<string, DependabotGroup> | undefined;
     let group:
-        | { patterns: string[]; excludePatterns: string[]; selectorKeys: string[] }
-        | undefined;
+        { patterns: string[]; excludePatterns: string[]; selectorKeys: string[] } | undefined;
     let listTarget: string[] | undefined;
     let inGroups = false;
 

@@ -5,8 +5,7 @@ const DIGEST_REFERENCE = /^.+@sha256:[0-9a-f]{64}$/;
 
 /** Result of checking whether the renderer can be trusted as the reviewed baseline source. */
 export type ProvenanceResult =
-    | { readonly kind: "pinned" }
-    | { readonly kind: "unpinned"; readonly reason: string };
+    { readonly kind: "pinned" } | { readonly kind: "unpinned"; readonly reason: string };
 
 /** Reads the first non-comment, non-blank line containing the committed base-image pin. */
 export function readPinnedBaseImage(pinPath: string): string {

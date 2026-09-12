@@ -3,7 +3,7 @@
 #
 # The base image is passed in as a DIGEST by `run.sh`, read from the checked-in
 # `base-image.txt`, rather than written here as a tag. A tag like
-# `v1.62.1-noble` is mutable: the same Dockerfile would silently produce a
+# `v1.63.0-noble` is mutable: the same Dockerfile would silently produce a
 # different filesystem — and therefore different font rendering and different
 # pixels — after an upstream rebuild, turning every committed baseline stale
 # with no diff to show for it. A digest cannot move.

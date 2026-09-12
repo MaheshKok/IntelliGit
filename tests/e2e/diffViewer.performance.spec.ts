@@ -957,8 +957,7 @@ test.describe("editable diff viewer performance", () => {
             const ribbonsBefore = await ribbons.count();
             await echoSurface.input.evaluate((target) => {
                 const view = target.ownerDocument.defaultView as
-                    | (Window & { __intelliGitEchoInput?: Element })
-                    | null;
+                    (Window & { __intelliGitEchoInput?: Element }) | null;
                 if (view === null) throw new Error("The echo input has no renderer window.");
                 view.__intelliGitEchoInput = target;
             });
@@ -972,8 +971,7 @@ test.describe("editable diff viewer performance", () => {
             expect(echoedDraft).not.toContain(EDITABLE_LINE);
             const sameInputNode = await echoSurface.input.evaluate((target) => {
                 const view = target.ownerDocument.defaultView as
-                    | (Window & { __intelliGitEchoInput?: Element })
-                    | null;
+                    (Window & { __intelliGitEchoInput?: Element }) | null;
                 const same = view?.__intelliGitEchoInput === target;
                 delete view?.__intelliGitEchoInput;
                 return same;

@@ -303,8 +303,7 @@ let latestSidebarGraphProvider: MockCommitGraphViewProvider | undefined;
 let latestCommitPanelProvider: MockCommitPanelViewProvider | undefined;
 let latestUndockedProvider: MockUndockedViewProvider | undefined;
 let commitPanelRefreshHook:
-    | ((provider: MockCommitPanelViewProvider) => void | Promise<void>)
-    | undefined;
+    ((provider: MockCommitPanelViewProvider) => void | Promise<void>) | undefined;
 
 /** Captures the most recently constructed undocked provider for cross-surface assertions. */
 function updateLatestUndockedProvider(provider: MockUndockedViewProvider): void {
@@ -2478,8 +2477,7 @@ describe("extension integration", () => {
             expect.stringContaining("Update failed:"),
         );
         const panelResult = createWebviewPanelMock.mock.results[0]?.value as
-            | { dispose?: () => void }
-            | undefined;
+            { dispose?: () => void } | undefined;
         panelResult?.dispose?.();
     });
 
@@ -2536,11 +2534,9 @@ describe("extension integration", () => {
             dispose?: () => void;
         };
         const panelResult = createWebviewPanelMock.mock.results[0]?.value as
-            | CreatedPanel
-            | undefined;
+            CreatedPanel | undefined;
         const handler = panelResult?.webview.onDidReceiveMessage.mock.calls[0]?.[0] as
-            | ((msg: unknown) => Promise<void>)
-            | undefined;
+            ((msg: unknown) => Promise<void>) | undefined;
         expect(handler).toBeDefined();
 
         gitOpsState.acceptConflictSide.mockClear();
@@ -2599,11 +2595,9 @@ describe("extension integration", () => {
             dispose: ReturnType<typeof vi.fn>;
         };
         const panelResult = createWebviewPanelMock.mock.results[0]?.value as
-            | CreatedPanel
-            | undefined;
+            CreatedPanel | undefined;
         const handler = panelResult?.webview.onDidReceiveMessage.mock.calls[0]?.[0] as
-            | ((msg: unknown) => Promise<void>)
-            | undefined;
+            ((msg: unknown) => Promise<void>) | undefined;
         expect(handler).toBeDefined();
 
         gitOpsState.abortMerge.mockClear();

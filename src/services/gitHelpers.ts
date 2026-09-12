@@ -345,8 +345,7 @@ export async function pickMainlineParent(
 
 /** Result of resolving a branch checkout request against current worktree state. */
 export type CheckoutBranchResult =
-    | { kind: "checkedOut"; branch: string }
-    | { kind: "openWorktree"; branch: string; path: string };
+    { kind: "checkedOut"; branch: string } | { kind: "openWorktree"; branch: string; path: string };
 
 /** Returns an open-folder checkout result when Git would reject checking out a branch already in a worktree. */
 function getOpenWorktreeCheckoutResult(branch: Branch): CheckoutBranchResult | undefined {

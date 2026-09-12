@@ -1,6 +1,6 @@
 {
-    "baseImage": "mcr.microsoft.com/playwright@sha256:c091b21d9fae78c76e85cd4356431e9b018402f172a214fc7d7a5e9a7e29d8ac",
-    "browserVersion": "151.0.7922.34",
+    "baseImage": "mcr.microsoft.com/playwright@sha256:bc6ab0d6d44ff4826e4cb8c1e6d801e185bfc42bb0753f8e2a30efc70db054c7",
+    "browserVersion": "153.0.8010.12",
     "platform": "linux-x64",
     "osRelease": "6.12.54-linuxkit",
     "fonts": [
