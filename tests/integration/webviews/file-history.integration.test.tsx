@@ -161,6 +161,20 @@ describe("standalone file history message and shared viewer contract", () => {
         button("more");
         expect(postMessage).toHaveBeenCalledWith({ type: "historyMore" });
     });
+    it("refreshes the selected revision preview when the ref is unchanged", () => {
+        message({ type: "historyState", state });
+        row(1);
+        const oldRequest = selection().requestId;
+        message({ type: "historyDiff", requestId: oldRequest, data: { leftLabel: "old-preview", segments: [] } });
+        button("refresh");
+        expect(document.body.textContent).not.toContain("old-preview");
+        expect(document.querySelectorAll('[aria-selected="true"]')).toHaveLength(1);
+        message({ type: "historyState", state });
+        expect(selection().hashes).toEqual([state.entries[1].hash]);
+        expect(selection().requestId).toBeGreaterThan(oldRequest);
+        message({ type: "historyDiff", requestId: selection().requestId, data: { leftLabel: "refreshed-preview", segments: [] } });
+        expect(document.body.textContent).toContain("refreshed-preview");
+    });
     it("invalidates preview on refresh and renders host failures", () => {
         message({ type: "historyState", state });
         const oldRequest = selection().requestId;
