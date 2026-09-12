@@ -21,6 +21,7 @@ import { BranchColumnSections } from "./branch-column/BranchColumnSections";
 import { BranchSearchBar } from "./branch-column/components/BranchSearchBar";
 import { getVsCodeApi } from "./shared/vscodeApi";
 import { BRANCH_ROW_CLASS_CSS, PANEL_STYLE } from "./branch-column/styles";
+import { NATIVE_ORANGE_CSS } from "./shared/tokens";
 
 interface Props {
     branches: Branch[];
@@ -377,6 +378,7 @@ export function BranchColumn({
     return (
         <div style={PANEL_STYLE}>
             <style>{BRANCH_ROW_CLASS_CSS}</style>
+            <style>{NATIVE_ORANGE_CSS}</style>
 
             <BranchSearchBar
                 value={branchFilter}

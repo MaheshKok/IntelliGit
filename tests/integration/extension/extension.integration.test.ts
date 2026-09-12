@@ -284,6 +284,7 @@ const gitOpsState = {
     getActiveOperation: vi.fn(async () => "none"),
     stageFile: vi.fn(async () => undefined),
     push: vi.fn(async () => ""),
+    pullRebase: vi.fn(async () => ""),
 };
 
 const deleteFileWithFallback = vi.fn(async () => true);
@@ -902,6 +903,8 @@ vi.mock("../../../src/git/operations", async (importOriginal) => {
             getActiveOperation = gitOpsState.getActiveOperation;
             stageFile = gitOpsState.stageFile;
             push = gitOpsState.push;
+            hasUncommittedChanges = gitOpsState.hasUncommittedChanges;
+            pullRebase = gitOpsState.pullRebase;
             init = async (_repoPath: string) => executorRun(["init"]);
         },
     };
@@ -1082,10 +1085,14 @@ describe("extension integration", () => {
         gitOpsState.getRepositoryRoot.mockResolvedValue("/repo");
         gitOpsState.getBranches.mockResolvedValue([
             {
+                // The shared pull action reads the upstream from the branch snapshot rather than
+                // from the menu payload, so the default current branch carries the one the
+                // module-level fixture already gives it.
                 name: "main",
                 hash: "feed1234",
                 isRemote: false,
                 isCurrent: true,
+                upstream: "origin/main",
                 ahead: 0,
                 behind: 0,
             },
@@ -1146,6 +1153,8 @@ describe("extension integration", () => {
         gitOpsState.getFileHistory.mockResolvedValue("history");
         gitOpsState.getConflictedFiles.mockResolvedValue([]);
         gitOpsState.getConflictFilesDetailed.mockResolvedValue([]);
+        gitOpsState.hasUncommittedChanges.mockResolvedValue(false);
+        gitOpsState.pullRebase.mockResolvedValue("");
         gitOpsState.acceptConflictSide.mockResolvedValue(undefined);
         gitOpsState.abortMerge.mockResolvedValue(undefined);
         deleteFileWithFallback.mockResolvedValue(true);
@@ -2306,7 +2315,11 @@ describe("extension integration", () => {
         );
     });
 
-    it("updates the current local branch by fetching then merging the tracked remote ref", async () => {
+    // Updated for #218: this test asserted the old fetch-then-merge pair. The Changes toolbar's
+    // Pull, the graph toolbar's Pull, and this menu item are now one operation, so the contract
+    // it guards is that the checked-out branch reaches the shared `pull --rebase` and that no
+    // merge of the tracked remote ref is run behind it.
+    it("updates the current local branch with the shared pull --rebase operation", async () => {
         const { activate } = await import("../../../src/extension");
         const context = {
             extensionUri: { fsPath: "/ext", path: "/ext" },
@@ -2324,45 +2337,27 @@ describe("extension integration", () => {
             },
         });
 
+        expect(gitOpsState.pullRebase).toHaveBeenCalledTimes(1);
         const calls = executorRun.mock.calls.map(([args]) => args);
-        const fetchCallIndex = calls.findIndex(
-            (args) =>
-                Array.isArray(args) &&
-                args[0] === "fetch" &&
-                args[1] === "origin" &&
-                args.includes("--prune"),
-        );
-        const mergeCallIndex = calls.findIndex(
-            (args) => Array.isArray(args) && args.includes("merge") && args.includes("origin/main"),
-        );
-
-        expect(fetchCallIndex).toBeGreaterThanOrEqual(0);
-        expect(mergeCallIndex).toBeGreaterThanOrEqual(0);
-        expect(fetchCallIndex).toBeLessThan(mergeCallIndex);
-        expect(executorRun).toHaveBeenCalledWith([
+        expect(
+            calls.filter((args) => Array.isArray(args) && args.includes("merge")),
+            "updating the checked-out branch still merged the tracked remote ref",
+        ).toEqual([]);
+        expect(executorRun).not.toHaveBeenCalledWith([
             "fetch",
             "origin",
             "--recurse-submodules=no",
             "--progress",
             "--prune",
         ]);
-        expect(executorRun).toHaveBeenCalledWith([
-            "-c",
-            "credential.helper=",
-            "-c",
-            "core.quotepath=false",
-            "-c",
-            "log.showSignature=false",
-            "merge",
-            "origin/main",
-            "--no-stat",
-            "-v",
-        ]);
         expect(executorRun).not.toHaveBeenCalledWith(["pull", "--ff-only"]);
         expect(executorRun).not.toHaveBeenCalledWith(["pull", "--ff-only", "origin", "main"]);
     });
 
-    it("uses the current-branch merge path when cached branch metadata misses the current flag", async () => {
+    // Updated for #218: the subject is unchanged -- a stale `isCurrent` flag in the menu payload
+    // must not send the checked-out branch down the not-checked-out path -- but the branch it must
+    // take is now the shared pull rather than fetch-then-merge.
+    it("uses the current-branch pull path when cached branch metadata misses the current flag", async () => {
         const { activate } = await import("../../../src/extension");
         const context = {
             extensionUri: { fsPath: "/ext", path: "/ext" },
@@ -2379,25 +2374,7 @@ describe("extension integration", () => {
             },
         });
 
-        expect(executorRun).toHaveBeenCalledWith([
-            "fetch",
-            "origin",
-            "--recurse-submodules=no",
-            "--progress",
-            "--prune",
-        ]);
-        expect(executorRun).toHaveBeenCalledWith([
-            "-c",
-            "credential.helper=",
-            "-c",
-            "core.quotepath=false",
-            "-c",
-            "log.showSignature=false",
-            "merge",
-            "origin/main",
-            "--no-stat",
-            "-v",
-        ]);
+        expect(gitOpsState.pullRebase).toHaveBeenCalledTimes(1);
         expect(executorRun).not.toHaveBeenCalledWith([
             "fetch",
             "origin",
@@ -2455,7 +2432,10 @@ describe("extension integration", () => {
         );
     });
 
-    it("opens conflict session when current-branch update merge fails with unresolved conflicts", async () => {
+    // Updated for #218: the failure is now armed on the shared `pull --rebase` instead of on the
+    // merge the current-branch path used to run. The contract is unchanged -- an update that
+    // leaves unresolved files opens the Conflicts session instead of reporting a raw Git error.
+    it("opens conflict session when a current-branch update leaves unresolved conflicts", async () => {
         const { activate } = await import("../../../src/extension");
         const context = {
             extensionUri: { fsPath: "/ext", path: "/ext" },
@@ -2463,12 +2443,7 @@ describe("extension integration", () => {
         } as unknown as MockExtensionContext;
         await activate(context);
 
-        executorRun.mockImplementation(async (args: string[]) => {
-            if (args.includes("merge") && args.includes("origin/main")) {
-                throw new Error("merge conflict");
-            }
-            return defaultExecutorRunImpl(args);
-        });
+        gitOpsState.pullRebase.mockRejectedValue(new Error("merge conflict"));
         gitOpsState.getConflictFilesDetailed.mockResolvedValue([
             {
                 path: "src/conflicted.ts",
@@ -2639,21 +2614,13 @@ describe("extension integration", () => {
         expect(showInformationMessage).toHaveBeenCalledWith("Merge aborted.");
     });
 
-    it("does not open conflict session for current-branch update fetch failures", async () => {
-        executorRun.mockImplementation(async (args: string[]) => {
-            if (args[0] === "fetch" && args[1] === "origin") {
-                throw new Error("fetch failed");
-            }
-            return defaultExecutorRunImpl(args);
-        });
-        gitOpsState.getConflictFilesDetailed.mockResolvedValue([
-            {
-                path: "src/conflicted.ts",
-                code: "UU",
-                ours: "Modified",
-                theirs: "Modified",
-            },
-        ]);
+    // Updated for #218: the old current-branch path ran fetch and then merge, and this test
+    // pinned that a failure in the fetch half never opened the Conflicts session. `pull --rebase`
+    // has no separate fetch half, so the surviving contract is the one that still discriminates:
+    // an update failure that leaves no unresolved files reports itself and opens nothing.
+    it("does not open a conflict session when a current-branch update fails without conflicts", async () => {
+        gitOpsState.pullRebase.mockRejectedValue(new Error("fetch failed"));
+        gitOpsState.getConflictFilesDetailed.mockResolvedValue([]);
 
         const { activate } = await import("../../../src/extension");
         const context = {
@@ -4489,6 +4456,7 @@ describe("extension integration", () => {
         await registeredCommands.get("intelligit.mergeIntoCurrent")?.({
             branch: { name: "fail-merge", isRemote: false },
         });
+        gitOpsState.pullRebase.mockRejectedValueOnce(new Error("pull boom"));
         await registeredCommands.get("intelligit.updateBranch")?.({
             branch: { name: "main", isRemote: false, isCurrent: false, remote: "origin" },
         });
@@ -4530,7 +4498,7 @@ describe("extension integration", () => {
             expect.stringContaining("Merge failed: merge boom"),
         );
         expect(showErrorMessage).toHaveBeenCalledWith(
-            expect.stringContaining("Update failed: fetch boom"),
+            expect.stringContaining("Update failed: pull boom"),
         );
         expect(showWarningMessage).not.toHaveBeenCalledWith("The repo has not been published yet.");
         expect(showErrorMessage).toHaveBeenCalledWith(

@@ -334,8 +334,15 @@ describe("commit menu", () => {
         expect(iconMarkup("resetCurrentToHere")).toContain(ICON_ACCENTS.orange);
         expect(iconMarkup("pushAllUpToHere")).toContain(ICON_ACCENTS.green);
         // Every accent resolves through a host token, so none of them ship a raw
-        // hex that a light theme would render at ~1.5:1.
-        for (const accent of Object.values(ICON_ACCENTS)) {
+        // hex that a light theme would render at ~1.5:1. The one exception is
+        // `nativeOrange` (DESIGN.md, #218): it copies the sidebar Graph title's
+        // Pull, a static SVG no token reaches, and `NATIVE_ORANGE_CSS` swaps in
+        // that SVG's light fill; pullGlyphColor.spec.ts checks the painted color.
+        for (const [name, accent] of Object.entries(ICON_ACCENTS)) {
+            if (name === "nativeOrange") {
+                expect(accent).toBe("var(--intelligit-native-orange, #ff9e64)");
+                continue;
+            }
             expect(accent).toMatch(
                 /^color-mix\(in srgb, var\(--vscode-[\w-]+, #[0-9a-f]{6}\) 70%,/,
             );
