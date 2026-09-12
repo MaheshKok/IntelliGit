@@ -91,3 +91,18 @@ PyCharm's native controls.
   timeout. All three files passed a sequential rerun (6 tests, 15.35s).
   This is not a clean full-suite pass; no production code or thresholds changed
   after that run.
+
+### After merging origin/main
+
+- Merged main at `43c17a72`, retaining version 0.33.0 and main's 0.32.9 notes.
+- Main's dependency upgrades required one Prettier whitespace adjustment and four
+  file-history screenshot updates for changed toolbar icons. Four history
+  comparisons passed afterward. Eleven other comparisons passed initially; the
+  shelf resource-load timeout passed its isolated rerun.
+- Format, lint, strict lint, architecture, React Doctor, typecheck, localization,
+  build, and packaging passed. The VSIX is 7,869,905 bytes uncompressed; the
+  original 8 MiB limit is retained despite main's increase to 9 MiB.
+- Full suite: 4,892 passed, 1 failed across 361 files. The shared-highlighter test
+  reports a combined consumer size of 2,137,982 bytes against its 2,097,152-byte
+  aggregate ceiling after the dependency upgrades. This failure remains open;
+  neither that test ceiling nor the package limit was relaxed.

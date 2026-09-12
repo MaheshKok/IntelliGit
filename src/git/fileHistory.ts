@@ -26,7 +26,7 @@ export async function getFileHistoryParentPath(
         entry.hash,
     ]);
     const fields = output.split("\0");
-    for (let index = 0; index < fields.length - 1; ) {
+    for (let index = 0; index < fields.length - 1;) {
         const status = fields[index++];
         const before = fields[index++];
         const after = /^[RC]/.test(status) ? fields[index++] : before;

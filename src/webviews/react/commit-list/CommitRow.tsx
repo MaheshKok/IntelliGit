@@ -432,6 +432,8 @@ function CommitRowInner({
             // The fill alone cannot carry the state: it is a host colour that three of
             // four stock themes set under 1.5:1 against the panel. See SHADOW.selectedRing.
             boxShadow: isSelected ? SHADOW.selectedRing : undefined,
+            // The ring is the same blue box the branch rows paint, so it rounds like theirs.
+            borderRadius: isSelected ? `${JETBRAINS_UI.size.selectedRadius}px` : undefined,
             color: isSelected
                 ? JETBRAINS_UI.color.selectedForeground
                 : isMergeCommit

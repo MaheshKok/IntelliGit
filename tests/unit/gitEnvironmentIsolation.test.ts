@@ -14,7 +14,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { removeScratchDirectories } from "../helpers/scratchDirectories";
 
 const execFileAsync = promisify(execFile);
@@ -62,6 +62,16 @@ async function readConfig(
         const failure = error as { code?: number; stdout?: string };
         return { value: (failure.stdout ?? "").trim(), exitCode: failure.code ?? -1 };
     }
+}
+
+/** A repository's own `user.name`, or "" when its `.git/config` sets none. */
+async function localUserName(repository: string): Promise<string> {
+    const { stdout } = await execFileAsync(
+        "git",
+        ["config", "--local", "--default", "", "--get", "user.name"],
+        { cwd: repository },
+    );
+    return stdout.trim();
 }
 
 describe("git environment isolation", () => {
@@ -152,5 +162,54 @@ describe("git environment isolation", () => {
         expect(checkedOut.toString("utf8"), "checkout must not expand LF to CRLF").toBe(
             "first\nsecond\n",
         );
+    });
+
+    it("keeps a fixture's git writes out of a repository inherited through GIT_DIR", async () => {
+        // Git exports GIT_DIR to every hook it runs from a linked worktree, and GIT_DIR outranks
+        // both `cwd` and `-C`. When the pre-push hook ran this suite, a push from a worktree
+        // therefore sent each fixture's `git init` and `git config user.name "Test User"` -- aimed
+        // at a fresh temporary directory -- into the developer's shared `.git/config`. Loading the
+        // setup file again with the variable already set is that launch in miniature.
+        const inherited = await mkdtemp(path.join(tmpdir(), "intelligit-git-inherited-"));
+        const fixture = await mkdtemp(path.join(tmpdir(), "intelligit-git-fixture-"));
+        directories.push(inherited, fixture);
+        await execFileAsync("git", ["init", "-q"], { cwd: inherited });
+
+        const saved = process.env.GIT_DIR;
+        process.env.GIT_DIR = path.join(inherited, ".git");
+        try {
+            vi.resetModules();
+            await import("../setup/gitEnvironment");
+            await execFileAsync("git", ["init", "-q"], { cwd: fixture });
+            await execFileAsync("git", ["config", "user.name", "Test User"], { cwd: fixture });
+        } finally {
+            if (saved === undefined) delete process.env.GIT_DIR;
+            else process.env.GIT_DIR = saved;
+        }
+
+        expect(
+            await localUserName(inherited),
+            "a fixture's git write must not reach the repository GIT_DIR names",
+        ).toBe("");
+        expect(await localUserName(fixture), "the fixture must configure its own repository").toBe(
+            "Test User",
+        );
+    });
+
+    it("lets GIT_DIR outrank a fixture's cwd when the variable reaches the spawn", async () => {
+        // Vacuity guard for the test above, whose key assertion is one of absence: a GIT_DIR that
+        // Git ignored would pass it just as well. The same write, with the variable handed straight
+        // to the spawn, has to land in the repository it names.
+        const inherited = await mkdtemp(path.join(tmpdir(), "intelligit-git-inherited-"));
+        const fixture = await mkdtemp(path.join(tmpdir(), "intelligit-git-fixture-"));
+        directories.push(inherited, fixture);
+        await execFileAsync("git", ["init", "-q"], { cwd: inherited });
+
+        await execFileAsync("git", ["config", "user.name", "Test User"], {
+            cwd: fixture,
+            env: { ...process.env, GIT_DIR: path.join(inherited, ".git") },
+        });
+
+        expect(await localUserName(inherited)).toBe("Test User");
     });
 });

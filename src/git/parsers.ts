@@ -45,7 +45,7 @@ export function parseCommitLog(result: string): Commit[] {
     const commits: Commit[] = [];
     const fields = result.split(COMMIT_FIELD_SEP);
 
-    for (let index = 0; index + COMMIT_LOG_FIELD_COUNT - 1 < fields.length; ) {
+    for (let index = 0; index + COMMIT_LOG_FIELD_COUNT - 1 < fields.length;) {
         if (!fields[index]) {
             index += 1;
             continue;
@@ -105,7 +105,7 @@ export function parseAmendBranchCommitSummaries(output: string): AmendBranchComm
     const rows: AmendBranchCommitSummary[] = [];
     const fields = output.split(COMMIT_FIELD_SEP);
 
-    for (let index = 0; index + AMEND_FIELD_COUNT - 1 < fields.length; ) {
+    for (let index = 0; index + AMEND_FIELD_COUNT - 1 < fields.length;) {
         if (!fields[index]) {
             index += 1;
             continue;

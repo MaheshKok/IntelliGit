@@ -6,11 +6,7 @@ import { logGitOpsWarning } from "../git/operationSupport";
 
 /** Sources whose existing watcher pathways can invalidate a repository diff snapshot. */
 export type RepositoryWorkingTreeChangeSource =
-    | "workspace-file"
-    | "git-index"
-    | "git-state"
-    | "git-refs"
-    | "git-repository-state";
+    "workspace-file" | "git-index" | "git-state" | "git-refs" | "git-repository-state";
 
 /** Root-keyed change notification supplied to repository-scoped consumers. */
 export interface RepositoryWorkingTreeChange {

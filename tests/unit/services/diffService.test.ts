@@ -521,8 +521,7 @@ describe("diffService", () => {
     it("cleans readonly diff documents when matching virtual documents close", () => {
         const context = { subscriptions: [] as Array<{ dispose(): void }> };
         let closeListener:
-            | ((document: { uri: { scheme: string; toString(): string } }) => void)
-            | undefined;
+            ((document: { uri: { scheme: string; toString(): string } }) => void) | undefined;
         mocks.onDidCloseTextDocument.mockImplementationOnce((listener) => {
             closeListener = listener as typeof closeListener;
             return { dispose: vi.fn() };

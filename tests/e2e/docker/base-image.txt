@@ -31,4 +31,4 @@
 # Paste it below as `mcr.microsoft.com/playwright@<that digest>`, and re-generate
 # the Layer 1 baselines in the same commit — a base-image change and a baseline
 # change belong together.
-mcr.microsoft.com/playwright@sha256:c091b21d9fae78c76e85cd4356431e9b018402f172a214fc7d7a5e9a7e29d8ac
+mcr.microsoft.com/playwright@sha256:bc6ab0d6d44ff4826e4cb8c1e6d801e185bfc42bb0753f8e2a30efc70db054c7

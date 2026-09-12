@@ -50,8 +50,7 @@ async function runPackageCli(options: {
         readonly extensionsDir: string;
     };
     readonly operation:
-        | { readonly kind: "install"; readonly vsixPath: string }
-        | { readonly kind: "list" };
+        { readonly kind: "install"; readonly vsixPath: string } | { readonly kind: "list" };
     readonly environment: NodeJS.ProcessEnv;
 }): Promise<{ readonly stdout: string; readonly stderr: string }> {
     const cliArgs = resolveCliArgsFromVSCodeExecutablePath(options.executablePath, {

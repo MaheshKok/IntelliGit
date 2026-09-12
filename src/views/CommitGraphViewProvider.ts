@@ -166,6 +166,8 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
             scriptFile?: string;
             title?: string;
             showRepositoryLabel?: boolean;
+            /** The sidebar graph: its branch filter always follows HEAD's own branch (#226). */
+            followsHead?: boolean;
             hostMap?: HostMap;
             settings?: CommitChecksSettings;
             commitChecksService?: CommitChecksService;
@@ -423,12 +425,19 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
         // list a second time. The webview cannot have received the first one: it had not yet
         // signalled `ready`, so its listener was not attached.
         if (!this.view) return;
+        // A webview can signal `ready` -- and so run its first `loadInitial` -- before the host
+        // has read any branches, and that load cannot know which branch HEAD is on. Seeding here
+        // closes that window; the reload only happens on the seeding call, because every later
+        // one finds the filter already set and leaves it alone.
+        const seededFirstFilter = this.currentBranch === null && this.applyDefaultBranchFilter();
         this.sendBranches().catch((err) => {
             const message = getErrorMessage(err);
             vscode.window.showErrorMessage(
                 vscode.l10n.t("Branch update error: {message}", { message }),
             );
         });
+        // `loadInitial` reports its own Git failures to the user and never rejects.
+        if (seededFirstFilter) void this.loadInitial();
     }
 
     /**
@@ -445,6 +454,22 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
         this.postToWebview({ type: "setSelectedBranch", branch });
         this.postToWebview({ type: "setFilterText", text: "" });
         await this.loadInitial();
+    }
+
+    /**
+     * Points a HEAD-following graph's (the sidebar's) branch filter back at HEAD's own branch,
+     * overriding any pick (#226). Other graphs keep the filter they have.
+     *
+     * Returns whether the filter moved, so callers that are not already about to reload the
+     * graph can tell when one is needed.
+     */
+    private applyDefaultBranchFilter(): boolean {
+        if (!this.options.followsHead) return false;
+        const head = this.branches.find((b) => b.isCurrent && !b.isRemote)?.name ?? null;
+        if (head === this.currentBranch) return false;
+        this.currentBranch = head;
+        this.postToWebview({ type: "setSelectedBranch", branch: head });
+        return true;
     }
 
     /**
@@ -548,16 +573,22 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
     /**
      * Loads the first commit page for the active filters and drops stale async results.
      *
-     * Branch filters are cleared when the cached branch list no longer contains the selected
-     * branch. `requestSeq` coalesces overlapping filter, refresh, and pagination operations so
-     * only the latest Git log response can update the offset or webview state.
+     * A HEAD-following graph re-points its filter at HEAD here, which is also what moves it after
+     * a checkout. Any other graph's filter is cleared when the cached branch list no longer
+     * contains the selected branch. `requestSeq` coalesces overlapping filter, refresh, and
+     * pagination operations so only the latest Git log response can update the offset or webview
+     * state.
      */
     private async loadInitial(shouldContinue: () => boolean = () => true): Promise<void> {
         const requestId = ++this.requestSeq;
         this.offset = 0;
         this.loadingMore = false;
 
-        if (this.currentBranch && !this.branches.some((b) => b.name === this.currentBranch)) {
+        if (
+            !this.applyDefaultBranchFilter() &&
+            this.currentBranch &&
+            !this.branches.some((b) => b.name === this.currentBranch)
+        ) {
             this.currentBranch = null;
             this.postToWebview({ type: "setSelectedBranch", branch: null });
         }

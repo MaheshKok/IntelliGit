@@ -21,7 +21,7 @@ function upsertStashFile(
  */
 function applyNameStatus(files: Map<string, WorkingFile>, output: string): void {
     const fields = output.split("\0");
-    for (let index = 0; index < fields.length; ) {
+    for (let index = 0; index < fields.length;) {
         const code = fields[index++];
         if (!code) continue;
         const sourcePath = fields[index++];

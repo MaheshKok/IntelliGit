@@ -131,11 +131,7 @@ describe("ToolbarIconButton", () => {
                             onAbortRebase: vi.fn(),
                         } as React.ComponentProps<typeof Toolbar> & {
                             activeOperation?:
-                                | "rebase"
-                                | "merge"
-                                | "cherry-pick"
-                                | "revert"
-                                | "none";
+                                "rebase" | "merge" | "cherry-pick" | "revert" | "none";
                             rebaseControl?: "owned" | "unowned" | "foreign";
                             onContinueRebase: () => void;
                             onAbortRebase: () => void;

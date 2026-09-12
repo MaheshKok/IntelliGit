@@ -669,11 +669,14 @@ export const FLOW_MATRIX: readonly FlowRow[] = [
                 .toBe(1);
         },
         uiOracle: async ({ frame, page }) => {
+            // Rows are counted in the commit list alone. The rewritten tip heads `main`, so the
+            // panel auto-selects it and Commit Details prints the same subject a second time.
+            const commitList = frame.getByTestId("commit-list-viewport");
             await expect
                 .soft(frame.getByRole("dialog", { name: "Rebasing Commits" }))
                 .toHaveCount(0);
             await expect
-                .soft(frame.getByText(DIVERGENCE_FIXTURE.rewordedSubject, { exact: true }))
+                .soft(commitList.getByText(DIVERGENCE_FIXTURE.rewordedSubject, { exact: true }))
                 .toHaveCount(1);
             await expect
                 .soft(page.getByRole("alert").filter({ hasText: "Interactive rebase completed." }))
@@ -1103,11 +1106,14 @@ export const FLOW_MATRIX: readonly FlowRow[] = [
                 .toBe(1);
         },
         uiOracle: async ({ frame, page }) => {
+            // Counted in the commit list alone, as in `interactive-rebase`: Commit Details prints
+            // the auto-selected rewritten tip's subject as well.
+            const commitList = frame.getByTestId("commit-list-viewport");
             await expect
                 .soft(frame.getByRole("dialog", { name: "Rebasing Commits" }))
                 .toHaveCount(0);
             await expect
-                .soft(frame.getByText(PUSHED_TIP_FIXTURE.rewordedSubject, { exact: true }))
+                .soft(commitList.getByText(PUSHED_TIP_FIXTURE.rewordedSubject, { exact: true }))
                 .toHaveCount(1);
             await expect
                 .soft(page.getByRole("alert").filter({ hasText: "Force push completed." }))

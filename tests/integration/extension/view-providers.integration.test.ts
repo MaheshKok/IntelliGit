@@ -335,8 +335,7 @@ const vscodeMock = {
         textDocuments: [],
         get workspaceFolders() {
             return workspaceState.workspaceFolders as
-                | Array<{ uri: { fsPath: string; path: string } }>
-                | undefined;
+                Array<{ uri: { fsPath: string; path: string } }> | undefined;
         },
         set workspaceFolders(value: Array<{ uri: { fsPath: string; path: string } }> | undefined) {
             workspaceState.workspaceFolders = value;
@@ -940,8 +939,7 @@ function activeWatcherForRoot(root: string): FakeFileSystemWatcher | undefined {
 // if the view never emitted one. Used by the self-hosted GitLab routing tests to assert
 // on the snapshot's state and error text.
 function lastCommitChecksSnapshot():
-    | { state: string; summary?: string; error?: string; items?: unknown[] }
-    | undefined {
+    { state: string; summary?: string; error?: string; items?: unknown[] } | undefined {
     const snapshots = postMessageSpy.mock.calls
         .map(([message]) => message)
         .filter(
@@ -2107,8 +2105,7 @@ describe("view providers integration", () => {
         await resolvePendingUpdatesFor(repoB);
 
         const latestBranches = commitGraphBranchesSpy.mock.calls.at(-1)?.[0] as
-            | Array<{ name: string }>
-            | undefined;
+            Array<{ name: string }> | undefined;
         expect(commitPanelRootSpy).toHaveBeenLastCalledWith(
             expect.objectContaining({ fsPath: repoB }),
         );

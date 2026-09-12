@@ -26,14 +26,21 @@
         "scripts/measure-diff-budgets.ts",
     ],
     "project": ["src/**/*.{ts,tsx}", "scripts/**/*.{js,ts}", "tests/**/*.{ts,tsx}"],
-    "ignoreFiles": ["src/webviews/react/css-modules.d.ts"],
-
     // Spawned by path from the shelf crash suite rather than imported, so knip
     // has no edge to it. Declared here rather than under a `knip` key in
     // package.json: knip picks the FIRST config source it finds and does not
     // merge, so a root config file silently voids the package.json one -- which
     // is exactly what had happened to this entry.
     "ignore": ["tests/integration/shelf/shelfCrashWorker.ts"],
+
+    // Both paths below are resolved by the SPAWNED process against the repository root, not by
+    // the importer: the shelf suite runs the worker by path and the localization suite runs the
+    // CSV script by path. Knip resolves a path literal against the file that names it, so it
+    // cannot find either and reports them as unresolved imports.
+    "ignoreUnresolved": [
+        "tests/integration/shelf/shelfCrashWorker.ts",
+        "scripts/localization-csv.js",
+    ],
 
     // The Layer 2 config is deliberately NOT named `playwright.config.ts`: the
     // repo already runs Vitest as its default suite, and a file with the

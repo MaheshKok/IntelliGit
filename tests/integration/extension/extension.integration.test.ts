@@ -303,8 +303,7 @@ let latestSidebarGraphProvider: MockCommitGraphViewProvider | undefined;
 let latestCommitPanelProvider: MockCommitPanelViewProvider | undefined;
 let latestUndockedProvider: MockUndockedViewProvider | undefined;
 let commitPanelRefreshHook:
-    | ((provider: MockCommitPanelViewProvider) => void | Promise<void>)
-    | undefined;
+    ((provider: MockCommitPanelViewProvider) => void | Promise<void>) | undefined;
 
 /** Captures the most recently constructed undocked provider for cross-surface assertions. */
 function updateLatestUndockedProvider(provider: MockUndockedViewProvider): void {
@@ -2478,8 +2477,7 @@ describe("extension integration", () => {
             expect.stringContaining("Update failed:"),
         );
         const panelResult = createWebviewPanelMock.mock.results[0]?.value as
-            | { dispose?: () => void }
-            | undefined;
+            { dispose?: () => void } | undefined;
         panelResult?.dispose?.();
     });
 
@@ -2536,11 +2534,9 @@ describe("extension integration", () => {
             dispose?: () => void;
         };
         const panelResult = createWebviewPanelMock.mock.results[0]?.value as
-            | CreatedPanel
-            | undefined;
+            CreatedPanel | undefined;
         const handler = panelResult?.webview.onDidReceiveMessage.mock.calls[0]?.[0] as
-            | ((msg: unknown) => Promise<void>)
-            | undefined;
+            ((msg: unknown) => Promise<void>) | undefined;
         expect(handler).toBeDefined();
 
         gitOpsState.acceptConflictSide.mockClear();
@@ -2599,11 +2595,9 @@ describe("extension integration", () => {
             dispose: ReturnType<typeof vi.fn>;
         };
         const panelResult = createWebviewPanelMock.mock.results[0]?.value as
-            | CreatedPanel
-            | undefined;
+            CreatedPanel | undefined;
         const handler = panelResult?.webview.onDidReceiveMessage.mock.calls[0]?.[0] as
-            | ((msg: unknown) => Promise<void>)
-            | undefined;
+            ((msg: unknown) => Promise<void>) | undefined;
         expect(handler).toBeDefined();
 
         gitOpsState.abortMerge.mockClear();
@@ -3553,13 +3547,14 @@ describe("extension integration", () => {
             loading: true,
         });
         expect(latestCommitGraphProvider.filterByBranch).toHaveBeenCalledWith("main");
-        expect(latestSidebarGraphProvider.filterByBranch).toHaveBeenCalledWith("main");
+        expect(
+            latestSidebarGraphProvider.filterByBranch,
+            "the branch tree's filter command re-scoped the sidebar graph, which must always " +
+                "show the checked-out branch (#226)",
+        ).not.toHaveBeenCalled();
         expect(
             latestCommitGraphProvider.clearCommitDetail.mock.invocationCallOrder[0],
         ).toBeLessThan(latestCommitGraphProvider.filterByBranch.mock.invocationCallOrder[0]);
-        expect(
-            latestSidebarGraphProvider.clearCommitDetail.mock.invocationCallOrder[0],
-        ).toBeLessThan(latestSidebarGraphProvider.filterByBranch.mock.invocationCallOrder[0]);
     });
 
     it("suppresses stale commit detail errors after the selection is cleared", async () => {

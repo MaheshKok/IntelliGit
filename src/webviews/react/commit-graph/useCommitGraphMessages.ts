@@ -65,17 +65,12 @@ export function useCommitGraphMessages(params: {
                     const forceFirstCommit = !data.append && selectFirstOnNextLoadRef.current;
                     const previousSelectedHash = selectedHashRef.current;
                     const firstCommitHash = data.commits[0]?.hash ?? null;
-                    const preservesSelectedHash =
-                        !data.append &&
-                        previousSelectedHash !== null &&
-                        data.commits.some((commit) => commit.hash === previousSelectedHash);
+                    // Only a branch change may move the selection on its own: a refresh keeps the
+                    // hash already selected, even when this page no longer lists it (#246).
                     const nextSelectedHash = forceFirstCommit
                         ? firstCommitHash
-                        : preservesSelectedHash
-                          ? previousSelectedHash
-                          : !data.append
-                            ? firstCommitHash
-                            : previousSelectedHash;
+                        : (previousSelectedHash ??
+                          (!data.append ? firstCommitHash : previousSelectedHash));
                     if (!data.append) {
                         selectFirstOnNextLoadRef.current = false;
                     }
@@ -120,6 +115,9 @@ export function useCommitGraphMessages(params: {
                     dispatch({ type: "setFilterText", text: data.text });
                     break;
                 case "setCommitDetail":
+                    // Every commit list receives the detail another list selected; ring that row.
+                    selectedHashRef.current = data.detail.hash;
+                    dispatch({ type: "selectCommit", hash: data.detail.hash });
                     dispatch({
                         type: "setCommitDetail",
                         detail: data.detail,

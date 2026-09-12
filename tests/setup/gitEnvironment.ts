@@ -1,5 +1,6 @@
 /**
- * Vitest setup: no test process may read the machine's Git configuration.
+ * Vitest setup: no test process may read the machine's Git configuration, or act on a repository
+ * it inherited from whatever launched the run.
  *
  * **The defect this closes.** An audit of every test module that spawns real Git found 21 with no
  * configuration isolation at all. They set an author identity and stopped there, so each `git`
@@ -16,6 +17,14 @@
  *   the reproducibility defect `tests/visual/recorder/recordingGitEnvironment.ts` documents for the
  *   recorder, present in a further 21 modules that never got the same treatment.
  *
+ * **The inherited repository.** Git exports `GIT_DIR` to every hook it runs from a linked
+ * worktree, and `GIT_DIR` outranks both `cwd` and `-C`. While `.githooks/pre-push` ran
+ * `test:coverage`, a push from a worktree therefore pointed every fixture's `git init` and
+ * `git config user.name "Test User"` -- each aimed at a fresh temporary directory -- at the
+ * developer's shared `.git/config`, and their own commits went on to be authored as
+ * `Test User <test@example.com>`. Clearing the variables `git rev-parse --local-env-vars` lists
+ * leaves the `cwd` a fixture passes as the only thing that decides which repository it touches.
+ *
  * Setting this once per worker rather than in each module is deliberate. The failing modules do not
  * share a Git helper -- some pass `{ ...process.env, ...identity }`, some pass `{ cwd }` and no
  * `env` at all -- so there is no single call site to fix, and a convention that must be re-applied
@@ -28,12 +37,33 @@
  * config.
  *
  * Proven rather than assumed: `tests/unit/gitEnvironmentIsolation.test.ts` spawns real Git and
- * asserts it cannot see a global or system setting. Without that, this file could be dropped from
- * `vitest.config.ts` and every suite would keep passing locally while silently losing the
- * guarantee.
+ * asserts it cannot see a global or system setting, or be redirected by an inherited `GIT_DIR`.
+ * Without that, this file could be dropped from `vitest.config.ts` and every suite would keep
+ * passing locally while silently losing the guarantee.
  */
 
 import { ABSENT_GIT_CONFIG_GLOBAL } from "../helpers/gitConfigIsolation";
 
+// The variables `git rev-parse --local-env-vars` lists as local to one repository (Git 2.50). An
+// inherited one outranks the repository, index, or config a fixture's `cwd` would select.
+for (const name of [
+    "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+    "GIT_CONFIG",
+    "GIT_CONFIG_PARAMETERS",
+    "GIT_CONFIG_COUNT",
+    "GIT_OBJECT_DIRECTORY",
+    "GIT_DIR",
+    "GIT_WORK_TREE",
+    "GIT_IMPLICIT_WORK_TREE",
+    "GIT_GRAFT_FILE",
+    "GIT_INDEX_FILE",
+    "GIT_NO_REPLACE_OBJECTS",
+    "GIT_REPLACE_REF_BASE",
+    "GIT_PREFIX",
+    "GIT_SHALLOW_FILE",
+    "GIT_COMMON_DIR",
+]) {
+    delete process.env[name];
+}
 process.env.GIT_CONFIG_GLOBAL = ABSENT_GIT_CONFIG_GLOBAL;
 process.env.GIT_CONFIG_NOSYSTEM = "1";
