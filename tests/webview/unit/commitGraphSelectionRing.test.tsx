@@ -16,7 +16,8 @@ initReactDomTestEnvironment();
  * follows the commit whose changed files are on show. Every graph that lists that commit rings
  * it -- both graphs ring it when both list it -- and a graph that does not list it shows no
  * ring. Refreshes must never move a ring onto another row, and never pull the details back to a
- * graph that does not hold the shown commit.
+ * graph that does not hold the shown commit -- not even when the refreshed page no longer lists
+ * the commit whose files are on show.
  */
 
 function commit(hash: string, parentHashes: string[]): Commit {
@@ -144,5 +145,35 @@ describe.each(hosts)("the %s's selected-row ring (#226)", (_name, Host) => {
             expect.stringContaining(tip.shortHash),
         ]);
         expect(postMessage).toHaveBeenCalledWith({ type: "selectCommit", hash: tip.hash });
+    });
+
+    it("keeps the details on a commit that falls out of its page instead of re-selecting a row", () => {
+        const { postMessage, ringedRows } = renderHost(Host);
+
+        send(page);
+        send({ type: "setCommitDetail", detail: detail(parent.hash) });
+        expect(
+            ringedRows(),
+            "the control: the shown commit is listed here, so this graph rings it",
+        ).toEqual([expect.stringContaining(parent.shortHash)]);
+        postMessage.mockClear();
+
+        // A refresh whose page dropped the shown commit: a filter, or a branch that moved on.
+        send({ ...page, commits: [tip] });
+        expect(
+            ringedRows(),
+            "the refreshed page no longer lists the commit whose changed files are on show, yet " +
+                "this graph outlined one of its own rows as selected",
+        ).toEqual([]);
+        expect(
+            postMessage,
+            "a refresh whose page dropped the shown commit pulled the details over to this graph",
+        ).not.toHaveBeenCalledWith(expect.objectContaining({ type: "selectCommit" }));
+
+        send(page);
+        expect(
+            ringedRows(),
+            "the shown commit is listed again, so this graph must ring it again",
+        ).toEqual([expect.stringContaining(parent.shortHash)]);
     });
 });
