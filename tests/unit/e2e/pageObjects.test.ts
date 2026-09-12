@@ -503,6 +503,15 @@ describe("IntelliGitView", () => {
         await expect(new IntelliGitView(page).reveal()).resolves.toBe(sidebar.inner);
     });
 
+    it("finds File History after unavailable and unrelated webviews", async () => {
+        const detached = webview(undefined);
+        const sidebar = webview([SIDEBAR_MARKER]);
+        const history = webview([".file-history"]);
+        const { page } = workbenchPage([detached, sidebar, history]);
+
+        await expect(new IntelliGitView(page).revealFileHistory(50)).resolves.toBe(history.inner);
+    });
+
     // The marker alone was the whole message once, and it is the half that cannot tell "no webview
     // opened" from "a webview opened and rendered a different surface" -- distinct CI failures this
     // message is the only diagnosis of, since none of them reproduce in the pinned container. Each
