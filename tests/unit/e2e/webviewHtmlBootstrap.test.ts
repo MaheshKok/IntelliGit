@@ -83,17 +83,20 @@ describe("buildWebviewShellHtml E2E bootstrap", () => {
             mockVsCode();
             mockActivationState(false);
             const html = await buildHtml({ scriptFile });
-            const scripts = [...html.matchAll(/<script([^>]*)>([\s\S]*?)<\/script>/gi)];
-            expect(scripts.map((script) => script[1].match(/src="([^"]+)"/)?.[1])).toEqual([
+            const doc = new DOMParser().parseFromString(html, "text/html");
+            const scripts = [...doc.querySelectorAll("script")];
+            expect(scripts.map((script) => script.getAttribute("src") ?? undefined)).toEqual([
                 undefined,
                 "webview:///dist/webview-shiki.js",
                 `webview:///dist/${scriptFile}`,
             ]);
-            const nonce = scripts[0][1].match(/nonce="([^"]+)"/)?.[1];
+            const nonce = scripts[0]?.getAttribute("nonce");
             expect(nonce).toBeTruthy();
             for (const script of scripts) {
-                expect(script[1]).toContain(`nonce="${nonce}"`);
-                expect(script[1]).not.toMatch(/\b(?:async|defer|type)=?/);
+                expect(script.getAttribute("nonce")).toBe(nonce);
+                expect(script.hasAttribute("async")).toBe(false);
+                expect(script.hasAttribute("defer")).toBe(false);
+                expect(script.getAttribute("type")).toBeNull();
             }
             expect(html).toContain(`script-src 'nonce-${nonce}'`);
             expect(html).not.toMatch(/unsafe-eval|wasm-unsafe-eval/);
