@@ -48,7 +48,6 @@ interface RepositoryCommandsDeps {
     setRepositories: (repositories: DiscoveredRepository[]) => void;
     getCurrentBranches: () => Branch[];
     commitGraphFilterByBranch: (branchName: string | null) => Promise<void>;
-    sidebarGraphFilterByBranch: (branchName: string | null) => Promise<void>;
     getCurrentBranchName: () => string | undefined;
     setActiveRepository: (repository: DiscoveredRepository) => Promise<void>;
     clearSelection: (options?: { loading?: boolean }) => void;
@@ -365,10 +364,7 @@ function registerWindowAndRepositoryCommands(deps: RepositoryCommandsDeps): void
             "intelligit.filterByBranch",
             async (branchName?: string) => {
                 clearSelection({ loading: true });
-                await Promise.all([
-                    deps.commitGraphFilterByBranch(branchName ?? null),
-                    deps.sidebarGraphFilterByBranch(branchName ?? null),
-                ]);
+                await deps.commitGraphFilterByBranch(branchName ?? null);
             },
         ),
         vscode.commands.registerCommand("intelligit.showGitLog", async () => {

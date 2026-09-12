@@ -492,3 +492,25 @@ describe("CommitGraphViewProvider default branch scope (#226)", () => {
         ).toContain(workspace.commits.featureCommit3);
     });
 });
+
+describe("CommitGraphViewProvider selected-row ring (#226)", () => {
+    it("tells its webview to drop the ring once another view's commit fills the details", () => {
+        const provider = new CommitGraphViewProvider(
+            createFakeExtensionUri(),
+            new GitOps(new GitExecutor(workspace.root, undefined, toGitEnvironment(workspace.env))),
+            new CredentialStore(createInertSecretStorage()),
+            buildProviderOptions("card"),
+        );
+        const { webviewView, posted } = createInspectableFakeCommitGraphWebviewView();
+        provider.resolveWebviewView(webviewView, INERT_CONTEXT, INERT_TOKEN);
+        const before = posted.length;
+
+        provider.deselectCommit();
+
+        expect(
+            posted.slice(before),
+            "the host told this graph another view's commit is on show, but its webview never " +
+                "heard, so it kept its row outlined",
+        ).toEqual([{ type: "deselectCommit" }]);
+    });
+});

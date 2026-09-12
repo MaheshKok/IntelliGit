@@ -165,9 +165,14 @@ export function registerRepositoryViewEvents(
      * Loads one commit detail and fans it out to every docked repository view.
      *
      * A sequence counter drops stale async responses so rapid selection changes do
-     * not show details for a previously selected commit.
+     * not show details for a previously selected commit. Once the details land, each graph
+     * other than `source` drops its selected-row ring, so only the view whose commit the
+     * details show keeps one (#226).
      */
-    const loadCommitDetail = async (hash: string): Promise<void> => {
+    const loadCommitDetail = async (
+        hash: string,
+        source?: CommitGraphViewProvider,
+    ): Promise<void> => {
         const requestId = ++commitDetailRequestSeq;
         try {
             const detail = await gitOps.getCommitDetail(hash);
@@ -176,6 +181,9 @@ export function registerRepositoryViewEvents(
                 sidebarGraph.setCommitDetail(detail);
                 commitPanel.setCommitDetail(detail);
                 commitInfo.setCommitDetail(detail);
+                for (const graph of [commitGraph, sidebarGraph]) {
+                    if (graph !== source) graph.deselectCommit();
+                }
             }
         } catch (err) {
             if (requestId !== commitDetailRequestSeq) return;
@@ -196,17 +204,6 @@ export function registerRepositoryViewEvents(
         commitPanel.clearCommitDetail({ loading: true });
         commitInfo.clear({ loading: true });
     };
-
-    /**
-     * Puts a branch picked in one graph onto the other, so the sidebar and bottom graphs always
-     * draw the same branch (#226). `filterByBranch` does not re-fire `onBranchFilterChanged`, so
-     * the mirrored pick cannot bounce back.
-     */
-    const mirrorBranchFilter =
-        (target: CommitGraphViewProvider) =>
-        (branch: string | null): void => {
-            void target.filterByBranch(branch);
-        };
 
     /**
      * Forwards view-originated branch actions through registered VS Code commands.
@@ -431,14 +428,12 @@ export function registerRepositoryViewEvents(
     };
 
     context.subscriptions.push(
-        commitGraph.onCommitSelected(loadCommitDetail),
-        sidebarGraph.onCommitSelected(loadCommitDetail),
+        commitGraph.onCommitSelected((hash) => loadCommitDetail(hash, commitGraph)),
+        sidebarGraph.onCommitSelected((hash) => loadCommitDetail(hash, sidebarGraph)),
         commitPanel.onCommitSelected(loadCommitDetail),
         commitGraph.onBranchFilterChanged(clearCommitDetail),
         sidebarGraph.onBranchFilterChanged(clearCommitDetail),
         commitPanel.onBranchFilterChanged(clearCommitDetail),
-        commitGraph.onBranchFilterChanged(mirrorBranchFilter(sidebarGraph)),
-        sidebarGraph.onBranchFilterChanged(mirrorBranchFilter(commitGraph)),
         commitGraph.onBranchAction(forwardBranchAction),
         sidebarGraph.onBranchAction(forwardBranchAction),
         commitPanel.onBranchAction(forwardBranchAction),

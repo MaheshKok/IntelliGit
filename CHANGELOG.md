@@ -9,8 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- The sidebar Graph now shows the history of the branch you have checked out. Before, it showed the commits of every branch at once, so commits from other branches could sit above your own. This happened in a Git worktree (an extra folder checked out from the same repository) and in a normal checkout alike. The Graph in the bottom panel now also opens on the checked-out branch. Both graphs move to the new branch when you check out another one, until you pick a branch yourself.
-- Picking a branch in the bottom panel's Graph now shows the same branch in the sidebar Graph. Before, it changed only the bottom panel's Graph. To see every branch again, click HEAD in the bottom panel's branch column; the sidebar Graph follows.
+- The sidebar Graph now always shows the history of the branch you have checked out, in a Git worktree (an extra folder checked out from the same repository) and in a normal checkout alike. Before, it showed the commits of every branch at once, so commits from other branches could sit above your own. It moves to the new branch when you check out another one. Picking a branch to filter by no longer changes it; only the bottom panel's Graph switches to that branch.
+- Only the commit whose changed files are showing now has the blue selection border. Before, clicking a commit in the bottom panel's Graph left the sidebar Graph's selected commit outlined too, and the other way round, so it was unclear which commit the changed files belonged to.
 
 ## [0.32.8] - 2026-09-11
 

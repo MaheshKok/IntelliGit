@@ -97,15 +97,87 @@
         {
             "contextId": "commit-graph-card",
             "message": {
-                "type": "setSelectedBranch",
-                "branch": "main"
-            }
-        },
-        {
-            "contextId": "commit-graph-card",
-            "message": {
                 "type": "loadCommits",
                 "commits": [
+                    {
+                        "hash": "59e21c04f1a6befb37d8ac78a65676b665285e05",
+                        "shortHash": "59e21c04",
+                        "message": "On main: stash entry two",
+                        "author": "IntelliGit Fixture Repo",
+                        "email": "intelligit-fixture@example.invalid",
+                        "date": "2000-01-01T12:00:00Z",
+                        "parentHashes": [
+                            "4d7fe7131419dc84f5dd44d8893a00585e648648",
+                            "363d73eb92682c389e74f9ed8732cb41fe09ea22"
+                        ],
+                        "refs": [
+                            "refs/stash"
+                        ]
+                    },
+                    {
+                        "hash": "363d73eb92682c389e74f9ed8732cb41fe09ea22",
+                        "shortHash": "363d73eb",
+                        "message": "index on main: 4d7fe713 Merge branch 'topic/mergeable'",
+                        "author": "IntelliGit Fixture Repo",
+                        "email": "intelligit-fixture@example.invalid",
+                        "date": "2000-01-01T12:00:00Z",
+                        "parentHashes": [
+                            "4d7fe7131419dc84f5dd44d8893a00585e648648"
+                        ],
+                        "refs": []
+                    },
+                    {
+                        "hash": "971232b6502175f15915dfb4f82e0c2eec616983",
+                        "shortHash": "971232b6",
+                        "message": "Conflicting edit",
+                        "author": "IntelliGit Fixture Repo",
+                        "email": "intelligit-fixture@example.invalid",
+                        "date": "2000-01-01T09:00:00Z",
+                        "parentHashes": [
+                            "b08ddf030532f359194329a212f0d9ba54bb6a02"
+                        ],
+                        "refs": [
+                            "conflict/with-main"
+                        ]
+                    },
+                    {
+                        "hash": "c36f07f4133abf938ac1ad50e5bcffa963c28d13",
+                        "shortHash": "c36f07f4",
+                        "message": "Feature commit 3",
+                        "author": "IntelliGit Fixture Repo",
+                        "email": "intelligit-fixture@example.invalid",
+                        "date": "2000-01-01T08:00:00Z",
+                        "parentHashes": [
+                            "e53ad020ff3e806e267f1025e41cc77a0947c276"
+                        ],
+                        "refs": [
+                            "feature/awesome"
+                        ]
+                    },
+                    {
+                        "hash": "e53ad020ff3e806e267f1025e41cc77a0947c276",
+                        "shortHash": "e53ad020",
+                        "message": "Feature commit 2",
+                        "author": "IntelliGit Fixture Repo",
+                        "email": "intelligit-fixture@example.invalid",
+                        "date": "2000-01-01T07:00:00Z",
+                        "parentHashes": [
+                            "6710982cb2ef812e2557a37b60afdc06b5e9c2f4"
+                        ],
+                        "refs": []
+                    },
+                    {
+                        "hash": "6710982cb2ef812e2557a37b60afdc06b5e9c2f4",
+                        "shortHash": "6710982c",
+                        "message": "Feature commit 1",
+                        "author": "IntelliGit Fixture Repo",
+                        "email": "intelligit-fixture@example.invalid",
+                        "date": "2000-01-01T06:00:00Z",
+                        "parentHashes": [
+                            "e6efa8156f1c58acba244af63c43f1498ddbf913"
+                        ],
+                        "refs": []
+                    },
                     {
                         "hash": "4d7fe7131419dc84f5dd44d8893a00585e648648",
                         "shortHash": "4d7fe713",

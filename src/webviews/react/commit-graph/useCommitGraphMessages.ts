@@ -35,6 +35,9 @@ export function useCommitGraphMessages(params: {
     } = params;
     const selectedHashRef = useRef<string | null>(selectedHash);
     const selectFirstOnNextLoadRef = useRef(false);
+    // Set when the host deselects this graph because another view's commit fills the details
+    // (#226); refreshes leave it unselected until a click or a branch change selects a commit.
+    const selectionYieldedRef = useRef(false);
     selectedHashRef.current = selectedHash;
     // Held in a ref for the same reason as `selectedHashRef`: this effect owns the single
     // `ready` post and the window subscription, so its dependency list must stay fixed. Naming
@@ -64,6 +67,7 @@ export function useCommitGraphMessages(params: {
                     loadingMore.current = false;
                     const forceFirstCommit = !data.append && selectFirstOnNextLoadRef.current;
                     const previousSelectedHash = selectedHashRef.current;
+                    const yielded = selectionYieldedRef.current && previousSelectedHash === null;
                     const firstCommitHash = data.commits[0]?.hash ?? null;
                     const preservesSelectedHash =
                         !data.append &&
@@ -73,12 +77,13 @@ export function useCommitGraphMessages(params: {
                         ? firstCommitHash
                         : preservesSelectedHash
                           ? previousSelectedHash
-                          : !data.append
+                          : !data.append && !yielded
                             ? firstCommitHash
                             : previousSelectedHash;
                     if (!data.append) {
                         selectFirstOnNextLoadRef.current = false;
                     }
+                    selectionYieldedRef.current = yielded;
                     selectedHashRef.current = nextSelectedHash;
                     dispatch({
                         type: "loadCommits",
@@ -131,6 +136,11 @@ export function useCommitGraphMessages(params: {
                     break;
                 case "clearCommitDetail":
                     dispatch({ type: "clearCommitDetail", loading: data.loading ?? false });
+                    break;
+                case "deselectCommit":
+                    selectionYieldedRef.current = true;
+                    selectedHashRef.current = null;
+                    dispatch({ type: "selectCommit", hash: null });
                     break;
                 case "setCommitChecks":
                     dispatch({ type: "setCommitChecks", snapshot: data.snapshot });

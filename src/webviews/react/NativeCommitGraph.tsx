@@ -56,7 +56,7 @@ type NativeCommitGraphAction =
     | { type: "loadError"; clearCommits: boolean }
     | { type: "setCommitChecks"; snapshot: CommitChecksSnapshot }
     | { type: "markCommitChecksLoading"; hash: string }
-    | { type: "selectCommit"; hash: string }
+    | { type: "selectCommit"; hash: string | null }
     | { type: "setFilterText"; text: string };
 
 const initialNativeCommitGraphState: NativeCommitGraphState = {
@@ -147,6 +147,9 @@ export function NativeCommitGraph({
     const loadingMore = useRef(false);
     const selectedHashRef = useRef<string | null>(selectedHash);
     const selectFirstOnNextLoadRef = useRef(false);
+    // Set when the host deselects this graph because another view's commit fills the details
+    // (#226); refreshes leave it unselected until a click or a branch change selects a commit.
+    const selectionYieldedRef = useRef(false);
     selectedHashRef.current = selectedHash;
     const currentBranch = useMemo(
         () => branches.find((branch) => branch.isCurrent && !branch.isRemote),
@@ -174,6 +177,7 @@ export function NativeCommitGraph({
                     loadingMore.current = false;
                     const forceFirstCommit = !data.append && selectFirstOnNextLoadRef.current;
                     const previousSelectedHash = selectedHashRef.current;
+                    const yielded = selectionYieldedRef.current && previousSelectedHash === null;
                     const firstCommitHash = data.commits[0]?.hash ?? null;
                     const preservesSelectedHash =
                         !data.append &&
@@ -183,12 +187,13 @@ export function NativeCommitGraph({
                         ? firstCommitHash
                         : preservesSelectedHash
                           ? previousSelectedHash
-                          : !data.append
+                          : !data.append && !yielded
                             ? firstCommitHash
                             : previousSelectedHash;
                     if (!data.append) {
                         selectFirstOnNextLoadRef.current = false;
                     }
+                    selectionYieldedRef.current = yielded;
                     selectedHashRef.current = nextSelectedHash;
                     dispatch({
                         type: "loadCommits",
@@ -213,6 +218,11 @@ export function NativeCommitGraph({
                 case "setSelectedBranch":
                     selectFirstOnNextLoadRef.current = true;
                     dispatch({ type: "setSelectedBranch", branch: data.branch ?? null });
+                    break;
+                case "deselectCommit":
+                    selectionYieldedRef.current = true;
+                    selectedHashRef.current = null;
+                    dispatch({ type: "selectCommit", hash: null });
                     break;
                 case "setFilterText":
                     dispatch({ type: "setFilterText", text: data.text });

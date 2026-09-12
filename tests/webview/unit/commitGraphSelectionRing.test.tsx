@@ -49,19 +49,23 @@ const hosts: Array<[string, typeof CommitGraphPanel | typeof NativeCommitGraph]>
     ["sidebar graph", NativeCommitGraph],
 ];
 
+function renderHost(Host: (typeof hosts)[number][1]) {
+    const postMessage = vi.fn();
+    const { container } = mount(
+        <ChakraProvider theme={theme}>
+            <Host
+                vscode={{ postMessage, getState: () => undefined, setState: vi.fn() } as never}
+                sendReady={false}
+            />
+        </ChakraProvider>,
+    );
+    const ringedRows = () => container.querySelectorAll('.commit-row[aria-current="true"]').length;
+    return { postMessage, ringedRows };
+}
+
 describe.each(hosts)("the %s's selected-row ring (#226)", (_name, Host) => {
     it("drops when another view's commit fills the details, and stays off across refreshes", () => {
-        const postMessage = vi.fn();
-        const { container } = mount(
-            <ChakraProvider theme={theme}>
-                <Host
-                    vscode={{ postMessage, getState: () => undefined, setState: vi.fn() } as never}
-                    sendReady={false}
-                />
-            </ChakraProvider>,
-        );
-        const ringedRows = () =>
-            container.querySelectorAll('.commit-row[aria-current="true"]').length;
+        const { postMessage, ringedRows } = renderHost(Host);
 
         send(page);
         expect(
@@ -91,5 +95,43 @@ describe.each(hosts)("the %s's selected-row ring (#226)", (_name, Host) => {
         send(page);
         expect(ringedRows(), "a branch change must select its first commit again").toBe(1);
         expect(postMessage).toHaveBeenCalledWith({ type: "selectCommit", hash: tip.hash });
+    });
+
+    it("picks its first commit on a refresh again once a branch change has ended the yield", () => {
+        const { postMessage, ringedRows } = renderHost(Host);
+        send(page);
+        send({ type: "deselectCommit" });
+        send({ type: "setSelectedBranch", branch: "main" });
+        send(page);
+        expect(ringedRows(), "the control: a branch change selects its first commit").toBe(1);
+
+        // A refresh that finds nothing (a filter matching no commit, say), then one that does.
+        send({ ...page, commits: [] });
+        postMessage.mockClear();
+        send(page);
+        expect(
+            ringedRows(),
+            "the yield outlived the branch change, so a refresh that found nothing selected left " +
+                "the graph without a ring",
+        ).toBe(1);
+        expect(
+            postMessage,
+            "the refresh that should pick the first commit never asked the host for its details",
+        ).toHaveBeenCalledWith({ type: "selectCommit", hash: tip.hash });
+    });
+
+    it("stays unselected when a refresh lands before the deselect has re-rendered", () => {
+        const { ringedRows } = renderHost(Host);
+        send(page);
+        // Both host messages handled in one batch, as when a refresh closely follows the deselect.
+        act(() => {
+            window.dispatchEvent(new MessageEvent("message", { data: { type: "deselectCommit" } }));
+            window.dispatchEvent(new MessageEvent("message", { data: page }));
+        });
+        expect(
+            ringedRows(),
+            "a refresh handled before the deselect re-rendered still saw the old selection and put " +
+                "the ring back",
+        ).toBe(0);
     });
 });

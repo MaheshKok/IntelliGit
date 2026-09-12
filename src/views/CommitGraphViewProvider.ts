@@ -72,13 +72,6 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
 
     private view?: vscode.WebviewView;
     private currentBranch: string | null = null;
-    /**
-     * False until something picks a branch scope on the user's behalf -- a click in a graph's own
-     * branch column, or the branch tree's `intelligit.filterByBranch` command. While it is false
-     * the filter follows HEAD, so a graph nobody has filtered opens on the branch the repository
-     * is standing on rather than on every branch at once (#226).
-     */
-    private branchFilterPinned = false;
     private filterText = "";
     private offset = 0;
     private loadingMore = false;
@@ -173,6 +166,8 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
             scriptFile?: string;
             title?: string;
             showRepositoryLabel?: boolean;
+            /** The sidebar graph: its branch filter always follows HEAD's own branch (#226). */
+            followsHead?: boolean;
             hostMap?: HostMap;
             settings?: CommitChecksSettings;
             commitChecksService?: CommitChecksService;
@@ -320,7 +315,6 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
                         break;
                     case "filterBranch":
                         this.currentBranch = this.assertNullableString(msg.branch, "branch");
-                        this.branchFilterPinned = true;
                         this.commitCheckDemandSeq += 1;
                         this.filterText = "";
                         this._onBranchFilterChanged.fire(this.currentBranch);
@@ -452,15 +446,10 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
      * This mirrors webview-originated branch filtering so external branch-tree selections and
      * in-graph selections share the same selected-branch state. Existing viewport demand is
      * invalidated before the asynchronous graph reload starts.
-     *
-     * Deliberately does NOT re-fire `onBranchFilterChanged`: the host mirrors each graph's pick
-     * onto its sibling graph through this method, and firing the event again would bounce the
-     * pick straight back.
      */
     async filterByBranch(branch: string | null): Promise<void> {
         this.commitCheckDemandSeq += 1;
         this.currentBranch = branch;
-        this.branchFilterPinned = true;
         this.filterText = "";
         this.postToWebview({ type: "setSelectedBranch", branch });
         this.postToWebview({ type: "setFilterText", text: "" });
@@ -468,13 +457,14 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
     }
 
     /**
-     * Points the branch filter at HEAD's own branch unless a user pick has claimed it.
+     * Points a HEAD-following graph's (the sidebar's) branch filter back at HEAD's own branch,
+     * overriding any pick (#226). Other graphs keep the filter they have.
      *
      * Returns whether the filter moved, so callers that are not already about to reload the
      * graph can tell when one is needed.
      */
     private applyDefaultBranchFilter(): boolean {
-        if (this.branchFilterPinned) return false;
+        if (!this.options.followsHead) return false;
         const head = this.branches.find((b) => b.isCurrent && !b.isRemote)?.name ?? null;
         if (head === this.currentBranch) return false;
         this.currentBranch = head;
@@ -488,8 +478,6 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
     resetFilters(): void {
         this.requestSeq += 1;
         this.currentBranch = null;
-        // The next repository seeds its own HEAD default; this one's pick does not carry over.
-        this.branchFilterPinned = false;
         this.filterText = "";
         this.commitChecks.clearProviderResolution();
         this.clearCommitCheckHashScope();
@@ -550,6 +538,14 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
     }
 
     /**
+     * Drops this graph's selected-row ring: another view's commit now fills the shared details
+     * panes (#226).
+     */
+    deselectCommit(): void {
+        this.postToWebview({ type: "deselectCommit" });
+    }
+
+    /**
      * Sends cached branches with folder icon data derived from branch path segments.
      *
      * Theme data is read from the attached {@link IconThemeService}; callers should initialize
@@ -585,10 +581,11 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
     /**
      * Loads the first commit page for the active filters and drops stale async results.
      *
-     * An unpinned filter re-follows HEAD here, which is also what re-scopes the graph after a
-     * checkout. A pinned one is cleared when the cached branch list no longer contains the
-     * selected branch. `requestSeq` coalesces overlapping filter, refresh, and pagination
-     * operations so only the latest Git log response can update the offset or webview state.
+     * A HEAD-following graph re-points its filter at HEAD here, which is also what moves it after
+     * a checkout. Any other graph's filter is cleared when the cached branch list no longer
+     * contains the selected branch. `requestSeq` coalesces overlapping filter, refresh, and
+     * pagination operations so only the latest Git log response can update the offset or webview
+     * state.
      */
     private async loadInitial(shouldContinue: () => boolean = () => true): Promise<void> {
         const requestId = ++this.requestSeq;

@@ -14,8 +14,9 @@ import * as vscode from "vscode";
 const COMPACT_SCRIPT_FILE = "webview-compactcommitgraph.js";
 
 /**
- * The bundle and title the sidebar (compact) registration of `CommitGraphViewProvider` is
- * constructed with. `showRepositoryLabel` stays at the call site because only it is dynamic.
+ * The bundle, title and HEAD-following branch filter the sidebar (compact) registration of
+ * `CommitGraphViewProvider` is constructed with: the sidebar graph always shows the checked-out
+ * branch (#226). `showRepositoryLabel` stays at the call site because only it is dynamic.
  *
  * Shared by the production call site (`activation/repositoryMode.ts`) and the fixture recorder
  * (`tests/visual/recorder/recordCommitGraphWebviewFixture.ts`) instead of hand-copied into each.
@@ -26,9 +27,11 @@ const COMPACT_SCRIPT_FILE = "webview-compactcommitgraph.js";
 export function compactCommitGraphViewOptions(): {
     readonly scriptFile: string;
     readonly title: string;
+    readonly followsHead: boolean;
 } {
     return {
         scriptFile: COMPACT_SCRIPT_FILE,
         title: vscode.l10n.t("Graph"),
+        followsHead: true,
     };
 }
