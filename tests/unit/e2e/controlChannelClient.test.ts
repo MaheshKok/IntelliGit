@@ -29,8 +29,16 @@ afterEach(async () => {
     await removeScratchDirectories(channelDir);
 });
 
-/** Waits for the client to publish one complete request file and returns its parsed envelope. */
-async function waitForRequest(timeoutMs = 500): Promise<E2eRequest> {
+/**
+ * Waits for the client to publish one complete request file and returns its parsed envelope.
+ *
+ * The budget guards a hang, not a deadline any assertion here is about: the publish always
+ * happens, and on a shared Windows runner it has outlasted the 500ms this used to allow. The first
+ * attempt of run 34700493095 failed three cases at the old budget with `test request did not
+ * appear within the timeout` while the client was still inside its temp-file-plus-rename publish;
+ * the re-run of the same commit passed them.
+ */
+async function waitForRequest(timeoutMs = 10_000): Promise<E2eRequest> {
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
         const requestFilename = (await readdir(channelDir)).find((filename) =>
@@ -55,6 +63,17 @@ async function writeResponse(response: E2eResponse): Promise<void> {
     );
 }
 
+/**
+ * Keeps a promise the test awaits later from surfacing as an unhandled rejection when the test
+ * fails before it reaches that assertion. Node reports the abandoned rejection run-wide -- `Errors
+ * 1 error`, exit code 1, no test red -- which is the mode this file's `bounds polling` case
+ * already documents; a handler attached at creation is what keeps a red test red on its own terms.
+ */
+function handled<T>(promise: Promise<T>): Promise<T> {
+    void promise.catch(() => undefined);
+    return promise;
+}
+
 describe("writeE2eRequestAtomic", () => {
     it("publishes a complete nonce-bound request and leaves no temp file", async () => {
         const request: E2eRequest = { nonce: "abc123_X", ...REQUEST_PAYLOAD };
@@ -75,7 +94,7 @@ describe("E2eControlChannelClient readiness", () => {
             responseTimeoutMs: 500,
             pollIntervalMs: 5,
         });
-        const responsePromise = client.request(REQUEST_PAYLOAD);
+        const responsePromise = handled(client.request(REQUEST_PAYLOAD));
 
         await new Promise((resolve) => setTimeout(resolve, 20));
         expect(await readdir(channelDir)).toEqual([]);
@@ -111,7 +130,7 @@ describe("E2eControlChannelClient response polling", () => {
             pollIntervalMs: 5,
         });
 
-        const responsePromise = client.request(REQUEST_PAYLOAD);
+        const responsePromise = handled(client.request(REQUEST_PAYLOAD));
         const request = await waitForRequest();
         const response: E2eResponse = {
             nonce: request.nonce,
@@ -131,7 +150,7 @@ describe("E2eControlChannelClient response polling", () => {
             pollIntervalMs: 5,
         });
 
-        const responsePromise = client.request(REQUEST_PAYLOAD);
+        const responsePromise = handled(client.request(REQUEST_PAYLOAD));
         const request = await waitForRequest();
         const responsePath = join(channelDir, `${request.nonce}.response.json`);
 
