@@ -18,6 +18,7 @@ const REQUIRED_PAYLOAD = new Set([
     "LICENSE.txt",
     "dist/extension.js",
     "dist/interactive-rebase-editor-helper.cjs",
+    "dist/webview-shiki.js",
 ]);
 const OUTER_METADATA = new Set(["extension.vsixmanifest", "[Content_Types].xml"]);
 const FORBIDDEN_DIRECTORY_NAMES = new Set([

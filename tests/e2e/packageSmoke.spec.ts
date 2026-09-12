@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdtemp, readFile } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -25,6 +25,7 @@ import {
     buildPackageCliInvocation,
 } from "./hostFixtures/packageSmokeHelpers";
 import { IntelliGitView } from "./pageObjects/intelliGitView";
+import { Workbench } from "./pageObjects/workbench";
 import { selectSoleVsix, verifyVsixPackage } from "../../scripts/verifyVsixPackage.js";
 
 const execFileAsync = promisify(execFile);
@@ -98,6 +99,19 @@ test.describe("installed VSIX package smoke", () => {
             delete environment.INTELLIGIT_E2E;
             delete environment.INTELLIGIT_E2E_CHANNEL_DIR;
             const workspacePath = await createThrowawayGitRepo(environment, directoriesToClean);
+            // A real TypeScript revision proves packaged syntax assets load, beyond mounting React.
+            await writeFile(
+                path.join(workspacePath, "package-smoke.ts"),
+                "export const answer = 42;\n",
+            );
+            await execFileAsync("git", ["add", "package-smoke.ts"], {
+                cwd: workspacePath,
+                env: environment,
+            });
+            await execFileAsync("git", ["commit", "--quiet", "-m", "Add syntax fixture"], {
+                cwd: workspacePath,
+                env: environment,
+            });
             const userDataDir = await mkdtemp(
                 path.join(tmpdir(), "intelligit-package-smoke-profile-"),
             );
@@ -179,6 +193,33 @@ test.describe("installed VSIX package smoke", () => {
             }).toPass({ timeout: 30_000, intervals: [250] });
             console.log(
                 `[package smoke] IntelliGit activity-bar webview mounted (#root children: ${childCount})`,
+            );
+            await window.keyboard.press(`${process.platform === "darwin" ? "Meta" : "Control"}+P`);
+            const input = window.locator(".quick-input-widget .quick-input-box input").first();
+            await expect(input).toBeVisible();
+            await input.fill("package-smoke.ts");
+            await window
+                .getByRole("option")
+                .filter({ hasText: "package-smoke.ts" })
+                .first()
+                .click();
+            await expect(input).toBeHidden();
+            const nextWindow = electronApp.waitForEvent("window", { timeout: 30_000 });
+            await new Workbench(window).runCommand("IntelliGit: Show File History");
+            const historyWindow = await nextWindow;
+            const history = historyWindow
+                .locator("iframe.webview")
+                .first()
+                .contentFrame()
+                .locator("iframe#active-frame")
+                .contentFrame();
+            await expect(history.locator(".file-history")).toBeVisible({ timeout: 30_000 });
+            await expect(history.locator(".code-lines").first()).toContainText(
+                "export const answer = 42;",
+            );
+            await expect(history.locator('.code-lines span[style*="color"]').first()).toBeVisible();
+            console.log(
+                "[package smoke] installed History window renders syntax-highlighted revision",
             );
         } finally {
             await electronApp?.close().catch(() => undefined);

@@ -18,6 +18,9 @@ const WEBVIEW_NOT_COVERED = "No implemented flow exercises this webview action."
 
 const COMMAND_ENTRIES = [
     { kind: "command", id: "intelligit.showGitLog", mutating: false },
+    // Read-only history UI; never dispatches the E2E control channel. Runtime scenario:
+    // tests/e2e/fileHistory.spec.ts (registration here does not assert that scenario passed).
+    { kind: "command", id: "intelligit.showFileHistory", mutating: false },
     { kind: "command", id: "intelligit.openUndocked", mutating: false },
     {
         kind: "command",
@@ -342,6 +345,14 @@ const COMMAND_ENTRIES = [
 
 const WEBVIEW_ENTRIES = [
     { kind: "webview", id: "ready", mutating: false },
+    // History reads repository data and opens inspection UI; historyAction also copies hashes.
+    // Message contracts: tests/integration/webviews/file-history.integration.test.tsx.
+    // Runtime scenario: tests/e2e/fileHistory.spec.ts; this inventory records no pass verdict.
+    { kind: "webview", id: "historyReady", mutating: false },
+    { kind: "webview", id: "historyRefresh", mutating: false },
+    { kind: "webview", id: "historyMore", mutating: false },
+    { kind: "webview", id: "historySelect", mutating: false },
+    { kind: "webview", id: "historyAction", mutating: false },
     {
         kind: "webview",
         id: "startInteractiveRebase",

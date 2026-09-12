@@ -77,6 +77,38 @@ describe("buildWebviewShellHtml E2E bootstrap", () => {
         expect(register).not.toHaveBeenCalled();
     });
 
+    it.each(["webview-filehistory.js", "webview-diffviewer.js", "webview-mergeeditor.js"])(
+        "loads the shared highlighter synchronously before %s under the existing nonce",
+        async (scriptFile) => {
+            mockVsCode();
+            mockActivationState(false);
+            const html = await buildHtml({ scriptFile });
+            const scripts = [...html.matchAll(/<script([^>]*)>([\s\S]*?)<\/script>/g)];
+            expect(scripts.map((script) => script[1].match(/src="([^"]+)"/)?.[1])).toEqual([
+                undefined,
+                "webview:///dist/webview-shiki.js",
+                `webview:///dist/${scriptFile}`,
+            ]);
+            const nonce = scripts[0][1].match(/nonce="([^"]+)"/)?.[1];
+            expect(nonce).toBeTruthy();
+            for (const script of scripts) {
+                expect(script[1]).toContain(`nonce="${nonce}"`);
+                expect(script[1]).not.toMatch(/\b(?:async|defer|type)=?/);
+            }
+            expect(html).toContain(`script-src 'nonce-${nonce}'`);
+            expect(html).not.toMatch(/unsafe-eval|wasm-unsafe-eval/);
+        },
+    );
+
+    it("keeps unrelated webviews on their single application script", async () => {
+        mockVsCode();
+        mockActivationState(false);
+        const html = await buildHtml();
+        expect([...html.matchAll(/src="([^"]+)"/g)].map((match) => match[1])).toEqual([
+            "webview:///dist/webview-commitpanel.js",
+        ]);
+    });
+
     it("injects the runtime flag and registers the view when the channel is active", async () => {
         mockVsCode();
         const register = mockActivationState(true);

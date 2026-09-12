@@ -60,6 +60,7 @@
         "intelligit.selectRepository.color",
         "intelligit.shelveChanges",
         "intelligit.shelveSilently",
+        "intelligit.showFileHistory",
         "intelligit.showGitLog",
         "intelligit.showReviewPrompt",
         "intelligit.showReviewPromptCard",

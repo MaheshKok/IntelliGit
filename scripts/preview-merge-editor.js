@@ -6,7 +6,7 @@ const path = require("path");
 
 const root = path.resolve(__dirname, "..");
 const distDir = path.join(root, "dist");
-const assets = ["webview-mergeeditor.js", "webview-mergeeditor.css"];
+const assets = ["webview-shiki.js", "webview-mergeeditor.js", "webview-mergeeditor.css"];
 const requestedPort =
     Number(process.argv.find((arg) => arg.startsWith("--port="))?.slice("--port=".length)) ||
     Number(process.env.PORT) ||
@@ -187,6 +187,7 @@ window.acquireVsCodeApi = () => ({
 </head>
 <body>
 <div id="root"></div>
+<script src="/dist/webview-shiki.js"></script>
 <script src="/dist/webview-mergeeditor.js"></script>
 <script>
 window.setTimeout(postSampleConflictData, 100);

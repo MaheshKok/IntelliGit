@@ -6,6 +6,7 @@ import {
     rejectWhenOperationInProgress,
 } from "../commands/operationFence";
 import { GitExecutor } from "../git/executor";
+import { showFileHistory } from "../commands/fileHistoryCommand";
 import { GitOps } from "../git/operations";
 import { remoteUrlToWebUrl } from "../git/remoteWebUrl";
 import { runPublishBranchFlow } from "../services/publishService";
@@ -95,6 +96,11 @@ const resolveConflictPath = (ctx: unknown): string | null =>
  * handlers for the same command IDs.
  */
 export function registerRepositoryCommands(deps: RepositoryCommandsDeps): void {
+    deps.context.subscriptions.push(
+        vscode.commands.registerCommand("intelligit.showFileHistory", (uri?: vscode.Uri) =>
+            showFileHistory(deps.context.extensionUri, uri),
+        ),
+    );
     registerWindowAndRepositoryCommands(deps);
     registerMergeCommands(deps);
     registerBranchCommands(deps);

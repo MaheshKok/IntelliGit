@@ -56,6 +56,7 @@ import {
     recordDiffViewerWebviewFixture,
 } from "./recordDiffViewerWebviewFixture";
 import type { WebviewFixture } from "./webviewFixtureTypes";
+import { recordFileHistoryWebviewFixture } from "./recordFileHistoryWebviewFixture";
 
 /** One registered recording: which committed fixture it produces, and how to reproduce it. */
 export interface WebviewFixtureRecorderEntry {
@@ -229,4 +230,5 @@ export const WEBVIEW_FIXTURE_RECORDERS: readonly WebviewFixtureRecorderEntry[] =
                 env: workspace.env,
             }),
     },
+    { contextId: "file-history", scenario: "clean", record: recordFileHistoryWebviewFixture },
 ];

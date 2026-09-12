@@ -43,7 +43,8 @@ type CommitFileCheckMode = "allChecked" | "noneChecked" | "preserveSelection";
  *
  * Script and stylesheet files are resolved under `dist` with `asWebviewUri`, settings/i18n payloads
  * are serialized with script-safe JSON, and a nonce-scoped CSP prevents remote or inline script
- * execution outside the generated bootstrap block.
+ * execution outside the generated bootstrap block. The three syntax consumers load their shared
+ * highlighter first as a synchronous classic script, so their imports see its initialized API.
  */
 export function buildWebviewShellHtml({
     extensionUri,
@@ -59,6 +60,13 @@ export function buildWebviewShellHtml({
         webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, "dist", styleFile)),
     );
     const nonce = createNonce();
+    const highlighterScript = [
+        "webview-filehistory.js",
+        "webview-diffviewer.js",
+        "webview-mergeeditor.js",
+    ].includes(scriptFile)
+        ? `    <script nonce="${nonce}" src="${escapeHtmlAttr(String(webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, "dist", "webview-shiki.js"))))}"></script>\n`
+        : "";
     const styleLinks = styleUris
         .map((styleUri) => `    <link rel="stylesheet" href="${escapeHtmlAttr(String(styleUri))}">`)
         .join("\n");
@@ -120,7 +128,7 @@ ${styleLinks ? `${styleLinks}\n` : ""}
         window.intelligitSettings = ${settingsPayload};
         window.intelligitI18n = ${i18nPayloadJson};${e2eBootstrapScript}
     </script>
-    <script nonce="${nonce}" src="${escapeHtmlAttr(String(scriptUri))}"></script>
+${highlighterScript}    <script nonce="${nonce}" src="${escapeHtmlAttr(String(scriptUri))}"></script>
 </body>
 </html>`;
 }

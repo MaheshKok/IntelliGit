@@ -92,5 +92,6 @@
     "configuration.timeFormat.enum.24h": "Horloge sur 24 heures.",
     "configuration.timeFormat.markdownDescription": "Format d'heure des dates de commit dans la liste et les détails de commit IntelliGit. `12h` affiche une horloge sur 12 heures avec AM/PM (par défaut), `24h` une horloge sur 24 heures. Les modifications prennent effet après le rechargement de la fenêtre.",
     "command.diffShowInIntelliGit": "Afficher la différence dans IntelliGit",
-    "command.diffShowInVsCode": "Afficher la différence dans VS Code"
+    "command.diffShowInVsCode": "Afficher la différence dans VS Code",
+    "command.showFileHistory": "Afficher l’historique du fichier"
 }

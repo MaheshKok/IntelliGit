@@ -46,7 +46,7 @@ const editorHelperConfig = {
 };
 
 /**
- * Returns the seven browser webview build options for the current build mode.
+ * Returns browser webview and shared-runtime build options for the current build mode.
  *
  * @param {boolean} [production] Whether to minify and define production mode.
  * @returns {import("esbuild").BuildOptions[]} Shared IIFE options for each webview.

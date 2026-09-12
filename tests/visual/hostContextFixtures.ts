@@ -12,6 +12,7 @@ export const HOST_CONTEXT_FIXTURES = {
     "shelf-conflict-editor": "shelf-conflicted.json",
     "merge-conflict-session": "conflicted.json",
     "diff-viewer": "clean.json",
+    "file-history": "clean.json",
 } as const satisfies Readonly<Record<WebviewContextId, string>>;
 
 /**

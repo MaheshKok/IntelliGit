@@ -92,5 +92,6 @@
     "configuration.timeFormat.enum.24h": "24 時間表記。",
     "configuration.timeFormat.markdownDescription": "IntelliGit のコミット一覧と詳細に表示するコミット日時の時刻形式。`12h` は AM/PM 付きの 12 時間表記（既定）、`24h` は 24 時間表記です。変更はウィンドウの再読み込み後に有効になります。",
     "command.diffShowInIntelliGit": "IntelliGit で差分を表示",
-    "command.diffShowInVsCode": "VS Code で差分を表示"
+    "command.diffShowInVsCode": "VS Code で差分を表示",
+    "command.showFileHistory": "ファイル履歴を表示"
 }

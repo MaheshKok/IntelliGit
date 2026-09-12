@@ -1,0 +1,221 @@
+.file-history {
+    height: 100vh;
+    display: flex;
+    overflow: hidden;
+    background: var(--vscode-editor-background);
+    color: var(--vscode-foreground);
+    font-family: var(--vscode-font-family, sans-serif);
+    font-size: var(--vscode-font-size, 13px);
+}
+.file-history-layout {
+    display: grid;
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+}
+.file-history-list-panel {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+    background: var(--vscode-sideBar-background);
+}
+.file-history-list-panel * {
+    box-sizing: border-box;
+}
+.file-history-toolbar {
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+    gap: 4px;
+    height: 30px;
+    padding: 0 8px;
+}
+.file-history-branch {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    gap: 4px;
+    color: var(--vscode-descriptionForeground);
+}
+.file-history-toolbar select {
+    min-width: 0;
+    max-width: 180px;
+    text-overflow: ellipsis;
+    color: var(--vscode-foreground);
+    background: transparent;
+    border: 0;
+    font: inherit;
+    height: 24px;
+}
+.file-history-toolbar select option {
+    background: var(--vscode-dropdown-background);
+    color: var(--vscode-dropdown-foreground);
+}
+.file-history-toolbar button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 24px;
+    height: 24px;
+    padding: 4px;
+    border: 0;
+    border-radius: 3px;
+    color: var(--vscode-icon-foreground);
+    background: transparent;
+    cursor: pointer;
+}
+.file-history-toolbar button svg {
+    width: 16px;
+    height: 16px;
+}
+.file-history-toolbar button:disabled,
+.file-history-more:disabled {
+    color: var(--vscode-disabledForeground);
+    cursor: default;
+}
+.file-history-toolbar button:hover:enabled,
+.file-history-more:hover:enabled {
+    background: var(--vscode-toolbar-hoverBackground);
+}
+.file-history-toolbar button[aria-pressed="true"],
+.file-history-toolbar button[aria-expanded="true"] {
+    background: var(--vscode-toolbar-activeBackground);
+}
+.file-history-list-panel :focus-visible {
+    outline: 1px solid var(--vscode-focusBorder);
+    outline-offset: -1px;
+}
+.file-history-search {
+    padding: 0 8px 4px;
+}
+.file-history-search input {
+    width: 100%;
+    height: 24px;
+    padding: 2px 6px;
+    font: inherit;
+    color: var(--vscode-input-foreground);
+    caret-color: var(--vscode-input-foreground);
+    background: var(--vscode-input-background);
+    border: 1px solid var(--vscode-input-border, transparent);
+}
+.file-history-search input::placeholder {
+    color: var(--vscode-input-placeholderForeground);
+}
+.file-history-list {
+    flex: 1;
+    overflow: auto;
+    min-height: 0;
+    scrollbar-color: var(--vscode-scrollbarSlider-background) transparent;
+}
+.file-history-row {
+    display: grid;
+    min-width: 380px;
+    grid-template-columns: 100px 130px 20px minmax(0, 1fr);
+    align-items: center;
+    gap: 4px;
+    height: 24px;
+    padding: 0 8px;
+    cursor: default;
+}
+.file-history-row > span,
+.file-history-row > time {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.file-history-row > time {
+    font-variant-numeric: tabular-nums;
+}
+.file-history-row:hover {
+    background: var(--vscode-list-hoverBackground);
+}
+.file-history-row[aria-selected="true"] {
+    background: var(--vscode-list-inactiveSelectionBackground);
+    color: var(--vscode-list-inactiveSelectionForeground);
+}
+.file-history-row[aria-selected="true"]:focus {
+    background: var(--vscode-list-activeSelectionBackground);
+    color: var(--vscode-list-activeSelectionForeground);
+}
+.file-history-graph {
+    color: var(--vscode-charts-purple);
+    fill: currentColor;
+    stroke: currentColor;
+    stroke-width: 1.5;
+}
+.file-history-subject {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    gap: 6px;
+}
+.file-history-subject > span:first-child {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.file-history-ref {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    flex-shrink: 0;
+    color: var(--vscode-descriptionForeground);
+}
+.file-history-ref svg {
+    width: 14px;
+    height: 14px;
+}
+.file-history-details {
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-height: 30%;
+    overflow: auto;
+    overflow-wrap: anywhere;
+    border-top: 1px solid var(--vscode-panel-border);
+}
+.file-history-details code {
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-size: 11px;
+    color: var(--vscode-descriptionForeground);
+}
+.file-history-divider {
+    background: var(--vscode-panel-border);
+    cursor: col-resize;
+    touch-action: none;
+}
+.file-history-divider:hover,
+.file-history-divider:focus {
+    background: var(--vscode-focusBorder);
+}
+.file-history-preview {
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+}
+.file-history-preview .diff-viewer {
+    height: 100%;
+}
+.file-history-placeholder {
+    padding: 20px;
+    color: var(--vscode-descriptionForeground);
+}
+.file-history-error {
+    padding: 5px 8px;
+    color: var(--vscode-errorForeground);
+    border-bottom: 1px solid var(--vscode-panel-border);
+}
+.file-history-more {
+    flex-shrink: 0;
+    min-height: 24px;
+    margin: 4px 8px;
+    border: 0;
+    font: inherit;
+    color: var(--vscode-foreground);
+    background: transparent;
+    cursor: pointer;
+}
