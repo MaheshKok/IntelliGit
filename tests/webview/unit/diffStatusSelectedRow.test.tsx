@@ -92,10 +92,13 @@ describe("diff-status colours on a selected row", () => {
             // selection background -- that surface is the entire reason the diff
             // colours are wrong here. Without this the assertions below would also
             // pass on a row that had no selection styling at all.
+            // jsdom 30 lowercases custom-property names when it serializes a computed style
+            // (`tokens.ts` sets the camelCase `--vscode-list-activeSelectionBackground`). The
+            // comparison is case-insensitive rather than spelled to match a serialization quirk.
             expect(
-                getComputedStyle(row).background,
+                getComputedStyle(row).background.toLowerCase(),
                 "the selected row must paint a selection background",
-            ).toContain("--vscode-list-activeSelectionBackground");
+            ).toContain("--vscode-list-activeselectionbackground");
 
             const rowColor = colorOf(row);
             expect(

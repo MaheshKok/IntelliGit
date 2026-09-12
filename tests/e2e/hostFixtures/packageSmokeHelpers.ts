@@ -13,8 +13,7 @@ export interface PackageCliInvocation {
 
 /** The package-management operation to run against the fresh VS Code profile. */
 export type PackageCliOperation =
-    | { readonly kind: "install"; readonly vsixPath: string }
-    | { readonly kind: "list" };
+    { readonly kind: "install"; readonly vsixPath: string } | { readonly kind: "list" };
 
 /**
  * Builds one VS Code package-management invocation from the tuple returned by

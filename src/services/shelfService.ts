@@ -69,11 +69,7 @@ type ShelfMutationStatus =
 /** Advisory shelf warning derived only from already-observed shelf state. */
 export type ShelfHealthWarning = {
     readonly kind:
-        | "corruptShelf"
-        | "lockBusy"
-        | "checksumMismatch"
-        | "pendingRecovery"
-        | "recoveryFull";
+        "corruptShelf" | "lockBusy" | "checksumMismatch" | "pendingRecovery" | "recoveryFull";
     readonly detail: string;
 };
 /** Result returned by every mutating shelf operation. */

@@ -29,13 +29,7 @@ interface Props {
 }
 
 type StashContextAction =
-    | "apply"
-    | "pop"
-    | "unstash"
-    | "drop"
-    | "clear"
-    | "showDiff"
-    | "showDiffNewTab";
+    "apply" | "pop" | "unstash" | "drop" | "clear" | "showDiff" | "showDiffNewTab";
 
 type StashFileContextAction = "openDiff" | "editSource" | "cherryPickSelectedChanges";
 

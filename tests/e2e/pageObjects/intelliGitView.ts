@@ -66,8 +66,7 @@ const WEBVIEW_URL_SCHEME = "vscode-webview://";
  */
 function describeHydration(
     diagnostics:
-        | { asks: number; hostMessages: number; lastHostMessageType: string | null }
-        | undefined,
+        { asks: number; hostMessages: number; lastHostMessageType: string | null } | undefined,
 ): string {
     if (!diagnostics) return "(none)";
     return (

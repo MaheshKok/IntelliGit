@@ -67,9 +67,11 @@ export async function showShelfDiffFromPanel(
             return snapshotFor(contents, mode, localSnapshot);
         }),
     );
-    const changes = snapshots.map(
-        (snapshot): ShelfChange => [snapshot.left, snapshot.left, snapshot.right],
-    );
+    const changes = snapshots.map((snapshot): ShelfChange => [
+        snapshot.left,
+        snapshot.left,
+        snapshot.right,
+    ]);
     await vscode.commands.executeCommand("vscode.changes", `Shelf ${shelfId}`, changes);
     if (newTab) await vscode.commands.executeCommand("workbench.action.keepEditor");
 }

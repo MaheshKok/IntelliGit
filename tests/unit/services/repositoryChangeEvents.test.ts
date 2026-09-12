@@ -251,8 +251,7 @@ describe("repository working-tree changes", () => {
             if (!watcher) throw new Error("Expected a root watcher");
 
             const onDidChange = watcher.onDidChange.mock.calls[0]?.[0] as
-                | ((uri: { fsPath: string }) => void)
-                | undefined;
+                ((uri: { fsPath: string }) => void) | undefined;
             onDidChange?.({ fsPath: path.join(REPO, "src", "example.ts") });
 
             expect(listener).toHaveBeenCalledWith({

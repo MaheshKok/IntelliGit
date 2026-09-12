@@ -22,8 +22,7 @@ export interface RebaseReconciliationDependencies {
 
 /** Current HEAD object-id evidence, including a failure state that cannot authorize recovery. */
 type RebaseHeadEvidence =
-    | { status: "known"; oid: string }
-    | { status: "unavailable"; message: string };
+    { status: "known"; oid: string } | { status: "unavailable"; message: string };
 
 /** Current symbolic branch evidence, preserving detached HEAD as distinct state. */
 type RebaseBranchEvidence =
