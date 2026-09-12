@@ -147,9 +147,6 @@ export function NativeCommitGraph({
     const loadingMore = useRef(false);
     const selectedHashRef = useRef<string | null>(selectedHash);
     const selectFirstOnNextLoadRef = useRef(false);
-    // Hashes of the rows this list currently shows. A selected hash outside them was picked in
-    // another list (#246), so a refresh keeps it instead of re-selecting this list's first row.
-    const loadedHashesRef = useRef(new Set<string>());
     selectedHashRef.current = selectedHash;
     const currentBranch = useMemo(
         () => branches.find((branch) => branch.isCurrent && !branch.isRemote),
@@ -178,24 +175,12 @@ export function NativeCommitGraph({
                     const forceFirstCommit = !data.append && selectFirstOnNextLoadRef.current;
                     const previousSelectedHash = selectedHashRef.current;
                     const firstCommitHash = data.commits[0]?.hash ?? null;
-                    const preservesSelectedHash =
-                        !data.append &&
-                        previousSelectedHash !== null &&
-                        (data.commits.some((commit) => commit.hash === previousSelectedHash) ||
-                            !loadedHashesRef.current.has(previousSelectedHash));
-                    if (!data.append) {
-                        loadedHashesRef.current = new Set();
-                    }
-                    for (const commit of data.commits) {
-                        loadedHashesRef.current.add(commit.hash);
-                    }
+                    // Only a branch change may move the selection on its own: a refresh keeps the
+                    // hash already selected, even when this page no longer lists it (#246).
                     const nextSelectedHash = forceFirstCommit
                         ? firstCommitHash
-                        : preservesSelectedHash
-                          ? previousSelectedHash
-                          : !data.append
-                            ? firstCommitHash
-                            : previousSelectedHash;
+                        : (previousSelectedHash ??
+                          (!data.append ? firstCommitHash : previousSelectedHash));
                     if (!data.append) {
                         selectFirstOnNextLoadRef.current = false;
                     }
