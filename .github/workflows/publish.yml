@@ -72,11 +72,18 @@ jobs:
               with:
                   path: |
                       ~/.bun/install/cache
-                      node_modules
                       ~/.cache/ms-playwright
-                  key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
+                  # `node_modules` is deliberately NOT cached. Restoring a materialised tree and
+                  # then reconciling it with `bun install --frozen-lockfile` is incremental: after
+                  # the Dependabot batch moved a nested dependency (brace-expansion@5 needs its own
+                  # balanced-match@4), the restore-keys fallback handed back the pre-upgrade tree,
+                  # bun re-linked only what it considered changed, and ESLint crashed on the stale
+                  # balanced-match@1.0.2 that was left at the root. A warm package store gives the
+                  # same speed and cannot produce a half-reconciled tree. The key prefix is bumped
+                  # so no archive saved before this change can be restored.
+                  key: ${{ runner.os }}-bun-v2-${{ hashFiles('bun.lock') }}
                   restore-keys: |
-                      ${{ runner.os }}-bun-
+                      ${{ runner.os }}-bun-v2-
 
             - name: Install dependencies
               run: bun install --frozen-lockfile
