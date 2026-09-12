@@ -3890,8 +3890,7 @@ describe("view providers integration", () => {
         expect(postMessageSpy).toHaveBeenCalledWith({ type: "setSelectedBranch", branch: null });
         expect(postMessageSpy).toHaveBeenCalledWith({ type: "setFilterText", text: "" });
         await provider.refresh();
-        // #226: an unpinned filter follows HEAD's branch, so the reset re-scopes to `main`.
-        expect(gitOps.getLog.mock.calls.at(-1)?.[1]).toBe("main");
+        expect(gitOps.getLog.mock.calls.at(-1)?.[1]).toBeUndefined();
         expect(gitOps.getLog.mock.calls.at(-1)?.[2]).toBeUndefined();
 
         gitOps.getLog.mockRejectedValueOnce(new Error("git failed"));

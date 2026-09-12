@@ -44,6 +44,7 @@ import type { CommitGraphViewProvider } from "../../../src/views/CommitGraphView
 import type { CommitInfoViewProvider } from "../../../src/views/CommitInfoViewProvider";
 import type { CommitPanelViewProvider } from "../../../src/views/CommitPanelViewProvider";
 import type { RefreshService } from "../../../src/views/RefreshService";
+import type { CommitDetail } from "../../../src/types";
 
 beforeEach(() => {
     vi.clearAllMocks();
@@ -221,50 +222,58 @@ describe("registerUndockedCommitFileDiffHandler wiring (spec 3.7)", () => {
 });
 
 /**
- * Regression cover for the second half of #226.
+ * Regression cover for #226.
  *
- * The sidebar and bottom graphs are two instances of the same class, and each keeps its branch
- * filter private. `intelligit.filterByBranch` (the branch tree's command) already drove both,
- * but a branch clicked INSIDE one graph's own branch column only ever reached that instance --
- * so the bottom panel could sit on one branch while the sidebar sat on another, which is the
- * mismatch the issue screenshot shows.
- *
- * `filterByBranch` deliberately does not re-fire `onBranchFilterChanged` (see its own doc
- * comment), so mirroring one graph's pick onto the other cannot bounce back and loop.
+ * The sidebar and bottom graphs are two instances of the same class. Each draws its own
+ * selected-row ring, but they share the details panes: whichever pick's load lands last fills
+ * them. So once one graph's commit is on show, the other graph must drop its ring, or two rows
+ * stay outlined and only one of them owns the changed files. And the sidebar always draws the
+ * checked-out branch, so a branch picked in one graph must stay in that graph.
  */
-describe("registerRepositoryViewEvents branch-filter mirroring (#226)", () => {
+describe("registerRepositoryViewEvents across the two graphs (#226)", () => {
     function wireTwoGraphs() {
-        const commitGraphFilter = fakeEmitter<string | null>();
-        const sidebarGraphFilter = fakeEmitter<string | null>();
-
-        const fakeGraph = (branchFilter: ReturnType<typeof fakeEmitter<string | null>>) => ({
-            onCommitSelected: fakeEmitter<string>().event,
-            onBranchFilterChanged: branchFilter.event,
-            onBranchAction: fakeEmitter<unknown>().event,
-            onCommitAction: fakeEmitter<unknown>().event,
-            onRebaseDialogSubmit: fakeEmitter<unknown>().event,
-            onRebaseDialogCancel: fakeEmitter<unknown>().event,
-            onOpenCommitFileDiff: fakeEmitter<{ commitHash: string; filePath: string }>().event,
-            filterByBranch: vi.fn(async () => undefined),
-            clearCommitDetail: vi.fn(),
-        });
-
-        const commitGraph = fakeGraph(commitGraphFilter);
-        const sidebarGraph = fakeGraph(sidebarGraphFilter);
-        const commitPanel = {
-            ...fakeGraph(fakeEmitter<string | null>()),
-            onRebaseControl: fakeEmitter<unknown>().event,
+        const pendingDetails = new Map<string, (detail: CommitDetail) => void>();
+        const fakeGraph = () => {
+            const commitSelected = fakeEmitter<string>();
+            const branchFilter = fakeEmitter<string | null>();
+            return {
+                commitSelected,
+                branchFilter,
+                onCommitSelected: commitSelected.event,
+                onBranchFilterChanged: branchFilter.event,
+                onBranchAction: fakeEmitter<unknown>().event,
+                onCommitAction: fakeEmitter<unknown>().event,
+                onRebaseDialogSubmit: fakeEmitter<unknown>().event,
+                onRebaseDialogCancel: fakeEmitter<unknown>().event,
+                onOpenCommitFileDiff: fakeEmitter<{ commitHash: string; filePath: string }>().event,
+                filterByBranch: vi.fn(async () => undefined),
+                clearCommitDetail: vi.fn(),
+                setCommitDetail: vi.fn(),
+                deselectCommit: vi.fn(),
+            };
         };
+
+        const commitGraph = fakeGraph();
+        const sidebarGraph = fakeGraph();
+        const commitPanel = { ...fakeGraph(), onRebaseControl: fakeEmitter<unknown>().event };
         const commitInfo = {
             onOpenCommitFileDiff: fakeEmitter<{ commitHash: string; filePath: string }>().event,
             setCommitDetail: vi.fn(),
             clear: vi.fn(),
         };
+        // Every load waits until the test settles it, so a test can land two picks' responses in
+        // the order a slow `git show` would.
+        const gitOps = {
+            getCommitDetail: vi.fn(
+                (hash: string) =>
+                    new Promise<CommitDetail>((resolve) => pendingDetails.set(hash, resolve)),
+            ),
+        };
 
         const deps: RepositoryViewEventDeps = {
             context: { subscriptions: [] } as unknown as vscode.ExtensionContext,
             executor: {} as unknown as GitExecutor,
-            gitOps: {} as unknown as GitOps,
+            gitOps: gitOps as unknown as GitOps,
             commitGraph: commitGraph as unknown as CommitGraphViewProvider,
             sidebarGraph: sidebarGraph as unknown as CommitGraphViewProvider,
             commitPanel: commitPanel as unknown as CommitPanelViewProvider,
@@ -282,35 +291,107 @@ describe("registerRepositoryViewEvents branch-filter mirroring (#226)", () => {
             vi.fn(async () => undefined),
         );
 
-        return { commitGraph, sidebarGraph, commitGraphFilter, sidebarGraphFilter };
+        /** Lands `hash`'s detail load, then lets the host's handler finish with it. */
+        async function settle(hash: string): Promise<void> {
+            pendingDetails.get(hash)?.({ hash } as unknown as CommitDetail);
+            await new Promise((resolve) => setImmediate(resolve));
+        }
+
+        return { commitGraph, sidebarGraph, commitPanel, settle };
     }
 
-    it("re-scopes the sidebar graph to a branch picked in the bottom graph", () => {
-        const { commitGraph, sidebarGraph, commitGraphFilter } = wireTwoGraphs();
+    it("leaves the other graph's branch alone when a branch is picked in either graph", () => {
+        const { commitGraph, sidebarGraph } = wireTwoGraphs();
 
-        commitGraphFilter.fire("feature/awesome");
+        commitGraph.branchFilter.fire("feature/awesome");
+        sidebarGraph.branchFilter.fire(null);
 
         expect(
             sidebarGraph.filterByBranch,
-            "a branch picked in the bottom graph left the sidebar graph on its own separate " +
-                "filter, so the two panes drew different histories at the same time",
-        ).toHaveBeenCalledWith("feature/awesome");
+            "a branch picked in the bottom graph re-scoped the sidebar graph, which must always " +
+                "show the checked-out branch",
+        ).not.toHaveBeenCalled();
         expect(
             commitGraph.filterByBranch,
-            "the originating graph must not be re-scoped by its own pick -- it has already " +
-                "applied it, so a mirror wired back to itself would reload the page it just drew",
+            "a branch pick in the sidebar graph re-scoped the bottom graph",
         ).not.toHaveBeenCalled();
     });
 
-    it("re-scopes the bottom graph to a branch picked in the sidebar graph", () => {
-        const { commitGraph, sidebarGraphFilter } = wireTwoGraphs();
+    it("takes the ring off the sidebar graph once a commit picked in the bottom graph fills the details", async () => {
+        const { commitGraph, sidebarGraph, settle } = wireTwoGraphs();
 
-        sidebarGraphFilter.fire(null);
+        commitGraph.commitSelected.fire("b1");
+        await settle("b1");
 
         expect(
-            commitGraph.filterByBranch,
-            "a pick in the sidebar graph did not reach the bottom graph, so the mirror only " +
-                "works in one direction",
-        ).toHaveBeenCalledWith(null);
+            commitGraph.setCommitDetail,
+            "the control: the bottom graph's pick must have reached the details panes",
+        ).toHaveBeenCalledWith({ hash: "b1" });
+        expect(
+            sidebarGraph.deselectCommit,
+            "the bottom graph's commit fills the details, but the sidebar graph kept its own row " +
+                "outlined, so two commits looked selected",
+        ).toHaveBeenCalledTimes(1);
+        expect(
+            commitGraph.deselectCommit,
+            "the graph whose commit is on show lost its own ring",
+        ).not.toHaveBeenCalled();
+    });
+
+    it("takes the ring off the bottom graph once a commit picked in the sidebar graph fills the details", async () => {
+        const { commitGraph, sidebarGraph, settle } = wireTwoGraphs();
+
+        sidebarGraph.commitSelected.fire("s1");
+        await settle("s1");
+
+        expect(
+            sidebarGraph.setCommitDetail,
+            "the control: the sidebar graph's pick must have reached the details panes",
+        ).toHaveBeenCalledWith({ hash: "s1" });
+        expect(
+            commitGraph.deselectCommit,
+            "the sidebar graph's commit fills the details, but the bottom graph kept its own row " +
+                "outlined, so two commits looked selected",
+        ).toHaveBeenCalledTimes(1);
+        expect(
+            sidebarGraph.deselectCommit,
+            "the graph whose commit is on show lost its own ring",
+        ).not.toHaveBeenCalled();
+    });
+
+    it("moves the ring only for the pick whose details land, not for one a newer pick overtook", async () => {
+        const { commitGraph, sidebarGraph, settle } = wireTwoGraphs();
+
+        // The sidebar pick's load is still running when a bottom-graph pick replaces it.
+        sidebarGraph.commitSelected.fire("s1");
+        commitGraph.commitSelected.fire("b1");
+        await settle("b1");
+        await settle("s1");
+
+        expect(
+            commitGraph.deselectCommit,
+            "the overtaken sidebar pick took the ring off the bottom graph, whose commit is the " +
+                "one on show",
+        ).not.toHaveBeenCalled();
+        expect(
+            sidebarGraph.deselectCommit,
+            "the bottom graph's newer pick fills the details, but the sidebar graph kept its ring",
+        ).toHaveBeenCalledTimes(1);
+    });
+
+    it("takes the ring off both graphs once a commit picked in the commit panel fills the details", async () => {
+        const { commitGraph, sidebarGraph, commitPanel, settle } = wireTwoGraphs();
+
+        commitPanel.commitSelected.fire("p1");
+        await settle("p1");
+
+        expect(
+            commitGraph.deselectCommit,
+            "the commit panel's commit fills the details, but the bottom graph kept its ring",
+        ).toHaveBeenCalledTimes(1);
+        expect(
+            sidebarGraph.deselectCommit,
+            "the commit panel's commit fills the details, but the sidebar graph kept its ring",
+        ).toHaveBeenCalledTimes(1);
     });
 });

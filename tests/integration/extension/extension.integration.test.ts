@@ -360,6 +360,7 @@ class MockCommitGraphViewProvider {
     resetFilters = vi.fn();
     setCommitDetail = vi.fn();
     clearCommitDetail = vi.fn();
+    deselectCommit = vi.fn();
     setRepositoryLabel = vi.fn();
     setShowRepositoryLabel = vi.fn();
     /** Mirrors the real provider's delivery contract: true only while a webview is live. */
@@ -3553,13 +3554,14 @@ describe("extension integration", () => {
             loading: true,
         });
         expect(latestCommitGraphProvider.filterByBranch).toHaveBeenCalledWith("main");
-        expect(latestSidebarGraphProvider.filterByBranch).toHaveBeenCalledWith("main");
+        expect(
+            latestSidebarGraphProvider.filterByBranch,
+            "the branch tree's filter command re-scoped the sidebar graph, which must always " +
+                "show the checked-out branch (#226)",
+        ).not.toHaveBeenCalled();
         expect(
             latestCommitGraphProvider.clearCommitDetail.mock.invocationCallOrder[0],
         ).toBeLessThan(latestCommitGraphProvider.filterByBranch.mock.invocationCallOrder[0]);
-        expect(
-            latestSidebarGraphProvider.clearCommitDetail.mock.invocationCallOrder[0],
-        ).toBeLessThan(latestSidebarGraphProvider.filterByBranch.mock.invocationCallOrder[0]);
     });
 
     it("suppresses stale commit detail errors after the selection is cleared", async () => {

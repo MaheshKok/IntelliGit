@@ -276,29 +276,29 @@ function lastAnnouncedBranch(posted: readonly unknown[]): unknown {
 }
 
 /**
- * Regression cover for #226: the sidebar graph opened on `git log --all`.
+ * Regression cover for #226: which branch each graph draws.
  *
  * Both registrations in `src/activation/repositoryMode.ts` construct this same class, and each
- * instance holds its OWN `currentBranch` filter, defaulted to `null`. `loadInitial` turns that
- * `null` into `--all` (`GitOps.getLog`), so a graph nobody had clicked a branch in drew every
- * branch's history. The bottom panel hides that behind its own branch column -- clicking a branch
- * there scopes it -- but the compact sidebar bundle (`NativeCommitGraph.tsx`) has no branch picker
- * at all, so it had no way out of `--all` and its rows never matched the `Branch: X` label drawn
- * directly above them.
+ * instance holds its OWN `currentBranch` filter, defaulted to `null`, which `loadInitial` turns
+ * into `--all` (`GitOps.getLog`). The bottom panel's graph is the one you browse with: it opens on
+ * every branch and its branch column scopes it to the branch you click. The sidebar graph answers
+ * "where am I": the compact bundle (`NativeCommitGraph.tsx`) has no branch picker, and its
+ * `Branch: X` label sits directly above its rows, so it must always draw the branch HEAD is on --
+ * moving with HEAD after a checkout and ignoring every branch picked anywhere else.
  *
- * Built on the "compact" variant specifically: that is the registration the issue reports, and
- * `buildProviderOptions("compact")` reuses production's own `compactCommitGraphViewOptions()`
- * rather than a hand-copy of it.
+ * `buildProviderOptions("compact")` spreads production's own `compactCommitGraphViewOptions()`,
+ * the one place the sidebar's HEAD-following is switched on; `"card"` leaves it out, as the
+ * bottom panel's registration does.
  *
  * The oracle is behavioural, over the real seeded repository, not a recorded `getLog` argument:
- * `feature/awesome`'s tip is reachable from that branch and from no other, so its presence in the
- * posted page is proof the log ran unscoped, and `main`'s own tip being present at the same time
- * is the control -- it stays green under every mutation here, so an empty page can never be
- * mistaken for a correctly scoped one.
+ * `feature/awesome`'s tip is reachable from that branch and from no other, and `main`'s tip (its
+ * topic merge) is not reachable from `feature/awesome`. So a page scoped to either branch holds
+ * exactly one of the two tips, and a page holding both ran unscoped.
  */
 describe("CommitGraphViewProvider default branch scope (#226)", () => {
-    async function resolveGraphOnSeededRepo(): Promise<{
+    async function resolveGraphOnSeededRepo(variant: "card" | "compact" = "compact"): Promise<{
         provider: CommitGraphViewProvider;
+        gitOps: GitOps;
         posted: unknown[];
         receiveMessage(message: unknown): Promise<void>;
     }> {
@@ -309,7 +309,7 @@ describe("CommitGraphViewProvider default branch scope (#226)", () => {
             createFakeExtensionUri(),
             gitOps,
             new CredentialStore(createInertSecretStorage()),
-            buildProviderOptions("compact"),
+            buildProviderOptions(variant),
         );
         const { webviewView, posted, receiveMessage } =
             createInspectableFakeCommitGraphWebviewView();
@@ -320,7 +320,7 @@ describe("CommitGraphViewProvider default branch scope (#226)", () => {
         provider.resolveWebviewView(webviewView, INERT_CONTEXT, INERT_TOKEN);
         await receiveMessage({ type: "ready" });
 
-        return { provider, posted, receiveMessage };
+        return { provider, gitOps, posted, receiveMessage };
     }
 
     it("draws only the checked-out branch's history on its first page, not every branch's", async () => {
@@ -350,11 +350,9 @@ describe("CommitGraphViewProvider default branch scope (#226)", () => {
         ).toBe(FIXTURE_REFS.main);
     });
 
-    // Following HEAD is only a DEFAULT. Both entry points that let something pick a branch on the
-    // user's behalf must claim the filter, or the next refresh -- and refreshes are automatic,
-    // fired by the file watcher -- would drag the graph straight back onto HEAD's branch.
-    // `feature/awesome` forked before `main`'s topic merge, so the two tips discriminate in both
-    // directions: whichever branch the page is scoped to, exactly one of them is on it.
+    // The bottom graph keeps a branch picked through either entry point. Refreshes are automatic,
+    // fired by the file watcher, so a refresh that re-scoped the graph -- onto HEAD's branch, the
+    // sidebar's rule leaking into it -- would undo the user's click on the next file save.
     it.each([
         [
             "a branch clicked in the graph's own branch column",
@@ -376,8 +374,8 @@ describe("CommitGraphViewProvider default branch scope (#226)", () => {
                 await provider.filterByBranch(FIXTURE_REFS.feature);
             },
         ],
-    ])("keeps %s when the graph is refreshed afterwards", async (_name, pick) => {
-        const { provider, posted, receiveMessage } = await resolveGraphOnSeededRepo();
+    ])("keeps %s when the bottom graph is refreshed afterwards", async (_name, pick) => {
+        const { provider, posted, receiveMessage } = await resolveGraphOnSeededRepo("card");
 
         await pick(provider, receiveMessage);
         await provider.refresh();
@@ -437,45 +435,60 @@ describe("CommitGraphViewProvider default branch scope (#226)", () => {
         ).not.toContain(workspace.commits.featureCommit3);
     });
 
-    it("re-follows HEAD after resetFilters, instead of carrying the previous repository's pick into the next one", async () => {
-        const { provider, posted, receiveMessage } = await resolveGraphOnSeededRepo();
+    it("keeps the sidebar on the checked-out branch when a branch pick reaches it", async () => {
+        const { provider, posted } = await resolveGraphOnSeededRepo();
 
-        await receiveMessage({ type: "filterBranch", branch: FIXTURE_REFS.feature });
-        // What the host calls before it points these providers at a different repository root.
-        provider.resetFilters();
+        await provider.filterByBranch(FIXTURE_REFS.feature);
+        const hashes = loadedCommitHashes(posted);
+
+        expect(
+            hashes,
+            "a branch pick moved the sidebar graph onto `feature/awesome` (its tip is on the " +
+                "page), but the sidebar must always show the branch HEAD is on",
+        ).not.toContain(workspace.commits.featureCommit3);
+        expect(hashes, "the control: HEAD's own tip must be on the page").toContain(
+            workspace.commits.mergeCommit,
+        );
+    });
+
+    it("moves the sidebar onto the new branch after a checkout", async () => {
+        const { provider, gitOps, posted } = await resolveGraphOnSeededRepo();
+        const branches = await gitOps.getBranches();
+
+        // What the host hands every graph once the watcher sees a checkout: the same branch list
+        // with HEAD moved, then a refresh.
+        provider.setBranches(
+            branches.map((branch) => ({
+                ...branch,
+                isCurrent: !branch.isRemote && branch.name === FIXTURE_REFS.feature,
+            })),
+        );
         await provider.refresh();
         const hashes = loadedCommitHashes(posted);
 
-        expect(hashes, "the control: HEAD's own tip must be back on the page").toContain(
-            workspace.commits.mergeCommit,
-        );
         expect(
             hashes,
-            "the previous pick still owned the filter after resetFilters, so the graph opened " +
-                "unscoped (`git log --all`) rather than on the new repository's own HEAD",
-        ).not.toContain(workspace.commits.featureCommit3);
+            "the control: the newly checked-out branch's own tip must be on the page",
+        ).toContain(workspace.commits.featureCommit3);
+        expect(
+            hashes,
+            "`main`'s tip is still on the page, so the sidebar graph did not move to the branch " +
+                "that was checked out",
+        ).not.toContain(workspace.commits.mergeCommit);
     });
 
-    // `registerRepositoryViewEvents` mirrors each graph's pick onto its sibling through
-    // `filterByBranch`. That is loop-free only while `filterByBranch` stays silent: if it
-    // re-announced the pick, the sibling's mirror would call straight back, forever.
-    it("does not re-announce a host-driven pick, so the two graphs' mirror cannot bounce it back", async () => {
-        const { provider, receiveMessage } = await resolveGraphOnSeededRepo();
-        const announced: (string | null)[] = [];
-        provider.onBranchFilterChanged((branch) => announced.push(branch));
+    it("opens the bottom graph on every branch, as it did before #226", async () => {
+        const { posted } = await resolveGraphOnSeededRepo("card");
+        const hashes = loadedCommitHashes(posted);
 
-        await provider.filterByBranch(FIXTURE_REFS.feature);
         expect(
-            announced,
-            "filterByBranch re-fired onBranchFilterChanged, so the sibling graph's mirror would " +
-                "call filterByBranch back and the two graphs would re-scope each other forever",
-        ).toEqual([]);
-
-        await receiveMessage({ type: "filterBranch", branch: FIXTURE_REFS.main });
+            hashes,
+            "the control: the checked-out branch's own tip must be on the page",
+        ).toContain(workspace.commits.mergeCommit);
         expect(
-            announced,
-            "the control: a pick made inside the graph's own webview must still be announced, or " +
-                "the listener above could never have heard anything",
-        ).toEqual([FIXTURE_REFS.main]);
+            hashes,
+            "the bottom graph opened scoped to the checked-out branch; it must open on every " +
+                "branch until the user clicks one in its branch column",
+        ).toContain(workspace.commits.featureCommit3);
     });
 });
