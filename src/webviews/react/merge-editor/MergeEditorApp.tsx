@@ -1493,7 +1493,7 @@ export function App() {
                         {!isShelfSession ? (
                             <button
                                 type="button"
-                                className="footer-btn danger ghost"
+                                className="footer-btn secondary"
                                 onClick={handleAbortMerge}
                             >
                                 {t("merge.action.abortMerge")}

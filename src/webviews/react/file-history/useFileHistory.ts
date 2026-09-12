@@ -87,9 +87,10 @@ export function useFileHistory() {
         return () => window.removeEventListener("message", receive);
     }, [api, select]);
 
-    /** Clears stale rows' selection before asking the host for a new branch or refreshed history. */
+    /** Invalidates the preview while retaining selection when refreshing the same history ref. */
     const refresh = (ref: string) => {
-        select([]);
+        if (snapshot.current?.ref === ref) clearPreview();
+        else select([]);
         setLoading(true);
         api.postMessage({ type: "historyRefresh", ref });
     };

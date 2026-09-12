@@ -1,10 +1,41 @@
 import { mkdtemp, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GitExecutor } from "../../../src/git/executor";
 import { getFileHistory, getFileHistoryParentPath } from "../../../src/git/fileHistory";
 import { removeScratchDirectories } from "../../helpers/scratchDirectories";
+
+describe("file history parser input", () => {
+    it.each(["tab\tfile.txt", "line\nfile.txt", "[ab]*.txt", " spaced.txt "])(
+        "preserves filename bytes without filesystem restrictions: %j",
+        async (name) => {
+            const hash = "1".repeat(40);
+            const output = [
+                hash,
+                "",
+                "Author",
+                "author@example.test",
+                "2026-01-01T00:00:00Z",
+                "Committer",
+                "committer@example.test",
+                "2026-01-01T00:00:00Z",
+                "literal names",
+                "\nA",
+                name,
+                "",
+            ].join("\0");
+            const run = vi.fn().mockResolvedValueOnce(output).mockResolvedValue("");
+            const result = await getFileHistory({ run }, name);
+            expect(
+                result.entries.map((entry) => [entry.hash, entry.pathAtRevision, entry.status]),
+            ).toEqual([[hash, name, "added"]]);
+            expect(run.mock.calls[0][0]).toEqual(
+                expect.arrayContaining(["--literal-pathspecs", "--", name]),
+            );
+        },
+    );
+});
 
 describe("literal file history with real Git", () => {
     let directory: string;
@@ -115,17 +146,11 @@ describe("literal file history with real Git", () => {
         ]);
     });
 
-    it("preserves tab, newline, glob, leading-dash, and whitespace filename bytes", async () => {
-        const names = [
-            "tab\tfile.txt",
-            "line\nfile.txt",
-            "[ab]*.txt",
-            "-option.txt",
-            " spaced.txt ",
-        ];
+    it("preserves literal brackets, leading-dash, and leading-space filenames with real Git", async () => {
+        const names = ["[ab].txt", "-option.txt", " spaced.txt"];
         for (const name of names) await writeFile(path.join(directory, name), name);
         const initial = await commit("literal names");
-        await writeFile(path.join(directory, "a-other.txt"), "unrelated glob match");
+        await writeFile(path.join(directory, "a.txt"), "unrelated glob match");
         await commit("unrelated");
         for (const name of names) {
             const result = await getFileHistory(executor, name);

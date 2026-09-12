@@ -1,4 +1,5 @@
 const path = require("path");
+const { readFile } = require("node:fs/promises");
 
 const WEBVIEW_CONFIGS = [
     { entry: "react/diff-core/shikiHighlighter", out: "webview-shiki" },
@@ -43,6 +44,26 @@ const sharedHighlighterPlugin = {
     },
 };
 
+const grammarDataPlugin = {
+    name: "shiki-grammar-data",
+    /**
+     * Decodes generated grammar JSON strings before minification to avoid shipping
+     * their extra escaping; module exports and the grammar's Object.freeze remain.
+     *
+     * @param {import("esbuild").PluginBuild} build Active highlighter bundle loader.
+     * @returns {void} Registers the installed grammar-data transformation.
+     */
+    setup(build) {
+        build.onLoad({ filter: /@shikijs[\\/]langs[\\/]dist[\\/].*\.mjs$/ }, async (args) => ({
+            contents: (await readFile(args.path, "utf8")).replace(
+                /JSON\.parse\(("(?:[^"\\]|\\.)*")\)/g,
+                (_, literal) => JSON.parse(literal),
+            ),
+            loader: "js",
+        }));
+    },
+};
+
 /**
  * Creates the shared IIFE esbuild options used by every browser webview bundle.
  *
@@ -69,7 +90,9 @@ function createWebviewBuildOptions({ entry, out, production = false }) {
         sourcemap: true,
         minify: production,
         treeShaking: true,
-        ...(sharedHighlighter ? { globalName: "IntelliGitSyntax" } : {}),
+        ...(sharedHighlighter
+            ? { globalName: "IntelliGitSyntax", plugins: [grammarDataPlugin] }
+            : {}),
         ...(consumesHighlighter ? { plugins: [sharedHighlighterPlugin] } : {}),
         define: {
             "process.env.NODE_ENV": production ? '"production"' : '"development"',

@@ -936,6 +936,12 @@
                 "command": "intelligit.showGitLog",
                 "key": "alt+9",
                 "mac": "alt+9"
+            },
+            {
+                "command": "intelligit.showFileHistory",
+                "key": "ctrl+k ctrl+h",
+                "mac": "cmd+k cmd+h",
+                "when": "editorTextFocus && resourceScheme == file"
             }
         ],
         "configuration": {

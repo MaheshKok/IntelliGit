@@ -1,5 +1,5 @@
 import path from "node:path";
-import { readFile, writeFile } from "node:fs/promises";
+import { writeFile } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
 import { expect, test } from "./fixtureWorkspace";
 import { waitForE2eChannelReady } from "./controlChannelClient";
@@ -40,17 +40,6 @@ test("opens file history in a separate window with the shared diff viewer", asyn
         timeout: 60_000,
     });
     try {
-        // Keep context menus in the renderer so Playwright can exercise hover on macOS too.
-        const settingsPath = path.join(
-            fixtureWorkspace.workspace.profileDir,
-            "User",
-            "settings.json",
-        );
-        const settings = JSON.parse(await readFile(settingsPath, "utf8"));
-        await writeFile(
-            settingsPath,
-            JSON.stringify({ ...settings, "window.menuStyle": "custom" }),
-        );
         const page = await app.firstWindow();
         await page.waitForLoadState("domcontentloaded");
         await dismissFirstRunDialogs(page);
@@ -66,23 +55,22 @@ test("opens file history in a separate window with the shared diff viewer", asyn
             .filter({ hasText: historyPath })
             .click({ button: "right" });
         await expect(
-            page.getByRole("menuitem", { name: "Show File History", exact: true }),
+            page.getByRole("menuitem", { name: /^Show File History(?:$|\s)/ }),
         ).toHaveCount(0);
         await page.getByRole("menuitem", { name: "IntelliGit", exact: true }).hover();
         await expect(
-            page.getByRole("menuitem", { name: "Show File History", exact: true }),
+            page.getByRole("menuitem", { name: /^Show File History(?:$|\s)/ }),
         ).toBeVisible();
         await page.screenshot({ path: testInfo.outputPath("file-history-context-menu.png") });
         await page.keyboard.press("Escape");
         await page.keyboard.press("Escape");
         await page.locator(".tab.active").click({ button: "right" });
         await expect(
-            page.getByRole("menuitem", { name: "Show File History", exact: true }),
+            page.getByRole("menuitem", { name: /^Show File History(?:$|\s)/ }),
         ).toHaveCount(0);
         await page.getByRole("menuitem", { name: "IntelliGit", exact: true }).hover();
         const historyAction = page.getByRole("menuitem", {
-            name: "Show File History",
-            exact: true,
+            name: /^Show File History(?:$|\s)/,
         });
         await expect(historyAction).toBeVisible();
         const nextWindow = app.waitForEvent("window", { timeout: 30_000 });

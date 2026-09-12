@@ -4,6 +4,50 @@ import { describe, expect, it } from "vitest";
 import { getWebviewBuildConfigs } from "../../../scripts/build.js";
 
 describe("shared highlighter packaging", () => {
+    it("preserves every bundled grammar's complete data and frozen objects", async () => {
+        const config = getWebviewBuildConfigs(true).find(({ outfile }) =>
+            outfile.endsWith("webview-shiki.js"),
+        )!;
+        for (const language of [
+            "javascript",
+            "typescript",
+            "jsx",
+            "tsx",
+            "json",
+            "python",
+            "go",
+            "css",
+            "html",
+            "yaml",
+            "shell",
+            "markdown",
+        ]) {
+            const original = await import(/* @vite-ignore */ `@shikijs/langs/${language}`);
+            const result = await build({
+                ...config,
+                entryPoints: undefined,
+                stdin: {
+                    contents: `export { default } from "@shikijs/langs/${language}";`,
+                    resolveDir: process.cwd(),
+                    loader: "js",
+                },
+                globalName: "IntelliGitGrammar",
+                write: false,
+                sourcemap: false,
+            });
+            const context = vm.createContext(
+                {},
+                { codeGeneration: { strings: false, wasm: false } },
+            );
+            vm.runInContext(result.outputFiles[0].text, context);
+            const actual = context.IntelliGitGrammar.default;
+            expect(JSON.stringify(actual), language).toBe(JSON.stringify(original.default));
+            expect(actual.map(Object.isFrozen), language).toEqual(
+                original.default.map(Object.isFrozen),
+            );
+        }
+    });
+
     it("bundles the full grammar runtime once and keeps all three consumers within their budgets", async () => {
         const configs = getWebviewBuildConfigs(true).filter(({ outfile }) =>
             /webview-(?:shiki|diffviewer|mergeeditor|filehistory)\.js$/.test(outfile),

@@ -40,6 +40,25 @@ installed PyCharm theme is therefore not claimed.
 
 ## Refinement contract
 
+### Diff area and gutter controls
+
+The merge and read-only viewers already use the same editor background and shared
+syntax renderer. Both use 15% row tints and 30% changed-word tints; conflict rows
+have their own conflict color. These tints sit behind syntax-colored text rather
+than recoloring every character. They remain unchanged in this refinement.
+
+PyCharm's public gutter assets use 12×12 geometry with thin strokes: neutral
+`#6E6E6E` in light themes and `#AFB1B3` in dark themes. IntelliGit now uses matching
+size and colors for inward double chevrons and X, with high-contrast host colors
+respected. SVG geometry replaces font-dependent bold characters; the existing
+20×24 click targets, append marker, labels, and action behavior remain intact.
+References: [arrow](https://raw.githubusercontent.com/JetBrains/intellij-community/master/platform/icons/src/diff/arrow_dark.svg)
+and [X](https://raw.githubusercontent.com/JetBrains/intellij-community/master/platform/icons/src/diff/remove_dark.svg).
+
+Abort Merge now uses the same neutral outlined secondary style as Cancel.
+PyCharm's current help places Abort Merge in the Commit toolbar, so this is a
+consistent adaptation to IntelliGit's footer, not a claim of exact button parity.
+
 Use a navigation-first compact toolbar, aligned pane labels, and a quiet footer.
 Keep one authoritative pending status visible. Move repeated summary counts into
 the existing details expansion, preserving the result filename and access to
