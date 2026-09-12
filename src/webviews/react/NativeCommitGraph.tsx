@@ -56,7 +56,7 @@ type NativeCommitGraphAction =
     | { type: "loadError"; clearCommits: boolean }
     | { type: "setCommitChecks"; snapshot: CommitChecksSnapshot }
     | { type: "markCommitChecksLoading"; hash: string }
-    | { type: "selectCommit"; hash: string | null }
+    | { type: "selectCommit"; hash: string }
     | { type: "setFilterText"; text: string };
 
 const initialNativeCommitGraphState: NativeCommitGraphState = {
@@ -147,9 +147,9 @@ export function NativeCommitGraph({
     const loadingMore = useRef(false);
     const selectedHashRef = useRef<string | null>(selectedHash);
     const selectFirstOnNextLoadRef = useRef(false);
-    // Set when the host deselects this graph because another view's commit fills the details
-    // (#226); refreshes leave it unselected until a click or a branch change selects a commit.
-    const selectionYieldedRef = useRef(false);
+    // Hashes of the rows this list currently shows. A selected hash outside them was picked in
+    // another list (#246), so a refresh keeps it instead of re-selecting this list's first row.
+    const loadedHashesRef = useRef(new Set<string>());
     selectedHashRef.current = selectedHash;
     const currentBranch = useMemo(
         () => branches.find((branch) => branch.isCurrent && !branch.isRemote),
@@ -177,23 +177,28 @@ export function NativeCommitGraph({
                     loadingMore.current = false;
                     const forceFirstCommit = !data.append && selectFirstOnNextLoadRef.current;
                     const previousSelectedHash = selectedHashRef.current;
-                    const yielded = selectionYieldedRef.current && previousSelectedHash === null;
                     const firstCommitHash = data.commits[0]?.hash ?? null;
                     const preservesSelectedHash =
                         !data.append &&
                         previousSelectedHash !== null &&
-                        data.commits.some((commit) => commit.hash === previousSelectedHash);
+                        (data.commits.some((commit) => commit.hash === previousSelectedHash) ||
+                            !loadedHashesRef.current.has(previousSelectedHash));
+                    if (!data.append) {
+                        loadedHashesRef.current = new Set();
+                    }
+                    for (const commit of data.commits) {
+                        loadedHashesRef.current.add(commit.hash);
+                    }
                     const nextSelectedHash = forceFirstCommit
                         ? firstCommitHash
                         : preservesSelectedHash
                           ? previousSelectedHash
-                          : !data.append && !yielded
+                          : !data.append
                             ? firstCommitHash
                             : previousSelectedHash;
                     if (!data.append) {
                         selectFirstOnNextLoadRef.current = false;
                     }
-                    selectionYieldedRef.current = yielded;
                     selectedHashRef.current = nextSelectedHash;
                     dispatch({
                         type: "loadCommits",
@@ -219,10 +224,11 @@ export function NativeCommitGraph({
                     selectFirstOnNextLoadRef.current = true;
                     dispatch({ type: "setSelectedBranch", branch: data.branch ?? null });
                     break;
-                case "deselectCommit":
-                    selectionYieldedRef.current = true;
-                    selectedHashRef.current = null;
-                    dispatch({ type: "selectCommit", hash: null });
+                case "setCommitDetail":
+                    // Every commit list receives the detail another list selected; ring that row.
+                    // This compact graph draws no details of its own.
+                    selectedHashRef.current = data.detail.hash;
+                    dispatch({ type: "selectCommit", hash: data.detail.hash });
                     break;
                 case "setFilterText":
                     dispatch({ type: "setFilterText", text: data.text });

@@ -538,14 +538,6 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
     }
 
     /**
-     * Drops this graph's selected-row ring: another view's commit now fills the shared details
-     * panes (#226).
-     */
-    deselectCommit(): void {
-        this.postToWebview({ type: "deselectCommit" });
-    }
-
-    /**
      * Sends cached branches with folder icon data derived from branch path segments.
      *
      * Theme data is read from the attached {@link IconThemeService}; callers should initialize

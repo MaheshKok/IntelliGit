@@ -366,14 +366,6 @@ export type CommitGraphInbound =
           loading?: boolean;
       }
     | {
-          /**
-           * Drops the selected row's ring: another view's commit now fills the shared details
-           * panes (#226). Refreshes keep the graph unselected until it picks a commit or changes
-           * branch.
-           */
-          type: "deselectCommit";
-      }
-    | {
           /** Response for a failed Git log request; graph panes may clear stale rows. */
           type: "loadError";
           /** User-visible error text normalized by the host. */

@@ -46,6 +46,6 @@ export type CommitGraphPanelAction =
     | { type: "setCommitChecks"; snapshot: CommitChecksSnapshot }
     | { type: "markCommitChecksLoading"; hash: string }
     | { type: "loadError"; clearCommits: boolean }
-    | { type: "selectCommit"; hash: string | null }
+    | { type: "selectCommit"; hash: string }
     | { type: "selectBranch"; branch: string | null }
     | { type: "setFilterText"; text: string };

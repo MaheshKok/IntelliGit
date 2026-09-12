@@ -165,14 +165,10 @@ export function registerRepositoryViewEvents(
      * Loads one commit detail and fans it out to every docked repository view.
      *
      * A sequence counter drops stale async responses so rapid selection changes do
-     * not show details for a previously selected commit. Once the details land, each graph
-     * other than `source` drops its selected-row ring, so only the view whose commit the
-     * details show keeps one (#226).
+     * not show details for a previously selected commit. Every commit list receives the detail,
+     * so each graph can ring the row whose changed files the details show (#226).
      */
-    const loadCommitDetail = async (
-        hash: string,
-        source?: CommitGraphViewProvider,
-    ): Promise<void> => {
+    const loadCommitDetail = async (hash: string): Promise<void> => {
         const requestId = ++commitDetailRequestSeq;
         try {
             const detail = await gitOps.getCommitDetail(hash);
@@ -181,9 +177,6 @@ export function registerRepositoryViewEvents(
                 sidebarGraph.setCommitDetail(detail);
                 commitPanel.setCommitDetail(detail);
                 commitInfo.setCommitDetail(detail);
-                for (const graph of [commitGraph, sidebarGraph]) {
-                    if (graph !== source) graph.deselectCommit();
-                }
             }
         } catch (err) {
             if (requestId !== commitDetailRequestSeq) return;
@@ -428,8 +421,8 @@ export function registerRepositoryViewEvents(
     };
 
     context.subscriptions.push(
-        commitGraph.onCommitSelected((hash) => loadCommitDetail(hash, commitGraph)),
-        sidebarGraph.onCommitSelected((hash) => loadCommitDetail(hash, sidebarGraph)),
+        commitGraph.onCommitSelected(loadCommitDetail),
+        sidebarGraph.onCommitSelected(loadCommitDetail),
         commitPanel.onCommitSelected(loadCommitDetail),
         commitGraph.onBranchFilterChanged(clearCommitDetail),
         sidebarGraph.onBranchFilterChanged(clearCommitDetail),
