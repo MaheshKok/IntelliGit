@@ -104,12 +104,12 @@ jobs:
             - name: Smoke test the installed package on Linux
               if: matrix.os == 'ubuntu-latest'
               shell: bash
-              run: INTELLIGIT_VSCODE_VERSION=1.132.0 xvfb-run -a bun run test:package-smoke
+              run: INTELLIGIT_VSCODE_VERSION=1.137.0 xvfb-run -a bun run test:package-smoke
 
             - name: Smoke test the installed package on macOS
               if: matrix.os != 'ubuntu-latest'
               shell: bash
-              run: INTELLIGIT_VSCODE_VERSION=1.132.0 bun run test:package-smoke
+              run: INTELLIGIT_VSCODE_VERSION=1.137.0 bun run test:package-smoke
 
     # The Windows suite is filesystem- and subprocess-bound, never CPU-bound: on run 32855934673 it
     # packed 2099s of test work into 1079s of wall clock -- effective parallelism ~2 on a 4-core
@@ -227,7 +227,7 @@ jobs:
 
             - name: Smoke test the installed package on Windows
               shell: bash
-              run: INTELLIGIT_VSCODE_VERSION=1.132.0 bun run test:package-smoke
+              run: INTELLIGIT_VSCODE_VERSION=1.137.0 bun run test:package-smoke
 
     # Ruleset 12862467 requires the context 'Installed package smoke (windows-latest)'. The Windows
     # suite is sharded above, so no single test job carries that name any more; this job does, and

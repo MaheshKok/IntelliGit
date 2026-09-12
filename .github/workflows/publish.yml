@@ -260,7 +260,7 @@ jobs:
         strategy:
             fail-fast: false
             matrix:
-                vscode_version: ["1.96.0", "1.132.0"]
+                vscode_version: ["1.137.0"]
 
         steps:
             - name: Checkout code
