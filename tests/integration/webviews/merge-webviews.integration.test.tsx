@@ -1777,6 +1777,49 @@ describe("MergeEditorApp", () => {
         }
     });
 
+    it("preserves JSON grammar context across merge segments", async () => {
+        installVsCodeMock();
+        createRootHost();
+
+        await act(async () => {
+            await import("../../../src/webviews/react/merge-editor/MergeEditorApp");
+        });
+        await flush();
+
+        dispatchHostMessage({
+            type: "setConflictData",
+            data: {
+                filePath: "config.json",
+                oursLabel: "main",
+                theirsLabel: "feature/incoming",
+                eol: "\n",
+                hasTrailingNewline: true,
+                segments: [
+                    { type: "common", lines: ["{"] },
+                    { type: "common", lines: ['  "name": "value"'] },
+                    { type: "common", lines: ["}"] },
+                ],
+            },
+        });
+        await flushShikiInit();
+        await flush();
+
+        const lines = Array.from(document.querySelectorAll<HTMLElement>(".code-line-content")).filter(
+            (line) => line.textContent?.includes('"name"'),
+        );
+        expect(lines).toHaveLength(3);
+        for (const line of lines) {
+            const spans = Array.from(line.querySelectorAll<HTMLElement>("span"));
+            const key = spans.find((span) => span.textContent === '"name"');
+            const value = spans.find((span) => span.textContent === '"value"');
+            expect(key, "JSON key token").toBeDefined();
+            expect(value, "JSON value token").toBeDefined();
+            expect(key?.style.color, "a key and value need distinct grammar scopes").not.toBe(
+                value?.style.color,
+            );
+        }
+    });
+
     it("falls back to the hand-rolled tokenizer for a file type with no bundled Shiki grammar", async () => {
         installVsCodeMock();
         createRootHost();
