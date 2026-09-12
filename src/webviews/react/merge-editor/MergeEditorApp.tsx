@@ -892,7 +892,7 @@ export function App() {
             if (initShiki()) setShikiReady(true);
         };
         if (typeof window.requestIdleCallback === "function") {
-            const handle = window.requestIdleCallback(runInit);
+            const handle = window.requestIdleCallback(runInit, { timeout: 1_000 });
             return () => window.cancelIdleCallback(handle);
         }
         const timer = window.setTimeout(runInit, 0);

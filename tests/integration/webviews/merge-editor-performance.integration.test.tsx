@@ -192,7 +192,7 @@ describe("MergeEditorApp large document flow", () => {
                 `measured 3.43x when one was injected. This ratio is host-independent, so a ` +
                 `slow machine is not an explanation for it`,
         ).toBe(false);
-    }, 20_000);
+    });
 
     it("renders 1,000 lines with 50 conflicts and resolves them end-to-end", async () => {
         const vscode = installVsCodeMock();

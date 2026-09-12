@@ -157,7 +157,7 @@ export function highlightLine(line: string, lang: string, theme: ShikiTheme): Sh
         tokenCache.set(cacheKey, tokens);
         return tokens;
     } catch (err) {
-        console.warn(`Failed to highlight line with lang="${lang}":`, err);
+        console.warn("Failed to highlight line with lang=%s:", lang, err);
         tokenCache.set(cacheKey, null);
         return null;
     }
@@ -189,7 +189,7 @@ export function highlightDocument(
             })),
         );
     } catch (err) {
-        console.warn(`Failed to highlight document with lang="${lang}":`, err);
+        console.warn("Failed to highlight document with lang=%s:", lang, err);
         return null;
     }
 }
