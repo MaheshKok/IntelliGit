@@ -35,7 +35,11 @@ for (const surface of ["diff-viewer", "merge-editor"] as const) {
         await expect(properties).toHaveCount(surface === "diff-viewer" ? 2 : 3);
         const light = await page
             .locator("body")
-            .evaluate((body) => body.classList.contains("vscode-light"));
+            .evaluate(
+                (body) =>
+                    body.classList.contains("vscode-light") ||
+                    body.classList.contains("vscode-high-contrast-light"),
+            );
         for (const propertyToken of await properties.all()) {
             await expect(propertyToken).toHaveCSS(
                 "color",

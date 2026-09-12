@@ -9,7 +9,7 @@ import {
     buildWordDiffMask,
     tokenizeWordDiff,
 } from "../../../diff/wordDiff";
-import { highlightLine } from "./shikiHighlighter";
+import { highlightLine, type ShikiToken } from "./shikiHighlighter";
 import { useSyntaxHighlightState, type SyntaxHighlightState } from "./syntaxHighlightContext";
 import { tokenizeSyntaxLine, type SyntaxTokenKind } from "./syntaxHighlight";
 import type { LineNumberValue } from "./lineNumbers";
@@ -42,9 +42,20 @@ const FONT_STYLE_BOLD = 2;
 const FONT_STYLE_UNDERLINE = 4;
 
 /** Tokenizes a line with Shiki when ready and otherwise uses the regex fallback. */
-function coloredSpansForLine(line: string, ctx: SyntaxHighlightState): ColoredSpan[] {
+function coloredSpansForLine(
+    line: string,
+    ctx: SyntaxHighlightState,
+    documentTokens?: readonly ShikiToken[],
+): ColoredSpan[] {
     if (ctx.ready && ctx.lang) {
-        const shikiTokens = highlightLine(line, ctx.lang, ctx.theme);
+        // A local editable draft can render before its host echo refreshes the full-document token
+        // matrix. Never pair stale token text with the draft; retain the prior per-line Shiki path
+        // until the next document snapshot arrives.
+        const contextualTokens =
+            documentTokens?.map((token) => token.text).join("") === line
+                ? documentTokens
+                : undefined;
+        const shikiTokens = contextualTokens ?? highlightLine(line, ctx.lang, ctx.theme);
         if (shikiTokens) {
             return shikiTokens.map((tok) => {
                 const style: React.CSSProperties = {};
@@ -79,14 +90,17 @@ function renderColoredSpans(spans: ColoredSpan[], keyPrefix: string): React.Reac
 
 const HighlightedLine = React.memo(function HighlightedLine({
     line,
+    lineNumber,
 }: {
     line: string;
+    lineNumber: LineNumberValue;
 }): React.ReactElement {
     const ctx = useSyntaxHighlightState();
     if (!line) return <>{` `}</>;
     // Pure syntax-token helper, not a component invocation.
     // react-doctor-disable-next-line react-doctor/no-render-in-render
-    return <>{renderColoredSpans(coloredSpansForLine(line, ctx), "line")}</>;
+    const documentTokens = lineNumber === null ? undefined : ctx.documentTokens?.[lineNumber - 1];
+    return <>{renderColoredSpans(coloredSpansForLine(line, ctx, documentTokens), "line")}</>;
 });
 
 /** Expands a token-level word-diff mask into per-character masks. */
@@ -166,13 +180,15 @@ function renderColoredSpansWithWordDiff(
 const WordDiffLine = React.memo(function WordDiffLine({
     line,
     compareLine,
+    lineNumber,
 }: {
     line: string;
     compareLine: string;
+    lineNumber: LineNumberValue;
 }): React.ReactElement {
     const ctx = useSyntaxHighlightState();
     if (!line) return <>{` `}</>;
-    if (line === compareLine) return <HighlightedLine line={line} />;
+    if (line === compareLine) return <HighlightedLine line={line} lineNumber={lineNumber} />;
     // There is deliberately no similarity floor here. One stood at 0.28 to stop "speckle" -- a
     // mask alternating mark/gap/mark across a row, which reads as noise rather than as a change.
     // Measured against real pairs, the floor selects for the opposite of that. Speckle comes from
@@ -184,7 +200,8 @@ const WordDiffLine = React.memo(function WordDiffLine({
     // 23-character run, and bouncing it painted the one row the reader was hunting for exactly
     // like the untouched rows beside it. `bridgeChangedWordRuns` is what actually suppresses
     // speckle, and it runs below on every line regardless.
-    const spans = coloredSpansForLine(line, ctx);
+    const documentTokens = lineNumber === null ? undefined : ctx.documentTokens?.[lineNumber - 1];
+    const spans = coloredSpansForLine(line, ctx, documentTokens);
     if (spans.length === 0) return <>{` `}</>;
     const { changed, whitespace } = buildChangedCharMasks(line, compareLine);
     // Not a component call: this returns a keyed array of `<span>`s, holds no state and runs
@@ -323,9 +340,16 @@ export const CodeBlock = React.memo(
                             >
                                 <span className="code-line-content">
                                     {wordHighlight && paddedCompare ? (
-                                        <WordDiffLine line={line} compareLine={paddedCompare[i]} />
+                                        <WordDiffLine
+                                            line={line}
+                                            compareLine={paddedCompare[i]}
+                                            lineNumber={lineNumbers.primary[i] ?? null}
+                                        />
                                     ) : (
-                                        <HighlightedLine line={line} />
+                                        <HighlightedLine
+                                            line={line}
+                                            lineNumber={lineNumbers.primary[i] ?? null}
+                                        />
                                     )}
                                 </span>
                             </div>

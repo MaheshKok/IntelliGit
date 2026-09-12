@@ -572,6 +572,7 @@ export function DiffViewer({ host }: { host: DiffViewerHost }): React.ReactEleme
     const {
         renderedSegments,
         syntaxHighlightState,
+        syntaxHighlightPaneStates,
         layout,
         stripeMarks,
         jumpToSegment,
@@ -698,30 +699,36 @@ export function DiffViewer({ host }: { host: DiffViewerHost }): React.ReactEleme
                         <div ref={viewportElementRef} className="diff-viewport">
                             <div className="diff-columns">
                                 {singlePane === "right" ? null : (
-                                    <DiffPaneColumn
-                                        side="left"
-                                        editor={leftEditor}
-                                        reseedToken={data.editableReseedToken ?? 0}
-                                        renderedSegments={renderedSegments}
-                                        highlightWords={highlightWords}
-                                        columnRefs={columnRefs}
-                                        onEdit={handleEdit}
-                                        onDraftLayoutChange={handleDraftLayoutChange}
-                                        onHorizontalScroll={syncHorizontalScroll}
-                                    />
+                                    <SyntaxHighlightProvider value={syntaxHighlightPaneStates.left}>
+                                        <DiffPaneColumn
+                                            side="left"
+                                            editor={leftEditor}
+                                            reseedToken={data.editableReseedToken ?? 0}
+                                            renderedSegments={renderedSegments}
+                                            highlightWords={highlightWords}
+                                            columnRefs={columnRefs}
+                                            onEdit={handleEdit}
+                                            onDraftLayoutChange={handleDraftLayoutChange}
+                                            onHorizontalScroll={syncHorizontalScroll}
+                                        />
+                                    </SyntaxHighlightProvider>
                                 )}
                                 {singlePane === "left" ? null : (
-                                    <DiffPaneColumn
-                                        side="right"
-                                        editor={rightEditor}
-                                        reseedToken={data.editableReseedToken ?? 0}
-                                        renderedSegments={renderedSegments}
-                                        highlightWords={highlightWords}
-                                        columnRefs={columnRefs}
-                                        onEdit={handleEdit}
-                                        onDraftLayoutChange={handleDraftLayoutChange}
-                                        onHorizontalScroll={syncHorizontalScroll}
-                                    />
+                                    <SyntaxHighlightProvider
+                                        value={syntaxHighlightPaneStates.right}
+                                    >
+                                        <DiffPaneColumn
+                                            side="right"
+                                            editor={rightEditor}
+                                            reseedToken={data.editableReseedToken ?? 0}
+                                            renderedSegments={renderedSegments}
+                                            highlightWords={highlightWords}
+                                            columnRefs={columnRefs}
+                                            onEdit={handleEdit}
+                                            onDraftLayoutChange={handleDraftLayoutChange}
+                                            onHorizontalScroll={syncHorizontalScroll}
+                                        />
+                                    </SyntaxHighlightProvider>
                                 )}
                             </div>
                             {/* A ribbon connects two positions. With one pane there is no

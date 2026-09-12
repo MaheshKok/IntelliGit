@@ -8,7 +8,13 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { DiffViewerData } from "../../protocol/diffViewerTypes";
-import { detectTheme, initShiki, isShikiReady, langForPath } from "../diff-core/shikiHighlighter";
+import {
+    detectTheme,
+    highlightDocument,
+    initShiki,
+    isShikiReady,
+    langForPath,
+} from "../diff-core/shikiHighlighter";
 import {
     buildVerticalLayout,
     type DiffVerticalLayout,
@@ -85,6 +91,7 @@ function revertablePaneOf(data: DiffViewerData | null): DiffPane | undefined {
 export interface DiffViewerModel {
     readonly renderedSegments: RenderedSegment[];
     readonly syntaxHighlightState: SyntaxHighlightState;
+    readonly syntaxHighlightPaneStates: Record<DiffPane, SyntaxHighlightState>;
     readonly layout: DiffVerticalLayout<DiffPane>;
     readonly stripeMarks: StripeMark[];
     readonly jumpToSegment: (index: number) => void;
@@ -143,6 +150,31 @@ export function useDiffViewerModel(
         }),
         [data?.languageId, data?.path, shikiReady, shikiTheme],
     );
+    const syntaxHighlightPaneStates = useMemo<Record<DiffPane, SyntaxHighlightState>>(() => {
+        if (!syntaxHighlightState.ready || !syntaxHighlightState.lang) {
+            return { left: syntaxHighlightState, right: syntaxHighlightState };
+        }
+        return {
+            left: {
+                ...syntaxHighlightState,
+                documentTokens: highlightDocument(
+                    segments.flatMap((segment) => segment.left),
+                    syntaxHighlightState.lang,
+                    syntaxHighlightState.theme,
+                    data?.left?.eol === "crlf" ? "\r\n" : "\n",
+                ),
+            },
+            right: {
+                ...syntaxHighlightState,
+                documentTokens: highlightDocument(
+                    segments.flatMap((segment) => segment.right),
+                    syntaxHighlightState.lang,
+                    syntaxHighlightState.theme,
+                    data?.right?.eol === "crlf" ? "\r\n" : "\n",
+                ),
+            },
+        };
+    }, [data?.left?.eol, data?.right?.eol, segments, syntaxHighlightState]);
 
     const renderedSegments = useMemo(
         () => buildRenderedSegments(segments, renderedSegmentCache),
@@ -268,6 +300,7 @@ export function useDiffViewerModel(
     return {
         renderedSegments,
         syntaxHighlightState,
+        syntaxHighlightPaneStates,
         layout,
         stripeMarks,
         jumpToSegment,

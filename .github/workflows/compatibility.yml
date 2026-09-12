@@ -229,6 +229,15 @@ jobs:
               shell: bash
               run: INTELLIGIT_VSCODE_VERSION=1.132.0 bun run test:package-smoke
 
+            - name: Upload Windows smoke failure evidence
+              if: failure()
+              uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+              with:
+                  name: windows-smoke-failure-${{ strategy.job-index }}
+                  path: test-results/
+                  if-no-files-found: ignore
+                  retention-days: 7
+
     # Ruleset 12862467 requires the context 'Installed package smoke (windows-latest)'. The Windows
     # suite is sharded above, so no single test job carries that name any more; this job does, and
     # it exists only to fold "every shard succeeded" into the one context the ruleset watches.

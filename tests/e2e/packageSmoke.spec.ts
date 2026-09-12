@@ -203,18 +203,44 @@ test.describe("installed VSIX package smoke", () => {
                 .first()
                 .click();
             await expect(input).toBeHidden();
-            const nextWindow = electronApp.waitForEvent("window", { timeout: 30_000 });
-            await new Workbench(window).runCommand("IntelliGit: Show File History");
-            const historyWindow = await nextWindow;
+            const [historyWindow] = await Promise.all([
+                electronApp.waitForEvent("window", { timeout: 30_000 }),
+                new Workbench(window).runCommand("IntelliGit: Show File History"),
+            ]);
             const history = await new IntelliGitView(historyWindow).revealFileHistory();
             await expect(history.locator(".file-history")).toBeVisible({ timeout: 30_000 });
             await expect(history.locator(".code-lines").first()).toContainText(
                 "export const answer = 42;",
             );
-            await expect(history.locator('.code-lines span[style*="color"]').first()).toBeVisible();
+            // Shiki initializes after the first render; use the same startup bound as the window.
+            await expect(history.locator('.code-lines span[style*="color"]').first()).toBeVisible({
+                timeout: 30_000,
+            });
             console.log(
                 "[package smoke] installed History window renders syntax-highlighted revision",
             );
+        } catch (error) {
+            console.log(
+                "Package smoke windows:",
+                await electronApp
+                    ?.evaluate(({ BrowserWindow }) =>
+                        BrowserWindow.getAllWindows().map(
+                            (window: {
+                                getTitle(): string;
+                                webContents: { getURL(): string };
+                            }) => ({
+                                title: window.getTitle(),
+                                url: window.webContents.getURL(),
+                            }),
+                        ),
+                    )
+                    .catch(() => "unavailable"),
+            );
+            console.log(
+                "Package smoke pages:",
+                electronApp?.windows().map((page) => page.url()),
+            );
+            throw error;
         } finally {
             await electronApp?.close().catch(() => undefined);
             await cleanupDirectories(directoriesToClean);

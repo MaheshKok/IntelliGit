@@ -1804,9 +1804,9 @@ describe("MergeEditorApp", () => {
         await flushShikiInit();
         await flush();
 
-        const lines = Array.from(document.querySelectorAll<HTMLElement>(".code-line-content")).filter(
-            (line) => line.textContent?.includes('"name"'),
-        );
+        const lines = Array.from(
+            document.querySelectorAll<HTMLElement>(".code-line-content"),
+        ).filter((line) => line.textContent?.includes('"name"'));
         expect(lines).toHaveLength(3);
         for (const line of lines) {
             const spans = Array.from(line.querySelectorAll<HTMLElement>("span"));

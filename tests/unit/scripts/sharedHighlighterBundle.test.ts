@@ -101,7 +101,7 @@ describe("shared highlighter packaging", () => {
         expect(totalBytes).toBeLessThan(2 * 1024 * 1024);
     }, 30_000);
 
-    it("runs the unchanged highlighting API under a no-eval/no-wasm context for every language and theme", async () => {
+    it("runs the shared highlighting API under a no-eval/no-wasm context for every language and theme", async () => {
         const config = getWebviewBuildConfigs(true).find(({ outfile }) =>
             outfile.endsWith("webview-shiki.js"),
         );
@@ -112,6 +112,7 @@ describe("shared highlighter packaging", () => {
         const api = context.IntelliGitSyntax;
         expect(Object.keys(api).sort()).toEqual([
             "detectTheme",
+            "highlightDocument",
             "highlightLine",
             "initShiki",
             "isShikiReady",
@@ -143,6 +144,18 @@ describe("shared highlighter packaging", () => {
                     "const value = 42;",
                 );
                 expect(tokens.some((token: { color?: string }) => Boolean(token.color))).toBe(true);
+                const documentTokens = api.highlightDocument(
+                    ["const value = 42;", "const next = value;"],
+                    language,
+                    theme,
+                    "\r\n",
+                );
+                expect(documentTokens).toHaveLength(2);
+                expect(
+                    documentTokens.map((line: Array<{ text: string }>) =>
+                        line.map((token) => token.text).join(""),
+                    ),
+                ).toEqual(["const value = 42;", "const next = value;"]);
             }
         }
     }, 30_000);

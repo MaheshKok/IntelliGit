@@ -66,7 +66,13 @@ import {
     type SegmentPaneLines,
 } from "../diff-core/mergeScrollLayout";
 import { buildLineNumberValues } from "../diff-core/lineNumbers";
-import { initShiki, isShikiReady, langForPath, detectTheme } from "../diff-core/shikiHighlighter";
+import {
+    detectTheme,
+    highlightDocument,
+    initShiki,
+    isShikiReady,
+    langForPath,
+} from "../diff-core/shikiHighlighter";
 import { SyntaxHighlightProvider } from "../diff-core/syntaxHighlightContext";
 import {
     applyPaneOffsets,
@@ -291,6 +297,87 @@ export function App() {
             theme: shikiTheme,
         }),
         [shikiReady, filePath, shikiTheme],
+    );
+    const sidePaneDocumentLines = useMemo(() => {
+        const documents = { left: [] as string[], right: [] as string[] };
+        for (const segment of segments) {
+            if (segment.type === "common") {
+                for (const line of segment.lines) {
+                    documents.left.push(line);
+                    documents.right.push(line);
+                }
+                continue;
+            }
+            for (const line of segment.oursLines) documents.left.push(line);
+            for (const line of segment.theirsLines) documents.right.push(line);
+        }
+        return documents;
+    }, [segments]);
+    const middlePaneDocumentLines = useMemo(() => {
+        const lines: string[] = [];
+        for (const segment of segments) {
+            const segmentLines =
+                segment.type === "common"
+                    ? segment.lines
+                    : getEffectiveResultLines(
+                          segment,
+                          state.resolutions[segment.id],
+                          state.edits[segment.id],
+                      );
+            for (const line of segmentLines) lines.push(line);
+        }
+        return lines;
+    }, [segments, state.edits, state.resolutions]);
+    const documentEol = state.data?.eol ?? "\n";
+    const leftSyntaxHighlightState = useMemo(() => {
+        if (!syntaxHighlightState.ready || !syntaxHighlightState.lang) {
+            return syntaxHighlightState;
+        }
+        return {
+            ...syntaxHighlightState,
+            documentTokens: highlightDocument(
+                sidePaneDocumentLines.left,
+                syntaxHighlightState.lang,
+                syntaxHighlightState.theme,
+                documentEol,
+            ),
+        };
+    }, [documentEol, sidePaneDocumentLines.left, syntaxHighlightState]);
+    const middleSyntaxHighlightState = useMemo(() => {
+        if (!syntaxHighlightState.ready || !syntaxHighlightState.lang) {
+            return syntaxHighlightState;
+        }
+        return {
+            ...syntaxHighlightState,
+            documentTokens: highlightDocument(
+                middlePaneDocumentLines,
+                syntaxHighlightState.lang,
+                syntaxHighlightState.theme,
+                documentEol,
+            ),
+        };
+    }, [documentEol, middlePaneDocumentLines, syntaxHighlightState]);
+    const rightSyntaxHighlightState = useMemo(() => {
+        if (!syntaxHighlightState.ready || !syntaxHighlightState.lang) {
+            return syntaxHighlightState;
+        }
+        return {
+            ...syntaxHighlightState,
+            documentTokens: highlightDocument(
+                sidePaneDocumentLines.right,
+                syntaxHighlightState.lang,
+                syntaxHighlightState.theme,
+                documentEol,
+            ),
+        };
+    }, [documentEol, sidePaneDocumentLines.right, syntaxHighlightState]);
+    const syntaxHighlightPaneStates = useMemo(
+        () => ({
+            left: leftSyntaxHighlightState,
+            middle: middleSyntaxHighlightState,
+            right: rightSyntaxHighlightState,
+        }),
+        [leftSyntaxHighlightState, middleSyntaxHighlightState, rightSyntaxHighlightState],
     );
 
     const mergeContentRef = useRef<HTMLDivElement | null>(null);
@@ -1195,7 +1282,11 @@ export function App() {
                             onClick={() => setShowDetails((v) => !v)}
                             aria-expanded={showDetails}
                             aria-controls="merge-details"
-                            title={t("merge.footer.hint")}
+                            title={
+                                showDetails
+                                    ? t("merge.toolbar.hideDetails")
+                                    : t("merge.toolbar.showDetails")
+                            }
                             aria-describedby="merge-keyboard-hint"
                         >
                             {showDetails
@@ -1353,34 +1444,36 @@ export function App() {
                                 }}
                                 className="merge-col col-left"
                             >
-                                {renderedSegments.map((item) =>
-                                    isCommonSegment(item.segment) ? (
-                                        <CommonPaneBlock
-                                            key={item.renderKey}
-                                            pane="left"
-                                            segment={item.segment}
-                                            lineCount={item.paneLines.left}
-                                            lineNumbers={item.lineNumbers.left}
-                                            lineNumberSide="right"
-                                            highlightWords={highlightWords}
-                                        />
-                                    ) : (
-                                        <OursConflictBlock
-                                            key={item.renderKey}
-                                            segment={item.segment}
-                                            resolution={state.resolutions[item.segment.id]}
-                                            editedLines={state.edits[item.segment.id]}
-                                            dismissed={state.dismissals[item.segment.id]}
-                                            lineCount={item.paneLines.left}
-                                            lineNumbers={item.lineNumbers.left}
-                                            onResolve={handleResolve}
-                                            onDismiss={handleDismissSide}
-                                            onSelect={setActiveConflictId}
-                                            isActive={activeConflictId === item.segment.id}
-                                            highlightWords={highlightWords}
-                                        />
-                                    ),
-                                )}
+                                <SyntaxHighlightProvider value={syntaxHighlightPaneStates.left}>
+                                    {renderedSegments.map((item) =>
+                                        isCommonSegment(item.segment) ? (
+                                            <CommonPaneBlock
+                                                key={item.renderKey}
+                                                pane="left"
+                                                segment={item.segment}
+                                                lineCount={item.paneLines.left}
+                                                lineNumbers={item.lineNumbers.left}
+                                                lineNumberSide="right"
+                                                highlightWords={highlightWords}
+                                            />
+                                        ) : (
+                                            <OursConflictBlock
+                                                key={item.renderKey}
+                                                segment={item.segment}
+                                                resolution={state.resolutions[item.segment.id]}
+                                                editedLines={state.edits[item.segment.id]}
+                                                dismissed={state.dismissals[item.segment.id]}
+                                                lineCount={item.paneLines.left}
+                                                lineNumbers={item.lineNumbers.left}
+                                                onResolve={handleResolve}
+                                                onDismiss={handleDismissSide}
+                                                onSelect={setActiveConflictId}
+                                                isActive={activeConflictId === item.segment.id}
+                                                highlightWords={highlightWords}
+                                            />
+                                        ),
+                                    )}
+                                </SyntaxHighlightProvider>
                             </div>
                             <div className="merge-gutter merge-gutter-left" aria-hidden="true" />
                             <div
@@ -1389,37 +1482,39 @@ export function App() {
                                 }}
                                 className="merge-col col-middle"
                             >
-                                {renderedSegments.map((item) =>
-                                    isCommonSegment(item.segment) ? (
-                                        <CommonPaneBlock
-                                            key={item.renderKey}
-                                            pane="middle"
-                                            segment={item.segment}
-                                            lineCount={item.paneLines.middle}
-                                            lineNumbers={item.lineNumbers.middle}
-                                            lineNumberSide="left"
-                                            highlightWords={highlightWords}
-                                        />
-                                    ) : (
-                                        <ResultConflictBlock
-                                            key={item.renderKey}
-                                            segment={item.segment}
-                                            resolution={state.resolutions[item.segment.id]}
-                                            editedLines={state.edits[item.segment.id]}
-                                            dismissed={state.dismissals[item.segment.id]}
-                                            lineCount={item.paneLines.middle}
-                                            lineNumbers={item.lineNumbers.middle}
-                                            onEditResult={handleEditResult}
-                                            onSelect={setActiveConflictId}
-                                            isActive={activeConflictId === item.segment.id}
-                                            highlightWords={highlightWords}
-                                            conflictOrdinal={
-                                                item.conflictOrdinal ?? item.segment.id + 1
-                                            }
-                                            trueConflictOrdinal={item.trueConflictOrdinal}
-                                        />
-                                    ),
-                                )}
+                                <SyntaxHighlightProvider value={syntaxHighlightPaneStates.middle}>
+                                    {renderedSegments.map((item) =>
+                                        isCommonSegment(item.segment) ? (
+                                            <CommonPaneBlock
+                                                key={item.renderKey}
+                                                pane="middle"
+                                                segment={item.segment}
+                                                lineCount={item.paneLines.middle}
+                                                lineNumbers={item.lineNumbers.middle}
+                                                lineNumberSide="left"
+                                                highlightWords={highlightWords}
+                                            />
+                                        ) : (
+                                            <ResultConflictBlock
+                                                key={item.renderKey}
+                                                segment={item.segment}
+                                                resolution={state.resolutions[item.segment.id]}
+                                                editedLines={state.edits[item.segment.id]}
+                                                dismissed={state.dismissals[item.segment.id]}
+                                                lineCount={item.paneLines.middle}
+                                                lineNumbers={item.lineNumbers.middle}
+                                                onEditResult={handleEditResult}
+                                                onSelect={setActiveConflictId}
+                                                isActive={activeConflictId === item.segment.id}
+                                                highlightWords={highlightWords}
+                                                conflictOrdinal={
+                                                    item.conflictOrdinal ?? item.segment.id + 1
+                                                }
+                                                trueConflictOrdinal={item.trueConflictOrdinal}
+                                            />
+                                        ),
+                                    )}
+                                </SyntaxHighlightProvider>
                             </div>
                             <div className="merge-gutter merge-gutter-right" aria-hidden="true" />
                             <div
@@ -1428,34 +1523,36 @@ export function App() {
                                 }}
                                 className="merge-col col-right"
                             >
-                                {renderedSegments.map((item) =>
-                                    isCommonSegment(item.segment) ? (
-                                        <CommonPaneBlock
-                                            key={item.renderKey}
-                                            pane="right"
-                                            segment={item.segment}
-                                            lineCount={item.paneLines.right}
-                                            lineNumbers={item.lineNumbers.right}
-                                            lineNumberSide="left"
-                                            highlightWords={highlightWords}
-                                        />
-                                    ) : (
-                                        <TheirsConflictBlock
-                                            key={item.renderKey}
-                                            segment={item.segment}
-                                            resolution={state.resolutions[item.segment.id]}
-                                            editedLines={state.edits[item.segment.id]}
-                                            dismissed={state.dismissals[item.segment.id]}
-                                            lineCount={item.paneLines.right}
-                                            lineNumbers={item.lineNumbers.right}
-                                            onResolve={handleResolve}
-                                            onDismiss={handleDismissSide}
-                                            onSelect={setActiveConflictId}
-                                            isActive={activeConflictId === item.segment.id}
-                                            highlightWords={highlightWords}
-                                        />
-                                    ),
-                                )}
+                                <SyntaxHighlightProvider value={syntaxHighlightPaneStates.right}>
+                                    {renderedSegments.map((item) =>
+                                        isCommonSegment(item.segment) ? (
+                                            <CommonPaneBlock
+                                                key={item.renderKey}
+                                                pane="right"
+                                                segment={item.segment}
+                                                lineCount={item.paneLines.right}
+                                                lineNumbers={item.lineNumbers.right}
+                                                lineNumberSide="left"
+                                                highlightWords={highlightWords}
+                                            />
+                                        ) : (
+                                            <TheirsConflictBlock
+                                                key={item.renderKey}
+                                                segment={item.segment}
+                                                resolution={state.resolutions[item.segment.id]}
+                                                editedLines={state.edits[item.segment.id]}
+                                                dismissed={state.dismissals[item.segment.id]}
+                                                lineCount={item.paneLines.right}
+                                                lineNumbers={item.lineNumbers.right}
+                                                onResolve={handleResolve}
+                                                onDismiss={handleDismissSide}
+                                                onSelect={setActiveConflictId}
+                                                isActive={activeConflictId === item.segment.id}
+                                                highlightWords={highlightWords}
+                                            />
+                                        ),
+                                    )}
+                                </SyntaxHighlightProvider>
                             </div>
                             <ConnectorLayer
                                 specs={connectorSpecs}

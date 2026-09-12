@@ -7,7 +7,10 @@ test("merge identity and summaries stay readable without overlap", async ({
     page,
 }) => {
     await mountHarness("merge-editor", { webviewFixture: "conflicted.json", locale: "de" });
-    await page.locator('[aria-controls="merge-details"]').click();
+    const details = page.locator('[aria-controls="merge-details"]');
+    await expect(details).toHaveAttribute("title", (await details.innerText()).trim());
+    await details.click();
+    await expect(details).toHaveAttribute("title", (await details.innerText()).trim());
     const boxes = await page.locator(".merge-title, .merge-stats").evaluateAll((elements) =>
         elements.map((element) => {
             const box = element.getBoundingClientRect();
