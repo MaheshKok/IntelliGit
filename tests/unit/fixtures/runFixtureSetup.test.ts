@@ -28,8 +28,9 @@ import {
     runFixtureSetup,
 } from "../../fixtures/repo/runFixtureSetup";
 import { removeScratchDirectories } from "../../helpers/scratchDirectories";
+import { withWindowsHeadroom } from "../../setup/platformTimeouts";
 
-const FIXTURE_TIMEOUT_MS = 30_000;
+const FIXTURE_TIMEOUT_MS = withWindowsHeadroom(30_000);
 
 async function exists(candidate: string): Promise<boolean> {
     try {

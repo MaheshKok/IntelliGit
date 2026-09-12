@@ -21,9 +21,10 @@ import {
     type FixtureSnapshot,
 } from "../../fixtures/repo/phase6Snapshot";
 import { removeScratchDirectories } from "../../helpers/scratchDirectories";
+import { withWindowsHeadroom } from "../../setup/platformTimeouts";
 
 const execFileAsync = promisify(execFile);
-const FIXTURE_TIMEOUT_MS = 60_000;
+const FIXTURE_TIMEOUT_MS = withWindowsHeadroom(60_000);
 
 async function run(
     command: string,

@@ -15,7 +15,7 @@ import {
 import { getSettings } from "../../shared/settings";
 import { DISABLED_GLYPH_COLOR } from "../../shared/components/ToolbarIconButton";
 import { t } from "../../shared/i18n";
-import { JETBRAINS_UI, MOTION, TOOLBAR_ICON_ACCENTS } from "../../shared/tokens";
+import { JETBRAINS_UI, MOTION, NATIVE_ORANGE_CSS, TOOLBAR_ICON_ACCENTS } from "../../shared/tokens";
 
 interface Props {
     stashCount: number;
@@ -222,6 +222,7 @@ export function TabBar({
                 </TabList>
                 {gitActions ? (
                     <Flex align="center" ml="auto" gap="2px" pr="6px">
+                        <style>{NATIVE_ORANGE_CSS}</style>
                         <GitActionButton
                             label={t("common.sync")}
                             onClick={gitActions.onSync}

@@ -5,6 +5,27 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.32.8] - 2026-09-11
+
+### Fixed
+
+- Update in the branch menu, used on the branch you have checked out, now does the same thing as the Pull buttons in the Changes toolbar and the graph toolbar. It pulls with rebase, so commits you have not pushed yet move on top of the new ones from the remote. When you have uncommitted changes, it stops and asks you to commit or stash them first. Before, it merged the remote branch instead, which could add an extra merge commit, and it did not check for uncommitted changes.
+- With icons set to color, the Pull button in the Changes toolbar and Update in the branch menu now use the same bright orange as the Pull button in the graph toolbar. Before, they used a dim, brownish orange, so the three Pull controls did not look like the same button.
+
+## [0.32.7] - 2026-09-11
+
+### Fixed
+
+- Deleting a Git worktree (an extra folder checked out from the same repository) now always asks you to confirm first. Before, IntelliGit only asked when the worktree had uncommitted changes, so a worktree without any was deleted straight away.
+- Clicking the worktree you are already working in no longer asks whether to open it in the current window or in a new window. Both choices only opened the same folder again.
+
+## [0.32.6] - 2026-09-10
+
+### Fixed
+
+- In a Git worktree (an extra folder checked out from the same repository), pushing now clears the ↑ count of commits waiting to be pushed as soon as the push is done. Before, the old count stayed until something else made IntelliGit refresh.
+- A worktree now also updates straight away after other branch changes, such as a fetch or a deleted branch, even when they were made from another folder of the same repository.
+
 ## [0.32.5] - 2026-09-08
 
 ### Added
