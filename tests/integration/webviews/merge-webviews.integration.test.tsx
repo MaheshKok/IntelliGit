@@ -255,6 +255,9 @@ describe("MergeEditorApp", () => {
 
         expect(document.body.textContent).toContain("src/conflict.ts");
         expect(document.body.textContent).toContain("1 unresolved");
+        expect(document.querySelector(".merge-remaining-status")?.textContent).toBe(
+            "No changes, 1 conflict",
+        );
         expect(document.querySelectorAll('[data-conflict-id="0"] .action-btn')).toHaveLength(4);
 
         clickButton("Conflicts");
@@ -262,6 +265,9 @@ describe("MergeEditorApp", () => {
         clickButton("Accept left block");
         await flush();
         expect(document.body.textContent).toContain("0 unresolved");
+        expect(document.querySelector(".merge-remaining-status")?.textContent).toBe(
+            "All conflicts resolved",
+        );
         expect(document.querySelector('[data-conflict-id="0"] .conflict-actions-left')).toBeNull();
         expect(
             document.querySelectorAll('[data-conflict-id="0"] .conflict-actions-right .action-btn'),
@@ -1211,6 +1217,9 @@ describe("MergeEditorApp", () => {
 
         // The one-sided hunk surfaces as auto-resolved in the header stats.
         expect(document.body.textContent).toContain("1 auto-resolved");
+        expect(document.querySelector(".merge-remaining-status")?.textContent).toBe(
+            "No changes, 1 conflict",
+        );
         expect(findButton("Apply non-conflicting changes").disabled).toBe(false);
         expect(
             document.querySelector('[data-conflict-id="0"] .conflict-result')?.className,

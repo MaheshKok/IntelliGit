@@ -24,6 +24,7 @@
 
 .diff-toolbar {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     min-height: 32px;
     padding: 3px 10px;
@@ -34,9 +35,20 @@
 
 .toolbar-left {
     display: flex;
+    flex-wrap: wrap;
+    flex-shrink: 0;
+    max-width: 100%;
     align-items: center;
     gap: 4px;
     min-width: 0;
+}
+
+.diff-difference-count {
+    margin-left: auto;
+    padding-left: 12px;
+    flex-shrink: 0;
+    white-space: nowrap;
+    color: var(--vscode-descriptionForeground);
 }
 
 /* Same shape as the merge editor's conflict navigation, because it is the same move. */

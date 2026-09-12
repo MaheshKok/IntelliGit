@@ -11,6 +11,7 @@ import React, {
     useState,
 } from "react";
 import { createRoot } from "react-dom/client";
+import { VscCheck } from "react-icons/vsc";
 import type {
     ConflictSegment,
     CommonSegment,
@@ -1260,6 +1261,23 @@ export function App() {
                             </span>
                             {t("merge.toolbar.acceptAllTheirs.label")}
                         </button>
+                        {/* Non-conflicting hunks are already applied by getResultLines. */}
+                        <span
+                            className={`merge-remaining-status${unresolved === 0 ? " resolved" : ""}`}
+                            role="status"
+                        >
+                            {unresolved === 0 ? (
+                                <>
+                                    <VscCheck aria-hidden="true" />
+                                    {t("merge.status.allConflictsResolved")}
+                                </>
+                            ) : (
+                                <>
+                                    {t("merge.status.noChanges")},{" "}
+                                    {t("merge.count.conflicts", { count: unresolved })}
+                                </>
+                            )}
+                        </span>
                     </div>
                 </div>
 

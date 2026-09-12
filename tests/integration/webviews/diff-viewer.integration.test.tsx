@@ -2910,6 +2910,7 @@ describe("DiffViewerApp scroll viewport and ribbons", () => {
     // what this pins that the key cases do not is that the buttons are wired to it at all.
     it("walks the changes from the toolbar arrows and stops at both ends", async () => {
         const { content } = await mountScrollFixture();
+        expect(document.querySelector(".diff-difference-count")?.textContent).toBe("2 differences");
         trackedScrollTo(content)(0);
 
         // The fixture's two changed segments sit at canonical 100 and 260; see its table.
@@ -2950,12 +2951,22 @@ describe("DiffViewerApp scroll viewport and ribbons", () => {
         });
         await flush();
 
+        expect(document.querySelector(".diff-difference-count")?.textContent).toBe("0 differences");
         for (const testId of ["diff-prev-change", "diff-next-change"]) {
             expect(
                 document.querySelector<HTMLButtonElement>(`[data-testid='${testId}']`)?.disabled,
                 `${testId} offers a jump on a file with nowhere to jump to`,
             ).toBe(true);
         }
+        dispatchHostMessage({
+            type: "setDiffData",
+            data: {
+                ...scrollFixture,
+                segments: [{ type: "changed", left: [], right: rows("added", 40) }],
+            },
+        });
+        await flush();
+        expect(document.querySelector(".diff-difference-count")?.textContent).toBe("1 difference");
     });
 });
 

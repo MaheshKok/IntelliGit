@@ -146,28 +146,6 @@
     stroke: currentColor;
     stroke-width: 1.5;
 }
-.file-history-subject {
-    display: flex;
-    align-items: center;
-    min-width: 0;
-    gap: 6px;
-}
-.file-history-subject > span:first-child {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-.file-history-ref {
-    display: inline-flex;
-    align-items: center;
-    gap: 2px;
-    flex-shrink: 0;
-    color: var(--vscode-descriptionForeground);
-}
-.file-history-ref svg {
-    width: 14px;
-    height: 14px;
-}
 .file-history-details {
     padding: 8px;
     display: flex;

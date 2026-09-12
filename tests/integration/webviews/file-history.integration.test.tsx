@@ -312,7 +312,7 @@ describe("standalone file history message and shared viewer contract", () => {
         act(() => overflow.click());
         expect(document.querySelector('[role="menu"]')).toBeNull();
     });
-    it("renders actual ref badges and only known parent edges", () => {
+    it("uses graph ref presentation with overflow and only known parent edges", () => {
         message({
             type: "historyState",
             state: {
@@ -325,14 +325,22 @@ describe("standalone file history message and shared viewer contract", () => {
                             ? [
                                   { name: "v1.2.3", kind: "tag" },
                                   { name: "main", kind: "branch" },
+                                  { name: "origin/main", kind: "remote" },
+                                  { name: "v2", kind: "tag" },
+                                  { name: "v3", kind: "tag" },
                               ]
                             : [],
                 })),
             },
         });
-        expect(
-            [...document.querySelectorAll(".file-history-ref")].map((badge) => badge.textContent),
-        ).toEqual(["v1.2.3", "main"]);
+        const cell = document.querySelector("[data-commit-tooltip]")!;
+        expect(cell).not.toBeNull();
+        expect(cell.textContent).toBe("Newest2v1.2.3v2+1");
+        expect(cell.getAttribute("data-commit-tooltip")).toContain("origin/main");
+        expect(cell.getAttribute("data-commit-tooltip")).toContain("v3");
+        expect(cell.querySelector('[title="v1.2.3"] svg')).not.toBeNull();
+        act(() => cell.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+        expect(selection().hashes).toEqual([state.entries[0].hash]);
         expect(document.querySelectorAll(".file-history-graph line")).toHaveLength(2);
         expect(
             document

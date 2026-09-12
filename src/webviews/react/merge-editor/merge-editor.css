@@ -171,6 +171,19 @@
     flex: 1 1 auto;
     justify-content: flex-end;
 }
+
+.merge-remaining-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: 8px;
+    max-width: 100%;
+    color: var(--vscode-foreground);
+}
+
+.merge-remaining-status.resolved {
+    color: var(--vscode-testing-iconPassed);
+}
 .toolbar-nav-group {
     display: inline-flex;
     align-items: center;

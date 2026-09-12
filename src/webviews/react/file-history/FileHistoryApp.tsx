@@ -1,14 +1,8 @@
 import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import {
-    VscEllipsis,
-    VscListSelection,
-    VscRefresh,
-    VscSearch,
-    VscTag,
-    VscSourceControl,
-} from "react-icons/vsc";
+import { VscEllipsis, VscListSelection, VscRefresh, VscSearch } from "react-icons/vsc";
 import { DiffViewer } from "../diff-viewer/DiffViewer";
+import { CommitMessageCell } from "../commit-list/CommitRow";
 import { ContextMenu } from "../shared/components/ContextMenu";
 import { t } from "../shared/i18n";
 import { useFileHistory } from "./useFileHistory";
@@ -343,23 +337,12 @@ export function App(): React.ReactElement {
                                         ) : null}
                                         <circle cx="10" cy="12" r="3.5" />
                                     </svg>
-                                    <span className="file-history-subject">
-                                        <span>{entry.subject}</span>
-                                        {entry.refs?.map((ref) => (
-                                            <span
-                                                key={`${ref.kind}:${ref.name}`}
-                                                className="file-history-ref"
-                                                title={ref.name}
-                                            >
-                                                {ref.kind === "tag" ? (
-                                                    <VscTag aria-hidden="true" />
-                                                ) : (
-                                                    <VscSourceControl aria-hidden="true" />
-                                                )}
-                                                {ref.name}
-                                            </span>
-                                        ))}
-                                    </span>
+                                    <CommitMessageCell
+                                        message={entry.subject}
+                                        refs={(entry.refs ?? []).map((ref) =>
+                                            ref.kind === "tag" ? `tag:${ref.name}` : ref.name,
+                                        )}
+                                    />
                                 </div>
                             ))
                         )}

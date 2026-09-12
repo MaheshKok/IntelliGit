@@ -369,5 +369,10 @@
     "shelf.list.empty.hint": "変更をシェルフに置くとコミットせずに脇に置いておけます。",
     "commitPanel.noChanges.hint": "ワークスペースのファイルを編集するとここに表示されます。",
     "stash.empty.hint": "スタッシュは未コミットの作業を保存し、ブランチをきれいに切り替えられるようにします。",
-    "commit.message.label": "コミットメッセージ"
+    "commit.message.label": "コミットメッセージ",
+    "diff.toolbar.differenceCount": {
+        "other": "{count} 件の差分"
+    },
+    "merge.status.noChanges": "変更なし",
+    "merge.status.allConflictsResolved": "すべての競合が解決済み"
 }

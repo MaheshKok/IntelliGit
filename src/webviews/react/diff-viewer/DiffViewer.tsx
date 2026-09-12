@@ -475,16 +475,16 @@ function DiffPaneColumn({
     );
 }
 
-/** Change-to-change navigation, the whitespace mode, and the word-highlight toggle. */
+/** Shows the navigable changed-block count with navigation and comparison controls. */
 function DiffViewerToolbar({
-    hasChanges,
+    differenceCount,
     ignoreMode,
     highlightWords,
     onJump,
     onIgnoreMode,
     onToggleHighlightWords,
 }: {
-    hasChanges: boolean;
+    differenceCount: number;
     ignoreMode: "none" | "whitespace";
     highlightWords: boolean;
     onJump: (direction: 1 | -1) => void;
@@ -502,7 +502,7 @@ function DiffViewerToolbar({
                         onClick={() => onJump(-1)}
                         title={t("diff.toolbar.prevChange.title")}
                         aria-label={t("diff.toolbar.prevChange.label")}
-                        disabled={!hasChanges}
+                        disabled={differenceCount === 0}
                     >
                         <IconChevronUp />
                     </button>
@@ -513,7 +513,7 @@ function DiffViewerToolbar({
                         onClick={() => onJump(1)}
                         title={t("diff.toolbar.nextChange.title")}
                         aria-label={t("diff.toolbar.nextChange.label")}
-                        disabled={!hasChanges}
+                        disabled={differenceCount === 0}
                     >
                         <IconChevronDown />
                     </button>
@@ -547,6 +547,9 @@ function DiffViewerToolbar({
                     {t("merge.toolbar.highlightWords")}
                 </button>
             </div>
+            <span className="diff-difference-count" role="status">
+                {t("diff.toolbar.differenceCount", { count: differenceCount })}
+            </span>
         </div>
     );
 }
@@ -672,7 +675,7 @@ export function DiffViewer({ host }: { host: DiffViewerHost }): React.ReactEleme
                     </output>
                 ) : null}
                 <DiffViewerToolbar
-                    hasChanges={stripeMarks.length > 0}
+                    differenceCount={stripeMarks.length}
                     ignoreMode={ignoreMode}
                     highlightWords={highlightWords}
                     onJump={jumpToAdjacentChange}
