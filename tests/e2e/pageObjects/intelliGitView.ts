@@ -7,6 +7,7 @@ const GRAPH_PANEL_MARKER = '[data-testid="commit-list-viewport"]';
 /** Present only once the diff viewer has replaced its loading state with rendered segments --
  * see DiffViewerApp.tsx, where the loading and error branches carry no such marker. */
 const DIFF_VIEWER_MARKER = '[data-testid="diff-viewer-root"]';
+const FILE_HISTORY_MARKER = ".file-history";
 
 /** How long a surface may take to render its marker before `reveal`/`revealPanel` give up. */
 const DEFAULT_REVEAL_TIMEOUT_MS = 30_000;
@@ -125,6 +126,11 @@ export class IntelliGitView {
      * docking inside the sidebar or graph panel. */
     public async revealDiffViewer(timeoutMs = DEFAULT_REVEAL_TIMEOUT_MS): Promise<FrameLocator> {
         return this.frameOwning(DIFF_VIEWER_MARKER, timeoutMs);
+    }
+
+    /** Returns the standalone File History webview document after the caller opens its window. */
+    public async revealFileHistory(timeoutMs = DEFAULT_REVEAL_TIMEOUT_MS): Promise<FrameLocator> {
+        return this.frameOwning(FILE_HISTORY_MARKER, timeoutMs);
     }
 
     /**

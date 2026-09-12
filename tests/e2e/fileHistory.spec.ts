@@ -8,6 +8,7 @@ import {
     launchFixtureWorkspace,
 } from "./hostFixtures/electronLaunchHelpers";
 import { resolveVSCodeExecutable } from "./hostFixtures/resolveVSCodeExecutable";
+import { IntelliGitView } from "./pageObjects/intelliGitView";
 
 test.use({ scenario: "dirty" });
 test("opens file history in a separate window with the shared diff viewer", async ({
@@ -102,12 +103,7 @@ test("opens file history in a separate window with the shared diff viewer", asyn
             throw error;
         });
         await historyWindow.waitForLoadState("domcontentloaded");
-        const frame = historyWindow
-            .locator("iframe.webview")
-            .first()
-            .contentFrame()
-            .locator("iframe#active-frame")
-            .contentFrame();
+        const frame = await new IntelliGitView(historyWindow).revealFileHistory();
         await expect(frame.locator(".file-history")).toBeVisible({ timeout: 30_000 });
         const rows = frame.getByRole("listbox").getByRole("option");
         await expect(rows).toHaveCount(8);

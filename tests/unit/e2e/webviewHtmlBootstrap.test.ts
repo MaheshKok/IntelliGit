@@ -9,6 +9,7 @@
 // the previous entry, so a request would be answered by whichever instance registered last.
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { JSDOM } from "jsdom";
 
 const ACTIVATION_STATE_MODULE = "../../../src/e2e/activationState";
 const WEBVIEW_HTML_MODULE = "../../../src/views/webviewHtml";
@@ -83,17 +84,19 @@ describe("buildWebviewShellHtml E2E bootstrap", () => {
             mockVsCode();
             mockActivationState(false);
             const html = await buildHtml({ scriptFile });
-            const scripts = [...html.matchAll(/<script([^>]*)>([\s\S]*?)<\/script>/gi)];
-            expect(scripts.map((script) => script[1].match(/src="([^"]+)"/)?.[1])).toEqual([
-                undefined,
+            const scripts = Array.from(JSDOM.fragment(html).querySelectorAll("script"));
+            expect(scripts.map((script) => script.getAttribute("src"))).toEqual([
+                null,
                 "webview:///dist/webview-shiki.js",
                 `webview:///dist/${scriptFile}`,
             ]);
-            const nonce = scripts[0][1].match(/nonce="([^"]+)"/)?.[1];
+            const nonce = scripts[0].getAttribute("nonce");
             expect(nonce).toBeTruthy();
             for (const script of scripts) {
-                expect(script[1]).toContain(`nonce="${nonce}"`);
-                expect(script[1]).not.toMatch(/\b(?:async|defer|type)=?/);
+                expect(script.getAttribute("nonce")).toBe(nonce);
+                for (const attribute of ["async", "defer", "type"]) {
+                    expect(script.hasAttribute(attribute)).toBe(false);
+                }
             }
             expect(html).toContain(`script-src 'nonce-${nonce}'`);
             expect(html).not.toMatch(/unsafe-eval|wasm-unsafe-eval/);

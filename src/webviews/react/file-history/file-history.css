@@ -13,6 +13,14 @@
     min-width: 0;
     min-height: 0;
 }
+/* Keep history gutter text readable over the inserted-line background. */
+.file-history .line-numbers {
+    color: color-mix(
+        in srgb,
+        var(--vscode-editorLineNumber-foreground, var(--vscode-descriptionForeground)) 50%,
+        var(--vscode-editor-foreground)
+    );
+}
 .file-history-list-panel {
     display: flex;
     flex-direction: column;

@@ -206,12 +206,7 @@ test.describe("installed VSIX package smoke", () => {
             const nextWindow = electronApp.waitForEvent("window", { timeout: 30_000 });
             await new Workbench(window).runCommand("IntelliGit: Show File History");
             const historyWindow = await nextWindow;
-            const history = historyWindow
-                .locator("iframe.webview")
-                .first()
-                .contentFrame()
-                .locator("iframe#active-frame")
-                .contentFrame();
+            const history = await new IntelliGitView(historyWindow).revealFileHistory();
             await expect(history.locator(".file-history")).toBeVisible({ timeout: 30_000 });
             await expect(history.locator(".code-lines").first()).toContainText(
                 "export const answer = 42;",
