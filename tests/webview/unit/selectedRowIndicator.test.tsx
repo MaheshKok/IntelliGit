@@ -298,3 +298,47 @@ describe("every row that paints a selection also paints its boundary", () => {
         });
     }
 });
+
+/**
+ * The commit row's ring is the same box the branch rows paint, and the branch rows round
+ * theirs. The branch radius is read off the stylesheet the product injects rather than
+ * hardcoded, so the two cannot drift apart, and the commit row's own corner is measured
+ * from its computed style.
+ */
+describe("the commit row's selection ring rounds like the branch rows'", () => {
+    it("CommitRow: a selected row uses the same corner radius as a branch row", () => {
+        const branchRadius = declaration(
+            ruleBody(BRANCH_ROW_CLASS_CSS, ".branch-row::after"),
+            "border-radius",
+        );
+        expect(
+            branchRadius,
+            "the branch row's paint box declares no border-radius for the commit row to match",
+        ).not.toBeNull();
+
+        const mounted = mount(
+            <ChakraProvider theme={theme}>
+                <CommitRow
+                    commit={COMMIT}
+                    graphWidth={40}
+                    isSelected
+                    isUnpushed={false}
+                    onSelect={vi.fn()}
+                    onContextMenu={vi.fn()}
+                />
+            </ChakraProvider>,
+        );
+        try {
+            const element = mounted.container.querySelector<HTMLElement>('[role="button"]');
+            if (!element) throw new Error("CommitRow rendered no row to measure");
+            const radius = getComputedStyle(element).borderRadius;
+            expect(
+                radius,
+                `a selected commit row's blue box does not round like a branch row's ` +
+                    `(border-radius: ${radius}; the branch rows paint ${branchRadius})`,
+            ).toBe(branchRadius);
+        } finally {
+            unmount(mounted.root, mounted.container);
+        }
+    });
+});
