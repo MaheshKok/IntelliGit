@@ -83,7 +83,7 @@ describe("buildWebviewShellHtml E2E bootstrap", () => {
             mockVsCode();
             mockActivationState(false);
             const html = await buildHtml({ scriptFile });
-            const scripts = [...html.matchAll(/<script([^>]*)>([\s\S]*?)<\/script>/g)];
+            const scripts = [...html.matchAll(/<script([^>]*)>([\s\S]*?)<\/script>/gi)];
             expect(scripts.map((script) => script[1].match(/src="([^"]+)"/)?.[1])).toEqual([
                 undefined,
                 "webview:///dist/webview-shiki.js",

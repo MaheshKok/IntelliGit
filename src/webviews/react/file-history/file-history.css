@@ -26,21 +26,24 @@
 }
 .file-history-toolbar {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     flex-shrink: 0;
     gap: 4px;
-    height: 30px;
+    min-height: 30px;
     padding: 0 8px;
 }
 .file-history-branch {
     display: flex;
+    flex-shrink: 0;
+    max-width: 100%;
     align-items: center;
     min-width: 0;
     gap: 4px;
     color: var(--vscode-descriptionForeground);
 }
 .file-history-toolbar select {
-    min-width: 0;
+    min-width: 48px;
     max-width: 180px;
     text-overflow: ellipsis;
     color: var(--vscode-foreground);

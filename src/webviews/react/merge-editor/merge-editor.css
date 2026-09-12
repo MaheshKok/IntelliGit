@@ -1044,6 +1044,7 @@
     white-space: nowrap;
     overflow: hidden;
     clip-path: inset(50%);
+    clip: rect(0px, 0px, 0px, 0px);
 }
 
 .change-conflict .word-diff-change {
