@@ -225,10 +225,10 @@ describe("registerUndockedCommitFileDiffHandler wiring (spec 3.7)", () => {
  * Regression cover for #226.
  *
  * The sidebar and bottom graphs are two instances of the same class. Each draws its own
- * selected-row ring, but they share the details panes: whichever pick's load lands last fills
- * them. So once one graph's commit is on show, the other graph must drop its ring, or two rows
- * stay outlined and only one of them owns the changed files. And the sidebar always draws the
- * checked-out branch, so a branch picked in one graph must stay in that graph.
+ * selected-row ring, and they share the details panes: whichever pick's load lands last fills
+ * them. The ring must follow the commit whose changed files those are -- every graph that lists
+ * that commit rings it, and a graph that does not list it rings nothing. And the sidebar always
+ * draws the checked-out branch, so a branch picked in one graph must stay in that graph.
  */
 describe("registerRepositoryViewEvents across the two graphs (#226)", () => {
     function wireTwoGraphs() {
@@ -249,7 +249,6 @@ describe("registerRepositoryViewEvents across the two graphs (#226)", () => {
                 filterByBranch: vi.fn(async () => undefined),
                 clearCommitDetail: vi.fn(),
                 setCommitDetail: vi.fn(),
-                deselectCommit: vi.fn(),
             };
         };
 
@@ -317,7 +316,7 @@ describe("registerRepositoryViewEvents across the two graphs (#226)", () => {
         ).not.toHaveBeenCalled();
     });
 
-    it("takes the ring off the sidebar graph once a commit picked in the bottom graph fills the details", async () => {
+    it("sends the picked commit's detail to both graphs, so both can ring it", async () => {
         const { commitGraph, sidebarGraph, settle } = wireTwoGraphs();
 
         commitGraph.commitSelected.fire("b1");
@@ -328,17 +327,13 @@ describe("registerRepositoryViewEvents across the two graphs (#226)", () => {
             "the control: the bottom graph's pick must have reached the details panes",
         ).toHaveBeenCalledWith({ hash: "b1" });
         expect(
-            sidebarGraph.deselectCommit,
-            "the bottom graph's commit fills the details, but the sidebar graph kept its own row " +
-                "outlined, so two commits looked selected",
-        ).toHaveBeenCalledTimes(1);
-        expect(
-            commitGraph.deselectCommit,
-            "the graph whose commit is on show lost its own ring",
-        ).not.toHaveBeenCalled();
+            sidebarGraph.setCommitDetail,
+            "the sidebar graph lists the same commit but was never told which commit the details " +
+                "show, so it could not ring it",
+        ).toHaveBeenCalledWith({ hash: "b1" });
     });
 
-    it("takes the ring off the bottom graph once a commit picked in the sidebar graph fills the details", async () => {
+    it("sends a commit picked in the sidebar graph to both graphs too", async () => {
         const { commitGraph, sidebarGraph, settle } = wireTwoGraphs();
 
         sidebarGraph.commitSelected.fire("s1");
@@ -349,17 +344,29 @@ describe("registerRepositoryViewEvents across the two graphs (#226)", () => {
             "the control: the sidebar graph's pick must have reached the details panes",
         ).toHaveBeenCalledWith({ hash: "s1" });
         expect(
-            commitGraph.deselectCommit,
-            "the sidebar graph's commit fills the details, but the bottom graph kept its own row " +
-                "outlined, so two commits looked selected",
-        ).toHaveBeenCalledTimes(1);
-        expect(
-            sidebarGraph.deselectCommit,
-            "the graph whose commit is on show lost its own ring",
-        ).not.toHaveBeenCalled();
+            commitGraph.setCommitDetail,
+            "the bottom graph lists the same commit but was never told which commit the details " +
+                "show, so it could not ring it",
+        ).toHaveBeenCalledWith({ hash: "s1" });
     });
 
-    it("moves the ring only for the pick whose details land, not for one a newer pick overtook", async () => {
+    it("sends a commit picked in the commit panel to both graphs as well", async () => {
+        const { commitGraph, sidebarGraph, commitPanel, settle } = wireTwoGraphs();
+
+        commitPanel.commitSelected.fire("p1");
+        await settle("p1");
+
+        expect(
+            commitGraph.setCommitDetail,
+            "the commit panel's commit fills the details, but the bottom graph was never told",
+        ).toHaveBeenCalledWith({ hash: "p1" });
+        expect(
+            sidebarGraph.setCommitDetail,
+            "the commit panel's commit fills the details, but the sidebar graph was never told",
+        ).toHaveBeenCalledWith({ hash: "p1" });
+    });
+
+    it("sends the graphs only the pick whose details land, not one a newer pick overtook", async () => {
         const { commitGraph, sidebarGraph, settle } = wireTwoGraphs();
 
         // The sidebar pick's load is still running when a bottom-graph pick replaces it.
@@ -369,29 +376,15 @@ describe("registerRepositoryViewEvents across the two graphs (#226)", () => {
         await settle("s1");
 
         expect(
-            commitGraph.deselectCommit,
-            "the overtaken sidebar pick took the ring off the bottom graph, whose commit is the " +
-                "one on show",
-        ).not.toHaveBeenCalled();
-        expect(
-            sidebarGraph.deselectCommit,
-            "the bottom graph's newer pick fills the details, but the sidebar graph kept its ring",
+            commitGraph.setCommitDetail,
+            "the control: the newer pick's details must have reached the graphs exactly once",
         ).toHaveBeenCalledTimes(1);
-    });
-
-    it("takes the ring off both graphs once a commit picked in the commit panel fills the details", async () => {
-        const { commitGraph, sidebarGraph, commitPanel, settle } = wireTwoGraphs();
-
-        commitPanel.commitSelected.fire("p1");
-        await settle("p1");
-
+        expect(commitGraph.setCommitDetail).toHaveBeenCalledWith({ hash: "b1" });
         expect(
-            commitGraph.deselectCommit,
-            "the commit panel's commit fills the details, but the bottom graph kept its ring",
+            sidebarGraph.setCommitDetail,
+            "the overtaken pick still reached the sidebar graph, so a ring could land on a commit " +
+                "whose changed files are not the ones on show",
         ).toHaveBeenCalledTimes(1);
-        expect(
-            sidebarGraph.deselectCommit,
-            "the commit panel's commit fills the details, but the sidebar graph kept its ring",
-        ).toHaveBeenCalledTimes(1);
+        expect(sidebarGraph.setCommitDetail).toHaveBeenCalledWith({ hash: "b1" });
     });
 });

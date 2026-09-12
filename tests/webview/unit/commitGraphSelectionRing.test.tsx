@@ -3,7 +3,7 @@
 import React, { act } from "react";
 import { ChakraProvider } from "@chakra-ui/react";
 import { describe, expect, it, vi } from "vitest";
-import type { Commit } from "../../../src/types";
+import type { Commit, CommitDetail } from "../../../src/types";
 import { CommitGraphPanel } from "../../../src/webviews/react/CommitGraphPanel";
 import { NativeCommitGraph } from "../../../src/webviews/react/NativeCommitGraph";
 import theme from "../../../src/webviews/react/commit-panel/theme";
@@ -12,10 +12,11 @@ import { initReactDomTestEnvironment, mount } from "../../helpers/reactDomTestUt
 initReactDomTestEnvironment();
 
 /**
- * #226: the sidebar and bottom graphs share the details panes, so only the graph whose commit
- * fills them may keep its selected-row ring. The host tells the other graph with
- * `deselectCommit`; this pins what each webview does with it, including across the refreshes the
- * file watcher fires on its own.
+ * #226: the sidebar and bottom graphs share the details panes, so the blue selected-row ring
+ * follows the commit whose changed files are on show. Every graph that lists that commit rings
+ * it -- both graphs ring it when both list it -- and a graph that does not list it shows no
+ * ring. Refreshes must never move a ring onto another row, and never pull the details back to a
+ * graph that does not hold the shown commit.
  */
 
 function commit(hash: string, parentHashes: string[]): Commit {
@@ -31,10 +32,18 @@ function commit(hash: string, parentHashes: string[]): Commit {
     };
 }
 
+function detail(hash: string): CommitDetail {
+    return { ...commit(hash, []), body: "", files: [] };
+}
+
 const tip = commit("b".repeat(40), ["a".repeat(40)]);
+const parent = commit("a".repeat(40), []);
+/** A commit neither page below lists, standing in for a pick made in a list these graphs share. */
+const unlisted = "c".repeat(40);
+
 const page = {
     type: "loadCommits",
-    commits: [tip, commit("a".repeat(40), [])],
+    commits: [tip, parent],
     hasMore: false,
     append: false,
     unpushedHashes: [],
@@ -59,79 +68,81 @@ function renderHost(Host: (typeof hosts)[number][1]) {
             />
         </ChakraProvider>,
     );
-    const ringedRows = () => container.querySelectorAll('.commit-row[aria-current="true"]').length;
+    /** The message text of every row currently drawn with the blue selection ring. */
+    const ringedRows = () =>
+        Array.from(container.querySelectorAll('.commit-row[aria-current="true"]')).map(
+            (row) => row.textContent ?? "",
+        );
     return { postMessage, ringedRows };
 }
 
 describe.each(hosts)("the %s's selected-row ring (#226)", (_name, Host) => {
-    it("drops when another view's commit fills the details, and stays off across refreshes", () => {
+    it("rings the row the details name when this graph lists it, and holds it across a refresh", () => {
         const { postMessage, ringedRows } = renderHost(Host);
 
         send(page);
-        expect(
-            ringedRows(),
-            "the control: a fresh page selects its first row, so there is a ring to drop",
-        ).toBe(1);
+        expect(ringedRows().length, "the control: a fresh page selects its first row").toBe(1);
         postMessage.mockClear();
 
-        send({ type: "deselectCommit" });
+        send({ type: "setCommitDetail", detail: detail(parent.hash) });
         expect(
             ringedRows(),
-            "the host said another view's commit now fills the details, but this graph kept its " +
-                "own row outlined, so two commits looked selected",
-        ).toBe(0);
+            "the details now show a commit this graph also lists, but this graph kept ringing a " +
+                "different row, so the changed files were attributed to two commits",
+        ).toEqual([expect.stringContaining(parent.shortHash)]);
 
         send(page);
         expect(
             ringedRows(),
-            "a refresh put the ring back on a graph whose commit is no longer the one on show",
-        ).toBe(0);
+            "a refresh moved the ring off the commit whose changed files are on show",
+        ).toEqual([expect.stringContaining(parent.shortHash)]);
         expect(
             postMessage,
             "a refresh re-selected a row and pulled the details back to this graph",
         ).not.toHaveBeenCalledWith(expect.objectContaining({ type: "selectCommit" }));
-
-        send({ type: "setSelectedBranch", branch: "main" });
-        send(page);
-        expect(ringedRows(), "a branch change must select its first commit again").toBe(1);
-        expect(postMessage).toHaveBeenCalledWith({ type: "selectCommit", hash: tip.hash });
     });
 
-    it("picks its first commit on a refresh again once a branch change has ended the yield", () => {
+    it("shows no ring for a commit this graph does not list, and a refresh keeps it that way", () => {
         const { postMessage, ringedRows } = renderHost(Host);
-        send(page);
-        send({ type: "deselectCommit" });
-        send({ type: "setSelectedBranch", branch: "main" });
-        send(page);
-        expect(ringedRows(), "the control: a branch change selects its first commit").toBe(1);
 
-        // A refresh that finds nothing (a filter matching no commit, say), then one that does.
-        send({ ...page, commits: [] });
+        send(page);
         postMessage.mockClear();
+
+        send({ type: "setCommitDetail", detail: detail(unlisted) });
+        expect(
+            ringedRows(),
+            "this graph does not list the commit whose changed files are on show, yet one of its " +
+                "rows is still outlined as selected",
+        ).toEqual([]);
+
         send(page);
         expect(
             ringedRows(),
-            "the yield outlived the branch change, so a refresh that found nothing selected left " +
-                "the graph without a ring",
-        ).toBe(1);
+            "a refresh of a graph that does not hold the shown commit put a ring back on one of " +
+                "its own rows",
+        ).toEqual([]);
         expect(
             postMessage,
-            "the refresh that should pick the first commit never asked the host for its details",
-        ).toHaveBeenCalledWith({ type: "selectCommit", hash: tip.hash });
+            "a refresh pulled the details away from the shown commit and over to this graph",
+        ).not.toHaveBeenCalledWith(expect.objectContaining({ type: "selectCommit" }));
     });
 
-    it("stays unselected when a refresh lands before the deselect has re-rendered", () => {
-        const { ringedRows } = renderHost(Host);
+    it("selects its first commit again after a branch change", () => {
+        const { postMessage, ringedRows } = renderHost(Host);
+
         send(page);
-        // Both host messages handled in one batch, as when a refresh closely follows the deselect.
-        act(() => {
-            window.dispatchEvent(new MessageEvent("message", { data: { type: "deselectCommit" } }));
-            window.dispatchEvent(new MessageEvent("message", { data: page }));
-        });
+        send({ type: "setCommitDetail", detail: detail(unlisted) });
         expect(
             ringedRows(),
-            "a refresh handled before the deselect re-rendered still saw the old selection and put " +
-                "the ring back",
-        ).toBe(0);
+            "the control: no ring while the shown commit is not in this list",
+        ).toEqual([]);
+        postMessage.mockClear();
+
+        send({ type: "setSelectedBranch", branch: "main" });
+        send(page);
+        expect(ringedRows(), "a branch change must select its first commit again").toEqual([
+            expect.stringContaining(tip.shortHash),
+        ]);
+        expect(postMessage).toHaveBeenCalledWith({ type: "selectCommit", hash: tip.hash });
     });
 });

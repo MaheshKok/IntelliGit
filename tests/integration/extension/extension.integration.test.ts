@@ -360,7 +360,6 @@ class MockCommitGraphViewProvider {
     resetFilters = vi.fn();
     setCommitDetail = vi.fn();
     clearCommitDetail = vi.fn();
-    deselectCommit = vi.fn();
     setRepositoryLabel = vi.fn();
     setShowRepositoryLabel = vi.fn();
     /** Mirrors the real provider's delivery contract: true only while a webview is live. */
