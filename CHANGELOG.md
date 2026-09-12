@@ -5,6 +5,13 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.32.9] - 2026-09-12
+
+### Fixed
+
+- The sidebar Graph now shows the history of the branch you have checked out. Before, it showed the commits of every branch at once, so commits from other branches could sit above your own. This happened in a Git worktree (an extra folder checked out from the same repository) and in a normal checkout alike. The Graph in the bottom panel now also opens on the checked-out branch. Both graphs move to the new branch when you check out another one, until you pick a branch yourself.
+- Picking a branch in the bottom panel's Graph now shows the same branch in the sidebar Graph. Before, it changed only the bottom panel's Graph. To see every branch again, click HEAD in the bottom panel's branch column; the sidebar Graph follows.
+
 ## [0.32.8] - 2026-09-11
 
 ### Fixed
