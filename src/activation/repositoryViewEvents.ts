@@ -165,7 +165,8 @@ export function registerRepositoryViewEvents(
      * Loads one commit detail and fans it out to every docked repository view.
      *
      * A sequence counter drops stale async responses so rapid selection changes do
-     * not show details for a previously selected commit.
+     * not show details for a previously selected commit. Every commit list receives the detail,
+     * so each graph can ring the row whose changed files the details show (#226).
      */
     const loadCommitDetail = async (hash: string): Promise<void> => {
         const requestId = ++commitDetailRequestSeq;

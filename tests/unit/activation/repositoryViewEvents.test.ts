@@ -44,6 +44,7 @@ import type { CommitGraphViewProvider } from "../../../src/views/CommitGraphView
 import type { CommitInfoViewProvider } from "../../../src/views/CommitInfoViewProvider";
 import type { CommitPanelViewProvider } from "../../../src/views/CommitPanelViewProvider";
 import type { RefreshService } from "../../../src/views/RefreshService";
+import type { CommitDetail } from "../../../src/types";
 
 beforeEach(() => {
     vi.clearAllMocks();
@@ -217,5 +218,173 @@ describe("registerUndockedCommitFileDiffHandler wiring (spec 3.7)", () => {
             gitOps,
             executor,
         );
+    });
+});
+
+/**
+ * Regression cover for #226.
+ *
+ * The sidebar and bottom graphs are two instances of the same class. Each draws its own
+ * selected-row ring, and they share the details panes: whichever pick's load lands last fills
+ * them. The ring must follow the commit whose changed files those are -- every graph that lists
+ * that commit rings it, and a graph that does not list it rings nothing. And the sidebar always
+ * draws the checked-out branch, so a branch picked in one graph must stay in that graph.
+ */
+describe("registerRepositoryViewEvents across the two graphs (#226)", () => {
+    function wireTwoGraphs() {
+        const pendingDetails = new Map<string, (detail: CommitDetail) => void>();
+        const fakeGraph = () => {
+            const commitSelected = fakeEmitter<string>();
+            const branchFilter = fakeEmitter<string | null>();
+            return {
+                commitSelected,
+                branchFilter,
+                onCommitSelected: commitSelected.event,
+                onBranchFilterChanged: branchFilter.event,
+                onBranchAction: fakeEmitter<unknown>().event,
+                onCommitAction: fakeEmitter<unknown>().event,
+                onRebaseDialogSubmit: fakeEmitter<unknown>().event,
+                onRebaseDialogCancel: fakeEmitter<unknown>().event,
+                onOpenCommitFileDiff: fakeEmitter<{ commitHash: string; filePath: string }>().event,
+                filterByBranch: vi.fn(async () => undefined),
+                clearCommitDetail: vi.fn(),
+                setCommitDetail: vi.fn(),
+            };
+        };
+
+        const commitGraph = fakeGraph();
+        const sidebarGraph = fakeGraph();
+        const commitPanel = { ...fakeGraph(), onRebaseControl: fakeEmitter<unknown>().event };
+        const commitInfo = {
+            onOpenCommitFileDiff: fakeEmitter<{ commitHash: string; filePath: string }>().event,
+            setCommitDetail: vi.fn(),
+            clear: vi.fn(),
+        };
+        // Every load waits until the test settles it, so a test can land two picks' responses in
+        // the order a slow `git show` would.
+        const gitOps = {
+            getCommitDetail: vi.fn(
+                (hash: string) =>
+                    new Promise<CommitDetail>((resolve) => pendingDetails.set(hash, resolve)),
+            ),
+        };
+
+        const deps: RepositoryViewEventDeps = {
+            context: { subscriptions: [] } as unknown as vscode.ExtensionContext,
+            executor: {} as unknown as GitExecutor,
+            gitOps: gitOps as unknown as GitOps,
+            commitGraph: commitGraph as unknown as CommitGraphViewProvider,
+            sidebarGraph: sidebarGraph as unknown as CommitGraphViewProvider,
+            commitPanel: commitPanel as unknown as CommitPanelViewProvider,
+            commitInfo: commitInfo as unknown as CommitInfoViewProvider,
+            getRepoRoot: () => "/repo",
+            getCurrentBranches: () => [],
+            getCurrentWorktrees: () => [],
+            refreshService: () => ({ refreshAll: vi.fn() }) as unknown as RefreshService,
+            pendingRebaseDialogRequests: {} as unknown as PendingRebaseDialogRequests,
+            mutationGate: {} as unknown as RepositoryMutationGate,
+        };
+
+        registerRepositoryViewEvents(
+            deps,
+            vi.fn(async () => undefined),
+        );
+
+        /** Lands `hash`'s detail load, then lets the host's handler finish with it. */
+        async function settle(hash: string): Promise<void> {
+            pendingDetails.get(hash)?.({ hash } as unknown as CommitDetail);
+            await new Promise((resolve) => setImmediate(resolve));
+        }
+
+        return { commitGraph, sidebarGraph, commitPanel, settle };
+    }
+
+    it("leaves the other graph's branch alone when a branch is picked in either graph", () => {
+        const { commitGraph, sidebarGraph } = wireTwoGraphs();
+
+        commitGraph.branchFilter.fire("feature/awesome");
+        sidebarGraph.branchFilter.fire(null);
+
+        expect(
+            sidebarGraph.filterByBranch,
+            "a branch picked in the bottom graph re-scoped the sidebar graph, which must always " +
+                "show the checked-out branch",
+        ).not.toHaveBeenCalled();
+        expect(
+            commitGraph.filterByBranch,
+            "a branch pick in the sidebar graph re-scoped the bottom graph",
+        ).not.toHaveBeenCalled();
+    });
+
+    it("sends the picked commit's detail to both graphs, so both can ring it", async () => {
+        const { commitGraph, sidebarGraph, settle } = wireTwoGraphs();
+
+        commitGraph.commitSelected.fire("b1");
+        await settle("b1");
+
+        expect(
+            commitGraph.setCommitDetail,
+            "the control: the bottom graph's pick must have reached the details panes",
+        ).toHaveBeenCalledWith({ hash: "b1" });
+        expect(
+            sidebarGraph.setCommitDetail,
+            "the sidebar graph lists the same commit but was never told which commit the details " +
+                "show, so it could not ring it",
+        ).toHaveBeenCalledWith({ hash: "b1" });
+    });
+
+    it("sends a commit picked in the sidebar graph to both graphs too", async () => {
+        const { commitGraph, sidebarGraph, settle } = wireTwoGraphs();
+
+        sidebarGraph.commitSelected.fire("s1");
+        await settle("s1");
+
+        expect(
+            sidebarGraph.setCommitDetail,
+            "the control: the sidebar graph's pick must have reached the details panes",
+        ).toHaveBeenCalledWith({ hash: "s1" });
+        expect(
+            commitGraph.setCommitDetail,
+            "the bottom graph lists the same commit but was never told which commit the details " +
+                "show, so it could not ring it",
+        ).toHaveBeenCalledWith({ hash: "s1" });
+    });
+
+    it("sends a commit picked in the commit panel to both graphs as well", async () => {
+        const { commitGraph, sidebarGraph, commitPanel, settle } = wireTwoGraphs();
+
+        commitPanel.commitSelected.fire("p1");
+        await settle("p1");
+
+        expect(
+            commitGraph.setCommitDetail,
+            "the commit panel's commit fills the details, but the bottom graph was never told",
+        ).toHaveBeenCalledWith({ hash: "p1" });
+        expect(
+            sidebarGraph.setCommitDetail,
+            "the commit panel's commit fills the details, but the sidebar graph was never told",
+        ).toHaveBeenCalledWith({ hash: "p1" });
+    });
+
+    it("sends the graphs only the pick whose details land, not one a newer pick overtook", async () => {
+        const { commitGraph, sidebarGraph, settle } = wireTwoGraphs();
+
+        // The sidebar pick's load is still running when a bottom-graph pick replaces it.
+        sidebarGraph.commitSelected.fire("s1");
+        commitGraph.commitSelected.fire("b1");
+        await settle("b1");
+        await settle("s1");
+
+        expect(
+            commitGraph.setCommitDetail,
+            "the control: the newer pick's details must have reached the graphs exactly once",
+        ).toHaveBeenCalledTimes(1);
+        expect(commitGraph.setCommitDetail).toHaveBeenCalledWith({ hash: "b1" });
+        expect(
+            sidebarGraph.setCommitDetail,
+            "the overtaken pick still reached the sidebar graph, so a ring could land on a commit " +
+                "whose changed files are not the ones on show",
+        ).toHaveBeenCalledTimes(1);
+        expect(sidebarGraph.setCommitDetail).toHaveBeenCalledWith({ hash: "b1" });
     });
 });

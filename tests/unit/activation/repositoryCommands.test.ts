@@ -112,7 +112,6 @@ const makeDeps = (gitOps: GitOps) => {
         setRepositories: vi.fn(),
         getCurrentBranches: () => [currentBranch],
         commitGraphFilterByBranch: vi.fn(),
-        sidebarGraphFilterByBranch: vi.fn(),
         getCurrentBranchName: () => currentBranch.name,
         setActiveRepository: vi.fn(),
         clearSelection: vi.fn(),

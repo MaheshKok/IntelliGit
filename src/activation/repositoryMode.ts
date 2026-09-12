@@ -1323,7 +1323,6 @@ export async function activateRepositoryMode(
         getCurrentBranches,
         getCurrentBranchName,
         commitGraphFilterByBranch: (branchName) => commitGraph.filterByBranch(branchName),
-        sidebarGraphFilterByBranch: (branchName) => sidebarGraph.filterByBranch(branchName),
         setActiveRepository,
         clearSelection,
         refreshActiveRepository,

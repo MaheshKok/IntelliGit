@@ -57,7 +57,7 @@ import { GitOps } from "../../../src/git/operations";
 import { CredentialStore } from "../../../src/services/commitChecks/credentialStore";
 import { CommitGraphViewProvider } from "../../../src/views/CommitGraphViewProvider";
 import type { CommitDetail } from "../../../src/types";
-import { seedFixtureTemplate, type FixtureTemplate } from "../../fixtures/repo/seed";
+import { FIXTURE_REFS, seedFixtureTemplate, type FixtureTemplate } from "../../fixtures/repo/seed";
 import { createScratchWorkspaces } from "../fixtures/scratchWorkspaces";
 
 /** A resolve-context/token stand-in `resolveWebviewView` never reads -- same reasoning as
@@ -166,27 +166,28 @@ function setDetailMessages(posted: readonly unknown[]): Record<string, unknown>[
     );
 }
 
+let parentDir: string;
+let workspace: FixtureTemplate;
+const scratch = createScratchWorkspaces();
+
+beforeAll(async () => {
+    parentDir = await mkdtemp(path.join(tmpdir(), "intelligit-commitgraph-provider-test-"));
+    scratch.register(parentDir);
+    // A single seeded root is enough: unlike the recorder's own byte-identical test, nothing
+    // here compares two independently seeded workspaces. Both describes below only read it, so
+    // one seed serves the whole file.
+    workspace = await seedFixtureTemplate(path.join(parentDir, "root"));
+    // `home` lives OUTSIDE `parentDir` (it is `mkdtemp`'d under the OS temp root by
+    // `createSanitizedGitEnv`) -- see `scratchWorkspaces.ts`'s own doc comment for why it must
+    // be registered explicitly rather than assumed to be removed along with `parentDir`.
+    scratch.register(workspace.home);
+}, 60_000);
+
+afterAll(async () => {
+    await scratch.removeAll();
+});
+
 describe("CommitGraphViewProvider redundant setCommitDetail post on webview reload", () => {
-    let parentDir: string;
-    let workspace: FixtureTemplate;
-    const scratch = createScratchWorkspaces();
-
-    beforeAll(async () => {
-        parentDir = await mkdtemp(path.join(tmpdir(), "intelligit-commitgraph-provider-test-"));
-        scratch.register(parentDir);
-        // A single seeded root is enough: unlike the recorder's own byte-identical test, nothing
-        // here compares two independently seeded workspaces.
-        workspace = await seedFixtureTemplate(path.join(parentDir, "root"));
-        // `home` lives OUTSIDE `parentDir` (it is `mkdtemp`'d under the OS temp root by
-        // `createSanitizedGitEnv`) -- see `scratchWorkspaces.ts`'s own doc comment for why it must
-        // be registered explicitly rather than assumed to be removed along with `parentDir`.
-        scratch.register(workspace.home);
-    }, 60_000);
-
-    afterAll(async () => {
-        await scratch.removeAll();
-    });
-
     it(
         "re-posts the currently selected commit detail when a torn-down webview sends a second " +
             "`ready` with no intervening resolveWebviewView, even though the payload is " +
@@ -243,4 +244,251 @@ describe("CommitGraphViewProvider redundant setCommitDetail post on webview relo
             ).toEqual(beforeReload[postedBeforeReload - 1]);
         },
     );
+});
+
+/** Every `loadCommits` page the provider posted, in posted order. */
+function loadCommitsPages(posted: readonly unknown[]): Record<string, unknown>[] {
+    return posted.filter(
+        (message): message is Record<string, unknown> =>
+            isRecord(message) && message.type === "loadCommits",
+    );
+}
+
+/** The commit hashes of the LAST `loadCommits` page the provider posted, in posted order. */
+function loadedCommitHashes(posted: readonly unknown[]): string[] {
+    const pages = loadCommitsPages(posted);
+    const commits = pages.length === 0 ? [] : pages[pages.length - 1].commits;
+    if (!Array.isArray(commits)) return [];
+    return commits.map((commit) => (isRecord(commit) ? String(commit.hash) : String(commit)));
+}
+
+/** The branch the LAST `setSelectedBranch` message announced, or a readable stand-in when the
+ * provider never announced one -- a bare `undefined` in a failure line reads like a message that
+ * arrived carrying nothing, which is a different defect from one that never arrived. */
+function lastAnnouncedBranch(posted: readonly unknown[]): unknown {
+    const picks = posted.filter(
+        (message): message is Record<string, unknown> =>
+            isRecord(message) && message.type === "setSelectedBranch",
+    );
+    return picks.length === 0
+        ? "<no setSelectedBranch message was ever posted>"
+        : picks[picks.length - 1].branch;
+}
+
+/**
+ * Regression cover for #226: which branch each graph draws.
+ *
+ * Both registrations in `src/activation/repositoryMode.ts` construct this same class, and each
+ * instance holds its OWN `currentBranch` filter, defaulted to `null`, which `loadInitial` turns
+ * into `--all` (`GitOps.getLog`). The bottom panel's graph is the one you browse with: it opens on
+ * every branch and its branch column scopes it to the branch you click. The sidebar graph answers
+ * "where am I": the compact bundle (`NativeCommitGraph.tsx`) has no branch picker, and its
+ * `Branch: X` label sits directly above its rows, so it must always draw the branch HEAD is on --
+ * moving with HEAD after a checkout and ignoring every branch picked anywhere else.
+ *
+ * `buildProviderOptions("compact")` spreads production's own `compactCommitGraphViewOptions()`,
+ * the one place the sidebar's HEAD-following is switched on; `"card"` leaves it out, as the
+ * bottom panel's registration does.
+ *
+ * The oracle is behavioural, over the real seeded repository, not a recorded `getLog` argument:
+ * `feature/awesome`'s tip is reachable from that branch and from no other, and `main`'s tip (its
+ * topic merge) is not reachable from `feature/awesome`. So a page scoped to either branch holds
+ * exactly one of the two tips, and a page holding both ran unscoped.
+ */
+describe("CommitGraphViewProvider default branch scope (#226)", () => {
+    async function resolveGraphOnSeededRepo(variant: "card" | "compact" = "compact"): Promise<{
+        provider: CommitGraphViewProvider;
+        gitOps: GitOps;
+        posted: unknown[];
+        receiveMessage(message: unknown): Promise<void>;
+    }> {
+        const gitOps = new GitOps(
+            new GitExecutor(workspace.root, undefined, toGitEnvironment(workspace.env)),
+        );
+        const provider = new CommitGraphViewProvider(
+            createFakeExtensionUri(),
+            gitOps,
+            new CredentialStore(createInertSecretStorage()),
+            buildProviderOptions(variant),
+        );
+        const { webviewView, posted, receiveMessage } =
+            createInspectableFakeCommitGraphWebviewView();
+
+        // The host's own order (repositoryMode.ts:1351): branch data is handed to the provider,
+        // then the webview announces itself and the provider draws its first page.
+        provider.setBranches(await gitOps.getBranches());
+        provider.resolveWebviewView(webviewView, INERT_CONTEXT, INERT_TOKEN);
+        await receiveMessage({ type: "ready" });
+
+        return { provider, gitOps, posted, receiveMessage };
+    }
+
+    it("draws only the checked-out branch's history on its first page, not every branch's", async () => {
+        const { posted } = await resolveGraphOnSeededRepo();
+        const hashes = loadedCommitHashes(posted);
+
+        expect(
+            hashes,
+            "the control: the checked-out branch's own tip must be on the page, so an empty or " +
+                "failed page can never be mistaken for a correctly scoped one",
+        ).toContain(workspace.commits.mergeCommit);
+        expect(
+            hashes,
+            "`feature/awesome`'s tip reached the page, and it is reachable from that branch and " +
+                "from no other -- so the first page ran unscoped (`git log --all`) instead of " +
+                "being scoped to the branch HEAD is on",
+        ).not.toContain(workspace.commits.featureCommit3);
+    });
+
+    it("announces the checked-out branch so the graph's own `Branch:` label matches what it drew", async () => {
+        const { posted } = await resolveGraphOnSeededRepo();
+
+        expect(
+            lastAnnouncedBranch(posted),
+            "the webview was never told which branch its rows belong to, so its selected-branch " +
+                "label cannot agree with the history underneath it",
+        ).toBe(FIXTURE_REFS.main);
+    });
+
+    // The bottom graph keeps a branch picked through either entry point. Refreshes are automatic,
+    // fired by the file watcher, so a refresh that re-scoped the graph -- onto HEAD's branch, the
+    // sidebar's rule leaking into it -- would undo the user's click on the next file save.
+    it.each([
+        [
+            "a branch clicked in the graph's own branch column",
+            async (
+                provider: CommitGraphViewProvider,
+                receiveMessage: (message: unknown) => Promise<void>,
+            ) => {
+                void provider;
+                await receiveMessage({ type: "filterBranch", branch: FIXTURE_REFS.feature });
+            },
+        ],
+        [
+            "a branch chosen through the host's filterByBranch command",
+            async (
+                provider: CommitGraphViewProvider,
+                receiveMessage: (message: unknown) => Promise<void>,
+            ) => {
+                void receiveMessage;
+                await provider.filterByBranch(FIXTURE_REFS.feature);
+            },
+        ],
+    ])("keeps %s when the bottom graph is refreshed afterwards", async (_name, pick) => {
+        const { provider, posted, receiveMessage } = await resolveGraphOnSeededRepo("card");
+
+        await pick(provider, receiveMessage);
+        await provider.refresh();
+        const hashes = loadedCommitHashes(posted);
+
+        expect(
+            hashes,
+            "the picked branch's own tip is not on the refreshed page, so the refresh dropped the " +
+                "pick (an empty or failed page lands here too)",
+        ).toContain(workspace.commits.featureCommit3);
+        expect(
+            hashes,
+            "`main`'s tip is not reachable from the picked branch, so the refresh threw the " +
+                "pick away and re-scoped the graph back onto the branch HEAD is on",
+        ).not.toContain(workspace.commits.mergeCommit);
+    });
+
+    it("re-scopes itself when branch data reaches the provider only after the first page is drawn", async () => {
+        const gitOps = new GitOps(
+            new GitExecutor(workspace.root, undefined, toGitEnvironment(workspace.env)),
+        );
+        const provider = new CommitGraphViewProvider(
+            createFakeExtensionUri(),
+            gitOps,
+            new CredentialStore(createInertSecretStorage()),
+            buildProviderOptions("compact"),
+        );
+        const { webviewView, posted, receiveMessage } =
+            createInspectableFakeCommitGraphWebviewView();
+
+        // The OTHER host ordering: a view resolves and its bundle signals `ready` while
+        // activation is still awaiting `getBranches()`, so the provider's first page is drawn
+        // with no branch list to read HEAD from. Nothing calls `refresh()` after activation's own
+        // `setBranches` (repositoryMode.ts:1351), so if that call does not reload, the graph
+        // stays on every branch until some unrelated file change happens to fire the watcher.
+        provider.resolveWebviewView(webviewView, INERT_CONTEXT, INERT_TOKEN);
+        await receiveMessage({ type: "ready" });
+        provider.setBranches(await gitOps.getBranches());
+
+        // The reload `setBranches` starts is fire-and-forget and runs real `git log`, so poll for
+        // the second page rather than assuming one microtask tick is enough.
+        await vi.waitFor(() => {
+            expect(
+                loadCommitsPages(posted).length,
+                "branch data arriving after the first page never triggered a second, scoped " +
+                    "load, so the graph was left showing every branch",
+            ).toBeGreaterThan(1);
+        });
+        const hashes = loadedCommitHashes(posted);
+
+        expect(hashes, "the control: HEAD's own tip must be on the reloaded page").toContain(
+            workspace.commits.mergeCommit,
+        );
+        expect(
+            hashes,
+            "the reload ran, but still unscoped -- `feature/awesome`'s tip is on the page",
+        ).not.toContain(workspace.commits.featureCommit3);
+    });
+
+    it("keeps the sidebar on the checked-out branch when a branch pick reaches it", async () => {
+        const { provider, posted } = await resolveGraphOnSeededRepo();
+
+        await provider.filterByBranch(FIXTURE_REFS.feature);
+        const hashes = loadedCommitHashes(posted);
+
+        expect(
+            hashes,
+            "a branch pick moved the sidebar graph onto `feature/awesome` (its tip is on the " +
+                "page), but the sidebar must always show the branch HEAD is on",
+        ).not.toContain(workspace.commits.featureCommit3);
+        expect(hashes, "the control: HEAD's own tip must be on the page").toContain(
+            workspace.commits.mergeCommit,
+        );
+    });
+
+    it("moves the sidebar onto the new branch after a checkout", async () => {
+        const { provider, gitOps, posted } = await resolveGraphOnSeededRepo();
+        const branches = await gitOps.getBranches();
+
+        // What the host hands every graph once the watcher sees a checkout: the same branch list
+        // with HEAD moved, then a refresh.
+        provider.setBranches(
+            branches.map((branch) => ({
+                ...branch,
+                isCurrent: !branch.isRemote && branch.name === FIXTURE_REFS.feature,
+            })),
+        );
+        await provider.refresh();
+        const hashes = loadedCommitHashes(posted);
+
+        expect(
+            hashes,
+            "the control: the newly checked-out branch's own tip must be on the page",
+        ).toContain(workspace.commits.featureCommit3);
+        expect(
+            hashes,
+            "`main`'s tip is still on the page, so the sidebar graph did not move to the branch " +
+                "that was checked out",
+        ).not.toContain(workspace.commits.mergeCommit);
+    });
+
+    it("opens the bottom graph on every branch, as it did before #226", async () => {
+        const { posted } = await resolveGraphOnSeededRepo("card");
+        const hashes = loadedCommitHashes(posted);
+
+        expect(
+            hashes,
+            "the control: the checked-out branch's own tip must be on the page",
+        ).toContain(workspace.commits.mergeCommit);
+        expect(
+            hashes,
+            "the bottom graph opened scoped to the checked-out branch; it must open on every " +
+                "branch until the user clicks one in its branch column",
+        ).toContain(workspace.commits.featureCommit3);
+    });
 });
