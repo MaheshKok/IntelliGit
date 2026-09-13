@@ -807,7 +807,12 @@ function makeGitOpsMock() {
         push: vi.fn(async () => "ok"),
         getLastCommitMessage: vi.fn(async () => "last message"),
         getAmendBranchCommits: vi.fn(async () => [
-            { shortHash: "abc1234", subject: "feat: amend ctx", date: "2026-02-19T00:00:00Z" },
+            {
+                hash: "abc1234".padEnd(40, "0"),
+                shortHash: "abc1234",
+                subject: "feat: amend ctx",
+                date: "2026-02-19T00:00:00Z",
+            },
         ]),
         rollbackAll: vi.fn(async () => undefined),
         rollbackFiles: vi.fn(async () => undefined),
@@ -2689,7 +2694,12 @@ describe("view providers integration", () => {
             type: "amendBranchCommits",
             repositoryRoot: "/repo",
             commits: [
-                { shortHash: "abc1234", subject: "feat: amend ctx", date: "2026-02-19T00:00:00Z" },
+                {
+                    hash: "abc1234".padEnd(40, "0"),
+                    shortHash: "abc1234",
+                    subject: "feat: amend ctx",
+                    date: "2026-02-19T00:00:00Z",
+                },
             ],
         });
         expect(gitOps.rollbackFiles).toHaveBeenCalledWith(["src/a.ts"]);
@@ -6830,7 +6840,12 @@ describe("view providers integration", () => {
             type: "amendBranchCommits",
             repositoryRoot: "/repo",
             commits: [
-                { shortHash: "abc1234", subject: "feat: amend ctx", date: "2026-02-19T00:00:00Z" },
+                {
+                    hash: "abc1234".padEnd(40, "0"),
+                    shortHash: "abc1234",
+                    subject: "feat: amend ctx",
+                    date: "2026-02-19T00:00:00Z",
+                },
             ],
         });
         provider.dispose();

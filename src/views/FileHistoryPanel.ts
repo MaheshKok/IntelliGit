@@ -208,8 +208,9 @@ export class FileHistoryPanel {
     private async select(
         message: Extract<HistoryOutbound, { type: "historySelect" }>,
     ): Promise<void> {
-        const selected = this.entries.filter((e) => message.hashes.includes(e.hash));
-        if (selected.length === 0 || selected.length !== new Set(message.hashes).size) return;
+        const requestedHashes = new Set(message.hashes);
+        const selected = this.entries.filter((entry) => requestedHashes.has(entry.hash));
+        if (selected.length === 0 || selected.length !== requestedHashes.size) return;
         const generation = ++this.previewGeneration;
         try {
             const newer = selected[0];

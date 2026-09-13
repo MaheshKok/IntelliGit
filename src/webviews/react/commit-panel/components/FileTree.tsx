@@ -423,23 +423,31 @@ export function FileTree({
         const shouldCollapseAll = collapseAllSignal !== 0 && collapseSignalChanged;
         if (newAutoExpandedDirs.length === 0 && !shouldExpandAll && !shouldCollapseAll) return;
 
+        for (const dirPath of newAutoExpandedDirs) {
+            seenDirsRef.current.add(dirPath);
+        }
+        if (shouldExpandAll) {
+            lastExpandSignal.current = expandAllSignal;
+            for (const dirPath of allDirPaths) {
+                seenDirsRef.current.add(dirPath);
+            }
+        }
+        if (shouldCollapseAll) {
+            lastCollapseSignal.current = collapseAllSignal;
+        }
+
         // Expansion signals come from parent toolbar events and must reconcile after render commit.
-        // react-doctor-disable-next-line react-doctor/no-derived-state
+        // react-doctor-disable-next-line react-doctor/no-derived-state, react-doctor/no-adjust-state-on-prop-change -- Parent toolbar signals intentionally reconcile committed expansion state after render.
         setExpansion((prev) => {
             let nextExpansion = prev;
             if (newAutoExpandedDirs.length > 0) {
                 const nextExpandedDirs = new Set(nextExpansion.expandedDirs);
                 for (const dirPath of newAutoExpandedDirs) {
-                    seenDirsRef.current.add(dirPath);
                     nextExpandedDirs.add(dirPath);
                 }
                 nextExpansion = { ...nextExpansion, expandedDirs: nextExpandedDirs };
             }
             if (shouldExpandAll) {
-                lastExpandSignal.current = expandAllSignal;
-                for (const dir of allDirPaths) {
-                    seenDirsRef.current.add(dir);
-                }
                 nextExpansion = {
                     ...nextExpansion,
                     changesOpen: true,
@@ -449,7 +457,6 @@ export function FileTree({
                 };
             }
             if (shouldCollapseAll) {
-                lastCollapseSignal.current = collapseAllSignal;
                 nextExpansion = {
                     ...nextExpansion,
                     changesOpen: false,

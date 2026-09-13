@@ -640,6 +640,8 @@ function TreeFileStagedMarker({
     );
 }
 
+// This row keeps file visuals, staged markers, and selection wiring synchronized across row variants.
+// react-doctor-disable-next-line react-doctor/no-high-complexity-react-function -- The shared row's visual and interaction variants are intentionally co-located.
 function TreeFileRowImpl({
     file,
     depth,

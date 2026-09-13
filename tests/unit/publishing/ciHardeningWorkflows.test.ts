@@ -158,7 +158,7 @@ describe("CI quality hardening workflows", () => {
         const releaseJob = extractJobBlock(publish, "release");
 
         expect(packageSmokeJob).toContain("needs: build");
-        expect(packageSmokeJob).toContain('vscode_version: ["1.96.0", "1.132.0"]');
+        expect(packageSmokeJob).toContain('vscode_version: ["1.137.0"]');
         expect(packageSmokeJob).toContain("actions/download-artifact@");
         expect(packageSmokeJob).toContain("actions/cache@");
         expect(packageSmokeJob).toContain(
@@ -574,9 +574,14 @@ describe("CI quality hardening workflows", () => {
         expect(compatibility).toContain("bun run test");
         expect(compatibility).toContain("bun run package");
         expect(compatibility).toContain("xvfb-run -a bun run test:package-smoke");
-        expect(compatibility).toMatch(
-            /INTELLIGIT_VSCODE_VERSION=1\.132\.0 bun run test:package-smoke/,
-        );
+        expect(
+            [
+                ...compatibility.matchAll(
+                    /INTELLIGIT_VSCODE_VERSION=1\.137\.0(?: xvfb-run -a)? bun run test:package-smoke/g,
+                ),
+            ],
+            "every installed-package smoke leg must run against the VS Code support floor",
+        ).toHaveLength(3);
         expect(dependabot).toContain("package-ecosystem: github-actions");
         // A `dependency-type: development` assertion used to sit here and was pinning the defect in
         // place: it required the presence of a selector the `bun` ecosystem does not honour, so the

@@ -1,6 +1,6 @@
 {
     "offline": true,
     "share": false,
-    "failOn": "error",
+    "blocking": "error",
     "respectInlineDisables": true
 }

@@ -2,7 +2,7 @@
 // The hook stays separate from render logic so the root component remains small.
 // It preserves the existing VS Code webview message contract without changing dispatch behavior.
 
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 import type React from "react";
 import type { CommitGraphInbound } from "../../protocol/commitGraphTypes";
 import type { CommitGraphPanelAction } from "./types";
@@ -35,15 +35,19 @@ export function useCommitGraphMessages(params: {
     } = params;
     const selectedHashRef = useRef<string | null>(selectedHash);
     const selectFirstOnNextLoadRef = useRef(false);
-    selectedHashRef.current = selectedHash;
+    useLayoutEffect(() => {
+        selectedHashRef.current = selectedHash;
+    }, [selectedHash]);
     // Held in a ref for the same reason as `selectedHashRef`: this effect owns the single
     // `ready` post and the window subscription, so its dependency list must stay fixed. Naming
     // the callback as a dependency would re-post `ready` and re-subscribe whenever a host
     // re-created it.
     const onShowRebaseDialogRef = useRef(onShowRebaseDialog);
-    onShowRebaseDialogRef.current = onShowRebaseDialog;
     const onShowReviewPromptRef = useRef(onShowReviewPrompt);
-    onShowReviewPromptRef.current = onShowReviewPrompt;
+    useLayoutEffect(() => {
+        onShowRebaseDialogRef.current = onShowRebaseDialog;
+        onShowReviewPromptRef.current = onShowReviewPrompt;
+    }, [onShowRebaseDialog, onShowReviewPrompt]);
 
     useEffect(() => {
         if (sendReady) {

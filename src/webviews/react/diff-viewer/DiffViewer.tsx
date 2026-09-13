@@ -1,6 +1,6 @@
 // Shared diff viewer, used by standalone diff pages and file history.
 
-import React, { useRef, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import type { DiffSegment } from "../../protocol/diffViewerTypes";
 import { t } from "../shared/i18n";
 import { SyntaxHighlightProvider } from "../diff-core/syntaxHighlightContext";
@@ -109,11 +109,15 @@ function EditableDiffPane({
         onEdit,
         onDraftLayoutChange,
     });
+    const activeRunIndices = useMemo(
+        () => (activeRun ? new Set(activeRun.indices) : null),
+        [activeRun],
+    );
 
     return (
         <>
             {renderedSegments.map((item) => {
-                const isEditing = activeRun !== null && activeRun.indices.includes(item.index);
+                const isEditing = activeRunIndices?.has(item.index) ?? false;
 
                 if (isEditing && draft && activeRun) {
                     if (activeRun.firstIndex !== item.index) return null;

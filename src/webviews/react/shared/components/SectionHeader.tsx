@@ -99,6 +99,8 @@ function SectionHeading({ children }: { children: React.ReactNode }): React.Reac
  */
 export const COMMIT_PANEL_SECTION_HEADER_BG = "var(--intelligit-pycharm-header)";
 
+// This variant coordinates disclosure, checkbox, stats, and drag behavior in one accessible header row.
+// react-doctor-disable-next-line react-doctor/no-high-complexity-react-function -- These controls share one heading and event surface by design.
 function CommitPanelSectionHeader({
     label,
     count = 0,

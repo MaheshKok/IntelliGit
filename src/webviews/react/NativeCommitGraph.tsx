@@ -3,7 +3,15 @@
 // same virtual scrolling. Keeps its own state management to match the
 // extension-host message contract.
 
-import React, { useEffect, useCallback, useMemo, useRef, useReducer, useState } from "react";
+import React, {
+    useEffect,
+    useLayoutEffect,
+    useCallback,
+    useMemo,
+    useRef,
+    useReducer,
+    useState,
+} from "react";
 import { CommitList } from "./CommitList";
 import type { Branch, Commit, CommitChecksSnapshot } from "../../types";
 import type {
@@ -147,7 +155,9 @@ export function NativeCommitGraph({
     const loadingMore = useRef(false);
     const selectedHashRef = useRef<string | null>(selectedHash);
     const selectFirstOnNextLoadRef = useRef(false);
-    selectedHashRef.current = selectedHash;
+    useLayoutEffect(() => {
+        selectedHashRef.current = selectedHash;
+    }, [selectedHash]);
     const currentBranch = useMemo(
         () => branches.find((branch) => branch.isCurrent && !branch.isRemote),
         [branches],

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import React, { act } from "react";
+import React, { act, useLayoutEffect } from "react";
 import { ChakraProvider } from "@chakra-ui/react";
 import { describe, expect, it, vi } from "vitest";
 import type { WorkingFile } from "../../../src/types";
@@ -78,7 +78,10 @@ function Harness({
     onMessage: ReturnType<typeof vi.fn>;
     capture: (drag: ShelfDrag) => void;
 }): React.ReactElement {
-    capture(useShelfDrag({ repositoryRoot: "/repo", catalogGeneration: 12, onMessage }));
+    const drag = useShelfDrag({ repositoryRoot: "/repo", catalogGeneration: 12, onMessage });
+    useLayoutEffect(() => {
+        capture(drag);
+    }, [capture, drag]);
     return <div />;
 }
 

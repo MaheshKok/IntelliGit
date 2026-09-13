@@ -1,6 +1,7 @@
 import path from "node:path";
 import { mkdir, writeFile } from "node:fs/promises";
 import { expect, test } from "./fixtureWorkspace";
+import { waitForE2eChannelReady } from "./controlChannelClient";
 import { launchFixtureWorkspace } from "./hostFixtures/electronLaunchHelpers";
 import { resolveVSCodeExecutable } from "./hostFixtures/resolveVSCodeExecutable";
 import { Workbench } from "./pageObjects/workbench";
@@ -25,6 +26,7 @@ for (const iconStyle of ["color", "standard"]) {
         try {
             const window = await electronApp.firstWindow();
             await window.waitForLoadState("domcontentloaded");
+            await waitForE2eChannelReady(fixtureWorkspace.channelDir);
             const workbench = new Workbench(window);
             const shortcut = window.getByRole("button", { name: "Undock...", exact: true });
             await workbench.runCommand("IntelliGit: Show Git Log");

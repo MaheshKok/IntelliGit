@@ -11,7 +11,7 @@ import type {
 const COMMIT_FIELD_SEP = "\0";
 const GIT_NUL = "%x00";
 const COMMIT_LOG_FIELD_COUNT = 8;
-const AMEND_FIELD_COUNT = 3;
+const AMEND_FIELD_COUNT = 4;
 
 /**
  * Pretty format used by `git log -z` for commit rows in graph and history views.
@@ -33,7 +33,7 @@ export const COMMIT_DETAIL_FORMAT = ["%H", "%h", "%s", "%b", "%an", "%ae", "%aI"
 );
 
 /** Format used for compact amend-candidate rows, separated by NUL bytes. */
-export const AMEND_BRANCH_COMMIT_FORMAT = `%h%x00%s%x00%cI%x00`;
+export const AMEND_BRANCH_COMMIT_FORMAT = ["%H", "%h", "%s", "%cI"].join(GIT_NUL) + GIT_NUL;
 
 /**
  * Parses NUL-delimited `git log` output into commit rows expected by webviews.
@@ -98,8 +98,8 @@ export function parseCommitDetail(
 /**
  * Parses compact amend-candidate rows emitted by `AMEND_BRANCH_COMMIT_FORMAT`.
  *
- * Rows without a short hash are discarded, and subjects are preserved verbatim so
- * tabs or punctuation in commit summaries are not normalized for display.
+ * Rows without full and short hashes are discarded, and subjects are preserved
+ * verbatim so tabs or punctuation in commit summaries are not normalized for display.
  */
 export function parseAmendBranchCommitSummaries(output: string): AmendBranchCommitSummary[] {
     const rows: AmendBranchCommitSummary[] = [];
@@ -111,11 +111,12 @@ export function parseAmendBranchCommitSummaries(output: string): AmendBranchComm
             continue;
         }
         const parts = fields.slice(index, index + AMEND_FIELD_COUNT);
-        const shortHash = parts[0]?.trim() ?? "";
-        const subject = parts[1] ?? "";
-        const date = parts[2]?.trim() ?? "";
-        if (shortHash) {
-            rows.push({ shortHash, subject, date });
+        const hash = parts[0]?.trim() ?? "";
+        const shortHash = parts[1]?.trim() ?? "";
+        const subject = parts[2] ?? "";
+        const date = parts[3]?.trim() ?? "";
+        if (hash && shortHash) {
+            rows.push({ hash, shortHash, subject, date });
         }
         index += AMEND_FIELD_COUNT;
     }

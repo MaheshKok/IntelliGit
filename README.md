@@ -27,7 +27,7 @@
 <p align="center">
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue.svg" /></a>
   <a href="package.json"><img alt="Package version" src="https://img.shields.io/github/package-json/v/MaheshKok/IntelliGit?label=version&color=2ea043" /></a>
-  <a href="package.json"><img alt="VS Code 1.96+" src="https://img.shields.io/badge/VS%20Code-1.96%2B-007ACC.svg" /></a>
+  <a href="package.json"><img alt="VS Code 1.137+" src="https://img.shields.io/badge/VS%20Code-1.137%2B-007ACC.svg" /></a>
 </p>
 
 <p align="center">
@@ -230,7 +230,7 @@ Search for **IntelliGit** in VS Code Extensions, or install from:
 
 ## Requirements
 
-- VS Code `1.96.0` or later
+- VS Code `1.137.0` or later
 - Git installed and available on `PATH`
 
 ## Settings

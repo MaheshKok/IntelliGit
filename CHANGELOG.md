@@ -5,6 +5,17 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.34.0] - 2026-09-13
+
+### Changed
+
+- IntelliGit now requires VS Code `1.137.0` or later. This is a breaking support-floor change for older VS Code installations.
+- Upgraded React Doctor to 0.9.13 and aligned webview rendering, effects, and list handling with its stricter checks.
+
+### Fixed
+
+- Amend history now keeps full commit identities, so commits with the same abbreviated hash render as distinct rows.
+
 ## [0.33.0] - 2026-09-12
 
 ### Added

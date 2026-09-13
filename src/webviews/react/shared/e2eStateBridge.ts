@@ -115,6 +115,8 @@ export function installE2eStateBridge(api: VsCodeApi<unknown, unknown>): void {
         return;
     }
 
+    // E2E-only requests are gated by `window.intelligitE2E` and the webview nonce-host trust boundary.
+    // react-doctor-disable-next-line react-doctor/postmessage-origin-risk -- The test bridge is intentionally host-scoped instead of inventing an unusable origin filter.
     window.addEventListener("message", (event: MessageEvent<unknown>) => {
         if (!isBridgeRequest(event.data)) {
             return;

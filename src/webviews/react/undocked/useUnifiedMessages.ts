@@ -2,7 +2,7 @@
 // The hook keeps graph, commit-panel, settings, and layout restore messages on the existing single channel.
 // Width hydration logic stays byte-for-byte equivalent to the former App effect.
 
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 import type React from "react";
 import type {
     RepositoryViewIdentity,
@@ -351,9 +351,11 @@ export function useUnifiedMessages(params: UseUnifiedMessagesParams): void {
         onShowRebaseDialog,
     } = params;
     const selectedHashRef = useRef<string | null>(selectedHash);
-    selectedHashRef.current = selectedHash;
     const selectedRepositoryRootRef = useRef<string | null>(selectedRepositoryRoot);
-    selectedRepositoryRootRef.current = selectedRepositoryRoot;
+    useLayoutEffect(() => {
+        selectedHashRef.current = selectedHash;
+        selectedRepositoryRootRef.current = selectedRepositoryRoot;
+    }, [selectedHash, selectedRepositoryRoot]);
 
     useEffect(() => {
         const context: MessageContext = {

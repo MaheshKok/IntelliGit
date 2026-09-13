@@ -92,6 +92,8 @@ export function readStoredMetaColumnWidths(): MetaColumnWidths {
 
 function persistMetaColumnWidths(widths: MetaColumnWidths): void {
     try {
+        // This established key is the compatibility contract for widths saved before schema versioning.
+        // react-doctor-disable-next-line react-doctor/client-localstorage-no-version -- Preserve existing user widths across upgrades by retaining the legacy key.
         localStorage.setItem(META_COLUMN_WIDTHS_STORAGE_KEY, JSON.stringify(widths));
     } catch {
         // Storage unavailable: the widths still apply for this session.

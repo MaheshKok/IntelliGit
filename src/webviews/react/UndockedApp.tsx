@@ -2,7 +2,15 @@
 // Layout: [BranchCol | CommitList | CommitInfoPane] | divider | [CommitPanel].
 // Single message channel handles both graph and commit-panel message types.
 
-import React, { useState, useEffect, useCallback, useMemo, useRef, useReducer } from "react";
+import React, {
+    useState,
+    useEffect,
+    useLayoutEffect,
+    useCallback,
+    useMemo,
+    useRef,
+    useReducer,
+} from "react";
 import { createRoot } from "react-dom/client";
 import { getVsCodeApi } from "./shared/vscodeApi";
 import { useCheckedFiles } from "./commit-panel/hooks/useCheckedFiles";
@@ -206,7 +214,9 @@ function App(): React.ReactElement {
     const showRepository = repositories.length !== 1;
     // Keep the width-restoration callback stable so list changes do not resend ready.
     const showRepositoryRef = useRef(showRepository);
-    showRepositoryRef.current = showRepository;
+    useLayoutEffect(() => {
+        showRepositoryRef.current = showRepository;
+    }, [showRepository]);
     const [selectedRepositoryRoot, setSelectedRepositoryRoot] = useState<string | null>(null);
     const {
         commits,
@@ -237,12 +247,11 @@ function App(): React.ReactElement {
     const currentBranchName = currentBranch?.name ?? null;
     const currentBranchHeadHash = currentBranch?.hash ?? null;
 
-    const initialWidths = useRef<InitialSectionWidths | null>(null);
-    if (!initialWidths.current) initialWidths.current = readInitialWidths();
+    const [initialWidths] = useState<InitialSectionWidths>(readInitialWidths);
 
     // Tracks whether resize should preserve proportions from local state, a host
     // restore, or a divider edit instead of recomputing untouched defaults.
-    const widthsHaveUserPreferencesRef = useRef(initialWidths.current.hasLocalPreferences);
+    const widthsHaveUserPreferencesRef = useRef(initialWidths.hasLocalPreferences);
     const [widthOwnershipRevision, setWidthOwnershipRevision] = useState(0);
 
     // Guards the cross-session width persistence: stays false until either the
@@ -257,15 +266,17 @@ function App(): React.ReactElement {
     }, []);
 
     const [sectionWidths, setSectionWidthsState] = useState<SectionWidths>(
-        () => initialWidths.current!.widths,
+        () => initialWidths.widths,
     );
     const { repositoryWidth, branchWidth, graphWidth, infoWidth, commitPanelWidth } = sectionWidths;
     const layoutRef = useRef<HTMLDivElement | null>(null);
     const [sectionLayout, setSectionLayout] = useState<SectionLayout>(() =>
-        normalizeSectionWidths(initialWidths.current!.widths, undefined, showRepository),
+        normalizeSectionWidths(initialWidths.widths, undefined, showRepository),
     );
     const sectionWidthsRef = useRef(sectionWidths);
-    sectionWidthsRef.current = sectionWidths;
+    useLayoutEffect(() => {
+        sectionWidthsRef.current = sectionWidths;
+    }, [sectionWidths]);
     const setSectionWidths = useCallback((next: SectionWidths) => {
         setSectionWidthsState(next);
         const measuredWidth = layoutRef.current?.clientWidth;

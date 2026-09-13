@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import type {
     PerEntryResult,
     ShelfEntry,
@@ -255,11 +255,7 @@ export interface ShelfTabController {
 export function useShelfTabController(props: ShelfTabProps): ShelfTabController {
     const [state, dispatch] = useReducer(shelfTabReducer, undefined, createInitialShelfTabState);
     const dialogFocusTargetRef = useRef<HTMLElement | null>(null);
-    const shelfDisplayFilesCacheRef = useRef<Map<string, CachedShelfDisplayFiles> | null>(null);
-    if (shelfDisplayFilesCacheRef.current === null) {
-        shelfDisplayFilesCacheRef.current = new Map<string, CachedShelfDisplayFiles>();
-    }
-    const shelfDisplayFilesCache = shelfDisplayFilesCacheRef.current;
+    const [shelfDisplayFilesCache] = useState(() => new Map<string, CachedShelfDisplayFiles>());
     const displayedSelectedShelfId =
         state.selectionOverride?.snapshot === props.shelves
             ? state.selectionOverride.shelfId
@@ -283,8 +279,11 @@ export function useShelfTabController(props: ShelfTabProps): ShelfTabController 
         return next;
     }, [props.shelves, shelfDisplayFilesCache]);
     useEffect(() => {
-        shelfDisplayFilesCacheRef.current = shelfDisplayFilesById;
-    }, [shelfDisplayFilesById]);
+        shelfDisplayFilesCache.clear();
+        for (const [shelfId, cached] of shelfDisplayFilesById) {
+            shelfDisplayFilesCache.set(shelfId, cached);
+        }
+    }, [shelfDisplayFilesById, shelfDisplayFilesCache]);
     const selectedShelf = useMemo(
         () => props.shelves.find((shelf) => shelf.id === displayedSelectedShelfId) ?? null,
         [displayedSelectedShelfId, props.shelves],

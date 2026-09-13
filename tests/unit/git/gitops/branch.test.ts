@@ -150,7 +150,10 @@ describe("GitOps", () => {
     });
     describe("getAmendBranchCommits", () => {
         const FS = "\0";
-        const rec = (h: string, s: string, d: string): string => `${h}${FS}${s}${FS}${d}${FS}`;
+        const fullHash = (shortHash: string): string =>
+            shortHash.padEnd(40, shortHash.at(-1) ?? "0");
+        const rec = (shortHash: string, subject: string, date: string): string =>
+            `${fullHash(shortHash)}${FS}${shortHash}${FS}${subject}${FS}${date}${FS}`;
 
         it("returns commits from merge-base..HEAD when upstream resolves", async () => {
             const executor = {
@@ -172,6 +175,50 @@ describe("GitOps", () => {
             expect(rows).toHaveLength(2);
             expect(rows[0]).toMatchObject({ shortHash: "a111111", subject: "msg one" });
             expect(rows[1]).toMatchObject({ shortHash: "b222222", subject: "msg two" });
+        });
+
+        it("retains full hashes when abbreviated amend hashes collide", async () => {
+            const firstHash = "deadbee000000000000000000000000000000001";
+            const secondHash = "deadbee000000000000000000000000000000002";
+            const executor = {
+                run: vi.fn(async (args: string[]) => {
+                    const key = args.join(" ");
+                    if (key === "rev-parse --abbrev-ref @{upstream}")
+                        throw new Error("no upstream");
+                    if (key.startsWith("log HEAD")) {
+                        return [
+                            firstHash,
+                            "deadbee",
+                            "first",
+                            "2024-01-01T00:00:00Z",
+                            secondHash,
+                            "deadbee",
+                            "second",
+                            "2024-01-02T00:00:00Z",
+                            "",
+                        ].join(FS);
+                    }
+                    return "";
+                }),
+            } as unknown as GitExecutor;
+            const ops = new GitOps(executor);
+
+            const rows = await ops.getAmendBranchCommits(5);
+
+            expect(rows).toEqual([
+                {
+                    hash: firstHash,
+                    shortHash: "deadbee",
+                    subject: "first",
+                    date: "2024-01-01T00:00:00Z",
+                },
+                {
+                    hash: secondHash,
+                    shortHash: "deadbee",
+                    subject: "second",
+                    date: "2024-01-02T00:00:00Z",
+                },
+            ]);
         });
 
         it("parses amend summary records separated by git log -z record NULs", async () => {
@@ -209,7 +256,12 @@ describe("GitOps", () => {
             const ops = new GitOps(executor);
             const rows = await ops.getAmendBranchCommits(5);
             expect(rows).toEqual([
-                { shortHash: "z999999", subject: "root", date: "2024-03-01T00:00:00Z" },
+                {
+                    hash: fullHash("z999999"),
+                    shortHash: "z999999",
+                    subject: "root",
+                    date: "2024-03-01T00:00:00Z",
+                },
             ]);
         });
 
@@ -266,7 +318,12 @@ describe("GitOps", () => {
             const ops = new GitOps(executor);
             const rows = await ops.getAmendBranchCommits(5);
             expect(rows).toEqual([
-                { shortHash: "abc1234", subject: "", date: "2024-06-01T12:00:00Z" },
+                {
+                    hash: fullHash("abc1234"),
+                    shortHash: "abc1234",
+                    subject: "",
+                    date: "2024-06-01T12:00:00Z",
+                },
             ]);
         });
     });

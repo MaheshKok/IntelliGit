@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useLayoutEffect, useRef, useState } from "react";
 import type { RebaseTodoEntry } from "../../../protocol/commitGraphTypes";
 
 type RebaseDialogInbound = { type: "showRebaseDialog"; requestId: string };
@@ -23,7 +23,9 @@ export function useRebaseDialogController<TDialog extends RebaseDialogInbound>(
     const [rebaseDialog, setRebaseDialog] = useState<TDialog | null>(null);
     const rebaseDialogRef = useRef<TDialog | null>(null);
     const postMessageRef = useRef(postMessage);
-    postMessageRef.current = postMessage;
+    useLayoutEffect(() => {
+        postMessageRef.current = postMessage;
+    }, [postMessage]);
     const handleShowRebaseDialog = useCallback((dialog: TDialog): void => {
         const previous = rebaseDialogRef.current;
         if (previous)

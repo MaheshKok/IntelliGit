@@ -8,7 +8,13 @@ import { t } from "../shared/i18n";
 import { useFileHistory } from "./useFileHistory";
 import "./file-history.css";
 
+/** Checks Git's normally one- or two-item parent list without allocating a Set per row. */
+function hasParent(parents: readonly string[], hash: string): boolean {
+    return parents.includes(hash);
+}
+
 /** Renders a compact selectable revision list beside the existing shared diff viewer. */
+// react-doctor-disable-next-line react-doctor/no-giant-component -- Selection anchors, focus restoration, menu state, resizing, and host protocol state share one render boundary.
 export function App(): React.ReactElement {
     const history = useFileHistory();
     const [search, setSearch] = useState("");
@@ -60,6 +66,7 @@ export function App(): React.ReactElement {
     const entries = state.entries.filter((entry) =>
         `${entry.subject} ${entry.authorName} ${entry.hash}`.toLocaleLowerCase().includes(query),
     );
+    const selectedHashes = new Set(selected);
     const active = state.entries.find((entry) => entry.hash === selected[0]);
 
     /** Applies range or toggle selection in displayed history order, without inventing ancestry. */
@@ -80,7 +87,10 @@ export function App(): React.ReactElement {
             const toggled = new Set(selected);
             if (toggled.has(entry.hash)) toggled.delete(entry.hash);
             else toggled.add(entry.hash);
-            hashes = entries.filter((item) => toggled.has(item.hash)).map((item) => item.hash);
+            hashes = [];
+            for (const item of entries) {
+                if (toggled.has(item.hash)) hashes.push(item.hash);
+            }
             anchor.current = entry.hash;
         } else anchor.current = entry.hash;
         history.select(hashes);
@@ -95,7 +105,7 @@ export function App(): React.ReactElement {
         );
         const focused = options.findIndex((option) => option === document.activeElement);
         const current =
-            focused >= 0 ? focused : entries.findIndex((entry) => selected.includes(entry.hash));
+            focused >= 0 ? focused : entries.findIndex((entry) => selectedHashes.has(entry.hash));
         const index =
             event.key === "Home"
                 ? 0
@@ -130,7 +140,7 @@ export function App(): React.ReactElement {
 
     /** A row context menu targets that row unless it belongs to the existing range. */
     const openRowMenu = (index: number, trigger: HTMLElement, x: number, y: number) => {
-        if (!selected.includes(entries[index].hash))
+        if (!selectedHashes.has(entries[index].hash))
             selectRow(index, { shiftKey: false, ctrlKey: false, metaKey: false });
         setMenu({ x, y, trigger });
     };
@@ -270,7 +280,7 @@ export function App(): React.ReactElement {
                                 <div
                                     key={entry.hash}
                                     role="option"
-                                    aria-selected={selected.includes(entry.hash)}
+                                    aria-selected={selectedHashes.has(entry.hash)}
                                     tabIndex={
                                         selected[0] === entry.hash ||
                                         (!selected.length && index === 0)
@@ -328,11 +338,11 @@ export function App(): React.ReactElement {
                                     >
                                         {/* Only verified adjacent raw-parent relationships share a graph line. */}
                                         {index > 0 &&
-                                        entries[index - 1].parents.includes(entry.hash) ? (
+                                        hasParent(entries[index - 1].parents, entry.hash) ? (
                                             <line x1="10" y1="0" x2="10" y2="12" />
                                         ) : null}
                                         {entries[index + 1] &&
-                                        entry.parents.includes(entries[index + 1].hash) ? (
+                                        hasParent(entry.parents, entries[index + 1].hash) ? (
                                             <line x1="10" y1="12" x2="10" y2="24" />
                                         ) : null}
                                         <circle cx="10" cy="12" r="3.5" />
@@ -390,6 +400,10 @@ export function App(): React.ReactElement {
                     onPointerUp={(event) =>
                         event.currentTarget.releasePointerCapture(event.pointerId)
                     }
+                    onPointerCancel={(event) => {
+                        if (event.currentTarget.hasPointerCapture(event.pointerId))
+                            event.currentTarget.releasePointerCapture(event.pointerId);
+                    }}
                     onKeyDown={(event) => {
                         if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
                             event.preventDefault();

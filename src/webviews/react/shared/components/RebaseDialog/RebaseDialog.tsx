@@ -1,4 +1,4 @@
-import React, { memo, useCallback, useRef, useState } from "react";
+import React, { memo, useCallback, useLayoutEffect, useRef, useState } from "react";
 import { Box, Button, Flex } from "@chakra-ui/react";
 import type {
     InteractiveRebaseRangeCommit,
@@ -53,9 +53,9 @@ export function RebaseDialog({
     const entriesRef = useRef(entries);
     const commitsRef = useRef(commits);
     const editedMessageHashesRef = useRef<ReadonlySet<string>>(EMPTY_EDITED_MESSAGE_HASHES);
+    const lastSyncedCommitKeyRef = useRef(commitKey);
     const draggedHashRef = useRef<string>();
 
-    commitsRef.current = commits;
     // A changed offered range reseeds during render rather than from an effect. An effect runs
     // after the commit, so the dialog would first paint one frame of the previous range's entries
     // against the new commit map — rows the user is no longer being offered, and a stale notice —
@@ -65,11 +65,18 @@ export function RebaseDialog({
     if (lastCommitKey !== commitKey) {
         const nextEntries = createRebaseEntries(commits);
         setLastCommitKey(commitKey);
-        editedMessageHashesRef.current = new Set();
-        entriesRef.current = nextEntries;
         setEntries(nextEntries);
         setNotice(false);
     }
+
+    useLayoutEffect(() => {
+        commitsRef.current = commits;
+        entriesRef.current = entries;
+        if (lastSyncedCommitKeyRef.current !== commitKey) {
+            editedMessageHashesRef.current = new Set();
+            lastSyncedCommitKeyRef.current = commitKey;
+        }
+    }, [commitKey, commits, entries]);
 
     const commitsByHash = new Map(commits.map((commit) => [commit.hash, commit]));
     const firstActiveHash = entries.find((entry) => entry.action !== "drop")?.hash;

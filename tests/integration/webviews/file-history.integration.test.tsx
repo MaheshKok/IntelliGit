@@ -245,6 +245,27 @@ describe("standalone file history message and shared viewer contract", () => {
         message({ type: "historyState", state: { ...state, ref: "main" } });
         expect(selection().hashes).toEqual([state.entries[0].hash]);
     });
+    it("releases divider pointer capture when resizing is cancelled", () => {
+        message({ type: "historyState", state });
+        const divider = document.querySelector<HTMLElement>('[role="separator"]')!;
+        const setPointerCapture = vi.fn();
+        const releasePointerCapture = vi.fn();
+        Object.assign(divider, {
+            hasPointerCapture: vi.fn(() => true),
+            setPointerCapture,
+            releasePointerCapture,
+        });
+        const pointerDown = new Event("pointerdown", { bubbles: true });
+        Object.defineProperty(pointerDown, "pointerId", { value: 7 });
+        const pointerCancel = new Event("pointercancel", { bubbles: true });
+        Object.defineProperty(pointerCancel, "pointerId", { value: 7 });
+
+        act(() => divider.dispatchEvent(pointerDown));
+        act(() => divider.dispatchEvent(pointerCancel));
+
+        expect(setPointerCapture).toHaveBeenCalledWith(7);
+        expect(releasePointerCapture).toHaveBeenCalledWith(7);
+    });
     it("extends keyboard selection, resizes with arrow keys, and preserves selection on more history", () => {
         message({ type: "historyState", state });
         row(0);

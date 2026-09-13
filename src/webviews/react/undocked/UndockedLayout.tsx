@@ -126,7 +126,7 @@ export interface UndockedLayoutProps {
  *
  * @param props - All state, callbacks, and refs previously read by App's return tree.
  */
-// react-doctor-disable-next-line react-doctor/no-giant-component
+// react-doctor-disable-next-line react-doctor/no-giant-component, react-doctor/no-high-complexity-react-function -- The undocked layout intentionally orchestrates all split-pane props and handlers at one render boundary.
 export function UndockedLayout(props: UndockedLayoutProps): React.ReactElement {
     const {
         iconFonts,

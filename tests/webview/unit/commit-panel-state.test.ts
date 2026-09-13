@@ -17,7 +17,12 @@ describe("commitPanelReducer", () => {
                 commitMessage: "fix: retain draft",
                 isAmend: true,
                 amendBranchCommits: [
-                    { shortHash: "deadbee", subject: "feat: amend", date: "2026-07-23T00:00:00Z" },
+                    {
+                        hash: "deadbee".padEnd(40, "0"),
+                        shortHash: "deadbee",
+                        subject: "feat: amend",
+                        date: "2026-07-23T00:00:00Z",
+                    },
                 ],
                 amendBranchHistoryLoaded: true,
             };

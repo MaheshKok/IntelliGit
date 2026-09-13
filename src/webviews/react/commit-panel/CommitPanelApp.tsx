@@ -30,6 +30,10 @@ function App(): React.ReactElement {
         () => state.repositories.flatMap((repository) => repository.iconFonts),
         [state.repositories],
     );
+    const expandedRepositoryRoots = useMemo(
+        () => new Set(state.expandedRepositoryRoots),
+        [state.expandedRepositoryRoots],
+    );
 
     useEffect(() => {
         const prev = vscode.getState?.() ?? {};
@@ -38,13 +42,13 @@ function App(): React.ReactElement {
 
     const handleToggleExpanded = useCallback(
         (root: string) => {
-            const nextRoots = state.expandedRepositoryRoots.includes(root)
+            const nextRoots = expandedRepositoryRoots.has(root)
                 ? state.expandedRepositoryRoots.filter((repositoryRoot) => repositoryRoot !== root)
                 : [...state.expandedRepositoryRoots, root];
             dispatch({ type: "SET_EXPANDED_REPOSITORIES", repositoryRoots: nextRoots });
             vscode.postMessage({ type: "setExpandedRepositories", repositoryRoots: nextRoots });
         },
-        [dispatch, state.expandedRepositoryRoots, vscode],
+        [dispatch, expandedRepositoryRoots, state.expandedRepositoryRoots, vscode],
     );
 
     return (
@@ -68,7 +72,7 @@ function App(): React.ReactElement {
                     <RepositoryAccordion
                         key={repository.root}
                         repository={repository}
-                        isExpanded={state.expandedRepositoryRoots.includes(repository.root)}
+                        isExpanded={expandedRepositoryRoots.has(repository.root)}
                         isOnlyRepository={state.repositories.length === 1}
                         groupByDir={groupByDir}
                         onToggleExpanded={handleToggleExpanded}

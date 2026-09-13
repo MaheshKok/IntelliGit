@@ -211,6 +211,8 @@ export interface WorkingFile {
 
 /** One line of history shown when amending a commit (JetBrains-style context). */
 export interface AmendBranchCommitSummary {
+    /** Stable commit identity used for list reconciliation; never display in place of `shortHash`. */
+    hash: string;
     shortHash: string;
     subject: string;
     date: string;
