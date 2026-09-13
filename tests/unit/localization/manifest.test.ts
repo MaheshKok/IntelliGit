@@ -123,6 +123,21 @@ describe("extension manifest", () => {
         }
     });
 
+    it("contributes Add to VCS only for unversioned rows in both commit-panel webviews", () => {
+        const manifest = JSON.parse(
+            readFileSync(path.join(process.cwd(), "package.json"), "utf8"),
+        ) as ExtensionManifest;
+        const commands = manifest.contributes?.commands ?? [];
+        const contextMenu = manifest.contributes?.menus?.["webview/context"] ?? [];
+        const item = contextMenu.find((entry) => entry.command === "intelligit.fileAddToVcs");
+
+        expect(commands.some((entry) => entry.command === "intelligit.fileAddToVcs")).toBe(true);
+        expect(item?.when).toContain("webviewId == 'intelligit.commitPanel'");
+        expect(item?.when).toContain("webviewId == 'intelligit.undocked'");
+        expect(item?.when).toContain("webviewSection == 'file'");
+        expect(item?.when).toContain("webviewUnversionedFile == true");
+    });
+
     it("contributes graph git actions to the native sidebar view title", () => {
         const manifest = JSON.parse(
             readFileSync(path.join(process.cwd(), "package.json"), "utf8"),

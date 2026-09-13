@@ -117,6 +117,7 @@ const makeDeps = (gitOps: GitOps) => {
         clearSelection: vi.fn(),
         refreshActiveRepository: vi.fn(),
         refreshService: vi.fn(() => ({})),
+        isKnownRepositoryRoot: (repositoryRoot: string) => repositoryRoot === "/repo",
         showUndockedGitLog: vi.fn(),
         pickUndockTargetAndOpen: vi.fn(),
         dockIntelliGit: vi.fn(),
@@ -279,6 +280,69 @@ describe("registerRepositoryCommands", () => {
 
         expect(deps.openMergeConflictForFile).toHaveBeenCalledWith("src/conflicted.ts");
         expect(deps.openVsCodeMergeEditorForFile).toHaveBeenCalledWith("src/conflicted.ts");
+    });
+
+    describe("intelligit.fileAddToVcs", () => {
+        const command = (): ((context: unknown) => Promise<void>) => {
+            const handler = mocks.commands.get("intelligit.fileAddToVcs");
+            expect(handler).toBeTypeOf("function");
+            return handler as (context: unknown) => Promise<void>;
+        };
+
+        it("tracks current unversioned files with GitOps derived for the exact known non-active root", async () => {
+            const activeGitOps = makeGitOps();
+            const selectedGitOps = makeGitOps();
+            selectedGitOps.getStatus = vi.fn(async () => [
+                { path: "first.ts", status: "?" },
+                { path: "second.ts", status: "?" },
+            ]);
+            selectedGitOps.intentToAddFiles = vi.fn(async () => undefined);
+            activeGitOps.deriveFor = vi.fn(() => selectedGitOps);
+            const refreshCommitPanels = vi.fn(async () => undefined);
+            const deps = makeDeps(activeGitOps);
+            deps.refreshService = vi.fn(
+                () => ({ refreshCommitPanels }) as ReturnType<typeof deps.refreshService>,
+            );
+            (
+                deps as typeof deps & { isKnownRepositoryRoot: (repositoryRoot: string) => boolean }
+            ).isKnownRepositoryRoot = (repositoryRoot) => repositoryRoot === "/repo/selected";
+            registerRepositoryCommands(deps);
+
+            await command()({
+                repositoryRoot: "/repo/selected",
+                filePaths: ["first.ts", "second.ts"],
+            });
+
+            expect(activeGitOps.deriveFor).toHaveBeenCalledWith("/repo/selected");
+            expect(activeGitOps.getStatus).not.toHaveBeenCalled();
+            expect(selectedGitOps.getStatus).toHaveBeenCalledTimes(1);
+            expect(selectedGitOps.intentToAddFiles).toHaveBeenCalledWith(["first.ts", "second.ts"]);
+            expect(refreshCommitPanels).toHaveBeenCalledTimes(1);
+        });
+
+        it.each([
+            { repositoryRoot: "/repo/unknown", filePaths: ["new.ts"] },
+            { repositoryRoot: "/repo/selected", filePaths: ["../escape.ts"] },
+            { repositoryRoot: "/repo/selected", filePaths: "new.ts" },
+        ])("fails closed without Git or refresh side effects for %o", async (context) => {
+            const gitOps = makeGitOps();
+            gitOps.deriveFor = vi.fn();
+            const refreshCommitPanels = vi.fn(async () => undefined);
+            const deps = makeDeps(gitOps);
+            deps.refreshService = vi.fn(
+                () => ({ refreshCommitPanels }) as ReturnType<typeof deps.refreshService>,
+            );
+            (
+                deps as typeof deps & { isKnownRepositoryRoot: (repositoryRoot: string) => boolean }
+            ).isKnownRepositoryRoot = (repositoryRoot) => repositoryRoot === "/repo/selected";
+            registerRepositoryCommands(deps);
+
+            await command()(context);
+
+            expect(gitOps.deriveFor).not.toHaveBeenCalled();
+            expect(gitOps.getStatus).not.toHaveBeenCalled();
+            expect(refreshCommitPanels).not.toHaveBeenCalled();
+        });
     });
 
     describe("intelligit.openRepository", () => {

@@ -1829,6 +1829,70 @@ describe("webview ui smoke", () => {
         );
     });
 
+    it("serializes Add to VCS context from command selection, never commit checkboxes", () => {
+        const props = {
+            files: [
+                { path: "first.ts", status: "?", staged: false, additions: 0, deletions: 0 },
+                { path: "second.ts", status: "?", staged: false, additions: 0, deletions: 0 },
+                { path: "checked-only.ts", status: "?", staged: false, additions: 0, deletions: 0 },
+                { path: "tracked.ts", status: "M", staged: false, additions: 0, deletions: 0 },
+                { path: "ignored.ts", status: "!", staged: false, additions: 0, deletions: 0 },
+            ],
+            groupByDir: false,
+            showIgnoredFiles: true,
+            checkedPaths: new Set(["checked-only.ts"]),
+            onToggleFile: vi.fn(),
+            onToggleFolder: vi.fn(),
+            onToggleSection: vi.fn(),
+            isAllChecked: () => false,
+            isSomeChecked: () => false,
+            onFileClick: vi.fn(),
+            onTrackUnversionedFiles: vi.fn(),
+            expandAllSignal: 0,
+            collapseAllSignal: 0,
+            repositoryRoot: "/repo/selected",
+        } as unknown as React.ComponentProps<typeof FileTree>;
+        const mounted = mount(
+            <ChakraProvider theme={theme}>
+                <FileTree {...props} />
+            </ChakraProvider>,
+        );
+        const rowFor = (path: string): HTMLElement => fileRowsFor(mounted.container, path)[0]!;
+        const contextFor = (path: string): Record<string, unknown> =>
+            JSON.parse(rowFor(path).dataset.vscodeContext ?? "{}") as Record<string, unknown>;
+
+        act(() => {
+            rowFor("first.ts").dispatchEvent(
+                new MouseEvent("click", { bubbles: true, cancelable: true, metaKey: true }),
+            );
+            rowFor("second.ts").dispatchEvent(
+                new MouseEvent("click", { bubbles: true, cancelable: true, metaKey: true }),
+            );
+        });
+
+        expect(contextFor("first.ts")).toMatchObject({
+            repositoryRoot: "/repo/selected",
+            filePaths: ["first.ts", "second.ts"],
+            webviewSection: "file",
+            webviewUnversionedFile: true,
+        });
+        expect(contextFor("tracked.ts").webviewUnversionedFile).toBe(false);
+        expect(contextFor("ignored.ts").webviewUnversionedFile).toBe(false);
+
+        act(() => {
+            rowFor("checked-only.ts").dispatchEvent(
+                new MouseEvent("contextmenu", { bubbles: true, cancelable: true }),
+            );
+        });
+
+        expect(contextFor("checked-only.ts")).toMatchObject({
+            repositoryRoot: "/repo/selected",
+            filePaths: ["checked-only.ts"],
+            webviewUnversionedFile: true,
+        });
+        unmount(mounted.root, mounted.container);
+    });
+
     it("shows parent paths after prioritized file names in flat file rows", () => {
         const noop = vi.fn();
         const fullPath =
