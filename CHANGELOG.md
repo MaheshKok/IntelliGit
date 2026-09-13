@@ -5,6 +5,24 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.33.0] - 2026-09-12
+
+### Added
+
+- Right-click a file and choose **IntelliGit → Show File History** to open its Git history in a separate window. Select a commit to see its changes in the same diff viewer used elsewhere in IntelliGit.
+- File history uses the same commit rows as the graph, including branch and tag colors.
+- Diff views now show the total number of differences at the top right. The three-pane merge editor shows how many conflicts remain and a check mark when all are resolved.
+
+### Changed
+
+- The merge editor has a cleaner toolbar and footer, with extra information under **Show Details** and file choices grouped beside **Cancel** and **Apply**.
+- Whitespace options now use a dropdown. Keyboard shortcuts leave the dropdown alone while you use it.
+- The difference count uses smaller text and the same font as the other toolbar controls.
+
+### Fixed
+
+- Fixed extension packaging by leaving out the development plan and sharing syntax-highlighting code between viewers. The package stays within the existing size limit.
+
 ## [0.32.9] - 2026-09-12
 
 ### Fixed

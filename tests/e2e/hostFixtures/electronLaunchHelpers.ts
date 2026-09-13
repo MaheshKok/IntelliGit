@@ -120,6 +120,8 @@ export async function seedProfileSettings(
         // build: with the default, `.monaco-dialog-box` count is 0 after clicking Rollback; with
         // "custom" it is 1, reading "Rollback all changes?" with buttons ["Cancel", "Rollback"].
         "window.dialogStyle": "custom",
+        // Seed before Electron starts so context menus are visible to Playwright.
+        "window.menuStyle": "custom",
     };
     if (colorThemeSetting !== undefined) {
         settings["workbench.colorTheme"] = colorThemeSetting;

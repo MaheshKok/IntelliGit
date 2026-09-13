@@ -378,5 +378,11 @@
         "one": "{count} outgoing commit",
         "other": "{count} outgoing commits"
     },
-    "branch.tracking.combined": "{incoming} and {outgoing}"
+    "branch.tracking.combined": "{incoming} and {outgoing}",
+    "diff.toolbar.differenceCount": {
+        "one": "{count} difference",
+        "other": "{count} differences"
+    },
+    "merge.status.noChanges": "No changes",
+    "merge.status.allConflictsResolved": "All conflicts resolved"
 }

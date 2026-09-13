@@ -396,5 +396,13 @@
     "shelf.list.empty.hint": "Odłóż zmiany na półkę aby odsunąć je bez zatwierdzania.",
     "commitPanel.noChanges.hint": "Edytuj plik w obszarze roboczym i pojawi się tutaj.",
     "stash.empty.hint": "Schowanie zapisuje niezatwierdzoną pracę i pozwala bezpiecznie przełączyć gałąź.",
-    "commit.message.label": "Komunikat commita"
+    "commit.message.label": "Komunikat commita",
+    "diff.toolbar.differenceCount": {
+        "one": "{count} różnica",
+        "few": "{count} różnice",
+        "many": "{count} różnic",
+        "other": "{count} różnicy"
+    },
+    "merge.status.noChanges": "Bez zmian",
+    "merge.status.allConflictsResolved": "Wszystkie konflikty rozwiązane"
 }

@@ -112,6 +112,15 @@ export function createCommitInfoVscodeDouble(): typeof vscode {
             joinPath: fakeUriJoinPath,
         } as unknown as typeof vscode.Uri,
         env: { language: "en" } as typeof vscode.env,
+        extensions: { all: [] } as unknown as typeof vscode.extensions,
+        commands: {
+            async executeCommand(command: string) {
+                if (command !== "workbench.action.moveEditorToNewWindow") {
+                    throw new Error(`Unexpected recorder command: ${command}`);
+                }
+                return undefined;
+            },
+        } as unknown as typeof vscode.commands,
         l10n: { t: (message: string) => message } as typeof vscode.l10n,
         // `ViewColumn.Active` matches real VS Code's own enum value -- see this module's own doc
         // comment on why Phase 2c-v-a added this and `window.createWebviewPanel` together.
@@ -119,11 +128,14 @@ export function createCommitInfoVscodeDouble(): typeof vscode {
         window: {
             onDidChangeActiveColorTheme: activeColorThemeChanges.event,
             createWebviewPanel: (
+                _viewType: string,
+                title: string,
                 ..._args: unknown[]
-            ): ReturnType<typeof vscode.window.createWebviewPanel> =>
-                createFakeWebviewPanel() as unknown as ReturnType<
-                    typeof vscode.window.createWebviewPanel
-                >,
+            ): ReturnType<typeof vscode.window.createWebviewPanel> => {
+                const panel = createFakeWebviewPanel();
+                panel.title = title;
+                return panel as unknown as ReturnType<typeof vscode.window.createWebviewPanel>;
+            },
             // `MergeEditorPanel.ts:88-105` must not turn an error into a captured `loadError`:
             // throwing here preserves the underlying failure and names the production message.
             showErrorMessage: (message: string): never => {

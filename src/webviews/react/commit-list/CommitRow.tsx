@@ -209,9 +209,9 @@ function TooltipRefRow({
     );
 }
 
-// Single-use commit message cell kept beside commit-row tooltip and badge behavior.
+/** Shares graph message/ref presentation with history; tag refs use the `tag:` prefix. */
 // react-doctor-disable-next-line react-doctor/no-multi-comp
-function CommitMessageCell({
+export function CommitMessageCell({
     message,
     refs,
 }: {

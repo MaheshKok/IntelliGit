@@ -2,7 +2,7 @@
     "name": "intelligit",
     "displayName": "IntelliGit",
     "description": "%extension.description%",
-    "version": "0.32.9",
+    "version": "0.33.0",
     "publisher": "MaheshKok",
     "icon": "media/intelligit-icon.png",
     "license": "MIT",
@@ -455,6 +455,12 @@
                 "icon": "$(git-commit)"
             },
             {
+                "command": "intelligit.showFileHistory",
+                "title": "%command.showFileHistory%",
+                "category": "%intelligit%",
+                "icon": "$(history)"
+            },
+            {
                 "command": "intelligit.compareWithBranch",
                 "title": "%command.compareWithBranch%",
                 "category": "%intelligit%",
@@ -624,6 +630,11 @@
         ],
         "submenus": [
             {
+                "id": "intelligit.fileContext",
+                "label": "%intelligit%",
+                "icon": "$(git-branch)"
+            },
+            {
                 "id": "intelligit.editorContext",
                 "label": "%intelligit%",
                 "icon": "$(git-branch)"
@@ -715,7 +726,33 @@
                     "group": "navigation@9"
                 }
             ],
+            "editor/title/context": [
+                {
+                    "submenu": "intelligit.fileContext",
+                    "when": "resourceScheme == file",
+                    "group": "2_history@1"
+                }
+            ],
+            "explorer/context": [
+                {
+                    "submenu": "intelligit.fileContext",
+                    "when": "resourceScheme == file && !explorerResourceIsFolder",
+                    "group": "2_history@1"
+                }
+            ],
+            "intelligit.fileContext": [
+                {
+                    "command": "intelligit.showFileHistory",
+                    "when": "resourceScheme == file",
+                    "group": "2_history@1"
+                }
+            ],
             "intelligit.editorContext": [
+                {
+                    "command": "intelligit.showFileHistory",
+                    "when": "resourceScheme == file",
+                    "group": "2_history@1"
+                },
                 {
                     "command": "intelligit.compareWithRevision",
                     "when": "resourceScheme == file",
@@ -899,6 +936,12 @@
                 "command": "intelligit.showGitLog",
                 "key": "alt+9",
                 "mac": "alt+9"
+            },
+            {
+                "command": "intelligit.showFileHistory",
+                "key": "ctrl+k ctrl+h",
+                "mac": "cmd+k cmd+h",
+                "when": "editorTextFocus && resourceScheme == file"
             }
         ],
         "configuration": {

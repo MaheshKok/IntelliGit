@@ -9,6 +9,7 @@
 // the previous entry, so a request would be answered by whichever instance registered last.
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { JSDOM } from "jsdom";
 
 const ACTIVATION_STATE_MODULE = "../../../src/e2e/activationState";
 const WEBVIEW_HTML_MODULE = "../../../src/views/webviewHtml";
@@ -75,6 +76,40 @@ describe("buildWebviewShellHtml E2E bootstrap", () => {
 
         expect(html).not.toContain("intelligitE2E");
         expect(register).not.toHaveBeenCalled();
+    });
+
+    it.each(["webview-filehistory.js", "webview-diffviewer.js", "webview-mergeeditor.js"])(
+        "loads the shared highlighter synchronously before %s under the existing nonce",
+        async (scriptFile) => {
+            mockVsCode();
+            mockActivationState(false);
+            const html = await buildHtml({ scriptFile });
+            const scripts = Array.from(JSDOM.fragment(html).querySelectorAll("script"));
+            expect(scripts.map((script) => script.getAttribute("src"))).toEqual([
+                null,
+                "webview:///dist/webview-shiki.js",
+                `webview:///dist/${scriptFile}`,
+            ]);
+            const nonce = scripts[0].getAttribute("nonce");
+            expect(nonce).toBeTruthy();
+            for (const script of scripts) {
+                expect(script.getAttribute("nonce")).toBe(nonce);
+                for (const attribute of ["async", "defer", "type"]) {
+                    expect(script.hasAttribute(attribute)).toBe(false);
+                }
+            }
+            expect(html).toContain(`script-src 'nonce-${nonce}'`);
+            expect(html).not.toMatch(/unsafe-eval|wasm-unsafe-eval/);
+        },
+    );
+
+    it("keeps unrelated webviews on their single application script", async () => {
+        mockVsCode();
+        mockActivationState(false);
+        const html = await buildHtml();
+        expect([...html.matchAll(/src="([^"]+)"/g)].map((match) => match[1])).toEqual([
+            "webview:///dist/webview-commitpanel.js",
+        ]);
     });
 
     it("injects the runtime flag and registers the view when the channel is active", async () => {

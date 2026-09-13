@@ -22,6 +22,7 @@ coverage/**
 playwright*.config.ts
 test-results/**
 playwright-report/**
+out/**
 .vscode-test/**
 
 # Development configuration
@@ -38,6 +39,7 @@ AGENTS.md
 
 # Planning and build-protocol artifacts (PLAN.md, PLAN-REVIEW-LOG.md, gate manifest)
 PLAN*.md
+plan.md
 .claudex-gates.json
 
 # Build-provenance manifest: consumed by the test harness's provenance gate
