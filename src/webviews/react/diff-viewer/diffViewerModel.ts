@@ -198,13 +198,19 @@ export function useDiffViewerModel(
         [segments, layout, viewportHeight],
     );
 
-    // The scroll range is `canonicalTotalPx` and the stripe is measured against the same
-    // number, so a mark's segment top is already the scrollTop that puts it at the fold.
+    // Retain navigation identity while centered (or clamped at the start). Manual scrolling
+    // and new layouts resume position-based navigation instead of using a stale selection.
+    const lastJump = useRef<{ index: number; scrollTop: number; layout: typeof layout } | null>(
+        null,
+    );
     const jumpToSegment = useCallback(
         (index: number) => {
             const content = contentRef.current;
             if (!content) return;
-            content.scrollTop = layout.canonicalTopPx[index] ?? 0;
+            const top = layout.canonicalTopPx[index] ?? 0;
+            const height = layout.canonicalHPx[index] ?? 0;
+            content.scrollTop = Math.max(0, top + height / 2 - content.clientHeight / 2);
+            lastJump.current = { index, scrollTop: content.scrollTop, layout };
         },
         [contentRef, layout],
     );
@@ -222,7 +228,13 @@ export function useDiffViewerModel(
         (direction: 1 | -1): boolean => {
             const content = contentRef.current;
             if (!content) return false;
-            const index = adjacentChangeIndex(stripeMarks, layout, content.scrollTop, direction);
+            const previous = lastJump.current;
+            const index =
+                previous?.layout === layout && Math.abs(previous.scrollTop - content.scrollTop) <= 1
+                    ? stripeMarks[
+                          stripeMarks.findIndex((mark) => mark.index === previous.index) + direction
+                      ]?.index
+                    : adjacentChangeIndex(stripeMarks, layout, content.scrollTop, direction);
             if (index === undefined) return false;
             jumpToSegment(index);
             return true;

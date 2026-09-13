@@ -2940,6 +2940,27 @@ describe("DiffViewerApp scroll viewport and ribbons", () => {
         },
     );
 
+    it("resumes navigation after manual scrolling and resets it for another document", async () => {
+        const { content } = await mountScrollFixture();
+        const move = trackedScrollTo(content);
+        clickToolbar("diff-next-change");
+        move(300);
+        clickToolbar("diff-prev-change");
+        expect(
+            content.scrollTop,
+            "manual scrolling should discard the previous navigation anchor",
+        ).toBe(170);
+        clickToolbar("diff-prev-change");
+        expect(content.scrollTop).toBe(0);
+        dispatchHostMessage({
+            type: "setDiffData",
+            data: { ...scrollFixture, path: "src/new.ts" },
+        });
+        await flush();
+        clickToolbar("diff-next-change");
+        expect(content.scrollTop, "a new document must start with its first change").toBe(0);
+    });
+
     it("disables both arrows on a file with no changes to walk", async () => {
         installVsCodeMock();
         createRootHost();
