@@ -182,6 +182,7 @@ export function CommitChecksButton({
 }
 
 /** Renders the checks callout beside its trigger with a border-integrated notch. */
+// react-doctor-disable-next-line react-doctor/no-high-complexity-react-function -- The portal panel intentionally co-locates positioning, refresh, and check-row orchestration.
 function CommitChecksPanel({
     panelRef,
     hash,
@@ -287,7 +288,12 @@ function CommitChecksPanel({
                         snapshot.items.map((item, index) => {
                             const itemUrl = item.url;
                             return (
-                                <div key={`${item.source}:${item.name}:${index}`} style={rowStyle}>
+                                <div
+                                    // Provider payloads expose no stable item ID and may contain identical rows.
+                                    // react-doctor-disable-next-line react-doctor/no-array-index-as-key -- Position is the only collision-safe discriminator for duplicate provider results.
+                                    key={`${item.source}:${item.name}:${index}`}
+                                    style={rowStyle}
+                                >
                                     <StateIcon state={item.state} />
                                     <div style={rowTextStyle}>
                                         {itemUrl ? (

@@ -1,6 +1,6 @@
 // Modal controls for applying a stash to its current branch or a new branch.
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Button, Checkbox, Flex } from "@chakra-ui/react";
 import { isValidBranchName } from "../../../../utils/gitRefs";
 import { t } from "../../shared/i18n";
@@ -38,7 +38,9 @@ export function StashUnstashDialog({
     const trimmedBranchName = branchName.trim();
     const usesNewBranch = trimmedBranchName.length > 0;
 
-    onCloseRef.current = onClose;
+    useLayoutEffect(() => {
+        onCloseRef.current = onClose;
+    }, [onClose]);
 
     useEffect(() => {
         inputRef.current?.focus();

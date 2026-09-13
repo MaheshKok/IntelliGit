@@ -107,7 +107,7 @@ type RetryAttempt = {
  * surface unmounts. Pending snapshots and a pushed current HEAD use bounded
  * retry schedules.
  */
-// react-doctor-disable-next-line react-doctor/no-giant-component, react-doctor/no-many-boolean-props
+// react-doctor-disable-next-line react-doctor/no-giant-component, react-doctor/no-many-boolean-props, react-doctor/no-high-complexity-react-function -- The virtualized list intentionally owns graph, viewport, and retry orchestration.
 export function CommitList({
     commits,
     selectedHash,
@@ -178,6 +178,7 @@ export function CommitList({
         setViewportHeight(node.clientHeight);
 
         const observer = new ResizeObserver(updateViewport);
+        // react-doctor-disable-next-line react-doctor/effect-needs-cleanup -- ref replacement disconnects the prior observer and unmount cleanup disconnects the final observer.
         observer.observe(node);
         viewportResizeObserverRef.current = observer;
     }, []);

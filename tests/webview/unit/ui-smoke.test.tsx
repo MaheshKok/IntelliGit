@@ -981,6 +981,65 @@ describe("webview ui smoke", () => {
         unmount(pendingMounted.root, pendingMounted.container);
     });
 
+    it("replaces duplicate commit-check rows without retaining stale entries", () => {
+        const render = (checks: CommitChecksSnapshot): React.ReactElement => (
+            <CommitChecksButton
+                hash={checks.hash}
+                checks={checks}
+                onRequestChecks={vi.fn()}
+                onOpenCheckUrl={vi.fn()}
+            />
+        );
+        const duplicateRows: CommitChecksSnapshot = {
+            hash: "duplicate123",
+            state: "success",
+            summary: "Two build checks",
+            items: [
+                {
+                    name: "build",
+                    description: "job-a",
+                    state: "success",
+                    source: "status",
+                    url: "https://example.test/build",
+                },
+                {
+                    name: "build",
+                    description: "job-b",
+                    state: "success",
+                    source: "status",
+                    url: "https://example.test/build",
+                },
+            ],
+        };
+        const replacement: CommitChecksSnapshot = {
+            hash: "duplicate123",
+            state: "success",
+            summary: "Replacement check",
+            items: [
+                {
+                    name: "other",
+                    description: "job-c",
+                    state: "success",
+                    source: "status",
+                    url: "https://example.test/other",
+                },
+            ],
+        };
+        const mounted = mount(render(duplicateRows));
+        const trigger = mounted.container.querySelector("button") as HTMLButtonElement;
+        act(() => trigger.click());
+
+        expect(document.body.textContent).toContain("job-a");
+        expect(document.body.textContent).toContain("job-b");
+
+        act(() => mounted.root.render(render(replacement)));
+
+        expect(document.body.textContent).toContain("job-c");
+        expect(document.body.textContent).not.toContain("job-a");
+        expect(document.body.textContent).not.toContain("job-b");
+        unmount(mounted.root, mounted.container);
+    });
+
     it("disables commit-check refresh while that commit is loading", () => {
         const onRequestChecks = vi.fn();
         const mounted = mount(

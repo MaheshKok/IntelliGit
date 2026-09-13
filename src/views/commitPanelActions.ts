@@ -590,6 +590,7 @@ export async function commitSelectedFromPanel(
             }),
         ),
     );
+    const commitPathSet = new Set(commitPaths);
     const hasCaseOnlyRename = paths.some((filePath) => {
         const sourcePath = sourcePathByDestination.get(filePath);
         return (
@@ -602,7 +603,7 @@ export async function commitSelectedFromPanel(
         ? Array.from(
               new Set(
                   statusSnapshot.flatMap((file) => {
-                      if (!file.staged || commitPaths.includes(file.path)) return [];
+                      if (!file.staged || commitPathSet.has(file.path)) return [];
                       return file.status === "R" && file.sourcePath
                           ? [file.path, file.sourcePath]
                           : [file.path];

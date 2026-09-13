@@ -75,7 +75,9 @@ function useColumnDrag(
     const moveRef = useRef<((ev: MouseEvent) => void) | null>(null);
     const upRef = useRef<(() => void) | null>(null);
     const widthRef = useRef(width);
-    widthRef.current = width;
+    useLayoutEffect(() => {
+        widthRef.current = width;
+    }, [width]);
 
     const cleanupDrag = useCallback(() => {
         if (moveRef.current) document.removeEventListener("mousemove", moveRef.current);

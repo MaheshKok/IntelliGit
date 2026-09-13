@@ -259,7 +259,7 @@ function getVsCodeApi() {
  * extension apply/ignore-mode commands.
  */
 // Webview entrypoint owns merge-editor state orchestration and root render side effects.
-// react-doctor-disable-next-line react-doctor/only-export-components, react-doctor/no-giant-component, react-doctor/prefer-useReducer
+// react-doctor-disable-next-line react-doctor/only-export-components, react-doctor/no-giant-component, react-doctor/prefer-useReducer, react-doctor/no-high-complexity-react-function -- Merge state, pane geometry, and host commands intentionally orchestrate in one entrypoint.
 export function App() {
     const [state, dispatch] = useReducer(reducer, {
         data: null,

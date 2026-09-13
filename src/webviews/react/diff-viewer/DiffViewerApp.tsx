@@ -1,6 +1,6 @@
 // Entry point for the read-only two-pane diff viewer.
 
-import React, { useRef, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import type { DiffSegment } from "../../protocol/diffViewerTypes";
 import { t } from "../shared/i18n";
@@ -110,11 +110,15 @@ function EditableDiffPane({
         onEdit,
         onDraftLayoutChange,
     });
+    const activeRunIndices = useMemo(
+        () => (activeRun ? new Set(activeRun.indices) : null),
+        [activeRun],
+    );
 
     return (
         <>
             {renderedSegments.map((item) => {
-                const isEditing = activeRun !== null && activeRun.indices.includes(item.index);
+                const isEditing = activeRunIndices?.has(item.index) ?? false;
 
                 if (isEditing && draft && activeRun) {
                     if (activeRun.firstIndex !== item.index) return null;
