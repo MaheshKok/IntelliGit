@@ -223,13 +223,17 @@ describe("diff-core palette", () => {
     it("pins the approved editor and change fills on both surfaces", () => {
         const mergeCss = stripComments(readFileSync(MERGE_EDITOR_CSS, "utf8"));
         for (const [source, token, value] of [
-            [css, "--diff-editor-bg", "var(--merge-editor-bg, #313845)"],
+            [
+                css,
+                "--diff-editor-bg",
+                "var(--merge-editor-bg, var(--vscode-editor-background, #313845))",
+            ],
             [css, "--diff-editor-fg", "var(--merge-editor-fg, #abb2bf)"],
             [viewerCss, "--diff-inserted-wash", "#264b33"],
             [viewerCss, "--diff-deleted-wash", "#3b2a32"],
             [viewerCss, "--diff-modified-wash", "#3b2a32"],
             [viewerCss, "--diff-word-wash", "#4b1515"],
-            [mergeCss, "--merge-editor-bg", "#313845"],
+            [mergeCss, "--merge-editor-bg", "var(--vscode-editor-background, #313845)"],
             [mergeCss, "--merge-editor-fg", "#abb2bf"],
             [mergeCss, "--merge-conflict-block-bg", "#3b2a32"],
             [mergeCss, "--merge-conflict-ribbon-bg", "#4b1515"],

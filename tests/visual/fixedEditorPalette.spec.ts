@@ -1,7 +1,20 @@
 import { expect, test } from "./playwright/harnessPage";
+import type { Page } from "@playwright/test";
+
+/** Resolves the host's editor token to the browser's RGB format for rendered comparisons. */
+async function editorBackground(page: Page): Promise<string> {
+    return page.evaluate(() => {
+        const probe = document.createElement("span");
+        probe.style.backgroundColor = "var(--vscode-editor-background)";
+        document.body.append(probe);
+        const color = getComputedStyle(probe).backgroundColor;
+        probe.remove();
+        return color;
+    });
+}
 
 for (const editable of [false, true]) {
-    test(`${editable ? "editable" : "read-only"} diff retains the charcoal palette across host themes`, async ({
+    test(`${editable ? "editable" : "read-only"} diff follows the host background with fixed change highlights`, async ({
         mountHarness,
         page,
     }) => {
@@ -45,7 +58,7 @@ for (const editable of [false, true]) {
         }, editable);
         await expect(page.locator(".diff-content")).toHaveCSS(
             "background-color",
-            "rgb(49, 56, 69)",
+            await editorBackground(page),
         );
         const leftArea = page.locator(".diff-pane-left .diff-segment-modified");
         const rightArea = page.locator(".diff-pane-right .diff-segment-modified");
@@ -79,7 +92,10 @@ test("merge palette and first-row actions stay consistent across host themes", a
     page,
 }, testInfo) => {
     await mountHarness("merge-editor", { webviewFixture: "conflicted.json" });
-    await expect(page.locator(".merge-editor")).toHaveCSS("background-color", "rgb(49, 56, 69)");
+    await expect(page.locator(".merge-editor")).toHaveCSS(
+        "background-color",
+        await editorBackground(page),
+    );
     await expect(page.locator(".conflict-ours .code-line").first()).toHaveCSS(
         "color",
         "rgb(171, 178, 191)",
@@ -133,7 +149,7 @@ test("merge palette and first-row actions stay consistent across host themes", a
     await page.locator(".result-editable").first().dblclick();
     await expect(page.locator(".result-edit-textarea")).toHaveCSS(
         "background-color",
-        "rgb(49, 56, 69)",
+        await editorBackground(page),
     );
     await expect(page.locator(".result-edit-textarea")).toHaveCSS("color", "rgb(171, 178, 191)");
     await page.locator(".result-edit-textarea").press("Escape");

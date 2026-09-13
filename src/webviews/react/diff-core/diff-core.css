@@ -1,9 +1,9 @@
 /* Shared visual contract for pane-agnostic diff blocks.
-   The screenshot-matched charcoal palette is intentionally fixed across host themes.
+   Editor backgrounds follow the host theme; change highlights retain the fixed palette.
    knownFindings.json records its subdued syntax and line-number contrast. */
 .merge-editor,
 .diff-core {
-    --diff-editor-bg: var(--merge-editor-bg, #313845);
+    --diff-editor-bg: var(--merge-editor-bg, var(--vscode-editor-background, #313845));
     --diff-editor-fg: var(--merge-editor-fg, #abb2bf);
     --diff-border: var(--merge-border, color-mix(in srgb, var(--diff-editor-fg) 14%, transparent));
     --diff-muted: var(--merge-muted, var(--vscode-descriptionForeground, #9ca3af));

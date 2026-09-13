@@ -1,7 +1,7 @@
 @import "../diff-core/diff-core.css";
 
 .merge-editor {
-    --merge-editor-bg: #313845;
+    --merge-editor-bg: var(--vscode-editor-background, #313845);
     --merge-editor-fg: #abb2bf;
     --merge-border: color-mix(in srgb, var(--merge-editor-fg) 14%, transparent);
     --merge-toolbar-bg: var(--vscode-sideBar-background, #2b2d30);
@@ -33,7 +33,7 @@
         var(--vscode-errorForeground, #d86c6c) 55%,
         var(--vscode-foreground, #abb2bf)
     );
-    /* Fixed PyCharm editor palette. Host tokens still own the surrounding chrome. */
+    /* Fixed PyCharm change highlights over the host editor background. */
     --pycharm-conflict: #4b1515;
     --pycharm-inserted: #315f3c;
     --pycharm-modified: #4b1515;
