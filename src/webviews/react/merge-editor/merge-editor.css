@@ -443,28 +443,23 @@
     overflow: visible;
     z-index: 1;
 }
-/* Ribbon fills use the block-band color at full strength — no translucency —
-   so a hunk's band, its gutter strips, and its divider curve read as one
-   continuous region across all three panes, PyCharm-style. The muted block
-   palette keeps overlapping ribbons legible at full opacity, and the 1px
-   brightened edge stroke keeps individual ribbons traceable where they
-   cross. */
+/* Solid dark ribbons join the number/action gutters; their thin edges use the same color. */
 .merge-connector {
     fill: var(--merge-conflict-ribbon-bg);
-    stroke: color-mix(in srgb, var(--merge-conflict-ribbon-bg) 45%, var(--merge-danger) 55%);
+    stroke: var(--merge-conflict-ribbon-bg);
     stroke-width: 1;
 }
 .merge-connector.variant-insertion {
     fill: var(--merge-inserted-block-bg);
-    stroke: color-mix(in srgb, var(--merge-inserted-block-bg) 45%, var(--merge-ok) 55%);
+    stroke: var(--merge-inserted-block-bg);
 }
 .merge-connector.variant-modification {
-    fill: var(--merge-modified-block-bg);
-    stroke: color-mix(in srgb, var(--merge-modified-block-bg) 45%, var(--merge-info) 55%);
+    fill: var(--pycharm-modified);
+    stroke: var(--pycharm-modified);
 }
 .merge-connector.variant-deletion {
-    fill: var(--merge-deleted-block-bg);
-    stroke: color-mix(in srgb, var(--merge-deleted-block-bg) 45%, var(--merge-deleted-hue) 55%);
+    fill: var(--pycharm-deleted);
+    stroke: var(--pycharm-deleted);
 }
 /* Settled sides (accepted / discarded) trade the filled band for PyCharm's
    dotted contour: an unfilled outline tracing the source block, the divider
@@ -601,19 +596,19 @@
         inset 0 calc(-1 * var(--merge-hunk-boundary-width)) 0 0 var(--merge-hunk-boundary);
 }
 .segment-conflict.change-conflict {
-    --merge-hunk-boundary: color-mix(in srgb, var(--pycharm-conflict) 88%, transparent);
+    --merge-hunk-boundary: var(--pycharm-conflict);
     --merge-hunk-boundary-width: 2px;
 }
 .segment-conflict.variant-insertion {
-    --merge-hunk-boundary: color-mix(in srgb, var(--pycharm-inserted) 76%, transparent);
+    --merge-hunk-boundary: var(--merge-inserted-block-bg);
     --merge-hunk-boundary-width: 2px;
 }
 .segment-conflict.variant-modification {
-    --merge-hunk-boundary: color-mix(in srgb, var(--pycharm-modified) 76%, transparent);
+    --merge-hunk-boundary: var(--pycharm-modified);
     --merge-hunk-boundary-width: 2px;
 }
 .segment-conflict.variant-deletion {
-    --merge-hunk-boundary: color-mix(in srgb, var(--pycharm-deleted) 76%, transparent);
+    --merge-hunk-boundary: var(--pycharm-deleted);
     --merge-hunk-boundary-width: 2px;
 }
 .segment-conflict.auto-merged {
@@ -753,6 +748,20 @@
 .variant-deletion .conflict-theirs .real-line-row {
     background: var(--merge-deleted-block-bg);
 }
+/* Number/action gutters use the solid ribbon color; code bands keep their lighter fill. */
+.change-conflict .conflict-ours .real-line-row,
+.change-conflict .conflict-theirs .real-line-row,
+.change-conflict .conflict-result.unresolved .real-line-row {
+    background: var(--merge-conflict-ribbon-bg);
+}
+.variant-modification .conflict-ours .real-line-row,
+.variant-modification .conflict-theirs .real-line-row {
+    background: var(--pycharm-modified);
+}
+.variant-deletion .conflict-ours .real-line-row,
+.variant-deletion .conflict-theirs .real-line-row {
+    background: var(--pycharm-deleted);
+}
 .change-ours-only .conflict-theirs .real-code-line::before,
 .change-theirs-only .conflict-ours .real-code-line::before,
 .change-ours-only .conflict-theirs .real-line-row,
@@ -777,6 +786,12 @@
 .variant-deletion .conflict-result.resolved:not(.edited):not(.settled) .real-code-line::before,
 .variant-deletion .conflict-result.resolved:not(.edited):not(.settled) .real-line-row {
     background: var(--merge-deleted-block-bg);
+}
+.variant-modification .conflict-result.resolved:not(.edited):not(.settled) .real-line-row {
+    background: var(--pycharm-modified);
+}
+.variant-deletion .conflict-result.resolved:not(.edited):not(.settled) .real-line-row {
+    background: var(--pycharm-deleted);
 }
 /* An accepted source pane drops its conflict band (the choice now lives in the
    result), including when both sides are stacked and both columns are accepted.

@@ -343,11 +343,8 @@
 /* Inset shadows mark hunk edges without changing the row geometry used by connectors. */
 .diff-viewer .diff-segment-changed {
     --diff-word-wash: #4b1515;
-    --diff-hunk-bracket: color-mix(
-        in srgb,
-        color-mix(in srgb, var(--diff-segment-hue, transparent) 30%, var(--diff-editor-bg)) 76%,
-        transparent
-    );
+    --diff-gutter-bg: #4b1515;
+    --diff-hunk-bracket: var(--diff-gutter-bg);
     --diff-segment-shadow:
         inset 3px 0 0 var(--diff-segment-hue, transparent),
         inset 0 2px 0 0 var(--diff-hunk-bracket), inset 0 -2px 0 0 var(--diff-hunk-bracket);
@@ -356,6 +353,7 @@
 /* Whole inserted or deleted rows need one band only; partial modified words retain a second fill. */
 .diff-viewer .diff-segment-inserted {
     --diff-segment-hue: var(--diff-ok);
+    --diff-gutter-bg: var(--diff-inserted-wash);
     --diff-word-wash: transparent;
     box-shadow: var(--diff-segment-shadow);
     background: var(--diff-inserted-wash, transparent);
@@ -372,6 +370,11 @@
     --diff-segment-hue: var(--diff-info);
     box-shadow: var(--diff-segment-shadow);
     background: var(--diff-modified-wash, transparent);
+}
+
+/* The number and action strip joins the solid connector, outside the lighter code band. */
+.diff-viewer .diff-segment-changed .line-numbers {
+    background: var(--diff-gutter-bg);
 }
 
 /* Modified areas and changed words share the red palette on both panes. */
@@ -396,10 +399,7 @@
    PyCharm draws as a thin line at the collapsed position. A spread box-shadow paints
    outside the border box without entering layout, so a 0px block still renders a 2px
    rule and the canonical geometry every pane offset and ribbon is derived from is
-   untouched. The hue comes from the counterpart's state, since this side has none, and it
-   is the counterpart's WASH rather than its accent: the accent is the strength the rail
-   ticks are painted at, which on a full-width rule reads as a bar across the pane instead
-   of a marker beside it. */
+   untouched. The thin rule uses the counterpart's solid connector color. */
 .diff-viewer .diff-gap-inserted,
 .diff-viewer .diff-gap-deleted {
     box-shadow: 0 0 0 1px var(--diff-gap-hue);
@@ -410,7 +410,7 @@
 }
 
 .diff-viewer .diff-gap-deleted {
-    --diff-gap-hue: var(--diff-deleted-wash);
+    --diff-gap-hue: var(--diff-deleted-hue);
 }
 
 /* Partial modified words use the stronger red fill without an underline. */
@@ -502,9 +502,7 @@
     outline-offset: -1px;
 }
 
-/* The connector fills with the semantic hue itself, not a wash of it: it carries its
-   own alpha, so drawing it from a fragment tint made it a near-background band that
-   the 0.18 opacity then erased entirely.
+/* Connectors use solid dark change colors, matching the number and action gutters.
    One fill per variant, the way the merge editor colours its own connectors
    (merge-editor.css:446-457). This rule is the modification case and the fallback for
    a ribbon whose segment classifies to nothing; the two below are the one-sided hunks.
@@ -522,11 +520,11 @@
    span; stacking order stopped mattering once the paths cannot reach the code. */
 .diff-ribbon {
     fill: var(--diff-info);
-    opacity: 0.18;
+    opacity: 1;
 }
 
 .diff-ribbon.diff-segment-inserted {
-    fill: var(--diff-ok);
+    fill: var(--diff-inserted-wash);
 }
 
 .diff-ribbon.diff-segment-deleted {
