@@ -3,7 +3,7 @@
 // every intermediate component.
 
 import { createContext, useContext } from "react";
-import type { ShikiTheme } from "./shikiHighlighter";
+import type { ShikiDocumentTokens, ShikiTheme } from "./shikiHighlighter";
 
 /** Current Shiki highlighting context for the rendered document. */
 export interface SyntaxHighlightState {
@@ -13,6 +13,8 @@ export interface SyntaxHighlightState {
     lang: string | null;
     /** Active theme mirrored from the webview body class. */
     theme: ShikiTheme;
+    /** Full-document token rows, indexed by the pane's one-based source line numbers. */
+    documentTokens?: ShikiDocumentTokens | null;
 }
 
 /** Default state before initialization; callers use the regex tokenizer. */

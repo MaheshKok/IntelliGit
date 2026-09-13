@@ -6,7 +6,7 @@ const path = require("path");
 const { WEBVIEW_CONFIGS, createWebviewBuildOptions } = require("./webviewConfigs");
 
 /**
- * Returns the seven browser webview build options used by watch mode.
+ * Returns browser webview and shared-runtime build options used by watch mode.
  *
  * @returns {import("esbuild").BuildOptions[]} Shared IIFE options for each webview.
  */

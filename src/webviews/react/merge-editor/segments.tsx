@@ -289,6 +289,49 @@ function deriveConflictView(
     };
 }
 
+/** Fixed-size gutter geometry keeps action marks independent of the code font and its size. */
+function HunkActionIcon({
+    direction,
+    append = false,
+}: {
+    direction?: "left" | "right";
+    append?: boolean;
+}) {
+    return (
+        <span className="hunk-action-glyph" aria-hidden="true">
+            <svg
+                width="12"
+                height="12"
+                viewBox="0 0 12 12"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1"
+            >
+                <path
+                    d={
+                        direction
+                            ? "M5.9 1.4 1.3 6l4.6 4.6M10.2 1.4 5.6 6l4.6 4.6"
+                            : "M2.1 2.1l7.8 7.8m0-7.8L2.1 9.9"
+                    }
+                    transform={direction === "right" ? "translate(12 0) scale(-1 1)" : undefined}
+                />
+            </svg>
+            {append && (
+                <svg
+                    width="6"
+                    height="6"
+                    viewBox="0 0 6 6"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1"
+                >
+                    <path d="M3 0v6M0 3h6" />
+                </svg>
+            )}
+        </span>
+    );
+}
+
 /** Left-column controls for a pending "ours" side: discard and accept-or-append. */
 function LeftHunkActions({
     segmentId,
@@ -316,9 +359,7 @@ function LeftHunkActions({
                 title={t("merge.hunk.ignoreLeft")}
                 aria-label={t("merge.hunk.ignoreLeft")}
             >
-                <span className="hunk-action-glyph" aria-hidden="true">
-                    ×
-                </span>
+                <HunkActionIcon />
             </button>
             <button
                 type="button"
@@ -328,9 +369,7 @@ function LeftHunkActions({
                 aria-label={t(leftAppend ? "merge.hunk.appendLeft" : "merge.hunk.acceptLeft")}
                 aria-current={isOurs ? "true" : undefined}
             >
-                <span className="hunk-action-glyph" aria-hidden="true">
-                    {leftAppend ? "≫+" : "≫"}
-                </span>
+                <HunkActionIcon direction="right" append={leftAppend} />
             </button>
         </div>
     );
@@ -362,9 +401,7 @@ function RightHunkActions({
                 aria-label={t(rightAppend ? "merge.hunk.appendRight" : "merge.hunk.acceptRight")}
                 aria-current={isTheirs ? "true" : undefined}
             >
-                <span className="hunk-action-glyph" aria-hidden="true">
-                    {rightAppend ? "≪+" : "≪"}
-                </span>
+                <HunkActionIcon direction="left" append={rightAppend} />
             </button>
             <button
                 type="button"
@@ -375,9 +412,7 @@ function RightHunkActions({
                 title={t("merge.hunk.ignoreRight")}
                 aria-label={t("merge.hunk.ignoreRight")}
             >
-                <span className="hunk-action-glyph" aria-hidden="true">
-                    ×
-                </span>
+                <HunkActionIcon />
             </button>
         </div>
     );

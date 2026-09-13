@@ -34,14 +34,17 @@ describe("Workbench", () => {
         const option = { click: vi.fn() };
         const alerts = { allTextContents: vi.fn().mockResolvedValue(["Committed"]) };
         const getByRole = vi.fn((role: string) => {
-            if (role === "textbox") return commandInput;
             if (role === "option") return option;
             return alerts;
         });
-        const page = { keyboard, getByRole } as unknown as Page;
+        const getByPlaceholder = vi.fn(() => commandInput);
+        const page = { keyboard, getByRole, getByPlaceholder } as unknown as Page;
         const workbench = new Workbench(page);
 
         await workbench.runCommand("View: Show IntelliGit");
+        expect(getByPlaceholder).toHaveBeenCalledWith("Type the name of a command to run.", {
+            exact: true,
+        });
         // Two presses, not one. A `runCommand` that sends the chord once and then waits gives up on
         // exactly the dropped first chord that took four flow rows red on Linux, so counting the
         // presses is the assertion -- checking only that *a* press happened stays green through it.
@@ -88,8 +91,14 @@ describe("Workbench", () => {
             click: vi.fn(step === "click" ? closes : settles),
             allTextContents: vi.fn().mockResolvedValue([]),
         };
-        const getByRole = vi.fn((role: string) => (role === "textbox" ? commandInput : option));
-        return { page: { keyboard, getByRole } as unknown as Page, keyboard, commandInput, option };
+        const getByRole = vi.fn(() => option);
+        const getByPlaceholder = vi.fn(() => commandInput);
+        return {
+            page: { keyboard, getByRole, getByPlaceholder } as unknown as Page,
+            keyboard,
+            commandInput,
+            option,
+        };
     }
 
     // The container failure this exists for, measured on runs 31962801742 and 31962801586 -- both
@@ -138,7 +147,7 @@ describe("Workbench", () => {
         const timeout = new Error("locator.waitFor: Timeout 3000ms exceeded");
         const keyboard = { press: vi.fn() };
         const commandInput = { fill: vi.fn(), waitFor: vi.fn().mockRejectedValue(timeout) };
-        const page = { keyboard, getByRole: () => commandInput } as unknown as Page;
+        const page = { keyboard, getByPlaceholder: () => commandInput } as unknown as Page;
 
         await expect(new Workbench(page).runCommand("View: Show IntelliGit")).rejects.toBe(timeout);
         expect(keyboard.press).toHaveBeenCalledTimes(5);
@@ -501,6 +510,15 @@ describe("IntelliGitView", () => {
         const { page } = workbenchPage([detached, sidebar]);
 
         await expect(new IntelliGitView(page).reveal()).resolves.toBe(sidebar.inner);
+    });
+
+    it("finds File History after unavailable and unrelated webviews", async () => {
+        const detached = webview(undefined);
+        const sidebar = webview([SIDEBAR_MARKER]);
+        const history = webview([".file-history"]);
+        const { page } = workbenchPage([detached, sidebar, history]);
+
+        await expect(new IntelliGitView(page).revealFileHistory(50)).resolves.toBe(history.inner);
     });
 
     // The marker alone was the whole message once, and it is the half that cannot tell "no webview

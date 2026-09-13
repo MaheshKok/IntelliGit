@@ -1,0 +1,93 @@
+{
+    "schemaVersion": 1,
+    "contextId": "file-history",
+    "scenario": "clean",
+    "messages": [
+        {
+            "contextId": "file-history",
+            "message": {
+                "type": "historyState",
+                "state": {
+                    "path": "README.md",
+                    "root": "<ROOT>",
+                    "ref": "HEAD",
+                    "branches": [
+                        "conflict/with-main",
+                        "feature/awesome",
+                        "main",
+                        "topic/mergeable",
+                        "origin/main"
+                    ],
+                    "entries": [
+                        {
+                            "hash": "70fa528600605d9b3f1fce7aa04ec799ed494ffd",
+                            "parents": [],
+                            "authorName": "IntelliGit Fixture Repo",
+                            "authorEmail": "intelligit-fixture@example.invalid",
+                            "authoredAt": "2000-01-01T00:00:00Z",
+                            "committerName": "IntelliGit Fixture Repo",
+                            "committerEmail": "intelligit-fixture@example.invalid",
+                            "committedAt": "2000-01-01T00:00:00Z",
+                            "subject": "Initial commit",
+                            "pathAtRevision": "README.md",
+                            "status": "added"
+                        }
+                    ],
+                    "hasMore": false,
+                    "labels": {
+                        "branch": "Branch",
+                        "refresh": "Refresh",
+                        "search": "Search history",
+                        "more": "Load more",
+                        "empty": "No file history found.",
+                        "select": "Select a revision to view its changes.",
+                        "details": "Show Details",
+                        "actions": "History Actions",
+                        "copy": "Copy Revision",
+                        "open": "Open Revision",
+                        "local": "Compare with Local",
+                        "diff": "Show Diff",
+                        "affected": "Show All Affected Files",
+                        "author": "Author",
+                        "date": "Date",
+                        "subject": "Commit",
+                        "resize": "Resize history list"
+                    }
+                }
+            }
+        },
+        {
+            "contextId": "file-history",
+            "message": {
+                "type": "historyDiff",
+                "requestId": 1,
+                "data": {
+                    "path": "README.md",
+                    "languageId": "plaintext",
+                    "documentId": "[\"<ROOT>\",null,\"README.md\",\"70fa528600605d9b3f1fce7aa04ec799ed494ffd\",null]",
+                    "leftLabel": "∅ README.md",
+                    "rightLabel": "70fa5286 README.md",
+                    "segments": [
+                        {
+                            "type": "changed",
+                            "left": [],
+                            "right": [
+                                "# IntelliGit Fixture Repo"
+                            ]
+                        }
+                    ],
+                    "left": {
+                        "eol": "none",
+                        "terminalNewline": false
+                    },
+                    "right": {
+                        "eol": "lf",
+                        "terminalNewline": true
+                    },
+                    "newlineDifference": false,
+                    "ignoreWhitespace": false
+                }
+            }
+        }
+    ]
+}

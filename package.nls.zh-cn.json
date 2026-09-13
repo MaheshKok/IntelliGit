@@ -92,5 +92,6 @@
     "configuration.timeFormat.enum.24h": "24 小时制。",
     "configuration.timeFormat.markdownDescription": "IntelliGit 提交列表和提交详情中提交日期的时间格式。`12h` 显示带 AM/PM 的 12 小时制（默认），`24h` 显示 24 小时制。更改在重新加载窗口后生效。",
     "command.diffShowInIntelliGit": "在 IntelliGit 中显示差异",
-    "command.diffShowInVsCode": "在 VS Code 中显示差异"
+    "command.diffShowInVsCode": "在 VS Code 中显示差异",
+    "command.showFileHistory": "显示文件历史记录"
 }

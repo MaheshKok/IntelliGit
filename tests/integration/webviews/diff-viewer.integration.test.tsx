@@ -2778,8 +2778,8 @@ describe("DiffViewerApp scroll viewport and ribbons", () => {
 
         expect(
             scrolled,
-            "clicking the insertion mark should scroll to the insertion hunk's own canonical top",
-        ).toEqual([260]);
+            "clicking the insertion mark should center its 120px hunk in the 300px viewport",
+        ).toEqual([170]);
     });
 
     // The viewer panel is a singleton: opening a second file from the changed-files list
@@ -2908,28 +2908,57 @@ describe("DiffViewerApp scroll viewport and ribbons", () => {
 
     // The same jump the Alt+Arrow keys make, reached by pointer. Both call one function, so
     // what this pins that the key cases do not is that the buttons are wired to it at all.
-    it("walks the changes from the toolbar arrows and stops at both ends", async () => {
+    it.each([undefined, "left", "right"] as const)(
+        "centers toolbar navigation with editable pane %s and stops at both ends",
+        async (editablePane) => {
+            const { content } = await mountScrollFixture(editablePane);
+            expect(document.querySelector(".diff-difference-count")?.textContent).toBe(
+                "2 differences",
+            );
+            trackedScrollTo(content)(0);
+
+            // Centers are 130 and 320 in a 300px viewport; the first clamps at zero.
+            clickToolbar("diff-next-change");
+            expect(content.scrollTop, "the first press should land on the first change").toBe(0);
+            clickToolbar("diff-next-change");
+            expect(content.scrollTop, "the second press should land on the next one").toBe(170);
+            clickToolbar("diff-next-change");
+            expect(
+                content.scrollTop,
+                "nothing lies past the last change, so the arrow should hold there rather than wrap to the top",
+            ).toBe(170);
+
+            clickToolbar("diff-prev-change");
+            expect(content.scrollTop, "the up arrow should walk back to the previous change").toBe(
+                0,
+            );
+            clickToolbar("diff-prev-change");
+            expect(
+                content.scrollTop,
+                "nothing lies above the first change, so the up arrow should hold there",
+            ).toBe(0);
+        },
+    );
+
+    it("resumes navigation after manual scrolling and resets it for another document", async () => {
         const { content } = await mountScrollFixture();
-        trackedScrollTo(content)(0);
-
-        // The fixture's two changed segments sit at canonical 100 and 260; see its table.
+        const move = trackedScrollTo(content);
         clickToolbar("diff-next-change");
-        expect(content.scrollTop, "the first press should land on the first change").toBe(100);
-        clickToolbar("diff-next-change");
-        expect(content.scrollTop, "the second press should land on the next one").toBe(260);
-        clickToolbar("diff-next-change");
-        expect(
-            content.scrollTop,
-            "nothing lies past the last change, so the arrow should hold there rather than wrap to the top",
-        ).toBe(260);
-
-        clickToolbar("diff-prev-change");
-        expect(content.scrollTop, "the up arrow should walk back to the previous change").toBe(100);
+        move(300);
         clickToolbar("diff-prev-change");
         expect(
             content.scrollTop,
-            "nothing lies above the first change, so the up arrow should hold there",
-        ).toBe(100);
+            "manual scrolling should discard the previous navigation anchor",
+        ).toBe(170);
+        clickToolbar("diff-prev-change");
+        expect(content.scrollTop).toBe(0);
+        dispatchHostMessage({
+            type: "setDiffData",
+            data: { ...scrollFixture, path: "src/new.ts" },
+        });
+        await flush();
+        clickToolbar("diff-next-change");
+        expect(content.scrollTop, "a new document must start with its first change").toBe(0);
     });
 
     it("disables both arrows on a file with no changes to walk", async () => {
@@ -2950,12 +2979,22 @@ describe("DiffViewerApp scroll viewport and ribbons", () => {
         });
         await flush();
 
+        expect(document.querySelector(".diff-difference-count")?.textContent).toBe("0 differences");
         for (const testId of ["diff-prev-change", "diff-next-change"]) {
             expect(
                 document.querySelector<HTMLButtonElement>(`[data-testid='${testId}']`)?.disabled,
                 `${testId} offers a jump on a file with nowhere to jump to`,
             ).toBe(true);
         }
+        dispatchHostMessage({
+            type: "setDiffData",
+            data: {
+                ...scrollFixture,
+                segments: [{ type: "changed", left: [], right: rows("added", 40) }],
+            },
+        });
+        await flush();
+        expect(document.querySelector(".diff-difference-count")?.textContent).toBe("1 difference");
     });
 });
 

@@ -42,8 +42,9 @@ export class Workbench {
      */
     public async runCommand(label: string): Promise<void> {
         const modifier = process.platform === "darwin" ? "Meta" : "Control";
-        const commandInput = this.page.getByRole("textbox", {
-            name: "Type the name of a command to run.",
+        // VS Code 1.96 exposes a combobox named "input"; newer versions use a textbox.
+        const commandInput = this.page.getByPlaceholder("Type the name of a command to run.", {
+            exact: true,
         });
 
         for (let attempt = 1; ; attempt++) {

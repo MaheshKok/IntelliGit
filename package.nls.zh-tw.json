@@ -92,5 +92,6 @@
     "configuration.timeFormat.enum.24h": "24 小時制。",
     "configuration.timeFormat.markdownDescription": "IntelliGit 認可清單與認可詳細資料中認可日期的時間格式。`12h` 顯示含 AM/PM 的 12 小時制（預設），`24h` 顯示 24 小時制。變更會在重新載入視窗後生效。",
     "command.diffShowInIntelliGit": "在 IntelliGit 中顯示差異",
-    "command.diffShowInVsCode": "在 VS Code 中顯示差異"
+    "command.diffShowInVsCode": "在 VS Code 中顯示差異",
+    "command.showFileHistory": "顯示檔案歷史記錄"
 }

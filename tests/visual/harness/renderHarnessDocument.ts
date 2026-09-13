@@ -92,7 +92,7 @@ function titleFor(context: ResolvedHostContext): string {
  * Renders an independent browser-loadable HTML shell for a resolved IntelliGit host context.
  *
  * Host theme state is static markup so screenshots remain meaningful with JavaScript disabled;
- * runtime bootstrap is limited to the production settings/i18n globals and the final bundle tag.
+ * Runtime bootstrap loads the shared highlighter before its consumers, matching production order.
  */
 export function renderHarnessDocument(input: HarnessDocumentInput): string {
     const { context, hostFixture, i18n, settings } = input;
@@ -105,6 +105,13 @@ export function renderHarnessDocument(input: HarnessDocumentInput): string {
         .join("\n");
     const settingsJson = scriptSafeJson(settings);
     const i18nJson = scriptSafeJson(i18n);
+    const highlighterScript = [
+        "webview-filehistory.js",
+        "webview-diffviewer.js",
+        "webview-mergeeditor.js",
+    ].includes(context.scriptFile)
+        ? `    <script src="${escapeHtml(assetUrl(input.assetBaseUrl, "webview-shiki.js"))}"></script>\n`
+        : "";
 
     // A plain browser server has neither VS Code's cspSource nor its nonce policy, so this harness
     // deliberately emits no CSP meta element and no nonce. Phase 3-iii controls the page boundary.
@@ -139,7 +146,7 @@ ${styleLinks ? `${styleLinks}\n` : ""}</head>
         window.intelligitSettings = ${settingsJson};
         window.intelligitI18n = ${i18nJson};
     </script>
-    <script src="${escapeHtml(assetUrl(input.assetBaseUrl, context.scriptFile))}"></script>
+${highlighterScript}    <script src="${escapeHtml(assetUrl(input.assetBaseUrl, context.scriptFile))}"></script>
 </body>
 </html>`;
 }

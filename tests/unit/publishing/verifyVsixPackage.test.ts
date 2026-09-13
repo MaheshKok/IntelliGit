@@ -1,8 +1,9 @@
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 import JSZip from "jszip";
+import { listFiles } from "@vscode/vsce";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -22,6 +23,7 @@ const REQUIRED_FILES = [
     "LICENSE",
     "dist/extension.js",
     "dist/interactive-rebase-editor-helper.cjs",
+    "dist/webview-shiki.js",
     "dist/webview-commitpanel.js",
     "dist/webview-commitpanel.css",
     "l10n/bundle.l10n.json",
@@ -99,6 +101,30 @@ async function verifyFixture(
 }
 
 describe("verifyVsixPackage", () => {
+    it("excludes lowercase plan.md through real VSCE selection while retaining the document", async () => {
+        const ignore = readFileSync(resolve(__dirname, "../../../.vscodeignore"), "utf8");
+        writeFileSync(join(fixtureRoot, ".vscodeignore"), ignore);
+        writeFileSync(
+            join(fixtureRoot, "package.json"),
+            JSON.stringify({
+                name: "fixture",
+                publisher: "fixture",
+                version: "1.0.0",
+                engines: { vscode: "^1.90.0" },
+            }),
+        );
+        writeFileSync(join(fixtureRoot, "plan.md"), "Repository plan");
+        const selected = await listFiles({ cwd: fixtureRoot, packageManager: PackageManager.None });
+        expect(selected).not.toContain("plan.md");
+        expect(readFileSync(join(fixtureRoot, "plan.md"), "utf8")).toBe("Repository plan");
+    });
+
+    it("requires the shared highlighter even when absent from dist and the VSCE selection", async () => {
+        rmSync(join(fixtureRoot, "dist/webview-shiki.js"));
+        const files = REQUIRED_FILES.filter((file) => file !== "dist/webview-shiki.js");
+        const { result } = await verifyFixture(extensionEntries(files), files);
+        expect(result.errors).toContain("Missing required VSIX payload: dist/webview-shiki.js");
+    });
     it("accepts a valid VSIX and asks VSCE for the package file list", async () => {
         const { listFiles, result } = await verifyFixture(extensionEntries(REQUIRED_FILES));
 

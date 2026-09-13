@@ -115,6 +115,18 @@ describe("renderHarnessDocument", () => {
 
             expect(document.querySelectorAll("#root")).toHaveLength(1);
             expect(lastScript?.getAttribute("src")).toBe(`/dist/${context.scriptFile}`);
+            const expectedScripts = [
+                "webview-filehistory.js",
+                "webview-diffviewer.js",
+                "webview-mergeeditor.js",
+            ].includes(context.scriptFile)
+                ? ["/dist/webview-shiki.js", `/dist/${context.scriptFile}`]
+                : [`/dist/${context.scriptFile}`];
+            expect(
+                [...document.querySelectorAll("script[src]")].map((script) =>
+                    script.getAttribute("src"),
+                ),
+            ).toEqual(expectedScripts);
             expect(stylesheetLinks).toHaveLength(context.styleFiles.length);
             expect(stylesheetLinks.map((link) => link.getAttribute("href"))).toEqual(
                 context.styleFiles.map((styleFile) => `/dist/${styleFile}`),

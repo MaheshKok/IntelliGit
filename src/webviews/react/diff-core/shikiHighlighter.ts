@@ -1,6 +1,6 @@
 // Shiki syntax highlighting module for diff webviews.
 // The JavaScript regex engine is CSP-safe (no wasm/eval); grammars are bundled
-// statically and tokenization is cached per source line.
+// statically and single-line tokenization is cached by source line.
 import { createHighlighterCoreSync } from "shiki/core";
 import { createJavaScriptRegexEngine } from "shiki/engine/javascript";
 
@@ -29,9 +29,14 @@ export interface ShikiToken {
     text: string;
     /** Resolved foreground color from the active theme, if any. */
     color?: string;
+    /** Alternate color for the fixed dark change backgrounds under a light host theme. */
+    darkColor?: string;
     /** Font-style bitmask (1=italic, 2=bold, 4=underline), if any. */
     fontStyle?: number;
 }
+
+/** Grammar-tokenized runs for each source line in one logical document. */
+export type ShikiDocumentTokens = readonly (readonly ShikiToken[])[];
 
 // Map file extensions to Shiki language identifiers.
 const extensionMap: Record<string, string> = {
@@ -59,20 +64,15 @@ let highlighterReady = false;
 const tokenCache = new Map<string, ShikiToken[] | null>();
 const CACHE_MAX = 5000;
 
-/** Detect the user's theme preference from VS Code's body classList. */
+/** Select bundled syntax colors compatible with the host editor's light or dark surface. */
 export function detectTheme(): ShikiTheme {
-    if (typeof document === "undefined") return "light-plus";
-    const classes = document.body.classList;
-    // High-contrast light carries the legacy `vscode-high-contrast` class as well as
-    // `vscode-high-contrast-light`, so it has to be settled before the legacy check
-    // below; otherwise dark-theme syntax colours land on a white editor background.
-    if (classes.contains("vscode-high-contrast-light")) {
+    if (
+        document.body.classList.contains("vscode-light") ||
+        document.body.classList.contains("vscode-high-contrast-light")
+    ) {
         return "light-plus";
     }
-    if (classes.contains("vscode-dark") || classes.contains("vscode-high-contrast")) {
-        return "dark-plus";
-    }
-    return "light-plus";
+    return "dark-plus";
 }
 
 /** Derive a registered Shiki language identifier from a file path. */
@@ -129,6 +129,32 @@ function warmLang(lang: string, theme: ShikiTheme): void {
     }
 }
 
+/** Keeps theme variants aligned to the same grammar tokens, including multiline scopes. */
+function tokenizeSource(code: string, lang: string, theme: ShikiTheme): ShikiToken[][] {
+    if (theme === "light-plus") {
+        return highlighter!
+            .codeToTokensWithThemes(code, {
+                lang,
+                themes: { light: "light-plus", dark: "dark-plus" },
+            })
+            .map((line) =>
+                line.map((token) => ({
+                    text: token.content,
+                    color: token.variants.light.color,
+                    darkColor: token.variants.dark.color,
+                    fontStyle: token.variants.light.fontStyle,
+                })),
+            );
+    }
+    return highlighter!.codeToTokensBase(code, { lang, theme }).map((line) =>
+        line.map((token) => ({
+            text: token.content,
+            color: token.color,
+            fontStyle: token.fontStyle,
+        })),
+    );
+}
+
 /** Tokenize one line with Shiki, returning null when unavailable or unsupported. */
 export function highlightLine(line: string, lang: string, theme: ShikiTheme): ShikiToken[] | null {
     if (!isShikiReady() || !highlighter) return null;
@@ -138,15 +164,12 @@ export function highlightLine(line: string, lang: string, theme: ShikiTheme): Sh
     if (tokenCache.has(cacheKey)) return tokenCache.get(cacheKey) ?? null;
 
     try {
-        const lines = highlighter.codeToTokensBase(line, { lang, theme });
+        const lines = tokenizeSource(line, lang, theme);
         if (!lines || lines.length === 0) {
             tokenCache.set(cacheKey, null);
             return null;
         }
-        const tokens: ShikiToken[] = [];
-        for (const token of lines[0]) {
-            tokens.push({ text: token.content, color: token.color, fontStyle: token.fontStyle });
-        }
+        const tokens = lines[0];
         if (tokenCache.size >= CACHE_MAX) {
             const firstKey = tokenCache.keys().next().value;
             if (firstKey) tokenCache.delete(firstKey);
@@ -154,8 +177,33 @@ export function highlightLine(line: string, lang: string, theme: ShikiTheme): Sh
         tokenCache.set(cacheKey, tokens);
         return tokens;
     } catch (err) {
-        console.warn(`Failed to highlight line with lang="${lang}":`, err);
+        console.warn("Failed to highlight line with lang=%s:", lang, err);
         tokenCache.set(cacheKey, null);
+        return null;
+    }
+}
+
+/**
+ * Tokenizes one logical document while preserving grammar state across its lines.
+ *
+ * Callers supply the document's original line-ending sequence so grammar inference sees the same
+ * boundaries as the source. The returned rows still exclude line endings and align one-for-one with
+ * `lines`, which lets segmented renderers select rows by their existing source line numbers.
+ */
+export function highlightDocument(
+    lines: readonly string[],
+    lang: string,
+    theme: ShikiTheme,
+    eol = "\n",
+): ShikiDocumentTokens | null {
+    if (!isShikiReady() || !highlighter) return null;
+    warmLang(lang, theme);
+
+    try {
+        const highlighted = tokenizeSource(lines.join(eol), lang, theme);
+        return lines.map((_, index) => highlighted[index] ?? []);
+    } catch (err) {
+        console.warn("Failed to highlight document with lang=%s:", lang, err);
         return null;
     }
 }

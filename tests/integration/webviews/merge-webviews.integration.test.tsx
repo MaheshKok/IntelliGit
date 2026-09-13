@@ -255,6 +255,9 @@ describe("MergeEditorApp", () => {
 
         expect(document.body.textContent).toContain("src/conflict.ts");
         expect(document.body.textContent).toContain("1 unresolved");
+        expect(document.querySelector(".merge-remaining-status")?.textContent).toBe(
+            "No changes, 1 conflict",
+        );
         expect(document.querySelectorAll('[data-conflict-id="0"] .action-btn')).toHaveLength(4);
 
         clickButton("Conflicts");
@@ -262,6 +265,9 @@ describe("MergeEditorApp", () => {
         clickButton("Accept left block");
         await flush();
         expect(document.body.textContent).toContain("0 unresolved");
+        expect(document.querySelector(".merge-remaining-status")?.textContent).toBe(
+            "All conflicts resolved",
+        );
         expect(document.querySelector('[data-conflict-id="0"] .conflict-actions-left')).toBeNull();
         expect(
             document.querySelectorAll('[data-conflict-id="0"] .conflict-actions-right .action-btn'),
@@ -292,7 +298,7 @@ describe("MergeEditorApp", () => {
         expect(
             document.querySelector('[data-conflict-id="0"] .conflict-theirs')?.className,
         ).not.toContain("accepted-pane");
-        clickButton("Apply (1/1)");
+        clickButton("Apply");
 
         expect(vscode.postMessage).toHaveBeenCalledWith({ type: "openConflictSession" });
         expect(vscode.postMessage).toHaveBeenCalledWith({ type: "abortMerge" });
@@ -470,7 +476,7 @@ describe("MergeEditorApp", () => {
         expect(document.querySelector(".conflict-result.edited")).not.toBeNull();
         expect(document.body.textContent).toContain("0 unresolved");
 
-        clickButton("Apply (1/1)");
+        clickButton("Apply");
         expect(vscode.postMessage).toHaveBeenCalledWith({
             type: "applyResolution",
             content: "shared();\nmerged_by_hand();\n",
@@ -606,7 +612,7 @@ describe("MergeEditorApp", () => {
         expect(document.querySelector(".conflict-result")?.className).toContain("unresolved");
         expect(document.querySelector(".conflict-ours")?.className).not.toContain("accepted-pane");
 
-        clickButton("Apply (1/1)");
+        clickButton("Apply");
         expect(vscode.postMessage).toHaveBeenCalledWith({
             type: "applyResolution",
             content: "theirs();\n",
@@ -663,7 +669,7 @@ describe("MergeEditorApp", () => {
         );
         expect(document.querySelector(".result-insertion-marker")).toBeNull();
 
-        clickButton("Apply (1/1)");
+        clickButton("Apply");
         expect(vscode.postMessage).toHaveBeenCalledWith({
             type: "applyResolution",
             content: "shared();\nours();\ntheirs();\n",
@@ -714,7 +720,7 @@ describe("MergeEditorApp", () => {
         expect(document.querySelector(".conflict-ours")?.className).toContain("accepted-pane");
         expect(document.querySelector(".conflict-theirs")?.className).toContain("accepted-pane");
 
-        clickButton("Apply (1/1)");
+        clickButton("Apply");
         expect(vscode.postMessage).toHaveBeenCalledWith({
             type: "applyResolution",
             content: "shared();\ntheirs();\nours();\n",
@@ -827,7 +833,7 @@ describe("MergeEditorApp", () => {
         clickButton("Accept right block");
         await flush();
         expect(document.body.textContent).toContain("0 unresolved");
-        clickButton("Apply (1/1)");
+        clickButton("Apply");
         expect(vscode.postMessage).toHaveBeenCalledWith({
             type: "applyResolution",
             content: "shared();\ntheirs();\n",
@@ -893,7 +899,7 @@ describe("MergeEditorApp", () => {
             expect(connector.getAttribute("class")).toContain("connector-resolved");
         }
 
-        clickButton("Apply (1/1)");
+        clickButton("Apply");
         expect(vscode.postMessage).toHaveBeenCalledWith({
             type: "applyResolution",
             content: "shared();\nours();\n",
@@ -948,7 +954,7 @@ describe("MergeEditorApp", () => {
             expect(connector.getAttribute("class")).toContain("connector-resolved");
         }
 
-        clickButton("Apply (1/1)");
+        clickButton("Apply");
         expect(vscode.postMessage).toHaveBeenCalledWith({
             type: "applyResolution",
             content: "shared();\n",
@@ -1108,7 +1114,7 @@ describe("MergeEditorApp", () => {
         await flush();
         expect(document.body.textContent).toContain("0 unresolved");
 
-        clickButton("Apply (2/2)");
+        clickButton("Apply");
         expect(vscode.postMessage).toHaveBeenCalledWith({
             type: "applyResolution",
             content: "head();\na_ours();\na_theirs();\nmid();\n",
@@ -1211,6 +1217,9 @@ describe("MergeEditorApp", () => {
 
         // The one-sided hunk surfaces as auto-resolved in the header stats.
         expect(document.body.textContent).toContain("1 auto-resolved");
+        expect(document.querySelector(".merge-remaining-status")?.textContent).toBe(
+            "No changes, 1 conflict",
+        );
         expect(findButton("Apply non-conflicting changes").disabled).toBe(false);
         expect(
             document.querySelector('[data-conflict-id="0"] .conflict-result')?.className,
@@ -1230,6 +1239,134 @@ describe("MergeEditorApp", () => {
         // "Both" is meaningless for a one-sided change and must not render.
         expect(oneSided.querySelector('button[aria-label="Both"]')).toBeNull();
         expect(document.body.textContent).not.toContain("Use both");
+    });
+
+    it("keeps compact merge controls explicit and preserves details and footer commands", async () => {
+        const vscode = installVsCodeMock();
+        createRootHost();
+        await act(async () => {
+            await import("../../../src/webviews/react/merge-editor/MergeEditorApp");
+        });
+        dispatchHostMessage({ type: "setConflictData", data: twoConflictData() });
+        await flush();
+
+        const select = document.querySelector<HTMLSelectElement>(".merge-toolbar select");
+        expect(select, "Ignore mode must expose the two supported choices").not.toBeNull();
+        if (!select) throw new Error("Expected the ignore-mode select");
+        expect(Array.from(select.options, (option) => option.value)).toEqual([
+            "none",
+            "whitespace",
+        ]);
+        expect(select.getAttribute("aria-label")).toBeTruthy();
+        vscode.postMessage.mockClear();
+        act(() => select.dispatchEvent(new Event("change", { bubbles: true })));
+        expect(vscode.postMessage).not.toHaveBeenCalled();
+        for (const mode of ["whitespace", "none"]) {
+            act(() => {
+                select.value = mode;
+                select.dispatchEvent(new Event("change", { bubbles: true }));
+            });
+            expect(vscode.postMessage).toHaveBeenLastCalledWith({ type: "setIgnoreMode", mode });
+        }
+        expect(vscode.postMessage).toHaveBeenCalledTimes(2);
+
+        const detailsButton = findButton("Show Details");
+        const details = document.getElementById(detailsButton.getAttribute("aria-controls") ?? "");
+        expect(details?.hidden, "Summary details start collapsed").toBe(true);
+        expect(document.querySelectorAll(".merge-remaining-status")).toHaveLength(1);
+        expect(document.querySelector(".pane-meta-center")?.textContent).toContain(
+            "src/conflict.ts",
+        );
+        clickButton("Show Details");
+        expect(details?.hidden).toBe(false);
+        expect(findButton("Hide Details").getAttribute("aria-expanded")).toBe("true");
+        expect(details?.textContent).toContain("2 unresolved");
+        expect(details?.querySelector(".toolbar-inline-link")?.getAttribute("title")).toBeTruthy();
+        clickButton("Hide Details");
+        expect(details?.hidden).toBe(true);
+
+        expect(
+            Array.from(document.querySelectorAll(".footer-right button"), (button) =>
+                button.textContent?.trim(),
+            ),
+        ).toEqual(["Use File Ours", "Use File Theirs", "Cancel", "Apply"]);
+        const apply = findButton("Apply");
+        expect(apply.disabled).toBe(true);
+        expect(
+            document
+                .getElementById(apply.getAttribute("aria-describedby") ?? "")
+                ?.classList.contains("merge-remaining-status"),
+        ).toBe(true);
+        for (const [label, type] of [
+            ["Use File Ours", "acceptYours"],
+            ["Use File Theirs", "acceptTheirs"],
+            ["Cancel", "close"],
+            ["Abort Merge", "abortMerge"],
+        ]) {
+            clickButton(label);
+            expect(vscode.postMessage).toHaveBeenLastCalledWith({ type });
+        }
+        clickButton("Accept All Yours");
+        expect(apply.disabled).toBe(false);
+        clickButton("Apply");
+        expect(vscode.postMessage).toHaveBeenLastCalledWith(
+            expect.objectContaining({ type: "applyResolution" }),
+        );
+
+        dispatchHostMessage({
+            type: "setConflictData",
+            data: { ...(twoConflictData() as object), sessionKind: "shelf" },
+        });
+        await flush();
+        expect(document.querySelectorAll(".footer-left button")).toHaveLength(0);
+        expect(findButton("Use File Ours")).toBeTruthy();
+        expect(findButton("Apply").disabled).toBe(true);
+    });
+
+    it("leaves merge shortcuts untouched while the native ignore selector has focus", async () => {
+        const vscode = installVsCodeMock();
+        createRootHost();
+        await act(async () => {
+            await import("../../../src/webviews/react/merge-editor/MergeEditorApp");
+        });
+        dispatchHostMessage({ type: "setConflictData", data: twoConflictData() });
+        await flush();
+        const select = document.querySelector<HTMLSelectElement>(".merge-toolbar select");
+        if (!select) throw new Error("Expected the ignore-mode select");
+        select.focus();
+        vscode.postMessage.mockClear();
+        for (const key of ["n", "p", "b", "x"]) {
+            act(() =>
+                select.dispatchEvent(
+                    new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true }),
+                ),
+            );
+            expect(
+                document.querySelector('[data-conflict-id="0"]')?.className,
+                `Selector ${key} must not navigate away from the active conflict`,
+            ).toContain("active");
+            expect(findButton("Apply").disabled, `Selector ${key} must not resolve conflicts`).toBe(
+                true,
+            );
+            expect(document.querySelector(".merge-remaining-status")?.textContent).toBe(
+                "No changes, 2 conflicts",
+            );
+        }
+        clickButton("Accept All Yours");
+        act(() =>
+            select.dispatchEvent(
+                new KeyboardEvent("keydown", {
+                    key: "Enter",
+                    ctrlKey: true,
+                    bubbles: true,
+                    cancelable: true,
+                }),
+            ),
+        );
+        expect(
+            vscode.postMessage,
+            "Selector shortcut must not apply the result",
+        ).not.toHaveBeenCalled();
     });
 
     it("disables apply-non-conflicting when every hunk is a true conflict", async () => {
@@ -1515,7 +1652,7 @@ describe("MergeEditorApp", () => {
         expect(resultBlock?.textContent).toContain("const total = stride;");
 
         // Apply is unlocked without any clicks and writes the merged line.
-        clickButton("Apply (0/0)");
+        clickButton("Apply");
         expect(vscode.postMessage).toHaveBeenCalledWith({
             type: "applyResolution",
             content: "head();\nconst total = stride;\n",
@@ -1565,7 +1702,7 @@ describe("MergeEditorApp", () => {
             "auto-merged",
         );
 
-        clickButton("Apply (0/0)");
+        clickButton("Apply");
         expect(vscode.postMessage).toHaveBeenCalledWith({
             type: "applyResolution",
             content: "const total = step;\n",
@@ -1637,6 +1774,49 @@ describe("MergeEditorApp", () => {
             );
             expect(returnSpan).toBeDefined();
             expect((returnSpan as HTMLElement).style.color).not.toBe("");
+        }
+    });
+
+    it("preserves JSON grammar context across merge segments", async () => {
+        installVsCodeMock();
+        createRootHost();
+
+        await act(async () => {
+            await import("../../../src/webviews/react/merge-editor/MergeEditorApp");
+        });
+        await flush();
+
+        dispatchHostMessage({
+            type: "setConflictData",
+            data: {
+                filePath: "config.json",
+                oursLabel: "main",
+                theirsLabel: "feature/incoming",
+                eol: "\n",
+                hasTrailingNewline: true,
+                segments: [
+                    { type: "common", lines: ["{"] },
+                    { type: "common", lines: ['  "name": "value"'] },
+                    { type: "common", lines: ["}"] },
+                ],
+            },
+        });
+        await flushShikiInit();
+        await flush();
+
+        const lines = Array.from(
+            document.querySelectorAll<HTMLElement>(".code-line-content"),
+        ).filter((line) => line.textContent?.includes('"name"'));
+        expect(lines).toHaveLength(3);
+        for (const line of lines) {
+            const spans = Array.from(line.querySelectorAll<HTMLElement>("span"));
+            const key = spans.find((span) => span.textContent === '"name"');
+            const value = spans.find((span) => span.textContent === '"value"');
+            expect(key, "JSON key token").toBeDefined();
+            expect(value, "JSON value token").toBeDefined();
+            expect(key?.style.color, "a key and value need distinct grammar scopes").not.toBe(
+                value?.style.color,
+            );
         }
     });
 

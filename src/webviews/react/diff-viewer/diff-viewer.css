@@ -23,7 +23,9 @@
 }
 
 .diff-toolbar {
+    font-family: var(--vscode-font-family, sans-serif);
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     min-height: 32px;
     padding: 3px 10px;
@@ -34,9 +36,21 @@
 
 .toolbar-left {
     display: flex;
+    flex-wrap: wrap;
+    flex-shrink: 0;
+    max-width: 100%;
     align-items: center;
     gap: 4px;
     min-width: 0;
+}
+
+.diff-difference-count {
+    font-size: 12px;
+    margin-left: auto;
+    padding-left: 12px;
+    flex-shrink: 0;
+    white-space: nowrap;
+    color: var(--vscode-descriptionForeground);
 }
 
 /* Same shape as the merge editor's conflict navigation, because it is the same move. */
@@ -81,6 +95,7 @@
 }
 
 .toolbar-btn {
+    font-family: inherit;
     min-height: 24px;
     padding: 0 7px;
     border: 1px solid transparent;
@@ -200,7 +215,7 @@
     padding: 2px 8px;
     overflow: hidden;
     border-right: 1px solid var(--diff-pane-boundary);
-    color: color-mix(in srgb, var(--diff-editor-fg) 76%, transparent);
+    color: var(--vscode-descriptionForeground, var(--vscode-foreground));
     font-size: 11px;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -291,46 +306,12 @@
     border-left: 1px solid var(--diff-pane-boundary);
 }
 
-/* A changed block is marked at its edge on every theme, and washed behind its code at
-   the merge editor's own strength: block at 15%, changed word fragment at 30%, mixed
-   toward the live editor background exactly as merge-editor.css:40-48 mixes
-   --merge-*-block-bg and --pycharm-*. The two surfaces read as one product because
-   they are literally the same two numbers.
-   These strengths cost contrast, and that cost is accepted deliberately rather than
-   discovered later. Laddered through tests/visual/nonPixelOracles.spec.ts, counting
-   only findings NEW against this surface's baseline (which recorded none):
-
-     block/word   failing projects
-       7% / 14%   light-modern x2, hc-light x2
-      10% / 20%   same four
-      15% / 30%   all eight
-
-   The cause is arithmetic, not a tuning miss: syntax tokens are coloured for the plain
-   editor background, and VS Code's light themes give the number token #098658, which
-   measures 4.60:1 on white against a 4.5 floor. Any wash behind it spends that 0.10.
-   Light themes never clear the floor at any visible percentage; dark themes clear it up
-   to 7%/14% and not beyond.
-   The alternative shapes were measured and offered -- a theme-gated wash that leaves
-   light themes with the edge bar alone, or a non-background ring on light -- and the
-   full merge strength on every theme was chosen over both, with the resulting findings
-   recorded in tests/visual/fixtures/knownFindings.json. Those entries are the accepted
-   cost of matching the merge surface, NOT noise: a NEW finding beyond them still fails,
-   which is what keeps this a decision rather than a hole.
-   Note the merge editor is not itself evidence these strengths are safe. It carries no
-   baselined contrast findings, but its visual fixture is `one / two / three /
-   TWO-MAIN` -- no numeric tokens, so the token closest to the floor never reaches its
-   sampler. This surface renders `const x = 0;` on every row and does exercise it.
-   The wash lands on the block's own background; the edge bar stays an inset box-shadow,
-   which paints inside the border box and so still costs the code no width and the
-   line-number gutter no room. */
+/* Fixed editor fills keep the diff and merge surfaces on the same PyCharm palette. */
 .diff-viewer {
-    --diff-inserted-wash: color-mix(in srgb, var(--diff-ok) 15%, var(--diff-editor-bg));
-    --diff-deleted-wash: color-mix(in srgb, var(--diff-deleted-hue) 15%, var(--diff-editor-bg));
-    --diff-modified-wash: color-mix(in srgb, var(--diff-info) 15%, var(--diff-editor-bg));
-    /* The base tint, for a mark outside any changed block. `.diff-segment-changed`
-       re-declares this from the block's own hue -- see the comment there for why the
-       override cannot live here. */
-    --diff-word-wash: color-mix(in srgb, var(--diff-info) 30%, var(--diff-editor-bg));
+    --diff-inserted-wash: #264b33;
+    --diff-deleted-wash: #3b2a32;
+    --diff-modified-wash: #3b2a32;
+    --diff-word-wash: #4b1515;
     /* One number for the revert arrow's box AND the strip reserved for it, because a strip
        narrower than its glyph clips it and a wider one leaves the arrow floating away from
        the number it annotates. `App` feeds this same token to
@@ -359,81 +340,20 @@
     padding-right: var(--diff-action-gutter);
 }
 
-/* The merge editor's hunk layout, ported to a block that carries one pane rather than
-   three: a 2px rule above and below every changed hunk in the block's own hue, faded
-   the way that surface fades it -- 30% toward the editor background, then 76% opacity
-   (merge-editor.css:596-607, whose --merge-hunk-boundary reads --pycharm-* at 76%).
-   It is drawn as an inset shadow for the same reason the merge editor draws it that
-   way: a border or margin would add height per hunk, and this block's height is the
-   scroll geometry both panes and the connector ribbons are laid out from.
-   Unlike the wash, a bracket costs no contrast -- it is a rule at the block's edge, not
-   a background under a glyph -- so it lands on every theme, and it is the layout signal
-   a light theme gets in place of the wash it cannot pay for.
-   The whole shadow list lives on the marker class as a token because box-shadow does
-   not accumulate across rules: a second rule declaring one would REPLACE the edge bar,
-   not add to it. The marker still paints nothing itself, which is what
-   `tests/unit/visual/diffCorePalette.test.ts` requires of it.
-
-   --diff-word-wash is re-declared here for the same structural reason, and it is worth
-   spelling out because it looks like it belongs beside the other washes on `.diff-viewer`.
-   It cannot live there. A var() inside a custom property is substituted on the element
-   that DECLARES the property, not on the one that finally uses it -- so a
-   `var(--diff-segment-hue)` written on the root resolves at the root, where no hue is
-   declared, and every word mark in the file comes out the one fallback colour. Measured
-   in a browser: declared on the ancestor the span computes the fallback, declared
-   alongside the hue it computes the hue. The marker classes below set --diff-segment-hue
-   on this same element, so the substitution finds it and the resolved colour inherits
-   down to the span -- a lighter green inside an inserted block and a lighter red inside a
-   deleted one. Modified blocks use --diff-info by default; the pane-specific rules below
-   override only their word wash, leaving their block hue and background modified. The root
-   keeps the --diff-info mix as the base for a mark outside any changed block. */
+/* Inset shadows mark hunk edges without changing the row geometry used by connectors. */
 .diff-viewer .diff-segment-changed {
-    --diff-word-wash: color-mix(
-        in srgb,
-        var(--diff-segment-hue, var(--diff-info)) 30%,
-        var(--diff-editor-bg)
-    );
-    --diff-hunk-bracket: color-mix(
-        in srgb,
-        color-mix(in srgb, var(--diff-segment-hue, transparent) 30%, var(--diff-editor-bg)) 76%,
-        transparent
-    );
+    --diff-word-wash: #4b1515;
+    --diff-gutter-bg: #4b1515;
+    --diff-hunk-bracket: var(--diff-gutter-bg);
     --diff-segment-shadow:
         inset 3px 0 0 var(--diff-segment-hue, transparent),
         inset 0 2px 0 0 var(--diff-hunk-bracket), inset 0 -2px 0 0 var(--diff-hunk-bracket);
 }
 
-/* One hue per state, read three times by the shadow above. Each background keeps a
-   `transparent` fallback leg -- the same shape diff-core.css uses for
-   --diff-pycharm-modified -- so a theme that stops declaring the token loses the wash
-   and keeps the edge bar, instead of painting `initial` over the code. That leg is also
-   the seam a per-theme gate would be reinstated through, if the contrast cost recorded
-   above is ever reconsidered. */
-/* Both one-sided states neutralise the word wash, and the reason is the same for each: the
-   block already says the whole line changed, so a mark that covers the whole line says it
-   twice. The wash below is 15% of the state's hue; --diff-word-wash is 30% of that SAME hue,
-   so the glyphs came out in a darker box of one colour inside a lighter band of it. Measured
-   on the diff-viewer fixture before this line existed: 42/42 marks inside a one-sided hunk
-   painted a second tint (24 inserted, 18 deleted) -- dark-modern block 47,58,46 against mark
-   63,84,62, light-modern 225,237,225 against 195,220,194.
-
-   `transparent` rather than deleting the declaration: `.diff-segment-changed` (:389) sets the
-   hue-derived mix on this same element and ties at (0,2,0), so the override has to be a real
-   value that wins on source order. It does -- these two rules sit after it -- and the tie is
-   why `tests/visual/wholeLineWordFill.spec.ts` measures the painted result in a browser rather
-   than reading the stylesheet: `tests/unit/visual/diffCorePalette.test.ts` never reads
-   --diff-word-wash out of a state rule, so it stays green whether these lines are here or not
-   and cannot witness a reorder that silently restores the double tint.
-
-   Scoped to the ONE-SIDED states on purpose. A row whose counterpart is padding also exists
-   inside a two-sided `.diff-segment-modified` hunk with unequal line counts, and there the
-   full-length mark is the only thing separating "this line was removed" from "this line was
-   changed" -- the block wash there is --diff-info for both panes. That is also why this is not
-   fixed in `WordDiffLine` by skipping an empty counterpart: the component can see that a row
-   has nothing opposite it, but not which block it is sitting in, and the mark is meaningless in
-   one and load-bearing in the other. */
+/* Whole inserted or deleted rows need one band only; partial modified words retain a second fill. */
 .diff-viewer .diff-segment-inserted {
     --diff-segment-hue: var(--diff-ok);
+    --diff-gutter-bg: var(--diff-inserted-wash);
     --diff-word-wash: transparent;
     box-shadow: var(--diff-segment-shadow);
     background: var(--diff-inserted-wash, transparent);
@@ -452,14 +372,18 @@
     background: var(--diff-modified-wash, transparent);
 }
 
-/* A two-sided hunk remains modified at block level. Only changed words communicate direction:
-   removed text on the left and added text on the editable right. */
+/* The number and action strip joins the solid connector, outside the lighter code band. */
+.diff-viewer .diff-segment-changed .line-numbers {
+    background: var(--diff-gutter-bg);
+}
+
+/* Modified areas and changed words share the red palette on both panes. */
 .diff-viewer .diff-pane-left .diff-segment-modified {
-    --diff-word-wash: color-mix(in srgb, var(--diff-deleted-hue) 30%, var(--diff-editor-bg));
+    --diff-word-wash: #4b1515;
 }
 
 .diff-viewer .diff-pane-right .diff-segment-modified {
-    --diff-word-wash: color-mix(in srgb, var(--diff-ok) 30%, var(--diff-editor-bg));
+    --diff-word-wash: #4b1515;
 }
 
 /* .diff-segment-empty declares no BACKGROUND, and cannot: each pane is sized from its own
@@ -475,10 +399,7 @@
    PyCharm draws as a thin line at the collapsed position. A spread box-shadow paints
    outside the border box without entering layout, so a 0px block still renders a 2px
    rule and the canonical geometry every pane offset and ribbon is derived from is
-   untouched. The hue comes from the counterpart's state, since this side has none, and it
-   is the counterpart's WASH rather than its accent: the accent is the strength the rail
-   ticks are painted at, which on a full-width rule reads as a bar across the pane instead
-   of a marker beside it. */
+   untouched. The thin rule uses the counterpart's solid connector color. */
 .diff-viewer .diff-gap-inserted,
 .diff-viewer .diff-gap-deleted {
     box-shadow: 0 0 0 1px var(--diff-gap-hue);
@@ -489,62 +410,10 @@
 }
 
 .diff-viewer .diff-gap-deleted {
-    --diff-gap-hue: var(--diff-deleted-wash);
+    --diff-gap-hue: var(--diff-deleted-hue);
 }
 
-/* Which words changed, marked the way the merge editor marks them: a darker fill of
-   the block's own hue behind the fragment, and nothing else. No underline -- the fill
-   IS the marker, exactly as merge-editor.css:1030-1050 marks one.
-   The strength is that surface's own 30%, on every theme. What that costs was laddered
-   on this token alone, through nonPixelOracles.spec.ts, counting only findings NEW
-   against the diff-viewer baseline (which recorded none):
-
-     word fill    failing projects
-        6%        light-modern x2, hc-light x2   (4 contrast findings each)
-       10%        same four
-       14%        same four
-       18%        + dark-modern x2
-       30%        all eight
-
-   So 14% was the strongest fill dark-modern cleared and no fill at all was legal on a
-   light theme. 30% was chosen over both alternatives anyway -- see the wash comment
-   above for the arithmetic behind the light-theme floor and for why the merge editor's
-   own clean baseline is not evidence of safety here. The resulting findings are
-   recorded in tests/visual/fixtures/knownFindings.json, so a NEW one still fails.
-   A one-sided hunk still RENDERS these spans -- `WordDiffLine` marks a row with nothing
-   opposite it over its whole length, because `buildChangedCharMasks` compares against an
-   empty counterpart (src/webviews/react/diff-core/segments.tsx:169-185) -- but the
-   one-sided state rules above paint them `transparent`, so the fill lands only where it
-   answers something. On a one-sided row it answered nothing: every word changed, and a
-   mark covering every word distinguishes nothing from nothing while spending a second
-   tint of the hue the block is already washed in.
-   Two-sided modified blocks keep --diff-info for the block itself while the pane-specific
-   rules above override only the word wash, showing removed text on the left and added text
-   on the right. That is the case the fill exists for, and --diff-word-wash still follows
-   the block's own --diff-segment-hue by default so a mark in any block that does declare
-   one is painted in that block's colour rather than a fixed --diff-info.
-
-   The ladder above therefore describes the population again. Marking one-sided rows had
-   enlarged it -- the ladder could not predict that, because when it was measured no
-   one-sided row could carry a fill at all -- and neutralising them gives that back.
-   Measured on the diff-viewer fixture, whose segments 1 and 3 are one-sided, when the
-   marks were added:
-
-     dark-modern x2   +11 new, -4 gone   (net +7)
-     hc-black x2       +7 new,  0 gone   (net +7)
-     light-modern x2  +14 new, -14 gone  (net 0)
-     hc-light x2      +14 new, -14 gone  (net 0)
-
-   The light themes traded one finding for another rather than gaining any: those rows were
-   already failing behind the 15% block wash, and the mark only re-keyed them one span
-   deeper. The dark themes were where the count grew, because 15% cleared the floor there
-   and 30% does not. knownFindings.json is re-recorded alongside this change and moves back
-   along the same axis -- `findingsBaseline.ts:44` fails a RESOLVED finding exactly as
-   loudly as a new one, so the reduction is a reviewed edit rather than silent drift.
-   What remains recorded is the cost of the block wash itself, which the comment above
-   accepts and this change does not touch.
-   This overrides diff-core's `.word-diff-change` on specificity (0,2,0 over 0,1,0);
-   that rule reads --diff-pycharm-modified, which only merge-editor.css declares. */
+/* Partial modified words use the stronger red fill without an underline. */
 .diff-viewer .word-diff-change {
     background: var(--diff-word-wash, transparent);
     border-radius: 2px;
@@ -633,9 +502,7 @@
     outline-offset: -1px;
 }
 
-/* The connector fills with the semantic hue itself, not a wash of it: it carries its
-   own alpha, so drawing it from a fragment tint made it a near-background band that
-   the 0.18 opacity then erased entirely.
+/* Connectors use solid dark change colors, matching the number and action gutters.
    One fill per variant, the way the merge editor colours its own connectors
    (merge-editor.css:446-457). This rule is the modification case and the fallback for
    a ribbon whose segment classifies to nothing; the two below are the one-sided hunks.
@@ -653,11 +520,11 @@
    span; stacking order stopped mattering once the paths cannot reach the code. */
 .diff-ribbon {
     fill: var(--diff-info);
-    opacity: 0.18;
+    opacity: 1;
 }
 
 .diff-ribbon.diff-segment-inserted {
-    fill: var(--diff-ok);
+    fill: var(--diff-inserted-wash);
 }
 
 .diff-ribbon.diff-segment-deleted {
@@ -718,18 +585,17 @@
     cursor: pointer;
 }
 
-/* Each tone is the hue of the edge bar on the block it points at, so following a mark
-   never lands on a differently coloured change. */
+/* Overview markers need contrast against the host editor, independent of the dark hunk fills. */
 .diff-change-inserted {
     background: var(--diff-ok);
 }
 
 .diff-change-deleted {
-    background: var(--diff-deleted-hue);
+    background: var(--vscode-editorOverviewRuler-deletedForeground, #f14c4c);
 }
 
 .diff-change-modified {
-    background: var(--diff-info);
+    background: var(--vscode-editorOverviewRuler-modifiedForeground, #007acc);
 }
 
 .diff-horizontal-scroll {
@@ -870,4 +736,9 @@
 }
 .diff-viewer button:active:not(:disabled) {
     box-shadow: inset 0 0 0 1px currentcolor;
+}
+
+/* The fixed dark change bands need dark syntax even when unchanged code uses a light theme. */
+.diff-segment-changed .real-code-line {
+    color-scheme: dark;
 }
