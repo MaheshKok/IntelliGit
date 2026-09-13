@@ -80,7 +80,7 @@ for (const editable of [false, true]) {
         // Dark-plus keyword blue must stay readable even when the host fixture is light.
         await expect(
             page
-                .locator('.diff-pane-left span[style*="color"]')
+                .locator('.diff-pane-left .diff-segment-modified span[style*="color"]')
                 .filter({ hasText: /^const$/ })
                 .first(),
         ).toHaveCSS("color", "rgb(86, 156, 214)");

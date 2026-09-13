@@ -201,6 +201,16 @@ describe("highlightDocument", () => {
         },
     );
 
+    it("retains dark colors alongside light document tokens for fixed dark change blocks", () => {
+        const lines = ["{", '  "name": "value"', "}"];
+        const light = highlightDocument(lines, "json", "light-plus")?.[1];
+        const dark = highlightDocument(lines, "json", "dark-plus")?.[1];
+        const lightKey = light?.find((token) => token.text === '\"name\"');
+        const darkKey = dark?.find((token) => token.text === '\"name\"');
+        expect(lightKey?.color).not.toBe(darkKey?.color);
+        expect(lightKey).toMatchObject({ darkColor: darkKey?.color });
+    });
+
     it("colors JSON keys and values from their full-document scopes", () => {
         const tokens = highlightDocument(["{", '  "name": "value"', "}"], "json", "dark-plus")?.[1];
         const key = tokens?.find((token) => token.text === '"name"');
