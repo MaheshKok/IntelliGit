@@ -387,5 +387,12 @@
     "shelf.list.empty.hint": "Ponga cambios en un estante para apartarlos sin confirmar.",
     "commitPanel.noChanges.hint": "Edite un archivo del espacio de trabajo y aparecerá aquí.",
     "stash.empty.hint": "El stash guarda el trabajo sin confirmar para que pueda cambiar de rama sin problemas.",
-    "commit.message.label": "Mensaje de confirmación"
+    "commit.message.label": "Mensaje de confirmación",
+    "diff.toolbar.differenceCount": {
+        "one": "{count} diferencia",
+        "many": "{count} diferencias",
+        "other": "{count} diferencias"
+    },
+    "merge.status.noChanges": "Sin cambios",
+    "merge.status.allConflictsResolved": "Todos los conflictos resueltos"
 }

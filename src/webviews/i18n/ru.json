@@ -396,5 +396,13 @@
     "shelf.list.empty.hint": "Отложите изменения на полку чтобы убрать их без коммита.",
     "commitPanel.noChanges.hint": "Измените файл в рабочей области и он появится здесь.",
     "stash.empty.hint": "Прятание изменений сохраняет незакоммиченную работу и позволяет спокойно переключить ветку.",
-    "commit.message.label": "Сообщение коммита"
+    "commit.message.label": "Сообщение коммита",
+    "diff.toolbar.differenceCount": {
+        "one": "{count} различие",
+        "few": "{count} различия",
+        "many": "{count} различий",
+        "other": "{count} различия"
+    },
+    "merge.status.noChanges": "Без изменений",
+    "merge.status.allConflictsResolved": "Все конфликты разрешены"
 }

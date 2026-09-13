@@ -92,5 +92,6 @@
     "configuration.timeFormat.enum.24h": "24-Stunden-Uhr.",
     "configuration.timeFormat.markdownDescription": "Uhrzeitformat für Commit-Daten in der IntelliGit-Commit-Liste und den Details. `12h` zeigt eine 12-Stunden-Uhr mit AM/PM (Standard), `24h` eine 24-Stunden-Uhr. Änderungen werden nach einem Neuladen des Fensters wirksam.",
     "command.diffShowInIntelliGit": "Diff in IntelliGit anzeigen",
-    "command.diffShowInVsCode": "Diff in VS Code anzeigen"
+    "command.diffShowInVsCode": "Diff in VS Code anzeigen",
+    "command.showFileHistory": "Dateiverlauf anzeigen"
 }

@@ -9,14 +9,7 @@ const { listFiles: vsceListFiles, PackageManager } = require("@vscode/vsce");
 
 const DEFAULT_CWD = path.resolve(__dirname, "..");
 const MAX_COMPRESSED_BYTES = 2.5 * 1024 * 1024;
-// Uncompressed ceiling, deliberately a ratchet rather than a target. Raised from 8 MiB to 9 MiB
-// with the React 19 upgrade: react-dom 19's production runtime minifies ~80 KB larger than 18's,
-// each of the eight standalone webview bundles embeds it, and the packaged total moved from
-// 7,992,683 bytes to 8,708,229 (both measured with `bun run package`). The compressed (2.5 MiB)
-// and single-entry (2 MiB) budgets are unchanged and still carry margin — the compressed total is
-// 2,204,547 bytes. The alternative to this raise is a shared vendor chunk across the webview
-// bundles, which is a bundling change of its own rather than a ceiling to keep.
-const MAX_UNCOMPRESSED_BYTES = 9 * 1024 * 1024;
+const MAX_UNCOMPRESSED_BYTES = 8 * 1024 * 1024;
 const MAX_ENTRY_UNCOMPRESSED_BYTES = 2 * 1024 * 1024;
 const REQUIRED_PAYLOAD = new Set([
     "package.json",
@@ -25,6 +18,7 @@ const REQUIRED_PAYLOAD = new Set([
     "LICENSE.txt",
     "dist/extension.js",
     "dist/interactive-rebase-editor-helper.cjs",
+    "dist/webview-shiki.js",
 ]);
 const OUTER_METADATA = new Set(["extension.vsixmanifest", "[Content_Types].xml"]);
 const FORBIDDEN_DIRECTORY_NAMES = new Set([

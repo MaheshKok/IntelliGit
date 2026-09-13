@@ -378,5 +378,11 @@
     "shelf.list.empty.hint": "Legen Sie Änderungen ab um sie ohne Commit beiseitezulegen.",
     "commitPanel.noChanges.hint": "Bearbeiten Sie eine Datei im Arbeitsbereich und sie erscheint hier.",
     "stash.empty.hint": "Ein Stash sichert nicht committete Arbeit und erlaubt einen sauberen Branch-Wechsel.",
-    "commit.message.label": "Commit-Nachricht"
+    "commit.message.label": "Commit-Nachricht",
+    "diff.toolbar.differenceCount": {
+        "one": "{count} Unterschied",
+        "other": "{count} Unterschiede"
+    },
+    "merge.status.noChanges": "Keine Änderungen",
+    "merge.status.allConflictsResolved": "Alle Konflikte gelöst"
 }

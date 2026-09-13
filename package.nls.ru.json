@@ -92,5 +92,6 @@
     "configuration.timeFormat.enum.24h": "24-часовой формат.",
     "configuration.timeFormat.markdownDescription": "Формат времени для дат коммитов в списке коммитов и сведениях IntelliGit. `12h` показывает 12-часовой формат с AM/PM (по умолчанию), `24h` показывает 24-часовой формат. Изменения вступают в силу после перезагрузки окна.",
     "command.diffShowInIntelliGit": "Показать различия в IntelliGit",
-    "command.diffShowInVsCode": "Показать различия в VS Code"
+    "command.diffShowInVsCode": "Показать различия в VS Code",
+    "command.showFileHistory": "Показать историю файла"
 }

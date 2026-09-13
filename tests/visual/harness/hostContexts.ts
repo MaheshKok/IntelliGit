@@ -127,6 +127,14 @@ export const WEBVIEW_HOST_CONTEXTS: readonly ResolvedHostContext[] = [
         resolvedBackgroundVar: DEFAULT_BACKGROUND_VAR,
         titleDescriptor: { kind: "localized", key: "Diff: {file}" },
     },
+    {
+        contextId: "file-history",
+        scriptFile: "webview-filehistory.js",
+        styleFiles: ["webview-filehistory.css"],
+        declaredBackgroundVar: undefined,
+        resolvedBackgroundVar: DEFAULT_BACKGROUND_VAR,
+        titleDescriptor: { kind: "localized", key: "History: {file}" },
+    },
 ] as const;
 
 /**

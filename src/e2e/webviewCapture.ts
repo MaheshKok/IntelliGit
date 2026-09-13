@@ -11,7 +11,7 @@ import type * as vscode from "vscode";
 import { isE2eControlChannelActive } from "./activationState";
 
 /**
- * The 9 resolved host contexts a bundled webview can be rendered into. Keyed by "resolved host
+ * The resolved host contexts a bundled webview can be rendered into. Keyed by "resolved host
  * context" rather than by bundle or by call site because neither is 1:1 with a rendered shell: two
  * contexts share the `webview-mergeeditor.js` bundle (`merge-editor`, `shelf-conflict-editor`), and
  * one call site (`CommitGraphViewProvider`) is constructed twice into two different contexts
@@ -27,9 +27,10 @@ export const WEBVIEW_CONTEXT_IDS = [
     "shelf-conflict-editor",
     "merge-conflict-session",
     "diff-viewer",
+    "file-history",
 ] as const;
 
-/** One of the 9 resolved host contexts. Assigning an unlisted string is a compile error. */
+/** A resolved host context. Assigning an unlisted string is a compile error. */
 export type WebviewContextId = (typeof WEBVIEW_CONTEXT_IDS)[number];
 
 /** One captured extension -\> webview message, tagged with the host context that sent it. */

@@ -1,6 +1,6 @@
 // Shiki syntax highlighting module for diff webviews.
 // The JavaScript regex engine is CSP-safe (no wasm/eval); grammars are bundled
-// statically and tokenization is cached per source line.
+// statically and single-line tokenization is cached by source line.
 import { createHighlighterCoreSync } from "shiki/core";
 import { createJavaScriptRegexEngine } from "shiki/engine/javascript";
 
@@ -32,6 +32,9 @@ export interface ShikiToken {
     /** Font-style bitmask (1=italic, 2=bold, 4=underline), if any. */
     fontStyle?: number;
 }
+
+/** Grammar-tokenized runs for each source line in one logical document. */
+export type ShikiDocumentTokens = readonly (readonly ShikiToken[])[];
 
 // Map file extensions to Shiki language identifiers.
 const extensionMap: Record<string, string> = {
@@ -154,8 +157,39 @@ export function highlightLine(line: string, lang: string, theme: ShikiTheme): Sh
         tokenCache.set(cacheKey, tokens);
         return tokens;
     } catch (err) {
-        console.warn(`Failed to highlight line with lang="${lang}":`, err);
+        console.warn("Failed to highlight line with lang=%s:", lang, err);
         tokenCache.set(cacheKey, null);
+        return null;
+    }
+}
+
+/**
+ * Tokenizes one logical document while preserving grammar state across its lines.
+ *
+ * Callers supply the document's original line-ending sequence so grammar inference sees the same
+ * boundaries as the source. The returned rows still exclude line endings and align one-for-one with
+ * `lines`, which lets segmented renderers select rows by their existing source line numbers.
+ */
+export function highlightDocument(
+    lines: readonly string[],
+    lang: string,
+    theme: ShikiTheme,
+    eol = "\n",
+): ShikiDocumentTokens | null {
+    if (!isShikiReady() || !highlighter) return null;
+    warmLang(lang, theme);
+
+    try {
+        const highlighted = highlighter.codeToTokensBase(lines.join(eol), { lang, theme });
+        return lines.map((_, index) =>
+            (highlighted[index] ?? []).map((token) => ({
+                text: token.content,
+                color: token.color,
+                fontStyle: token.fontStyle,
+            })),
+        );
+    } catch (err) {
+        console.warn("Failed to highlight document with lang=%s:", lang, err);
         return null;
     }
 }

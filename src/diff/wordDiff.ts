@@ -61,9 +61,11 @@ function buildLineAlignmentMatrix(
         dp[i][n] = dp[i + 1][n] + LINE_ALIGNMENT_GAP_PENALTY;
         trace[i][n] = "skipA";
     }
+    const lastScores = dp[dp.length - 1];
+    const lastTrace = trace[trace.length - 1];
     for (let j = n - 1; j >= 0; j--) {
-        dp[m][j] = dp[m][j + 1] + LINE_ALIGNMENT_GAP_PENALTY;
-        trace[m][j] = "skipB";
+        lastScores[j] = lastScores[j + 1] + LINE_ALIGNMENT_GAP_PENALTY;
+        lastTrace[j] = "skipB";
     }
 
     for (let i = m - 1; i >= 0; i--) {

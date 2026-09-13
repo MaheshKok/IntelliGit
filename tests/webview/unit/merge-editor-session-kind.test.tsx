@@ -61,7 +61,7 @@ describe("MergeEditorApp session kind", () => {
         expect(container.textContent).not.toContain(t("merge.action.abortMerge"));
 
         click(button(container, t("merge.footer.useFileOurs")));
-        click(button(container, t("merge.footer.apply", { resolved: 0, total: 0 })));
+        click(button(container, t("common.apply")));
         click(button(container, t("common.cancel")));
         expect(vscode.postMessage).toHaveBeenCalledWith({ type: "acceptYours" });
         expect(vscode.postMessage).toHaveBeenCalledWith({ type: "applyResolution", content: "" });

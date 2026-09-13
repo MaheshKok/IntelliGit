@@ -10,6 +10,7 @@ import {
     initShiki,
     isShikiReady,
     highlightLine,
+    highlightDocument,
 } from "../../../src/webviews/react/diff-core/shikiHighlighter";
 
 describe("langForPath", () => {
@@ -163,5 +164,66 @@ describe("highlightLine", () => {
 
     it("tokenizes python without throwing", () => {
         expect(() => highlightLine("def foo(): pass", "python", "dark-plus")).not.toThrow();
+    });
+});
+
+describe("highlightDocument", () => {
+    const contextualCases: ReadonlyArray<readonly [string, readonly string[], number]> = [
+        ["javascript", ["const config = {", '  name: "value",', "};"], 1],
+        ["typescript", ["interface User {", "  name: string;", "}"], 1],
+        ["jsx", ["const el = (", '<Widget label="value">', "text", "</Widget>", ");"], 2],
+        [
+            "tsx",
+            ["const el: JSX.Element = (", '<Widget label="value">', "text", "</Widget>", ");"],
+            2,
+        ],
+        ["json", ["{", '  "name": "value",', "}"], 1],
+        ["python", ['message = """', "hello", '"""'], 1],
+        ["go", ["/*", "inside", "*/"], 1],
+        ["css", [".card {", "  color: red;", "}"], 1],
+        ["html", ["<div", '  class="card">', "</div>"], 1],
+        ["yaml", ["description: |", "  hello"], 1],
+        ["shell", ["cat <<'EOF'", "hello", "EOF"], 1],
+        ["markdown", ["```json", '{"name":"value"}', "```"], 1],
+    ];
+
+    beforeAll(() => {
+        initShiki();
+    });
+
+    it.each(contextualCases)(
+        "preserves %s grammar state across CRLF source lines",
+        (language, lines, contextualLine) => {
+            const documentTokens = highlightDocument(lines, language, "dark-plus", "\r\n");
+            const isolated = highlightLine(lines[contextualLine], language, "dark-plus");
+
+            expect(documentTokens).toHaveLength(lines.length);
+            expect(
+                documentTokens?.map((tokens) => tokens.map((token) => token.text).join("")),
+            ).toEqual(lines);
+            expect(documentTokens?.[contextualLine]).not.toEqual(isolated);
+        },
+    );
+
+    it("colors JSON keys and values from their full-document scopes", () => {
+        const tokens = highlightDocument(["{", '  "name": "value"', "}"], "json", "dark-plus")?.[1];
+        const key = tokens?.find((token) => token.text === '"name"');
+        const value = tokens?.find((token) => token.text === '"value"');
+
+        expect(key?.color).toBeTruthy();
+        expect(value?.color).toBeTruthy();
+        expect(key?.color).not.toBe(value?.color);
+    });
+
+    it("does not reuse tokens for identical text in different grammar contexts", () => {
+        const tokens = highlightDocument(
+            ['message = """', "same", '"""', "same"],
+            "python",
+            "light-plus",
+        );
+
+        expect(tokens?.[1].map((token) => token.text).join("")).toBe("same");
+        expect(tokens?.[3].map((token) => token.text).join("")).toBe("same");
+        expect(tokens?.[1]).not.toEqual(tokens?.[3]);
     });
 });

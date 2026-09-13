@@ -11,6 +11,7 @@ import React, {
     useState,
 } from "react";
 import { createRoot } from "react-dom/client";
+import { VscCheck } from "react-icons/vsc";
 import type {
     ConflictSegment,
     CommonSegment,
@@ -29,7 +30,6 @@ import {
     IconChevronDown,
     IconSpark,
     IconEye,
-    IconFilter,
     IconLock,
     IconWarning,
 } from "./icons";
@@ -66,7 +66,13 @@ import {
     type SegmentPaneLines,
 } from "../diff-core/mergeScrollLayout";
 import { buildLineNumberValues } from "../diff-core/lineNumbers";
-import { initShiki, isShikiReady, langForPath, detectTheme } from "../diff-core/shikiHighlighter";
+import {
+    detectTheme,
+    highlightDocument,
+    initShiki,
+    isShikiReady,
+    langForPath,
+} from "../diff-core/shikiHighlighter";
 import { SyntaxHighlightProvider } from "../diff-core/syntaxHighlightContext";
 import {
     applyPaneOffsets,
@@ -291,6 +297,87 @@ export function App() {
             theme: shikiTheme,
         }),
         [shikiReady, filePath, shikiTheme],
+    );
+    const sidePaneDocumentLines = useMemo(() => {
+        const documents = { left: [] as string[], right: [] as string[] };
+        for (const segment of segments) {
+            if (segment.type === "common") {
+                for (const line of segment.lines) {
+                    documents.left.push(line);
+                    documents.right.push(line);
+                }
+                continue;
+            }
+            for (const line of segment.oursLines) documents.left.push(line);
+            for (const line of segment.theirsLines) documents.right.push(line);
+        }
+        return documents;
+    }, [segments]);
+    const middlePaneDocumentLines = useMemo(() => {
+        const lines: string[] = [];
+        for (const segment of segments) {
+            const segmentLines =
+                segment.type === "common"
+                    ? segment.lines
+                    : getEffectiveResultLines(
+                          segment,
+                          state.resolutions[segment.id],
+                          state.edits[segment.id],
+                      );
+            for (const line of segmentLines) lines.push(line);
+        }
+        return lines;
+    }, [segments, state.edits, state.resolutions]);
+    const documentEol = state.data?.eol ?? "\n";
+    const leftSyntaxHighlightState = useMemo(() => {
+        if (!syntaxHighlightState.ready || !syntaxHighlightState.lang) {
+            return syntaxHighlightState;
+        }
+        return {
+            ...syntaxHighlightState,
+            documentTokens: highlightDocument(
+                sidePaneDocumentLines.left,
+                syntaxHighlightState.lang,
+                syntaxHighlightState.theme,
+                documentEol,
+            ),
+        };
+    }, [documentEol, sidePaneDocumentLines.left, syntaxHighlightState]);
+    const middleSyntaxHighlightState = useMemo(() => {
+        if (!syntaxHighlightState.ready || !syntaxHighlightState.lang) {
+            return syntaxHighlightState;
+        }
+        return {
+            ...syntaxHighlightState,
+            documentTokens: highlightDocument(
+                middlePaneDocumentLines,
+                syntaxHighlightState.lang,
+                syntaxHighlightState.theme,
+                documentEol,
+            ),
+        };
+    }, [documentEol, middlePaneDocumentLines, syntaxHighlightState]);
+    const rightSyntaxHighlightState = useMemo(() => {
+        if (!syntaxHighlightState.ready || !syntaxHighlightState.lang) {
+            return syntaxHighlightState;
+        }
+        return {
+            ...syntaxHighlightState,
+            documentTokens: highlightDocument(
+                sidePaneDocumentLines.right,
+                syntaxHighlightState.lang,
+                syntaxHighlightState.theme,
+                documentEol,
+            ),
+        };
+    }, [documentEol, sidePaneDocumentLines.right, syntaxHighlightState]);
+    const syntaxHighlightPaneStates = useMemo(
+        () => ({
+            left: leftSyntaxHighlightState,
+            middle: middleSyntaxHighlightState,
+            right: rightSyntaxHighlightState,
+        }),
+        [leftSyntaxHighlightState, middleSyntaxHighlightState, rightSyntaxHighlightState],
     );
 
     const mergeContentRef = useRef<HTMLDivElement | null>(null);
@@ -805,7 +892,7 @@ export function App() {
             if (initShiki()) setShikiReady(true);
         };
         if (typeof window.requestIdleCallback === "function") {
-            const handle = window.requestIdleCallback(runInit);
+            const handle = window.requestIdleCallback(runInit, { timeout: 1_000 });
             return () => window.cancelIdleCallback(handle);
         }
         const timer = window.setTimeout(runInit, 0);
@@ -899,11 +986,16 @@ export function App() {
         getVsCodeApi().postMessage({ type: "close" });
     }, []);
 
-    const handleToggleIgnoreMode = useCallback(() => {
-        const nextMode: "none" | "whitespace" = ignoreMode === "none" ? "whitespace" : "none";
-        setIgnoreMode(nextMode);
-        getVsCodeApi().postMessage({ type: "setIgnoreMode", mode: nextMode });
-    }, [ignoreMode]);
+    /** Requests a host reparse only when the selected whitespace policy changes. */
+    const handleToggleIgnoreMode = useCallback(
+        (event: React.ChangeEvent<HTMLSelectElement>) => {
+            const nextMode = event.currentTarget.value as "none" | "whitespace";
+            if (nextMode === ignoreMode) return;
+            setIgnoreMode(nextMode);
+            getVsCodeApi().postMessage({ type: "setIgnoreMode", mode: nextMode });
+        },
+        [ignoreMode],
+    );
 
     const jumpToConflict = useCallback(
         (id: number) => {
@@ -1000,7 +1092,7 @@ export function App() {
         const onKeyDown = (event: KeyboardEvent) => {
             const target = event.target as HTMLElement | null;
             const tag = target?.tagName;
-            if (tag === "INPUT" || tag === "TEXTAREA") return;
+            if (["INPUT", "TEXTAREA", "SELECT"].includes(tag ?? "")) return;
             const normalizedKey = event.key.toLowerCase();
             const hasCommandModifier = event.ctrlKey || event.metaKey;
             const plainKey = !hasCommandModifier && !event.altKey;
@@ -1138,17 +1230,6 @@ export function App() {
             >
                 <div className="merge-toolbar">
                     <div className="toolbar-left">
-                        <button
-                            type="button"
-                            className="toolbar-btn subtle"
-                            onClick={handleApplyNonConflicting}
-                            disabled={autoResolvedCount === 0}
-                        >
-                            <span className="toolbar-icon">
-                                <IconSpark />
-                            </span>
-                            {t("merge.toolbar.applyNonConflicting")}
-                        </button>
                         <div className="toolbar-nav-group">
                             <button
                                 type="button"
@@ -1172,22 +1253,18 @@ export function App() {
                             </button>
                         </div>
                         <div className="toolbar-separator" />
-                        <button
-                            type="button"
-                            className="toolbar-btn subtle dropdown"
-                            onClick={handleToggleIgnoreMode}
+                        <select
+                            className="toolbar-select"
+                            value={ignoreMode}
+                            onChange={handleToggleIgnoreMode}
                             title={t("merge.toolbar.ignoreMode.title")}
+                            aria-label={t("merge.toolbar.ignoreMode.title")}
                         >
-                            <span className="toolbar-icon">
-                                <IconFilter />
-                            </span>
-                            {ignoreMode === "none"
-                                ? t("merge.toolbar.ignoreMode.none")
-                                : t("merge.toolbar.ignoreMode.whitespace")}
-                            <span className="toolbar-icon dropdown-icon">
-                                <IconChevronDown />
-                            </span>
-                        </button>
+                            <option value="none">{t("merge.toolbar.ignoreMode.none")}</option>
+                            <option value="whitespace">
+                                {t("merge.toolbar.ignoreMode.whitespace")}
+                            </option>
+                        </select>
                         <button
                             type="button"
                             className={`toolbar-btn subtle ${highlightWords ? "active" : ""}`}
@@ -1203,12 +1280,82 @@ export function App() {
                             type="button"
                             className={`toolbar-btn subtle ${showDetails ? "active" : ""}`}
                             onClick={() => setShowDetails((v) => !v)}
-                            aria-pressed={showDetails}
+                            aria-expanded={showDetails}
+                            aria-controls="merge-details"
+                            title={
+                                showDetails
+                                    ? t("merge.toolbar.hideDetails")
+                                    : t("merge.toolbar.showDetails")
+                            }
+                            aria-describedby="merge-keyboard-hint"
                         >
-                            {t("merge.toolbar.showDetails")}
+                            {showDetails
+                                ? t("merge.toolbar.hideDetails")
+                                : t("merge.toolbar.showDetails")}
+                        </button>
+                        <div className="toolbar-separator" />
+                        <button
+                            type="button"
+                            className="toolbar-icon-btn"
+                            onClick={handleApplyNonConflicting}
+                            disabled={autoResolvedCount === 0}
+                            title={t("merge.toolbar.applyNonConflicting")}
+                            aria-label={t("merge.toolbar.applyNonConflicting")}
+                        >
+                            <IconSpark />
+                        </button>
+                        <button
+                            type="button"
+                            className="toolbar-icon-btn"
+                            onClick={handleAcceptAllYours}
+                            title={t("merge.toolbar.acceptAllYours.title")}
+                            aria-label={t("merge.toolbar.acceptAllYours.label")}
+                        >
+                            <span className="toolbar-icon">
+                                <IconArrowRight />
+                            </span>
+                        </button>
+                        <button
+                            type="button"
+                            className="toolbar-icon-btn"
+                            onClick={handleAcceptAllTheirs}
+                            title={t("merge.toolbar.acceptAllTheirs.title")}
+                            aria-label={t("merge.toolbar.acceptAllTheirs.label")}
+                        >
+                            <span className="toolbar-icon">
+                                <IconArrowLeft />
+                            </span>
                         </button>
                     </div>
+                    <div className="toolbar-right">
+                        {/* Non-conflicting hunks are already applied by getResultLines. */}
+                        <span
+                            id="merge-remaining-status"
+                            className={`merge-remaining-status${unresolved === 0 ? " resolved" : ""}`}
+                            role="status"
+                        >
+                            {unresolved === 0 ? (
+                                <>
+                                    <VscCheck aria-hidden="true" />
+                                    {t("merge.status.allConflictsResolved")}
+                                </>
+                            ) : (
+                                <>
+                                    {t("merge.status.noChanges")},{" "}
+                                    {t("merge.count.conflicts", { count: unresolved })}
+                                </>
+                            )}
+                        </span>
+                    </div>
+                </div>
 
+                <div id="merge-details" className="merge-header" hidden={!showDetails}>
+                    <div className="merge-title">
+                        <span className="file-path">{state.data.filePath}</span>
+                        <span className="conflict-counter">
+                            {t("merge.header.conflictsResolved", { resolved, total })}
+                        </span>
+                    </div>
                     <div className="toolbar-center">
                         <span className="toolbar-status-pill">
                             <span className="toolbar-icon">
@@ -1218,9 +1365,6 @@ export function App() {
                         </span>
                         <span className="toolbar-status-pill muted">
                             {t("merge.status.resolved", { resolved, total })}
-                        </span>
-                        <span className="toolbar-status-pill muted">
-                            {t("merge.count.changes", { count: changeCount })}
                         </span>
                         {currentConflictIndex > 0 ? (
                             <button
@@ -1235,40 +1379,6 @@ export function App() {
                                 {t("merge.status.hunk", { current: currentConflictIndex, total })}
                             </button>
                         ) : null}
-                    </div>
-
-                    <div className="toolbar-right">
-                        <button
-                            type="button"
-                            className="toolbar-btn"
-                            onClick={handleAcceptAllYours}
-                            title={t("merge.toolbar.acceptAllYours.title")}
-                        >
-                            <span className="toolbar-icon">
-                                <IconArrowRight />
-                            </span>
-                            {t("merge.toolbar.acceptAllYours.label")}
-                        </button>
-                        <button
-                            type="button"
-                            className="toolbar-btn"
-                            onClick={handleAcceptAllTheirs}
-                            title={t("merge.toolbar.acceptAllTheirs.title")}
-                        >
-                            <span className="toolbar-icon">
-                                <IconArrowLeft />
-                            </span>
-                            {t("merge.toolbar.acceptAllTheirs.label")}
-                        </button>
-                    </div>
-                </div>
-
-                <div className="merge-header">
-                    <div className="merge-title">
-                        <span className="file-path">{state.data.filePath}</span>
-                        <span className="conflict-counter">
-                            {t("merge.header.conflictsResolved", { resolved, total })}
-                        </span>
                     </div>
                     <div className="merge-stats">
                         <span className="merge-stat-pill">
@@ -1293,24 +1403,17 @@ export function App() {
                             </span>
                             {t("merge.pane.changesFrom", { label: state.data.oursLabel })}
                         </span>
-                        <span className="pane-meta-right-group">
+                        <span className="pane-meta-right-group" hidden={!showDetails}>
                             <span className="pane-meta-counts">
                                 {t("merge.count.changes", { count: oursChanges })},{" "}
                                 {t("merge.count.conflicts", { count: total })}
                             </span>
-                            <button
-                                type="button"
-                                className="show-details"
-                                onClick={() => setShowDetails((v) => !v)}
-                            >
-                                {showDetails
-                                    ? t("merge.toolbar.hideDetails")
-                                    : t("merge.toolbar.showDetails")}
-                            </button>
                         </span>
                     </div>
                     <div className="pane-meta pane-meta-center">
-                        <span>{t("merge.pane.result", { path: state.data.filePath })}</span>
+                        <span title={state.data.filePath}>
+                            {t("merge.pane.result", { path: state.data.filePath })}
+                        </span>
                     </div>
                     <div className="pane-meta pane-meta-right">
                         <span className="pane-meta-label">
@@ -1319,20 +1422,11 @@ export function App() {
                             </span>
                             {t("merge.pane.changesFrom", { label: state.data.theirsLabel })}
                         </span>
-                        <span className="pane-meta-right-group">
+                        <span className="pane-meta-right-group" hidden={!showDetails}>
                             <span className="pane-meta-counts">
                                 {t("merge.count.changes", { count: theirsChanges })},{" "}
                                 {t("merge.count.conflicts", { count: total })}
                             </span>
-                            <button
-                                type="button"
-                                className="show-details"
-                                onClick={() => setShowDetails((v) => !v)}
-                            >
-                                {showDetails
-                                    ? t("merge.toolbar.hideDetails")
-                                    : t("merge.toolbar.showDetails")}
-                            </button>
                         </span>
                     </div>
                 </div>
@@ -1350,34 +1444,36 @@ export function App() {
                                 }}
                                 className="merge-col col-left"
                             >
-                                {renderedSegments.map((item) =>
-                                    isCommonSegment(item.segment) ? (
-                                        <CommonPaneBlock
-                                            key={item.renderKey}
-                                            pane="left"
-                                            segment={item.segment}
-                                            lineCount={item.paneLines.left}
-                                            lineNumbers={item.lineNumbers.left}
-                                            lineNumberSide="right"
-                                            highlightWords={highlightWords}
-                                        />
-                                    ) : (
-                                        <OursConflictBlock
-                                            key={item.renderKey}
-                                            segment={item.segment}
-                                            resolution={state.resolutions[item.segment.id]}
-                                            editedLines={state.edits[item.segment.id]}
-                                            dismissed={state.dismissals[item.segment.id]}
-                                            lineCount={item.paneLines.left}
-                                            lineNumbers={item.lineNumbers.left}
-                                            onResolve={handleResolve}
-                                            onDismiss={handleDismissSide}
-                                            onSelect={setActiveConflictId}
-                                            isActive={activeConflictId === item.segment.id}
-                                            highlightWords={highlightWords}
-                                        />
-                                    ),
-                                )}
+                                <SyntaxHighlightProvider value={syntaxHighlightPaneStates.left}>
+                                    {renderedSegments.map((item) =>
+                                        isCommonSegment(item.segment) ? (
+                                            <CommonPaneBlock
+                                                key={item.renderKey}
+                                                pane="left"
+                                                segment={item.segment}
+                                                lineCount={item.paneLines.left}
+                                                lineNumbers={item.lineNumbers.left}
+                                                lineNumberSide="right"
+                                                highlightWords={highlightWords}
+                                            />
+                                        ) : (
+                                            <OursConflictBlock
+                                                key={item.renderKey}
+                                                segment={item.segment}
+                                                resolution={state.resolutions[item.segment.id]}
+                                                editedLines={state.edits[item.segment.id]}
+                                                dismissed={state.dismissals[item.segment.id]}
+                                                lineCount={item.paneLines.left}
+                                                lineNumbers={item.lineNumbers.left}
+                                                onResolve={handleResolve}
+                                                onDismiss={handleDismissSide}
+                                                onSelect={setActiveConflictId}
+                                                isActive={activeConflictId === item.segment.id}
+                                                highlightWords={highlightWords}
+                                            />
+                                        ),
+                                    )}
+                                </SyntaxHighlightProvider>
                             </div>
                             <div className="merge-gutter merge-gutter-left" aria-hidden="true" />
                             <div
@@ -1386,37 +1482,39 @@ export function App() {
                                 }}
                                 className="merge-col col-middle"
                             >
-                                {renderedSegments.map((item) =>
-                                    isCommonSegment(item.segment) ? (
-                                        <CommonPaneBlock
-                                            key={item.renderKey}
-                                            pane="middle"
-                                            segment={item.segment}
-                                            lineCount={item.paneLines.middle}
-                                            lineNumbers={item.lineNumbers.middle}
-                                            lineNumberSide="left"
-                                            highlightWords={highlightWords}
-                                        />
-                                    ) : (
-                                        <ResultConflictBlock
-                                            key={item.renderKey}
-                                            segment={item.segment}
-                                            resolution={state.resolutions[item.segment.id]}
-                                            editedLines={state.edits[item.segment.id]}
-                                            dismissed={state.dismissals[item.segment.id]}
-                                            lineCount={item.paneLines.middle}
-                                            lineNumbers={item.lineNumbers.middle}
-                                            onEditResult={handleEditResult}
-                                            onSelect={setActiveConflictId}
-                                            isActive={activeConflictId === item.segment.id}
-                                            highlightWords={highlightWords}
-                                            conflictOrdinal={
-                                                item.conflictOrdinal ?? item.segment.id + 1
-                                            }
-                                            trueConflictOrdinal={item.trueConflictOrdinal}
-                                        />
-                                    ),
-                                )}
+                                <SyntaxHighlightProvider value={syntaxHighlightPaneStates.middle}>
+                                    {renderedSegments.map((item) =>
+                                        isCommonSegment(item.segment) ? (
+                                            <CommonPaneBlock
+                                                key={item.renderKey}
+                                                pane="middle"
+                                                segment={item.segment}
+                                                lineCount={item.paneLines.middle}
+                                                lineNumbers={item.lineNumbers.middle}
+                                                lineNumberSide="left"
+                                                highlightWords={highlightWords}
+                                            />
+                                        ) : (
+                                            <ResultConflictBlock
+                                                key={item.renderKey}
+                                                segment={item.segment}
+                                                resolution={state.resolutions[item.segment.id]}
+                                                editedLines={state.edits[item.segment.id]}
+                                                dismissed={state.dismissals[item.segment.id]}
+                                                lineCount={item.paneLines.middle}
+                                                lineNumbers={item.lineNumbers.middle}
+                                                onEditResult={handleEditResult}
+                                                onSelect={setActiveConflictId}
+                                                isActive={activeConflictId === item.segment.id}
+                                                highlightWords={highlightWords}
+                                                conflictOrdinal={
+                                                    item.conflictOrdinal ?? item.segment.id + 1
+                                                }
+                                                trueConflictOrdinal={item.trueConflictOrdinal}
+                                            />
+                                        ),
+                                    )}
+                                </SyntaxHighlightProvider>
                             </div>
                             <div className="merge-gutter merge-gutter-right" aria-hidden="true" />
                             <div
@@ -1425,34 +1523,36 @@ export function App() {
                                 }}
                                 className="merge-col col-right"
                             >
-                                {renderedSegments.map((item) =>
-                                    isCommonSegment(item.segment) ? (
-                                        <CommonPaneBlock
-                                            key={item.renderKey}
-                                            pane="right"
-                                            segment={item.segment}
-                                            lineCount={item.paneLines.right}
-                                            lineNumbers={item.lineNumbers.right}
-                                            lineNumberSide="left"
-                                            highlightWords={highlightWords}
-                                        />
-                                    ) : (
-                                        <TheirsConflictBlock
-                                            key={item.renderKey}
-                                            segment={item.segment}
-                                            resolution={state.resolutions[item.segment.id]}
-                                            editedLines={state.edits[item.segment.id]}
-                                            dismissed={state.dismissals[item.segment.id]}
-                                            lineCount={item.paneLines.right}
-                                            lineNumbers={item.lineNumbers.right}
-                                            onResolve={handleResolve}
-                                            onDismiss={handleDismissSide}
-                                            onSelect={setActiveConflictId}
-                                            isActive={activeConflictId === item.segment.id}
-                                            highlightWords={highlightWords}
-                                        />
-                                    ),
-                                )}
+                                <SyntaxHighlightProvider value={syntaxHighlightPaneStates.right}>
+                                    {renderedSegments.map((item) =>
+                                        isCommonSegment(item.segment) ? (
+                                            <CommonPaneBlock
+                                                key={item.renderKey}
+                                                pane="right"
+                                                segment={item.segment}
+                                                lineCount={item.paneLines.right}
+                                                lineNumbers={item.lineNumbers.right}
+                                                lineNumberSide="left"
+                                                highlightWords={highlightWords}
+                                            />
+                                        ) : (
+                                            <TheirsConflictBlock
+                                                key={item.renderKey}
+                                                segment={item.segment}
+                                                resolution={state.resolutions[item.segment.id]}
+                                                editedLines={state.edits[item.segment.id]}
+                                                dismissed={state.dismissals[item.segment.id]}
+                                                lineCount={item.paneLines.right}
+                                                lineNumbers={item.lineNumbers.right}
+                                                onResolve={handleResolve}
+                                                onDismiss={handleDismissSide}
+                                                onSelect={setActiveConflictId}
+                                                isActive={activeConflictId === item.segment.id}
+                                                highlightWords={highlightWords}
+                                            />
+                                        ),
+                                    )}
+                                </SyntaxHighlightProvider>
                             </div>
                             <ConnectorLayer
                                 specs={connectorSpecs}
@@ -1490,26 +1590,12 @@ export function App() {
                         {!isShelfSession ? (
                             <button
                                 type="button"
-                                className="footer-btn danger ghost"
+                                className="footer-btn secondary"
                                 onClick={handleAbortMerge}
                             >
                                 {t("merge.action.abortMerge")}
                             </button>
                         ) : null}
-                        <button
-                            type="button"
-                            className="footer-btn secondary ghost"
-                            onClick={handleBulkAcceptYours}
-                        >
-                            {t("merge.footer.useFileOurs")}
-                        </button>
-                        <button
-                            type="button"
-                            className="footer-btn secondary ghost"
-                            onClick={handleBulkAcceptTheirs}
-                        >
-                            {t("merge.footer.useFileTheirs")}
-                        </button>
                         {!isShelfSession ? (
                             <button
                                 type="button"
@@ -1519,9 +1605,25 @@ export function App() {
                                 {t("mergeSession.title")}
                             </button>
                         ) : null}
-                        <span className="footer-hint">{t("merge.footer.hint")}</span>
+                        <span id="merge-keyboard-hint" className="footer-hint">
+                            {t("merge.footer.hint")}
+                        </span>
                     </div>
                     <div className="footer-right">
+                        <button
+                            type="button"
+                            className="footer-btn secondary"
+                            onClick={handleBulkAcceptYours}
+                        >
+                            {t("merge.footer.useFileOurs")}
+                        </button>
+                        <button
+                            type="button"
+                            className="footer-btn secondary"
+                            onClick={handleBulkAcceptTheirs}
+                        >
+                            {t("merge.footer.useFileTheirs")}
+                        </button>
                         <button
                             type="button"
                             className="footer-btn secondary"
@@ -1534,8 +1636,9 @@ export function App() {
                             className={`footer-btn primary ${canApply ? "" : "disabled"}`}
                             onClick={handleApply}
                             disabled={!canApply}
+                            aria-describedby="merge-remaining-status"
                         >
-                            {t("merge.footer.apply", { resolved, total })}
+                            {t("common.apply")}
                         </button>
                     </div>
                 </div>

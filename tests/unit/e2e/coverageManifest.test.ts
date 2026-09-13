@@ -41,7 +41,7 @@ function listWebviewSourceFiles(directory: string): string[] {
  * its NAME, so renaming `GraphOutbound` to `GraphMessages` would drop that file's whole action set
  * out of the required surface and leave every assertion below green. Pinning the declarations turns
  * that drift into a failure. It does not catch a brand-new union following no existing convention --
- * all ten here follow one, so an eleventh that did not would be the first, and its ids would still have
+ * all pinned unions here follow one, so a new one that did not would be the first, and its ids would still have
  * to be absent from the manifest to go unnoticed.
  */
 const OUTBOUND_UNION_DECLARATIONS = [
@@ -49,6 +49,7 @@ const OUTBOUND_UNION_DECLARATIONS = [
     "src/webviews/protocol/commitInfoTypes.ts:CommitInfoOutbound",
     "src/webviews/protocol/commitPanelMessages.ts:OutboundMessage",
     "src/webviews/protocol/diffViewerTypes.ts:OutboundMessage",
+    "src/webviews/protocol/fileHistory.ts:HistoryOutbound",
     "src/webviews/protocol/mergeConflictSessionTypes.ts:OutboundMessage",
     "src/webviews/protocol/undockedMessages.ts:GraphOutbound",
     "src/webviews/protocol/undockedMessages.ts:UndockedCommitPanelOutbound",
@@ -198,7 +199,7 @@ describe("E2E coverage manifest", () => {
         );
 
         expect(aliasIds).toHaveLength(9);
-        expect(collapsedBaseIds).toHaveLength(65);
+        expect(collapsedBaseIds).toHaveLength(66);
         expect(collapsedManifestBaseIds).toEqual(collapsedBaseIds);
     });
 

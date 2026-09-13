@@ -192,7 +192,7 @@ describe("MergeEditorApp large document flow", () => {
                 `measured 3.43x when one was injected. This ratio is host-independent, so a ` +
                 `slow machine is not an explanation for it`,
         ).toBe(false);
-    }, 20_000);
+    });
 
     it("renders 1,000 lines with 50 conflicts and resolves them end-to-end", async () => {
         const vscode = installVsCodeMock();
@@ -228,7 +228,7 @@ describe("MergeEditorApp large document flow", () => {
         // Resolving a single hunk must stay cheap relative to the full render:
         // with working memoization only the affected segment re-renders.
         const acceptAll = Array.from(document.querySelectorAll("button")).find(
-            (b) => b.textContent?.trim() === "Accept All Theirs",
+            (b) => b.getAttribute("aria-label") === "Accept All Theirs",
         );
         if (!acceptAll) throw new Error("Expected the Accept All Theirs button");
         const resolveStart = performance.now();
@@ -241,8 +241,8 @@ describe("MergeEditorApp large document flow", () => {
 
         expect(document.body.textContent).toContain("0 unresolved");
 
-        const apply = Array.from(document.querySelectorAll("button")).find((b) =>
-            b.textContent?.trim().startsWith("Apply ("),
+        const apply = Array.from(document.querySelectorAll("button")).find(
+            (b) => b.textContent?.trim() === "Apply",
         );
         if (!apply) throw new Error("Expected the Apply button");
         act(() => {

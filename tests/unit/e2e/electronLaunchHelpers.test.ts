@@ -34,6 +34,7 @@ describe("seedProfileSettings", () => {
             // A native macOS dialog is invisible to Playwright; this assertion is the consumer that
             // fails if the custom workbench confirmation renderer is ever dropped from the harness.
             expect(settings["window.dialogStyle"]).toBe("custom");
+            expect(settings["window.menuStyle"]).toBe("custom");
         } finally {
             await removeScratchDirectories(userDataDir);
         }
