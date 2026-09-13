@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { mkdtemp } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -33,6 +34,14 @@ vi.mock("@vscode/test-electron", () => ({
 }));
 
 describe("resolveVSCodeVersion", () => {
+    it("keeps the pinned build aligned with the extension minimum", () => {
+        const packageJson = JSON.parse(
+            readFileSync(new URL("../../../package.json", import.meta.url), "utf8"),
+        ) as { readonly engines: { readonly vscode: string } };
+
+        expect(`^${VSCODE_VERSION}`).toBe(packageJson.engines.vscode);
+    });
+
     it("uses the pinned version when the override is unset", () => {
         expect(resolveVSCodeVersion({})).toBe(VSCODE_VERSION);
     });
