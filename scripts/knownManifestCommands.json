@@ -20,6 +20,7 @@
         "intelligit.diff.showInIntelliGit",
         "intelligit.diff.showInVsCode",
         "intelligit.dockWindow",
+        "intelligit.fileAddToVcs",
         "intelligit.fileDelete",
         "intelligit.fileJumpToSource",
         "intelligit.fileRefresh",

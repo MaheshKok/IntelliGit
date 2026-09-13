@@ -129,13 +129,18 @@ describe("extension manifest", () => {
         ) as ExtensionManifest;
         const commands = manifest.contributes?.commands ?? [];
         const contextMenu = manifest.contributes?.menus?.["webview/context"] ?? [];
+        const commandPalette = manifest.contributes?.menus?.commandPalette ?? [];
         const item = contextMenu.find((entry) => entry.command === "intelligit.fileAddToVcs");
+        const paletteItem = commandPalette.find(
+            (entry) => entry.command === "intelligit.fileAddToVcs",
+        );
 
         expect(commands.some((entry) => entry.command === "intelligit.fileAddToVcs")).toBe(true);
         expect(item?.when).toContain("webviewId == 'intelligit.commitPanel'");
         expect(item?.when).toContain("webviewId == 'intelligit.undocked'");
         expect(item?.when).toContain("webviewSection == 'file'");
         expect(item?.when).toContain("webviewUnversionedFile == true");
+        expect(paletteItem?.when).toBe("false");
     });
 
     it("contributes graph git actions to the native sidebar view title", () => {

@@ -90,6 +90,7 @@ const makeGitOps = (): GitOps =>
     ({
         hasAnyCommits: vi.fn(async () => true),
         hasUncommittedChanges: vi.fn(async () => true),
+        getStatus: vi.fn(async () => []),
     }) as unknown as GitOps;
 
 const makeDeps = (gitOps: GitOps) => {

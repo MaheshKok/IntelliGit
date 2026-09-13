@@ -1317,6 +1317,8 @@ export async function activateRepositoryMode(
         gitOps,
         worktreeService,
         getRepoRoot,
+        isKnownRepositoryRoot: (repositoryRoot) =>
+            repositories.some((repository) => repository.root === repositoryRoot),
         setRepositories: (nextRepositories) => {
             setKnownRepositories(nextRepositories);
         },

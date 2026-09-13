@@ -100,6 +100,7 @@ export function CommitPanelPane({
                     onDock={onDock}
                     commitContent={
                         <CommitTab
+                            repositoryRoot={repositoryRoot}
                             files={cpState.files}
                             commitMessage={cpState.commitMessage}
                             isAmend={cpState.isAmend}

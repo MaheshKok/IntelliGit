@@ -49,6 +49,7 @@
     "command.rollback": "Rollback",
     "command.jumpToSource": "Jump to Source",
     "command.stashChanges": "Stash Changes",
+    "command.addToVcs": "Add to VCS",
     "command.compareWithRevision": "Compare with Revision",
     "command.compareWithBranch": "Compare with Branch",
     "command.compareWithLocal": "Compare with Local",

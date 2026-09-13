@@ -210,6 +210,14 @@ const COMMAND_ENTRIES = [
     },
     {
         kind: "command",
+        id: "intelligit.fileAddToVcs",
+        mutating: true,
+        // Native webview/context dispatch is covered by repositoryCommands.test.ts and the
+        // docked/undocked file-tree unit tests; no implemented runtime E2E flow invokes it.
+        notCovered: "No implemented flow exercises this native webview context command.",
+    },
+    {
+        kind: "command",
         id: "intelligit.fileRollback",
         mutating: true,
         notCovered: COMMAND_NOT_COVERED,

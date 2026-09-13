@@ -1890,6 +1890,14 @@ describe("webview ui smoke", () => {
             filePaths: ["checked-only.ts"],
             webviewUnversionedFile: true,
         });
+        act(() => {
+            mounted.root.render(
+                <ChakraProvider theme={theme}>
+                    <FileTree {...props} repositoryRoot="/repo/reselected" />
+                </ChakraProvider>,
+            );
+        });
+        expect(contextFor("checked-only.ts").repositoryRoot).toBe("/repo/reselected");
         unmount(mounted.root, mounted.container);
     });
 

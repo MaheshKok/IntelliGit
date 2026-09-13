@@ -96,6 +96,7 @@ function CommitTabLayout({
             ) : null}
             <Box flex="1 1 auto" overflowY="auto" minH="40px" bg="var(--intelligit-pycharm-panel)">
                 <FileTree
+                    repositoryRoot={props.repositoryRoot}
                     files={props.files}
                     groupByDir={props.groupByDir}
                     showIgnoredFiles={props.showIgnoredFiles}

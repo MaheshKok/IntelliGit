@@ -51,11 +51,12 @@ function MessageHarness(): null {
     return null;
 }
 
-function renderPane(cpState: CommitPanelState) {
-    return mount(
+function pane(cpState: CommitPanelState, repositoryRoot?: string): React.ReactElement {
+    return (
         <ChakraProvider theme={theme}>
             <CommitPanelPane
                 width={320}
+                repositoryRoot={repositoryRoot}
                 cpState={cpState}
                 checkedPaths={new Set()}
                 onToggleFile={vi.fn()}
@@ -81,8 +82,12 @@ function renderPane(cpState: CommitPanelState) {
                 onToggleShowIgnoredFiles={vi.fn()}
                 onDock={vi.fn()}
             />
-        </ChakraProvider>,
+        </ChakraProvider>
     );
+}
+
+function renderPane(cpState: CommitPanelState, repositoryRoot?: string) {
+    return mount(pane(cpState, repositoryRoot));
 }
 
 beforeEach(() => {
@@ -160,6 +165,70 @@ describe("undocked commit-panel operation state", () => {
 
         const badge = mounted.container.querySelector('[data-testid="pull-behind-count"]');
         expect(badge?.textContent, "the undocked pane must forward currentBranchBehind").toBe("↓6");
+        unmount(mounted.root, mounted.container);
+    });
+
+    it("forwards the undocked repository root into unversioned file context", () => {
+        const cpState = {
+            ...initialCommitPanelState,
+            files: [{ path: "new.ts", status: "?", staged: false, additions: 0, deletions: 0 }],
+        } as CommitPanelState;
+        const mounted = renderPane(cpState, "/repo/undocked");
+        const row = Array.from(
+            mounted.container.querySelectorAll<HTMLElement>("[data-vscode-context]"),
+        ).find((element) => {
+            const context = JSON.parse(element.dataset.vscodeContext ?? "{}") as Record<
+                string,
+                unknown
+            >;
+            return context.filePath === "new.ts";
+        });
+
+        expect(JSON.parse(row?.dataset.vscodeContext ?? "{}")).toMatchObject({
+            repositoryRoot: "/repo/undocked",
+            filePaths: ["new.ts"],
+            webviewUnversionedFile: true,
+        });
+        unmount(mounted.root, mounted.container);
+    });
+
+    it("scopes unversioned command selection to the undocked repository root", () => {
+        const cpState = {
+            ...initialCommitPanelState,
+            files: [
+                { path: "first.ts", status: "?", staged: false, additions: 0, deletions: 0 },
+                { path: "second.ts", status: "?", staged: false, additions: 0, deletions: 0 },
+            ],
+        } as CommitPanelState;
+        const mounted = renderPane(cpState, "/repo/a");
+        const rowFor = (path: string): HTMLElement =>
+            Array.from(
+                mounted.container.querySelectorAll<HTMLElement>("[data-vscode-context]"),
+            ).find((element) => {
+                const context = JSON.parse(element.dataset.vscodeContext ?? "{}") as Record<
+                    string,
+                    unknown
+                >;
+                return context.filePath === path;
+            })!;
+
+        act(() => {
+            rowFor("first.ts").dispatchEvent(
+                new MouseEvent("click", { bubbles: true, cancelable: true, metaKey: true }),
+            );
+            rowFor("second.ts").dispatchEvent(
+                new MouseEvent("click", { bubbles: true, cancelable: true, metaKey: true }),
+            );
+            mounted.root.render(pane(cpState, "/repo/b"));
+            rowFor("first.ts").dispatchEvent(
+                new MouseEvent("contextmenu", { bubbles: true, cancelable: true }),
+            );
+        });
+
+        expect(JSON.parse(rowFor("first.ts").dataset.vscodeContext ?? "{}")).toMatchObject({
+            repositoryRoot: "/repo/b",
+            filePaths: ["first.ts"],
+        });
         unmount(mounted.root, mounted.container);
     });
 });
