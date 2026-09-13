@@ -62,20 +62,9 @@ let highlighterReady = false;
 const tokenCache = new Map<string, ShikiToken[] | null>();
 const CACHE_MAX = 5000;
 
-/** Detect the user's theme preference from VS Code's body classList. */
+/** Select dark syntax colors for the fixed charcoal diff and merge editor palette. */
 export function detectTheme(): ShikiTheme {
-    if (typeof document === "undefined") return "light-plus";
-    const classes = document.body.classList;
-    // High-contrast light carries the legacy `vscode-high-contrast` class as well as
-    // `vscode-high-contrast-light`, so it has to be settled before the legacy check
-    // below; otherwise dark-theme syntax colours land on a white editor background.
-    if (classes.contains("vscode-high-contrast-light")) {
-        return "light-plus";
-    }
-    if (classes.contains("vscode-dark") || classes.contains("vscode-high-contrast")) {
-        return "dark-plus";
-    }
-    return "light-plus";
+    return "dark-plus";
 }
 
 /** Derive a registered Shiki language identifier from a file path. */

@@ -279,9 +279,7 @@ export function App() {
     const [ignoreMode, setIgnoreMode] = useState<"none" | "whitespace">("none");
     const [activeConflictId, setActiveConflictId] = useState<number | null>(null);
     const [shikiReady, setShikiReady] = useState(() => isShikiReady());
-    // ponytail: theme sampled once at mount. VS Code reloads the webview on a
-    // live theme switch, so re-reading the body class on every render buys
-    // nothing — reopen the merge editor to pick up a changed theme.
+    // Syntax colors follow the fixed charcoal editor palette, not the host theme.
     const [shikiTheme] = useState(() => detectTheme());
     // The same height `viewportHRef` caches, kept in state as well because the scroll
     // spacer is sized from it during render -- a ref alone would leave the spacer stale

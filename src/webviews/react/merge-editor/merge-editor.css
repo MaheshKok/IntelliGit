@@ -1,95 +1,54 @@
 @import "../diff-core/diff-core.css";
 
 .merge-editor {
-    --merge-editor-bg: var(--vscode-editor-background, #2b3240);
-    --merge-editor-fg: var(--vscode-editor-foreground, #bfc7d5);
+    --merge-editor-bg: #313845;
+    --merge-editor-fg: #abb2bf;
     --merge-border: color-mix(in srgb, var(--merge-editor-fg) 14%, transparent);
-    /* Chrome surfaces take the host tokens straight. The previous 12-18% mix
-       toward black was tuned for a dark host; on a light theme it turned a
-       near-white sidebar into a heavy gray band. The host already separates
-       these surfaces from the editor in every theme it ships. */
     --merge-toolbar-bg: var(--vscode-sideBar-background, #2b2d30);
-    /* HC Light and HC Black omit --vscode-editorGroupHeader-tabsBackground; the dark
-       fallback paints a wrong-polarity, low-contrast merge header. */
     --merge-header-bg: var(
         --vscode-editorGroupHeader-tabsBackground,
-        var(--vscode-editor-background, #31343a)
+        var(--vscode-editor-background, #313845)
     );
     --merge-muted: var(--vscode-descriptionForeground, #9ca3af);
     --merge-accent: var(--vscode-textLink-foreground, #4ea1ff);
-    /* Semantic hues come from the host, so they flip with the theme. The
-       fallbacks are the PyCharm Darcula values and only render if the host
-       defines nothing. */
     --merge-warning: var(--vscode-editorWarning-foreground, #f2c572);
-    --merge-danger: var(--vscode-errorForeground, #d86c6c);
-    --merge-conflict-hue: color-mix(in srgb, var(--merge-danger) 88%, var(--merge-editor-fg));
-    --merge-ok: var(--vscode-charts-green, #79c18d);
-    --merge-info: var(--vscode-terminal-ansiCyan, #58b5c9);
-    /* The deleted state's own hue, and the reason it is a separate token rather than
-       --merge-danger or --merge-muted.
-       Not --merge-muted: that one is also the secondary TEXT colour (six `color:` rules
-       below, plus the line-number blend in diff-core.css), so repointing it would turn
-       every muted label red. The deleted state needed its own name before it could stop
-       being grey.
-       Not --merge-danger either: red already means CONFLICT on this surface, and a merge
-       can show a deleted hunk and a conflict hunk in the same scroll. VS Code themes hand
-       out one red -- Dark Modern gives errorForeground #f85149 and charts-red #f14c4c --
-       so reading a second red token would not have separated them. Blending the muted hue
-       back in by 22% is what does, and it holds on any theme because both legs are the
-       live theme's own tokens rather than a hard-coded pair.
-       Measured on dark-modern, the worst case, as 8-bit channel distance from the
-       pre-blend --merge-danger source hue:
-
-         charts-red alone          7, 5, 3     indistinguishable
-         charts-red + 22% muted   26,13,21     distinct
-         the 15% block wash        4, 1, 3     converges
-
-       The wash row is not a tuning failure and no percentage fixes it: at 15% both
-       states are 85% editor background, so ANY two reds meet there. The separation has
-       to live where the hue is painted at full strength -- the edge bar, the connector
-       stroke, and the hunk bracket -- which is where a hunk's state is read anyway, and
-       where the numbers above say it is real. */
-    --merge-deleted-hue: color-mix(
+    --merge-danger: #4b1515;
+    --merge-conflict-hue: #4b1515;
+    --merge-ok: #66bb6a;
+    --merge-info: #4b1515;
+    --merge-deleted-hue: #4b1515;
+    /* Chrome status text follows the host theme; the fixed hues below paint only editor state. */
+    --merge-warning-text: color-mix(
         in srgb,
-        var(--vscode-charts-red, #c74e39) 78%,
-        var(--merge-muted) 22%
+        var(--merge-warning) 55%,
+        var(--vscode-foreground, #abb2bf)
     );
-    /* Status pills are 11px, so the hue alone cannot carry them: no host warning
-       or success token clears 4.5:1 on a light theme. Mixing toward the editor
-       foreground pulls each hue to the high-contrast end of whichever theme is
-       live, which is the correct direction in both. */
-    --merge-warning-text: color-mix(in srgb, var(--merge-warning) 55%, var(--merge-editor-fg));
-    --merge-ok-text: color-mix(in srgb, var(--merge-ok) 55%, var(--merge-editor-fg));
-    --merge-danger-text: color-mix(in srgb, var(--merge-danger) 55%, var(--merge-editor-fg));
-    /* PyCharm Darcula merge palette, rebuilt as tints of the *live* editor
-       background instead of fixed dark hex. Hue comes from the semantic token
-       above, lightness from the host surface, so a light theme gets a pale wash
-       and a dark theme keeps the Darcula-weight band without a second palette.
-       The block wash is the faded row tint; the pycharm-* pair is the same
-       family at word-fragment strength on top of it (see .word-diff-change). */
-    --pycharm-conflict: color-mix(in srgb, var(--merge-conflict-hue) 30%, var(--merge-editor-bg));
-    --pycharm-inserted: color-mix(in srgb, var(--merge-ok) 30%, var(--merge-editor-bg));
-    --pycharm-modified: color-mix(in srgb, var(--merge-info) 30%, var(--merge-editor-bg));
-    --pycharm-deleted: color-mix(in srgb, var(--merge-deleted-hue) 30%, var(--merge-editor-bg));
-    --merge-conflict-block-bg: color-mix(
+    --merge-ok-text: color-mix(
         in srgb,
-        var(--merge-conflict-hue) 15%,
-        var(--merge-editor-bg)
+        var(--vscode-charts-green, #79c18d) 55%,
+        var(--vscode-foreground, #abb2bf)
     );
-    --merge-conflict-ribbon-bg: var(--merge-conflict-block-bg);
-    --merge-inserted-block-bg: color-mix(in srgb, var(--merge-ok) 15%, var(--merge-editor-bg));
-    --merge-modified-block-bg: color-mix(in srgb, var(--merge-info) 15%, var(--merge-editor-bg));
-    --merge-deleted-block-bg: color-mix(
+    --merge-danger-text: color-mix(
         in srgb,
-        var(--merge-deleted-hue) 15%,
-        var(--merge-editor-bg)
+        var(--vscode-errorForeground, #d86c6c) 55%,
+        var(--vscode-foreground, #abb2bf)
     );
+    /* Fixed PyCharm editor palette. Host tokens still own the surrounding chrome. */
+    --pycharm-conflict: #4b1515;
+    --pycharm-inserted: #315f3c;
+    --pycharm-modified: #4b1515;
+    --pycharm-deleted: #4b1515;
+    --merge-conflict-block-bg: #3b2a32;
+    --merge-conflict-ribbon-bg: #4b1515;
+    --merge-inserted-block-bg: #264b33;
+    --merge-modified-block-bg: #3b2a32;
+    --merge-deleted-block-bg: #3b2a32;
     --merge-pane-boundary: color-mix(in srgb, var(--merge-editor-fg) 24%, var(--merge-editor-bg));
     --merge-hunk-boundary: color-mix(in srgb, var(--merge-border) 72%, transparent);
     --merge-hunk-boundary-width: 1px;
     --merge-line-number-gutter: 33px;
     --merge-action-gutter: 44px;
-    --merge-action-icon: #6e6e6e;
+    --merge-action-icon: #abb2bf;
 
     display: flex;
     flex-direction: column;
@@ -99,15 +58,6 @@
     background: var(--merge-editor-bg);
     font-family: var(--vscode-font-family, sans-serif);
     font-size: var(--vscode-font-size, 13px);
-}
-
-/* Match JetBrains' neutral light/dark gutter palette; respect HC host colors. */
-.vscode-dark .merge-editor {
-    --merge-action-icon: #afb1b3;
-}
-.vscode-high-contrast .merge-editor,
-.vscode-high-contrast-light .merge-editor {
-    --merge-action-icon: var(--vscode-icon-foreground, var(--vscode-foreground));
 }
 
 .loading {
@@ -388,7 +338,7 @@
     gap: 8px;
     min-width: 0;
     padding: 2px 8px;
-    color: color-mix(in srgb, var(--merge-editor-fg) 76%, transparent);
+    color: var(--vscode-descriptionForeground, var(--vscode-foreground));
     font-size: 11px;
     border-right: 1px solid var(--merge-border);
 }
@@ -410,12 +360,12 @@
     gap: 8px;
 }
 .pane-meta-counts {
-    color: color-mix(in srgb, var(--merge-editor-fg) 62%, transparent);
+    color: var(--vscode-descriptionForeground, var(--vscode-foreground));
     overflow-wrap: anywhere;
 }
 .pane-meta-center {
     justify-content: center;
-    color: color-mix(in srgb, var(--merge-editor-fg) 82%, transparent);
+    color: var(--vscode-foreground);
     font-weight: 500;
     overflow-wrap: anywhere;
 }
@@ -735,16 +685,16 @@
 }
 .conflict-actions-left {
     position: absolute;
-    top: 4px;
-    right: var(--merge-line-number-gutter);
+    top: -2px;
+    right: calc(var(--merge-line-number-gutter) + 2px);
     display: flex;
     gap: 0;
     z-index: 7;
 }
 .conflict-actions-right {
     position: absolute;
-    top: 4px;
-    left: var(--merge-line-number-gutter);
+    top: -2px;
+    left: calc(var(--merge-line-number-gutter) + 2px);
     display: flex;
     gap: 0;
     z-index: 7;
@@ -767,6 +717,12 @@
 .action-btn:hover {
     background: color-mix(in srgb, var(--merge-editor-fg) 10%, transparent);
     opacity: 1;
+}
+.discard-btn {
+    color: #fb1f49;
+}
+.accept-btn {
+    color: #66bb6a;
 }
 /* Block backgrounds are row-scoped like IntelliJ/PyCharm line fragments:
    filler rows align panes but stay neutral. Code rows use a sticky background
@@ -875,7 +831,7 @@
     box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--merge-accent) 25%, transparent);
 }
 .code-block.editing {
-    background: color-mix(in srgb, var(--merge-editor-bg) 88%, var(--merge-accent) 12%);
+    background: var(--merge-editor-bg);
 }
 .result-edit-textarea {
     width: 100%;
@@ -885,8 +841,8 @@
     outline: 1px solid color-mix(in srgb, var(--merge-accent) 55%, transparent);
     outline-offset: -1px;
     resize: vertical;
-    background: var(--vscode-editor-background);
-    color: var(--vscode-editor-foreground);
+    background: var(--merge-editor-bg);
+    color: var(--merge-editor-fg);
     font-family: var(--vscode-editor-font-family, monospace);
     font-size: var(--merge-code-font-size, var(--vscode-editor-font-size, 12px));
     line-height: 20px;
@@ -895,13 +851,13 @@
 }
 .conflict-result.edited .real-code-line::before,
 .conflict-result.edited .real-line-row {
-    background: color-mix(in srgb, var(--merge-inserted-block-bg) 70%, var(--merge-accent) 30%);
+    background: var(--merge-inserted-block-bg);
 }
 
 .conflict-ours .code-line,
 .conflict-theirs .code-line,
 .conflict-result .code-line {
-    color: var(--vscode-editor-foreground);
+    color: var(--merge-editor-fg);
 }
 .segment-conflict.active .conflict-result.unresolved .code-lines {
     box-shadow:
@@ -1050,36 +1006,7 @@
 .change-conflict .word-diff-change {
     background: var(--pycharm-conflict);
 }
-/* A wholly inserted hunk neutralises its word fill, for the reason the diff viewer
-   neutralises its own (diff-viewer.css:411-433): the band already says the whole line is
-   new, so a mark covering the whole line says it twice. `--merge-inserted-block-bg` is 15%
-   of --merge-ok (:80) and --pycharm-inserted is 30% of that SAME hue (:71), so the glyphs
-   came out in a darker box of one colour inside a lighter band of it. Both are `color-mix`
-   against an opaque background, so neither is a translucent overlay -- they are two opaque
-   shades, which is why the pair reads as a second tint rather than as depth.
-
-   Measured on the merge fixture before this rule changed: 2/2 marks inside the one-sided
-   hunk painted a tint the band did not carry, in `conflict-theirs` and `conflict-result`.
-   The result-pane half was the worse one -- :816-821 forces the unchanged column
-   transparent and has no word-fill counterpart, so that mark was an opaque fill over a band
-   painting nothing at all.
-
-   `transparent` rather than deleting the declaration: diff-core.css:231 paints every
-   `.word-diff-change` in `--diff-pycharm-modified`, so removing this rule would leave the
-   marks in the MODIFIED hue rather than unpainted.
-
-   `.conflict-result.edited` is listed explicitly because :1082 ties this rule's (0,3,0) and
-   sits later, so it would otherwise win back the fill for an edited result pane. Inside a
-   `variant-insertion` that mark is vacuous on every reachable path: `resultCompareBaseline`
-   (segments.tsx:163-173) returns `theirsLines`, `oursLines` or `baseLines`, and a
-   `variant-insertion` has `baseLines === []` by definition (segments.tsx:181) with the
-   non-changed side empty too, since `ours-only`/`theirs-only` means the other side never
-   edited. No committed fixture drives a result-pane edit, so that selector is reasoned from
-   the comparison baseline rather than measured.
-
-   Scoped to `variant-insertion` on purpose, and NOT extended to `.variant-deletion` (:1079):
-   a deletion hunk's sides carry no lines to mark, so it has no word runs to double-paint,
-   and a rule there would neutralise nothing while looking like it gated something. */
+/* A wholly inserted row needs only its green band; partial inserted words use the brighter fill. */
 .variant-insertion .conflict-ours .word-diff-change,
 .variant-insertion .conflict-theirs .word-diff-change,
 .variant-insertion .conflict-result .word-diff-change,

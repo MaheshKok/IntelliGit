@@ -82,22 +82,18 @@ describe("detectTheme", () => {
         expect(detectTheme()).toBe("dark-plus");
     });
 
-    it("returns light-plus for high-contrast light despite the legacy high-contrast class", () => {
-        // VS Code adds the legacy `vscode-high-contrast` class alongside
-        // `vscode-high-contrast-light` for backwards compatibility, so a check that
-        // only matches the legacy class paints dark-theme syntax colours onto the
-        // white high-contrast-light editor background.
+    it("keeps dark syntax on the fixed charcoal surface under high-contrast light", () => {
         document.body.classList.add("vscode-high-contrast", "vscode-high-contrast-light");
-        expect(detectTheme()).toBe("light-plus");
+        expect(detectTheme()).toBe("dark-plus");
     });
 
-    it("returns light-plus for the vscode-light body class", () => {
+    it("keeps dark syntax on the fixed charcoal surface under a light host theme", () => {
         document.body.classList.add("vscode-light");
-        expect(detectTheme()).toBe("light-plus");
+        expect(detectTheme()).toBe("dark-plus");
     });
 
-    it("returns light-plus when no theme class is present", () => {
-        expect(detectTheme()).toBe("light-plus");
+    it("keeps dark syntax when no host theme class is present", () => {
+        expect(detectTheme()).toBe("dark-plus");
     });
 });
 

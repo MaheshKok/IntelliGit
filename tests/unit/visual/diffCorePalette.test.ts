@@ -208,13 +208,8 @@ describe("diff-core palette", () => {
     });
 
     it("washes a changed-segment block only through a token that degrades to nothing", () => {
-        // Every wash reaches the block through `var(--diff-*-wash, transparent)` and never
-        // as a literal colour. The fallback is what makes the palette recoverable: a token
-        // that fails to resolve leaves the block bare and legible, where a literal would
-        // keep painting under the glyphs with no way to turn it off per theme. It is also
-        // the seam a theme gate is reinstated through if the contrast cost recorded in
-        // knownFindings.json is ever judged too high -- declaring the tokens behind a
-        // theme selector then restores the bare light themes with no rule change here.
+        // Every state reaches its fixed fill through a named token, and a missing token
+        // still degrades to a legible unpainted row rather than CSS `initial`.
         for (const [state, body] of stateRules(viewerCss)) {
             const background = propertyIn(body, "background");
             if (background === null) continue;
@@ -225,117 +220,35 @@ describe("diff-core palette", () => {
         }
     });
 
-    it("mixes every wash from the merge surface's own hue at its own strength", () => {
-        // "Same colours as the merge editor" is only auditable if the numbers are compared
-        // rather than copied: a percentage typed into both files drifts the moment one is
-        // tuned, and nothing here would notice, because both surfaces would still be
-        // internally consistent. So each viewer strength is checked against the merge
-        // token it mirrors, read out of merge-editor.css at run time.
-        //
-        // This replaces the theme gate that used to live here. The gate said no wash may
-        // reach a light theme, because light themes have no contrast headroom for one --
-        // still true, and still measured (see the ladder in diff-viewer.css). It was
-        // dropped deliberately in favour of matching the merge surface everywhere, with
-        // the resulting contrast findings recorded in knownFindings.json. That is what
-        // makes this a decision with a cost rather than an oversight, and it is why the
-        // baseline entries must never be treated as noise to be regenerated: a finding
-        // beyond them is still a failure.
+    it("pins the approved editor and change fills on both surfaces", () => {
         const mergeCss = stripComments(readFileSync(MERGE_EDITOR_CSS, "utf8"));
-        const percentOf = (source: string, token: string, where: string): number => {
-            const declaration = declarationOf(source, token);
-            expect(declaration, `${token} is not declared in ${where}`).toBeTruthy();
-            const percent = /\)\s*(\d+(?:\.\d+)?)%/.exec(declaration ?? "");
-            expect(
-                percent,
-                `${token} in ${where} is no longer a color-mix percentage, so the two surfaces can no longer be compared by this guard`,
-            ).toBeTruthy();
-            return Number(percent?.[1]);
-        };
-        // The hue half of the same comparison. A strength check alone would have let the
-        // deleted state go red on one surface and stay grey on the other -- both files
-        // internally consistent, both at 15%, and the product showing one state in two
-        // colours. The token NAMES are compared with their surface prefix stripped, so
-        // --diff-deleted-hue matches --merge-deleted-hue and a rename on one side that
-        // is not mirrored on the other fails here rather than in a screenshot.
-        const hueOf = (source: string, token: string, where: string): string => {
-            const hue = /var\(\s*(--[a-z0-9-]+)/.exec(declarationOf(source, token) ?? "");
-            expect(
-                hue,
-                `${token} in ${where} no longer mixes from a var() hue, so the two surfaces can no longer be compared by this guard`,
-            ).toBeTruthy();
-            return (hue?.[1] ?? "").replace(/^--(?:diff|merge|pycharm)-/, "");
-        };
-
-        const pairs: readonly (readonly [string, string])[] = [
-            ["--diff-inserted-wash", "--merge-inserted-block-bg"],
-            ["--diff-deleted-wash", "--merge-deleted-block-bg"],
-            ["--diff-modified-wash", "--merge-modified-block-bg"],
-            ["--diff-word-wash", "--pycharm-modified"],
-        ];
-        for (const [viewerToken, mergeToken] of pairs) {
-            expect(
-                percentOf(viewerCss, viewerToken, "diff-viewer.css"),
-                `${viewerToken} no longer mixes at the same strength as ${mergeToken}, so the read-only viewer and the merge editor paint the same state two different shades`,
-            ).toBe(percentOf(mergeCss, mergeToken, "merge-editor.css"));
-            expect(
-                hueOf(viewerCss, viewerToken, "diff-viewer.css"),
-                `${viewerToken} no longer mixes the same hue as ${mergeToken}, so the two surfaces paint one state in two different colours`,
-            ).toBe(hueOf(mergeCss, mergeToken, "merge-editor.css"));
-        }
-    });
-
-    it("gives the deleted state a red of its own, apart from the conflict red and the muted text", () => {
-        // Deletions went red at the user's request. Two collisions had to be avoided to do
-        // it, and both are the shape a later simplification reaches for:
-        //
-        //   --merge-muted  is ALSO the secondary text hue (six `color:` rules in
-        //                  merge-editor.css, the pane labels in diff-viewer.css, the
-        //                  line-number blend in diff-core.css). Repointing it would have
-        //                  turned every muted label red, so the deleted state needed a
-        //                  token of its own before it could stop being grey.
-        //   --merge-danger is the CONFLICT hue, and a merge can show a deleted hunk and a
-        //                  conflict hunk in one scroll. Reading it here would make the two
-        //                  states one colour -- and a second red theme token would not
-        //                  help, because themes ship one red (Dark Modern: errorForeground
-        //                  #f85149, charts-red #f14c4c).
-        //
-        // What separates them is the muted leg blended back in, which is why this asserts
-        // the hue is a mix rather than only that it is a different name.
-        const mergeSource = stripComments(readFileSync(MERGE_EDITOR_CSS, "utf8"));
-        const declaration = declarationOf(mergeSource, "--merge-deleted-hue");
-        expect(
-            declaration,
-            "--merge-deleted-hue is gone; the deleted state now reads whatever token replaced it, which is either the conflict red or the muted text hue",
-        ).toBeTruthy();
-
-        const read = [...(declaration ?? "").matchAll(/var\(\s*(--[a-z0-9-]+)/g)].map(
-            (match) => match[1],
-        );
-        expect(
-            read,
-            `--merge-deleted-hue reads ${read.join(", ")}; reading --merge-danger makes a deleted hunk indistinguishable from a conflict`,
-        ).not.toContain("--merge-danger");
-        expect(
-            read,
-            "--merge-deleted-hue no longer blends the muted hue in, so nothing keeps it duller than the conflict red on a theme whose reds coincide",
-        ).toContain("--merge-muted");
-
-        for (const [file, source, hue, muted] of [
-            ["merge-editor.css", mergeSource, "--merge-deleted-hue", "--merge-muted"],
-            ["diff-core.css", css, "--diff-deleted-hue", "--diff-muted"],
+        for (const [source, token, value] of [
+            [css, "--diff-editor-bg", "var(--merge-editor-bg, #313845)"],
+            [css, "--diff-editor-fg", "var(--merge-editor-fg, #abb2bf)"],
+            [viewerCss, "--diff-inserted-wash", "#264b33"],
+            [viewerCss, "--diff-deleted-wash", "#3b2a32"],
+            [viewerCss, "--diff-modified-wash", "#3b2a32"],
+            [viewerCss, "--diff-word-wash", "#4b1515"],
+            [mergeCss, "--merge-editor-bg", "#313845"],
+            [mergeCss, "--merge-editor-fg", "#abb2bf"],
+            [mergeCss, "--merge-conflict-block-bg", "#3b2a32"],
+            [mergeCss, "--merge-conflict-ribbon-bg", "#4b1515"],
+            [mergeCss, "--merge-inserted-block-bg", "#264b33"],
+            [mergeCss, "--pycharm-inserted", "#315f3c"],
         ] as const) {
-            expect(
-                declarationOf(source, hue),
-                `${hue} is not declared in ${file}, so the deleted state falls back to whatever the other surface happens to define`,
-            ).toBeTruthy();
-            expect(
-                declarationOf(source, hue),
-                `${hue} in ${file} resolves to ${muted} outright, which is the grey it was split away from -- deletions would silently go back to looking unchanged-but-dimmed`,
-            ).not.toMatch(new RegExp(`^\\s*var\\(\\s*${muted}\\s*\\)\\s*$`));
+            expect(declarationOf(source, token), `${token} drifted from the fixed palette`).toBe(
+                value,
+            );
         }
     });
 
-    it("marks a changed word fragment with a darker fill of the block's hue, and nothing else", () => {
+    it("keeps deletion on the approved strong red instead of muted text", () => {
+        const mergeSource = stripComments(readFileSync(MERGE_EDITOR_CSS, "utf8"));
+        expect(declarationOf(mergeSource, "--merge-deleted-hue")).toBe("#4b1515");
+        expect(declarationOf(css, "--diff-deleted-hue")).toBe("var(--merge-deleted-hue, #4b1515)");
+    });
+
+    it("marks a changed word fragment with the fixed strong fill and nothing else", () => {
         const rule = /\.diff-viewer\s+\.word-diff-change\s*\{([^}]*)\}/.exec(viewerCss);
         expect(
             rule,
@@ -357,65 +270,17 @@ describe("diff-core palette", () => {
             "changed fragments underline again; the fill is the marker, and the surface this one mirrors draws no underline",
         ).toBeNull();
 
-        // The two-tone is the whole point of the request: the fragment must sit DARKER
-        // than the block it is inside, the way merge-editor.css pairs its 15% block
-        // background with a 30% --pycharm-* fragment. Unifying the two tokens would keep
-        // every other assertion here green and make the changed word invisible.
-        const mixPercent = (token: string): number => {
-            const declaration = new RegExp(`${token}\\s*:\\s*([^;]*);`).exec(viewerCss);
-            expect(
-                declaration,
-                `${token} is never declared, so the two-tone has no dark leg`,
-            ).toBeTruthy();
-            const percent = /\)\s*(\d+(?:\.\d+)?)%/.exec((declaration?.[1] ?? "") as string);
-            expect(
-                percent,
-                `${token} is not a color-mix percentage this guard can compare`,
-            ).toBeTruthy();
-            return Number(percent?.[1]);
-        };
-        expect(
-            mixPercent("--diff-word-wash"),
-            "the changed fragment is no darker than the block around it, so the two-tone collapsed and the word-level marker disappeared into the hunk",
-        ).toBeGreaterThan(mixPercent("--diff-modified-wash"));
+        expect(declarationOf(viewerCss, "--diff-word-wash")).toBe("#4b1515");
+        expect(declarationOf(viewerCss, "--diff-modified-wash")).toBe("#3b2a32");
     });
 
-    it("re-mixes the word fragment from the block's own hue, on the element that owns it", () => {
-        // The mark used to be a fixed --diff-info tint, which was correct while only a
-        // two-sided hunk could carry one. A one-sided hunk carries them now, so a fixed
-        // cyan fragment lands inside a green insertion or a red deletion -- the two-tone
-        // reads as a different kind of change rather than as the changed words.
-        //
-        // WHERE the override sits is the whole substance of it, which is why this asserts
-        // the rule body and not just the file. A var() inside a custom property is
-        // substituted on the element that DECLARES it: the same declaration moved onto
-        // `.diff-viewer` resolves --diff-segment-hue at the root, finds nothing, and every
-        // mark silently falls back to one colour. That mutation changes no percentage, no
-        // hue token and no selector this file otherwise checks -- it is invisible to every
-        // other assertion here, and it is the shape a later tidy-up reaches for.
+    it("keeps the strong red word fill on the changed segment that owns it", () => {
         const changed = stateRules(viewerCss).get(MARKER_CLASS) ?? "";
         const override = propertyIn(changed, "--diff-word-wash");
-        expect(
-            override,
-            `.${MARKER_CLASS} does not re-declare --diff-word-wash, so the word mark keeps the root's fixed tint and a changed fragment inside a one-sided hunk is painted in another state's colour`,
-        ).toBeTruthy();
-        expect(
-            hueIn(override),
-            "the override no longer mixes from --diff-segment-hue, so it paints one colour for every state and the block-relative two-tone is gone",
-        ).toBe("--diff-segment-hue");
-
-        // Both legs of the two-tone have to move together. The block wash and the mark now
-        // read the SAME hue, so a mark mixed at the block's own strength is not merely
-        // faint inside it -- it is the identical colour, and invisible.
-        const strengthOf = (value: string | null): number =>
-            Number(/\)\s*(\d+(?:\.\d+)?)%/.exec(value ?? "")?.[1]);
-        expect(
-            strengthOf(override),
-            "the override mixes its hue at the block's own strength, so a changed fragment is the exact colour of the block around it",
-        ).toBeGreaterThan(strengthOf(declarationOf(viewerCss, "--diff-modified-wash")));
+        expect(override).toBe("#4b1515");
     });
 
-    it("keeps a two-sided modification dark while coloring only its changed words by pane", () => {
+    it("keeps modified areas and word highlights red on both panes", () => {
         const modified = stateRules(viewerCss).get("diff-segment-modified") ?? "";
         expect(hueIn(propertyIn(modified, "--diff-segment-hue"))).toBe("--diff-info");
         expect(propertyIn(modified, "background")).toBe("var(--diff-modified-wash, transparent)");
@@ -434,13 +299,15 @@ describe("diff-core palette", () => {
 
         const left = paneRule("left");
         expect(propertyIn(left, "--diff-segment-hue")).toBeNull();
+        expect(propertyIn(left, "--diff-modified-wash")).toBeNull();
+        expect(propertyIn(left, "--diff-word-wash")).toBe("#4b1515");
         expect(propertyIn(left, "background")).toBeNull();
-        expect(hueIn(propertyIn(left, "--diff-word-wash"))).toBe("--diff-deleted-hue");
 
         const right = paneRule("right");
         expect(propertyIn(right, "--diff-segment-hue")).toBeNull();
+        expect(propertyIn(right, "--diff-modified-wash")).toBeNull();
+        expect(propertyIn(right, "--diff-word-wash")).toBe("#4b1515");
         expect(propertyIn(right, "background")).toBeNull();
-        expect(hueIn(propertyIn(right, "--diff-word-wash"))).toBe("--diff-ok");
     });
 
     it("fills the connector ribbon from a semantic hue, not a wash", () => {
@@ -610,30 +477,10 @@ describe("diff-core palette", () => {
         }
     });
 
-    it("softens the conflict hue before the 15% block and 30% word washes", () => {
-        // The host error token is intentionally vivid because it normally paints tiny
-        // diagnostics and icons. Mixing it straight into a multi-line conflict creates
-        // the saturated red slab seen in the regression screenshot. PyCharm keeps the
-        // same semantic red but softens it toward the editor foreground before applying
-        // the row and word strengths, so both layers remain one adaptive theme family.
+    it("pins the conflict block and word fills to the approved reds", () => {
         const mergeCss = stripComments(readFileSync(MERGE_EDITOR_CSS, "utf8"));
-
-        /** Returns a declaration with formatter-only whitespace collapsed. */
-        const compactDeclaration = (name: string): string | null =>
-            declarationOf(mergeCss, name)
-                ?.replace(/\s+/g, " ")
-                .replace(/\(\s+/g, "(")
-                .replace(/\s+\)/g, ")") ?? null;
-
-        expect(
-            compactDeclaration("--merge-conflict-hue"),
-            "the merge conflict palette still feeds the vivid host error token directly into large painted regions",
-        ).toBe("color-mix(in srgb, var(--merge-danger) 88%, var(--merge-editor-fg))");
-        expect(compactDeclaration("--merge-conflict-block-bg")).toBe(
-            "color-mix(in srgb, var(--merge-conflict-hue) 15%, var(--merge-editor-bg))",
-        );
-        expect(compactDeclaration("--pycharm-conflict")).toBe(
-            "color-mix(in srgb, var(--merge-conflict-hue) 30%, var(--merge-editor-bg))",
-        );
+        expect(declarationOf(mergeCss, "--merge-conflict-hue")).toBe("#4b1515");
+        expect(declarationOf(mergeCss, "--merge-conflict-block-bg")).toBe("#3b2a32");
+        expect(declarationOf(mergeCss, "--pycharm-conflict")).toBe("#4b1515");
     });
 });
