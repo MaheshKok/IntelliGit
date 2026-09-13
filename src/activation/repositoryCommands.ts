@@ -31,6 +31,7 @@ import {
     runGitOperationFromPanel,
     type CommitPanelGitOperation,
 } from "../views/commitPanelActions";
+import { trackUnversionedFilesFromPanel } from "../views/panelFileActions";
 import type { RefreshService } from "../views/RefreshService";
 import { NO_REPOSITORY_MESSAGE, workspaceRoots } from "./common";
 
@@ -46,6 +47,7 @@ interface RepositoryCommandsDeps {
     gitOps: GitOps;
     worktreeService: WorktreeService;
     getRepoRoot: () => string;
+    isKnownRepositoryRoot: (repositoryRoot: string) => boolean;
     setRepositories: (repositories: DiscoveredRepository[]) => void;
     getCurrentBranches: () => Branch[];
     commitGraphFilterByBranch: (branchName: string | null) => Promise<void>;
@@ -85,6 +87,33 @@ const isWorktreeContext = (value: unknown): value is GitWorktree => {
 /** Extracts merge-conflict file paths only from known VS Code command payload shapes. */
 const resolveConflictPath = (ctx: unknown): string | null =>
     isFilePathContext(ctx) ? ctx.filePath : null;
+
+/**
+ * Accepts only native Add to VCS payloads whose root and paths can be validated before GitOps
+ * selection. Returning undefined deliberately keeps malformed context-menu input side-effect free.
+ */
+function resolveAddToVcsContext(
+    value: unknown,
+): { repositoryRoot: string; filePaths: string[] } | undefined {
+    if (!value || typeof value !== "object") return undefined;
+    const { repositoryRoot, filePaths } = value as {
+        repositoryRoot?: unknown;
+        filePaths?: unknown;
+    };
+    if (typeof repositoryRoot !== "string" || !Array.isArray(filePaths) || filePaths.length === 0)
+        return undefined;
+    try {
+        return {
+            repositoryRoot,
+            filePaths: filePaths.map((filePath) => {
+                if (typeof filePath !== "string") throw new Error("Invalid repository path.");
+                return assertRepoRelativePath(filePath);
+            }),
+        };
+    } catch {
+        return undefined;
+    }
+}
 
 /**
  * Registers the command surface that requires an active IntelliGit repository.
@@ -540,9 +569,23 @@ function registerBranchCommands(deps: RepositoryCommandsDeps): void {
  * context.
  */
 function registerCommitFileCommands(deps: RepositoryCommandsDeps): void {
-    const { context, executor, gitOps, getRepoRoot, refreshService } = deps;
+    const { context, executor, gitOps, getRepoRoot, isKnownRepositoryRoot, refreshService } = deps;
 
     context.subscriptions.push(
+        vscode.commands.registerCommand("intelligit.fileAddToVcs", async (ctx: unknown) => {
+            const input = resolveAddToVcsContext(ctx);
+            if (!input || !isKnownRepositoryRoot(input.repositoryRoot)) return;
+            const scopedGitOps = gitOps.deriveFor(input.repositoryRoot);
+            await trackUnversionedFilesFromPanel(
+                {
+                    gitOps: scopedGitOps,
+                    getWorkspaceRoot: () => vscode.Uri.file(input.repositoryRoot),
+                    refreshData: () => refreshService().refreshCommitPanels(),
+                    fireWorkingTreeChanged: () => undefined,
+                },
+                input.filePaths,
+            );
+        }),
         vscode.commands.registerCommand(
             "intelligit.commitFileCompareWithLocal",
             async (ctx: unknown) => {

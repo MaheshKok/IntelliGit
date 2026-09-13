@@ -15,6 +15,7 @@ import { t } from "../../shared/i18n";
 import type { TreeEntry } from "../types";
 
 interface Props {
+    repositoryRoot?: string;
     files: WorkingFile[];
     groupByDir: boolean;
     showIgnoredFiles: boolean;
@@ -66,6 +67,7 @@ const COMMIT_PANEL_INDENT_METRICS = Object.freeze({
 });
 
 interface FileSectionProps {
+    repositoryRoot?: string;
     label: string;
     count: number;
     stats?: { additions: number; deletions: number };
@@ -77,6 +79,7 @@ interface FileSectionProps {
     expandedDirs: Set<string>;
     checkedPaths: Set<string>;
     dragSelectedPaths: Set<string>;
+    getUnversionedFilePaths: (file: WorkingFile) => string[];
     onToggleOpen: () => void;
     onToggleCheck: () => void;
     onToggleFile: (path: string) => void;
@@ -151,7 +154,9 @@ function sumStats(
     return { additions, deletions };
 }
 
+/** Renders one file-status bucket with native context metadata for its visible rows. */
 function FileSection({
+    repositoryRoot,
     label,
     count,
     stats,
@@ -163,6 +168,7 @@ function FileSection({
     expandedDirs,
     checkedPaths,
     dragSelectedPaths,
+    getUnversionedFilePaths,
     onToggleOpen,
     onToggleCheck,
     onToggleFile,
@@ -188,6 +194,7 @@ function FileSection({
     const fileWiring = useCallback(
         (file: WorkingFile, depth: number) => {
             const isRootRow = depth === 0;
+            const filePaths = getUnversionedFilePaths(file);
             return {
                 isSelected: false,
                 onSelect: () => undefined,
@@ -196,6 +203,10 @@ function FileSection({
                 vscodeContext: JSON.stringify({
                     webviewSection: "file",
                     filePath: file.path,
+                    ...(repositoryRoot && filePaths.length > 0
+                        ? { repositoryRoot, filePaths }
+                        : {}),
+                    webviewUnversionedFile: Boolean(repositoryRoot) && file.status === "?",
                     webviewIgnoredFile: file.status === "!",
                     preventDefaultContextMenuItems: true,
                 }),
@@ -224,11 +235,13 @@ function FileSection({
             checkboxVisibility,
             checkedPaths,
             dragSelectedPaths,
+            getUnversionedFilePaths,
             onFileClick,
             onFileDragEnd,
             onFileDragStart,
             onShelfFileDragStart,
             onToggleFile,
+            repositoryRoot,
             // Required, but no mutation can currently observe it: every `files` change
             // already invalidates this callback through `dragSelectedPaths`, which
             // `useFileDrag` derives from `unversioned`. Dropping it therefore stays
@@ -328,6 +341,7 @@ function FileSection({
  * and send host messages for file opens.
  */
 export function FileTree({
+    repositoryRoot,
     files,
     groupByDir,
     showIgnoredFiles,
@@ -389,6 +403,7 @@ export function FileTree({
     );
     const {
         visibleDragSelectedUnversionedPaths,
+        getUnversionedFilePaths,
         isDragOverChanges,
         handleTreeFileClick,
         handleFileDragStart,
@@ -397,7 +412,7 @@ export function FileTree({
         handleChangesDragOver,
         handleChangesDragLeave,
         handleChangesDrop,
-    } = useFileDrag({ unversioned, onFileClick, onTrackUnversionedFiles });
+    } = useFileDrag({ repositoryRoot, unversioned, onFileClick, onTrackUnversionedFiles });
 
     const toggleDir = useCallback((dirPath: string) => {
         setExpansion((prev) => {
@@ -502,6 +517,7 @@ export function FileTree({
                     onDrop={handleChangesDrop}
                 >
                     <FileSection
+                        repositoryRoot={repositoryRoot}
                         label={t("commitPanel.changes")}
                         count={trackedUniqueCount}
                         stats={trackedStats}
@@ -517,6 +533,7 @@ export function FileTree({
                         expandedDirs={expandedDirs}
                         checkedPaths={checkedPaths}
                         dragSelectedPaths={visibleDragSelectedUnversionedPaths}
+                        getUnversionedFilePaths={getUnversionedFilePaths}
                         onToggleFile={onToggleFile}
                         onToggleFolder={onToggleFolder}
                         getAllChecked={isAllChecked}
@@ -533,6 +550,7 @@ export function FileTree({
             )}
             {unversioned.length > 0 && (
                 <FileSection
+                    repositoryRoot={repositoryRoot}
                     label={t("commitPanel.unversionedFiles")}
                     count={unversionedUniqueCount}
                     stats={unversionedStats}
@@ -550,6 +568,7 @@ export function FileTree({
                     expandedDirs={expandedDirs}
                     checkedPaths={checkedPaths}
                     dragSelectedPaths={visibleDragSelectedUnversionedPaths}
+                    getUnversionedFilePaths={getUnversionedFilePaths}
                     onToggleFile={onToggleFile}
                     onToggleFolder={onToggleFolder}
                     getAllChecked={isAllChecked}
@@ -565,6 +584,7 @@ export function FileTree({
             )}
             {ignored.length > 0 && (
                 <FileSection
+                    repositoryRoot={repositoryRoot}
                     label={t("commitPanel.ignoredFiles")}
                     count={ignoredUniqueCount}
                     files={ignored}
@@ -581,6 +601,7 @@ export function FileTree({
                     expandedDirs={expandedDirs}
                     checkedPaths={checkedPaths}
                     dragSelectedPaths={visibleDragSelectedUnversionedPaths}
+                    getUnversionedFilePaths={getUnversionedFilePaths}
                     onToggleFile={onToggleFile}
                     onToggleFolder={onToggleFolder}
                     getAllChecked={isAllChecked}

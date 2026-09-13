@@ -6,20 +6,28 @@ import { JETBRAINS_UI } from "../../shared/tokens";
 const UNVERSIONED_DRAG_MIME = "application/vnd.intelligit.unversioned-files";
 
 interface UseFileDragOptions {
+    repositoryRoot?: string;
     unversioned: WorkingFile[];
     onFileClick: (path: string) => void;
     onTrackUnversionedFiles?: (paths: string[]) => void;
 }
 
-/** Owns unversioned-file drag selection and drop handlers for FileTree. */
+/**
+ * Owns FileTree's visible Cmd/Ctrl selection and drag/drop actions for unversioned rows.
+ *
+ * Selection is keyed by repository root and restricted to paths still present in the latest
+ * unversioned list. Row actions use that selection only when the clicked row belongs to it, and
+ * never consult commit checkboxes.
+ */
 export function useFileDrag({
+    repositoryRoot,
     unversioned,
     onFileClick,
     onTrackUnversionedFiles,
 }: UseFileDragOptions) {
     const [isDragOverChanges, setIsDragOverChanges] = useState(false);
-    const [dragSelectedUnversionedPaths, setDragSelectedUnversionedPaths] = useState<Set<string>>(
-        () => new Set(),
+    const [selection, setSelection] = useState<{ repositoryRoot?: string; paths: Set<string> }>(
+        () => ({ repositoryRoot, paths: new Set() }),
     );
     const dragCounterRef = useRef(0);
     const activeUnversionedDragPathsRef = useRef<string[]>([]);
@@ -28,20 +36,18 @@ export function useFileDrag({
         [unversioned],
     );
     const visibleDragSelectedUnversionedPaths = useMemo(() => {
+        if (selection.repositoryRoot !== repositoryRoot) return new Set<string>();
         const next = new Set(
-            Array.from(dragSelectedUnversionedPaths).filter((path) => unversionedPaths.has(path)),
+            Array.from(selection.paths).filter((path) => unversionedPaths.has(path)),
         );
-        return next.size === dragSelectedUnversionedPaths.size
-            ? dragSelectedUnversionedPaths
-            : next;
-    }, [dragSelectedUnversionedPaths, unversionedPaths]);
+        return next.size === selection.paths.size ? selection.paths : next;
+    }, [repositoryRoot, selection, unversionedPaths]);
 
-    const getUnversionedDragPaths = useCallback(
+    const getUnversionedFilePaths = useCallback(
         (file: WorkingFile): string[] => {
             if (file.status !== "?") return [];
-            const selectedUnversioned = Array.from(visibleDragSelectedUnversionedPaths);
-            if (selectedUnversioned.length === 0) return [file.path];
-            return selectedUnversioned.includes(file.path) ? selectedUnversioned : [file.path];
+            const selected = Array.from(visibleDragSelectedUnversionedPaths);
+            return visibleDragSelectedUnversionedPaths.has(file.path) ? selected : [file.path];
         },
         [visibleDragSelectedUnversionedPaths],
     );
@@ -51,25 +57,27 @@ export function useFileDrag({
             if (file.status === "?" && (event.metaKey || event.ctrlKey)) {
                 event.preventDefault();
                 event.stopPropagation();
-                setDragSelectedUnversionedPaths((prev) => {
+                setSelection((prev) => {
                     const next = new Set(
-                        Array.from(prev).filter((path) => unversionedPaths.has(path)),
+                        prev.repositoryRoot === repositoryRoot
+                            ? Array.from(prev.paths).filter((path) => unversionedPaths.has(path))
+                            : [],
                     );
                     if (next.has(file.path)) next.delete(file.path);
                     else next.add(file.path);
-                    return next;
+                    return { repositoryRoot, paths: next };
                 });
                 return;
             }
-            setDragSelectedUnversionedPaths(new Set());
+            setSelection({ repositoryRoot, paths: new Set() });
             onFileClick(file.path);
         },
-        [onFileClick, unversionedPaths],
+        [onFileClick, repositoryRoot, unversionedPaths],
     );
 
     const handleFileDragStart = useCallback(
         (event: React.DragEvent<HTMLElement>, file: WorkingFile) => {
-            const paths = getUnversionedDragPaths(file);
+            const paths = getUnversionedFilePaths(file);
             if (paths.length === 0) {
                 activeUnversionedDragPathsRef.current = [];
                 event.preventDefault();
@@ -91,7 +99,7 @@ export function useFileDrag({
                 requestAnimationFrame(() => badge.remove());
             }
         },
-        [getUnversionedDragPaths],
+        [getUnversionedFilePaths],
     );
 
     const handleFileDragEnd = useCallback(() => {
@@ -182,6 +190,7 @@ export function useFileDrag({
 
     return {
         visibleDragSelectedUnversionedPaths,
+        getUnversionedFilePaths,
         isDragOverChanges,
         handleTreeFileClick,
         handleFileDragStart,

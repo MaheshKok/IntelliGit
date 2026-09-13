@@ -2,7 +2,7 @@
     "name": "intelligit",
     "displayName": "IntelliGit",
     "description": "%extension.description%",
-    "version": "0.34.0",
+    "version": "0.34.1",
     "publisher": "MaheshKok",
     "icon": "media/intelligit-icon.png",
     "license": "MIT",
@@ -449,6 +449,11 @@
                 "category": "%intelligit%"
             },
             {
+                "command": "intelligit.fileAddToVcs",
+                "title": "%command.addToVcs%",
+                "category": "%intelligit%"
+            },
+            {
                 "command": "intelligit.compareWithRevision",
                 "title": "%command.compareWithRevision%",
                 "category": "%intelligit%",
@@ -649,6 +654,10 @@
                 {
                     "command": "intelligit.diff.showInVsCode",
                     "when": "intelligit.diffSwitchable"
+                },
+                {
+                    "command": "intelligit.fileAddToVcs",
+                    "when": "false"
                 },
                 {
                     "command": "intelligit.refresh.color",
@@ -889,6 +898,11 @@
                 }
             ],
             "webview/context": [
+                {
+                    "command": "intelligit.fileAddToVcs",
+                    "when": "(webviewId == 'intelligit.commitPanel' || webviewId == 'intelligit.undocked') && webviewSection == 'file' && webviewUnversionedFile == true",
+                    "group": "1_actions@0"
+                },
                 {
                     "command": "intelligit.fileRollback",
                     "when": "webviewId == 'intelligit.commitPanel' && webviewSection == 'file' && !webviewIgnoredFile",
