@@ -60,6 +60,12 @@ export class FileHistoryPanel {
             });
             FileHistoryPanel.windows.delete(key);
         });
+    }
+
+    /** Starts the webview in its destination window, avoiding navigation during window transfer. */
+    private initialize(): void {
+        if (this.closed) return;
+        const { panel, options } = this;
         panel.webview.html = buildWebviewShellHtml({
             extensionUri: options.extensionUri,
             webview: panel.webview,
@@ -90,16 +96,18 @@ export class FileHistoryPanel {
             },
         );
         const panel = captureWebview(rawPanel, "file-history");
-        this.windows.set(key, new FileHistoryPanel(panel, options, key));
+        const history = new FileHistoryPanel(panel, options, key);
+        this.windows.set(key, history);
         try {
             await vscode.commands.executeCommand("workbench.action.moveEditorToNewWindow");
         } catch (error) {
-            await vscode.window.showWarningMessage(
+            void vscode.window.showWarningMessage(
                 vscode.l10n.t("Unable to move History to a new window: {message}", {
                     message: getErrorMessage(error),
                 }),
             );
         }
+        history.initialize();
     }
 
     /** Validates webview commands against host-owned history before executing them. */

@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
     }>,
     move: vi.fn().mockResolvedValue(undefined),
     html: vi.fn(() => "html"),
+    warning: vi.fn(),
     history: vi.fn(),
     load: vi.fn(),
 }));
@@ -47,7 +48,7 @@ vi.mock("vscode", () => ({
                 },
             };
         },
-        showWarningMessage: vi.fn(),
+        showWarningMessage: mocks.warning,
     },
 }));
 vi.mock("../../../src/views/webviewHtml", () => ({ buildWebviewShellHtml: mocks.html }));
@@ -127,8 +128,18 @@ describe("standalone file history", () => {
 
     it("loads content in the original window when moving fails", async () => {
         mocks.move.mockRejectedValueOnce(new Error("move failed"));
-        await FileHistoryPanel.open(options);
+        let dismissWarning!: () => void;
+        mocks.warning.mockImplementationOnce(
+            () =>
+                new Promise<void>((resolve) => {
+                    dismissWarning = resolve;
+                }),
+        );
+        const opening = FileHistoryPanel.open(options);
+        await vi.waitFor(() => expect(mocks.warning).toHaveBeenCalled());
         expect(mocks.html).toHaveBeenCalledTimes(1);
+        dismissWarning();
+        await opening;
     });
 
     it("discards an old query failure after a newer branch has loaded", async () => {
