@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
         reveal: ReturnType<typeof vi.fn>;
     }>,
     move: vi.fn().mockResolvedValue(undefined),
+    html: vi.fn(() => "html"),
     history: vi.fn(),
     load: vi.fn(),
 }));
@@ -49,7 +50,7 @@ vi.mock("vscode", () => ({
         showWarningMessage: vi.fn(),
     },
 }));
-vi.mock("../../../src/views/webviewHtml", () => ({ buildWebviewShellHtml: () => "html" }));
+vi.mock("../../../src/views/webviewHtml", () => ({ buildWebviewShellHtml: mocks.html }));
 vi.mock("../../../src/e2e/webviewCapture", () => ({ captureWebview: (p: unknown) => p }));
 vi.mock("../../../src/git/executor", () => ({
     GitExecutor: class {
@@ -91,6 +92,45 @@ afterEach(() => {
 });
 
 describe("standalone file history", () => {
+    it("loads webview content only after the auxiliary window move completes", async () => {
+        let finishMove!: () => void;
+        mocks.move.mockImplementationOnce(
+            () =>
+                new Promise<void>((resolve) => {
+                    finishMove = resolve;
+                }),
+        );
+        const opening = FileHistoryPanel.open(options);
+        expect(
+            mocks.html,
+            "webview initialization must not race window transfer",
+        ).not.toHaveBeenCalled();
+        finishMove();
+        await opening;
+        expect(mocks.html).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not initialize a panel closed while its window is moving", async () => {
+        let finishMove!: () => void;
+        mocks.move.mockImplementationOnce(
+            () =>
+                new Promise<void>((resolve) => {
+                    finishMove = resolve;
+                }),
+        );
+        const opening = FileHistoryPanel.open(options);
+        mocks.panels[0].close();
+        finishMove();
+        await opening;
+        expect(mocks.html).not.toHaveBeenCalled();
+    });
+
+    it("loads content in the original window when moving fails", async () => {
+        mocks.move.mockRejectedValueOnce(new Error("move failed"));
+        await FileHistoryPanel.open(options);
+        expect(mocks.html).toHaveBeenCalledTimes(1);
+    });
+
     it("discards an old query failure after a newer branch has loaded", async () => {
         let rejectOld!: (error: Error) => void;
         mocks.history
