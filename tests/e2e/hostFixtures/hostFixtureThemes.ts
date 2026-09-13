@@ -8,7 +8,7 @@ import type { HostFixtureThemeConfig } from "./types";
  * high-contrast assertions have nothing to assert against without them.
  *
  * `colorThemeSetting` values are the theme contribution `id` fields VS Code
- * 1.132.0 ships in `extensions/theme-defaults/package.json` -- verified
+ * 1.137.0 ships in `extensions/theme-defaults/package.json` -- verified
  * directly against the pinned build (downloaded to the out-of-repo cache
  * `resolveVSCodeExecutable.ts` manages), not assumed:
  *
@@ -25,7 +25,7 @@ import type { HostFixtureThemeConfig } from "./types";
  * `expectedThemeKind` values are the exact strings VS Code's webview preload
  * writes to `document.body.dataset.vscodeThemeKind` --
  * `out/vs/workbench/contrib/webview/browser/pre/index.html`'s `applyStyles`,
- * also read directly out of the downloaded 1.132.0 build:
+ * also read directly out of the downloaded 1.137.0 build:
  *
  * ```js
  * body.classList.remove('vscode-light', 'vscode-dark', 'vscode-high-contrast', 'vscode-high-contrast-light', ...);

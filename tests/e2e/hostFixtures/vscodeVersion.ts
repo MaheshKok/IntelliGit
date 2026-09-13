@@ -6,4 +6,4 @@
  * same rule for Layer 2 generally).
  *
  */
-export const VSCODE_VERSION = "1.132.0";
+export const VSCODE_VERSION = "1.137.0";
