@@ -585,18 +585,17 @@
     cursor: pointer;
 }
 
-/* Each tone is the hue of the edge bar on the block it points at, so following a mark
-   never lands on a differently coloured change. */
+/* Overview markers need contrast against the host editor, independent of the dark hunk fills. */
 .diff-change-inserted {
     background: var(--diff-ok);
 }
 
 .diff-change-deleted {
-    background: var(--diff-deleted-hue);
+    background: var(--vscode-editorOverviewRuler-deletedForeground, #f14c4c);
 }
 
 .diff-change-modified {
-    background: var(--diff-info);
+    background: var(--vscode-editorOverviewRuler-modifiedForeground, #007acc);
 }
 
 .diff-horizontal-scroll {
@@ -737,4 +736,9 @@
 }
 .diff-viewer button:active:not(:disabled) {
     box-shadow: inset 0 0 0 1px currentcolor;
+}
+
+/* The fixed dark change bands need dark syntax even when unchanged code uses a light theme. */
+.diff-segment-changed .real-code-line {
+    color-scheme: dark;
 }

@@ -29,6 +29,8 @@ export interface ShikiToken {
     text: string;
     /** Resolved foreground color from the active theme, if any. */
     color?: string;
+    /** Alternate color for the fixed dark change backgrounds under a light host theme. */
+    darkColor?: string;
     /** Font-style bitmask (1=italic, 2=bold, 4=underline), if any. */
     fontStyle?: number;
 }
@@ -62,8 +64,14 @@ let highlighterReady = false;
 const tokenCache = new Map<string, ShikiToken[] | null>();
 const CACHE_MAX = 5000;
 
-/** Select dark syntax colors for the fixed charcoal diff and merge editor palette. */
+/** Select bundled syntax colors compatible with the host editor's light or dark surface. */
 export function detectTheme(): ShikiTheme {
+    if (
+        document.body.classList.contains("vscode-light") ||
+        document.body.classList.contains("vscode-high-contrast-light")
+    ) {
+        return "light-plus";
+    }
     return "dark-plus";
 }
 
@@ -121,6 +129,32 @@ function warmLang(lang: string, theme: ShikiTheme): void {
     }
 }
 
+/** Keeps theme variants aligned to the same grammar tokens, including multiline scopes. */
+function tokenizeSource(code: string, lang: string, theme: ShikiTheme): ShikiToken[][] {
+    if (theme === "light-plus") {
+        return highlighter!
+            .codeToTokensWithThemes(code, {
+                lang,
+                themes: { light: "light-plus", dark: "dark-plus" },
+            })
+            .map((line) =>
+                line.map((token) => ({
+                    text: token.content,
+                    color: token.variants.light.color,
+                    darkColor: token.variants.dark.color,
+                    fontStyle: token.variants.light.fontStyle,
+                })),
+            );
+    }
+    return highlighter!.codeToTokensBase(code, { lang, theme }).map((line) =>
+        line.map((token) => ({
+            text: token.content,
+            color: token.color,
+            fontStyle: token.fontStyle,
+        })),
+    );
+}
+
 /** Tokenize one line with Shiki, returning null when unavailable or unsupported. */
 export function highlightLine(line: string, lang: string, theme: ShikiTheme): ShikiToken[] | null {
     if (!isShikiReady() || !highlighter) return null;
@@ -130,15 +164,12 @@ export function highlightLine(line: string, lang: string, theme: ShikiTheme): Sh
     if (tokenCache.has(cacheKey)) return tokenCache.get(cacheKey) ?? null;
 
     try {
-        const lines = highlighter.codeToTokensBase(line, { lang, theme });
+        const lines = tokenizeSource(line, lang, theme);
         if (!lines || lines.length === 0) {
             tokenCache.set(cacheKey, null);
             return null;
         }
-        const tokens: ShikiToken[] = [];
-        for (const token of lines[0]) {
-            tokens.push({ text: token.content, color: token.color, fontStyle: token.fontStyle });
-        }
+        const tokens = lines[0];
         if (tokenCache.size >= CACHE_MAX) {
             const firstKey = tokenCache.keys().next().value;
             if (firstKey) tokenCache.delete(firstKey);
@@ -169,14 +200,8 @@ export function highlightDocument(
     warmLang(lang, theme);
 
     try {
-        const highlighted = highlighter.codeToTokensBase(lines.join(eol), { lang, theme });
-        return lines.map((_, index) =>
-            (highlighted[index] ?? []).map((token) => ({
-                text: token.content,
-                color: token.color,
-                fontStyle: token.fontStyle,
-            })),
-        );
+        const highlighted = tokenizeSource(lines.join(eol), lang, theme);
+        return lines.map((_, index) => highlighted[index] ?? []);
     } catch (err) {
         console.warn("Failed to highlight document with lang=%s:", lang, err);
         return null;

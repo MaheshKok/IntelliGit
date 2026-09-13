@@ -104,6 +104,10 @@ describe("standalone file history", () => {
         ).not.toHaveBeenCalled();
         await panel.receive({ type: "historyReady" });
         expect(mocks.move).toHaveBeenCalledTimes(1);
+        expect(panel.reveal).toHaveBeenCalledTimes(1);
+        expect(panel.reveal.mock.invocationCallOrder[0]).toBeLessThan(
+            mocks.move.mock.invocationCallOrder[0]!,
+        );
         expect(mocks.history, "load data only for the destination document").not.toHaveBeenCalled();
         await panel.receive({ type: "historyReady" });
         expect(mocks.history).toHaveBeenCalledTimes(1);

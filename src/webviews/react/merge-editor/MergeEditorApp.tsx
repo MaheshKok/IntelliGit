@@ -279,7 +279,7 @@ export function App() {
     const [ignoreMode, setIgnoreMode] = useState<"none" | "whitespace">("none");
     const [activeConflictId, setActiveConflictId] = useState<number | null>(null);
     const [shikiReady, setShikiReady] = useState(() => isShikiReady());
-    // Syntax colors follow the fixed charcoal editor palette, not the host theme.
+    // Syntax colors match the host editor's light or dark surface.
     const [shikiTheme] = useState(() => detectTheme());
     // The same height `viewportHRef` caches, kept in state as well because the scroll
     // spacer is sized from it during render -- a ref alone would leave the spacer stale

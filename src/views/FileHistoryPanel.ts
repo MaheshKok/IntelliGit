@@ -41,6 +41,7 @@ export class FileHistoryPanel {
     private generation = 0;
     private previewGeneration = 0;
     private closed = false;
+    private moveStarted = false;
 
     private constructor(
         private readonly panel: vscode.WebviewPanel,
@@ -62,7 +63,7 @@ export class FileHistoryPanel {
         });
     }
 
-    /** Starts the webview in its destination window, avoiding navigation during window transfer. */
+    /** Boots the initial document so its ready handshake can safely start window transfer. */
     private initialize(): void {
         if (this.closed) return;
         const { panel, options } = this;
@@ -77,12 +78,12 @@ export class FileHistoryPanel {
     }
 
     /** Opens or reveals one file's window; only newly created panels are moved. */
-    static async open(options: FileHistoryPanelOptions): Promise<void> {
+    static open(options: FileHistoryPanelOptions): Promise<void> {
         const key = JSON.stringify([options.repoRoot, options.filePath]);
         const existing = this.windows.get(key);
         if (existing) {
             existing.panel.reveal();
-            return;
+            return Promise.resolve();
         }
         const rawPanel = vscode.window.createWebviewPanel(
             "intelligit.fileHistory",
@@ -98,16 +99,8 @@ export class FileHistoryPanel {
         const panel = captureWebview(rawPanel, "file-history");
         const history = new FileHistoryPanel(panel, options, key);
         this.windows.set(key, history);
-        try {
-            await vscode.commands.executeCommand("workbench.action.moveEditorToNewWindow");
-        } catch (error) {
-            void vscode.window.showWarningMessage(
-                vscode.l10n.t("Unable to move History to a new window: {message}", {
-                    message: getErrorMessage(error),
-                }),
-            );
-        }
         history.initialize();
+        return Promise.resolve();
     }
 
     /** Validates webview commands against host-owned history before executing them. */
@@ -115,8 +108,28 @@ export class FileHistoryPanel {
         if (!raw || typeof raw !== "object" || this.closed) return;
         const message = raw as Partial<HistoryOutbound>;
         try {
-            if (message.type === "historyReady") await this.refresh();
-            else if (message.type === "historyRefresh") {
+            if (message.type === "historyReady") {
+                if (!this.moveStarted) {
+                    // VS Code recreates the iframe across windows. Do not dispose its initial
+                    // bootstrap before the content script has established its message channel.
+                    this.moveStarted = true;
+                    this.panel.reveal();
+                    try {
+                        await vscode.commands.executeCommand(
+                            "workbench.action.moveEditorToNewWindow",
+                        );
+                    } catch (error) {
+                        void vscode.window.showWarningMessage(
+                            vscode.l10n.t("Unable to move History to a new window: {message}", {
+                                message: getErrorMessage(error),
+                            }),
+                        );
+                        if (!this.closed) await this.refresh();
+                    }
+                    return;
+                }
+                await this.refresh();
+            } else if (message.type === "historyRefresh") {
                 if (message.ref !== undefined && typeof message.ref !== "string") return;
                 this.ref = message.ref ?? this.ref;
                 this.limit = 100;

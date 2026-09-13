@@ -151,6 +151,9 @@ test("merge palette and first-row actions stay consistent across host themes", a
         "background-color",
         await editorBackground(page),
     );
-    await expect(page.locator(".result-edit-textarea")).toHaveCSS("color", "rgb(171, 178, 191)");
+    await expect(page.locator(".result-edit-textarea")).toHaveCSS(
+        "color",
+        await page.locator(".merge-content").evaluate((element) => getComputedStyle(element).color),
+    );
     await page.locator(".result-edit-textarea").press("Escape");
 });

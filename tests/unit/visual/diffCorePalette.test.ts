@@ -327,38 +327,15 @@ describe("diff-core palette", () => {
         ).toBe(true);
     });
 
-    it("draws every stripe mark in the hue of the block it points at", () => {
-        // The stripe's whole claim is that a mark predicts what is at that scroll
-        // position. A tone whose colour drifts from its state's edge bar keeps pointing
-        // at the right line in the wrong colour, which reads as a different kind of
-        // change -- worse than no marker, and invisible to a pixel baseline that
-        // rerecorded both together.
+    it("uses host overview colors for markers independently of dark hunk fills", () => {
         const changes = changeRules(viewerCss);
-        const states = stateRules(viewerCss);
-
+        const expected = {
+            inserted: "var(--diff-ok)",
+            deleted: "var(--vscode-editorOverviewRuler-deletedForeground, #f14c4c)",
+            modified: "var(--vscode-editorOverviewRuler-modifiedForeground, #007acc)",
+        };
         for (const tone of STRIPE_TONES) {
-            const markHue = hueIn(propertyIn(changes.get(tone) ?? "", "background"));
-            // Read the hue from --diff-segment-hue, not box-shadow: the block's shadow is
-            // one shared --diff-segment-shadow for every state, and the state's own colour
-            // is the custom property that shadow resolves through.
-            const blockHue = hueIn(
-                propertyIn(
-                    states.get(STRIPE_TONE_STATES[tone] as string) ?? "",
-                    "--diff-segment-hue",
-                ),
-            );
-            expect(
-                markHue,
-                `.diff-change-${tone} paints with ${markHue ?? "no --diff-* hue"}, so the stripe mark for a ${tone} change is drawn from something the palette does not own`,
-            ).not.toBeNull();
-            expect(
-                markHue,
-                `.diff-change-${tone} is ${markHue} but ${STRIPE_TONE_STATES[tone]} is ${blockHue}; following that mark lands on a differently coloured block`,
-            ).toBe(blockHue);
-            expect(
-                HUE_TOKENS.includes(markHue as (typeof HUE_TOKENS)[number]),
-                `${markHue} is not a semantic hue`,
-            ).toBe(true);
+            expect(propertyIn(changes.get(tone) ?? "", "background")).toBe(expected[tone]);
         }
     });
 

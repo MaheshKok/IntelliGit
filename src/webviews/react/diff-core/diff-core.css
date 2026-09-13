@@ -4,7 +4,7 @@
 .merge-editor,
 .diff-core {
     --diff-editor-bg: var(--merge-editor-bg, var(--vscode-editor-background, #313845));
-    --diff-editor-fg: var(--merge-editor-fg, #abb2bf);
+    --diff-editor-fg: var(--merge-editor-fg, var(--vscode-editor-foreground, #abb2bf));
     --diff-border: var(--merge-border, color-mix(in srgb, var(--diff-editor-fg) 14%, transparent));
     --diff-muted: var(--merge-muted, var(--vscode-descriptionForeground, #9ca3af));
     --diff-ok: var(--merge-ok, #66bb6a);
@@ -132,6 +132,8 @@
 }
 
 .code-line {
+    color-scheme: light;
+    color: light-dark(var(--diff-editor-fg), #abb2bf);
     padding: 0 9px;
     white-space: pre;
     line-height: 20px;
@@ -192,6 +194,8 @@
    equal specificity and resolve by source order within the consumer's own
    stylesheet — see `.word-diff-change.word-diff-whitespace` in merge-editor.css. */
 .word-diff-change {
+    color-scheme: dark;
+    color: #abb2bf;
     background: var(--diff-pycharm-modified);
     border-radius: 2px;
 }

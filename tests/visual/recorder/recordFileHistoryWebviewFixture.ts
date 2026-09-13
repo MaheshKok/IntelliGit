@@ -25,6 +25,8 @@ export async function recordFileHistoryWebviewFixture(
         });
         const panel = getCreatedWebviewPanels()[0];
         if (!panel) throw new Error("History did not create its panel.");
+        // The first document permits transfer; VS Code then recreates it in the new window.
+        await panel.receiveMessage({ type: "historyReady" });
         await panel.receiveMessage({ type: "historyReady" });
         const sink = getE2eWebviewCaptureSink();
         if (!sink) throw new Error("History capture is inactive.");

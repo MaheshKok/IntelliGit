@@ -11,10 +11,11 @@ test("dismissed insertion words return to host-theme syntax", async ({ mountHarn
     const word = row.locator(".word-diff-change").first();
     await expect(word).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
 
-    const rowStyle = await row.evaluate((element) => {
-        const style = getComputedStyle(element);
-        return { color: style.color, colorScheme: style.colorScheme };
-    });
-    await expect(word).toHaveCSS("color-scheme", rowStyle.colorScheme);
-    await expect(word).toHaveCSS("color", rowStyle.color);
+    const hostColor = await page
+        .locator(".merge-content")
+        .evaluate((element) => getComputedStyle(element).color);
+    await expect(row).toHaveCSS("color-scheme", "light");
+    await expect(row).toHaveCSS("color", hostColor);
+    await expect(word).toHaveCSS("color-scheme", "light");
+    await expect(word).toHaveCSS("color", hostColor);
 });

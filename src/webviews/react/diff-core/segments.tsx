@@ -59,7 +59,11 @@ function coloredSpansForLine(
         if (shikiTokens) {
             return shikiTokens.map((tok) => {
                 const style: React.CSSProperties = {};
-                if (tok.color) style.color = tok.color;
+                if (tok.color) {
+                    style.color = tok.darkColor
+                        ? `light-dark(${tok.color}, ${tok.darkColor})`
+                        : tok.color;
+                }
                 if (tok.fontStyle) {
                     if (tok.fontStyle & FONT_STYLE_ITALIC) style.fontStyle = "italic";
                     if (tok.fontStyle & FONT_STYLE_BOLD) style.fontWeight = "bold";

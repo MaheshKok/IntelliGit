@@ -2,7 +2,7 @@
 
 .merge-editor {
     --merge-editor-bg: var(--vscode-editor-background, #313845);
-    --merge-editor-fg: #abb2bf;
+    --merge-editor-fg: var(--vscode-editor-foreground, #abb2bf);
     --merge-border: color-mix(in srgb, var(--merge-editor-fg) 14%, transparent);
     --merge-toolbar-bg: var(--vscode-sideBar-background, #2b2d30);
     --merge-header-bg: var(
@@ -872,7 +872,7 @@
 .conflict-ours .code-line,
 .conflict-theirs .code-line,
 .conflict-result .code-line {
-    color: var(--merge-editor-fg);
+    color: light-dark(var(--merge-editor-fg), #abb2bf);
 }
 .segment-conflict.active .conflict-result.unresolved .code-lines {
     box-shadow:
@@ -1062,4 +1062,30 @@
 .merge-editor button:active:not(:disabled),
 .retry-btn:active:not(:disabled) {
     box-shadow: inset 0 0 0 1px currentcolor;
+}
+
+/* Match the existing row backgrounds; neutral and settled rows keep host-theme syntax. */
+.change-conflict .conflict-ours .real-code-line,
+.change-conflict .conflict-theirs .real-code-line,
+.change-conflict .conflict-result.unresolved .real-code-line,
+:is(.variant-insertion, .variant-modification, .variant-deletion)
+    :is(.conflict-ours, .conflict-theirs)
+    .real-code-line,
+:is(.variant-insertion, .variant-modification, .variant-deletion)
+    .conflict-result.resolved:not(.edited):not(.settled)
+    .real-code-line,
+.conflict-result.edited .real-code-line {
+    color-scheme: dark;
+}
+.change-ours-only .conflict-theirs .real-code-line,
+.change-theirs-only .conflict-ours .real-code-line,
+.conflict-column.accepted :is(.conflict-ours, .conflict-theirs) .real-code-line,
+.conflict-column.dismissed :is(.conflict-ours, .conflict-theirs) .real-code-line {
+    color-scheme: light;
+}
+
+/* Dismissed insertions remove their word fill along with their row background. */
+.variant-insertion .conflict-column.dismissed .word-diff-change {
+    color-scheme: light;
+    color: var(--merge-editor-fg);
 }
