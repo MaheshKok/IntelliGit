@@ -76,7 +76,7 @@ export function AmendContextSection({ commits, historyLoaded }: Props): React.Re
                 ) : (
                     commits.map((c) => (
                         <Flex
-                            key={c.shortHash}
+                            key={c.hash}
                             align="flex-start"
                             gap="6px"
                             px="6px"

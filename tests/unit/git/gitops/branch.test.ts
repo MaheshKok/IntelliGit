@@ -150,7 +150,10 @@ describe("GitOps", () => {
     });
     describe("getAmendBranchCommits", () => {
         const FS = "\0";
-        const rec = (h: string, s: string, d: string): string => `${h}${FS}${s}${FS}${d}${FS}`;
+        const fullHash = (shortHash: string): string =>
+            shortHash.padEnd(40, shortHash.at(-1) ?? "0");
+        const rec = (shortHash: string, subject: string, date: string): string =>
+            `${fullHash(shortHash)}${FS}${shortHash}${FS}${subject}${FS}${date}${FS}`;
 
         it("returns commits from merge-base..HEAD when upstream resolves", async () => {
             const executor = {
@@ -180,7 +183,8 @@ describe("GitOps", () => {
             const executor = {
                 run: vi.fn(async (args: string[]) => {
                     const key = args.join(" ");
-                    if (key === "rev-parse --abbrev-ref @{upstream}") throw new Error("no upstream");
+                    if (key === "rev-parse --abbrev-ref @{upstream}")
+                        throw new Error("no upstream");
                     if (key.startsWith("log HEAD")) {
                         return [
                             firstHash,
@@ -252,7 +256,12 @@ describe("GitOps", () => {
             const ops = new GitOps(executor);
             const rows = await ops.getAmendBranchCommits(5);
             expect(rows).toEqual([
-                { shortHash: "z999999", subject: "root", date: "2024-03-01T00:00:00Z" },
+                {
+                    hash: fullHash("z999999"),
+                    shortHash: "z999999",
+                    subject: "root",
+                    date: "2024-03-01T00:00:00Z",
+                },
             ]);
         });
 
@@ -309,7 +318,12 @@ describe("GitOps", () => {
             const ops = new GitOps(executor);
             const rows = await ops.getAmendBranchCommits(5);
             expect(rows).toEqual([
-                { shortHash: "abc1234", subject: "", date: "2024-06-01T12:00:00Z" },
+                {
+                    hash: fullHash("abc1234"),
+                    shortHash: "abc1234",
+                    subject: "",
+                    date: "2024-06-01T12:00:00Z",
+                },
             ]);
         });
     });
