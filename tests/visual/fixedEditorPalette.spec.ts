@@ -58,6 +58,12 @@ for (const editable of [false, true]) {
             "box-shadow",
             await leftArea.evaluate((area) => getComputedStyle(area).boxShadow),
         );
+        for (const area of [leftArea, rightArea]) {
+            await expect(
+                area.locator(".word-diff-change").first(),
+                "red modified areas must contain dark red word highlights on both panes",
+            ).toHaveCSS("background-color", "rgb(75, 21, 21)");
+        }
         // Dark-plus keyword blue must stay readable even when the host fixture is light.
         await expect(
             page
