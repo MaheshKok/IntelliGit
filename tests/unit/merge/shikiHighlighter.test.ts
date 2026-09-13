@@ -82,14 +82,14 @@ describe("detectTheme", () => {
         expect(detectTheme()).toBe("dark-plus");
     });
 
-    it("keeps dark syntax on the fixed charcoal surface under high-contrast light", () => {
+    it("returns light-plus for high-contrast light", () => {
         document.body.classList.add("vscode-high-contrast", "vscode-high-contrast-light");
-        expect(detectTheme()).toBe("dark-plus");
+        expect(detectTheme()).toBe("light-plus");
     });
 
-    it("keeps dark syntax on the fixed charcoal surface under a light host theme", () => {
+    it("returns light-plus for a light host theme", () => {
         document.body.classList.add("vscode-light");
-        expect(detectTheme()).toBe("dark-plus");
+        expect(detectTheme()).toBe("light-plus");
     });
 
     it("keeps dark syntax when no host theme class is present", () => {
