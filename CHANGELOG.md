@@ -5,6 +5,12 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.34.1] - 2026-09-13
+
+### Added
+
+- Right-click an untracked file in IntelliGit's Changes view and choose **Add to VCS** to start tracking it. When multiple untracked files are selected with **Cmd** or **Ctrl**, the command adds them together.
+
 ## [0.34.0] - 2026-09-13
 
 ### Changed
