@@ -6,7 +6,7 @@
 // -- it reads the payload and two measured numbers and returns values -- so pulling it out is what
 // leaves the component holding only the parts that talk to something.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { DiffViewerData } from "../../protocol/diffViewerTypes";
 import { detectTheme, initShiki, isShikiReady, langForPath } from "../diff-core/shikiHighlighter";
 import {
@@ -134,7 +134,9 @@ export function useDiffViewerModel(
 
     const segments = useMemo(() => data?.segments ?? [], [data]);
     const baseMaxLineLength = useMemo(() => baseMaxLineLengthForSegments(segments), [segments]);
-    baseMaxLineLengthRef.current = baseMaxLineLength;
+    useLayoutEffect(() => {
+        baseMaxLineLengthRef.current = baseMaxLineLength;
+    }, [baseMaxLineLength]);
     const syntaxHighlightState = useMemo(
         () => ({
             ready: shikiReady,

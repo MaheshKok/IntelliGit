@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import React, { act, useReducer, useRef } from "react";
+import React, { act, useLayoutEffect, useReducer, useRef } from "react";
 import { ChakraProvider } from "@chakra-ui/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { CommitPanelPane } from "../../../src/webviews/react/undocked/CommitPanelPane";
@@ -27,7 +27,9 @@ let latestState = initialCommitPanelState;
 function MessageHarness(): null {
     const [cpState, cpDispatch] = useReducer(commitPanelReducer, initialCommitPanelState);
     const cpStateRef = useRef(cpState);
-    cpStateRef.current = cpState;
+    useLayoutEffect(() => {
+        cpStateRef.current = cpState;
+    }, [cpState]);
     latestState = cpState;
     useUnifiedMessages({
         graphDispatch: vi.fn(),

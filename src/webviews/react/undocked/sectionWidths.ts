@@ -223,18 +223,12 @@ export function normalizeSectionWidths(
     const available = getTotalSectionWidth(totalWidth);
     const preferred = sumWidths(widths) > 0 ? widths : computeDefaultSectionWidths(totalWidth);
     const minimums = sectionMinimums();
-    const budget = resolvePaneBudget(
-        available,
-        SECTION_WIDTH_KEYS.filter((key) => showRepository || key !== "repositoryWidth").map(
-            (key) => ({
-                key,
-                min: minimums[key],
-                preferred: preferred[key],
-            }),
-        ),
-        SECTION_DROP_ORDER,
-        DIVIDER_WIDTH,
+    const paneSpecs = SECTION_WIDTH_KEYS.flatMap((key) =>
+        showRepository || key !== "repositoryWidth"
+            ? [{ key, min: minimums[key], preferred: preferred[key] }]
+            : [],
     );
+    const budget = resolvePaneBudget(available, paneSpecs, SECTION_DROP_ORDER, DIVIDER_WIDTH);
     return sectionLayoutFromBudget({
         ...budget,
         hidden: showRepository ? budget.hidden : ["repositoryWidth", ...budget.hidden],

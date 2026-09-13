@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import React, { act } from "react";
+import React, { act, useLayoutEffect } from "react";
 import { ChakraProvider } from "@chakra-ui/react";
 import { describe, expect, it, vi } from "vitest";
 import type { ShelfFileEntry } from "../../../src/shelf/model";
@@ -47,14 +47,15 @@ function DragHarness({
     removeOnUnshelve: boolean;
     capture: (drag: ShelfDrag) => void;
 }): React.ReactElement {
-    capture(
-        useShelfDrag({
-            repositoryRoot: "/repo",
-            catalogGeneration: 12,
-            onMessage,
-            removeOnUnshelve,
-        }),
-    );
+    const drag = useShelfDrag({
+        repositoryRoot: "/repo",
+        catalogGeneration: 12,
+        onMessage,
+        removeOnUnshelve,
+    });
+    useLayoutEffect(() => {
+        capture(drag);
+    }, [capture, drag]);
     return <div />;
 }
 

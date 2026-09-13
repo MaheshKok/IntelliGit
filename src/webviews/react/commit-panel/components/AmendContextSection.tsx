@@ -74,9 +74,9 @@ export function AmendContextSection({ commits, historyLoaded }: Props): React.Re
                         {t("commit.amendContext.empty")}
                     </Box>
                 ) : (
-                    commits.map((c, index) => (
+                    commits.map((c) => (
                         <Flex
-                            key={`${c.shortHash}-${index}`}
+                            key={c.shortHash}
                             align="flex-start"
                             gap="6px"
                             px="6px"

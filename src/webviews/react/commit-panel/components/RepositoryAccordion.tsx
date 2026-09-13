@@ -101,7 +101,7 @@ function generationOrIdle(
  * repository root in their payload so the host can route them to the matching runtime.
  */
 // This row keeps root-scoped actions next to their matching tab content to avoid indirect routing.
-// react-doctor-disable-next-line react-doctor/no-giant-component
+// react-doctor-disable-next-line react-doctor/no-giant-component, react-doctor/no-high-complexity-react-function -- Repository-scoped lifecycle, transport, and tab orchestration intentionally share one row component.
 export function RepositoryAccordion({
     repository,
     isExpanded,

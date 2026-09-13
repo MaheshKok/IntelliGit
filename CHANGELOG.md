@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - IntelliGit now requires VS Code `1.137.0` or later. This is a breaking support-floor change for older VS Code installations.
+- Upgraded React Doctor to 0.9.13 and aligned webview rendering, effects, and list handling with its stricter checks.
 
 ## [0.32.9] - 2026-09-12
 

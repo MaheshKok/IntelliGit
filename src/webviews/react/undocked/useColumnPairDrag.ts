@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useRef, type MouseEvent as ReactMouseEvent } from "react";
+import {
+    useCallback,
+    useEffect,
+    useLayoutEffect,
+    useRef,
+    type MouseEvent as ReactMouseEvent,
+} from "react";
 import { baseMinimumWidth, type SectionWidthKey, type SectionWidths } from "./sectionWidths";
 
 /**
@@ -46,7 +52,9 @@ export function useColumnPairDrag(
     const moveRef = useRef<((ev: MouseEvent) => void) | null>(null);
     const upRef = useRef<(() => void) | null>(null);
     const widthsRef = useRef(widths);
-    widthsRef.current = widths;
+    useLayoutEffect(() => {
+        widthsRef.current = widths;
+    }, [widths]);
 
     const cleanupDrag = useCallback(() => {
         if (moveRef.current) document.removeEventListener("mousemove", moveRef.current);

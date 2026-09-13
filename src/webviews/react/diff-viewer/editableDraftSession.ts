@@ -5,7 +5,7 @@
 // component is the render; this is the session it renders. The two were only ever tangled because
 // the session is held in refs, and refs are invisible in a listing.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { alignScrollOverlays } from "../diff-core/scrollSync";
 import { splitEditedText } from "../merge-editor/mergeState";
 import { segmentClassName, type DiffPane } from "./segmentMarkers";
@@ -528,10 +528,12 @@ export function useEditableDraft({
         [draft, renderedSegments, side],
     );
 
-    textRef.current = text;
-    documentVersionRef.current = documentVersion;
-    reseedTokenRef.current = reseedToken;
-    renderedSegmentsRef.current = renderedSegments;
+    useLayoutEffect(() => {
+        textRef.current = text;
+        documentVersionRef.current = documentVersion;
+        reseedTokenRef.current = reseedToken;
+        renderedSegmentsRef.current = renderedSegments;
+    }, [documentVersion, renderedSegments, reseedToken, text]);
 
     const clearDebounceTimer = useCallback(() => {
         if (debounceTimerRef.current === null) return;
@@ -542,6 +544,8 @@ export function useEditableDraft({
     const clearDraft = useCallback(() => {
         clearDebounceTimer();
         editingIndexRef.current = null;
+        // Host reseed messages intentionally invalidate the measured draft after commit.
+        // react-doctor-disable-next-line react-doctor/no-adjust-state-on-prop-change -- This post-commit reconciliation clears stale local state after an external document replacement.
         setDraft(null);
         onDraftLayoutChange(null);
     }, [clearDebounceTimer, onDraftLayoutChange]);
