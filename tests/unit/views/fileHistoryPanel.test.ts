@@ -93,25 +93,33 @@ afterEach(() => {
 });
 
 describe("standalone file history", () => {
-    it("loads webview content only after the auxiliary window move completes", async () => {
-        let finishMove!: () => void;
-        mocks.move.mockImplementationOnce(
-            () =>
-                new Promise<void>((resolve) => {
-                    finishMove = resolve;
-                }),
-        );
-        const opening = FileHistoryPanel.open(options);
-        expect(
-            mocks.html,
-            "webview initialization must not race window transfer",
-        ).not.toHaveBeenCalled();
-        finishMove();
-        await opening;
+    it("waits for the initial document handshake before moving and loads the destination once ready", async () => {
+        mocks.history.mockResolvedValue({ entries: [entry], hasMore: false });
+        await FileHistoryPanel.open(options);
+        const panel = mocks.panels[0];
         expect(mocks.html).toHaveBeenCalledTimes(1);
+        expect(
+            mocks.move,
+            "an initializing webview must not be transferred",
+        ).not.toHaveBeenCalled();
+        await panel.receive({ type: "historyReady" });
+        expect(mocks.move).toHaveBeenCalledTimes(1);
+        expect(mocks.history, "load data only for the destination document").not.toHaveBeenCalled();
+        await panel.receive({ type: "historyReady" });
+        expect(mocks.history).toHaveBeenCalledTimes(1);
+        await panel.receive({ type: "historyReady" });
+        expect(mocks.move).toHaveBeenCalledTimes(1);
     });
 
-    it("does not initialize a panel closed while its window is moving", async () => {
+    it("does not move a panel closed before its first handshake", async () => {
+        await FileHistoryPanel.open(options);
+        mocks.panels[0].close();
+        await mocks.panels[0].receive({ type: "historyReady" });
+        expect(mocks.move).not.toHaveBeenCalled();
+    });
+
+    it("does not load data for a panel closed during transfer", async () => {
+        await FileHistoryPanel.open(options);
         let finishMove!: () => void;
         mocks.move.mockImplementationOnce(
             () =>
@@ -119,14 +127,18 @@ describe("standalone file history", () => {
                     finishMove = resolve;
                 }),
         );
-        const opening = FileHistoryPanel.open(options);
+        const moving = mocks.panels[0].receive({ type: "historyReady" });
+        await vi.waitFor(() => expect(finishMove).toBeDefined());
         mocks.panels[0].close();
         finishMove();
-        await opening;
-        expect(mocks.html).not.toHaveBeenCalled();
+        await moving;
+        await mocks.panels[0].receive({ type: "historyReady" });
+        expect(mocks.history).not.toHaveBeenCalled();
     });
 
-    it("loads content in the original window when moving fails", async () => {
+    it("loads the original document after a failed move without waiting for warning dismissal", async () => {
+        mocks.history.mockResolvedValue({ entries: [entry], hasMore: false });
+        await FileHistoryPanel.open(options);
         mocks.move.mockRejectedValueOnce(new Error("move failed"));
         let dismissWarning!: () => void;
         mocks.warning.mockImplementationOnce(
@@ -135,11 +147,11 @@ describe("standalone file history", () => {
                     dismissWarning = resolve;
                 }),
         );
-        const opening = FileHistoryPanel.open(options);
-        await vi.waitFor(() => expect(mocks.warning).toHaveBeenCalled());
-        expect(mocks.html).toHaveBeenCalledTimes(1);
+        const ready = mocks.panels[0].receive({ type: "historyReady" });
+        await vi.waitFor(() => expect(mocks.history).toHaveBeenCalledTimes(1));
         dismissWarning();
-        await opening;
+        await ready;
+        expect(mocks.panels[0].messages.at(-1)).toMatchObject({ type: "historyState" });
     });
 
     it("discards an old query failure after a newer branch has loaded", async () => {
@@ -153,6 +165,7 @@ describe("standalone file history", () => {
             )
             .mockResolvedValue({ entries: [entry], hasMore: false });
         await FileHistoryPanel.open(options);
+        await mocks.panels[0].receive({ type: "historyReady" });
         const panel = mocks.panels[0];
         const old = panel.receive({ type: "historyReady" });
         await vi.waitFor(() => expect(rejectOld).toBeDefined());
@@ -186,6 +199,7 @@ describe("standalone file history", () => {
                 lineCount: 1,
             });
         await FileHistoryPanel.open(options);
+        await mocks.panels[0].receive({ type: "historyReady" });
         const panel = mocks.panels[0];
         await panel.receive({ type: "historyReady" });
         const pending = panel.receive({
@@ -201,9 +215,11 @@ describe("standalone file history", () => {
     });
     it("opens a new window and reveals the same root/file without duplicating it", async () => {
         await FileHistoryPanel.open(options);
+        await mocks.panels[0].receive({ type: "historyReady" });
         expect(mocks.panels).toHaveLength(1);
         expect(mocks.move).toHaveBeenCalledWith("workbench.action.moveEditorToNewWindow");
         await FileHistoryPanel.open(options);
+        await mocks.panels[0].receive({ type: "historyReady" });
         expect(mocks.panels).toHaveLength(1);
         expect(mocks.panels[0].reveal).toHaveBeenCalled();
     });
@@ -217,6 +233,7 @@ describe("standalone file history", () => {
             lineCount: 1,
         });
         await FileHistoryPanel.open(options);
+        await mocks.panels[0].receive({ type: "historyReady" });
         await mocks.panels[0].receive({ type: "historyReady" });
         await mocks.panels[0].receive({
             type: "historySelect",
@@ -245,6 +262,7 @@ describe("standalone file history", () => {
     it("does not accept hashes absent from the displayed history", async () => {
         mocks.history.mockResolvedValue({ entries: [entry], hasMore: false });
         await FileHistoryPanel.open(options);
+        await mocks.panels[0].receive({ type: "historyReady" });
         await mocks.panels[0].receive({ type: "historyReady" });
         await mocks.panels[0].receive({
             type: "historySelect",
