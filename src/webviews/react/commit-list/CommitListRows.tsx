@@ -6,7 +6,7 @@ import React from "react";
 import type { Commit, CommitChecksSnapshot } from "../../../types";
 import { ROW_HEIGHT, computeGraph } from "../graph";
 import { t } from "../shared/i18n";
-import { CommitRow } from "./CommitRow";
+import { CommitRow, type CommitSelectionModifiers } from "./CommitRow";
 import { Z_INDEX } from "../shared/tokens";
 import {
     CANVAS_STYLE,
@@ -25,6 +25,7 @@ interface CommitListRowsProps {
     canvasRef: React.RefObject<HTMLCanvasElement>;
     setViewportNode: (node: HTMLDivElement | null) => void;
     selectedHash: string | null;
+    selectedHashes: ReadonlySet<string>;
     unpushedHashes: Set<string>;
     isUnpushedCommit: (hash: string) => boolean;
     hasMore: boolean;
@@ -32,7 +33,7 @@ interface CommitListRowsProps {
     showDate: boolean;
     metaWidths: MetaColumnWidths;
     commitChecks?: ReadonlyMap<string, CommitChecksSnapshot | "loading">;
-    onSelectCommit: (hash: string) => void;
+    onSelectCommit: (hash: string, modifiers?: CommitSelectionModifiers) => void;
     /** Requests a commit's checks; `force` bypasses the host/provider cache. */
     onRequestCommitChecks?: (hash: string, force?: boolean) => void;
     onOpenCommitCheckUrl?: (url: string) => void;
@@ -55,6 +56,7 @@ export function CommitListRows({
     canvasRef,
     setViewportNode,
     selectedHash,
+    selectedHashes,
     isUnpushedCommit,
     hasMore,
     showAuthor,
@@ -96,7 +98,8 @@ export function CommitListRows({
                                 key={commit.hash}
                                 commit={commit}
                                 graphWidth={graphWidth}
-                                isSelected={selectedHash === commit.hash}
+                                isPrimary={selectedHash === commit.hash}
+                                isSelected={selectedHashes.has(commit.hash)}
                                 isUnpushed={isUnpushedCommit(commit.hash)}
                                 laneColor={graphRows[idx]?.color}
                                 onSelect={onSelectCommit}

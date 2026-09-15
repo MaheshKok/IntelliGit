@@ -5,6 +5,12 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.34.3] - 2026-09-15
+
+### Fixed
+
+- Commit history now supports **Cmd/Ctrl** toggle selection and **Shift** range selection so a contiguous set of unpushed, non-merge commits through `HEAD` can be squashed together with an editable combined message.
+
 ## [0.34.2] - 2026-09-15
 
 ### Fixed

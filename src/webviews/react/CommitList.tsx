@@ -9,6 +9,7 @@ import { ContextMenu } from "./shared/components/ContextMenu";
 import { ClearIcon, SearchIcon } from "./shared/components/Icons";
 import { getCommitMenuItems } from "./commit-list/commitMenu";
 import { CommitListRows } from "./commit-list/CommitListRows";
+import type { CommitSelectionModifiers } from "./commit-list/CommitRow";
 import {
     ColumnResizeHandle,
     metaColumnEdgeOffset,
@@ -99,6 +100,60 @@ type RetryAttempt = {
     total: number;
 };
 
+type CommitContextMenu = {
+    x: number;
+    y: number;
+    commit: Commit;
+    selectedHashes: ReadonlySet<string>;
+};
+
+/** Returns the selected displayed row nearest to a removed primary row. */
+function nearestSelectedHash(
+    commits: Commit[],
+    selectedHashes: ReadonlySet<string>,
+    removedIndex: number,
+): string | null {
+    let nearest: { hash: string; distance: number; index: number } | null = null;
+    for (let index = 0; index < commits.length; index += 1) {
+        const commit = commits[index];
+        if (!commit || !selectedHashes.has(commit.hash)) continue;
+        const distance = Math.abs(index - removedIndex);
+        if (
+            !nearest ||
+            distance < nearest.distance ||
+            (distance === nearest.distance && index < nearest.index)
+        ) {
+            nearest = { hash: commit.hash, distance, index };
+        }
+    }
+    return nearest?.hash ?? null;
+}
+
+/**
+ * Allows multi-row squash only for an unpushed, non-merge parent chain beginning
+ * at current HEAD. Unselected commits from other branches may appear between it.
+ */
+function isSquashSelectionEligible(
+    selectedCommits: Commit[],
+    currentBranchHeadHash: string | null | undefined,
+    isUnpushedCommit: (hash: string) => boolean,
+): boolean {
+    if (selectedCommits.length <= 1) return true;
+    if (!currentBranchHeadHash) return false;
+    const selectedHead = selectedCommits[0];
+    if (!selectedHead || !commitHashesMatch(selectedHead.hash, currentBranchHeadHash)) return false;
+    return selectedCommits.every((commit, index) => {
+        if (!isUnpushedCommit(commit.hash) || commit.parentHashes.length > 1) {
+            return false;
+        }
+        if (index === 0) return true;
+        const previousCommit = selectedCommits[index - 1];
+        const expectedParentHash =
+            previousCommit?.parentHashes.length === 1 ? previousCommit.parentHashes[0] : undefined;
+        return Boolean(expectedParentHash && commitHashesMatch(commit.hash, expectedParentHash));
+    });
+}
+
 /**
  * Renders a virtualized commit list with an aligned canvas lane graph, optional
  * search chrome, branch-scope context actions, and incremental load-more support.
@@ -135,9 +190,12 @@ export function CommitList({
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const viewportRef = useRef<HTMLDivElement | null>(null);
     const viewportResizeObserverRef = useRef<ResizeObserver | null>(null);
-    const [contextMenu, setContextMenu] = useState<{ x: number; y: number; commit: Commit } | null>(
-        null,
+    const [contextMenu, setContextMenu] = useState<CommitContextMenu | null>(null);
+    const [selectedHashes, setSelectedHashes] = useState<ReadonlySet<string>>(() =>
+        selectedHash ? new Set([selectedHash]) : new Set(),
     );
+    const selectionAnchorHashRef = useRef<string | null>(selectedHash);
+    const requestedPrimaryHashRef = useRef<string | null>(null);
     const [scrollTop, setScrollTop] = useState(0);
     const [viewportHeight, setViewportHeight] = useState(0);
     const [viewportWidth, setViewportWidth] = useState(0);
@@ -216,20 +274,121 @@ export function CommitList({
         [unpushedLookup],
     );
 
-    const handleRowContextMenu = useCallback((event: React.MouseEvent, commit: Commit) => {
-        event.preventDefault();
-        setContextMenu({ x: event.clientX, y: event.clientY, commit });
-    }, []);
+    useEffect(() => {
+        if (requestedPrimaryHashRef.current === selectedHash) {
+            requestedPrimaryHashRef.current = null;
+            return;
+        }
+        selectionAnchorHashRef.current = selectedHash;
+        // react-doctor-disable-next-line react-doctor/no-derived-state -- Host owns the primary detail identity; local state separately owns multi-row membership and must reset only for external primary changes.
+        setSelectedHashes(selectedHash ? new Set([selectedHash]) : new Set());
+    }, [selectedHash]);
+
+    /** Publishes one primary detail identity without replacing local group membership. */
+    const publishPrimaryHash = useCallback(
+        (hash: string) => {
+            requestedPrimaryHashRef.current = hash;
+            onSelectCommit(hash);
+        },
+        [onSelectCommit],
+    );
+
+    /** Applies plain, toggle, or anchored-range selection to the displayed commit order. */
+    const handleRowSelect = useCallback(
+        (hash: string, modifiers: CommitSelectionModifiers = { toggle: false, range: false }) => {
+            const selectedIndex = commits.findIndex((commit) => commit.hash === hash);
+            const anchorIndex = commits.findIndex(
+                (commit) => commit.hash === selectionAnchorHashRef.current,
+            );
+
+            if (modifiers.range && selectedIndex >= 0 && anchorIndex >= 0) {
+                const start = Math.min(anchorIndex, selectedIndex);
+                const end = Math.max(anchorIndex, selectedIndex);
+                setSelectedHashes(
+                    new Set(commits.slice(start, end + 1).map((commit) => commit.hash)),
+                );
+                publishPrimaryHash(hash);
+                return;
+            }
+
+            if (modifiers.toggle) {
+                const next = new Set(selectedHashes);
+                if (next.has(hash)) {
+                    if (next.size === 1) return;
+                    next.delete(hash);
+                    setSelectedHashes(next);
+                    if (selectedHash === hash) {
+                        const promotedHash = nearestSelectedHash(commits, next, selectedIndex);
+                        if (promotedHash) publishPrimaryHash(promotedHash);
+                    }
+                    return;
+                }
+                next.add(hash);
+                setSelectedHashes(next);
+                publishPrimaryHash(hash);
+                return;
+            }
+
+            selectionAnchorHashRef.current = hash;
+            setSelectedHashes(new Set([hash]));
+            publishPrimaryHash(hash);
+        },
+        [commits, publishPrimaryHash, selectedHash, selectedHashes],
+    );
+
+    /** Opens a group menu for selected rows and collapses unselected-row context clicks. */
+    const handleRowContextMenu = useCallback(
+        (event: React.MouseEvent, commit: Commit) => {
+            event.preventDefault();
+            let menuSelectedHashes = selectedHashes;
+            if (!selectedHashes.has(commit.hash)) {
+                menuSelectedHashes = new Set([commit.hash]);
+                selectionAnchorHashRef.current = commit.hash;
+                setSelectedHashes(menuSelectedHashes);
+                publishPrimaryHash(commit.hash);
+            }
+            setContextMenu({
+                x: event.clientX,
+                y: event.clientY,
+                commit,
+                selectedHashes: menuSelectedHashes,
+            });
+        },
+        [publishPrimaryHash, selectedHashes],
+    );
 
     const closeContextMenu = useCallback(() => setContextMenu(null), []);
 
+    const contextMenuSelectedCommits = useMemo(
+        () =>
+            contextMenu
+                ? commits.filter((commit) => contextMenu.selectedHashes.has(commit.hash))
+                : [],
+        [commits, contextMenu],
+    );
+    const isMultiCommitContext = contextMenuSelectedCommits.length > 1;
+    const canSquashSelectedCommits = isSquashSelectionEligible(
+        contextMenuSelectedCommits,
+        currentBranchHeadHash,
+        isUnpushedCommit,
+    );
+    const squashTargetHash = isMultiCommitContext
+        ? contextMenuSelectedCommits[contextMenuSelectedCommits.length - 1]?.hash
+        : contextMenu?.commit.hash;
+
+    /** Routes multi-row squash through its oldest selected hash; all other actions stay row-based. */
     const handleContextMenuAction = useCallback(
         (action: string) => {
             if (!contextMenu) return;
             if (!isCommitAction(action)) return;
-            onCommitAction(action, contextMenu.commit.hash);
+            onCommitAction(
+                action,
+                action === "squashCommits" && squashTargetHash
+                    ? squashTargetHash
+                    : contextMenu.commit.hash,
+            );
         },
-        [contextMenu, onCommitAction],
+        [contextMenu, onCommitAction, squashTargetHash],
     );
 
     const handleScroll = useCallback(
@@ -577,6 +736,7 @@ export function CommitList({
                     canvasRef={canvasRef}
                     setViewportNode={setViewportNode}
                     selectedHash={selectedHash}
+                    selectedHashes={selectedHashes}
                     unpushedHashes={unpushedHashes}
                     isUnpushedCommit={isUnpushedCommit}
                     hasMore={hasMore}
@@ -584,7 +744,7 @@ export function CommitList({
                     showDate={showDate}
                     metaWidths={metaWidths}
                     commitChecks={commitChecks}
-                    onSelectCommit={onSelectCommit}
+                    onSelectCommit={handleRowSelect}
                     onRequestCommitChecks={
                         onRequestCommitChecks ? handleRequestCommitChecksFromRow : undefined
                     }
@@ -605,6 +765,7 @@ export function CommitList({
                         contextMenu.commit,
                         isUnpushedCommit(contextMenu.commit.hash),
                         canCherryPickFromSelectedScope,
+                        canSquashSelectedCommits,
                     )}
                     onSelect={handleContextMenuAction}
                     onClose={closeContextMenu}

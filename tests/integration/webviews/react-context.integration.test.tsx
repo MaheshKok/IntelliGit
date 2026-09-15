@@ -505,6 +505,428 @@ describe("BranchColumn integration", () => {
 });
 
 describe("CommitList integration", () => {
+    const selectableCommits: Commit[] = [
+        {
+            hash: "aaa1111",
+            shortHash: "aaa1111",
+            message: "feat: head",
+            author: "Mahesh",
+            email: "m@example.com",
+            date: "2026-02-19T00:00:00Z",
+            parentHashes: ["bbb2222"],
+            refs: ["HEAD -> main"],
+        },
+        {
+            hash: "bbb2222",
+            shortHash: "bbb2222",
+            message: "feat: middle",
+            author: "Mahesh",
+            email: "m@example.com",
+            date: "2026-02-18T00:00:00Z",
+            parentHashes: ["ccc3333"],
+            refs: [],
+        },
+        {
+            hash: "ccc3333",
+            shortHash: "ccc3333",
+            message: "feat: oldest selected",
+            author: "Mahesh",
+            email: "m@example.com",
+            date: "2026-02-17T00:00:00Z",
+            parentHashes: ["ddd4444"],
+            refs: [],
+        },
+        {
+            hash: "ddd4444",
+            shortHash: "ddd4444",
+            message: "feat: outside selection",
+            author: "Mahesh",
+            email: "m@example.com",
+            date: "2026-02-16T00:00:00Z",
+            parentHashes: ["eee5555"],
+            refs: [],
+        },
+    ];
+
+    function commitRow(container: HTMLElement, message: string): HTMLElement {
+        const row = Array.from(container.querySelectorAll<HTMLElement>(".commit-row")).find(
+            (candidate) => candidate.textContent?.includes(message),
+        );
+        if (!row) throw new Error(`Missing commit row containing ${message}`);
+        return row;
+    }
+
+    function commitMenuItem(label: string): HTMLElement {
+        const item = Array.from(
+            document.querySelectorAll<HTMLElement>(".intelligit-context-item"),
+        ).find((candidate) => candidate.textContent?.includes(label));
+        if (!item) throw new Error(`Missing commit menu item containing ${label}`);
+        return item;
+    }
+
+    function renderSelectableCommits(
+        options: {
+            commits?: Commit[];
+            currentBranchHeadHash?: string;
+            initialSelectedHash?: string;
+            unpushedHashes?: Set<string>;
+        } = {},
+    ) {
+        const commits = options.commits ?? selectableCommits;
+        const onSelectCommit = vi.fn();
+        const onCommitAction = vi.fn();
+
+        function StatefulCommitList(): React.ReactElement {
+            const [selectedHash, setSelectedHash] = React.useState(
+                options.initialSelectedHash ?? commits[0]?.hash ?? null,
+            );
+            return (
+                <CommitList
+                    commits={commits}
+                    selectedHash={selectedHash}
+                    filterText=""
+                    hasMore={false}
+                    unpushedHashes={
+                        options.unpushedHashes ?? new Set(commits.map((commit) => commit.hash))
+                    }
+                    selectedBranch="main"
+                    currentBranchName="main"
+                    currentBranchHeadHash={
+                        options.currentBranchHeadHash ?? commits[0]?.hash ?? null
+                    }
+                    onSelectCommit={(hash) => {
+                        onSelectCommit(hash);
+                        setSelectedHash(hash);
+                    }}
+                    onFilterText={vi.fn()}
+                    onLoadMore={vi.fn()}
+                    onCommitAction={onCommitAction}
+                    showSearch={false}
+                    showAuthorDate={false}
+                />
+            );
+        }
+
+        return { ...mount(<StatefulCommitList />), onSelectCommit, onCommitAction };
+    }
+
+    it("supports additive, anchored-range, plain, and keyboard commit selection", () => {
+        const { root, container, onSelectCommit } = renderSelectableCommits();
+        const head = commitRow(container, "feat: head");
+        const middle = commitRow(container, "feat: middle");
+        const oldest = commitRow(container, "feat: oldest selected");
+        const outside = commitRow(container, "feat: outside selection");
+
+        act(() => {
+            middle.dispatchEvent(new MouseEvent("click", { bubbles: true, metaKey: true }));
+        });
+        expect(head.getAttribute("aria-pressed")).toBe("true");
+        expect(middle.getAttribute("aria-pressed")).toBe("true");
+        expect(middle.getAttribute("aria-current")).toBe("true");
+        expect(onSelectCommit).toHaveBeenLastCalledWith("bbb2222");
+
+        act(() => {
+            middle.dispatchEvent(new MouseEvent("click", { bubbles: true, metaKey: true }));
+        });
+        expect(head.getAttribute("aria-pressed")).toBe("true");
+        expect(middle.getAttribute("aria-pressed")).toBe("false");
+        expect(head.getAttribute("aria-current")).toBe("true");
+        expect(onSelectCommit).toHaveBeenLastCalledWith("aaa1111");
+
+        act(() => {
+            middle.dispatchEvent(new MouseEvent("click", { bubbles: true, ctrlKey: true }));
+        });
+        expect(head.getAttribute("aria-pressed")).toBe("true");
+        expect(middle.getAttribute("aria-pressed")).toBe("true");
+
+        act(() => {
+            oldest.dispatchEvent(new MouseEvent("click", { bubbles: true, shiftKey: true }));
+        });
+        expect([head, middle, oldest].map((row) => row.getAttribute("aria-pressed"))).toEqual([
+            "true",
+            "true",
+            "true",
+        ]);
+        expect(outside.getAttribute("aria-pressed")).toBe("false");
+        expect(oldest.getAttribute("aria-current")).toBe("true");
+
+        act(() => {
+            outside.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+        expect([head, middle, oldest].map((row) => row.getAttribute("aria-pressed"))).toEqual([
+            "false",
+            "false",
+            "false",
+        ]);
+        expect(outside.getAttribute("aria-pressed")).toBe("true");
+
+        act(() => {
+            outside.dispatchEvent(new MouseEvent("click", { bubbles: true, ctrlKey: true }));
+        });
+        expect(outside.getAttribute("aria-pressed")).toBe("true");
+
+        act(() => {
+            head.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: " " }));
+        });
+        expect(head.getAttribute("aria-pressed")).toBe("true");
+        expect(outside.getAttribute("aria-pressed")).toBe("false");
+
+        unmount(root, container);
+    });
+
+    it("preserves a selected context group and squashes from its oldest commit", () => {
+        const { root, container, onCommitAction } = renderSelectableCommits();
+        const middle = commitRow(container, "feat: middle");
+        const oldest = commitRow(container, "feat: oldest selected");
+
+        act(() => {
+            oldest.dispatchEvent(new MouseEvent("click", { bubbles: true, shiftKey: true }));
+        });
+        act(() => {
+            middle.dispatchEvent(
+                new MouseEvent("contextmenu", {
+                    bubbles: true,
+                    cancelable: true,
+                    clientX: 140,
+                    clientY: 42,
+                }),
+            );
+        });
+
+        const squash = commitMenuItem("Squash Commits");
+        expect(squash.getAttribute("aria-disabled")).not.toBe("true");
+        expect(middle.getAttribute("aria-pressed")).toBe("true");
+        expect(oldest.getAttribute("aria-current")).toBe("true");
+        act(() => {
+            squash.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+        expect(onCommitAction).toHaveBeenCalledWith("squashCommits", "ccc3333");
+
+        unmount(root, container);
+    });
+
+    it("enables a contiguous current-HEAD selection below a newer other-branch row", () => {
+        const otherBranchCommit: Commit = {
+            ...selectableCommits[0]!,
+            hash: "zzz9999",
+            shortHash: "zzz9999",
+            message: "feat: newer on another branch",
+            refs: ["other-branch"],
+        };
+        const { root, container, onCommitAction } = renderSelectableCommits({
+            commits: [otherBranchCommit, ...selectableCommits],
+            currentBranchHeadHash: "aaa1111",
+            initialSelectedHash: "aaa1111",
+        });
+        const otherBranch = commitRow(container, "feat: newer on another branch");
+        const middle = commitRow(container, "feat: middle");
+        const oldest = commitRow(container, "feat: oldest selected");
+
+        act(() => {
+            oldest.dispatchEvent(new MouseEvent("click", { bubbles: true, shiftKey: true }));
+        });
+        act(() => {
+            middle.dispatchEvent(
+                new MouseEvent("contextmenu", {
+                    bubbles: true,
+                    cancelable: true,
+                    clientX: 140,
+                    clientY: 42,
+                }),
+            );
+        });
+
+        expect(otherBranch.getAttribute("aria-pressed")).toBe("false");
+        const squash = commitMenuItem("Squash Commits");
+        expect(squash.getAttribute("aria-disabled")).not.toBe("true");
+        act(() => {
+            squash.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+        expect(onCommitAction).toHaveBeenLastCalledWith("squashCommits", "ccc3333");
+
+        unmount(root, container);
+    });
+
+    it("enables a modifier-selected parent chain across interleaved branch rows", () => {
+        const interleavedCommit: Commit = {
+            ...selectableCommits[1]!,
+            hash: "xxx8888",
+            shortHash: "xxx8888",
+            message: "feat: unselected interleaved commit",
+            parentHashes: ["yyy7777"],
+            refs: ["other-branch"],
+        };
+        const { root, container, onCommitAction } = renderSelectableCommits({
+            commits: [selectableCommits[0]!, interleavedCommit, ...selectableCommits.slice(1)],
+            currentBranchHeadHash: "aaa1111",
+            initialSelectedHash: "aaa1111",
+        });
+        const interleaved = commitRow(container, "feat: unselected interleaved commit");
+        const middle = commitRow(container, "feat: middle");
+        const oldest = commitRow(container, "feat: oldest selected");
+
+        act(() => {
+            middle.dispatchEvent(new MouseEvent("click", { bubbles: true, metaKey: true }));
+        });
+        act(() => {
+            oldest.dispatchEvent(new MouseEvent("click", { bubbles: true, ctrlKey: true }));
+        });
+        act(() => {
+            middle.dispatchEvent(
+                new MouseEvent("contextmenu", {
+                    bubbles: true,
+                    cancelable: true,
+                    clientX: 140,
+                    clientY: 42,
+                }),
+            );
+        });
+
+        expect(interleaved.getAttribute("aria-pressed")).toBe("false");
+        const squash = commitMenuItem("Squash Commits");
+        expect(squash.getAttribute("aria-disabled")).not.toBe("true");
+        act(() => {
+            squash.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+        expect(onCommitAction).toHaveBeenLastCalledWith("squashCommits", "ccc3333");
+
+        unmount(root, container);
+    });
+
+    it("disables squash when a displayed selected row is not the prior commit's parent", () => {
+        const interleavedCommit: Commit = {
+            ...selectableCommits[1]!,
+            hash: "xxx8888",
+            shortHash: "xxx8888",
+            message: "feat: interleaved other-branch commit",
+            parentHashes: ["yyy7777"],
+            refs: ["other-branch"],
+        };
+        const { root, container } = renderSelectableCommits({
+            commits: [selectableCommits[0]!, interleavedCommit, ...selectableCommits.slice(1)],
+            currentBranchHeadHash: "aaa1111",
+            initialSelectedHash: "aaa1111",
+        });
+        const middle = commitRow(container, "feat: middle");
+        const oldest = commitRow(container, "feat: oldest selected");
+
+        act(() => {
+            oldest.dispatchEvent(new MouseEvent("click", { bubbles: true, shiftKey: true }));
+        });
+        act(() => {
+            middle.dispatchEvent(
+                new MouseEvent("contextmenu", {
+                    bubbles: true,
+                    cancelable: true,
+                    clientX: 140,
+                    clientY: 42,
+                }),
+            );
+        });
+
+        expect(commitMenuItem("Squash Commits").getAttribute("aria-disabled")).toBe("true");
+        unmount(root, container);
+    });
+
+    it.each([
+        {
+            name: "gapped",
+            select: (rows: HTMLElement[]) =>
+                rows[2]?.dispatchEvent(new MouseEvent("click", { bubbles: true, metaKey: true })),
+            commits: selectableCommits,
+            unpushedHashes: new Set(selectableCommits.map((commit) => commit.hash)),
+            contextIndex: 0,
+        },
+        {
+            name: "off HEAD",
+            select: (rows: HTMLElement[]) =>
+                rows[2]?.dispatchEvent(new MouseEvent("click", { bubbles: true, shiftKey: true })),
+            commits: selectableCommits,
+            unpushedHashes: new Set(selectableCommits.map((commit) => commit.hash)),
+            initialSelectedHash: "bbb2222",
+            contextIndex: 1,
+        },
+        {
+            name: "pushed",
+            select: (rows: HTMLElement[]) =>
+                rows[1]?.dispatchEvent(new MouseEvent("click", { bubbles: true, shiftKey: true })),
+            commits: selectableCommits,
+            unpushedHashes: new Set(["aaa1111", "ccc3333", "ddd4444"]),
+            contextIndex: 0,
+        },
+        {
+            name: "merge",
+            select: (rows: HTMLElement[]) =>
+                rows[1]?.dispatchEvent(new MouseEvent("click", { bubbles: true, shiftKey: true })),
+            commits: [
+                selectableCommits[0]!,
+                { ...selectableCommits[1]!, parentHashes: ["ccc3333", "side9999"] },
+                ...selectableCommits.slice(2),
+            ],
+            unpushedHashes: new Set(selectableCommits.map((commit) => commit.hash)),
+            contextIndex: 0,
+        },
+    ])(
+        "disables multi-row squash for a $name selection",
+        ({ select, commits, unpushedHashes, initialSelectedHash, contextIndex }) => {
+            const { root, container } = renderSelectableCommits({
+                commits,
+                unpushedHashes,
+                initialSelectedHash,
+            });
+            const rows = Array.from(container.querySelectorAll<HTMLElement>(".commit-row"));
+
+            act(() => {
+                select(rows);
+            });
+            act(() => {
+                rows[contextIndex]?.dispatchEvent(
+                    new MouseEvent("contextmenu", {
+                        bubbles: true,
+                        cancelable: true,
+                        clientX: 140,
+                        clientY: 42,
+                    }),
+                );
+            });
+
+            expect(commitMenuItem("Squash Commits").getAttribute("aria-disabled")).toBe("true");
+            unmount(root, container);
+        },
+    );
+
+    it("collapses selection when opening an unselected row context menu", () => {
+        const { root, container, onSelectCommit, onCommitAction } = renderSelectableCommits();
+        const oldest = commitRow(container, "feat: oldest selected");
+        const outside = commitRow(container, "feat: outside selection");
+
+        act(() => {
+            oldest.dispatchEvent(new MouseEvent("click", { bubbles: true, shiftKey: true }));
+        });
+        act(() => {
+            outside.dispatchEvent(
+                new MouseEvent("contextmenu", {
+                    bubbles: true,
+                    cancelable: true,
+                    clientX: 140,
+                    clientY: 42,
+                }),
+            );
+        });
+
+        expect(outside.getAttribute("aria-pressed")).toBe("true");
+        expect(oldest.getAttribute("aria-pressed")).toBe("false");
+        expect(onSelectCommit).toHaveBeenLastCalledWith("ddd4444");
+        const squash = commitMenuItem("Squash Commits");
+        expect(squash.getAttribute("aria-disabled")).not.toBe("true");
+        act(() => {
+            squash.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+        expect(onCommitAction).toHaveBeenLastCalledWith("squashCommits", "ddd4444");
+
+        unmount(root, container);
+    });
+
     it("fires selection/action/filter/load-more callbacks through real interactions", () => {
         const commits: Commit[] = [
             {
