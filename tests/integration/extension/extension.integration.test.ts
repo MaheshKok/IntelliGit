@@ -205,6 +205,7 @@ const defaultExecutorRunBinaryImpl = async (args: string[]) => {
     return { stdout: Buffer.from(`${baseHash}\n`), truncated: false };
 };
 const executorRunBinary = vi.fn(defaultExecutorRunBinaryImpl);
+const notifyGitSuccessSafely = vi.fn();
 
 const gitOpsState = {
     isRepository: vi.fn(async () => true),
@@ -861,7 +862,7 @@ vi.mock("../../../src/git/executor", () => ({
         deriveFor = (repoRoot: string) => new MockGitExecutor(repoRoot);
     },
     setGitSuccessListener: vi.fn(),
-    notifyGitSuccessSafely: vi.fn(),
+    notifyGitSuccessSafely,
 }));
 
 // The review prompt owns its own suite, and the mock contexts here carry no global
@@ -2885,6 +2886,8 @@ describe("extension integration", () => {
         );
         expect(executorRunBinary).toHaveBeenCalledWith(["reset", "--soft", "a1b2c3d4^"]);
         expect(executorRunBinary).toHaveBeenCalledWith(["commit", "-m", "input"]);
+        expect(notifyGitSuccessSafely).toHaveBeenCalledTimes(1);
+        expect(notifyGitSuccessSafely).toHaveBeenCalledWith(["commit", "-m", "input"]);
         expect(showErrorMessage).not.toHaveBeenCalledWith(
             "Invalid commit hash received for commit action.",
         );
@@ -3106,6 +3109,7 @@ describe("extension integration", () => {
         expect(executorRunBinary).toHaveBeenCalledWith(["reset", "--soft", "a1b2c3d4^"]);
         expect(executorRunBinary).toHaveBeenCalledWith(["commit", "-m", "input"]);
         expect(executorRunBinary).toHaveBeenCalledWith(["reset", "--hard", HEAD_OID]);
+        expect(notifyGitSuccessSafely).not.toHaveBeenCalled();
         expect(showErrorMessage).toHaveBeenCalledWith(
             expect.stringContaining("commit boom; rollback to feed1234 failed: rollback boom"),
         );
