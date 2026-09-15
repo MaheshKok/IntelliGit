@@ -636,5 +636,19 @@
     "Select a local file to show Git history.": "Выберите локальный файл для просмотра истории Git.",
     "The selected file is outside its Git repository.": "Выбранный файл находится вне своего репозитория Git.",
     "Unable to show Git history: {message}": "Не удалось показать историю Git: {message}",
-    "History Actions": "Действия с историей"
+    "History Actions": "Действия с историей",
+    "IntelliGit automatic squash stash": "Автоматический стэш IntelliGit для squash",
+    "The automatic stash could not be verified.": "Не удалось проверить автоматически созданный стэш.",
+    "Git returned an invalid stash object ID.": "Git вернул недопустимый идентификатор объекта стэша.",
+    "Automatic stash {stashOid} did not leave a clean working tree.": "После автоматического сохранения в стэш {stashOid} рабочее дерево не стало чистым.",
+    "Automatic stash {stashOid} was not found in the stash list.": "Автоматически созданный стэш {stashOid} не найден в списке стэшей.",
+    "Squash succeeded, but local changes could not be restored ({message}). Automatic stash {stashOid} was retained for recovery.": "Объединение коммитов завершилось успешно, но локальные изменения восстановить не удалось ({message}). Автоматически созданный стэш {stashOid} сохранён для восстановления.",
+    "{message}; local changes could not be restored: {restoreMessage}. Automatic stash {stashOid} was retained for recovery.": "{message}; не удалось восстановить локальные изменения: {restoreMessage}. Автоматически созданный стэш {stashOid} сохранён для восстановления.",
+    "{message}. Automatic stash {stashOid} was retained for recovery and was not restored onto the unknown repository state.": "{message}. Автоматически созданный стэш {stashOid} сохранён для восстановления и не был применён к репозиторию с неизвестным состоянием.",
+    "Squash Commits could not resolve the current HEAD.": "Не удалось определить текущий HEAD для объединения коммитов.",
+    "Squash Commits received an invalid HEAD object ID.": "Команда Squash Commits получила недопустимый идентификатор объекта HEAD.",
+    "HEAD moved before Squash Commits could reset it.": "HEAD изменился до того, как команда Squash Commits смогла его сбросить.",
+    "Automatic stash reference {stashRef} moved before cleanup.": "Ссылка на автоматически созданный стэш {stashRef} изменилась до очистки.",
+    "Squash succeeded and local changes were restored, but automatic stash cleanup failed ({message}); the {stashOid} backup was retained.": "Объединение коммитов завершилось успешно, и локальные изменения были восстановлены, но очистить автоматически созданный стэш не удалось ({message}); резервная копия {stashOid} сохранена.",
+    "{message}; local changes were restored, but automatic stash cleanup failed: {cleanupMessage}. The {stashOid} backup was retained.": "{message}; локальные изменения были восстановлены, но очистить автоматически созданный стэш не удалось: {cleanupMessage}. Резервная копия {stashOid} сохранена."
 }

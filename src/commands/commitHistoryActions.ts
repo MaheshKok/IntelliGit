@@ -10,6 +10,7 @@ import {
 } from "../services/gitHelpers";
 import { isLowerCaseFullObjectId } from "../git/interactiveRebase/objectId";
 import { evaluateInteractiveRebaseGuards } from "../git/interactiveRebase/guards";
+import { notifyGitSuccessSafely } from "../git/executor";
 import {
     loadInteractiveRebaseRange,
     MAX_INTERACTIVE_REBASE_RANGE_COMMITS,
@@ -127,10 +128,9 @@ export async function editCommitMessage(ctx: CommitActionContext): Promise<void>
 /**
  * Squashes an unpushed commit range from the selected commit through `HEAD` into one commit.
  *
- * The handler requires a clean working tree, a non-merge selected commit, a non-merge range, and all
- * commits in range to be unpushed. It prompts for the resulting message and confirmation, performs a
- * soft reset plus commit, attempts a hard-reset rollback on failure after the soft reset, and refreshes
- * views after the squash attempt.
+ * The handler requires a non-merge selected commit, a non-merge range, and all commits in range to be
+ * unpushed. After the message and confirmation prompts, it automatically preserves a dirty working
+ * tree, performs a soft reset plus commit, restores preserved changes, and refreshes views.
  */
 export async function squashCommits(ctx: CommitActionContext): Promise<void> {
     if (
@@ -158,17 +158,23 @@ export async function squashCommits(ctx: CommitActionContext): Promise<void> {
         return;
     }
 
-    const status = (await ctx.executor.run(["status", "--porcelain"])).trim();
-    if (status) {
+    let expectedHead: string;
+    try {
+        expectedHead = (await ctx.executor.run(["rev-parse", "HEAD"])).trim();
+    } catch {
         vscode.window.showErrorMessage(
-            vscode.l10n.t(
-                "Squash Commits requires a clean working tree. Commit, stash, or rollback local changes first.",
-            ),
+            vscode.l10n.t("Squash Commits could not resolve the current HEAD."),
+        );
+        return;
+    }
+    if (!isLowerCaseFullObjectId(expectedHead)) {
+        vscode.window.showErrorMessage(
+            vscode.l10n.t("Squash Commits received an invalid HEAD object ID."),
         );
         return;
     }
 
-    const range = `${ctx.validatedHash}^..HEAD`;
+    const range = `${ctx.validatedHash}^..${expectedHead}`;
     const rangeLines = await getCommitRangeLines(ctx, range);
     const rangeHashes = rangeLines.map((line) => line.split(/\s+/)[0]);
     if (!validateSquashRange(rangeLines, rangeHashes)) return;
@@ -188,7 +194,7 @@ export async function squashCommits(ctx: CommitActionContext): Promise<void> {
     );
     if (confirm !== squashLabel) return;
 
-    await performSquash(ctx, rangeHashes.length, squashMessage);
+    await performSquash(ctx, rangeHashes.length, squashMessage, expectedHead);
 }
 
 /**
@@ -603,20 +609,18 @@ async function ensureRangeCommitsUnpushed(
 /**
  * Builds the default squash message from the selected range and prompts for the final message.
  *
- * Subject lines are joined oldest-to-newest so the suggested message reflects the history that will
- * be replaced by the new squashed commit.
+ * Subject lines are joined oldest-to-newest so the single-line input preserves an editable summary
+ * of every commit that will be replaced by the squash.
  */
 async function promptSquashMessage(
     ctx: CommitActionContext,
     range: string,
     count: number,
 ): Promise<string | undefined> {
-    // Squash subjects are prompt defaults, not a hot collection transform.
-    // react-doctor-disable-next-line react-doctor/js-flatmap-filter
     const defaultMessage = (await ctx.executor.run(["log", "--reverse", "--format=%s", range]))
         .trim()
         .split("\n")
-        .map((line) => line.trim())
+        .map((subject) => subject.trim())
         .filter(Boolean)
         .join("; ");
     return vscode.window.showInputBox({
@@ -628,34 +632,174 @@ async function promptSquashMessage(
 /**
  * Performs the destructive squash sequence after all guards and confirmations have passed.
  *
- * The function records `HEAD`, soft-resets to the selected commit's parent, commits the staged
- * result, and refreshes views afterward. If commit creation fails after the soft reset, error
- * handling attempts to hard-reset back to the recorded `HEAD`.
+ * The function rechecks dirty state after confirmation, stashes tracked and untracked changes when
+ * needed, verifies the pinned `HEAD`, soft-resets to the selected commit's parent, and commits the
+ * staged result. A successful squash is reported only after the exact automatic stash is restored.
  */
 async function performSquash(
     ctx: CommitActionContext,
     count: number,
     squashMessage: string,
+    expectedHead: string,
 ): Promise<void> {
-    let originalHead = "";
-    let softResetApplied = false;
     try {
-        originalHead = (await ctx.executor.run(["rev-parse", "HEAD"])).trim();
-        await runWithNotificationProgress(
-            vscode.l10n.t("Squashing {count} commits...", { count }),
-            async () => {
-                await ctx.executor.run(["reset", "--soft", `${ctx.validatedHash}^`]);
-                softResetApplied = true;
-                await ctx.executor.run(["commit", "-m", squashMessage]);
-            },
-        );
-        showTimedInformationMessage(
-            vscode.l10n.t("Squashed {count} commits into one commit.", { count }),
-        );
+        const rawCommonDir = await runSquashGit(ctx, ["rev-parse", "--git-common-dir"]);
+        const commonDir = ctx.mutationGate.resolveCommonDir(ctx.repoRoot, rawCommonDir);
+        await ctx.mutationGate.run(ctx.repoRoot, commonDir, async () => {
+            let automaticStashOid: string | undefined;
+            let softResetApplied = false;
+            let squashSucceeded = false;
+            try {
+                const status = (await runSquashGit(ctx, ["status", "--porcelain"])).trim();
+                if (status) {
+                    automaticStashOid = await createAutomaticSquashStash(ctx);
+                    if ((await runSquashGit(ctx, ["status", "--porcelain"])).trim()) {
+                        throw new Error(
+                            vscode.l10n.t(
+                                "Automatic stash {stashOid} did not leave a clean working tree.",
+                                { stashOid: automaticStashOid },
+                            ),
+                        );
+                    }
+                }
+
+                await runWithNotificationProgress(
+                    vscode.l10n.t("Squashing {count} commits...", { count }),
+                    async () => {
+                        const currentHead = (await runSquashGit(ctx, ["rev-parse", "HEAD"])).trim();
+                        if (currentHead !== expectedHead) {
+                            throw new Error(
+                                vscode.l10n.t("HEAD moved before Squash Commits could reset it."),
+                            );
+                        }
+                        await runSquashGit(ctx, ["reset", "--soft", `${ctx.validatedHash}^`]);
+                        softResetApplied = true;
+                        const commitArgs = ["commit", "-m", squashMessage];
+                        await runSquashGit(ctx, commitArgs);
+                        notifyGitSuccessSafely(commitArgs);
+                    },
+                );
+                squashSucceeded = true;
+                if (automaticStashOid) {
+                    const cleanupError = await restoreAutomaticSquashStash(ctx, automaticStashOid);
+                    if (cleanupError) {
+                        vscode.window.showErrorMessage(
+                            vscode.l10n.t(
+                                "Squash succeeded and local changes were restored, but automatic stash cleanup failed ({message}); the {stashOid} backup was retained.",
+                                { message: cleanupError, stashOid: automaticStashOid },
+                            ),
+                        );
+                        return;
+                    }
+                }
+                showTimedInformationMessage(
+                    vscode.l10n.t("Squashed {count} commits into one commit.", { count }),
+                );
+            } catch (err) {
+                if (squashSucceeded && automaticStashOid) {
+                    vscode.window.showErrorMessage(
+                        vscode.l10n.t(
+                            "Squash succeeded, but local changes could not be restored ({message}). Automatic stash {stashOid} was retained for recovery.",
+                            { message: getErrorMessage(err), stashOid: automaticStashOid },
+                        ),
+                    );
+                } else {
+                    await showSquashError(
+                        ctx,
+                        err,
+                        softResetApplied,
+                        expectedHead,
+                        automaticStashOid,
+                    );
+                }
+            }
+        });
     } catch (err) {
-        await showSquashError(ctx, err, softResetApplied, originalHead);
+        await showSquashError(ctx, err, false, expectedHead);
     } finally {
         await ctx.refreshAll();
+    }
+}
+
+/** Runs one Git command without re-entering the executor's per-command mutation gate. */
+async function runSquashGit(ctx: CommitActionContext, args: string[]): Promise<string> {
+    return (await ctx.executor.runBinary(args)).stdout.toString("utf8");
+}
+
+/**
+ * Preserves all tracked and untracked local changes in a newly verified stash entry.
+ *
+ * The previous stash tip prevents a no-op `stash push` from being mistaken for a new recovery point.
+ * The caller assigns the returned OID before checking cleanliness so that failure can still restore it.
+ */
+async function createAutomaticSquashStash(ctx: CommitActionContext): Promise<string> {
+    const previousOid = await readCurrentStashOid(ctx);
+    await runSquashGit(ctx, [
+        "stash",
+        "push",
+        "--include-untracked",
+        "-m",
+        vscode.l10n.t("IntelliGit automatic squash stash"),
+    ]);
+    const oid = await readCurrentStashOid(ctx);
+    if (!oid || oid === previousOid) {
+        throw new Error(vscode.l10n.t("The automatic stash could not be verified."));
+    }
+    return oid;
+}
+
+/** Reads and validates the immutable object ID currently at `refs/stash`, if that ref exists. */
+async function readCurrentStashOid(ctx: CommitActionContext): Promise<string | undefined> {
+    let oid: string;
+    try {
+        oid = (
+            await runSquashGit(ctx, ["rev-parse", "--verify", "--quiet", "refs/stash^{commit}"])
+        ).trim();
+    } catch {
+        return undefined;
+    }
+    if (!isLowerCaseFullObjectId(oid)) {
+        throw new Error(vscode.l10n.t("Git returned an invalid stash object ID."));
+    }
+    return oid;
+}
+
+/**
+ * Applies the immutable stash object with its index, then drops its reverified current reflog entry.
+ *
+ * Apply failures throw without cleanup. Cleanup failures are returned after a successful apply so
+ * callers can report that local changes are restored and must not attempt to apply them again.
+ */
+async function restoreAutomaticSquashStash(
+    ctx: CommitActionContext,
+    stashOid: string,
+): Promise<string | undefined> {
+    await runSquashGit(ctx, ["stash", "apply", "--index", stashOid]);
+    try {
+        const stashList = await runSquashGit(ctx, ["stash", "list", "--format=%H%x09%gd"]);
+        const matchingLine = stashList.split("\n").find((line) => line.startsWith(`${stashOid}\t`));
+        const stashRef = matchingLine?.slice(stashOid.length + 1);
+        if (!stashRef || !/^stash@\{\d+\}$/.test(stashRef)) {
+            throw new Error(
+                vscode.l10n.t("Automatic stash {stashOid} was not found in the stash list.", {
+                    stashOid,
+                }),
+            );
+        }
+        const verifiedOid = (
+            await runSquashGit(ctx, ["rev-parse", "--verify", "--quiet", `${stashRef}^{commit}`])
+        ).trim();
+        if (verifiedOid !== stashOid) {
+            throw new Error(
+                vscode.l10n.t("Automatic stash reference {stashRef} moved before cleanup.", {
+                    stashRef,
+                }),
+            );
+        }
+        await runSquashGit(ctx, ["stash", "drop", stashRef]);
+        return undefined;
+    } catch (err) {
+        return getErrorMessage(err);
     }
 }
 
@@ -663,24 +807,55 @@ async function performSquash(
  * Reports squash failures and attempts rollback when the soft reset already changed state.
  *
  * Rollback failures are appended to the user-facing error so maintainers do not lose the original
- * Git failure while still warning that branch/index/working-tree recovery did not complete.
+ * Git failure. An automatic stash is restored only after a successful rollback; otherwise its stable
+ * object ID is shown for manual recovery without applying changes onto an unknown repository state.
  */
 async function showSquashError(
     ctx: CommitActionContext,
     err: unknown,
     softResetApplied: boolean,
     originalHead: string,
+    automaticStashOid?: string,
 ): Promise<void> {
     let message = getErrorMessage(err);
+    let rollbackSucceeded = !softResetApplied;
     if (softResetApplied && originalHead) {
         try {
-            await ctx.executor.run(["reset", "--hard", originalHead]);
+            await runSquashGit(ctx, ["reset", "--hard", originalHead]);
+            rollbackSucceeded = true;
         } catch (rollbackErr) {
             message = vscode.l10n.t("{message}; rollback to {head} failed: {rollbackMessage}", {
                 message,
                 head: originalHead.slice(0, 8),
                 rollbackMessage: getErrorMessage(rollbackErr),
             });
+        }
+    }
+    if (automaticStashOid) {
+        if (rollbackSucceeded) {
+            try {
+                const cleanupError = await restoreAutomaticSquashStash(ctx, automaticStashOid);
+                if (cleanupError) {
+                    message = vscode.l10n.t(
+                        "{message}; local changes were restored, but automatic stash cleanup failed: {cleanupMessage}. The {stashOid} backup was retained.",
+                        { message, cleanupMessage: cleanupError, stashOid: automaticStashOid },
+                    );
+                }
+            } catch (restoreErr) {
+                message = vscode.l10n.t(
+                    "{message}; local changes could not be restored: {restoreMessage}. Automatic stash {stashOid} was retained for recovery.",
+                    {
+                        message,
+                        restoreMessage: getErrorMessage(restoreErr),
+                        stashOid: automaticStashOid,
+                    },
+                );
+            }
+        } else {
+            message = vscode.l10n.t(
+                "{message}. Automatic stash {stashOid} was retained for recovery and was not restored onto the unknown repository state.",
+                { message, stashOid: automaticStashOid },
+            );
         }
     }
     vscode.window.showErrorMessage(vscode.l10n.t("Squash Commits failed: {message}", { message }));

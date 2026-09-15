@@ -636,5 +636,19 @@
     "Select a local file to show Git history.": "Git 履歴を表示するローカルファイルを選択してください。",
     "The selected file is outside its Git repository.": "選択したファイルは Git リポジトリの外にあります。",
     "Unable to show Git history: {message}": "Git 履歴を表示できません: {message}",
-    "History Actions": "履歴の操作"
+    "History Actions": "履歴の操作",
+    "IntelliGit automatic squash stash": "IntelliGit の自動 squash スタッシュ",
+    "The automatic stash could not be verified.": "自動スタッシュを検証できませんでした。",
+    "Git returned an invalid stash object ID.": "Git が無効なスタッシュオブジェクト ID を返しました。",
+    "Automatic stash {stashOid} did not leave a clean working tree.": "自動スタッシュ {stashOid} の作成後も作業ツリーがクリーンになりませんでした。",
+    "Automatic stash {stashOid} was not found in the stash list.": "自動スタッシュ {stashOid} がスタッシュ一覧に見つかりませんでした。",
+    "Squash succeeded, but local changes could not be restored ({message}). Automatic stash {stashOid} was retained for recovery.": "Squash は成功しましたが、ローカルの変更を復元できませんでした（{message}）。復旧用に自動スタッシュ {stashOid} が保持されています。",
+    "{message}; local changes could not be restored: {restoreMessage}. Automatic stash {stashOid} was retained for recovery.": "{message}。ローカルの変更を復元できませんでした: {restoreMessage}。復旧用に自動スタッシュ {stashOid} が保持されています。",
+    "{message}. Automatic stash {stashOid} was retained for recovery and was not restored onto the unknown repository state.": "{message}。復旧用に自動スタッシュ {stashOid} が保持され、不明なリポジトリ状態には復元されませんでした。",
+    "Squash Commits could not resolve the current HEAD.": "Squash Commits は現在の HEAD を解決できませんでした。",
+    "Squash Commits received an invalid HEAD object ID.": "Squash Commits が無効な HEAD オブジェクト ID を受け取りました。",
+    "HEAD moved before Squash Commits could reset it.": "Squash Commits がリセットする前に HEAD が移動しました。",
+    "Automatic stash reference {stashRef} moved before cleanup.": "自動スタッシュ参照 {stashRef} はクリーンアップ前に移動しました。",
+    "Squash succeeded and local changes were restored, but automatic stash cleanup failed ({message}); the {stashOid} backup was retained.": "Squash は成功し、ローカルの変更も復元されましたが、自動スタッシュのクリーンアップに失敗しました（{message}）。バックアップ {stashOid} は保持されています。",
+    "{message}; local changes were restored, but automatic stash cleanup failed: {cleanupMessage}. The {stashOid} backup was retained.": "{message}。ローカルの変更は復元されましたが、自動スタッシュのクリーンアップに失敗しました: {cleanupMessage}。バックアップ {stashOid} は保持されています。"
 }

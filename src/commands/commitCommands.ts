@@ -5,6 +5,7 @@
 import * as vscode from "vscode";
 import { GitExecutor } from "../git/executor";
 import { GitOps } from "../git/operations";
+import type { RepositoryMutationGate } from "../git/repositoryMutationGate";
 import type { CommitAction } from "../webviews/protocol/commitGraphTypes";
 import { isValidGitHash } from "../services/gitHelpers";
 import type { Branch } from "../types";
@@ -48,6 +49,7 @@ export async function handleCommitContextAction(params: {
     hash: string;
     executor: GitExecutor;
     gitOps: GitOps;
+    mutationGate: RepositoryMutationGate;
     repoRoot: string;
     currentBranches: Branch[];
     refreshAll: () => Promise<void>;
@@ -62,6 +64,7 @@ export async function handleCommitContextAction(params: {
         hash,
         executor,
         gitOps,
+        mutationGate,
         repoRoot,
         currentBranches,
         refreshAll,
@@ -83,6 +86,7 @@ export async function handleCommitContextAction(params: {
         short: validatedHash.slice(0, 8),
         executor,
         gitOps,
+        mutationGate,
         repoRoot,
         currentBranches,
         refreshAll,

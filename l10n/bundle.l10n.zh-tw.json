@@ -636,5 +636,19 @@
     "Select a local file to show Git history.": "選擇本機檔案以顯示 Git 歷史記錄。",
     "The selected file is outside its Git repository.": "所選檔案位於其 Git 存放庫之外。",
     "Unable to show Git history: {message}": "無法顯示 Git 歷史記錄：{message}",
-    "History Actions": "歷程記錄操作"
+    "History Actions": "歷程記錄操作",
+    "IntelliGit automatic squash stash": "IntelliGit 自動壓縮儲藏",
+    "The automatic stash could not be verified.": "無法驗證自動儲藏。",
+    "Git returned an invalid stash object ID.": "Git 傳回了無效的儲藏物件 ID。",
+    "Automatic stash {stashOid} did not leave a clean working tree.": "自動儲藏 {stashOid} 未能使工作樹變為乾淨狀態。",
+    "Automatic stash {stashOid} was not found in the stash list.": "自動儲藏 {stashOid} 未在儲藏清單中找到。",
+    "Squash succeeded, but local changes could not be restored ({message}). Automatic stash {stashOid} was retained for recovery.": "壓縮成功，但無法還原本機變更（{message}）。已保留自動儲藏 {stashOid} 以供復原。",
+    "{message}; local changes could not be restored: {restoreMessage}. Automatic stash {stashOid} was retained for recovery.": "{message}；無法還原本機變更：{restoreMessage}。已保留自動儲藏 {stashOid} 以供復原。",
+    "{message}. Automatic stash {stashOid} was retained for recovery and was not restored onto the unknown repository state.": "{message}。已保留自動儲藏 {stashOid} 以供復原，且未將其還原至狀態未知的存放庫中。",
+    "Squash Commits could not resolve the current HEAD.": "壓縮提交無法解析目前的 HEAD。",
+    "Squash Commits received an invalid HEAD object ID.": "壓縮提交收到無效的 HEAD 物件 ID。",
+    "HEAD moved before Squash Commits could reset it.": "在壓縮提交重設 HEAD 之前，HEAD 已發生移動。",
+    "Automatic stash reference {stashRef} moved before cleanup.": "自動儲藏參照 {stashRef} 在清理前發生了移動。",
+    "Squash succeeded and local changes were restored, but automatic stash cleanup failed ({message}); the {stashOid} backup was retained.": "壓縮成功且本機變更已還原，但自動儲藏清理失敗（{message}）；已保留備份 {stashOid}。",
+    "{message}; local changes were restored, but automatic stash cleanup failed: {cleanupMessage}. The {stashOid} backup was retained.": "{message}；本機變更已還原，但自動儲藏清理失敗：{cleanupMessage}。已保留備份 {stashOid}。"
 }

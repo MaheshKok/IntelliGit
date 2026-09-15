@@ -282,6 +282,7 @@ export function registerRepositoryViewEvents(
                     hash,
                     executor,
                     gitOps,
+                    mutationGate,
                     repoRoot: getRepoRoot(),
                     currentBranches: getCurrentBranches(),
                     refreshAll: () => refreshService().refreshAll(),

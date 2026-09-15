@@ -636,5 +636,19 @@
     "Select a local file to show Git history.": "Selecione um ficheiro local para mostrar o histórico do Git.",
     "The selected file is outside its Git repository.": "O ficheiro selecionado está fora do respetivo repositório Git.",
     "Unable to show Git history: {message}": "Não foi possível mostrar o histórico do Git: {message}",
-    "History Actions": "Ações do histórico"
+    "History Actions": "Ações do histórico",
+    "IntelliGit automatic squash stash": "Stash automático de squash do IntelliGit",
+    "The automatic stash could not be verified.": "Não foi possível verificar o Stash automático.",
+    "Git returned an invalid stash object ID.": "O Git devolveu um ID de objeto de Stash inválido.",
+    "Automatic stash {stashOid} did not leave a clean working tree.": "O Stash automático {stashOid} não deixou a árvore de trabalho limpa.",
+    "Automatic stash {stashOid} was not found in the stash list.": "O Stash automático {stashOid} não foi encontrado na lista de Stashes.",
+    "Squash succeeded, but local changes could not be restored ({message}). Automatic stash {stashOid} was retained for recovery.": "O squash foi concluído com sucesso, mas não foi possível restaurar as alterações locais ({message}). O Stash automático {stashOid} foi mantido para recuperação.",
+    "{message}; local changes could not be restored: {restoreMessage}. Automatic stash {stashOid} was retained for recovery.": "{message}; não foi possível restaurar as alterações locais: {restoreMessage}. O Stash automático {stashOid} foi mantido para recuperação.",
+    "{message}. Automatic stash {stashOid} was retained for recovery and was not restored onto the unknown repository state.": "{message}. O Stash automático {stashOid} foi mantido para recuperação e não foi restaurado no repositório de estado desconhecido.",
+    "Squash Commits could not resolve the current HEAD.": "O Squash Commits não conseguiu resolver o HEAD atual.",
+    "Squash Commits received an invalid HEAD object ID.": "O Squash Commits recebeu um ID de objeto HEAD inválido.",
+    "HEAD moved before Squash Commits could reset it.": "O HEAD foi movido antes que o Squash Commits pudesse repô-lo.",
+    "Automatic stash reference {stashRef} moved before cleanup.": "A referência do Stash automático {stashRef} foi movida antes da limpeza.",
+    "Squash succeeded and local changes were restored, but automatic stash cleanup failed ({message}); the {stashOid} backup was retained.": "O squash foi concluído com sucesso e as alterações locais foram restauradas, mas a limpeza do Stash automático falhou ({message}); a cópia de segurança {stashOid} foi mantida.",
+    "{message}; local changes were restored, but automatic stash cleanup failed: {cleanupMessage}. The {stashOid} backup was retained.": "{message}; as alterações locais foram restauradas, mas a limpeza do Stash automático falhou: {cleanupMessage}. A cópia de segurança {stashOid} foi mantida."
 }
