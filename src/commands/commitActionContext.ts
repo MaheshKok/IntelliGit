@@ -1,5 +1,6 @@
 import type { GitExecutor } from "../git/executor";
 import type { GitOps } from "../git/operations";
+import type { RepositoryMutationGate } from "../git/repositoryMutationGate";
 import type { Branch } from "../types";
 import type { PendingRebaseDialogRequests } from "../git/interactiveRebase/types";
 import type { CommitGraphInbound } from "../webviews/protocol/commitGraphTypes";
@@ -19,6 +20,8 @@ export interface CommitActionContext {
     short: string;
     executor: GitExecutor;
     gitOps: GitOps;
+    /** Shared repository-wide gate used for multi-command mutation transactions. */
+    mutationGate: RepositoryMutationGate;
     repoRoot: string;
     /** Branch metadata snapshot from the view; handlers may refresh it if upstream data is stale. */
     currentBranches: Branch[];

@@ -636,5 +636,19 @@
     "Select a local file to show Git history.": "Git 기록을 표시할 로컬 파일을 선택하세요.",
     "The selected file is outside its Git repository.": "선택한 파일이 Git 저장소 외부에 있습니다.",
     "Unable to show Git history: {message}": "Git 기록을 표시할 수 없습니다: {message}",
-    "History Actions": "기록 작업"
+    "History Actions": "기록 작업",
+    "IntelliGit automatic squash stash": "IntelliGit 자동 스쿼시 스태시",
+    "The automatic stash could not be verified.": "자동 스태시를 확인할 수 없습니다.",
+    "Git returned an invalid stash object ID.": "Git에서 잘못된 스태시 개체 ID를 반환했습니다.",
+    "Automatic stash {stashOid} did not leave a clean working tree.": "자동 스태시 {stashOid} 후에도 작업 트리가 깨끗한 상태가 되지 않았습니다.",
+    "Automatic stash {stashOid} was not found in the stash list.": "자동 스태시 {stashOid}을(를) 스태시 목록에서 찾을 수 없습니다.",
+    "Squash succeeded, but local changes could not be restored ({message}). Automatic stash {stashOid} was retained for recovery.": "스쿼시는 성공했지만 로컬 변경 사항을 복원할 수 없습니다({message}). 자동 스태시는 복구를 위해 유지되었습니다: {stashOid}.",
+    "{message}; local changes could not be restored: {restoreMessage}. Automatic stash {stashOid} was retained for recovery.": "{message}; 로컬 변경 사항을 복원할 수 없습니다: {restoreMessage}. 자동 스태시는 복구를 위해 유지되었습니다: {stashOid}.",
+    "{message}. Automatic stash {stashOid} was retained for recovery and was not restored onto the unknown repository state.": "{message}. 자동 스태시({stashOid})는 복구를 위해 유지되었으며 알 수 없는 저장소 상태에는 복원되지 않았습니다.",
+    "Squash Commits could not resolve the current HEAD.": "스쿼시 커밋이 현재 HEAD를 확인할 수 없습니다.",
+    "Squash Commits received an invalid HEAD object ID.": "스쿼시 커밋이 잘못된 HEAD 개체 ID를 받았습니다.",
+    "HEAD moved before Squash Commits could reset it.": "스쿼시 커밋이 재설정하기 전에 HEAD가 이동했습니다.",
+    "Automatic stash reference {stashRef} moved before cleanup.": "자동 스태시 참조({stashRef})가 정리 전에 이동했습니다.",
+    "Squash succeeded and local changes were restored, but automatic stash cleanup failed ({message}); the {stashOid} backup was retained.": "스쿼시에 성공하고 로컬 변경 사항도 복원했지만 자동 스태시 정리에 실패했습니다({message}). 백업은 유지되었습니다: {stashOid}.",
+    "{message}; local changes were restored, but automatic stash cleanup failed: {cleanupMessage}. The {stashOid} backup was retained.": "{message}; 로컬 변경 사항은 복원했지만 자동 스태시 정리에 실패했습니다: {cleanupMessage}. 백업은 유지되었습니다: {stashOid}."
 }

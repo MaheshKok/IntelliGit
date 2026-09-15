@@ -900,6 +900,7 @@ export async function activateRepositoryMode(
                         hash,
                         executor: undockedExecutor,
                         gitOps: undockedGitOps,
+                        mutationGate,
                         repoRoot: getUndockedSelectedRepositoryRoot(),
                         currentBranches: undockedBranches,
                         refreshAll: async () => {

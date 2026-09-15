@@ -181,7 +181,7 @@ const defaultExecutorRunImpl = async (args: string[]) => {
     return "";
 };
 const executorRun = vi.fn(defaultExecutorRunImpl);
-const executorRunBinary = vi.fn(async (args: string[]) => {
+const defaultExecutorRunBinaryImpl = async (args: string[]) => {
     const range = args.at(-1) ?? "";
     const baseHash = range.split("^", 1)[0] || "a".repeat(40);
     if (args[0] === "log") {
@@ -203,7 +203,8 @@ const executorRunBinary = vi.fn(async (args: string[]) => {
         };
     }
     return { stdout: Buffer.from(`${baseHash}\n`), truncated: false };
-});
+};
+const executorRunBinary = vi.fn(defaultExecutorRunBinaryImpl);
 
 const gitOpsState = {
     isRepository: vi.fn(async () => true),
@@ -1078,6 +1079,7 @@ describe("extension integration", () => {
             async (_msg?: string, _opts?: unknown, ...items: string[]) => items[0],
         );
         executorRun.mockImplementation(defaultExecutorRunImpl);
+        executorRunBinary.mockImplementation(defaultExecutorRunBinaryImpl);
         gitOpsState.isRepository.mockResolvedValue(true);
         // clearAllMocks preserves implementations; reset the fail-closed probe so blockers do not leak.
         gitOpsState.getActiveOperation.mockResolvedValue("none");
@@ -2850,7 +2852,17 @@ describe("extension integration", () => {
         await emitCommitAction({ action: "newTag", hash: "a1b2c3d4" });
         await emitCommitAction({ action: "undoCommit", hash: "a1b2c3d4" });
         await emitCommitAction({ action: "editCommitMessage", hash: "feed1234" });
+        const { RepositoryMutationGate } = await import("../../../src/git/repositoryMutationGate");
+        const gateRun = vi
+            .spyOn(RepositoryMutationGate.prototype, "run")
+            .mockImplementation(async (_repoRoot, _commonDir, operation) => operation());
+        executorRunBinary.mockImplementation(async (args: string[]) => ({
+            stdout: Buffer.from(await defaultExecutorRunImpl(args)),
+            truncated: false,
+        }));
         await emitCommitAction({ action: "squashCommits", hash: "a1b2c3d4" });
+        gateRun.mockRestore();
+        executorRunBinary.mockImplementation(defaultExecutorRunBinaryImpl);
         await emitCommitAction({ action: "dropCommit", hash: "a1b2c3d4" });
         await emitCommitAction({
             action: "interactiveRebaseFromHere",
@@ -2871,8 +2883,8 @@ describe("extension integration", () => {
         expect(executorRun).toHaveBeenCalledWith(
             expect.arrayContaining(["format-patch", "-1", "--stdout", "a1b2c3d4"]),
         );
-        expect(executorRun).toHaveBeenCalledWith(["reset", "--soft", "a1b2c3d4^"]);
-        expect(executorRun).toHaveBeenCalledWith(["commit", "-m", "input"]);
+        expect(executorRunBinary).toHaveBeenCalledWith(["reset", "--soft", "a1b2c3d4^"]);
+        expect(executorRunBinary).toHaveBeenCalledWith(["commit", "-m", "input"]);
         expect(showErrorMessage).not.toHaveBeenCalledWith(
             "Invalid commit hash received for commit action.",
         );
@@ -3055,6 +3067,10 @@ describe("extension integration", () => {
     });
 
     it("rolls back to the original HEAD when squash commit creation fails", async () => {
+        const { RepositoryMutationGate } = await import("../../../src/git/repositoryMutationGate");
+        const gateRun = vi
+            .spyOn(RepositoryMutationGate.prototype, "run")
+            .mockImplementation(async (_repoRoot, _commonDir, operation) => operation());
         const { activate } = await import("../../../src/extension");
         const context = {
             extensionUri: { fsPath: "/ext", path: "/ext" },
@@ -3062,13 +3078,21 @@ describe("extension integration", () => {
         } as unknown as MockExtensionContext;
         await activate(context);
 
-        executorRun.mockImplementation(async (args: string[]) => {
-            if (args[0] === "rev-parse" && args[1] === "HEAD") return "0123456789abcdef";
+        executorRunBinary.mockImplementation(async (args: string[]) => {
+            if (args[0] === "rev-parse" && args[1] === "--git-common-dir") {
+                return { stdout: Buffer.from(".git\n"), truncated: false };
+            }
+            if (args[0] === "rev-parse" && args[1] === "HEAD") {
+                return { stdout: Buffer.from(`${HEAD_OID}\n`), truncated: false };
+            }
             if (args[0] === "commit" && args[1] === "-m") throw new Error("commit boom");
-            if (args[0] === "reset" && args[1] === "--hard" && args[2] === "0123456789abcdef") {
+            if (args[0] === "reset" && args[1] === "--hard" && args[2] === HEAD_OID) {
                 throw new Error("rollback boom");
             }
-            return defaultExecutorRunImpl(args);
+            return {
+                stdout: Buffer.from(await defaultExecutorRunImpl(args)),
+                truncated: false,
+            };
         });
 
         latestCommitGraphProvider!.emitCommitAction({
@@ -3079,12 +3103,13 @@ describe("extension integration", () => {
         await waitForAsync();
         await waitForAsync();
 
-        expect(executorRun).toHaveBeenCalledWith(["reset", "--soft", "a1b2c3d4^"]);
-        expect(executorRun).toHaveBeenCalledWith(["commit", "-m", "input"]);
-        expect(executorRun).toHaveBeenCalledWith(["reset", "--hard", "0123456789abcdef"]);
+        expect(executorRunBinary).toHaveBeenCalledWith(["reset", "--soft", "a1b2c3d4^"]);
+        expect(executorRunBinary).toHaveBeenCalledWith(["commit", "-m", "input"]);
+        expect(executorRunBinary).toHaveBeenCalledWith(["reset", "--hard", HEAD_OID]);
         expect(showErrorMessage).toHaveBeenCalledWith(
-            expect.stringContaining("commit boom; rollback to 01234567 failed: rollback boom"),
+            expect.stringContaining("commit boom; rollback to feed1234 failed: rollback boom"),
         );
+        gateRun.mockRestore();
     });
 
     it("opens commit diff when commit graph requests file diff", async () => {

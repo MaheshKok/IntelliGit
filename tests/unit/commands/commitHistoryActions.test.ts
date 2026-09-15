@@ -19,7 +19,15 @@ const vscodeMock = vi.hoisted(() => ({
     },
 }));
 
+const notificationsMock = vi.hoisted(() => ({
+    runWithNotificationProgress: vi.fn(async (_message: string, task: () => Promise<void>) =>
+        task(),
+    ),
+    showTimedInformationMessage: vi.fn(),
+}));
+
 vi.mock("vscode", () => vscodeMock);
+vi.mock("../../../src/utils/notifications", () => notificationsMock);
 
 vi.mock("../../../src/services/gitHelpers", async (importOriginal) => {
     const actual = await importOriginal<typeof import("../../../src/services/gitHelpers")>();
@@ -42,8 +50,16 @@ vi.mock("../../../src/git/interactiveRebase/range", async (importOriginal) => {
 });
 
 import * as vscode from "vscode";
-import { interactiveRebaseFromHere } from "../../../src/commands/commitHistoryActions";
+import {
+    interactiveRebaseFromHere,
+    squashCommits,
+} from "../../../src/commands/commitHistoryActions";
 import type { CommitActionContext } from "../../../src/commands/commitActionContext";
+import {
+    getCommitParentHashes,
+    isCommitUnpushed,
+    isMergeCommitHash,
+} from "../../../src/services/gitHelpers";
 import { evaluateInteractiveRebaseGuards } from "../../../src/git/interactiveRebase/guards";
 import { createPendingRebaseDialogRequests } from "../../../src/git/interactiveRebase/pendingRequests";
 import {
@@ -53,10 +69,12 @@ import {
 import type { InteractiveRebaseRangeCommit } from "../../../src/git/interactiveRebase/types";
 import type { GitExecutor } from "../../../src/git/executor";
 import type { GitOps } from "../../../src/git/operations";
+import type { RepositoryMutationGate } from "../../../src/git/repositoryMutationGate";
 
 const HASH_A = "a".repeat(40);
 const HASH_B = "b".repeat(40);
 const HASH_C = "c".repeat(40);
+const STASH_HASH = "d".repeat(40);
 const COMMITS: readonly InteractiveRebaseRangeCommit[] = [
     {
         hash: HASH_A,
@@ -83,6 +101,126 @@ const errors = asMock(vscode.window.showErrorMessage);
 const terminals = asMock(vscode.window.createTerminal);
 const guards = asMock(evaluateInteractiveRebaseGuards);
 const ranges = asMock(loadInteractiveRebaseRange);
+const commitParents = asMock(getCommitParentHashes);
+const commitUnpushed = asMock(isCommitUnpushed);
+const mergeCommits = asMock(isMergeCommitHash);
+
+interface SquashContextOptions {
+    dirty?: boolean;
+    dirtyAfterStash?: boolean;
+    moveHeadAfterPrompt?: boolean;
+    moveStashRefBeforeDrop?: boolean;
+    failAt?: "stash" | "commit" | "rollback" | "restore" | "drop";
+}
+
+/** Creates a squash-ready context whose Git transcript can assert destructive operation ordering. */
+function squashContextFor(options: SquashContextOptions = {}): {
+    context: CommitActionContext;
+    commands: string[][];
+    gatedCommands: string[][];
+    mutationGate: RepositoryMutationGate;
+} {
+    const {
+        dirty = false,
+        dirtyAfterStash = false,
+        moveHeadAfterPrompt = false,
+        moveStashRefBeforeDrop = false,
+        failAt,
+    } = options;
+    let statusReads = 0;
+    let stashCreated = false;
+    let headReads = 0;
+    const commands: string[][] = [];
+    const gatedCommands: string[][] = [];
+    let gateActive = false;
+    const executeGit = async (args: string[]): Promise<string> => {
+        commands.push([...args]);
+        if (gateActive) gatedCommands.push([...args]);
+        if (args[0] === "rev-parse" && args[1] === "--git-common-dir") return ".git\n";
+        if (args[0] === "merge-base") return "";
+        if (args[0] === "rev-list") return `${HASH_A} ${HASH_C}\n${HASH_B} ${HASH_A}\n`;
+        if (args[0] === "log") return "First subject\nSecond subject\n";
+        if (args[0] === "status") {
+            statusReads += 1;
+            return dirty && (statusReads === 1 || dirtyAfterStash)
+                ? " M tracked.txt\n?? untracked.txt\n"
+                : "";
+        }
+        if (args[0] === "stash" && args[1] === "push") {
+            if (failAt === "stash") throw new Error("stash failed");
+            stashCreated = true;
+            return "Saved working directory and index state\n";
+        }
+        if (args[0] === "rev-parse" && args.at(-1) === "refs/stash^{commit}") {
+            if (!stashCreated) throw new Error("unknown revision");
+            return `${STASH_HASH}\n`;
+        }
+        if (args[0] === "rev-parse" && args.at(-1)?.startsWith("stash@{")) {
+            return `${moveStashRefBeforeDrop ? HASH_C : STASH_HASH}\n`;
+        }
+        if (args[0] === "rev-parse" && args[1] === "HEAD") {
+            headReads += 1;
+            return `${moveHeadAfterPrompt && headReads > 1 ? HASH_C : HASH_B}\n`;
+        }
+        if (args[0] === "commit" && (failAt === "commit" || failAt === "rollback")) {
+            throw new Error("commit failed");
+        }
+        if (args[0] === "reset" && args[1] === "--hard" && failAt === "rollback") {
+            throw new Error("rollback failed");
+        }
+        if (args[0] === "stash" && args[1] === "list") {
+            return `${STASH_HASH}\tstash@{2}\n`;
+        }
+        if (args[0] === "stash" && args[1] === "apply" && failAt === "restore") {
+            throw new Error("restore conflict");
+        }
+        if (args[0] === "stash" && args[1] === "drop" && failAt === "drop") {
+            throw new Error("drop failed");
+        }
+        return "";
+    };
+    const executor = {
+        run: vi.fn(executeGit),
+        runBinary: vi.fn(async (args: string[]) => ({
+            stdout: Buffer.from(await executeGit(args)),
+            stderr: Buffer.alloc(0),
+            exitCode: 0,
+            truncated: false,
+        })),
+    } as unknown as GitExecutor;
+    const mutationGate = {
+        resolveCommonDir: vi.fn(
+            (_repoRoot: string, commonDir: string) => `/repo/${commonDir.trim()}`,
+        ),
+        run: vi.fn(
+            async (_repoRoot: string, _commonDir: string, operation: () => Promise<void>) => {
+                gateActive = true;
+                try {
+                    return await operation();
+                } finally {
+                    gateActive = false;
+                }
+            },
+        ),
+    } as unknown as RepositoryMutationGate;
+    const gitOps = {
+        getUnpushedCommitHashes: vi.fn(async () => [HASH_A, HASH_B]),
+    } as unknown as GitOps;
+    const { context } = contextFor({ executor, gitOps, mutationGate });
+    return { context, commands, gatedCommands, mutationGate };
+}
+
+/** Runs the standard editable-message squash flow, optionally cancelling its destructive prompt. */
+async function runSquash(
+    options: SquashContextOptions = {},
+    confirm = true,
+): Promise<ReturnType<typeof squashContextFor>> {
+    const result = squashContextFor(options);
+    vscodeMock.window.showInputBox.mockResolvedValueOnce("Combined message");
+    vscodeMock.window.showWarningMessage.mockResolvedValueOnce(confirm ? "Squash" : undefined);
+    await squashCommits(result.context);
+    return result;
+}
 
 /** Creates the command context with one origin-bound message callback and registry. */
 function contextFor(overrides: Partial<CommitActionContext> = {}): {
@@ -110,6 +248,13 @@ function contextFor(overrides: Partial<CommitActionContext> = {}): {
         short: HASH_A.slice(0, 8),
         executor,
         gitOps,
+        mutationGate: {
+            resolveCommonDir: vi.fn(),
+            run: vi.fn(
+                async (_repoRoot: string, _commonDir: string, operation: () => Promise<unknown>) =>
+                    operation(),
+            ),
+        } as unknown as RepositoryMutationGate,
         repoRoot: "/repo",
         currentBranches: [],
         refreshAll: vi.fn(),
@@ -125,6 +270,9 @@ beforeEach(() => {
     vi.clearAllMocks();
     guards.mockResolvedValue({ status: "ok" });
     ranges.mockResolvedValue({ status: "ok", commits: COMMITS });
+    commitParents.mockResolvedValue([HASH_C]);
+    commitUnpushed.mockResolvedValue(true);
+    mergeCommits.mockResolvedValue(false);
 });
 
 afterEach(() => {
@@ -380,5 +528,148 @@ describe("interactiveRebaseFromHere", () => {
         expect(errors).toHaveBeenCalledWith(
             "Interactive Rebase from Here could not open its dialog.",
         );
+    });
+});
+
+describe("squashCommits", () => {
+    it("holds one repository mutation gate across the entire dirty-tree squash transaction", async () => {
+        const { mutationGate, gatedCommands } = await runSquash({ dirty: true });
+
+        expect(mutationGate.run).toHaveBeenCalledTimes(1);
+        expect(gatedCommands).toEqual([
+            ["status", "--porcelain"],
+            ["rev-parse", "--verify", "--quiet", "refs/stash^{commit}"],
+            ["stash", "push", "--include-untracked", "-m", "IntelliGit automatic squash stash"],
+            ["rev-parse", "--verify", "--quiet", "refs/stash^{commit}"],
+            ["status", "--porcelain"],
+            ["rev-parse", "HEAD"],
+            ["reset", "--soft", `${HASH_A}^`],
+            ["commit", "-m", "Combined message"],
+            ["stash", "apply", "--index", STASH_HASH],
+            ["stash", "list", "--format=%H%x09%gd"],
+            ["rev-parse", "--verify", "--quiet", "stash@{2}^{commit}"],
+            ["stash", "drop", "stash@{2}"],
+        ]);
+    });
+
+    it("does not inspect or stash the working tree when confirmation is cancelled", async () => {
+        const { commands } = await runSquash({ dirty: true }, false);
+
+        expect(commands.some(([command]) => command === "status")).toBe(false);
+        expect(commands.some(([command]) => command === "stash")).toBe(false);
+    });
+
+    it("joins commit subjects oldest-first as the editable single-line default", async () => {
+        const { commands } = await runSquash();
+
+        expect(commands).toContainEqual([
+            "log",
+            "--reverse",
+            "--format=%s",
+            `${HASH_A}^..${HASH_B}`,
+        ]);
+        expect(vscodeMock.window.showInputBox).toHaveBeenCalledWith(
+            expect.objectContaining({
+                value: "First subject; Second subject",
+            }),
+        );
+        expect(commands.some(([command]) => command === "stash")).toBe(false);
+    });
+
+    it("stashes dirty tracked and untracked state before reset and restores its index after commit", async () => {
+        const { commands } = await runSquash({ dirty: true });
+
+        const transaction = commands.filter(
+            ([command, action]) =>
+                ["status", "reset", "commit"].includes(command) ||
+                (command === "stash" && ["push", "apply", "list", "drop"].includes(action)),
+        );
+        expect(transaction).toEqual([
+            ["status", "--porcelain"],
+            ["stash", "push", "--include-untracked", "-m", "IntelliGit automatic squash stash"],
+            ["status", "--porcelain"],
+            ["reset", "--soft", `${HASH_A}^`],
+            ["commit", "-m", "Combined message"],
+            ["stash", "apply", "--index", STASH_HASH],
+            ["stash", "list", "--format=%H%x09%gd"],
+            ["stash", "drop", "stash@{2}"],
+        ]);
+        expect(commands).toContainEqual(["rev-parse", "--verify", "--quiet", "stash@{2}^{commit}"]);
+    });
+
+    it("does not reset when automatic stash creation fails", async () => {
+        const { commands } = await runSquash({ dirty: true, failAt: "stash" });
+
+        expect(commands.some(([command]) => command === "reset")).toBe(false);
+        expect(errors).toHaveBeenCalledWith(expect.stringContaining("stash failed"));
+    });
+
+    it("restores the exact automatic stash when the tree remains dirty after stashing", async () => {
+        const { commands } = await runSquash({ dirty: true, dirtyAfterStash: true });
+
+        expect(commands).not.toContainEqual(["reset", "--soft", `${HASH_A}^`]);
+        expect(commands).toContainEqual(["stash", "apply", "--index", STASH_HASH]);
+        expect(commands).toContainEqual(["stash", "drop", "stash@{2}"]);
+        expect(errors).toHaveBeenCalledWith(expect.stringContaining(STASH_HASH));
+    });
+
+    it("rejects a moved HEAD before reset and restores a dirty automatic stash", async () => {
+        const { commands } = await runSquash({ dirty: true, moveHeadAfterPrompt: true });
+
+        expect(commands).toContainEqual([
+            "rev-list",
+            "--reverse",
+            "--parents",
+            `${HASH_A}^..${HASH_B}`,
+        ]);
+        expect(commands).not.toContainEqual(["reset", "--soft", `${HASH_A}^`]);
+        expect(commands).toContainEqual(["stash", "apply", "--index", STASH_HASH]);
+        expect(commands).toContainEqual(["stash", "drop", "stash@{2}"]);
+        expect(errors).toHaveBeenCalledWith(expect.stringContaining("HEAD moved"));
+    });
+
+    it("restores the automatic stash after commit failure and successful hard rollback", async () => {
+        const { commands } = await runSquash({ dirty: true, failAt: "commit" });
+
+        expect(commands).toContainEqual(["reset", "--hard", HASH_B]);
+        expect(commands).toContainEqual(["stash", "apply", "--index", STASH_HASH]);
+        expect(commands).toContainEqual(["stash", "drop", "stash@{2}"]);
+        expect(errors).toHaveBeenCalledWith(expect.stringContaining("commit failed"));
+    });
+
+    it("retains the automatic stash and names its OID when hard rollback fails", async () => {
+        const { commands } = await runSquash({ dirty: true, failAt: "rollback" });
+
+        expect(commands).not.toContainEqual(["stash", "apply", "--index", STASH_HASH]);
+        expect(errors).toHaveBeenCalledWith(expect.stringContaining(STASH_HASH));
+        expect(errors).toHaveBeenCalledWith(expect.stringContaining("rollback failed"));
+    });
+
+    it("does not drop or report squash success when immutable stash apply fails", async () => {
+        const { commands } = await runSquash({ dirty: true, failAt: "restore" });
+
+        expect(commands).not.toContainEqual(["stash", "drop", "stash@{2}"]);
+        expect(notificationsMock.showTimedInformationMessage).not.toHaveBeenCalled();
+        expect(errors).toHaveBeenCalledWith(expect.stringContaining("Squash succeeded"));
+        expect(errors).toHaveBeenCalledWith(expect.stringContaining(STASH_HASH));
+    });
+
+    it("reports restored changes and retained backup without reapplying when stash drop fails", async () => {
+        const { commands } = await runSquash({ dirty: true, failAt: "drop" });
+
+        expect(
+            commands.filter(([command, action]) => command === "stash" && action === "apply"),
+        ).toHaveLength(1);
+        expect(errors).toHaveBeenCalledWith(expect.stringContaining("local changes were restored"));
+        expect(errors).toHaveBeenCalledWith(expect.stringContaining("backup was retained"));
+        expect(errors).not.toHaveBeenCalledWith(expect.stringContaining("could not be restored"));
+    });
+
+    it("does not drop a stash reference that moved after the automatic stash was applied", async () => {
+        const { commands } = await runSquash({ dirty: true, moveStashRefBeforeDrop: true });
+
+        expect(commands).not.toContainEqual(["stash", "drop", "stash@{2}"]);
+        expect(errors).toHaveBeenCalledWith(expect.stringContaining("local changes were restored"));
+        expect(errors).toHaveBeenCalledWith(expect.stringContaining("backup was retained"));
     });
 });
