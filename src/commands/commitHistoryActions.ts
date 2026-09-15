@@ -10,6 +10,7 @@ import {
 } from "../services/gitHelpers";
 import { isLowerCaseFullObjectId } from "../git/interactiveRebase/objectId";
 import { evaluateInteractiveRebaseGuards } from "../git/interactiveRebase/guards";
+import { notifyGitSuccessSafely } from "../git/executor";
 import {
     loadInteractiveRebaseRange,
     MAX_INTERACTIVE_REBASE_RANGE_COMMITS,
@@ -673,7 +674,9 @@ async function performSquash(
                         }
                         await runSquashGit(ctx, ["reset", "--soft", `${ctx.validatedHash}^`]);
                         softResetApplied = true;
-                        await runSquashGit(ctx, ["commit", "-m", squashMessage]);
+                        const commitArgs = ["commit", "-m", squashMessage];
+                        await runSquashGit(ctx, commitArgs);
+                        notifyGitSuccessSafely(commitArgs);
                     },
                 );
                 squashSucceeded = true;

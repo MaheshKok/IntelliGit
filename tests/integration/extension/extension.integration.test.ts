@@ -2857,13 +2857,16 @@ describe("extension integration", () => {
         const gateRun = vi
             .spyOn(RepositoryMutationGate.prototype, "run")
             .mockImplementation(async (_repoRoot, _commonDir, operation) => operation());
-        executorRunBinary.mockImplementation(async (args: string[]) => ({
-            stdout: Buffer.from(await defaultExecutorRunImpl(args)),
-            truncated: false,
-        }));
-        await emitCommitAction({ action: "squashCommits", hash: "a1b2c3d4" });
-        gateRun.mockRestore();
-        executorRunBinary.mockImplementation(defaultExecutorRunBinaryImpl);
+        try {
+            executorRunBinary.mockImplementation(async (args: string[]) => ({
+                stdout: Buffer.from(await defaultExecutorRunImpl(args)),
+                truncated: false,
+            }));
+            await emitCommitAction({ action: "squashCommits", hash: "a1b2c3d4" });
+        } finally {
+            gateRun.mockRestore();
+            executorRunBinary.mockImplementation(defaultExecutorRunBinaryImpl);
+        }
         await emitCommitAction({ action: "dropCommit", hash: "a1b2c3d4" });
         await emitCommitAction({
             action: "interactiveRebaseFromHere",
@@ -3074,46 +3077,49 @@ describe("extension integration", () => {
         const gateRun = vi
             .spyOn(RepositoryMutationGate.prototype, "run")
             .mockImplementation(async (_repoRoot, _commonDir, operation) => operation());
-        const { activate } = await import("../../../src/extension");
-        const context = {
-            extensionUri: { fsPath: "/ext", path: "/ext" },
-            subscriptions: [],
-        } as unknown as MockExtensionContext;
-        await activate(context);
+        try {
+            const { activate } = await import("../../../src/extension");
+            const context = {
+                extensionUri: { fsPath: "/ext", path: "/ext" },
+                subscriptions: [],
+            } as unknown as MockExtensionContext;
+            await activate(context);
 
-        executorRunBinary.mockImplementation(async (args: string[]) => {
-            if (args[0] === "rev-parse" && args[1] === "--git-common-dir") {
-                return { stdout: Buffer.from(".git\n"), truncated: false };
-            }
-            if (args[0] === "rev-parse" && args[1] === "HEAD") {
-                return { stdout: Buffer.from(`${HEAD_OID}\n`), truncated: false };
-            }
-            if (args[0] === "commit" && args[1] === "-m") throw new Error("commit boom");
-            if (args[0] === "reset" && args[1] === "--hard" && args[2] === HEAD_OID) {
-                throw new Error("rollback boom");
-            }
-            return {
-                stdout: Buffer.from(await defaultExecutorRunImpl(args)),
-                truncated: false,
-            };
-        });
+            executorRunBinary.mockImplementation(async (args: string[]) => {
+                if (args[0] === "rev-parse" && args[1] === "--git-common-dir") {
+                    return { stdout: Buffer.from(".git\n"), truncated: false };
+                }
+                if (args[0] === "rev-parse" && args[1] === "HEAD") {
+                    return { stdout: Buffer.from(`${HEAD_OID}\n`), truncated: false };
+                }
+                if (args[0] === "commit" && args[1] === "-m") throw new Error("commit boom");
+                if (args[0] === "reset" && args[1] === "--hard" && args[2] === HEAD_OID) {
+                    throw new Error("rollback boom");
+                }
+                return {
+                    stdout: Buffer.from(await defaultExecutorRunImpl(args)),
+                    truncated: false,
+                };
+            });
 
-        latestCommitGraphProvider!.emitCommitAction({
-            action: "squashCommits",
-            hash: "a1b2c3d4",
-        });
-        await waitForAsync();
-        await waitForAsync();
-        await waitForAsync();
+            latestCommitGraphProvider!.emitCommitAction({
+                action: "squashCommits",
+                hash: "a1b2c3d4",
+            });
+            await waitForAsync();
+            await waitForAsync();
+            await waitForAsync();
 
-        expect(executorRunBinary).toHaveBeenCalledWith(["reset", "--soft", "a1b2c3d4^"]);
-        expect(executorRunBinary).toHaveBeenCalledWith(["commit", "-m", "input"]);
-        expect(executorRunBinary).toHaveBeenCalledWith(["reset", "--hard", HEAD_OID]);
-        expect(notifyGitSuccessSafely).not.toHaveBeenCalled();
-        expect(showErrorMessage).toHaveBeenCalledWith(
-            expect.stringContaining("commit boom; rollback to feed1234 failed: rollback boom"),
-        );
-        gateRun.mockRestore();
+            expect(executorRunBinary).toHaveBeenCalledWith(["reset", "--soft", "a1b2c3d4^"]);
+            expect(executorRunBinary).toHaveBeenCalledWith(["commit", "-m", "input"]);
+            expect(executorRunBinary).toHaveBeenCalledWith(["reset", "--hard", HEAD_OID]);
+            expect(notifyGitSuccessSafely).not.toHaveBeenCalled();
+            expect(showErrorMessage).toHaveBeenCalledWith(
+                expect.stringContaining("commit boom; rollback to feed1234 failed: rollback boom"),
+            );
+        } finally {
+            gateRun.mockRestore();
+        }
     });
 
     it("opens commit diff when commit graph requests file diff", async () => {
