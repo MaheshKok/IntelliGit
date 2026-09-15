@@ -25,10 +25,11 @@ import { CommitChecksButton, type CommitChecksValue } from "./CommitChecksPopove
 interface Props {
     commit: Commit;
     graphWidth: number;
+    isPrimary: boolean;
     isSelected: boolean;
     isUnpushed: boolean;
     laneColor?: string;
-    onSelect: (hash: string) => void;
+    onSelect: (hash: string, modifiers?: CommitSelectionModifiers) => void;
     onContextMenu: (event: React.MouseEvent, commit: Commit) => void;
     onHover?: (commit: Commit, event: React.MouseEvent) => void;
     onUnhover?: () => void;
@@ -41,6 +42,14 @@ interface Props {
     onRequestChecks?: (hash: string, force?: boolean) => void;
     onOpenCheckUrl?: (url: string) => void;
     onSignIn?: (host: string) => void;
+}
+
+/** Keyboard and pointer modifiers that determine commit-list selection membership. */
+export interface CommitSelectionModifiers {
+    /** Toggles one row while retaining the rest of the selection. */
+    toggle: boolean;
+    /** Replaces selection with the displayed range from the stable anchor. */
+    range: boolean;
 }
 
 const REF_BADGE_STYLE: React.CSSProperties = {
@@ -396,6 +405,7 @@ export function CommitMessageCell({
 function CommitRowInner({
     commit,
     graphWidth,
+    isPrimary,
     isSelected,
     isUnpushed,
     laneColor,
@@ -467,15 +477,28 @@ function CommitRowInner({
         }),
         [dateWidth, isMergeCommit],
     );
-    const handleSelect = React.useCallback(() => {
-        onSelect(commit.hash);
-    }, [commit.hash, onSelect]);
+    /** Publishes the row identity together with native multi-selection modifiers. */
+    const handleSelect = React.useCallback(
+        (event: React.MouseEvent | React.KeyboardEvent) => {
+            const modifiers = {
+                toggle: event.metaKey || event.ctrlKey,
+                range: event.shiftKey,
+            };
+            if (modifiers.toggle || modifiers.range) {
+                onSelect(commit.hash, modifiers);
+                return;
+            }
+            onSelect(commit.hash);
+        },
+        [commit.hash, onSelect],
+    );
+    /** Keeps Enter and Space equivalent to pointer activation, including modifiers. */
     const handleKeyDown = React.useCallback(
         (event: React.KeyboardEvent<HTMLDivElement>) => {
             if (event.currentTarget !== event.target) return;
             if (event.key !== "Enter" && event.key !== " ") return;
             event.preventDefault();
-            handleSelect();
+            handleSelect(event);
         },
         [handleSelect],
     );
@@ -487,7 +510,8 @@ function CommitRowInner({
             role="button"
             className="commit-row"
             tabIndex={0}
-            aria-current={isSelected ? "true" : undefined}
+            aria-current={isPrimary ? "true" : undefined}
+            aria-pressed={isSelected}
             onClick={handleSelect}
             onKeyDown={handleKeyDown}
             onContextMenu={(event) => onContextMenu(event, commit)}
@@ -522,6 +546,7 @@ function areEqual(prev: Props, next: Props): boolean {
         prev.commit.date === next.commit.date &&
         prev.commit.refs === next.commit.refs &&
         prev.commit.parentHashes === next.commit.parentHashes &&
+        prev.isPrimary === next.isPrimary &&
         prev.isSelected === next.isSelected &&
         prev.isUnpushed === next.isUnpushed &&
         prev.laneColor === next.laneColor &&

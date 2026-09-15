@@ -31,11 +31,14 @@ function commitMenuIcon(color: string, path: React.ReactNode): React.ReactElemen
  *
  * Edit/rebase-style mutations are disabled for pushed commits and merge commits,
  * while reset/copy actions remain available according to their own command rules.
+ * `canSquashSelection` adds only the multi-row eligibility gate; omitting it
+ * preserves the existing single-row squash behavior.
  */
 export function getCommitMenuItems(
     commit: Commit,
     isUnpushed: boolean,
     canCherryPick: boolean,
+    canSquashSelection = true,
 ): CommitMenuItem[] {
     const isPushed = !isUnpushed;
     const isMergeCommit = commit.parentHashes.length > 1;
@@ -82,7 +85,7 @@ export function getCommitMenuItems(
     items.push({
         label: t("commit.menu.squashCommits"),
         action: "squashCommits",
-        disabled: isPushed || isMergeCommit,
+        disabled: isPushed || isMergeCommit || !canSquashSelection,
     });
     items.push({
         label: t("commit.menu.dropCommit"),
