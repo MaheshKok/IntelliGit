@@ -348,6 +348,117 @@ function runTagStep(script: string, tagPlacement: "head" | "older" | "absent") {
     }
 }
 
+/** Executes the recovery registry guard with a registry download whose bytes the test controls. */
+function runRegistryRecoveryGuard(script: string, downloadedBytes: string) {
+    const workspace = mkdtempSync(join(tmpdir(), "publish-registry-recovery-"));
+    try {
+        const binDir = join(workspace, "bin");
+        const outputPath = join(workspace, "github-output");
+        const vsixPath = join(workspace, "selected.vsix");
+        mkdirSync(binDir);
+        writeFileSync(outputPath, "");
+        writeFileSync(vsixPath, "selected artifact bytes");
+        writeFileSync(
+            join(binDir, "curl"),
+            `#!/usr/bin/env bash\n` +
+                `output=''\n` +
+                `while [ "$#" -gt 0 ]; do\n` +
+                `  case "$1" in\n` +
+                `    --output|-o) output="$2"; shift 2 ;;\n` +
+                `    *) shift ;;\n` +
+                `  esac\n` +
+                `done\n` +
+                `printf '%s' "$DOWNLOADED_BYTES" > "$output"\n`,
+            { mode: 0o755 },
+        );
+        writeFileSync(
+            join(binDir, "gh"),
+            `#!/usr/bin/env bash\nprintf 'HTTP/2.0 404 Not Found\\r\\n\\r\\n'\nexit 1\n`,
+            { mode: 0o755 },
+        );
+        writeFileSync(join(workspace, "guard.sh"), script);
+
+        const result = spawnSync("bash", ["-e", join(workspace, "guard.sh")], {
+            cwd: workspace,
+            encoding: "utf8",
+            env: {
+                ...process.env,
+                PATH: `${binDir}:${process.env.PATH ?? ""}`,
+                DOWNLOADED_BYTES: downloadedBytes,
+                GITHUB_OUTPUT: outputPath,
+                GITHUB_REPOSITORY: STUB_REPOSITORY,
+                RECOVERY_MODE: "true",
+                VSCE_PUBLISHED: "true",
+                OVSX_PUBLISHED: "false",
+                VSIX_PATH: vsixPath,
+                EXTENSION_PUBLISHER: "test-owner",
+                EXTENSION_NAME: "test-extension",
+                NEW_VERSION: "9.9.9",
+            },
+        });
+
+        return { status: result.status, stderr: result.stderr ?? "" };
+    } finally {
+        removeScratchDirectoriesSync(workspace);
+    }
+}
+
+/** Executes the Open VSX publishing step with a deterministic failing publisher and absent probe. */
+function runOpenVsxPublish(script: string, publishError: string) {
+    const workspace = mkdtempSync(join(tmpdir(), "publish-open-vsx-"));
+    try {
+        const binDir = join(workspace, "bin");
+        const countPath = join(workspace, "publish-count");
+        const vsixPath = join(workspace, "selected.vsix");
+        mkdirSync(binDir);
+        writeFileSync(countPath, "0");
+        writeFileSync(vsixPath, "selected artifact bytes");
+        writeFileSync(
+            join(binDir, "bunx"),
+            `#!/usr/bin/env bash\n` +
+                `if [ "$1" = "ovsx" ] && [ "$2" = "publish" ]; then\n` +
+                `  count=$(($(cat "$COUNT_PATH") + 1))\n` +
+                `  printf '%s' "$count" > "$COUNT_PATH"\n` +
+                `  printf '%s\\n' "$PUBLISH_ERROR" >&2\n` +
+                `  exit 1\n` +
+                `fi\n` +
+                `if [ "$1" = "ovsx" ] && [ "$2" = "get" ]; then\n` +
+                `  echo 'extension has no published version matching 9.9.9' >&2\n` +
+                `  exit 1\n` +
+                `fi\n` +
+                `exit 2\n`,
+            { mode: 0o755 },
+        );
+        writeFileSync(join(binDir, "sleep"), "#!/usr/bin/env bash\nexit 0\n", { mode: 0o755 });
+        writeFileSync(join(workspace, "publish.sh"), script);
+
+        const result = spawnSync("bash", ["-e", join(workspace, "publish.sh")], {
+            cwd: workspace,
+            encoding: "utf8",
+            env: {
+                ...process.env,
+                PATH: `${binDir}:${process.env.PATH ?? ""}`,
+                COUNT_PATH: countPath,
+                PUBLISH_ERROR: publishError,
+                VSIX_PATH: vsixPath,
+                OVSX_PAT: "test-token",
+                EXTENSION_ID: "test-owner.test-extension",
+                EXTENSION_PUBLISHER: "test-owner",
+                EXTENSION_NAME: "test-extension",
+                NEW_VERSION: "9.9.9",
+            },
+        });
+
+        return {
+            status: result.status,
+            stderr: result.stderr ?? "",
+            attempts: Number(readFileSync(countPath, "utf8")),
+        };
+    } finally {
+        removeScratchDirectoriesSync(workspace);
+    }
+}
+
 /** The nightly workflow, or an empty string when it is absent, so a missing file reads as a
  * failed assertion rather than a thrown read. */
 function readNightlyWorkflow(): string {
@@ -355,6 +466,106 @@ function readNightlyWorkflow(): string {
 }
 
 describe("publish visual workflow", () => {
+    it("binds manual recovery to one historical main-branch publish artifact", () => {
+        const workflow = readFileSync(WORKFLOW_PATH, "utf8");
+        const releaseJob = extractJobBlock(workflow, "release");
+        const sourceStep = extractStepBlock(releaseJob, "Resolve historical recovery source");
+        const recoveryDownload = extractStepBlock(
+            releaseJob,
+            "Download historical packaged VSIX",
+        );
+
+        expect(workflow, "manual recovery must accept a run id").toMatch(
+            /^ {12}recovery_run_id:\n/m,
+        );
+        expect(workflow, "manual recovery must accept an expected SHA256").toMatch(
+            /^ {12}recovery_sha256:\n/m,
+        );
+        expect(
+            sourceStep,
+            "recovery must reject a run id or SHA256 supplied without its pair",
+        ).toContain("Recovery run id and SHA256 must be supplied together");
+        expect(sourceStep, "the selected run must be resolved through the GitHub API").toMatch(
+            /actions\/runs\/\$RECOVERY_RUN_ID/,
+        );
+        expect(sourceStep, "the API response must bind recovery to this repository").toContain(
+            "$GITHUB_REPOSITORY",
+        );
+        expect(sourceStep, "only publish.yml artifacts may be recovered").toContain(
+            ".github/workflows/publish.yml",
+        );
+        expect(sourceStep, "only the main branch may supply a recovery artifact").toContain(
+            "refs/heads/main",
+        );
+        expect(sourceStep, "the source SHA must come from the run API response").toContain(
+            "head_sha",
+        );
+        expect(recoveryDownload, "the historical artifact must use the pinned download action")
+            .toContain(
+                "actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c",
+            );
+        expect(recoveryDownload).toContain("run-id: ${{ steps.release-source.outputs.run_id }}");
+        expect(recoveryDownload).toContain("github-token: ${{ secrets.GITHUB_TOKEN }}");
+        expect(releaseJob, "recovery needs actions and attestation read access only").toMatch(
+            /permissions:\n\s+contents: write\n\s+actions: read\n\s+attestations: read/,
+        );
+    });
+
+    it("fails closed unless the historical VSIX matches checksum, package identity, and provenance", () => {
+        const releaseJob = extractJobBlock(readFileSync(WORKFLOW_PATH, "utf8"), "release");
+        const verification = extractStepBlock(releaseJob, "Resolve and verify release artifact");
+
+        expect(verification).toContain('vsix_files=(*.vsix)');
+        expect(verification).toContain('checksum_files=(*.vsix.sha256)');
+        expect(verification).toContain('sha256sum --check "$CHECKSUM_PATH"');
+        expect(verification, "recovery must compare the artifact to the operator supplied digest")
+            .toContain("$RECOVERY_SHA256");
+        expect(verification, "package publisher, name, and version must be verified").toMatch(
+            /publisher.*name.*version/s,
+        );
+        expect(verification, "attestation verification must be repository scoped").toContain(
+            'gh attestation verify "$VSIX_PATH" --repo "$GITHUB_REPOSITORY"',
+        );
+        expect(verification).toContain(
+            '--signer-workflow "$GITHUB_REPOSITORY/.github/workflows/publish.yml"',
+        );
+        expect(verification).toContain('--source-digest "$SOURCE_SHA"');
+        expect(verification).toContain("--source-ref refs/heads/main");
+    });
+
+    it("rejects a live Marketplace version whose downloaded bytes differ", () => {
+        const releaseJob = extractJobBlock(readFileSync(WORKFLOW_PATH, "utf8"), "release");
+        const guard = extractRunScript(
+            extractStepBlock(releaseJob, "Verify published registries and GitHub Release"),
+        );
+        expect(guard, "the registry recovery guard must carry a run script").not.toBe("");
+
+        const run = runRegistryRecoveryGuard(guard, "different published bytes");
+
+        expect(
+            run.status,
+            "a published Marketplace artifact with different bytes must fail recovery",
+        ).not.toBe(0);
+        expect(run.stderr).toContain("does not match the selected artifact");
+    });
+
+    it("retries Open VSX only for transient failures and never attempts a fourth publish", () => {
+        const releaseJob = extractJobBlock(readFileSync(WORKFLOW_PATH, "utf8"), "release");
+        const script = extractRunScript(extractStepBlock(releaseJob, "Publish to Open VSX"));
+        expect(script, "the Open VSX step must carry a retry script").not.toBe("");
+
+        const permanent = runOpenVsxPublish(script, "HTTP 400 Bad Request");
+        expect(permanent.status, "a non-transient Open VSX failure must fail").not.toBe(0);
+        expect(
+            permanent.attempts,
+            "a non-transient Open VSX failure must not be retried",
+        ).toBe(1);
+
+        const transient = runOpenVsxPublish(script, "HTTP 503 Service Unavailable");
+        expect(transient.status, "three exhausted transient attempts must fail").not.toBe(0);
+        expect(transient.attempts, "Open VSX publishing must stop after three attempts").toBe(3);
+    });
+
     it("runs the visual suite through the pinned container wrapper", () => {
         const workflow = readFileSync(WORKFLOW_PATH, "utf8");
 
