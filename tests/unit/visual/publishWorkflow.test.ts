@@ -20,6 +20,7 @@ const { sanitizedGitEnv } = oracles.get("gitEnv");
 
 const REPOSITORY_ROOT = resolve(__dirname, "../../..");
 const WORKFLOW_PATH = resolve(__dirname, "../../../.github/workflows/publish.yml");
+const RECOVERY_WORKFLOW_PATH = resolve(__dirname, "../../../.github/workflows/recover-release.yml");
 const DOCKERFILE_PATH = resolve(__dirname, "../../../tests/e2e/docker/Dockerfile");
 const PACKAGE_JSON_PATH = resolve(__dirname, "../../../package.json");
 const NIGHTLY_WORKFLOW_PATH = resolve(__dirname, "../../../.github/workflows/e2e-nightly.yml");
@@ -481,23 +482,16 @@ function readNightlyWorkflow(): string {
 
 describe("publish visual workflow", () => {
     it("binds manual recovery to one historical main-branch publish artifact", () => {
-        const workflow = readFileSync(WORKFLOW_PATH, "utf8");
-        const releaseJob = extractJobBlock(workflow, "release");
-        const sourceStep = extractStepBlock(releaseJob, "Resolve historical recovery source");
-        const recoveryDownload = extractStepBlock(releaseJob, "Download historical packaged VSIX");
+        const workflow = existsSync(RECOVERY_WORKFLOW_PATH)
+            ? readFileSync(RECOVERY_WORKFLOW_PATH, "utf8")
+            : "";
+        const releaseJob = extractJobBlock(workflow, "recover");
+        const sourceStep = extractStepBlock(releaseJob, "Validate failed publish run");
+        const recoveryDownload = extractStepBlock(releaseJob, "Download failed-run packaged VSIX");
 
-        expect(workflow, "manual recovery must accept a run id").toMatch(
-            /^ {12}recovery_run_id:\n/m,
-        );
-        expect(workflow, "manual recovery must accept an expected SHA256").toMatch(
-            /^ {12}recovery_sha256:\n/m,
-        );
-        expect(
-            sourceStep,
-            "recovery must reject a run id or SHA256 supplied without its pair",
-        ).toContain("Recovery run id and SHA256 must be supplied together");
+        expect(workflow, "manual recovery must accept a run id").toMatch(/^ {12}failed_run_id:\n/m);
         expect(sourceStep, "the selected run must be resolved through the GitHub API").toMatch(
-            /actions\/runs\/\$RECOVERY_RUN_ID/,
+            /actions\/runs\/\$FAILED_RUN_ID/,
         );
         expect(sourceStep, "the API response must bind recovery to this repository").toContain(
             "$GITHUB_REPOSITORY",
@@ -511,11 +505,14 @@ describe("publish visual workflow", () => {
         expect(sourceStep, "the source SHA must come from the run API response").toContain(
             "head_sha",
         );
+        expect(sourceStep, "the latest release job must be failed or cancelled").toMatch(
+            /failure.*cancelled|cancelled.*failure/s,
+        );
         expect(
             recoveryDownload,
             "the historical artifact must use the pinned download action",
         ).toContain("actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c");
-        expect(recoveryDownload).toContain("run-id: ${{ steps.release-source.outputs.run_id }}");
+        expect(recoveryDownload).toContain("run-id: ${{ inputs.failed_run_id }}");
         expect(recoveryDownload).toContain("github-token: ${{ secrets.GITHUB_TOKEN }}");
         expect(releaseJob, "recovery needs actions and attestation read access only").toMatch(
             /permissions:\n\s+contents: write\n\s+actions: read\n\s+attestations: read/,
@@ -523,7 +520,7 @@ describe("publish visual workflow", () => {
         expect(
             extractStepBlock(releaseJob, "Validate and create release tag"),
             "tag validation must use the selected run's API-derived source SHA",
-        ).toContain("EXPECTED_SHA: ${{ steps.release-source.outputs.source_sha }}");
+        ).toContain("EXPECTED_SHA: ${{ steps.failed-run.outputs.source_sha }}");
         expect(extractStepBlock(releaseJob, "Publish to VS Code Marketplace")).toContain(
             "if: steps.publish-status.outputs.vsce_published != 'true'",
         );
@@ -536,16 +533,15 @@ describe("publish visual workflow", () => {
     });
 
     it("fails closed unless the historical VSIX matches checksum, package identity, and provenance", () => {
-        const releaseJob = extractJobBlock(readFileSync(WORKFLOW_PATH, "utf8"), "release");
-        const verification = extractStepBlock(releaseJob, "Resolve and verify release artifact");
+        const workflow = existsSync(RECOVERY_WORKFLOW_PATH)
+            ? readFileSync(RECOVERY_WORKFLOW_PATH, "utf8")
+            : "";
+        const releaseJob = extractJobBlock(workflow, "recover");
+        const verification = extractStepBlock(releaseJob, "Verify recovered release artifact");
 
         expect(verification).toContain("vsix_files=(*.vsix)");
         expect(verification).toContain("checksum_files=(*.vsix.sha256)");
         expect(verification).toContain('sha256sum --check "$CHECKSUM_PATH"');
-        expect(
-            verification,
-            "recovery must compare the artifact to the operator supplied digest",
-        ).toContain("$RECOVERY_SHA256");
         expect(verification, "package publisher, name, and version must be verified").toMatch(
             /publisher.*name.*version/s,
         );
@@ -560,7 +556,10 @@ describe("publish visual workflow", () => {
     });
 
     it("rejects a live Marketplace version whose downloaded bytes differ", () => {
-        const releaseJob = extractJobBlock(readFileSync(WORKFLOW_PATH, "utf8"), "release");
+        const workflow = existsSync(RECOVERY_WORKFLOW_PATH)
+            ? readFileSync(RECOVERY_WORKFLOW_PATH, "utf8")
+            : "";
+        const releaseJob = extractJobBlock(workflow, "recover");
         const guard = extractRunScript(
             extractStepBlock(releaseJob, "Verify published registries and GitHub Release"),
         );
@@ -588,7 +587,10 @@ describe("publish visual workflow", () => {
     });
 
     it("retries Open VSX only for transient failures and never attempts a fourth publish", () => {
-        const releaseJob = extractJobBlock(readFileSync(WORKFLOW_PATH, "utf8"), "release");
+        const workflow = existsSync(RECOVERY_WORKFLOW_PATH)
+            ? readFileSync(RECOVERY_WORKFLOW_PATH, "utf8")
+            : "";
+        const releaseJob = extractJobBlock(workflow, "recover");
         const script = extractRunScript(extractStepBlock(releaseJob, "Publish to Open VSX"));
         expect(script, "the Open VSX step must carry a retry script").not.toBe("");
 
@@ -642,7 +644,10 @@ describe("publish visual workflow", () => {
     });
 
     it("keeps recovery status lookup in the repository while reading the selected package", () => {
-        const releaseJob = extractJobBlock(readFileSync(WORKFLOW_PATH, "utf8"), "release");
+        const workflow = existsSync(RECOVERY_WORKFLOW_PATH)
+            ? readFileSync(RECOVERY_WORKFLOW_PATH, "utf8")
+            : "";
+        const releaseJob = extractJobBlock(workflow, "recover");
         const statusScript = extractRunScript(extractStepBlock(releaseJob, "Check publish status"));
 
         expect(statusScript, "publish status must accept the selected package path").toContain(
@@ -705,7 +710,7 @@ describe("publish visual workflow", () => {
         ).toContain("github.ref!='refs/heads/main'");
     });
 
-    it("decides the release from whether this version shipped, not from the previous commit", () => {
+    it("skips an unchanged push and checks release state only for a real version transition", () => {
         const workflow = readFileSync(WORKFLOW_PATH, "utf8");
         // The gate runs in its own job now, ahead of the one that publishes: `release` gates on
         // `release-eligibility.outputs.version_changed`, so the decision asserted here and the
@@ -758,15 +763,15 @@ describe("publish visual workflow", () => {
         ).toBeGreaterThan(comparisonStart);
         expect(
             gateScript.slice(comparisonStart, comparisonEnd + 1).join("\n"),
-            "comparing this commit's version against the previous one must not decide the release",
-        ).not.toMatch(/\$GITHUB_OUTPUT/);
+            "an unchanged push must decide version_changed=false before any release-state lookup",
+        ).toContain('echo "version_changed=false" >> "$GITHUB_OUTPUT"');
 
         // The replacement must be idempotent state rather than an event: the absence of the GitHub
         // Release for the CURRENT version, which is the last artifact this job creates.
         expect(
             gate,
-            "the release gate must ask whether the current version already has a GitHub Release",
-        ).toMatch(/releases\/tags\/v\$CURRENT_VERSION/);
+            "the release gate must not retry an unchanged push from release state",
+        ).toMatch(/if \[ "\$CURRENT_VERSION" = "\$PREVIOUS_VERSION" \]/);
 
         // It used to ask that through `gh release view` and read the answer out of the message
         // text. That worked, and it made the release depend on prose GitHub is free to reword --
@@ -797,7 +802,7 @@ describe("publish visual workflow", () => {
         // already downloaded it. The self-healing gate above is safe only while that refusal holds.
         const refusal = extractStepBlock(
             releaseJob,
-            "Verify published registries and GitHub Release",
+            "Refuse rebuilt-artifact recovery for a published version",
         );
         expect(refusal, "the release job must refuse to republish a shipped version").not.toBe("");
         expect(refusal, "a live marketplace version must not be published twice").toContain(
@@ -828,37 +833,13 @@ describe("publish visual workflow", () => {
             );
         }
 
-        it("accepts historical recovery when the dispatch targets the original bump commit", () => {
-            const run = runVersionGate(readVersionGateScript(), "0.34.4", {
-                forcePublish: false,
-                previousVersion: "0.34.3",
-                env: {
-                    RECOVERY_RUN_ID: "35251609595",
-                    RECOVERY_SHA256:
-                        "79ab3d38b6fef6c5aecdbab798717b169baf6fd7e4ae79816e93ff553f414457",
-                },
-            });
-
-            expect(
-                run.status,
-                "historical recovery must not require the dispatch commit's version to be unchanged",
-            ).toBe(0);
-            expect(run.outputs.split("\n").filter(Boolean)).toEqual([
-                "version_changed=true",
-                "new_version=0.34.4",
-            ]);
-        });
-
-        it("describes force_publish as current-run retry, not partial-publication recovery", () => {
+        it("keeps historical recovery inputs and branches out of publish.yml", () => {
             const workflow = readFileSync(WORKFLOW_PATH, "utf8");
-            const forcePublishInput = workflow.slice(
-                workflow.indexOf("            force_publish:"),
-                workflow.indexOf("            skip_e2e_gate:"),
-            );
 
-            expect(forcePublishInput).toContain("recovery_run_id");
-            expect(forcePublishInput).toContain("recovery_sha256");
-            expect(forcePublishInput).not.toContain("recover a marketplace upload");
+            expect(workflow).not.toContain("recovery_run_id");
+            expect(workflow).not.toContain("recovery_sha256");
+            expect(workflow).not.toContain("RECOVERY_MODE");
+            expect(workflow).not.toContain("Resolve historical recovery source");
         });
 
         it("refuses a version whose newline would append extra step outputs", () => {
@@ -1016,11 +997,33 @@ describe("publish visual workflow", () => {
                 ),
             );
             expect(script, "the version gate step must carry a run script").not.toBe("");
-            // The previous version is left at its default, equal to this one: an unchanged version
-            // is exactly the state a diff-based gate got wrong, so it is the state the probe has to
-            // resolve. A bumped version would take the forward-transition branch and never ask.
-            return runVersionGate(script, "9.9.9", { forcePublish: false, gh });
+            return runVersionGate(script, "9.9.9", {
+                forcePublish: false,
+                previousVersion: "9.9.8",
+                gh,
+            });
         }
+
+        it("skips an unchanged push without consulting GitHub release state", () => {
+            const eligibilityJob = extractJobBlock(
+                readFileSync(WORKFLOW_PATH, "utf8"),
+                "release-eligibility",
+            );
+            const script = extractRunScript(
+                extractStepBlock(
+                    eligibilityJob,
+                    "Check whether this version still needs releasing",
+                ),
+            );
+            const run = runVersionGate(script, "9.9.9", { forcePublish: false });
+
+            expect(run.status).toBe(0);
+            expect(run.outputs.split("\n").filter(Boolean)).toEqual([
+                "version_changed=false",
+                "new_version=9.9.9",
+            ]);
+            expect(run.ghArgs).toEqual([]);
+        });
 
         it("publishes when the release is genuinely absent", () => {
             const run = runProbe(ABSENT);
@@ -1080,14 +1083,16 @@ describe("publish visual workflow", () => {
         function runRecoveryRefusal(gh: GhStub, published?: Record<string, string>) {
             const releaseJob = extractJobBlock(readFileSync(WORKFLOW_PATH, "utf8"), "release");
             const script = extractRunScript(
-                extractStepBlock(releaseJob, "Verify published registries and GitHub Release"),
+                extractStepBlock(
+                    releaseJob,
+                    "Refuse rebuilt-artifact recovery for a published version",
+                ),
             );
             expect(script, "the recovery refusal step must carry a run script").not.toBe("");
             return runVersionGate(script, "9.9.9", {
                 gh,
                 env: {
                     NEW_VERSION: "9.9.9",
-                    RECOVERY_MODE: "false",
                     VSCE_PUBLISHED: "false",
                     OVSX_PUBLISHED: "false",
                     ...published,

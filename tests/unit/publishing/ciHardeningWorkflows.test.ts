@@ -206,26 +206,22 @@ describe("CI quality hardening workflows", () => {
         expect(releaseJob).toContain("steps.release-artifact.outputs.vsix_path");
         expect(releaseJob).toContain("steps.release-artifact.outputs.checksum_path");
         expect(releaseJob).toContain("persist-credentials: false");
-        expect(releaseJob).toContain("Verify published registries and GitHub Release");
+        expect(releaseJob).toContain("Refuse rebuilt-artifact recovery for a published version");
         expect(releaseJob).toContain(
             "A published version must be recovered from its original artifact",
         );
         const recoveryStep = extractStepBlock(
             releaseJob,
-            "Verify published registries and GitHub Release",
+            "Refuse rebuilt-artifact recovery for a published version",
         );
-        expect(recoveryStep).toContain('cmp --silent "$VSIX_PATH" "$registry_vsix"');
-        expect(recoveryStep).toContain('if [ "$HTTP_STATUS" = "200" ]');
-        expect(recoveryStep).toContain('if [ "$HTTP_STATUS" != "404" ]');
-        expect(recoveryStep).toContain("refusing to replace its assets");
-        expect(recoveryStep).toContain("failing closed");
+        expect(recoveryStep).toContain("node scripts/verifyGhApiNotFound.js");
+        expect(recoveryStep).toContain("Unable to determine whether the GitHub release exists");
         expect(releaseJob).not.toContain("Skip VS Code Marketplace publish");
         expect(releaseJob).not.toContain("Skip Open VSX publish");
         expect(releaseJob).not.toContain("git push origin");
         const tagStep = extractStepBlock(releaseJob, "Validate and create release tag");
         const marketplaceStep = extractStepBlock(releaseJob, "Publish to VS Code Marketplace");
-        expect(tagStep).toContain("EXPECTED_SHA: ${{ steps.release-source.outputs.source_sha }}");
-        expect(tagStep).not.toContain("github.sha");
+        expect(tagStep).toContain("github.sha");
         expect(tagStep).toContain("gh api");
         expect(tagStep).toContain("git/ref/tags/");
         expect(tagStep).toContain(".object.type");
@@ -235,19 +231,106 @@ describe("CI quality hardening workflows", () => {
         expect(eligibilityJob).toContain("github.event.before");
         expect(eligibilityJob).toContain("--require-equal");
         expect(eligibilityJob).toContain("fetch-depth: 0");
-        // These two lines used to assert that an unchanged version decides `version_changed=false`.
-        // Both strings still appear in the step -- the comparison now only picks which validation
-        // mode to run, and the `false` write now belongs to the HTTP 200 branch -- so pinning them
-        // would keep passing while meaning something else entirely. What the job must actually do
-        // is decide from the release state, so that is what is asserted.
-        expect(eligibilityJob).toMatch(/releases\/tags\/v\$CURRENT_VERSION/);
-        expect(
-            eligibilityJob,
-            "eligibility must not decide publication from a version comparison",
-        ).not.toMatch(/if \[ "\$CURRENT_VERSION" != "\$PREVIOUS_VERSION" \]/);
+        expect(eligibilityJob).toMatch(/if \[ "\$CURRENT_VERSION" = "\$PREVIOUS_VERSION" \]/);
+        expect(eligibilityJob).toContain('echo "version_changed=false" >> "$GITHUB_OUTPUT"');
+        expect(eligibilityJob).not.toMatch(/releases\/tags\/v\$CURRENT_VERSION/);
         expect(releaseJob).not.toMatch(/\bls\b[^\n]*\.vsix/);
         expect(releaseJob).not.toMatch(/(?:vsce|ovsx) publish[^\n]*\*\.vsix/);
         expect(releaseJob).not.toMatch(/gh release (?:create|upload)[^\n]*\*\.vsix/);
+    });
+
+    it("isolates partial-release recovery in one manually dispatched job", () => {
+        const recoveryPath = resolve(REPOSITORY_ROOT, ".github/workflows/recover-release.yml");
+        const recovery = existsSync(recoveryPath) ? readFileSync(recoveryPath, "utf8") : "";
+        const trigger = extractTopLevelBlock(recovery, "on");
+        const recoverJob = extractJobBlock(recovery, "recover");
+
+        expect(recovery, "the dedicated recovery workflow must exist").not.toBe("");
+        expect(recovery).toContain("name: Recover partial release");
+        expect(trigger).toContain("workflow_dispatch:");
+        expect(trigger).not.toMatch(/^ {4}(push|pull_request|schedule):/m);
+        expect([...trigger.matchAll(/^ {12}([a-z0-9_]+):$/gm)].map(([, name]) => name)).toEqual([
+            "failed_run_id",
+        ]);
+        expect(trigger).toContain("required: true");
+        expect(trigger).toContain("type: string");
+
+        expect(recoverJob, "recovery must be a single job named recover").not.toBe("");
+        expect(recovery.match(/^    [a-z0-9-]+:$/gm)).toEqual(["    recover:"]);
+        expect(recoverJob).not.toMatch(/^        needs:/m);
+        expect(recoverJob).not.toMatch(/\b(build|visual|e2e|package-smoke)\b/);
+        expect(recoverJob).toContain("github.ref == 'refs/heads/main'");
+        expect(recoverJob).toContain("group: marketplace-release");
+        expect(recoverJob).toContain("cancel-in-progress: false");
+        expect(jobPermissionEntries(recoverJob)).toEqual([
+            "contents: write",
+            "actions: read",
+            "attestations: read",
+        ]);
+    });
+
+    it("validates the selected failed publish artifact before any recovery write", () => {
+        const recoveryPath = resolve(REPOSITORY_ROOT, ".github/workflows/recover-release.yml");
+        const recovery = existsSync(recoveryPath) ? readFileSync(recoveryPath, "utf8") : "";
+        const recoverJob = extractJobBlock(recovery, "recover");
+        const source = extractStepBlock(recoverJob, "Validate failed publish run");
+        const artifact = extractStepBlock(recoverJob, "Verify recovered release artifact");
+        const registry = extractStepBlock(
+            recoverJob,
+            "Verify published registries and GitHub Release",
+        );
+        const download = extractStepBlock(recoverJob, "Download failed-run packaged VSIX");
+        const tag = extractStepBlock(recoverJob, "Validate and create release tag");
+        const release = extractStepBlock(recoverJob, "Create GitHub Release and upload artifacts");
+
+        expect(source).toMatch(/\^\[0-9\]\+\$/);
+        expect(source).toContain(".github/workflows/publish.yml");
+        expect(source).toContain("$GITHUB_REPOSITORY");
+        expect(source).toContain('"push"');
+        expect(source).toContain('"main"');
+        expect(source).toContain("head_sha");
+        expect(source).toMatch(/actions\/runs\/\$FAILED_RUN_ID\/jobs/);
+        expect(source).toContain('"release"');
+        expect(source).toMatch(/failure.*cancelled|cancelled.*failure/s);
+        expect(source).toMatch(/success|skipped/);
+        expect(download).toContain("name: extension-vsix");
+        expect(download).toContain("run-id: ${{ inputs.failed_run_id }}");
+        expect(artifact).toContain("vsix_files=(*.vsix)");
+        expect(artifact).toContain("checksum_files=(*.vsix.sha256)");
+        expect(artifact).toContain('sha256sum --check "$CHECKSUM_PATH"');
+        expect(artifact).toMatch(/publisher.*name.*version/s);
+        expect(artifact).toContain("contents/package.json?ref=$SOURCE_SHA");
+        expect(artifact).toContain(
+            '--signer-workflow "$GITHUB_REPOSITORY/.github/workflows/publish.yml"',
+        );
+        expect(artifact).toContain('--source-digest "$SOURCE_SHA"');
+        expect(artifact).toContain("--source-ref refs/heads/main");
+        expect(registry).toContain('cmp --silent "$VSIX_PATH" "$registry_vsix"');
+        expect(registry).toContain("refusing to replace its assets");
+        expect(recoverJob.indexOf(source)).toBeLessThan(recoverJob.indexOf(download));
+        expect(recoverJob.indexOf(artifact)).toBeLessThan(recoverJob.indexOf(registry));
+        expect(recoverJob.indexOf(registry)).toBeLessThan(recoverJob.indexOf(tag));
+        expect(tag).toContain("EXPECTED_SHA: ${{ steps.failed-run.outputs.source_sha }}");
+        expect(release).toContain(
+            'gh release create "v$NEW_VERSION" "$VSIX_PATH" "$CHECKSUM_PATH"',
+        );
+    });
+
+    it("publishes only missing recovery registries and preserves bounded Open VSX retry", () => {
+        const recoveryPath = resolve(REPOSITORY_ROOT, ".github/workflows/recover-release.yml");
+        const recovery = existsSync(recoveryPath) ? readFileSync(recoveryPath, "utf8") : "";
+        const recoverJob = extractJobBlock(recovery, "recover");
+        const status = extractStepBlock(recoverJob, "Check publish status");
+        const marketplace = extractStepBlock(recoverJob, "Publish to VS Code Marketplace");
+        const openVsx = extractStepBlock(recoverJob, "Publish to Open VSX");
+
+        expect(status).toContain(
+            'node scripts/check-extension-publish-status.js "$PACKAGE_JSON_PATH"',
+        );
+        expect(marketplace).toContain("if: steps.publish-status.outputs.vsce_published != 'true'");
+        expect(openVsx).toContain("if: steps.publish-status.outputs.ovsx_published != 'true'");
+        expect(openVsx).toContain("for attempt in 1 2 3");
+        expect(openVsx).toContain('cmp --silent "$VSIX_PATH" "$registry_vsix"');
     });
 
     it("passes the verified VSIX path through each marketplace step environment", () => {
@@ -263,7 +346,7 @@ describe("CI quality hardening workflows", () => {
             },
             {
                 name: "Publish to Open VSX",
-                command: 'bunx ovsx publish -p "$OVSX_PAT" "$VSIX_PATH"',
+                command: 'run: bunx ovsx publish -p "$OVSX_PAT" "$VSIX_PATH"',
                 token: "OVSX_PAT: ${{ secrets.OVSX_PAT }}",
             },
         ];
