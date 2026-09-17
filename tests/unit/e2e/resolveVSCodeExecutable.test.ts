@@ -34,12 +34,13 @@ vi.mock("@vscode/test-electron", () => ({
 }));
 
 describe("resolveVSCodeVersion", () => {
-    it("keeps the pinned build aligned with the extension minimum", () => {
+    it("keeps the extension minimum at VS Code 1.107 while the host fixture stays current", () => {
         const packageJson = JSON.parse(
             readFileSync(new URL("../../../package.json", import.meta.url), "utf8"),
         ) as { readonly engines: { readonly vscode: string } };
 
-        expect(`^${VSCODE_VERSION}`).toBe(packageJson.engines.vscode);
+        expect(packageJson.engines.vscode).toBe("^1.107.0");
+        expect(VSCODE_VERSION).toBe("1.137.0");
     });
 
     it("uses the pinned version when the override is unset", () => {

@@ -158,7 +158,7 @@ describe("CI quality hardening workflows", () => {
         const releaseJob = extractJobBlock(publish, "release");
 
         expect(packageSmokeJob).toContain("needs: build");
-        expect(packageSmokeJob).toContain('vscode_version: ["1.137.0"]');
+        expect(packageSmokeJob).toContain('vscode_version: ["1.107.0", "1.137.0"]');
         expect(packageSmokeJob).toContain("actions/download-artifact@");
         expect(packageSmokeJob).toContain("actions/cache@");
         expect(packageSmokeJob).toContain(
@@ -577,7 +577,7 @@ describe("CI quality hardening workflows", () => {
         expect(
             [
                 ...compatibility.matchAll(
-                    /INTELLIGIT_VSCODE_VERSION=1\.137\.0(?: xvfb-run -a)? bun run test:package-smoke/g,
+                    /INTELLIGIT_VSCODE_VERSION=1\.107\.0(?: xvfb-run -a)? bun run test:package-smoke/g,
                 ),
             ],
             "every installed-package smoke leg must run against the VS Code support floor",
