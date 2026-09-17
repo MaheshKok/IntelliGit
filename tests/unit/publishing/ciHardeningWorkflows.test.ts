@@ -233,7 +233,7 @@ describe("CI quality hardening workflows", () => {
         expect(eligibilityJob).toContain("fetch-depth: 0");
         expect(eligibilityJob).toMatch(/if \[ "\$CURRENT_VERSION" = "\$PREVIOUS_VERSION" \]/);
         expect(eligibilityJob).toContain('echo "version_changed=false" >> "$GITHUB_OUTPUT"');
-        expect(eligibilityJob).not.toMatch(/releases\/tags\/v\$CURRENT_VERSION/);
+        expect(eligibilityJob).toMatch(/releases\/tags\/v\$CURRENT_VERSION/);
         expect(releaseJob).not.toMatch(/\bls\b[^\n]*\.vsix/);
         expect(releaseJob).not.toMatch(/(?:vsce|ovsx) publish[^\n]*\*\.vsix/);
         expect(releaseJob).not.toMatch(/gh release (?:create|upload)[^\n]*\*\.vsix/);
@@ -287,7 +287,7 @@ describe("CI quality hardening workflows", () => {
         expect(source).toContain(".github/workflows/publish.yml");
         expect(source).toContain("$GITHUB_REPOSITORY");
         expect(source).toContain('"push"');
-        expect(source).toContain('"main"');
+        expect(source).toContain("refs/heads/main");
         expect(source).toContain("head_sha");
         expect(source).toMatch(/actions\/runs\/\$FAILED_RUN_ID\/jobs/);
         expect(source).toContain('"release"');

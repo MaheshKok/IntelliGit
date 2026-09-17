@@ -529,7 +529,7 @@ describe("publish visual workflow", () => {
         );
         expect(
             extractStepBlock(releaseJob, "Create GitHub Release and upload artifacts"),
-        ).toContain("if: steps.registry-state.outputs.create_release == 'true'");
+        ).toContain('gh release create "v$NEW_VERSION" "$VSIX_PATH" "$CHECKSUM_PATH"');
     });
 
     it("fails closed unless the historical VSIX matches checksum, package identity, and provenance", () => {
