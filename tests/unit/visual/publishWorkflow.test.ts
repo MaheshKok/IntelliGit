@@ -356,40 +356,32 @@ function runRegistryRecoveryGuard(
 ) {
     const workspace = mkdtempSync(join(tmpdir(), "publish-registry-recovery-"));
     try {
-        const binDir = join(workspace, "bin");
         const outputPath = join(workspace, "github-output");
         const vsixPath = join(workspace, "selected.vsix");
-        mkdirSync(binDir);
         writeFileSync(outputPath, "");
         writeFileSync(vsixPath, "selected artifact bytes");
-        writeFileSync(
-            join(binDir, "curl"),
-            `#!/usr/bin/env bash\n` +
-                `output=''\n` +
-                `while [ "$#" -gt 0 ]; do\n` +
-                `  case "$1" in\n` +
-                `    --output|-o) output="$2"; shift 2 ;;\n` +
-                `    *) shift ;;\n` +
-                `  esac\n` +
-                `done\n` +
-                `printf '%s' "$DOWNLOADED_BYTES" > "$output"\n`,
-            { mode: 0o755 },
-        );
-        writeFileSync(
-            join(binDir, "gh"),
+        const curlStub =
+            `curl() {\n` +
+            `output=''\n` +
+            `while [ "$#" -gt 0 ]; do\n` +
+            `  case "$1" in\n` +
+            `    --output|-o) output="$2"; shift 2 ;;\n` +
+            `    *) shift ;;\n` +
+            `  esac\n` +
+            `done\n` +
+            `printf '%s' "$DOWNLOADED_BYTES" > "$output"\n` +
+            `}\n`;
+        const ghStub =
             releaseStatus === 200
-                ? `#!/usr/bin/env bash\nprintf 'HTTP/2.0 200 OK\\r\\n\\r\\n'\nexit 0\n`
-                : `#!/usr/bin/env bash\nprintf 'HTTP/2.0 404 Not Found\\r\\n\\r\\n'\nexit 1\n`,
-            { mode: 0o755 },
-        );
-        writeFileSync(join(workspace, "guard.sh"), script);
+                ? `gh() { printf 'HTTP/2.0 200 OK\\r\\n\\r\\n'; return 0; }\n`
+                : `gh() { printf 'HTTP/2.0 404 Not Found\\r\\n\\r\\n'; return 1; }\n`;
+        writeFileSync(join(workspace, "guard.sh"), `${curlStub}${ghStub}${script}`);
 
         const result = spawnSync("bash", ["-e", join(workspace, "guard.sh")], {
             cwd: workspace,
             encoding: "utf8",
             env: {
                 ...process.env,
-                PATH: `${binDir}:${process.env.PATH ?? ""}`,
                 DOWNLOADED_BYTES: downloadedBytes,
                 GITHUB_OUTPUT: outputPath,
                 GITHUB_REPOSITORY: STUB_REPOSITORY,
@@ -420,50 +412,43 @@ interface OpenVsxPublishOptions {
 function runOpenVsxPublish(script: string, options: OpenVsxPublishOptions) {
     const workspace = mkdtempSync(join(tmpdir(), "publish-open-vsx-"));
     try {
-        const binDir = join(workspace, "bin");
         const countPath = join(workspace, "publish-count");
         const vsixPath = join(workspace, "selected.vsix");
-        mkdirSync(binDir);
         writeFileSync(countPath, "0");
         writeFileSync(vsixPath, "selected artifact bytes");
-        writeFileSync(
-            join(binDir, "bunx"),
-            `#!/usr/bin/env bash\n` +
-                `if [ "$1" = "ovsx" ] && [ "$2" = "publish" ]; then\n` +
-                `  count=$(($(cat "$COUNT_PATH") + 1))\n` +
-                `  printf '%s' "$count" > "$COUNT_PATH"\n` +
-                `  printf '%s\\n' "$PUBLISH_ERROR" >&2\n` +
-                `  exit 1\n` +
-                `fi\n` +
-                `if [ "$1" = "ovsx" ] && [ "$2" = "get" ]; then\n` +
-                `  case "$PROBE_MODE" in\n` +
-                `    live) echo '{"version":"9.9.9","allVersions":{"9.9.9":"url"}}'; exit 0 ;;\n` +
-                `    error) printf '%s\\n' "$PROBE_ERROR" >&2; exit 1 ;;\n` +
-                `    *) echo 'extension has no published version matching 9.9.9' >&2; exit 1 ;;\n` +
-                `  esac\n` +
-                `fi\n` +
-                `exit 2\n`,
-            { mode: 0o755 },
-        );
-        writeFileSync(
-            join(binDir, "curl"),
-            `#!/usr/bin/env bash\n` +
-                `output=''\n` +
-                `while [ "$#" -gt 0 ]; do\n` +
-                `  case "$1" in --output|-o) output="$2"; shift 2 ;; *) shift ;; esac\n` +
-                `done\n` +
-                `printf '%s' "$PUBLISHED_BYTES" > "$output"\n`,
-            { mode: 0o755 },
-        );
-        writeFileSync(join(binDir, "sleep"), "#!/usr/bin/env bash\nexit 0\n", { mode: 0o755 });
-        writeFileSync(join(workspace, "publish.sh"), script);
+        const bunxStub =
+            `bunx() {\n` +
+            `if [ "$1" = "ovsx" ] && [ "$2" = "publish" ]; then\n` +
+            `  count=$(($(cat "$COUNT_PATH") + 1))\n` +
+            `  printf '%s' "$count" > "$COUNT_PATH"\n` +
+            `  printf '%s\\n' "$PUBLISH_ERROR" >&2\n` +
+            `  return 1\n` +
+            `fi\n` +
+            `if [ "$1" = "ovsx" ] && [ "$2" = "get" ]; then\n` +
+            `  case "$PROBE_MODE" in\n` +
+            `    live) echo '{"version":"9.9.9","allVersions":{"9.9.9":"url"}}'; return 0 ;;\n` +
+            `    error) printf '%s\\n' "$PROBE_ERROR" >&2; return 1 ;;\n` +
+            `    *) echo 'extension has no published version matching 9.9.9' >&2; return 1 ;;\n` +
+            `  esac\n` +
+            `fi\n` +
+            `return 2\n` +
+            `}\n`;
+        const curlStub =
+            `curl() {\n` +
+            `output=''\n` +
+            `while [ "$#" -gt 0 ]; do\n` +
+            `  case "$1" in --output|-o) output="$2"; shift 2 ;; *) shift ;; esac\n` +
+            `done\n` +
+            `printf '%s' "$PUBLISHED_BYTES" > "$output"\n` +
+            `}\n`;
+        const sleepStub = `sleep() { return 0; }\n`;
+        writeFileSync(join(workspace, "publish.sh"), `${bunxStub}${curlStub}${sleepStub}${script}`);
 
         const result = spawnSync("bash", ["-e", join(workspace, "publish.sh")], {
             cwd: workspace,
             encoding: "utf8",
             env: {
                 ...process.env,
-                PATH: `${binDir}:${process.env.PATH ?? ""}`,
                 COUNT_PATH: countPath,
                 PUBLISH_ERROR: options.publishError,
                 PROBE_MODE: options.probe,
