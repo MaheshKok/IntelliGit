@@ -230,7 +230,7 @@ Search for **IntelliGit** in VS Code Extensions, or install from:
 
 ## Requirements
 
-- VS Code `1.137.0` or later
+- VS Code `1.107.0` or later
 - Git installed and available on `PATH`
 
 ## Settings
