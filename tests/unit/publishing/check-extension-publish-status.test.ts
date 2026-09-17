@@ -1,10 +1,16 @@
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { describe, expect, it } from "vitest";
 
+import { removeScratchDirectoriesSync } from "../../helpers/scratchDirectories";
 import {
     getExtensionId,
     isVsceVersionPublished,
     isOvsxVersionPublished,
     lookupPublishStatus,
+    lookupPublishStatusFromFile,
 } from "../../../scripts/check-extension-publish-status";
 
 describe("getExtensionId", () => {
@@ -72,6 +78,34 @@ describe("isOvsxVersionPublished", () => {
 });
 
 describe("lookupPublishStatus", () => {
+    it("reads an explicit package path while resolving bunx from the repository cwd", () => {
+        const workspace = mkdtempSync(join(tmpdir(), "publish-status-package-"));
+        try {
+            const packageJsonPath = join(workspace, "selected-package.json");
+            const repositoryCwd = "/test/repository";
+            const commandCwds: string[] = [];
+            writeFileSync(
+                packageJsonPath,
+                JSON.stringify({ publisher: "MaheshKok", name: "intelligit", version: "0.6.0" }),
+            );
+            const status = lookupPublishStatusFromFile({
+                packageJsonPath,
+                cwd: repositoryCwd,
+                runCommand: (_command, args, options) => {
+                    commandCwds.push(options.cwd);
+                    return args[0] === "vsce"
+                        ? JSON.stringify({ versions: [{ version: "0.6.0" }] })
+                        : JSON.stringify({ version: "0.6.0" });
+                },
+            });
+
+            expect(status.extensionId).toBe("MaheshKok.intelligit");
+            expect(commandCwds).toEqual([repositoryCwd, repositoryCwd]);
+        } finally {
+            removeScratchDirectoriesSync(workspace);
+        }
+    });
+
     it("treats missing Open VSX versions as unpublished but preserves marketplace status", () => {
         const result = lookupPublishStatus({
             packageJson: {
@@ -155,5 +189,48 @@ describe("lookupPublishStatus", () => {
         expect(thrownError).toBeInstanceOf(Error);
         expect(thrownError.message).toContain("Open VSX lookup failed");
         expect(thrownError.cause).toBe(rootCause);
+    });
+
+    it("does not retry a non-transient Open VSX status failure", () => {
+        let ovsxAttempts = 0;
+
+        expect(() =>
+            lookupPublishStatus({
+                packageJson: {
+                    publisher: "MaheshKok",
+                    name: "intelligit",
+                    version: "0.6.0",
+                },
+                runCommand: (_command, args) => {
+                    if (args[0] === "vsce") return JSON.stringify({ versions: [] });
+                    ovsxAttempts += 1;
+                    throw new Error("HTTP 401 Unauthorized");
+                },
+            }),
+        ).toThrow("Open VSX lookup failed");
+        expect(ovsxAttempts, "a non-transient status failure must be tried once").toBe(1);
+    });
+
+    it("stops after three transient Open VSX status failures", () => {
+        let ovsxAttempts = 0;
+        const delays: number[] = [];
+
+        expect(() =>
+            lookupPublishStatus({
+                packageJson: {
+                    publisher: "MaheshKok",
+                    name: "intelligit",
+                    version: "0.6.0",
+                },
+                runCommand: (_command, args) => {
+                    if (args[0] === "vsce") return JSON.stringify({ versions: [] });
+                    ovsxAttempts += 1;
+                    throw new Error("HTTP 503 Service Unavailable");
+                },
+                sleep: (milliseconds) => delays.push(milliseconds),
+            }),
+        ).toThrow("Open VSX lookup failed");
+        expect(ovsxAttempts, "transient status lookup must stop after three attempts").toBe(3);
+        expect(delays, "status retries must use bounded backoff").toEqual([2000, 4000]);
     });
 });

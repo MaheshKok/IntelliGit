@@ -206,22 +206,26 @@ describe("CI quality hardening workflows", () => {
         expect(releaseJob).toContain("steps.release-artifact.outputs.vsix_path");
         expect(releaseJob).toContain("steps.release-artifact.outputs.checksum_path");
         expect(releaseJob).toContain("persist-credentials: false");
-        expect(releaseJob).toContain("Refuse rebuilt-artifact recovery for a published version");
+        expect(releaseJob).toContain("Verify published registries and GitHub Release");
         expect(releaseJob).toContain(
             "A published version must be recovered from its original artifact",
         );
         const recoveryStep = extractStepBlock(
             releaseJob,
-            "Refuse rebuilt-artifact recovery for a published version",
+            "Verify published registries and GitHub Release",
         );
-        expect(recoveryStep).toContain("node scripts/verifyGhApiNotFound.js");
-        expect(recoveryStep).toContain("Unable to determine whether the GitHub release exists");
+        expect(recoveryStep).toContain('cmp --silent "$VSIX_PATH" "$registry_vsix"');
+        expect(recoveryStep).toContain('if [ "$HTTP_STATUS" = "200" ]');
+        expect(recoveryStep).toContain('if [ "$HTTP_STATUS" != "404" ]');
+        expect(recoveryStep).toContain("refusing to replace its assets");
+        expect(recoveryStep).toContain("failing closed");
         expect(releaseJob).not.toContain("Skip VS Code Marketplace publish");
         expect(releaseJob).not.toContain("Skip Open VSX publish");
         expect(releaseJob).not.toContain("git push origin");
         const tagStep = extractStepBlock(releaseJob, "Validate and create release tag");
         const marketplaceStep = extractStepBlock(releaseJob, "Publish to VS Code Marketplace");
-        expect(tagStep).toContain("github.sha");
+        expect(tagStep).toContain("EXPECTED_SHA: ${{ steps.release-source.outputs.source_sha }}");
+        expect(tagStep).not.toContain("github.sha");
         expect(tagStep).toContain("gh api");
         expect(tagStep).toContain("git/ref/tags/");
         expect(tagStep).toContain(".object.type");
@@ -259,7 +263,7 @@ describe("CI quality hardening workflows", () => {
             },
             {
                 name: "Publish to Open VSX",
-                command: 'run: bunx ovsx publish -p "$OVSX_PAT" "$VSIX_PATH"',
+                command: 'bunx ovsx publish -p "$OVSX_PAT" "$VSIX_PATH"',
                 token: "OVSX_PAT: ${{ secrets.OVSX_PAT }}",
             },
         ];
