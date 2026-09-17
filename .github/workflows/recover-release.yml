@@ -1,0 +1,319 @@
+name: Recover partial release
+
+on:
+    workflow_dispatch:
+        inputs:
+            failed_run_id:
+                description: "Failed or cancelled publish.yml run whose original VSIX should be recovered."
+                required: true
+                type: string
+
+jobs:
+    recover:
+        runs-on: ubuntu-latest
+        timeout-minutes: 30
+        if: ${{ github.ref == 'refs/heads/main' }}
+        concurrency:
+            group: marketplace-release
+            cancel-in-progress: false
+            queue: max
+        permissions:
+            contents: write
+            actions: read
+            attestations: read
+
+        steps:
+            - name: Validate failed publish run
+              id: failed-run
+              shell: bash
+              env:
+                  FAILED_RUN_ID: ${{ inputs.failed_run_id }}
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              run: |
+                  if ! [[ "$FAILED_RUN_ID" =~ ^[0-9]+$ ]]; then
+                    echo "failed_run_id must be numeric." >&2
+                    exit 1
+                  fi
+
+                  RUN_FIELDS=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$FAILED_RUN_ID" \
+                    --jq '[.path, .head_branch, .head_sha, .repository.full_name, .event] | @tsv')
+                  IFS=$'\t' read -r RUN_PATH RUN_BRANCH SOURCE_SHA RUN_REPOSITORY RUN_EVENT <<< "$RUN_FIELDS"
+                  if [ "$RUN_PATH" != ".github/workflows/publish.yml" ] || [ "$RUN_REPOSITORY" != "$GITHUB_REPOSITORY" ] || [ "$RUN_EVENT" != "push" ] || [ "refs/heads/$RUN_BRANCH" != "refs/heads/main" ]; then
+                    echo "Recovery requires this repository's .github/workflows/publish.yml push run on main." >&2
+                    exit 1
+                  fi
+                  if ! [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+                    echo "Selected run returned an invalid head SHA." >&2
+                    exit 1
+                  fi
+
+                  RELEASE_JOB=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$FAILED_RUN_ID/jobs?per_page=100&filter=latest" \
+                    --jq '[.jobs[] | select(.name == "release")] | sort_by(.id) | last // {} | [.status // "", .conclusion // ""] | @tsv')
+                  IFS=$'\t' read -r RELEASE_STATUS RELEASE_CONCLUSION <<< "$RELEASE_JOB"
+                  if [ "$RELEASE_STATUS" != "completed" ] || { [ "$RELEASE_CONCLUSION" != "failure" ] && [ "$RELEASE_CONCLUSION" != "cancelled" ] && [ "$RELEASE_CONCLUSION" != "timed_out" ]; }; then
+                    echo "Latest release job must be completed with failure, cancelled, or timed_out; success, skipped, or missing jobs are not recoverable." >&2
+                    exit 1
+                  fi
+
+                  echo "source_sha=$SOURCE_SHA" >> "$GITHUB_OUTPUT"
+
+            - name: Checkout recovery scripts
+              uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+              with:
+                  persist-credentials: false
+                  fetch-depth: 0
+
+            - name: Setup Node.js
+              uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+              with:
+                  node-version: "22"
+
+            - name: Setup Bun
+              uses: oven-sh/setup-bun@f4d14e03ff726c06358e5557344e1da148b56cf7 # v1.2.2
+              with:
+                  bun-version: "1.3.5"
+
+            - name: Install release dependencies
+              run: bun install --frozen-lockfile
+
+            - name: Download failed-run packaged VSIX
+              uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+              with:
+                  name: extension-vsix
+                  run-id: ${{ inputs.failed_run_id }}
+                  github-token: ${{ secrets.GITHUB_TOKEN }}
+
+            - name: Verify recovered release artifact
+              id: release-artifact
+              shell: bash
+              env:
+                  SOURCE_SHA: ${{ steps.failed-run.outputs.source_sha }}
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              run: |
+                  shopt -s nullglob
+                  vsix_files=(*.vsix)
+                  checksum_files=(*.vsix.sha256)
+                  if [ "${#vsix_files[@]}" -ne 1 ] || [ "${#checksum_files[@]}" -ne 1 ]; then
+                    echo "Expected one VSIX and one checksum artifact." >&2
+                    exit 1
+                  fi
+                  VSIX_PATH="${vsix_files[0]}"
+                  CHECKSUM_PATH="${VSIX_PATH}.sha256"
+                  if [ "${checksum_files[0]}" != "$CHECKSUM_PATH" ]; then
+                    echo "Checksum artifact does not belong to the downloaded VSIX." >&2
+                    exit 1
+                  fi
+                  ACTUAL_SHA256=$(sha256sum "$VSIX_PATH" | awk '{ print $1 }')
+                  if [ "$(cat "$CHECKSUM_PATH")" != "$ACTUAL_SHA256  $VSIX_PATH" ]; then
+                    echo "Checksum file must contain exactly the selected VSIX digest and filename." >&2
+                    exit 1
+                  fi
+                  sha256sum --check "$CHECKSUM_PATH"
+
+                  VSIX_PACKAGE_JSON=$(mktemp)
+                  if ! unzip -p "$VSIX_PATH" extension/package.json > "$VSIX_PACKAGE_JSON"; then
+                    echo "Unable to read extension/package.json from the selected VSIX." >&2
+                    exit 1
+                  fi
+                  SOURCE_PACKAGE_JSON=$(mktemp)
+                  gh api "repos/$GITHUB_REPOSITORY/contents/package.json?ref=$SOURCE_SHA" --jq .content | tr -d '\n' | base64 --decode > "$SOURCE_PACKAGE_JSON"
+                  PACKAGE_FIELDS=$(node -e '
+                    const fs = require("fs");
+                    const actual = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+                    const expected = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+                    for (const field of ["publisher", "name", "version"]) {
+                      if (actual[field] !== expected[field] || typeof actual[field] !== "string") {
+                        throw new Error(`VSIX package ${field} does not match source package.json`);
+                      }
+                    }
+                    process.stdout.write([actual.publisher, actual.name, actual.version].join("\t"));
+                  ' "$VSIX_PACKAGE_JSON" "$SOURCE_PACKAGE_JSON")
+                  IFS=$'\t' read -r EXTENSION_PUBLISHER EXTENSION_NAME NEW_VERSION <<< "$PACKAGE_FIELDS"
+
+                  gh attestation verify "$VSIX_PATH" --repo "$GITHUB_REPOSITORY" \
+                    --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/publish.yml" \
+                    --source-digest "$SOURCE_SHA" \
+                    --source-ref refs/heads/main
+
+                  echo "vsix_path=$VSIX_PATH" >> "$GITHUB_OUTPUT"
+                  echo "checksum_path=$CHECKSUM_PATH" >> "$GITHUB_OUTPUT"
+                  echo "package_json_path=$VSIX_PACKAGE_JSON" >> "$GITHUB_OUTPUT"
+                  echo "publisher=$EXTENSION_PUBLISHER" >> "$GITHUB_OUTPUT"
+                  echo "name=$EXTENSION_NAME" >> "$GITHUB_OUTPUT"
+                  echo "version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
+
+            - name: Check publish status
+              id: publish-status
+              env:
+                  PACKAGE_JSON_PATH: ${{ steps.release-artifact.outputs.package_json_path }}
+              run: |
+                  node scripts/check-extension-publish-status.js "$PACKAGE_JSON_PATH"
+
+            - name: Verify published registries and GitHub Release
+              shell: bash
+              env:
+                  VSCE_PUBLISHED: ${{ steps.publish-status.outputs.vsce_published }}
+                  OVSX_PUBLISHED: ${{ steps.publish-status.outputs.ovsx_published }}
+                  VSIX_PATH: ${{ steps.release-artifact.outputs.vsix_path }}
+                  EXTENSION_PUBLISHER: ${{ steps.release-artifact.outputs.publisher }}
+                  EXTENSION_NAME: ${{ steps.release-artifact.outputs.name }}
+                  NEW_VERSION: ${{ steps.release-artifact.outputs.version }}
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              run: |
+                  compare_registry_artifact() {
+                    local registry_name="$1"
+                    local registry_url="$2"
+                    local registry_vsix
+                    registry_vsix=$(mktemp "${TMPDIR:-/tmp}/registry-vsix.XXXXXX")
+                    if [ "$registry_name" = "VS Code Marketplace" ]; then
+                      curl --fail --location --silent --show-error --compressed --output "$registry_vsix" "$registry_url"
+                    else
+                      curl --fail --location --silent --show-error --output "$registry_vsix" "$registry_url"
+                    fi
+                    if ! cmp --silent "$VSIX_PATH" "$registry_vsix"; then
+                      echo "$registry_name artifact does not match the selected artifact; failing closed." >&2
+                      return 1
+                    fi
+                    echo "$registry_name already contains byte-identical v$NEW_VERSION; skipping it."
+                  }
+
+                  if [ "$VSCE_PUBLISHED" = "true" ]; then
+                    compare_registry_artifact "VS Code Marketplace" "https://marketplace.visualstudio.com/_apis/public/gallery/publishers/$EXTENSION_PUBLISHER/vsextensions/$EXTENSION_NAME/$NEW_VERSION/vspackage"
+                  fi
+                  if [ "$OVSX_PUBLISHED" = "true" ]; then
+                    compare_registry_artifact "Open VSX" "https://open-vsx.org/api/$EXTENSION_PUBLISHER/$EXTENSION_NAME/$NEW_VERSION/file/$EXTENSION_PUBLISHER.$EXTENSION_NAME-$NEW_VERSION.vsix"
+                  fi
+
+                  RELEASE_PROBE=$(gh api -i "repos/$GITHUB_REPOSITORY/releases/tags/v$NEW_VERSION" || true)
+                  HTTP_STATUS=$(printf '%s\n' "$RELEASE_PROBE" | awk 'NR == 1 { print $2 }')
+                  if [ "$HTTP_STATUS" = "200" ]; then
+                    echo "A GitHub release already exists for v$NEW_VERSION; refusing to replace its assets or skip unverified assets." >&2
+                    exit 1
+                  fi
+                  if [ "$HTTP_STATUS" != "404" ]; then
+                    echo "Unable to determine whether the GitHub release exists (HTTP ${HTTP_STATUS:-none}); failing closed." >&2
+                    exit 1
+                  fi
+
+            - name: Validate and create release tag
+              shell: bash
+              env:
+                  NEW_VERSION: ${{ steps.release-artifact.outputs.version }}
+                  EXPECTED_SHA: ${{ steps.failed-run.outputs.source_sha }}
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              run: |
+                  VERSION="v$NEW_VERSION"
+                  TAG_ERROR=$(mktemp)
+                  if ! TAG_REF=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$VERSION" --jq '[.object.type, .object.sha] | @tsv' 2>"$TAG_ERROR"); then
+                    if ! grep -q '(HTTP 404)' "$TAG_ERROR"; then
+                      cat "$TAG_ERROR" >&2
+                      echo "Unable to read the live release tag; failing closed." >&2
+                      exit 1
+                    fi
+                    gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" \
+                      -f ref="refs/tags/$VERSION" \
+                      -f sha="$EXPECTED_SHA" >/dev/null
+                    TAG_REF=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$VERSION" --jq '[.object.type, .object.sha] | @tsv')
+                  fi
+                  IFS=$'\t' read -r TAG_TYPE TAG_SHA <<< "$TAG_REF"
+                  if [ "$TAG_TYPE" != "commit" ] || [ "$TAG_SHA" != "$EXPECTED_SHA" ]; then
+                    echo "Live tag $VERSION resolves to $TAG_TYPE $TAG_SHA, expected commit $EXPECTED_SHA." >&2
+                    exit 1
+                  fi
+                  echo "Live tag $VERSION resolves to the selected release SHA."
+
+            - name: Publish to VS Code Marketplace
+              if: steps.publish-status.outputs.vsce_published != 'true'
+              run: bunx vsce publish --packagePath "$VSIX_PATH" -p "$VSCE_PAT"
+              env:
+                  VSIX_PATH: ${{ steps.release-artifact.outputs.vsix_path }}
+                  VSCE_PAT: ${{ secrets.VSCE_PAT }}
+
+            - name: Publish to Open VSX
+              if: steps.publish-status.outputs.ovsx_published != 'true'
+              shell: bash
+              env:
+                  VSIX_PATH: ${{ steps.release-artifact.outputs.vsix_path }}
+                  OVSX_PAT: ${{ secrets.OVSX_PAT }}
+                  EXTENSION_ID: ${{ steps.release-artifact.outputs.publisher }}.${{ steps.release-artifact.outputs.name }}
+                  EXTENSION_PUBLISHER: ${{ steps.release-artifact.outputs.publisher }}
+                  EXTENSION_NAME: ${{ steps.release-artifact.outputs.name }}
+                  NEW_VERSION: ${{ steps.release-artifact.outputs.version }}
+              run: |
+                  is_transient_open_vsx_error() {
+                    grep -Eiq '(^|[^0-9])(408|429|5[0-9]{2})([^0-9]|$)|ECONNRESET|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|network|socket hang up|fetch failed|connection reset|timed out' "$1"
+                  }
+
+                  probe_open_vsx() {
+                    local metadata_file error_file registry_vsix
+                    metadata_file=$(mktemp)
+                    error_file=$(mktemp)
+                    if bunx ovsx get "$EXTENSION_ID" --metadata --versionRange "$NEW_VERSION" > "$metadata_file" 2> "$error_file"; then
+                      if ! node -e '
+                        const metadata = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
+                        const version = process.argv[2];
+                        if (metadata.version !== version && !Object.prototype.hasOwnProperty.call(metadata.allVersions ?? {}, version)) process.exit(1);
+                      ' "$metadata_file" "$NEW_VERSION"; then
+                        echo "Open VSX returned metadata that did not prove v$NEW_VERSION is live; failing closed." >&2
+                        return 3
+                      fi
+                      registry_vsix=$(mktemp "${TMPDIR:-/tmp}/open-vsx.XXXXXX")
+                      if ! curl --fail --location --silent --show-error --output "$registry_vsix" "https://open-vsx.org/api/$EXTENSION_PUBLISHER/$EXTENSION_NAME/$NEW_VERSION/file/$EXTENSION_PUBLISHER.$EXTENSION_NAME-$NEW_VERSION.vsix"; then
+                        echo "Open VSX reported v$NEW_VERSION live but its VSIX could not be read; failing closed." >&2
+                        return 3
+                      fi
+                      if ! cmp --silent "$VSIX_PATH" "$registry_vsix"; then
+                        echo "Open VSX reported v$NEW_VERSION live but its bytes do not match the selected artifact; failing closed." >&2
+                        return 3
+                      fi
+                      return 0
+                    fi
+                    if grep -Eiq 'has no published version matching|extension .*not found|no extension found' "$error_file"; then
+                      return 1
+                    fi
+                    cat "$error_file" >&2
+                    if is_transient_open_vsx_error "$error_file"; then
+                      echo "Open VSX re-probe failed transiently; preserving the bounded publish retry." >&2
+                      return 2
+                    fi
+                    echo "Unable to re-probe Open VSX after a failed publish; failing closed." >&2
+                    return 3
+                  }
+
+                  for attempt in 1 2 3; do
+                    publish_log=$(mktemp)
+                    if bunx ovsx publish -p "$OVSX_PAT" "$VSIX_PATH" > "$publish_log" 2>&1; then
+                      cat "$publish_log"
+                      exit 0
+                    fi
+                    cat "$publish_log" >&2
+
+                    if probe_open_vsx; then
+                      echo "Open VSX v$NEW_VERSION became live with byte-identical contents after attempt $attempt."
+                      exit 0
+                    else
+                      probe_status=$?
+                      if [ "$probe_status" -eq 3 ]; then
+                        exit 1
+                      fi
+                    fi
+
+                    if ! is_transient_open_vsx_error "$publish_log"; then
+                      echo "Open VSX publish failure is non-transient; not retrying." >&2
+                      exit 1
+                    fi
+                    if [ "$attempt" -eq 3 ]; then
+                      echo "Open VSX publish failed after three transient attempts." >&2
+                      exit 1
+                    fi
+                    sleep $((attempt * 2))
+                  done
+
+            - name: Create GitHub Release and upload artifacts
+              shell: bash
+              env:
+                  NEW_VERSION: ${{ steps.release-artifact.outputs.version }}
+                  VSIX_PATH: ${{ steps.release-artifact.outputs.vsix_path }}
+                  CHECKSUM_PATH: ${{ steps.release-artifact.outputs.checksum_path }}
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              run: gh release create "v$NEW_VERSION" "$VSIX_PATH" "$CHECKSUM_PATH" --generate-notes
