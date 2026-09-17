@@ -10,7 +10,7 @@ on:
     workflow_dispatch:
         inputs:
             force_publish:
-                description: "Publish the current package.json version even if it already has a GitHub Release (use to retry a current-run publication)."
+                description: "Publish after an unchanged-version push skipped publication. Existing GitHub Releases or registry entries are refused."
                 type: boolean
                 default: false
             skip_e2e_gate:

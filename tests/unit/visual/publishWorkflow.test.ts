@@ -1058,7 +1058,10 @@ describe("publish visual workflow", () => {
                     "Check whether this version still needs releasing",
                 ),
             );
-            const run = runVersionGate(script, "9.9.9", { forcePublish: false });
+            const run = runVersionGate(script, "9.9.9", {
+                forcePublish: false,
+                gh: PRESENT,
+            });
 
             expect(run.status).toBe(0);
             expect(run.outputs.split("\n").filter(Boolean)).toEqual([
