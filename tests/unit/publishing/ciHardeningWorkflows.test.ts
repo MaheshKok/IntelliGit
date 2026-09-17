@@ -290,8 +290,9 @@ describe("CI quality hardening workflows", () => {
         expect(source).toContain("refs/heads/main");
         expect(source).toContain("head_sha");
         expect(source).toMatch(/actions\/runs\/\$FAILED_RUN_ID\/jobs/);
+        expect(source).toContain("filter=latest");
         expect(source).toContain('"release"');
-        expect(source).toMatch(/failure.*cancelled|cancelled.*failure/s);
+        expect(source).toMatch(/failure.*cancelled.*timed_out/s);
         expect(source).toMatch(/success|skipped/);
         expect(download).toContain("name: extension-vsix");
         expect(download).toContain("run-id: ${{ inputs.failed_run_id }}");

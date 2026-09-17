@@ -124,9 +124,8 @@ interface VersionGateOptions {
     /**
      * The version in `package.json` one commit back, which the step reads out of git.
      *
-     * Defaults to `version`. An unchanged version is the orphaned-bump case the state gate exists
-     * for, and it is the only shape the force-publish recovery branch accepts -- so it is also the
-     * default that lets a caller say nothing and still exercise a coherent scenario.
+     * Defaults to `version`, which exercises either the ordinary unchanged-version skip or the
+     * force-publish equality path. Release-state cases provide an older version explicitly.
      */
     readonly previousVersion?: string;
     /** Extra step inputs, for run scripts that read something other than package.json. */
@@ -197,7 +196,7 @@ function runVersionGate(script: string, version: string, options: VersionGateOpt
         writeFileSync(packageJsonPath, JSON.stringify({ version }));
         git("add", "package.json");
         // `--allow-empty` because the default scenario is a version that did NOT change, which is
-        // precisely the state the gate has to resolve over the API instead of from the diff.
+        // the ordinary skip case and the only version shape accepted by force_publish.
         git("commit", "--allow-empty", "-m", "current");
 
         mkdirSync(join(workspace, "scripts"));
@@ -263,6 +262,46 @@ function runVersionGate(script: string, version: string, options: VersionGateOpt
                       .filter((argument) => argument !== "")
                 : [],
         } satisfies VersionGateRun;
+    } finally {
+        removeScratchDirectoriesSync(workspace);
+    }
+}
+
+/** Executes the failed-run validator with deterministic run and release-job API answers. */
+function runFailedRunValidator(script: string, releaseConclusion: string | null) {
+    const workspace = mkdtempSync(join(tmpdir(), "recover-release-validator-"));
+    try {
+        const outputPath = join(workspace, "github-output");
+        writeFileSync(outputPath, "");
+        const ghStub =
+            `gh() {\n` +
+            `  case "$2" in\n` +
+            `    */jobs*)\n` +
+            `      if [ "$RELEASE_CONCLUSION" = "missing" ]; then printf '\\t\\n'; else printf 'completed\\t%s\\n' "$RELEASE_CONCLUSION"; fi\n` +
+            `      ;;\n` +
+            `    *) printf '.github/workflows/publish.yml\\tmain\\t%s\\t%s\\tpush\\n' "$SOURCE_SHA" "$GITHUB_REPOSITORY" ;;\n` +
+            `  esac\n` +
+            `}\n`;
+        writeFileSync(join(workspace, "validate.sh"), `${ghStub}${script}`);
+
+        const result = spawnSync("bash", ["-e", join(workspace, "validate.sh")], {
+            cwd: workspace,
+            encoding: "utf8",
+            env: {
+                ...process.env,
+                FAILED_RUN_ID: "12345",
+                GITHUB_OUTPUT: outputPath,
+                GITHUB_REPOSITORY: STUB_REPOSITORY,
+                RELEASE_CONCLUSION: releaseConclusion ?? "missing",
+                SOURCE_SHA: RELEASE_SHA,
+            },
+        });
+
+        return {
+            status: result.status,
+            outputs: readFileSync(outputPath, "utf8"),
+            stderr: result.stderr ?? "",
+        };
     } finally {
         removeScratchDirectoriesSync(workspace);
     }
@@ -481,6 +520,26 @@ function readNightlyWorkflow(): string {
 }
 
 describe("publish visual workflow", () => {
+    it("accepts only recoverable completed release-job conclusions", () => {
+        const workflow = readFileSync(RECOVERY_WORKFLOW_PATH, "utf8");
+        const recoverJob = extractJobBlock(workflow, "recover");
+        const script = extractRunScript(
+            extractStepBlock(recoverJob, "Validate failed publish run"),
+        );
+
+        for (const conclusion of ["failure", "cancelled", "timed_out"]) {
+            const run = runFailedRunValidator(script, conclusion);
+            expect(run.status, `${conclusion} can leave recoverable partial writes`).toBe(0);
+            expect(run.outputs).toBe(`source_sha=${RELEASE_SHA}\n`);
+        }
+
+        for (const conclusion of ["success", "skipped", null]) {
+            const run = runFailedRunValidator(script, conclusion);
+            expect(run.status, `${conclusion ?? "missing"} must not be recoverable`).not.toBe(0);
+            expect(run.outputs).toBe("");
+        }
+    });
+
     it("binds manual recovery to one historical main-branch publish artifact", () => {
         const workflow = existsSync(RECOVERY_WORKFLOW_PATH)
             ? readFileSync(RECOVERY_WORKFLOW_PATH, "utf8")
@@ -505,9 +564,10 @@ describe("publish visual workflow", () => {
         expect(sourceStep, "the source SHA must come from the run API response").toContain(
             "head_sha",
         );
-        expect(sourceStep, "the latest release job must be failed or cancelled").toMatch(
-            /failure.*cancelled|cancelled.*failure/s,
+        expect(sourceStep, "the latest release job must have a recoverable conclusion").toMatch(
+            /failure.*cancelled.*timed_out/s,
         );
+        expect(sourceStep).toContain("filter=latest");
         expect(
             recoveryDownload,
             "the historical artifact must use the pinned download action",
@@ -732,22 +792,11 @@ describe("publish visual workflow", () => {
             .filter((line) => !line.trimStart().startsWith("#"))
             .join("\n");
 
-        // Reading `package.json` at HEAD~1 asks "did THIS commit bump the version". No later run
-        // can act on that answer: when the bumping commit's own run is cancelled or fails before
-        // reaching this job, the bump is orphaned, every subsequent commit reports "unchanged", and
-        // that version can never publish -- with no failure anywhere to say so. Measured on this
-        // repository: 0.25.2 (e2e-full failed) and 0.25.3 (run cancelled) were both stranded
-        // exactly this way, and main could not publish either one afterwards.
-        //
-        // The previous version is still READ, because the transition it describes is still
-        // validated: a release moves forward, or it is an explicit republish of the same version.
-        // So the ban is on that comparison DECIDING anything, not on the value existing -- a flat
-        // ban on `HEAD~1` would go red for the validation and get "fixed" by deleting it. What the
-        // comparison may not do is write a step output, which is the entire shape of the old bug.
+        // Normal eligibility is transition-based: unchanged pushes skip, while a real bump is
+        // validated and then checked against GitHub release state. Recovery of a partial historical
+        // run is deliberately handled by recover-release.yml with that run's original artifact.
         const gateScript = extractRunScript(gateBlock).split("\n");
         const comparisonStart = gateScript.findIndex((line) =>
-            // Either direction: the old bug spelled it `!=`, the mode selector spells it `=`.
-            // Matching only one of them would read the other as "no comparison at all".
             /^if \[ "\$CURRENT_VERSION" [!=]?= "\$PREVIOUS_VERSION" \]/.test(line),
         );
         expect(
@@ -766,8 +815,8 @@ describe("publish visual workflow", () => {
             "an unchanged push must decide version_changed=false before any release-state lookup",
         ).toContain('echo "version_changed=false" >> "$GITHUB_OUTPUT"');
 
-        // The replacement must be idempotent state rather than an event: the absence of the GitHub
-        // Release for the CURRENT version, which is the last artifact this job creates.
+        // The unchanged branch must exit before the API probe; release state is consulted only for
+        // a real version transition.
         expect(
             gate,
             "the release gate must not retry an unchanged push from release state",
@@ -784,22 +833,16 @@ describe("publish visual workflow", () => {
             "the release gate must not decide a release from a human-readable message",
         ).not.toMatch(/release not found/);
 
-        // Re-running is only safe because every publishing step guards itself. Remove one of these
-        // guards and the self-healing gate above becomes a double-publish, so they are asserted
-        // here, next to the gate whose safety depends on them, rather than trusted.
-        // Pinned to the guard rather than to its log line: what makes a re-run safe is that the
-        // step compares the live tag against this run's commit. Both outcomes of that comparison
-        // are executed in "the tag the release is published under" below.
+        // A normal release re-checks the live tag and centrally refuses any version already present
+        // in a registry or GitHub Release. Both tag outcomes are executed below.
         expect(
             extractStepBlock(releaseJob, "Validate and create release tag"),
             "tagging must decide from the commit the live tag names",
         ).toContain("$EXPECTED_SHA");
 
-        // The other half of re-run safety, and no longer a create-vs-update switch: a version that
-        // already reached a registry, or already has a Release, is REFUSED outright. What this run
-        // holds is a fresh build of that version rather than the bytes that shipped, so replacing
-        // the published artifact with it would silently change what "v<x>" means to anyone who
-        // already downloaded it. The self-healing gate above is safe only while that refusal holds.
+        // A version that already reached a registry, or already has a Release, is refused outright.
+        // This normal run holds a fresh build rather than the historical bytes; the dedicated
+        // recovery workflow is the only path allowed to resume from the original artifact.
         const refusal = extractStepBlock(
             releaseJob,
             "Refuse rebuilt-artifact recovery for a published version",
@@ -1159,9 +1202,8 @@ describe("publish visual workflow", () => {
         it("refuses to publish under a tag that names a different commit", () => {
             const run = runTagStep(tagScript(), "older");
 
-            // The state gate asks whether the version has a Release, so a run that tagged and then
-            // died before creating one leaves the next push saying "publish" with the tag still on
-            // the older commit. Skipping silently there ships this build under that tag.
+            // A real version transition or an explicit force_publish may encounter a tag left by a
+            // partial run. Publishing under a tag that names another commit would mislabel bytes.
             expect(run.status, "a tag pointing elsewhere must stop the release").not.toBe(0);
             expect(run.stderr, "the failure must name both commits").toContain(run.older);
             expect(run.stderr, "the failure must name both commits").toContain(run.head);

@@ -47,11 +47,11 @@ jobs:
                     exit 1
                   fi
 
-                  RELEASE_JOB=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$FAILED_RUN_ID/jobs?per_page=100" \
+                  RELEASE_JOB=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$FAILED_RUN_ID/jobs?per_page=100&filter=latest" \
                     --jq '[.jobs[] | select(.name == "release")] | sort_by(.id) | last // {} | [.status // "", .conclusion // ""] | @tsv')
                   IFS=$'\t' read -r RELEASE_STATUS RELEASE_CONCLUSION <<< "$RELEASE_JOB"
-                  if [ "$RELEASE_STATUS" != "completed" ] || { [ "$RELEASE_CONCLUSION" != "failure" ] && [ "$RELEASE_CONCLUSION" != "cancelled" ]; }; then
-                    echo "Latest release job must be completed with failure or cancelled; success, skipped, or missing jobs are not recoverable." >&2
+                  if [ "$RELEASE_STATUS" != "completed" ] || { [ "$RELEASE_CONCLUSION" != "failure" ] && [ "$RELEASE_CONCLUSION" != "cancelled" ] && [ "$RELEASE_CONCLUSION" != "timed_out" ]; }; then
+                    echo "Latest release job must be completed with failure, cancelled, or timed_out; success, skipped, or missing jobs are not recoverable." >&2
                     exit 1
                   fi
 

@@ -389,8 +389,8 @@ jobs:
                   #
                   # Reading any of that as "never released" would republish on a transient blip and
                   # would report a broken token as "this version has not shipped" -- the exact
-                  # misdiagnosis that left 0.25.2 and 0.25.3 unreleased. Failing instead costs nothing
-                  # now that the gate reads state: the next push simply asks again.
+                  # misdiagnosis that left 0.25.2 and 0.25.3 unreleased. A manual redispatch of the
+                  # same bump commit can ask again; later unchanged pushes deliberately skip.
                   RELEASE_PROBE=$(gh api -i "repos/$GITHUB_REPOSITORY/releases/tags/v$CURRENT_VERSION" || true)
                   HTTP_STATUS=$(printf '%s\n' "$RELEASE_PROBE" | awk 'NR == 1 { print $2 }')
                   if [ "$HTTP_STATUS" = "200" ]; then
