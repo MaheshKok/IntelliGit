@@ -348,6 +348,131 @@ function runTagStep(script: string, tagPlacement: "head" | "older" | "absent") {
     }
 }
 
+/** Executes the recovery registry guard with a registry download whose bytes the test controls. */
+function runRegistryRecoveryGuard(
+    script: string,
+    downloadedBytes: string,
+    releaseStatus: 200 | 404 = 404,
+) {
+    const workspace = mkdtempSync(join(tmpdir(), "publish-registry-recovery-"));
+    try {
+        const outputPath = join(workspace, "github-output");
+        const vsixPath = join(workspace, "selected.vsix");
+        writeFileSync(outputPath, "");
+        writeFileSync(vsixPath, "selected artifact bytes");
+        const curlStub =
+            `curl() {\n` +
+            `output=''\n` +
+            `while [ "$#" -gt 0 ]; do\n` +
+            `  case "$1" in\n` +
+            `    --output|-o) output="$2"; shift 2 ;;\n` +
+            `    *) shift ;;\n` +
+            `  esac\n` +
+            `done\n` +
+            `printf '%s' "$DOWNLOADED_BYTES" > "$output"\n` +
+            `}\n`;
+        const ghStub =
+            releaseStatus === 200
+                ? `gh() { printf 'HTTP/2.0 200 OK\\r\\n\\r\\n'; return 0; }\n`
+                : `gh() { printf 'HTTP/2.0 404 Not Found\\r\\n\\r\\n'; return 1; }\n`;
+        writeFileSync(join(workspace, "guard.sh"), `${curlStub}${ghStub}${script}`);
+
+        const result = spawnSync("bash", ["-e", join(workspace, "guard.sh")], {
+            cwd: workspace,
+            encoding: "utf8",
+            env: {
+                ...process.env,
+                DOWNLOADED_BYTES: downloadedBytes,
+                GITHUB_OUTPUT: outputPath,
+                GITHUB_REPOSITORY: STUB_REPOSITORY,
+                RECOVERY_MODE: "true",
+                VSCE_PUBLISHED: "true",
+                OVSX_PUBLISHED: "false",
+                VSIX_PATH: vsixPath,
+                EXTENSION_PUBLISHER: "test-owner",
+                EXTENSION_NAME: "test-extension",
+                NEW_VERSION: "9.9.9",
+            },
+        });
+
+        return { status: result.status, stderr: result.stderr ?? "" };
+    } finally {
+        removeScratchDirectoriesSync(workspace);
+    }
+}
+
+interface OpenVsxPublishOptions {
+    readonly publishError: string;
+    readonly probe: "missing" | "live" | "error";
+    readonly probeError?: string;
+    readonly publishedBytes?: string;
+}
+
+/** Executes the Open VSX publishing step with deterministic publish, probe, and download results. */
+function runOpenVsxPublish(script: string, options: OpenVsxPublishOptions) {
+    const workspace = mkdtempSync(join(tmpdir(), "publish-open-vsx-"));
+    try {
+        const countPath = join(workspace, "publish-count");
+        const vsixPath = join(workspace, "selected.vsix");
+        writeFileSync(countPath, "0");
+        writeFileSync(vsixPath, "selected artifact bytes");
+        const bunxStub =
+            `bunx() {\n` +
+            `if [ "$1" = "ovsx" ] && [ "$2" = "publish" ]; then\n` +
+            `  count=$(($(cat "$COUNT_PATH") + 1))\n` +
+            `  printf '%s' "$count" > "$COUNT_PATH"\n` +
+            `  printf '%s\\n' "$PUBLISH_ERROR" >&2\n` +
+            `  return 1\n` +
+            `fi\n` +
+            `if [ "$1" = "ovsx" ] && [ "$2" = "get" ]; then\n` +
+            `  case "$PROBE_MODE" in\n` +
+            `    live) echo '{"version":"9.9.9","allVersions":{"9.9.9":"url"}}'; return 0 ;;\n` +
+            `    error) printf '%s\\n' "$PROBE_ERROR" >&2; return 1 ;;\n` +
+            `    *) echo 'extension has no published version matching 9.9.9' >&2; return 1 ;;\n` +
+            `  esac\n` +
+            `fi\n` +
+            `return 2\n` +
+            `}\n`;
+        const curlStub =
+            `curl() {\n` +
+            `output=''\n` +
+            `while [ "$#" -gt 0 ]; do\n` +
+            `  case "$1" in --output|-o) output="$2"; shift 2 ;; *) shift ;; esac\n` +
+            `done\n` +
+            `printf '%s' "$PUBLISHED_BYTES" > "$output"\n` +
+            `}\n`;
+        const sleepStub = `sleep() { return 0; }\n`;
+        writeFileSync(join(workspace, "publish.sh"), `${bunxStub}${curlStub}${sleepStub}${script}`);
+
+        const result = spawnSync("bash", ["-e", join(workspace, "publish.sh")], {
+            cwd: workspace,
+            encoding: "utf8",
+            env: {
+                ...process.env,
+                COUNT_PATH: countPath,
+                PUBLISH_ERROR: options.publishError,
+                PROBE_MODE: options.probe,
+                PROBE_ERROR: options.probeError ?? "",
+                PUBLISHED_BYTES: options.publishedBytes ?? "",
+                VSIX_PATH: vsixPath,
+                OVSX_PAT: "test-token",
+                EXTENSION_ID: "test-owner.test-extension",
+                EXTENSION_PUBLISHER: "test-owner",
+                EXTENSION_NAME: "test-extension",
+                NEW_VERSION: "9.9.9",
+            },
+        });
+
+        return {
+            status: result.status,
+            stderr: result.stderr ?? "",
+            attempts: Number(readFileSync(countPath, "utf8")),
+        };
+    } finally {
+        removeScratchDirectoriesSync(workspace);
+    }
+}
+
 /** The nightly workflow, or an empty string when it is absent, so a missing file reads as a
  * failed assertion rather than a thrown read. */
 function readNightlyWorkflow(): string {
@@ -355,6 +480,179 @@ function readNightlyWorkflow(): string {
 }
 
 describe("publish visual workflow", () => {
+    it("binds manual recovery to one historical main-branch publish artifact", () => {
+        const workflow = readFileSync(WORKFLOW_PATH, "utf8");
+        const releaseJob = extractJobBlock(workflow, "release");
+        const sourceStep = extractStepBlock(releaseJob, "Resolve historical recovery source");
+        const recoveryDownload = extractStepBlock(releaseJob, "Download historical packaged VSIX");
+
+        expect(workflow, "manual recovery must accept a run id").toMatch(
+            /^ {12}recovery_run_id:\n/m,
+        );
+        expect(workflow, "manual recovery must accept an expected SHA256").toMatch(
+            /^ {12}recovery_sha256:\n/m,
+        );
+        expect(
+            sourceStep,
+            "recovery must reject a run id or SHA256 supplied without its pair",
+        ).toContain("Recovery run id and SHA256 must be supplied together");
+        expect(sourceStep, "the selected run must be resolved through the GitHub API").toMatch(
+            /actions\/runs\/\$RECOVERY_RUN_ID/,
+        );
+        expect(sourceStep, "the API response must bind recovery to this repository").toContain(
+            "$GITHUB_REPOSITORY",
+        );
+        expect(sourceStep, "only publish.yml artifacts may be recovered").toContain(
+            ".github/workflows/publish.yml",
+        );
+        expect(sourceStep, "only the main branch may supply a recovery artifact").toContain(
+            "refs/heads/main",
+        );
+        expect(sourceStep, "the source SHA must come from the run API response").toContain(
+            "head_sha",
+        );
+        expect(
+            recoveryDownload,
+            "the historical artifact must use the pinned download action",
+        ).toContain("actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c");
+        expect(recoveryDownload).toContain("run-id: ${{ steps.release-source.outputs.run_id }}");
+        expect(recoveryDownload).toContain("github-token: ${{ secrets.GITHUB_TOKEN }}");
+        expect(releaseJob, "recovery needs actions and attestation read access only").toMatch(
+            /permissions:\n\s+contents: write\n\s+actions: read\n\s+attestations: read/,
+        );
+        expect(
+            extractStepBlock(releaseJob, "Validate and create release tag"),
+            "tag validation must use the selected run's API-derived source SHA",
+        ).toContain("EXPECTED_SHA: ${{ steps.release-source.outputs.source_sha }}");
+        expect(extractStepBlock(releaseJob, "Publish to VS Code Marketplace")).toContain(
+            "if: steps.publish-status.outputs.vsce_published != 'true'",
+        );
+        expect(extractStepBlock(releaseJob, "Publish to Open VSX")).toContain(
+            "if: steps.publish-status.outputs.ovsx_published != 'true'",
+        );
+        expect(
+            extractStepBlock(releaseJob, "Create GitHub Release and upload artifacts"),
+        ).toContain("if: steps.registry-state.outputs.create_release == 'true'");
+    });
+
+    it("fails closed unless the historical VSIX matches checksum, package identity, and provenance", () => {
+        const releaseJob = extractJobBlock(readFileSync(WORKFLOW_PATH, "utf8"), "release");
+        const verification = extractStepBlock(releaseJob, "Resolve and verify release artifact");
+
+        expect(verification).toContain("vsix_files=(*.vsix)");
+        expect(verification).toContain("checksum_files=(*.vsix.sha256)");
+        expect(verification).toContain('sha256sum --check "$CHECKSUM_PATH"');
+        expect(
+            verification,
+            "recovery must compare the artifact to the operator supplied digest",
+        ).toContain("$RECOVERY_SHA256");
+        expect(verification, "package publisher, name, and version must be verified").toMatch(
+            /publisher.*name.*version/s,
+        );
+        expect(verification, "attestation verification must be repository scoped").toContain(
+            'gh attestation verify "$VSIX_PATH" --repo "$GITHUB_REPOSITORY"',
+        );
+        expect(verification).toContain(
+            '--signer-workflow "$GITHUB_REPOSITORY/.github/workflows/publish.yml"',
+        );
+        expect(verification).toContain('--source-digest "$SOURCE_SHA"');
+        expect(verification).toContain("--source-ref refs/heads/main");
+    });
+
+    it("rejects a live Marketplace version whose downloaded bytes differ", () => {
+        const releaseJob = extractJobBlock(readFileSync(WORKFLOW_PATH, "utf8"), "release");
+        const guard = extractRunScript(
+            extractStepBlock(releaseJob, "Verify published registries and GitHub Release"),
+        );
+        expect(guard, "the registry recovery guard must carry a run script").not.toBe("");
+
+        const run = runRegistryRecoveryGuard(guard, "different published bytes");
+
+        expect(
+            run.status,
+            "a published Marketplace artifact with different bytes must fail recovery",
+        ).not.toBe(0);
+        expect(run.stderr).toContain("does not match the selected artifact");
+
+        const identical = runRegistryRecoveryGuard(guard, "selected artifact bytes");
+        expect(
+            identical.status,
+            "a byte-identical published Marketplace artifact must be skipped safely",
+        ).toBe(0);
+
+        const existingRelease = runRegistryRecoveryGuard(guard, "selected artifact bytes", 200);
+        expect(
+            existingRelease.status,
+            "recovery must refuse an existing GitHub Release rather than update or skip it",
+        ).not.toBe(0);
+    });
+
+    it("retries Open VSX only for transient failures and never attempts a fourth publish", () => {
+        const releaseJob = extractJobBlock(readFileSync(WORKFLOW_PATH, "utf8"), "release");
+        const script = extractRunScript(extractStepBlock(releaseJob, "Publish to Open VSX"));
+        expect(script, "the Open VSX step must carry a retry script").not.toBe("");
+
+        const permanent = runOpenVsxPublish(script, {
+            publishError: "HTTP 400 Bad Request",
+            probe: "missing",
+        });
+        expect(permanent.status, "a non-transient Open VSX failure must fail").not.toBe(0);
+        expect(permanent.attempts, "a non-transient Open VSX failure must not be retried").toBe(1);
+
+        const transient = runOpenVsxPublish(script, {
+            publishError: "HTTP 503 Service Unavailable",
+            probe: "missing",
+        });
+        expect(transient.status, "three exhausted transient attempts must fail").not.toBe(0);
+        expect(transient.attempts, "Open VSX publishing must stop after three attempts").toBe(3);
+
+        const transientProbe = runOpenVsxPublish(script, {
+            publishError: "HTTP 503 Service Unavailable",
+            probe: "error",
+            probeError: "HTTP 503 Service Unavailable",
+        });
+        expect(
+            transientProbe.attempts,
+            "a transient unreadable probe must preserve the bounded publish retry",
+        ).toBe(3);
+
+        const authProbe = runOpenVsxPublish(script, {
+            publishError: "HTTP 503 Service Unavailable",
+            probe: "error",
+            probeError: "HTTP 401 Unauthorized",
+        });
+        expect(authProbe.status, "a non-transient probe failure must fail closed").not.toBe(0);
+        expect(authProbe.attempts, "a non-transient probe failure must stop immediately").toBe(1);
+
+        const becameLive = runOpenVsxPublish(script, {
+            publishError: "HTTP 503 Service Unavailable",
+            probe: "live",
+            publishedBytes: "selected artifact bytes",
+        });
+        expect(becameLive.status, "byte-identical ambiguous success must be accepted").toBe(0);
+        expect(becameLive.attempts).toBe(1);
+
+        const liveMismatch = runOpenVsxPublish(script, {
+            publishError: "HTTP 503 Service Unavailable",
+            probe: "live",
+            publishedBytes: "different bytes",
+        });
+        expect(liveMismatch.status, "ambiguous success with different bytes must fail").not.toBe(0);
+        expect(liveMismatch.attempts).toBe(1);
+    });
+
+    it("keeps recovery status lookup in the repository while reading the selected package", () => {
+        const releaseJob = extractJobBlock(readFileSync(WORKFLOW_PATH, "utf8"), "release");
+        const statusScript = extractRunScript(extractStepBlock(releaseJob, "Check publish status"));
+
+        expect(statusScript, "publish status must accept the selected package path").toContain(
+            'node scripts/check-extension-publish-status.js "$PACKAGE_JSON_PATH"',
+        );
+        expect(statusScript, "publish status must not leave the repository cwd").not.toMatch(
+            /\bcd\b/,
+        );
+    });
+
     it("runs the visual suite through the pinned container wrapper", () => {
         const workflow = readFileSync(WORKFLOW_PATH, "utf8");
 
@@ -499,7 +797,7 @@ describe("publish visual workflow", () => {
         // already downloaded it. The self-healing gate above is safe only while that refusal holds.
         const refusal = extractStepBlock(
             releaseJob,
-            "Refuse rebuilt-artifact recovery for a published version",
+            "Verify published registries and GitHub Release",
         );
         expect(refusal, "the release job must refuse to republish a shipped version").not.toBe("");
         expect(refusal, "a live marketplace version must not be published twice").toContain(
@@ -529,6 +827,39 @@ describe("publish visual workflow", () => {
                 ),
             );
         }
+
+        it("accepts historical recovery when the dispatch targets the original bump commit", () => {
+            const run = runVersionGate(readVersionGateScript(), "0.34.4", {
+                forcePublish: false,
+                previousVersion: "0.34.3",
+                env: {
+                    RECOVERY_RUN_ID: "35251609595",
+                    RECOVERY_SHA256:
+                        "79ab3d38b6fef6c5aecdbab798717b169baf6fd7e4ae79816e93ff553f414457",
+                },
+            });
+
+            expect(
+                run.status,
+                "historical recovery must not require the dispatch commit's version to be unchanged",
+            ).toBe(0);
+            expect(run.outputs.split("\n").filter(Boolean)).toEqual([
+                "version_changed=true",
+                "new_version=0.34.4",
+            ]);
+        });
+
+        it("describes force_publish as current-run retry, not partial-publication recovery", () => {
+            const workflow = readFileSync(WORKFLOW_PATH, "utf8");
+            const forcePublishInput = workflow.slice(
+                workflow.indexOf("            force_publish:"),
+                workflow.indexOf("            skip_e2e_gate:"),
+            );
+
+            expect(forcePublishInput).toContain("recovery_run_id");
+            expect(forcePublishInput).toContain("recovery_sha256");
+            expect(forcePublishInput).not.toContain("recover a marketplace upload");
+        });
 
         it("refuses a version whose newline would append extra step outputs", () => {
             const script = readVersionGateScript();
@@ -749,16 +1080,14 @@ describe("publish visual workflow", () => {
         function runRecoveryRefusal(gh: GhStub, published?: Record<string, string>) {
             const releaseJob = extractJobBlock(readFileSync(WORKFLOW_PATH, "utf8"), "release");
             const script = extractRunScript(
-                extractStepBlock(
-                    releaseJob,
-                    "Refuse rebuilt-artifact recovery for a published version",
-                ),
+                extractStepBlock(releaseJob, "Verify published registries and GitHub Release"),
             );
             expect(script, "the recovery refusal step must carry a run script").not.toBe("");
             return runVersionGate(script, "9.9.9", {
                 gh,
                 env: {
                     NEW_VERSION: "9.9.9",
+                    RECOVERY_MODE: "false",
                     VSCE_PUBLISHED: "false",
                     OVSX_PUBLISHED: "false",
                     ...published,
