@@ -360,14 +360,16 @@
 }
 
 .diff-viewer .diff-segment-deleted {
-    --diff-segment-hue: var(--diff-deleted-hue);
+    --diff-segment-hue: var(--diff-deleted-wash);
+    --diff-hunk-bracket: var(--diff-deleted-wash);
     --diff-word-wash: transparent;
     box-shadow: var(--diff-segment-shadow);
     background: var(--diff-deleted-wash, transparent);
 }
 
 .diff-viewer .diff-segment-modified {
-    --diff-segment-hue: var(--diff-info);
+    --diff-segment-hue: var(--diff-modified-wash);
+    --diff-hunk-bracket: var(--diff-modified-wash);
     box-shadow: var(--diff-segment-shadow);
     background: var(--diff-modified-wash, transparent);
 }

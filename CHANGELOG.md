@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Preserved the bottom Git Log's loaded view when switching panel tabs, avoiding unnecessary reloads of branches, commit history, and changed files.
 - Removed unwanted horizontal webview padding in Cursor and older VS Code hosts so IntelliGit panels fill their available space.
+- Matched modified and deleted diff block boundaries to their light red line fill, removing the dark red outline while preserving changed-word highlights.
 
 ## [0.34.4] - 2026-09-17
 
