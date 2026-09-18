@@ -5,6 +5,13 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.34.5] - 2026-09-18
+
+### Fixed
+
+- Preserved the bottom Git Log's loaded view when switching panel tabs, avoiding unnecessary reloads of branches, commit history, and changed files.
+- Removed unwanted horizontal webview padding in Cursor and older VS Code hosts so IntelliGit panels fill their available space.
+
 ## [0.34.4] - 2026-09-17
 
 ### Changed
