@@ -78,3 +78,24 @@ describe("commit-panel webview registration", () => {
         ).toEqual([]);
     });
 });
+
+describe("Git Log webview registration", () => {
+    it.each(["repositoryMode", "noRepositoryMode", "onboarding"])(
+        "retains branches, commits, and changed files when hidden after %s activation",
+        (activationMode) => {
+            const source = readFileSync(
+                path.join(SRC_DIR, "activation", `${activationMode}.ts`),
+                "utf8",
+            );
+            const registration = registrationCalls(source).find((args) =>
+                args.includes("CommitGraphViewProvider.viewType"),
+            );
+
+            expect(registration, "bottom Git Log provider must be registered").toBeDefined();
+            expect(
+                registration,
+                "Git Log must retain its loaded webview when another bottom-panel tab is selected",
+            ).toMatch(/webviewOptions:\s*\{\s*retainContextWhenHidden:\s*true\s*\}/);
+        },
+    );
+});
