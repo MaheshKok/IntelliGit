@@ -15,7 +15,9 @@ test("bottom Git Log preserves its loaded document and commit details across pan
     fixtureWorkspace,
 }) => {
     const app = await launchFixtureWorkspace({
-        executablePath: await resolveVSCodeExecutable(REPO_ROOT),
+        executablePath:
+            process.env.INTELLIGIT_E2E_EXECUTABLE_PATH ??
+            (await resolveVSCodeExecutable(REPO_ROOT)),
         repoRoot: REPO_ROOT,
         workspace: fixtureWorkspace.workspace,
         channelDir: fixtureWorkspace.channelDir,
@@ -23,6 +25,9 @@ test("bottom Git Log preserves its loaded document and commit details across pan
     });
     try {
         const page = await app.firstWindow();
+        const hostWindow = await app.browserWindow(page);
+        // Keep all three panes visible even when the host starts with an auxiliary sidebar.
+        await hostWindow.evaluate((browserWindow) => browserWindow.setContentSize(1600, 900));
         await page.waitForLoadState("domcontentloaded");
         await dismissFirstRunDialogs(page);
         await waitForE2eChannelReady(fixtureWorkspace.channelDir);

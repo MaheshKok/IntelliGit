@@ -124,6 +124,8 @@ export function renderHarnessDocument(input: HarnessDocumentInput): string {
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         html, body, #root {
+            /* Match the host body selector: older hosts inject unlayered horizontal padding. */
+            margin: 0; padding: 0;
             width: 100%; height: 100%; overflow: hidden;
             font-family: ${SYSTEM_FONT_STACK};
             font-size: 13px;

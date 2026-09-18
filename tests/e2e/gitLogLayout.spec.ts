@@ -33,7 +33,7 @@ test("Git Log fills its webview without host body gutters at every window width"
         const view = new IntelliGitView(page);
         await workbench.runCommand("IntelliGit: Show Git Log");
         const graph = await view.revealPanel();
-        const window = await app.browserWindow(page);
+        const hostWindow = await app.browserWindow(page);
 
         for (const hostStyle of ["installed", "legacy-unlayered"]) {
             if (hostStyle === "legacy-unlayered") {
@@ -46,9 +46,10 @@ test("Git Log fills its webview without host body gutters at every window width"
                 });
             }
             for (const width of [1600, 1100, 640]) {
-                await window.evaluate((browserWindow, nextWidth) => {
+                await hostWindow.evaluate((browserWindow, nextWidth) => {
                     browserWindow.setContentSize(nextWidth, 900);
                 }, width);
+                await expect.poll(() => page.evaluate(() => window.innerWidth)).toBe(width);
                 await expect(graph.getByTestId("commit-list-viewport")).toBeVisible();
                 const bounds = await graph.locator("#root").evaluate((root) => {
                     const rect = root.getBoundingClientRect();
@@ -60,8 +61,10 @@ test("Git Log fills its webview without host body gutters at every window width"
                         paddingRight: body.paddingRight,
                     };
                 });
+                const screenshotPath = testInfo.outputPath(`git-log-${hostStyle}-${width}.png`);
+                await page.screenshot({ path: screenshotPath });
                 await testInfo.attach(`git-log-${hostStyle}-${width}`, {
-                    body: await page.screenshot(),
+                    path: screenshotPath,
                     contentType: "image/png",
                 });
                 expect(

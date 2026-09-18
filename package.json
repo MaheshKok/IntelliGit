@@ -1180,7 +1180,7 @@
         "test:watch": "bun vitest",
         "test:visual": "playwright test --config playwright.visual.config.ts",
         "test:visual:container": "./tests/e2e/docker/run.sh 'bun install --frozen-lockfile && bun run build && bun run test:visual'",
-        "test:e2e": "playwright test --config playwright.e2e.config.ts tests/e2e/flows/flows.spec.ts tests/e2e/undockShortcut.spec.ts",
+        "test:e2e": "playwright test --config playwright.e2e.config.ts tests/e2e/flows/flows.spec.ts tests/e2e/undockShortcut.spec.ts tests/e2e/gitLogPersistence.spec.ts tests/e2e/gitLogLayout.spec.ts",
         "test:e2e:diff-viewer": "playwright test --config playwright.e2e.config.ts tests/e2e/diffViewer.spec.ts",
         "test:e2e:diff-viewer:perf": "playwright test --config playwright.e2e.config.ts tests/e2e/diffViewer.performance.spec.ts",
         "test:e2e:container": "./tests/e2e/docker/run.sh 'bun install --frozen-lockfile && bun run build && xvfb-run -a bun run test:e2e'",
