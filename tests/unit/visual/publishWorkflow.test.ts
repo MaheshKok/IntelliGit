@@ -393,6 +393,7 @@ function runRegistryRecoveryGuard(
     script: string,
     downloadedBytes: string,
     releaseStatus: 200 | 404 = 404,
+    runAttempt = "1",
 ) {
     const workspace = mkdtempSync(join(tmpdir(), "publish-registry-recovery-"));
     try {
@@ -400,6 +401,15 @@ function runRegistryRecoveryGuard(
         const vsixPath = join(workspace, "selected.vsix");
         writeFileSync(outputPath, "");
         writeFileSync(vsixPath, "selected artifact bytes");
+        writeFileSync(
+            join(workspace, "package.json"),
+            JSON.stringify({ publisher: "test-owner", name: "test-extension" }),
+        );
+        mkdirSync(join(workspace, "scripts"));
+        copyFileSync(
+            join(REPOSITORY_ROOT, "scripts", "verifyGhApiNotFound.js"),
+            join(workspace, "scripts", "verifyGhApiNotFound.js"),
+        );
         const curlStub =
             `curl() {\n` +
             `output=''\n` +
@@ -414,7 +424,13 @@ function runRegistryRecoveryGuard(
         const ghStub =
             releaseStatus === 200
                 ? `gh() { printf 'HTTP/2.0 200 OK\\r\\n\\r\\n'; return 0; }\n`
-                : `gh() { printf 'HTTP/2.0 404 Not Found\\r\\n\\r\\n'; return 1; }\n`;
+                : `gh() {\n` +
+                  `  for argument in "$@"; do\n` +
+                  `    if [ "$argument" = "-i" ]; then printf 'HTTP/2.0 404 Not Found\\r\\n\\r\\n'; return 1; fi\n` +
+                  `  done\n` +
+                  `  echo 'gh: Not Found (HTTP 404)' >&2\n` +
+                  `  return 1\n` +
+                  `}\n`;
         writeFileSync(join(workspace, "guard.sh"), `${curlStub}${ghStub}${script}`);
 
         const result = spawnSync("bash", ["-e", join(workspace, "guard.sh")], {
@@ -425,6 +441,7 @@ function runRegistryRecoveryGuard(
                 DOWNLOADED_BYTES: downloadedBytes,
                 GITHUB_OUTPUT: outputPath,
                 GITHUB_REPOSITORY: STUB_REPOSITORY,
+                GITHUB_RUN_ATTEMPT: runAttempt,
                 RECOVERY_MODE: "true",
                 VSCE_PUBLISHED: "true",
                 OVSX_PUBLISHED: "false",
@@ -1189,6 +1206,35 @@ describe("publish visual workflow", () => {
                 "must be recovered from its original artifact",
             );
             expect(run.ghArgs, "the registry check must decide before any API call").toEqual([]);
+        });
+
+        it("resumes a failed-job rerun only when the published registry bytes match", () => {
+            const releaseJob = extractJobBlock(readFileSync(WORKFLOW_PATH, "utf8"), "release");
+            const guard = extractRunScript(
+                extractStepBlock(
+                    releaseJob,
+                    "Refuse rebuilt-artifact recovery for a published version",
+                ),
+            );
+            expect(guard, "the release retry guard must carry a run script").not.toBe("");
+
+            const identical = runRegistryRecoveryGuard(guard, "selected artifact bytes", 404, "2");
+            expect(
+                identical.status,
+                "a rerun may skip a byte-identical registry version and continue",
+            ).toBe(0);
+
+            const different = runRegistryRecoveryGuard(
+                guard,
+                "different published bytes",
+                404,
+                "2",
+            );
+            expect(
+                different.status,
+                "a rerun must not combine different artifacts under one version",
+            ).not.toBe(0);
+            expect(different.stderr).toContain("does not match the selected artifact");
         });
     });
 
