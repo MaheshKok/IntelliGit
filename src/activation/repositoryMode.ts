@@ -1264,6 +1264,7 @@ export async function activateRepositoryMode(
             vscode.window.registerWebviewViewProvider(
                 CommitGraphViewProvider.viewType,
                 captureWebviewViewProvider(commitGraph, "commit-graph-card"),
+                { webviewOptions: { retainContextWhenHidden: true } },
             ),
         );
     }

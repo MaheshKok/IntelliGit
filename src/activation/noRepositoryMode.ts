@@ -130,6 +130,7 @@ export function activateNoRepositoryMode(
         vscode.window.registerWebviewViewProvider(
             CommitGraphViewProvider.viewType,
             commitGraphProvider,
+            { webviewOptions: { retainContextWhenHidden: true } },
         ),
         vscode.window.registerWebviewViewProvider(
             CommitGraphViewProvider.sidebarViewType,
