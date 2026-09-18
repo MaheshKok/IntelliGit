@@ -2194,6 +2194,7 @@ describe("extension integration", () => {
         expect(registerWebviewViewProvider).toHaveBeenCalledWith(
             "intelligit.commitGraph",
             expect.any(MockCommitGraphViewProvider),
+            { webviewOptions: { retainContextWhenHidden: true } },
         );
         expect(registerWebviewViewProvider).toHaveBeenCalledWith(
             "intelligit.commitPanel",

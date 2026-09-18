@@ -56,6 +56,7 @@ function registerNoWorkspaceViews(context: vscode.ExtensionContext): void {
                 "no-workspace",
                 vscode.l10n.t("IntelliGit"),
             ),
+            { webviewOptions: { retainContextWhenHidden: true } },
         ),
         vscode.window.registerWebviewViewProvider(
             CommitGraphViewProvider.sidebarViewType,

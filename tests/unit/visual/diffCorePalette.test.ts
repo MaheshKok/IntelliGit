@@ -290,7 +290,7 @@ describe("diff-core palette", () => {
 
     it("keeps modified areas and word highlights red on both panes", () => {
         const modified = stateRules(viewerCss).get("diff-segment-modified") ?? "";
-        expect(hueIn(propertyIn(modified, "--diff-segment-hue"))).toBe("--diff-info");
+        expect(hueIn(propertyIn(modified, "--diff-segment-hue"))).toBe("--diff-modified-wash");
         expect(propertyIn(modified, "background")).toBe("var(--diff-modified-wash, transparent)");
 
         /** Returns the pane-specific modified-word rule body, failing if it is absent. */
