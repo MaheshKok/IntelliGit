@@ -463,8 +463,9 @@ jobs:
         # when a third arrives -- the same silent cancellation this workflow was restructured to
         # escape, moved down a level. Three merges in a row would publish the first and the third
         # and drop the second. Once a later bump lands, that skipped transition is never asked about
-        # again by this normal workflow. `max` queues up to 100 and runs them FIFO; explicit recovery
-        # of a failed historical run is isolated in recover-release.yml.
+        # again by this normal workflow. `max` queues up to 100 and runs them FIFO. A failed release
+        # job can be rerun against this run's immutable artifact; explicit historical recovery stays
+        # isolated in recover-release.yml.
         #
         # It is sound only beside a literal `cancel-in-progress: false`: GitHub fails workflow
         # VALIDATION when a queued group can also cancel, which stops every job in the file rather
@@ -544,8 +545,40 @@ jobs:
               shell: bash
               run: |
                   if [ "$VSCE_PUBLISHED" = "true" ] || [ "$OVSX_PUBLISHED" = "true" ]; then
-                    echo "A published version must be recovered from its original artifact; refusing to publish rebuilt bytes for the same version." >&2
-                    exit 1
+                    if [ "${GITHUB_RUN_ATTEMPT:-1}" -le 1 ]; then
+                      echo "A published version must be recovered from its original artifact; refusing to publish rebuilt bytes for the same version." >&2
+                      exit 1
+                    fi
+
+                    PACKAGE_FIELDS=$(node -e '
+                      const pkg = require("./package.json");
+                      process.stdout.write([pkg.publisher, pkg.name].join("\t"));
+                    ')
+                    IFS=$'\t' read -r EXTENSION_PUBLISHER EXTENSION_NAME <<< "$PACKAGE_FIELDS"
+
+                    compare_registry_artifact() {
+                      local registry_name="$1"
+                      local registry_url="$2"
+                      local registry_vsix
+                      registry_vsix=$(mktemp "${TMPDIR:-/tmp}/registry-vsix.XXXXXX")
+                      if [ "$registry_name" = "VS Code Marketplace" ]; then
+                        curl --fail --location --silent --show-error --compressed --output "$registry_vsix" "$registry_url"
+                      else
+                        curl --fail --location --silent --show-error --output "$registry_vsix" "$registry_url"
+                      fi
+                      if ! cmp --silent "$VSIX_PATH" "$registry_vsix"; then
+                        echo "$registry_name artifact does not match the selected artifact; failing closed." >&2
+                        return 1
+                      fi
+                      echo "$registry_name already contains byte-identical v$NEW_VERSION; skipping it on this rerun."
+                    }
+
+                    if [ "$VSCE_PUBLISHED" = "true" ]; then
+                      compare_registry_artifact "VS Code Marketplace" "https://marketplace.visualstudio.com/_apis/public/gallery/publishers/$EXTENSION_PUBLISHER/vsextensions/$EXTENSION_NAME/$NEW_VERSION/vspackage"
+                    fi
+                    if [ "$OVSX_PUBLISHED" = "true" ]; then
+                      compare_registry_artifact "Open VSX" "https://open-vsx.org/api/$EXTENSION_PUBLISHER/$EXTENSION_NAME/$NEW_VERSION/file/$EXTENSION_PUBLISHER.$EXTENSION_NAME-$NEW_VERSION.vsix"
+                    fi
                   fi
                   RELEASE_ERROR=$(mktemp)
                   if gh api "repos/$GITHUB_REPOSITORY/releases/tags/v$NEW_VERSION" --silent 2>"$RELEASE_ERROR"; then
@@ -557,6 +590,7 @@ jobs:
                     exit 1
                   fi
               env:
+                  VSIX_PATH: ${{ steps.release-artifact.outputs.vsix_path }}
                   VSCE_PUBLISHED: ${{ steps.publish-status.outputs.vsce_published }}
                   OVSX_PUBLISHED: ${{ steps.publish-status.outputs.ovsx_published }}
                   NEW_VERSION: ${{ needs.release-eligibility.outputs.new_version }}
@@ -590,12 +624,14 @@ jobs:
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
             - name: Publish to VS Code Marketplace
+              if: steps.publish-status.outputs.vsce_published != 'true'
               run: bunx vsce publish --packagePath "$VSIX_PATH" -p "$VSCE_PAT"
               env:
                   VSIX_PATH: ${{ steps.release-artifact.outputs.vsix_path }}
                   VSCE_PAT: ${{ secrets.VSCE_PAT }}
 
             - name: Publish to Open VSX
+              if: steps.publish-status.outputs.ovsx_published != 'true'
               run: bunx ovsx publish -p "$OVSX_PAT" "$VSIX_PATH"
               env:
                   VSIX_PATH: ${{ steps.release-artifact.outputs.vsix_path }}
@@ -614,3 +650,13 @@ jobs:
                   VSIX_PATH: ${{ steps.release-artifact.outputs.vsix_path }}
                   CHECKSUM_PATH: ${{ steps.release-artifact.outputs.checksum_path }}
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+            - name: Explain safe release retry
+              if: failure()
+              shell: bash
+              run: |
+                  {
+                    echo "## Release retry"
+                    echo "Use **Re-run failed jobs** on this workflow run. The retry reuses this run's packaged VSIX, verifies any published copy byte-for-byte, and publishes only missing registries."
+                    echo "If the retry reports different published bytes or an existing GitHub Release, use the **Recover partial release** workflow instead."
+                  } >> "$GITHUB_STEP_SUMMARY"

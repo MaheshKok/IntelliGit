@@ -216,8 +216,18 @@ describe("CI quality hardening workflows", () => {
         );
         expect(recoveryStep).toContain("node scripts/verifyGhApiNotFound.js");
         expect(recoveryStep).toContain("Unable to determine whether the GitHub release exists");
-        expect(releaseJob).not.toContain("Skip VS Code Marketplace publish");
-        expect(releaseJob).not.toContain("Skip Open VSX publish");
+        expect(recoveryStep).toContain(
+            "VSIX_PATH: ${{ steps.release-artifact.outputs.vsix_path }}",
+        );
+        expect(extractStepBlock(releaseJob, "Publish to VS Code Marketplace")).toContain(
+            "if: steps.publish-status.outputs.vsce_published != 'true'",
+        );
+        expect(extractStepBlock(releaseJob, "Publish to Open VSX")).toContain(
+            "if: steps.publish-status.outputs.ovsx_published != 'true'",
+        );
+        const retryHelp = extractStepBlock(releaseJob, "Explain safe release retry");
+        expect(retryHelp).toContain("if: failure()");
+        expect(retryHelp).toContain("Re-run failed jobs");
         expect(releaseJob).not.toContain("git push origin");
         const tagStep = extractStepBlock(releaseJob, "Validate and create release tag");
         const marketplaceStep = extractStepBlock(releaseJob, "Publish to VS Code Marketplace");
