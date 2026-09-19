@@ -222,7 +222,7 @@ const COMMAND_ENTRIES = [
         kind: "command",
         id: "intelligit.fileRollback",
         mutating: true,
-        notCovered: COMMAND_NOT_COVERED,
+        coveredBy: "discard-changes",
     },
     { kind: "command", id: "intelligit.fileJumpToSource", mutating: false },
     {

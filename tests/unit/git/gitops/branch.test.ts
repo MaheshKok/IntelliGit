@@ -444,6 +444,32 @@ describe("GitOps", () => {
             expect(executor.run).not.toHaveBeenCalled();
         });
     });
+    describe("hasFileAtHead", () => {
+        it("checks exact HEAD membership with a literal pathspec", async () => {
+            const executor = createMockExecutor({
+                "ls-tree -z --name-only HEAD -- src/file with spaces.ts":
+                    "src/file with spaces.ts\0",
+            });
+            const ops = new GitOps(executor);
+
+            await expect(ops.hasFileAtHead("src/file with spaces.ts")).resolves.toBe(true);
+            expect(executor.run).toHaveBeenCalledWith([
+                "--literal-pathspecs",
+                "ls-tree",
+                "-z",
+                "--name-only",
+                "HEAD",
+                "--",
+                "src/file with spaces.ts",
+            ]);
+        });
+
+        it("returns false for a path absent from HEAD", async () => {
+            const ops = new GitOps(createMockExecutor({}));
+
+            await expect(ops.hasFileAtHead("new.ts")).resolves.toBe(false);
+        });
+    });
     describe("rollbackAll", () => {
         it("calls reset --hard HEAD and clean -fd", async () => {
             const executor = createMockExecutor({});

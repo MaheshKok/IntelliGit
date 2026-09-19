@@ -659,5 +659,10 @@
     "Git Blame": "Git Blame",
     "Annotate with Git Blame is only available for local files.": "Opcja „Dodaj adnotacje za pomocą Git Blame” jest dostępna tylko dla plików lokalnych.",
     "Git Blame output is too large to open (maximum 4 MiB).": "Wynik Git Blame jest zbyt duży, aby go otworzyć (maksymalnie 4 MiB).",
-    "Annotate with Git Blame failed: {message}": "Nie udało się dodać adnotacji za pomocą Git Blame: {message}"
+    "Annotate with Git Blame failed: {message}": "Nie udało się dodać adnotacji za pomocą Git Blame: {message}",
+    "Rollback is only available for local files.": "Cofanie jest dostępne tylko dla plików lokalnych.",
+    "Save or discard unsaved changes to {path} before rolling it back.": "Przed cofnięciem {path} zapisz lub odrzuć niezapisane zmiany.",
+    "Cannot roll back {path} because it does not exist in HEAD.": "Nie można cofnąć {path}, ponieważ nie istnieje w HEAD.",
+    "Rolled back {path}.": "Cofnięto {path}.",
+    "Rollback failed for {path}: {message}": "Nie udało się cofnąć {path}: {message}"
 }

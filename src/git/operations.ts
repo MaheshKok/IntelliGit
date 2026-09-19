@@ -1358,6 +1358,14 @@ export class GitOps {
             await this.executor.run(withLiteralPathspecs(["clean", "-fd", "--", ...cleanupPaths]));
         }
     }
+    /** Returns whether the exact repository-relative path exists in `HEAD`. */
+    async hasFileAtHead(filePath: string): Promise<boolean> {
+        const safeFilePath = assertRepoRelativeGitPath(filePath);
+        const output = await this.executor.run(
+            withLiteralPathspecs(["ls-tree", "-z", "--name-only", "HEAD", "--", safeFilePath]),
+        );
+        return output.split("\0").includes(safeFilePath);
+    }
     /** Resets the repository to HEAD and removes untracked files, discarding all working-tree changes. */
     async rollbackAll(): Promise<void> {
         await this.executor.run(["reset", "--hard", "HEAD"]);

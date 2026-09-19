@@ -3271,6 +3271,7 @@ describe("extension integration", () => {
         gitOpsState.isRepository.mockResolvedValueOnce(false);
         await activate(context);
         expect(registeredCommands.has("intelligit.selectRepository")).toBe(true);
+        expect(registeredCommands.has("intelligit.fileRollback")).toBe(true);
         expect(registeredCommands.has("intelligit.annotateWithGitBlame")).toBe(true);
         registeredCommands.clear();
 

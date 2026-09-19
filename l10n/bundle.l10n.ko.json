@@ -659,5 +659,10 @@
     "Git Blame": "Git Blame",
     "Annotate with Git Blame is only available for local files.": "'Git Blame으로 주석 달기'는 로컬 파일에서만 사용할 수 있습니다.",
     "Git Blame output is too large to open (maximum 4 MiB).": "Git Blame 출력이 너무 커서 열 수 없습니다(최대 4 MiB).",
-    "Annotate with Git Blame failed: {message}": "Git Blame 주석 달기에 실패했습니다: {message}"
+    "Annotate with Git Blame failed: {message}": "Git Blame 주석 달기에 실패했습니다: {message}",
+    "Rollback is only available for local files.": "롤백은 로컬 파일에만 사용할 수 있습니다.",
+    "Save or discard unsaved changes to {path} before rolling it back.": "{path}을(를) 롤백하기 전에 저장되지 않은 변경 내용을 저장하거나 폐기하세요.",
+    "Cannot roll back {path} because it does not exist in HEAD.": "{path}은(는) HEAD에 없으므로 롤백할 수 없습니다.",
+    "Rolled back {path}.": "{path}을(를) 롤백했습니다.",
+    "Rollback failed for {path}: {message}": "{path} 롤백 실패: {message}"
 }
