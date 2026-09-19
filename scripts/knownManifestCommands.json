@@ -22,6 +22,7 @@
         "intelligit.diff.showInVsCode",
         "intelligit.dockWindow",
         "intelligit.fileAddToVcs",
+        "intelligit.fileContext.fetch",
         "intelligit.fileContext.rollback",
         "intelligit.fileDelete",
         "intelligit.fileJumpToSource",

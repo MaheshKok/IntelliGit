@@ -661,5 +661,7 @@
     "Annotate with Git Blame failed: {message}": "Не удалось добавить аннотации Git Blame: {message}",
     "Rollback is only available for files.": "Откат доступен только для файлов.",
     "Rollback is only available for local files.": "Откат доступен только для локальных файлов.",
-    "Save or discard changes to {path} before rolling back.": "Сохраните или отмените изменения в {path} перед откатом."
+    "Save or discard changes to {path} before rolling back.": "Сохраните или отмените изменения в {path} перед откатом.",
+    "Fetch failed: {message}": "Не удалось получить данные: {message}",
+    "Fetch is only available for local files.": "Получение доступно только для локальных файлов."
 }

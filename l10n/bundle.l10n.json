@@ -131,6 +131,8 @@
     "Enter your GitLab Personal Access Token (requires read_repository scope)": "Enter your GitLab Personal Access Token (requires read_repository scope)",
     "Failed to initialize repository. Check folder permissions.": "Failed to initialize repository. Check folder permissions.",
     "Fetched successfully.": "Fetched successfully.",
+    "Fetch failed: {message}": "Fetch failed: {message}",
+    "Fetch is only available for local files.": "Fetch is only available for local files.",
     "Fetching...": "Fetching...",
     "Fetching your GitHub repositories...": "Fetching your GitHub repositories...",
     "Force push rewrites the remote branch history. Continue?": "Force push rewrites the remote branch history. Continue?",

@@ -661,5 +661,7 @@
     "Annotate with Git Blame failed: {message}": "Annotieren mit Git Blame fehlgeschlagen: {message}",
     "Rollback is only available for files.": "Rollback ist nur für Dateien verfügbar.",
     "Rollback is only available for local files.": "Rollback ist nur für lokale Dateien verfügbar.",
-    "Save or discard changes to {path} before rolling back.": "Speichern oder verwerfen Sie die Änderungen an {path} vor dem Zurücksetzen."
+    "Save or discard changes to {path} before rolling back.": "Speichern oder verwerfen Sie die Änderungen an {path} vor dem Zurücksetzen.",
+    "Fetch failed: {message}": "Abrufen fehlgeschlagen: {message}",
+    "Fetch is only available for local files.": "Abrufen ist nur für lokale Dateien verfügbar."
 }

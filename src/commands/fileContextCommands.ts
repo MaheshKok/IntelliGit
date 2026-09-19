@@ -11,6 +11,7 @@ import {
 } from "../services/diffService";
 import { getErrorMessage } from "../utils/errors";
 import { showTimedInformationMessage } from "../utils/notifications";
+import { runGitOperationFromPanel } from "../views/commitPanelActions";
 
 interface ResolvedFileCommandContext {
     selectedUri: vscode.Uri;
@@ -181,6 +182,44 @@ export async function rollbackFileFromContext(
         );
     } finally {
         await refreshPanels();
+    }
+}
+
+/**
+ * Fetches remote refs for the repository that owns the selected local file.
+ *
+ * The selected URI is captured before repository discovery, and the shared operation runner
+ * receives only the derived Git service, so editor or active-graph changes cannot retarget the
+ * fetch. Explicit invalid contexts fail closed while resolution and Git errors remain visible.
+ */
+export async function fetchFileRepositoryFromContext(
+    ctx: unknown,
+    gitOps: GitOps,
+    refreshPanels: () => Promise<void>,
+    refreshGraph: () => Promise<void>,
+): Promise<void> {
+    try {
+        const resolved = await resolveFileCommandContext(ctx, gitOps);
+        if (!resolved) {
+            await vscode.window.showErrorMessage(
+                vscode.l10n.t("Fetch is only available for local files."),
+            );
+            return;
+        }
+
+        await runGitOperationFromPanel(
+            {
+                gitOps: resolved.gitOps,
+                refreshData: refreshPanels,
+                refreshGraphData: refreshGraph,
+                fireWorkingTreeChanged: () => undefined,
+            },
+            "fetch",
+        );
+    } catch (error) {
+        await vscode.window.showErrorMessage(
+            vscode.l10n.t("Fetch failed: {message}", { message: getErrorMessage(error) }),
+        );
     }
 }
 

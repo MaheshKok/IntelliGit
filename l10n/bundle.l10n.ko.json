@@ -661,5 +661,7 @@
     "Annotate with Git Blame failed: {message}": "Git Blame 주석 달기에 실패했습니다: {message}",
     "Rollback is only available for files.": "롤백은 파일에만 사용할 수 있습니다.",
     "Rollback is only available for local files.": "롤백은 로컬 파일에만 사용할 수 있습니다.",
-    "Save or discard changes to {path} before rolling back.": "롤백하기 전에 {path}의 변경 내용을 저장하거나 버리세요."
+    "Save or discard changes to {path} before rolling back.": "롤백하기 전에 {path}의 변경 내용을 저장하거나 버리세요.",
+    "Fetch failed: {message}": "가져오기 실패: {message}",
+    "Fetch is only available for local files.": "가져오기는 로컬 파일에만 사용할 수 있습니다."
 }

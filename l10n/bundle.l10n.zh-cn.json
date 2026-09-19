@@ -661,5 +661,7 @@
     "Annotate with Git Blame failed: {message}": "使用 Git Blame 添加注释失败：{message}",
     "Rollback is only available for files.": "仅可回滚文件。",
     "Rollback is only available for local files.": "仅可回滚本地文件。",
-    "Save or discard changes to {path} before rolling back.": "回滚前请保存或放弃对 {path} 的更改。"
+    "Save or discard changes to {path} before rolling back.": "回滚前请保存或放弃对 {path} 的更改。",
+    "Fetch failed: {message}": "获取失败：{message}",
+    "Fetch is only available for local files.": "获取仅适用于本地文件。"
 }

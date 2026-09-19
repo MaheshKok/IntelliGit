@@ -661,5 +661,7 @@
     "Annotate with Git Blame failed: {message}": "Git Blame での注釈に失敗しました: {message}",
     "Rollback is only available for files.": "ロールバックはファイルでのみ使用できます。",
     "Rollback is only available for local files.": "ロールバックはローカル ファイルでのみ使用できます。",
-    "Save or discard changes to {path} before rolling back.": "ロールバックする前に、{path} の変更を保存または破棄してください。"
+    "Save or discard changes to {path} before rolling back.": "ロールバックする前に、{path} の変更を保存または破棄してください。",
+    "Fetch failed: {message}": "フェッチに失敗しました: {message}",
+    "Fetch is only available for local files.": "フェッチはローカル ファイルでのみ使用できます。"
 }

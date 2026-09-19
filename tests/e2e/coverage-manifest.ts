@@ -244,6 +244,12 @@ const COMMAND_ENTRIES = [
     { kind: "command", id: "intelligit.annotateWithGitBlame", mutating: false },
     {
         kind: "command",
+        id: "intelligit.fileContext.fetch",
+        mutating: true,
+        notCovered: "No implemented flow exercises this native file context command.",
+    },
+    {
+        kind: "command",
         id: "intelligit.fileContext.rollback",
         mutating: true,
         notCovered: "No implemented flow exercises this native file context command.",

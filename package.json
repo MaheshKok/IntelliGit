@@ -439,6 +439,11 @@
                 "category": "%intelligit%"
             },
             {
+                "command": "intelligit.fileContext.fetch",
+                "title": "%command.fetch%",
+                "category": "%intelligit%"
+            },
+            {
                 "command": "intelligit.fileJumpToSource",
                 "title": "%command.jumpToSource%",
                 "category": "%intelligit%"
@@ -805,6 +810,11 @@
                     "command": "intelligit.fileContext.rollback",
                     "when": "resourceScheme == file",
                     "group": "3_actions@1"
+                },
+                {
+                    "command": "intelligit.fileContext.fetch",
+                    "when": "resourceScheme == file",
+                    "group": "3_actions@2"
                 }
             ],
             "intelligit.editorContext": [
@@ -842,6 +852,11 @@
                     "command": "intelligit.fileContext.rollback",
                     "when": "resourceScheme == file",
                     "group": "3_actions@1"
+                },
+                {
+                    "command": "intelligit.fileContext.fetch",
+                    "when": "resourceScheme == file",
+                    "group": "3_actions@2"
                 }
             ],
             "view/title": [

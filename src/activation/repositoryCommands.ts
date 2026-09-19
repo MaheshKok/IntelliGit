@@ -11,6 +11,7 @@ import {
     annotateWithGitBlame,
     compareFileWithBranchOrTag,
     compareFileWithRevision,
+    fetchFileRepositoryFromContext,
     rollbackFileFromContext,
     showCurrentRevision,
     showFileDiff,
@@ -486,6 +487,14 @@ function registerMergeCommands(deps: RepositoryCommandsDeps): void {
                 );
             },
         ),
+        vscode.commands.registerCommand("intelligit.fileContext.fetch", async (ctx?: unknown) => {
+            await fetchFileRepositoryFromContext(
+                ctx,
+                gitOps,
+                () => deps.refreshService().refreshCommitPanels(),
+                deps.refreshActiveRepository,
+            );
+        }),
         vscode.commands.registerCommand("intelligit.openConflictSession", async () => {
             const conflicts = await gitOps.getConflictFilesDetailed();
             if (conflicts.length === 0) {

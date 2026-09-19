@@ -661,5 +661,7 @@
     "Annotate with Git Blame failed: {message}": "Échec de l’annotation avec Git Blame : {message}",
     "Rollback is only available for files.": "Le rollback est disponible uniquement pour les fichiers.",
     "Rollback is only available for local files.": "Le rollback est disponible uniquement pour les fichiers locaux.",
-    "Save or discard changes to {path} before rolling back.": "Enregistrez ou annulez les modifications de {path} avant le rollback."
+    "Save or discard changes to {path} before rolling back.": "Enregistrez ou annulez les modifications de {path} avant le rollback.",
+    "Fetch failed: {message}": "Échec de la récupération : {message}",
+    "Fetch is only available for local files.": "La récupération est disponible uniquement pour les fichiers locaux."
 }
