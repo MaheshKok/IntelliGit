@@ -39,7 +39,7 @@
     "command.jumpToSource": "跳转至源文件",
     "command.stashChanges": "储藏更改",
     "command.compareWithRevision": "与修订版比较",
-    "command.compareWithBranch": "与分支比较",
+    "command.compareWithBranch": "与分支或标签比较",
     "command.compareWithLocal": "与本地版本比较",
     "command.cherryPickSelectedChange": "Cherry-pick 所选更改",
     "command.revertSelectedChange": "还原所选更改",

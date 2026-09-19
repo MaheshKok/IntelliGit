@@ -272,6 +272,45 @@ describe("GitOps", () => {
         });
     });
 
+    describe("getTags", () => {
+        it("returns sorted tag names with peeled annotated-tag hashes", async () => {
+            const executor = createMockExecutor({
+                "for-each-ref": [
+                    "release/v1\u0000tag-object\u0000commit-one",
+                    "v2\u0000commit-two\u0000",
+                ].join("\n"),
+            });
+            const ops = new GitOps(executor);
+
+            await expect(ops.getTags()).resolves.toEqual([
+                { name: "release/v1", hash: "commit-one" },
+                { name: "v2", hash: "commit-two" },
+            ]);
+            expect(executor.run).toHaveBeenCalledWith([
+                "for-each-ref",
+                "--sort=refname",
+                "--format=%(refname:strip=2)%00%(objectname)%00%(*objectname)",
+                "refs/tags/",
+            ]);
+        });
+
+        it("returns Git-valid tag names that are not valid branch names", async () => {
+            const repo = await createTempGitRepo();
+            try {
+                await git(repo, ["tag", "+release"]);
+                const expectedHash = (await git(repo, ["rev-parse", "+release"])).trim();
+                const ops = new GitOps(new RealGitExecutor(repo) as unknown as GitExecutor);
+
+                await expect(ops.getTags()).resolves.toContainEqual({
+                    name: "+release",
+                    hash: expectedHash,
+                });
+            } finally {
+                await removeScratchDirectories(repo);
+            }
+        });
+    });
+
     describe("hasUncommittedChanges", () => {
         it("checks porcelain status without loading numstat", async () => {
             const executor = createMockExecutor({

@@ -65,8 +65,6 @@
     "Commit message updated.": "Mensagem de commit atualizada.",
     "Committed and pushed successfully.": "Commit e push concluídos com sucesso.",
     "Committed successfully.": "Commit criado com sucesso.",
-    "Compare with Branch": "Comparar com branch",
-    "Compare with Branch is only available for local files.": "A opção \"Comparar com Branch\" está disponível apenas para arquivos locais.",
     "Compare with Revision": "Comparar com a revisão",
     "Compare with Revision is only available for local files.": "A opção \"Comparar com a revisão\" está disponível apenas para arquivos locais.",
     "Conflicts": "Conflitos",
@@ -303,7 +301,6 @@
     "Commit detail error: {message}": "Erro nos detalhes do commit: {message}",
     "Commit file action error: {message}": "Erro na ação de commit do ficheiro: {message}",
     "Commit graph error: {message}": "Erro no gráfico de commit: {message}",
-    "Compare with branch failed: {message}": "A comparação com a ramificação falhou: {message}",
     "Compare with local failed: {message}": "Comparar com local falhou: {message}",
     "Compare with revision failed: {message}": "Comparação com a revisão falhou: {message}",
     "Configure": "Configurar",
@@ -354,7 +351,6 @@
     "Rollback failed: {message}": "O rollback falhou: {message}",
     "Run the \"GitHub: Sign Out\" command, then retry.": "Execute o comando \"GitHub: Sair\" e tente novamente.",
     "SSH clone failed": "A clonagem SSH falhou",
-    "Select a branch for {path}": "Selecione uma ramificação para {path}",
     "Select a recent revision for {path}": "Selecione uma revisão recente para {path}",
     "Stash failed: {message}": "Falha ao guardar no Stash: {message}",
     "Stashed {path}.": "{path} guardado no Stash.",
@@ -650,5 +646,10 @@
     "HEAD moved before Squash Commits could reset it.": "O HEAD foi movido antes que o Squash Commits pudesse repô-lo.",
     "Automatic stash reference {stashRef} moved before cleanup.": "A referência do Stash automático {stashRef} foi movida antes da limpeza.",
     "Squash succeeded and local changes were restored, but automatic stash cleanup failed ({message}); the {stashOid} backup was retained.": "O squash foi concluído com sucesso e as alterações locais foram restauradas, mas a limpeza do Stash automático falhou ({message}); a cópia de segurança {stashOid} foi mantida.",
-    "{message}; local changes were restored, but automatic stash cleanup failed: {cleanupMessage}. The {stashOid} backup was retained.": "{message}; as alterações locais foram restauradas, mas a limpeza do Stash automático falhou: {cleanupMessage}. A cópia de segurança {stashOid} foi mantida."
+    "{message}; local changes were restored, but automatic stash cleanup failed: {cleanupMessage}. The {stashOid} backup was retained.": "{message}; as alterações locais foram restauradas, mas a limpeza do Stash automático falhou: {cleanupMessage}. A cópia de segurança {stashOid} foi mantida.",
+    "Compare with Branch or Tag": "Comparar com branch ou tag",
+    "Compare with Branch or Tag is only available for local files.": "A opção «Comparar com branch ou tag» está disponível apenas para ficheiros locais.",
+    "Compare with branch or tag failed: {message}": "Falha ao comparar com branch ou tag: {message}",
+    "Select a branch or tag for {path}": "Selecione uma branch ou tag para {path}",
+    "tag": "tag"
 }
