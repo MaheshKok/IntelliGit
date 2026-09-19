@@ -8,6 +8,7 @@ import {
 import { GitExecutor } from "../git/executor";
 import { showFileHistory } from "../commands/fileHistoryCommand";
 import {
+    annotateWithGitBlame,
     compareFileWithBranchOrTag,
     compareFileWithRevision,
     showCurrentRevision,
@@ -470,6 +471,12 @@ function registerMergeCommands(deps: RepositoryCommandsDeps): void {
         vscode.commands.registerCommand("intelligit.showCurrentRevision", async (ctx?: unknown) => {
             await showCurrentRevision(ctx, gitOps);
         }),
+        vscode.commands.registerCommand(
+            "intelligit.annotateWithGitBlame",
+            async (ctx?: unknown) => {
+                await annotateWithGitBlame(ctx, gitOps);
+            },
+        ),
         vscode.commands.registerCommand("intelligit.openConflictSession", async () => {
             const conflicts = await gitOps.getConflictFilesDetailed();
             if (conflicts.length === 0) {

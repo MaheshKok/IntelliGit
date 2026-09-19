@@ -10,6 +10,7 @@ const REPO_ROOT = path.resolve(__dirname, "../../..");
 const WEBVIEW_ROOT = path.join(REPO_ROOT, "src", "webviews");
 
 interface PackageJson {
+    scripts?: Record<string, string>;
     contributes?: {
         commands?: Array<{ command?: unknown }>;
     };
@@ -110,6 +111,16 @@ function manifestKey(entry: (typeof COVERAGE_MANIFEST)[number]): string {
 }
 
 describe("E2E coverage manifest", () => {
+    it("runs the Git Blame Explorer scenario in the standard E2E suite", () => {
+        const packageJson = JSON.parse(
+            readFileSync(path.join(REPO_ROOT, "package.json"), "utf8"),
+        ) as PackageJson;
+
+        expect(packageJson.scripts?.["test:e2e"]?.split(/\s+/)).toContain(
+            "tests/e2e/fileContextAnnotateWithGitBlame.spec.ts",
+        );
+    });
+
     it("classifies every entry and resolves every mutating decision", () => {
         const implementedFlowIds = new Set<string>(IMPLEMENTED_FLOW_IDS);
         const contributedCommandIds = new Set(readContributedCommandIds());
@@ -199,7 +210,7 @@ describe("E2E coverage manifest", () => {
         );
 
         expect(aliasIds).toHaveLength(9);
-        expect(collapsedBaseIds).toHaveLength(69);
+        expect(collapsedBaseIds).toHaveLength(70);
         expect(collapsedManifestBaseIds).toEqual(collapsedBaseIds);
     });
 

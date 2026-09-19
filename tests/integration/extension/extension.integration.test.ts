@@ -3271,11 +3271,13 @@ describe("extension integration", () => {
         gitOpsState.isRepository.mockResolvedValueOnce(false);
         await activate(context);
         expect(registeredCommands.has("intelligit.selectRepository")).toBe(true);
+        expect(registeredCommands.has("intelligit.annotateWithGitBlame")).toBe(true);
         registeredCommands.clear();
 
         vi.useFakeTimers();
         try {
             await activate(context);
+            expect(registeredCommands.has("intelligit.annotateWithGitBlame")).toBe(true);
 
             gitOpsState.getCommitDetail.mockRejectedValueOnce(new Error("detail failed"));
             latestCommitGraphProvider!.emitCommitSelected("a1b2c3d4");

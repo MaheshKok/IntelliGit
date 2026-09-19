@@ -36,6 +36,7 @@ function contrastRatio(a: string, b: string): number {
 
 type WebviewContextMenuItem = {
     command?: string;
+    submenu?: string;
     when?: string;
     group?: string;
 };
@@ -585,6 +586,47 @@ describe("extension manifest", () => {
             expect.objectContaining({ command: "intelligit.showCurrentRevision" }),
         );
         expect(showCurrentRevision).not.toHaveProperty("icon");
+
+        const annotateCommands = commands.filter(
+            (entry) => entry.command === "intelligit.annotateWithGitBlame",
+        );
+        expect(annotateCommands).toEqual([
+            {
+                command: "intelligit.annotateWithGitBlame",
+                title: "%command.annotateWithGitBlame%",
+                category: "%intelligit%",
+                icon: "$(git-commit)",
+            },
+        ]);
+        for (const menu of [
+            fileMenu,
+            manifest.contributes?.menus?.["intelligit.editorContext"] ?? [],
+        ]) {
+            expect(
+                menu.filter((entry) => entry.command === "intelligit.annotateWithGitBlame"),
+            ).toEqual([
+                {
+                    command: "intelligit.annotateWithGitBlame",
+                    when: "resourceScheme == file",
+                    group: "2_history@3",
+                },
+            ]);
+        }
+        expect(
+            (manifest.contributes?.menus?.["explorer/context"] ?? []).filter(
+                (entry) => entry.submenu === "intelligit.fileContext",
+            ),
+        ).toHaveLength(1);
+        expect(
+            (manifest.contributes?.menus?.["editor/title/context"] ?? []).filter(
+                (entry) => entry.submenu === "intelligit.fileContext",
+            ),
+        ).toHaveLength(1);
+        expect(
+            (manifest.contributes?.menus?.["editor/context"] ?? []).filter(
+                (entry) => entry.submenu === "intelligit.editorContext",
+            ),
+        ).toHaveLength(1);
     });
 
     it("contributes the commitChecks.enabled feature toggle as a window-scoped boolean", () => {

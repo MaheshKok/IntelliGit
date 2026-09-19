@@ -21,6 +21,8 @@ const COMMAND_ENTRIES = [
     // Read-only history UI; never dispatches the E2E control channel. Runtime scenario:
     // tests/e2e/fileHistory.spec.ts (registration here does not assert that scenario passed).
     { kind: "command", id: "intelligit.showFileHistory", mutating: false },
+    // Runtime scenario: tests/e2e/fileContextAnnotateWithGitBlame.spec.ts.
+    { kind: "command", id: "intelligit.annotateWithGitBlame", mutating: false },
     { kind: "command", id: "intelligit.openUndocked", mutating: false },
     {
         kind: "command",

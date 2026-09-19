@@ -655,5 +655,9 @@
     "Show Diff is only available for local files.": "差分の表示はローカルファイルでのみ利用できます。",
     "Show Diff failed: {message}": "差分の表示に失敗しました: {message}",
     "Show Current Revision is only available for local files.": "現在のリビジョンの表示は、ローカルファイルでのみ利用できます。",
-    "Show Current Revision failed: {message}": "現在のリビジョンの表示に失敗しました: {message}"
+    "Show Current Revision failed: {message}": "現在のリビジョンの表示に失敗しました: {message}",
+    "Git Blame": "Git Blame",
+    "Annotate with Git Blame is only available for local files.": "「Git Blame で注釈」はローカル ファイルでのみ使用できます。",
+    "Git Blame output is too large to open (maximum 4 MiB).": "Git Blame の出力が大きすぎて開けません（最大 4 MiB）。",
+    "Annotate with Git Blame failed: {message}": "Git Blame での注釈に失敗しました: {message}"
 }

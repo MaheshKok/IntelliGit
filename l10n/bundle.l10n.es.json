@@ -655,5 +655,9 @@
     "Show Diff is only available for local files.": "«Mostrar diferencia» solo está disponible para archivos locales.",
     "Show Diff failed: {message}": "No se pudo mostrar la diferencia: {message}",
     "Show Current Revision is only available for local files.": "«Mostrar revisión actual» solo está disponible para archivos locales.",
-    "Show Current Revision failed: {message}": "No se pudo mostrar la revisión actual: {message}"
+    "Show Current Revision failed: {message}": "No se pudo mostrar la revisión actual: {message}",
+    "Git Blame": "Git Blame",
+    "Annotate with Git Blame is only available for local files.": "Anotar con Git Blame solo está disponible para archivos locales.",
+    "Git Blame output is too large to open (maximum 4 MiB).": "La salida de Git Blame es demasiado grande para abrirla (máximo 4 MiB).",
+    "Annotate with Git Blame failed: {message}": "Error al anotar con Git Blame: {message}"
 }
