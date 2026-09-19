@@ -497,7 +497,7 @@ describe("extension manifest", () => {
         expect([...providerEnum].sort()).toEqual(["bitbucket-server", "gitlab"]);
     });
 
-    it("offers Compare with Revision from Explorer and editor tab file menus", () => {
+    it("offers file comparison actions from Explorer and editor tab file menus", () => {
         const manifest = JSON.parse(
             readFileSync(path.join(process.cwd(), "package.json"), "utf8"),
         ) as ExtensionManifest;
@@ -506,8 +506,12 @@ describe("extension manifest", () => {
         const command = commands.find(
             (entry) => entry.command === "intelligit.compareWithRevision",
         );
+        const branchOrTagCommand = commands.find(
+            (entry) => entry.command === "intelligit.compareWithBranch",
+        );
 
         expect(command?.icon).toBe("$(compare-changes)");
+        expect(branchOrTagCommand?.icon).toBe("$(git-compare)");
 
         expect(manifest.contributes?.menus?.["editor/title/context"]).toContainEqual({
             submenu: "intelligit.fileContext",
@@ -523,6 +527,11 @@ describe("extension manifest", () => {
             command: "intelligit.compareWithRevision",
             when: "resourceScheme == file",
             group: "1_compare@1",
+        });
+        expect(fileMenu).toContainEqual({
+            command: "intelligit.compareWithBranch",
+            when: "resourceScheme == file",
+            group: "1_compare@2",
         });
     });
 

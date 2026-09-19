@@ -65,8 +65,6 @@
     "Commit message updated.": "コミットメッセージを更新しました。",
     "Committed and pushed successfully.": "コミットとプッシュが完了しました。",
     "Committed successfully.": "コミットが完了しました。",
-    "Compare with Branch": "ブランチと比較",
-    "Compare with Branch is only available for local files.": "ブランチとの比較は、ローカルファイルでのみ利用可能です。",
     "Compare with Revision": "改訂版と比較",
     "Compare with Revision is only available for local files.": "リビジョンとの比較は、ローカルファイルでのみ利用可能です。",
     "Conflicts": "紛争",
@@ -303,7 +301,6 @@
     "Commit detail error: {message}": "コミット詳細エラー: {message}",
     "Commit file action error: {message}": "コミットファイル操作エラー: {message}",
     "Commit graph error: {message}": "コミットグラフエラー: {message}",
-    "Compare with branch failed: {message}": "ブランチとの比較に失敗しました: {message}",
     "Compare with local failed: {message}": "ローカルとの比較に失敗しました: {message}",
     "Compare with revision failed: {message}": "リビジョンとの比較に失敗しました: {message}",
     "Configure": "設定する",
@@ -354,7 +351,6 @@
     "Rollback failed: {message}": "ロールバックに失敗しました: {message}",
     "Run the \"GitHub: Sign Out\" command, then retry.": "「GitHub: サインアウト」コマンドを実行してから、もう一度お試しください。",
     "SSH clone failed": "SSHクローンが失敗しました",
-    "Select a branch for {path}": "{path} のブランチを選択してください",
     "Select a recent revision for {path}": "{path} の最新のリビジョンを選択してください。",
     "Stash failed: {message}": "スタッシュに失敗しました: {message}",
     "Stashed {path}.": "{path} をスタッシュしました。",
@@ -650,5 +646,10 @@
     "HEAD moved before Squash Commits could reset it.": "Squash Commits がリセットする前に HEAD が移動しました。",
     "Automatic stash reference {stashRef} moved before cleanup.": "自動スタッシュ参照 {stashRef} はクリーンアップ前に移動しました。",
     "Squash succeeded and local changes were restored, but automatic stash cleanup failed ({message}); the {stashOid} backup was retained.": "Squash は成功し、ローカルの変更も復元されましたが、自動スタッシュのクリーンアップに失敗しました（{message}）。バックアップ {stashOid} は保持されています。",
-    "{message}; local changes were restored, but automatic stash cleanup failed: {cleanupMessage}. The {stashOid} backup was retained.": "{message}。ローカルの変更は復元されましたが、自動スタッシュのクリーンアップに失敗しました: {cleanupMessage}。バックアップ {stashOid} は保持されています。"
+    "{message}; local changes were restored, but automatic stash cleanup failed: {cleanupMessage}. The {stashOid} backup was retained.": "{message}。ローカルの変更は復元されましたが、自動スタッシュのクリーンアップに失敗しました: {cleanupMessage}。バックアップ {stashOid} は保持されています。",
+    "Compare with Branch or Tag": "ブランチまたはタグと比較",
+    "Compare with Branch or Tag is only available for local files.": "ブランチまたはタグとの比較は、ローカルファイルでのみ利用できます。",
+    "Compare with branch or tag failed: {message}": "ブランチまたはタグとの比較に失敗しました: {message}",
+    "Select a branch or tag for {path}": "{path} のブランチまたはタグを選択してください",
+    "tag": "タグ"
 }

@@ -39,7 +39,7 @@
     "command.jumpToSource": "ソースへジャンプ",
     "command.stashChanges": "変更をスタッシュ",
     "command.compareWithRevision": "リビジョンと比較",
-    "command.compareWithBranch": "ブランチと比較",
+    "command.compareWithBranch": "ブランチまたはタグと比較",
     "command.compareWithLocal": "ローカルと比較",
     "command.cherryPickSelectedChange": "選択した変更をチェリーピック",
     "command.revertSelectedChange": "選択した変更を元に戻す",

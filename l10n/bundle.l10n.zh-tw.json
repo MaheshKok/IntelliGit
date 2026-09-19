@@ -65,8 +65,6 @@
     "Commit message updated.": "提交訊息已更新。",
     "Committed and pushed successfully.": "提交和推送成功。",
     "Committed successfully.": "提交成功。",
-    "Compare with Branch": "與分支比較",
-    "Compare with Branch is only available for local files.": "與分支進行比較僅適用於本機檔案。",
     "Compare with Revision": "與修訂版比較",
     "Compare with Revision is only available for local files.": "「與版本比較」功能僅適用於本機檔案。",
     "Conflicts": "衝突",
@@ -303,7 +301,6 @@
     "Commit detail error: {message}": "提交詳情錯誤：{message}",
     "Commit file action error: {message}": "提交文件操作錯誤：{message}",
     "Commit graph error: {message}": "提交圖錯誤：{message}",
-    "Compare with branch failed: {message}": "與分支比較失敗：{message}",
     "Compare with local failed: {message}": "與本地比較失敗：{message}",
     "Compare with revision failed: {message}": "與修訂版比較失敗：{message}",
     "Configure": "配置",
@@ -354,7 +351,6 @@
     "Rollback failed: {message}": "回滾失敗：{message}",
     "Run the \"GitHub: Sign Out\" command, then retry.": "執行“GitHub: Sign Out”命令，然後重試。",
     "SSH clone failed": "SSH 克隆失敗",
-    "Select a branch for {path}": "為 {path} 選擇一個分支",
     "Select a recent revision for {path}": "選擇 {path} 的最新修訂版本",
     "Stash failed: {message}": "儲藏失敗：{message}",
     "Stashed {path}.": "已儲藏 {path}。",
@@ -650,5 +646,10 @@
     "HEAD moved before Squash Commits could reset it.": "在壓縮提交重設 HEAD 之前，HEAD 已發生移動。",
     "Automatic stash reference {stashRef} moved before cleanup.": "自動儲藏參照 {stashRef} 在清理前發生了移動。",
     "Squash succeeded and local changes were restored, but automatic stash cleanup failed ({message}); the {stashOid} backup was retained.": "壓縮成功且本機變更已還原，但自動儲藏清理失敗（{message}）；已保留備份 {stashOid}。",
-    "{message}; local changes were restored, but automatic stash cleanup failed: {cleanupMessage}. The {stashOid} backup was retained.": "{message}；本機變更已還原，但自動儲藏清理失敗：{cleanupMessage}。已保留備份 {stashOid}。"
+    "{message}; local changes were restored, but automatic stash cleanup failed: {cleanupMessage}. The {stashOid} backup was retained.": "{message}；本機變更已還原，但自動儲藏清理失敗：{cleanupMessage}。已保留備份 {stashOid}。",
+    "Compare with Branch or Tag": "與分支或標籤比較",
+    "Compare with Branch or Tag is only available for local files.": "「與分支或標籤比較」僅適用於本機檔案。",
+    "Compare with branch or tag failed: {message}": "與分支或標籤比較失敗：{message}",
+    "Select a branch or tag for {path}": "為 {path} 選擇分支或標籤",
+    "tag": "標籤"
 }

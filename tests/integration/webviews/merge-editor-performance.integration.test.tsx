@@ -89,8 +89,21 @@ function buildLargeConflictData(): SyntheticData {
     };
 }
 
-function readMeasuredFile(relativePath: string): string {
-    return readFileSync(path.resolve(process.cwd(), relativePath), "utf8");
+/**
+ * Reads a benchmark source, optionally limiting it to a stable historical line count.
+ * The limit includes the final empty entry produced by a trailing newline and fails
+ * explicitly if source shrinkage can no longer provide the calibrated fixture size.
+ */
+function readMeasuredFile(relativePath: string, benchmarkLineCount?: number): string {
+    const source = readFileSync(path.resolve(process.cwd(), relativePath), "utf8");
+    if (benchmarkLineCount === undefined) return source;
+
+    const lines = source.split("\n");
+    expect(
+        lines.length,
+        `${relativePath} must retain at least ${benchmarkLineCount} benchmark lines`,
+    ).toBeGreaterThanOrEqual(benchmarkLineCount);
+    return `${lines.slice(0, benchmarkLineCount - 1).join("\n")}\n`;
 }
 
 function modifiedCopy(source: string, marker: string): string {
@@ -105,8 +118,13 @@ function modifiedCopy(source: string, marker: string): string {
     return lines.join("\n");
 }
 
-function buildViewerData(sourceFile: string, name: string): DiffViewerData {
-    const left = readMeasuredFile(sourceFile);
+/** Builds diff-viewer input from the fixed-size source tier used by the render budget. */
+function buildViewerData(
+    sourceFile: string,
+    name: string,
+    benchmarkLineCount?: number,
+): DiffViewerData {
+    const left = readMeasuredFile(sourceFile, benchmarkLineCount);
     const right = modifiedCopy(left, name);
     return {
         path: sourceFile,
@@ -148,17 +166,27 @@ describe("MergeEditorApp large document flow", () => {
 
         const renderMs: Record<string, number> = {};
         const lineCount: Record<string, number> = {};
-        for (const { name, sourceFile } of [
-            { name: "small", sourceFile: "src/diff/wordDiff.ts" },
-            { name: "typical", sourceFile: "src/services/diffService.ts" },
-            { name: "large", sourceFile: "src/views/CommitPanelViewProvider.ts" },
+        // Keep the calibrated typical/large inputs at their pre-phase HEAD sizes so
+        // unrelated source growth cannot silently redefine the render-growth budget.
+        for (const { name, sourceFile, benchmarkLineCount } of [
+            { name: "small", sourceFile: "src/diff/wordDiff.ts", benchmarkLineCount: undefined },
+            {
+                name: "typical",
+                sourceFile: "src/services/diffService.ts",
+                benchmarkLineCount: 1_183,
+            },
+            {
+                name: "large",
+                sourceFile: "src/views/CommitPanelViewProvider.ts",
+                benchmarkLineCount: 2_571,
+            },
         ]) {
-            const data = buildViewerData(sourceFile, name);
+            const data = buildViewerData(sourceFile, name, benchmarkLineCount);
             const renderStart = performance.now();
             dispatchHostMessage({ type: "setDiffData", data });
             await flush();
             renderMs[name] = performance.now() - renderStart;
-            lineCount[name] = readMeasuredFile(sourceFile).split("\n").length;
+            lineCount[name] = readMeasuredFile(sourceFile, benchmarkLineCount).split("\n").length;
 
             expect(document.querySelectorAll(".diff-pane .code-block").length).toBeGreaterThan(0);
         }

@@ -65,8 +65,6 @@
     "Commit message updated.": "Commit-Nachricht aktualisiert.",
     "Committed and pushed successfully.": "Commit und Push erfolgreich.",
     "Committed successfully.": "Commit erfolgreich.",
-    "Compare with Branch": "Mit Branch vergleichen",
-    "Compare with Branch is only available for local files.": "Mit Branch vergleichen ist nur für lokale Dateien verfügbar.",
     "Compare with Revision": "Mit Revision vergleichen",
     "Compare with Revision is only available for local files.": "Die Funktion „Mit Revision vergleichen“ ist nur für lokale Dateien verfügbar.",
     "Conflicts": "Konflikte",
@@ -303,7 +301,6 @@
     "Commit detail error: {message}": "Fehlerdetails beim Commit: {message}",
     "Commit file action error: {message}": "Fehler beim Commit der Datei: {message}",
     "Commit graph error: {message}": "Commit-Graph-Fehler: {message}",
-    "Compare with branch failed: {message}": "Vergleich mit Branch fehlgeschlagen: {message}",
     "Compare with local failed: {message}": "Vergleich mit lokalem Fehler: {message}",
     "Compare with revision failed: {message}": "Vergleich mit Revision fehlgeschlagen: {message}",
     "Configure": "Konfigurieren",
@@ -354,7 +351,6 @@
     "Rollback failed: {message}": "Rollback fehlgeschlagen: {message}",
     "Run the \"GitHub: Sign Out\" command, then retry.": "Führen Sie den Befehl „GitHub: Abmelden“ aus und versuchen Sie es dann erneut.",
     "SSH clone failed": "SSH-Klonen fehlgeschlagen",
-    "Select a branch for {path}": "Branch für {path} auswählen",
     "Select a recent revision for {path}": "Wählen Sie eine aktuelle Revision für {path} aus.",
     "Stash failed: {message}": "Stash fehlgeschlagen: {message}",
     "Stashed {path}.": "{path} im Stash gespeichert.",
@@ -650,5 +646,10 @@
     "HEAD moved before Squash Commits could reset it.": "HEAD wurde verschoben, bevor Squash Commits den Reset ausführen konnte.",
     "Automatic stash reference {stashRef} moved before cleanup.": "Die automatische Stash-Referenz {stashRef} wurde vor der Bereinigung verschoben.",
     "Squash succeeded and local changes were restored, but automatic stash cleanup failed ({message}); the {stashOid} backup was retained.": "Squash war erfolgreich und die lokalen Änderungen wurden wiederhergestellt, aber die Bereinigung des automatischen Stashs ist fehlgeschlagen ({message}); die Sicherung {stashOid} wurde beibehalten.",
-    "{message}; local changes were restored, but automatic stash cleanup failed: {cleanupMessage}. The {stashOid} backup was retained.": "{message}; die lokalen Änderungen wurden wiederhergestellt, aber die Bereinigung des automatischen Stashs ist fehlgeschlagen: {cleanupMessage}. Die Sicherung {stashOid} wurde beibehalten."
+    "{message}; local changes were restored, but automatic stash cleanup failed: {cleanupMessage}. The {stashOid} backup was retained.": "{message}; die lokalen Änderungen wurden wiederhergestellt, aber die Bereinigung des automatischen Stashs ist fehlgeschlagen: {cleanupMessage}. Die Sicherung {stashOid} wurde beibehalten.",
+    "Compare with Branch or Tag": "Mit Branch oder Tag vergleichen",
+    "Compare with Branch or Tag is only available for local files.": "„Mit Branch oder Tag vergleichen“ ist nur für lokale Dateien verfügbar.",
+    "Compare with branch or tag failed: {message}": "Vergleich mit Branch oder Tag fehlgeschlagen: {message}",
+    "Select a branch or tag for {path}": "Branch oder Tag für {path} auswählen",
+    "tag": "Tag"
 }

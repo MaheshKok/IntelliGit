@@ -51,7 +51,7 @@
     "command.stashChanges": "Stash Changes",
     "command.addToVcs": "Add to VCS",
     "command.compareWithRevision": "Compare with Revision",
-    "command.compareWithBranch": "Compare with Branch",
+    "command.compareWithBranch": "Compare with Branch or Tag",
     "command.compareWithLocal": "Compare with Local",
     "command.cherryPickSelectedChange": "Cherry-pick Selected Change",
     "command.revertSelectedChange": "Revert Selected Change",

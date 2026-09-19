@@ -65,8 +65,6 @@
     "Commit message updated.": "Zaktualizowano komunikat zatwierdzenia.",
     "Committed and pushed successfully.": "Commit i push zakończone powodzeniem.",
     "Committed successfully.": "Commit utworzony pomyślnie.",
-    "Compare with Branch": "Porównaj z branchem",
-    "Compare with Branch is only available for local files.": "Opcja Porównaj z gałęzią jest dostępna tylko dla plików lokalnych.",
     "Compare with Revision": "Porównaj z wersją",
     "Compare with Revision is only available for local files.": "Opcja Porównaj z wersją jest dostępna tylko w przypadku plików lokalnych.",
     "Conflicts": "Konflikty",
@@ -303,7 +301,6 @@
     "Commit detail error: {message}": "Błąd szczegółów zatwierdzenia: {message}",
     "Commit file action error: {message}": "Błąd akcji zatwierdzania pliku: {message}",
     "Commit graph error: {message}": "Błąd wykresu zatwierdzenia: {message}",
-    "Compare with branch failed: {message}": "Porównanie z gałęzią nie powiodło się: {message}",
     "Compare with local failed: {message}": "Porównanie z lokalnym nie powiodło się: {message}",
     "Compare with revision failed: {message}": "Porównanie z wersją nie powiodło się: {message}",
     "Configure": "Konfiguruj",
@@ -354,7 +351,6 @@
     "Rollback failed: {message}": "Nie udało się wycofać: {message}",
     "Run the \"GitHub: Sign Out\" command, then retry.": "Uruchom polecenie „GitHub: Sign Out” i spróbuj ponownie.",
     "SSH clone failed": "Klonowanie przez SSH nie powiodło się",
-    "Select a branch for {path}": "Wybierz gałąź dla {path}",
     "Select a recent revision for {path}": "Wybierz ostatnią wersję dla {path}",
     "Stash failed: {message}": "Nie udało się schować zmian: {message}",
     "Stashed {path}.": "Schowano {path}.",
@@ -650,5 +646,10 @@
     "HEAD moved before Squash Commits could reset it.": "HEAD zmienił się, zanim Squash Commits mógł go zresetować.",
     "Automatic stash reference {stashRef} moved before cleanup.": "Odwołanie automatycznego schowka {stashRef} zmieniło się przed czyszczeniem.",
     "Squash succeeded and local changes were restored, but automatic stash cleanup failed ({message}); the {stashOid} backup was retained.": "Squash zakończył się powodzeniem i przywrócono zmiany lokalne, ale czyszczenie automatycznego schowka nie powiodło się ({message}); kopia zapasowa {stashOid} została zachowana.",
-    "{message}; local changes were restored, but automatic stash cleanup failed: {cleanupMessage}. The {stashOid} backup was retained.": "{message}; przywrócono zmiany lokalne, ale czyszczenie automatycznego schowka nie powiodło się: {cleanupMessage}. Kopia zapasowa {stashOid} została zachowana."
+    "{message}; local changes were restored, but automatic stash cleanup failed: {cleanupMessage}. The {stashOid} backup was retained.": "{message}; przywrócono zmiany lokalne, ale czyszczenie automatycznego schowka nie powiodło się: {cleanupMessage}. Kopia zapasowa {stashOid} została zachowana.",
+    "Compare with Branch or Tag": "Porównaj z gałęzią lub tagiem",
+    "Compare with Branch or Tag is only available for local files.": "Opcja „Porównaj z gałęzią lub tagiem” jest dostępna tylko dla plików lokalnych.",
+    "Compare with branch or tag failed: {message}": "Porównanie z gałęzią lub tagiem nie powiodło się: {message}",
+    "Select a branch or tag for {path}": "Wybierz gałąź lub tag dla {path}",
+    "tag": "tag"
 }

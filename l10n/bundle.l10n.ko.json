@@ -65,8 +65,6 @@
     "Commit message updated.": "커밋 메시지가 업데이트되었습니다.",
     "Committed and pushed successfully.": "커밋 및 푸시가 완료되었습니다.",
     "Committed successfully.": "커밋이 완료되었습니다.",
-    "Compare with Branch": "브랜치와 비교",
-    "Compare with Branch is only available for local files.": "브랜치 비교 기능은 로컬 파일에만 사용할 수 있습니다.",
     "Compare with Revision": "수정본과 비교",
     "Compare with Revision is only available for local files.": "'수정본 비교' 기능은 로컬 파일에만 사용할 수 있습니다.",
     "Conflicts": "갈등",
@@ -303,7 +301,6 @@
     "Commit detail error: {message}": "커밋 상세 오류: {message}",
     "Commit file action error: {message}": "커밋 파일 작업 오류: {message}",
     "Commit graph error: {message}": "그래프 커밋 오류: {message}",
-    "Compare with branch failed: {message}": "브랜치 비교 실패: {message}",
     "Compare with local failed: {message}": "로컬 데이터와 비교 실패: {message}",
     "Compare with revision failed: {message}": "수정본 비교 실패: {message}",
     "Configure": "구성",
@@ -354,7 +351,6 @@
     "Rollback failed: {message}": "롤백 실패: {message}",
     "Run the \"GitHub: Sign Out\" command, then retry.": "\"GitHub: 로그아웃\" 명령을 실행한 다음 다시 시도하세요.",
     "SSH clone failed": "SSH 클론 실패",
-    "Select a branch for {path}": "{path}에 대한 브랜치를 선택하세요",
     "Select a recent revision for {path}": "{path}에 대한 최근 수정 버전을 선택하세요",
     "Stash failed: {message}": "스태시 실패: {message}",
     "Stashed {path}.": "{path} 스태시됨.",
@@ -650,5 +646,10 @@
     "HEAD moved before Squash Commits could reset it.": "스쿼시 커밋이 재설정하기 전에 HEAD가 이동했습니다.",
     "Automatic stash reference {stashRef} moved before cleanup.": "자동 스태시 참조({stashRef})가 정리 전에 이동했습니다.",
     "Squash succeeded and local changes were restored, but automatic stash cleanup failed ({message}); the {stashOid} backup was retained.": "스쿼시에 성공하고 로컬 변경 사항도 복원했지만 자동 스태시 정리에 실패했습니다({message}). 백업은 유지되었습니다: {stashOid}.",
-    "{message}; local changes were restored, but automatic stash cleanup failed: {cleanupMessage}. The {stashOid} backup was retained.": "{message}; 로컬 변경 사항은 복원했지만 자동 스태시 정리에 실패했습니다: {cleanupMessage}. 백업은 유지되었습니다: {stashOid}."
+    "{message}; local changes were restored, but automatic stash cleanup failed: {cleanupMessage}. The {stashOid} backup was retained.": "{message}; 로컬 변경 사항은 복원했지만 자동 스태시 정리에 실패했습니다: {cleanupMessage}. 백업은 유지되었습니다: {stashOid}.",
+    "Compare with Branch or Tag": "브랜치 또는 태그와 비교",
+    "Compare with Branch or Tag is only available for local files.": "브랜치 또는 태그 비교는 로컬 파일에서만 사용할 수 있습니다.",
+    "Compare with branch or tag failed: {message}": "브랜치 또는 태그 비교에 실패했습니다: {message}",
+    "Select a branch or tag for {path}": "{path}의 브랜치 또는 태그를 선택하세요",
+    "tag": "태그"
 }
