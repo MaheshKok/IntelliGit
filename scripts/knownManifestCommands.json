@@ -23,6 +23,7 @@
         "intelligit.dockWindow",
         "intelligit.fileAddToVcs",
         "intelligit.fileContext.fetch",
+        "intelligit.fileContext.pull",
         "intelligit.fileContext.rollback",
         "intelligit.fileDelete",
         "intelligit.fileJumpToSource",

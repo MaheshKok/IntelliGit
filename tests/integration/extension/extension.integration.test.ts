@@ -1249,6 +1249,7 @@ describe("extension integration", () => {
         expect(registeredCommands.has("intelligit.annotateWithGitBlame")).toBe(true);
         expect(registeredCommands.has("intelligit.fileContext.rollback")).toBe(true);
         expect(registeredCommands.has("intelligit.fileContext.fetch")).toBe(true);
+        expect(registeredCommands.has("intelligit.fileContext.pull")).toBe(true);
     });
 
     it("initializes Git in an uninitialized workspace and activates repository views without reload", async () => {

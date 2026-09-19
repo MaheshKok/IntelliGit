@@ -663,5 +663,7 @@
     "Rollback is only available for local files.": "A reversão só está disponível para arquivos locais.",
     "Save or discard changes to {path} before rolling back.": "Salve ou descarte as alterações em {path} antes de reverter.",
     "Fetch failed: {message}": "Falha ao buscar: {message}",
-    "Fetch is only available for local files.": "A busca só está disponível para arquivos locais."
+    "Fetch is only available for local files.": "A busca só está disponível para arquivos locais.",
+    "Pull failed: {message}": "Falha ao executar o pull: {message}",
+    "Pull is only available for local files.": "O pull só está disponível para arquivos locais."
 }

@@ -201,6 +201,7 @@ export function activateNoRepositoryMode(
         "intelligit.graph.sync.color",
         "intelligit.annotateWithGitBlame",
         "intelligit.fileContext.fetch",
+        "intelligit.fileContext.pull",
         "intelligit.fileContext.rollback",
         "intelligit.showCurrentRevision",
         "intelligit.showFileDiff",

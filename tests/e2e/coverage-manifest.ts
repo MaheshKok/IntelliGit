@@ -250,6 +250,12 @@ const COMMAND_ENTRIES = [
     },
     {
         kind: "command",
+        id: "intelligit.fileContext.pull",
+        mutating: true,
+        notCovered: "No implemented flow exercises this native file context command.",
+    },
+    {
+        kind: "command",
         id: "intelligit.fileContext.rollback",
         mutating: true,
         notCovered: "No implemented flow exercises this native file context command.",

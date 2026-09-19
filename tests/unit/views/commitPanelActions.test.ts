@@ -139,6 +139,23 @@ describe("runGitOperationFromPanel", () => {
         },
     );
 
+    it("pulls with rebase on the supplied repository and refreshes both surfaces", async () => {
+        const scopedGitOps = makeGitOps("origin/main");
+        const deps = makeDeps(scopedGitOps);
+
+        await runGitOperationFromPanel(deps, "pull");
+
+        expect(scopedGitOps.pullRebase).toHaveBeenCalledTimes(1);
+        expect(scopedGitOps.fetch).not.toHaveBeenCalled();
+        expect(scopedGitOps.push).not.toHaveBeenCalled();
+        expect(deps.refreshData).toHaveBeenCalledTimes(1);
+        expect(deps.refreshGraphData).toHaveBeenCalledTimes(1);
+        expect(deps.fireWorkingTreeChanged).toHaveBeenCalledTimes(1);
+        expect(vscodeMock.window.showInformationMessage).toHaveBeenCalledWith(
+            "Pulled successfully.",
+        );
+    });
+
     it("publishes an unpublished branch even when the working tree is dirty", async () => {
         const gitOps = makeGitOps();
         const deps = makeDeps(gitOps);

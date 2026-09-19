@@ -663,5 +663,7 @@
     "Rollback is only available for local files.": "ロールバックはローカル ファイルでのみ使用できます。",
     "Save or discard changes to {path} before rolling back.": "ロールバックする前に、{path} の変更を保存または破棄してください。",
     "Fetch failed: {message}": "フェッチに失敗しました: {message}",
-    "Fetch is only available for local files.": "フェッチはローカル ファイルでのみ使用できます。"
+    "Fetch is only available for local files.": "フェッチはローカル ファイルでのみ使用できます。",
+    "Pull failed: {message}": "プルに失敗しました: {message}",
+    "Pull is only available for local files.": "プルはローカル ファイルでのみ使用できます。"
 }

@@ -97,6 +97,7 @@ import {
     compareFileWithBranchOrTag,
     compareFileWithRevision,
     fetchFileRepositoryFromContext,
+    pullFileRepositoryFromContext,
     rollbackFileFromContext,
     showCurrentRevision,
     showFileDiff,
@@ -812,5 +813,105 @@ describe("fetchFileRepositoryFromContext", () => {
         await fetchFileRepositoryFromContext(clicked, gitOps, refreshPanels, refreshGraph);
 
         expect(mocks.showErrorMessage).toHaveBeenCalledWith("Fetch failed: {message}");
+    });
+});
+
+describe("pullFileRepositoryFromContext", () => {
+    const refreshPanels = vi.fn(async () => undefined);
+    const refreshGraph = vi.fn(async () => undefined);
+
+    beforeEach(() => {
+        refreshPanels.mockClear();
+        refreshGraph.mockClear();
+        mocks.runGitOperationFromPanel.mockReset().mockResolvedValue(undefined);
+    });
+
+    it("pulls the clicked file's repository and forwards both refresh callbacks", async () => {
+        const gitOps = makeGitOps();
+        const clicked = mocks.FakeUri.file("/repo-b/nested/file with spaces.ts");
+        mocks.runGitOperationFromPanel.mockImplementationOnce(async (deps, operation) => {
+            expect(operation).toBe("pull");
+            expect(deps.gitOps).toBe(selectedGitOps);
+            await deps.refreshData();
+            await deps.refreshGraphData?.();
+            deps.fireWorkingTreeChanged();
+        });
+
+        await pullFileRepositoryFromContext(clicked, gitOps, refreshPanels, refreshGraph);
+
+        expect(gitOps.deriveFor).toHaveBeenCalledWith("/repo-b");
+        expect(mocks.runGitOperationFromPanel).toHaveBeenCalledTimes(1);
+        expect(mocks.runGitOperationFromPanel).toHaveBeenCalledWith(
+            expect.objectContaining({ gitOps: selectedGitOps }),
+            "pull",
+        );
+        expect(refreshPanels).toHaveBeenCalledTimes(1);
+        expect(refreshGraph).toHaveBeenCalledTimes(1);
+    });
+
+    it("uses the active editor only when command context is undefined", async () => {
+        const gitOps = makeGitOps();
+        mocks.activeUri = mocks.FakeUri.file("/repo-b/src/active.ts");
+
+        await pullFileRepositoryFromContext(undefined, gitOps, refreshPanels, refreshGraph);
+
+        expect(gitOps.deriveFor).toHaveBeenCalledWith("/repo-b");
+        expect(mocks.runGitOperationFromPanel).toHaveBeenCalledWith(
+            expect.objectContaining({ gitOps: selectedGitOps }),
+            "pull",
+        );
+    });
+
+    it.each([
+        { fsPath: "/repo-b/not-a-uri.ts" },
+        new mocks.FakeUri("untitled:file.ts", "untitled"),
+    ])(
+        "rejects explicit invalid context %o instead of pulling the active editor",
+        async (context) => {
+            const gitOps = makeGitOps();
+
+            await pullFileRepositoryFromContext(context, gitOps, refreshPanels, refreshGraph);
+
+            expect(gitOps.deriveFor).not.toHaveBeenCalled();
+            expect(mocks.runGitOperationFromPanel).not.toHaveBeenCalled();
+            expect(mocks.showErrorMessage).toHaveBeenCalledWith(
+                "Pull is only available for local files.",
+            );
+        },
+    );
+
+    it("keeps the captured file repository when the active editor changes during resolution", async () => {
+        const gitOps = makeGitOps();
+        const clicked = mocks.FakeUri.file("/repo-b/src/selected.ts");
+        mocks.realpath.mockImplementationOnce(async (value: string) => {
+            mocks.activeUri = mocks.FakeUri.file("/repo-c/switched.ts");
+            return value;
+        });
+
+        await pullFileRepositoryFromContext(clicked, gitOps, refreshPanels, refreshGraph);
+
+        expect(gitOps.deriveFor).toHaveBeenCalledWith("/repo-b");
+        expect(mocks.runGitOperationFromPanel).toHaveBeenCalledWith(
+            expect.objectContaining({ gitOps: selectedGitOps }),
+            "pull",
+        );
+    });
+
+    it("shows repository resolution and pull failures", async () => {
+        const gitOps = makeGitOps();
+        const clicked = mocks.FakeUri.file("/repo-b/src/selected.ts");
+        mocks.executorRun.mockRejectedValueOnce(new Error("not a repository"));
+
+        await pullFileRepositoryFromContext(clicked, gitOps, refreshPanels, refreshGraph);
+
+        expect(mocks.runGitOperationFromPanel).not.toHaveBeenCalled();
+        expect(mocks.showErrorMessage).toHaveBeenCalledWith("Pull failed: {message}");
+
+        mocks.showErrorMessage.mockClear();
+        mocks.runGitOperationFromPanel.mockRejectedValueOnce(new Error("network unavailable"));
+
+        await pullFileRepositoryFromContext(clicked, gitOps, refreshPanels, refreshGraph);
+
+        expect(mocks.showErrorMessage).toHaveBeenCalledWith("Pull failed: {message}");
     });
 });

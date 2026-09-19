@@ -221,6 +221,8 @@
     "Only letters, digits, ., -, _ are allowed": "Only letters, digits, ., -, _ are allowed",
     "Overwrite": "Overwrite",
     "Pick the parent number to use with -m": "Pick the parent number to use with -m",
+    "Pull failed: {message}": "Pull failed: {message}",
+    "Pull is only available for local files.": "Pull is only available for local files.",
     "Pulled successfully.": "Pulled successfully.",
     "Pulling...": "Pulling...",
     "Pushed successfully.": "Pushed successfully.",

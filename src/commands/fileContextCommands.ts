@@ -224,6 +224,44 @@ export async function fetchFileRepositoryFromContext(
 }
 
 /**
+ * Pulls with rebase in the repository that owns the selected local file.
+ *
+ * The selected URI is captured before repository discovery, and the shared operation runner
+ * receives only the derived Git service, so editor or active-graph changes cannot retarget the
+ * pull. Explicit invalid contexts fail closed while resolution and Git errors remain visible.
+ */
+export async function pullFileRepositoryFromContext(
+    ctx: unknown,
+    gitOps: GitOps,
+    refreshPanels: () => Promise<void>,
+    refreshGraph: () => Promise<void>,
+): Promise<void> {
+    try {
+        const resolved = await resolveFileCommandContext(ctx, gitOps);
+        if (!resolved) {
+            await vscode.window.showErrorMessage(
+                vscode.l10n.t("Pull is only available for local files."),
+            );
+            return;
+        }
+
+        await runGitOperationFromPanel(
+            {
+                gitOps: resolved.gitOps,
+                refreshData: refreshPanels,
+                refreshGraphData: refreshGraph,
+                fireWorkingTreeChanged: () => undefined,
+            },
+            "pull",
+        );
+    } catch (error) {
+        await vscode.window.showErrorMessage(
+            vscode.l10n.t("Pull failed: {message}", { message: getErrorMessage(error) }),
+        );
+    }
+}
+
+/**
  * Compares the explicitly selected local file, or the active editor when no context was supplied,
  * using Git services scoped to the repository that owns that file.
  *

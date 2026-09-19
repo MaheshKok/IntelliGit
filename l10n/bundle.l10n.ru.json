@@ -663,5 +663,7 @@
     "Rollback is only available for local files.": "Откат доступен только для локальных файлов.",
     "Save or discard changes to {path} before rolling back.": "Сохраните или отмените изменения в {path} перед откатом.",
     "Fetch failed: {message}": "Не удалось получить данные: {message}",
-    "Fetch is only available for local files.": "Получение доступно только для локальных файлов."
+    "Fetch is only available for local files.": "Получение доступно только для локальных файлов.",
+    "Pull failed: {message}": "Не удалось выполнить pull: {message}",
+    "Pull is only available for local files.": "Pull доступен только для локальных файлов."
 }

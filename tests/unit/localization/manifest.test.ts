@@ -497,7 +497,7 @@ describe("extension manifest", () => {
         expect([...providerEnum].sort()).toEqual(["bitbucket-server", "gitlab"]);
     });
 
-    it("offers file comparison and current revision actions from native file menus", () => {
+    it("offers file comparison, history, and repository actions from native file menus", () => {
         const manifest = JSON.parse(
             readFileSync(path.join(process.cwd(), "package.json"), "utf8"),
         ) as ExtensionManifest;
@@ -548,6 +548,11 @@ describe("extension manifest", () => {
             when: "resourceScheme == file",
             group: "3_actions@2",
         });
+        expect(fileMenu).toContainEqual({
+            command: "intelligit.fileContext.pull",
+            when: "resourceScheme == file",
+            group: "3_actions@3",
+        });
         expect(manifest.contributes?.menus?.["intelligit.editorContext"] ?? []).toContainEqual({
             command: "intelligit.showFileDiff",
             when: "resourceScheme == file",
@@ -572,6 +577,11 @@ describe("extension manifest", () => {
             command: "intelligit.fileContext.fetch",
             when: "resourceScheme == file",
             group: "3_actions@2",
+        });
+        expect(manifest.contributes?.menus?.["intelligit.editorContext"] ?? []).toContainEqual({
+            command: "intelligit.fileContext.pull",
+            when: "resourceScheme == file",
+            group: "3_actions@3",
         });
         expect(manifest.contributes?.commands).toContainEqual(
             expect.objectContaining({
@@ -601,6 +611,12 @@ describe("extension manifest", () => {
             expect.objectContaining({
                 command: "intelligit.fileContext.fetch",
                 title: "%command.fetch%",
+            }),
+        );
+        expect(manifest.contributes?.commands).toContainEqual(
+            expect.objectContaining({
+                command: "intelligit.fileContext.pull",
+                title: "%command.pull%",
             }),
         );
     });
