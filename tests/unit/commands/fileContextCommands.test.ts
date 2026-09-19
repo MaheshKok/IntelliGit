@@ -42,6 +42,7 @@ const mocks = vi.hoisted(() => {
         compareEditorFileWithRevision: vi.fn(async () => undefined),
         createReadonlyDiffUri: vi.fn(() => ({ scheme: "intelligit-diff", path: "/file.ts" })),
         openDiffAgainstGitRef: vi.fn(async () => undefined),
+        runPublishBranchFlow: vi.fn(async () => undefined),
         runGitOperationFromPanel: vi.fn(async () => undefined),
         showErrorMessage: vi.fn(async () => undefined),
         showInformationMessage: vi.fn(async () => undefined),
@@ -88,8 +89,12 @@ vi.mock("../../../src/services/diffService", () => ({
 vi.mock("../../../src/views/commitPanelActions", () => ({
     runGitOperationFromPanel: mocks.runGitOperationFromPanel,
 }));
+vi.mock("../../../src/services/publishService", () => ({
+    runPublishBranchFlow: mocks.runPublishBranchFlow,
+}));
 vi.mock("../../../src/utils/notifications", () => ({
     showTimedInformationMessage: (message: string) => mocks.showInformationMessage(message),
+    showTimedWarningMessage: (message: string) => mocks.showWarningMessage(message),
 }));
 
 import {
@@ -98,6 +103,7 @@ import {
     compareFileWithRevision,
     fetchFileRepositoryFromContext,
     pullFileRepositoryFromContext,
+    pushFileRepositoryFromContext,
     rollbackFileFromContext,
     showCurrentRevision,
     showFileDiff,
@@ -105,6 +111,17 @@ import {
 
 const selectedGitOps = {
     scope: "selected",
+    hasAnyCommits: vi.fn(async () => true),
+    getBranches: vi.fn(async () => [
+        {
+            name: "feature/selected",
+            hash: "abc1234",
+            isCurrent: true,
+            isRemote: false,
+            ahead: 0,
+            behind: 0,
+        },
+    ]),
     getFileContentAtRef: vi.fn(async () => "committed HEAD\n"),
     rollbackFiles: vi.fn(async () => undefined),
 } as unknown as GitOps;
@@ -126,6 +143,17 @@ beforeEach(() => {
     });
     vi.mocked(selectedGitOps.getFileContentAtRef).mockResolvedValue("committed HEAD\n");
     vi.mocked(selectedGitOps.rollbackFiles).mockResolvedValue(undefined);
+    vi.mocked(selectedGitOps.hasAnyCommits).mockResolvedValue(true);
+    vi.mocked(selectedGitOps.getBranches).mockResolvedValue([
+        {
+            name: "feature/selected",
+            hash: "abc1234",
+            isCurrent: true,
+            isRemote: false,
+            ahead: 0,
+            behind: 0,
+        },
+    ]);
     mocks.showWarningMessage.mockResolvedValue("Rollback");
 });
 
@@ -913,5 +941,203 @@ describe("pullFileRepositoryFromContext", () => {
         await pullFileRepositoryFromContext(clicked, gitOps, refreshPanels, refreshGraph);
 
         expect(mocks.showErrorMessage).toHaveBeenCalledWith("Pull failed: {message}");
+    });
+});
+
+describe("pushFileRepositoryFromContext", () => {
+    const refreshPanels = vi.fn(async () => undefined);
+    const refreshGraph = vi.fn(async () => undefined);
+    const secrets = { scope: "extension-secrets" } as never;
+
+    beforeEach(() => {
+        refreshPanels.mockClear();
+        refreshGraph.mockClear();
+        mocks.runGitOperationFromPanel.mockReset().mockResolvedValue(undefined);
+        mocks.runPublishBranchFlow.mockReset().mockResolvedValue(undefined);
+    });
+
+    it("pushes the clicked file's repository without force and forwards refresh callbacks", async () => {
+        const gitOps = makeGitOps();
+        const clicked = mocks.FakeUri.file("/repo-b/nested/file with spaces.ts");
+        mocks.runGitOperationFromPanel.mockImplementationOnce(async (deps, operation, force) => {
+            expect(operation).toBe("push");
+            expect(force).toBe(false);
+            expect(deps.gitOps).toBe(selectedGitOps);
+            expect(deps.publishBranch).toBeTypeOf("function");
+            await deps.refreshData();
+            await deps.refreshGraphData?.();
+            deps.fireWorkingTreeChanged();
+        });
+
+        await pushFileRepositoryFromContext(clicked, gitOps, refreshPanels, refreshGraph, secrets);
+
+        expect(gitOps.deriveFor).toHaveBeenCalledWith("/repo-b");
+        expect(mocks.runGitOperationFromPanel).toHaveBeenCalledTimes(1);
+        expect(mocks.runGitOperationFromPanel).toHaveBeenCalledWith(
+            expect.objectContaining({
+                gitOps: selectedGitOps,
+                publishBranch: expect.any(Function),
+            }),
+            "push",
+            false,
+        );
+        expect(refreshPanels).toHaveBeenCalledTimes(1);
+        expect(refreshGraph).toHaveBeenCalledTimes(1);
+    });
+
+    it("publishes an unpublished clicked repository with its own branch, root, GitOps, and secrets", async () => {
+        const gitOps = makeGitOps();
+        const clicked = mocks.FakeUri.file("/repo-b/src/selected.ts");
+        mocks.runGitOperationFromPanel.mockImplementationOnce(async (deps) => {
+            mocks.activeUri = mocks.FakeUri.file("/repo-a/switched.ts");
+            await deps.publishBranch?.();
+        });
+
+        await pushFileRepositoryFromContext(clicked, gitOps, refreshPanels, refreshGraph, secrets);
+
+        expect(selectedGitOps.hasAnyCommits).toHaveBeenCalledTimes(1);
+        expect(selectedGitOps.getBranches).toHaveBeenCalledTimes(1);
+        expect(mocks.runPublishBranchFlow).toHaveBeenCalledWith(
+            selectedGitOps,
+            "feature/selected",
+            "/repo-b",
+            secrets,
+        );
+    });
+
+    it("does not publish an unborn clicked repository", async () => {
+        const gitOps = makeGitOps();
+        vi.mocked(selectedGitOps.hasAnyCommits).mockResolvedValueOnce(false);
+        mocks.runGitOperationFromPanel.mockImplementationOnce(async (deps) => {
+            await deps.publishBranch?.();
+        });
+
+        await pushFileRepositoryFromContext(
+            mocks.FakeUri.file("/repo-b/src/selected.ts"),
+            gitOps,
+            refreshPanels,
+            refreshGraph,
+            secrets,
+        );
+
+        expect(selectedGitOps.getBranches).not.toHaveBeenCalled();
+        expect(mocks.runPublishBranchFlow).not.toHaveBeenCalled();
+        expect(mocks.showWarningMessage).toHaveBeenCalledWith(
+            "Create a commit before publishing this branch.",
+        );
+    });
+
+    it("does not publish without a current local branch", async () => {
+        const gitOps = makeGitOps();
+        vi.mocked(selectedGitOps.getBranches).mockResolvedValueOnce([
+            {
+                name: "origin/main",
+                hash: "abc1234",
+                isCurrent: true,
+                isRemote: true,
+                ahead: 0,
+                behind: 0,
+            },
+        ]);
+        mocks.runGitOperationFromPanel.mockImplementationOnce(async (deps) => {
+            await deps.publishBranch?.();
+        });
+
+        await pushFileRepositoryFromContext(
+            mocks.FakeUri.file("/repo-b/src/selected.ts"),
+            gitOps,
+            refreshPanels,
+            refreshGraph,
+            secrets,
+        );
+
+        expect(mocks.runPublishBranchFlow).not.toHaveBeenCalled();
+        expect(mocks.showErrorMessage).toHaveBeenCalledWith("No current branch found.");
+    });
+
+    it("uses the active editor only when command context is undefined", async () => {
+        const gitOps = makeGitOps();
+        mocks.activeUri = mocks.FakeUri.file("/repo-b/src/active.ts");
+
+        await pushFileRepositoryFromContext(
+            undefined,
+            gitOps,
+            refreshPanels,
+            refreshGraph,
+            secrets,
+        );
+
+        expect(gitOps.deriveFor).toHaveBeenCalledWith("/repo-b");
+        expect(mocks.runGitOperationFromPanel).toHaveBeenCalledWith(
+            expect.objectContaining({
+                gitOps: selectedGitOps,
+                publishBranch: expect.any(Function),
+            }),
+            "push",
+            false,
+        );
+    });
+
+    it.each([
+        { fsPath: "/repo-b/not-a-uri.ts" },
+        new mocks.FakeUri("untitled:file.ts", "untitled"),
+    ])(
+        "rejects explicit invalid context %o instead of pushing the active editor",
+        async (context) => {
+            const gitOps = makeGitOps();
+
+            await pushFileRepositoryFromContext(
+                context,
+                gitOps,
+                refreshPanels,
+                refreshGraph,
+                secrets,
+            );
+
+            expect(gitOps.deriveFor).not.toHaveBeenCalled();
+            expect(mocks.runGitOperationFromPanel).not.toHaveBeenCalled();
+            expect(mocks.showErrorMessage).toHaveBeenCalledWith(
+                "Push is only available for local files.",
+            );
+        },
+    );
+
+    it("keeps the captured file repository when the active editor changes during resolution", async () => {
+        const gitOps = makeGitOps();
+        const clicked = mocks.FakeUri.file("/repo-b/src/selected.ts");
+        mocks.realpath.mockImplementationOnce(async (value: string) => {
+            mocks.activeUri = mocks.FakeUri.file("/repo-c/switched.ts");
+            return value;
+        });
+
+        await pushFileRepositoryFromContext(clicked, gitOps, refreshPanels, refreshGraph, secrets);
+
+        expect(gitOps.deriveFor).toHaveBeenCalledWith("/repo-b");
+        expect(mocks.runGitOperationFromPanel).toHaveBeenCalledWith(
+            expect.objectContaining({
+                gitOps: selectedGitOps,
+                publishBranch: expect.any(Function),
+            }),
+            "push",
+            false,
+        );
+    });
+
+    it("shows repository resolution and push failures", async () => {
+        const gitOps = makeGitOps();
+        const clicked = mocks.FakeUri.file("/repo-b/src/selected.ts");
+        mocks.executorRun.mockRejectedValueOnce(new Error("not a repository"));
+
+        await pushFileRepositoryFromContext(clicked, gitOps, refreshPanels, refreshGraph, secrets);
+
+        expect(mocks.runGitOperationFromPanel).not.toHaveBeenCalled();
+        expect(mocks.showErrorMessage).toHaveBeenCalledWith("Push failed: {message}");
+
+        mocks.showErrorMessage.mockClear();
+        mocks.runGitOperationFromPanel.mockRejectedValueOnce(new Error("network unavailable"));
+
+        await pushFileRepositoryFromContext(clicked, gitOps, refreshPanels, refreshGraph, secrets);
+
+        expect(mocks.showErrorMessage).toHaveBeenCalledWith("Push failed: {message}");
     });
 });

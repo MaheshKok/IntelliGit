@@ -665,5 +665,6 @@
     "Fetch failed: {message}": "Abrufen fehlgeschlagen: {message}",
     "Fetch is only available for local files.": "Abrufen ist nur für lokale Dateien verfügbar.",
     "Pull failed: {message}": "Pull fehlgeschlagen: {message}",
-    "Pull is only available for local files.": "Pull ist nur für lokale Dateien verfügbar."
+    "Pull is only available for local files.": "Pull ist nur für lokale Dateien verfügbar.",
+    "Push is only available for local files.": "Push ist nur für lokale Dateien verfügbar."
 }

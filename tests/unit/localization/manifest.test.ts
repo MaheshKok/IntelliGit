@@ -553,6 +553,11 @@ describe("extension manifest", () => {
             when: "resourceScheme == file",
             group: "3_actions@3",
         });
+        expect(fileMenu).toContainEqual({
+            command: "intelligit.fileContext.push",
+            when: "resourceScheme == file",
+            group: "3_actions@4",
+        });
         expect(manifest.contributes?.menus?.["intelligit.editorContext"] ?? []).toContainEqual({
             command: "intelligit.showFileDiff",
             when: "resourceScheme == file",
@@ -582,6 +587,11 @@ describe("extension manifest", () => {
             command: "intelligit.fileContext.pull",
             when: "resourceScheme == file",
             group: "3_actions@3",
+        });
+        expect(manifest.contributes?.menus?.["intelligit.editorContext"] ?? []).toContainEqual({
+            command: "intelligit.fileContext.push",
+            when: "resourceScheme == file",
+            group: "3_actions@4",
         });
         expect(manifest.contributes?.commands).toContainEqual(
             expect.objectContaining({
@@ -617,6 +627,12 @@ describe("extension manifest", () => {
             expect.objectContaining({
                 command: "intelligit.fileContext.pull",
                 title: "%command.pull%",
+            }),
+        );
+        expect(manifest.contributes?.commands).toContainEqual(
+            expect.objectContaining({
+                command: "intelligit.fileContext.push",
+                title: "%command.push%",
             }),
         );
     });

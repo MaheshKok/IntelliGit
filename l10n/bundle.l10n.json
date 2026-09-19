@@ -226,6 +226,7 @@
     "Pulled successfully.": "Pulled successfully.",
     "Pulling...": "Pulling...",
     "Pushed successfully.": "Pushed successfully.",
+    "Push is only available for local files.": "Push is only available for local files.",
     "Push All up to Here is available only for unpushed commits.": "Push All up to Here is available only for unpushed commits.",
     "Push All up to Here is only available when a local branch is checked out.": "Push All up to Here is only available when a local branch is checked out.",
     "Push rejected because the remote branch contains commits that are not in your local branch. Rebase and push now?": "Push rejected because the remote branch contains commits that are not in your local branch. Rebase and push now?",

@@ -9,8 +9,9 @@ import {
     createReadonlyDiffUri,
     openDiffAgainstGitRef,
 } from "../services/diffService";
+import { runPublishBranchFlow } from "../services/publishService";
 import { getErrorMessage } from "../utils/errors";
-import { showTimedInformationMessage } from "../utils/notifications";
+import { showTimedInformationMessage, showTimedWarningMessage } from "../utils/notifications";
 import { runGitOperationFromPanel } from "../views/commitPanelActions";
 
 interface ResolvedFileCommandContext {
@@ -257,6 +258,70 @@ export async function pullFileRepositoryFromContext(
     } catch (error) {
         await vscode.window.showErrorMessage(
             vscode.l10n.t("Pull failed: {message}", { message: getErrorMessage(error) }),
+        );
+    }
+}
+
+/**
+ * Publishes the captured repository's current local branch through the shared provider flow.
+ *
+ * An unborn repository or detached/remote-only branch is reported before provider prompts begin.
+ * Git calls target the captured repository; the shared flow owns credential prompts and storage.
+ */
+async function publishResolvedRepositoryBranch(
+    resolved: ResolvedFileCommandContext,
+    secrets?: vscode.SecretStorage,
+): Promise<void> {
+    if (!(await resolved.gitOps.hasAnyCommits())) {
+        showTimedWarningMessage(vscode.l10n.t("Create a commit before publishing this branch."));
+        return;
+    }
+    const branches = await resolved.gitOps.getBranches();
+    const currentBranch = branches.find((branch) => branch.isCurrent && !branch.isRemote);
+    if (!currentBranch) {
+        await vscode.window.showErrorMessage(vscode.l10n.t("No current branch found."));
+        return;
+    }
+    await runPublishBranchFlow(resolved.gitOps, currentBranch.name, resolved.repoRoot, secrets);
+}
+
+/**
+ * Pushes the repository that owns the selected local file without forcing history updates.
+ *
+ * The selected URI and derived Git service are captured before the shared operation runner starts,
+ * including its unpublished-branch callback. Explicit invalid contexts fail closed; resolution and
+ * operation failures are reported without falling back to the active graph repository.
+ */
+export async function pushFileRepositoryFromContext(
+    ctx: unknown,
+    gitOps: GitOps,
+    refreshPanels: () => Promise<void>,
+    refreshGraph: () => Promise<void>,
+    secrets?: vscode.SecretStorage,
+): Promise<void> {
+    try {
+        const resolved = await resolveFileCommandContext(ctx, gitOps);
+        if (!resolved) {
+            await vscode.window.showErrorMessage(
+                vscode.l10n.t("Push is only available for local files."),
+            );
+            return;
+        }
+
+        await runGitOperationFromPanel(
+            {
+                gitOps: resolved.gitOps,
+                refreshData: refreshPanels,
+                refreshGraphData: refreshGraph,
+                fireWorkingTreeChanged: () => undefined,
+                publishBranch: () => publishResolvedRepositoryBranch(resolved, secrets),
+            },
+            "push",
+            false,
+        );
+    } catch (error) {
+        await vscode.window.showErrorMessage(
+            vscode.l10n.t("Push failed: {message}", { message: getErrorMessage(error) }),
         );
     }
 }

@@ -665,5 +665,6 @@
     "Fetch failed: {message}": "Не удалось получить данные: {message}",
     "Fetch is only available for local files.": "Получение доступно только для локальных файлов.",
     "Pull failed: {message}": "Не удалось выполнить pull: {message}",
-    "Pull is only available for local files.": "Pull доступен только для локальных файлов."
+    "Pull is only available for local files.": "Pull доступен только для локальных файлов.",
+    "Push is only available for local files.": "Отправка доступна только для локальных файлов."
 }

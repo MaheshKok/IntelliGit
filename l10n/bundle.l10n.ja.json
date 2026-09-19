@@ -665,5 +665,6 @@
     "Fetch failed: {message}": "フェッチに失敗しました: {message}",
     "Fetch is only available for local files.": "フェッチはローカル ファイルでのみ使用できます。",
     "Pull failed: {message}": "プルに失敗しました: {message}",
-    "Pull is only available for local files.": "プルはローカル ファイルでのみ使用できます。"
+    "Pull is only available for local files.": "プルはローカル ファイルでのみ使用できます。",
+    "Push is only available for local files.": "プッシュはローカル ファイルでのみ使用できます。"
 }

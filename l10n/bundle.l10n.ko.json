@@ -665,5 +665,6 @@
     "Fetch failed: {message}": "가져오기 실패: {message}",
     "Fetch is only available for local files.": "가져오기는 로컬 파일에만 사용할 수 있습니다.",
     "Pull failed: {message}": "풀 실패: {message}",
-    "Pull is only available for local files.": "풀은 로컬 파일에만 사용할 수 있습니다."
+    "Pull is only available for local files.": "풀은 로컬 파일에만 사용할 수 있습니다.",
+    "Push is only available for local files.": "푸시는 로컬 파일에만 사용할 수 있습니다."
 }

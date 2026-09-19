@@ -665,5 +665,6 @@
     "Fetch failed: {message}": "获取失败：{message}",
     "Fetch is only available for local files.": "获取仅适用于本地文件。",
     "Pull failed: {message}": "拉取失败：{message}",
-    "Pull is only available for local files.": "拉取仅适用于本地文件。"
+    "Pull is only available for local files.": "拉取仅适用于本地文件。",
+    "Push is only available for local files.": "推送仅适用于本地文件。"
 }

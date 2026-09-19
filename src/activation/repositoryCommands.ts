@@ -13,6 +13,7 @@ import {
     compareFileWithRevision,
     fetchFileRepositoryFromContext,
     pullFileRepositoryFromContext,
+    pushFileRepositoryFromContext,
     rollbackFileFromContext,
     showCurrentRevision,
     showFileDiff,
@@ -502,6 +503,15 @@ function registerMergeCommands(deps: RepositoryCommandsDeps): void {
                 gitOps,
                 () => deps.refreshService().refreshCommitPanels(),
                 deps.refreshActiveRepository,
+            );
+        }),
+        vscode.commands.registerCommand("intelligit.fileContext.push", async (ctx?: unknown) => {
+            await pushFileRepositoryFromContext(
+                ctx,
+                gitOps,
+                () => deps.refreshService().refreshCommitPanels(),
+                deps.refreshActiveRepository,
+                context.secrets,
             );
         }),
         vscode.commands.registerCommand("intelligit.openConflictSession", async () => {

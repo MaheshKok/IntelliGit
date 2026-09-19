@@ -24,6 +24,7 @@
         "intelligit.fileAddToVcs",
         "intelligit.fileContext.fetch",
         "intelligit.fileContext.pull",
+        "intelligit.fileContext.push",
         "intelligit.fileContext.rollback",
         "intelligit.fileDelete",
         "intelligit.fileJumpToSource",

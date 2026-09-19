@@ -74,8 +74,10 @@ test("opens file history in a separate window with the shared diff viewer", asyn
             name: /^Show File History(?:$|\s)/,
         });
         await expect(historyAction).toBeVisible();
+        await historyAction.hover();
         const nextWindow = app.waitForEvent("window", { timeout: 30_000 });
         await historyAction.click();
+        await expect(historyAction).toBeHidden();
         const historyWindow = await nextWindow.catch(async (error) => {
             await page.screenshot({ path: testInfo.outputPath("history-open-failure.png") });
             console.log(

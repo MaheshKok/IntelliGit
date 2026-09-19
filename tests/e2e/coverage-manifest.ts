@@ -242,6 +242,8 @@ const COMMAND_ENTRIES = [
     { kind: "command", id: "intelligit.showFileDiff", mutating: false },
     { kind: "command", id: "intelligit.showCurrentRevision", mutating: false },
     { kind: "command", id: "intelligit.annotateWithGitBlame", mutating: false },
+    // These operations have native-menu coverage in fileContextActions.spec.ts;
+    // notCovered records their absence from the control-channel flow matrix only.
     {
         kind: "command",
         id: "intelligit.fileContext.fetch",
@@ -251,6 +253,12 @@ const COMMAND_ENTRIES = [
     {
         kind: "command",
         id: "intelligit.fileContext.pull",
+        mutating: true,
+        notCovered: "No implemented flow exercises this native file context command.",
+    },
+    {
+        kind: "command",
+        id: "intelligit.fileContext.push",
         mutating: true,
         notCovered: "No implemented flow exercises this native file context command.",
     },

@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => {
         compareFileWithRevision: vi.fn(async () => undefined),
         fetchFileRepositoryFromContext: vi.fn(async () => undefined),
         pullFileRepositoryFromContext: vi.fn(async () => undefined),
+        pushFileRepositoryFromContext: vi.fn(async () => undefined),
         rollbackFileFromContext: vi.fn(async () => undefined),
         showCurrentRevision: vi.fn(async () => undefined),
         showFileDiff: vi.fn(async () => undefined),
@@ -61,6 +62,7 @@ vi.mock("../../../src/commands/fileContextCommands", () => ({
     compareFileWithRevision: mocks.compareFileWithRevision,
     fetchFileRepositoryFromContext: mocks.fetchFileRepositoryFromContext,
     pullFileRepositoryFromContext: mocks.pullFileRepositoryFromContext,
+    pushFileRepositoryFromContext: mocks.pushFileRepositoryFromContext,
     rollbackFileFromContext: mocks.rollbackFileFromContext,
     showCurrentRevision: mocks.showCurrentRevision,
     showFileDiff: mocks.showFileDiff,
@@ -416,6 +418,30 @@ describe("registerRepositoryCommands", () => {
             deps.refreshActiveRepository,
         );
         const refresh = mocks.pullFileRepositoryFromContext.mock.calls[0]?.[2];
+        await refresh?.();
+        expect(refreshCommitPanels).toHaveBeenCalledTimes(1);
+    });
+
+    it("registers scoped file push with refresh callbacks and extension secrets", async () => {
+        const gitOps = makeGitOps();
+        const refreshCommitPanels = vi.fn(async () => undefined);
+        const deps = makeDeps(gitOps);
+        deps.refreshService = vi.fn(
+            () => ({ refreshCommitPanels }) as ReturnType<typeof deps.refreshService>,
+        );
+        registerRepositoryCommands(deps);
+        const context = { clicked: "file" };
+
+        await mocks.commands.get("intelligit.fileContext.push")?.(context);
+
+        expect(mocks.pushFileRepositoryFromContext).toHaveBeenCalledWith(
+            context,
+            gitOps,
+            expect.any(Function),
+            deps.refreshActiveRepository,
+            deps.context.secrets,
+        );
+        const refresh = mocks.pushFileRepositoryFromContext.mock.calls[0]?.[2];
         await refresh?.();
         expect(refreshCommitPanels).toHaveBeenCalledTimes(1);
     });

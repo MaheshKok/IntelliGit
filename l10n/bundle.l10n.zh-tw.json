@@ -665,5 +665,6 @@
     "Fetch failed: {message}": "擷取失敗：{message}",
     "Fetch is only available for local files.": "擷取僅適用於本機檔案。",
     "Pull failed: {message}": "拉取失敗：{message}",
-    "Pull is only available for local files.": "拉取僅適用於本機檔案。"
+    "Pull is only available for local files.": "拉取僅適用於本機檔案。",
+    "Push is only available for local files.": "推送僅適用於本機檔案。"
 }

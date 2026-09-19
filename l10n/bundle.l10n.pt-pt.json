@@ -665,5 +665,6 @@
     "Fetch failed: {message}": "Falha ao obter: {message}",
     "Fetch is only available for local files.": "A obtenção só está disponível para ficheiros locais.",
     "Pull failed: {message}": "Falha ao executar o pull: {message}",
-    "Pull is only available for local files.": "O pull só está disponível para ficheiros locais."
+    "Pull is only available for local files.": "O pull só está disponível para ficheiros locais.",
+    "Push is only available for local files.": "O push só está disponível para ficheiros locais."
 }

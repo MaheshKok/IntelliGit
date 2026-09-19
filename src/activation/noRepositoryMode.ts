@@ -202,6 +202,7 @@ export function activateNoRepositoryMode(
         "intelligit.annotateWithGitBlame",
         "intelligit.fileContext.fetch",
         "intelligit.fileContext.pull",
+        "intelligit.fileContext.push",
         "intelligit.fileContext.rollback",
         "intelligit.showCurrentRevision",
         "intelligit.showFileDiff",
