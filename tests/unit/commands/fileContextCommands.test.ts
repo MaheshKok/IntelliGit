@@ -24,8 +24,11 @@ const mocks = vi.hoisted(() => {
         executorRun: vi.fn(async () => "/repo-b\n"),
         compareEditorFileWithBranch: vi.fn(async () => undefined),
         compareEditorFileWithRevision: vi.fn(async () => undefined),
+        createReadonlyDiffUri: vi.fn(() => ({ scheme: "intelligit-diff", path: "/selected.ts" })),
+        getFileContentAtRef: vi.fn(async () => "committed HEAD content"),
         showEditorFileDiff: vi.fn(async () => undefined),
         showErrorMessage: vi.fn(async () => undefined),
+        showTextDocument: vi.fn(async () => undefined),
     };
 });
 
@@ -37,6 +40,7 @@ vi.mock("vscode", () => ({
             return mocks.activeUri ? { document: { uri: mocks.activeUri } } : undefined;
         },
         showErrorMessage: mocks.showErrorMessage,
+        showTextDocument: mocks.showTextDocument,
     },
     l10n: { t: (message: string) => message },
 }));
@@ -52,17 +56,27 @@ vi.mock("../../../src/git/executor", () => ({
 vi.mock("../../../src/services/diffService", () => ({
     compareEditorFileWithBranch: mocks.compareEditorFileWithBranch,
     compareEditorFileWithRevision: mocks.compareEditorFileWithRevision,
+    createReadonlyDiffUri: mocks.createReadonlyDiffUri,
     showEditorFileDiff: mocks.showEditorFileDiff,
 }));
 
 import {
     compareFileWithBranchOrTag,
     compareFileWithRevision,
+    showCurrentRevision,
     showFileDiff,
 } from "../../../src/commands/fileContextCommands";
 
 const makeGitOps = (): GitOps =>
-    ({ deriveFor: vi.fn(() => ({ scope: "selected" }) as unknown as GitOps) }) as unknown as GitOps;
+    ({
+        deriveFor: vi.fn(
+            () =>
+                ({
+                    scope: "selected",
+                    getFileContentAtRef: mocks.getFileContentAtRef,
+                }) as unknown as GitOps,
+        ),
+    }) as unknown as GitOps;
 
 beforeEach(() => {
     vi.clearAllMocks();
@@ -235,5 +249,66 @@ describe("showFileDiff", () => {
 
         expect(mocks.showEditorFileDiff).not.toHaveBeenCalled();
         expect(mocks.showErrorMessage).toHaveBeenCalledWith("Show Diff failed: {message}");
+    });
+});
+
+describe("showCurrentRevision", () => {
+    it("opens the clicked file's immutable HEAD content from its owning repository", async () => {
+        const gitOps = makeGitOps();
+        mocks.realpath.mockResolvedValueOnce("/private/repo/nested");
+        mocks.executorRun.mockResolvedValueOnce("/private/repo\n");
+        const clicked = mocks.FakeUri.file("/linked/repo/nested/selected.ts");
+        const readonlyUri = { scheme: "intelligit-diff", path: "/nested/selected.ts" };
+        mocks.createReadonlyDiffUri.mockReturnValueOnce(readonlyUri);
+
+        await showCurrentRevision(clicked, gitOps);
+
+        expect(gitOps.deriveFor).toHaveBeenCalledWith("/private/repo");
+        expect(mocks.getFileContentAtRef).toHaveBeenCalledWith("nested/selected.ts", "HEAD");
+        expect(mocks.createReadonlyDiffUri).toHaveBeenCalledWith(
+            "nested/selected.ts",
+            "committed HEAD content",
+            "HEAD",
+        );
+        expect(mocks.showTextDocument).toHaveBeenCalledWith(readonlyUri);
+    });
+
+    it("uses the active editor only when no command context is supplied", async () => {
+        const gitOps = makeGitOps();
+        mocks.activeUri = mocks.FakeUri.file("/repo-b/src/active.ts");
+
+        await showCurrentRevision(undefined, gitOps);
+
+        expect(mocks.getFileContentAtRef).toHaveBeenCalledWith("src/active.ts", "HEAD");
+        expect(mocks.createReadonlyDiffUri).toHaveBeenCalledWith(
+            "src/active.ts",
+            "committed HEAD content",
+            "HEAD",
+        );
+    });
+
+    it("rejects an explicit malformed context instead of opening the active file", async () => {
+        const gitOps = makeGitOps();
+
+        await showCurrentRevision({ fsPath: "/repo-b/not-a-uri.ts" }, gitOps);
+
+        expect(gitOps.deriveFor).not.toHaveBeenCalled();
+        expect(mocks.getFileContentAtRef).not.toHaveBeenCalled();
+        expect(mocks.showTextDocument).not.toHaveBeenCalled();
+        expect(mocks.showErrorMessage).toHaveBeenCalledWith(
+            "Show Current Revision is only available for local files.",
+        );
+    });
+
+    it("reports HEAD read failures without opening a document", async () => {
+        const gitOps = makeGitOps();
+        mocks.getFileContentAtRef.mockRejectedValueOnce(new Error("missing from HEAD"));
+
+        await showCurrentRevision(mocks.FakeUri.file("/repo-b/selected.ts"), gitOps);
+
+        expect(mocks.showTextDocument).not.toHaveBeenCalled();
+        expect(mocks.showErrorMessage).toHaveBeenCalledWith(
+            "Show Current Revision failed: {message}",
+        );
     });
 });

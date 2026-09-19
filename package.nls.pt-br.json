@@ -95,5 +95,6 @@
     "command.diffShowInVsCode": "Mostrar diferença no VS Code",
     "command.showFileHistory": "Mostrar histórico do arquivo",
     "command.addToVcs": "Adicionar ao controle de versão",
-    "command.showFileDiff": "Mostrar diferença"
+    "command.showFileDiff": "Mostrar diferença",
+    "command.showCurrentRevision": "Mostrar revisão atual"
 }

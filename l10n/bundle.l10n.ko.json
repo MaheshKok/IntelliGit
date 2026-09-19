@@ -653,5 +653,7 @@
     "Select a branch or tag for {path}": "{path}의 브랜치 또는 태그를 선택하세요",
     "tag": "태그",
     "Show Diff is only available for local files.": "차이점 표시는 로컬 파일에서만 사용할 수 있습니다.",
-    "Show Diff failed: {message}": "차이점 표시 실패: {message}"
+    "Show Diff failed: {message}": "차이점 표시 실패: {message}",
+    "Show Current Revision is only available for local files.": "현재 리비전 보기는 로컬 파일에서만 사용할 수 있습니다.",
+    "Show Current Revision failed: {message}": "현재 리비전 표시 실패: {message}"
 }

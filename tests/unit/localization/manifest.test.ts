@@ -558,6 +558,33 @@ describe("extension manifest", () => {
                 icon: "$(diff)",
             }),
         );
+        expect(
+            fileMenu.filter((entry) => entry.command === "intelligit.showCurrentRevision"),
+        ).toEqual([
+            {
+                command: "intelligit.showCurrentRevision",
+                when: "resourceScheme == file",
+                group: "2_history@2",
+            },
+        ]);
+        expect(
+            (manifest.contributes?.menus?.["intelligit.editorContext"] ?? []).filter(
+                (entry) => entry.command === "intelligit.showCurrentRevision",
+            ),
+        ).toEqual([
+            {
+                command: "intelligit.showCurrentRevision",
+                when: "resourceScheme == file",
+                group: "2_history@2",
+            },
+        ]);
+        const showCurrentRevision = manifest.contributes?.commands?.find(
+            (entry) => entry.command === "intelligit.showCurrentRevision",
+        );
+        expect(showCurrentRevision).toEqual(
+            expect.objectContaining({ command: "intelligit.showCurrentRevision" }),
+        );
+        expect(showCurrentRevision).not.toHaveProperty("icon");
     });
 
     it("contributes the commitChecks.enabled feature toggle as a window-scoped boolean", () => {

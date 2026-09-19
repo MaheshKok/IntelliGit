@@ -61,6 +61,7 @@
         "intelligit.selectRepository.color",
         "intelligit.shelveChanges",
         "intelligit.shelveSilently",
+        "intelligit.showCurrentRevision",
         "intelligit.showFileDiff",
         "intelligit.showFileHistory",
         "intelligit.showGitLog",

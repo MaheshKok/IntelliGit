@@ -10,6 +10,7 @@ import { showFileHistory } from "../commands/fileHistoryCommand";
 import {
     compareFileWithBranchOrTag,
     compareFileWithRevision,
+    showCurrentRevision,
     showFileDiff,
 } from "../commands/fileContextCommands";
 import { GitOps } from "../git/operations";
@@ -465,6 +466,9 @@ function registerMergeCommands(deps: RepositoryCommandsDeps): void {
         }),
         vscode.commands.registerCommand("intelligit.showFileDiff", async (ctx?: unknown) => {
             await showFileDiff(ctx, gitOps);
+        }),
+        vscode.commands.registerCommand("intelligit.showCurrentRevision", async (ctx?: unknown) => {
+            await showCurrentRevision(ctx, gitOps);
         }),
         vscode.commands.registerCommand("intelligit.openConflictSession", async () => {
             const conflicts = await gitOps.getConflictFilesDetailed();

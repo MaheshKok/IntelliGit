@@ -6,6 +6,7 @@ import { GitOps } from "../git/operations";
 import {
     compareEditorFileWithBranch,
     compareEditorFileWithRevision,
+    createReadonlyDiffUri,
     showEditorFileDiff,
 } from "../services/diffService";
 import { getErrorMessage } from "../utils/errors";
@@ -151,6 +152,38 @@ export async function showFileDiff(ctx: unknown, gitOps: GitOps): Promise<void> 
     } catch (error) {
         await vscode.window.showErrorMessage(
             vscode.l10n.t("Show Diff failed: {message}", {
+                message: getErrorMessage(error),
+            }),
+        );
+    }
+}
+
+/**
+ * Opens the selected file's immutable `HEAD` content in a readonly virtual document.
+ *
+ * Git reads use the canonical repository-relative path and the `GitOps` instance derived for the
+ * file's owning repository. Explicit malformed contexts fail closed; only an absent context may
+ * fall back to the active editor. Read or repository failures are reported without opening a
+ * working-tree document.
+ */
+export async function showCurrentRevision(ctx: unknown, gitOps: GitOps): Promise<void> {
+    try {
+        const resolved = await resolveFileCommandContext(ctx, gitOps);
+        if (!resolved) {
+            await vscode.window.showErrorMessage(
+                vscode.l10n.t("Show Current Revision is only available for local files."),
+            );
+            return;
+        }
+        const content = await resolved.gitOps.getFileContentAtRef(
+            resolved.repoRelativePath,
+            "HEAD",
+        );
+        const uri = createReadonlyDiffUri(resolved.repoRelativePath, content, "HEAD");
+        await vscode.window.showTextDocument(uri);
+    } catch (error) {
+        await vscode.window.showErrorMessage(
+            vscode.l10n.t("Show Current Revision failed: {message}", {
                 message: getErrorMessage(error),
             }),
         );

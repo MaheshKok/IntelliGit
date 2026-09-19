@@ -53,6 +53,7 @@
     "command.compareWithRevision": "Compare with Revision",
     "command.compareWithBranch": "Compare with Branch or Tag",
     "command.showFileDiff": "Show Diff",
+    "command.showCurrentRevision": "Show Current Revision",
     "command.compareWithLocal": "Compare with Local",
     "command.cherryPickSelectedChange": "Cherry-pick Selected Change",
     "command.revertSelectedChange": "Revert Selected Change",

@@ -653,5 +653,7 @@
     "Select a branch or tag for {path}": "Выберите ветку или тег для {path}",
     "tag": "тег",
     "Show Diff is only available for local files.": "Функция «Показать различия» доступна только для локальных файлов.",
-    "Show Diff failed: {message}": "Не удалось показать различия: {message}"
+    "Show Diff failed: {message}": "Не удалось показать различия: {message}",
+    "Show Current Revision is only available for local files.": "Функция «Показать текущую ревизию» доступна только для локальных файлов.",
+    "Show Current Revision failed: {message}": "Не удалось показать текущую ревизию: {message}"
 }
