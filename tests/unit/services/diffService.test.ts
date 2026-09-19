@@ -139,6 +139,7 @@ import {
     compareEditorFileWithRevision,
     createReadonlyDiffUri,
     openCommitFileDiff,
+    openDiffAgainstGitRef,
     registerReadonlyDiffContentProvider,
 } from "../../../src/services/diffService";
 import type { GitExecutor } from "../../../src/git/executor";
@@ -519,6 +520,33 @@ describe("diffService", () => {
                 left: { kind: "ref", ref: "HEAD~1" },
                 right: { kind: "worktree" },
                 fileUri: expect.any(mocks.FakeUri),
+            }),
+            expect.any(Function),
+            expect.any(Function),
+        );
+    });
+
+    it("opens HEAD against the original working document without a picker", async () => {
+        const gitOps = makeGitOps();
+        const clicked = mocks.FakeUri.file("/linked/repo/src/a.ts");
+
+        await openDiffAgainstGitRef(
+            clicked,
+            "/private/repo",
+            "src/a.ts",
+            "HEAD",
+            "revision",
+            gitOps,
+        );
+
+        expect(mocks.showQuickPick).not.toHaveBeenCalled();
+        expect(mocks.openEditableDiff).toHaveBeenCalledWith(
+            expect.objectContaining({
+                repoRoot: "/private/repo",
+                path: "src/a.ts",
+                left: { kind: "ref", ref: "HEAD" },
+                right: { kind: "worktree" },
+                fileUri: clicked,
             }),
             expect.any(Function),
             expect.any(Function),

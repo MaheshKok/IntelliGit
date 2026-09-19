@@ -651,5 +651,7 @@
     "Compare with Branch or Tag is only available for local files.": "“与分支或标签比较”仅适用于本地文件。",
     "Compare with branch or tag failed: {message}": "与分支或标签比较失败：{message}",
     "Select a branch or tag for {path}": "为 {path} 选择分支或标签",
-    "tag": "标签"
+    "tag": "标签",
+    "Show Diff is only available for local files.": "“显示差异”仅适用于本地文件。",
+    "Show Diff failed: {message}": "显示差异失败：{message}"
 }

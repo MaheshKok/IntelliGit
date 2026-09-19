@@ -24,6 +24,7 @@ const mocks = vi.hoisted(() => {
         executorRun: vi.fn(async () => "/repo-b\n"),
         compareEditorFileWithBranch: vi.fn(async () => undefined),
         compareEditorFileWithRevision: vi.fn(async () => undefined),
+        openDiffAgainstGitRef: vi.fn(async () => undefined),
         showErrorMessage: vi.fn(async () => undefined),
     };
 });
@@ -51,11 +52,13 @@ vi.mock("../../../src/git/executor", () => ({
 vi.mock("../../../src/services/diffService", () => ({
     compareEditorFileWithBranch: mocks.compareEditorFileWithBranch,
     compareEditorFileWithRevision: mocks.compareEditorFileWithRevision,
+    openDiffAgainstGitRef: mocks.openDiffAgainstGitRef,
 }));
 
 import {
     compareFileWithBranchOrTag,
     compareFileWithRevision,
+    showFileDiff,
 } from "../../../src/commands/fileContextCommands";
 
 const makeGitOps = (): GitOps =>
@@ -203,5 +206,64 @@ describe("compareFileWithBranchOrTag", () => {
         expect(gitOps.deriveFor).not.toHaveBeenCalled();
         expect(mocks.compareEditorFileWithBranch).not.toHaveBeenCalled();
         expect(mocks.showErrorMessage).toHaveBeenCalledTimes(1);
+    });
+});
+
+describe("showFileDiff", () => {
+    it("compares the clicked file's HEAD with its original working document in the owning repository", async () => {
+        const gitOps = makeGitOps();
+        mocks.realpath.mockResolvedValueOnce("/private/repo/nested");
+        mocks.executorRun.mockResolvedValueOnce("/private/repo\n");
+        const clicked = mocks.FakeUri.file("/linked/repo/nested/file with spaces.ts");
+
+        await showFileDiff(clicked, gitOps);
+
+        expect(gitOps.deriveFor).toHaveBeenCalledWith("/private/repo");
+        expect(mocks.openDiffAgainstGitRef).toHaveBeenCalledWith(
+            clicked,
+            "/private/repo",
+            "nested/file with spaces.ts",
+            "HEAD",
+            "revision",
+            expect.objectContaining({ scope: "selected" }),
+        );
+    });
+
+    it("rejects an explicit malformed context instead of diffing the active editor", async () => {
+        const gitOps = makeGitOps();
+
+        await showFileDiff({ fsPath: "/repo-b/not-a-uri.ts" }, gitOps);
+
+        expect(gitOps.deriveFor).not.toHaveBeenCalled();
+        expect(mocks.openDiffAgainstGitRef).not.toHaveBeenCalled();
+        expect(mocks.showErrorMessage).toHaveBeenCalledWith(
+            "Show Diff is only available for local files.",
+        );
+    });
+
+    it("uses the active editor only when no command context is supplied", async () => {
+        const gitOps = makeGitOps();
+        mocks.activeUri = mocks.FakeUri.file("/repo-b/src/active.ts");
+
+        await showFileDiff(undefined, gitOps);
+
+        expect(mocks.openDiffAgainstGitRef).toHaveBeenCalledWith(
+            mocks.activeUri,
+            "/repo-b",
+            "src/active.ts",
+            "HEAD",
+            "revision",
+            expect.anything(),
+        );
+    });
+
+    it("reports repository discovery failures without opening a diff", async () => {
+        const gitOps = makeGitOps();
+        mocks.executorRun.mockRejectedValueOnce(new Error("not a repository"));
+
+        await showFileDiff(mocks.FakeUri.file("/outside/file.ts"), gitOps);
+
+        expect(mocks.openDiffAgainstGitRef).not.toHaveBeenCalled();
+        expect(mocks.showErrorMessage).toHaveBeenCalledWith("Show Diff failed: {message}");
     });
 });

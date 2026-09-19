@@ -1244,6 +1244,7 @@ describe("extension integration", () => {
             "initializeRepository",
         ]);
         expect(registeredCommands.has("intelligit.initializeRepository")).toBe(true);
+        expect(registeredCommands.has("intelligit.showFileDiff")).toBe(true);
     });
 
     it("initializes Git in an uninitialized workspace and activates repository views without reload", async () => {

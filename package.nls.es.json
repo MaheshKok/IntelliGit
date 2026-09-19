@@ -94,5 +94,6 @@
     "command.diffShowInIntelliGit": "Mostrar diferencia en IntelliGit",
     "command.diffShowInVsCode": "Mostrar diferencia en VS Code",
     "command.showFileHistory": "Mostrar historial del archivo",
-    "command.addToVcs": "Agregar al control de código fuente"
+    "command.addToVcs": "Agregar al control de código fuente",
+    "command.showFileDiff": "Mostrar diferencia"
 }

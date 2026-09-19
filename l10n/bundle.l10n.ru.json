@@ -651,5 +651,7 @@
     "Compare with Branch or Tag is only available for local files.": "Функция «Сравнить с веткой или тегом» доступна только для локальных файлов.",
     "Compare with branch or tag failed: {message}": "Не удалось сравнить с веткой или тегом: {message}",
     "Select a branch or tag for {path}": "Выберите ветку или тег для {path}",
-    "tag": "тег"
+    "tag": "тег",
+    "Show Diff is only available for local files.": "Функция «Показать различия» доступна только для локальных файлов.",
+    "Show Diff failed: {message}": "Не удалось показать различия: {message}"
 }

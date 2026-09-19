@@ -6,6 +6,7 @@ import { GitOps } from "../git/operations";
 import {
     compareEditorFileWithBranch,
     compareEditorFileWithRevision,
+    openDiffAgainstGitRef,
 } from "../services/diffService";
 import { getErrorMessage } from "../utils/errors";
 
@@ -119,6 +120,39 @@ export async function compareFileWithBranchOrTag(ctx: unknown, gitOps: GitOps): 
     } catch (error) {
         await vscode.window.showErrorMessage(
             vscode.l10n.t("Compare with branch or tag failed: {message}", {
+                message: getErrorMessage(error),
+            }),
+        );
+    }
+}
+
+/**
+ * Opens HEAD against the selected file's current working content in its owning repository.
+ *
+ * The original URI is preserved so the diff service can load an unsaved editor document, while
+ * Git reads use the canonical repository root and validated relative path. Explicit malformed
+ * contexts fail closed instead of borrowing the active editor.
+ */
+export async function showFileDiff(ctx: unknown, gitOps: GitOps): Promise<void> {
+    try {
+        const resolved = await resolveFileCommandContext(ctx, gitOps);
+        if (!resolved) {
+            await vscode.window.showErrorMessage(
+                vscode.l10n.t("Show Diff is only available for local files."),
+            );
+            return;
+        }
+        await openDiffAgainstGitRef(
+            resolved.selectedUri,
+            resolved.repoRoot,
+            resolved.repoRelativePath,
+            "HEAD",
+            "revision",
+            resolved.gitOps,
+        );
+    } catch (error) {
+        await vscode.window.showErrorMessage(
+            vscode.l10n.t("Show Diff failed: {message}", {
                 message: getErrorMessage(error),
             }),
         );

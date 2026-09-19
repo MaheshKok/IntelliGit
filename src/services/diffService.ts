@@ -761,7 +761,7 @@ function getCommitInfoFileContext(value: unknown): CommitInfoFileContext | null 
  * viewer must refuse. Git read failures inside the native fallback still propagate to the caller so UI
  * command handlers can display the workflow-specific error message.
  */
-async function openDiffAgainstGitRef(
+export async function openDiffAgainstGitRef(
     fileUri: vscode.Uri,
     repoRoot: string,
     repoRelativeFilePath: string,
