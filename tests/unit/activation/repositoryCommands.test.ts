@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => {
         annotateWithGitBlame: vi.fn(async () => undefined),
         compareFileWithBranchOrTag: vi.fn(async () => undefined),
         compareFileWithRevision: vi.fn(async () => undefined),
+        rollbackFile: vi.fn(async () => undefined),
         showCurrentRevision: vi.fn(async () => undefined),
         showFileDiff: vi.fn(async () => undefined),
         registerCommand: vi.fn((id: string, handler: (...args: unknown[]) => unknown) => {
@@ -56,6 +57,7 @@ vi.mock("../../../src/commands/fileContextCommands", () => ({
     annotateWithGitBlame: mocks.annotateWithGitBlame,
     compareFileWithBranchOrTag: mocks.compareFileWithBranchOrTag,
     compareFileWithRevision: mocks.compareFileWithRevision,
+    rollbackFile: mocks.rollbackFile,
     showCurrentRevision: mocks.showCurrentRevision,
     showFileDiff: mocks.showFileDiff,
 }));
@@ -104,6 +106,7 @@ const makeGitOps = (): GitOps =>
         hasAnyCommits: vi.fn(async () => true),
         hasUncommittedChanges: vi.fn(async () => true),
         getStatus: vi.fn(async () => []),
+        rollbackFiles: vi.fn(async () => undefined),
     }) as unknown as GitOps;
 
 const makeDeps = (gitOps: GitOps) => {
@@ -130,7 +133,7 @@ const makeDeps = (gitOps: GitOps) => {
         setActiveRepository: vi.fn(),
         clearSelection: vi.fn(),
         refreshActiveRepository: vi.fn(),
-        refreshService: vi.fn(() => ({})),
+        refreshService: vi.fn(() => ({ refreshCommitPanels: vi.fn(async () => undefined) })),
         isKnownRepositoryRoot: (repositoryRoot: string) => repositoryRoot === "/repo",
         showUndockedGitLog: vi.fn(),
         pickUndockTargetAndOpen: vi.fn(),
@@ -344,6 +347,33 @@ describe("registerRepositoryCommands", () => {
         await mocks.commands.get("intelligit.annotateWithGitBlame")?.(context);
 
         expect(mocks.annotateWithGitBlame).toHaveBeenCalledWith(context, gitOps);
+    });
+
+    it("routes native file rollback contexts through the selected-file wrapper", async () => {
+        const gitOps = makeGitOps();
+        registerRepositoryCommands(makeDeps(gitOps));
+        const context = { clicked: "file" };
+
+        await mocks.commands.get("intelligit.fileRollback")?.(context);
+
+        expect(mocks.rollbackFile).toHaveBeenCalledWith(context, gitOps);
+        expect(gitOps.rollbackFiles).not.toHaveBeenCalled();
+    });
+
+    it("keeps legacy filePath rollback contexts on the commit-panel handler", async () => {
+        const gitOps = makeGitOps();
+        mocks.showWarningMessage.mockResolvedValueOnce("xx:Rollback");
+        registerRepositoryCommands(makeDeps(gitOps));
+
+        await mocks.commands.get("intelligit.fileRollback")?.({ filePath: "src/a.ts" });
+
+        expect(mocks.rollbackFile).not.toHaveBeenCalled();
+        expect(mocks.showWarningMessage).toHaveBeenCalledWith(
+            "xx:Rollback {path}?",
+            { modal: true },
+            "xx:Rollback",
+        );
+        expect(gitOps.rollbackFiles).toHaveBeenCalledWith(["src/a.ts"]);
     });
 
     describe("intelligit.fileAddToVcs", () => {

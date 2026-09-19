@@ -121,6 +121,16 @@ describe("E2E coverage manifest", () => {
         );
     });
 
+    it("runs the file rollback Explorer scenario in the standard E2E suite", () => {
+        const packageJson = JSON.parse(
+            readFileSync(path.join(REPO_ROOT, "package.json"), "utf8"),
+        ) as PackageJson;
+
+        expect(packageJson.scripts?.["test:e2e"]?.split(/\s+/)).toContain(
+            "tests/e2e/fileContextRollback.spec.ts",
+        );
+    });
+
     it("classifies every entry and resolves every mutating decision", () => {
         const implementedFlowIds = new Set<string>(IMPLEMENTED_FLOW_IDS);
         const contributedCommandIds = new Set(readContributedCommandIds());

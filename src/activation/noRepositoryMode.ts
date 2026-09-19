@@ -199,6 +199,7 @@ export function activateNoRepositoryMode(
         "intelligit.graph.push.color",
         "intelligit.graph.sync",
         "intelligit.graph.sync.color",
+        "intelligit.fileRollback",
         "intelligit.annotateWithGitBlame",
         ...SHELF_COMMAND_IDS,
     ]) {

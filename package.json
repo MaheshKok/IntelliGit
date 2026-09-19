@@ -2,7 +2,7 @@
     "name": "intelligit",
     "displayName": "IntelliGit",
     "description": "%extension.description%",
-    "version": "0.35.4",
+    "version": "0.35.5",
     "publisher": "MaheshKok",
     "icon": "media/intelligit-icon.png",
     "license": "MIT",
@@ -431,7 +431,8 @@
             {
                 "command": "intelligit.fileRollback",
                 "title": "%command.rollback%",
-                "category": "%intelligit%"
+                "category": "%intelligit%",
+                "icon": "$(discard)"
             },
             {
                 "command": "intelligit.fileJumpToSource",
@@ -796,6 +797,11 @@
                     "command": "intelligit.annotateWithGitBlame",
                     "when": "resourceScheme == file",
                     "group": "2_history@3"
+                },
+                {
+                    "command": "intelligit.fileRollback",
+                    "when": "resourceScheme == file",
+                    "group": "3_actions@1"
                 }
             ],
             "intelligit.editorContext": [
@@ -828,6 +834,11 @@
                     "command": "intelligit.annotateWithGitBlame",
                     "when": "resourceScheme == file",
                     "group": "2_history@3"
+                },
+                {
+                    "command": "intelligit.fileRollback",
+                    "when": "resourceScheme == file",
+                    "group": "3_actions@1"
                 }
             ],
             "view/title": [
@@ -1237,7 +1248,7 @@
         "test:watch": "bun vitest",
         "test:visual": "playwright test --config playwright.visual.config.ts",
         "test:visual:container": "./tests/e2e/docker/run.sh 'bun install --frozen-lockfile && bun run build && bun run test:visual'",
-        "test:e2e": "playwright test --config playwright.e2e.config.ts tests/e2e/flows/flows.spec.ts tests/e2e/undockShortcut.spec.ts tests/e2e/gitLogPersistence.spec.ts tests/e2e/gitLogLayout.spec.ts tests/e2e/fileContextCompareBranchOrTag.spec.ts tests/e2e/fileContextShowCurrentRevision.spec.ts tests/e2e/fileContextAnnotateWithGitBlame.spec.ts",
+        "test:e2e": "playwright test --config playwright.e2e.config.ts tests/e2e/flows/flows.spec.ts tests/e2e/undockShortcut.spec.ts tests/e2e/gitLogPersistence.spec.ts tests/e2e/gitLogLayout.spec.ts tests/e2e/fileContextCompareBranchOrTag.spec.ts tests/e2e/fileContextShowCurrentRevision.spec.ts tests/e2e/fileContextAnnotateWithGitBlame.spec.ts tests/e2e/fileContextRollback.spec.ts",
         "test:e2e:diff-viewer": "playwright test --config playwright.e2e.config.ts tests/e2e/diffViewer.spec.ts",
         "test:e2e:diff-viewer:perf": "playwright test --config playwright.e2e.config.ts tests/e2e/diffViewer.performance.spec.ts",
         "test:e2e:container": "./tests/e2e/docker/run.sh 'bun install --frozen-lockfile && bun run build && xvfb-run -a bun run test:e2e'",

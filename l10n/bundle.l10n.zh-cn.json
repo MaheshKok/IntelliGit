@@ -659,5 +659,10 @@
     "Git Blame": "Git Blame",
     "Annotate with Git Blame is only available for local files.": "“使用 Git Blame 添加注释”仅适用于本地文件。",
     "Git Blame output is too large to open (maximum 4 MiB).": "Git Blame 输出过大，无法打开（最大 4 MiB）。",
-    "Annotate with Git Blame failed: {message}": "使用 Git Blame 添加注释失败：{message}"
+    "Annotate with Git Blame failed: {message}": "使用 Git Blame 添加注释失败：{message}",
+    "Rollback is only available for local files.": "回滚仅适用于本地文件。",
+    "Save or discard unsaved changes to {path} before rolling it back.": "回滚 {path} 前，请保存或放弃未保存的更改。",
+    "Cannot roll back {path} because it does not exist in HEAD.": "无法回滚 {path}，因为它不存在于 HEAD 中。",
+    "Rolled back {path}.": "已回滚 {path}。",
+    "Rollback failed for {path}: {message}": "回滚 {path} 失败：{message}"
 }

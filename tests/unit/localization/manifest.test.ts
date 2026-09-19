@@ -513,6 +513,9 @@ describe("extension manifest", () => {
 
         expect(command?.icon).toBe("$(compare-changes)");
         expect(branchOrTagCommand?.icon).toBe("$(git-compare)");
+        expect(commands.find((entry) => entry.command === "intelligit.fileRollback")?.icon).toBe(
+            "$(discard)",
+        );
 
         expect(manifest.contributes?.menus?.["editor/title/context"]).toContainEqual({
             submenu: "intelligit.fileContext",
@@ -609,6 +612,18 @@ describe("extension manifest", () => {
                     command: "intelligit.annotateWithGitBlame",
                     when: "resourceScheme == file",
                     group: "2_history@3",
+                },
+            ]);
+        }
+        for (const menu of [
+            fileMenu,
+            manifest.contributes?.menus?.["intelligit.editorContext"] ?? [],
+        ]) {
+            expect(menu.filter((entry) => entry.command === "intelligit.fileRollback")).toEqual([
+                {
+                    command: "intelligit.fileRollback",
+                    when: "resourceScheme == file",
+                    group: "3_actions@1",
                 },
             ]);
         }

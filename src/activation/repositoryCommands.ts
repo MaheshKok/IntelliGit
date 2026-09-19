@@ -11,6 +11,7 @@ import {
     annotateWithGitBlame,
     compareFileWithBranchOrTag,
     compareFileWithRevision,
+    rollbackFile,
     showCurrentRevision,
     showFileDiff,
 } from "../commands/fileContextCommands";
@@ -624,32 +625,36 @@ function registerCommitFileCommands(deps: RepositoryCommandsDeps): void {
                 );
             },
         ),
-        vscode.commands.registerCommand(
-            "intelligit.fileRollback",
-            async (ctx: { filePath?: string }) => {
-                if (!ctx?.filePath) return;
+        vscode.commands.registerCommand("intelligit.fileRollback", async (ctx: unknown) => {
+            if (!isFilePathContext(ctx)) {
                 try {
-                    const safePath = assertRepoRelativePath(ctx.filePath);
-                    const rollbackAction = vscode.l10n.t("Rollback");
-                    const confirm = await vscode.window.showWarningMessage(
-                        vscode.l10n.t("Rollback {path}?", { path: safePath }),
-                        { modal: true },
-                        rollbackAction,
-                    );
-                    if (confirm !== rollbackAction) return;
-                    await gitOps.rollbackFiles([safePath]);
-                    showTimedInformationMessage(vscode.l10n.t("Changes rolled back."));
-                } catch (error) {
-                    const message = getErrorMessage(error);
-                    console.error("Failed to rollback file:", error);
-                    vscode.window.showErrorMessage(
-                        vscode.l10n.t("Rollback failed: {message}", { message }),
-                    );
+                    await rollbackFile(ctx, gitOps);
                 } finally {
                     await refreshService().refreshCommitPanels();
                 }
-            },
-        ),
+                return;
+            }
+            try {
+                const safePath = assertRepoRelativePath(ctx.filePath);
+                const rollbackAction = vscode.l10n.t("Rollback");
+                const confirm = await vscode.window.showWarningMessage(
+                    vscode.l10n.t("Rollback {path}?", { path: safePath }),
+                    { modal: true },
+                    rollbackAction,
+                );
+                if (confirm !== rollbackAction) return;
+                await gitOps.rollbackFiles([safePath]);
+                showTimedInformationMessage(vscode.l10n.t("Changes rolled back."));
+            } catch (error) {
+                const message = getErrorMessage(error);
+                console.error("Failed to rollback file:", error);
+                vscode.window.showErrorMessage(
+                    vscode.l10n.t("Rollback failed: {message}", { message }),
+                );
+            } finally {
+                await refreshService().refreshCommitPanels();
+            }
+        }),
         vscode.commands.registerCommand(
             "intelligit.fileJumpToSource",
             async (ctx: { filePath?: string }) => {

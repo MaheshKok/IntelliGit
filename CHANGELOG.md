@@ -5,6 +5,15 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.35.5] - 2026-09-19
+
+### Added
+
+- Added **Rollback** to IntelliGit file menus in Explorer, editor tabs, and the editor.
+- Rollback restores only the selected tracked file from the latest commit after showing the exact
+  path for confirmation.
+- Unsaved editor text, untracked files, and newly added files are protected from deletion.
+
 ## [0.35.4] - 2026-09-19
 
 ### Added

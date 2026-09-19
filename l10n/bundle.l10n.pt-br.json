@@ -659,5 +659,10 @@
     "Git Blame": "Git Blame",
     "Annotate with Git Blame is only available for local files.": "A opção «Anotar com Git Blame» está disponível apenas para arquivos locais.",
     "Git Blame output is too large to open (maximum 4 MiB).": "A saída do Git Blame é grande demais para abrir (máximo de 4 MiB).",
-    "Annotate with Git Blame failed: {message}": "Falha ao anotar com Git Blame: {message}"
+    "Annotate with Git Blame failed: {message}": "Falha ao anotar com Git Blame: {message}",
+    "Rollback is only available for local files.": "A reversão está disponível apenas para arquivos locais.",
+    "Save or discard unsaved changes to {path} before rolling it back.": "Salve ou descarte as alterações não salvas em {path} antes de revertê-lo.",
+    "Cannot roll back {path} because it does not exist in HEAD.": "Não é possível reverter {path} porque ele não existe em HEAD.",
+    "Rolled back {path}.": "{path} foi revertido.",
+    "Rollback failed for {path}: {message}": "Falha ao reverter {path}: {message}"
 }

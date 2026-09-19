@@ -41,9 +41,15 @@ const mocks = vi.hoisted(() => {
         compareEditorFileWithRevision: vi.fn(async () => undefined),
         createReadonlyDiffUri: vi.fn(() => ({ scheme: "intelligit-diff", path: "/selected.ts" })),
         getFileContentAtRef: vi.fn(async () => "committed HEAD content"),
+        hasFileAtHead: vi.fn(async () => true),
+        rollbackFiles: vi.fn(async () => undefined),
         showEditorFileDiff: vi.fn(async () => undefined),
         showErrorMessage: vi.fn(async () => undefined),
+        showInformationMessage: vi.fn(async () => undefined),
         showTextDocument: vi.fn(async () => undefined),
+        showWarningMessage: vi.fn(
+            async (_message?: string, _options?: unknown, ...items: string[]) => items[0],
+        ),
     };
 });
 
@@ -55,14 +61,22 @@ vi.mock("vscode", () => ({
             return mocks.activeUri ? { document: { uri: mocks.activeUri } } : undefined;
         },
         showErrorMessage: mocks.showErrorMessage,
+        showInformationMessage: mocks.showInformationMessage,
         showTextDocument: mocks.showTextDocument,
+        showWarningMessage: mocks.showWarningMessage,
     },
     workspace: {
         get textDocuments() {
             return mocks.textDocuments;
         },
     },
-    l10n: { t: (message: string) => message },
+    l10n: {
+        t: (message: string, args?: Record<string, string>) =>
+            Object.entries(args ?? {}).reduce(
+                (rendered, [key, value]) => rendered.replace(`{${key}}`, value),
+                message,
+            ),
+    },
 }));
 vi.mock("../../../src/git/executor", () => ({
     GitExecutor: class {
@@ -85,6 +99,7 @@ import {
     annotateWithGitBlame,
     compareFileWithBranchOrTag,
     compareFileWithRevision,
+    rollbackFile,
     showCurrentRevision,
     showFileDiff,
 } from "../../../src/commands/fileContextCommands";
@@ -96,6 +111,8 @@ const makeGitOps = (): GitOps =>
                 ({
                     scope: "selected",
                     getFileContentAtRef: mocks.getFileContentAtRef,
+                    hasFileAtHead: mocks.hasFileAtHead,
+                    rollbackFiles: mocks.rollbackFiles,
                 }) as unknown as GitOps,
         ),
     }) as unknown as GitOps;
@@ -112,6 +129,111 @@ beforeEach(() => {
         stderr: Buffer.alloc(0),
         exitCode: 0,
         truncated: false,
+    });
+});
+
+describe("rollbackFile", () => {
+    it("confirms the exact clicked tracked path and rolls back only that path", async () => {
+        const gitOps = makeGitOps();
+        const clicked = mocks.FakeUri.file("/repo-b/nested/file with spaces.ts");
+
+        await rollbackFile(clicked, gitOps);
+
+        expect(gitOps.deriveFor).toHaveBeenCalledWith("/repo-b");
+        expect(mocks.hasFileAtHead).toHaveBeenCalledWith("nested/file with spaces.ts");
+        expect(mocks.showWarningMessage).toHaveBeenCalledWith(
+            "Rollback nested/file with spaces.ts?",
+            { modal: true },
+            "Rollback",
+        );
+        expect(mocks.rollbackFiles).toHaveBeenCalledWith(["nested/file with spaces.ts"]);
+        expect(mocks.showInformationMessage).toHaveBeenCalledWith(
+            "Rolled back nested/file with spaces.ts.",
+        );
+    });
+
+    it("uses the active editor when the context is undefined", async () => {
+        const gitOps = makeGitOps();
+        mocks.activeUri = mocks.FakeUri.file("/repo-b/src/active.ts");
+
+        await rollbackFile(undefined, gitOps);
+
+        expect(mocks.hasFileAtHead).toHaveBeenCalledWith("src/active.ts");
+        expect(mocks.rollbackFiles).toHaveBeenCalledWith(["src/active.ts"]);
+    });
+
+    it("does not roll back or report success when confirmation is cancelled", async () => {
+        const gitOps = makeGitOps();
+        mocks.showWarningMessage.mockResolvedValueOnce(undefined);
+
+        await rollbackFile(mocks.FakeUri.file("/repo-b/src/cancelled.ts"), gitOps);
+
+        expect(mocks.showWarningMessage).toHaveBeenCalledWith(
+            "Rollback src/cancelled.ts?",
+            { modal: true },
+            "Rollback",
+        );
+        expect(mocks.rollbackFiles).not.toHaveBeenCalled();
+        expect(mocks.showInformationMessage).not.toHaveBeenCalled();
+    });
+
+    it("rejects a dirty open buffer before checking HEAD or showing confirmation", async () => {
+        const gitOps = makeGitOps();
+        const clicked = mocks.FakeUri.file("/repo-b/src/dirty.ts");
+        mocks.textDocuments.push({ uri: clicked, isDirty: true, getText: () => "unsaved" });
+
+        await rollbackFile(clicked, gitOps);
+
+        expect(mocks.hasFileAtHead).not.toHaveBeenCalled();
+        expect(mocks.showWarningMessage).not.toHaveBeenCalled();
+        expect(mocks.rollbackFiles).not.toHaveBeenCalled();
+        expect(mocks.showErrorMessage).toHaveBeenCalledWith(
+            "Save or discard unsaved changes to src/dirty.ts before rolling it back.",
+        );
+    });
+
+    it("rejects a dirty buffer opened through a symlink alias of the selected file", async () => {
+        const gitOps = makeGitOps();
+        const clicked = mocks.FakeUri.file("/repo-b/src/dirty.ts");
+        const alias = mocks.FakeUri.file("/linked/repo-b/src/dirty.ts");
+        mocks.textDocuments.push({ uri: alias, isDirty: true, getText: () => "unsaved" });
+        mocks.realpath.mockImplementation(async (value: string) =>
+            value === "/linked/repo-b/src" ? "/repo-b/src" : value,
+        );
+
+        await rollbackFile(clicked, gitOps);
+
+        expect(mocks.hasFileAtHead).not.toHaveBeenCalled();
+        expect(mocks.showWarningMessage).not.toHaveBeenCalled();
+        expect(mocks.rollbackFiles).not.toHaveBeenCalled();
+        expect(mocks.showErrorMessage).toHaveBeenCalledWith(
+            "Save or discard unsaved changes to src/dirty.ts before rolling it back.",
+        );
+    });
+
+    it("rejects an untracked or staged-new path before confirmation", async () => {
+        const gitOps = makeGitOps();
+        mocks.hasFileAtHead.mockResolvedValueOnce(false);
+
+        await rollbackFile(mocks.FakeUri.file("/repo-b/new.ts"), gitOps);
+
+        expect(mocks.showWarningMessage).not.toHaveBeenCalled();
+        expect(mocks.rollbackFiles).not.toHaveBeenCalled();
+        expect(mocks.showErrorMessage).toHaveBeenCalledWith(
+            "Cannot roll back new.ts because it does not exist in HEAD.",
+        );
+    });
+
+    it("reports rollback failures for the selected path", async () => {
+        const gitOps = makeGitOps();
+        mocks.rollbackFiles.mockRejectedValueOnce(new Error("checkout failed"));
+
+        await rollbackFile(mocks.FakeUri.file("/repo-b/src/a.ts"), gitOps);
+
+        expect(mocks.showInformationMessage).not.toHaveBeenCalled();
+        expect(mocks.showErrorMessage).toHaveBeenCalledWith(
+            "Rollback failed for src/a.ts: checkout failed",
+        );
     });
 });
 
@@ -169,7 +291,7 @@ describe("compareFileWithRevision", () => {
         expect(gitOps.deriveFor).not.toHaveBeenCalled();
         expect(mocks.compareEditorFileWithRevision).not.toHaveBeenCalled();
         expect(mocks.showErrorMessage).toHaveBeenCalledWith(
-            "Compare with revision failed: {message}",
+            "Compare with revision failed: not a repository",
         );
     });
 
@@ -277,7 +399,7 @@ describe("showFileDiff", () => {
         await showFileDiff(mocks.FakeUri.file("/outside/file.ts"), gitOps);
 
         expect(mocks.showEditorFileDiff).not.toHaveBeenCalled();
-        expect(mocks.showErrorMessage).toHaveBeenCalledWith("Show Diff failed: {message}");
+        expect(mocks.showErrorMessage).toHaveBeenCalledWith("Show Diff failed: not a repository");
     });
 });
 
@@ -337,7 +459,7 @@ describe("showCurrentRevision", () => {
 
         expect(mocks.showTextDocument).not.toHaveBeenCalled();
         expect(mocks.showErrorMessage).toHaveBeenCalledWith(
-            "Show Current Revision failed: {message}",
+            "Show Current Revision failed: missing from HEAD",
         );
     });
 });
@@ -436,7 +558,7 @@ describe("annotateWithGitBlame", () => {
         expect(mocks.createReadonlyDiffUri).not.toHaveBeenCalled();
         expect(mocks.showTextDocument).not.toHaveBeenCalled();
         expect(mocks.showErrorMessage).toHaveBeenCalledWith(
-            "Annotate with Git Blame failed: {message}",
+            "Annotate with Git Blame failed: fatal: no such path",
         );
     });
 });

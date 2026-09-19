@@ -13,6 +13,7 @@ import { getErrorMessage } from "../utils/errors";
 
 interface ResolvedFileCommandContext {
     selectedUri: vscode.Uri;
+    canonicalFilePath: string;
     repoRoot: string;
     repoRelativePath: string;
     gitOps: GitOps;
@@ -60,10 +61,91 @@ async function resolveFileCommandContext(
 
     return {
         selectedUri,
+        canonicalFilePath,
         repoRoot,
         repoRelativePath: relativePath.split(path.sep).join("/"),
         gitOps: gitOps.deriveFor(repoRoot),
     };
+}
+
+/** Returns whether the selected file has an unsaved editor, including a symlinked URI alias. */
+async function hasDirtyDocument(resolved: ResolvedFileCommandContext): Promise<boolean> {
+    for (const document of vscode.workspace.textDocuments) {
+        if (!document.isDirty) continue;
+        if (document.uri.toString() === resolved.selectedUri.toString()) return true;
+        if (document.uri.scheme !== "file") continue;
+        try {
+            const canonicalDirectory = await realpath(path.dirname(document.uri.fsPath));
+            const canonicalDocumentPath = path.join(
+                canonicalDirectory,
+                path.basename(document.uri.fsPath),
+            );
+            if (canonicalDocumentPath === resolved.canonicalFilePath) return true;
+        } catch {
+            // An inaccessible alias cannot identify the selected file.
+        }
+    }
+    return false;
+}
+
+/**
+ * Rolls back one clicked local file, or the active editor when no explicit context was supplied.
+ *
+ * Dirty editor buffers are rejected because Git cannot restore their in-memory text. The selected
+ * path must exist in `HEAD` before confirmation so untracked and staged-new files never reach the
+ * cleanup branches of `rollbackFiles`.
+ */
+export async function rollbackFile(ctx: unknown, gitOps: GitOps): Promise<void> {
+    let selectedPath: string | undefined;
+    try {
+        const resolved = await resolveFileCommandContext(ctx, gitOps);
+        if (!resolved) {
+            await vscode.window.showErrorMessage(
+                vscode.l10n.t("Rollback is only available for local files."),
+            );
+            return;
+        }
+        selectedPath = resolved.repoRelativePath;
+        if (await hasDirtyDocument(resolved)) {
+            await vscode.window.showErrorMessage(
+                vscode.l10n.t("Save or discard unsaved changes to {path} before rolling it back.", {
+                    path: selectedPath,
+                }),
+            );
+            return;
+        }
+        if (!(await resolved.gitOps.hasFileAtHead(selectedPath))) {
+            await vscode.window.showErrorMessage(
+                vscode.l10n.t("Cannot roll back {path} because it does not exist in HEAD.", {
+                    path: selectedPath,
+                }),
+            );
+            return;
+        }
+
+        const rollbackAction = vscode.l10n.t("Rollback");
+        const confirmation = await vscode.window.showWarningMessage(
+            vscode.l10n.t("Rollback {path}?", { path: selectedPath }),
+            { modal: true },
+            rollbackAction,
+        );
+        if (confirmation !== rollbackAction) return;
+
+        await resolved.gitOps.rollbackFiles([selectedPath]);
+        await vscode.window.showInformationMessage(
+            vscode.l10n.t("Rolled back {path}.", { path: selectedPath }),
+        );
+    } catch (error) {
+        const message = getErrorMessage(error);
+        await vscode.window.showErrorMessage(
+            selectedPath
+                ? vscode.l10n.t("Rollback failed for {path}: {message}", {
+                      path: selectedPath,
+                      message,
+                  })
+                : vscode.l10n.t("Rollback failed: {message}", { message }),
+        );
+    }
 }
 
 /**
