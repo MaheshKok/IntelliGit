@@ -664,5 +664,7 @@
     "Save or discard unsaved changes to {path} before rolling it back.": "Speichern oder verwerfen Sie die nicht gespeicherten Änderungen an {path}, bevor Sie sie rückgängig machen.",
     "Cannot roll back {path} because it does not exist in HEAD.": "{path} kann nicht rückgängig gemacht werden, da die Datei in HEAD nicht vorhanden ist.",
     "Rolled back {path}.": "{path} wurde rückgängig gemacht.",
-    "Rollback failed for {path}: {message}": "Rückgängigmachen von {path} fehlgeschlagen: {message}"
+    "Rollback failed for {path}: {message}": "Rückgängigmachen von {path} fehlgeschlagen: {message}",
+    "Fetch is only available for local files.": "Abrufen ist nur für lokale Dateien verfügbar.",
+    "Fetch failed: {message}": "Abrufen fehlgeschlagen: {message}"
 }

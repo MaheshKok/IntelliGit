@@ -10,6 +10,7 @@ import {
     showEditorFileDiff,
 } from "../services/diffService";
 import { getErrorMessage } from "../utils/errors";
+import { runWithNotificationProgress } from "../utils/notifications";
 
 interface ResolvedFileCommandContext {
     selectedUri: vscode.Uri;
@@ -66,6 +67,34 @@ async function resolveFileCommandContext(
         repoRelativePath: relativePath.split(path.sep).join("/"),
         gitOps: gitOps.deriveFor(repoRoot),
     };
+}
+
+/**
+ * Fetches remote refs for the repository that owns the selected local file.
+ *
+ * The selected path is used only to resolve repository ownership. A successful fetch returns the
+ * canonical repository root so callers can avoid refreshing a different active repository.
+ */
+export async function fetchFile(ctx: unknown, gitOps: GitOps): Promise<string | undefined> {
+    try {
+        const resolved = await resolveFileCommandContext(ctx, gitOps);
+        if (!resolved) {
+            await vscode.window.showErrorMessage(
+                vscode.l10n.t("Fetch is only available for local files."),
+            );
+            return undefined;
+        }
+        await runWithNotificationProgress(vscode.l10n.t("Fetching..."), async () => {
+            await resolved.gitOps.fetch();
+        });
+        await vscode.window.showInformationMessage(vscode.l10n.t("Fetched successfully."));
+        return resolved.repoRoot;
+    } catch (error) {
+        await vscode.window.showErrorMessage(
+            vscode.l10n.t("Fetch failed: {message}", { message: getErrorMessage(error) }),
+        );
+        return undefined;
+    }
 }
 
 /** Returns whether the selected file has an unsaved editor, including a symlinked URI alias. */

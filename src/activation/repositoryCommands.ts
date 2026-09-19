@@ -11,6 +11,7 @@ import {
     annotateWithGitBlame,
     compareFileWithBranchOrTag,
     compareFileWithRevision,
+    fetchFile,
     rollbackFile,
     showCurrentRevision,
     showFileDiff,
@@ -119,6 +120,35 @@ function resolveAddToVcsContext(
     } catch {
         return undefined;
     }
+}
+
+/**
+ * Detects Windows drive-letter and UNC roots without treating a POSIX root as Windows syntax.
+ *
+ * This deliberately excludes root-relative Windows paths because repository roots are absolute.
+ */
+function isWindowsRepositoryRoot(root: string): boolean {
+    return /^[A-Za-z]:[\\/]/.test(root) || /^[/\\]{2}[^/\\]+[/\\][^/\\]+/.test(root);
+}
+
+/**
+ * Compares absolute repository roots using the filesystem spelling rules implied by each path.
+ *
+ * Windows drive and UNC roots are normalized case-insensitively even when tests run on another
+ * platform. POSIX roots retain case-sensitive native resolution so distinct repositories are not
+ * collapsed merely because their letter case differs.
+ */
+function areSameRepositoryRoot(left: string, right: string): boolean {
+    const leftIsWindows = isWindowsRepositoryRoot(left);
+    const rightIsWindows = isWindowsRepositoryRoot(right);
+    if (leftIsWindows || rightIsWindows) {
+        return (
+            leftIsWindows &&
+            rightIsWindows &&
+            path.win32.resolve(left).toLowerCase() === path.win32.resolve(right).toLowerCase()
+        );
+    }
+    return path.resolve(left) === path.resolve(right);
 }
 
 /**
@@ -586,7 +616,15 @@ function registerBranchCommands(deps: RepositoryCommandsDeps): void {
  * context.
  */
 function registerCommitFileCommands(deps: RepositoryCommandsDeps): void {
-    const { context, executor, gitOps, getRepoRoot, isKnownRepositoryRoot, refreshService } = deps;
+    const {
+        context,
+        executor,
+        gitOps,
+        getRepoRoot,
+        isKnownRepositoryRoot,
+        refreshActiveRepository,
+        refreshService,
+    } = deps;
 
     context.subscriptions.push(
         vscode.commands.registerCommand("intelligit.fileAddToVcs", async (ctx: unknown) => {
@@ -625,6 +663,12 @@ function registerCommitFileCommands(deps: RepositoryCommandsDeps): void {
                 );
             },
         ),
+        vscode.commands.registerCommand("intelligit.fileFetch", async (ctx: unknown) => {
+            const fetchedRoot = await fetchFile(ctx, gitOps);
+            if (fetchedRoot && areSameRepositoryRoot(fetchedRoot, getRepoRoot())) {
+                await refreshActiveRepository();
+            }
+        }),
         vscode.commands.registerCommand("intelligit.fileRollback", async (ctx: unknown) => {
             if (!isFilePathContext(ctx)) {
                 try {

@@ -40,6 +40,7 @@ const mocks = vi.hoisted(() => {
         compareEditorFileWithBranch: vi.fn(async () => undefined),
         compareEditorFileWithRevision: vi.fn(async () => undefined),
         createReadonlyDiffUri: vi.fn(() => ({ scheme: "intelligit-diff", path: "/selected.ts" })),
+        fetch: vi.fn(async () => undefined),
         getFileContentAtRef: vi.fn(async () => "committed HEAD content"),
         hasFileAtHead: vi.fn(async () => true),
         rollbackFiles: vi.fn(async () => undefined),
@@ -50,6 +51,7 @@ const mocks = vi.hoisted(() => {
         showWarningMessage: vi.fn(
             async (_message?: string, _options?: unknown, ...items: string[]) => items[0],
         ),
+        withProgress: vi.fn(async (_options: unknown, task: () => Promise<unknown>) => task()),
     };
 });
 
@@ -64,7 +66,9 @@ vi.mock("vscode", () => ({
         showInformationMessage: mocks.showInformationMessage,
         showTextDocument: mocks.showTextDocument,
         showWarningMessage: mocks.showWarningMessage,
+        withProgress: mocks.withProgress,
     },
+    ProgressLocation: { Notification: 15 },
     workspace: {
         get textDocuments() {
             return mocks.textDocuments;
@@ -99,6 +103,7 @@ import {
     annotateWithGitBlame,
     compareFileWithBranchOrTag,
     compareFileWithRevision,
+    fetchFile,
     rollbackFile,
     showCurrentRevision,
     showFileDiff,
@@ -110,6 +115,7 @@ const makeGitOps = (): GitOps =>
             () =>
                 ({
                     scope: "selected",
+                    fetch: mocks.fetch,
                     getFileContentAtRef: mocks.getFileContentAtRef,
                     hasFileAtHead: mocks.hasFileAtHead,
                     rollbackFiles: mocks.rollbackFiles,
@@ -129,6 +135,51 @@ beforeEach(() => {
         stderr: Buffer.alloc(0),
         exitCode: 0,
         truncated: false,
+    });
+});
+
+describe("fetchFile", () => {
+    it("fetches through GitOps derived for the clicked file repository and returns that root", async () => {
+        const gitOps = makeGitOps();
+        const clicked = mocks.FakeUri.file("/repo-b/nested/file.ts");
+
+        const fetchedRoot = await fetchFile(clicked, gitOps);
+
+        expect(gitOps.deriveFor).toHaveBeenCalledWith("/repo-b");
+        expect(mocks.fetch).toHaveBeenCalledTimes(1);
+        expect(mocks.withProgress).toHaveBeenCalledWith(
+            { location: 15, title: "IntelliGit: Fetching...", cancellable: false },
+            expect.any(Function),
+        );
+        expect(mocks.showInformationMessage).toHaveBeenCalledWith("Fetched successfully.");
+        expect(fetchedRoot).toBe("/repo-b");
+    });
+
+    it("rejects an explicit non-file context without fetching or borrowing the active editor", async () => {
+        const gitOps = makeGitOps();
+
+        const fetchedRoot = await fetchFile(
+            new mocks.FakeUri("untitled:file.ts", "untitled"),
+            gitOps,
+        );
+
+        expect(gitOps.deriveFor).not.toHaveBeenCalled();
+        expect(mocks.fetch).not.toHaveBeenCalled();
+        expect(mocks.showErrorMessage).toHaveBeenCalledWith(
+            "Fetch is only available for local files.",
+        );
+        expect(fetchedRoot).toBeUndefined();
+    });
+
+    it("reports fetch failures without success or a refreshable repository root", async () => {
+        const gitOps = makeGitOps();
+        mocks.fetch.mockRejectedValueOnce(new Error("network unavailable"));
+
+        const fetchedRoot = await fetchFile(mocks.FakeUri.file("/repo-b/file.ts"), gitOps);
+
+        expect(mocks.showInformationMessage).not.toHaveBeenCalled();
+        expect(mocks.showErrorMessage).toHaveBeenCalledWith("Fetch failed: network unavailable");
+        expect(fetchedRoot).toBeUndefined();
     });
 });
 

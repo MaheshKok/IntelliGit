@@ -664,5 +664,7 @@
     "Save or discard unsaved changes to {path} before rolling it back.": "{path} をロールバックする前に、未保存の変更を保存または破棄してください。",
     "Cannot roll back {path} because it does not exist in HEAD.": "{path} は HEAD に存在しないためロールバックできません。",
     "Rolled back {path}.": "{path} をロールバックしました。",
-    "Rollback failed for {path}: {message}": "{path} のロールバックに失敗しました: {message}"
+    "Rollback failed for {path}: {message}": "{path} のロールバックに失敗しました: {message}",
+    "Fetch is only available for local files.": "フェッチはローカルファイルでのみ利用できます。",
+    "Fetch failed: {message}": "フェッチに失敗しました: {message}"
 }

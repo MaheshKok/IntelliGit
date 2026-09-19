@@ -664,5 +664,7 @@
     "Save or discard unsaved changes to {path} before rolling it back.": "Сохраните или отмените несохраненные изменения в {path} перед откатом.",
     "Cannot roll back {path} because it does not exist in HEAD.": "Невозможно откатить {path}, так как этот файл отсутствует в HEAD.",
     "Rolled back {path}.": "Выполнен откат {path}.",
-    "Rollback failed for {path}: {message}": "Не удалось откатить {path}: {message}"
+    "Rollback failed for {path}: {message}": "Не удалось откатить {path}: {message}",
+    "Fetch is only available for local files.": "Получение доступно только для локальных файлов.",
+    "Fetch failed: {message}": "Не удалось выполнить получение: {message}"
 }

@@ -2202,6 +2202,7 @@ describe("extension integration", () => {
             { webviewOptions: { retainContextWhenHidden: true } },
         );
         expect(registeredCommands.has("intelligit.fileRollback")).toBe(true);
+        expect(registeredCommands.has("intelligit.fileFetch")).toBe(true);
         expect(workspaceState?.update).not.toHaveBeenCalledWith(
             "intelligit.restoreUndockedEditorOnActivation",
             expect.anything(),
@@ -3272,6 +3273,7 @@ describe("extension integration", () => {
         await activate(context);
         expect(registeredCommands.has("intelligit.selectRepository")).toBe(true);
         expect(registeredCommands.has("intelligit.fileRollback")).toBe(true);
+        expect(registeredCommands.has("intelligit.fileFetch")).toBe(true);
         expect(registeredCommands.has("intelligit.annotateWithGitBlame")).toBe(true);
         registeredCommands.clear();
 

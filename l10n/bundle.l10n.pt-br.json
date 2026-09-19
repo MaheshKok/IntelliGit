@@ -664,5 +664,7 @@
     "Save or discard unsaved changes to {path} before rolling it back.": "Salve ou descarte as alterações não salvas em {path} antes de revertê-lo.",
     "Cannot roll back {path} because it does not exist in HEAD.": "Não é possível reverter {path} porque ele não existe em HEAD.",
     "Rolled back {path}.": "{path} foi revertido.",
-    "Rollback failed for {path}: {message}": "Falha ao reverter {path}: {message}"
+    "Rollback failed for {path}: {message}": "Falha ao reverter {path}: {message}",
+    "Fetch is only available for local files.": "A busca está disponível apenas para arquivos locais.",
+    "Fetch failed: {message}": "Falha ao buscar: {message}"
 }

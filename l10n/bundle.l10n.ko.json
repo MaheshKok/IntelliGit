@@ -664,5 +664,7 @@
     "Save or discard unsaved changes to {path} before rolling it back.": "{path}을(를) 롤백하기 전에 저장되지 않은 변경 내용을 저장하거나 폐기하세요.",
     "Cannot roll back {path} because it does not exist in HEAD.": "{path}은(는) HEAD에 없으므로 롤백할 수 없습니다.",
     "Rolled back {path}.": "{path}을(를) 롤백했습니다.",
-    "Rollback failed for {path}: {message}": "{path} 롤백 실패: {message}"
+    "Rollback failed for {path}: {message}": "{path} 롤백 실패: {message}",
+    "Fetch is only available for local files.": "가져오기는 로컬 파일에서만 사용할 수 있습니다.",
+    "Fetch failed: {message}": "가져오기에 실패했습니다: {message}"
 }

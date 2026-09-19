@@ -516,6 +516,15 @@ describe("extension manifest", () => {
         expect(commands.find((entry) => entry.command === "intelligit.fileRollback")?.icon).toBe(
             "$(discard)",
         );
+        expect(commands.find((entry) => entry.command === "intelligit.fileFetch")).toEqual({
+            command: "intelligit.fileFetch",
+            title: "%command.fetch%",
+            category: "%intelligit%",
+            icon: {
+                light: "media/icons/git-fetch-ink.svg",
+                dark: "media/icons/git-fetch-white.svg",
+            },
+        });
 
         expect(manifest.contributes?.menus?.["editor/title/context"]).toContainEqual({
             submenu: "intelligit.fileContext",
@@ -612,6 +621,13 @@ describe("extension manifest", () => {
                     command: "intelligit.annotateWithGitBlame",
                     when: "resourceScheme == file",
                     group: "2_history@3",
+                },
+            ]);
+            expect(menu.filter((entry) => entry.command === "intelligit.fileFetch")).toEqual([
+                {
+                    command: "intelligit.fileFetch",
+                    when: "resourceScheme == file",
+                    group: "3_actions@2",
                 },
             ]);
         }

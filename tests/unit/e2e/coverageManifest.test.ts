@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 
 import { describe, expect, it } from "vitest";
@@ -131,6 +131,16 @@ describe("E2E coverage manifest", () => {
         );
     });
 
+    it("runs the file fetch Explorer scenario in the standard E2E suite", () => {
+        const packageJson = JSON.parse(
+            readFileSync(path.join(REPO_ROOT, "package.json"), "utf8"),
+        ) as PackageJson;
+
+        expect(packageJson.scripts?.["test:e2e"]?.split(/\s+/)).toContain(
+            "tests/e2e/fileContextFetch.spec.ts",
+        );
+    });
+
     it("classifies every entry and resolves every mutating decision", () => {
         const implementedFlowIds = new Set<string>(IMPLEMENTED_FLOW_IDS);
         const contributedCommandIds = new Set(readContributedCommandIds());
@@ -150,6 +160,7 @@ describe("E2E coverage manifest", () => {
 
             const coverageReferences = [
                 entry.coveredBy !== undefined,
+                entry.coveredBySpec !== undefined,
                 entry.notCovered !== undefined,
             ];
             if (entry.mutating) {
@@ -161,6 +172,12 @@ describe("E2E coverage manifest", () => {
                     expect(
                         implementedFlowIds.has(entry.coveredBy),
                         `${entry.kind} ${entry.id} coveredBy must resolve to IMPLEMENTED_FLOW_IDS`,
+                    ).toBe(true);
+                }
+                if (entry.coveredBySpec !== undefined) {
+                    expect(
+                        existsSync(path.join(REPO_ROOT, entry.coveredBySpec)),
+                        `${entry.kind} ${entry.id} coveredBySpec must resolve to a checked-in test`,
                     ).toBe(true);
                 }
                 if (entry.notCovered !== undefined) {
@@ -220,7 +237,7 @@ describe("E2E coverage manifest", () => {
         );
 
         expect(aliasIds).toHaveLength(9);
-        expect(collapsedBaseIds).toHaveLength(70);
+        expect(collapsedBaseIds).toHaveLength(71);
         expect(collapsedManifestBaseIds).toEqual(collapsedBaseIds);
     });
 

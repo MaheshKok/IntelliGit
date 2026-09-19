@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => {
         annotateWithGitBlame: vi.fn(async () => undefined),
         compareFileWithBranchOrTag: vi.fn(async () => undefined),
         compareFileWithRevision: vi.fn(async () => undefined),
+        fetchFile: vi.fn(async () => "/repo" as string | undefined),
         rollbackFile: vi.fn(async () => undefined),
         showCurrentRevision: vi.fn(async () => undefined),
         showFileDiff: vi.fn(async () => undefined),
@@ -57,6 +58,7 @@ vi.mock("../../../src/commands/fileContextCommands", () => ({
     annotateWithGitBlame: mocks.annotateWithGitBlame,
     compareFileWithBranchOrTag: mocks.compareFileWithBranchOrTag,
     compareFileWithRevision: mocks.compareFileWithRevision,
+    fetchFile: mocks.fetchFile,
     rollbackFile: mocks.rollbackFile,
     showCurrentRevision: mocks.showCurrentRevision,
     showFileDiff: mocks.showFileDiff,
@@ -347,6 +349,58 @@ describe("registerRepositoryCommands", () => {
         await mocks.commands.get("intelligit.annotateWithGitBlame")?.(context);
 
         expect(mocks.annotateWithGitBlame).toHaveBeenCalledWith(context, gitOps);
+    });
+
+    it("refreshes active-repository data after fetching the active file repository", async () => {
+        const gitOps = makeGitOps();
+        const deps = makeDeps(gitOps);
+        const context = { clicked: "file" };
+        registerRepositoryCommands(deps);
+
+        await mocks.commands.get("intelligit.fileFetch")?.(context);
+
+        expect(mocks.fetchFile).toHaveBeenCalledWith(context, gitOps);
+        expect(deps.refreshActiveRepository).toHaveBeenCalledTimes(1);
+    });
+
+    it("refreshes when Windows drive case and separators spell the same repository root", async () => {
+        const gitOps = makeGitOps();
+        const deps = makeDeps(gitOps);
+        deps.getRepoRoot = () => "c:\\work\\repo";
+        mocks.fetchFile.mockResolvedValueOnce("C:/Work/Repo/");
+        registerRepositoryCommands(deps);
+
+        await mocks.commands.get("intelligit.fileFetch")?.({ clicked: "file" });
+
+        expect(deps.refreshActiveRepository).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not collapse POSIX repository roots that differ only by case", async () => {
+        const gitOps = makeGitOps();
+        const deps = makeDeps(gitOps);
+        deps.getRepoRoot = () => "/repo";
+        mocks.fetchFile.mockResolvedValueOnce("/Repo");
+        registerRepositoryCommands(deps);
+
+        await mocks.commands.get("intelligit.fileFetch")?.({ clicked: "file" });
+
+        expect(deps.refreshActiveRepository).not.toHaveBeenCalled();
+    });
+
+    it("does not refresh active or commit-panel data after fetching a non-active repository", async () => {
+        const gitOps = makeGitOps();
+        const deps = makeDeps(gitOps);
+        const refreshCommitPanels = vi.fn(async () => undefined);
+        deps.refreshService = vi.fn(
+            () => ({ refreshCommitPanels }) as ReturnType<typeof deps.refreshService>,
+        );
+        mocks.fetchFile.mockResolvedValueOnce("/repo-b");
+        registerRepositoryCommands(deps);
+
+        await mocks.commands.get("intelligit.fileFetch")?.({ clicked: "file" });
+
+        expect(deps.refreshActiveRepository).not.toHaveBeenCalled();
+        expect(refreshCommitPanels).not.toHaveBeenCalled();
     });
 
     it("routes native file rollback contexts through the selected-file wrapper", async () => {

@@ -7,6 +7,7 @@ export type CoverageEntry = {
     readonly mutating: boolean;
     readonly aliasOf?: string;
     readonly coveredBy?: (typeof IMPLEMENTED_FLOW_IDS)[number];
+    readonly coveredBySpec?: string;
     readonly notCovered?: string;
 };
 
@@ -223,6 +224,12 @@ const COMMAND_ENTRIES = [
         id: "intelligit.fileRollback",
         mutating: true,
         coveredBy: "discard-changes",
+    },
+    {
+        kind: "command",
+        id: "intelligit.fileFetch",
+        mutating: true,
+        coveredBySpec: "tests/e2e/fileContextFetch.spec.ts",
     },
     { kind: "command", id: "intelligit.fileJumpToSource", mutating: false },
     {
