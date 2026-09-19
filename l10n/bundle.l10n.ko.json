@@ -655,5 +655,9 @@
     "Show Diff is only available for local files.": "차이점 표시는 로컬 파일에서만 사용할 수 있습니다.",
     "Show Diff failed: {message}": "차이점 표시 실패: {message}",
     "Show Current Revision is only available for local files.": "현재 리비전 보기는 로컬 파일에서만 사용할 수 있습니다.",
-    "Show Current Revision failed: {message}": "현재 리비전 표시 실패: {message}"
+    "Show Current Revision failed: {message}": "현재 리비전 표시 실패: {message}",
+    "Git Blame": "Git Blame",
+    "Annotate with Git Blame is only available for local files.": "'Git Blame으로 주석 달기'는 로컬 파일에서만 사용할 수 있습니다.",
+    "Git Blame output is too large to open (maximum 4 MiB).": "Git Blame 출력이 너무 커서 열 수 없습니다(최대 4 MiB).",
+    "Annotate with Git Blame failed: {message}": "Git Blame 주석 달기에 실패했습니다: {message}"
 }

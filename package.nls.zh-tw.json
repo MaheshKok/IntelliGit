@@ -96,5 +96,6 @@
     "command.showFileHistory": "顯示檔案歷史記錄",
     "command.addToVcs": "新增至版本控制",
     "command.showFileDiff": "顯示差異",
-    "command.showCurrentRevision": "顯示目前修訂"
+    "command.showCurrentRevision": "顯示目前修訂",
+    "command.annotateWithGitBlame": "使用 Git Blame 新增註釋"
 }

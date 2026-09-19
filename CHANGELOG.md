@@ -5,29 +5,49 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.35.4] - 2026-09-19
+
+### Added
+
+- Added **Annotate with Git Blame** to IntelliGit file menus in Explorer, editor tabs, and the editor.
+- Right-click a tracked file and choose **IntelliGit → Annotate with Git Blame** to open a read-only view showing the commit, author, date, and source for each line.
+- Unsaved editor text is included in the blame view without changing the file on disk or the repository.
+
+### Changed
+
+- Improved older release notes to explain where IntelliGit file actions are available and what they open.
+
 ## [0.35.3] - 2026-09-19
 
 ### Added
 
-- Open a file's current committed revision directly from its Explorer or editor menu.
+- Added **Show Current Revision** to IntelliGit file menus in Explorer, editor tabs, and the editor.
+- Right-click a tracked file and choose **IntelliGit → Show Current Revision** to open the version from the latest commit in a read-only editor.
+- Clear error messages explain when the committed version cannot be opened.
 
 ## [0.35.2] - 2026-09-19
 
 ### Added
 
-- Right-click any file in Explorer, an editor tab, or the editor to see its changes since the latest commit.
+- Added **Show Diff** to IntelliGit file menus in Explorer, editor tabs, and the editor.
+- Right-click a tracked file and choose **IntelliGit → Show Diff** to compare the working file with its version from the latest commit.
+- The comparison includes current local changes, making it easy to review edits before committing.
 
 ## [0.35.1] - 2026-09-19
 
 ### Added
 
-- Right-click any file in Explorer, an editor tab, or the editor to compare it with a local branch, remote branch, or tag.
+- Added **Compare with Branch or Tag** to IntelliGit file menus in Explorer, editor tabs, and the editor.
+- Right-click a tracked file, choose **IntelliGit → Compare with Branch or Tag**, then select a local branch, remote branch, or tag.
+- IntelliGit opens a comparison between the selected version and the working file.
 
 ## [0.35.0] - 2026-09-19
 
 ### Added
 
-- Right-click any file in Explorer, an editor tab, or the editor to compare it with an earlier revision.
+- Added **Compare with Revision** to IntelliGit file menus in Explorer, editor tabs, and the editor.
+- Right-click a tracked file and choose **IntelliGit → Compare with Revision** to select one of its recent commits.
+- You can also enter a commit hash, tag, or Git reference manually before opening the comparison.
 
 ## [0.34.5] - 2026-09-18
 

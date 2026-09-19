@@ -1,6 +1,7 @@
 {
     "$comment": "Every command id package.json contributes, pinned so a NEW one cannot reach the manifest without a deliberate edit here that a reviewer sees. See scripts/verifyNoE2eManifestCommand.js for why a text pattern alone is not enough.",
     "commands": [
+        "intelligit.annotateWithGitBlame",
         "intelligit.checkout",
         "intelligit.checkoutAndRebase",
         "intelligit.cleanUpShelf",

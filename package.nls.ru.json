@@ -96,5 +96,6 @@
     "command.showFileHistory": "Показать историю файла",
     "command.addToVcs": "Добавить в систему контроля версий",
     "command.showFileDiff": "Показать различия",
-    "command.showCurrentRevision": "Показать текущую ревизию"
+    "command.showCurrentRevision": "Показать текущую ревизию",
+    "command.annotateWithGitBlame": "Добавить аннотации Git Blame"
 }

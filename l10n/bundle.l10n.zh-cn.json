@@ -655,5 +655,9 @@
     "Show Diff is only available for local files.": "“显示差异”仅适用于本地文件。",
     "Show Diff failed: {message}": "显示差异失败：{message}",
     "Show Current Revision is only available for local files.": "“显示当前修订”仅适用于本地文件。",
-    "Show Current Revision failed: {message}": "显示当前修订失败：{message}"
+    "Show Current Revision failed: {message}": "显示当前修订失败：{message}",
+    "Git Blame": "Git Blame",
+    "Annotate with Git Blame is only available for local files.": "“使用 Git Blame 添加注释”仅适用于本地文件。",
+    "Git Blame output is too large to open (maximum 4 MiB).": "Git Blame 输出过大，无法打开（最大 4 MiB）。",
+    "Annotate with Git Blame failed: {message}": "使用 Git Blame 添加注释失败：{message}"
 }

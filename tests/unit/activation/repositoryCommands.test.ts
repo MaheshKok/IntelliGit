@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => {
     return {
         branchHandlers,
         commands,
+        annotateWithGitBlame: vi.fn(async () => undefined),
         compareFileWithBranchOrTag: vi.fn(async () => undefined),
         compareFileWithRevision: vi.fn(async () => undefined),
         showCurrentRevision: vi.fn(async () => undefined),
@@ -52,6 +53,7 @@ vi.mock("vscode", () => ({
 }));
 
 vi.mock("../../../src/commands/fileContextCommands", () => ({
+    annotateWithGitBlame: mocks.annotateWithGitBlame,
     compareFileWithBranchOrTag: mocks.compareFileWithBranchOrTag,
     compareFileWithRevision: mocks.compareFileWithRevision,
     showCurrentRevision: mocks.showCurrentRevision,
@@ -332,6 +334,16 @@ describe("registerRepositoryCommands", () => {
         await mocks.commands.get("intelligit.showCurrentRevision")?.(context);
 
         expect(mocks.showCurrentRevision).toHaveBeenCalledWith(context, gitOps);
+    });
+
+    it("registers Annotate with Git Blame through the file-context wrapper", async () => {
+        const gitOps = makeGitOps();
+        registerRepositoryCommands(makeDeps(gitOps));
+        const context = { clicked: "file" };
+
+        await mocks.commands.get("intelligit.annotateWithGitBlame")?.(context);
+
+        expect(mocks.annotateWithGitBlame).toHaveBeenCalledWith(context, gitOps);
     });
 
     describe("intelligit.fileAddToVcs", () => {

@@ -54,6 +54,7 @@
     "command.compareWithBranch": "Compare with Branch or Tag",
     "command.showFileDiff": "Show Diff",
     "command.showCurrentRevision": "Show Current Revision",
+    "command.annotateWithGitBlame": "Annotate with Git Blame",
     "command.compareWithLocal": "Compare with Local",
     "command.cherryPickSelectedChange": "Cherry-pick Selected Change",
     "command.revertSelectedChange": "Revert Selected Change",

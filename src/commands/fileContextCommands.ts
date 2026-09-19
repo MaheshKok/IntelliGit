@@ -18,6 +18,8 @@ interface ResolvedFileCommandContext {
     gitOps: GitOps;
 }
 
+const MAX_GIT_BLAME_OUTPUT_BYTES = 4 * 1024 * 1024;
+
 /**
  * Resolves an explicit local-file command context, or the active editor only when context is absent.
  *
@@ -184,6 +186,58 @@ export async function showCurrentRevision(ctx: unknown, gitOps: GitOps): Promise
     } catch (error) {
         await vscode.window.showErrorMessage(
             vscode.l10n.t("Show Current Revision failed: {message}", {
+                message: getErrorMessage(error),
+            }),
+        );
+    }
+}
+
+/**
+ * Opens Git blame output for a selected local file in an immutable virtual document.
+ *
+ * Dirty documents are passed to Git through stdin so the view reflects the exact editor buffer,
+ * including an empty buffer, without writing the document or repository. Output is capped at
+ * 4 MiB and discarded entirely when Git reports truncation.
+ */
+export async function annotateWithGitBlame(ctx: unknown, gitOps: GitOps): Promise<void> {
+    try {
+        const resolved = await resolveFileCommandContext(ctx, gitOps);
+        if (!resolved) {
+            await vscode.window.showErrorMessage(
+                vscode.l10n.t("Annotate with Git Blame is only available for local files."),
+            );
+            return;
+        }
+
+        const dirtyDocument = vscode.workspace.textDocuments.find(
+            (document) =>
+                document.isDirty && document.uri.toString() === resolved.selectedUri.toString(),
+        );
+        const args = ["blame", "--date=short"];
+        if (dirtyDocument) args.push("--contents", "-");
+        args.push("--", resolved.repoRelativePath);
+
+        const executor = new GitExecutor(resolved.repoRoot);
+        const result = await executor.runBinary(args, {
+            ...(dirtyDocument ? { input: Buffer.from(dirtyDocument.getText()) } : {}),
+            maxOutputBytes: MAX_GIT_BLAME_OUTPUT_BYTES,
+        });
+        if (result.truncated) {
+            await vscode.window.showErrorMessage(
+                vscode.l10n.t("Git Blame output is too large to open (maximum 4 MiB)."),
+            );
+            return;
+        }
+
+        const uri = createReadonlyDiffUri(
+            `${resolved.repoRelativePath}.blame`,
+            result.stdout.toString("utf8"),
+            vscode.l10n.t("Git Blame"),
+        );
+        await vscode.window.showTextDocument(uri);
+    } catch (error) {
+        await vscode.window.showErrorMessage(
+            vscode.l10n.t("Annotate with Git Blame failed: {message}", {
                 message: getErrorMessage(error),
             }),
         );
