@@ -7,6 +7,7 @@ import {
 } from "../commands/operationFence";
 import { GitExecutor } from "../git/executor";
 import { showFileHistory } from "../commands/fileHistoryCommand";
+import { compareFileWithRevision } from "../commands/fileContextCommands";
 import { GitOps } from "../git/operations";
 import { remoteUrlToWebUrl } from "../git/remoteWebUrl";
 import { runPublishBranchFlow } from "../services/publishService";
@@ -15,7 +16,6 @@ import {
     applySelectedCommitFileChange,
     compareCommitInfoFileWithLocal,
     compareEditorFileWithBranch,
-    compareEditorFileWithRevision,
 } from "../services/diffService";
 import type { DiscoveredRepository } from "../services/repositoryDiscovery";
 import { discoverGitRepositories } from "../services/repositoryDiscovery";
@@ -456,7 +456,7 @@ function registerMergeCommands(deps: RepositoryCommandsDeps): void {
             await openMergeConflictForFile(filePath);
         }),
         vscode.commands.registerCommand("intelligit.compareWithRevision", async (ctx?: unknown) => {
-            await compareEditorFileWithRevision(ctx, getRepoRoot(), gitOps);
+            await compareFileWithRevision(ctx, gitOps);
         }),
         vscode.commands.registerCommand("intelligit.compareWithBranch", async (ctx?: unknown) => {
             await compareEditorFileWithBranch(ctx, getRepoRoot(), gitOps);
