@@ -95,5 +95,6 @@
     "command.diffShowInVsCode": "在 VS Code 中显示差异",
     "command.showFileHistory": "显示文件历史记录",
     "command.addToVcs": "添加到版本控制",
-    "command.showFileDiff": "显示差异"
+    "command.showFileDiff": "显示差异",
+    "command.showCurrentRevision": "显示当前修订"
 }

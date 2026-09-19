@@ -95,5 +95,6 @@
     "command.diffShowInVsCode": "VS Code で差分を表示",
     "command.showFileHistory": "ファイル履歴を表示",
     "command.addToVcs": "バージョン管理に追加",
-    "command.showFileDiff": "差分を表示"
+    "command.showFileDiff": "差分を表示",
+    "command.showCurrentRevision": "現在のリビジョンを表示"
 }
