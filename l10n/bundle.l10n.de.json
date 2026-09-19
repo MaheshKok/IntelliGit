@@ -651,5 +651,7 @@
     "Compare with Branch or Tag is only available for local files.": "„Mit Branch oder Tag vergleichen“ ist nur für lokale Dateien verfügbar.",
     "Compare with branch or tag failed: {message}": "Vergleich mit Branch oder Tag fehlgeschlagen: {message}",
     "Select a branch or tag for {path}": "Branch oder Tag für {path} auswählen",
-    "tag": "Tag"
+    "tag": "Tag",
+    "Show Diff is only available for local files.": "„Diff anzeigen“ ist nur für lokale Dateien verfügbar.",
+    "Show Diff failed: {message}": "Diff konnte nicht angezeigt werden: {message}"
 }

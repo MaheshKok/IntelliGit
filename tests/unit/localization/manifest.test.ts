@@ -533,6 +533,31 @@ describe("extension manifest", () => {
             when: "resourceScheme == file",
             group: "1_compare@2",
         });
+        expect(fileMenu.filter((entry) => entry.command === "intelligit.showFileDiff")).toEqual([
+            {
+                command: "intelligit.showFileDiff",
+                when: "resourceScheme == file",
+                group: "1_compare@3",
+            },
+        ]);
+        expect(
+            (manifest.contributes?.menus?.["intelligit.editorContext"] ?? []).filter(
+                (entry) => entry.command === "intelligit.showFileDiff",
+            ),
+        ).toEqual([
+            {
+                command: "intelligit.showFileDiff",
+                when: "resourceScheme == file",
+                group: "1_compare@3",
+            },
+        ]);
+        expect(manifest.contributes?.commands).toContainEqual(
+            expect.objectContaining({
+                command: "intelligit.showFileDiff",
+                title: "%command.showFileDiff%",
+                icon: "$(diff)",
+            }),
+        );
     });
 
     it("contributes the commitChecks.enabled feature toggle as a window-scoped boolean", () => {

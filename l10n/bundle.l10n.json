@@ -645,6 +645,8 @@
     "Open Revision": "Open Revision",
     "Compare with Local": "Compare with Local",
     "Show Diff": "Show Diff",
+    "Show Diff is only available for local files.": "Show Diff is only available for local files.",
+    "Show Diff failed: {message}": "Show Diff failed: {message}",
     "Show All Affected Files": "Show All Affected Files",
     "Author": "Author",
     "Date": "Date",

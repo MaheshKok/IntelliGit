@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => {
         commands,
         compareFileWithBranchOrTag: vi.fn(async () => undefined),
         compareFileWithRevision: vi.fn(async () => undefined),
+        showFileDiff: vi.fn(async () => undefined),
         registerCommand: vi.fn((id: string, handler: (...args: unknown[]) => unknown) => {
             commands.set(id, handler);
             return { dispose: vi.fn() };
@@ -52,6 +53,7 @@ vi.mock("vscode", () => ({
 vi.mock("../../../src/commands/fileContextCommands", () => ({
     compareFileWithBranchOrTag: mocks.compareFileWithBranchOrTag,
     compareFileWithRevision: mocks.compareFileWithRevision,
+    showFileDiff: mocks.showFileDiff,
 }));
 
 vi.mock("../../../src/commands/branchCommands", () => ({
@@ -308,6 +310,16 @@ describe("registerRepositoryCommands", () => {
         await mocks.commands.get("intelligit.compareWithBranch")?.(context);
 
         expect(mocks.compareFileWithBranchOrTag).toHaveBeenCalledWith(context, gitOps);
+    });
+
+    it("registers Show Diff through the file-context wrapper", async () => {
+        const gitOps = makeGitOps();
+        registerRepositoryCommands(makeDeps(gitOps));
+        const context = { clicked: "file" };
+
+        await mocks.commands.get("intelligit.showFileDiff")?.(context);
+
+        expect(mocks.showFileDiff).toHaveBeenCalledWith(context, gitOps);
     });
 
     describe("intelligit.fileAddToVcs", () => {

@@ -2,7 +2,7 @@
     "name": "intelligit",
     "displayName": "IntelliGit",
     "description": "%extension.description%",
-    "version": "0.35.1",
+    "version": "0.35.2",
     "publisher": "MaheshKok",
     "icon": "media/intelligit-icon.png",
     "license": "MIT",
@@ -472,6 +472,12 @@
                 "icon": "$(git-compare)"
             },
             {
+                "command": "intelligit.showFileDiff",
+                "title": "%command.showFileDiff%",
+                "category": "%intelligit%",
+                "icon": "$(diff)"
+            },
+            {
                 "command": "intelligit.commitFileCompareWithLocal",
                 "title": "%command.compareWithLocal%",
                 "category": "%intelligit%",
@@ -761,6 +767,11 @@
                     "group": "1_compare@2"
                 },
                 {
+                    "command": "intelligit.showFileDiff",
+                    "when": "resourceScheme == file",
+                    "group": "1_compare@3"
+                },
+                {
                     "command": "intelligit.showFileHistory",
                     "when": "resourceScheme == file",
                     "group": "2_history@1"
@@ -781,6 +792,11 @@
                     "command": "intelligit.compareWithBranch",
                     "when": "resourceScheme == file",
                     "group": "1_compare@2"
+                },
+                {
+                    "command": "intelligit.showFileDiff",
+                    "when": "resourceScheme == file",
+                    "group": "1_compare@3"
                 }
             ],
             "view/title": [
