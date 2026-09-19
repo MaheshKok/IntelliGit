@@ -5,6 +5,13 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.35.0] - 2026-09-19
+
+### Added
+
+- Right-click a file in the Explorer, an editor tab, or the editor to compare it with revisions, branches, or tags; show its changes, history, current revision, or Git blame; roll it back; or fetch, pull, and push its repository.
+- File actions use the repository that owns the selected file, so they also work correctly with nested repositories and Git worktrees.
+
 ## [0.34.5] - 2026-09-18
 
 ### Fixed
