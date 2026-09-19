@@ -39,7 +39,7 @@
     "command.jumpToSource": "Przejdź do źródła",
     "command.stashChanges": "Schowaj zmiany",
     "command.compareWithRevision": "Porównaj z wersją",
-    "command.compareWithBranch": "Porównaj z branchem",
+    "command.compareWithBranch": "Porównaj z gałęzią lub tagiem",
     "command.compareWithLocal": "Porównaj z lokalnym",
     "command.cherryPickSelectedChange": "Cherry-pick wybranej zmiany",
     "command.revertSelectedChange": "Przywróć wybraną zmianę",

@@ -166,6 +166,7 @@ function makeGitOps(): GitOps {
                 behind: 0,
             },
         ]),
+        getTags: vi.fn(async () => [{ name: "feature", hash: "ccc3333" }]),
         getFileHistoryEntries: vi.fn(async () => []),
     } as unknown as GitOps;
 }
@@ -338,13 +339,13 @@ describe("diffService", () => {
     it("compares an editor file with a selected branch", async () => {
         const gitOps = makeGitOps();
         mocks.showQuickPick.mockImplementationOnce(async (items: Array<{ refName: string }>) =>
-            items.find((item) => item.refName === "feature"),
+            items.find((item) => item.refName === "refs/heads/feature"),
         );
 
         await compareEditorFileWithBranch(mocks.FakeUri.file("/repo/src/a.ts"), "/repo", gitOps);
 
         expect(gitOps.getBranches).toHaveBeenCalled();
-        expect(gitOps.getFileContentAtRef).toHaveBeenCalledWith("src/a.ts", "feature");
+        expect(gitOps.getFileContentAtRef).toHaveBeenCalledWith("src/a.ts", "refs/heads/feature");
         expect(mocks.executeCommand).toHaveBeenCalledWith(
             "vscode.diff",
             expect.any(mocks.FakeUri),
@@ -352,20 +353,51 @@ describe("diffService", () => {
             "src/a.ts (branch: feature) <-> Working Tree",
         );
         const [leftUri] = mocks.executeCommand.mock.calls[0].slice(1, 2) as [{ query: string }];
-        expect(JSON.parse(leftUri.query).ref).toBe("feature");
+        expect(JSON.parse(leftUri.query).ref).toBe("refs/heads/feature");
+    });
+
+    it("uses the exact tag ref when a branch and tag have the same name", async () => {
+        const gitOps = makeGitOps();
+        mocks.showQuickPick.mockImplementationOnce(
+            async (items: Array<{ refName: string; description: string }>) => {
+                expect(items).toEqual(
+                    expect.arrayContaining([
+                        expect.objectContaining({
+                            refName: "refs/heads/feature",
+                            description: "local branch",
+                        }),
+                        expect.objectContaining({
+                            refName: "refs/tags/feature",
+                            description: "tag",
+                        }),
+                    ]),
+                );
+                return items.find((item) => item.refName === "refs/tags/feature");
+            },
+        );
+
+        await compareEditorFileWithBranch(mocks.FakeUri.file("/repo/src/a.ts"), "/repo", gitOps);
+
+        expect(gitOps.getFileContentAtRef).toHaveBeenCalledWith("src/a.ts", "refs/tags/feature");
+        expect(mocks.executeCommand).toHaveBeenCalledWith(
+            "vscode.diff",
+            expect.any(mocks.FakeUri),
+            expect.any(mocks.FakeUri),
+            "src/a.ts (tag: feature) <-> Working Tree",
+        );
     });
 
     it("opens an editable branch diff with the real file URI on the working-tree side", async () => {
         const gitOps = makeGitOps();
         mocks.showQuickPick.mockImplementationOnce(async (items: Array<{ refName: string }>) =>
-            items.find((item) => item.refName === "feature"),
+            items.find((item) => item.refName === "refs/heads/feature"),
         );
 
         await compareEditorFileWithBranch(mocks.FakeUri.file("/repo/src/a.ts"), "/repo", gitOps);
 
         expect(mocks.openEditableDiff).toHaveBeenCalledWith(
             expect.objectContaining({
-                left: { kind: "ref", ref: "feature" },
+                left: { kind: "ref", ref: "refs/heads/feature" },
                 right: { kind: "worktree" },
                 fileUri: expect.any(mocks.FakeUri),
             }),
@@ -612,7 +644,7 @@ describe("diffService", () => {
 
         await compareEditorFileWithBranch(undefined, "/repo", gitOps);
         expect(mocks.showErrorMessage).toHaveBeenCalledWith(
-            "Compare with Branch is only available for local files.",
+            "Compare with Branch or Tag is only available for local files.",
         );
 
         await compareEditorFileWithBranch(
@@ -633,7 +665,7 @@ describe("diffService", () => {
         );
         await compareEditorFileWithBranch(mocks.FakeUri.file("/repo/src/a.ts"), "/repo", gitOps);
         expect(mocks.showErrorMessage).toHaveBeenCalledWith(
-            "Compare with branch failed: branches failed",
+            "Compare with branch or tag failed: branches failed",
         );
     });
 

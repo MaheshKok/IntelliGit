@@ -39,7 +39,7 @@
     "command.jumpToSource": "소스로 이동",
     "command.stashChanges": "변경 내용 스태시",
     "command.compareWithRevision": "리비전과 비교",
-    "command.compareWithBranch": "브랜치와 비교",
+    "command.compareWithBranch": "브랜치 또는 태그와 비교",
     "command.compareWithLocal": "로컬 데이터와 비교",
     "command.cherryPickSelectedChange": "선택한 변경 사항 체리픽",
     "command.revertSelectedChange": "선택한 변경 사항 되돌리기",

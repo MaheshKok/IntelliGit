@@ -65,8 +65,6 @@
     "Commit message updated.": "Сообщение о коммите обновлено.",
     "Committed and pushed successfully.": "Коммит и push выполнены успешно.",
     "Committed successfully.": "Коммит успешно создан.",
-    "Compare with Branch": "Сравнить с веткой",
-    "Compare with Branch is only available for local files.": "Функция «Сравнить с веткой» доступна только для локальных файлов.",
     "Compare with Revision": "Сравните с версией для повторения.",
     "Compare with Revision is only available for local files.": "Функция «Сравнить с версией» доступна только для локальных файлов.",
     "Conflicts": "Конфликты",
@@ -303,7 +301,6 @@
     "Commit detail error: {message}": "Ошибка при фиксации изменений: {message}",
     "Commit file action error: {message}": "Ошибка при фиксации действия с файлом: {message}",
     "Commit graph error: {message}": "Ошибка при фиксации графа: {message}",
-    "Compare with branch failed: {message}": "Сравнение с веткой не удалось: {message}",
     "Compare with local failed: {message}": "Сравнение с локальным сервером не удалось: {message}",
     "Compare with revision failed: {message}": "Сравнение с предыдущей версией не удалось: {message}",
     "Configure": "Настройка",
@@ -354,7 +351,6 @@
     "Rollback failed: {message}": "Откат не удался: {message}",
     "Run the \"GitHub: Sign Out\" command, then retry.": "Выполните команду \"GitHub: Sign Out\", затем повторите попытку.",
     "SSH clone failed": "Клонирование SSH не удалось.",
-    "Select a branch for {path}": "Выберите ветку для {path}",
     "Select a recent revision for {path}": "Выберите последнюю версию для {path}",
     "Stash failed: {message}": "Не удалось спрятать изменения: {message}",
     "Stashed {path}.": "{path} спрятан.",
@@ -650,5 +646,10 @@
     "HEAD moved before Squash Commits could reset it.": "HEAD изменился до того, как команда Squash Commits смогла его сбросить.",
     "Automatic stash reference {stashRef} moved before cleanup.": "Ссылка на автоматически созданный стэш {stashRef} изменилась до очистки.",
     "Squash succeeded and local changes were restored, but automatic stash cleanup failed ({message}); the {stashOid} backup was retained.": "Объединение коммитов завершилось успешно, и локальные изменения были восстановлены, но очистить автоматически созданный стэш не удалось ({message}); резервная копия {stashOid} сохранена.",
-    "{message}; local changes were restored, but automatic stash cleanup failed: {cleanupMessage}. The {stashOid} backup was retained.": "{message}; локальные изменения были восстановлены, но очистить автоматически созданный стэш не удалось: {cleanupMessage}. Резервная копия {stashOid} сохранена."
+    "{message}; local changes were restored, but automatic stash cleanup failed: {cleanupMessage}. The {stashOid} backup was retained.": "{message}; локальные изменения были восстановлены, но очистить автоматически созданный стэш не удалось: {cleanupMessage}. Резервная копия {stashOid} сохранена.",
+    "Compare with Branch or Tag": "Сравнить с веткой или тегом",
+    "Compare with Branch or Tag is only available for local files.": "Функция «Сравнить с веткой или тегом» доступна только для локальных файлов.",
+    "Compare with branch or tag failed: {message}": "Не удалось сравнить с веткой или тегом: {message}",
+    "Select a branch or tag for {path}": "Выберите ветку или тег для {path}",
+    "tag": "тег"
 }
