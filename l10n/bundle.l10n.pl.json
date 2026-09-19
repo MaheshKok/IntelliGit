@@ -653,5 +653,7 @@
     "Select a branch or tag for {path}": "Wybierz gałąź lub tag dla {path}",
     "tag": "tag",
     "Show Diff is only available for local files.": "Opcja „Pokaż różnice” jest dostępna tylko dla plików lokalnych.",
-    "Show Diff failed: {message}": "Nie udało się wyświetlić różnic: {message}"
+    "Show Diff failed: {message}": "Nie udało się wyświetlić różnic: {message}",
+    "Show Current Revision is only available for local files.": "Opcja „Pokaż bieżącą wersję” jest dostępna tylko dla plików lokalnych.",
+    "Show current revision failed: {message}": "Nie udało się wyświetlić bieżącej wersji: {message}"
 }

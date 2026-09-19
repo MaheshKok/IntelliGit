@@ -6,6 +6,7 @@ import { GitOps } from "../git/operations";
 import {
     compareEditorFileWithBranch,
     compareEditorFileWithRevision,
+    createReadonlyDiffUri,
     openDiffAgainstGitRef,
 } from "../services/diffService";
 import { getErrorMessage } from "../utils/errors";
@@ -153,6 +154,37 @@ export async function showFileDiff(ctx: unknown, gitOps: GitOps): Promise<void> 
     } catch (error) {
         await vscode.window.showErrorMessage(
             vscode.l10n.t("Show Diff failed: {message}", {
+                message: getErrorMessage(error),
+            }),
+        );
+    }
+}
+
+/**
+ * Opens the selected file's committed HEAD content as an immutable virtual document.
+ *
+ * Git reads use the canonical path and owning repository resolved from the original URI. Explicit
+ * malformed contexts fail closed, while missing HEAD, untracked paths, and other read failures are
+ * reported without opening an editable document or changing the active IntelliGit repository.
+ */
+export async function showCurrentRevision(ctx: unknown, gitOps: GitOps): Promise<void> {
+    try {
+        const resolved = await resolveFileCommandContext(ctx, gitOps);
+        if (!resolved) {
+            await vscode.window.showErrorMessage(
+                vscode.l10n.t("Show Current Revision is only available for local files."),
+            );
+            return;
+        }
+        const content = await resolved.gitOps.getFileContentAtRef(
+            resolved.repoRelativePath,
+            "HEAD",
+        );
+        const uri = createReadonlyDiffUri(resolved.repoRelativePath, content, "HEAD");
+        await vscode.window.showTextDocument(uri);
+    } catch (error) {
+        await vscode.window.showErrorMessage(
+            vscode.l10n.t("Show current revision failed: {message}", {
                 message: getErrorMessage(error),
             }),
         );

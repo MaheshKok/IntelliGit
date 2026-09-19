@@ -497,7 +497,7 @@ describe("extension manifest", () => {
         expect([...providerEnum].sort()).toEqual(["bitbucket-server", "gitlab"]);
     });
 
-    it("offers file comparison actions from Explorer and editor tab file menus", () => {
+    it("offers file comparison and current revision actions from native file menus", () => {
         const manifest = JSON.parse(
             readFileSync(path.join(process.cwd(), "package.json"), "utf8"),
         ) as ExtensionManifest;
@@ -528,15 +528,31 @@ describe("extension manifest", () => {
             when: "resourceScheme == file",
             group: "1_compare@3",
         });
+        expect(fileMenu).toContainEqual({
+            command: "intelligit.showCurrentRevision",
+            when: "resourceScheme == file",
+            group: "2_history@2",
+        });
         expect(manifest.contributes?.menus?.["intelligit.editorContext"] ?? []).toContainEqual({
             command: "intelligit.showFileDiff",
             when: "resourceScheme == file",
             group: "1_compare@3",
         });
+        expect(manifest.contributes?.menus?.["intelligit.editorContext"] ?? []).toContainEqual({
+            command: "intelligit.showCurrentRevision",
+            when: "resourceScheme == file",
+            group: "2_history@2",
+        });
         expect(manifest.contributes?.commands).toContainEqual(
             expect.objectContaining({
                 command: "intelligit.showFileDiff",
                 title: "%command.showFileDiff%",
+            }),
+        );
+        expect(manifest.contributes?.commands).toContainEqual(
+            expect.objectContaining({
+                command: "intelligit.showCurrentRevision",
+                title: "%command.showCurrentRevision%",
             }),
         );
     });

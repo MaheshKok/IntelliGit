@@ -653,5 +653,7 @@
     "Select a branch or tag for {path}": "{path} のブランチまたはタグを選択してください",
     "tag": "タグ",
     "Show Diff is only available for local files.": "差分の表示はローカルファイルでのみ利用できます。",
-    "Show Diff failed: {message}": "差分の表示に失敗しました: {message}"
+    "Show Diff failed: {message}": "差分の表示に失敗しました: {message}",
+    "Show Current Revision is only available for local files.": "「現在のリビジョンを表示」はローカル ファイルでのみ使用できます。",
+    "Show current revision failed: {message}": "現在のリビジョンを表示できませんでした: {message}"
 }

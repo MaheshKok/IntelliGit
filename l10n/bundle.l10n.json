@@ -647,6 +647,8 @@
     "Show Diff": "Show Diff",
     "Show Diff is only available for local files.": "Show Diff is only available for local files.",
     "Show Diff failed: {message}": "Show Diff failed: {message}",
+    "Show Current Revision is only available for local files.": "Show Current Revision is only available for local files.",
+    "Show current revision failed: {message}": "Show current revision failed: {message}",
     "Show All Affected Files": "Show All Affected Files",
     "Author": "Author",
     "Date": "Date",

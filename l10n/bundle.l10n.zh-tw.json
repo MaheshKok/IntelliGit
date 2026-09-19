@@ -653,5 +653,7 @@
     "Select a branch or tag for {path}": "為 {path} 選擇分支或標籤",
     "tag": "標籤",
     "Show Diff is only available for local files.": "「顯示差異」僅適用於本機檔案。",
-    "Show Diff failed: {message}": "顯示差異失敗：{message}"
+    "Show Diff failed: {message}": "顯示差異失敗：{message}",
+    "Show Current Revision is only available for local files.": "「顯示目前修訂版本」僅適用於本機檔案。",
+    "Show current revision failed: {message}": "無法顯示目前的修訂版本：{message}"
 }

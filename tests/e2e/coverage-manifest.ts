@@ -240,6 +240,7 @@ const COMMAND_ENTRIES = [
     { kind: "command", id: "intelligit.compareWithRevision", mutating: false },
     { kind: "command", id: "intelligit.compareWithBranch", mutating: false },
     { kind: "command", id: "intelligit.showFileDiff", mutating: false },
+    { kind: "command", id: "intelligit.showCurrentRevision", mutating: false },
     { kind: "command", id: "intelligit.commitFileCompareWithLocal", mutating: false },
     {
         kind: "command",

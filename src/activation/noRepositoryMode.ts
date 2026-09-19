@@ -199,6 +199,7 @@ export function activateNoRepositoryMode(
         "intelligit.graph.push.color",
         "intelligit.graph.sync",
         "intelligit.graph.sync.color",
+        "intelligit.showCurrentRevision",
         "intelligit.showFileDiff",
         ...SHELF_COMMAND_IDS,
     ]) {
