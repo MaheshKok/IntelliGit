@@ -950,14 +950,16 @@ export async function compareEditorFileWithBranch(
 /**
  * Prompts for a recent or manually entered revision and compares it with the active file.
  *
- * Recent history is limited to the selected repository-relative file path. Prompt
- * cancellation is a no-op, and any Git or diff opening error is converted into a
- * user-facing message without changing repository state.
+ * Recent history is limited to the selected repository-relative file path. A validated path may
+ * be supplied when a linked path must retain its original URI as the working-tree editor identity.
+ * The override is validated again at this boundary. Prompt cancellation is a no-op, and any Git or
+ * diff opening error is converted into a user-facing message without changing repository state.
  */
 export async function compareEditorFileWithRevision(
     ctx: unknown,
     repoRoot: string,
     gitOps: GitOps,
+    validatedRepoRelativeFilePath?: string,
 ): Promise<void> {
     const fileUri = getEditorContextFileUri(ctx);
     if (!fileUri) {
@@ -967,7 +969,15 @@ export async function compareEditorFileWithRevision(
         return;
     }
 
-    const repoRelativeFilePath = getRepoRelativeFilePathFromUri(fileUri, repoRoot);
+    let repoRelativeFilePath: string | null;
+    try {
+        repoRelativeFilePath =
+            validatedRepoRelativeFilePath === undefined
+                ? getRepoRelativeFilePathFromUri(fileUri, repoRoot)
+                : assertRepoRelativePath(validatedRepoRelativeFilePath);
+    } catch {
+        repoRelativeFilePath = null;
+    }
     if (!repoRelativeFilePath) {
         vscode.window.showErrorMessage(
             vscode.l10n.t("Selected file is outside the current IntelliGit repository workspace."),

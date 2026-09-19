@@ -2,7 +2,7 @@
     "name": "intelligit",
     "displayName": "IntelliGit",
     "description": "%extension.description%",
-    "version": "0.34.5",
+    "version": "0.35.0",
     "publisher": "MaheshKok",
     "icon": "media/intelligit-icon.png",
     "license": "MIT",
@@ -457,7 +457,7 @@
                 "command": "intelligit.compareWithRevision",
                 "title": "%command.compareWithRevision%",
                 "category": "%intelligit%",
-                "icon": "$(git-commit)"
+                "icon": "$(compare-changes)"
             },
             {
                 "command": "intelligit.showFileHistory",
@@ -750,6 +750,11 @@
                 }
             ],
             "intelligit.fileContext": [
+                {
+                    "command": "intelligit.compareWithRevision",
+                    "when": "resourceScheme == file",
+                    "group": "1_compare@1"
+                },
                 {
                     "command": "intelligit.showFileHistory",
                     "when": "resourceScheme == file",
