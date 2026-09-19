@@ -52,6 +52,7 @@
     "command.addToVcs": "Add to VCS",
     "command.compareWithRevision": "Compare with Revision",
     "command.compareWithBranch": "Compare with Branch or Tag",
+    "command.showFileDiff": "Show Diff",
     "command.compareWithLocal": "Compare with Local",
     "command.cherryPickSelectedChange": "Cherry-pick Selected Change",
     "command.revertSelectedChange": "Revert Selected Change",

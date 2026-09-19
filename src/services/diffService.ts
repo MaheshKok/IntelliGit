@@ -805,6 +805,54 @@ async function openDiffAgainstGitRef(
 }
 
 /**
+ * Opens the selected working document against its content at `HEAD`.
+ *
+ * The supplied URI remains the editable working-tree identity so dirty documents and symlinked
+ * paths resolve through the same shared diff session as other editor comparisons. A caller that
+ * already resolved the owning repository may pass its validated slash-separated relative path;
+ * otherwise this boundary validates the URI against `repoRoot` before reading Git content.
+ */
+export async function showEditorFileDiff(
+    ctx: unknown,
+    repoRoot: string,
+    gitOps: GitOps,
+    validatedRepoRelativeFilePath?: string,
+): Promise<void> {
+    const fileUri = getEditorContextFileUri(ctx);
+    if (!fileUri) {
+        vscode.window.showErrorMessage(
+            vscode.l10n.t("Show Diff is only available for local files."),
+        );
+        return;
+    }
+
+    let repoRelativeFilePath: string | null;
+    try {
+        repoRelativeFilePath =
+            validatedRepoRelativeFilePath === undefined
+                ? getRepoRelativeFilePathFromUri(fileUri, repoRoot)
+                : assertRepoRelativePath(validatedRepoRelativeFilePath);
+    } catch {
+        repoRelativeFilePath = null;
+    }
+    if (!repoRelativeFilePath) {
+        vscode.window.showErrorMessage(
+            vscode.l10n.t("Selected file is outside the current IntelliGit repository workspace."),
+        );
+        return;
+    }
+
+    await openDiffAgainstGitRef(
+        fileUri,
+        repoRoot,
+        repoRelativeFilePath,
+        "HEAD",
+        "revision",
+        gitOps,
+    );
+}
+
+/**
  * Opens a read-only diff for the selected file as changed by a specific commit.
  *
  * The commit hash is validated before Git is called and `filePath` must be a
