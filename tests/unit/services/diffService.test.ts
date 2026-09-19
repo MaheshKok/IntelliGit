@@ -413,6 +413,27 @@ describe("diffService", () => {
         );
     });
 
+    it("keeps a linked clicked URI as the worktree side while using its canonical Git path", async () => {
+        const gitOps = makeGitOps();
+        const clicked = mocks.FakeUri.file("/linked/repo/src/a.ts");
+        mocks.showQuickPick.mockImplementationOnce(
+            async (items: Array<{ refName: string }>) => items[items.length - 1],
+        );
+        mocks.showInputBox.mockResolvedValueOnce("HEAD~1");
+
+        await compareEditorFileWithRevision(clicked, "/private/repo", gitOps, "src/a.ts");
+
+        expect(mocks.openEditableDiff).toHaveBeenCalledWith(
+            expect.objectContaining({
+                repoRoot: "/private/repo",
+                path: "src/a.ts",
+                fileUri: clicked,
+            }),
+            expect.any(Function),
+            expect.any(Function),
+        );
+    });
+
     it("compares a commit-info file against the local working tree", async () => {
         const gitOps = makeGitOps();
 

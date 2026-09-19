@@ -751,6 +751,11 @@
             ],
             "intelligit.fileContext": [
                 {
+                    "command": "intelligit.compareWithRevision",
+                    "when": "resourceScheme == file",
+                    "group": "1_compare@1"
+                },
+                {
                     "command": "intelligit.showFileHistory",
                     "when": "resourceScheme == file",
                     "group": "2_history@1"

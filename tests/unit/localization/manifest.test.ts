@@ -497,6 +497,29 @@ describe("extension manifest", () => {
         expect([...providerEnum].sort()).toEqual(["bitbucket-server", "gitlab"]);
     });
 
+    it("offers Compare with Revision from Explorer and editor tab file menus", () => {
+        const manifest = JSON.parse(
+            readFileSync(path.join(process.cwd(), "package.json"), "utf8"),
+        ) as ExtensionManifest;
+        const fileMenu = manifest.contributes?.menus?.["intelligit.fileContext"] ?? [];
+
+        expect(manifest.contributes?.menus?.["editor/title/context"]).toContainEqual({
+            submenu: "intelligit.fileContext",
+            when: "resourceScheme == file",
+            group: "2_history@1",
+        });
+        expect(manifest.contributes?.menus?.["explorer/context"]).toContainEqual({
+            submenu: "intelligit.fileContext",
+            when: "resourceScheme == file && !explorerResourceIsFolder",
+            group: "2_history@1",
+        });
+        expect(fileMenu).toContainEqual({
+            command: "intelligit.compareWithRevision",
+            when: "resourceScheme == file",
+            group: "1_compare@1",
+        });
+    });
+
     it("contributes the commitChecks.enabled feature toggle as a window-scoped boolean", () => {
         const manifest = JSON.parse(
             readFileSync(path.join(process.cwd(), "package.json"), "utf8"),

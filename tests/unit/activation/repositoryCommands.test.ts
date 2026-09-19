@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => {
     return {
         branchHandlers,
         commands,
+        compareFileWithRevision: vi.fn(async () => undefined),
         registerCommand: vi.fn((id: string, handler: (...args: unknown[]) => unknown) => {
             commands.set(id, handler);
             return { dispose: vi.fn() };
@@ -45,6 +46,10 @@ vi.mock("vscode", () => ({
         // a handler that skipped `Uri.parse` and handed `openExternal` the raw text.
         parse: (value: string) => ({ parsed: value }),
     },
+}));
+
+vi.mock("../../../src/commands/fileContextCommands", () => ({
+    compareFileWithRevision: mocks.compareFileWithRevision,
 }));
 
 vi.mock("../../../src/commands/branchCommands", () => ({
@@ -281,6 +286,16 @@ describe("registerRepositoryCommands", () => {
 
         expect(deps.openMergeConflictForFile).toHaveBeenCalledWith("src/conflicted.ts");
         expect(deps.openVsCodeMergeEditorForFile).toHaveBeenCalledWith("src/conflicted.ts");
+    });
+
+    it("registers Compare with Revision through the file-context wrapper", async () => {
+        const gitOps = makeGitOps();
+        registerRepositoryCommands(makeDeps(gitOps));
+        const context = { clicked: "file" };
+
+        await mocks.commands.get("intelligit.compareWithRevision")?.(context);
+
+        expect(mocks.compareFileWithRevision).toHaveBeenCalledWith(context, gitOps);
     });
 
     describe("intelligit.fileAddToVcs", () => {
