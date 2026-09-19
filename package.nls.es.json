@@ -39,7 +39,7 @@
     "command.jumpToSource": "Ir a la fuente",
     "command.stashChanges": "Guardar cambios en stash",
     "command.compareWithRevision": "Comparar con la revisión",
-    "command.compareWithBranch": "Comparar con rama",
+    "command.compareWithBranch": "Comparar con rama o etiqueta",
     "command.compareWithLocal": "Comparar con lo local",
     "command.cherryPickSelectedChange": "Cherry-pick del cambio seleccionado",
     "command.revertSelectedChange": "Revertir los cambios seleccionados",

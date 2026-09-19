@@ -720,7 +720,7 @@ function getStableProviderIdentity(side: UnifiedDiffRequest["left"]): string | u
 }
 
 function getEditorContextFileUri(ctx?: unknown): vscode.Uri | null {
-    if (ctx instanceof vscode.Uri) return ctx;
+    if (ctx !== undefined) return ctx instanceof vscode.Uri && ctx.scheme === "file" ? ctx : null;
     const activeUri = vscode.window.activeTextEditor?.document.uri;
     return activeUri?.scheme === "file" ? activeUri : null;
 }
@@ -766,13 +766,19 @@ async function openDiffAgainstGitRef(
     repoRoot: string,
     repoRelativeFilePath: string,
     ref: string,
-    sourceLabel: "revision" | "branch",
+    sourceLabel: "revision" | "branch" | "tag",
     gitOps: GitOps,
 ): Promise<void> {
     const trimmedRef = ref.trim();
     if (!trimmedRef) return;
 
-    const title = `${repoRelativeFilePath} (${sourceLabel}: ${trimmedRef}) <-> Working Tree`;
+    const displayRef =
+        sourceLabel === "branch"
+            ? trimmedRef.replace(/^refs\/(?:heads|remotes)\//, "")
+            : sourceLabel === "tag"
+              ? trimmedRef.replace(/^refs\/tags\//, "")
+              : trimmedRef;
+    const title = `${repoRelativeFilePath} (${sourceLabel}: ${displayRef}) <-> Working Tree`;
     await openEditableDiff(
         {
             repoRoot,
@@ -877,26 +883,36 @@ export async function openCommitFileDiff(
 }
 
 /**
- * Prompts for a branch and opens a read-only comparison with the active editor file.
+ * Prompts for a branch or tag and opens a read-only comparison with an editor file.
  *
- * The command is safe to invoke only when a local file under `repoRoot` is active.
- * Invalid editor context and Git failures are shown to the user; the comparison
- * does not mutate the repository.
+ * The optional validated path preserves compatibility with three-argument callers while allowing
+ * a linked file's original URI to remain the working-tree identity. Branches and tags use fully
+ * qualified refs so identical short names cannot resolve ambiguously. Invalid context and Git
+ * failures are shown to the user; cancellation is a no-op and the repository is never mutated.
  */
 export async function compareEditorFileWithBranch(
     ctx: unknown,
     repoRoot: string,
     gitOps: GitOps,
+    validatedRepoRelativeFilePath?: string,
 ): Promise<void> {
     const fileUri = getEditorContextFileUri(ctx);
     if (!fileUri) {
         vscode.window.showErrorMessage(
-            vscode.l10n.t("Compare with Branch is only available for local files."),
+            vscode.l10n.t("Compare with Branch or Tag is only available for local files."),
         );
         return;
     }
 
-    const repoRelativeFilePath = getRepoRelativeFilePathFromUri(fileUri, repoRoot);
+    let repoRelativeFilePath: string | null;
+    try {
+        repoRelativeFilePath =
+            validatedRepoRelativeFilePath === undefined
+                ? getRepoRelativeFilePathFromUri(fileUri, repoRoot)
+                : assertRepoRelativePath(validatedRepoRelativeFilePath);
+    } catch {
+        repoRelativeFilePath = null;
+    }
     if (!repoRelativeFilePath) {
         vscode.window.showErrorMessage(
             vscode.l10n.t("Selected file is outside the current IntelliGit repository workspace."),
@@ -905,8 +921,8 @@ export async function compareEditorFileWithBranch(
     }
 
     try {
-        const branches = await gitOps.getBranches();
-        const picks = branches
+        const [branches, tags] = await Promise.all([gitOps.getBranches(), gitOps.getTags()]);
+        const branchPicks = branches
             .slice()
             .sort((a, b) => {
                 if (a.isRemote !== b.isRemote) return a.isRemote ? 1 : -1;
@@ -917,12 +933,23 @@ export async function compareEditorFileWithBranch(
                 label: branch.isCurrent ? `${branch.name} (current)` : branch.name,
                 description: branch.isRemote ? "remote branch" : "local branch",
                 detail: branch.hash,
-                refName: branch.name,
+                refName: branch.isRemote
+                    ? `refs/remotes/${branch.name}`
+                    : `refs/heads/${branch.name}`,
+                sourceLabel: "branch" as const,
             }));
+        const tagPicks = tags.map((tag) => ({
+            label: tag.name,
+            description: vscode.l10n.t("tag"),
+            detail: tag.hash,
+            refName: `refs/tags/${tag.name}`,
+            sourceLabel: "tag" as const,
+        }));
+        const picks = [...branchPicks, ...tagPicks];
 
         const picked = await vscode.window.showQuickPick(picks, {
-            title: vscode.l10n.t("Compare with Branch"),
-            placeHolder: vscode.l10n.t("Select a branch for {path}", {
+            title: vscode.l10n.t("Compare with Branch or Tag"),
+            placeHolder: vscode.l10n.t("Select a branch or tag for {path}", {
                 path: repoRelativeFilePath,
             }),
             ignoreFocusOut: true,
@@ -936,13 +963,13 @@ export async function compareEditorFileWithBranch(
             repoRoot,
             repoRelativeFilePath,
             picked.refName,
-            "branch",
+            picked.sourceLabel,
             gitOps,
         );
     } catch (error) {
         const message = getErrorMessage(error);
         vscode.window.showErrorMessage(
-            vscode.l10n.t("Compare with branch failed: {message}", { message }),
+            vscode.l10n.t("Compare with branch or tag failed: {message}", { message }),
         );
     }
 }

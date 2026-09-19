@@ -166,6 +166,7 @@ function makeGitOps(): GitOps {
                 behind: 0,
             },
         ]),
+        getTags: vi.fn(async () => [{ name: "feature", hash: "ccc3333" }]),
         getFileHistoryEntries: vi.fn(async () => []),
     } as unknown as GitOps;
 }
@@ -338,13 +339,13 @@ describe("diffService", () => {
     it("compares an editor file with a selected branch", async () => {
         const gitOps = makeGitOps();
         mocks.showQuickPick.mockImplementationOnce(async (items: Array<{ refName: string }>) =>
-            items.find((item) => item.refName === "feature"),
+            items.find((item) => item.refName === "refs/heads/feature"),
         );
 
         await compareEditorFileWithBranch(mocks.FakeUri.file("/repo/src/a.ts"), "/repo", gitOps);
 
         expect(gitOps.getBranches).toHaveBeenCalled();
-        expect(gitOps.getFileContentAtRef).toHaveBeenCalledWith("src/a.ts", "feature");
+        expect(gitOps.getFileContentAtRef).toHaveBeenCalledWith("src/a.ts", "refs/heads/feature");
         expect(mocks.executeCommand).toHaveBeenCalledWith(
             "vscode.diff",
             expect.any(mocks.FakeUri),
@@ -352,23 +353,134 @@ describe("diffService", () => {
             "src/a.ts (branch: feature) <-> Working Tree",
         );
         const [leftUri] = mocks.executeCommand.mock.calls[0].slice(1, 2) as [{ query: string }];
-        expect(JSON.parse(leftUri.query).ref).toBe("feature");
+        expect(JSON.parse(leftUri.query).ref).toBe("refs/heads/feature");
+    });
+
+    it("disambiguates same-name branches and tags with exact full refs", async () => {
+        const gitOps = makeGitOps();
+        mocks.showQuickPick.mockImplementationOnce(
+            async (items: Array<{ refName: string; description: string }>) => {
+                expect(items).toEqual(
+                    expect.arrayContaining([
+                        expect.objectContaining({
+                            refName: "refs/heads/feature",
+                            description: "local branch",
+                        }),
+                        expect.objectContaining({
+                            refName: "refs/tags/feature",
+                            description: "tag",
+                        }),
+                    ]),
+                );
+                return items.find((item) => item.refName === "refs/tags/feature");
+            },
+        );
+
+        await compareEditorFileWithBranch(mocks.FakeUri.file("/repo/src/a.ts"), "/repo", gitOps);
+
+        expect(gitOps.getFileContentAtRef).toHaveBeenCalledWith("src/a.ts", "refs/tags/feature");
+        expect(mocks.executeCommand).toHaveBeenCalledWith(
+            "vscode.diff",
+            expect.any(mocks.FakeUri),
+            expect.any(mocks.FakeUri),
+            "src/a.ts (tag: feature) <-> Working Tree",
+        );
+    });
+
+    it("keeps current, local, remote, and tag ordering and qualifies remote refs", async () => {
+        const gitOps = makeGitOps();
+        (gitOps.getBranches as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
+            {
+                name: "origin/z-last",
+                hash: "5555555",
+                isRemote: true,
+                isCurrent: false,
+                ahead: 0,
+                behind: 0,
+            },
+            {
+                name: "z-local",
+                hash: "4444444",
+                isRemote: false,
+                isCurrent: false,
+                ahead: 0,
+                behind: 0,
+            },
+            {
+                name: "main",
+                hash: "1111111",
+                isRemote: false,
+                isCurrent: true,
+                ahead: 0,
+                behind: 0,
+            },
+            {
+                name: "a-local",
+                hash: "2222222",
+                isRemote: false,
+                isCurrent: false,
+                ahead: 0,
+                behind: 0,
+            },
+            {
+                name: "origin/feature",
+                hash: "3333333",
+                isRemote: true,
+                isCurrent: false,
+                ahead: 0,
+                behind: 0,
+            },
+        ]);
+        mocks.showQuickPick.mockImplementationOnce(async (items: Array<{ refName: string }>) => {
+            expect(items.map((item) => item.refName)).toEqual([
+                "refs/heads/main",
+                "refs/heads/a-local",
+                "refs/heads/z-local",
+                "refs/remotes/origin/feature",
+                "refs/remotes/origin/z-last",
+                "refs/tags/feature",
+            ]);
+            return items.find((item) => item.refName === "refs/remotes/origin/feature");
+        });
+
+        await compareEditorFileWithBranch(mocks.FakeUri.file("/repo/src/a.ts"), "/repo", gitOps);
+
+        expect(gitOps.getFileContentAtRef).toHaveBeenCalledWith(
+            "src/a.ts",
+            "refs/remotes/origin/feature",
+        );
     });
 
     it("opens an editable branch diff with the real file URI on the working-tree side", async () => {
         const gitOps = makeGitOps();
         mocks.showQuickPick.mockImplementationOnce(async (items: Array<{ refName: string }>) =>
-            items.find((item) => item.refName === "feature"),
+            items.find((item) => item.refName === "refs/heads/feature"),
         );
 
         await compareEditorFileWithBranch(mocks.FakeUri.file("/repo/src/a.ts"), "/repo", gitOps);
 
         expect(mocks.openEditableDiff).toHaveBeenCalledWith(
             expect.objectContaining({
-                left: { kind: "ref", ref: "feature" },
+                left: { kind: "ref", ref: "refs/heads/feature" },
                 right: { kind: "worktree" },
                 fileUri: expect.any(mocks.FakeUri),
             }),
+            expect.any(Function),
+            expect.any(Function),
+        );
+    });
+
+    it("keeps a linked URI as the working side while using a validated repository path", async () => {
+        const gitOps = makeGitOps();
+        const linkedUri = mocks.FakeUri.file("/linked/repo/src/a.ts");
+        mocks.showQuickPick.mockImplementationOnce(async (items: Array<{ refName: string }>) =>
+            items.find((item) => item.refName === "refs/heads/feature"),
+        );
+
+        await compareEditorFileWithBranch(linkedUri, "/private/repo", gitOps, "src/a.ts");
+
+        expect(mocks.openEditableDiff).toHaveBeenCalledWith(
+            expect.objectContaining({ path: "src/a.ts", fileUri: linkedUri }),
             expect.any(Function),
             expect.any(Function),
         );
@@ -612,7 +724,7 @@ describe("diffService", () => {
 
         await compareEditorFileWithBranch(undefined, "/repo", gitOps);
         expect(mocks.showErrorMessage).toHaveBeenCalledWith(
-            "Compare with Branch is only available for local files.",
+            "Compare with Branch or Tag is only available for local files.",
         );
 
         await compareEditorFileWithBranch(
@@ -633,7 +745,7 @@ describe("diffService", () => {
         );
         await compareEditorFileWithBranch(mocks.FakeUri.file("/repo/src/a.ts"), "/repo", gitOps);
         expect(mocks.showErrorMessage).toHaveBeenCalledWith(
-            "Compare with branch failed: branches failed",
+            "Compare with branch or tag failed: branches failed",
         );
     });
 

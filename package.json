@@ -756,6 +756,11 @@
                     "group": "1_compare@1"
                 },
                 {
+                    "command": "intelligit.compareWithBranch",
+                    "when": "resourceScheme == file",
+                    "group": "1_compare@2"
+                },
+                {
                     "command": "intelligit.showFileHistory",
                     "when": "resourceScheme == file",
                     "group": "2_history@1"

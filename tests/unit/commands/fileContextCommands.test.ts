@@ -22,6 +22,7 @@ const mocks = vi.hoisted(() => {
         realpath: vi.fn(async (value: string) => value),
         executorRoots: [] as string[],
         executorRun: vi.fn(async () => "/repo-b\n"),
+        compareEditorFileWithBranch: vi.fn(async () => undefined),
         compareEditorFileWithRevision: vi.fn(async () => undefined),
         showErrorMessage: vi.fn(async () => undefined),
     };
@@ -48,10 +49,14 @@ vi.mock("../../../src/git/executor", () => ({
     },
 }));
 vi.mock("../../../src/services/diffService", () => ({
+    compareEditorFileWithBranch: mocks.compareEditorFileWithBranch,
     compareEditorFileWithRevision: mocks.compareEditorFileWithRevision,
 }));
 
-import { compareFileWithRevision } from "../../../src/commands/fileContextCommands";
+import {
+    compareFileWithBranchOrTag,
+    compareFileWithRevision,
+} from "../../../src/commands/fileContextCommands";
 
 const makeGitOps = (): GitOps =>
     ({ deriveFor: vi.fn(() => ({ scope: "selected" }) as unknown as GitOps) }) as unknown as GitOps;
@@ -155,5 +160,48 @@ describe("compareFileWithRevision", () => {
             expect.anything(),
             "file.ts",
         );
+    });
+});
+
+describe("compareFileWithBranchOrTag", () => {
+    it("uses the selected file's repository instead of the active graph repository", async () => {
+        const gitOps = makeGitOps();
+        const clicked = mocks.FakeUri.file("/repo-b/nested/file with spaces.ts");
+
+        await compareFileWithBranchOrTag(clicked, gitOps);
+
+        expect(gitOps.deriveFor).toHaveBeenCalledWith("/repo-b");
+        expect(mocks.compareEditorFileWithBranch).toHaveBeenCalledWith(
+            clicked,
+            "/repo-b",
+            expect.objectContaining({ scope: "selected" }),
+            "nested/file with spaces.ts",
+        );
+    });
+
+    it("retains a linked file URI while passing its canonical repository path", async () => {
+        const gitOps = makeGitOps();
+        mocks.realpath.mockResolvedValueOnce("/private/repo/src");
+        mocks.executorRun.mockResolvedValueOnce("/private/repo\n");
+        const clicked = mocks.FakeUri.file("/linked/repo/src/file.ts");
+
+        await compareFileWithBranchOrTag(clicked, gitOps);
+
+        expect(mocks.compareEditorFileWithBranch).toHaveBeenCalledWith(
+            clicked,
+            "/private/repo",
+            expect.anything(),
+            "src/file.ts",
+        );
+    });
+
+    it("rejects malformed explicit context instead of borrowing the active editor", async () => {
+        const gitOps = makeGitOps();
+
+        await compareFileWithBranchOrTag({ fsPath: "/repo-b/not-a-uri.ts" }, gitOps);
+
+        expect(gitOps.deriveFor).not.toHaveBeenCalled();
+        expect(mocks.compareEditorFileWithBranch).not.toHaveBeenCalled();
+        expect(mocks.showErrorMessage).toHaveBeenCalledTimes(1);
     });
 });

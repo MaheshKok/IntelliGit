@@ -295,6 +295,15 @@ function toBranch(row: BranchRow, defaults: DefaultBranchRefs): Branch | undefin
 }
 
 type ConfirmSetUpstreamPush = (remote: string, branch: string) => Promise<boolean>;
+
+/** A Git tag ref and the object it resolves to. */
+export interface GitTag {
+    /** Repository-local tag name without the `refs/tags/` prefix. */
+    name: string;
+    /** Peeled target object for annotated tags, or the tag's direct object hash. */
+    hash: string;
+}
+
 /**
  * Signals that the user declined IntelliGit's prompt to create upstream tracking before push.
  */
@@ -457,6 +466,24 @@ export class GitOps {
         return rows
             .map((row) => toBranch(row, defaults))
             .filter((branch): branch is Branch => !!branch);
+    }
+    /** Reads sorted repository tags, peeling annotated tags to their target objects. */
+    async getTags(): Promise<GitTag[]> {
+        const output = await this.executor.run([
+            "for-each-ref",
+            "--sort=refname",
+            "--format=%(refname:strip=2)%00%(objectname)%00%(*objectname)",
+            "refs/tags/",
+        ]);
+        return output
+            .split(/\r?\n/)
+            .filter((row) => row.length > 0)
+            .map((row): GitTag => {
+                const [name, objectHash, peeledHash] = row.split("\0");
+                const hash = peeledHash || objectHash;
+                if (!name || !hash) throw new Error("Invalid tag ref row received from Git.");
+                return { name, hash };
+            });
     }
     /**
      * Loads commit summaries from all refs or a validated branch, optionally using a literal grep filter.
