@@ -493,6 +493,8 @@
     "Reverted selected change from {short} for {path}.": "Reverted selected change from {short} for {path}.",
     "Reverting selected change for {path}...": "Reverting selected change for {path}...",
     "Rollback failed: {message}": "Rollback failed: {message}",
+    "Rollback is only available for files.": "Rollback is only available for files.",
+    "Rollback is only available for local files.": "Rollback is only available for local files.",
     "Run the \"GitHub: Sign Out\" command, then retry.": "Run the \"GitHub: Sign Out\" command, then retry.",
     "SSH clone failed": "SSH clone failed",
     "Select a branch or tag for {path}": "Select a branch or tag for {path}",
@@ -657,6 +659,7 @@
     "Date": "Date",
     "Resize history list": "Resize history list",
     "Select a local file to show Git history.": "Select a local file to show Git history.",
+    "Save or discard changes to {path} before rolling back.": "Save or discard changes to {path} before rolling back.",
     "The selected file is outside its Git repository.": "The selected file is outside its Git repository.",
     "Unable to show Git history: {message}": "Unable to show Git history: {message}"
 }

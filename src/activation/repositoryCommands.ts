@@ -11,6 +11,7 @@ import {
     annotateWithGitBlame,
     compareFileWithBranchOrTag,
     compareFileWithRevision,
+    rollbackFileFromContext,
     showCurrentRevision,
     showFileDiff,
 } from "../commands/fileContextCommands";
@@ -475,6 +476,14 @@ function registerMergeCommands(deps: RepositoryCommandsDeps): void {
             "intelligit.annotateWithGitBlame",
             async (ctx?: unknown) => {
                 await annotateWithGitBlame(ctx, gitOps);
+            },
+        ),
+        vscode.commands.registerCommand(
+            "intelligit.fileContext.rollback",
+            async (ctx?: unknown) => {
+                await rollbackFileFromContext(ctx, gitOps, () =>
+                    deps.refreshService().refreshCommitPanels(),
+                );
             },
         ),
         vscode.commands.registerCommand("intelligit.openConflictSession", async () => {

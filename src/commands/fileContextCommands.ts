@@ -1,4 +1,4 @@
-import { realpath } from "node:fs/promises";
+import { lstat, realpath } from "node:fs/promises";
 import * as path from "node:path";
 import * as vscode from "vscode";
 import { GitExecutor } from "../git/executor";
@@ -10,11 +10,13 @@ import {
     openDiffAgainstGitRef,
 } from "../services/diffService";
 import { getErrorMessage } from "../utils/errors";
+import { showTimedInformationMessage } from "../utils/notifications";
 
 interface ResolvedFileCommandContext {
     selectedUri: vscode.Uri;
     repoRoot: string;
     repoRelativePath: string;
+    canonicalFilePath: string;
     gitOps: GitOps;
 }
 
@@ -60,8 +62,126 @@ async function resolveFileCommandContext(
         selectedUri,
         repoRoot,
         repoRelativePath: relativePath.split(path.sep).join("/"),
+        canonicalFilePath,
         gitOps: gitOps.deriveFor(repoRoot),
     };
+}
+
+/**
+ * Checks whether the selected file has an unsaved document, including a document opened through a
+ * different symlinked parent. Failures canonicalizing unrelated open documents do not block the
+ * selected file because their identity cannot match the already-resolved canonical target.
+ */
+async function hasDirtyDocumentForFile(resolved: ResolvedFileCommandContext): Promise<boolean> {
+    for (const document of vscode.workspace.textDocuments) {
+        if (!document.isDirty || document.uri.scheme !== "file") continue;
+        if (document.uri.toString() === resolved.selectedUri.toString()) return true;
+
+        try {
+            const canonicalDirectory = await realpath(path.dirname(document.uri.fsPath));
+            const canonicalDocumentPath = path.join(
+                canonicalDirectory,
+                path.basename(document.uri.fsPath),
+            );
+            if (canonicalDocumentPath === resolved.canonicalFilePath) return true;
+        } catch {
+            // An unrelated document whose parent cannot be resolved cannot identify this target.
+        }
+    }
+    return false;
+}
+
+/**
+ * Reports whether the captured target is a directory without following a final-component symlink.
+ * A missing path remains eligible so rollback can restore a tracked file deleted from the worktree.
+ */
+async function isRollbackDirectory(canonicalFilePath: string): Promise<boolean> {
+    try {
+        return (await lstat(canonicalFilePath)).isDirectory();
+    } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+        throw error;
+    }
+}
+
+/**
+ * Rolls back one explicitly selected local file, or the active editor when context is absent.
+ *
+ * The command rejects folders and dirty documents before destructive Git work, then repeats both
+ * checks after modal confirmation to catch changes made during confirmation. Repository discovery
+ * and rollback stay scoped to the canonical owner captured before any user interaction.
+ */
+export async function rollbackFileFromContext(
+    ctx: unknown,
+    gitOps: GitOps,
+    refreshPanels: () => Promise<void>,
+): Promise<void> {
+    let resolved: ResolvedFileCommandContext | undefined;
+    try {
+        resolved = await resolveFileCommandContext(ctx, gitOps);
+        if (!resolved) {
+            await vscode.window.showErrorMessage(
+                vscode.l10n.t("Rollback is only available for local files."),
+            );
+            return;
+        }
+
+        if (await isRollbackDirectory(resolved.canonicalFilePath)) {
+            await vscode.window.showErrorMessage(
+                vscode.l10n.t("Rollback is only available for files."),
+            );
+            return;
+        }
+
+        if (await hasDirtyDocumentForFile(resolved)) {
+            await vscode.window.showErrorMessage(
+                vscode.l10n.t("Save or discard changes to {path} before rolling back.", {
+                    path: resolved.repoRelativePath,
+                }),
+            );
+            return;
+        }
+
+        const rollbackAction = vscode.l10n.t("Rollback");
+        const confirmation = await vscode.window.showWarningMessage(
+            vscode.l10n.t("Rollback {path}?", { path: resolved.repoRelativePath }),
+            { modal: true },
+            rollbackAction,
+        );
+        if (confirmation !== rollbackAction) return;
+
+        if (await isRollbackDirectory(resolved.canonicalFilePath)) {
+            await vscode.window.showErrorMessage(
+                vscode.l10n.t("Rollback is only available for files."),
+            );
+            return;
+        }
+
+        if (await hasDirtyDocumentForFile(resolved)) {
+            await vscode.window.showErrorMessage(
+                vscode.l10n.t("Save or discard changes to {path} before rolling back.", {
+                    path: resolved.repoRelativePath,
+                }),
+            );
+            return;
+        }
+    } catch (error) {
+        await vscode.window.showErrorMessage(
+            vscode.l10n.t("Rollback failed: {message}", { message: getErrorMessage(error) }),
+        );
+        return;
+    }
+
+    try {
+        await resolved.gitOps.rollbackFiles([resolved.repoRelativePath]);
+        showTimedInformationMessage(vscode.l10n.t("Changes rolled back."));
+    } catch (error) {
+        await vscode.window.showErrorMessage(
+            vscode.l10n.t("Rollback failed: {message}", { message: getErrorMessage(error) }),
+        );
+    } finally {
+        await refreshPanels();
+    }
 }
 
 /**

@@ -658,5 +658,8 @@
     "Show current revision failed: {message}": "現在のリビジョンを表示できませんでした: {message}",
     "Git Blame": "Git Blame",
     "Annotate with Git Blame is only available for local files.": "「Git Blame で注釈」はローカル ファイルでのみ使用できます。",
-    "Annotate with Git Blame failed: {message}": "Git Blame での注釈に失敗しました: {message}"
+    "Annotate with Git Blame failed: {message}": "Git Blame での注釈に失敗しました: {message}",
+    "Rollback is only available for files.": "ロールバックはファイルでのみ使用できます。",
+    "Rollback is only available for local files.": "ロールバックはローカル ファイルでのみ使用できます。",
+    "Save or discard changes to {path} before rolling back.": "ロールバックする前に、{path} の変更を保存または破棄してください。"
 }

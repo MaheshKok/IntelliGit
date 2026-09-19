@@ -658,5 +658,8 @@
     "Show current revision failed: {message}": "Aktuelle Revision konnte nicht angezeigt werden: {message}",
     "Git Blame": "Git Blame",
     "Annotate with Git Blame is only available for local files.": "„Mit Git Blame annotieren“ ist nur für lokale Dateien verfügbar.",
-    "Annotate with Git Blame failed: {message}": "Annotieren mit Git Blame fehlgeschlagen: {message}"
+    "Annotate with Git Blame failed: {message}": "Annotieren mit Git Blame fehlgeschlagen: {message}",
+    "Rollback is only available for files.": "Rollback ist nur für Dateien verfügbar.",
+    "Rollback is only available for local files.": "Rollback ist nur für lokale Dateien verfügbar.",
+    "Save or discard changes to {path} before rolling back.": "Speichern oder verwerfen Sie die Änderungen an {path} vor dem Zurücksetzen."
 }

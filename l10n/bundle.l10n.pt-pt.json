@@ -658,5 +658,8 @@
     "Show current revision failed: {message}": "Falha ao mostrar a revisão atual: {message}",
     "Git Blame": "Git Blame",
     "Annotate with Git Blame is only available for local files.": "A opção «Anotar com Git Blame» está disponível apenas para ficheiros locais.",
-    "Annotate with Git Blame failed: {message}": "Falha ao anotar com Git Blame: {message}"
+    "Annotate with Git Blame failed: {message}": "Falha ao anotar com Git Blame: {message}",
+    "Rollback is only available for files.": "A reversão só está disponível para ficheiros.",
+    "Rollback is only available for local files.": "A reversão só está disponível para ficheiros locais.",
+    "Save or discard changes to {path} before rolling back.": "Guarde ou rejeite as alterações em {path} antes de reverter."
 }

@@ -658,5 +658,8 @@
     "Show current revision failed: {message}": "Не удалось показать текущую версию: {message}",
     "Git Blame": "Git Blame",
     "Annotate with Git Blame is only available for local files.": "Функция «Добавить аннотации Git Blame» доступна только для локальных файлов.",
-    "Annotate with Git Blame failed: {message}": "Не удалось добавить аннотации Git Blame: {message}"
+    "Annotate with Git Blame failed: {message}": "Не удалось добавить аннотации Git Blame: {message}",
+    "Rollback is only available for files.": "Откат доступен только для файлов.",
+    "Rollback is only available for local files.": "Откат доступен только для локальных файлов.",
+    "Save or discard changes to {path} before rolling back.": "Сохраните или отмените изменения в {path} перед откатом."
 }

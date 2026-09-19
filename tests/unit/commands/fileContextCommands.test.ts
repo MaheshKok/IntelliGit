@@ -29,6 +29,7 @@ const mocks = vi.hoisted(() => {
             getText: () => string;
         }>,
         realpath: vi.fn(async (value: string) => value),
+        lstat: vi.fn(async () => ({ isDirectory: () => false })),
         executorRoots: [] as string[],
         executorRun: vi.fn(async () => "/repo-b\n"),
         executorRunBinary: vi.fn(async () => ({
@@ -42,11 +43,13 @@ const mocks = vi.hoisted(() => {
         createReadonlyDiffUri: vi.fn(() => ({ scheme: "intelligit-diff", path: "/file.ts" })),
         openDiffAgainstGitRef: vi.fn(async () => undefined),
         showErrorMessage: vi.fn(async () => undefined),
+        showInformationMessage: vi.fn(async () => undefined),
         showTextDocument: vi.fn(async () => undefined),
+        showWarningMessage: vi.fn(async () => "Rollback" as string | undefined),
     };
 });
 
-vi.mock("node:fs/promises", () => ({ realpath: mocks.realpath }));
+vi.mock("node:fs/promises", () => ({ lstat: mocks.lstat, realpath: mocks.realpath }));
 vi.mock("vscode", () => ({
     Uri: mocks.FakeUri,
     window: {
@@ -54,7 +57,9 @@ vi.mock("vscode", () => ({
             return mocks.activeUri ? { document: { uri: mocks.activeUri } } : undefined;
         },
         showErrorMessage: mocks.showErrorMessage,
+        showInformationMessage: mocks.showInformationMessage,
         showTextDocument: mocks.showTextDocument,
+        showWarningMessage: mocks.showWarningMessage,
     },
     workspace: {
         get textDocuments() {
@@ -79,11 +84,15 @@ vi.mock("../../../src/services/diffService", () => ({
     createReadonlyDiffUri: mocks.createReadonlyDiffUri,
     openDiffAgainstGitRef: mocks.openDiffAgainstGitRef,
 }));
+vi.mock("../../../src/utils/notifications", () => ({
+    showTimedInformationMessage: (message: string) => mocks.showInformationMessage(message),
+}));
 
 import {
     annotateWithGitBlame,
     compareFileWithBranchOrTag,
     compareFileWithRevision,
+    rollbackFileFromContext,
     showCurrentRevision,
     showFileDiff,
 } from "../../../src/commands/fileContextCommands";
@@ -91,6 +100,7 @@ import {
 const selectedGitOps = {
     scope: "selected",
     getFileContentAtRef: vi.fn(async () => "committed HEAD\n"),
+    rollbackFiles: vi.fn(async () => undefined),
 } as unknown as GitOps;
 const makeGitOps = (): GitOps => ({ deriveFor: vi.fn(() => selectedGitOps) }) as unknown as GitOps;
 
@@ -100,6 +110,7 @@ beforeEach(() => {
     mocks.textDocuments.length = 0;
     mocks.executorRoots.length = 0;
     mocks.realpath.mockImplementation(async (value: string) => value);
+    mocks.lstat.mockReset().mockResolvedValue({ isDirectory: () => false });
     mocks.executorRun.mockResolvedValue("/repo-b\n");
     mocks.executorRunBinary.mockResolvedValue({
         stdout: Buffer.from("annotated source\n"),
@@ -108,6 +119,8 @@ beforeEach(() => {
         truncated: false,
     });
     vi.mocked(selectedGitOps.getFileContentAtRef).mockResolvedValue("committed HEAD\n");
+    vi.mocked(selectedGitOps.rollbackFiles).mockResolvedValue(undefined);
+    mocks.showWarningMessage.mockResolvedValue("Rollback");
 });
 
 describe("compareFileWithRevision", () => {
@@ -470,5 +483,229 @@ describe("annotateWithGitBlame", () => {
         expect(mocks.showErrorMessage).toHaveBeenCalledWith(
             "Annotate with Git Blame failed: {message}",
         );
+    });
+});
+
+describe("rollbackFileFromContext", () => {
+    const refreshPanels = vi.fn(async () => undefined);
+
+    beforeEach(() => {
+        refreshPanels.mockClear();
+    });
+
+    it("rolls back only the clicked path through its owning repository", async () => {
+        const gitOps = makeGitOps();
+        const clicked = mocks.FakeUri.file("/repo-b/nested/file with spaces.ts");
+
+        await rollbackFileFromContext(clicked, gitOps, refreshPanels);
+
+        expect(gitOps.deriveFor).toHaveBeenCalledWith("/repo-b");
+        expect(selectedGitOps.rollbackFiles).toHaveBeenCalledWith(["nested/file with spaces.ts"]);
+        expect(mocks.showWarningMessage).toHaveBeenCalledWith(
+            "Rollback {path}?",
+            { modal: true },
+            "Rollback",
+        );
+        expect(mocks.showInformationMessage).toHaveBeenCalledWith("Changes rolled back.");
+        expect(refreshPanels).toHaveBeenCalledTimes(1);
+    });
+
+    it("uses the active editor only when no command context is supplied", async () => {
+        const gitOps = makeGitOps();
+        mocks.activeUri = mocks.FakeUri.file("/repo-b/src/active.ts");
+
+        await rollbackFileFromContext(undefined, gitOps, refreshPanels);
+
+        expect(selectedGitOps.rollbackFiles).toHaveBeenCalledWith(["src/active.ts"]);
+    });
+
+    it("does not mutate when confirmation is cancelled", async () => {
+        const gitOps = makeGitOps();
+        mocks.showWarningMessage.mockResolvedValueOnce(undefined);
+
+        await rollbackFileFromContext(
+            mocks.FakeUri.file("/repo-b/src/cancelled.ts"),
+            gitOps,
+            refreshPanels,
+        );
+
+        expect(selectedGitOps.rollbackFiles).not.toHaveBeenCalled();
+        expect(refreshPanels).not.toHaveBeenCalled();
+    });
+
+    it("rejects a dirty selected document before confirmation", async () => {
+        const gitOps = makeGitOps();
+        const clicked = mocks.FakeUri.file("/repo-b/src/dirty.ts");
+        mocks.textDocuments.push({ uri: clicked, isDirty: true, getText: () => "dirty\n" });
+
+        await rollbackFileFromContext(clicked, gitOps, refreshPanels);
+
+        expect(mocks.showErrorMessage).toHaveBeenCalledWith(
+            "Save or discard changes to {path} before rolling back.",
+        );
+        expect(mocks.showWarningMessage).not.toHaveBeenCalled();
+        expect(selectedGitOps.rollbackFiles).not.toHaveBeenCalled();
+    });
+
+    it("rejects the selected document when it becomes dirty during confirmation", async () => {
+        const gitOps = makeGitOps();
+        const clicked = mocks.FakeUri.file("/repo-b/src/raced.ts");
+        mocks.showWarningMessage.mockImplementationOnce(async () => {
+            mocks.textDocuments.push({ uri: clicked, isDirty: true, getText: () => "dirty\n" });
+            return "Rollback";
+        });
+
+        await rollbackFileFromContext(clicked, gitOps, refreshPanels);
+
+        expect(selectedGitOps.rollbackFiles).not.toHaveBeenCalled();
+        expect(refreshPanels).not.toHaveBeenCalled();
+        expect(mocks.showErrorMessage).toHaveBeenCalledWith(
+            "Save or discard changes to {path} before rolling back.",
+        );
+    });
+
+    it("matches a dirty selected document through a canonical parent alias", async () => {
+        const gitOps = makeGitOps();
+        const clicked = mocks.FakeUri.file("/linked/repo/src/dirty.ts");
+        const openAlias = mocks.FakeUri.file("/other-link/repo/src/dirty.ts");
+        mocks.realpath.mockImplementation(async (value: string) => {
+            if (value === "/linked/repo/src" || value === "/other-link/repo/src") {
+                return "/private/repo/src";
+            }
+            return value;
+        });
+        mocks.executorRun.mockResolvedValueOnce("/private/repo\n");
+        mocks.textDocuments.push({ uri: openAlias, isDirty: true, getText: () => "dirty\n" });
+
+        await rollbackFileFromContext(clicked, gitOps, refreshPanels);
+
+        expect(selectedGitOps.rollbackFiles).not.toHaveBeenCalled();
+        expect(mocks.showWarningMessage).not.toHaveBeenCalled();
+    });
+
+    it("allows unrelated dirty documents", async () => {
+        const gitOps = makeGitOps();
+        mocks.textDocuments.push({
+            uri: mocks.FakeUri.file("/repo-b/src/unrelated.ts"),
+            isDirty: true,
+            getText: () => "dirty\n",
+        });
+
+        await rollbackFileFromContext(
+            mocks.FakeUri.file("/repo-b/src/selected.ts"),
+            gitOps,
+            refreshPanels,
+        );
+
+        expect(selectedGitOps.rollbackFiles).toHaveBeenCalledWith(["src/selected.ts"]);
+    });
+
+    it("checks the captured canonical file path through a symlinked parent", async () => {
+        const gitOps = makeGitOps();
+        mocks.realpath.mockResolvedValueOnce("/private/repo/src");
+        mocks.executorRun.mockResolvedValueOnce("/private/repo\n");
+
+        await rollbackFileFromContext(
+            mocks.FakeUri.file("/linked/repo/src/file.ts"),
+            gitOps,
+            refreshPanels,
+        );
+
+        expect(mocks.lstat).toHaveBeenNthCalledWith(1, "/private/repo/src/file.ts");
+        expect(mocks.lstat).toHaveBeenNthCalledWith(2, "/private/repo/src/file.ts");
+    });
+
+    it("rejects an explicitly selected directory before confirmation", async () => {
+        const gitOps = makeGitOps();
+        mocks.lstat.mockResolvedValueOnce({ isDirectory: () => true });
+
+        await rollbackFileFromContext(
+            mocks.FakeUri.file("/repo-b/src/folder"),
+            gitOps,
+            refreshPanels,
+        );
+
+        expect(mocks.showErrorMessage).toHaveBeenCalledWith(
+            "Rollback is only available for files.",
+        );
+        expect(mocks.showWarningMessage).not.toHaveBeenCalled();
+        expect(selectedGitOps.rollbackFiles).not.toHaveBeenCalled();
+    });
+
+    it("rejects the selected path when it becomes a directory during confirmation", async () => {
+        const gitOps = makeGitOps();
+        mocks.lstat
+            .mockResolvedValueOnce({ isDirectory: () => false })
+            .mockResolvedValueOnce({ isDirectory: () => true });
+
+        await rollbackFileFromContext(
+            mocks.FakeUri.file("/repo-b/src/changed-type"),
+            gitOps,
+            refreshPanels,
+        );
+
+        expect(mocks.showErrorMessage).toHaveBeenCalledWith(
+            "Rollback is only available for files.",
+        );
+        expect(selectedGitOps.rollbackFiles).not.toHaveBeenCalled();
+        expect(refreshPanels).not.toHaveBeenCalled();
+    });
+
+    it("allows a deleted tracked file to reach rollback", async () => {
+        const gitOps = makeGitOps();
+        mocks.lstat.mockRejectedValueOnce(Object.assign(new Error("missing"), { code: "ENOENT" }));
+
+        await rollbackFileFromContext(
+            mocks.FakeUri.file("/repo-b/src/deleted.ts"),
+            gitOps,
+            refreshPanels,
+        );
+
+        expect(selectedGitOps.rollbackFiles).toHaveBeenCalledWith(["src/deleted.ts"]);
+    });
+
+    it.each([
+        { fsPath: "/repo-b/not-a-uri.ts" },
+        new mocks.FakeUri("untitled:file.ts", "untitled"),
+    ])(
+        "rejects explicit invalid context %o instead of using the active editor",
+        async (context) => {
+            const gitOps = makeGitOps();
+
+            await rollbackFileFromContext(context, gitOps, refreshPanels);
+
+            expect(gitOps.deriveFor).not.toHaveBeenCalled();
+            expect(selectedGitOps.rollbackFiles).not.toHaveBeenCalled();
+            expect(mocks.showErrorMessage).toHaveBeenCalledWith(
+                "Rollback is only available for local files.",
+            );
+        },
+    );
+
+    it("surfaces filesystem and rollback failures without mutating another repository", async () => {
+        const gitOps = makeGitOps();
+        mocks.lstat.mockRejectedValueOnce(new Error("permission denied"));
+
+        await rollbackFileFromContext(
+            mocks.FakeUri.file("/repo-b/src/blocked.ts"),
+            gitOps,
+            refreshPanels,
+        );
+
+        expect(selectedGitOps.rollbackFiles).not.toHaveBeenCalled();
+        expect(mocks.showErrorMessage).toHaveBeenCalledWith("Rollback failed: {message}");
+
+        mocks.showErrorMessage.mockClear();
+        mocks.lstat.mockResolvedValueOnce({ isDirectory: () => false });
+        vi.mocked(selectedGitOps.rollbackFiles).mockRejectedValueOnce(new Error("rollback failed"));
+
+        await rollbackFileFromContext(
+            mocks.FakeUri.file("/repo-b/src/fails.ts"),
+            gitOps,
+            refreshPanels,
+        );
+
+        expect(mocks.showErrorMessage).toHaveBeenCalledWith("Rollback failed: {message}");
+        expect(refreshPanels).toHaveBeenCalledTimes(1);
     });
 });

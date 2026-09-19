@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => {
         annotateWithGitBlame: vi.fn(async () => undefined),
         compareFileWithBranchOrTag: vi.fn(async () => undefined),
         compareFileWithRevision: vi.fn(async () => undefined),
+        rollbackFileFromContext: vi.fn(async () => undefined),
         showCurrentRevision: vi.fn(async () => undefined),
         showFileDiff: vi.fn(async () => undefined),
         registerCommand: vi.fn((id: string, handler: (...args: unknown[]) => unknown) => {
@@ -56,6 +57,7 @@ vi.mock("../../../src/commands/fileContextCommands", () => ({
     annotateWithGitBlame: mocks.annotateWithGitBlame,
     compareFileWithBranchOrTag: mocks.compareFileWithBranchOrTag,
     compareFileWithRevision: mocks.compareFileWithRevision,
+    rollbackFileFromContext: mocks.rollbackFileFromContext,
     showCurrentRevision: mocks.showCurrentRevision,
     showFileDiff: mocks.showFileDiff,
 }));
@@ -344,6 +346,28 @@ describe("registerRepositoryCommands", () => {
         await mocks.commands.get("intelligit.annotateWithGitBlame")?.(context);
 
         expect(mocks.annotateWithGitBlame).toHaveBeenCalledWith(context, gitOps);
+    });
+
+    it("registers scoped file rollback and refreshes the commit panels through its callback", async () => {
+        const gitOps = makeGitOps();
+        const refreshCommitPanels = vi.fn(async () => undefined);
+        const deps = makeDeps(gitOps);
+        deps.refreshService = vi.fn(
+            () => ({ refreshCommitPanels }) as ReturnType<typeof deps.refreshService>,
+        );
+        registerRepositoryCommands(deps);
+        const context = { clicked: "file" };
+
+        await mocks.commands.get("intelligit.fileContext.rollback")?.(context);
+
+        expect(mocks.rollbackFileFromContext).toHaveBeenCalledWith(
+            context,
+            gitOps,
+            expect.any(Function),
+        );
+        const refresh = mocks.rollbackFileFromContext.mock.calls[0]?.[2];
+        await refresh?.();
+        expect(refreshCommitPanels).toHaveBeenCalledTimes(1);
     });
 
     describe("intelligit.fileAddToVcs", () => {

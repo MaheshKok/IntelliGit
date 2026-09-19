@@ -658,5 +658,8 @@
     "Show current revision failed: {message}": "無法顯示目前的修訂版本：{message}",
     "Git Blame": "Git Blame",
     "Annotate with Git Blame is only available for local files.": "「使用 Git Blame 新增註釋」僅適用於本機檔案。",
-    "Annotate with Git Blame failed: {message}": "使用 Git Blame 新增註釋失敗：{message}"
+    "Annotate with Git Blame failed: {message}": "使用 Git Blame 新增註釋失敗：{message}",
+    "Rollback is only available for files.": "只能復原檔案。",
+    "Rollback is only available for local files.": "只能復原本機檔案。",
+    "Save or discard changes to {path} before rolling back.": "復原前，請儲存或捨棄對 {path} 的變更。"
 }

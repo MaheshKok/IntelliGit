@@ -199,7 +199,7 @@ describe("E2E coverage manifest", () => {
         );
 
         expect(aliasIds).toHaveLength(9);
-        expect(collapsedBaseIds).toHaveLength(70);
+        expect(collapsedBaseIds).toHaveLength(71);
         expect(collapsedManifestBaseIds).toEqual(collapsedBaseIds);
     });
 
