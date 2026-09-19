@@ -15,13 +15,28 @@ const mocks = vi.hoisted(() => {
         static file(fsPath: string): FakeUri {
             return new FakeUri(fsPath);
         }
+
+        toString(): string {
+            return `${this.scheme}:${this.fsPath}`;
+        }
     }
     return {
         FakeUri,
         activeUri: FakeUri.file("/repo-a/active.ts") as FakeUri | undefined,
+        textDocuments: [] as Array<{
+            uri: FakeUri;
+            isDirty: boolean;
+            getText: () => string;
+        }>,
         realpath: vi.fn(async (value: string) => value),
         executorRoots: [] as string[],
         executorRun: vi.fn(async () => "/repo-b\n"),
+        executorRunBinary: vi.fn(async () => ({
+            stdout: Buffer.from("annotated source\n"),
+            stderr: Buffer.alloc(0),
+            exitCode: 0,
+            truncated: false,
+        })),
         compareEditorFileWithBranch: vi.fn(async () => undefined),
         compareEditorFileWithRevision: vi.fn(async () => undefined),
         createReadonlyDiffUri: vi.fn(() => ({ scheme: "intelligit-diff", path: "/file.ts" })),
@@ -41,11 +56,17 @@ vi.mock("vscode", () => ({
         showErrorMessage: mocks.showErrorMessage,
         showTextDocument: mocks.showTextDocument,
     },
+    workspace: {
+        get textDocuments() {
+            return mocks.textDocuments;
+        },
+    },
     l10n: { t: (message: string) => message },
 }));
 vi.mock("../../../src/git/executor", () => ({
     GitExecutor: class {
         run = mocks.executorRun;
+        runBinary = mocks.executorRunBinary;
 
         constructor(repoRoot: string) {
             mocks.executorRoots.push(repoRoot);
@@ -60,6 +81,7 @@ vi.mock("../../../src/services/diffService", () => ({
 }));
 
 import {
+    annotateWithGitBlame,
     compareFileWithBranchOrTag,
     compareFileWithRevision,
     showCurrentRevision,
@@ -75,9 +97,16 @@ const makeGitOps = (): GitOps => ({ deriveFor: vi.fn(() => selectedGitOps) }) as
 beforeEach(() => {
     vi.clearAllMocks();
     mocks.activeUri = mocks.FakeUri.file("/repo-a/active.ts");
+    mocks.textDocuments.length = 0;
     mocks.executorRoots.length = 0;
     mocks.realpath.mockImplementation(async (value: string) => value);
     mocks.executorRun.mockResolvedValue("/repo-b\n");
+    mocks.executorRunBinary.mockResolvedValue({
+        stdout: Buffer.from("annotated source\n"),
+        stderr: Buffer.alloc(0),
+        exitCode: 0,
+        truncated: false,
+    });
     vi.mocked(selectedGitOps.getFileContentAtRef).mockResolvedValue("committed HEAD\n");
 });
 
@@ -340,6 +369,106 @@ describe("showCurrentRevision", () => {
         expect(mocks.showTextDocument).not.toHaveBeenCalled();
         expect(mocks.showErrorMessage).toHaveBeenCalledWith(
             "Show current revision failed: {message}",
+        );
+    });
+});
+
+describe("annotateWithGitBlame", () => {
+    it("opens a readonly blame snapshot for the clicked file from its owning repository", async () => {
+        const gitOps = makeGitOps();
+        mocks.realpath.mockResolvedValueOnce("/private/repo/nested");
+        mocks.executorRun.mockResolvedValueOnce("/private/repo\n");
+        mocks.executorRunBinary.mockResolvedValueOnce({
+            stdout: Buffer.from("abc123 (Ada 2026-09-19 1) source line\n"),
+            stderr: Buffer.alloc(0),
+            exitCode: 0,
+            truncated: false,
+        });
+        const clicked = mocks.FakeUri.file("/linked/repo/nested/file with spaces.ts");
+
+        await annotateWithGitBlame(clicked, gitOps);
+
+        expect(mocks.executorRoots).toEqual(["/private/repo/nested", "/private/repo"]);
+        expect(gitOps.deriveFor).toHaveBeenCalledWith("/private/repo");
+        expect(mocks.executorRunBinary).toHaveBeenCalledWith([
+            "blame",
+            "--date=short",
+            "--",
+            "nested/file with spaces.ts",
+        ]);
+        expect(mocks.createReadonlyDiffUri).toHaveBeenCalledWith(
+            "nested/file with spaces.ts.blame",
+            "abc123 (Ada 2026-09-19 1) source line\n",
+            "Git Blame",
+        );
+        expect(mocks.showTextDocument).toHaveBeenCalledWith({
+            scheme: "intelligit-diff",
+            path: "/file.ts",
+        });
+    });
+
+    it("passes the dirty active document through blame stdin without adding HEAD", async () => {
+        const gitOps = makeGitOps();
+        const activeUri = mocks.FakeUri.file("/repo-b/src/active.ts");
+        mocks.activeUri = activeUri;
+        mocks.textDocuments.push({
+            uri: activeUri,
+            isDirty: true,
+            getText: () => "changed source\n",
+        });
+
+        await annotateWithGitBlame(undefined, gitOps);
+
+        expect(mocks.executorRunBinary).toHaveBeenCalledWith(
+            ["blame", "--date=short", "--contents", "-", "--", "src/active.ts"],
+            { input: Buffer.from("changed source\n") },
+        );
+        expect(mocks.executorRunBinary.mock.calls[0]?.[0]).not.toContain("HEAD");
+    });
+
+    it("passes an empty dirty document as an explicit empty stdin buffer", async () => {
+        const gitOps = makeGitOps();
+        const clicked = mocks.FakeUri.file("/repo-b/empty.ts");
+        mocks.textDocuments.push({ uri: clicked, isDirty: true, getText: () => "" });
+
+        await annotateWithGitBlame(clicked, gitOps);
+
+        expect(mocks.executorRunBinary).toHaveBeenCalledWith(
+            ["blame", "--date=short", "--contents", "-", "--", "empty.ts"],
+            { input: Buffer.alloc(0) },
+        );
+    });
+
+    it.each([
+        { fsPath: "/repo-b/not-a-uri.ts" },
+        new mocks.FakeUri("untitled:file.ts", "untitled"),
+    ])(
+        "rejects explicit invalid context %o instead of annotating another file",
+        async (context) => {
+            const gitOps = makeGitOps();
+
+            await annotateWithGitBlame(context, gitOps);
+
+            expect(gitOps.deriveFor).not.toHaveBeenCalled();
+            expect(mocks.executorRunBinary).not.toHaveBeenCalled();
+            expect(mocks.createReadonlyDiffUri).not.toHaveBeenCalled();
+            expect(mocks.showTextDocument).not.toHaveBeenCalled();
+            expect(mocks.showErrorMessage).toHaveBeenCalledWith(
+                "Annotate with Git Blame is only available for local files.",
+            );
+        },
+    );
+
+    it("reports Git blame failures without opening a document", async () => {
+        const gitOps = makeGitOps();
+        mocks.executorRunBinary.mockRejectedValueOnce(new Error("fatal: no such path"));
+
+        await annotateWithGitBlame(mocks.FakeUri.file("/repo-b/untracked.ts"), gitOps);
+
+        expect(mocks.createReadonlyDiffUri).not.toHaveBeenCalled();
+        expect(mocks.showTextDocument).not.toHaveBeenCalled();
+        expect(mocks.showErrorMessage).toHaveBeenCalledWith(
+            "Annotate with Git Blame failed: {message}",
         );
     });
 });

@@ -483,6 +483,11 @@
                 "category": "%intelligit%"
             },
             {
+                "command": "intelligit.annotateWithGitBlame",
+                "title": "%command.annotateWithGitBlame%",
+                "category": "%intelligit%"
+            },
+            {
                 "command": "intelligit.commitFileCompareWithLocal",
                 "title": "%command.compareWithLocal%",
                 "category": "%intelligit%",
@@ -785,6 +790,11 @@
                     "command": "intelligit.showCurrentRevision",
                     "when": "resourceScheme == file",
                     "group": "2_history@2"
+                },
+                {
+                    "command": "intelligit.annotateWithGitBlame",
+                    "when": "resourceScheme == file",
+                    "group": "2_history@3"
                 }
             ],
             "intelligit.editorContext": [
@@ -812,6 +822,11 @@
                     "command": "intelligit.showCurrentRevision",
                     "when": "resourceScheme == file",
                     "group": "2_history@2"
+                },
+                {
+                    "command": "intelligit.annotateWithGitBlame",
+                    "when": "resourceScheme == file",
+                    "group": "2_history@3"
                 }
             ],
             "view/title": [

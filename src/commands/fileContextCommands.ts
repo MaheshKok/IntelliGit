@@ -190,3 +190,48 @@ export async function showCurrentRevision(ctx: unknown, gitOps: GitOps): Promise
         );
     }
 }
+
+/**
+ * Opens a point-in-time Git blame listing for the selected file as an immutable virtual document.
+ *
+ * Repository and path resolution follow the selected URI rather than the active graph. When the
+ * selected document has unsaved edits, Git receives that exact text through `--contents -`; clean
+ * documents are blamed from the worktree. Explicit invalid contexts and Git failures are surfaced
+ * without changing the source document or enabling global editor decorations.
+ */
+export async function annotateWithGitBlame(ctx: unknown, gitOps: GitOps): Promise<void> {
+    try {
+        const resolved = await resolveFileCommandContext(ctx, gitOps);
+        if (!resolved) {
+            await vscode.window.showErrorMessage(
+                vscode.l10n.t("Annotate with Git Blame is only available for local files."),
+            );
+            return;
+        }
+
+        const dirtyDocument = vscode.workspace.textDocuments.find(
+            (document) =>
+                document.isDirty && document.uri.toString() === resolved.selectedUri.toString(),
+        );
+        const args = ["blame", "--date=short"];
+        if (dirtyDocument) args.push("--contents", "-");
+        args.push("--", resolved.repoRelativePath);
+
+        const executor = new GitExecutor(resolved.repoRoot);
+        const result = dirtyDocument
+            ? await executor.runBinary(args, { input: Buffer.from(dirtyDocument.getText()) })
+            : await executor.runBinary(args);
+        const uri = createReadonlyDiffUri(
+            `${resolved.repoRelativePath}.blame`,
+            result.stdout.toString("utf8"),
+            vscode.l10n.t("Git Blame"),
+        );
+        await vscode.window.showTextDocument(uri);
+    } catch (error) {
+        await vscode.window.showErrorMessage(
+            vscode.l10n.t("Annotate with Git Blame failed: {message}", {
+                message: getErrorMessage(error),
+            }),
+        );
+    }
+}

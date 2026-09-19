@@ -655,5 +655,8 @@
     "Show Diff is only available for local files.": "Функция «Показать различия» доступна только для локальных файлов.",
     "Show Diff failed: {message}": "Не удалось показать различия: {message}",
     "Show Current Revision is only available for local files.": "Функция «Показать текущую версию» доступна только для локальных файлов.",
-    "Show current revision failed: {message}": "Не удалось показать текущую версию: {message}"
+    "Show current revision failed: {message}": "Не удалось показать текущую версию: {message}",
+    "Git Blame": "Git Blame",
+    "Annotate with Git Blame is only available for local files.": "Функция «Добавить аннотации Git Blame» доступна только для локальных файлов.",
+    "Annotate with Git Blame failed: {message}": "Не удалось добавить аннотации Git Blame: {message}"
 }

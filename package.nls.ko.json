@@ -96,5 +96,6 @@
     "command.showFileHistory": "파일 기록 표시",
     "command.addToVcs": "버전 제어에 추가",
     "command.showFileDiff": "차이점 표시",
-    "command.showCurrentRevision": "현재 리비전 표시"
+    "command.showCurrentRevision": "현재 리비전 표시",
+    "command.annotateWithGitBlame": "Git Blame으로 주석 달기"
 }

@@ -96,5 +96,6 @@
     "command.showFileHistory": "Dateiverlauf anzeigen",
     "command.addToVcs": "Zur Versionsverwaltung hinzufügen",
     "command.showFileDiff": "Diff anzeigen",
-    "command.showCurrentRevision": "Aktuelle Revision anzeigen"
+    "command.showCurrentRevision": "Aktuelle Revision anzeigen",
+    "command.annotateWithGitBlame": "Mit Git Blame annotieren"
 }

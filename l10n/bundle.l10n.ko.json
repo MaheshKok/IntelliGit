@@ -655,5 +655,8 @@
     "Show Diff is only available for local files.": "차이점 표시는 로컬 파일에서만 사용할 수 있습니다.",
     "Show Diff failed: {message}": "차이점 표시 실패: {message}",
     "Show Current Revision is only available for local files.": "'현재 리비전 표시'는 로컬 파일에서만 사용할 수 있습니다.",
-    "Show current revision failed: {message}": "현재 리비전을 표시하지 못했습니다: {message}"
+    "Show current revision failed: {message}": "현재 리비전을 표시하지 못했습니다: {message}",
+    "Git Blame": "Git Blame",
+    "Annotate with Git Blame is only available for local files.": "'Git Blame으로 주석 달기'는 로컬 파일에서만 사용할 수 있습니다.",
+    "Annotate with Git Blame failed: {message}": "Git Blame 주석 달기에 실패했습니다: {message}"
 }

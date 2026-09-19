@@ -533,6 +533,11 @@ describe("extension manifest", () => {
             when: "resourceScheme == file",
             group: "2_history@2",
         });
+        expect(fileMenu).toContainEqual({
+            command: "intelligit.annotateWithGitBlame",
+            when: "resourceScheme == file",
+            group: "2_history@3",
+        });
         expect(manifest.contributes?.menus?.["intelligit.editorContext"] ?? []).toContainEqual({
             command: "intelligit.showFileDiff",
             when: "resourceScheme == file",
@@ -542,6 +547,11 @@ describe("extension manifest", () => {
             command: "intelligit.showCurrentRevision",
             when: "resourceScheme == file",
             group: "2_history@2",
+        });
+        expect(manifest.contributes?.menus?.["intelligit.editorContext"] ?? []).toContainEqual({
+            command: "intelligit.annotateWithGitBlame",
+            when: "resourceScheme == file",
+            group: "2_history@3",
         });
         expect(manifest.contributes?.commands).toContainEqual(
             expect.objectContaining({
@@ -553,6 +563,12 @@ describe("extension manifest", () => {
             expect.objectContaining({
                 command: "intelligit.showCurrentRevision",
                 title: "%command.showCurrentRevision%",
+            }),
+        );
+        expect(manifest.contributes?.commands).toContainEqual(
+            expect.objectContaining({
+                command: "intelligit.annotateWithGitBlame",
+                title: "%command.annotateWithGitBlame%",
             }),
         );
     });
