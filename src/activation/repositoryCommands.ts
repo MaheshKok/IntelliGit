@@ -13,6 +13,7 @@ import {
     compareFileWithRevision,
     fetchFile,
     pullFileRepositoryFromContext,
+    pushFileRepositoryFromContext,
     rollbackFile,
     showCurrentRevision,
     showFileDiff,
@@ -691,6 +692,54 @@ function registerCommitFileCommands(deps: RepositoryCommandsDeps): void {
                         fireWorkingTreeChanged: () => undefined,
                     },
                     "pull",
+                );
+            });
+        }),
+        vscode.commands.registerCommand("intelligit.filePush", async (ctx: unknown) => {
+            await pushFileRepositoryFromContext(ctx, gitOps, async (scopedGitOps, repoRoot) => {
+                await runGitOperationFromPanel(
+                    {
+                        gitOps: scopedGitOps,
+                        refreshData: async () => {
+                            if (!areSameRepositoryRoot(repoRoot, getRepoRoot())) return;
+                            try {
+                                await refreshActiveRepository();
+                            } catch (error) {
+                                console.error("Failed to refresh after file Push:", error);
+                                await vscode.window.showErrorMessage(
+                                    vscode.l10n.t("Could not refresh after Push: {message}", {
+                                        message: getErrorMessage(error),
+                                    }),
+                                );
+                            }
+                        },
+                        fireWorkingTreeChanged: () => undefined,
+                        publishBranch: async () => {
+                            const hasCommits = await scopedGitOps.hasAnyCommits();
+                            if (!hasCommits) {
+                                showTimedWarningMessage(
+                                    vscode.l10n.t("Create a commit before publishing this branch."),
+                                );
+                                return;
+                            }
+                            const currentBranch = (await scopedGitOps.getBranches()).find(
+                                (branch) => branch.isCurrent,
+                            );
+                            if (!currentBranch) {
+                                vscode.window.showErrorMessage(
+                                    vscode.l10n.t("No current branch found."),
+                                );
+                                return;
+                            }
+                            await runPublishBranchFlow(
+                                scopedGitOps,
+                                currentBranch.name,
+                                repoRoot,
+                                context.secrets,
+                            );
+                        },
+                    },
+                    "push",
                 );
             });
         }),

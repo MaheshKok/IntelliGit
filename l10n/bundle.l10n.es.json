@@ -669,5 +669,7 @@
     "Fetch failed: {message}": "Error al obtener: {message}",
     "Pull failed: {message}": "Error al extraer: {message}",
     "Pull is only available for local files.": "Pull solo está disponible para archivos locales.",
-    "Pull succeeded, but refresh failed: {message}": "Extracción completada, pero no se pudo actualizar: {message}"
+    "Pull succeeded, but refresh failed: {message}": "Extracción completada, pero no se pudo actualizar: {message}",
+    "Push is only available for local files.": "Push solo está disponible para archivos locales.",
+    "Could not refresh after Push: {message}": "No se pudo actualizar después del push: {message}"
 }

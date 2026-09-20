@@ -669,5 +669,7 @@
     "Fetch failed: {message}": "Не удалось выполнить получение: {message}",
     "Pull failed: {message}": "Не удалось выполнить извлечение: {message}",
     "Pull is only available for local files.": "Извлечение доступно только для локальных файлов.",
-    "Pull succeeded, but refresh failed: {message}": "Извлечение выполнено успешно, но обновление не удалось: {message}"
+    "Pull succeeded, but refresh failed: {message}": "Извлечение выполнено успешно, но обновление не удалось: {message}",
+    "Push is only available for local files.": "Отправка доступна только для локальных файлов.",
+    "Could not refresh after Push: {message}": "Не удалось обновить после отправки: {message}"
 }

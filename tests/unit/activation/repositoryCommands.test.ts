@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => {
         compareFileWithRevision: vi.fn(async () => undefined),
         fetchFile: vi.fn(async () => "/repo" as string | undefined),
         pullFileRepositoryFromContext: vi.fn(),
+        pushFileRepositoryFromContext: vi.fn(),
         rollbackFile: vi.fn(async () => undefined),
         showCurrentRevision: vi.fn(async () => undefined),
         showFileDiff: vi.fn(async () => undefined),
@@ -18,6 +19,7 @@ const mocks = vi.hoisted(() => {
             commands.set(id, handler);
             return { dispose: vi.fn() };
         }),
+        executeCommand: vi.fn(),
         showErrorMessage: vi.fn(),
         showInformationMessage: vi.fn(),
         showQuickPick: vi.fn(),
@@ -34,6 +36,7 @@ const mocks = vi.hoisted(() => {
 vi.mock("vscode", () => ({
     commands: {
         registerCommand: mocks.registerCommand,
+        executeCommand: mocks.executeCommand,
     },
     l10n: {
         t: (message: string) => mocks.l10nT(message),
@@ -62,6 +65,7 @@ vi.mock("../../../src/commands/fileContextCommands", () => ({
     compareFileWithRevision: mocks.compareFileWithRevision,
     fetchFile: mocks.fetchFile,
     pullFileRepositoryFromContext: mocks.pullFileRepositoryFromContext,
+    pushFileRepositoryFromContext: mocks.pushFileRepositoryFromContext,
     rollbackFile: mocks.rollbackFile,
     showCurrentRevision: mocks.showCurrentRevision,
     showFileDiff: mocks.showFileDiff,
@@ -165,6 +169,13 @@ describe("registerRepositoryCommands", () => {
                 _gitOps: unknown,
                 runPull: (gitOps: unknown, repoRoot: string) => Promise<void>,
             ) => runPull({ scope: "selected" }, "/repo"),
+        );
+        mocks.pushFileRepositoryFromContext.mockImplementation(
+            async (
+                _ctx: unknown,
+                _gitOps: unknown,
+                runPush: (gitOps: unknown, repoRoot: string) => Promise<void>,
+            ) => runPush({ scope: "selected" }, "/repo"),
         );
         mocks.createBranchCommands.mockImplementation(() =>
             BRANCH_COMMAND_IDS.map((id) => {
@@ -499,6 +510,220 @@ describe("registerRepositoryCommands", () => {
         expect(mocks.showErrorMessage).toHaveBeenCalledWith(
             "xx:Pull succeeded, but refresh failed: {message}",
         );
+    });
+
+    it("runs file Push through the shared default non-force flow with selected repository GitOps", async () => {
+        const gitOps = makeGitOps();
+        const scopedGitOps = { scope: "selected" };
+        const context = { clicked: "file" };
+        mocks.pushFileRepositoryFromContext.mockImplementationOnce(
+            async (
+                _ctx: unknown,
+                _gitOps: unknown,
+                runPush: (selectedGitOps: unknown, repoRoot: string) => Promise<void>,
+            ) => runPush(scopedGitOps, "/repo-b"),
+        );
+        registerRepositoryCommands(makeDeps(gitOps));
+
+        await mocks.commands.get("intelligit.filePush")?.(context);
+
+        expect(mocks.pushFileRepositoryFromContext).toHaveBeenCalledWith(
+            context,
+            gitOps,
+            expect.any(Function),
+        );
+        expect(mocks.runGitOperationFromPanel).toHaveBeenCalledWith(
+            expect.objectContaining({ gitOps: scopedGitOps }),
+            "push",
+        );
+    });
+
+    it.each([
+        { selectedRoot: "/repo", activeRoot: "/repo", shouldRefresh: true },
+        { selectedRoot: "C:/Work/Repo/", activeRoot: "c:\\work\\repo", shouldRefresh: true },
+        { selectedRoot: "/Repo", activeRoot: "/repo", shouldRefresh: false },
+    ])(
+        "refreshes only the matching active root after file Push: $selectedRoot",
+        async ({ selectedRoot, activeRoot, shouldRefresh }) => {
+            const gitOps = makeGitOps();
+            const deps = makeDeps(gitOps);
+            deps.getRepoRoot = () => activeRoot;
+            mocks.pushFileRepositoryFromContext.mockImplementationOnce(
+                async (
+                    _ctx: unknown,
+                    _gitOps: unknown,
+                    runPush: (selectedGitOps: unknown, repoRoot: string) => Promise<void>,
+                ) => runPush({ scope: "selected" }, selectedRoot),
+            );
+            mocks.runGitOperationFromPanel.mockImplementationOnce(async (actionDeps: unknown) => {
+                await (actionDeps as { refreshData: () => Promise<void> }).refreshData();
+            });
+            registerRepositoryCommands(deps);
+
+            await mocks.commands.get("intelligit.filePush")?.({ clicked: "file" });
+
+            expect(deps.refreshActiveRepository).toHaveBeenCalledTimes(shouldRefresh ? 1 : 0);
+        },
+    );
+
+    it("contains active-graph refresh rejection after file Push without claiming success", async () => {
+        const gitOps = makeGitOps();
+        const deps = makeDeps(gitOps);
+        const refreshError = new Error("graph unavailable");
+        deps.refreshActiveRepository = vi.fn(async () => {
+            throw refreshError;
+        });
+        mocks.runGitOperationFromPanel.mockImplementationOnce(async (actionDeps: unknown) => {
+            await (actionDeps as { refreshData: () => Promise<void> }).refreshData();
+        });
+        const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+        registerRepositoryCommands(deps);
+
+        try {
+            await expect(
+                mocks.commands.get("intelligit.filePush")?.({ clicked: "file" }),
+            ).resolves.toBeUndefined();
+            expect(consoleError).toHaveBeenCalledWith(
+                "Failed to refresh after file Push:",
+                refreshError,
+            );
+        } finally {
+            consoleError.mockRestore();
+        }
+
+        expect(mocks.showErrorMessage).toHaveBeenCalledWith(
+            "xx:Could not refresh after Push: {message}",
+        );
+    });
+
+    it("publishes an unpublished selected repository through its scoped branch, root, and secrets", async () => {
+        const gitOps = makeGitOps();
+        const selectedBranch: Branch = {
+            name: "selected/topic",
+            hash: "selected123",
+            isCurrent: true,
+            isRemote: false,
+            upstream: undefined,
+            ahead: 0,
+            behind: 0,
+        };
+        const scopedGitOps = {
+            scope: "selected",
+            hasAnyCommits: vi.fn(async () => true),
+            getBranches: vi.fn(async () => [selectedBranch]),
+        };
+        mocks.pushFileRepositoryFromContext.mockImplementationOnce(
+            async (
+                _ctx: unknown,
+                _gitOps: unknown,
+                runPush: (selectedGitOps: unknown, repoRoot: string) => Promise<void>,
+            ) => runPush(scopedGitOps, "/repo-b"),
+        );
+        mocks.runGitOperationFromPanel.mockImplementationOnce(async (actionDeps: unknown) => {
+            await (actionDeps as { publishBranch: () => Promise<void> }).publishBranch();
+        });
+        const deps = makeDeps(gitOps);
+        registerRepositoryCommands(deps);
+
+        await mocks.commands.get("intelligit.filePush")?.({ clicked: "file" });
+
+        expect(scopedGitOps.hasAnyCommits).toHaveBeenCalledTimes(1);
+        expect(scopedGitOps.getBranches).toHaveBeenCalledTimes(1);
+        expect(mocks.runPublishBranchFlow).toHaveBeenCalledWith(
+            scopedGitOps,
+            "selected/topic",
+            "/repo-b",
+            deps.context.secrets,
+        );
+        expect(mocks.executeCommand).not.toHaveBeenCalledWith("intelligit.publishBranch");
+    });
+
+    it("keeps refresh wording neutral when scoped publish returns without a success signal", async () => {
+        const scopedGitOps = {
+            hasAnyCommits: vi.fn(async () => true),
+            getBranches: vi.fn(async () => [
+                {
+                    name: "selected/topic",
+                    isCurrent: true,
+                },
+            ]),
+        };
+        mocks.pushFileRepositoryFromContext.mockImplementationOnce(async (_ctx, _gitOps, runPush) =>
+            runPush(scopedGitOps, "/repo"),
+        );
+        mocks.runPublishBranchFlow.mockResolvedValueOnce(undefined);
+        mocks.runGitOperationFromPanel.mockImplementationOnce(async (actionDeps: unknown) => {
+            const actions = actionDeps as {
+                publishBranch: () => Promise<void>;
+                refreshData: () => Promise<void>;
+            };
+            await actions.publishBranch();
+            await actions.refreshData();
+        });
+        const deps = makeDeps(makeGitOps());
+        deps.refreshActiveRepository = vi.fn(async () => {
+            throw new Error("graph unavailable");
+        });
+        const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+        registerRepositoryCommands(deps);
+
+        try {
+            await expect(
+                mocks.commands.get("intelligit.filePush")?.({ clicked: "file" }),
+            ).resolves.toBeUndefined();
+        } finally {
+            consoleError.mockRestore();
+        }
+
+        expect(mocks.runPublishBranchFlow).toHaveBeenCalledTimes(1);
+        expect(deps.refreshActiveRepository).toHaveBeenCalledTimes(1);
+        expect(mocks.showErrorMessage).toHaveBeenCalledWith(
+            "xx:Could not refresh after Push: {message}",
+        );
+        expect(mocks.showErrorMessage).not.toHaveBeenCalledWith(
+            expect.stringContaining("succeeded"),
+        );
+    });
+
+    it("keeps the existing no-commit warning for selected-repository publish", async () => {
+        const scopedGitOps = {
+            hasAnyCommits: vi.fn(async () => false),
+            getBranches: vi.fn(async () => []),
+        };
+        mocks.pushFileRepositoryFromContext.mockImplementationOnce(async (_ctx, _gitOps, runPush) =>
+            runPush(scopedGitOps, "/repo-b"),
+        );
+        mocks.runGitOperationFromPanel.mockImplementationOnce(async (actionDeps: unknown) => {
+            await (actionDeps as { publishBranch: () => Promise<void> }).publishBranch();
+        });
+        registerRepositoryCommands(makeDeps(makeGitOps()));
+
+        await mocks.commands.get("intelligit.filePush")?.({ clicked: "file" });
+
+        expect(mocks.showWarningMessage).toHaveBeenCalledWith(
+            "xx:Create a commit before publishing this branch.",
+        );
+        expect(scopedGitOps.getBranches).not.toHaveBeenCalled();
+        expect(mocks.runPublishBranchFlow).not.toHaveBeenCalled();
+    });
+
+    it("keeps the existing no-current-branch error for selected-repository publish", async () => {
+        const scopedGitOps = {
+            hasAnyCommits: vi.fn(async () => true),
+            getBranches: vi.fn(async () => []),
+        };
+        mocks.pushFileRepositoryFromContext.mockImplementationOnce(async (_ctx, _gitOps, runPush) =>
+            runPush(scopedGitOps, "/repo-b"),
+        );
+        mocks.runGitOperationFromPanel.mockImplementationOnce(async (actionDeps: unknown) => {
+            await (actionDeps as { publishBranch: () => Promise<void> }).publishBranch();
+        });
+        registerRepositoryCommands(makeDeps(makeGitOps()));
+
+        await mocks.commands.get("intelligit.filePush")?.({ clicked: "file" });
+
+        expect(mocks.showErrorMessage).toHaveBeenCalledWith("xx:No current branch found.");
+        expect(mocks.runPublishBranchFlow).not.toHaveBeenCalled();
     });
 
     it("routes native file rollback contexts through the selected-file wrapper", async () => {

@@ -534,6 +534,15 @@ describe("extension manifest", () => {
                 dark: "media/icons/git-pull-white.svg",
             },
         });
+        expect(commands.find((entry) => entry.command === "intelligit.filePush")).toEqual({
+            command: "intelligit.filePush",
+            title: "%command.push%",
+            category: "%intelligit%",
+            icon: {
+                light: "media/icons/git-push-ink.svg",
+                dark: "media/icons/git-push-white.svg",
+            },
+        });
 
         expect(manifest.contributes?.menus?.["editor/title/context"]).toContainEqual({
             submenu: "intelligit.fileContext",
@@ -644,6 +653,13 @@ describe("extension manifest", () => {
                     command: "intelligit.filePull",
                     when: "resourceScheme == file",
                     group: "3_actions@3",
+                },
+            ]);
+            expect(menu.filter((entry) => entry.command === "intelligit.filePush")).toEqual([
+                {
+                    command: "intelligit.filePush",
+                    when: "resourceScheme == file",
+                    group: "3_actions@4",
                 },
             ]);
         }

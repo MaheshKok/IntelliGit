@@ -237,6 +237,12 @@ const COMMAND_ENTRIES = [
         mutating: true,
         coveredBySpec: "tests/e2e/fileContextPull.spec.ts",
     },
+    {
+        kind: "command",
+        id: "intelligit.filePush",
+        mutating: true,
+        coveredBySpec: "tests/e2e/fileContextPush.spec.ts",
+    },
     { kind: "command", id: "intelligit.fileJumpToSource", mutating: false },
     {
         kind: "command",
