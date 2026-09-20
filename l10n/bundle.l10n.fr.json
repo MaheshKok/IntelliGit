@@ -664,5 +664,7 @@
     "Save or discard unsaved changes to {path} before rolling it back.": "Enregistrez ou annulez les modifications non enregistrées de {path} avant d’annuler ce fichier.",
     "Cannot roll back {path} because it does not exist in HEAD.": "Impossible d’annuler {path}, car il n’existe pas dans HEAD.",
     "Rolled back {path}.": "{path} a été annulé.",
-    "Rollback failed for {path}: {message}": "Échec de l’annulation de {path} : {message}"
+    "Rollback failed for {path}: {message}": "Échec de l’annulation de {path} : {message}",
+    "Fetch is only available for local files.": "La récupération n’est disponible que pour les fichiers locaux.",
+    "Fetch failed: {message}": "Échec de la récupération : {message}"
 }

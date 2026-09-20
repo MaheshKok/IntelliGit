@@ -664,5 +664,7 @@
     "Save or discard unsaved changes to {path} before rolling it back.": "復原 {path} 前，請儲存或捨棄未儲存的變更。",
     "Cannot roll back {path} because it does not exist in HEAD.": "無法復原 {path}，因為它不存在於 HEAD 中。",
     "Rolled back {path}.": "已復原 {path}。",
-    "Rollback failed for {path}: {message}": "復原 {path} 失敗：{message}"
+    "Rollback failed for {path}: {message}": "復原 {path} 失敗：{message}",
+    "Fetch is only available for local files.": "擷取僅適用於本機檔案。",
+    "Fetch failed: {message}": "擷取失敗：{message}"
 }
