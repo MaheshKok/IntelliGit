@@ -124,6 +124,33 @@ export async function pullFileRepositoryFromContext(
     }
 }
 
+/**
+ * Resolves the selected local file's repository and delegates Push to the shared panel flow.
+ *
+ * The callback receives repository-scoped Git operations plus the canonical root so its caller can
+ * publish and refresh the selected repository without borrowing active-repository state.
+ */
+export async function pushFileRepositoryFromContext(
+    ctx: unknown,
+    gitOps: GitOps,
+    runPush: (scopedGitOps: GitOps, repoRoot: string) => Promise<void>,
+): Promise<void> {
+    try {
+        const resolved = await resolveFileCommandContext(ctx, gitOps);
+        if (!resolved) {
+            await vscode.window.showErrorMessage(
+                vscode.l10n.t("Push is only available for local files."),
+            );
+            return;
+        }
+        await runPush(resolved.gitOps, resolved.repoRoot);
+    } catch (error) {
+        await vscode.window.showErrorMessage(
+            vscode.l10n.t("Push failed: {message}", { message: getErrorMessage(error) }),
+        );
+    }
+}
+
 /** Returns whether the selected file has an unsaved editor, including a symlinked URI alias. */
 async function hasDirtyDocument(resolved: ResolvedFileCommandContext): Promise<boolean> {
     for (const document of vscode.workspace.textDocuments) {

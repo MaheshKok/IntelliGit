@@ -105,6 +105,7 @@ import {
     compareFileWithRevision,
     fetchFile,
     pullFileRepositoryFromContext,
+    pushFileRepositoryFromContext,
     rollbackFile,
     showCurrentRevision,
     showFileDiff,
@@ -227,6 +228,52 @@ describe("pullFileRepositoryFromContext", () => {
         ).resolves.toBeUndefined();
 
         expect(mocks.showErrorMessage).toHaveBeenCalledWith("Pull failed: network unavailable");
+    });
+});
+
+describe("pushFileRepositoryFromContext", () => {
+    it("runs Push with GitOps derived for the selected file repository and its canonical root", async () => {
+        const gitOps = makeGitOps();
+        const runPush = vi.fn(async () => undefined);
+        const clicked = mocks.FakeUri.file("/repo-b/nested/file.ts");
+
+        await pushFileRepositoryFromContext(clicked, gitOps, runPush);
+
+        expect(gitOps.deriveFor).toHaveBeenCalledWith("/repo-b");
+        expect(runPush).toHaveBeenCalledWith(
+            expect.objectContaining({ scope: "selected" }),
+            "/repo-b",
+        );
+    });
+
+    it("rejects a non-file context without deriving GitOps or running Push", async () => {
+        const gitOps = makeGitOps();
+        const runPush = vi.fn(async () => undefined);
+
+        await pushFileRepositoryFromContext(
+            new mocks.FakeUri("untitled:file.ts", "untitled"),
+            gitOps,
+            runPush,
+        );
+
+        expect(gitOps.deriveFor).not.toHaveBeenCalled();
+        expect(runPush).not.toHaveBeenCalled();
+        expect(mocks.showErrorMessage).toHaveBeenCalledWith(
+            "Push is only available for local files.",
+        );
+    });
+
+    it("reports callback failures without leaking them to the command host", async () => {
+        const gitOps = makeGitOps();
+        const runPush = vi.fn(async () => {
+            throw new Error("network unavailable");
+        });
+
+        await expect(
+            pushFileRepositoryFromContext(mocks.FakeUri.file("/repo-b/file.ts"), gitOps, runPush),
+        ).resolves.toBeUndefined();
+
+        expect(mocks.showErrorMessage).toHaveBeenCalledWith("Push failed: network unavailable");
     });
 });
 

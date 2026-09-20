@@ -669,5 +669,7 @@
     "Fetch failed: {message}": "Falha na obtenção: {message}",
     "Pull failed: {message}": "Falha no pull: {message}",
     "Pull is only available for local files.": "O pull só está disponível para ficheiros locais.",
-    "Pull succeeded, but refresh failed: {message}": "Pull concluído com sucesso, mas a atualização falhou: {message}"
+    "Pull succeeded, but refresh failed: {message}": "Pull concluído com sucesso, mas a atualização falhou: {message}",
+    "Push is only available for local files.": "O push só está disponível para ficheiros locais.",
+    "Could not refresh after Push: {message}": "Não foi possível atualizar após o push: {message}"
 }

@@ -149,6 +149,8 @@ interface VersionGateOptions {
  * needs no network, no token, and no GitHub. That branch is also the strictest place to test input
  * validation from: it writes to `$GITHUB_OUTPUT` and exits before the release-state check, so a
  * validation placed anywhere later would not protect it.
+ * Ambient GitHub rerun metadata is reset to attempt one; recovery tests opt into later attempts
+ * through `env`, keeping unrelated cases deterministic on rerun jobs.
  *
  * Passing `gh` instead puts a stub earlier on PATH than the real binary and lets the gate run all
  * the way through the release-state check, so the branch that decides whether to publish is
@@ -245,6 +247,7 @@ function runVersionGate(script: string, version: string, options: VersionGateOpt
                 GITHUB_OUTPUT: outputPath,
                 FORCE_PUBLISH: String(options.forcePublish ?? true),
                 PATH: path.join(":"),
+                GITHUB_RUN_ATTEMPT: "1",
                 ...options.env,
                 // Last on purpose: the recorded arguments are asserted against this exact slug, so
                 // neither a caller's overlay nor an ambient GITHUB_REPOSITORY may redirect it.

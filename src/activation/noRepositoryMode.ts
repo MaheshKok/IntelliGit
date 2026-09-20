@@ -202,6 +202,7 @@ export function activateNoRepositoryMode(
         "intelligit.fileRollback",
         "intelligit.fileFetch",
         "intelligit.filePull",
+        "intelligit.filePush",
         "intelligit.annotateWithGitBlame",
         ...SHELF_COMMAND_IDS,
     ]) {

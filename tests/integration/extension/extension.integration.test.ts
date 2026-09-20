@@ -2204,6 +2204,7 @@ describe("extension integration", () => {
         expect(registeredCommands.has("intelligit.fileRollback")).toBe(true);
         expect(registeredCommands.has("intelligit.fileFetch")).toBe(true);
         expect(registeredCommands.has("intelligit.filePull")).toBe(true);
+        expect(registeredCommands.has("intelligit.filePush")).toBe(true);
         expect(workspaceState?.update).not.toHaveBeenCalledWith(
             "intelligit.restoreUndockedEditorOnActivation",
             expect.anything(),
@@ -3276,6 +3277,7 @@ describe("extension integration", () => {
         expect(registeredCommands.has("intelligit.fileRollback")).toBe(true);
         expect(registeredCommands.has("intelligit.fileFetch")).toBe(true);
         expect(registeredCommands.has("intelligit.filePull")).toBe(true);
+        expect(registeredCommands.has("intelligit.filePush")).toBe(true);
         expect(registeredCommands.has("intelligit.annotateWithGitBlame")).toBe(true);
         registeredCommands.clear();
 

@@ -669,5 +669,7 @@
     "Fetch failed: {message}": "获取失败：{message}",
     "Pull failed: {message}": "拉取失败：{message}",
     "Pull is only available for local files.": "拉取仅适用于本地文件。",
-    "Pull succeeded, but refresh failed: {message}": "拉取成功，但刷新失败：{message}"
+    "Pull succeeded, but refresh failed: {message}": "拉取成功，但刷新失败：{message}",
+    "Push is only available for local files.": "推送仅适用于本地文件。",
+    "Could not refresh after Push: {message}": "推送后无法刷新：{message}"
 }

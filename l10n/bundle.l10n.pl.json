@@ -669,5 +669,7 @@
     "Fetch failed: {message}": "Pobieranie nie powiodło się: {message}",
     "Pull failed: {message}": "Ściąganie nie powiodło się: {message}",
     "Pull is only available for local files.": "Ściąganie jest dostępne tylko dla plików lokalnych.",
-    "Pull succeeded, but refresh failed: {message}": "Ściąganie zakończyło się powodzeniem, ale odświeżanie nie powiodło się: {message}"
+    "Pull succeeded, but refresh failed: {message}": "Ściąganie zakończyło się powodzeniem, ale odświeżanie nie powiodło się: {message}",
+    "Push is only available for local files.": "Wypychanie jest dostępne tylko dla plików lokalnych.",
+    "Could not refresh after Push: {message}": "Nie można odświeżyć po wypchnięciu: {message}"
 }
