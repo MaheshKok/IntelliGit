@@ -666,5 +666,8 @@
     "Rolled back {path}.": "{path} a été annulé.",
     "Rollback failed for {path}: {message}": "Échec de l’annulation de {path} : {message}",
     "Fetch is only available for local files.": "La récupération n’est disponible que pour les fichiers locaux.",
-    "Fetch failed: {message}": "Échec de la récupération : {message}"
+    "Fetch failed: {message}": "Échec de la récupération : {message}",
+    "Pull failed: {message}": "Échec du pull : {message}",
+    "Pull is only available for local files.": "Le pull n’est disponible que pour les fichiers locaux.",
+    "Pull succeeded, but refresh failed: {message}": "Pull réussi, mais l’actualisation a échoué : {message}"
 }

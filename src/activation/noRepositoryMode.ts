@@ -201,6 +201,7 @@ export function activateNoRepositoryMode(
         "intelligit.graph.sync.color",
         "intelligit.fileRollback",
         "intelligit.fileFetch",
+        "intelligit.filePull",
         "intelligit.annotateWithGitBlame",
         ...SHELF_COMMAND_IDS,
     ]) {

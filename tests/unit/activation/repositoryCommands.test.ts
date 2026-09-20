@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => {
         compareFileWithBranchOrTag: vi.fn(async () => undefined),
         compareFileWithRevision: vi.fn(async () => undefined),
         fetchFile: vi.fn(async () => "/repo" as string | undefined),
+        pullFileRepositoryFromContext: vi.fn(),
         rollbackFile: vi.fn(async () => undefined),
         showCurrentRevision: vi.fn(async () => undefined),
         showFileDiff: vi.fn(async () => undefined),
@@ -26,6 +27,7 @@ const mocks = vi.hoisted(() => {
         runPublishBranchFlow: vi.fn(),
         createBranchCommands: vi.fn(() => []),
         discoverGitRepositories: vi.fn(async () => []),
+        runGitOperationFromPanel: vi.fn(async () => undefined),
     };
 });
 
@@ -59,9 +61,14 @@ vi.mock("../../../src/commands/fileContextCommands", () => ({
     compareFileWithBranchOrTag: mocks.compareFileWithBranchOrTag,
     compareFileWithRevision: mocks.compareFileWithRevision,
     fetchFile: mocks.fetchFile,
+    pullFileRepositoryFromContext: mocks.pullFileRepositoryFromContext,
     rollbackFile: mocks.rollbackFile,
     showCurrentRevision: mocks.showCurrentRevision,
     showFileDiff: mocks.showFileDiff,
+}));
+
+vi.mock("../../../src/views/commitPanelActions", () => ({
+    runGitOperationFromPanel: mocks.runGitOperationFromPanel,
 }));
 
 vi.mock("../../../src/commands/branchCommands", () => ({
@@ -152,6 +159,13 @@ describe("registerRepositoryCommands", () => {
         mocks.commands.clear();
         vi.clearAllMocks();
         mocks.l10nT.mockImplementation((message: string) => `xx:${message}`);
+        mocks.pullFileRepositoryFromContext.mockImplementation(
+            async (
+                _ctx: unknown,
+                _gitOps: unknown,
+                runPull: (gitOps: unknown, repoRoot: string) => Promise<void>,
+            ) => runPull({ scope: "selected" }, "/repo"),
+        );
         mocks.createBranchCommands.mockImplementation(() =>
             BRANCH_COMMAND_IDS.map((id) => {
                 const handler = vi.fn();
@@ -401,6 +415,90 @@ describe("registerRepositoryCommands", () => {
 
         expect(deps.refreshActiveRepository).not.toHaveBeenCalled();
         expect(refreshCommitPanels).not.toHaveBeenCalled();
+    });
+
+    it("runs file Pull through the shared pull flow with the selected repository GitOps", async () => {
+        const gitOps = makeGitOps();
+        const scopedGitOps = { scope: "selected" };
+        const context = { clicked: "file" };
+        mocks.pullFileRepositoryFromContext.mockImplementationOnce(
+            async (
+                _ctx: unknown,
+                _gitOps: unknown,
+                runPull: (selectedGitOps: unknown, repoRoot: string) => Promise<void>,
+            ) => runPull(scopedGitOps, "/repo-b"),
+        );
+        registerRepositoryCommands(makeDeps(gitOps));
+
+        await mocks.commands.get("intelligit.filePull")?.(context);
+
+        expect(mocks.pullFileRepositoryFromContext).toHaveBeenCalledWith(
+            context,
+            gitOps,
+            expect.any(Function),
+        );
+        expect(mocks.runGitOperationFromPanel).toHaveBeenCalledWith(
+            expect.objectContaining({ gitOps: scopedGitOps }),
+            "pull",
+        );
+    });
+
+    it.each([
+        { selectedRoot: "/repo", activeRoot: "/repo", shouldRefresh: true },
+        { selectedRoot: "C:/Work/Repo/", activeRoot: "c:\\work\\repo", shouldRefresh: true },
+        { selectedRoot: "/Repo", activeRoot: "/repo", shouldRefresh: false },
+    ])(
+        "refreshes only the matching active root after file Pull: $selectedRoot",
+        async ({ selectedRoot, activeRoot, shouldRefresh }) => {
+            const gitOps = makeGitOps();
+            const deps = makeDeps(gitOps);
+            deps.getRepoRoot = () => activeRoot;
+            mocks.pullFileRepositoryFromContext.mockImplementationOnce(
+                async (
+                    _ctx: unknown,
+                    _gitOps: unknown,
+                    runPull: (selectedGitOps: unknown, repoRoot: string) => Promise<void>,
+                ) => runPull({ scope: "selected" }, selectedRoot),
+            );
+            mocks.runGitOperationFromPanel.mockImplementationOnce(async (actionDeps: unknown) => {
+                await (actionDeps as { refreshData: () => Promise<void> }).refreshData();
+            });
+            registerRepositoryCommands(deps);
+
+            await mocks.commands.get("intelligit.filePull")?.({ clicked: "file" });
+
+            expect(deps.refreshActiveRepository).toHaveBeenCalledTimes(shouldRefresh ? 1 : 0);
+        },
+    );
+
+    it("contains active-graph refresh rejection after Pull succeeds", async () => {
+        const gitOps = makeGitOps();
+        const deps = makeDeps(gitOps);
+        const refreshError = new Error("graph unavailable");
+        deps.refreshActiveRepository = vi.fn(async () => {
+            throw refreshError;
+        });
+        mocks.runGitOperationFromPanel.mockImplementationOnce(async (actionDeps: unknown) => {
+            await (actionDeps as { refreshData: () => Promise<void> }).refreshData();
+        });
+        const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+        registerRepositoryCommands(deps);
+
+        try {
+            await expect(
+                mocks.commands.get("intelligit.filePull")?.({ clicked: "file" }),
+            ).resolves.toBeUndefined();
+            expect(consoleError).toHaveBeenCalledWith(
+                "Failed to refresh after file Pull:",
+                refreshError,
+            );
+        } finally {
+            consoleError.mockRestore();
+        }
+
+        expect(mocks.showErrorMessage).toHaveBeenCalledWith(
+            "xx:Pull succeeded, but refresh failed: {message}",
+        );
     });
 
     it("routes native file rollback contexts through the selected-file wrapper", async () => {

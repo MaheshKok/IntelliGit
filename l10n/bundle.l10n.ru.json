@@ -666,5 +666,8 @@
     "Rolled back {path}.": "Выполнен откат {path}.",
     "Rollback failed for {path}: {message}": "Не удалось откатить {path}: {message}",
     "Fetch is only available for local files.": "Получение доступно только для локальных файлов.",
-    "Fetch failed: {message}": "Не удалось выполнить получение: {message}"
+    "Fetch failed: {message}": "Не удалось выполнить получение: {message}",
+    "Pull failed: {message}": "Не удалось выполнить извлечение: {message}",
+    "Pull is only available for local files.": "Извлечение доступно только для локальных файлов.",
+    "Pull succeeded, but refresh failed: {message}": "Извлечение выполнено успешно, но обновление не удалось: {message}"
 }

@@ -666,5 +666,8 @@
     "Rolled back {path}.": "{path} wurde rückgängig gemacht.",
     "Rollback failed for {path}: {message}": "Rückgängigmachen von {path} fehlgeschlagen: {message}",
     "Fetch is only available for local files.": "Abrufen ist nur für lokale Dateien verfügbar.",
-    "Fetch failed: {message}": "Abrufen fehlgeschlagen: {message}"
+    "Fetch failed: {message}": "Abrufen fehlgeschlagen: {message}",
+    "Pull failed: {message}": "Pull fehlgeschlagen: {message}",
+    "Pull is only available for local files.": "Pull ist nur für lokale Dateien verfügbar.",
+    "Pull succeeded, but refresh failed: {message}": "Pull erfolgreich, aber Aktualisierung fehlgeschlagen: {message}"
 }
