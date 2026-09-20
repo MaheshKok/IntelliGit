@@ -12,6 +12,7 @@ import {
     compareFileWithBranchOrTag,
     compareFileWithRevision,
     fetchFile,
+    pullFileRepositoryFromContext,
     rollbackFile,
     showCurrentRevision,
     showFileDiff,
@@ -668,6 +669,30 @@ function registerCommitFileCommands(deps: RepositoryCommandsDeps): void {
             if (fetchedRoot && areSameRepositoryRoot(fetchedRoot, getRepoRoot())) {
                 await refreshActiveRepository();
             }
+        }),
+        vscode.commands.registerCommand("intelligit.filePull", async (ctx: unknown) => {
+            await pullFileRepositoryFromContext(ctx, gitOps, async (scopedGitOps, repoRoot) => {
+                await runGitOperationFromPanel(
+                    {
+                        gitOps: scopedGitOps,
+                        refreshData: async () => {
+                            if (!areSameRepositoryRoot(repoRoot, getRepoRoot())) return;
+                            try {
+                                await refreshActiveRepository();
+                            } catch (error) {
+                                console.error("Failed to refresh after file Pull:", error);
+                                await vscode.window.showErrorMessage(
+                                    vscode.l10n.t("Pull succeeded, but refresh failed: {message}", {
+                                        message: getErrorMessage(error),
+                                    }),
+                                );
+                            }
+                        },
+                        fireWorkingTreeChanged: () => undefined,
+                    },
+                    "pull",
+                );
+            });
         }),
         vscode.commands.registerCommand("intelligit.fileRollback", async (ctx: unknown) => {
             if (!isFilePathContext(ctx)) {

@@ -97,6 +97,33 @@ export async function fetchFile(ctx: unknown, gitOps: GitOps): Promise<string | 
     }
 }
 
+/**
+ * Resolves the selected local file's repository and delegates Pull to the shared panel flow.
+ *
+ * The callback receives repository-scoped Git operations plus the canonical root so its caller can
+ * refresh only the matching active graph. Resolution and callback failures are reported here.
+ */
+export async function pullFileRepositoryFromContext(
+    ctx: unknown,
+    gitOps: GitOps,
+    runPull: (scopedGitOps: GitOps, repoRoot: string) => Promise<void>,
+): Promise<void> {
+    try {
+        const resolved = await resolveFileCommandContext(ctx, gitOps);
+        if (!resolved) {
+            await vscode.window.showErrorMessage(
+                vscode.l10n.t("Pull is only available for local files."),
+            );
+            return;
+        }
+        await runPull(resolved.gitOps, resolved.repoRoot);
+    } catch (error) {
+        await vscode.window.showErrorMessage(
+            vscode.l10n.t("Pull failed: {message}", { message: getErrorMessage(error) }),
+        );
+    }
+}
+
 /** Returns whether the selected file has an unsaved editor, including a symlinked URI alias. */
 async function hasDirtyDocument(resolved: ResolvedFileCommandContext): Promise<boolean> {
     for (const document of vscode.workspace.textDocuments) {

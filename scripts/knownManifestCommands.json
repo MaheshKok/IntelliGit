@@ -24,6 +24,7 @@
         "intelligit.fileAddToVcs",
         "intelligit.fileDelete",
         "intelligit.fileFetch",
+        "intelligit.filePull",
         "intelligit.fileJumpToSource",
         "intelligit.fileRefresh",
         "intelligit.fileRollback",

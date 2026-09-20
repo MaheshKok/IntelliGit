@@ -666,5 +666,8 @@
     "Rolled back {path}.": "{path} をロールバックしました。",
     "Rollback failed for {path}: {message}": "{path} のロールバックに失敗しました: {message}",
     "Fetch is only available for local files.": "フェッチはローカルファイルでのみ利用できます。",
-    "Fetch failed: {message}": "フェッチに失敗しました: {message}"
+    "Fetch failed: {message}": "フェッチに失敗しました: {message}",
+    "Pull failed: {message}": "プルに失敗しました: {message}",
+    "Pull is only available for local files.": "プルはローカルファイルでのみ利用できます。",
+    "Pull succeeded, but refresh failed: {message}": "プルは完了しましたが、更新に失敗しました: {message}"
 }

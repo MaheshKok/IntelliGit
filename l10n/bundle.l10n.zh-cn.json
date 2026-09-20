@@ -666,5 +666,8 @@
     "Rolled back {path}.": "已回滚 {path}。",
     "Rollback failed for {path}: {message}": "回滚 {path} 失败：{message}",
     "Fetch is only available for local files.": "获取仅适用于本地文件。",
-    "Fetch failed: {message}": "获取失败：{message}"
+    "Fetch failed: {message}": "获取失败：{message}",
+    "Pull failed: {message}": "拉取失败：{message}",
+    "Pull is only available for local files.": "拉取仅适用于本地文件。",
+    "Pull succeeded, but refresh failed: {message}": "拉取成功，但刷新失败：{message}"
 }

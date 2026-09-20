@@ -104,6 +104,7 @@ import {
     compareFileWithBranchOrTag,
     compareFileWithRevision,
     fetchFile,
+    pullFileRepositoryFromContext,
     rollbackFile,
     showCurrentRevision,
     showFileDiff,
@@ -180,6 +181,52 @@ describe("fetchFile", () => {
         expect(mocks.showInformationMessage).not.toHaveBeenCalled();
         expect(mocks.showErrorMessage).toHaveBeenCalledWith("Fetch failed: network unavailable");
         expect(fetchedRoot).toBeUndefined();
+    });
+});
+
+describe("pullFileRepositoryFromContext", () => {
+    it("runs Pull with GitOps derived for the selected file repository and its canonical root", async () => {
+        const gitOps = makeGitOps();
+        const runPull = vi.fn(async () => undefined);
+        const clicked = mocks.FakeUri.file("/repo-b/nested/file.ts");
+
+        await pullFileRepositoryFromContext(clicked, gitOps, runPull);
+
+        expect(gitOps.deriveFor).toHaveBeenCalledWith("/repo-b");
+        expect(runPull).toHaveBeenCalledWith(
+            expect.objectContaining({ scope: "selected" }),
+            "/repo-b",
+        );
+    });
+
+    it("rejects a non-file context without deriving GitOps or running Pull", async () => {
+        const gitOps = makeGitOps();
+        const runPull = vi.fn(async () => undefined);
+
+        await pullFileRepositoryFromContext(
+            new mocks.FakeUri("untitled:file.ts", "untitled"),
+            gitOps,
+            runPull,
+        );
+
+        expect(gitOps.deriveFor).not.toHaveBeenCalled();
+        expect(runPull).not.toHaveBeenCalled();
+        expect(mocks.showErrorMessage).toHaveBeenCalledWith(
+            "Pull is only available for local files.",
+        );
+    });
+
+    it("reports callback failures without leaking them to the command host", async () => {
+        const gitOps = makeGitOps();
+        const runPull = vi.fn(async () => {
+            throw new Error("network unavailable");
+        });
+
+        await expect(
+            pullFileRepositoryFromContext(mocks.FakeUri.file("/repo-b/file.ts"), gitOps, runPull),
+        ).resolves.toBeUndefined();
+
+        expect(mocks.showErrorMessage).toHaveBeenCalledWith("Pull failed: network unavailable");
     });
 });
 

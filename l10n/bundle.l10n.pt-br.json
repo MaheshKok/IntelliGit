@@ -666,5 +666,8 @@
     "Rolled back {path}.": "{path} foi revertido.",
     "Rollback failed for {path}: {message}": "Falha ao reverter {path}: {message}",
     "Fetch is only available for local files.": "A busca está disponível apenas para arquivos locais.",
-    "Fetch failed: {message}": "Falha ao buscar: {message}"
+    "Fetch failed: {message}": "Falha ao buscar: {message}",
+    "Pull failed: {message}": "Falha no pull: {message}",
+    "Pull is only available for local files.": "O pull está disponível apenas para arquivos locais.",
+    "Pull succeeded, but refresh failed: {message}": "Pull concluído com sucesso, mas a atualização falhou: {message}"
 }
