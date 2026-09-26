@@ -97,5 +97,6 @@
     "command.addToVcs": "添加到版本控制",
     "command.showFileDiff": "显示差异",
     "command.showCurrentRevision": "显示当前修订",
-    "command.annotateWithGitBlame": "使用 Git Blame 添加注释"
+    "command.annotateWithGitBlame": "使用 Git Blame 添加注释",
+    "command.commitFile": "提交文件..."
 }

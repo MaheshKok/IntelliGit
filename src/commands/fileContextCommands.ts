@@ -1,4 +1,4 @@
-import { realpath } from "node:fs/promises";
+import { lstat, realpath } from "node:fs/promises";
 import * as path from "node:path";
 import * as vscode from "vscode";
 import { GitExecutor } from "../git/executor";
@@ -11,6 +11,7 @@ import {
 } from "../services/diffService";
 import { getErrorMessage } from "../utils/errors";
 import { runWithNotificationProgress } from "../utils/notifications";
+import { rejectWhenOperationInProgress } from "./operationFence";
 
 interface ResolvedFileCommandContext {
     selectedUri: vscode.Uri;
@@ -23,15 +24,55 @@ interface ResolvedFileCommandContext {
 const MAX_GIT_BLAME_OUTPUT_BYTES = 4 * 1024 * 1024;
 
 /**
+ * Canonicalizes a file's parent without following the leaf, preserving tracked symlink identity.
+ * Missing-parent callers may walk ENOENT ancestors and append the missing lexical suffix; the
+ * returned directory always exists so repository discovery can use it without creating folders.
+ */
+async function resolveCanonicalFileLocation(
+    filePath: string,
+    allowMissingParent = false,
+): Promise<{ canonicalDirectory: string; canonicalFilePath: string }> {
+    let existingDirectory = path.dirname(filePath);
+    let canonicalDirectory: string;
+    for (;;) {
+        try {
+            canonicalDirectory = await realpath(existingDirectory);
+            break;
+        } catch (error) {
+            const parentDirectory = path.dirname(existingDirectory);
+            if (
+                !allowMissingParent ||
+                (error as NodeJS.ErrnoException).code !== "ENOENT" ||
+                parentDirectory === existingDirectory
+            ) {
+                throw error;
+            }
+            existingDirectory = parentDirectory;
+        }
+    }
+    return {
+        canonicalDirectory,
+        canonicalFilePath: path.join(
+            canonicalDirectory,
+            path.relative(existingDirectory, filePath),
+        ),
+    };
+}
+
+/**
  * Resolves an explicit local-file command context, or the active editor only when context is absent.
  *
  * Repository discovery follows the canonical parent directory for linked worktrees and symlinked
  * parents, while `selectedUri` retains the original editor identity for dirty-buffer comparisons.
  * Malformed explicit contexts return `undefined`; repository and path validation failures reject.
+ * Commit may opt into walking missing parents to the nearest existing ancestor, retaining their
+ * lexical suffix beneath that ancestor's canonical path. Its caller must then validate an exact
+ * tracked deletion; other commands continue to require the immediate parent to exist.
  */
 async function resolveFileCommandContext(
     ctx: unknown,
     gitOps: GitOps,
+    options?: { allowMissingParent?: boolean },
 ): Promise<ResolvedFileCommandContext | undefined> {
     const selectedUri =
         ctx === undefined
@@ -41,12 +82,13 @@ async function resolveFileCommandContext(
               : undefined;
     if (!selectedUri || selectedUri.scheme !== "file") return undefined;
 
-    const selectedDirectory = path.dirname(selectedUri.fsPath);
-    const canonicalDirectory = await realpath(selectedDirectory);
+    const { canonicalDirectory, canonicalFilePath } = await resolveCanonicalFileLocation(
+        selectedUri.fsPath,
+        options?.allowMissingParent,
+    );
     const executor = new GitExecutor(canonicalDirectory);
     const output = await executor.run(["rev-parse", "--show-toplevel"]);
     const repoRoot = output.replace(/\r?\n$/, "");
-    const canonicalFilePath = path.join(canonicalDirectory, path.basename(selectedUri.fsPath));
     const relativePath = path.relative(repoRoot, canonicalFilePath);
     if (
         !repoRoot ||
@@ -151,24 +193,128 @@ export async function pushFileRepositoryFromContext(
     }
 }
 
-/** Returns whether the selected file has an unsaved editor, including a symlinked URI alias. */
-async function hasDirtyDocument(resolved: ResolvedFileCommandContext): Promise<boolean> {
+/**
+ * Finds unsaved editors through direct or canonical parent aliases without querying Git.
+ * Commit opts into missing-parent resolution so deleted files keep their dirty-buffer identity;
+ * other callers preserve the existing behavior for inaccessible parent directories.
+ */
+async function hasDirtyDocument(
+    resolved: ResolvedFileCommandContext,
+    allowMissingParent = false,
+): Promise<boolean> {
     for (const document of vscode.workspace.textDocuments) {
         if (!document.isDirty) continue;
         if (document.uri.toString() === resolved.selectedUri.toString()) return true;
         if (document.uri.scheme !== "file") continue;
         try {
-            const canonicalDirectory = await realpath(path.dirname(document.uri.fsPath));
-            const canonicalDocumentPath = path.join(
-                canonicalDirectory,
-                path.basename(document.uri.fsPath),
+            const { canonicalFilePath } = await resolveCanonicalFileLocation(
+                document.uri.fsPath,
+                allowMissingParent,
             );
-            if (canonicalDocumentPath === resolved.canonicalFilePath) return true;
+            if (canonicalFilePath === resolved.canonicalFilePath) return true;
         } catch {
             // An inaccessible alias cannot identify the selected file.
         }
     }
     return false;
+}
+
+/** Accepts filesystem files/symlinks or an exact tracked deletion, never a directory pathspec. */
+async function isCommitFileTarget(resolved: ResolvedFileCommandContext): Promise<boolean> {
+    try {
+        const file = await lstat(resolved.canonicalFilePath);
+        return file.isFile() || file.isSymbolicLink();
+    } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+        const status = await resolved.gitOps.getStatus({ withStats: false });
+        return status.some(
+            (file) => file.path === resolved.repoRelativePath && file.status === "D",
+        );
+    }
+}
+
+/**
+ * Refuses Commit before staging for both classified operations and additional whole-index markers.
+ * Specific operation messages are preserved; unreadable extra markers reject to the caller's
+ * localized failure handler rather than being treated as an idle repository.
+ */
+async function rejectFileCommitWhenOperationInProgress(gitOps: GitOps): Promise<boolean> {
+    if (await rejectWhenOperationInProgress(gitOps)) return true;
+    if (!(await gitOps.hasWholeIndexOperationInProgress())) return false;
+    await vscode.window.showErrorMessage(
+        vscode.l10n.t("A Git operation is in progress — continue or abort it first."),
+    );
+    return true;
+}
+
+/**
+ * Prompts for a saved local file commit in the repository that owns the selected URI.
+ *
+ * Explicit contexts never fall back to the editor. Dirty buffers and active Git operations are
+ * refused before and after the prompt; cancellation and blank messages never reach the callback.
+ * The callback must keep commits path-scoped and report refresh failures separately after success.
+ */
+export async function commitFileFromContext(
+    ctx: unknown,
+    gitOps: GitOps,
+    runCommit: (
+        scopedGitOps: GitOps,
+        repoRoot: string,
+        filePath: string,
+        message: string,
+    ) => Promise<void>,
+): Promise<void> {
+    try {
+        const resolved = await resolveFileCommandContext(ctx, gitOps, { allowMissingParent: true });
+        if (!resolved) {
+            await vscode.window.showErrorMessage(
+                vscode.l10n.t("Commit is only available for local files."),
+            );
+            return;
+        }
+        const selectedPath = resolved.repoRelativePath;
+        if (!(await isCommitFileTarget(resolved))) {
+            await vscode.window.showErrorMessage(
+                vscode.l10n.t("Commit is only available for local files."),
+            );
+            return;
+        }
+        if (await hasDirtyDocument(resolved, true)) {
+            await vscode.window.showErrorMessage(
+                vscode.l10n.t("Save {path} before committing.", { path: selectedPath }),
+            );
+            return;
+        }
+        if (await rejectFileCommitWhenOperationInProgress(resolved.gitOps)) return;
+        const message = await vscode.window.showInputBox({
+            title: vscode.l10n.t("Commit File: {path}", { path: selectedPath }),
+            prompt: vscode.l10n.t("Press Enter to commit only {path}. Escape to cancel.", {
+                path: selectedPath,
+            }),
+            placeHolder: vscode.l10n.t("Enter a commit message."),
+            validateInput: (value) =>
+                value.trim() ? undefined : vscode.l10n.t("Enter a commit message."),
+        });
+        if (!message?.trim()) return;
+        if (!(await isCommitFileTarget(resolved))) {
+            await vscode.window.showErrorMessage(
+                vscode.l10n.t("Commit is only available for local files."),
+            );
+            return;
+        }
+        if (await hasDirtyDocument(resolved, true)) {
+            await vscode.window.showErrorMessage(
+                vscode.l10n.t("Save {path} before committing.", { path: selectedPath }),
+            );
+            return;
+        }
+        if (await rejectFileCommitWhenOperationInProgress(resolved.gitOps)) return;
+        await runCommit(resolved.gitOps, resolved.repoRoot, selectedPath, message);
+    } catch (error) {
+        await vscode.window.showErrorMessage(
+            vscode.l10n.t("Commit failed: {message}", { message: getErrorMessage(error) }),
+        );
+    }
 }
 
 /**

@@ -97,5 +97,6 @@
     "command.addToVcs": "Ajouter au contrôle de code source",
     "command.showFileDiff": "Afficher la différence",
     "command.showCurrentRevision": "Afficher la révision actuelle",
-    "command.annotateWithGitBlame": "Annoter avec Git Blame"
+    "command.annotateWithGitBlame": "Annoter avec Git Blame",
+    "command.commitFile": "Créer un commit du fichier..."
 }

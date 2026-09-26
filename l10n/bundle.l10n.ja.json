@@ -671,5 +671,12 @@
     "Pull is only available for local files.": "プルはローカルファイルでのみ利用できます。",
     "Pull succeeded, but refresh failed: {message}": "プルは完了しましたが、更新に失敗しました: {message}",
     "Push is only available for local files.": "プッシュはローカルファイルでのみ利用できます。",
-    "Could not refresh after Push: {message}": "プッシュ後に更新できませんでした: {message}"
+    "Could not refresh after Push: {message}": "プッシュ後に更新できませんでした: {message}",
+    "Commit File: {path}": "ファイルをコミット: {path}",
+    "Press Enter to commit only {path}. Escape to cancel.": "Enter キーで {path} のみをコミットします。Escape キーでキャンセルします。",
+    "Save {path} before committing.": "コミットする前に {path} を保存してください。",
+    "Commit is only available for local files.": "コミットはローカルファイルでのみ利用できます。",
+    "Commit failed: {message}": "コミットに失敗しました: {message}",
+    "Commit succeeded, but refresh failed: {message}": "コミットは成功しましたが、更新に失敗しました: {message}",
+    "A Git operation is in progress — continue or abort it first.": "Git 操作が進行中です。先に続行するか中止してください。"
 }

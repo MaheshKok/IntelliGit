@@ -671,5 +671,12 @@
     "Pull is only available for local files.": "Извлечение доступно только для локальных файлов.",
     "Pull succeeded, but refresh failed: {message}": "Извлечение выполнено успешно, но обновление не удалось: {message}",
     "Push is only available for local files.": "Отправка доступна только для локальных файлов.",
-    "Could not refresh after Push: {message}": "Не удалось обновить после отправки: {message}"
+    "Could not refresh after Push: {message}": "Не удалось обновить после отправки: {message}",
+    "Commit File: {path}": "Создать коммит файла: {path}",
+    "Press Enter to commit only {path}. Escape to cancel.": "Нажмите Enter, чтобы создать коммит только для {path}. Escape — отмена.",
+    "Save {path} before committing.": "Сохраните {path} перед созданием коммита.",
+    "Commit is only available for local files.": "Создание коммита доступно только для локальных файлов.",
+    "Commit failed: {message}": "Не удалось создать коммит: {message}",
+    "Commit succeeded, but refresh failed: {message}": "Коммит создан, но обновить данные не удалось: {message}",
+    "A Git operation is in progress — continue or abort it first.": "Выполняется операция Git — сначала продолжите или прервите её."
 }

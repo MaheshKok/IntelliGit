@@ -9,6 +9,7 @@ import { GitExecutor } from "../git/executor";
 import { showFileHistory } from "../commands/fileHistoryCommand";
 import {
     annotateWithGitBlame,
+    commitFileFromContext,
     compareFileWithBranchOrTag,
     compareFileWithRevision,
     fetchFile,
@@ -37,6 +38,7 @@ import {
     showTimedInformationMessage,
 } from "../utils/notifications";
 import {
+    commitSelectedFromPanel,
     runGitOperationFromPanel,
     type CommitPanelGitOperation,
 } from "../views/commitPanelActions";
@@ -629,6 +631,45 @@ function registerCommitFileCommands(deps: RepositoryCommandsDeps): void {
     } = deps;
 
     context.subscriptions.push(
+        vscode.commands.registerCommand("intelligit.fileCommit", async (ctx: unknown) => {
+            await commitFileFromContext(
+                ctx,
+                gitOps,
+                async (scopedGitOps, repoRoot, filePath, message) => {
+                    await commitSelectedFromPanel(
+                        {
+                            gitOps: scopedGitOps,
+                            refreshData: async () => {
+                                try {
+                                    await refreshService().refreshCommitPanels();
+                                    if (areSameRepositoryRoot(repoRoot, getRepoRoot())) {
+                                        await refreshActiveRepository();
+                                    }
+                                } catch (error) {
+                                    console.error("Failed to refresh after file Commit:", error);
+                                    await vscode.window.showErrorMessage(
+                                        vscode.l10n.t(
+                                            "Commit succeeded, but refresh failed: {message}",
+                                            { message: getErrorMessage(error) },
+                                        ),
+                                    );
+                                }
+                            },
+                            fireWorkingTreeChanged: () => undefined,
+                            postCommitted: () => undefined,
+                            maybeOfferPublishBranch: () => Promise.resolve(),
+                        },
+                        {
+                            message,
+                            paths: [filePath],
+                            amend: false,
+                            push: false,
+                            rejectActiveOperation: true,
+                        },
+                    );
+                },
+            );
+        }),
         vscode.commands.registerCommand("intelligit.fileAddToVcs", async (ctx: unknown) => {
             const input = resolveAddToVcsContext(ctx);
             if (!input || !isKnownRepositoryRoot(input.repositoryRoot)) return;

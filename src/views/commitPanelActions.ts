@@ -561,10 +561,18 @@ async function warnIfUncommittedChanges(gitOps: GitOps): Promise<boolean> {
  * Callers must pass repository-relative paths that have already crossed the webview validation
  * boundary. The action stages those paths, warns on missing commit input, retries push rejection via
  * the rebase prompt, and refreshes panel/working-tree state only after a successful commit path.
+ * File-context callers opt into rejecting freshly detected Git operations on both commit routes;
+ * panel callers retain the existing whole-index operation behavior when that policy is omitted.
  */
 export async function commitSelectedFromPanel(
     deps: CommitPanelActionDeps,
-    options: { message: string; amend: boolean; push: boolean; paths: string[] },
+    options: {
+        message: string;
+        amend: boolean;
+        push: boolean;
+        paths: string[];
+        rejectActiveOperation?: boolean;
+    },
 ): Promise<void> {
     const { gitOps, refreshData, fireWorkingTreeChanged, postCommitted } = deps;
     const { message, amend, push, paths } = options;
@@ -619,14 +627,22 @@ export async function commitSelectedFromPanel(
         : vscode.l10n.t("Committing...");
     await runWithNotificationProgress(progressTitle, async () => {
         if (!hasCaseOnlyRename) {
-            await gitOps.commit(message, amend, commitPaths);
+            if (options.rejectActiveOperation) {
+                await gitOps.commit(message, amend, commitPaths, { rejectActiveOperation: true });
+            } else {
+                await gitOps.commit(message, amend, commitPaths);
+            }
             return;
         }
         await gitOps.withIndexSnapshot(async () => {
             if (stagedButUncheckedPaths.length > 0) {
                 await gitOps.unstageFiles(stagedButUncheckedPaths);
             }
-            await gitOps.commit(message, amend);
+            if (options.rejectActiveOperation) {
+                await gitOps.commit(message, amend, undefined, { rejectActiveOperation: true });
+            } else {
+                await gitOps.commit(message, amend);
+            }
         });
     });
     if (push) {

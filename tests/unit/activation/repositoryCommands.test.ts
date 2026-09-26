@@ -7,6 +7,8 @@ const mocks = vi.hoisted(() => {
         branchHandlers,
         commands,
         annotateWithGitBlame: vi.fn(async () => undefined),
+        commitFileFromContext: vi.fn(),
+        commitSelectedFromPanel: vi.fn(async (_deps: unknown, _options: unknown) => undefined),
         compareFileWithBranchOrTag: vi.fn(async () => undefined),
         compareFileWithRevision: vi.fn(async () => undefined),
         fetchFile: vi.fn(async () => "/repo" as string | undefined),
@@ -61,6 +63,7 @@ vi.mock("vscode", () => ({
 
 vi.mock("../../../src/commands/fileContextCommands", () => ({
     annotateWithGitBlame: mocks.annotateWithGitBlame,
+    commitFileFromContext: mocks.commitFileFromContext,
     compareFileWithBranchOrTag: mocks.compareFileWithBranchOrTag,
     compareFileWithRevision: mocks.compareFileWithRevision,
     fetchFile: mocks.fetchFile,
@@ -72,6 +75,7 @@ vi.mock("../../../src/commands/fileContextCommands", () => ({
 }));
 
 vi.mock("../../../src/views/commitPanelActions", () => ({
+    commitSelectedFromPanel: mocks.commitSelectedFromPanel,
     runGitOperationFromPanel: mocks.runGitOperationFromPanel,
 }));
 
@@ -163,6 +167,18 @@ describe("registerRepositoryCommands", () => {
         mocks.commands.clear();
         vi.clearAllMocks();
         mocks.l10nT.mockImplementation((message: string) => `xx:${message}`);
+        mocks.commitFileFromContext.mockImplementation(
+            async (
+                _ctx: unknown,
+                _gitOps: unknown,
+                runCommit: (
+                    gitOps: unknown,
+                    root: string,
+                    path: string,
+                    message: string,
+                ) => Promise<void>,
+            ) => runCommit({ scope: "selected" }, "/repo", "selected.ts", "message"),
+        );
         mocks.pullFileRepositoryFromContext.mockImplementation(
             async (
                 _ctx: unknown,
@@ -183,6 +199,71 @@ describe("registerRepositoryCommands", () => {
                 mocks.branchHandlers.set(id, handler);
                 return { id, handler };
             }),
+        );
+    });
+
+    it("registers Commit File with the selected-file action and an active-operation policy", async () => {
+        const gitOps = makeGitOps();
+        const deps = makeDeps(gitOps);
+        registerRepositoryCommands(deps);
+        const handler = mocks.commands.get("intelligit.fileCommit");
+        expect(handler).toBeTypeOf("function");
+        const ctx = { clicked: "file" };
+        await handler?.(ctx);
+        expect(mocks.commitFileFromContext).toHaveBeenCalledWith(ctx, gitOps, expect.any(Function));
+        expect(mocks.commitSelectedFromPanel).toHaveBeenCalledWith(
+            expect.objectContaining({ gitOps: { scope: "selected" } }),
+            {
+                message: "message",
+                paths: ["selected.ts"],
+                amend: false,
+                push: false,
+                rejectActiveOperation: true,
+            },
+        );
+        const action = mocks.commitSelectedFromPanel.mock.calls[0][0] as unknown as {
+            postCommitted: () => unknown;
+            refreshData: () => Promise<void>;
+        };
+        expect(action.postCommitted()).toBeUndefined();
+        expect(deps.clearSelection).not.toHaveBeenCalled();
+    });
+
+    it.each(["/repo", "/other-repo"])(
+        "refreshes Commit File panels and only its matching graph (%s)",
+        async (selectedRoot) => {
+            const deps = makeDeps(makeGitOps());
+            const refreshCommitPanels = vi.fn(async () => undefined);
+            vi.mocked(deps.refreshService).mockReturnValue({ refreshCommitPanels } as never);
+            mocks.commitFileFromContext.mockImplementationOnce(async (_ctx, _gitOps, runCommit) =>
+                runCommit({ scope: "selected" }, selectedRoot, "selected.ts", "message"),
+            );
+            registerRepositoryCommands(deps);
+            expect(mocks.commands.get("intelligit.fileCommit")).toBeTypeOf("function");
+            await mocks.commands.get("intelligit.fileCommit")?.({ clicked: "file" });
+            const action = mocks.commitSelectedFromPanel.mock.calls[0][0] as unknown as {
+                refreshData: () => Promise<void>;
+            };
+            await action.refreshData();
+            expect(refreshCommitPanels).toHaveBeenCalledTimes(1);
+            expect(deps.refreshActiveRepository).toHaveBeenCalledTimes(
+                selectedRoot === "/repo" ? 1 : 0,
+            );
+        },
+    );
+
+    it("reports post-commit refresh failure without rejecting the successful commit callback", async () => {
+        const deps = makeDeps(makeGitOps());
+        vi.mocked(deps.refreshActiveRepository).mockRejectedValueOnce(new Error("refresh refused"));
+        registerRepositoryCommands(deps);
+        expect(mocks.commands.get("intelligit.fileCommit")).toBeTypeOf("function");
+        await mocks.commands.get("intelligit.fileCommit")?.({ clicked: "file" });
+        const action = mocks.commitSelectedFromPanel.mock.calls[0][0] as unknown as {
+            refreshData: () => Promise<void>;
+        };
+        await expect(action.refreshData()).resolves.toBeUndefined();
+        expect(mocks.showErrorMessage).toHaveBeenCalledWith(
+            "xx:Commit succeeded, but refresh failed: {message}",
         );
     });
 

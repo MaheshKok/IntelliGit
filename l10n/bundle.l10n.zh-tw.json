@@ -671,5 +671,12 @@
     "Pull is only available for local files.": "拉取僅適用於本機檔案。",
     "Pull succeeded, but refresh failed: {message}": "拉取成功，但重新整理失敗：{message}",
     "Push is only available for local files.": "推送僅適用於本機檔案。",
-    "Could not refresh after Push: {message}": "推送後無法重新整理：{message}"
+    "Could not refresh after Push: {message}": "推送後無法重新整理：{message}",
+    "Commit File: {path}": "提交檔案：{path}",
+    "Press Enter to commit only {path}. Escape to cancel.": "按 Enter 僅提交 {path}。按 Escape 取消。",
+    "Save {path} before committing.": "提交前請儲存 {path}。",
+    "Commit is only available for local files.": "提交僅適用於本機檔案。",
+    "Commit failed: {message}": "提交失敗：{message}",
+    "Commit succeeded, but refresh failed: {message}": "提交成功，但重新整理失敗：{message}",
+    "A Git operation is in progress — continue or abort it first.": "Git 操作正在進行中，請先繼續或中止該操作。"
 }

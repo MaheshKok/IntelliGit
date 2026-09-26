@@ -29,6 +29,11 @@ const mocks = vi.hoisted(() => {
             getText: () => string;
         }>,
         realpath: vi.fn(async (value: string) => value),
+        lstat: vi.fn(async () => ({ isFile: () => true, isSymbolicLink: () => false })),
+        getActiveOperation: vi.fn(async () => "none"),
+        hasWholeIndexOperationInProgress: vi.fn(async () => false),
+        getStatus: vi.fn(async (): Promise<Array<{ path: string; status: string }>> => []),
+        showInputBox: vi.fn(async (_options: unknown): Promise<string | undefined> => "message"),
         executorRoots: [] as string[],
         executorRun: vi.fn(async () => "/repo-b\n"),
         executorRunBinary: vi.fn(async () => ({
@@ -55,7 +60,7 @@ const mocks = vi.hoisted(() => {
     };
 });
 
-vi.mock("node:fs/promises", () => ({ realpath: mocks.realpath }));
+vi.mock("node:fs/promises", () => ({ realpath: mocks.realpath, lstat: mocks.lstat }));
 vi.mock("vscode", () => ({
     Uri: mocks.FakeUri,
     window: {
@@ -66,6 +71,7 @@ vi.mock("vscode", () => ({
         showInformationMessage: mocks.showInformationMessage,
         showTextDocument: mocks.showTextDocument,
         showWarningMessage: mocks.showWarningMessage,
+        showInputBox: mocks.showInputBox,
         withProgress: mocks.withProgress,
     },
     ProgressLocation: { Notification: 15 },
@@ -101,6 +107,7 @@ vi.mock("../../../src/services/diffService", () => ({
 
 import {
     annotateWithGitBlame,
+    commitFileFromContext,
     compareFileWithBranchOrTag,
     compareFileWithRevision,
     fetchFile,
@@ -121,6 +128,9 @@ const makeGitOps = (): GitOps =>
                     getFileContentAtRef: mocks.getFileContentAtRef,
                     hasFileAtHead: mocks.hasFileAtHead,
                     rollbackFiles: mocks.rollbackFiles,
+                    getActiveOperation: mocks.getActiveOperation,
+                    hasWholeIndexOperationInProgress: mocks.hasWholeIndexOperationInProgress,
+                    getStatus: mocks.getStatus,
                 }) as unknown as GitOps,
         ),
     }) as unknown as GitOps;
@@ -131,6 +141,11 @@ beforeEach(() => {
     mocks.textDocuments.length = 0;
     mocks.executorRoots.length = 0;
     mocks.realpath.mockImplementation(async (value: string) => value);
+    mocks.lstat.mockReset().mockResolvedValue({ isFile: () => true, isSymbolicLink: () => false });
+    mocks.getActiveOperation.mockReset().mockResolvedValue("none");
+    mocks.hasWholeIndexOperationInProgress.mockReset().mockResolvedValue(false);
+    mocks.getStatus.mockReset().mockResolvedValue([]);
+    mocks.showInputBox.mockReset().mockResolvedValue("message");
     mocks.executorRun.mockResolvedValue("/repo-b\n");
     mocks.executorRunBinary.mockResolvedValue({
         stdout: Buffer.from("annotated source\n"),
@@ -140,7 +155,219 @@ beforeEach(() => {
     });
 });
 
+describe("commitFileFromContext", () => {
+    it("prompts for the clicked repository file and preserves a nonempty message", async () => {
+        const gitOps = makeGitOps();
+        const runCommit = vi.fn(async () => undefined);
+        mocks.showInputBox.mockResolvedValueOnce("  Keep my message  ");
+
+        await commitFileFromContext(
+            mocks.FakeUri.file("/repo-b/nested/file.ts"),
+            gitOps,
+            runCommit,
+        );
+
+        expect(gitOps.deriveFor).toHaveBeenCalledWith("/repo-b");
+        expect(mocks.showInputBox).toHaveBeenCalledWith(
+            expect.objectContaining({
+                title: "Commit File: nested/file.ts",
+                prompt: "Press Enter to commit only nested/file.ts. Escape to cancel.",
+                placeHolder: "Enter a commit message.",
+            }),
+        );
+        const options = mocks.showInputBox.mock.calls[0][0] as {
+            validateInput: (value: string) => string | undefined;
+        };
+        expect(options.validateInput(" \n ")).toBe("Enter a commit message.");
+        expect(options.validateInput("a message")).toBeUndefined();
+        expect(runCommit).toHaveBeenCalledWith(
+            expect.objectContaining({ scope: "selected" }),
+            "/repo-b",
+            "nested/file.ts",
+            "  Keep my message  ",
+        );
+    });
+
+    it("uses the captured active editor only for absent context", async () => {
+        const runCommit = vi.fn(async () => undefined);
+        mocks.activeUri = mocks.FakeUri.file("/repo-b/active.ts");
+        mocks.showInputBox.mockImplementationOnce(async () => {
+            mocks.activeUri = mocks.FakeUri.file("/repo-a/other.ts");
+            return "message";
+        });
+
+        await commitFileFromContext(undefined, makeGitOps(), runCommit);
+
+        expect(runCommit).toHaveBeenCalledWith(
+            expect.anything(),
+            "/repo-b",
+            "active.ts",
+            "message",
+        );
+    });
+
+    it.each([null, {}, new mocks.FakeUri("/repo-b/file.ts", "untitled")])(
+        "rejects explicit invalid context %j instead of using the active editor",
+        async (ctx) => {
+            const gitOps = makeGitOps();
+            const runCommit = vi.fn(async () => undefined);
+            await commitFileFromContext(ctx, gitOps, runCommit);
+            expect(gitOps.deriveFor).not.toHaveBeenCalled();
+            expect(mocks.showInputBox).not.toHaveBeenCalled();
+            expect(runCommit).not.toHaveBeenCalled();
+            expect(mocks.showErrorMessage).toHaveBeenCalledWith(
+                "Commit is only available for local files.",
+            );
+        },
+    );
+
+    it("rejects a directory rather than committing a recursive tree", async () => {
+        const runCommit = vi.fn(async () => undefined);
+        mocks.lstat.mockResolvedValueOnce({ isFile: () => false, isSymbolicLink: () => false });
+        await commitFileFromContext(mocks.FakeUri.file("/repo-b/nested"), makeGitOps(), runCommit);
+        expect(mocks.showInputBox).not.toHaveBeenCalled();
+        expect(runCommit).not.toHaveBeenCalled();
+        expect(mocks.showErrorMessage).toHaveBeenCalledWith(
+            "Commit is only available for local files.",
+        );
+    });
+
+    it("accepts a deleted file only when current status names that exact path", async () => {
+        const runCommit = vi.fn(async () => undefined);
+        mocks.lstat.mockRejectedValue(Object.assign(new Error("missing"), { code: "ENOENT" }));
+        mocks.getStatus.mockResolvedValue([{ path: "deleted.ts", status: "D" }]);
+        await commitFileFromContext(
+            mocks.FakeUri.file("/repo-b/deleted.ts"),
+            makeGitOps(),
+            runCommit,
+        );
+        expect(runCommit).toHaveBeenCalledWith(
+            expect.anything(),
+            "/repo-b",
+            "deleted.ts",
+            "message",
+        );
+    });
+
+    it("rejects a missing directory even when it contains tracked deleted files", async () => {
+        const runCommit = vi.fn(async () => undefined);
+        mocks.lstat.mockRejectedValue(Object.assign(new Error("missing"), { code: "ENOENT" }));
+        mocks.getStatus.mockResolvedValue([{ path: "deleted/file.ts", status: "D" }]);
+        await commitFileFromContext(mocks.FakeUri.file("/repo-b/deleted"), makeGitOps(), runCommit);
+        expect(mocks.showInputBox).not.toHaveBeenCalled();
+        expect(runCommit).not.toHaveBeenCalled();
+        expect(mocks.showErrorMessage).toHaveBeenCalledWith(
+            "Commit is only available for local files.",
+        );
+    });
+
+    it("rejects a file replaced by a directory while the input is open", async () => {
+        const runCommit = vi.fn(async () => undefined);
+        mocks.lstat
+            .mockResolvedValueOnce({ isFile: () => true, isSymbolicLink: () => false })
+            .mockResolvedValueOnce({ isFile: () => false, isSymbolicLink: () => false });
+        await commitFileFromContext(mocks.FakeUri.file("/repo-b/file.ts"), makeGitOps(), runCommit);
+        expect(mocks.showInputBox).toHaveBeenCalledTimes(1);
+        expect(runCommit).not.toHaveBeenCalled();
+    });
+
+    it.each([undefined, "", " \n "])(
+        "does nothing after cancelled or blank input %j",
+        async (message) => {
+            const runCommit = vi.fn(async () => undefined);
+            mocks.showInputBox.mockResolvedValueOnce(message);
+            await commitFileFromContext(
+                mocks.FakeUri.file("/repo-b/file.ts"),
+                makeGitOps(),
+                runCommit,
+            );
+            expect(runCommit).not.toHaveBeenCalled();
+            expect(mocks.showInformationMessage).not.toHaveBeenCalled();
+        },
+    );
+
+    it.each(["before", "during"])("rejects selected buffer dirtied %s the prompt", async (when) => {
+        const clicked = mocks.FakeUri.file("/repo-b/file.ts");
+        const runCommit = vi.fn(async () => undefined);
+        const makeDirty = () =>
+            mocks.textDocuments.push({ uri: clicked, isDirty: true, getText: () => "unsaved" });
+        if (when === "before") makeDirty();
+        else
+            mocks.showInputBox.mockImplementationOnce(async () => {
+                makeDirty();
+                return "message";
+            });
+        await commitFileFromContext(clicked, makeGitOps(), runCommit);
+        expect(runCommit).not.toHaveBeenCalled();
+        expect(mocks.showErrorMessage).toHaveBeenCalledWith("Save file.ts before committing.");
+        expect(mocks.showInputBox).toHaveBeenCalledTimes(when === "before" ? 0 : 1);
+    });
+
+    it("rejects a dirty symlink-parent alias of the selected file", async () => {
+        mocks.textDocuments.push({
+            uri: mocks.FakeUri.file("/alias/file.ts"),
+            isDirty: true,
+            getText: () => "unsaved",
+        });
+        mocks.realpath.mockImplementation(async (value) =>
+            value === "/alias" ? "/repo-b" : value,
+        );
+        const runCommit = vi.fn(async () => undefined);
+        await commitFileFromContext(mocks.FakeUri.file("/repo-b/file.ts"), makeGitOps(), runCommit);
+        expect(runCommit).not.toHaveBeenCalled();
+        expect(mocks.showInputBox).not.toHaveBeenCalled();
+    });
+
+    it.each(["before", "during"])("rejects a Git operation started %s the prompt", async (when) => {
+        const runCommit = vi.fn(async () => undefined);
+        if (when === "before") mocks.getActiveOperation.mockResolvedValueOnce("merge");
+        else mocks.getActiveOperation.mockResolvedValueOnce("none").mockResolvedValueOnce("merge");
+        await commitFileFromContext(mocks.FakeUri.file("/repo-b/file.ts"), makeGitOps(), runCommit);
+        expect(runCommit).not.toHaveBeenCalled();
+        expect(mocks.showErrorMessage).toHaveBeenCalledWith(
+            "A merge is in progress — resolve or abort it first.",
+        );
+        expect(mocks.showInputBox).toHaveBeenCalledTimes(when === "before" ? 0 : 1);
+    });
+
+    it("reports commit failures without claiming success", async () => {
+        const runCommit = vi.fn(async () => {
+            throw new Error("hook refused");
+        });
+        await commitFileFromContext(mocks.FakeUri.file("/repo-b/file.ts"), makeGitOps(), runCommit);
+        expect(mocks.showErrorMessage).toHaveBeenCalledWith("Commit failed: hook refused");
+        expect(mocks.showInformationMessage).not.toHaveBeenCalled();
+    });
+
+    it("fails closed when the complete operation-marker check cannot be read", async () => {
+        const runCommit = vi.fn(async () => undefined);
+        mocks.hasWholeIndexOperationInProgress.mockRejectedValueOnce(
+            new Error("marker unreadable"),
+        );
+
+        await commitFileFromContext(mocks.FakeUri.file("/repo-b/file.ts"), makeGitOps(), runCommit);
+
+        expect(mocks.showInputBox).not.toHaveBeenCalled();
+        expect(runCommit).not.toHaveBeenCalled();
+        expect(mocks.showErrorMessage).toHaveBeenCalledWith("Commit failed: marker unreadable");
+    });
+});
+
 describe("fetchFile", () => {
+    it("retains missing-parent rejection for commands that do not opt into deleted-file resolution", async () => {
+        const gitOps = makeGitOps();
+        mocks.realpath.mockRejectedValueOnce(
+            Object.assign(new Error("missing parent"), { code: "ENOENT" }),
+        );
+
+        await fetchFile(mocks.FakeUri.file("/repo-b/missing/file.ts"), gitOps);
+
+        expect(mocks.realpath).toHaveBeenCalledExactlyOnceWith("/repo-b/missing");
+        expect(mocks.executorRun).not.toHaveBeenCalled();
+        expect(mocks.fetch).not.toHaveBeenCalled();
+        expect(mocks.showErrorMessage).toHaveBeenCalledWith("Fetch failed: missing parent");
+    });
+
     it("fetches through GitOps derived for the clicked file repository and returns that root", async () => {
         const gitOps = makeGitOps();
         const clicked = mocks.FakeUri.file("/repo-b/nested/file.ts");

@@ -671,5 +671,12 @@
     "Pull is only available for local files.": "Ściąganie jest dostępne tylko dla plików lokalnych.",
     "Pull succeeded, but refresh failed: {message}": "Ściąganie zakończyło się powodzeniem, ale odświeżanie nie powiodło się: {message}",
     "Push is only available for local files.": "Wypychanie jest dostępne tylko dla plików lokalnych.",
-    "Could not refresh after Push: {message}": "Nie można odświeżyć po wypchnięciu: {message}"
+    "Could not refresh after Push: {message}": "Nie można odświeżyć po wypchnięciu: {message}",
+    "Commit File: {path}": "Utwórz commit pliku: {path}",
+    "Press Enter to commit only {path}. Escape to cancel.": "Naciśnij Enter, aby utworzyć commit tylko dla {path}. Escape anuluje.",
+    "Save {path} before committing.": "Zapisz {path} przed utworzeniem commitu.",
+    "Commit is only available for local files.": "Commit można utworzyć tylko dla plików lokalnych.",
+    "Commit failed: {message}": "Nie udało się utworzyć commitu: {message}",
+    "Commit succeeded, but refresh failed: {message}": "Commit został utworzony, ale odświeżenie nie powiodło się: {message}",
+    "A Git operation is in progress — continue or abort it first.": "Trwa operacja Git — najpierw ją kontynuuj lub przerwij."
 }

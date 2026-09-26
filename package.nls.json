@@ -35,6 +35,7 @@
     "command.update": "Update",
     "command.sync": "Sync",
     "command.fetch": "Fetch",
+    "command.commitFile": "Commit File...",
     "command.pull": "Pull",
     "command.push": "Push",
     "command.rename": "Rename...",

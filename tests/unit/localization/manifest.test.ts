@@ -498,6 +498,25 @@ describe("extension manifest", () => {
         expect([...providerEnum].sort()).toEqual(["bitbucket-server", "gitlab"]);
     });
 
+    it("offers Commit File from Explorer, editor tab, and editor file menus", () => {
+        const manifest = JSON.parse(
+            readFileSync(path.join(process.cwd(), "package.json"), "utf8"),
+        ) as ExtensionManifest;
+        expect(manifest.contributes?.commands).toContainEqual({
+            command: "intelligit.fileCommit",
+            title: "%command.commitFile%",
+            category: "%intelligit%",
+            icon: "$(git-commit)",
+        });
+        for (const menu of ["intelligit.fileContext", "intelligit.editorContext"]) {
+            expect(manifest.contributes?.menus?.[menu]).toContainEqual({
+                command: "intelligit.fileCommit",
+                when: "resourceScheme == file",
+                group: "0_commit@1",
+            });
+        }
+    });
+
     it("offers file comparison actions from Explorer and editor tab file menus", () => {
         const manifest = JSON.parse(
             readFileSync(path.join(process.cwd(), "package.json"), "utf8"),
