@@ -99,5 +99,6 @@
     "command.showCurrentRevision": "Afficher la révision actuelle",
     "command.annotateWithGitBlame": "Annoter avec Git Blame",
     "command.commitFile": "Créer un commit du fichier...",
-    "command.merge": "Fusionner..."
+    "command.merge": "Fusionner...",
+    "command.rebase": "Rebaser..."
 }

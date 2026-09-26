@@ -688,5 +688,18 @@
     "No other branches are available to merge.": "マージできる他のブランチがありません。",
     "The current branch or HEAD changed. Start Merge again.": "現在のブランチまたは HEAD が変更されました。マージをやり直してください。",
     "Merge succeeded, but refresh failed: {message}": "マージは成功しましたが、更新に失敗しました: {message}",
-    "Unable to determine the current branch and HEAD.": "現在のブランチと HEAD を確認できません。"
+    "Unable to determine the current branch and HEAD.": "現在のブランチと HEAD を確認できません。",
+    "All rebase conflicts are resolved.": "リベースの競合はすべて解決されました。",
+    "Rebase is only available for local files.": "リベースはローカルファイルでのみ利用できます。",
+    "No other branches are available to rebase onto.": "リベース先にできる他のブランチがありません。",
+    "Select a branch to rebase the current branch onto": "現在のブランチのリベース先を選択",
+    "The current branch or HEAD changed. Start Rebase again.": "現在のブランチまたは HEAD が変更されました。リベースをやり直してください。",
+    "Rebase current branch {currentBranch} onto {branch}?": "現在のブランチ {currentBranch} を {branch} にリベースしますか？",
+    "Rebase produced {count} unresolved conflict file(s). Opened Conflicts session.": "リベースで未解決の競合ファイルが {count} 個発生しました。競合セッションを開きました。",
+    "Rebase succeeded, but refresh failed: {message}": "リベースは成功しましたが、更新に失敗しました: {message}",
+    "Abort Rebase": "リベースを中止",
+    "Abort the current rebase? Local conflict resolutions will be discarded.": "現在のリベースを中止しますか？ローカルの競合解決は破棄されます。",
+    "Aborting rebase...": "リベースを中止しています...",
+    "Rebase aborted.": "リベースを中止しました。",
+    "Abort rebase failed: {message}": "リベースの中止に失敗しました: {message}"
 }

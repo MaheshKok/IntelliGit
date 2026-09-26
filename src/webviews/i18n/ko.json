@@ -374,5 +374,6 @@
         "other": "차이점 {count}개"
     },
     "merge.status.noChanges": "변경 사항 없음",
-    "merge.status.allConflictsResolved": "모든 충돌이 해결됨"
+    "merge.status.allConflictsResolved": "모든 충돌이 해결됨",
+    "mergeSession.rebasing": "{current}를 {selected}에 리베이스하는 중"
 }

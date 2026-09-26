@@ -99,5 +99,6 @@
     "command.showCurrentRevision": "Показать текущую ревизию",
     "command.annotateWithGitBlame": "Добавить аннотации Git Blame",
     "command.commitFile": "Создать коммит файла...",
-    "command.merge": "Слияние..."
+    "command.merge": "Слияние...",
+    "command.rebase": "Перебазировать..."
 }

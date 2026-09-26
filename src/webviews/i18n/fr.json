@@ -394,5 +394,6 @@
         "other": "{count} différences"
     },
     "merge.status.noChanges": "Aucun changement",
-    "merge.status.allConflictsResolved": "Tous les conflits résolus"
+    "merge.status.allConflictsResolved": "Tous les conflits résolus",
+    "mergeSession.rebasing": "Rebasage de {current} sur {selected}"
 }

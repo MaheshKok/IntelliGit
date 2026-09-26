@@ -511,6 +511,25 @@ describe("extension manifest", () => {
         }
     });
 
+    it("offers localized Rebase beside Merge in native file menus", () => {
+        const manifest = JSON.parse(
+            readFileSync(path.join(process.cwd(), "package.json"), "utf8"),
+        ) as ExtensionManifest;
+        expect(manifest.contributes?.commands).toContainEqual(
+            expect.objectContaining({
+                command: "intelligit.fileRebase",
+                title: "%command.rebase%",
+            }),
+        );
+        for (const menu of ["intelligit.fileContext", "intelligit.editorContext"]) {
+            expect(manifest.contributes?.menus?.[menu]).toContainEqual({
+                command: "intelligit.fileRebase",
+                when: "resourceScheme == file",
+                group: "4_branch@2",
+            });
+        }
+    });
+
     it("offers Add to VCS from Explorer, editor tab, and editor file menus", () => {
         const manifest = JSON.parse(
             readFileSync(path.join(process.cwd(), "package.json"), "utf8"),

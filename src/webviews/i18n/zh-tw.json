@@ -374,5 +374,6 @@
         "other": "{count} 處差異"
     },
     "merge.status.noChanges": "無變化",
-    "merge.status.allConflictsResolved": "所有衝突均已解決"
+    "merge.status.allConflictsResolved": "所有衝突均已解決",
+    "mergeSession.rebasing": "正在將 {current} 變基到 {selected}"
 }

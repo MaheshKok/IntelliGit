@@ -250,10 +250,12 @@ export class MergeConflictSessionPanel {
         return value.trim().length > 0 ? value : null;
     }
 
-    /** Confirms and aborts the active merge represented by this conflict session. */
+    /** Confirms and aborts this session's active Git operation through its captured facade. */
     private async abortMerge(): Promise<void> {
+        const operation = await this.gitOps.getActiveOperation();
         await abortMergeWithConfirmation({
             gitOps: this.gitOps,
+            operation: operation === "rebase" ? "rebase" : "merge",
             onConflictStateChanged: () => this.notifyConflictStateChanged(),
             disposePanel: () => {
                 if (this.isAlive()) this.panel.dispose();
@@ -288,13 +290,21 @@ export class MergeConflictSessionPanel {
      */
     private async postSessionData(options: { closeWhenResolved: boolean }): Promise<void> {
         if (!this.isAlive()) return;
-        const files = await this.gitOps.getConflictFilesDetailed();
+        const [files, operation] = await Promise.all([
+            this.gitOps.getConflictFilesDetailed(),
+            this.gitOps.getActiveOperation(),
+        ]);
         if (this.isAlive()) {
             if (files.length === 0 && options.closeWhenResolved) {
-                showTimedInformationMessage(vscode.l10n.t("All merge conflicts are resolved."));
+                showTimedInformationMessage(
+                    operation === "rebase"
+                        ? vscode.l10n.t("All rebase conflicts are resolved.")
+                        : vscode.l10n.t("All merge conflicts are resolved."),
+                );
                 this.panel.dispose();
             } else {
                 const data: MergeConflictSessionData = {
+                    ...(operation === "rebase" ? { operation: "rebase" as const } : {}),
                     sourceBranch: this.sourceBranch,
                     targetBranch: this.targetBranch,
                     files,

@@ -12,6 +12,7 @@ import {
 import { getErrorMessage } from "../utils/errors";
 import { runWithNotificationProgress, showTimedInformationMessage } from "../utils/notifications";
 import { runMergeCommand, type MergeLabels } from "./mergeCommand";
+import { runRebaseCommand } from "./rebaseCommand";
 import { rejectWhenOperationInProgress } from "./operationFence";
 
 interface ResolvedFileCommandContext {
@@ -87,6 +88,67 @@ export async function mergeFileFromContext(
     } catch (error) {
         await vscode.window.showErrorMessage(
             vscode.l10n.t("Merge failed: {message}", { message: getErrorMessage(error) }),
+        );
+    }
+}
+
+/**
+ * Rebases the selected file's repository onto a chosen branch. The derived facade and root remain
+ * captured across prompts and conflict callbacks; branch/HEAD and operation state are rechecked
+ * immediately before dispatch so a dialog-time change cannot rewrite a different history.
+ */
+export async function rebaseFileFromContext(
+    ctx: unknown,
+    gitOps: GitOps,
+    callbacks: FileMergeCallbacks,
+): Promise<void> {
+    try {
+        const resolved = await resolveFileCommandContext(ctx, gitOps);
+        if (!resolved) {
+            await vscode.window.showErrorMessage(
+                vscode.l10n.t("Rebase is only available for local files."),
+            );
+            return;
+        }
+        const { gitOps: scopedGitOps, repoRoot } = resolved;
+        if (await rejectWhenOperationInProgress(scopedGitOps)) return;
+        const target = await scopedGitOps.getMergeTarget();
+        const branches = (await scopedGitOps.getBranches()).filter((branch) => !branch.isCurrent);
+        if (branches.length === 0) {
+            await vscode.window.showInformationMessage(
+                vscode.l10n.t("No other branches are available to rebase onto."),
+            );
+            return;
+        }
+        const selected = await vscode.window.showQuickPick(
+            branches.map((branch) => ({ label: branch.name })),
+            {
+                title: repoRoot,
+                placeHolder: vscode.l10n.t("Select a branch to rebase the current branch onto"),
+            },
+        );
+        if (!selected) return;
+        const currentBranch = target.head === "(detached)" ? target.oid.slice(0, 8) : target.head;
+        await runRebaseCommand(selected.label, scopedGitOps, {
+            currentBranch,
+            rebase: (branch) => scopedGitOps.rebase(branch),
+            refresh: () => callbacks.refresh(repoRoot),
+            refreshConflicts: () => callbacks.refreshConflicts(repoRoot),
+            openConflictSession: (labels) =>
+                callbacks.openConflictSession(scopedGitOps, repoRoot, labels),
+            beforeRebase: async () => {
+                if (await rejectWhenOperationInProgress(scopedGitOps)) return false;
+                const current = await scopedGitOps.getMergeTarget();
+                if (current.head === target.head && current.oid === target.oid) return true;
+                await vscode.window.showErrorMessage(
+                    vscode.l10n.t("The current branch or HEAD changed. Start Rebase again."),
+                );
+                return false;
+            },
+        });
+    } catch (error) {
+        await vscode.window.showErrorMessage(
+            vscode.l10n.t("Rebase failed: {message}", { message: getErrorMessage(error) }),
         );
     }
 }

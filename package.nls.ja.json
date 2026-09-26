@@ -99,5 +99,6 @@
     "command.showCurrentRevision": "現在のリビジョンを表示",
     "command.annotateWithGitBlame": "Git Blame で注釈",
     "command.commitFile": "ファイルをコミット...",
-    "command.merge": "マージ..."
+    "command.merge": "マージ...",
+    "command.rebase": "リベース..."
 }

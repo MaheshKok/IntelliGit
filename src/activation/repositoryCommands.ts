@@ -15,6 +15,7 @@ import {
     compareFileWithRevision,
     fetchFile,
     mergeFileFromContext,
+    rebaseFileFromContext,
     pullFileRepositoryFromContext,
     pushFileRepositoryFromContext,
     rollbackFile,
@@ -722,6 +723,23 @@ function registerCommitFileCommands(deps: RepositoryCommandsDeps): void {
         }),
         vscode.commands.registerCommand("intelligit.fileMerge", async (ctx: unknown) => {
             await mergeFileFromContext(ctx, gitOps, {
+                refresh: async (repoRoot) => {
+                    await refreshService().refreshCommitPanels();
+                    if (areSameRepositoryRoot(repoRoot, getRepoRoot())) {
+                        await refreshActiveRepository();
+                    }
+                },
+                refreshConflicts: async (repoRoot) => {
+                    await refreshService().refreshCommitPanels();
+                    if (areSameRepositoryRoot(repoRoot, getRepoRoot())) {
+                        await refreshService().refreshConflictUi();
+                    }
+                },
+                openConflictSession: deps.openConflictSessionForRepository,
+            });
+        }),
+        vscode.commands.registerCommand("intelligit.fileRebase", async (ctx: unknown) => {
+            await rebaseFileFromContext(ctx, gitOps, {
                 refresh: async (repoRoot) => {
                     await refreshService().refreshCommitPanels();
                     if (areSameRepositoryRoot(repoRoot, getRepoRoot())) {

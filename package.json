@@ -2,7 +2,7 @@
     "name": "intelligit",
     "displayName": "IntelliGit",
     "description": "%extension.description%",
-    "version": "0.35.11",
+    "version": "0.35.12",
     "publisher": "MaheshKok",
     "icon": "media/intelligit-icon.png",
     "license": "MIT",
@@ -474,6 +474,11 @@
                 "icon": "$(git-merge)"
             },
             {
+                "command": "intelligit.fileRebase",
+                "title": "%command.rebase%",
+                "category": "%intelligit%"
+            },
+            {
                 "command": "intelligit.fileJumpToSource",
                 "title": "%command.jumpToSource%",
                 "category": "%intelligit%"
@@ -871,6 +876,11 @@
                     "command": "intelligit.fileMerge",
                     "when": "resourceScheme == file",
                     "group": "4_branch@1"
+                },
+                {
+                    "command": "intelligit.fileRebase",
+                    "when": "resourceScheme == file",
+                    "group": "4_branch@2"
                 }
             ],
             "intelligit.editorContext": [
@@ -938,6 +948,11 @@
                     "command": "intelligit.fileMerge",
                     "when": "resourceScheme == file",
                     "group": "4_branch@1"
+                },
+                {
+                    "command": "intelligit.fileRebase",
+                    "when": "resourceScheme == file",
+                    "group": "4_branch@2"
                 }
             ],
             "view/title": [

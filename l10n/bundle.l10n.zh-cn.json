@@ -688,5 +688,18 @@
     "No other branches are available to merge.": "没有其他可合并的分支。",
     "The current branch or HEAD changed. Start Merge again.": "当前分支或 HEAD 已更改。请重新开始合并。",
     "Merge succeeded, but refresh failed: {message}": "合并成功，但刷新失败：{message}",
-    "Unable to determine the current branch and HEAD.": "无法确定当前分支和 HEAD。"
+    "Unable to determine the current branch and HEAD.": "无法确定当前分支和 HEAD。",
+    "All rebase conflicts are resolved.": "所有变基冲突均已解决。",
+    "Rebase is only available for local files.": "变基仅适用于本地文件。",
+    "No other branches are available to rebase onto.": "没有其他可作为变基目标的分支。",
+    "Select a branch to rebase the current branch onto": "选择当前分支要变基到的分支",
+    "The current branch or HEAD changed. Start Rebase again.": "当前分支或 HEAD 已更改。请重新开始变基。",
+    "Rebase current branch {currentBranch} onto {branch}?": "将当前分支 {currentBranch} 变基到 {branch}？",
+    "Rebase produced {count} unresolved conflict file(s). Opened Conflicts session.": "变基产生了 {count} 个未解决的冲突文件。已打开冲突会话。",
+    "Rebase succeeded, but refresh failed: {message}": "变基已成功，但刷新失败：{message}",
+    "Abort Rebase": "中止变基",
+    "Abort the current rebase? Local conflict resolutions will be discarded.": "中止当前变基？本地冲突解决结果将被丢弃。",
+    "Aborting rebase...": "正在中止变基...",
+    "Rebase aborted.": "变基已中止。",
+    "Abort rebase failed: {message}": "中止变基失败：{message}"
 }

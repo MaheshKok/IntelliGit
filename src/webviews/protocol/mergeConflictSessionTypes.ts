@@ -9,6 +9,8 @@ import type { MergeConflictFile } from "../../types";
  * webview sends a command back.
  */
 export interface MergeConflictSessionData {
+    /** Active Git operation; absent data from older hosts retains Merge presentation. */
+    operation?: "merge" | "rebase";
     /** Display label for the incoming/theirs side of the conflict. */
     sourceBranch: string;
     /** Display label for the current/ours side of the conflict. */
@@ -53,7 +55,7 @@ export type OutboundMessage =
           filePath: string;
       }
     | {
-          /** Command aborting the in-progress merge after host-side confirmation. */
+          /** Command aborting the owning in-progress merge or rebase after host confirmation. */
           type: "abortMerge";
       }
     | {

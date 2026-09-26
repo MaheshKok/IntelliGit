@@ -688,5 +688,18 @@
     "No other branches are available to merge.": "병합할 다른 브랜치가 없습니다.",
     "The current branch or HEAD changed. Start Merge again.": "현재 브랜치 또는 HEAD가 변경되었습니다. 병합을 다시 시작하세요.",
     "Merge succeeded, but refresh failed: {message}": "병합은 성공했지만 새로 고치지 못했습니다: {message}",
-    "Unable to determine the current branch and HEAD.": "현재 브랜치와 HEAD를 확인할 수 없습니다."
+    "Unable to determine the current branch and HEAD.": "현재 브랜치와 HEAD를 확인할 수 없습니다.",
+    "All rebase conflicts are resolved.": "리베이스 충돌이 모두 해결되었습니다.",
+    "Rebase is only available for local files.": "리베이스는 로컬 파일에서만 사용할 수 있습니다.",
+    "No other branches are available to rebase onto.": "리베이스할 다른 브랜치가 없습니다.",
+    "Select a branch to rebase the current branch onto": "현재 브랜치를 리베이스할 대상 브랜치 선택",
+    "The current branch or HEAD changed. Start Rebase again.": "현재 브랜치 또는 HEAD가 변경되었습니다. 리베이스를 다시 시작하세요.",
+    "Rebase current branch {currentBranch} onto {branch}?": "현재 브랜치 {currentBranch}를 {branch}에 리베이스하시겠습니까?",
+    "Rebase produced {count} unresolved conflict file(s). Opened Conflicts session.": "리베이스 중 해결되지 않은 충돌 파일이 {count}개 발생했습니다. 충돌 세션을 열었습니다.",
+    "Rebase succeeded, but refresh failed: {message}": "리베이스는 성공했지만 새로 고침에 실패했습니다: {message}",
+    "Abort Rebase": "리베이스 중단",
+    "Abort the current rebase? Local conflict resolutions will be discarded.": "현재 리베이스를 중단하시겠습니까? 로컬 충돌 해결 내용이 삭제됩니다.",
+    "Aborting rebase...": "리베이스 중단 중...",
+    "Rebase aborted.": "리베이스가 중단되었습니다.",
+    "Abort rebase failed: {message}": "리베이스 중단 실패: {message}"
 }

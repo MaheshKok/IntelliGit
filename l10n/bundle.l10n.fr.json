@@ -688,5 +688,18 @@
     "No other branches are available to merge.": "Aucune autre branche n’est disponible pour la fusion.",
     "The current branch or HEAD changed. Start Merge again.": "La branche actuelle ou HEAD a changé. Relancez la fusion.",
     "Merge succeeded, but refresh failed: {message}": "La fusion a réussi, mais l’actualisation a échoué : {message}",
-    "Unable to determine the current branch and HEAD.": "Impossible de déterminer la branche actuelle et HEAD."
+    "Unable to determine the current branch and HEAD.": "Impossible de déterminer la branche actuelle et HEAD.",
+    "All rebase conflicts are resolved.": "Tous les conflits de rebasage sont résolus.",
+    "Rebase is only available for local files.": "Le rebasage est disponible uniquement pour les fichiers locaux.",
+    "No other branches are available to rebase onto.": "Aucune autre branche n’est disponible comme cible du rebasage.",
+    "Select a branch to rebase the current branch onto": "Sélectionnez une branche sur laquelle rebaser la branche actuelle",
+    "The current branch or HEAD changed. Start Rebase again.": "La branche actuelle ou HEAD a changé. Relancez le rebasage.",
+    "Rebase current branch {currentBranch} onto {branch}?": "Rebaser la branche actuelle {currentBranch} sur {branch} ?",
+    "Rebase produced {count} unresolved conflict file(s). Opened Conflicts session.": "Le rebasage a produit {count} fichiers en conflit non résolus. La session Conflits est ouverte.",
+    "Rebase succeeded, but refresh failed: {message}": "Le rebasage a réussi, mais l’actualisation a échoué : {message}",
+    "Abort Rebase": "Annuler le rebase",
+    "Abort the current rebase? Local conflict resolutions will be discarded.": "Annuler le rebasage en cours ? Les résolutions de conflits locales seront ignorées.",
+    "Aborting rebase...": "Annulation du rebasage...",
+    "Rebase aborted.": "Rebasage annulé.",
+    "Abort rebase failed: {message}": "Échec de l’annulation du rebasage : {message}"
 }
