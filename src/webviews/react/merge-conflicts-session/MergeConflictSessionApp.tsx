@@ -26,6 +26,7 @@ function fileName(filePath: string): string {
 }
 
 interface SessionState {
+    operation: "merge" | "rebase";
     sourceBranch: string;
     targetBranch: string;
     files: MergeConflictFile[];
@@ -37,7 +38,12 @@ interface SessionState {
 type SessionAction =
     | {
           type: "setSessionData";
-          data: { sourceBranch: string; targetBranch: string; files: MergeConflictFile[] };
+          data: {
+              operation?: "merge" | "rebase";
+              sourceBranch: string;
+              targetBranch: string;
+              files: MergeConflictFile[];
+          };
       }
     | { type: "loadError"; message: string }
     | { type: "selectPath"; path: string }
@@ -45,6 +51,7 @@ type SessionAction =
 
 function createInitialSessionState(): SessionState {
     return {
+        operation: "merge",
         sourceBranch: t("mergeSession.defaultSource"),
         targetBranch: t("mergeSession.defaultTarget"),
         files: [],
@@ -64,6 +71,7 @@ function sessionReducer(state: SessionState, action: SessionAction): SessionStat
                     : (nextFiles[0]?.path ?? null);
             return {
                 ...state,
+                operation: action.data.operation ?? "merge",
                 sourceBranch: action.data.sourceBranch,
                 targetBranch: action.data.targetBranch,
                 files: nextFiles,
@@ -93,7 +101,8 @@ function sessionReducer(state: SessionState, action: SessionAction): SessionStat
 // react-doctor-disable-next-line react-doctor/only-export-components
 function App() {
     const [state, dispatch] = useReducer(sessionReducer, undefined, createInitialSessionState);
-    const { sourceBranch, targetBranch, files, selectedPath, groupByDirectory, error } = state;
+    const { operation, sourceBranch, targetBranch, files, selectedPath, groupByDirectory, error } =
+        state;
 
     useEffect(() => {
         const vscode = getVsCodeApi();
@@ -193,11 +202,17 @@ function App() {
         <div className="session-root">
             <div className="session-header">{t("mergeSession.title")}</div>
             <div className="session-subtitle">
-                {t("mergeSession.subtitle.pre")}
-                <strong>{sourceBranch}</strong>
-                {t("mergeSession.subtitle.mid")}
-                <strong>{targetBranch}</strong>
-                {t("mergeSession.subtitle.post")}
+                {operation === "rebase" ? (
+                    t("mergeSession.rebasing", { current: sourceBranch, selected: targetBranch })
+                ) : (
+                    <>
+                        {t("mergeSession.subtitle.pre")}
+                        <strong>{sourceBranch}</strong>
+                        {t("mergeSession.subtitle.mid")}
+                        <strong>{targetBranch}</strong>
+                        {t("mergeSession.subtitle.post")}
+                    </>
+                )}
             </div>
 
             <div className="session-main">
@@ -268,7 +283,11 @@ function App() {
                         {t("common.refresh")}
                     </button>
                     <button type="button" className="action-btn danger ghost" onClick={abortMerge}>
-                        {t("merge.action.abortMerge")}
+                        {t(
+                            operation === "rebase"
+                                ? "rebase.action.abortRebase"
+                                : "merge.action.abortMerge",
+                        )}
                     </button>
                 </div>
             </div>

@@ -688,5 +688,18 @@
     "No other branches are available to merge.": "Es sind keine weiteren Branches zum Verschmelzen verfügbar.",
     "The current branch or HEAD changed. Start Merge again.": "Der aktuelle Branch oder HEAD hat sich geändert. Starten Sie Verschmelzen erneut.",
     "Merge succeeded, but refresh failed: {message}": "Verschmelzen erfolgreich, aber die Aktualisierung ist fehlgeschlagen: {message}",
-    "Unable to determine the current branch and HEAD.": "Der aktuelle Branch und HEAD konnten nicht ermittelt werden."
+    "Unable to determine the current branch and HEAD.": "Der aktuelle Branch und HEAD konnten nicht ermittelt werden.",
+    "All rebase conflicts are resolved.": "Alle Rebase-Konflikte wurden behoben.",
+    "Rebase is only available for local files.": "Rebase ist nur für lokale Dateien verfügbar.",
+    "No other branches are available to rebase onto.": "Es sind keine weiteren Branches für ein Rebase verfügbar.",
+    "Select a branch to rebase the current branch onto": "Wählen Sie einen Branch aus, auf den der aktuelle Branch rebased werden soll",
+    "The current branch or HEAD changed. Start Rebase again.": "Der aktuelle Branch oder HEAD hat sich geändert. Starten Sie Rebase erneut.",
+    "Rebase current branch {currentBranch} onto {branch}?": "Aktuellen Branch {currentBranch} auf {branch} rebasen?",
+    "Rebase produced {count} unresolved conflict file(s). Opened Conflicts session.": "Beim Rebase sind {count} ungelöste Konfliktdateien entstanden. Die Konfliktsitzung wurde geöffnet.",
+    "Rebase succeeded, but refresh failed: {message}": "Rebase erfolgreich, aber die Aktualisierung ist fehlgeschlagen: {message}",
+    "Abort Rebase": "Rebase abbrechen",
+    "Abort the current rebase? Local conflict resolutions will be discarded.": "Aktuelles Rebase abbrechen? Lokale Konfliktlösungen werden verworfen.",
+    "Aborting rebase...": "Rebase wird abgebrochen...",
+    "Rebase aborted.": "Rebase abgebrochen.",
+    "Abort rebase failed: {message}": "Abbruch des Rebase fehlgeschlagen: {message}"
 }

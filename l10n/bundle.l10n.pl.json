@@ -688,5 +688,18 @@
     "No other branches are available to merge.": "Brak innych gałęzi do połączenia.",
     "The current branch or HEAD changed. Start Merge again.": "Bieżąca gałąź lub HEAD uległy zmianie. Rozpocznij łączenie ponownie.",
     "Merge succeeded, but refresh failed: {message}": "Łączenie powiodło się, ale odświeżanie nie powiodło się: {message}",
-    "Unable to determine the current branch and HEAD.": "Nie można ustalić bieżącej gałęzi i HEAD."
+    "Unable to determine the current branch and HEAD.": "Nie można ustalić bieżącej gałęzi i HEAD.",
+    "All rebase conflicts are resolved.": "Wszystkie konflikty zmiany bazy zostały rozwiązane.",
+    "Rebase is only available for local files.": "Zmiana bazy jest dostępna tylko dla plików lokalnych.",
+    "No other branches are available to rebase onto.": "Brak innych gałęzi, na których można oprzeć bieżącą gałąź.",
+    "Select a branch to rebase the current branch onto": "Wybierz gałąź, na której chcesz oprzeć bieżącą gałąź",
+    "The current branch or HEAD changed. Start Rebase again.": "Bieżąca gałąź lub HEAD uległy zmianie. Uruchom zmianę bazy ponownie.",
+    "Rebase current branch {currentBranch} onto {branch}?": "Zmienić bazę bieżącej gałęzi {currentBranch} na {branch}?",
+    "Rebase produced {count} unresolved conflict file(s). Opened Conflicts session.": "Zmiana bazy spowodowała {count} nierozwiązanych plików konfliktu. Otwarto sesję Konfliktów.",
+    "Rebase succeeded, but refresh failed: {message}": "Zmiana bazy powiodła się, ale odświeżenie nie powiodło się: {message}",
+    "Abort Rebase": "Przerwij rebase",
+    "Abort the current rebase? Local conflict resolutions will be discarded.": "Przerwać bieżący rebase? Lokalne rozwiązania konfliktów zostaną odrzucone.",
+    "Aborting rebase...": "Przerywanie rebase...",
+    "Rebase aborted.": "Rebase przerwany.",
+    "Abort rebase failed: {message}": "Nie udało się przerwać rebase: {message}"
 }

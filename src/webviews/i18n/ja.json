@@ -374,5 +374,6 @@
         "other": "{count} 件の差分"
     },
     "merge.status.noChanges": "変更なし",
-    "merge.status.allConflictsResolved": "すべての競合が解決済み"
+    "merge.status.allConflictsResolved": "すべての競合が解決済み",
+    "mergeSession.rebasing": "{current} を {selected} にリベースしています"
 }

@@ -404,5 +404,6 @@
         "other": "{count} różnicy"
     },
     "merge.status.noChanges": "Bez zmian",
-    "merge.status.allConflictsResolved": "Wszystkie konflikty rozwiązane"
+    "merge.status.allConflictsResolved": "Wszystkie konflikty rozwiązane",
+    "mergeSession.rebasing": "Zmiana bazy {current} na {selected}"
 }

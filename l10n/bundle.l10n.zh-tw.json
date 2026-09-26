@@ -688,5 +688,18 @@
     "No other branches are available to merge.": "沒有其他可合併的分支。",
     "The current branch or HEAD changed. Start Merge again.": "目前分支或 HEAD 已變更。請重新開始合併。",
     "Merge succeeded, but refresh failed: {message}": "合併成功，但重新整理失敗：{message}",
-    "Unable to determine the current branch and HEAD.": "無法判斷目前分支與 HEAD。"
+    "Unable to determine the current branch and HEAD.": "無法判斷目前分支與 HEAD。",
+    "All rebase conflicts are resolved.": "所有變基衝突均已解決。",
+    "Rebase is only available for local files.": "變基僅適用於本機檔案。",
+    "No other branches are available to rebase onto.": "沒有其他可作為變基目標的分支。",
+    "Select a branch to rebase the current branch onto": "選擇目前分支要變基到的分支",
+    "The current branch or HEAD changed. Start Rebase again.": "目前分支或 HEAD 已變更。請重新開始變基。",
+    "Rebase current branch {currentBranch} onto {branch}?": "將目前分支 {currentBranch} 變基到 {branch}？",
+    "Rebase produced {count} unresolved conflict file(s). Opened Conflicts session.": "變基產生了 {count} 個未解決的衝突檔案。已開啟衝突工作階段。",
+    "Rebase succeeded, but refresh failed: {message}": "變基已成功，但重新整理失敗：{message}",
+    "Abort Rebase": "中止變基",
+    "Abort the current rebase? Local conflict resolutions will be discarded.": "中止目前變基？本機衝突解決結果將被捨棄。",
+    "Aborting rebase...": "正在中止變基...",
+    "Rebase aborted.": "變基已中止。",
+    "Abort rebase failed: {message}": "中止變基失敗：{message}"
 }

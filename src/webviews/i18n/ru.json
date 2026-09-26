@@ -404,5 +404,6 @@
         "other": "{count} различия"
     },
     "merge.status.noChanges": "Без изменений",
-    "merge.status.allConflictsResolved": "Все конфликты разрешены"
+    "merge.status.allConflictsResolved": "Все конфликты разрешены",
+    "mergeSession.rebasing": "Перебазирование {current} на {selected}"
 }

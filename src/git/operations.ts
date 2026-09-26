@@ -342,6 +342,11 @@ export class GitOps {
         assertValidBranchName(branch);
         await this.executor.run(["merge", branch]);
     }
+    /** Rebases the current branch onto a validated local or remote branch through the shared gate. */
+    async rebase(branch: string): Promise<void> {
+        assertValidBranchName(branch);
+        await this.executor.run(["rebase", branch]);
+    }
     /**
      * Reads branch and HEAD together for dialog-time merge checks. Detached and unborn states are
      * valid identities; missing or malformed porcelain headers reject instead of guessing a target.
