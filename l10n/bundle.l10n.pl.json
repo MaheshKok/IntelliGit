@@ -678,5 +678,9 @@
     "Commit is only available for local files.": "Commit można utworzyć tylko dla plików lokalnych.",
     "Commit failed: {message}": "Nie udało się utworzyć commitu: {message}",
     "Commit succeeded, but refresh failed: {message}": "Commit został utworzony, ale odświeżenie nie powiodło się: {message}",
-    "A Git operation is in progress — continue or abort it first.": "Trwa operacja Git — najpierw ją kontynuuj lub przerwij."
+    "A Git operation is in progress — continue or abort it first.": "Trwa operacja Git — najpierw ją kontynuuj lub przerwij.",
+    "Add to VCS is only available for local files.": "Do systemu kontroli wersji można dodawać tylko pliki lokalne.",
+    "Add to VCS failed: {message}": "Nie udało się dodać do systemu kontroli wersji: {message}",
+    "Added {path} to VCS.": "Dodano {path} do systemu kontroli wersji.",
+    "Added to VCS, but refresh failed: {message}": "Dodano do systemu kontroli wersji, ale odświeżanie nie powiodło się: {message}"
 }

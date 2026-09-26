@@ -678,5 +678,9 @@
     "Commit is only available for local files.": "Commits sind nur für lokale Dateien verfügbar.",
     "Commit failed: {message}": "Commit fehlgeschlagen: {message}",
     "Commit succeeded, but refresh failed: {message}": "Commit erfolgreich, aber die Aktualisierung ist fehlgeschlagen: {message}",
-    "A Git operation is in progress — continue or abort it first.": "Ein Git-Vorgang läuft — setzen Sie ihn zuerst fort oder brechen Sie ihn ab."
+    "A Git operation is in progress — continue or abort it first.": "Ein Git-Vorgang läuft — setzen Sie ihn zuerst fort oder brechen Sie ihn ab.",
+    "Add to VCS is only available for local files.": "Das Hinzufügen zur Versionsverwaltung ist nur für lokale Dateien verfügbar.",
+    "Add to VCS failed: {message}": "Hinzufügen zur Versionsverwaltung fehlgeschlagen: {message}",
+    "Added {path} to VCS.": "{path} wurde zur Versionsverwaltung hinzugefügt.",
+    "Added to VCS, but refresh failed: {message}": "Zur Versionsverwaltung hinzugefügt, aber die Aktualisierung ist fehlgeschlagen: {message}"
 }

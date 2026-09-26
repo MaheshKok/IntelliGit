@@ -3,9 +3,21 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => {
     const commands = new Map<string, (...args: unknown[]) => unknown>();
     const branchHandlers = new Map<string, ReturnType<typeof vi.fn>>();
+    class FakeUri {
+        readonly scheme = "file";
+        constructor(readonly fsPath: string) {}
+        static file(fsPath: string): FakeUri {
+            return new FakeUri(fsPath);
+        }
+        static parse(value: string): { parsed: string } {
+            return { parsed: value };
+        }
+    }
     return {
+        addFileToVcsFromContext: vi.fn(),
         branchHandlers,
         commands,
+        FakeUri,
         annotateWithGitBlame: vi.fn(async () => undefined),
         commitFileFromContext: vi.fn(),
         commitSelectedFromPanel: vi.fn(async (_deps: unknown, _options: unknown) => undefined),
@@ -53,15 +65,11 @@ vi.mock("vscode", () => ({
     env: {
         openExternal: mocks.openExternal,
     },
-    Uri: {
-        file: (fsPath: string) => ({ fsPath }),
-        // Tagged rather than passed through as a bare string so an assertion cannot pass on
-        // a handler that skipped `Uri.parse` and handed `openExternal` the raw text.
-        parse: (value: string) => ({ parsed: value }),
-    },
+    Uri: mocks.FakeUri,
 }));
 
 vi.mock("../../../src/commands/fileContextCommands", () => ({
+    addFileToVcsFromContext: mocks.addFileToVcsFromContext,
     annotateWithGitBlame: mocks.annotateWithGitBlame,
     commitFileFromContext: mocks.commitFileFromContext,
     compareFileWithBranchOrTag: mocks.compareFileWithBranchOrTag,
@@ -870,6 +878,38 @@ describe("registerRepositoryCommands", () => {
             expect(selectedGitOps.getStatus).toHaveBeenCalledTimes(1);
             expect(selectedGitOps.intentToAddFiles).toHaveBeenCalledWith(["first.ts", "second.ts"]);
             expect(refreshCommitPanels).toHaveBeenCalledTimes(1);
+        });
+
+        it("routes a native URI through the file wrapper and reports refresh failure after Git succeeds", async () => {
+            const gitOps = makeGitOps();
+            const selectedGitOps = makeGitOps();
+            selectedGitOps.getStatus = vi.fn(async () => [{ path: "selected.ts", status: "?" }]);
+            selectedGitOps.intentToAddFiles = vi.fn(async () => undefined);
+            const refreshCommitPanels = vi.fn(async () => {
+                throw new Error("refresh unavailable");
+            });
+            const deps = makeDeps(gitOps);
+            deps.refreshService = vi.fn(
+                () => ({ refreshCommitPanels }) as ReturnType<typeof deps.refreshService>,
+            );
+            mocks.addFileToVcsFromContext.mockImplementationOnce(async (_ctx, _gitOps, runAdd) =>
+                runAdd(selectedGitOps, "/repo/not-known", "selected.ts"),
+            );
+            registerRepositoryCommands(deps);
+            const context = new mocks.FakeUri("/repo/not-known/selected.ts");
+
+            await command()(context);
+
+            expect(mocks.addFileToVcsFromContext).toHaveBeenCalledWith(
+                context,
+                gitOps,
+                expect.any(Function),
+            );
+            expect(selectedGitOps.intentToAddFiles).toHaveBeenCalledWith(["selected.ts"]);
+            expect(refreshCommitPanels).toHaveBeenCalledOnce();
+            expect(mocks.showErrorMessage).toHaveBeenCalledWith(
+                "xx:Added to VCS, but refresh failed: {message}",
+            );
         });
 
         it.each([

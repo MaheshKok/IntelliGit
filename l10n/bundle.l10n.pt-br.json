@@ -678,5 +678,9 @@
     "Commit is only available for local files.": "O commit está disponível apenas para arquivos locais.",
     "Commit failed: {message}": "Falha no commit: {message}",
     "Commit succeeded, but refresh failed: {message}": "O commit foi concluído, mas a atualização falhou: {message}",
-    "A Git operation is in progress — continue or abort it first.": "Uma operação do Git está em andamento — continue ou aborte essa operação primeiro."
+    "A Git operation is in progress — continue or abort it first.": "Uma operação do Git está em andamento — continue ou aborte essa operação primeiro.",
+    "Add to VCS is only available for local files.": "Só é possível adicionar arquivos locais ao controle de versão.",
+    "Add to VCS failed: {message}": "Falha ao adicionar ao controle de versão: {message}",
+    "Added {path} to VCS.": "{path} foi adicionado ao controle de versão.",
+    "Added to VCS, but refresh failed: {message}": "Adicionado ao controle de versão, mas houve falha ao atualizar: {message}"
 }

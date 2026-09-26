@@ -678,5 +678,9 @@
     "Commit is only available for local files.": "提交仅适用于本地文件。",
     "Commit failed: {message}": "提交失败：{message}",
     "Commit succeeded, but refresh failed: {message}": "提交成功，但刷新失败：{message}",
-    "A Git operation is in progress — continue or abort it first.": "Git 操作正在进行中，请先继续或中止该操作。"
+    "A Git operation is in progress — continue or abort it first.": "Git 操作正在进行中，请先继续或中止该操作。",
+    "Add to VCS is only available for local files.": "只能将本地文件添加到版本控制。",
+    "Add to VCS failed: {message}": "添加到版本控制失败：{message}",
+    "Added {path} to VCS.": "已将 {path} 添加到版本控制。",
+    "Added to VCS, but refresh failed: {message}": "已添加到版本控制，但刷新失败：{message}"
 }

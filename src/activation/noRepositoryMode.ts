@@ -201,6 +201,7 @@ export function activateNoRepositoryMode(
         "intelligit.graph.sync.color",
         "intelligit.fileRollback",
         "intelligit.fileCommit",
+        "intelligit.fileAddToVcs",
         "intelligit.fileFetch",
         "intelligit.filePull",
         "intelligit.filePush",

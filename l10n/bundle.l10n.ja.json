@@ -678,5 +678,9 @@
     "Commit is only available for local files.": "コミットはローカルファイルでのみ利用できます。",
     "Commit failed: {message}": "コミットに失敗しました: {message}",
     "Commit succeeded, but refresh failed: {message}": "コミットは成功しましたが、更新に失敗しました: {message}",
-    "A Git operation is in progress — continue or abort it first.": "Git 操作が進行中です。先に続行するか中止してください。"
+    "A Git operation is in progress — continue or abort it first.": "Git 操作が進行中です。先に続行するか中止してください。",
+    "Add to VCS is only available for local files.": "バージョン管理に追加できるのはローカルファイルのみです。",
+    "Add to VCS failed: {message}": "バージョン管理への追加に失敗しました: {message}",
+    "Added {path} to VCS.": "{path} をバージョン管理に追加しました。",
+    "Added to VCS, but refresh failed: {message}": "バージョン管理に追加しましたが、更新に失敗しました: {message}"
 }
