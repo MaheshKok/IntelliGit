@@ -54,6 +54,7 @@ export class MergeConflictSessionPanel {
         panel: vscode.WebviewPanel,
         private readonly extensionUri: vscode.Uri,
         private readonly gitOps: GitOps,
+        private readonly repoRoot: string,
         labels: MergeConflictSessionLabels,
         private callbacks: MergeConflictSessionCallbacks,
     ) {
@@ -88,9 +89,10 @@ export class MergeConflictSessionPanel {
     }
 
     /**
-     * Opens or reveals the singleton conflict session panel for the active repository.
+     * Opens or reveals the singleton conflict session panel for the supplied repository.
      *
-     * Reusing an existing panel updates branch labels and callbacks, then refreshes its session
+     * A different repository recreates the panel with fixed Git operations. Same-root reuse
+     * updates branch labels and callbacks, then refreshes its session
      * data without closing it even if the latest conflict list is empty.
      */
     static async open(
@@ -99,8 +101,12 @@ export class MergeConflictSessionPanel {
         labels: MergeConflictSessionLabels,
         callbacks: MergeConflictSessionCallbacks,
     ): Promise<void> {
+        const repoRoot = await gitOps.getRepositoryRoot();
         const existing = MergeConflictSessionPanel.currentPanel;
-        if (existing && !existing.disposed) {
+        if (existing && !existing.disposed && existing.repoRoot !== repoRoot) {
+            existing.panel.dispose();
+        }
+        if (existing && !existing.disposed && existing.repoRoot === repoRoot) {
             existing.updateLabels(labels);
             existing.updateCallbacks(callbacks);
             existing.panel.reveal(vscode.ViewColumn.Active);
@@ -123,7 +129,8 @@ export class MergeConflictSessionPanel {
         const instance = new MergeConflictSessionPanel(
             panel,
             extensionUri,
-            gitOps,
+            gitOps.deriveFor(repoRoot),
+            repoRoot,
             labels,
             callbacks,
         );

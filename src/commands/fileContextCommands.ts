@@ -11,6 +11,7 @@ import {
 } from "../services/diffService";
 import { getErrorMessage } from "../utils/errors";
 import { runWithNotificationProgress, showTimedInformationMessage } from "../utils/notifications";
+import { runMergeCommand, type MergeLabels } from "./mergeCommand";
 import { rejectWhenOperationInProgress } from "./operationFence";
 
 interface ResolvedFileCommandContext {
@@ -22,6 +23,73 @@ interface ResolvedFileCommandContext {
 }
 
 const MAX_GIT_BLAME_OUTPUT_BYTES = 4 * 1024 * 1024;
+
+/** Captured-repository actions; callers refresh active views only if their root still matches. */
+interface FileMergeCallbacks {
+    refresh: (repoRoot: string) => Promise<void>;
+    refreshConflicts: (repoRoot: string) => Promise<void>;
+    openConflictSession: (gitOps: GitOps, repoRoot: string, labels: MergeLabels) => Promise<void>;
+}
+
+/**
+ * Merges a picked branch in the selected local file's repository. Only absent context uses the
+ * editor. The operation fence and HEAD identity are rechecked after both dialogs; these checks
+ * detect dialog-time changes, not external Git changes after dispatch or later queued mutations.
+ */
+export async function mergeFileFromContext(
+    ctx: unknown,
+    gitOps: GitOps,
+    callbacks: FileMergeCallbacks,
+): Promise<void> {
+    try {
+        const resolved = await resolveFileCommandContext(ctx, gitOps);
+        if (!resolved) {
+            await vscode.window.showErrorMessage(
+                vscode.l10n.t("Merge is only available for local files."),
+            );
+            return;
+        }
+        const { gitOps: scopedGitOps, repoRoot } = resolved;
+        if (await rejectWhenOperationInProgress(scopedGitOps)) return;
+        const target = await scopedGitOps.getMergeTarget();
+        const branches = (await scopedGitOps.getBranches()).filter((branch) => !branch.isCurrent);
+        if (branches.length === 0) {
+            await vscode.window.showInformationMessage(
+                vscode.l10n.t("No other branches are available to merge."),
+            );
+            return;
+        }
+        const selected = await vscode.window.showQuickPick(
+            branches.map((branch) => ({ label: branch.name })),
+            {
+                title: repoRoot,
+                placeHolder: vscode.l10n.t("Select a branch to merge into the current branch"),
+            },
+        );
+        if (!selected) return;
+        await runMergeCommand(selected.label, scopedGitOps, {
+            targetBranch: target.head === "(detached)" ? target.oid.slice(0, 8) : target.head,
+            merge: (branch) => scopedGitOps.merge(branch),
+            refresh: () => callbacks.refresh(repoRoot),
+            refreshConflicts: () => callbacks.refreshConflicts(repoRoot),
+            openConflictSession: (labels) =>
+                callbacks.openConflictSession(scopedGitOps, repoRoot, labels),
+            beforeMerge: async () => {
+                if (await rejectWhenOperationInProgress(scopedGitOps)) return false;
+                const current = await scopedGitOps.getMergeTarget();
+                if (current.head === target.head && current.oid === target.oid) return true;
+                await vscode.window.showErrorMessage(
+                    vscode.l10n.t("The current branch or HEAD changed. Start Merge again."),
+                );
+                return false;
+            },
+        });
+    } catch (error) {
+        await vscode.window.showErrorMessage(
+            vscode.l10n.t("Merge failed: {message}", { message: getErrorMessage(error) }),
+        );
+    }
+}
 
 /**
  * Canonicalizes a file's parent without following the leaf, preserving tracked symlink identity.

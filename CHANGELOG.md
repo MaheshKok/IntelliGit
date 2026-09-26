@@ -5,6 +5,16 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.35.11] - 2026-09-26
+
+### Added
+
+- Added **Merge...** to IntelliGit file menus in Explorer, editor tabs, and the editor. Choose a local or remote branch to merge into the selected file's repository.
+
+### Fixed
+
+- Keep merge-conflict sessions and same-path merge editors attached to their own repository when working across multiple repositories.
+
 ## [0.35.10] - 2026-09-26
 
 ### Added

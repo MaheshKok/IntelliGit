@@ -682,5 +682,11 @@
     "Add to VCS is only available for local files.": "로컬 파일만 버전 제어에 추가할 수 있습니다.",
     "Add to VCS failed: {message}": "버전 제어에 추가하지 못했습니다: {message}",
     "Added {path} to VCS.": "{path}을(를) 버전 제어에 추가했습니다.",
-    "Added to VCS, but refresh failed: {message}": "버전 제어에 추가했지만 새로 고치지 못했습니다: {message}"
+    "Added to VCS, but refresh failed: {message}": "버전 제어에 추가했지만 새로 고치지 못했습니다: {message}",
+    "Merge is only available for local files.": "병합은 로컬 파일에서만 사용할 수 있습니다.",
+    "Select a branch to merge into the current branch": "현재 브랜치에 병합할 브랜치 선택",
+    "No other branches are available to merge.": "병합할 다른 브랜치가 없습니다.",
+    "The current branch or HEAD changed. Start Merge again.": "현재 브랜치 또는 HEAD가 변경되었습니다. 병합을 다시 시작하세요.",
+    "Merge succeeded, but refresh failed: {message}": "병합은 성공했지만 새로 고치지 못했습니다: {message}",
+    "Unable to determine the current branch and HEAD.": "현재 브랜치와 HEAD를 확인할 수 없습니다."
 }

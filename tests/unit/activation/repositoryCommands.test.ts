@@ -24,6 +24,7 @@ const mocks = vi.hoisted(() => {
         compareFileWithBranchOrTag: vi.fn(async () => undefined),
         compareFileWithRevision: vi.fn(async () => undefined),
         fetchFile: vi.fn(async () => "/repo" as string | undefined),
+        mergeFileFromContext: vi.fn(),
         pullFileRepositoryFromContext: vi.fn(),
         pushFileRepositoryFromContext: vi.fn(),
         rollbackFile: vi.fn(async () => undefined),
@@ -75,6 +76,7 @@ vi.mock("../../../src/commands/fileContextCommands", () => ({
     compareFileWithBranchOrTag: mocks.compareFileWithBranchOrTag,
     compareFileWithRevision: mocks.compareFileWithRevision,
     fetchFile: mocks.fetchFile,
+    mergeFileFromContext: mocks.mergeFileFromContext,
     pullFileRepositoryFromContext: mocks.pullFileRepositoryFromContext,
     pushFileRepositoryFromContext: mocks.pushFileRepositoryFromContext,
     rollbackFile: mocks.rollbackFile,
@@ -165,11 +167,54 @@ const makeDeps = (gitOps: GitOps) => {
         dockIntelliGit: vi.fn(),
         openMergeConflictForFile: vi.fn(),
         openConflictSession: vi.fn(),
+        openConflictSessionForRepository: vi.fn(),
         openVsCodeMergeEditorForFile: vi.fn(),
     } as Parameters<typeof registerRepositoryCommands>[0];
 };
 
 describe("registerRepositoryCommands", () => {
+    it("wires native Merge callbacks to B and refreshes active views only while B remains active", async () => {
+        const gitOps = makeGitOps();
+        const deps = makeDeps(gitOps);
+        let activeRoot = "/repo-a";
+        deps.getRepoRoot = () => activeRoot;
+        const conflictRefresh = vi.fn(async () => undefined);
+        const commitRefresh = vi.fn(async () => undefined);
+        deps.refreshService = () =>
+            ({ refreshConflictUi: conflictRefresh, refreshCommitPanels: commitRefresh }) as never;
+        const selected = { scope: "B" } as unknown as GitOps;
+        mocks.mergeFileFromContext.mockImplementationOnce(async (_ctx, _ops, callbacks) => {
+            await callbacks.refresh("/repo-b");
+            await callbacks.refreshConflicts("/repo-b");
+            expect(deps.refreshActiveRepository).not.toHaveBeenCalled();
+            expect(conflictRefresh).not.toHaveBeenCalled();
+            expect(
+                commitRefresh,
+                "non-active B panels still receive refreshed repository data",
+            ).toHaveBeenCalledTimes(2);
+            activeRoot = "/repo-b";
+            await callbacks.refresh("/repo-b");
+            await callbacks.refreshConflicts("/repo-b");
+            activeRoot = "/repo-c";
+            await callbacks.openConflictSession(selected, "/repo-b", {
+                sourceBranch: "incoming",
+                targetBranch: "main",
+            });
+        });
+        registerRepositoryCommands(deps);
+        const uri = mocks.FakeUri.file("/repo-b/file.txt");
+        const handler = mocks.commands.get("intelligit.fileMerge");
+        expect(handler, "native Merge has a registered handler").toBeTypeOf("function");
+        await handler!(uri);
+        expect(mocks.mergeFileFromContext).toHaveBeenCalledWith(uri, gitOps, expect.any(Object));
+        expect(deps.refreshActiveRepository).toHaveBeenCalledOnce();
+        expect(conflictRefresh).toHaveBeenCalledOnce();
+        expect(deps.openConflictSessionForRepository).toHaveBeenCalledWith(selected, "/repo-b", {
+            sourceBranch: "incoming",
+            targetBranch: "main",
+        });
+    });
+
     beforeEach(() => {
         mocks.branchHandlers.clear();
         mocks.commands.clear();

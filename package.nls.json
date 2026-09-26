@@ -98,5 +98,6 @@
     "command.showReviewPrompt": "Show Review Prompt",
     "command.resetReviewPrompt": "Reset Review Prompt State",
     "command.showReviewPromptCard": "Show Review Prompt Card",
-    "configuration.reviewPrompt.enabled.description": "Ask for a marketplace rating after IntelliGit has been used for a while. Disable to never be asked."
+    "configuration.reviewPrompt.enabled.description": "Ask for a marketplace rating after IntelliGit has been used for a while. Disable to never be asked.",
+    "command.merge": "Merge..."
 }

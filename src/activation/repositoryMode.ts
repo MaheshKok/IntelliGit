@@ -19,6 +19,7 @@ import { RepositoryMutationGate } from "../git/repositoryMutationGate";
 import type { Branch, GitWorktree } from "../types";
 import { getErrorMessage } from "../utils/errors";
 import { assertRepoRelativePath } from "../utils/fileOps";
+import { areSameRepositoryRoot } from "../utils/repositoryRoot";
 import { WorktreeService } from "../services/worktreeService";
 import { ShelfService } from "../services/shelfService";
 import { logShelfOperation, logShelfWarning } from "../services/shelfObservability";
@@ -662,16 +663,25 @@ export async function activateRepositoryMode(
      * open, the file opens normally and the user sees a warning instead of a hard
      * failure, so the conflict stays reachable.
      */
-    const openBuiltInMergeEditorForFile = async (filePath: string): Promise<void> => {
-        const fileUri = vscode.Uri.file(path.join(repoRoot, assertRepoRelativePath(filePath)));
+    const openBuiltInMergeEditorForFile = async (
+        filePath: string,
+        scopedGitOps = gitOps.deriveFor(repoRoot),
+        capturedRoot = repoRoot,
+    ): Promise<void> => {
+        const fileUri = vscode.Uri.file(path.join(capturedRoot, assertRepoRelativePath(filePath)));
         try {
             await MergeEditorPanel.open({
                 extensionUri: context.extensionUri,
-                gitOps,
-                getRepoRoot,
+                gitOps: scopedGitOps,
+                getRepoRoot: () => capturedRoot,
                 filePath,
+                onOpenConflictSession: () =>
+                    openConflictSessionForRepository(scopedGitOps, capturedRoot, {}),
                 onConflictStateChanged: async () => {
-                    await refreshService.refreshConflictUi();
+                    await refreshService.refreshCommitPanels();
+                    if (areSameRepositoryRoot(repoRoot, capturedRoot)) {
+                        await refreshService.refreshConflictUi();
+                    }
                 },
             });
         } catch (error) {
@@ -713,23 +723,40 @@ export async function activateRepositoryMode(
     };
 
     /**
-     * Opens the multi-file merge conflict session panel for the active repository.
+     * Opens a conflict session bound to the supplied repository and derived Git facade.
      *
-     * The panel callbacks route file opens through the same merge-tool preference
-     * as tree commands and refresh conflict UI after webview-side state changes.
+     * Editor opens, fallback file URIs, and session actions retain this scope after active-root
+     * changes. Refresh all commit panels; refresh the active conflict view only when it matches.
      */
+    const openConflictSessionForRepository = async (
+        scopedGitOps: GitOps,
+        capturedRoot: string,
+        labels: { sourceBranch?: string; targetBranch?: string },
+    ): Promise<void> => {
+        await MergeConflictSessionPanel.open(context.extensionUri, scopedGitOps, labels, {
+            onOpenMergeConflict: async (filePath) => {
+                await openBuiltInMergeEditorForFile(filePath, scopedGitOps, capturedRoot);
+            },
+            onConflictStateChanged: async () => {
+                await refreshService.refreshCommitPanels();
+                if (areSameRepositoryRoot(repoRoot, capturedRoot)) {
+                    await refreshService.refreshConflictUi();
+                }
+            },
+        });
+    };
+
+    /** Captures active repository ownership before opening a session whose callbacks outlive it. */
     const openConflictSession = async (labels?: {
         sourceBranch?: string;
         targetBranch?: string;
     }): Promise<void> => {
-        await MergeConflictSessionPanel.open(context.extensionUri, gitOps, labels ?? {}, {
-            onOpenMergeConflict: async (filePath) => {
-                await openMergeConflictForFile(filePath);
-            },
-            onConflictStateChanged: async () => {
-                await refreshService.refreshConflictUi();
-            },
-        });
+        const capturedRoot = repoRoot;
+        await openConflictSessionForRepository(
+            gitOps.deriveFor(capturedRoot),
+            capturedRoot,
+            labels ?? {},
+        );
     };
 
     /** Target location for moving the unified IntelliGit webview out of the sidebar. */
@@ -1336,6 +1363,7 @@ export async function activateRepositoryMode(
         dockIntelliGit,
         openMergeConflictForFile,
         openConflictSession,
+        openConflictSessionForRepository,
         openVsCodeMergeEditorForFile,
     });
     registerShelfCommands({

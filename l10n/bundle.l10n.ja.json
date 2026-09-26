@@ -682,5 +682,11 @@
     "Add to VCS is only available for local files.": "バージョン管理に追加できるのはローカルファイルのみです。",
     "Add to VCS failed: {message}": "バージョン管理への追加に失敗しました: {message}",
     "Added {path} to VCS.": "{path} をバージョン管理に追加しました。",
-    "Added to VCS, but refresh failed: {message}": "バージョン管理に追加しましたが、更新に失敗しました: {message}"
+    "Added to VCS, but refresh failed: {message}": "バージョン管理に追加しましたが、更新に失敗しました: {message}",
+    "Merge is only available for local files.": "マージはローカルファイルでのみ利用できます。",
+    "Select a branch to merge into the current branch": "現在のブランチにマージするブランチを選択",
+    "No other branches are available to merge.": "マージできる他のブランチがありません。",
+    "The current branch or HEAD changed. Start Merge again.": "現在のブランチまたは HEAD が変更されました。マージをやり直してください。",
+    "Merge succeeded, but refresh failed: {message}": "マージは成功しましたが、更新に失敗しました: {message}",
+    "Unable to determine the current branch and HEAD.": "現在のブランチと HEAD を確認できません。"
 }

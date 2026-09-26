@@ -682,5 +682,11 @@
     "Add to VCS is only available for local files.": "Добавление в систему контроля версий доступно только для локальных файлов.",
     "Add to VCS failed: {message}": "Не удалось добавить в систему контроля версий: {message}",
     "Added {path} to VCS.": "{path} добавлен в систему контроля версий.",
-    "Added to VCS, but refresh failed: {message}": "Добавлено в систему контроля версий, но обновление не удалось: {message}"
+    "Added to VCS, but refresh failed: {message}": "Добавлено в систему контроля версий, но обновление не удалось: {message}",
+    "Merge is only available for local files.": "Слияние доступно только для локальных файлов.",
+    "Select a branch to merge into the current branch": "Выберите ветку для слияния с текущей веткой",
+    "No other branches are available to merge.": "Нет других веток для слияния.",
+    "The current branch or HEAD changed. Start Merge again.": "Текущая ветка или HEAD изменились. Запустите слияние снова.",
+    "Merge succeeded, but refresh failed: {message}": "Слияние выполнено, но обновление не удалось: {message}",
+    "Unable to determine the current branch and HEAD.": "Не удалось определить текущую ветку и HEAD."
 }

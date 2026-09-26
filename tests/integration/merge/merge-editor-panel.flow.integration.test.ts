@@ -137,6 +137,7 @@ import {
     MergeEditorPanel,
     type MergeEditorPanelOptions,
 } from "../../../src/views/MergeEditorPanel";
+import { MergeConflictSessionPanel } from "../../../src/views/MergeConflictSessionPanel";
 import { buildResultContent } from "../../../src/webviews/react/merge-editor/mergeState";
 import type { ConflictSegment, MergeEditorData } from "../../../src/mergeEditor/conflictParser";
 
@@ -248,6 +249,140 @@ afterEach(async () => {
 });
 
 describe("MergeEditorPanel end-to-end merge flow", () => {
+    it("opens its captured conflict session instead of consulting the active repository", async () => {
+        await createConflictRepo();
+        const onOpenConflictSession = vi.fn(async () => undefined);
+        await MergeEditorPanel.open(
+            makeOptions(new GitOps(new GitExecutor(repoRoot)), { onOpenConflictSession }),
+        );
+        await fireMessage(lastPanel(), { type: "openConflictSession" });
+        expect(onOpenConflictSession).toHaveBeenCalledOnce();
+        expect(mocks.executeCommand).not.toHaveBeenCalled();
+    });
+
+    it("keeps same-path A and B editors separate and applies each draft to its captured repository", async () => {
+        await createConflictRepo();
+        const a = repoRoot;
+        const executor = new GitExecutor(a);
+        const gitOps = new GitOps(executor);
+        await MergeEditorPanel.open(makeOptions(gitOps));
+        const panelA = lastPanel();
+        await fireMessage(panelA, { type: "ready" });
+        const messagesA = [...panelA.postedMessages];
+        // Unsubmitted editor content lives in its webview. B must not refresh or replace A.
+        const draftA = "A unsubmitted resolution\n";
+        const b = await fs.mkdtemp(path.join(os.tmpdir(), "intelligit-merge-editor-b-"));
+        try {
+            repoRoot = b;
+            await createConflictRepo();
+            executor.setRoot(b);
+            const bBefore = await fs.readFile(path.join(b, "shared.ts"), "utf8");
+            await MergeEditorPanel.open(makeOptions(gitOps));
+            const panelB = lastPanel();
+            expect(
+                panelB,
+                "same relative path in another repository gets an independent editor",
+            ).not.toBe(panelA);
+            expect(panelA.disposed).toBe(false);
+            expect(panelA.postedMessages, "opening B must preserve A's unsubmitted draft").toEqual(
+                messagesA,
+            );
+            await fireMessage(panelA, { type: "applyResolution", content: draftA });
+            expect(await fs.readFile(path.join(a, "shared.ts"), "utf8")).toBe(draftA);
+            expect(await fs.readFile(path.join(b, "shared.ts"), "utf8")).toBe(bBefore);
+            expect(
+                execFileSync("git", ["ls-files", "-u"], { cwd: a, encoding: "utf8" }),
+                "applying A stages A instead of the currently active B",
+            ).toBe("");
+            expect(execFileSync("git", ["show", ":shared.ts"], { cwd: a, encoding: "utf8" })).toBe(
+                draftA,
+            );
+            expect(MergeEditorPanel.isOpen(), "closing A must leave B registered").toBe(true);
+            repoRoot = a;
+            executor.setRoot(a);
+            await fireMessage(panelB, { type: "applyResolution", content: "B draft\n" });
+            expect(await fs.readFile(path.join(b, "shared.ts"), "utf8")).toBe("B draft\n");
+            expect(execFileSync("git", ["show", ":shared.ts"], { cwd: b, encoding: "utf8" })).toBe(
+                "B draft\n",
+            );
+            expect(MergeEditorPanel.isOpen()).toBe(false);
+        } finally {
+            repoRoot = a;
+            await removeScratchDirectories(b);
+        }
+    });
+
+    it.each(["acceptTheirs", "abortMerge"])(
+        "recreates conflict sessions across repositories and keeps B %s fixed after switching to A",
+        async (action) => {
+            await createConflictRepo();
+            const a = repoRoot;
+            const executor = new GitExecutor(a);
+            const gitOps = new GitOps(executor);
+            const callbacksA = {
+                onOpenMergeConflict: vi.fn(async () => undefined),
+                onConflictStateChanged: vi.fn(async () => undefined),
+            };
+            await MergeConflictSessionPanel.open(
+                EXTENSION_URI as never,
+                gitOps,
+                { sourceBranch: "feature-A", targetBranch: "main-A" },
+                callbacksA,
+            );
+            const panelA = lastPanel();
+            const b = await fs.mkdtemp(path.join(os.tmpdir(), "intelligit-conflict-session-b-"));
+            try {
+                repoRoot = b;
+                await createConflictRepo();
+                executor.setRoot(b);
+                const callbacksB = {
+                    onOpenMergeConflict: vi.fn(async () => undefined),
+                    onConflictStateChanged: vi.fn(async () => undefined),
+                };
+                await MergeConflictSessionPanel.open(
+                    EXTENSION_URI as never,
+                    gitOps,
+                    { sourceBranch: "feature-B", targetBranch: "main-B" },
+                    callbacksB,
+                );
+                const panelB = lastPanel();
+                expect(
+                    panelB,
+                    "cross-repository session must not reuse the old Git facade",
+                ).not.toBe(panelA);
+                expect(panelA.disposed).toBe(true);
+                expect(panelB.postedMessages).toContainEqual(
+                    expect.objectContaining({
+                        type: "setSessionData",
+                        data: expect.objectContaining({
+                            sourceBranch: "feature-B",
+                            targetBranch: "main-B",
+                            files: [expect.objectContaining({ path: "shared.ts" })],
+                        }),
+                    }),
+                );
+                executor.setRoot(a);
+                repoRoot = a;
+                await fireMessage(panelB, { type: "openMerge", filePath: "shared.ts" });
+                expect(callbacksB.onOpenMergeConflict).toHaveBeenCalledWith("shared.ts");
+                expect(callbacksA.onOpenMergeConflict).not.toHaveBeenCalled();
+                if (action === "abortMerge")
+                    mocks.showWarningMessage.mockResolvedValueOnce("Abort Merge");
+                await fireMessage(panelB, { type: action, filePath: "shared.ts" });
+                expect(execFileSync("git", ["ls-files", "-u"], { cwd: b, encoding: "utf8" })).toBe(
+                    "",
+                );
+                expect(
+                    execFileSync("git", ["ls-files", "-u"], { cwd: a, encoding: "utf8" }),
+                ).not.toBe("");
+                expect(callbacksB.onConflictStateChanged).toHaveBeenCalledOnce();
+            } finally {
+                repoRoot = a;
+                await removeScratchDirectories(b);
+            }
+        },
+    );
+
     it("opens a real conflict, resolves via webview content, writes and stages the file", async () => {
         await createConflictRepo();
         const gitOps = new GitOps(new GitExecutor(repoRoot));

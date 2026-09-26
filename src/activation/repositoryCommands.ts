@@ -14,6 +14,7 @@ import {
     compareFileWithBranchOrTag,
     compareFileWithRevision,
     fetchFile,
+    mergeFileFromContext,
     pullFileRepositoryFromContext,
     pushFileRepositoryFromContext,
     rollbackFile,
@@ -33,6 +34,7 @@ import { discoverGitRepositories } from "../services/repositoryDiscovery";
 import type { Branch, GitWorktree } from "../types";
 import { getErrorMessage } from "../utils/errors";
 import { assertRepoRelativePath, deleteFileWithFallback } from "../utils/fileOps";
+import { areSameRepositoryRoot } from "../utils/repositoryRoot";
 import {
     runWithNotificationProgress,
     showTimedWarningMessage,
@@ -76,6 +78,11 @@ interface RepositoryCommandsDeps {
         sourceBranch?: string;
         targetBranch?: string;
     }) => Promise<void>;
+    openConflictSessionForRepository: (
+        gitOps: GitOps,
+        repoRoot: string,
+        labels: { sourceBranch?: string; targetBranch?: string },
+    ) => Promise<void>;
     openVsCodeMergeEditorForFile: (filePath: string) => Promise<void>;
 }
 
@@ -125,35 +132,6 @@ function resolveAddToVcsContext(
     } catch {
         return undefined;
     }
-}
-
-/**
- * Detects Windows drive-letter and UNC roots without treating a POSIX root as Windows syntax.
- *
- * This deliberately excludes root-relative Windows paths because repository roots are absolute.
- */
-function isWindowsRepositoryRoot(root: string): boolean {
-    return /^[A-Za-z]:[\\/]/.test(root) || /^[/\\]{2}[^/\\]+[/\\][^/\\]+/.test(root);
-}
-
-/**
- * Compares absolute repository roots using the filesystem spelling rules implied by each path.
- *
- * Windows drive and UNC roots are normalized case-insensitively even when tests run on another
- * platform. POSIX roots retain case-sensitive native resolution so distinct repositories are not
- * collapsed merely because their letter case differs.
- */
-function areSameRepositoryRoot(left: string, right: string): boolean {
-    const leftIsWindows = isWindowsRepositoryRoot(left);
-    const rightIsWindows = isWindowsRepositoryRoot(right);
-    if (leftIsWindows || rightIsWindows) {
-        return (
-            leftIsWindows &&
-            rightIsWindows &&
-            path.win32.resolve(left).toLowerCase() === path.win32.resolve(right).toLowerCase()
-        );
-    }
-    return path.resolve(left) === path.resolve(right);
 }
 
 /**
@@ -741,6 +719,23 @@ function registerCommitFileCommands(deps: RepositoryCommandsDeps): void {
             if (fetchedRoot && areSameRepositoryRoot(fetchedRoot, getRepoRoot())) {
                 await refreshActiveRepository();
             }
+        }),
+        vscode.commands.registerCommand("intelligit.fileMerge", async (ctx: unknown) => {
+            await mergeFileFromContext(ctx, gitOps, {
+                refresh: async (repoRoot) => {
+                    await refreshService().refreshCommitPanels();
+                    if (areSameRepositoryRoot(repoRoot, getRepoRoot())) {
+                        await refreshActiveRepository();
+                    }
+                },
+                refreshConflicts: async (repoRoot) => {
+                    await refreshService().refreshCommitPanels();
+                    if (areSameRepositoryRoot(repoRoot, getRepoRoot())) {
+                        await refreshService().refreshConflictUi();
+                    }
+                },
+                openConflictSession: deps.openConflictSessionForRepository,
+            });
         }),
         vscode.commands.registerCommand("intelligit.filePull", async (ctx: unknown) => {
             await pullFileRepositoryFromContext(ctx, gitOps, async (scopedGitOps, repoRoot) => {

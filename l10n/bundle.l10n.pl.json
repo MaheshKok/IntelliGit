@@ -682,5 +682,11 @@
     "Add to VCS is only available for local files.": "Do systemu kontroli wersji można dodawać tylko pliki lokalne.",
     "Add to VCS failed: {message}": "Nie udało się dodać do systemu kontroli wersji: {message}",
     "Added {path} to VCS.": "Dodano {path} do systemu kontroli wersji.",
-    "Added to VCS, but refresh failed: {message}": "Dodano do systemu kontroli wersji, ale odświeżanie nie powiodło się: {message}"
+    "Added to VCS, but refresh failed: {message}": "Dodano do systemu kontroli wersji, ale odświeżanie nie powiodło się: {message}",
+    "Merge is only available for local files.": "Łączenie jest dostępne tylko dla plików lokalnych.",
+    "Select a branch to merge into the current branch": "Wybierz gałąź do połączenia z bieżącą gałęzią",
+    "No other branches are available to merge.": "Brak innych gałęzi do połączenia.",
+    "The current branch or HEAD changed. Start Merge again.": "Bieżąca gałąź lub HEAD uległy zmianie. Rozpocznij łączenie ponownie.",
+    "Merge succeeded, but refresh failed: {message}": "Łączenie powiodło się, ale odświeżanie nie powiodło się: {message}",
+    "Unable to determine the current branch and HEAD.": "Nie można ustalić bieżącej gałęzi i HEAD."
 }
