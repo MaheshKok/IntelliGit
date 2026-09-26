@@ -682,5 +682,11 @@
     "Add to VCS is only available for local files.": "只能将本地文件添加到版本控制。",
     "Add to VCS failed: {message}": "添加到版本控制失败：{message}",
     "Added {path} to VCS.": "已将 {path} 添加到版本控制。",
-    "Added to VCS, but refresh failed: {message}": "已添加到版本控制，但刷新失败：{message}"
+    "Added to VCS, but refresh failed: {message}": "已添加到版本控制，但刷新失败：{message}",
+    "Merge is only available for local files.": "合并仅适用于本地文件。",
+    "Select a branch to merge into the current branch": "选择要合并到当前分支的分支",
+    "No other branches are available to merge.": "没有其他可合并的分支。",
+    "The current branch or HEAD changed. Start Merge again.": "当前分支或 HEAD 已更改。请重新开始合并。",
+    "Merge succeeded, but refresh failed: {message}": "合并成功，但刷新失败：{message}",
+    "Unable to determine the current branch and HEAD.": "无法确定当前分支和 HEAD。"
 }

@@ -98,5 +98,6 @@
     "command.showFileDiff": "顯示差異",
     "command.showCurrentRevision": "顯示目前修訂",
     "command.annotateWithGitBlame": "使用 Git Blame 新增註釋",
-    "command.commitFile": "提交檔案..."
+    "command.commitFile": "提交檔案...",
+    "command.merge": "合併..."
 }

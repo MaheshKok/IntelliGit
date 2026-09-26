@@ -682,5 +682,11 @@
     "Add to VCS is only available for local files.": "Das Hinzufügen zur Versionsverwaltung ist nur für lokale Dateien verfügbar.",
     "Add to VCS failed: {message}": "Hinzufügen zur Versionsverwaltung fehlgeschlagen: {message}",
     "Added {path} to VCS.": "{path} wurde zur Versionsverwaltung hinzugefügt.",
-    "Added to VCS, but refresh failed: {message}": "Zur Versionsverwaltung hinzugefügt, aber die Aktualisierung ist fehlgeschlagen: {message}"
+    "Added to VCS, but refresh failed: {message}": "Zur Versionsverwaltung hinzugefügt, aber die Aktualisierung ist fehlgeschlagen: {message}",
+    "Merge is only available for local files.": "Verschmelzen ist nur für lokale Dateien verfügbar.",
+    "Select a branch to merge into the current branch": "Wählen Sie einen Branch zum Verschmelzen mit dem aktuellen Branch aus",
+    "No other branches are available to merge.": "Es sind keine weiteren Branches zum Verschmelzen verfügbar.",
+    "The current branch or HEAD changed. Start Merge again.": "Der aktuelle Branch oder HEAD hat sich geändert. Starten Sie Verschmelzen erneut.",
+    "Merge succeeded, but refresh failed: {message}": "Verschmelzen erfolgreich, aber die Aktualisierung ist fehlgeschlagen: {message}",
+    "Unable to determine the current branch and HEAD.": "Der aktuelle Branch und HEAD konnten nicht ermittelt werden."
 }

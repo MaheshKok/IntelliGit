@@ -337,6 +337,36 @@ export class GitOps {
     deriveFor(repoRoot: string): GitOps {
         return new GitOps(this.executor.deriveFor(repoRoot), this.confirmSetUpstreamPush);
     }
+    /** Merges one validated local or remote branch through this facade's shared mutation gate. */
+    async merge(branch: string): Promise<void> {
+        assertValidBranchName(branch);
+        await this.executor.run(["merge", branch]);
+    }
+    /**
+     * Reads branch and HEAD together for dialog-time merge checks. Detached and unborn states are
+     * valid identities; missing or malformed porcelain headers reject instead of guessing a target.
+     */
+    async getMergeTarget(): Promise<{ head: string; oid: string }> {
+        const output = await this.executor.run([
+            "status",
+            "--porcelain=v2",
+            "--branch",
+            "--untracked-files=no",
+        ]);
+        const head = /^# branch\.head (.+)$/m.exec(output)?.[1]?.trim();
+        const oid = /^# branch\.oid (.+)$/m.exec(output)?.[1]?.trim();
+        if (
+            !head ||
+            !oid ||
+            (oid !== "(initial)" && !/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(oid))
+        ) {
+            throw new Error(
+                getVsCodeApi()?.l10n.t("Unable to determine the current branch and HEAD.") ??
+                    "Unable to determine the current branch and HEAD.",
+            );
+        }
+        return { head, oid };
+    }
     /** Resolves Git-reported root, worktree Git directory, and shared common Git directory. */
     async getGitDirectories(): Promise<{ root: string; gitDir: string; commonDir: string }> {
         const [gitDir, commonDir, repoRoot] = await Promise.all([

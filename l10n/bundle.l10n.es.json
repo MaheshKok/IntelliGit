@@ -682,5 +682,11 @@
     "Add to VCS is only available for local files.": "Solo se pueden agregar archivos locales al control de código fuente.",
     "Add to VCS failed: {message}": "No se pudo agregar al control de código fuente: {message}",
     "Added {path} to VCS.": "Se agregó {path} al control de código fuente.",
-    "Added to VCS, but refresh failed: {message}": "Se agregó al control de código fuente, pero la actualización falló: {message}"
+    "Added to VCS, but refresh failed: {message}": "Se agregó al control de código fuente, pero la actualización falló: {message}",
+    "Merge is only available for local files.": "La opción Unir solo está disponible para archivos locales.",
+    "Select a branch to merge into the current branch": "Selecciona una rama para unirla a la rama actual",
+    "No other branches are available to merge.": "No hay otras ramas disponibles para unir.",
+    "The current branch or HEAD changed. Start Merge again.": "La rama actual o HEAD ha cambiado. Inicia Unir de nuevo.",
+    "Merge succeeded, but refresh failed: {message}": "La unión se completó, pero la actualización falló: {message}",
+    "Unable to determine the current branch and HEAD.": "No se pudieron determinar la rama actual y HEAD."
 }

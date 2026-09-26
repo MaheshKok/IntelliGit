@@ -1,4 +1,10 @@
 {
+    "Merge is only available for local files.": "Merge is only available for local files.",
+    "Select a branch to merge into the current branch": "Select a branch to merge into the current branch",
+    "No other branches are available to merge.": "No other branches are available to merge.",
+    "The current branch or HEAD changed. Start Merge again.": "The current branch or HEAD changed. Start Merge again.",
+    "Merge succeeded, but refresh failed: {message}": "Merge succeeded, but refresh failed: {message}",
+    "Unable to determine the current branch and HEAD.": "Unable to determine the current branch and HEAD.",
     "Add to VCS is only available for local files.": "Add to VCS is only available for local files.",
     "Add to VCS failed: {message}": "Add to VCS failed: {message}",
     "Added {path} to VCS.": "Added {path} to VCS.",

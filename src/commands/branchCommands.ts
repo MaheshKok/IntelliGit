@@ -4,6 +4,7 @@
 
 import path from "node:path";
 import * as vscode from "vscode";
+import { runMergeCommand } from "./mergeCommand";
 import { GitExecutor } from "../git/executor";
 import { GitOps, UpstreamPushDeclinedError } from "../git/operations";
 import type { Branch } from "../types";
@@ -732,42 +733,15 @@ export function createBranchCommands(deps: BranchCommandDeps): BranchCommandEntr
                 const name = item.branch?.name;
                 if (!name) return;
                 if (!validateBranchArg(name)) return;
-                const mergeLabel = vscode.l10n.t("Merge");
-                const confirm = await vscode.window.showWarningMessage(
-                    vscode.l10n.t("Merge {branch} into current branch?", { branch: name }),
-                    { modal: true },
-                    mergeLabel,
-                );
-                if (confirm !== mergeLabel) return;
-                try {
-                    await executor.run(["merge", name]);
-                    showTimedInformationMessage(vscode.l10n.t("Merged {branch}", { branch: name }));
-                    await vscode.commands.executeCommand("intelligit.refresh");
-                } catch (err) {
-                    try {
-                        const conflicts = await gitOps.getConflictFilesDetailed();
-                        if (conflicts.length > 0) {
-                            await openConflictSession({
-                                sourceBranch: name,
-                                targetBranch: getCurrentBranchName() || undefined,
-                            });
-                            await refreshConflictUi();
-                            showTimedWarningMessage(
-                                vscode.l10n.t(
-                                    "Merge produced {count} unresolved conflict file(s). Opened Conflicts session.",
-                                    { count: conflicts.length },
-                                ),
-                            );
-                            return;
-                        }
-                    } catch {
-                        // Fall back to merge error if conflict inspection/session launch fails.
-                    }
-                    const msg = getErrorMessage(err);
-                    vscode.window.showErrorMessage(
-                        vscode.l10n.t("Merge failed: {message}", { message: msg }),
-                    );
-                }
+                await runMergeCommand(name, gitOps, {
+                    targetBranch: getCurrentBranchName() || undefined,
+                    merge: (branch) => executor.run(["merge", branch]),
+                    refresh: async () => {
+                        await vscode.commands.executeCommand("intelligit.refresh");
+                    },
+                    refreshConflicts: refreshConflictUi,
+                    openConflictSession,
+                });
             },
         },
         {

@@ -875,8 +875,9 @@ vi.mock("../../../src/git/operations", async (importOriginal) => {
     const actual = await importOriginal<typeof import("../../../src/git/operations")>();
     return {
         UpstreamPushDeclinedError: actual.UpstreamPushDeclinedError,
-        GitOps: class {
+        GitOps: class MockGitOps {
             constructor(private readonly executor: { repoRoot: string }) {}
+            deriveFor = (repoRoot: string) => new MockGitOps({ repoRoot });
             isRepository = () => gitOpsState.isRepository(this.executor.repoRoot);
             getRepositoryRoot = () => gitOpsState.getRepositoryRoot(this.executor.repoRoot);
             getGitDirectories = async () => {
@@ -3369,6 +3370,159 @@ describe("extension integration", () => {
             await removeScratchDirectories(workspace);
         }
     });
+
+    it("keeps an open conflict session's editor and fallback URI in A after selecting B", async () => {
+        const { activate } = await import("../../../src/extension");
+        const { MergeEditorPanel } = await import("../../../src/views/MergeEditorPanel");
+        const vscode = await import("vscode");
+        const workspace = await fs.realpath(
+            await fs.mkdtemp(path.join(os.tmpdir(), "intelligit-merge-scope-")),
+        );
+        const a = path.join(workspace, "app-a");
+        const b = path.join(workspace, "app-b");
+        const openEditor = vi.spyOn(MergeEditorPanel, "open").mockResolvedValue(undefined);
+        const panels = vi.mocked(vscode.window.createWebviewPanel);
+        try {
+            await fs.mkdir(path.join(a, ".git"), { recursive: true });
+            await fs.mkdir(path.join(b, ".git"), { recursive: true });
+            workspaceFolders = [{ uri: { fsPath: workspace, path: workspace } }];
+            gitOpsState.isRepository.mockImplementation(async (root: string) =>
+                [a, b].includes(root),
+            );
+            gitOpsState.getRepositoryRoot.mockImplementation(async (root: string) => root);
+            await activate({
+                extensionUri: { fsPath: "/ext", path: "/ext" },
+                subscriptions: [],
+                workspaceState: createWorkspaceState(),
+            } as unknown as MockExtensionContext);
+            gitOpsState.getConflictFilesDetailed.mockResolvedValue([
+                { path: "shared.ts", code: "UU", ours: "Modified", theirs: "Modified" },
+            ]);
+            await registeredCommands.get("intelligit.openConflictSession")?.();
+            const session = panels.mock.results.at(-1)?.value as {
+                webview: { onDidReceiveMessage: ReturnType<typeof vi.fn> };
+                dispose: () => void;
+            };
+            const receive = session.webview.onDidReceiveMessage.mock.calls[0][0] as (
+                message: unknown,
+            ) => Promise<void>;
+            showQuickPick.mockImplementationOnce(async (items: unknown[]) => items[1]);
+            await registeredCommands.get("intelligit.selectRepository")?.();
+            await receive({ type: "openMerge", filePath: "shared.ts" });
+            const options = openEditor.mock.calls[0][0];
+            expect(options.getRepoRoot(), "session editor retains A despite active B").toBe(a);
+            expect(await options.gitOps.getRepositoryRoot()).toBe(a);
+            openEditor.mockRejectedValueOnce(new Error("editor unavailable"));
+            await receive({ type: "openMerge", filePath: "shared.ts" });
+            expect(executeCommandFallback).toHaveBeenCalledWith(
+                "vscode.open",
+                expect.objectContaining({ fsPath: path.join(a, "shared.ts") }),
+            );
+            session.dispose();
+        } finally {
+            openEditor.mockRestore();
+            await removeScratchDirectories(workspace);
+        }
+    });
+
+    it.each([
+        {
+            label: "Windows drive roots with different case and separators",
+            capturedRoot: "C:\\Repos\\IntelliGit",
+            activeRoot: "c:/repos/intelligit/",
+            expectedConflictRefreshes: 1,
+        },
+        {
+            label: "Windows UNC roots with different case and separators",
+            capturedRoot: "\\\\Server\\Share\\IntelliGit",
+            activeRoot: "\\\\server/share/intelligit/",
+            expectedConflictRefreshes: 1,
+        },
+        {
+            label: "case-distinct POSIX roots",
+            capturedRoot: "/repo/IntelliGit",
+            activeRoot: "/repo/intelligit",
+            expectedConflictRefreshes: 0,
+        },
+    ])(
+        "refreshes conflict UI for $label only when the active root matches the captured root",
+        async ({ capturedRoot, activeRoot, expectedConflictRefreshes }) => {
+            const { activate } = await import("../../../src/extension");
+            const { MergeEditorPanel } = await import("../../../src/views/MergeEditorPanel");
+            const { RefreshService } = await import("../../../src/views/RefreshService");
+            const vscode = await import("vscode");
+            const panels = vi.mocked(vscode.window.createWebviewPanel);
+            type CreatedPanel = {
+                webview: { onDidReceiveMessage: ReturnType<typeof vi.fn> };
+                dispose: () => void;
+            };
+            const openEditor = vi.spyOn(MergeEditorPanel, "open").mockResolvedValue(undefined);
+            const refreshCommitPanels = vi.spyOn(RefreshService.prototype, "refreshCommitPanels");
+            const refreshConflictUi = vi.spyOn(RefreshService.prototype, "refreshConflictUi");
+            let session: CreatedPanel | undefined;
+            const selectRoot = async (root: string) => {
+                showQuickPick.mockResolvedValueOnce({
+                    label: root,
+                    description: root,
+                    repository: { root, label: root, kind: "repository" as const },
+                });
+                await registeredCommands.get("intelligit.selectRepository")?.();
+            };
+
+            try {
+                await activate({
+                    extensionUri: { fsPath: "/ext", path: "/ext" },
+                    subscriptions: [],
+                    workspaceState: createWorkspaceState(),
+                } as unknown as MockExtensionContext);
+                await selectRoot(capturedRoot);
+                gitOpsState.getConflictFilesDetailed.mockResolvedValue([
+                    { path: "shared.ts", code: "UU", ours: "Modified", theirs: "Modified" },
+                ]);
+                await registeredCommands.get("intelligit.openConflictSession")?.();
+                session = panels.mock.results.at(-1)?.value as CreatedPanel;
+                const receive = session.webview.onDidReceiveMessage.mock.calls[0][0] as (
+                    message: unknown,
+                ) => Promise<void>;
+                await receive({ type: "openMerge", filePath: "shared.ts" });
+                const editorOptions = openEditor.mock.calls[0][0];
+                await selectRoot(activeRoot);
+
+                refreshCommitPanels.mockClear();
+                refreshConflictUi.mockClear();
+                await receive({ type: "acceptYours", filePath: "shared.ts" });
+                const sessionResult = {
+                    commitPanels: refreshCommitPanels.mock.calls.length,
+                    conflictUi: refreshConflictUi.mock.calls.length,
+                };
+
+                refreshCommitPanels.mockClear();
+                refreshConflictUi.mockClear();
+                await editorOptions.onConflictStateChanged();
+                const editorResult = {
+                    commitPanels: refreshCommitPanels.mock.calls.length,
+                    conflictUi: refreshConflictUi.mock.calls.length,
+                };
+                expect
+                    .soft(sessionResult.commitPanels, "session callback refreshes commit panels")
+                    .toBeGreaterThan(0);
+                expect
+                    .soft(sessionResult.conflictUi, "session callback requests conflict UI")
+                    .toBe(expectedConflictRefreshes);
+                expect
+                    .soft(editorResult.commitPanels, "editor callback refreshes commit panels")
+                    .toBeGreaterThan(0);
+                expect
+                    .soft(editorResult.conflictUi, "editor callback requests conflict UI")
+                    .toBe(expectedConflictRefreshes);
+            } finally {
+                session?.dispose();
+                refreshConflictUi.mockRestore();
+                refreshCommitPanels.mockRestore();
+                openEditor.mockRestore();
+            }
+        },
+    );
 
     it("switches the active repository from the selector", async () => {
         const { SELECTED_REPOSITORY_KEY } = await import("../../../src/activation/common");

@@ -98,5 +98,6 @@
     "command.showFileDiff": "Pokaż różnice",
     "command.showCurrentRevision": "Pokaż bieżącą rewizję",
     "command.annotateWithGitBlame": "Dodaj adnotacje za pomocą Git Blame",
-    "command.commitFile": "Utwórz commit pliku..."
+    "command.commitFile": "Utwórz commit pliku...",
+    "command.merge": "Łączyć..."
 }

@@ -498,6 +498,19 @@ describe("extension manifest", () => {
         expect([...providerEnum].sort()).toEqual(["bitbucket-server", "gitlab"]);
     });
 
+    it("offers Merge from Explorer, editor tab, and editor file menus", () => {
+        const manifest = JSON.parse(
+            readFileSync(path.join(process.cwd(), "package.json"), "utf8"),
+        ) as ExtensionManifest;
+        for (const menu of ["intelligit.fileContext", "intelligit.editorContext"]) {
+            expect(manifest.contributes?.menus?.[menu]).toContainEqual({
+                command: "intelligit.fileMerge",
+                when: "resourceScheme == file",
+                group: "4_branch@1",
+            });
+        }
+    });
+
     it("offers Add to VCS from Explorer, editor tab, and editor file menus", () => {
         const manifest = JSON.parse(
             readFileSync(path.join(process.cwd(), "package.json"), "utf8"),

@@ -25,6 +25,7 @@
         "intelligit.fileCommit",
         "intelligit.fileDelete",
         "intelligit.fileFetch",
+        "intelligit.fileMerge",
         "intelligit.filePull",
         "intelligit.filePush",
         "intelligit.fileJumpToSource",

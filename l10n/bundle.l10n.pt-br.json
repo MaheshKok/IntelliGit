@@ -682,5 +682,11 @@
     "Add to VCS is only available for local files.": "Só é possível adicionar arquivos locais ao controle de versão.",
     "Add to VCS failed: {message}": "Falha ao adicionar ao controle de versão: {message}",
     "Added {path} to VCS.": "{path} foi adicionado ao controle de versão.",
-    "Added to VCS, but refresh failed: {message}": "Adicionado ao controle de versão, mas houve falha ao atualizar: {message}"
+    "Added to VCS, but refresh failed: {message}": "Adicionado ao controle de versão, mas houve falha ao atualizar: {message}",
+    "Merge is only available for local files.": "A fusão está disponível apenas para arquivos locais.",
+    "Select a branch to merge into the current branch": "Selecione uma branch para mesclar na branch atual",
+    "No other branches are available to merge.": "Não há outras branches disponíveis para mesclar.",
+    "The current branch or HEAD changed. Start Merge again.": "A branch atual ou HEAD mudou. Inicie a fusão novamente.",
+    "Merge succeeded, but refresh failed: {message}": "A fusão foi concluída, mas houve falha ao atualizar: {message}",
+    "Unable to determine the current branch and HEAD.": "Não foi possível determinar a branch atual e HEAD."
 }

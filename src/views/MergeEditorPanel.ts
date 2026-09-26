@@ -27,8 +27,8 @@ import { buildWebviewShellHtml } from "./webviewHtml";
 /**
  * Inputs required to open the native merge editor for one repository-relative file.
  *
- * `getRepoRoot` is a getter because the active repository can change while a panel
- * stays open; filesystem writes must target the root that owned the panel's Git data.
+ * `getRepoRoot` supplies the canonical root at open time. The panel captures that root and
+ * derives fixed Git operations so later active-repository changes cannot retarget writes.
  */
 export interface MergeEditorPanelOptions {
     extensionUri: vscode.Uri;
@@ -36,6 +36,7 @@ export interface MergeEditorPanelOptions {
     getRepoRoot: () => string;
     filePath: string;
     onConflictStateChanged: () => Promise<void>;
+    onOpenConflictSession?: () => Promise<void>;
 }
 
 /** Maximum merged-file payload accepted from the webview, guarding runaway messages. */
@@ -63,9 +64,11 @@ export class MergeEditorPanel {
         panel: vscode.WebviewPanel,
         private readonly extensionUri: vscode.Uri,
         private readonly gitOps: GitOps,
-        private readonly getRepoRoot: () => string,
+        private readonly repoRoot: string,
+        private readonly panelKey: string,
         private readonly safePath: string,
         private onConflictStateChanged: () => Promise<void>,
+        private onOpenConflictSession?: () => Promise<void>,
     ) {
         this.panel = panel;
         panel.webview.html = this.getHtml(panel.webview);
@@ -92,8 +95,8 @@ export class MergeEditorPanel {
 
         panel.onDidDispose(() => {
             this.disposed = true;
-            if (MergeEditorPanel.panels.get(this.safePath) === this) {
-                MergeEditorPanel.panels.delete(this.safePath);
+            if (MergeEditorPanel.panels.get(this.panelKey) === this) {
+                MergeEditorPanel.panels.delete(this.panelKey);
             }
         });
     }
@@ -107,9 +110,12 @@ export class MergeEditorPanel {
     static async open(options: MergeEditorPanelOptions): Promise<void> {
         const safePath = assertRepoRelativePath(options.filePath);
 
-        const existing = MergeEditorPanel.panels.get(safePath);
+        const repoRoot = path.resolve(options.getRepoRoot());
+        const panelKey = JSON.stringify([repoRoot, safePath]);
+        const existing = MergeEditorPanel.panels.get(panelKey);
         if (existing && !existing.disposed) {
             existing.onConflictStateChanged = options.onConflictStateChanged;
+            existing.onOpenConflictSession = options.onOpenConflictSession;
             existing.panel.reveal(vscode.ViewColumn.Active);
             await existing.postConflictData();
             return;
@@ -130,12 +136,14 @@ export class MergeEditorPanel {
         const instance = new MergeEditorPanel(
             panel,
             options.extensionUri,
-            options.gitOps,
-            options.getRepoRoot,
+            options.gitOps.deriveFor(repoRoot),
+            repoRoot,
+            panelKey,
             safePath,
             options.onConflictStateChanged,
+            options.onOpenConflictSession,
         );
-        MergeEditorPanel.panels.set(safePath, instance);
+        MergeEditorPanel.panels.set(panelKey, instance);
     }
 
     /** Reports whether any native merge editor panel is currently open. */
@@ -186,7 +194,11 @@ export class MergeEditorPanel {
                 return;
 
             case "openConflictSession":
-                await vscode.commands.executeCommand("intelligit.openConflictSession");
+                if (this.onOpenConflictSession) {
+                    await this.onOpenConflictSession();
+                } else {
+                    await vscode.commands.executeCommand("intelligit.openConflictSession");
+                }
                 return;
 
             case "abortMerge":
@@ -205,11 +217,11 @@ export class MergeEditorPanel {
     /**
      * Writes webview-produced merged content to the working tree and stages the file.
      *
-     * The write targets the repository root captured at apply time so a repository
+     * The write targets the repository root captured at open time so a repository
      * switch mid-session cannot redirect the file outside the original work tree.
      */
     private async applyResolvedContent(content: string): Promise<void> {
-        const absolutePath = path.join(this.getRepoRoot(), this.safePath);
+        const absolutePath = path.join(this.repoRoot, this.safePath);
         await runWithNotificationProgress(
             vscode.l10n.t("Applying merge result for {path}...", { path: this.safePath }),
             async () => {
