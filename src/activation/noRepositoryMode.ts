@@ -206,6 +206,7 @@ export function activateNoRepositoryMode(
         "intelligit.filePull",
         "intelligit.filePush",
         "intelligit.fileMerge",
+        "intelligit.fileRebase",
         "intelligit.annotateWithGitBlame",
         ...SHELF_COMMAND_IDS,
     ]) {

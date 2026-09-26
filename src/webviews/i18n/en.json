@@ -331,6 +331,7 @@
     "mergeSession.subtitle.pre": "Merging branch ",
     "mergeSession.subtitle.mid": " into branch ",
     "mergeSession.subtitle.post": "",
+    "mergeSession.rebasing": "Rebasing {current} onto {selected}",
     "mergeSession.defaultSource": "incoming branch",
     "mergeSession.defaultTarget": "current branch",
     "mergeSession.unresolvedFiles": {

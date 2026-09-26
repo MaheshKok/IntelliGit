@@ -28,6 +28,7 @@
         "intelligit.fileMerge",
         "intelligit.filePull",
         "intelligit.filePush",
+        "intelligit.fileRebase",
         "intelligit.fileJumpToSource",
         "intelligit.fileRefresh",
         "intelligit.fileRollback",

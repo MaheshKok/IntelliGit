@@ -688,5 +688,18 @@
     "No other branches are available to merge.": "Нет других веток для слияния.",
     "The current branch or HEAD changed. Start Merge again.": "Текущая ветка или HEAD изменились. Запустите слияние снова.",
     "Merge succeeded, but refresh failed: {message}": "Слияние выполнено, но обновление не удалось: {message}",
-    "Unable to determine the current branch and HEAD.": "Не удалось определить текущую ветку и HEAD."
+    "Unable to determine the current branch and HEAD.": "Не удалось определить текущую ветку и HEAD.",
+    "All rebase conflicts are resolved.": "Все конфликты перебазирования разрешены.",
+    "Rebase is only available for local files.": "Перебазирование доступно только для локальных файлов.",
+    "No other branches are available to rebase onto.": "Нет других веток, на которые можно перебазировать текущую.",
+    "Select a branch to rebase the current branch onto": "Выберите ветку, на которую нужно перебазировать текущую",
+    "The current branch or HEAD changed. Start Rebase again.": "Текущая ветка или HEAD изменились. Запустите перебазирование снова.",
+    "Rebase current branch {currentBranch} onto {branch}?": "Перебазировать текущую ветку {currentBranch} на {branch}?",
+    "Rebase produced {count} unresolved conflict file(s). Opened Conflicts session.": "При перебазировании возникло {count} файлов с неразрешёнными конфликтами. Открыта сессия «Конфликты».",
+    "Rebase succeeded, but refresh failed: {message}": "Перебазирование завершилось, но обновить интерфейс не удалось: {message}",
+    "Abort Rebase": "Прервать rebase",
+    "Abort the current rebase? Local conflict resolutions will be discarded.": "Прервать текущее перебазирование? Локальные разрешения конфликтов будут потеряны.",
+    "Aborting rebase...": "Прерывание перебазирования...",
+    "Rebase aborted.": "Перебазирование прервано.",
+    "Abort rebase failed: {message}": "Не удалось прервать перебазирование: {message}"
 }

@@ -688,5 +688,18 @@
     "No other branches are available to merge.": "No hay otras ramas disponibles para unir.",
     "The current branch or HEAD changed. Start Merge again.": "La rama actual o HEAD ha cambiado. Inicia Unir de nuevo.",
     "Merge succeeded, but refresh failed: {message}": "La unión se completó, pero la actualización falló: {message}",
-    "Unable to determine the current branch and HEAD.": "No se pudieron determinar la rama actual y HEAD."
+    "Unable to determine the current branch and HEAD.": "No se pudieron determinar la rama actual y HEAD.",
+    "All rebase conflicts are resolved.": "Todos los conflictos del rebase están resueltos.",
+    "Rebase is only available for local files.": "Rebase solo está disponible para archivos locales.",
+    "No other branches are available to rebase onto.": "No hay otras ramas disponibles sobre las que rebasar.",
+    "Select a branch to rebase the current branch onto": "Selecciona una rama sobre la que rebasar la rama actual",
+    "The current branch or HEAD changed. Start Rebase again.": "La rama actual o HEAD ha cambiado. Vuelve a iniciar Rebase.",
+    "Rebase current branch {currentBranch} onto {branch}?": "¿Rebasar la rama actual {currentBranch} sobre {branch}?",
+    "Rebase produced {count} unresolved conflict file(s). Opened Conflicts session.": "El rebase generó {count} archivos con conflictos sin resolver. Se abrió la sesión de Conflictos.",
+    "Rebase succeeded, but refresh failed: {message}": "El rebase se completó, pero la actualización falló: {message}",
+    "Abort Rebase": "Cancelar rebase",
+    "Abort the current rebase? Local conflict resolutions will be discarded.": "¿Cancelar el rebase actual? Se descartarán las resoluciones de conflictos locales.",
+    "Aborting rebase...": "Cancelando rebase...",
+    "Rebase aborted.": "Rebase cancelado.",
+    "Abort rebase failed: {message}": "Error al cancelar el rebase: {message}"
 }

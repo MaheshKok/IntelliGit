@@ -219,6 +219,12 @@ const COMMAND_ENTRIES = [
     },
     {
         kind: "command",
+        id: "intelligit.fileRebase",
+        mutating: true,
+        coveredBySpec: "tests/e2e/fileContextRebase.spec.ts",
+    },
+    {
+        kind: "command",
         id: "intelligit.fileAddToVcs",
         mutating: true,
         coveredBySpec: "tests/e2e/fileContextAddToVcs.spec.ts",
