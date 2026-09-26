@@ -3,6 +3,8 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 import { GitExecutor } from "../git/executor";
 import { GitOps } from "../git/operations";
+import { checkoutBranch } from "../services/gitHelpers";
+import { WorktreeService } from "../services/worktreeService";
 import {
     compareEditorFileWithBranch,
     compareEditorFileWithRevision,
@@ -149,6 +151,111 @@ export async function rebaseFileFromContext(
     } catch (error) {
         await vscode.window.showErrorMessage(
             vscode.l10n.t("Rebase failed: {message}", { message: getErrorMessage(error) }),
+        );
+    }
+}
+
+/**
+ * Chooses and checks out a branch in the clicked file's repository. The scoped Git facade,
+ * executor, and worktree inventory remain bound to that root across both native pickers;
+ * cancellation is inert and Git checkout failures are reported without changing dirty files.
+ * Worktree discovery failure leaves branch checkout available without worktree annotations.
+ */
+export async function branchesFileFromContext(
+    ctx: unknown,
+    gitOps: GitOps,
+    executor: GitExecutor,
+    refresh: (repoRoot: string) => Promise<void>,
+): Promise<void> {
+    try {
+        const resolved = await resolveFileCommandContext(ctx, gitOps);
+        if (!resolved) {
+            await vscode.window.showErrorMessage(
+                vscode.l10n.t("Branches is only available for local files."),
+            );
+            return;
+        }
+        const { gitOps: scopedGitOps, repoRoot } = resolved;
+        if (await rejectWhenOperationInProgress(scopedGitOps)) return;
+        const scopedExecutor = executor.deriveFor(repoRoot);
+        const worktreeService = new WorktreeService(scopedExecutor, () => repoRoot);
+        try {
+            let worktreesAvailable = true;
+            try {
+                await worktreeService.refresh();
+            } catch {
+                worktreesAvailable = false;
+            }
+            const rawBranches = await scopedGitOps.getBranches();
+            const branches = worktreesAvailable
+                ? worktreeService.decorateBranches(rawBranches)
+                : rawBranches;
+            if (branches.length === 0) {
+                await vscode.window.showInformationMessage(
+                    vscode.l10n.t("No branches are available."),
+                );
+                return;
+            }
+            const selected = await vscode.window.showQuickPick(
+                branches.map((branch) => ({
+                    label: branch.name,
+                    description: branch.isCurrent
+                        ? vscode.l10n.t("{branch} is already the current branch.", {
+                              branch: branch.name,
+                          })
+                        : undefined,
+                    branch,
+                })),
+                {
+                    title: repoRoot,
+                    placeHolder: vscode.l10n.t("Select a branch to check out"),
+                },
+            );
+            if (!selected) return;
+            if (await rejectWhenOperationInProgress(scopedGitOps)) return;
+            const result = await checkoutBranch(selected.branch, branches, scopedExecutor);
+            if (result.kind === "openWorktree") {
+                const target = await vscode.window.showQuickPick(
+                    [
+                        { label: vscode.l10n.t("Open in Current Window"), forceNewWindow: false },
+                        { label: vscode.l10n.t("Open in New Window"), forceNewWindow: true },
+                    ],
+                    {
+                        placeHolder: vscode.l10n.t("Open worktree for {branch}", {
+                            branch: result.branch,
+                        }),
+                    },
+                );
+                if (target) {
+                    await vscode.commands.executeCommand(
+                        "vscode.openFolder",
+                        vscode.Uri.file(result.path),
+                        {
+                            forceNewWindow: target.forceNewWindow,
+                            forceReuseWindow: !target.forceNewWindow,
+                        },
+                    );
+                }
+                return;
+            }
+            showTimedInformationMessage(
+                vscode.l10n.t("Checked out {branch}", { branch: result.branch }),
+            );
+            try {
+                await refresh(repoRoot);
+            } catch (error) {
+                await vscode.window.showErrorMessage(
+                    vscode.l10n.t("Checkout succeeded, but refresh failed: {message}", {
+                        message: getErrorMessage(error),
+                    }),
+                );
+            }
+        } finally {
+            worktreeService.dispose();
+        }
+    } catch (error) {
+        await vscode.window.showErrorMessage(
+            vscode.l10n.t("Checkout failed: {message}", { message: getErrorMessage(error) }),
         );
     }
 }

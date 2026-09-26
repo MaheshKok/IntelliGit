@@ -111,6 +111,17 @@ function manifestKey(entry: (typeof COVERAGE_MANIFEST)[number]): string {
 }
 
 describe("E2E coverage manifest", () => {
+    it("runs the native Branches scenario in the standard E2E suite", () => {
+        const packageJson = JSON.parse(
+            readFileSync(path.join(REPO_ROOT, "package.json"), "utf8"),
+        ) as PackageJson;
+
+        expect(
+            packageJson.scripts?.["test:e2e"]?.split(/\s+/),
+            "native Branches must run in standard E2E",
+        ).toContain("tests/e2e/fileContextBranches.spec.ts");
+    });
+
     it("runs the Git Blame Explorer scenario in the standard E2E suite", () => {
         const packageJson = JSON.parse(
             readFileSync(path.join(REPO_ROOT, "package.json"), "utf8"),
@@ -247,7 +258,7 @@ describe("E2E coverage manifest", () => {
         );
 
         expect(aliasIds).toHaveLength(9);
-        expect(collapsedBaseIds).toHaveLength(76);
+        expect(collapsedBaseIds).toHaveLength(77);
         expect(collapsedManifestBaseIds).toEqual(collapsedBaseIds);
     });
 

@@ -701,5 +701,9 @@
     "Abort the current rebase? Local conflict resolutions will be discarded.": "Abortar o rebase atual? As resoluções locais de conflitos serão descartadas.",
     "Aborting rebase...": "A abortar rebase...",
     "Rebase aborted.": "Rebase abortado.",
-    "Abort rebase failed: {message}": "Falha ao abortar o rebase: {message}"
+    "Abort rebase failed: {message}": "Falha ao abortar o rebase: {message}",
+    "Branches is only available for local files.": "Ramos só está disponível para ficheiros locais.",
+    "No branches are available.": "Não existem ramos disponíveis.",
+    "Select a branch to check out": "Selecione um ramo para mudar",
+    "Checkout succeeded, but refresh failed: {message}": "Mudança de ramo concluída, mas a atualização falhou: {message}"
 }

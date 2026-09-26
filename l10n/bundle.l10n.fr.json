@@ -701,5 +701,9 @@
     "Abort the current rebase? Local conflict resolutions will be discarded.": "Annuler le rebasage en cours ? Les résolutions de conflits locales seront ignorées.",
     "Aborting rebase...": "Annulation du rebasage...",
     "Rebase aborted.": "Rebasage annulé.",
-    "Abort rebase failed: {message}": "Échec de l’annulation du rebasage : {message}"
+    "Abort rebase failed: {message}": "Échec de l’annulation du rebasage : {message}",
+    "Branches is only available for local files.": "Branches n’est disponible que pour les fichiers locaux.",
+    "No branches are available.": "Aucune branche n’est disponible.",
+    "Select a branch to check out": "Sélectionnez une branche à extraire",
+    "Checkout succeeded, but refresh failed: {message}": "L’extraction a réussi, mais l’actualisation a échoué : {message}"
 }

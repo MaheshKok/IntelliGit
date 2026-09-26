@@ -225,6 +225,12 @@ const COMMAND_ENTRIES = [
     },
     {
         kind: "command",
+        id: "intelligit.fileBranches",
+        mutating: true,
+        coveredBySpec: "tests/e2e/fileContextBranches.spec.ts",
+    },
+    {
+        kind: "command",
         id: "intelligit.fileAddToVcs",
         mutating: true,
         coveredBySpec: "tests/e2e/fileContextAddToVcs.spec.ts",

@@ -100,5 +100,6 @@
     "command.annotateWithGitBlame": "使用 Git Blame 新增註釋",
     "command.commitFile": "提交檔案...",
     "command.merge": "合併...",
-    "command.rebase": "變基..."
+    "command.rebase": "變基...",
+    "command.branches": "分支…"
 }

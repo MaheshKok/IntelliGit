@@ -100,5 +100,6 @@
     "command.annotateWithGitBlame": "Mit Git Blame annotieren",
     "command.commitFile": "Datei committen...",
     "command.merge": "Verschmelzen...",
-    "command.rebase": "Rebase..."
+    "command.rebase": "Rebase...",
+    "command.branches": "Branches…"
 }

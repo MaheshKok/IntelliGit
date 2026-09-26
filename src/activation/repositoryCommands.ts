@@ -10,6 +10,7 @@ import { showFileHistory } from "../commands/fileHistoryCommand";
 import {
     addFileToVcsFromContext,
     annotateWithGitBlame,
+    branchesFileFromContext,
     commitFileFromContext,
     compareFileWithBranchOrTag,
     compareFileWithRevision,
@@ -753,6 +754,14 @@ function registerCommitFileCommands(deps: RepositoryCommandsDeps): void {
                     }
                 },
                 openConflictSession: deps.openConflictSessionForRepository,
+            });
+        }),
+        vscode.commands.registerCommand("intelligit.fileBranches", async (ctx: unknown) => {
+            await branchesFileFromContext(ctx, gitOps, executor, async (repoRoot) => {
+                await refreshService().refreshCommitPanels();
+                if (areSameRepositoryRoot(repoRoot, getRepoRoot())) {
+                    await refreshActiveRepository();
+                }
             });
         }),
         vscode.commands.registerCommand("intelligit.filePull", async (ctx: unknown) => {

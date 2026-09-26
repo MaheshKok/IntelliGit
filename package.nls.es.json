@@ -100,5 +100,6 @@
     "command.annotateWithGitBlame": "Anotar con Git Blame",
     "command.commitFile": "Crear commit del archivo...",
     "command.merge": "Unir...",
-    "command.rebase": "Rebase..."
+    "command.rebase": "Rebase...",
+    "command.branches": "Ramas…"
 }

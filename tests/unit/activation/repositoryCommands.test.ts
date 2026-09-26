@@ -19,6 +19,7 @@ const mocks = vi.hoisted(() => {
         commands,
         FakeUri,
         annotateWithGitBlame: vi.fn(async () => undefined),
+        branchesFileFromContext: vi.fn(),
         commitFileFromContext: vi.fn(),
         commitSelectedFromPanel: vi.fn(async (_deps: unknown, _options: unknown) => undefined),
         compareFileWithBranchOrTag: vi.fn(async () => undefined),
@@ -73,6 +74,7 @@ vi.mock("vscode", () => ({
 vi.mock("../../../src/commands/fileContextCommands", () => ({
     addFileToVcsFromContext: mocks.addFileToVcsFromContext,
     annotateWithGitBlame: mocks.annotateWithGitBlame,
+    branchesFileFromContext: mocks.branchesFileFromContext,
     commitFileFromContext: mocks.commitFileFromContext,
     compareFileWithBranchOrTag: mocks.compareFileWithBranchOrTag,
     compareFileWithRevision: mocks.compareFileWithRevision,
@@ -175,6 +177,35 @@ const makeDeps = (gitOps: GitOps) => {
 };
 
 describe("registerRepositoryCommands", () => {
+    it("passes the clicked file, Git facade, and shared executor to Branches", async () => {
+        const gitOps = makeGitOps();
+        const deps = makeDeps(gitOps);
+        let activeRoot = "/repo-a";
+        deps.getRepoRoot = () => activeRoot;
+        const commitRefresh = vi.fn(async () => undefined);
+        deps.refreshService = () => ({ refreshCommitPanels: commitRefresh }) as never;
+        mocks.branchesFileFromContext.mockImplementationOnce(
+            async (_ctx, _ops, _executor, refresh) => {
+                await refresh("/repo-b");
+                expect(deps.refreshActiveRepository).not.toHaveBeenCalled();
+                activeRoot = "/repo-b/";
+                await refresh("/repo-b");
+            },
+        );
+        registerRepositoryCommands(deps);
+        const uri = mocks.FakeUri.file("/repo-b/file.txt");
+        const handler = mocks.commands.get("intelligit.fileBranches");
+        expect(handler, "native Branches has a registered handler").toBeTypeOf("function");
+        await handler!(uri);
+        expect(mocks.branchesFileFromContext).toHaveBeenCalledWith(
+            uri,
+            gitOps,
+            deps.executor,
+            expect.any(Function),
+        );
+        expect(commitRefresh).toHaveBeenCalledTimes(2);
+        expect(deps.refreshActiveRepository).toHaveBeenCalledOnce();
+    });
     it("routes native Rebase callbacks to B and treats equivalent active roots as B", async () => {
         const gitOps = makeGitOps();
         const deps = makeDeps(gitOps);

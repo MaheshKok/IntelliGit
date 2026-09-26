@@ -701,5 +701,9 @@
     "Abort the current rebase? Local conflict resolutions will be discarded.": "中止当前变基？本地冲突解决结果将被丢弃。",
     "Aborting rebase...": "正在中止变基...",
     "Rebase aborted.": "变基已中止。",
-    "Abort rebase failed: {message}": "中止变基失败：{message}"
+    "Abort rebase failed: {message}": "中止变基失败：{message}",
+    "Branches is only available for local files.": "分支仅适用于本地文件。",
+    "No branches are available.": "没有可用的分支。",
+    "Select a branch to check out": "选择要检出的分支",
+    "Checkout succeeded, but refresh failed: {message}": "检出成功，但刷新失败：{message}"
 }

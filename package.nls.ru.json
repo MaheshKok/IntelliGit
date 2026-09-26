@@ -100,5 +100,6 @@
     "command.annotateWithGitBlame": "Добавить аннотации Git Blame",
     "command.commitFile": "Создать коммит файла...",
     "command.merge": "Слияние...",
-    "command.rebase": "Перебазировать..."
+    "command.rebase": "Перебазировать...",
+    "command.branches": "Ветки…"
 }

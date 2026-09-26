@@ -701,5 +701,9 @@
     "Abort the current rebase? Local conflict resolutions will be discarded.": "現在のリベースを中止しますか？ローカルの競合解決は破棄されます。",
     "Aborting rebase...": "リベースを中止しています...",
     "Rebase aborted.": "リベースを中止しました。",
-    "Abort rebase failed: {message}": "リベースの中止に失敗しました: {message}"
+    "Abort rebase failed: {message}": "リベースの中止に失敗しました: {message}",
+    "Branches is only available for local files.": "ブランチはローカルファイルでのみ利用できます。",
+    "No branches are available.": "利用可能なブランチがありません。",
+    "Select a branch to check out": "チェックアウトするブランチを選択",
+    "Checkout succeeded, but refresh failed: {message}": "チェックアウトは成功しましたが、更新に失敗しました: {message}"
 }

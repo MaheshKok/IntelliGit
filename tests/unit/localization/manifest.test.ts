@@ -530,6 +530,30 @@ describe("extension manifest", () => {
         }
     });
 
+    it("offers localized Branches after Rebase in all native Git file menus", () => {
+        const manifest = JSON.parse(
+            readFileSync(path.join(process.cwd(), "package.json"), "utf8"),
+        ) as ExtensionManifest;
+        expect(manifest.contributes?.commands).toContainEqual(
+            expect.objectContaining({
+                command: "intelligit.fileBranches",
+                title: "%command.branches%",
+            }),
+        );
+        for (const menu of ["intelligit.fileContext", "intelligit.editorContext"]) {
+            expect(manifest.contributes?.menus?.[menu]).toContainEqual({
+                command: "intelligit.fileBranches",
+                when: "resourceScheme == file",
+                group: "4_branch@3",
+            });
+        }
+        expect(
+            manifest.contributes?.commands?.filter(
+                (entry) => entry.command === "intelligit.fileBranches",
+            ),
+        ).toHaveLength(1);
+    });
+
     it("offers Add to VCS from Explorer, editor tab, and editor file menus", () => {
         const manifest = JSON.parse(
             readFileSync(path.join(process.cwd(), "package.json"), "utf8"),
