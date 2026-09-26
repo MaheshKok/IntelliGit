@@ -106,6 +106,7 @@ vi.mock("../../../src/services/diffService", () => ({
 }));
 
 import {
+    addFileToVcsFromContext,
     annotateWithGitBlame,
     commitFileFromContext,
     compareFileWithBranchOrTag,
@@ -152,6 +153,88 @@ beforeEach(() => {
         stderr: Buffer.alloc(0),
         exitCode: 0,
         truncated: false,
+    });
+});
+
+describe("addFileToVcsFromContext", () => {
+    it("uses the clicked repository instead of the active editor", async () => {
+        const gitOps = makeGitOps();
+        const runAdd = vi.fn(async () => undefined);
+
+        await addFileToVcsFromContext(mocks.FakeUri.file("/repo-b/clicked.ts"), gitOps, runAdd);
+
+        expect(gitOps.deriveFor).toHaveBeenCalledWith("/repo-b");
+        expect(runAdd).toHaveBeenCalledWith(
+            expect.objectContaining({ scope: "selected" }),
+            "/repo-b",
+            "clicked.ts",
+        );
+        expect(mocks.showInformationMessage).toHaveBeenCalledWith(
+            "IntelliGit: Added clicked.ts to VCS.",
+        );
+    });
+
+    it("uses the active editor only when context is absent", async () => {
+        const runAdd = vi.fn(async () => undefined);
+        mocks.activeUri = mocks.FakeUri.file("/repo-b/active.ts");
+
+        await addFileToVcsFromContext(undefined, makeGitOps(), runAdd);
+
+        expect(runAdd).toHaveBeenCalledWith(expect.anything(), "/repo-b", "active.ts");
+    });
+
+    it.each([null, {}, new mocks.FakeUri("/repo-b/file.ts", "untitled")])(
+        "rejects explicit invalid context %j without using the active editor",
+        async (ctx) => {
+            const gitOps = makeGitOps();
+            const runAdd = vi.fn(async () => undefined);
+
+            await addFileToVcsFromContext(ctx, gitOps, runAdd);
+
+            expect(gitOps.deriveFor).not.toHaveBeenCalled();
+            expect(runAdd).not.toHaveBeenCalled();
+            expect(mocks.showErrorMessage).toHaveBeenCalledWith(
+                "Add to VCS is only available for local files.",
+            );
+        },
+    );
+
+    it.each([
+        { name: "directory", result: { isFile: () => false, isSymbolicLink: () => false } },
+        { name: "missing file", result: Object.assign(new Error("missing"), { code: "ENOENT" }) },
+    ])("rejects a $name before Git receives a pathspec", async ({ result }) => {
+        const runAdd = vi.fn(async () => undefined);
+        if (result instanceof Error) mocks.lstat.mockRejectedValueOnce(result);
+        else mocks.lstat.mockResolvedValueOnce(result);
+
+        await addFileToVcsFromContext(mocks.FakeUri.file("/repo-b/target"), makeGitOps(), runAdd);
+
+        expect(runAdd).not.toHaveBeenCalled();
+        expect(mocks.showErrorMessage).toHaveBeenCalledWith(
+            "Add to VCS is only available for local files.",
+        );
+    });
+
+    it("accepts a symlink node as one path", async () => {
+        const runAdd = vi.fn(async () => undefined);
+        mocks.lstat.mockResolvedValueOnce({ isFile: () => false, isSymbolicLink: () => true });
+
+        await addFileToVcsFromContext(mocks.FakeUri.file("/repo-b/link"), makeGitOps(), runAdd);
+
+        expect(runAdd).toHaveBeenCalledWith(expect.anything(), "/repo-b", "link");
+    });
+
+    it("reports a Git failure without reporting success", async () => {
+        await addFileToVcsFromContext(
+            mocks.FakeUri.file("/repo-b/file.ts"),
+            makeGitOps(),
+            async () => {
+                throw new Error("Git failed");
+            },
+        );
+
+        expect(mocks.showInformationMessage).not.toHaveBeenCalled();
+        expect(mocks.showErrorMessage).toHaveBeenCalledWith("Add to VCS failed: Git failed");
     });
 });
 

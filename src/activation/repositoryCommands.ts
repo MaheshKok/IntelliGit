@@ -8,6 +8,7 @@ import {
 import { GitExecutor } from "../git/executor";
 import { showFileHistory } from "../commands/fileHistoryCommand";
 import {
+    addFileToVcsFromContext,
     annotateWithGitBlame,
     commitFileFromContext,
     compareFileWithBranchOrTag,
@@ -671,6 +672,35 @@ function registerCommitFileCommands(deps: RepositoryCommandsDeps): void {
             );
         }),
         vscode.commands.registerCommand("intelligit.fileAddToVcs", async (ctx: unknown) => {
+            if (ctx === undefined || ctx instanceof vscode.Uri) {
+                await addFileToVcsFromContext(
+                    ctx,
+                    gitOps,
+                    async (scopedGitOps, repoRoot, filePath) => {
+                        await trackUnversionedFilesFromPanel(
+                            {
+                                gitOps: scopedGitOps,
+                                getWorkspaceRoot: () => vscode.Uri.file(repoRoot),
+                                refreshData: async () => {
+                                    try {
+                                        await refreshService().refreshCommitPanels();
+                                    } catch (error) {
+                                        await vscode.window.showErrorMessage(
+                                            vscode.l10n.t(
+                                                "Added to VCS, but refresh failed: {message}",
+                                                { message: getErrorMessage(error) },
+                                            ),
+                                        );
+                                    }
+                                },
+                                fireWorkingTreeChanged: () => undefined,
+                            },
+                            [filePath],
+                        );
+                    },
+                );
+                return;
+            }
             const input = resolveAddToVcsContext(ctx);
             if (!input || !isKnownRepositoryRoot(input.repositoryRoot)) return;
             const scopedGitOps = gitOps.deriveFor(input.repositoryRoot);

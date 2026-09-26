@@ -678,5 +678,9 @@
     "Commit is only available for local files.": "Создание коммита доступно только для локальных файлов.",
     "Commit failed: {message}": "Не удалось создать коммит: {message}",
     "Commit succeeded, but refresh failed: {message}": "Коммит создан, но обновить данные не удалось: {message}",
-    "A Git operation is in progress — continue or abort it first.": "Выполняется операция Git — сначала продолжите или прервите её."
+    "A Git operation is in progress — continue or abort it first.": "Выполняется операция Git — сначала продолжите или прервите её.",
+    "Add to VCS is only available for local files.": "Добавление в систему контроля версий доступно только для локальных файлов.",
+    "Add to VCS failed: {message}": "Не удалось добавить в систему контроля версий: {message}",
+    "Added {path} to VCS.": "{path} добавлен в систему контроля версий.",
+    "Added to VCS, but refresh failed: {message}": "Добавлено в систему контроля версий, но обновление не удалось: {message}"
 }

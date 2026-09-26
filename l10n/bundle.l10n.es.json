@@ -678,5 +678,9 @@
     "Commit is only available for local files.": "Solo se pueden crear commits de archivos locales.",
     "Commit failed: {message}": "No se pudo crear el commit: {message}",
     "Commit succeeded, but refresh failed: {message}": "El commit se creó, pero no se pudo actualizar la vista: {message}",
-    "A Git operation is in progress — continue or abort it first.": "Hay una operación de Git en curso: continúala o abórtala primero."
+    "A Git operation is in progress — continue or abort it first.": "Hay una operación de Git en curso: continúala o abórtala primero.",
+    "Add to VCS is only available for local files.": "Solo se pueden agregar archivos locales al control de código fuente.",
+    "Add to VCS failed: {message}": "No se pudo agregar al control de código fuente: {message}",
+    "Added {path} to VCS.": "Se agregó {path} al control de código fuente.",
+    "Added to VCS, but refresh failed: {message}": "Se agregó al control de código fuente, pero la actualización falló: {message}"
 }

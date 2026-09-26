@@ -10,7 +10,7 @@ import {
     showEditorFileDiff,
 } from "../services/diffService";
 import { getErrorMessage } from "../utils/errors";
-import { runWithNotificationProgress } from "../utils/notifications";
+import { runWithNotificationProgress, showTimedInformationMessage } from "../utils/notifications";
 import { rejectWhenOperationInProgress } from "./operationFence";
 
 interface ResolvedFileCommandContext {
@@ -229,6 +229,48 @@ async function isCommitFileTarget(resolved: ResolvedFileCommandContext): Promise
         const status = await resolved.gitOps.getStatus({ withStats: false });
         return status.some(
             (file) => file.path === resolved.repoRelativePath && file.status === "D",
+        );
+    }
+}
+
+/** Accepts only an existing file or symlink node for the non-recursive Add to VCS action. */
+async function isAddToVcsFileTarget(resolved: ResolvedFileCommandContext): Promise<boolean> {
+    try {
+        const file = await lstat(resolved.canonicalFilePath);
+        return file.isFile() || file.isSymbolicLink();
+    } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+        throw error;
+    }
+}
+
+/**
+ * Resolves one native file context and delegates its repository-relative path to Add to VCS.
+ *
+ * Only an absent context may use the active editor. Existing directory and missing-file targets
+ * are rejected before Git sees them. The callback reports refresh failures after successful Git
+ * tracking; this wrapper then reports the exact selected path as successfully added.
+ */
+export async function addFileToVcsFromContext(
+    ctx: unknown,
+    gitOps: GitOps,
+    runAdd: (scopedGitOps: GitOps, repoRoot: string, filePath: string) => Promise<void>,
+): Promise<void> {
+    try {
+        const resolved = await resolveFileCommandContext(ctx, gitOps);
+        if (!resolved || !(await isAddToVcsFileTarget(resolved))) {
+            await vscode.window.showErrorMessage(
+                vscode.l10n.t("Add to VCS is only available for local files."),
+            );
+            return;
+        }
+        await runAdd(resolved.gitOps, resolved.repoRoot, resolved.repoRelativePath);
+        showTimedInformationMessage(
+            vscode.l10n.t("Added {path} to VCS.", { path: resolved.repoRelativePath }),
+        );
+    } catch (error) {
+        await vscode.window.showErrorMessage(
+            vscode.l10n.t("Add to VCS failed: {message}", { message: getErrorMessage(error) }),
         );
     }
 }

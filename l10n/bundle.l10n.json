@@ -1,4 +1,8 @@
 {
+    "Add to VCS is only available for local files.": "Add to VCS is only available for local files.",
+    "Add to VCS failed: {message}": "Add to VCS failed: {message}",
+    "Added {path} to VCS.": "Added {path} to VCS.",
+    "Added to VCS, but refresh failed: {message}": "Added to VCS, but refresh failed: {message}",
     "A Git operation is in progress — continue or abort it first.": "A Git operation is in progress — continue or abort it first.",
     "Commit File: {path}": "Commit File: {path}",
     "Press Enter to commit only {path}. Escape to cancel.": "Press Enter to commit only {path}. Escape to cancel.",
