@@ -1096,13 +1096,26 @@ export class GitOps {
      * Creates or amends a commit, limiting panel-owned path requests while preserving whole-index Git states.
      *
      * Omitting `paths` keeps existing callers' bare-commit behavior intact. Passing an empty array for an
-     * amend request makes a message-only amend, and a whole-index operation always keeps Git's bare commit.
+     * amend request makes a message-only amend. Whole-index operations keep Git's bare commit unless
+     * `rejectActiveOperation` opts into a fresh marker check that throws before either commit route.
+     * This is a best-effort fence, not a transaction against external Git processes. Its diagnostic
+     * error is surfaced by the caller's localized failure message, like other Git errors.
      */
-    async commit(message: string, amend: boolean = false, paths?: string[]): Promise<string> {
+    async commit(
+        message: string,
+        amend: boolean = false,
+        paths?: string[],
+        options?: { rejectActiveOperation?: boolean },
+    ): Promise<string> {
         const args = ["commit", "-m", message];
         if (amend) args.push("--amend");
+        if (options?.rejectActiveOperation && (await this.hasWholeIndexOperationInProgress())) {
+            throw new Error("Cannot commit selected files while a Git operation is in progress.");
+        }
         if (paths === undefined) return this.executor.run(args);
-        if (await this.hasWholeIndexOperationInProgress()) return this.executor.run(args);
+        if (!options?.rejectActiveOperation && (await this.hasWholeIndexOperationInProgress())) {
+            return this.executor.run(args);
+        }
         if (paths.length > 0) {
             return this.executor.run(withLiteralPathspecs([...args, "--only", "--", ...paths]));
         }

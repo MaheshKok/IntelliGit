@@ -671,5 +671,12 @@
     "Pull is only available for local files.": "Le pull n’est disponible que pour les fichiers locaux.",
     "Pull succeeded, but refresh failed: {message}": "Pull réussi, mais l’actualisation a échoué : {message}",
     "Push is only available for local files.": "Le push n’est disponible que pour les fichiers locaux.",
-    "Could not refresh after Push: {message}": "Impossible d’actualiser après le push : {message}"
+    "Could not refresh after Push: {message}": "Impossible d’actualiser après le push : {message}",
+    "Commit File: {path}": "Créer un commit du fichier : {path}",
+    "Press Enter to commit only {path}. Escape to cancel.": "Appuyez sur Entrée pour créer un commit de {path} uniquement. Échap pour annuler.",
+    "Save {path} before committing.": "Enregistrez {path} avant de créer le commit.",
+    "Commit is only available for local files.": "La création de commits n’est disponible que pour les fichiers locaux.",
+    "Commit failed: {message}": "Échec du commit : {message}",
+    "Commit succeeded, but refresh failed: {message}": "Le commit a réussi, mais l’actualisation a échoué : {message}",
+    "A Git operation is in progress — continue or abort it first.": "Une opération Git est en cours — poursuivez-la ou abandonnez-la d’abord."
 }

@@ -97,5 +97,6 @@
     "command.addToVcs": "버전 제어에 추가",
     "command.showFileDiff": "차이점 표시",
     "command.showCurrentRevision": "현재 리비전 보기",
-    "command.annotateWithGitBlame": "Git Blame으로 주석 달기"
+    "command.annotateWithGitBlame": "Git Blame으로 주석 달기",
+    "command.commitFile": "파일 커밋..."
 }

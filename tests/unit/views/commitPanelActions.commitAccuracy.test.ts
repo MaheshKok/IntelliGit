@@ -110,6 +110,93 @@ async function changedPaths(repo: string): Promise<string> {
 }
 
 describe("commitSelectedFromPanel commit accuracy", () => {
+    it.each(["normal", "case-only"])(
+        "refuses a %s selected commit when an operation starts during staging",
+        async (kind) => {
+            const repo = await createRepository();
+            const selectedPath = kind === "case-only" ? "renamed/FROM.txt" : "tracked.txt";
+            if (kind === "case-only") {
+                await git(repo, ["mv", "renamed/from.txt", selectedPath]);
+            } else {
+                await write(repo, selectedPath, "selected\n");
+            }
+            await write(repo, "nested/untouched.txt", "STAGED\n");
+            await git(repo, ["add", "nested/untouched.txt"]);
+            await write(repo, "nested/untouched.txt", "WORKTREE\n");
+            const beforeHead = await git(repo, ["rev-parse", "HEAD"]);
+            const gitOps = new GitOps(new GitExecutor(repo));
+            const stageFiles = gitOps.stageFiles.bind(gitOps);
+            vi.spyOn(gitOps, "stageFiles").mockImplementation(async (paths) => {
+                await stageFiles(paths);
+                await write(repo, ".git/CHERRY_PICK_HEAD", beforeHead);
+            });
+
+            await expect(
+                commitSelectedFromPanel(actionDeps(gitOps), {
+                    message: "must not complete an operation",
+                    amend: false,
+                    push: false,
+                    paths: [selectedPath],
+                    rejectActiveOperation: true,
+                }),
+            ).rejects.toThrow("operation is in progress");
+
+            expect(await git(repo, ["rev-parse", "HEAD"])).toBe(beforeHead);
+            expect(await git(repo, ["show", ":nested/untouched.txt"])).toBe("STAGED\n");
+            expect(await readFile(path.join(repo, "nested/untouched.txt"), "utf8")).toBe(
+                "WORKTREE\n",
+            );
+        },
+    );
+
+    it("keeps unrelated divergent index bytes when committing saved selected-file content", async () => {
+        const repo = await createRepository();
+        await write(repo, "tracked.txt", "selected working content\n");
+        await write(repo, "nested/untouched.txt", "STAGED\n");
+        await git(repo, ["add", "nested/untouched.txt"]);
+        await write(repo, "nested/untouched.txt", "WORKTREE\n");
+
+        await commitSelectedFromPanel(actionDeps(new GitOps(new GitExecutor(repo))), {
+            message: "selected file only",
+            amend: false,
+            push: false,
+            paths: ["tracked.txt"],
+            rejectActiveOperation: true,
+        });
+
+        expect(await changedPaths(repo)).toBe("M\ttracked.txt\n");
+        expect(await git(repo, ["show", "HEAD:tracked.txt"])).toBe("selected working content\n");
+        expect(await git(repo, ["show", "HEAD:nested/untouched.txt"])).toBe("base\n");
+        expect(await git(repo, ["show", ":nested/untouched.txt"])).toBe("STAGED\n");
+        expect(await readFile(path.join(repo, "nested/untouched.txt"), "utf8")).toBe("WORKTREE\n");
+    });
+
+    it.each(["renamed/to.txt", "renamed/FROM.txt"])(
+        "commits the selected rename pair %s under the file policy and preserves unrelated staged bytes",
+        async (destination) => {
+            const repo = await createRepository();
+            await git(repo, ["mv", "renamed/from.txt", destination]);
+            await write(repo, "tracked.txt", "STAGED\n");
+            await git(repo, ["add", "tracked.txt"]);
+            await write(repo, "tracked.txt", "WORKTREE\n");
+
+            await commitSelectedFromPanel(actionDeps(new GitOps(new GitExecutor(repo))), {
+                message: "rename selected file",
+                amend: false,
+                push: false,
+                paths: [destination],
+                rejectActiveOperation: true,
+            });
+
+            expect((await changedPaths(repo)).trim().split("\n").sort()).toEqual(
+                [`D\trenamed/from.txt`, `A\t${destination}`].sort(),
+            );
+            expect(await git(repo, ["show", ":tracked.txt"])).toBe("STAGED\n");
+            expect(await git(repo, ["show", "HEAD:tracked.txt"])).toBe("base\n");
+            expect(await readFile(path.join(repo, "tracked.txt"), "utf8")).toBe("WORKTREE\n");
+        },
+    );
+
     it("reports file creation for a first commit", async () => {
         const repo = await mkdtemp(path.join(tmpdir(), "intelligit-commit-accuracy-"));
         directories.push(repo);

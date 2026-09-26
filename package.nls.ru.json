@@ -97,5 +97,6 @@
     "command.addToVcs": "Добавить в систему контроля версий",
     "command.showFileDiff": "Показать различия",
     "command.showCurrentRevision": "Показать текущую ревизию",
-    "command.annotateWithGitBlame": "Добавить аннотации Git Blame"
+    "command.annotateWithGitBlame": "Добавить аннотации Git Blame",
+    "command.commitFile": "Создать коммит файла..."
 }

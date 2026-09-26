@@ -221,6 +221,12 @@ const COMMAND_ENTRIES = [
     },
     {
         kind: "command",
+        id: "intelligit.fileCommit",
+        mutating: true,
+        coveredBySpec: "tests/e2e/fileContextCommit.spec.ts",
+    },
+    {
+        kind: "command",
         id: "intelligit.fileRollback",
         mutating: true,
         coveredBy: "discard-changes",

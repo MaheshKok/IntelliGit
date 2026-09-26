@@ -200,6 +200,7 @@ export function activateNoRepositoryMode(
         "intelligit.graph.sync",
         "intelligit.graph.sync.color",
         "intelligit.fileRollback",
+        "intelligit.fileCommit",
         "intelligit.fileFetch",
         "intelligit.filePull",
         "intelligit.filePush",

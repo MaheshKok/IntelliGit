@@ -1,4 +1,11 @@
 {
+    "A Git operation is in progress — continue or abort it first.": "A Git operation is in progress — continue or abort it first.",
+    "Commit File: {path}": "Commit File: {path}",
+    "Press Enter to commit only {path}. Escape to cancel.": "Press Enter to commit only {path}. Escape to cancel.",
+    "Save {path} before committing.": "Save {path} before committing.",
+    "Commit is only available for local files.": "Commit is only available for local files.",
+    "Commit failed: {message}": "Commit failed: {message}",
+    "Commit succeeded, but refresh failed: {message}": "Commit succeeded, but refresh failed: {message}",
     "History Actions": "History Actions",
     "No Git repositories found in this workspace.": "No Git repositories found in this workspace.",
     "Diff: {file}": "Diff: {file}",
