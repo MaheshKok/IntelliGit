@@ -27,6 +27,7 @@
         "intelligit.fileDelete",
         "intelligit.fileFetch",
         "intelligit.fileMerge",
+        "intelligit.fileNewBranch",
         "intelligit.filePull",
         "intelligit.filePush",
         "intelligit.fileRebase",

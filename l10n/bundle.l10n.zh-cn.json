@@ -705,5 +705,6 @@
     "Branches is only available for local files.": "分支仅适用于本地文件。",
     "No branches are available.": "没有可用的分支。",
     "Select a branch to check out": "选择要检出的分支",
-    "Checkout succeeded, but refresh failed: {message}": "检出成功，但刷新失败：{message}"
+    "Checkout succeeded, but refresh failed: {message}": "检出成功，但刷新失败：{message}",
+    "New Branch is only available for local files.": "新建分支仅适用于本地文件。"
 }

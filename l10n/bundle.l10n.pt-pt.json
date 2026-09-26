@@ -705,5 +705,6 @@
     "Branches is only available for local files.": "Ramos só está disponível para ficheiros locais.",
     "No branches are available.": "Não existem ramos disponíveis.",
     "Select a branch to check out": "Selecione um ramo para mudar",
-    "Checkout succeeded, but refresh failed: {message}": "Mudança de ramo concluída, mas a atualização falhou: {message}"
+    "Checkout succeeded, but refresh failed: {message}": "Mudança de ramo concluída, mas a atualização falhou: {message}",
+    "New Branch is only available for local files.": "Novo ramo só está disponível para ficheiros locais."
 }

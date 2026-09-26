@@ -29,6 +29,7 @@
     "command.openRepository": "Open Repository",
     "command.checkout": "Checkout",
     "command.branches": "Branches…",
+    "command.fileNewBranch": "New Branch…",
     "command.newBranchFrom": "New Branch from...",
     "command.checkoutAndRebaseOntoCurrent": "Checkout and Rebase onto Current",
     "command.rebaseCurrentOntoSelected": "Rebase Current onto Selected",

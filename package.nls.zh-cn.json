@@ -101,5 +101,6 @@
     "command.commitFile": "提交文件...",
     "command.merge": "合并...",
     "command.rebase": "变基...",
-    "command.branches": "分支…"
+    "command.branches": "分支…",
+    "command.fileNewBranch": "新建分支…"
 }

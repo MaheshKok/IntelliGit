@@ -101,5 +101,6 @@
     "command.commitFile": "Создать коммит файла...",
     "command.merge": "Слияние...",
     "command.rebase": "Перебазировать...",
-    "command.branches": "Ветки…"
+    "command.branches": "Ветки…",
+    "command.fileNewBranch": "Новая ветка…"
 }

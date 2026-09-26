@@ -101,5 +101,6 @@
     "command.commitFile": "Utwórz commit pliku...",
     "command.merge": "Łączyć...",
     "command.rebase": "Zmień bazę...",
-    "command.branches": "Gałęzie…"
+    "command.branches": "Gałęzie…",
+    "command.fileNewBranch": "Nowa gałąź…"
 }

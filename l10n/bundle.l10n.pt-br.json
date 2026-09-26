@@ -705,5 +705,6 @@
     "Branches is only available for local files.": "Branches está disponível apenas para arquivos locais.",
     "No branches are available.": "Não há branches disponíveis.",
     "Select a branch to check out": "Selecione uma branch para fazer checkout",
-    "Checkout succeeded, but refresh failed: {message}": "Checkout concluído, mas houve falha ao atualizar: {message}"
+    "Checkout succeeded, but refresh failed: {message}": "Checkout concluído, mas houve falha ao atualizar: {message}",
+    "New Branch is only available for local files.": "Novo branch está disponível apenas para arquivos locais."
 }

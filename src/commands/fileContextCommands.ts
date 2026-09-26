@@ -12,6 +12,7 @@ import {
     showEditorFileDiff,
 } from "../services/diffService";
 import { getErrorMessage } from "../utils/errors";
+import { isValidBranchName } from "../utils/gitRefs";
 import { runWithNotificationProgress, showTimedInformationMessage } from "../utils/notifications";
 import { runMergeCommand, type MergeLabels } from "./mergeCommand";
 import { runRebaseCommand } from "./rebaseCommand";
@@ -256,6 +257,65 @@ export async function branchesFileFromContext(
     } catch (error) {
         await vscode.window.showErrorMessage(
             vscode.l10n.t("Checkout failed: {message}", { message: getErrorMessage(error) }),
+        );
+    }
+}
+
+/**
+ * Creates and checks out a branch from the clicked file's repository HEAD. The derived facade,
+ * executor, and root remain captured across input; cancellation and failed operation fences do
+ * not mutate Git. A later refresh failure is reported separately from successful checkout.
+ */
+export async function newBranchFileFromContext(
+    ctx: unknown,
+    gitOps: GitOps,
+    executor: GitExecutor,
+    refresh: (repoRoot: string) => Promise<void>,
+): Promise<void> {
+    try {
+        const resolved = await resolveFileCommandContext(ctx, gitOps);
+        if (!resolved) {
+            await vscode.window.showErrorMessage(
+                vscode.l10n.t("New Branch is only available for local files."),
+            );
+            return;
+        }
+        const { gitOps: scopedGitOps, repoRoot } = resolved;
+        if (await rejectWhenOperationInProgress(scopedGitOps)) return;
+        const scopedExecutor = executor.deriveFor(repoRoot);
+        const newName = await vscode.window.showInputBox({
+            prompt: vscode.l10n.t("New branch from {branch}", { branch: "HEAD" }),
+            placeHolder: "branch-name",
+        });
+        if (!newName) return;
+        if (!isValidBranchName(newName)) {
+            await vscode.window.showErrorMessage(
+                vscode.l10n.t(
+                    "Invalid branch name '{branch}'. Names must contain only alphanumeric characters, dots, dashes, underscores, or slashes, and must not start with a dash.",
+                    { branch: newName },
+                ),
+            );
+            return;
+        }
+        if (await rejectWhenOperationInProgress(scopedGitOps)) return;
+        await scopedExecutor.run(["checkout", "-b", newName]);
+        showTimedInformationMessage(
+            vscode.l10n.t("Created and checked out {branch}", { branch: newName }),
+        );
+        try {
+            await refresh(repoRoot);
+        } catch (error) {
+            await vscode.window.showErrorMessage(
+                vscode.l10n.t("Checkout succeeded, but refresh failed: {message}", {
+                    message: getErrorMessage(error),
+                }),
+            );
+        }
+    } catch (error) {
+        await vscode.window.showErrorMessage(
+            vscode.l10n.t("Failed to create branch: {message}", {
+                message: getErrorMessage(error),
+            }),
         );
     }
 }

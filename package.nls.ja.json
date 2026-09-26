@@ -101,5 +101,6 @@
     "command.commitFile": "ファイルをコミット...",
     "command.merge": "マージ...",
     "command.rebase": "リベース...",
-    "command.branches": "ブランチ…"
+    "command.branches": "ブランチ…",
+    "command.fileNewBranch": "新しいブランチ…"
 }

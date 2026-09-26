@@ -705,5 +705,6 @@
     "Branches is only available for local files.": "分支僅適用於本機檔案。",
     "No branches are available.": "沒有可用的分支。",
     "Select a branch to check out": "選取要切換至的分支",
-    "Checkout succeeded, but refresh failed: {message}": "切換分支成功，但重新整理失敗：{message}"
+    "Checkout succeeded, but refresh failed: {message}": "切換分支成功，但重新整理失敗：{message}",
+    "New Branch is only available for local files.": "新增分支僅適用於本機檔案。"
 }

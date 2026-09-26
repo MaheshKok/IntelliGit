@@ -554,6 +554,30 @@ describe("extension manifest", () => {
         ).toHaveLength(1);
     });
 
+    it("offers localized New Branch after Branches in both file-menu contributions", () => {
+        const manifest = JSON.parse(
+            readFileSync(path.join(process.cwd(), "package.json"), "utf8"),
+        ) as ExtensionManifest;
+        expect(manifest.contributes?.commands).toContainEqual(
+            expect.objectContaining({
+                command: "intelligit.fileNewBranch",
+                title: "%command.fileNewBranch%",
+            }),
+        );
+        for (const menu of ["intelligit.fileContext", "intelligit.editorContext"]) {
+            expect(manifest.contributes?.menus?.[menu]).toContainEqual({
+                command: "intelligit.fileNewBranch",
+                when: "resourceScheme == file",
+                group: "4_branch@4",
+            });
+        }
+        expect(
+            manifest.contributes?.commands?.filter(
+                (entry) => entry.command === "intelligit.fileNewBranch",
+            ),
+        ).toHaveLength(1);
+    });
+
     it("offers Add to VCS from Explorer, editor tab, and editor file menus", () => {
         const manifest = JSON.parse(
             readFileSync(path.join(process.cwd(), "package.json"), "utf8"),

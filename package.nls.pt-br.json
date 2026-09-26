@@ -101,5 +101,6 @@
     "command.commitFile": "Fazer commit do arquivo...",
     "command.merge": "Fusão...",
     "command.rebase": "Rebase...",
-    "command.branches": "Branches…"
+    "command.branches": "Branches…",
+    "command.fileNewBranch": "Novo branch…"
 }
