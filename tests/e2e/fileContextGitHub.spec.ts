@@ -61,7 +61,7 @@ async function inspectAndCancelGist(page: Page): Promise<void> {
     await expect(action).toBeVisible();
     await action.hover();
     await page.keyboard.press("Enter");
-    const input = page.locator(".quick-input-widget input").first();
+    const input = page.locator(".quick-input-widget:visible input:visible").last();
     await expect(input).toBeVisible();
     await expect(input).toHaveValue("selected.txt");
     await page.keyboard.press("Escape");

@@ -17,6 +17,8 @@ import { isValidBranchName } from "../utils/gitRefs";
 import { runRebaseCommand } from "./rebaseCommand";
 import { runPublishGitHubProjectFlow } from "../services/publishService";
 
+const REQUEST_TIMEOUT_MS = 30_000;
+
 interface GitHubRemote {
     name: string;
     identity: GitHubIdentity;
@@ -257,6 +259,7 @@ export async function createGitHubGistFromContext(ctx: unknown, gitOps: GitOps):
         if (!session) return;
         const response = await fetch("https://api.github.com/gists", {
             method: "POST",
+            signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
             headers: {
                 Authorization: `Bearer ${session.accessToken}`,
                 Accept: "application/vnd.github+json",
@@ -308,6 +311,7 @@ async function loadForkParent(
     });
     if (!session) return null;
     const response = await fetch(`https://api.github.com/repos/${origin.owner}/${origin.repo}`, {
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
         headers: {
             Authorization: `Bearer ${session.accessToken}`,
             Accept: "application/vnd.github+json",
@@ -462,8 +466,24 @@ export async function syncGitHubForkFromContext(
             return same;
         };
         if (!(await unchanged(upstreamUrl))) return;
-        const expectedUpstream = upstreamUrl ?? githubCloneUrl(parentName);
-        if (!upstreamUrl) await scoped.addRemote("upstream", expectedUpstream);
+        let expectedUpstream = upstreamUrl;
+        if (!expectedUpstream) {
+            await scoped.addRemote("upstream", githubCloneUrl(parentName));
+            expectedUpstream = await scoped.getRemoteUrl("upstream");
+            const effective = expectedUpstream && githubIdentityFromRemote(expectedUpstream);
+            if (
+                !effective ||
+                effective.owner.toLowerCase() !== parentName.owner.toLowerCase() ||
+                effective.repo.toLowerCase() !== parentName.repo.toLowerCase()
+            ) {
+                await vscode.window.showErrorMessage(
+                    vscode.l10n.t(
+                        "The existing upstream remote does not match this fork's GitHub parent.",
+                    ),
+                );
+                return;
+            }
+        }
         let fetchedOid: string;
         try {
             fetchedOid = await scoped.fetchRemoteBranch("upstream", defaultBranch);

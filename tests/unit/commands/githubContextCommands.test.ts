@@ -6,7 +6,7 @@ const mocks = vi.hoisted(() => ({
     openExternal: vi.fn(async () => true),
     executeCommand: vi.fn(async () => undefined),
     getSession: vi.fn(async () => ({ accessToken: "synthetic-token" })),
-    fetch: vi.fn(async () => ({
+    fetch: vi.fn(async (_url?: string, _options?: RequestInit) => ({
         ok: true,
         json: async () => ({ html_url: `https://gist.github.com/o/${"a".repeat(32)}` }),
     })),
@@ -345,6 +345,39 @@ describe("Create Gist from clicked text", () => {
         expect(mocks.openExternal, "unsafe Gist URL never opens").not.toHaveBeenCalled();
         expect(mocks.showErrorMessage).toHaveBeenCalledWith(expect.stringContaining("unsafe"));
     });
+
+    it("aborts a slow Gist POST and reports failure without claiming publication", async () => {
+        const timeout = vi.spyOn(AbortSignal, "timeout").mockImplementation(() => {
+            const controller = new AbortController();
+            queueMicrotask(() => controller.abort(new Error("synthetic request timeout")));
+            return controller.signal;
+        });
+        try {
+            mocks.fetch.mockImplementationOnce(async (_url, options) => {
+                await new Promise<void>((resolve, reject) => {
+                    options?.signal?.addEventListener(
+                        "abort",
+                        () => reject(options.signal?.reason),
+                        { once: true },
+                    );
+                    setTimeout(resolve, 10);
+                });
+                return {
+                    ok: true,
+                    json: async () => ({ html_url: `https://gist.github.com/o/${"a".repeat(32)}` }),
+                };
+            });
+            await createGitHubGistFromContext({ file: "B" }, activeA);
+            expect(
+                mocks.showInformationMessage,
+                "aborted Gist is not published",
+            ).not.toHaveBeenCalled();
+            expect(mocks.showErrorMessage, "aborted Gist reports failure").toHaveBeenCalled();
+            expect(timeout).toHaveBeenCalledWith(30_000);
+        } finally {
+            timeout.mockRestore();
+        }
+    });
 });
 
 describe("Sync Fork from clicked repository", () => {
@@ -404,6 +437,91 @@ describe("Sync Fork from clicked repository", () => {
         expect(scoped.rebase, "approved fetched commit stays immutable").toHaveBeenCalledWith(
             "b".repeat(40),
         );
+    });
+
+    it.each([
+        { kind: "lowercase", url: "git@github.com:source/project.git" },
+        { kind: "mixed-case", url: "git@github.com:Source/Project.git" },
+    ])(
+        "accepts an equivalent effective upstream rewrite ($kind) and rebases clicked B",
+        async ({ url }) => {
+            scoped.getRemoteUrl.mockImplementation(async (name: string) =>
+                name === "origin" ? "git@github.com:me/fork.git" : upstreamUrl ? url : null,
+            );
+            await syncGitHubForkFromContext({ file: "B" }, activeA);
+            expect(scoped.addRemote).toHaveBeenCalledOnce();
+            expect(
+                scoped.fetchRemoteBranch,
+                "equivalent effective upstream must fetch B",
+            ).toHaveBeenCalledWith("upstream", "develop");
+            expect(
+                scoped.rebase,
+                "equivalent effective upstream must rebase B",
+            ).toHaveBeenCalledWith("b".repeat(40));
+        },
+    );
+
+    it.each([
+        { kind: "hostile host", url: "https://github.com.evil.test/source/project.git" },
+        { kind: "wrong owner", url: "https://github.com/wrong/project.git" },
+        { kind: "wrong repo", url: "https://github.com/source/wrong.git" },
+    ])(
+        "rejects an effective upstream rewrite with $kind before fetching",
+        async ({ kind, url }) => {
+            scoped.getRemoteUrl.mockImplementation(async (name: string) =>
+                name === "origin" ? "git@github.com:me/fork.git" : upstreamUrl ? url : null,
+            );
+            await syncGitHubForkFromContext({ file: "B" }, activeA);
+            expect(scoped.addRemote).toHaveBeenCalledOnce();
+            expect(
+                scoped.fetchRemoteBranch,
+                `unsafe effective upstream (${kind}) never fetched`,
+            ).not.toHaveBeenCalled();
+            expect(scoped.rebase).not.toHaveBeenCalled();
+            expect(mocks.showErrorMessage).toHaveBeenCalled();
+        },
+    );
+
+    it("aborts a slow fork-metadata GET before adding upstream or fetching", async () => {
+        const timeout = vi.spyOn(AbortSignal, "timeout").mockImplementation(() => {
+            const controller = new AbortController();
+            queueMicrotask(() => controller.abort(new Error("synthetic request timeout")));
+            return controller.signal;
+        });
+        try {
+            mocks.fetch.mockImplementationOnce(async (_url, options) => {
+                await new Promise<void>((resolve, reject) => {
+                    options?.signal?.addEventListener(
+                        "abort",
+                        () => reject(options.signal?.reason),
+                        { once: true },
+                    );
+                    setTimeout(resolve, 10);
+                });
+                return {
+                    ok: true,
+                    json: async () => ({
+                        html_url: "",
+                        full_name: "me/fork",
+                        fork: true,
+                        parent: { full_name: "source/project", default_branch: "develop" },
+                    }),
+                };
+            });
+            await syncGitHubForkFromContext({ file: "B" }, activeA);
+            expect(
+                scoped.addRemote,
+                "timed-out metadata never adds upstream",
+            ).not.toHaveBeenCalled();
+            expect(
+                scoped.fetchRemoteBranch,
+                "timed-out metadata never fetches",
+            ).not.toHaveBeenCalled();
+            expect(mocks.showErrorMessage).toHaveBeenCalled();
+            expect(timeout).toHaveBeenCalledWith(30_000);
+        } finally {
+            timeout.mockRestore();
+        }
     });
 
     it("cancellation before mutation adds no remote and fetches nothing", async () => {

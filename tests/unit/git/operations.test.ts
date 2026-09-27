@@ -214,6 +214,9 @@ describe("GitOps.fetchRemoteBranch", () => {
         await commitFile(parent, "base.txt", "parent base\n");
 
         const fork = await createGitRepository();
+        await git(fork, ["config", "user.useConfigOnly", "true"]);
+        await git(fork, ["config", "user.name", "Test"]);
+        await git(fork, ["config", "user.email", "test@example.invalid"]);
         await git(fork, ["remote", "add", "upstream", parent]);
         const scoped = gitOpsFor(fork);
         await scoped.fetchRemoteBranch("upstream", "develop");
