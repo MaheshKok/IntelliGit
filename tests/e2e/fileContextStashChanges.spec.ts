@@ -176,6 +176,22 @@ test("Explorer, tab, and editor stash clicked B repository while active A stays 
             expect(await snapshot(a, env, aFiles)).toEqual(aBefore);
         }
 
+        const cleanBefore = await snapshot(b, env, ["selected.txt", "second.txt", "ignored.log"]);
+        expect(cleanBefore.status).toBe("");
+        await file.click({ button: "right" });
+        await chooseStash(page);
+        await expect(page.locator(".quick-input-widget input").first()).toHaveValue(
+            "Stashed changes",
+        );
+        await page.keyboard.press("Enter");
+        await expect(
+            page.getByRole("dialog", { name: /No local changes to save\./ }),
+        ).toBeVisible();
+        expect(await snapshot(b, env, ["selected.txt", "second.txt", "ignored.log"])).toEqual(
+            cleanBefore,
+        );
+        expect(await snapshot(a, env, aFiles)).toEqual(aBefore);
+
         await writeFile(path.join(b, "selected.txt"), "B cancel staged\n");
         runGit(b, env, ["add", "selected.txt"]);
         await writeFile(path.join(b, "selected.txt"), "B cancel worktree\n");

@@ -717,5 +717,6 @@
     "Stash Changes": "Guardar cambios en stash",
     "Stash all tracked and untracked changes in {repository}": "Guardar en stash todos los cambios de archivos con y sin seguimiento en {repository}",
     "Stashed changes": "Cambios guardados",
-    "Stash succeeded, but refresh failed: {message}": "Cambios guardados en stash, pero no se pudo actualizar: {message}"
+    "Stash succeeded, but refresh failed: {message}": "Cambios guardados en stash, pero no se pudo actualizar: {message}",
+    "No local changes to save.": "No hay cambios locales que guardar."
 }

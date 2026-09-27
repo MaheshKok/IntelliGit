@@ -1421,13 +1421,15 @@ export class GitOps {
         await this.executor.run(["clean", "-fd"]);
     }
     // --- Stash operations ---
-    /** Saves all changes or selected literal paths into a Git stash entry with untracked files included. */
+    /** Saves tracked and untracked changes, returning C-locale Git output so callers can detect a no-op. */
     async stashSave(paths?: string[], message: string = "Stashed changes"): Promise<string> {
         const args = ["stash", "push", "--include-untracked", "-m", message];
         if (paths && paths.length > 0) {
             args.push("--", ...paths);
         }
-        return this.executor.run(paths && paths.length > 0 ? withLiteralPathspecs(args) : args);
+        return this.executor.run(paths && paths.length > 0 ? withLiteralPathspecs(args) : args, {
+            env: { LC_ALL: "C" },
+        });
     }
     /** Pops a validated stash index back into the working tree, optionally restoring its staged state. */
     async stashPop(index: number = 0, reinstateIndex = false): Promise<string> {

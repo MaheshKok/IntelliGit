@@ -466,7 +466,7 @@ export async function resetHeadFileFromContext(
 /**
  * Stashes the whole repository selected by a local file, including untracked files. The derived
  * Git operations and root remain captured across the message prompt; both operation checks must
- * pass before mutation. Cancellation and Git failure do not refresh, and failures are reported.
+ * pass before mutation. Cancellation, a no-op, and Git failure do not refresh; failures are reported.
  */
 export async function stashChangesFromContext(
     ctx: unknown,
@@ -492,7 +492,11 @@ export async function stashChangesFromContext(
         });
         if (message === undefined) return;
         if (await rejectWhenOperationInProgress(scopedGitOps)) return;
-        await scopedGitOps.stashSave(undefined, message);
+        const result = await scopedGitOps.stashSave(undefined, message);
+        if (result.trim() === "No local changes to save") {
+            showTimedInformationMessage(vscode.l10n.t("No local changes to save."));
+            return;
+        }
         showTimedInformationMessage(vscode.l10n.t("Changes stashed."));
         try {
             await refresh(repoRoot);

@@ -129,6 +129,29 @@ describe("native Stash Changes repository contract", () => {
         expect(mocks.info).toHaveBeenCalledWith("Changes stashed.");
     });
 
+    it("reports a clean repository without claiming a stash was created or refreshing", async () => {
+        mocks.stash.mockResolvedValueOnce("No local changes to save\n");
+
+        await stashChangesFromContext(selected(), gitOps, refresh);
+
+        expect(mocks.stash).toHaveBeenCalledExactlyOnceWith(undefined, "Stashed changes");
+        expect(mocks.info).toHaveBeenCalledExactlyOnceWith("No local changes to save.");
+        expect(refresh).not.toHaveBeenCalled();
+    });
+
+    it("reports success when a created stash's message contains the no-change text", async () => {
+        mocks.input.mockResolvedValueOnce("No local changes to save");
+        mocks.stash.mockResolvedValueOnce(
+            "Saved working directory and index state On main: No local changes to save\n",
+        );
+
+        await stashChangesFromContext(selected(), gitOps, refresh);
+
+        expect(mocks.stash).toHaveBeenCalledExactlyOnceWith(undefined, "No local changes to save");
+        expect(mocks.info).toHaveBeenCalledExactlyOnceWith("Changes stashed.");
+        expect(refresh).toHaveBeenCalledExactlyOnceWith("/repo-b");
+    });
+
     it("keeps B through a prompt-time active-repository change", async () => {
         const alternate = { getActiveOperation: vi.fn(), stashSave: vi.fn() } as unknown as GitOps;
         mocks.input.mockImplementationOnce(async () => {

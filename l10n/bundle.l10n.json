@@ -95,6 +95,7 @@
     "Checks skipped": "Checks skipped",
     "Changes rolled back.": "Changes rolled back.",
     "Changes stashed.": "Changes stashed.",
+    "No local changes to save.": "No local changes to save.",
     "Choose how to clone a repository": "Choose how to clone a repository",
     "Choose how to undock IntelliGit": "Choose how to undock IntelliGit",
     "Choose repository visibility": "Choose repository visibility",

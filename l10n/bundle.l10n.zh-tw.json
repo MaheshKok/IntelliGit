@@ -717,5 +717,6 @@
     "Stash Changes": "儲藏變更",
     "Stash all tracked and untracked changes in {repository}": "儲藏 {repository} 中所有已追蹤和未追蹤的變更",
     "Stashed changes": "已儲藏的變更",
-    "Stash succeeded, but refresh failed: {message}": "儲藏成功，但重新整理失敗：{message}"
+    "Stash succeeded, but refresh failed: {message}": "儲藏成功，但重新整理失敗：{message}",
+    "No local changes to save.": "沒有可儲藏的本機變更。"
 }

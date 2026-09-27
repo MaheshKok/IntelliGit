@@ -717,5 +717,6 @@
     "Stash Changes": "変更をスタッシュ",
     "Stash all tracked and untracked changes in {repository}": "{repository} の追跡対象と未追跡の変更をすべてスタッシュ",
     "Stashed changes": "スタッシュした変更",
-    "Stash succeeded, but refresh failed: {message}": "スタッシュは完了しましたが、更新に失敗しました: {message}"
+    "Stash succeeded, but refresh failed: {message}": "スタッシュは完了しましたが、更新に失敗しました: {message}",
+    "No local changes to save.": "スタッシュに保存するローカルの変更はありません。"
 }

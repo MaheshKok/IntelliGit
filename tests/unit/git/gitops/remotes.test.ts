@@ -252,13 +252,16 @@ describe("GitOps", () => {
         });
     });
     describe("stashSave", () => {
-        it("calls git stash push with message", async () => {
+        it("calls git stash push with message in C locale", async () => {
             const executor = createMockExecutor({});
             const ops = new GitOps(executor);
             await ops.stashSave(undefined, "my stash");
 
             const call = (executor.run as ReturnType<typeof vi.fn>).mock.calls[0][0];
             expect(call).toEqual(["stash", "push", "--include-untracked", "-m", "my stash"]);
+            expect((executor.run as ReturnType<typeof vi.fn>).mock.calls[0][1]).toEqual({
+                env: { LC_ALL: "C" },
+            });
         });
 
         it("includes paths when provided", async () => {
@@ -278,6 +281,9 @@ describe("GitOps", () => {
                 "src/a.ts",
                 "src/b.ts",
             ]);
+            expect((executor.run as ReturnType<typeof vi.fn>).mock.calls[0][1]).toEqual({
+                env: { LC_ALL: "C" },
+            });
         });
     });
     describe("stashDelete", () => {

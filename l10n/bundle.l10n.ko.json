@@ -717,5 +717,6 @@
     "Stash Changes": "변경 내용 스태시",
     "Stash all tracked and untracked changes in {repository}": "{repository}의 추적 및 미추적 변경 사항을 모두 스태시",
     "Stashed changes": "스태시한 변경 사항",
-    "Stash succeeded, but refresh failed: {message}": "스태시는 완료되었지만 새로 고침에 실패했습니다: {message}"
+    "Stash succeeded, but refresh failed: {message}": "스태시는 완료되었지만 새로 고침에 실패했습니다: {message}",
+    "No local changes to save.": "스태시에 저장할 로컬 변경 사항이 없습니다."
 }

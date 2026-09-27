@@ -717,5 +717,6 @@
     "Stash Changes": "Remiser les modifications",
     "Stash all tracked and untracked changes in {repository}": "Remiser toutes les modifications suivies et non suivies dans {repository}",
     "Stashed changes": "Modifications remisées",
-    "Stash succeeded, but refresh failed: {message}": "Modifications remisées, mais l’actualisation a échoué : {message}"
+    "Stash succeeded, but refresh failed: {message}": "Modifications remisées, mais l’actualisation a échoué : {message}",
+    "No local changes to save.": "Aucune modification locale à remiser."
 }

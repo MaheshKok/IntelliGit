@@ -717,5 +717,6 @@
     "Stash Changes": "Stash-Änderungen",
     "Stash all tracked and untracked changes in {repository}": "Alle nachverfolgten und nicht nachverfolgten Änderungen in {repository} im Stash speichern",
     "Stashed changes": "Gespeicherte Änderungen",
-    "Stash succeeded, but refresh failed: {message}": "Stash erfolgreich, aber Aktualisierung fehlgeschlagen: {message}"
+    "Stash succeeded, but refresh failed: {message}": "Stash erfolgreich, aber Aktualisierung fehlgeschlagen: {message}",
+    "No local changes to save.": "Keine lokalen Änderungen zum Speichern."
 }

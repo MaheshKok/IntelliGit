@@ -717,5 +717,6 @@
     "Stash Changes": "Спрятать изменения",
     "Stash all tracked and untracked changes in {repository}": "Спрятать все отслеживаемые и неотслеживаемые изменения в {repository}",
     "Stashed changes": "Спрятанные изменения",
-    "Stash succeeded, but refresh failed: {message}": "Изменения спрятаны, но обновить интерфейс не удалось: {message}"
+    "Stash succeeded, but refresh failed: {message}": "Изменения спрятаны, но обновить интерфейс не удалось: {message}",
+    "No local changes to save.": "Нет локальных изменений для сохранения."
 }
