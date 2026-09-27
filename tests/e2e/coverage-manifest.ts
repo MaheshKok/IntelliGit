@@ -249,6 +249,12 @@ const COMMAND_ENTRIES = [
     },
     {
         kind: "command",
+        id: "intelligit.fileStashChanges",
+        mutating: true,
+        coveredBySpec: "tests/e2e/fileContextStashChanges.spec.ts",
+    },
+    {
+        kind: "command",
         id: "intelligit.fileAddToVcs",
         mutating: true,
         coveredBySpec: "tests/e2e/fileContextAddToVcs.spec.ts",

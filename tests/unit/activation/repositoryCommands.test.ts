@@ -23,6 +23,7 @@ const mocks = vi.hoisted(() => {
         newBranchFileFromContext: vi.fn(),
         newTagFileFromContext: vi.fn(),
         resetHeadFileFromContext: vi.fn(),
+        stashChangesFromContext: vi.fn(),
         commitFileFromContext: vi.fn(),
         commitSelectedFromPanel: vi.fn(async (_deps: unknown, _options: unknown) => undefined),
         compareFileWithBranchOrTag: vi.fn(async () => undefined),
@@ -81,6 +82,7 @@ vi.mock("../../../src/commands/fileContextCommands", () => ({
     newBranchFileFromContext: mocks.newBranchFileFromContext,
     newTagFileFromContext: mocks.newTagFileFromContext,
     resetHeadFileFromContext: mocks.resetHeadFileFromContext,
+    stashChangesFromContext: mocks.stashChangesFromContext,
     commitFileFromContext: mocks.commitFileFromContext,
     compareFileWithBranchOrTag: mocks.compareFileWithBranchOrTag,
     compareFileWithRevision: mocks.compareFileWithRevision,
@@ -183,6 +185,74 @@ const makeDeps = (gitOps: GitOps) => {
 };
 
 describe("registerRepositoryCommands", () => {
+    it("routes Stash Changes refresh to clicked B and checks the current active root", async () => {
+        const gitOps = makeGitOps();
+        const deps = makeDeps(gitOps);
+        let activeRoot = "/repo-a";
+        deps.getRepoRoot = () => activeRoot;
+        const commitRefresh = vi.fn(async () => undefined);
+        deps.refreshService = () => ({ refreshCommitPanels: commitRefresh }) as never;
+        mocks.stashChangesFromContext.mockImplementationOnce(async (_ctx, _ops, refresh) => {
+            await refresh("/repo-b");
+            expect(deps.refreshActiveRepository).not.toHaveBeenCalled();
+            activeRoot = "/repo-b/";
+            await refresh("/repo-b");
+        });
+        registerRepositoryCommands(deps);
+        const uri = mocks.FakeUri.file("/repo-b/file.txt");
+        const handler = mocks.commands.get("intelligit.fileStashChanges");
+        expect(handler, "native Stash Changes has a registered handler").toBeTypeOf("function");
+        await handler!(uri);
+        expect(mocks.stashChangesFromContext).toHaveBeenCalledWith(
+            uri,
+            gitOps,
+            expect.any(Function),
+        );
+        expect(commitRefresh).toHaveBeenCalledTimes(2);
+        expect(deps.refreshActiveRepository).toHaveBeenCalledOnce();
+    });
+    it.each([
+        ["/repo-b/", "/repo-a", false],
+        ["/repo-a", "/repo-b/", true],
+    ] as const)(
+        "checks active root after pending Stash Changes panel refresh changes %s to %s",
+        async (initialRoot, nextRoot, shouldRefreshActive) => {
+            const gitOps = makeGitOps();
+            const deps = makeDeps(gitOps);
+            let activeRoot: string = initialRoot;
+            deps.getRepoRoot = () => activeRoot;
+            let markStarted = () => undefined;
+            const started = new Promise<void>((resolve) => {
+                markStarted = resolve;
+            });
+            let finishRefresh = () => undefined;
+            const pendingRefresh = new Promise<void>((resolve) => {
+                finishRefresh = resolve;
+            });
+            const commitRefresh = vi.fn(async () => {
+                markStarted();
+                await pendingRefresh;
+            });
+            deps.refreshService = () => ({ refreshCommitPanels: commitRefresh }) as never;
+            mocks.stashChangesFromContext.mockImplementationOnce(async (_ctx, _ops, refresh) =>
+                refresh("/repo-b"),
+            );
+            registerRepositoryCommands(deps);
+            const pendingCommand = mocks.commands.get("intelligit.fileStashChanges")!(
+                mocks.FakeUri.file("/repo-b/file.txt"),
+            );
+            await started;
+            activeRoot = nextRoot;
+            finishRefresh();
+            await pendingCommand;
+            expect(commitRefresh).toHaveBeenCalledOnce();
+            if (shouldRefreshActive) {
+                expect(deps.refreshActiveRepository).toHaveBeenCalledOnce();
+            } else {
+                expect(deps.refreshActiveRepository).not.toHaveBeenCalled();
+            }
+        },
+    );
     it("routes Reset HEAD refresh to clicked B while A is active", async () => {
         const gitOps = makeGitOps();
         const deps = makeDeps(gitOps);

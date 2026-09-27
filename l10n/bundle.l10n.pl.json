@@ -712,5 +712,10 @@
     "Reset HEAD is only available for local files.": "Resetowanie HEAD jest dostępne tylko dla plików lokalnych.",
     "Reset current branch to revision": "Zresetuj bieżącą gałąź do rewizji",
     "Enter a branch, tag, or commit revision to reset to.": "Podaj gałąź, tag lub rewizję commita docelowego.",
-    "Invalid reset target '{target}'. Enter a branch, tag, or commit revision.": "Nieprawidłowy cel resetowania '{target}'. Podaj gałąź, tag lub rewizję commita."
+    "Invalid reset target '{target}'. Enter a branch, tag, or commit revision.": "Nieprawidłowy cel resetowania '{target}'. Podaj gałąź, tag lub rewizję commita.",
+    "Stash Changes is only available for local files.": "Chowanie zmian jest dostępne tylko dla plików lokalnych.",
+    "Stash Changes": "Schowaj zmiany",
+    "Stash all tracked and untracked changes in {repository}": "Schowaj wszystkie śledzone i nieśledzone zmiany w {repository}",
+    "Stashed changes": "Schowane zmiany",
+    "Stash succeeded, but refresh failed: {message}": "Zmiany schowano, ale odświeżenie nie powiodło się: {message}"
 }

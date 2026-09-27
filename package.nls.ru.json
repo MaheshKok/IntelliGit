@@ -104,5 +104,6 @@
     "command.branches": "Ветки…",
     "command.fileNewBranch": "Новая ветка…",
     "command.fileNewTag": "Новый тег…",
-    "command.fileResetHead": "Сбросить HEAD…"
+    "command.fileResetHead": "Сбросить HEAD…",
+    "command.fileStashChanges": "Спрятать изменения…"
 }

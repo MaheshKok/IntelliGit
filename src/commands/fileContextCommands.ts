@@ -464,6 +464,53 @@ export async function resetHeadFileFromContext(
 }
 
 /**
+ * Stashes the whole repository selected by a local file, including untracked files. The derived
+ * Git operations and root remain captured across the message prompt; both operation checks must
+ * pass before mutation. Cancellation and Git failure do not refresh, and failures are reported.
+ */
+export async function stashChangesFromContext(
+    ctx: unknown,
+    gitOps: GitOps,
+    refresh: (repoRoot: string) => Promise<void>,
+): Promise<void> {
+    try {
+        const resolved = await resolveFileCommandContext(ctx, gitOps);
+        if (!resolved) {
+            await vscode.window.showErrorMessage(
+                vscode.l10n.t("Stash Changes is only available for local files."),
+            );
+            return;
+        }
+        const { gitOps: scopedGitOps, repoRoot } = resolved;
+        if (await rejectWhenOperationInProgress(scopedGitOps)) return;
+        const message = await vscode.window.showInputBox({
+            title: vscode.l10n.t("Stash Changes"),
+            prompt: vscode.l10n.t("Stash all tracked and untracked changes in {repository}", {
+                repository: path.basename(repoRoot),
+            }),
+            value: vscode.l10n.t("Stashed changes"),
+        });
+        if (message === undefined) return;
+        if (await rejectWhenOperationInProgress(scopedGitOps)) return;
+        await scopedGitOps.stashSave(undefined, message);
+        showTimedInformationMessage(vscode.l10n.t("Changes stashed."));
+        try {
+            await refresh(repoRoot);
+        } catch (error) {
+            await vscode.window.showErrorMessage(
+                vscode.l10n.t("Stash succeeded, but refresh failed: {message}", {
+                    message: getErrorMessage(error),
+                }),
+            );
+        }
+    } catch (error) {
+        await vscode.window.showErrorMessage(
+            vscode.l10n.t("Stash failed: {message}", { message: getErrorMessage(error) }),
+        );
+    }
+}
+
+/**
  * Canonicalizes a file's parent without following the leaf, preserving tracked symlink identity.
  * Missing-parent callers may walk ENOENT ancestors and append the missing lexical suffix; the
  * returned directory always exists so repository discovery can use it without creating folders.

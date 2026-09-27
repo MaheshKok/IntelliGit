@@ -712,5 +712,10 @@
     "Reset HEAD is only available for local files.": "重設 HEAD 僅適用於本機檔案。",
     "Reset current branch to revision": "將目前分支重設至指定修訂版本",
     "Enter a branch, tag, or commit revision to reset to.": "輸入要重設至的分支、標籤或提交修訂版本。",
-    "Invalid reset target '{target}'. Enter a branch, tag, or commit revision.": "重設目標 '{target}' 無效。請輸入分支、標籤或提交修訂版本。"
+    "Invalid reset target '{target}'. Enter a branch, tag, or commit revision.": "重設目標 '{target}' 無效。請輸入分支、標籤或提交修訂版本。",
+    "Stash Changes is only available for local files.": "儲藏變更僅適用於本機檔案。",
+    "Stash Changes": "儲藏變更",
+    "Stash all tracked and untracked changes in {repository}": "儲藏 {repository} 中所有已追蹤和未追蹤的變更",
+    "Stashed changes": "已儲藏的變更",
+    "Stash succeeded, but refresh failed: {message}": "儲藏成功，但重新整理失敗：{message}"
 }

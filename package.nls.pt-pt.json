@@ -104,5 +104,6 @@
     "command.branches": "Ramos…",
     "command.fileNewBranch": "Novo ramo…",
     "command.fileNewTag": "Nova etiqueta…",
-    "command.fileResetHead": "Repor HEAD…"
+    "command.fileResetHead": "Repor HEAD…",
+    "command.fileStashChanges": "Guardar no Stash…"
 }

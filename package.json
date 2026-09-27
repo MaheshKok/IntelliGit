@@ -2,7 +2,7 @@
     "name": "intelligit",
     "displayName": "IntelliGit",
     "description": "%extension.description%",
-    "version": "0.35.16",
+    "version": "0.35.17",
     "publisher": "MaheshKok",
     "icon": "media/intelligit-icon.png",
     "license": "MIT",
@@ -499,6 +499,11 @@
                 "category": "%intelligit%"
             },
             {
+                "command": "intelligit.fileStashChanges",
+                "title": "%command.fileStashChanges%",
+                "category": "%intelligit%"
+            },
+            {
                 "command": "intelligit.fileJumpToSource",
                 "title": "%command.jumpToSource%",
                 "category": "%intelligit%"
@@ -921,6 +926,11 @@
                     "command": "intelligit.fileResetHead",
                     "when": "resourceScheme == file",
                     "group": "4_branch@6"
+                },
+                {
+                    "command": "intelligit.fileStashChanges",
+                    "when": "resourceScheme == file",
+                    "group": "4_branch@7"
                 }
             ],
             "intelligit.editorContext": [
@@ -1013,6 +1023,11 @@
                     "command": "intelligit.fileResetHead",
                     "when": "resourceScheme == file",
                     "group": "4_branch@6"
+                },
+                {
+                    "command": "intelligit.fileStashChanges",
+                    "when": "resourceScheme == file",
+                    "group": "4_branch@7"
                 }
             ],
             "view/title": [

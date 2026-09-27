@@ -104,5 +104,6 @@
     "command.branches": "Branches…",
     "command.fileNewBranch": "Novo branch…",
     "command.fileNewTag": "Nova etiqueta…",
-    "command.fileResetHead": "Redefinir HEAD…"
+    "command.fileResetHead": "Redefinir HEAD…",
+    "command.fileStashChanges": "Guardar no Stash…"
 }

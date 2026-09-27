@@ -712,5 +712,10 @@
     "Reset HEAD is only available for local files.": "HEAD のリセットはローカルファイルでのみ使用できます。",
     "Reset current branch to revision": "現在のブランチをリビジョンにリセット",
     "Enter a branch, tag, or commit revision to reset to.": "リセット先のブランチ、タグ、またはコミットリビジョンを入力してください。",
-    "Invalid reset target '{target}'. Enter a branch, tag, or commit revision.": "リセット先 '{target}' は無効です。ブランチ、タグ、またはコミットリビジョンを入力してください。"
+    "Invalid reset target '{target}'. Enter a branch, tag, or commit revision.": "リセット先 '{target}' は無効です。ブランチ、タグ、またはコミットリビジョンを入力してください。",
+    "Stash Changes is only available for local files.": "変更のスタッシュはローカルファイルでのみ使用できます。",
+    "Stash Changes": "変更をスタッシュ",
+    "Stash all tracked and untracked changes in {repository}": "{repository} の追跡対象と未追跡の変更をすべてスタッシュ",
+    "Stashed changes": "スタッシュした変更",
+    "Stash succeeded, but refresh failed: {message}": "スタッシュは完了しましたが、更新に失敗しました: {message}"
 }

@@ -104,5 +104,6 @@
     "command.branches": "分支…",
     "command.fileNewBranch": "新建分支…",
     "command.fileNewTag": "新标签…",
-    "command.fileResetHead": "重置 HEAD…"
+    "command.fileResetHead": "重置 HEAD…",
+    "command.fileStashChanges": "储藏更改…"
 }

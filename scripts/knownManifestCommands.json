@@ -30,6 +30,7 @@
         "intelligit.fileNewBranch",
         "intelligit.fileNewTag",
         "intelligit.fileResetHead",
+        "intelligit.fileStashChanges",
         "intelligit.filePull",
         "intelligit.filePush",
         "intelligit.fileRebase",

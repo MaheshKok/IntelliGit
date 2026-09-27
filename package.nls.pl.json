@@ -104,5 +104,6 @@
     "command.branches": "Gałęzie…",
     "command.fileNewBranch": "Nowa gałąź…",
     "command.fileNewTag": "Nowy tag…",
-    "command.fileResetHead": "Zresetuj HEAD…"
+    "command.fileResetHead": "Zresetuj HEAD…",
+    "command.fileStashChanges": "Schowaj zmiany…"
 }

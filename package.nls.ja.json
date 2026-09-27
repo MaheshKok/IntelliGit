@@ -104,5 +104,6 @@
     "command.branches": "ブランチ…",
     "command.fileNewBranch": "新しいブランチ…",
     "command.fileNewTag": "新しいタグ…",
-    "command.fileResetHead": "HEAD をリセット…"
+    "command.fileResetHead": "HEAD をリセット…",
+    "command.fileStashChanges": "変更をスタッシュ…"
 }

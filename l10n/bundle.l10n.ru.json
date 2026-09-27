@@ -712,5 +712,10 @@
     "Reset HEAD is only available for local files.": "Сброс HEAD доступен только для локальных файлов.",
     "Reset current branch to revision": "Сбросить текущую ветку до ревизии",
     "Enter a branch, tag, or commit revision to reset to.": "Укажите ветку, тег или ревизию коммита для сброса.",
-    "Invalid reset target '{target}'. Enter a branch, tag, or commit revision.": "Недопустимая цель сброса '{target}'. Укажите ветку, тег или ревизию коммита."
+    "Invalid reset target '{target}'. Enter a branch, tag, or commit revision.": "Недопустимая цель сброса '{target}'. Укажите ветку, тег или ревизию коммита.",
+    "Stash Changes is only available for local files.": "Спрятать изменения можно только для локальных файлов.",
+    "Stash Changes": "Спрятать изменения",
+    "Stash all tracked and untracked changes in {repository}": "Спрятать все отслеживаемые и неотслеживаемые изменения в {repository}",
+    "Stashed changes": "Спрятанные изменения",
+    "Stash succeeded, but refresh failed: {message}": "Изменения спрятаны, но обновить интерфейс не удалось: {message}"
 }

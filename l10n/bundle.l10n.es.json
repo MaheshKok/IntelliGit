@@ -712,5 +712,10 @@
     "Reset HEAD is only available for local files.": "Restablecer HEAD solo está disponible para archivos locales.",
     "Reset current branch to revision": "Restablecer la rama actual a la revisión",
     "Enter a branch, tag, or commit revision to reset to.": "Indica una rama, etiqueta o revisión de commit como destino.",
-    "Invalid reset target '{target}'. Enter a branch, tag, or commit revision.": "Destino de restablecimiento '{target}' no válido. Indica una rama, etiqueta o revisión de commit."
+    "Invalid reset target '{target}'. Enter a branch, tag, or commit revision.": "Destino de restablecimiento '{target}' no válido. Indica una rama, etiqueta o revisión de commit.",
+    "Stash Changes is only available for local files.": "Guardar cambios en stash solo está disponible para archivos locales.",
+    "Stash Changes": "Guardar cambios en stash",
+    "Stash all tracked and untracked changes in {repository}": "Guardar en stash todos los cambios de archivos con y sin seguimiento en {repository}",
+    "Stashed changes": "Cambios guardados",
+    "Stash succeeded, but refresh failed: {message}": "Cambios guardados en stash, pero no se pudo actualizar: {message}"
 }

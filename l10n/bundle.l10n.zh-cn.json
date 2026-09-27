@@ -712,5 +712,10 @@
     "Reset HEAD is only available for local files.": "重置 HEAD 仅适用于本地文件。",
     "Reset current branch to revision": "将当前分支重置到指定修订版本",
     "Enter a branch, tag, or commit revision to reset to.": "输入要重置到的分支、标签或提交修订版本。",
-    "Invalid reset target '{target}'. Enter a branch, tag, or commit revision.": "重置目标 '{target}' 无效。请输入分支、标签或提交修订版本。"
+    "Invalid reset target '{target}'. Enter a branch, tag, or commit revision.": "重置目标 '{target}' 无效。请输入分支、标签或提交修订版本。",
+    "Stash Changes is only available for local files.": "储藏更改仅适用于本地文件。",
+    "Stash Changes": "储藏更改",
+    "Stash all tracked and untracked changes in {repository}": "储藏 {repository} 中所有已跟踪和未跟踪的更改",
+    "Stashed changes": "已储藏的更改",
+    "Stash succeeded, but refresh failed: {message}": "储藏成功，但刷新失败：{message}"
 }
