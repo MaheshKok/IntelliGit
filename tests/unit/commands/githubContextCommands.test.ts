@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { GitOps } from "../../../src/git/operations";
+import type { Branch, GitOps } from "../../../src/git/operations";
 
 const mocks = vi.hoisted(() => ({
     resolved: undefined as unknown,
@@ -137,7 +137,11 @@ describe("Create Pull Request and View in Browser", () => {
         getRemotes: vi.fn(async () => ["origin"]),
         getRemoteUrl: vi.fn(async () => "https://github.com/o/repo.git"),
         getMergeTarget: vi.fn(async () => ({ head: "feature/slash", oid: "a".repeat(40) })),
-        getBranches: vi.fn(async () => [{ name: "origin/feature/slash", isRemote: true }]),
+        getBranches: vi.fn(
+            async (): Promise<Pick<Branch, "name" | "isRemote" | "upstream">[]> => [
+                { name: "origin/feature/slash", isRemote: true },
+            ],
+        ),
         hasFileAtHead: vi.fn(async () => true),
     };
     const activeA = { getRemotes: vi.fn() } as unknown as GitOps;
@@ -169,6 +173,40 @@ describe("Create Pull Request and View in Browser", () => {
         await createGitHubPullRequestFromContext({ file: "B" }, activeA);
         expect(mocks.openExternal).not.toHaveBeenCalled();
         expect(mocks.showErrorMessage).toHaveBeenCalledWith(expect.stringContaining("published"));
+    });
+
+    it.each([false, true])(
+        "uses the selected remote's upstream branch even when a same-name branch exists: %s",
+        async (sameNameExists) => {
+            scoped.getBranches.mockResolvedValue([
+                {
+                    name: "feature/slash",
+                    isRemote: false,
+                    upstream: "origin/review/slash",
+                },
+                { name: "origin/review/slash", isRemote: true },
+                ...(sameNameExists ? [{ name: "origin/feature/slash", isRemote: true }] : []),
+            ]);
+            await createGitHubPullRequestFromContext({ file: "B" }, activeA);
+            expect(mocks.openExternal).toHaveBeenCalledOnce();
+            expect(mocks.openExternal.mock.calls[0][0].toString()).toBe(
+                "https://github.com/o/repo/compare/review%2Fslash?expand=1",
+            );
+            expect(mocks.showErrorMessage).not.toHaveBeenCalled();
+        },
+    );
+
+    it("keeps name matching when the upstream belongs to another remote", async () => {
+        scoped.getBranches.mockResolvedValue([
+            { name: "feature/slash", isRemote: false, upstream: "origin-other/review/slash" },
+            { name: "origin-other/review/slash", isRemote: true },
+            { name: "origin/feature/slash", isRemote: true },
+        ]);
+        await createGitHubPullRequestFromContext({ file: "B" }, activeA);
+        expect(mocks.openExternal).toHaveBeenCalledOnce();
+        expect(mocks.openExternal.mock.calls[0][0].toString()).toBe(
+            "https://github.com/o/repo/compare/feature%2Fslash?expand=1",
+        );
     });
 
     it.each([
