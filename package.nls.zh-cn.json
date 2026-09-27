@@ -103,5 +103,6 @@
     "command.rebase": "变基...",
     "command.branches": "分支…",
     "command.fileNewBranch": "新建分支…",
-    "command.fileNewTag": "新标签…"
+    "command.fileNewTag": "新标签…",
+    "command.fileResetHead": "重置 HEAD…"
 }

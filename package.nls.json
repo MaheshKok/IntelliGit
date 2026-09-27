@@ -31,6 +31,7 @@
     "command.branches": "Branches…",
     "command.fileNewBranch": "New Branch…",
     "command.fileNewTag": "New Tag…",
+    "command.fileResetHead": "Reset HEAD…",
     "command.newBranchFrom": "New Branch from...",
     "command.checkoutAndRebaseOntoCurrent": "Checkout and Rebase onto Current",
     "command.rebaseCurrentOntoSelected": "Rebase Current onto Selected",

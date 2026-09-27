@@ -29,6 +29,7 @@
         "intelligit.fileMerge",
         "intelligit.fileNewBranch",
         "intelligit.fileNewTag",
+        "intelligit.fileResetHead",
         "intelligit.filePull",
         "intelligit.filePush",
         "intelligit.fileRebase",

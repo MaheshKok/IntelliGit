@@ -103,5 +103,6 @@
     "command.rebase": "Rebaser...",
     "command.branches": "Branches…",
     "command.fileNewBranch": "Nouvelle branche…",
-    "command.fileNewTag": "Nouvelle étiquette…"
+    "command.fileNewTag": "Nouvelle étiquette…",
+    "command.fileResetHead": "Réinitialiser HEAD…"
 }

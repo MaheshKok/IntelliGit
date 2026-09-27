@@ -103,5 +103,6 @@
     "command.rebase": "리베이스...",
     "command.branches": "브랜치…",
     "command.fileNewBranch": "새 브랜치…",
-    "command.fileNewTag": "새로운 태그…"
+    "command.fileNewTag": "새로운 태그…",
+    "command.fileResetHead": "HEAD 재설정…"
 }

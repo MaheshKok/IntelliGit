@@ -103,5 +103,6 @@
     "command.rebase": "Перебазировать...",
     "command.branches": "Ветки…",
     "command.fileNewBranch": "Новая ветка…",
-    "command.fileNewTag": "Новый тег…"
+    "command.fileNewTag": "Новый тег…",
+    "command.fileResetHead": "Сбросить HEAD…"
 }

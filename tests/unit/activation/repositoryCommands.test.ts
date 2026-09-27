@@ -22,6 +22,7 @@ const mocks = vi.hoisted(() => {
         branchesFileFromContext: vi.fn(),
         newBranchFileFromContext: vi.fn(),
         newTagFileFromContext: vi.fn(),
+        resetHeadFileFromContext: vi.fn(),
         commitFileFromContext: vi.fn(),
         commitSelectedFromPanel: vi.fn(async (_deps: unknown, _options: unknown) => undefined),
         compareFileWithBranchOrTag: vi.fn(async () => undefined),
@@ -79,6 +80,7 @@ vi.mock("../../../src/commands/fileContextCommands", () => ({
     branchesFileFromContext: mocks.branchesFileFromContext,
     newBranchFileFromContext: mocks.newBranchFileFromContext,
     newTagFileFromContext: mocks.newTagFileFromContext,
+    resetHeadFileFromContext: mocks.resetHeadFileFromContext,
     commitFileFromContext: mocks.commitFileFromContext,
     compareFileWithBranchOrTag: mocks.compareFileWithBranchOrTag,
     compareFileWithRevision: mocks.compareFileWithRevision,
@@ -181,6 +183,45 @@ const makeDeps = (gitOps: GitOps) => {
 };
 
 describe("registerRepositoryCommands", () => {
+    it("routes Reset HEAD refresh to clicked B while A is active", async () => {
+        const gitOps = makeGitOps();
+        const deps = makeDeps(gitOps);
+        deps.getRepoRoot = () => "/repo-a";
+        const commitRefresh = vi.fn(async () => undefined);
+        deps.refreshService = () => ({ refreshCommitPanels: commitRefresh }) as never;
+        mocks.resetHeadFileFromContext.mockImplementationOnce(
+            async (_ctx, _ops, _executor, refresh) => refresh("/repo-b"),
+        );
+        registerRepositoryCommands(deps);
+        const uri = mocks.FakeUri.file("/repo-b/file.txt");
+        const handler = mocks.commands.get("intelligit.fileResetHead");
+        expect(handler, "native Reset HEAD has a registered handler").toBeTypeOf("function");
+        await handler!(uri);
+        expect(mocks.resetHeadFileFromContext).toHaveBeenCalledWith(
+            uri,
+            gitOps,
+            deps.executor,
+            expect.any(Function),
+        );
+        expect(commitRefresh).toHaveBeenCalledOnce();
+        expect(deps.refreshActiveRepository).not.toHaveBeenCalled();
+    });
+    it("refreshes active repository data when clicked B is still active", async () => {
+        const gitOps = makeGitOps();
+        const deps = makeDeps(gitOps);
+        deps.getRepoRoot = () => "/repo-b/";
+        const commitRefresh = vi.fn(async () => undefined);
+        deps.refreshService = () => ({ refreshCommitPanels: commitRefresh }) as never;
+        mocks.resetHeadFileFromContext.mockImplementationOnce(
+            async (_ctx, _ops, _executor, refresh) => refresh("/repo-b"),
+        );
+        registerRepositoryCommands(deps);
+        await mocks.commands.get("intelligit.fileResetHead")!(
+            mocks.FakeUri.file("/repo-b/file.txt"),
+        );
+        expect(commitRefresh).toHaveBeenCalledOnce();
+        expect(deps.refreshActiveRepository).toHaveBeenCalledOnce();
+    });
     it("routes New Tag refresh to clicked B and refreshes active data only when B is active", async () => {
         const gitOps = makeGitOps();
         const deps = makeDeps(gitOps);

@@ -708,5 +708,9 @@
     "Checkout succeeded, but refresh failed: {message}": "Checkout erfolgreich, aber die Aktualisierung ist fehlgeschlagen: {message}",
     "New Branch is only available for local files.": "Neuer Branch ist nur für lokale Dateien verfügbar.",
     "New Tag is only available for local files.": "Neuer Tag ist nur für lokale Dateien verfügbar.",
-    "Tag views could not be refreshed: {message}": "Tag-Ansichten konnten nicht aktualisiert werden: {message}"
+    "Tag views could not be refreshed: {message}": "Tag-Ansichten konnten nicht aktualisiert werden: {message}",
+    "Reset HEAD is only available for local files.": "HEAD zurücksetzen ist nur für lokale Dateien verfügbar.",
+    "Reset current branch to revision": "Aktuellen Branch auf Revision zurücksetzen",
+    "Enter a branch, tag, or commit revision to reset to.": "Branch, Tag oder Commit-Revision als Ziel eingeben.",
+    "Invalid reset target '{target}'. Enter a branch, tag, or commit revision.": "Ungültiges Reset-Ziel '{target}'. Branch, Tag oder Commit-Revision eingeben."
 }

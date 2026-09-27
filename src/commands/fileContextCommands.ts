@@ -3,7 +3,7 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 import { GitExecutor } from "../git/executor";
 import { GitOps } from "../git/operations";
-import { checkoutBranch, isValidTagName } from "../services/gitHelpers";
+import { checkoutBranch, getCheckedOutBranchName, isValidTagName } from "../services/gitHelpers";
 import { WorktreeService } from "../services/worktreeService";
 import {
     compareEditorFileWithBranch,
@@ -17,6 +17,7 @@ import { runWithNotificationProgress, showTimedInformationMessage } from "../uti
 import { runMergeCommand, type MergeLabels } from "./mergeCommand";
 import { runRebaseCommand } from "./rebaseCommand";
 import { rejectWhenOperationInProgress } from "./operationFence";
+import { runResetWorkflow } from "./commitBasicActions";
 
 interface ResolvedFileCommandContext {
     selectedUri: vscode.Uri;
@@ -381,6 +382,83 @@ export async function newTagFileFromContext(
             vscode.l10n.t("Failed to create tag: {message}", {
                 message: getErrorMessage(error),
             }),
+        );
+    }
+}
+
+/**
+ * Resets the clicked file's repository to a single resolved commit OID. The repository executor,
+ * branch snapshot, target, and refresh root stay captured across all native prompts. Both operation
+ * fences must pass, and only an attempted Git reset refreshes the captured repository.
+ */
+export async function resetHeadFileFromContext(
+    ctx: unknown,
+    gitOps: GitOps,
+    executor: GitExecutor,
+    refresh: (repoRoot: string) => Promise<void>,
+): Promise<void> {
+    try {
+        const resolved = await resolveFileCommandContext(ctx, gitOps);
+        if (!resolved) {
+            await vscode.window.showErrorMessage(
+                vscode.l10n.t("Reset HEAD is only available for local files."),
+            );
+            return;
+        }
+        const { gitOps: scopedGitOps, repoRoot } = resolved;
+        const scopedExecutor = executor.deriveFor(repoRoot);
+        if (await rejectWhenOperationInProgress(scopedGitOps)) return;
+        const currentBranches = await scopedGitOps.getBranches();
+        const branchName =
+            (await getCheckedOutBranchName(scopedExecutor, currentBranches)) ?? "HEAD";
+        const entered = await vscode.window.showInputBox({
+            prompt: vscode.l10n.t("Reset current branch to revision"),
+            value: "HEAD",
+        });
+        if (entered === undefined) return;
+        const target = entered.trim();
+        if (!target) {
+            await vscode.window.showErrorMessage(
+                vscode.l10n.t("Enter a branch, tag, or commit revision to reset to."),
+            );
+            return;
+        }
+        let validatedHash: string;
+        try {
+            validatedHash = (
+                await scopedExecutor.run([
+                    "rev-parse",
+                    "--verify",
+                    "--end-of-options",
+                    `${target}^{commit}`,
+                ])
+            ).trim();
+            if (!/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(validatedHash)) {
+                throw new Error("Invalid commit object ID");
+            }
+        } catch {
+            await vscode.window.showErrorMessage(
+                vscode.l10n.t(
+                    "Invalid reset target '{target}'. Enter a branch, tag, or commit revision.",
+                    { target },
+                ),
+            );
+            return;
+        }
+        await runResetWorkflow(
+            {
+                executor: scopedExecutor,
+                currentBranches,
+                branchName,
+                validatedHash,
+                short: validatedHash.slice(0, 8),
+                refreshAll: () => refresh(repoRoot),
+            },
+            async () => !(await rejectWhenOperationInProgress(scopedGitOps)),
+        );
+    } catch (error) {
+        await vscode.window.showErrorMessage(
+            vscode.l10n.t("Reset failed: {message}", { message: getErrorMessage(error) }),
         );
     }
 }

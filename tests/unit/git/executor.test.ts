@@ -458,6 +458,28 @@ describe("GitExecutor", () => {
         expect(gatedRuns).toHaveLength(1);
     });
 
+    it("rejects Reset HEAD through the derived executor when its mutation gate refuses", async () => {
+        const directory = await mkdtemp(join(tmpdir(), "intelligit-reset-gate-"));
+        let gatedRuns = 0;
+        const gate = {
+            resolveCommonDir: (_root: string, commonDir: string) => commonDir.trim(),
+            run: async () => {
+                gatedRuns++;
+                throw new Error("mutation gate refused reset");
+            },
+        } as unknown as RepositoryMutationGate;
+        try {
+            await new GitExecutor(directory).run(["init"]);
+            const executor = new GitExecutor(directory, gate).deriveFor(directory);
+            await expect(executor.run(["reset", "--soft", "HEAD"])).rejects.toThrow(
+                "mutation gate refused reset",
+            );
+            expect(gatedRuns, "derived executor keeps the activation mutation gate").toBe(1);
+        } finally {
+            await removeScratchDirectories(directory);
+        }
+    });
+
     itPosix("caps concurrent spawned processes at 6 per executor instance", async () => {
         const directory = await mkdtemp(join(tmpdir(), "intelligit-fake-git-concurrency-"));
         const activeDir = join(directory, "active");

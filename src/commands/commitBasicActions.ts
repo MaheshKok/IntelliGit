@@ -134,6 +134,23 @@ export async function checkoutRevision(ctx: CommitActionContext): Promise<void> 
  * safely and refreshes views once after the Git attempt.
  */
 export async function resetCurrentToHere(ctx: CommitActionContext): Promise<void> {
+    await runResetWorkflow(ctx);
+}
+
+/**
+ * Runs the existing five-mode reset dialog for an already validated commit OID.
+ * A supplied branch name is captured before file-context prompts; commit-context callers retain
+ * their current checked-out-branch lookup. The optional fence runs after confirmation and before
+ * dispatch; refusal has no refresh side effect. Once Git is attempted, success or failure
+ * refreshes the caller's captured repository.
+ */
+export async function runResetWorkflow(
+    ctx: Pick<
+        CommitActionContext,
+        "executor" | "currentBranches" | "validatedHash" | "short" | "refreshAll"
+    > & { branchName?: string },
+    beforeReset?: () => Promise<boolean>,
+): Promise<void> {
     const resetLabel = vscode.l10n.t("Reset");
     const resetModes = [
         {
@@ -167,7 +184,10 @@ export async function resetCurrentToHere(ctx: CommitActionContext): Promise<void
     const resetMode = pickedResetMode.mode;
 
     // Detached HEAD has no branch to name, and `git reset` moves HEAD itself there.
-    const branch = (await getCheckedOutBranchName(ctx.executor, ctx.currentBranches)) ?? "HEAD";
+    const branch =
+        ctx.branchName ??
+        (await getCheckedOutBranchName(ctx.executor, ctx.currentBranches)) ??
+        "HEAD";
     const confirmationPrompts: Record<
         (typeof resetModes)[number]["mode"],
         { message: string; detail: string }
@@ -212,6 +232,7 @@ export async function resetCurrentToHere(ctx: CommitActionContext): Promise<void
         resetLabel,
     );
     if (confirm !== resetLabel) return;
+    if (beforeReset && !(await beforeReset())) return;
     try {
         await ctx.executor.run(["reset", `--${resetMode}`, ctx.validatedHash]);
         showTimedInformationMessage(

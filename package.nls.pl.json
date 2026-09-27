@@ -103,5 +103,6 @@
     "command.rebase": "Zmień bazę...",
     "command.branches": "Gałęzie…",
     "command.fileNewBranch": "Nowa gałąź…",
-    "command.fileNewTag": "Nowy tag…"
+    "command.fileNewTag": "Nowy tag…",
+    "command.fileResetHead": "Zresetuj HEAD…"
 }

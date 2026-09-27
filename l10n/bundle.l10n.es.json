@@ -708,5 +708,9 @@
     "Checkout succeeded, but refresh failed: {message}": "Se cambió de rama, pero no se pudo actualizar la vista: {message}",
     "New Branch is only available for local files.": "Nueva rama solo está disponible para archivos locales.",
     "New Tag is only available for local files.": "Nueva etiqueta solo está disponible para archivos locales.",
-    "Tag views could not be refreshed: {message}": "No se pudieron actualizar las vistas de etiquetas: {message}"
+    "Tag views could not be refreshed: {message}": "No se pudieron actualizar las vistas de etiquetas: {message}",
+    "Reset HEAD is only available for local files.": "Restablecer HEAD solo está disponible para archivos locales.",
+    "Reset current branch to revision": "Restablecer la rama actual a la revisión",
+    "Enter a branch, tag, or commit revision to reset to.": "Indica una rama, etiqueta o revisión de commit como destino.",
+    "Invalid reset target '{target}'. Enter a branch, tag, or commit revision.": "Destino de restablecimiento '{target}' no válido. Indica una rama, etiqueta o revisión de commit."
 }

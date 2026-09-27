@@ -708,5 +708,9 @@
     "Checkout succeeded, but refresh failed: {message}": "チェックアウトは成功しましたが、更新に失敗しました: {message}",
     "New Branch is only available for local files.": "新しいブランチはローカルファイルでのみ利用できます。",
     "New Tag is only available for local files.": "新しいタグはローカルファイルでのみ利用できます。",
-    "Tag views could not be refreshed: {message}": "タグビューを更新できませんでした: {message}"
+    "Tag views could not be refreshed: {message}": "タグビューを更新できませんでした: {message}",
+    "Reset HEAD is only available for local files.": "HEAD のリセットはローカルファイルでのみ使用できます。",
+    "Reset current branch to revision": "現在のブランチをリビジョンにリセット",
+    "Enter a branch, tag, or commit revision to reset to.": "リセット先のブランチ、タグ、またはコミットリビジョンを入力してください。",
+    "Invalid reset target '{target}'. Enter a branch, tag, or commit revision.": "リセット先 '{target}' は無効です。ブランチ、タグ、またはコミットリビジョンを入力してください。"
 }

@@ -708,5 +708,9 @@
     "Checkout succeeded, but refresh failed: {message}": "L’extraction a réussi, mais l’actualisation a échoué : {message}",
     "New Branch is only available for local files.": "Nouvelle branche n’est disponible que pour les fichiers locaux.",
     "New Tag is only available for local files.": "Nouvelle étiquette n’est disponible que pour les fichiers locaux.",
-    "Tag views could not be refreshed: {message}": "Impossible d’actualiser les vues des étiquettes : {message}"
+    "Tag views could not be refreshed: {message}": "Impossible d’actualiser les vues des étiquettes : {message}",
+    "Reset HEAD is only available for local files.": "La réinitialisation de HEAD est réservée aux fichiers locaux.",
+    "Reset current branch to revision": "Réinitialiser la branche actuelle à la révision",
+    "Enter a branch, tag, or commit revision to reset to.": "Saisissez une branche, une étiquette ou une révision de commit comme cible.",
+    "Invalid reset target '{target}'. Enter a branch, tag, or commit revision.": "Cible de réinitialisation '{target}' invalide. Saisissez une branche, une étiquette ou une révision de commit."
 }
