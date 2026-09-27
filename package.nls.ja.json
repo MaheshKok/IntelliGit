@@ -102,5 +102,6 @@
     "command.merge": "マージ...",
     "command.rebase": "リベース...",
     "command.branches": "ブランチ…",
-    "command.fileNewBranch": "新しいブランチ…"
+    "command.fileNewBranch": "新しいブランチ…",
+    "command.fileNewTag": "新しいタグ…"
 }

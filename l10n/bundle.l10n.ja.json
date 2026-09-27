@@ -706,5 +706,7 @@
     "No branches are available.": "利用可能なブランチがありません。",
     "Select a branch to check out": "チェックアウトするブランチを選択",
     "Checkout succeeded, but refresh failed: {message}": "チェックアウトは成功しましたが、更新に失敗しました: {message}",
-    "New Branch is only available for local files.": "新しいブランチはローカルファイルでのみ利用できます。"
+    "New Branch is only available for local files.": "新しいブランチはローカルファイルでのみ利用できます。",
+    "New Tag is only available for local files.": "新しいタグはローカルファイルでのみ利用できます。",
+    "Tag views could not be refreshed: {message}": "タグビューを更新できませんでした: {message}"
 }

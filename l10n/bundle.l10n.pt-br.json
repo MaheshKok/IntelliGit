@@ -706,5 +706,7 @@
     "No branches are available.": "Não há branches disponíveis.",
     "Select a branch to check out": "Selecione uma branch para fazer checkout",
     "Checkout succeeded, but refresh failed: {message}": "Checkout concluído, mas houve falha ao atualizar: {message}",
-    "New Branch is only available for local files.": "Novo branch está disponível apenas para arquivos locais."
+    "New Branch is only available for local files.": "Novo branch está disponível apenas para arquivos locais.",
+    "New Tag is only available for local files.": "Nova etiqueta está disponível apenas para arquivos locais.",
+    "Tag views could not be refreshed: {message}": "Não foi possível atualizar as visualizações de etiquetas: {message}"
 }

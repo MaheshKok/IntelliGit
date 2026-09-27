@@ -1,6 +1,8 @@
 {
     "Merge is only available for local files.": "Merge is only available for local files.",
     "New Branch is only available for local files.": "New Branch is only available for local files.",
+    "New Tag is only available for local files.": "New Tag is only available for local files.",
+    "Tag views could not be refreshed: {message}": "Tag views could not be refreshed: {message}",
     "Select a branch to merge into the current branch": "Select a branch to merge into the current branch",
     "No other branches are available to merge.": "No other branches are available to merge.",
     "The current branch or HEAD changed. Start Merge again.": "The current branch or HEAD changed. Start Merge again.",

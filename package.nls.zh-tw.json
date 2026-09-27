@@ -102,5 +102,6 @@
     "command.merge": "合併...",
     "command.rebase": "變基...",
     "command.branches": "分支…",
-    "command.fileNewBranch": "新增分支…"
+    "command.fileNewBranch": "新增分支…",
+    "command.fileNewTag": "新標籤…"
 }

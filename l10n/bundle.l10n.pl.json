@@ -706,5 +706,7 @@
     "No branches are available.": "Brak dostępnych gałęzi.",
     "Select a branch to check out": "Wybierz gałąź do przełączenia",
     "Checkout succeeded, but refresh failed: {message}": "Przełączono gałąź, ale odświeżenie nie powiodło się: {message}",
-    "New Branch is only available for local files.": "Nowa gałąź jest dostępna tylko dla plików lokalnych."
+    "New Branch is only available for local files.": "Nowa gałąź jest dostępna tylko dla plików lokalnych.",
+    "New Tag is only available for local files.": "Nowy tag jest dostępny tylko dla plików lokalnych.",
+    "Tag views could not be refreshed: {message}": "Nie udało się odświeżyć widoków tagów: {message}"
 }

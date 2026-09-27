@@ -706,5 +706,7 @@
     "No branches are available.": "사용 가능한 브랜치가 없습니다.",
     "Select a branch to check out": "체크아웃할 브랜치 선택",
     "Checkout succeeded, but refresh failed: {message}": "체크아웃은 성공했지만 새로 고침에 실패했습니다: {message}",
-    "New Branch is only available for local files.": "새 브랜치는 로컬 파일에서만 사용할 수 있습니다."
+    "New Branch is only available for local files.": "새 브랜치는 로컬 파일에서만 사용할 수 있습니다.",
+    "New Tag is only available for local files.": "새 태그는 로컬 파일에서만 사용할 수 있습니다.",
+    "Tag views could not be refreshed: {message}": "태그 보기를 새로 고칠 수 없습니다: {message}"
 }

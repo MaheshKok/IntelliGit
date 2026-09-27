@@ -21,6 +21,7 @@ const mocks = vi.hoisted(() => {
         annotateWithGitBlame: vi.fn(async () => undefined),
         branchesFileFromContext: vi.fn(),
         newBranchFileFromContext: vi.fn(),
+        newTagFileFromContext: vi.fn(),
         commitFileFromContext: vi.fn(),
         commitSelectedFromPanel: vi.fn(async (_deps: unknown, _options: unknown) => undefined),
         compareFileWithBranchOrTag: vi.fn(async () => undefined),
@@ -77,6 +78,7 @@ vi.mock("../../../src/commands/fileContextCommands", () => ({
     annotateWithGitBlame: mocks.annotateWithGitBlame,
     branchesFileFromContext: mocks.branchesFileFromContext,
     newBranchFileFromContext: mocks.newBranchFileFromContext,
+    newTagFileFromContext: mocks.newTagFileFromContext,
     commitFileFromContext: mocks.commitFileFromContext,
     compareFileWithBranchOrTag: mocks.compareFileWithBranchOrTag,
     compareFileWithRevision: mocks.compareFileWithRevision,
@@ -179,6 +181,35 @@ const makeDeps = (gitOps: GitOps) => {
 };
 
 describe("registerRepositoryCommands", () => {
+    it("routes New Tag refresh to clicked B and refreshes active data only when B is active", async () => {
+        const gitOps = makeGitOps();
+        const deps = makeDeps(gitOps);
+        let activeRoot = "/repo-a";
+        deps.getRepoRoot = () => activeRoot;
+        const commitRefresh = vi.fn(async () => undefined);
+        deps.refreshService = () => ({ refreshCommitPanels: commitRefresh }) as never;
+        mocks.newTagFileFromContext.mockImplementationOnce(
+            async (_ctx, _ops, _executor, refresh) => {
+                await refresh("/repo-b");
+                expect(deps.refreshActiveRepository).not.toHaveBeenCalled();
+                activeRoot = "/repo-b/";
+                await refresh("/repo-b");
+            },
+        );
+        registerRepositoryCommands(deps);
+        const uri = mocks.FakeUri.file("/repo-b/file.txt");
+        const handler = mocks.commands.get("intelligit.fileNewTag");
+        expect(handler, "native New Tag has a registered handler").toBeTypeOf("function");
+        await handler!(uri);
+        expect(mocks.newTagFileFromContext).toHaveBeenCalledWith(
+            uri,
+            gitOps,
+            deps.executor,
+            expect.any(Function),
+        );
+        expect(commitRefresh).toHaveBeenCalledTimes(2);
+        expect(deps.refreshActiveRepository).toHaveBeenCalledOnce();
+    });
     it("routes New Branch refresh to clicked B and refreshes the active graph only when B is active", async () => {
         const gitOps = makeGitOps();
         const deps = makeDeps(gitOps);

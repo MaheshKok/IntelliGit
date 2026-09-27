@@ -3,7 +3,7 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 import { GitExecutor } from "../git/executor";
 import { GitOps } from "../git/operations";
-import { checkoutBranch } from "../services/gitHelpers";
+import { checkoutBranch, isValidTagName } from "../services/gitHelpers";
 import { WorktreeService } from "../services/worktreeService";
 import {
     compareEditorFileWithBranch,
@@ -314,6 +314,71 @@ export async function newBranchFileFromContext(
     } catch (error) {
         await vscode.window.showErrorMessage(
             vscode.l10n.t("Failed to create branch: {message}", {
+                message: getErrorMessage(error),
+            }),
+        );
+    }
+}
+
+/**
+ * Creates a local lightweight tag at the clicked repository's pre-prompt HEAD. The repository,
+ * executor, and full commit hash stay captured across input, and both operation fences must pass
+ * before any ref changes. Successful and rejected Git attempts refresh only that repository.
+ */
+export async function newTagFileFromContext(
+    ctx: unknown,
+    gitOps: GitOps,
+    executor: GitExecutor,
+    refresh: (repoRoot: string) => Promise<void>,
+): Promise<void> {
+    try {
+        const resolved = await resolveFileCommandContext(ctx, gitOps);
+        if (!resolved) {
+            await vscode.window.showErrorMessage(
+                vscode.l10n.t("New Tag is only available for local files."),
+            );
+            return;
+        }
+        const { gitOps: scopedGitOps, repoRoot } = resolved;
+        if (await rejectWhenOperationInProgress(scopedGitOps)) return;
+        const scopedExecutor = executor.deriveFor(repoRoot);
+        const headHash = (await scopedExecutor.run(["rev-parse", "HEAD"])).trim();
+        const tagName = await vscode.window.showInputBox({
+            prompt: vscode.l10n.t("New tag at {short}", { short: headHash.slice(0, 7) }),
+            placeHolder: "v1.0.0",
+        });
+        if (!tagName) return;
+        if (!isValidTagName(tagName)) {
+            await vscode.window.showErrorMessage(
+                vscode.l10n.t("Invalid tag name '{tag}'. Tag names must be valid git ref names.", {
+                    tag: tagName,
+                }),
+            );
+            return;
+        }
+        if (await rejectWhenOperationInProgress(scopedGitOps)) return;
+        try {
+            await scopedExecutor.run(["tag", "--no-sign", tagName, headHash]);
+            showTimedInformationMessage(vscode.l10n.t("Created tag {tag}.", { tag: tagName }));
+        } catch (error) {
+            await vscode.window.showErrorMessage(
+                vscode.l10n.t("Failed to create tag: {message}", {
+                    message: getErrorMessage(error),
+                }),
+            );
+        }
+        try {
+            await refresh(repoRoot);
+        } catch (error) {
+            await vscode.window.showErrorMessage(
+                vscode.l10n.t("Tag views could not be refreshed: {message}", {
+                    message: getErrorMessage(error),
+                }),
+            );
+        }
+    } catch (error) {
+        await vscode.window.showErrorMessage(
+            vscode.l10n.t("Failed to create tag: {message}", {
                 message: getErrorMessage(error),
             }),
         );

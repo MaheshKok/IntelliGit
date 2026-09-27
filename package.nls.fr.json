@@ -102,5 +102,6 @@
     "command.merge": "Fusionner...",
     "command.rebase": "Rebaser...",
     "command.branches": "Branches…",
-    "command.fileNewBranch": "Nouvelle branche…"
+    "command.fileNewBranch": "Nouvelle branche…",
+    "command.fileNewTag": "Nouvelle étiquette…"
 }

@@ -237,6 +237,12 @@ const COMMAND_ENTRIES = [
     },
     {
         kind: "command",
+        id: "intelligit.fileNewTag",
+        mutating: true,
+        coveredBySpec: "tests/e2e/fileContextNewTag.spec.ts",
+    },
+    {
+        kind: "command",
         id: "intelligit.fileAddToVcs",
         mutating: true,
         coveredBySpec: "tests/e2e/fileContextAddToVcs.spec.ts",

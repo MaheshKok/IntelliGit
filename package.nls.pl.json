@@ -102,5 +102,6 @@
     "command.merge": "Łączyć...",
     "command.rebase": "Zmień bazę...",
     "command.branches": "Gałęzie…",
-    "command.fileNewBranch": "Nowa gałąź…"
+    "command.fileNewBranch": "Nowa gałąź…",
+    "command.fileNewTag": "Nowy tag…"
 }

@@ -102,5 +102,6 @@
     "command.merge": "Слияние...",
     "command.rebase": "Перебазировать...",
     "command.branches": "Ветки…",
-    "command.fileNewBranch": "Новая ветка…"
+    "command.fileNewBranch": "Новая ветка…",
+    "command.fileNewTag": "Новый тег…"
 }

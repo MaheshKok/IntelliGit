@@ -706,5 +706,7 @@
     "No branches are available.": "Нет доступных веток.",
     "Select a branch to check out": "Выберите ветку для переключения",
     "Checkout succeeded, but refresh failed: {message}": "Переключение ветки выполнено, но обновление не удалось: {message}",
-    "New Branch is only available for local files.": "Новая ветка доступна только для локальных файлов."
+    "New Branch is only available for local files.": "Новая ветка доступна только для локальных файлов.",
+    "New Tag is only available for local files.": "Новый тег доступен только для локальных файлов.",
+    "Tag views could not be refreshed: {message}": "Не удалось обновить представления тегов: {message}"
 }

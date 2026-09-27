@@ -17,6 +17,7 @@ import {
     fetchFile,
     mergeFileFromContext,
     newBranchFileFromContext,
+    newTagFileFromContext,
     rebaseFileFromContext,
     pullFileRepositoryFromContext,
     pushFileRepositoryFromContext,
@@ -767,6 +768,14 @@ function registerCommitFileCommands(deps: RepositoryCommandsDeps): void {
         }),
         vscode.commands.registerCommand("intelligit.fileNewBranch", async (ctx: unknown) => {
             await newBranchFileFromContext(ctx, gitOps, executor, async (repoRoot) => {
+                await refreshService().refreshCommitPanels();
+                if (areSameRepositoryRoot(repoRoot, getRepoRoot())) {
+                    await refreshActiveRepository();
+                }
+            });
+        }),
+        vscode.commands.registerCommand("intelligit.fileNewTag", async (ctx: unknown) => {
+            await newTagFileFromContext(ctx, gitOps, executor, async (repoRoot) => {
                 await refreshService().refreshCommitPanels();
                 if (areSameRepositoryRoot(repoRoot, getRepoRoot())) {
                     await refreshActiveRepository();
