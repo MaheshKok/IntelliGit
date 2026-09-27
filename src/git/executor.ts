@@ -99,6 +99,37 @@ export class GitExecutor {
         }
     }
 
+    /**
+     * Holds the existing repository mutation gate across a short read-then-write Git sequence.
+     * The supplied runner is bound to the captured root and environment and must not reacquire
+     * the gate; callers validate all arguments before entering this callback.
+     */
+    async runWithinMutationGate<T>(
+        operation: (run: (args: string[]) => Promise<string>) => Promise<T>,
+    ): Promise<T> {
+        const repoRoot = this.repoRoot;
+        const ungated = new GitExecutor(repoRoot, undefined, { ...this.defaultEnv });
+        const run = async (args: string[]): Promise<string> => {
+            const output = (await ungated.runBinary(args)).stdout.toString("utf8");
+            notifyGitSuccessSafely(args);
+            return output;
+        };
+        await this.processSemaphore.acquire();
+        try {
+            if (!this.mutationGate) return await operation(run);
+            const commonDir = (
+                await ungated.runBinary(["rev-parse", "--git-common-dir"])
+            ).stdout.toString("utf8");
+            return await this.mutationGate.run(
+                repoRoot,
+                this.mutationGate.resolveCommonDir(repoRoot, commonDir),
+                () => operation(run),
+            );
+        } finally {
+            this.processSemaphore.release();
+        }
+    }
+
     /** Routes mutating commands through the repository mutation gate; others run directly. */
     private async runGated(
         args: string[],

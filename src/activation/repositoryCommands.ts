@@ -20,6 +20,7 @@ import {
     newTagFileFromContext,
     resetHeadFileFromContext,
     stashChangesFromContext,
+    unstashChangesFromContext,
     rebaseFileFromContext,
     pullFileRepositoryFromContext,
     pushFileRepositoryFromContext,
@@ -800,6 +801,21 @@ function registerCommitFileCommands(deps: RepositoryCommandsDeps): void {
                 }
             });
         }),
+        vscode.commands.registerCommand(
+            "intelligit.fileContextUnstashChanges",
+            async (ctx: unknown) => {
+                await unstashChangesFromContext(ctx, gitOps, {
+                    refresh: async (repoRoot) => {
+                        await refreshService().refreshCommitPanels();
+                        if (areSameRepositoryRoot(repoRoot, getRepoRoot())) {
+                            await refreshActiveRepository();
+                        }
+                    },
+                    openConflictSession: async (scopedGitOps, repoRoot) =>
+                        deps.openConflictSessionForRepository(scopedGitOps, repoRoot, {}),
+                });
+            },
+        ),
         vscode.commands.registerCommand("intelligit.filePull", async (ctx: unknown) => {
             await pullFileRepositoryFromContext(ctx, gitOps, async (scopedGitOps, repoRoot) => {
                 await runGitOperationFromPanel(

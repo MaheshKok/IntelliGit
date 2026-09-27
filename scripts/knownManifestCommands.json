@@ -31,6 +31,7 @@
         "intelligit.fileNewTag",
         "intelligit.fileResetHead",
         "intelligit.fileStashChanges",
+        "intelligit.fileContextUnstashChanges",
         "intelligit.filePull",
         "intelligit.filePush",
         "intelligit.fileRebase",

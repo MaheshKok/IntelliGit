@@ -5,7 +5,10 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { GitOps, UpstreamPushDeclinedError } from "../../../../src/git/operations";
-import type { GitExecutor } from "../../../../src/git/executor";
+import { GitExecutor } from "../../../../src/git/executor";
+import { RepositoryMutationCoordinator } from "../../../../src/git/mutationCoordinator";
+import { RepositoryMutationGate } from "../../../../src/git/repositoryMutationGate";
+import { RepositoryLock } from "../../../../src/git/repositoryLock";
 import { parseStashFiles } from "../../../../src/git/stashFiles";
 import { removeScratchDirectories } from "../../../helpers/scratchDirectories";
 
@@ -19,7 +22,11 @@ function createMockExecutor(responses: Record<string, string> = {}): GitExecutor
         }
         return "";
     });
-    return { run } as unknown as GitExecutor;
+    return {
+        run,
+        runWithinMutationGate: async (operation: (run: typeof run) => Promise<unknown>) =>
+            operation(run),
+    } as unknown as GitExecutor;
 }
 
 class RealGitExecutor {
@@ -28,6 +35,11 @@ class RealGitExecutor {
     async run(args: string[]): Promise<string> {
         const { stdout } = await execFileAsync("git", args, { cwd: this.cwd });
         return stdout;
+    }
+    async runWithinMutationGate<T>(
+        operation: (run: (args: string[]) => Promise<string>) => Promise<T>,
+    ): Promise<T> {
+        return operation((args) => this.run(args));
     }
 }
 
@@ -297,6 +309,21 @@ describe("GitOps", () => {
         });
     });
     describe("stashApply", () => {
+        it("applies a full stash OID and restores the index only when requested", async () => {
+            const executor = createMockExecutor({});
+            const ops = new GitOps(executor);
+            const hash = "a".repeat(40);
+            await ops.stashApplyByHash(hash, false);
+            await ops.stashApplyByHash(hash, true);
+            expect((executor.run as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0])).toEqual([
+                ["stash", "apply", hash],
+                ["stash", "apply", "--index", hash],
+            ]);
+            await expect(ops.stashApplyByHash("stash@{0}", false)).rejects.toThrow(
+                "Invalid stash hash",
+            );
+            expect(executor.run).toHaveBeenCalledTimes(2);
+        });
         it("calls git stash apply with index", async () => {
             const executor = createMockExecutor({});
             const ops = new GitOps(executor);
@@ -345,6 +372,14 @@ describe("GitOps", () => {
         });
     });
     describe("listStashes", () => {
+        it("propagates a failed strict stash inspection", async () => {
+            const executor = {
+                run: vi.fn(async () => {
+                    throw new Error("list failed");
+                }),
+            } as unknown as GitExecutor;
+            await expect(new GitOps(executor).listStashesOrThrow()).rejects.toThrow("list failed");
+        });
         it("parses stash list output", async () => {
             const output = [
                 "aaa111\tstash@{0}\tOn main: WIP\t2024-01-15T10:30:00Z",
@@ -372,6 +407,183 @@ describe("GitOps", () => {
             const ops = new GitOps(executor);
             const stashes = await ops.listStashes();
             expect(stashes).toEqual([]);
+        });
+    });
+    describe("stashBranchByHash and verified removal", () => {
+        it("keeps check and drop inside one real gate against an internally queued stash push", async () => {
+            const repo = await createTempGitRepo();
+            const otherRepo = await createTempGitRepo();
+            try {
+                await writeFile(path.join(repo, "tracked.txt"), "older\n");
+                await git(repo, ["stash", "push", "-m", "older"]);
+                const older = (await git(repo, ["rev-parse", "stash@{0}"])).trim();
+                await writeFile(path.join(repo, "tracked.txt"), "newer\n");
+                await git(repo, ["stash", "push", "-m", "newer"]);
+                const newer = (await git(repo, ["rev-parse", "stash@{0}"])).trim();
+                await writeFile(path.join(repo, "tracked.txt"), "queued\n");
+                const gate = new RepositoryMutationGate(
+                    new RepositoryMutationCoordinator(),
+                    new RepositoryLock(),
+                );
+                const runGate = gate.run.bind(gate);
+                let queuedStarted = false;
+                let markQueued = () => undefined;
+                const queuedAtGate = new Promise<void>((resolve) => {
+                    markQueued = resolve;
+                });
+                vi.spyOn(gate, "run").mockImplementation(async (root, commonDir, operation) => {
+                    if (queuedStarted) markQueued();
+                    return runGate(root, commonDir, operation);
+                });
+                const executor = new GitExecutor(repo, gate);
+                const originalRunBinary = GitExecutor.prototype.runBinary;
+                let releaseLookup = () => undefined;
+                const lookupPaused = new Promise<void>((resolve) => {
+                    releaseLookup = resolve;
+                });
+                let markLookupRead = () => undefined;
+                const lookupRead = new Promise<void>((resolve) => {
+                    markLookupRead = resolve;
+                });
+                vi.spyOn(GitExecutor.prototype, "runBinary").mockImplementation(
+                    async function (args, options) {
+                        const output = await originalRunBinary.call(this, args, options);
+                        if (args[0] === "rev-parse" && args[2] === "stash@{1}^{commit}") {
+                            markLookupRead();
+                            await lookupPaused;
+                        }
+                        return output;
+                    },
+                );
+                const ops = new GitOps(executor);
+                const removal = ops.stashDeleteIfHashMatches(1, older);
+                await lookupRead;
+                executor.setRoot(otherRepo);
+                queuedStarted = true;
+                const queuedPush = executor.deriveFor(repo).run(["stash", "push", "-m", "queued"]);
+                await queuedAtGate;
+                releaseLookup();
+                await Promise.all([removal, queuedPush]);
+                const remaining = (
+                    await new GitOps(executor.deriveFor(repo)).listStashesOrThrow()
+                ).map((entry) => entry.hash);
+                expect(remaining, "queued push must not redirect checked drop").toContain(newer);
+                expect(remaining, "selected OID alone is removed").not.toContain(older);
+                expect(await git(otherRepo, ["status", "--porcelain"])).toBe("");
+            } finally {
+                vi.restoreAllMocks();
+                await removeScratchDirectories(repo);
+                await removeScratchDirectories(otherRepo);
+            }
+        });
+
+        it("releases the real gate after checked-drop validation rejects", async () => {
+            const repo = await createTempGitRepo();
+            try {
+                await writeFile(path.join(repo, "tracked.txt"), "stashed\n");
+                await git(repo, ["stash", "push", "-m", "keep"]);
+                const kept = (await git(repo, ["rev-parse", "stash@{0}"])).trim();
+                const gate = new RepositoryMutationGate(
+                    new RepositoryMutationCoordinator(),
+                    new RepositoryLock(),
+                );
+                const executor = new GitExecutor(repo, gate);
+                const ops = new GitOps(executor);
+                await expect(ops.stashDeleteIfHashMatches(0, "c".repeat(40))).rejects.toThrow(
+                    "changed",
+                );
+                await writeFile(path.join(repo, "tracked.txt"), "next\n");
+                await executor.run(["stash", "push", "-m", "next"]);
+                expect((await ops.listStashesOrThrow()).map((entry) => entry.hash)).toContain(kept);
+            } finally {
+                await removeScratchDirectories(repo);
+            }
+        });
+
+        it("releases the real gate after the drop command fails", async () => {
+            const repo = await createTempGitRepo();
+            try {
+                await writeFile(path.join(repo, "tracked.txt"), "stashed\n");
+                await git(repo, ["stash", "push", "-m", "keep"]);
+                const kept = (await git(repo, ["rev-parse", "stash@{0}"])).trim();
+                const gate = new RepositoryMutationGate(
+                    new RepositoryMutationCoordinator(),
+                    new RepositoryLock(),
+                );
+                const executor = new GitExecutor(repo, gate);
+                const originalRunBinary = GitExecutor.prototype.runBinary;
+                vi.spyOn(GitExecutor.prototype, "runBinary").mockImplementation(
+                    async function (args, options) {
+                        if (args[0] === "stash" && args[1] === "drop") {
+                            throw new Error("drop command failed");
+                        }
+                        return originalRunBinary.call(this, args, options);
+                    },
+                );
+                const ops = new GitOps(executor);
+                await expect(ops.stashDeleteIfHashMatches(0, kept)).rejects.toThrow(
+                    "drop command failed",
+                );
+                await writeFile(path.join(repo, "tracked.txt"), "next\n");
+                await executor.run(["stash", "push", "-m", "next"]);
+                expect((await ops.listStashesOrThrow()).map((entry) => entry.hash)).toContain(kept);
+            } finally {
+                vi.restoreAllMocks();
+                await removeScratchDirectories(repo);
+            }
+        });
+
+        it("restores a shifted full OID and staged state in a disposable Git repository", async () => {
+            const repo = await createTempGitRepo();
+            try {
+                await writeFile(path.join(repo, "tracked.txt"), "older staged\n");
+                await git(repo, ["add", "tracked.txt"]);
+                await writeFile(path.join(repo, "tracked.txt"), "older worktree\n");
+                await git(repo, ["stash", "push", "-m", "older"]);
+                const older = (await git(repo, ["rev-parse", "stash@{0}"])).trim();
+                await writeFile(path.join(repo, "tracked.txt"), "newer worktree\n");
+                await git(repo, ["stash", "push", "-m", "newer"]);
+                const newer = (await git(repo, ["rev-parse", "stash@{0}"])).trim();
+                const ops = new GitOps(new RealGitExecutor(repo) as unknown as GitExecutor);
+                await ops.stashApplyByHash(older, true);
+                expect(
+                    await readFile(path.join(repo, "tracked.txt"), "utf8"),
+                    "selected OID restores its own content",
+                ).toBe("older worktree\n");
+                expect(await git(repo, ["show", ":tracked.txt"])).toBe("older staged\n");
+                expect((await ops.listStashesOrThrow()).map((entry) => entry.hash)).toEqual([
+                    newer,
+                    older,
+                ]);
+                await git(repo, ["reset", "--hard", "HEAD"]);
+                await ops.stashDeleteIfHashMatches(1, older);
+                expect((await ops.listStashesOrThrow()).map((entry) => entry.hash)).toEqual([
+                    newer,
+                ]);
+            } finally {
+                await removeScratchDirectories(repo);
+            }
+        });
+
+        it("branches from a full OID and verifies the current selector before dropping", async () => {
+            const hash = "b".repeat(40);
+            const executor = createMockExecutor({ "rev-parse": `${hash}\n` });
+            const ops = new GitOps(executor);
+            await ops.stashBranchByHash("feature/unstash", hash);
+            await ops.stashDeleteIfHashMatches(2, hash);
+            expect((executor.run as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0])).toEqual([
+                ["stash", "branch", "feature/unstash", hash],
+                ["rev-parse", "--verify", "stash@{2}^{commit}"],
+                ["stash", "drop", "stash@{2}"],
+            ]);
+        });
+        it("does not drop a selector whose OID changed", async () => {
+            const executor = createMockExecutor({ "rev-parse": `${"c".repeat(40)}\n` });
+            await expect(
+                new GitOps(executor).stashDeleteIfHashMatches(2, "b".repeat(40)),
+                "changed selector must reject before drop",
+            ).rejects.toThrow("changed");
+            expect(executor.run).toHaveBeenCalledTimes(1);
         });
     });
     describe("stashed files helpers", () => {
@@ -682,7 +894,7 @@ describe("GitOps", () => {
                     }
                     if (args[0] === "apply") {
                         patchFilePath = args.at(-1) ?? "";
-                        await expect(access(patchFilePath)).resolves.toBeUndefined();
+                        await access(patchFilePath);
                         expect(await readFile(patchFilePath, "utf8")).toContain("diff --git");
                         return "";
                     }

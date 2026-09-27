@@ -105,5 +105,6 @@
     "command.fileNewBranch": "新建分支…",
     "command.fileNewTag": "新标签…",
     "command.fileResetHead": "重置 HEAD…",
-    "command.fileStashChanges": "储藏更改…"
+    "command.fileStashChanges": "储藏更改…",
+    "command.fileContextUnstashChanges": "还原储藏的更改…"
 }

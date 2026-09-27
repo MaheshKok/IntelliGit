@@ -3,6 +3,7 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 import { GitExecutor } from "../git/executor";
 import { GitOps } from "../git/operations";
+import type { StashEntry } from "../types";
 import { checkoutBranch, getCheckedOutBranchName, isValidTagName } from "../services/gitHelpers";
 import { WorktreeService } from "../services/worktreeService";
 import {
@@ -13,7 +14,11 @@ import {
 } from "../services/diffService";
 import { getErrorMessage } from "../utils/errors";
 import { isValidBranchName } from "../utils/gitRefs";
-import { runWithNotificationProgress, showTimedInformationMessage } from "../utils/notifications";
+import {
+    runWithNotificationProgress,
+    showTimedInformationMessage,
+    showTimedWarningMessage,
+} from "../utils/notifications";
 import { runMergeCommand, type MergeLabels } from "./mergeCommand";
 import { runRebaseCommand } from "./rebaseCommand";
 import { rejectWhenOperationInProgress } from "./operationFence";
@@ -512,6 +517,308 @@ export async function stashChangesFromContext(
             vscode.l10n.t("Stash failed: {message}", { message: getErrorMessage(error) }),
         );
     }
+}
+
+interface UnstashSelection {
+    hash: string;
+    action: "apply" | "pop" | "branch";
+    reinstateIndex: boolean;
+    branchName?: string;
+}
+
+interface UnstashCallbacks {
+    refresh: (repoRoot: string) => Promise<void>;
+    openConflictSession: (gitOps: GitOps, repoRoot: string) => Promise<void>;
+}
+
+/**
+ * Restores a selected stash in the clicked file's repository. The scoped facade and full object ID
+ * survive every prompt; removal verifies a fresh selector after successful application. Git cannot
+ * make that selector check and numeric drop atomic against an unrelated reflog writer.
+ */
+export async function unstashChangesFromContext(
+    ctx: unknown,
+    gitOps: GitOps,
+    callbacks: UnstashCallbacks,
+): Promise<void> {
+    try {
+        const resolved = await resolveFileCommandContext(ctx, gitOps);
+        if (!resolved) {
+            await vscode.window.showErrorMessage(
+                vscode.l10n.t("Unstash Changes is only available for local files."),
+            );
+            return;
+        }
+        const { gitOps: scopedGitOps, repoRoot } = resolved;
+        if (await rejectWhenOperationInProgress(scopedGitOps)) return;
+        if (await scopedGitOps.hasUncommittedChanges()) {
+            await vscode.window.showErrorMessage(
+                vscode.l10n.t("Unstash Changes requires a clean working tree in {path}.", {
+                    path: repoRoot,
+                }),
+            );
+            return;
+        }
+        const stashes = await scopedGitOps.listStashesOrThrow();
+        if (stashes.length === 0) {
+            await vscode.window.showInformationMessage(
+                vscode.l10n.t("No stashes found in {path}.", { path: repoRoot }),
+            );
+            return;
+        }
+        const selected = await pickUnstashOptions(stashes, scopedGitOps, repoRoot);
+        if (!selected) return;
+        const current = await scopedGitOps.listStashesOrThrow();
+        if (
+            current.filter((stash) => stash.hash.toLowerCase() === selected.hash.toLowerCase())
+                .length !== 1
+        ) {
+            await vscode.window.showErrorMessage(
+                vscode.l10n.t(
+                    "The selected stash changed or is no longer uniquely available. Run Unstash Changes again.",
+                ),
+            );
+            return;
+        }
+        if (selected.branchName) {
+            const branches = await scopedGitOps.getBranches();
+            if (
+                branches.some((branch) => !branch.isRemote && branch.name === selected.branchName)
+            ) {
+                await vscode.window.showErrorMessage(
+                    vscode.l10n.t("A local branch named {branch} already exists.", {
+                        branch: selected.branchName,
+                    }),
+                );
+                return;
+            }
+        }
+        if (await rejectWhenOperationInProgress(scopedGitOps)) return;
+        if (await scopedGitOps.hasUncommittedChanges()) {
+            await vscode.window.showErrorMessage(
+                vscode.l10n.t("Unstash Changes requires a clean working tree in {path}.", {
+                    path: repoRoot,
+                }),
+            );
+            return;
+        }
+
+        await runSelectedUnstash(scopedGitOps, repoRoot, selected, callbacks);
+    } catch (error) {
+        await vscode.window.showErrorMessage(
+            vscode.l10n.t("Unstash failed: {message}", { message: getErrorMessage(error) }),
+        );
+    }
+}
+
+/** Collects explicit stash, action and index/branch choices without mutating the repository. */
+async function pickUnstashOptions(
+    stashes: StashEntry[],
+    scopedGitOps: GitOps,
+    repoRoot: string,
+): Promise<UnstashSelection | undefined> {
+    const title = vscode.l10n.t("Unstash Changes — {repository}", {
+        repository: path.basename(repoRoot),
+    });
+    const picked = await vscode.window.showQuickPick(
+        stashes.map((stash) => ({
+            label: `stash@{${stash.index}}`,
+            description: stash.message,
+            detail: `${stash.hash.slice(0, 8)} · ${repoRoot}`,
+            hash: stash.hash,
+        })),
+        { title, placeHolder: vscode.l10n.t("Select a stash to restore") },
+    );
+    if (!picked) return undefined;
+    const action = await vscode.window.showQuickPick(
+        [
+            {
+                label: vscode.l10n.t("Apply"),
+                description: vscode.l10n.t("Restore changes and keep the stash"),
+                action: "apply" as const,
+            },
+            {
+                label: vscode.l10n.t("Pop"),
+                description: vscode.l10n.t("Restore changes and remove the stash after success"),
+                action: "pop" as const,
+            },
+            {
+                label: vscode.l10n.t("As New Branch…"),
+                description: vscode.l10n.t(
+                    "Restore staged state and remove the stash after success.",
+                ),
+                action: "branch" as const,
+            },
+        ],
+        { title },
+    );
+    if (!action) return undefined;
+    if (action.action === "branch") {
+        const branchName = await vscode.window.showInputBox({
+            title: vscode.l10n.t("Unstash on New Branch"),
+            prompt: vscode.l10n.t("Restores staged state and removes the stash after success."),
+            placeHolder: "branch-name",
+            validateInput: async (value) => {
+                if (!isValidBranchName(value)) return vscode.l10n.t("Enter a valid branch name.");
+                try {
+                    const branches = await scopedGitOps.getBranches();
+                    if (branches.some((branch) => !branch.isRemote && branch.name === value)) {
+                        return vscode.l10n.t("A local branch named {branch} already exists.", {
+                            branch: value,
+                        });
+                    }
+                } catch (error) {
+                    return vscode.l10n.t("Unable to inspect local branches: {message}", {
+                        message: getErrorMessage(error),
+                    });
+                }
+                return undefined;
+            },
+        });
+        if (branchName === undefined) return undefined;
+        if (!isValidBranchName(branchName)) {
+            await vscode.window.showErrorMessage(vscode.l10n.t("Enter a valid branch name."));
+            return undefined;
+        }
+        return { hash: picked.hash, action: "branch", reinstateIndex: true, branchName };
+    }
+    const indexChoice = await vscode.window.showQuickPick(
+        [
+            {
+                label: vscode.l10n.t("Do Not Reinstate Index"),
+                description: vscode.l10n.t("Restore changes without restoring staged state"),
+                reinstate: false,
+            },
+            {
+                label: vscode.l10n.t("Reinstate Index"),
+                description: vscode.l10n.t("Restore the stash's staged state"),
+                reinstate: true,
+            },
+        ],
+        { title: vscode.l10n.t("Reinstate Index") },
+    );
+    return indexChoice
+        ? { hash: picked.hash, action: action.action, reinstateIndex: indexChoice.reinstate }
+        : undefined;
+}
+
+/** Applies the captured OID, optionally removes its verified selector, then reports Git and refresh outcomes separately. */
+async function runSelectedUnstash(
+    scopedGitOps: GitOps,
+    repoRoot: string,
+    selected: UnstashSelection,
+    callbacks: UnstashCallbacks,
+): Promise<void> {
+    let result: "applied" | "removed" | "removalFailed" | "failed" = "applied";
+    let failure = "";
+    try {
+        if (selected.branchName)
+            await scopedGitOps.stashBranchByHash(selected.branchName, selected.hash);
+        else await scopedGitOps.stashApplyByHash(selected.hash, selected.reinstateIndex);
+    } catch (error) {
+        result = "failed";
+        failure = await describeUnstashFailure(error, scopedGitOps, repoRoot, selected, callbacks);
+    }
+    if (result === "applied" && (selected.action === "pop" || selected.branchName)) {
+        try {
+            const after = (await scopedGitOps.listStashesOrThrow()).filter(
+                (stash) => stash.hash.toLowerCase() === selected.hash.toLowerCase(),
+            );
+            if (after.length !== 1)
+                throw new Error(
+                    vscode.l10n.t("The selected stash is no longer uniquely available."),
+                );
+            await scopedGitOps.stashDeleteIfHashMatches(after[0].index, selected.hash);
+            result = "removed";
+        } catch (error) {
+            result = "removalFailed";
+            failure = getErrorMessage(error);
+        }
+    }
+    let refreshError: string | undefined;
+    try {
+        await callbacks.refresh(repoRoot);
+    } catch (error) {
+        refreshError = getErrorMessage(error);
+    }
+    if (result === "failed") {
+        await vscode.window.showErrorMessage(failure);
+    } else if (result === "removalFailed") {
+        showTimedWarningMessage(
+            vscode.l10n.t(
+                "Stash applied, but the selected stash could not be safely removed: {message}",
+                { message: failure },
+            ),
+        );
+    } else if (refreshError === undefined) {
+        showTimedInformationMessage(
+            selected.branchName
+                ? vscode.l10n.t("Stash applied on branch {branch} and removed.", {
+                      branch: selected.branchName,
+                  })
+                : result === "removed"
+                  ? vscode.l10n.t("Stash applied and removed.")
+                  : vscode.l10n.t("Stash applied. The stash was kept."),
+        );
+    }
+    if (refreshError !== undefined) {
+        await vscode.window.showErrorMessage(
+            result === "failed"
+                ? vscode.l10n.t("Refreshing IntelliGit also failed: {message}", {
+                      message: refreshError,
+                  })
+                : vscode.l10n.t(
+                      "Changes were applied, but refreshing IntelliGit failed: {message}",
+                      { message: refreshError },
+                  ),
+        );
+    }
+}
+
+/** Reports the original Git failure and any captured-repository conflict state without implying removal. */
+async function describeUnstashFailure(
+    error: unknown,
+    scopedGitOps: GitOps,
+    repoRoot: string,
+    selected: UnstashSelection,
+    callbacks: UnstashCallbacks,
+): Promise<string> {
+    let failure = getErrorMessage(error);
+    let hasConflicts = false;
+    let inspectionError: string | undefined;
+    try {
+        hasConflicts = (await scopedGitOps.getConflictFilesDetailed()).length > 0;
+    } catch (error) {
+        inspectionError = getErrorMessage(error);
+    }
+    if (inspectionError !== undefined) {
+        failure = vscode.l10n.t(
+            "Unstash failed in {path}; the stash was retained: {message}. Unable to inspect conflicts: {inspection}",
+            { path: repoRoot, message: failure, inspection: inspectionError },
+        );
+    } else if (hasConflicts) {
+        failure = vscode.l10n.t(
+            "Unstash encountered conflicts in {path}. The stash was retained: {message}",
+            { path: repoRoot, message: failure },
+        );
+        try {
+            await callbacks.openConflictSession(scopedGitOps, repoRoot);
+        } catch (error) {
+            failure = `${failure} ${vscode.l10n.t("Unable to open conflict view: {message}", {
+                message: getErrorMessage(error),
+            })}`;
+        }
+    } else {
+        failure = vscode.l10n.t("Unstash failed in {path}; the stash was retained: {message}", {
+            path: repoRoot,
+            message: failure,
+        });
+    }
+    return selected.branchName
+        ? vscode.l10n.t("Branch or HEAD may have changed during failed unstash. {message}", {
+              message: failure,
+          })
+        : failure;
 }
 
 /**

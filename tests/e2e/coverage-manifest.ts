@@ -255,6 +255,12 @@ const COMMAND_ENTRIES = [
     },
     {
         kind: "command",
+        id: "intelligit.fileContextUnstashChanges",
+        mutating: true,
+        coveredBySpec: "tests/e2e/fileContextUnstashChanges.spec.ts",
+    },
+    {
+        kind: "command",
         id: "intelligit.fileAddToVcs",
         mutating: true,
         coveredBySpec: "tests/e2e/fileContextAddToVcs.spec.ts",

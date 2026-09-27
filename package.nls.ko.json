@@ -105,5 +105,6 @@
     "command.fileNewBranch": "새 브랜치…",
     "command.fileNewTag": "새로운 태그…",
     "command.fileResetHead": "HEAD 재설정…",
-    "command.fileStashChanges": "변경 내용 스태시…"
+    "command.fileStashChanges": "변경 내용 스태시…",
+    "command.fileContextUnstashChanges": "스태시 변경 사항 복원…"
 }

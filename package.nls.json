@@ -33,6 +33,7 @@
     "command.fileNewTag": "New Tag…",
     "command.fileResetHead": "Reset HEAD…",
     "command.fileStashChanges": "Stash Changes…",
+    "command.fileContextUnstashChanges": "Unstash Changes…",
     "command.newBranchFrom": "New Branch from...",
     "command.checkoutAndRebaseOntoCurrent": "Checkout and Rebase onto Current",
     "command.rebaseCurrentOntoSelected": "Rebase Current onto Selected",

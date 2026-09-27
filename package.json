@@ -2,7 +2,7 @@
     "name": "intelligit",
     "displayName": "IntelliGit",
     "description": "%extension.description%",
-    "version": "0.35.17",
+    "version": "0.35.18",
     "publisher": "MaheshKok",
     "icon": "media/intelligit-icon.png",
     "license": "MIT",
@@ -504,6 +504,11 @@
                 "category": "%intelligit%"
             },
             {
+                "command": "intelligit.fileContextUnstashChanges",
+                "title": "%command.fileContextUnstashChanges%",
+                "category": "%intelligit%"
+            },
+            {
                 "command": "intelligit.fileJumpToSource",
                 "title": "%command.jumpToSource%",
                 "category": "%intelligit%"
@@ -931,6 +936,11 @@
                     "command": "intelligit.fileStashChanges",
                     "when": "resourceScheme == file",
                     "group": "4_branch@7"
+                },
+                {
+                    "command": "intelligit.fileContextUnstashChanges",
+                    "when": "resourceScheme == file",
+                    "group": "4_branch@8"
                 }
             ],
             "intelligit.editorContext": [
@@ -1028,6 +1038,11 @@
                     "command": "intelligit.fileStashChanges",
                     "when": "resourceScheme == file",
                     "group": "4_branch@7"
+                },
+                {
+                    "command": "intelligit.fileContextUnstashChanges",
+                    "when": "resourceScheme == file",
+                    "group": "4_branch@8"
                 }
             ],
             "view/title": [
@@ -1437,7 +1452,7 @@
         "test:watch": "bun vitest",
         "test:visual": "playwright test --config playwright.visual.config.ts",
         "test:visual:container": "./tests/e2e/docker/run.sh 'bun install --frozen-lockfile && bun run build && bun run test:visual'",
-        "test:e2e": "playwright test --config playwright.e2e.config.ts tests/e2e/flows/flows.spec.ts tests/e2e/undockShortcut.spec.ts tests/e2e/gitLogPersistence.spec.ts tests/e2e/gitLogLayout.spec.ts tests/e2e/fileContextCompareBranchOrTag.spec.ts tests/e2e/fileContextShowCurrentRevision.spec.ts tests/e2e/fileContextAnnotateWithGitBlame.spec.ts tests/e2e/fileContextRollback.spec.ts tests/e2e/fileContextFetch.spec.ts tests/e2e/fileContextPull.spec.ts tests/e2e/fileContextPush.spec.ts tests/e2e/fileContextCommit.spec.ts tests/e2e/fileContextAddToVcs.spec.ts tests/e2e/fileContextMerge.spec.ts tests/e2e/fileContextBranches.spec.ts tests/e2e/fileContextNewBranch.spec.ts tests/e2e/fileContextNewTag.spec.ts tests/e2e/fileContextResetHead.spec.ts tests/e2e/fileContextStashChanges.spec.ts",
+        "test:e2e": "playwright test --config playwright.e2e.config.ts tests/e2e/flows/flows.spec.ts tests/e2e/undockShortcut.spec.ts tests/e2e/gitLogPersistence.spec.ts tests/e2e/gitLogLayout.spec.ts tests/e2e/fileContextCompareBranchOrTag.spec.ts tests/e2e/fileContextShowCurrentRevision.spec.ts tests/e2e/fileContextAnnotateWithGitBlame.spec.ts tests/e2e/fileContextRollback.spec.ts tests/e2e/fileContextFetch.spec.ts tests/e2e/fileContextPull.spec.ts tests/e2e/fileContextPush.spec.ts tests/e2e/fileContextCommit.spec.ts tests/e2e/fileContextAddToVcs.spec.ts tests/e2e/fileContextMerge.spec.ts tests/e2e/fileContextBranches.spec.ts tests/e2e/fileContextNewBranch.spec.ts tests/e2e/fileContextNewTag.spec.ts tests/e2e/fileContextResetHead.spec.ts tests/e2e/fileContextStashChanges.spec.ts tests/e2e/fileContextUnstashChanges.spec.ts",
         "test:e2e:diff-viewer": "playwright test --config playwright.e2e.config.ts tests/e2e/diffViewer.spec.ts",
         "test:e2e:diff-viewer:perf": "playwright test --config playwright.e2e.config.ts tests/e2e/diffViewer.performance.spec.ts",
         "test:e2e:container": "./tests/e2e/docker/run.sh 'bun install --frozen-lockfile && bun run build && xvfb-run -a bun run test:e2e'",

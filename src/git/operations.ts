@@ -1447,6 +1447,13 @@ export class GitOps {
         args.push(`stash@{${index}}`);
         return this.executor.run(args);
     }
+    /** Applies one full stash object ID; its identity is stable when reflog selectors renumber. */
+    async stashApplyByHash(hash: string, reinstateIndex = false): Promise<string> {
+        const stableHash = assertStableStashHash(hash);
+        const args = ["stash", "apply"];
+        if (reinstateIndex) args.push("--index");
+        return this.executor.run([...args, stableHash]);
+    }
     /** Lists stash entries from formatted Git output, returning an empty list when stash inspection fails. */
     async listStashes(): Promise<StashEntry[]> {
         try {
@@ -1456,16 +1463,41 @@ export class GitOps {
             return [];
         }
     }
+    /** Lists stashes while propagating Git inspection failures to safety-critical callers. */
+    async listStashesOrThrow(): Promise<StashEntry[]> {
+        const result = await this.executor.run(["stash", "list", "--format=%H\t%gd\t%gs\t%aI"]);
+        return parseStashEntries(result);
+    }
     /** Drops a validated stash index and returns Git output. */
     async stashDelete(index: number): Promise<string> {
         assertStashIndex(index);
         return this.executor.run(["stash", "drop", `stash@{${index}}`]);
+    }
+    /** Verifies a fresh selector while holding IntelliGit's mutation gate; external Git writers remain outside that gate. */
+    async stashDeleteIfHashMatches(index: number, hash: string): Promise<string> {
+        assertStashIndex(index);
+        const stableHash = assertStableStashHash(hash);
+        return this.executor.runWithinMutationGate(async (run) => {
+            const currentHash = (
+                await run(["rev-parse", "--verify", `stash@{${index}}^{commit}`])
+            ).trim();
+            if (currentHash.toLowerCase() !== stableHash.toLowerCase()) {
+                throw new Error(`Stash entry changed at index ${index}; refresh and try again.`);
+            }
+            return run(["stash", "drop", `stash@{${index}}`]);
+        });
     }
     /** Restores a validated stash onto a validated new branch, letting Git restore the index and drop it on success. */
     async stashBranch(branchName: string, index: number = 0): Promise<string> {
         assertValidBranchName(branchName);
         assertStashIndex(index);
         return this.executor.run(["stash", "branch", branchName, `stash@{${index}}`]);
+    }
+    /** Creates a branch at a full stash OID's base and restores its index; raw OIDs retain the reflog entry. */
+    async stashBranchByHash(branchName: string, hash: string): Promise<string> {
+        assertValidBranchName(branchName);
+        const stableHash = assertStableStashHash(hash);
+        return this.executor.run(["stash", "branch", branchName, stableHash]);
     }
     /** Permanently drops every stash entry in the current repository. */
     async stashClear(): Promise<string> {

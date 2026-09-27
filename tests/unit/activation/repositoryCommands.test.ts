@@ -24,6 +24,7 @@ const mocks = vi.hoisted(() => {
         newTagFileFromContext: vi.fn(),
         resetHeadFileFromContext: vi.fn(),
         stashChangesFromContext: vi.fn(),
+        unstashChangesFromContext: vi.fn(),
         commitFileFromContext: vi.fn(),
         commitSelectedFromPanel: vi.fn(async (_deps: unknown, _options: unknown) => undefined),
         compareFileWithBranchOrTag: vi.fn(async () => undefined),
@@ -83,6 +84,7 @@ vi.mock("../../../src/commands/fileContextCommands", () => ({
     newTagFileFromContext: mocks.newTagFileFromContext,
     resetHeadFileFromContext: mocks.resetHeadFileFromContext,
     stashChangesFromContext: mocks.stashChangesFromContext,
+    unstashChangesFromContext: mocks.unstashChangesFromContext,
     commitFileFromContext: mocks.commitFileFromContext,
     compareFileWithBranchOrTag: mocks.compareFileWithBranchOrTag,
     compareFileWithRevision: mocks.compareFileWithRevision,
@@ -185,6 +187,39 @@ const makeDeps = (gitOps: GitOps) => {
 };
 
 describe("registerRepositoryCommands", () => {
+    it("routes Unstash refresh and conflicts to captured B across active-root changes", async () => {
+        const gitOps = makeGitOps();
+        const deps = makeDeps(gitOps);
+        let activeRoot = "/repo-a";
+        deps.getRepoRoot = () => activeRoot;
+        const commitRefresh = vi.fn(async () => undefined);
+        deps.refreshService = () => ({ refreshCommitPanels: commitRefresh }) as never;
+        const scopedB = {} as GitOps;
+        mocks.unstashChangesFromContext.mockImplementationOnce(async (_ctx, _ops, callbacks) => {
+            await callbacks.openConflictSession(scopedB, "/repo-b");
+            await callbacks.refresh("/repo-b");
+            activeRoot = "/repo-b/";
+            await callbacks.refresh("/repo-b");
+        });
+        registerRepositoryCommands(deps);
+        const uri = mocks.FakeUri.file("/repo-b/file.txt");
+        await mocks.commands.get("intelligit.fileContextUnstashChanges")!(uri);
+        expect(mocks.unstashChangesFromContext).toHaveBeenCalledWith(
+            uri,
+            gitOps,
+            expect.objectContaining({
+                refresh: expect.any(Function),
+                openConflictSession: expect.any(Function),
+            }),
+        );
+        expect(deps.openConflictSessionForRepository).toHaveBeenCalledExactlyOnceWith(
+            scopedB,
+            "/repo-b",
+            {},
+        );
+        expect(commitRefresh).toHaveBeenCalledTimes(2);
+        expect(deps.refreshActiveRepository).toHaveBeenCalledOnce();
+    });
     it("routes Stash Changes refresh to clicked B and checks the current active root", async () => {
         const gitOps = makeGitOps();
         const deps = makeDeps(gitOps);
