@@ -385,5 +385,21 @@
         "other": "{count} differences"
     },
     "merge.status.noChanges": "No changes",
-    "merge.status.allConflictsResolved": "All conflicts resolved"
+    "merge.status.allConflictsResolved": "All conflicts resolved",
+    "manageRemotes.title": "Git Remotes",
+    "manageRemotes.loading": "Loading remotes…",
+    "manageRemotes.actions": "Remote actions",
+    "manageRemotes.name": "Name",
+    "manageRemotes.url": "URL",
+    "manageRemotes.add": "Add remote",
+    "manageRemotes.remove": "Remove remote",
+    "manageRemotes.edit": "Edit remote",
+    "manageRemotes.empty": "No remotes configured. Add a remote to get started.",
+    "manageRemotes.defineRemote": "Define Remote",
+    "manageRemotes.additionalUrls": "{count} additional fetch URLs will be kept.",
+    "manageRemotes.cancel": "Cancel",
+    "manageRemotes.save": "Save",
+    "manageRemotes.retry": "Retry",
+    "manageRemotes.close": "Close",
+    "manageRemotes.staleForm": "Remote data changed. Review the current values and try again."
 }

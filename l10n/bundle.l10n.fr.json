@@ -799,5 +799,19 @@
     "Create {repository} on GitHub as {visibility} and push {branch} from {root}?": "Créer {repository} sur GitHub avec la visibilité {visibility} et pousser {branch} depuis {root} ?",
     "GitHub returned an unsafe repository destination. No remote was added or pushed.": "GitHub a renvoyé une destination de dépôt non sûre. Aucun dépôt distant n'a été ajouté et rien n'a été poussé.",
     "The selected GitHub remote changed while sharing. Run Share Project again.": "Le dépôt distant GitHub sélectionné a changé pendant le partage. Relancez Partager le projet.",
-    "Private": "Privé"
+    "Private": "Privé",
+    "Manage Remotes is only available for local files.": "La gestion des dépôts distants n’est disponible que pour les fichiers locaux.",
+    "Manage Remotes failed: {message}": "Échec de la gestion des dépôts distants : {message}",
+    "Git Remotes": "Dépôts distants Git",
+    "Invalid remote name.": "Nom de dépôt distant non valide.",
+    "Enter a valid remote URL.": "Saisissez une URL de dépôt distant valide.",
+    "Remote {name} already exists.": "Le dépôt distant {name} existe déjà.",
+    "Remote data changed. Reload and try again.": "Les données du dépôt distant ont changé. Rechargez-les et réessayez.",
+    "Remote renamed to {name}, but its URL could not be changed: {message}": "Le dépôt distant a été renommé en {name}, mais son URL n’a pas pu être modifiée : {message}",
+    "Remote URL could not be changed: {message}": "L’URL du dépôt distant n’a pas pu être modifiée : {message}",
+    "Remove": "Supprimer",
+    "Remove remote {name}?": "Supprimer le dépôt distant {name} ?",
+    "The remote list could not be refreshed: {message}": "La liste des dépôts distants n’a pas pu être actualisée : {message}",
+    "Repository views could not be refreshed: {message}": "Les vues du dépôt n’ont pas pu être actualisées : {message}",
+    "Change saved.": "Modification enregistrée."
 }

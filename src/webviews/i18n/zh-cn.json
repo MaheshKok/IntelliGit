@@ -375,5 +375,21 @@
     },
     "merge.status.noChanges": "无变化",
     "merge.status.allConflictsResolved": "所有冲突均已解决",
-    "mergeSession.rebasing": "正在将 {current} 变基到 {selected}"
+    "mergeSession.rebasing": "正在将 {current} 变基到 {selected}",
+    "manageRemotes.title": "Git 远程仓库",
+    "manageRemotes.loading": "正在加载远程仓库…",
+    "manageRemotes.actions": "远程仓库操作",
+    "manageRemotes.name": "名称",
+    "manageRemotes.url": "URL",
+    "manageRemotes.add": "添加远程仓库",
+    "manageRemotes.remove": "移除远程仓库",
+    "manageRemotes.edit": "编辑远程仓库",
+    "manageRemotes.empty": "尚未配置远程仓库。请先添加一个远程仓库。",
+    "manageRemotes.defineRemote": "定义远程仓库",
+    "manageRemotes.additionalUrls": "将保留另外 {count} 个获取 URL。",
+    "manageRemotes.cancel": "取消",
+    "manageRemotes.save": "保存",
+    "manageRemotes.retry": "重试",
+    "manageRemotes.close": "关闭",
+    "manageRemotes.staleForm": "远程仓库数据已更改。请检查当前值后重试。"
 }

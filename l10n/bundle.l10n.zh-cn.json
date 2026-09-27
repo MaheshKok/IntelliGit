@@ -799,5 +799,19 @@
     "Create {repository} on GitHub as {visibility} and push {branch} from {root}?": "要在 GitHub 上创建可见性为 {visibility} 的 {repository}，并从 {root} 推送 {branch} 吗？",
     "GitHub returned an unsafe repository destination. No remote was added or pushed.": "GitHub 返回了不安全的仓库目标。未添加远程仓库，也未推送任何内容。",
     "The selected GitHub remote changed while sharing. Run Share Project again.": "分享期间所选 GitHub 远程仓库发生了变化。请重新运行“分享项目”。",
-    "Private": "私有"
+    "Private": "私有",
+    "Manage Remotes is only available for local files.": "远程仓库管理仅适用于本地文件。",
+    "Manage Remotes failed: {message}": "管理远程仓库失败：{message}",
+    "Git Remotes": "Git 远程仓库",
+    "Invalid remote name.": "远程仓库名称无效。",
+    "Enter a valid remote URL.": "请输入有效的远程仓库 URL。",
+    "Remote {name} already exists.": "远程仓库 {name} 已存在。",
+    "Remote data changed. Reload and try again.": "远程仓库数据已更改。请重新加载后重试。",
+    "Remote renamed to {name}, but its URL could not be changed: {message}": "远程仓库已重命名为 {name}，但无法更改其 URL：{message}",
+    "Remote URL could not be changed: {message}": "无法更改远程仓库 URL：{message}",
+    "Remove": "移除",
+    "Remove remote {name}?": "移除远程仓库 {name}？",
+    "The remote list could not be refreshed: {message}": "无法刷新远程仓库列表：{message}",
+    "Repository views could not be refreshed: {message}": "无法刷新仓库视图：{message}",
+    "Change saved.": "更改已保存。"
 }

@@ -1044,6 +1044,11 @@ describe("extension manifest", () => {
                 submenu: "intelligit.githubContext",
                 group: "4_branch@9",
             });
+            expect(menu[unstash + 2]).toMatchObject({
+                command: "intelligit.fileManageRemotes",
+                when: "resourceScheme == file",
+                group: "4_branch@10",
+            });
         }
         expect(manifest.contributes.menus["intelligit.githubContext"]).toEqual(
             children.map((command, index) => ({
@@ -1062,6 +1067,8 @@ describe("extension manifest", () => {
             readFileSync(path.join(process.cwd(), "package.nls.json"), "utf8"),
         ) as Record<string, string>;
         expect(nls["submenu.github"]).toBe("GitHub");
+        expect(nls["command.fileManageRemotes"]).toBe("Manage Remotes…");
+        expect(manifest.activationEvents).toContain("onCommand:intelligit.fileManageRemotes");
         for (const command of children) {
             expect(nls[`command.github.${command.split(".").at(-1)}`]).toBeTruthy();
         }

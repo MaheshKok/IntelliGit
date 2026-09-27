@@ -799,5 +799,19 @@
     "Create {repository} on GitHub as {visibility} and push {branch} from {root}?": "Create {repository} on GitHub as {visibility} and push {branch} from {root}?",
     "GitHub returned an unsafe repository destination. No remote was added or pushed.": "GitHub returned an unsafe repository destination. No remote was added or pushed.",
     "The selected GitHub remote changed while sharing. Run Share Project again.": "The selected GitHub remote changed while sharing. Run Share Project again.",
-    "Private": "Private"
+    "Private": "Private",
+    "Manage Remotes is only available for local files.": "Manage Remotes is only available for local files.",
+    "Manage Remotes failed: {message}": "Manage Remotes failed: {message}",
+    "Git Remotes": "Git Remotes",
+    "Invalid remote name.": "Invalid remote name.",
+    "Enter a valid remote URL.": "Enter a valid remote URL.",
+    "Remote {name} already exists.": "Remote {name} already exists.",
+    "Remote data changed. Reload and try again.": "Remote data changed. Reload and try again.",
+    "Remote renamed to {name}, but its URL could not be changed: {message}": "Remote renamed to {name}, but its URL could not be changed: {message}",
+    "Remote URL could not be changed: {message}": "Remote URL could not be changed: {message}",
+    "Remove": "Remove",
+    "Remove remote {name}?": "Remove remote {name}?",
+    "The remote list could not be refreshed: {message}": "The remote list could not be refreshed: {message}",
+    "Repository views could not be refreshed: {message}": "Repository views could not be refreshed: {message}",
+    "Change saved.": "Change saved."
 }

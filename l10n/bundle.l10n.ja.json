@@ -799,5 +799,19 @@
     "Create {repository} on GitHub as {visibility} and push {branch} from {root}?": "GitHub に {visibility} の {repository} を作成し、{root} から {branch} をプッシュしますか？",
     "GitHub returned an unsafe repository destination. No remote was added or pushed.": "GitHub から安全でないリポジトリの宛先が返されました。リモートの追加もプッシュも行われませんでした。",
     "The selected GitHub remote changed while sharing. Run Share Project again.": "共有中に選択した GitHub リモートが変更されました。「プロジェクトを共有」を再実行してください。",
-    "Private": "非公開"
+    "Private": "非公開",
+    "Manage Remotes is only available for local files.": "リモートの管理はローカルファイルでのみ使用できます。",
+    "Manage Remotes failed: {message}": "リモートの管理に失敗しました: {message}",
+    "Git Remotes": "Git リモート",
+    "Invalid remote name.": "リモート名が無効です。",
+    "Enter a valid remote URL.": "有効なリモート URL を入力してください。",
+    "Remote {name} already exists.": "リモート {name} は既に存在します。",
+    "Remote data changed. Reload and try again.": "リモートのデータが変更されました。再読み込みしてから再試行してください。",
+    "Remote renamed to {name}, but its URL could not be changed: {message}": "リモート名は {name} に変更されましたが、URL は変更できませんでした: {message}",
+    "Remote URL could not be changed: {message}": "リモート URL を変更できませんでした: {message}",
+    "Remove": "削除",
+    "Remove remote {name}?": "リモート {name} を削除しますか？",
+    "The remote list could not be refreshed: {message}": "リモート一覧を更新できませんでした: {message}",
+    "Repository views could not be refreshed: {message}": "リポジトリのビューを更新できませんでした: {message}",
+    "Change saved.": "変更を保存しました。"
 }

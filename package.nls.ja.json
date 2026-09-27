@@ -115,5 +115,6 @@
     "command.github.viewInBrowser": "ブラウザーで表示",
     "command.github.shareProject": "GitHub でプロジェクトを共有",
     "command.github.cloneRepository": "GitHub からリポジトリをクローン...",
-    "command.github.manageAccounts": "GitHub アカウントを管理..."
+    "command.github.manageAccounts": "GitHub アカウントを管理...",
+    "command.fileManageRemotes": "リモートを管理…"
 }

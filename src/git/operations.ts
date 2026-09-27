@@ -436,6 +436,47 @@ export class GitOps {
         }
     }
 
+    /** Lists remote names strictly so a Git read failure cannot appear as an empty repository. */
+    async getRemoteNames(): Promise<string[]> {
+        const output = await this.executor.run(["remote"]);
+        return output
+            .replace(/\r?\n$/, "")
+            .split(/\r?\n/)
+            .filter((name) => name.length > 0);
+    }
+
+    /** Reads literal configured fetch URLs, without applying Git's insteadOf expansion. */
+    async getConfiguredRemoteUrls(name: string): Promise<string[]> {
+        if (!name || /[\0\r\n]/.test(name)) throw new Error("Invalid remote name.");
+        const result = await this.executor.runBinary(
+            ["config", "--null", "--get-all", "--", `remote.${name}.url`],
+            { expectedExitCodes: [0, 1] },
+        );
+        if (result.exitCode === 1) return [];
+        const urls = result.stdout.toString("utf8").split("\0");
+        urls.pop(); // Git's -z output ends with a delimiter, not another value.
+        return urls;
+    }
+
+    /** Renames a remote through Git so tracking refs and related configuration follow it. */
+    async renameRemote(oldName: string, newName: string): Promise<void> {
+        assertValidRemoteName(oldName);
+        assertValidRemoteName(newName);
+        await this.executor.run(["remote", "rename", "--", oldName, newName]);
+    }
+
+    /** Replaces only the original configured fetch URL; Git rejects ambiguous duplicate matches. */
+    async setRemoteUrl(name: string, oldUrl: string | undefined, newUrl: string): Promise<void> {
+        assertValidRemoteName(name);
+        if (!newUrl.trim() || /[\0\r\n]/.test(newUrl)) throw new Error("Invalid remote URL.");
+        if (oldUrl === undefined) {
+            await this.executor.run(["remote", "set-url", "--", name, newUrl]);
+            return;
+        }
+        const escaped = oldUrl.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        await this.executor.run(["remote", "set-url", "--", name, newUrl, `^${escaped}$`]);
+    }
+
     /** Reads a validated remote URL so host services can inspect provider metadata. */
     async getRemoteUrl(remote: string): Promise<string | null> {
         assertValidRemoteName(remote);

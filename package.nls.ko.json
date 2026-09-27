@@ -115,5 +115,6 @@
     "command.github.viewInBrowser": "브라우저에서 보기",
     "command.github.shareProject": "GitHub에서 프로젝트 공유",
     "command.github.cloneRepository": "GitHub에서 저장소 복제...",
-    "command.github.manageAccounts": "GitHub 계정 관리..."
+    "command.github.manageAccounts": "GitHub 계정 관리...",
+    "command.fileManageRemotes": "원격 저장소 관리…"
 }

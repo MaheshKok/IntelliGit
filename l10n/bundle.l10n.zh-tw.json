@@ -799,5 +799,19 @@
     "Create {repository} on GitHub as {visibility} and push {branch} from {root}?": "要在 GitHub 上建立可見性為 {visibility} 的 {repository}，並從 {root} 推送 {branch} 嗎？",
     "GitHub returned an unsafe repository destination. No remote was added or pushed.": "GitHub 傳回不安全的倉庫目的地。未新增遠端倉庫，也未推送任何內容。",
     "The selected GitHub remote changed while sharing. Run Share Project again.": "分享期間所選的 GitHub 遠端倉庫已變更。請再次執行「分享專案」。",
-    "Private": "私人"
+    "Private": "私人",
+    "Manage Remotes is only available for local files.": "遠端儲存庫管理僅適用於本機檔案。",
+    "Manage Remotes failed: {message}": "管理遠端儲存庫失敗：{message}",
+    "Git Remotes": "Git 遠端儲存庫",
+    "Invalid remote name.": "遠端儲存庫名稱無效。",
+    "Enter a valid remote URL.": "請輸入有效的遠端儲存庫 URL。",
+    "Remote {name} already exists.": "遠端儲存庫 {name} 已存在。",
+    "Remote data changed. Reload and try again.": "遠端儲存庫資料已變更。請重新載入後再試一次。",
+    "Remote renamed to {name}, but its URL could not be changed: {message}": "遠端儲存庫已重新命名為 {name}，但無法變更其 URL：{message}",
+    "Remote URL could not be changed: {message}": "無法變更遠端儲存庫 URL：{message}",
+    "Remove": "移除",
+    "Remove remote {name}?": "移除遠端儲存庫 {name}？",
+    "The remote list could not be refreshed: {message}": "無法重新整理遠端儲存庫清單：{message}",
+    "Repository views could not be refreshed: {message}": "無法重新整理存放庫檢視：{message}",
+    "Change saved.": "變更已儲存。"
 }

@@ -261,6 +261,12 @@ const COMMAND_ENTRIES = [
     },
     {
         kind: "command",
+        id: "intelligit.fileManageRemotes",
+        mutating: true,
+        coveredBySpec: "tests/e2e/fileContextManageRemotes.spec.ts",
+    },
+    {
+        kind: "command",
         id: "intelligit.github.createPullRequest",
         mutating: false,
     },

@@ -5,6 +5,12 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.35.20] - 2026-09-27
+
+### Added
+
+- Added **Manage Remotes…** after GitHub in the Explorer, editor-tab, and editor file menus. A repository-bound Git Remotes dialog lists configured remotes and supports adding, editing, renaming, and confirmed removal while retaining other remote URLs and settings.
+
 ## [0.35.19] - 2026-09-27
 
 ### Added

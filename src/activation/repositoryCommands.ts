@@ -16,6 +16,7 @@ import {
     compareFileWithRevision,
     fetchFile,
     mergeFileFromContext,
+    manageRemotesFileFromContext,
     newBranchFileFromContext,
     newTagFileFromContext,
     resetHeadFileFromContext,
@@ -810,6 +811,19 @@ function registerCommitFileCommands(deps: RepositoryCommandsDeps): void {
                     await refreshActiveRepository();
                 }
             });
+        }),
+        vscode.commands.registerCommand("intelligit.fileManageRemotes", async (ctx: unknown) => {
+            await manageRemotesFileFromContext(
+                ctx,
+                gitOps,
+                deps.context.extensionUri,
+                async (repoRoot) => {
+                    await refreshService().refreshCommitPanels();
+                    if (areSameRepositoryRoot(repoRoot, getRepoRoot())) {
+                        await refreshActiveRepository();
+                    }
+                },
+            );
         }),
         vscode.commands.registerCommand(
             "intelligit.fileContextUnstashChanges",

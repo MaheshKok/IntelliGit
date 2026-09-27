@@ -115,5 +115,6 @@
     "command.github.viewInBrowser": "在浏览器中查看",
     "command.github.shareProject": "在 GitHub 上共享项目",
     "command.github.cloneRepository": "从 GitHub 克隆仓库...",
-    "command.github.manageAccounts": "管理 GitHub 帐户..."
+    "command.github.manageAccounts": "管理 GitHub 帐户...",
+    "command.fileManageRemotes": "管理远程仓库…"
 }

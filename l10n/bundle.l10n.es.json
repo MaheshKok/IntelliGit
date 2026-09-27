@@ -799,5 +799,19 @@
     "Create {repository} on GitHub as {visibility} and push {branch} from {root}?": "¿Crear {repository} en GitHub como {visibility} y enviar {branch} desde {root}?",
     "GitHub returned an unsafe repository destination. No remote was added or pushed.": "GitHub devolvió un destino de repositorio no seguro. No se añadió ningún remoto ni se enviaron cambios.",
     "The selected GitHub remote changed while sharing. Run Share Project again.": "El remoto de GitHub seleccionado cambió mientras se compartía. Vuelve a ejecutar Compartir proyecto.",
-    "Private": "Privado"
+    "Private": "Privado",
+    "Manage Remotes is only available for local files.": "Administrar remotos solo está disponible para archivos locales.",
+    "Manage Remotes failed: {message}": "Error al administrar remotos: {message}",
+    "Git Remotes": "Remotos de Git",
+    "Invalid remote name.": "El nombre del remoto no es válido.",
+    "Enter a valid remote URL.": "Introduce una URL de remoto válida.",
+    "Remote {name} already exists.": "El remoto {name} ya existe.",
+    "Remote data changed. Reload and try again.": "Los datos del remoto cambiaron. Vuelve a cargar e inténtalo de nuevo.",
+    "Remote renamed to {name}, but its URL could not be changed: {message}": "El remoto se renombró a {name}, pero no se pudo cambiar su URL: {message}",
+    "Remote URL could not be changed: {message}": "No se pudo cambiar la URL del remoto: {message}",
+    "Remove": "Eliminar",
+    "Remove remote {name}?": "¿Eliminar el remoto {name}?",
+    "The remote list could not be refreshed: {message}": "No se pudo actualizar la lista de remotos: {message}",
+    "Repository views could not be refreshed: {message}": "No se pudieron actualizar las vistas del repositorio: {message}",
+    "Change saved.": "Cambio guardado."
 }

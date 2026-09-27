@@ -799,5 +799,19 @@
     "Create {repository} on GitHub as {visibility} and push {branch} from {root}?": "Utworzyć {repository} w GitHub z widocznością {visibility} i wypchnąć {branch} z {root}?",
     "GitHub returned an unsafe repository destination. No remote was added or pushed.": "GitHub zwrócił niebezpieczne miejsce docelowe repozytorium. Nie dodano repozytorium zdalnego ani nie wypchnięto zmian.",
     "The selected GitHub remote changed while sharing. Run Share Project again.": "Wybrane repozytorium zdalne GitHub zmieniło się podczas udostępniania. Uruchom ponownie Udostępnij projekt.",
-    "Private": "Prywatny"
+    "Private": "Prywatny",
+    "Manage Remotes is only available for local files.": "Zarządzanie repozytoriami zdalnymi jest dostępne tylko dla plików lokalnych.",
+    "Manage Remotes failed: {message}": "Nie udało się zarządzać repozytoriami zdalnymi: {message}",
+    "Git Remotes": "Repozytoria zdalne Git",
+    "Invalid remote name.": "Nieprawidłowa nazwa repozytorium zdalnego.",
+    "Enter a valid remote URL.": "Wprowadź prawidłowy URL repozytorium zdalnego.",
+    "Remote {name} already exists.": "Repozytorium zdalne {name} już istnieje.",
+    "Remote data changed. Reload and try again.": "Dane repozytorium zdalnego się zmieniły. Wczytaj je ponownie i spróbuj jeszcze raz.",
+    "Remote renamed to {name}, but its URL could not be changed: {message}": "Zmieniono nazwę repozytorium zdalnego na {name}, ale nie udało się zmienić jego URL: {message}",
+    "Remote URL could not be changed: {message}": "Nie udało się zmienić URL repozytorium zdalnego: {message}",
+    "Remove": "Usuń",
+    "Remove remote {name}?": "Usunąć repozytorium zdalne {name}?",
+    "The remote list could not be refreshed: {message}": "Nie udało się odświeżyć listy repozytoriów zdalnych: {message}",
+    "Repository views could not be refreshed: {message}": "Nie udało się odświeżyć widoków repozytorium: {message}",
+    "Change saved.": "Zapisano zmianę."
 }

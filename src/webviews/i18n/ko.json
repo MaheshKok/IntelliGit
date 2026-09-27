@@ -375,5 +375,21 @@
     },
     "merge.status.noChanges": "변경 사항 없음",
     "merge.status.allConflictsResolved": "모든 충돌이 해결됨",
-    "mergeSession.rebasing": "{current}를 {selected}에 리베이스하는 중"
+    "mergeSession.rebasing": "{current}를 {selected}에 리베이스하는 중",
+    "manageRemotes.title": "Git 원격 저장소",
+    "manageRemotes.loading": "원격 저장소 불러오는 중…",
+    "manageRemotes.actions": "원격 저장소 작업",
+    "manageRemotes.name": "이름",
+    "manageRemotes.url": "URL",
+    "manageRemotes.add": "원격 저장소 추가",
+    "manageRemotes.remove": "원격 저장소 제거",
+    "manageRemotes.edit": "원격 저장소 편집",
+    "manageRemotes.empty": "설정된 원격 저장소가 없습니다. 원격 저장소를 추가하여 시작하세요.",
+    "manageRemotes.defineRemote": "원격 저장소 정의",
+    "manageRemotes.additionalUrls": "추가 페치 URL {count}개는 유지됩니다.",
+    "manageRemotes.cancel": "취소",
+    "manageRemotes.save": "저장",
+    "manageRemotes.retry": "다시 시도",
+    "manageRemotes.close": "닫기",
+    "manageRemotes.staleForm": "원격 저장소 데이터가 변경되었습니다. 현재 값을 확인한 후 다시 시도하세요."
 }

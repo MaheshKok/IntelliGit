@@ -799,5 +799,19 @@
     "Create {repository} on GitHub as {visibility} and push {branch} from {root}?": "Создать {repository} на GitHub с видимостью {visibility} и отправить {branch} из {root}?",
     "GitHub returned an unsafe repository destination. No remote was added or pushed.": "GitHub вернул небезопасный адрес репозитория. Удалённый репозиторий не был добавлен, изменения не отправлены.",
     "The selected GitHub remote changed while sharing. Run Share Project again.": "Выбранный удалённый репозиторий GitHub изменился во время публикации. Запустите Поделиться проектом ещё раз.",
-    "Private": "Приватный"
+    "Private": "Приватный",
+    "Manage Remotes is only available for local files.": "Управление удалёнными репозиториями доступно только для локальных файлов.",
+    "Manage Remotes failed: {message}": "Не удалось управлять удалёнными репозиториями: {message}",
+    "Git Remotes": "Удалённые репозитории Git",
+    "Invalid remote name.": "Недопустимое имя удалённого репозитория.",
+    "Enter a valid remote URL.": "Введите допустимый URL удалённого репозитория.",
+    "Remote {name} already exists.": "Удалённый репозиторий {name} уже существует.",
+    "Remote data changed. Reload and try again.": "Данные удалённого репозитория изменились. Обновите их и повторите попытку.",
+    "Remote renamed to {name}, but its URL could not be changed: {message}": "Удалённый репозиторий переименован в {name}, но его URL не удалось изменить: {message}",
+    "Remote URL could not be changed: {message}": "Не удалось изменить URL удалённого репозитория: {message}",
+    "Remove": "Удалить",
+    "Remove remote {name}?": "Удалить удалённый репозиторий {name}?",
+    "The remote list could not be refreshed: {message}": "Не удалось обновить список удалённых репозиториев: {message}",
+    "Repository views could not be refreshed: {message}": "Не удалось обновить представления репозитория: {message}",
+    "Change saved.": "Изменение сохранено."
 }

@@ -27,6 +27,7 @@
         "intelligit.fileDelete",
         "intelligit.fileFetch",
         "intelligit.fileMerge",
+        "intelligit.fileManageRemotes",
         "intelligit.fileNewBranch",
         "intelligit.fileNewTag",
         "intelligit.fileResetHead",

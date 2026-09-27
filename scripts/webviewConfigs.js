@@ -14,6 +14,7 @@ const WEBVIEW_CONFIGS = [
         entry: "react/merge-conflicts-session/MergeConflictSessionApp",
         out: "webview-mergeconflictsession",
     },
+    { entry: "react/manage-remotes/ManageRemotesApp", out: "webview-manage-remotes" },
     { entry: "react/UndockedApp", out: "webview-undocked" },
 ];
 

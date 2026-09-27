@@ -115,5 +115,6 @@
     "command.github.viewInBrowser": "Ver en el navegador",
     "command.github.shareProject": "Compartir proyecto en GitHub",
     "command.github.cloneRepository": "Clonar repositorio desde GitHub...",
-    "command.github.manageAccounts": "Administrar cuentas de GitHub..."
+    "command.github.manageAccounts": "Administrar cuentas de GitHub...",
+    "command.fileManageRemotes": "Administrar remotos…"
 }
