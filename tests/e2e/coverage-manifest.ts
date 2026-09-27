@@ -261,6 +261,53 @@ const COMMAND_ENTRIES = [
     },
     {
         kind: "command",
+        id: "intelligit.github.createPullRequest",
+        mutating: false,
+    },
+    {
+        kind: "command",
+        id: "intelligit.github.viewPullRequests",
+        mutating: false,
+    },
+    {
+        kind: "command",
+        id: "intelligit.github.syncFork",
+        mutating: true,
+        notCovered:
+            "Native menu visibility is tested; fork mutation is covered by unit and local Git tests.",
+    },
+    {
+        kind: "command",
+        id: "intelligit.github.createGist",
+        mutating: true,
+        // Native dispatch and cancellation only; HTTP publication is mocked in unit tests.
+        coveredBySpec: "tests/e2e/fileContextGitHub.spec.ts",
+    },
+    {
+        kind: "command",
+        id: "intelligit.github.viewInBrowser",
+        mutating: false,
+    },
+    {
+        kind: "command",
+        id: "intelligit.github.shareProject",
+        mutating: true,
+        notCovered: "Native menu visibility is tested; GitHub publication is mocked in unit tests.",
+    },
+    {
+        kind: "command",
+        id: "intelligit.github.cloneRepository",
+        mutating: true,
+        notCovered:
+            "Native menu visibility is tested; GitHub clone routing is covered by unit tests.",
+    },
+    {
+        kind: "command",
+        id: "intelligit.github.manageAccounts",
+        mutating: false,
+    },
+    {
+        kind: "command",
         id: "intelligit.fileAddToVcs",
         mutating: true,
         coveredBySpec: "tests/e2e/fileContextAddToVcs.spec.ts",

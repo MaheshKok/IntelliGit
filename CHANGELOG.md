@@ -5,6 +5,12 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.35.19] - 2026-09-27
+
+### Added
+
+- Added a **GitHub** submenu after Unstash Changes in Explorer, editor-tab, and editor file menus. Create or view pull requests, sync a fork, create a confirmed Gist, view the selected tracked file on GitHub, share a project, clone a GitHub repository, or manage GitHub accounts.
+
 ## [0.35.18] - 2026-09-27
 
 ### Added

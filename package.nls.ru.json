@@ -106,5 +106,14 @@
     "command.fileNewTag": "Новый тег…",
     "command.fileResetHead": "Сбросить HEAD…",
     "command.fileStashChanges": "Спрятать изменения…",
-    "command.fileContextUnstashChanges": "Восстановить изменения из стэша…"
+    "command.fileContextUnstashChanges": "Восстановить изменения из стэша…",
+    "submenu.github": "GitHub",
+    "command.github.createPullRequest": "Создать пул-реквест...",
+    "command.github.viewPullRequests": "Просмотреть пул-реквесты",
+    "command.github.syncFork": "Синхронизировать форк",
+    "command.github.createGist": "Создать Gist...",
+    "command.github.viewInBrowser": "Открыть в браузере",
+    "command.github.shareProject": "Опубликовать проект на GitHub",
+    "command.github.cloneRepository": "Клонировать репозиторий с GitHub...",
+    "command.github.manageAccounts": "Управление учётными записями GitHub..."
 }

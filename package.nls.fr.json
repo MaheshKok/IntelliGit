@@ -106,5 +106,14 @@
     "command.fileNewTag": "Nouvelle étiquette…",
     "command.fileResetHead": "Réinitialiser HEAD…",
     "command.fileStashChanges": "Remiser les modifications…",
-    "command.fileContextUnstashChanges": "Restaurer les modifications du stash…"
+    "command.fileContextUnstashChanges": "Restaurer les modifications du stash…",
+    "submenu.github": "GitHub",
+    "command.github.createPullRequest": "Créer une pull request...",
+    "command.github.viewPullRequests": "Afficher les pull requests",
+    "command.github.syncFork": "Synchroniser le fork",
+    "command.github.createGist": "Créer un Gist...",
+    "command.github.viewInBrowser": "Afficher dans le navigateur",
+    "command.github.shareProject": "Partager le projet sur GitHub",
+    "command.github.cloneRepository": "Cloner un dépôt depuis GitHub...",
+    "command.github.manageAccounts": "Gérer les comptes GitHub..."
 }

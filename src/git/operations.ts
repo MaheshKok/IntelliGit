@@ -10,6 +10,7 @@ import {
     writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
+import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { readEmptyTreeOid } from "./emptyTree";
 import { GitExecutor } from "./executor";
@@ -443,6 +444,24 @@ export class GitOps {
             return out.trim() || null;
         } catch {
             return null;
+        }
+    }
+
+    /** Reads every effective Git push destination, including pushurl and pushInsteadOf rewrites. */
+    async getRemotePushUrls(remote: string): Promise<string[]> {
+        assertValidRemoteName(remote);
+        try {
+            const output = await this.executor.run([
+                "remote",
+                "get-url",
+                "--push",
+                "--all",
+                remote,
+            ]);
+            const urls = output.replace(/\r?\n$/, "");
+            return urls ? urls.split(/\r?\n/) : [];
+        } catch {
+            return [];
         }
     }
 
@@ -1222,6 +1241,31 @@ export class GitOps {
      */
     async fetch(): Promise<string> {
         return this.executor.run(["fetch"]);
+    }
+
+    /** Fetches a branch into a unique ref so another fetch cannot replace its approved commit. */
+    async fetchRemoteBranch(remote: string, branch: string): Promise<string> {
+        assertValidRemoteName(remote);
+        assertValidBranchName(branch);
+        const temporaryRef = `refs/intelligit/fetch/${randomUUID()}`;
+        try {
+            await this.executor.run([
+                "fetch",
+                "--",
+                remote,
+                `refs/heads/${branch}:${temporaryRef}`,
+            ]);
+            return (
+                await this.executor.run([
+                    "rev-parse",
+                    "--verify",
+                    "--end-of-options",
+                    `${temporaryRef}^{commit}`,
+                ])
+            ).trim();
+        } finally {
+            await this.executor.run(["update-ref", "-d", temporaryRef]);
+        }
     }
     /** Verifies the push remote, creates or amends a commit, then pushes the current branch. */
     async commitAndPush(message: string, amend: boolean = false): Promise<string> {

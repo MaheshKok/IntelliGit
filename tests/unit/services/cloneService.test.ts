@@ -107,7 +107,7 @@ vi.mock("../../../src/git/executor", () => ({
     },
 }));
 
-import { runCloneFlow } from "../../../src/services/cloneService";
+import { runCloneFlow, runGitHubCloneFlow } from "../../../src/services/cloneService";
 
 function errno(code: string, message = code): NodeJS.ErrnoException {
     return Object.assign(new Error(message), { code });
@@ -131,6 +131,16 @@ function secretStorage(initial?: string): {
 }
 
 describe("cloneService phase 3", () => {
+    it("GitHub-only clone routes directly to GitHub session and repository choice", async () => {
+        mocks.getSession.mockResolvedValue({ accessToken: "synthetic-token" });
+        mocks.showQuickPick.mockResolvedValue(undefined);
+        await runGitHubCloneFlow();
+        expect(mocks.getSession).toHaveBeenCalledWith("github", ["repo"], { createIfNone: true });
+        expect(mocks.showQuickPick).toHaveBeenCalledOnce();
+        expect(
+            mocks.showQuickPick.mock.calls[0][0].map((item: { value: string }) => item.value),
+        ).toEqual(["browse", "url"]);
+    });
     beforeEach(() => {
         vi.clearAllMocks();
         mocks.configValues.clear();

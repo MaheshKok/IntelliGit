@@ -106,5 +106,14 @@
     "command.fileNewTag": "新标签…",
     "command.fileResetHead": "重置 HEAD…",
     "command.fileStashChanges": "储藏更改…",
-    "command.fileContextUnstashChanges": "还原储藏的更改…"
+    "command.fileContextUnstashChanges": "还原储藏的更改…",
+    "submenu.github": "GitHub",
+    "command.github.createPullRequest": "创建拉取请求...",
+    "command.github.viewPullRequests": "查看拉取请求",
+    "command.github.syncFork": "同步复刻仓库",
+    "command.github.createGist": "创建 Gist...",
+    "command.github.viewInBrowser": "在浏览器中查看",
+    "command.github.shareProject": "在 GitHub 上共享项目",
+    "command.github.cloneRepository": "从 GitHub 克隆仓库...",
+    "command.github.manageAccounts": "管理 GitHub 帐户..."
 }

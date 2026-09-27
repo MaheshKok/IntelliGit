@@ -24,7 +24,8 @@ import { runRebaseCommand } from "./rebaseCommand";
 import { rejectWhenOperationInProgress } from "./operationFence";
 import { runResetWorkflow } from "./commitBasicActions";
 
-interface ResolvedFileCommandContext {
+/** Immutable clicked-file ownership and repository scope captured before user interaction. */
+export interface ResolvedFileCommandContext {
     selectedUri: vscode.Uri;
     canonicalFilePath: string;
     repoRoot: string;
@@ -867,7 +868,7 @@ async function resolveCanonicalFileLocation(
  * lexical suffix beneath that ancestor's canonical path. Its caller must then validate an exact
  * tracked deletion; other commands continue to require the immediate parent to exist.
  */
-async function resolveFileCommandContext(
+export async function resolveFileCommandContext(
     ctx: unknown,
     gitOps: GitOps,
     options?: { allowMissingParent?: boolean },

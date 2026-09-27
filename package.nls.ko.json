@@ -106,5 +106,14 @@
     "command.fileNewTag": "새로운 태그…",
     "command.fileResetHead": "HEAD 재설정…",
     "command.fileStashChanges": "변경 내용 스태시…",
-    "command.fileContextUnstashChanges": "스태시 변경 사항 복원…"
+    "command.fileContextUnstashChanges": "스태시 변경 사항 복원…",
+    "submenu.github": "GitHub",
+    "command.github.createPullRequest": "풀 리퀘스트 만들기...",
+    "command.github.viewPullRequests": "풀 리퀘스트 보기",
+    "command.github.syncFork": "포크 동기화",
+    "command.github.createGist": "Gist 만들기...",
+    "command.github.viewInBrowser": "브라우저에서 보기",
+    "command.github.shareProject": "GitHub에서 프로젝트 공유",
+    "command.github.cloneRepository": "GitHub에서 저장소 복제...",
+    "command.github.manageAccounts": "GitHub 계정 관리..."
 }

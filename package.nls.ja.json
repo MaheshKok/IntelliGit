@@ -106,5 +106,14 @@
     "command.fileNewTag": "新しいタグ…",
     "command.fileResetHead": "HEAD をリセット…",
     "command.fileStashChanges": "変更をスタッシュ…",
-    "command.fileContextUnstashChanges": "スタッシュの変更を復元…"
+    "command.fileContextUnstashChanges": "スタッシュの変更を復元…",
+    "submenu.github": "GitHub",
+    "command.github.createPullRequest": "プルリクエストを作成...",
+    "command.github.viewPullRequests": "プルリクエストを表示",
+    "command.github.syncFork": "フォークを同期",
+    "command.github.createGist": "Gist を作成...",
+    "command.github.viewInBrowser": "ブラウザーで表示",
+    "command.github.shareProject": "GitHub でプロジェクトを共有",
+    "command.github.cloneRepository": "GitHub からリポジトリをクローン...",
+    "command.github.manageAccounts": "GitHub アカウントを管理..."
 }
