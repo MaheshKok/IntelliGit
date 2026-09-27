@@ -137,11 +137,9 @@ describe("Create Pull Request and View in Browser", () => {
         getRemotes: vi.fn(async () => ["origin"]),
         getRemoteUrl: vi.fn(async () => "https://github.com/o/repo.git"),
         getMergeTarget: vi.fn(async () => ({ head: "feature/slash", oid: "a".repeat(40) })),
-        getBranches: vi.fn(
-            async (): Promise<Pick<Branch, "name" | "isRemote" | "upstream">[]> => [
-                { name: "origin/feature/slash", isRemote: true },
-            ],
-        ),
+        getBranches: vi.fn(async (): Promise<Pick<Branch, "name" | "isRemote" | "upstream">[]> => [
+            { name: "origin/feature/slash", isRemote: true },
+        ]),
         hasFileAtHead: vi.fn(async () => true),
     };
     const activeA = { getRemotes: vi.fn() } as unknown as GitOps;

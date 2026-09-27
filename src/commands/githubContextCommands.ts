@@ -82,7 +82,7 @@ export async function viewGitHubPullRequestsFromContext(
     }
 }
 
-/** Opens a compare page only for a branch published to the chosen GitHub remote. */
+/** Opens a published branch's compare page, honoring its upstream only on the chosen remote. */
 export async function createGitHubPullRequestFromContext(
     ctx: unknown,
     gitOps: GitOps,
@@ -107,9 +107,16 @@ export async function createGitHubPullRequestFromContext(
         const remote = await chooseGitHubRemote(resolved.gitOps, resolved.repoRoot);
         if (!remote) return;
         const branches = await resolved.gitOps.getBranches();
+        const upstream = branches.find(
+            (branch) => !branch.isRemote && branch.name === target.head,
+        )?.upstream;
+        const remotePrefix = `${remote.name}/`;
+        const publishedBranch = upstream?.startsWith(remotePrefix)
+            ? upstream.slice(remotePrefix.length)
+            : target.head;
         if (
             !branches.some(
-                (branch) => branch.isRemote && branch.name === `${remote.name}/${target.head}`,
+                (branch) => branch.isRemote && branch.name === `${remote.name}/${publishedBranch}`,
             )
         ) {
             await vscode.window.showErrorMessage(
@@ -120,7 +127,7 @@ export async function createGitHubPullRequestFromContext(
             return;
         }
         await vscode.env.openExternal(
-            vscode.Uri.parse(githubCompareUrl(remote.identity, target.head)),
+            vscode.Uri.parse(githubCompareUrl(remote.identity, publishedBranch)),
         );
     } catch (error) {
         await vscode.window.showErrorMessage(
