@@ -106,5 +106,6 @@
     "command.fileNewTag": "新标签…",
     "command.fileResetHead": "重置 HEAD…",
     "command.fileStashChanges": "储藏更改…",
-    "command.fileContextUnstashChanges": "还原储藏的更改…"
+    "command.fileContextUnstashChanges": "还原储藏的更改…",
+    "configuration.repositoryScanMaxDepth.markdownDescription": "控制在存储库发现期间扫描工作区文件夹中 Git 存储库的深度。默认值为 2。设置为 -1 可无深度限制进行扫描。"
 }

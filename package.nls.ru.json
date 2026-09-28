@@ -106,5 +106,6 @@
     "command.fileNewTag": "Новый тег…",
     "command.fileResetHead": "Сбросить HEAD…",
     "command.fileStashChanges": "Спрятать изменения…",
-    "command.fileContextUnstashChanges": "Восстановить изменения из стэша…"
+    "command.fileContextUnstashChanges": "Восстановить изменения из стэша…",
+    "configuration.repositoryScanMaxDepth.markdownDescription": "Управляет глубиной сканирования папок рабочей области для поиска репозиториев Git при обнаружении репозиториев. По умолчанию: 2. Установите -1 для сканирования без ограничения глубины."
 }

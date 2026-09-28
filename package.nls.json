@@ -106,5 +106,6 @@
     "command.showReviewPromptCard": "Show Review Prompt Card",
     "configuration.reviewPrompt.enabled.description": "Ask for a marketplace rating after IntelliGit has been used for a while. Disable to never be asked.",
     "command.merge": "Merge...",
-    "command.rebase": "Rebase..."
+    "command.rebase": "Rebase...",
+    "configuration.repositoryScanMaxDepth.markdownDescription": "Controls the depth used to scan for Git repositories inside workspace folders during repository discovery. Defaults to 2. Set to -1 to scan with no depth limit."
 }

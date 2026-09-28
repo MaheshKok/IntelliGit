@@ -53,11 +53,96 @@ interface ResolvedGitRepository {
 export type ResolveGitRepository = (candidateRoot: string) => Promise<ResolvedGitRepository | null>;
 
 /**
+ * Default maximum directory depth to scan for Git repositories within workspace folders.
+ */
+export const DEFAULT_REPOSITORY_SCAN_MAX_DEPTH = 2;
+
+function getVsCodeConfiguration(
+    scope?: string | import("vscode").Uri,
+): { get<T>(section: string, defaultValue?: T): T | undefined } | undefined {
+    try {
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const vscode = require("vscode") as typeof import("vscode");
+        const resource = typeof scope === "string" ? vscode.Uri.file(scope) : scope;
+        return vscode?.workspace?.getConfiguration?.("intelligit", resource);
+    } catch {
+        return undefined;
+    }
+}
+
+/**
  * Options that customize repository discovery without changing filesystem traversal.
  */
 export interface DiscoverGitRepositoriesOptions {
     /** Optional resolver used to validate and canonicalize each `.git` marker hit. */
     resolveGitRepository?: ResolveGitRepository;
+    /** Maximum directory depth to search for `.git` markers. Defaults to configured setting or {@link DEFAULT_REPOSITORY_SCAN_MAX_DEPTH}. */
+    maxDepth?: number;
+    /** Optional configuration surface to read repository scan settings from. */
+    configuration?:
+        | {
+              get<T>(section: string, defaultValue?: T): T | undefined;
+          }
+        | ((resource?: string) =>
+              | {
+                    get<T>(section: string, defaultValue?: T): T | undefined;
+                }
+              | undefined);
+}
+
+/**
+ * Resolves the effective maximum depth for Git repository discovery.
+ *
+ * Checks explicit options first, followed by VS Code workspace settings
+ * (optionally scoped to a specific resource), falling back to {@link DEFAULT_REPOSITORY_SCAN_MAX_DEPTH}.
+ * A value of -1 indicates unlimited scan depth.
+ */
+export function resolveRepositoryScanMaxDepth(
+    options?: DiscoverGitRepositoriesOptions,
+    resource?: string,
+): number {
+    if (typeof options?.maxDepth === "number" && Number.isFinite(options.maxDepth)) {
+        if (options.maxDepth === -1) {
+            return Infinity;
+        }
+        if (options.maxDepth >= 0) {
+            return Math.floor(options.maxDepth);
+        }
+    }
+    const config =
+        typeof options?.configuration === "function"
+            ? options.configuration(resource)
+            : (options?.configuration ?? getVsCodeConfiguration(resource));
+    if (config) {
+        const configured = config.get<number>("repositoryScanMaxDepth");
+        if (typeof configured === "number" && Number.isFinite(configured)) {
+            if (configured === -1) {
+                return Infinity;
+            }
+            if (configured >= 0) {
+                return Math.floor(configured);
+            }
+        }
+    }
+    return DEFAULT_REPOSITORY_SCAN_MAX_DEPTH;
+}
+
+/**
+ * Reads the configured repository scan maximum depth from configuration or VS Code settings.
+ */
+export function readRepositoryScanMaxDepth(
+    configuration?:
+        | {
+              get<T>(section: string, defaultValue?: T): T | undefined;
+          }
+        | ((resource?: string) =>
+              | {
+                    get<T>(section: string, defaultValue?: T): T | undefined;
+                }
+              | undefined),
+    resource?: string,
+): number {
+    return resolveRepositoryScanMaxDepth({ configuration }, resource);
 }
 
 /**
@@ -144,7 +229,14 @@ async function addResolvedRoot(
  * deferred so it can run bounded-parallel. Inaccessible directories are ignored so
  * discovery stays best-effort during activation and no-repository onboarding flows.
  */
-async function collectGitMarkerDirs(directory: string, candidates: string[]): Promise<void> {
+async function collectGitMarkerDirs(
+    directory: string,
+    candidates: string[],
+    maxDepth: number = DEFAULT_REPOSITORY_SCAN_MAX_DEPTH,
+    depth = 0,
+): Promise<void> {
+    if (depth > maxDepth) return;
+
     let entries: import("fs").Dirent[];
     try {
         entries = await fs.readdir(directory, { withFileTypes: true });
@@ -162,7 +254,12 @@ async function collectGitMarkerDirs(directory: string, candidates: string[]): Pr
         if (!entry.isDirectory()) continue;
         // The walk stays sequential to keep recursive filesystem IO bounded and ordered.
         // react-doctor-disable-next-line react-doctor/async-await-in-loop
-        await collectGitMarkerDirs(path.join(directory, entry.name), candidates);
+        await collectGitMarkerDirs(
+            path.join(directory, entry.name),
+            candidates,
+            maxDepth,
+            depth + 1,
+        );
     }
 }
 
@@ -180,15 +277,15 @@ export async function discoverGitRepositories(
     const roots = await Promise.all(workspaceRoots.map(normalizeRoot));
     const seen = new Map<string, DiscoveredRepository>();
     const resolveGitRepository = options.resolveGitRepository ?? defaultResolveGitRepository;
-
     // Phase 1 — cheap filesystem walk that only collects candidate directories. Each
     // workspace root is itself a candidate (the user may have opened a repository or a
     // subdirectory of one) alongside every nested `.git` marker.
     const candidates: string[] = [...roots];
     for (const workspaceRoot of roots) {
+        const maxDepth = resolveRepositoryScanMaxDepth(options, workspaceRoot);
         // Sequential walk keeps recursive filesystem IO bounded.
         // react-doctor-disable-next-line react-doctor/async-await-in-loop
-        await collectGitMarkerDirs(workspaceRoot, candidates);
+        await collectGitMarkerDirs(workspaceRoot, candidates, maxDepth, 0);
     }
 
     // Phase 2 — resolve candidates through Git concurrently. Git resolution (one

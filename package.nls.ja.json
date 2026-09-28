@@ -106,5 +106,6 @@
     "command.fileNewTag": "新しいタグ…",
     "command.fileResetHead": "HEAD をリセット…",
     "command.fileStashChanges": "変更をスタッシュ…",
-    "command.fileContextUnstashChanges": "スタッシュの変更を復元…"
+    "command.fileContextUnstashChanges": "スタッシュの変更を復元…",
+    "configuration.repositoryScanMaxDepth.markdownDescription": "リポジトリ検出時にワークスペースフォルダー内の Git リポジトリをスキャンする深さを制御します。デフォルトは 2 です。深さ制限なしでスキャンするには -1 に設定します。"
 }

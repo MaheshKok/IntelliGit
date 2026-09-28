@@ -106,5 +106,6 @@
     "command.fileNewTag": "Neuer Tag…",
     "command.fileResetHead": "HEAD zurücksetzen…",
     "command.fileStashChanges": "Stash-Änderungen…",
-    "command.fileContextUnstashChanges": "Änderungen aus dem Stash wiederherstellen…"
+    "command.fileContextUnstashChanges": "Änderungen aus dem Stash wiederherstellen…",
+    "configuration.repositoryScanMaxDepth.markdownDescription": "Steuert die Tiefe, bis zu der bei der Repository-Erkennung in Arbeitsbereichsordnern nach Git-Repositories gesucht wird. Standardwert ist 2. Auf -1 setzen, um ohne Tiefenbegrenzung zu suchen."
 }

@@ -1238,6 +1238,13 @@
                     "default": true,
                     "markdownDescription": "%configuration.tooltips.enabled.markdownDescription%"
                 },
+                "intelligit.repositoryScanMaxDepth": {
+                    "type": "integer",
+                    "default": 2,
+                    "minimum": -1,
+                    "scope": "resource",
+                    "markdownDescription": "%configuration.repositoryScanMaxDepth.markdownDescription%"
+                },
                 "intelligit.shelf.recordBaseRevisions": {
                     "type": "boolean",
                     "default": true,

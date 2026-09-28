@@ -106,5 +106,6 @@
     "command.fileNewTag": "Nova etiqueta…",
     "command.fileResetHead": "Repor HEAD…",
     "command.fileStashChanges": "Guardar no Stash…",
-    "command.fileContextUnstashChanges": "Restaurar alterações do Stash…"
+    "command.fileContextUnstashChanges": "Restaurar alterações do Stash…",
+    "configuration.repositoryScanMaxDepth.markdownDescription": "Controla a profundidade usada para procurar repositórios Git dentro das pastas da área de trabalho durante a descoberta de repositórios. O padrão é 2. Defina como -1 para procurar sem limite de profundidade."
 }

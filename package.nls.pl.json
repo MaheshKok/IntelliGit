@@ -106,5 +106,6 @@
     "command.fileNewTag": "Nowy tag…",
     "command.fileResetHead": "Zresetuj HEAD…",
     "command.fileStashChanges": "Schowaj zmiany…",
-    "command.fileContextUnstashChanges": "Przywróć zmiany ze schowka…"
+    "command.fileContextUnstashChanges": "Przywróć zmiany ze schowka…",
+    "configuration.repositoryScanMaxDepth.markdownDescription": "Kontroluje głębokość skanowania w poszukiwaniu repozytoriów Git w folderach obszaru roboczego podczas wykrywania repozytoriów. Domyślnie 2. Ustaw -1, aby skanować bez limitu głębokości."
 }
