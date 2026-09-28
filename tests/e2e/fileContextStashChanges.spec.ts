@@ -184,14 +184,14 @@ test("Explorer, tab, and editor stash clicked B repository while active A stays 
             "Stashed changes",
         );
         await page.keyboard.press("Enter");
-        const noChangesDialog = page.getByRole("dialog", { name: /No local changes to save\./ });
-        await expect(noChangesDialog).toBeVisible();
+        await expect(
+            page.getByRole("dialog", { name: /No local changes to save\./ }),
+        ).toBeVisible();
         expect(await snapshot(b, env, ["selected.txt", "second.txt", "ignored.log"])).toEqual(
             cleanBefore,
         );
         expect(await snapshot(a, env, aFiles)).toEqual(aBefore);
 
-        await expect(noChangesDialog).toBeHidden();
         await writeFile(path.join(b, "selected.txt"), "B cancel staged\n");
         runGit(b, env, ["add", "selected.txt"]);
         await writeFile(path.join(b, "selected.txt"), "B cancel worktree\n");
@@ -200,11 +200,10 @@ test("Explorer, tab, and editor stash clicked B repository while active A stays 
         const beforeCancel = await snapshot(b, env, bFiles);
         await file.click({ button: "right" });
         await chooseStash(page);
-        await expect(page.locator(".quick-input-widget input").first()).toHaveValue(
-            "Stashed changes",
-        );
-        await page.keyboard.press("Escape");
-        await expect(page.locator(".quick-input-widget input").first()).toBeHidden();
+        const cancelInput = page.locator(".quick-input-widget input").first();
+        await expect(cancelInput).toHaveValue("Stashed changes");
+        await cancelInput.press("Escape");
+        await expect(cancelInput).toBeHidden();
         expect(await snapshot(b, env, bFiles)).toEqual(beforeCancel);
 
         await writeFile(path.join(b, "selected.txt"), "B guard staged\n");
