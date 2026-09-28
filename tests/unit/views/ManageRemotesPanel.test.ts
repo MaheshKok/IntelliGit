@@ -182,6 +182,31 @@ describe("Manage Remotes host boundary", () => {
         );
     });
 
+    it.each([
+        { direction: "increases", before: ["../one.git"], after: ["../one.git", "../two.git"] },
+        { direction: "decreases", before: ["../one.git", "../two.git"], after: ["../one.git"] },
+    ])(
+        "rejects removal when a remote's configured URL count $direction",
+        async ({ before, after }) => {
+            const { state, ops, panel, refresh } = fixture();
+            state.set("origin", before);
+            const snapshot = await ready(panel);
+            state.set("origin", after);
+            mocks.warning.mockResolvedValue("Remove");
+
+            await panel.receive({ type: "remove", revision: snapshot.revision, name: "origin" });
+
+            expect(ops.removeRemote).not.toHaveBeenCalled();
+            expect(refresh).not.toHaveBeenCalled();
+            expect(panel.messages.at(-1)).toMatchObject({
+                error: "Remote data changed. Reload and try again.",
+                remotes: [
+                    { name: "origin", url: "../one.git", additionalUrlCount: after.length - 1 },
+                ],
+            });
+        },
+    );
+
     it("reports the actual renamed remote after the URL step fails", async () => {
         const { ops, panel, refresh } = fixture();
         const snapshot = await ready(panel);

@@ -11,6 +11,7 @@ describe("GitHub URL boundaries", () => {
     it("accepts public GitHub Git remotes and canonicalizes the identity", () => {
         for (const remote of [
             "https://github.com/owner/repo.git",
+            "https://github.com/owner/repo.git/",
             "git@github.com:owner/repo.git",
             "git@GitHub.com:owner/repo.git",
             "ssh://git@github.com/owner/repo.git",
@@ -18,6 +19,14 @@ describe("GitHub URL boundaries", () => {
         ]) {
             expect(githubIdentityFromRemote(remote)).toEqual({ owner: "owner", repo: "repo" });
         }
+    });
+
+    it("canonicalizes one trailing HTTPS slash without accepting extra path segments", () => {
+        expect(githubIdentityFromRemote("https://github.com/owner/repo/")).toEqual({
+            owner: "owner",
+            repo: "repo",
+        });
+        expect(githubIdentityFromRemote("https://github.com/owner/repo//")).toBeNull();
     });
 
     it("rejects credential-bearing, lookalike, and malformed remotes", () => {
