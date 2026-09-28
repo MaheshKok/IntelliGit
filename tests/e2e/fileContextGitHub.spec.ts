@@ -59,8 +59,7 @@ async function openGitHubMenu(page: Page): Promise<void> {
 async function inspectAndCancelGist(page: Page): Promise<void> {
     const action = page.getByRole("menuitem", { name: /^Create Gist(?:\.\.\.|…)/ });
     await expect(action).toBeVisible();
-    await action.hover();
-    await page.keyboard.press("Enter");
+    await action.click();
     const input = page.locator(".quick-input-widget:visible input:visible").last();
     await expect(input).toBeVisible();
     await expect(input).toHaveValue("selected.txt");
