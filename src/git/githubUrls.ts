@@ -27,7 +27,12 @@ export function githubIdentityFromRemote(remote: string): GitHubIdentity | null 
     ) {
         return null;
     }
-    return githubIdentityFromName(url.pathname.replace(/^\//, "").replace(/\.git\/?$/, ""));
+    return githubIdentityFromName(
+        url.pathname
+            .replace(/^\//, "")
+            .replace(/\/$/, "")
+            .replace(/\.git$/, ""),
+    );
 }
 
 /** Validates an API-provided `owner/repo` name before it can become a Git URL. */

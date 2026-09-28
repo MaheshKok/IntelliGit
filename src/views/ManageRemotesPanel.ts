@@ -280,7 +280,11 @@ export class ManageRemotesPanel {
         const urls = names.includes(original.name)
             ? await this.gitOps.getConfiguredRemoteUrls(original.name)
             : [];
-        if (!names.includes(original.name) || (urls[0] ?? "") !== original.url) {
+        if (
+            !names.includes(original.name) ||
+            (urls[0] ?? "") !== original.url ||
+            urls.length !== this.configuredCounts.get(original.name)
+        ) {
             await this.readSnapshot();
             await this.snapshot(vscode.l10n.t("Remote data changed. Reload and try again."));
             return;

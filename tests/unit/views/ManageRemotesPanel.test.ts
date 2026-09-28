@@ -186,13 +186,15 @@ describe("Manage Remotes host boundary", () => {
         { direction: "increases", before: ["../one.git"], after: ["../one.git", "../two.git"] },
         { direction: "decreases", before: ["../one.git", "../two.git"], after: ["../one.git"] },
     ])(
-        "rejects removal when a remote's configured URL count $direction",
+        "rejects removal when a remote's configured URL count $direction during confirmation",
         async ({ before, after }) => {
             const { state, ops, panel, refresh } = fixture();
             state.set("origin", before);
             const snapshot = await ready(panel);
-            state.set("origin", after);
-            mocks.warning.mockResolvedValue("Remove");
+            mocks.warning.mockImplementation(async () => {
+                state.set("origin", after);
+                return "Remove";
+            });
 
             await panel.receive({ type: "remove", revision: snapshot.revision, name: "origin" });
 
