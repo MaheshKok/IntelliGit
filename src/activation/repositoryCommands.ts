@@ -32,7 +32,7 @@ import {
 import { GitOps } from "../git/operations";
 import { remoteUrlToWebUrl } from "../git/remoteWebUrl";
 import { runPublishBranchFlow } from "../services/publishService";
-import { runGitHubCloneFlow } from "../services/cloneService";
+import { runCloneFlow, runGitHubCloneFlow } from "../services/cloneService";
 import {
     createGitHubGistFromContext,
     createGitHubPullRequestFromContext,
@@ -873,6 +873,9 @@ function registerCommitFileCommands(deps: RepositoryCommandsDeps): void {
         ),
         vscode.commands.registerCommand("intelligit.github.cloneRepository", () =>
             runGitHubCloneFlow(),
+        ),
+        vscode.commands.registerCommand("intelligit.cloneRepository", () =>
+            runCloneFlow(deps.context.secrets),
         ),
         vscode.commands.registerCommand("intelligit.github.manageAccounts", () =>
             manageGitHubAccounts(),

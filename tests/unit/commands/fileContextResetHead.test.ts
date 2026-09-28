@@ -105,7 +105,7 @@ describe("native Reset HEAD repository contract", () => {
         expect(manifest.contributes.commands).toHaveLength(100);
         for (const menu of ["intelligit.fileContext", "intelligit.editorContext"]) {
             const entries = manifest.contributes.menus[menu];
-            expect(entries).toHaveLength(22);
+            expect(entries).toHaveLength(23);
             const tag = entries.findIndex(
                 (entry: { command?: string }) => entry.command === "intelligit.fileNewTag",
             );

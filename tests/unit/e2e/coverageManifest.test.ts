@@ -111,6 +111,14 @@ function manifestKey(entry: (typeof COVERAGE_MANIFEST)[number]): string {
 }
 
 describe("E2E coverage manifest", () => {
+    it("runs native file-context Clone in the standard E2E suite", () => {
+        const packageJson = JSON.parse(
+            readFileSync(path.join(REPO_ROOT, "package.json"), "utf8"),
+        ) as PackageJson;
+        expect(packageJson.scripts?.["test:e2e"]?.split(/\s+/)).toContain(
+            "tests/e2e/fileContextClone.spec.ts",
+        );
+    });
     it("runs the native Branches scenario in the standard E2E suite", () => {
         const packageJson = JSON.parse(
             readFileSync(path.join(REPO_ROOT, "package.json"), "utf8"),

@@ -49,6 +49,8 @@ const mocks = vi.hoisted(() => {
         openExternal: vi.fn(),
         l10nT: vi.fn(),
         runPublishBranchFlow: vi.fn(),
+        runCloneFlow: vi.fn(),
+        runGitHubCloneFlow: vi.fn(),
         createBranchCommands: vi.fn(() => []),
         discoverGitRepositories: vi.fn(async () => []),
         runGitOperationFromPanel: vi.fn(async () => undefined),
@@ -109,6 +111,11 @@ vi.mock("../../../src/commands/branchCommands", () => ({
 
 vi.mock("../../../src/services/publishService", () => ({
     runPublishBranchFlow: mocks.runPublishBranchFlow,
+}));
+
+vi.mock("../../../src/services/cloneService", () => ({
+    runCloneFlow: mocks.runCloneFlow,
+    runGitHubCloneFlow: mocks.runGitHubCloneFlow,
 }));
 
 vi.mock("../../../src/services/repositoryDiscovery", () => ({
@@ -187,6 +194,18 @@ const makeDeps = (gitOps: GitOps) => {
 };
 
 describe("registerRepositoryCommands", () => {
+    it("registers generic Clone with secrets and preserves GitHub Clone", async () => {
+        const deps = makeDeps(makeGitOps());
+        registerRepositoryCommands(deps);
+
+        const clone = mocks.commands.get("intelligit.cloneRepository");
+        expect(clone, "repository-mode generic Clone handler").toBeTypeOf("function");
+        await clone!();
+        expect(mocks.runCloneFlow).toHaveBeenCalledExactlyOnceWith(deps.context.secrets);
+
+        await mocks.commands.get("intelligit.github.cloneRepository")?.();
+        expect(mocks.runGitHubCloneFlow).toHaveBeenCalledOnce();
+    });
     it("routes Unstash refresh and conflicts to captured B across active-root changes", async () => {
         const gitOps = makeGitOps();
         const deps = makeDeps(gitOps);

@@ -1049,6 +1049,11 @@ describe("extension manifest", () => {
                 when: "resourceScheme == file",
                 group: "4_branch@10",
             });
+            expect(menu[unstash + 3]).toEqual({
+                command: "intelligit.cloneRepository",
+                when: "resourceScheme == file",
+                group: "4_branch@11",
+            });
         }
         expect(manifest.contributes.menus["intelligit.githubContext"]).toEqual(
             children.map((command, index) => ({
@@ -1068,6 +1073,7 @@ describe("extension manifest", () => {
         ) as Record<string, string>;
         expect(nls["submenu.github"]).toBe("GitHub");
         expect(nls["command.fileManageRemotes"]).toBe("Manage Remotes…");
+        expect(nls["command.cloneRepository"]).toBe("Clone Repository");
         expect(manifest.activationEvents).toContain("onCommand:intelligit.fileManageRemotes");
         for (const command of children) {
             expect(nls[`command.github.${command.split(".").at(-1)}`]).toBeTruthy();

@@ -402,7 +402,7 @@ const COMMAND_ENTRIES = [
         kind: "command",
         id: "intelligit.cloneRepository",
         mutating: true,
-        notCovered: COMMAND_NOT_COVERED,
+        coveredBySpec: "tests/e2e/fileContextClone.spec.ts",
     },
     { kind: "command", id: "intelligit.openFolder", mutating: false },
     {
