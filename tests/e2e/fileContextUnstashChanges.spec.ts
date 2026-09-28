@@ -265,6 +265,8 @@ test("Explorer, tab and editor unstash clicked B by OID while active A stays unc
         expect(await readFile(path.join(b, "selected.txt"), "utf8")).toBe("B baseline\n");
 
         await chooseExplorerUnstash(page, file);
+        // Cancelled QuickPicks retain hidden rows; wait for this invocation before shifting refs.
+        await expect(page.locator(".quick-input-widget input").first()).toBeVisible();
         await expect(page.locator(".quick-input-widget")).toContainText("older selected");
         await expect(page.locator(".quick-input-widget")).toContainText(olderOid.slice(0, 8));
         await expect(page.locator(".quick-input-widget")).not.toContainText(newerOid.slice(0, 8));
