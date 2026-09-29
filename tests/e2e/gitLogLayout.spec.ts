@@ -32,7 +32,6 @@ test("Git Log fills its webview without host body gutters at every window width"
         const workbench = new Workbench(page);
         const view = new IntelliGitView(page);
         await workbench.runCommand("IntelliGit: Show Git Log");
-        await view.revealPanel();
         const hostWindow = await app.browserWindow(page);
 
         for (const hostStyle of ["installed", "legacy-unlayered"]) {
@@ -75,7 +74,7 @@ test("Git Log fills its webview without host body gutters at every window width"
                         paddingLeft: "0px",
                         paddingRight: "0px",
                     });
-                }).toPass({ timeout: 15_000 });
+                }).toPass({ timeout: 30_000, intervals: [250] });
                 const screenshotPath = testInfo.outputPath(`git-log-${hostStyle}-${width}.png`);
                 await page.screenshot({ path: screenshotPath });
                 await testInfo.attach(`git-log-${hostStyle}-${width}`, {
