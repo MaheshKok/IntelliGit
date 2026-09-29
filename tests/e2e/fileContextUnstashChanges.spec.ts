@@ -257,12 +257,16 @@ test("Explorer, tab and editor unstash clicked B by OID while active A stays unc
         const newerOid = git(b, env, ["rev-parse", "stash@{0}"]);
         git(b, env, ["stash", "drop", "stash@{0}"]);
         await chooseExplorerUnstash(page, file);
-        await page.keyboard.press("Escape");
-        await expect(page.locator(".quick-input-widget input").first()).toBeHidden();
+        const cancelInput = page.locator(".quick-input-widget input").first();
+        await expect(cancelInput).toBeVisible();
+        await cancelInput.press("Escape");
+        await expect(cancelInput).toBeHidden();
         expect(git(b, env, ["stash", "list", "--format=%H"])).toBe(olderOid);
         expect(await readFile(path.join(b, "selected.txt"), "utf8")).toBe("B baseline\n");
 
         await chooseExplorerUnstash(page, file);
+        // Cancelled QuickPicks retain hidden rows; wait for this invocation before shifting refs.
+        await expect(page.locator(".quick-input-widget input").first()).toBeVisible();
         await expect(page.locator(".quick-input-widget")).toContainText("older selected");
         await expect(page.locator(".quick-input-widget")).toContainText(olderOid.slice(0, 8));
         await expect(page.locator(".quick-input-widget")).not.toContainText(newerOid.slice(0, 8));
