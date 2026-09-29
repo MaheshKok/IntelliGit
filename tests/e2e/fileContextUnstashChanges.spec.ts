@@ -252,7 +252,9 @@ test("Explorer, tab and editor unstash clicked B by OID while active A stays unc
         git(b, env, ["stash", "clear"]);
         const emptyHead = git(b, env, ["rev-parse", "HEAD"]);
         await chooseExplorerUnstash(page, file);
-        await expect(page.getByRole("dialog", { name: /No stashes found in/ })).toBeVisible();
+        await expect(
+            page.getByRole("alert").filter({ hasText: "No stashes found in" }),
+        ).toHaveCount(1);
         expect(git(b, env, ["rev-parse", "HEAD"])).toBe(emptyHead);
         expect(git(b, env, ["stash", "list", "--format=%H"])).toBe("");
 
