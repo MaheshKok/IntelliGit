@@ -89,9 +89,10 @@ test("shows Branches in three native menus and cancels without Git mutation befo
         const branchMenuItem = page.getByRole("menuitem", { name: /^Branches(?:\.\.\.|…)/ });
         await expect(branchMenuItem).toBeVisible();
         await page.screenshot({ path: testInfo.outputPath("branches-tab-menu.png") });
-        await page.keyboard.press("Escape");
+        await branchMenuItem.press("Escape");
         await expect(branchMenuItem).toBeHidden();
-        await page.keyboard.press("Escape");
+        await expect(page.getByRole("menuitem", { name: "IntelliGit", exact: true })).toBeVisible();
+        await page.getByRole("menuitem", { name: "IntelliGit", exact: true }).press("Escape");
         await expect(page.getByRole("menuitem", { name: "IntelliGit", exact: true })).toBeHidden();
 
         await page.locator(".monaco-editor .view-lines").first().click({ button: "right" });
