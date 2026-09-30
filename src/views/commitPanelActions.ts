@@ -2,6 +2,12 @@ import * as vscode from "vscode";
 import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import { GitOps } from "../git/operations";
+import type {
+    PullUpdateContext,
+    PullUpdateRefusal,
+    PullUpdateResult,
+} from "../git/updateWithLocalChanges";
+import { getErrorMessage } from "../utils/errors";
 import { RepositoryLockBusyError } from "../git/repositoryLock";
 import {
     ShelfRecoveryFullError,
@@ -46,6 +52,8 @@ interface CommitPanelActionDeps {
     postCommitted: () => void | Promise<void>;
     maybeOfferPublishBranch: () => Promise<void>;
     publishBranch?: () => Promise<void>;
+    /** Opens conflicts for the repository captured before Pull's consent dialog. */
+    openConflictSession?: (context: PullUpdateContext) => Promise<void>;
 }
 
 /** Describes one validated stash mutation initiated by either commit-panel provider. */
@@ -68,6 +76,205 @@ function stashFileMutationFromMessage(
     }
     const path = assertRepoRelativePath(assertString(message.path, "path"));
     return { action: "cherryPickFile", index, stashHash, path };
+}
+
+/** Maps safe preflight refusals to complete translatable recovery instructions. */
+function pullRefusalMessage(reason: PullUpdateRefusal): string {
+    const messages: Record<PullUpdateRefusal, string> = {
+        detached: vscode.l10n.t("Check out a branch before pulling; HEAD is detached."),
+        unborn: vscode.l10n.t("Create the first commit and configure an upstream before pulling."),
+        "no-upstream": vscode.l10n.t(
+            "The current branch has no upstream. Publish it or configure tracking before pulling.",
+        ),
+        "active-operation": vscode.l10n.t(
+            "Finish or abort the current Git operation before pulling.",
+        ),
+        unmerged: vscode.l10n.t("Resolve the unmerged files before pulling."),
+        "unsupported-submodule": vscode.l10n.t(
+            "Commit or stash changes inside submodules and restore any changed submodule pointers before pulling.",
+        ),
+        "nested-repository": vscode.l10n.t(
+            "Move or separately save the untracked nested repository before pulling. Its contents cannot be included in this backup.",
+        ),
+        "context-changed": vscode.l10n.t(
+            "The repository, branch, upstream, or HEAD changed. Review the selected repository and start Pull again.",
+        ),
+    };
+    return messages[reason];
+}
+
+/** Shows a truthful Git outcome without awaiting nonmodal notifications or retrying mutations. */
+function reportPullOutcome(result: PullUpdateResult): void {
+    if (result.kind === "refused") {
+        showTimedWarningMessage(pullRefusalMessage(result.reason));
+        return;
+    }
+    if (result.kind === "confirmation-required") {
+        showTimedWarningMessage(pullRefusalMessage("context-changed"));
+        return;
+    }
+    const backup = result.backup;
+    const values = {
+        stashName: backup?.message ?? "",
+        shortHash: backup?.oid.slice(0, 8) ?? "",
+        hash: backup?.oid ?? "",
+    };
+    if (result.kind === "complete") {
+        showTimedInformationMessage(
+            backup
+                ? vscode.l10n.t(
+                      "Pull completed and your local changes were restored. A backup remains in {stashName} ({shortHash}); you can remove it through stash management after checking your changes.",
+                      values,
+                  )
+                : vscode.l10n.t("Pulled successfully."),
+        );
+        return;
+    }
+    if (result.kind === "integration-conflict") {
+        showTimedWarningMessage(
+            backup
+                ? vscode.l10n.t(
+                      "Pull stopped for conflicts. Your local changes remain in {stashName} ({shortHash}). After Continue or Abort and a clean worktree, use Unstash Changes, Apply, and Reinstate Index to restore them.",
+                      values,
+                  )
+                : vscode.l10n.t(
+                      "Pull stopped for conflicts. Resolve the current Git operation before continuing.",
+                  ),
+        );
+        return;
+    }
+    const message = getErrorMessage(result.error);
+    if (result.kind === "restore-failed") {
+        void vscode.window.showErrorMessage(
+            result.integration === "failed"
+                ? vscode.l10n.t(
+                      "The pull failed, and local changes could not be fully restored. Your saved copy is {stashName} ({shortHash}). Inspect current files and recover needed files to separate paths before reconciling them; do not reapply the whole stash. Pull error: {pullError}. Restore error: {message}. Backup object: {hash}.",
+                      { ...values, pullError: getErrorMessage(result.integrationError), message },
+                  )
+                : vscode.l10n.t(
+                      "The pull completed, but some local changes could not be restored. Your saved copy is {stashName} ({shortHash}). Inspect current files and recover needed files to separate paths before reconciling them; do not reapply the whole stash. Restore error: {message}. Backup object: {hash}.",
+                      { ...values, message },
+                  ),
+        );
+        return;
+    }
+    if (result.localChanges === "restored" && backup) {
+        void vscode.window.showErrorMessage(
+            vscode.l10n.t(
+                "The pull failed. Your local changes were restored, and a backup remains in {stashName} ({shortHash}). {message}. Backup object: {hash}.",
+                { ...values, message },
+            ),
+        );
+    } else if (backup) {
+        void vscode.window.showErrorMessage(
+            vscode.l10n.t(
+                "The pull stopped. Your backup is {stashName} ({shortHash}). Inspect the current files and Git state before manual recovery; restoration was not confirmed. {message}. Backup object: {hash}.",
+                { ...values, message },
+            ),
+        );
+    } else if (result.backupName) {
+        void vscode.window.showErrorMessage(
+            vscode.l10n.t(
+                "The pull stopped. Inspect your files and look for backup {stashName} in Unstash Changes; its object ID could not be verified. {message}",
+                { stashName: result.backupName, message },
+            ),
+        );
+    } else {
+        void vscode.window.showErrorMessage(vscode.l10n.t("Pull failed: {message}", { message }));
+    }
+}
+
+type PullActionDeps = Pick<
+    CommitPanelActionDeps,
+    "gitOps" | "refreshData" | "refreshGraphData" | "fireWorkingTreeChanged" | "openConflictSession"
+>;
+
+/** Obtains explicit consent only before mutations, clearly naming the captured repository and branch. */
+async function confirmPullLocalChanges(context: PullUpdateContext): Promise<boolean> {
+    const action = vscode.l10n.t("Save Changes and Pull");
+    return (
+        (await vscode.window.showWarningMessage(
+            vscode.l10n.t("Pull with local changes?"),
+            {
+                modal: true,
+                detail: vscode.l10n.t(
+                    "Repository: {path}\nBranch: {branch}\n\nYour saved tracked and untracked changes will be stashed, then restored after the pull. Staged changes will stay staged when restoration succeeds. A named backup will remain until you remove it through stash management. Ignored files and unsaved editor changes are not included.",
+                    { path: context.repositoryRoot, branch: context.branch },
+                ),
+            },
+            action,
+        )) === action
+    );
+}
+
+/** Owns Pull's consent and presentation; every dependency must already be bound to the clicked repository. */
+async function pullFromPanel(deps: PullActionDeps): Promise<void> {
+    const gitOps = deps.gitOps;
+    const preparation = await gitOps.preparePullRebaseWithLocalChanges();
+    if (preparation.kind !== "ready") {
+        reportPullOutcome(preparation);
+        return;
+    }
+    const context = preparation.context;
+    if (context.dirty && !(await confirmPullLocalChanges(context))) return;
+    const run = (saveLocalChanges: boolean): Promise<PullUpdateResult> =>
+        runWithNotificationProgress(vscode.l10n.t("Pulling..."), async (progress) =>
+            gitOps.pullRebasePreservingLocalChanges({
+                expected: context,
+                saveLocalChanges,
+                onProgress: (phase) =>
+                    progress.report({
+                        message: {
+                            saving: vscode.l10n.t("Saving local changes..."),
+                            pulling: vscode.l10n.t("Pulling..."),
+                            restoring: vscode.l10n.t("Restoring local changes..."),
+                        }[phase],
+                    }),
+            }),
+        );
+    let result: PullUpdateResult;
+    try {
+        result = await run(context.dirty);
+        if (result.kind === "confirmation-required") {
+            if (!(await confirmPullLocalChanges(result.context))) return;
+            result = await run(true);
+        }
+    } catch (error) {
+        void vscode.window.showErrorMessage(
+            vscode.l10n.t("Pull could not start: {message}", { message: getErrorMessage(error) }),
+        );
+        return;
+    }
+    reportPullOutcome(result);
+    if (result.kind === "refused" || result.kind === "confirmation-required") return;
+    try {
+        await deps.refreshData();
+        await deps.refreshGraphData?.();
+        deps.fireWorkingTreeChanged();
+    } catch (error) {
+        void vscode.window.showErrorMessage(
+            vscode.l10n.t("Pull finished, but the view could not refresh: {message}", {
+                message: getErrorMessage(error),
+            }),
+        );
+    }
+    if (
+        (result.kind === "integration-conflict" || result.kind === "restore-failed") &&
+        result.hasUnmergedPaths
+    ) {
+        try {
+            await (deps.openConflictSession?.(context) ??
+                vscode.commands.executeCommand("intelligit.openConflictSession", {
+                    repositoryRoot: context.repositoryRoot,
+                }));
+        } catch (error) {
+            void vscode.window.showErrorMessage(
+                vscode.l10n.t("The conflict view could not open: {message}", {
+                    message: getErrorMessage(error),
+                }),
+            );
+        }
+    }
 }
 
 /**
@@ -723,23 +930,26 @@ export async function commitAndPushFromPanel(
  * operation-specific completion message, refreshes panel data, refreshes graph data when
  * available, and fires the working-tree change event.
  *
- * `fetch` updates remote-tracking refs only, `pull` runs `pull --rebase`, `push` pushes the
- * current branch, and `sync` always runs pull-rebase before push. Git failures are rethrown
- * except rejected `push` or `sync` operations may prompt for a rebase retry through
- * `promptRebaseAfterPushRejection`.
+ * Pull requires repository-bound dependencies and owns consent, retained-backup outcomes,
+ * conflict presentation and refresh errors. Fetch updates remote-tracking refs only; push and
+ * Sync retain their existing error propagation and optional rebase retry. Dirty Sync refuses
+ * before any Git mutation, while clean Sync still runs raw pull-rebase before push.
  */
 export async function runGitOperationFromPanel(
     deps: Pick<
         CommitPanelActionDeps,
-        "gitOps" | "refreshData" | "refreshGraphData" | "fireWorkingTreeChanged" | "publishBranch"
+        | "gitOps"
+        | "refreshData"
+        | "refreshGraphData"
+        | "fireWorkingTreeChanged"
+        | "publishBranch"
+        | "openConflictSession"
     >,
     operation: CommitPanelGitOperation,
     force: boolean = false,
 ): Promise<void> {
-    if (
-        (operation === "pull" || operation === "sync") &&
-        (await warnIfUncommittedChanges(deps.gitOps))
-    ) {
+    if (operation === "pull") return pullFromPanel(deps);
+    if (operation === "sync" && (await warnIfUncommittedChanges(deps.gitOps))) {
         return;
     }
 
@@ -754,7 +964,7 @@ export async function runGitOperationFromPanel(
             deps.fireWorkingTreeChanged();
             return;
         }
-        if (operation === "pull" || operation === "sync") {
+        if (operation === "sync") {
             showTimedWarningMessage(vscode.l10n.t("The repo has not been published yet."));
             return;
         }
@@ -788,8 +998,6 @@ export async function runGitOperationFromPanel(
         await runWithNotificationProgress(labels.progress, async () => {
             if (operation === "fetch") {
                 await deps.gitOps.fetch();
-            } else if (operation === "pull") {
-                await deps.gitOps.pullRebase();
             } else if (operation === "push") {
                 await deps.gitOps.push(forcePush);
             } else {

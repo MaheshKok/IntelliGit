@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
     showTimedInformationMessage: vi.fn(),
     showTimedWarningMessage: vi.fn(),
     executeCommand: vi.fn(),
+    showWarningMessage: vi.fn(),
 }));
 
 vi.mock("vscode", () => ({
@@ -15,14 +16,17 @@ vi.mock("vscode", () => ({
                 ? message.replace(/\{(\w+)\}/g, (_match, key: string) => String(args[key] ?? ""))
                 : message,
     },
-    window: { showErrorMessage: mocks.showErrorMessage },
+    window: {
+        showErrorMessage: mocks.showErrorMessage,
+        showWarningMessage: mocks.showWarningMessage,
+    },
     commands: { executeCommand: mocks.executeCommand },
     ProgressLocation: { Notification: 15 },
 }));
 
 vi.mock("../../../src/utils/notifications", () => ({
     runWithNotificationProgress: async (_label: string, task: () => Promise<void>) => {
-        await task();
+        return task();
     },
     showTimedInformationMessage: mocks.showTimedInformationMessage,
     showTimedWarningMessage: mocks.showTimedWarningMessage,
@@ -57,6 +61,17 @@ function makeDeps(overrides: { hasUncommittedChanges?: boolean } = {}) {
         hasUncommittedChanges: vi.fn(async () => overrides.hasUncommittedChanges ?? false),
         getBranches: vi.fn(async () => [CURRENT, OTHER]),
         getConflictFilesDetailed: vi.fn(async () => []),
+        preparePullRebaseWithLocalChanges: vi.fn(async () => ({
+            kind: "ready",
+            context: {
+                repositoryRoot: "/captured",
+                branch: "feature",
+                head: "a".repeat(40),
+                upstream: "refs/remotes/origin/feature",
+                dirty: overrides.hasUncommittedChanges ?? false,
+            },
+        })),
+        pullRebasePreservingLocalChanges: vi.fn(async () => ({ kind: "complete" })),
     };
     return {
         executor,
@@ -69,6 +84,7 @@ function makeDeps(overrides: { hasUncommittedChanges?: boolean } = {}) {
             createWorktree: vi.fn(async () => undefined),
             openConflictSession: vi.fn(async () => undefined),
             refreshConflictUi: vi.fn(async () => undefined),
+            refreshRepository: vi.fn(async () => undefined),
         },
     };
 }
@@ -100,7 +116,7 @@ describe("intelligit.updateBranch", () => {
         await updateHandler(deps)({ branch: CURRENT });
 
         expect(
-            gitOps.pullRebase,
+            gitOps.pullRebasePreservingLocalChanges,
             "Update on the checked-out branch did not run the shared pull --rebase operation",
         ).toHaveBeenCalledTimes(1);
         const mergeCalls = executor.run.mock.calls.filter((call) =>
@@ -112,21 +128,17 @@ describe("intelligit.updateBranch", () => {
         ).toEqual([]);
     });
 
-    // `runGitOperationFromPanel` refuses `pull` on a dirty tree; the old fetch+merge path had no
-    // such guard. Sharing the operation must mean sharing its guard, not just its git command.
-    it("refuses Update on the current branch while the working tree is dirty", async () => {
+    it("current Update saves local changes only after explicit consent", async () => {
         const { executor, gitOps, deps } = makeDeps({ hasUncommittedChanges: true });
-
+        mocks.showWarningMessage.mockResolvedValueOnce("Save Changes and Pull");
         await updateHandler(deps)({ branch: CURRENT });
-
-        expect(
-            executor.run.mock.calls,
-            "Update touched the repository while the working tree was dirty",
-        ).toEqual([]);
-        expect(
-            gitOps.pullRebase,
-            "Update rebased over uncommitted changes instead of asking the user to commit or stash",
-        ).not.toHaveBeenCalled();
+        expect(gitOps.pullRebasePreservingLocalChanges).toHaveBeenCalledWith(
+            expect.objectContaining({ saveLocalChanges: true }),
+        );
+        expect(executor.run).not.toHaveBeenCalled();
+        expect(gitOps.pullRebase).not.toHaveBeenCalled();
+        expect(deps.refreshRepository).toHaveBeenCalledOnce();
+        expect(mocks.executeCommand).not.toHaveBeenCalled();
     });
 
     // A branch that is not checked out cannot be pulled into: Git needs the fetch refspec form.

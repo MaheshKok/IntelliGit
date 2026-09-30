@@ -2,6 +2,11 @@ import * as fs from "fs/promises";
 import * as os from "os";
 import * as path from "path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type {
+    PullUpdateOptions,
+    PullUpdatePreparation,
+    PullUpdateResult,
+} from "../../../src/git/updateWithLocalChanges";
 import { interpolateL10n } from "../../helpers/l10nTestHelper";
 import { fixturePath } from "../../helpers/fixturePaths";
 import { removeScratchDirectories } from "../../helpers/scratchDirectories";
@@ -287,6 +292,21 @@ const gitOpsState = {
     stageFile: vi.fn(async () => undefined),
     push: vi.fn(async () => ""),
     pullRebase: vi.fn(async () => ""),
+    preparePullRebaseWithLocalChanges: vi.fn(
+        async (repositoryRoot: string): Promise<PullUpdatePreparation> => ({
+            kind: "ready",
+            context: {
+                repositoryRoot,
+                branch: "main",
+                head: "a".repeat(40),
+                upstream: "refs/remotes/origin/main",
+                dirty: false,
+            },
+        }),
+    ),
+    pullRebasePreservingLocalChanges: vi.fn(
+        async (_options: PullUpdateOptions): Promise<PullUpdateResult> => ({ kind: "complete" }),
+    ),
 };
 
 const deleteFileWithFallback = vi.fn(async () => true);
@@ -907,6 +927,9 @@ vi.mock("../../../src/git/operations", async (importOriginal) => {
             push = gitOpsState.push;
             hasUncommittedChanges = gitOpsState.hasUncommittedChanges;
             pullRebase = gitOpsState.pullRebase;
+            preparePullRebaseWithLocalChanges = () =>
+                gitOpsState.preparePullRebaseWithLocalChanges(this.executor.repoRoot);
+            pullRebasePreservingLocalChanges = gitOpsState.pullRebasePreservingLocalChanges;
             init = async (_repoPath: string) => executorRun(["init"]);
         },
     };
@@ -1158,6 +1181,19 @@ describe("extension integration", () => {
         gitOpsState.getConflictFilesDetailed.mockResolvedValue([]);
         gitOpsState.hasUncommittedChanges.mockResolvedValue(false);
         gitOpsState.pullRebase.mockResolvedValue("");
+        gitOpsState.preparePullRebaseWithLocalChanges.mockImplementation(
+            async (repositoryRoot) => ({
+                kind: "ready",
+                context: {
+                    repositoryRoot,
+                    branch: "main",
+                    head: "a".repeat(40),
+                    upstream: "refs/remotes/origin/main",
+                    dirty: false,
+                },
+            }),
+        );
+        gitOpsState.pullRebasePreservingLocalChanges.mockResolvedValue({ kind: "complete" });
         gitOpsState.acceptConflictSide.mockResolvedValue(undefined);
         gitOpsState.abortMerge.mockResolvedValue(undefined);
         deleteFileWithFallback.mockResolvedValue(true);
@@ -2344,7 +2380,7 @@ describe("extension integration", () => {
             },
         });
 
-        expect(gitOpsState.pullRebase).toHaveBeenCalledTimes(1);
+        expect(gitOpsState.pullRebasePreservingLocalChanges).toHaveBeenCalledTimes(1);
         const calls = executorRun.mock.calls.map(([args]) => args);
         expect(
             calls.filter((args) => Array.isArray(args) && args.includes("merge")),
@@ -2381,7 +2417,7 @@ describe("extension integration", () => {
             },
         });
 
-        expect(gitOpsState.pullRebase).toHaveBeenCalledTimes(1);
+        expect(gitOpsState.pullRebasePreservingLocalChanges).toHaveBeenCalledTimes(1);
         expect(executorRun).not.toHaveBeenCalledWith([
             "fetch",
             "origin",
@@ -2450,7 +2486,11 @@ describe("extension integration", () => {
         } as unknown as MockExtensionContext;
         await activate(context);
 
-        gitOpsState.pullRebase.mockRejectedValue(new Error("merge conflict"));
+        gitOpsState.pullRebasePreservingLocalChanges.mockResolvedValue({
+            kind: "integration-conflict",
+            error: new Error("merge conflict"),
+            hasUnmergedPaths: true,
+        });
         gitOpsState.getConflictFilesDetailed.mockResolvedValue([
             {
                 path: "src/conflicted.ts",
@@ -2479,7 +2519,7 @@ describe("extension integration", () => {
             expect.objectContaining({ enableScripts: true }),
         );
         expect(showWarningMessage).toHaveBeenCalledWith(
-            expect.stringContaining("unresolved conflict file"),
+            expect.stringContaining("Pull stopped for conflicts"),
         );
         expect(showErrorMessage).not.toHaveBeenCalledWith(
             expect.stringContaining("Update failed:"),
@@ -2621,7 +2661,12 @@ describe("extension integration", () => {
     // has no separate fetch half, so the surviving contract is the one that still discriminates:
     // an update failure that leaves no unresolved files reports itself and opens nothing.
     it("does not open a conflict session when a current-branch update fails without conflicts", async () => {
-        gitOpsState.pullRebase.mockRejectedValue(new Error("fetch failed"));
+        gitOpsState.pullRebasePreservingLocalChanges.mockResolvedValue({
+            kind: "failed",
+            phase: "pull",
+            error: new Error("fetch failed"),
+            localChanges: "untouched",
+        });
         gitOpsState.getConflictFilesDetailed.mockResolvedValue([]);
 
         const { activate } = await import("../../../src/extension");
@@ -2649,7 +2694,7 @@ describe("extension integration", () => {
             expect.any(Number),
             expect.objectContaining({ enableScripts: true }),
         );
-        expect(showErrorMessage).toHaveBeenCalledWith("Update failed: fetch failed");
+        expect(showErrorMessage).toHaveBeenCalledWith("Pull failed: fetch failed");
     });
 
     it("updates non-current local branch via fetch refspec without checkout", async () => {
@@ -4650,7 +4695,12 @@ describe("extension integration", () => {
         await registeredCommands.get("intelligit.mergeIntoCurrent")?.({
             branch: { name: "fail-merge", isRemote: false },
         });
-        gitOpsState.pullRebase.mockRejectedValueOnce(new Error("pull boom"));
+        gitOpsState.pullRebasePreservingLocalChanges.mockResolvedValueOnce({
+            kind: "failed",
+            phase: "pull",
+            error: new Error("pull boom"),
+            localChanges: "untouched",
+        });
         await registeredCommands.get("intelligit.updateBranch")?.({
             branch: { name: "main", isRemote: false, isCurrent: false, remote: "origin" },
         });
@@ -4692,7 +4742,7 @@ describe("extension integration", () => {
             expect.stringContaining("Merge failed: merge boom"),
         );
         expect(showErrorMessage).toHaveBeenCalledWith(
-            expect.stringContaining("Update failed: pull boom"),
+            expect.stringContaining("Pull failed: pull boom"),
         );
         expect(showWarningMessage).not.toHaveBeenCalledWith("The repo has not been published yet.");
         expect(showErrorMessage).toHaveBeenCalledWith(

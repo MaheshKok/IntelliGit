@@ -559,7 +559,16 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider, Revi
         });
     }
 
+    /**
+     * Routes Pull through the active-repository command, which pins its root before preparation.
+     * Both graph contributions follow activation's active repository; other operations retain
+     * their existing local refresh behavior.
+     */
     private async runGitOperation(operation: CommitPanelGitOperation): Promise<void> {
+        if (operation === "pull") {
+            await vscode.commands.executeCommand("intelligit.graph.pull");
+            return;
+        }
         await runGitOperationFromPanel(
             {
                 gitOps: this.gitOps,

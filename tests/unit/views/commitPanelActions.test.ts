@@ -1,13 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const vscodeMock = vi.hoisted(() => ({
-    l10n: { t: (message: string) => message },
+    l10n: {
+        t: (message: string, args?: Record<string, unknown>) =>
+            args
+                ? message.replace(/\{(\w+)\}/g, (_match, key: string) => String(args[key] ?? ""))
+                : message,
+    },
     commands: {
         executeCommand: vi.fn(async () => undefined),
     },
     window: {
         showWarningMessage: vi.fn(),
         showInformationMessage: vi.fn(),
+        showErrorMessage: vi.fn(),
     },
 }));
 
@@ -15,7 +21,10 @@ vi.mock("vscode", () => vscodeMock);
 
 vi.mock("../../../src/utils/notifications", () => ({
     runWithNotificationProgress: vi.fn(
-        async (_title: string, task: () => Promise<void>): Promise<void> => task(),
+        async (
+            _title: string,
+            task: (progress: { report: ReturnType<typeof vi.fn> }) => Promise<unknown>,
+        ): Promise<unknown> => task({ report: vi.fn() }),
     ),
     showTimedWarningMessage: vi.fn((message: string) => {
         vscodeMock.window.showWarningMessage(message);
@@ -43,6 +52,19 @@ import {
 } from "../../../src/views/commitPanelActions";
 import type { CommitPanelGitOperation } from "../../../src/views/commitPanelActions";
 import type { GitOps } from "../../../src/git/operations";
+import type {
+    PullUpdateContext,
+    PullUpdatePreparation,
+    PullUpdateResult,
+} from "../../../src/git/updateWithLocalChanges";
+
+const pullContext: PullUpdateContext = {
+    repositoryRoot: "/repo",
+    branch: "main",
+    upstream: "refs/remotes/origin/main",
+    head: "a".repeat(40),
+    dirty: false,
+};
 
 function makeGitOps(upstream?: string): GitOps {
     return {
@@ -59,6 +81,14 @@ function makeGitOps(upstream?: string): GitOps {
         ]),
         fetch: vi.fn(async () => ""),
         pullRebase: vi.fn(async () => ""),
+        preparePullRebaseWithLocalChanges: vi.fn(async (): Promise<PullUpdatePreparation> =>
+            upstream
+                ? { kind: "ready", context: pullContext }
+                : { kind: "refused", reason: "no-upstream" },
+        ),
+        pullRebasePreservingLocalChanges: vi.fn(async (): Promise<PullUpdateResult> => ({
+            kind: "complete",
+        })),
         push: vi.fn(async () => ""),
         commit: vi.fn(async () => ""),
         commitAndPush: vi.fn(async () => ""),
@@ -118,7 +148,7 @@ describe("runGitOperationFromPanel", () => {
         expect(gitOps.fetch).toHaveBeenCalledTimes(1);
     });
 
-    it.each<CommitPanelGitOperation>(["pull", "sync"])(
+    it.each<CommitPanelGitOperation>(["sync"])(
         "warns instead of running %s when the working tree is dirty",
         async (operation) => {
             const gitOps = makeGitOps("origin/main");
@@ -127,6 +157,7 @@ describe("runGitOperationFromPanel", () => {
 
             await runGitOperationFromPanel(deps, operation);
 
+            expect(gitOps.push, "dirty Sync must never push local work").not.toHaveBeenCalled();
             expect(vscodeMock.window.showWarningMessage).toHaveBeenCalledWith(
                 "There are uncommitted changes, please commit or stash them first.",
             );
@@ -166,7 +197,9 @@ describe("runGitOperationFromPanel", () => {
             await runGitOperationFromPanel(deps, operation);
 
             expect(vscodeMock.window.showWarningMessage).toHaveBeenCalledWith(
-                "The repo has not been published yet.",
+                operation === "pull"
+                    ? "The current branch has no upstream. Publish it or configure tracking before pulling."
+                    : "The repo has not been published yet.",
             );
             expect(gitOps.pullRebase).not.toHaveBeenCalled();
             expect(gitOps.push).not.toHaveBeenCalled();
@@ -175,6 +208,203 @@ describe("runGitOperationFromPanel", () => {
             expect(deps.fireWorkingTreeChanged).not.toHaveBeenCalled();
         },
     );
+
+    it("dirty Pull asks explicit consent and reports expected retained-backup success", async () => {
+        const gitOps = makeGitOps("origin/main");
+        const deps = makeDeps(gitOps);
+        const context = { ...pullContext, dirty: true };
+        vi.mocked(gitOps.preparePullRebaseWithLocalChanges).mockResolvedValueOnce({
+            kind: "ready",
+            context,
+        });
+        vi.mocked(gitOps.pullRebasePreservingLocalChanges).mockResolvedValueOnce({
+            kind: "complete",
+            backup: { oid: "b".repeat(40), message: "IntelliGit update: main backup" },
+        });
+        vscodeMock.window.showWarningMessage.mockResolvedValueOnce("Save Changes and Pull");
+        await runGitOperationFromPanel(deps, "pull");
+        expect(vscodeMock.window.showWarningMessage).toHaveBeenCalledWith(
+            "Pull with local changes?",
+            expect.objectContaining({ modal: true, detail: expect.stringContaining("/repo") }),
+            "Save Changes and Pull",
+        );
+        expect(gitOps.pullRebasePreservingLocalChanges).toHaveBeenCalledWith(
+            expect.objectContaining({ expected: context, saveLocalChanges: true }),
+        );
+        expect(gitOps.pullRebase).not.toHaveBeenCalled();
+        expect(gitOps.push).not.toHaveBeenCalled();
+        expect(vscodeMock.window.showInformationMessage).toHaveBeenCalledWith(
+            expect.stringContaining("local changes were restored"),
+        );
+        expect(vscodeMock.window.showInformationMessage).toHaveBeenCalledWith(
+            expect.stringContaining("bbbbbbbb"),
+        );
+        expect(deps.refreshData).toHaveBeenCalledOnce();
+    });
+
+    it.each([undefined, "Cancel"])(
+        "dirty Pull cancellation %s never starts the transaction",
+        async (answer) => {
+            const gitOps = makeGitOps("origin/main");
+            vi.mocked(gitOps.preparePullRebaseWithLocalChanges).mockResolvedValueOnce({
+                kind: "ready",
+                context: { ...pullContext, dirty: true },
+            });
+            vscodeMock.window.showWarningMessage.mockResolvedValueOnce(answer);
+            await runGitOperationFromPanel(makeDeps(gitOps), "pull");
+            expect(gitOps.pullRebasePreservingLocalChanges).not.toHaveBeenCalled();
+            expect(gitOps.pullRebase).not.toHaveBeenCalled();
+        },
+    );
+
+    it("clean Pull requests consent after gated revalidation discovers new dirt", async () => {
+        const gitOps = makeGitOps("origin/main");
+        vi.mocked(gitOps.pullRebasePreservingLocalChanges)
+            .mockResolvedValueOnce({
+                kind: "confirmation-required",
+                context: { ...pullContext, dirty: true },
+            })
+            .mockResolvedValueOnce({ kind: "complete" });
+        vscodeMock.window.showWarningMessage.mockResolvedValueOnce("Save Changes and Pull");
+        await runGitOperationFromPanel(makeDeps(gitOps), "pull");
+        expect(gitOps.pullRebasePreservingLocalChanges).toHaveBeenNthCalledWith(
+            1,
+            expect.objectContaining({ saveLocalChanges: false }),
+        );
+        expect(gitOps.pullRebasePreservingLocalChanges).toHaveBeenNthCalledWith(
+            2,
+            expect.objectContaining({ saveLocalChanges: true }),
+        );
+    });
+
+    it("failed pull and failed restoration reports both diagnostics without pull-complete wording", async () => {
+        const gitOps = makeGitOps("origin/main");
+        vi.mocked(gitOps.pullRebasePreservingLocalChanges).mockResolvedValueOnce({
+            kind: "restore-failed",
+            integration: "failed",
+            integrationError: new Error("network offline"),
+            error: new Error("index restoration blocked"),
+            backup: { oid: "b".repeat(40), message: "owned backup" },
+            hasUnmergedPaths: false,
+        });
+        await runGitOperationFromPanel(makeDeps(gitOps), "pull");
+        const message = vscodeMock.window.showErrorMessage.mock.calls.at(-1)?.[0];
+        expect(message).toContain("The pull failed, and local changes could not be fully restored");
+        expect(message).toContain("network offline");
+        expect(message).toContain("index restoration blocked");
+        expect(message).toContain("b".repeat(40));
+        expect(message).not.toContain("pull completed");
+        expect(vscodeMock.window.showInformationMessage).not.toHaveBeenCalled();
+        expect(vscodeMock.commands.executeCommand).not.toHaveBeenCalled();
+    });
+
+    it("restoration conflicts open only the captured repository's conflict session", async () => {
+        const gitOps = makeGitOps("origin/main");
+        vi.mocked(gitOps.pullRebasePreservingLocalChanges).mockResolvedValueOnce({
+            kind: "restore-failed",
+            integration: "succeeded",
+            error: new Error("conflicts"),
+            backup: { oid: "b".repeat(40), message: "owned backup" },
+            hasUnmergedPaths: true,
+        });
+        const openConflictSession = vi.fn(async () => undefined);
+        await runGitOperationFromPanel({ ...makeDeps(gitOps), openConflictSession }, "pull");
+        expect(openConflictSession).toHaveBeenCalledWith(pullContext);
+        expect(vscodeMock.commands.executeCommand).not.toHaveBeenCalled();
+    });
+
+    it("refresh failure after completed Pull is separate and never repeats Git", async () => {
+        const gitOps = makeGitOps("origin/main");
+        const deps = makeDeps(gitOps);
+        deps.refreshData.mockRejectedValueOnce(new Error("view unavailable"));
+        await expect(runGitOperationFromPanel(deps, "pull")).resolves.toBeUndefined();
+        expect(gitOps.pullRebasePreservingLocalChanges).toHaveBeenCalledOnce();
+        expect(vscodeMock.window.showInformationMessage).toHaveBeenCalledWith(
+            "Pulled successfully.",
+        );
+        expect(vscodeMock.window.showErrorMessage).toHaveBeenCalledWith(
+            expect.stringContaining("view could not refresh"),
+        );
+        expect(vscodeMock.window.showErrorMessage.mock.calls.at(-1)?.[0]).not.toContain(
+            "Pull failed",
+        );
+    });
+
+    it("the approved GitOps and original context survive a repository switch during consent", async () => {
+        const gitOps = makeGitOps("origin/main");
+        const other = makeGitOps("origin/other");
+        const deps = makeDeps(gitOps);
+        const context = { ...pullContext, dirty: true };
+        vi.mocked(gitOps.preparePullRebaseWithLocalChanges).mockResolvedValueOnce({
+            kind: "ready",
+            context,
+        });
+        vscodeMock.window.showWarningMessage.mockImplementationOnce(async () => {
+            deps.gitOps = other;
+            return "Save Changes and Pull";
+        });
+        await runGitOperationFromPanel(deps, "pull");
+        expect(
+            gitOps.pullRebasePreservingLocalChanges,
+            "the originally approved repository must own the mutation",
+        ).toHaveBeenCalledWith(expect.objectContaining({ expected: context }));
+        expect(other.pullRebasePreservingLocalChanges).not.toHaveBeenCalled();
+    });
+
+    it("changed context after confirmation is refused without complete-success messaging", async () => {
+        const gitOps = makeGitOps("origin/main");
+        vi.mocked(gitOps.pullRebasePreservingLocalChanges).mockResolvedValueOnce({
+            kind: "refused",
+            reason: "context-changed",
+        });
+        const deps = makeDeps(gitOps);
+        await runGitOperationFromPanel(deps, "pull");
+        expect(vscodeMock.window.showWarningMessage).toHaveBeenCalledWith(
+            expect.stringContaining("HEAD changed"),
+        );
+        expect(vscodeMock.window.showInformationMessage).not.toHaveBeenCalled();
+        expect(deps.refreshData).not.toHaveBeenCalled();
+    });
+
+    it("integration conflict keeps the backup and explains deliberate recovery after Continue or Abort", async () => {
+        const gitOps = makeGitOps("origin/main");
+        vi.mocked(gitOps.pullRebasePreservingLocalChanges).mockResolvedValueOnce({
+            kind: "integration-conflict",
+            error: new Error("rebase conflict"),
+            backup: { oid: "b".repeat(40), message: "retained backup" },
+            hasUnmergedPaths: true,
+        });
+        await runGitOperationFromPanel(makeDeps(gitOps), "pull");
+        expect(vscodeMock.window.showWarningMessage).toHaveBeenCalledWith(
+            expect.stringContaining("After Continue or Abort and a clean worktree"),
+        );
+        expect(vscodeMock.window.showWarningMessage).toHaveBeenCalledWith(
+            expect.stringContaining("retained backup (bbbbbbbb)"),
+        );
+        expect(vscodeMock.commands.executeCommand).toHaveBeenCalledWith(
+            "intelligit.openConflictSession",
+            { repositoryRoot: "/repo" },
+        );
+    });
+
+    it("failed save with unverified object identity still exposes the searchable backup name", async () => {
+        const gitOps = makeGitOps("origin/main");
+        vi.mocked(gitOps.pullRebasePreservingLocalChanges).mockResolvedValueOnce({
+            kind: "failed",
+            phase: "save",
+            error: new Error("reflog unavailable"),
+            localChanges: "uncertain",
+            backupName: "IntelliGit update: unique name",
+        });
+        await runGitOperationFromPanel(makeDeps(gitOps), "pull");
+        expect(vscodeMock.window.showErrorMessage).toHaveBeenCalledWith(
+            expect.stringContaining("IntelliGit update: unique name"),
+        );
+        expect(vscodeMock.window.showErrorMessage).toHaveBeenCalledWith(
+            expect.stringContaining("object ID could not be verified"),
+        );
+        expect(vscodeMock.window.showInformationMessage).not.toHaveBeenCalled();
+    });
 
     it("runs publish branch instead of raw push when the current branch is unpublished", async () => {
         const gitOps = makeGitOps();
@@ -549,13 +779,13 @@ describe("executeStashMutationRequest", () => {
         );
 
         expect(vscodeMock.window.showWarningMessage).toHaveBeenCalledWith(
-            "Apply the change from {short} for {path} to your working tree and stage it?",
+            "Apply the change from Stash {2} for src/a.ts to your working tree and stage it?",
             { modal: true },
             "Apply Change",
         );
         expect(gitOps.applyStashFile).toHaveBeenCalledWith(2, "a".repeat(40), "src/a.ts");
         expect(vscodeMock.window.showInformationMessage).toHaveBeenCalledWith(
-            "Applied selected change from {short} for {path}.",
+            "Applied selected change from Stash {2} for src/a.ts.",
         );
         expect(deps.refreshData).toHaveBeenCalledOnce();
         expect(deps.fireWorkingTreeChanged).toHaveBeenCalledOnce();

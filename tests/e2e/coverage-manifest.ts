@@ -143,7 +143,8 @@ const COMMAND_ENTRIES = [
         kind: "command",
         id: "intelligit.updateBranch",
         mutating: true,
-        notCovered: COMMAND_NOT_COVERED,
+        // Current branch only; noncurrent Update remains covered by unit tests.
+        coveredBySpec: "tests/e2e/currentBranchUpdate.spec.ts",
     },
     {
         kind: "command",

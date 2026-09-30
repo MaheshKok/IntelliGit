@@ -69,6 +69,13 @@ import { parseStashFiles } from "./stashFiles";
 import { normalizeGitNumstatPath } from "./numstat";
 import { applyPatchTextToRepo } from "./patchApplication";
 import { EMPTY_TREE_HASH } from "../utils/constants";
+import {
+    preparePullUpdate,
+    pullUpdateWithinGate,
+    type PullUpdateOptions,
+    type PullUpdatePreparation,
+    type PullUpdateResult,
+} from "./updateWithLocalChanges";
 
 type BranchRow = [
     refname: string,
@@ -1268,6 +1275,19 @@ export class GitOps {
     /** Pulls the current branch with rebase semantics and returns Git output. */
     async pullRebase(): Promise<string> {
         return this.executor.run(["pull", "--rebase"]);
+    }
+
+    /** Captures read-only repository ownership and prerequisites before asking to save local work. */
+    async preparePullRebaseWithLocalChanges(): Promise<PullUpdatePreparation> {
+        return preparePullUpdate((args) => this.executor.run(args));
+    }
+
+    /**
+     * Revalidates consent and keeps save, pull and indexed restoration inside one mutation gate.
+     * Uses only its captured ungated runner; named backups remain for deliberate manual recovery.
+     */
+    async pullRebasePreservingLocalChanges(options: PullUpdateOptions): Promise<PullUpdateResult> {
+        return this.executor.runWithinMutationGate((run) => pullUpdateWithinGate(run, options));
     }
 
     /**

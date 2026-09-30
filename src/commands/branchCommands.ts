@@ -33,9 +33,9 @@ import { runGitOperationFromPanel } from "../views/commitPanelActions";
 /**
  * Runtime services captured by branch context-menu command handlers.
  *
- * All callbacks must target the active repository for the branch tree being registered. The
- * generated handlers rely on the branch snapshot providers for current/upstream checks and use the
- * conflict callbacks only after merge/update operations leave unresolved files.
+ * Callbacks target the branch tree's repository. Update dispatches supply captured services and
+ * snapshots before the operation fence, so consent and conflict callbacks cannot follow a later
+ * active-repository change. Other commands retain their existing live snapshot providers.
  */
 export interface BranchCommandDeps {
     executor: GitExecutor;
@@ -48,6 +48,8 @@ export interface BranchCommandDeps {
         targetBranch?: string;
     }) => Promise<void>;
     refreshConflictUi: () => Promise<void>;
+    /** Refreshes the repository captured for an Update command, even after a selection change. */
+    refreshRepository?: () => Promise<void>;
 }
 
 /**
@@ -59,11 +61,6 @@ export interface BranchCommandDeps {
 export interface BranchCommandEntry {
     id: string;
     handler: (item: { branch?: Branch }) => Promise<void>;
-}
-
-/** Rebuilds a tracked remote ref after upstream parsing has validated remote and branch parts. */
-function buildTrackedRemoteRef(tracked: { remote: string; remoteBranch: string }): string {
-    return `${tracked.remote}/${tracked.remoteBranch}`;
 }
 
 /** Builds safe prompt defaults from a branch name without letting remote prefixes leak into folder names. */
@@ -524,34 +521,6 @@ export function createBranchCommands(deps: BranchCommandDeps): BranchCommandEntr
         refreshConflictUi,
     } = deps;
 
-    /**
-     * Opens conflict UI for update/merge failures after Git has already reported conflicts.
-     *
-     * Inspection or UI-launch failures are swallowed so the original Git command can still surface
-     * its normal error message through the caller.
-     */
-    const showUpdateConflictSession = async (sourceBranch?: string): Promise<boolean> => {
-        try {
-            const conflicts = await gitOps.getConflictFilesDetailed();
-            if (conflicts.length === 0) return false;
-
-            await openConflictSession({
-                sourceBranch,
-                targetBranch: getCurrentBranchName() || undefined,
-            });
-            await refreshConflictUi();
-            showTimedWarningMessage(
-                vscode.l10n.t(
-                    "Merge produced {count} unresolved conflict file(s). Opened Conflicts session.",
-                    { count: conflicts.length },
-                ),
-            );
-            return true;
-        } catch {
-            return false;
-        }
-    };
-
     /** Runs the prompt/service flow for branch-originated worktree creation commands. */
     const runCreateWorktree = async (branch: Branch, forceNewBranch = false): Promise<void> => {
         const opts = await promptCreateWorktreeOptions(branch, forceNewBranch);
@@ -759,19 +728,24 @@ export function createBranchCommands(deps: BranchCommandDeps): BranchCommandEntr
                 }
                 const currentBranchName = getCurrentBranchName();
                 const isSelectedBranchCurrent = branch.isCurrent || currentBranchName === name;
-                const trackedRemoteRef = tracked ? buildTrackedRemoteRef(tracked) : undefined;
                 try {
                     if (isSelectedBranchCurrent) {
-                        // #218: the Changes toolbar's Pull, the graph toolbar's Pull, and this
-                        // menu item are one intent, so they now run one operation. The shared
-                        // panel action brings its own uncommitted-changes guard, progress
-                        // notification, success message, and refresh, so this path returns
-                        // before the wrapper below rather than showing either of them twice.
+                        // Registration captures this repository before the operation fence;
+                        // consent, restoration and conflict UI use that same captured scope.
                         await runGitOperationFromPanel(
                             {
                                 gitOps,
-                                refreshData: async () => {
-                                    await vscode.commands.executeCommand("intelligit.refresh");
+                                refreshData:
+                                    deps.refreshRepository ??
+                                    (async () => {
+                                        await vscode.commands.executeCommand("intelligit.refresh");
+                                    }),
+                                openConflictSession: async (context) => {
+                                    await openConflictSession({
+                                        sourceBranch: context.upstream,
+                                        targetBranch: context.branch,
+                                    });
+                                    await refreshConflictUi();
                                 },
                                 fireWorkingTreeChanged: () => undefined,
                             },
@@ -798,12 +772,6 @@ export function createBranchCommands(deps: BranchCommandDeps): BranchCommandEntr
                     );
                     await vscode.commands.executeCommand("intelligit.refresh");
                 } catch (err) {
-                    if (
-                        isSelectedBranchCurrent &&
-                        (await showUpdateConflictSession(trackedRemoteRef))
-                    ) {
-                        return;
-                    }
                     const msg = formatUpdateFailureMessage(err);
                     vscode.window.showErrorMessage(
                         vscode.l10n.t("Update failed: {message}", { message: msg }),

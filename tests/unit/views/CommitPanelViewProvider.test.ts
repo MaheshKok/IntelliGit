@@ -1189,7 +1189,9 @@ describe("CommitPanelViewProvider native commit bridge wiring", () => {
 
     it("getLastCommitMessage mirrors loaded text to native input and store", async () => {
         const { bridge, provider, workspace, root } = createBridgeProvider();
-        const gitOps = (provider as unknown as { gitOps: GitOps }).gitOps;
+        const gitOps = (
+            provider as unknown as { runtimes: Map<string, { gitOps: GitOps }> }
+        ).runtimes.get(root)!.gitOps;
         vi.spyOn(gitOps, "getLastCommitMessage").mockResolvedValue("last message");
         const view = createInspectableCommitPanelWebviewView();
         provider.resolveWebviewView(view.webviewView, INERT_CONTEXT, INERT_TOKEN);
@@ -1206,7 +1208,9 @@ describe("CommitPanelViewProvider native commit bridge wiring", () => {
 
     it("getLastCommitMessage drops a result whose repository was removed mid-flight", async () => {
         const { bridge, provider, workspace, root } = createBridgeProvider();
-        const gitOps = (provider as unknown as { gitOps: GitOps }).gitOps;
+        const gitOps = (
+            provider as unknown as { runtimes: Map<string, { gitOps: GitOps }> }
+        ).runtimes.get(root)!.gitOps;
         let resolveLast: (message: string) => void = () => undefined;
         vi.spyOn(gitOps, "getLastCommitMessage").mockReturnValue(
             new Promise<string>((resolve) => {

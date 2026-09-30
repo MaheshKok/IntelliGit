@@ -51,7 +51,7 @@ const mocks = vi.hoisted(() => {
         runPublishBranchFlow: vi.fn(),
         runCloneFlow: vi.fn(),
         runGitHubCloneFlow: vi.fn(),
-        createBranchCommands: vi.fn(() => []),
+        createBranchCommands: vi.fn((_deps: unknown) => []),
         discoverGitRepositories: vi.fn(async () => []),
         runGitOperationFromPanel: vi.fn(async () => undefined),
     };
@@ -149,13 +149,16 @@ const UNFENCED_BRANCH_COMMAND_IDS = BRANCH_COMMAND_IDS.filter(
     (id) => !BRANCH_COMMAND_FENCE_DECISIONS[id],
 );
 
-const makeGitOps = (): GitOps =>
-    ({
+const makeGitOps = (): GitOps => {
+    const gitOps = {
         hasAnyCommits: vi.fn(async () => true),
         hasUncommittedChanges: vi.fn(async () => true),
         getStatus: vi.fn(async () => []),
         rollbackFiles: vi.fn(async () => undefined),
-    }) as unknown as GitOps;
+        deriveFor: vi.fn((_root: string) => gitOps),
+    } as unknown as GitOps;
+    return gitOps;
+};
 
 const makeDeps = (gitOps: GitOps) => {
     const currentBranch: Branch = {
@@ -170,7 +173,7 @@ const makeDeps = (gitOps: GitOps) => {
 
     return {
         context: { secrets: {}, subscriptions: [] },
-        executor: {},
+        executor: { deriveFor: vi.fn(() => ({})) },
         gitOps,
         worktreeService: {},
         getRepoRoot: () => "/repo",
@@ -194,6 +197,90 @@ const makeDeps = (gitOps: GitOps) => {
 };
 
 describe("registerRepositoryCommands", () => {
+    it("opens explicit known-root conflicts after the active repository changes", async () => {
+        const gitOps = makeGitOps();
+        const scoped = makeGitOps();
+        const deps = makeDeps(gitOps);
+        let active = "/repo";
+        deps.getRepoRoot = () => active;
+        vi.mocked(gitOps.deriveFor).mockReturnValue(scoped);
+        scoped.getConflictFilesDetailed = vi.fn(async () => {
+            active = "/other";
+            return [{ path: "conflict.txt" }] as never;
+        });
+        registerRepositoryCommands(deps);
+        await mocks.commands.get("intelligit.openConflictSession")?.({ repositoryRoot: "/repo" });
+        expect(deps.openConflictSessionForRepository).toHaveBeenCalledWith(scoped, "/repo", {});
+        expect(deps.openConflictSession).not.toHaveBeenCalled();
+    });
+
+    it.each([{}, { repositoryRoot: "/unknown" }, { repositoryRoot: 3 }, "malformed"])(
+        "rejects invalid explicit conflict context %j without falling back to the active repository",
+        async (context) => {
+            const gitOps = makeGitOps();
+            const deps = makeDeps(gitOps);
+            registerRepositoryCommands(deps);
+            await expect(
+                mocks.commands.get("intelligit.openConflictSession")?.(context),
+            ).rejects.toThrow("The requested repository is no longer available");
+            expect(gitOps.deriveFor).not.toHaveBeenCalled();
+            expect(deps.openConflictSession).not.toHaveBeenCalled();
+            expect(deps.openConflictSessionForRepository).not.toHaveBeenCalled();
+        },
+    );
+
+    it("current Update captures its repository before awaiting the operation fence", async () => {
+        const gitOps = makeGitOps();
+        const scoped = makeGitOps();
+        const deps = makeDeps(gitOps);
+        let active = "/repo";
+        deps.getRepoRoot = () => active;
+        vi.mocked(gitOps.deriveFor).mockReturnValue(scoped);
+        scoped.getActiveOperation = vi.fn(async () => {
+            active = "/other";
+            return "none";
+        });
+        gitOps.getActiveOperation = vi.fn(async () => {
+            active = "/other";
+            return "none";
+        });
+        registerRepositoryCommands(deps);
+        await mocks.commands.get("intelligit.updateBranch")?.({
+            branch: { name: "main", isCurrent: true },
+        });
+        expect(gitOps.deriveFor).toHaveBeenCalledWith("/repo");
+        expect(scoped.getActiveOperation).toHaveBeenCalled();
+        const captured = mocks.createBranchCommands.mock.calls.at(-1)?.[0] as unknown as {
+            gitOps: GitOps;
+            refreshRepository: () => Promise<void>;
+            openConflictSession: (labels: {}) => Promise<void>;
+        };
+        expect(captured.gitOps).toBe(scoped);
+        await captured.refreshRepository();
+        expect(deps.refreshActiveRepository).not.toHaveBeenCalled();
+        await captured.openConflictSession({});
+        expect(deps.openConflictSessionForRepository).toHaveBeenCalledWith(scoped, "/repo", {});
+    });
+
+    it("file Pull retains its clicked conflict and refresh scope across a consent-time switch", async () => {
+        const gitOps = makeGitOps();
+        const scoped = makeGitOps();
+        const deps = makeDeps(gitOps);
+        let active = "/repo-b";
+        deps.getRepoRoot = () => active;
+        mocks.pullFileRepositoryFromContext.mockImplementationOnce(async (_ctx, _ops, runPull) =>
+            runPull(scoped, "/repo-b"),
+        );
+        mocks.runGitOperationFromPanel.mockImplementationOnce(async (actionDeps: any) => {
+            active = "/repo";
+            await actionDeps.refreshData();
+            await actionDeps.openConflictSession({ repositoryRoot: "/repo-b" });
+        });
+        registerRepositoryCommands(deps);
+        await mocks.commands.get("intelligit.filePull")?.({ clicked: "file" });
+        expect(deps.refreshActiveRepository).not.toHaveBeenCalled();
+        expect(deps.openConflictSessionForRepository).toHaveBeenCalledWith(scoped, "/repo-b", {});
+    });
     it("registers generic Clone with secrets and preserves GitHub Clone", async () => {
         const deps = makeDeps(makeGitOps());
         registerRepositoryCommands(deps);
@@ -916,31 +1003,38 @@ describe("registerRepositoryCommands", () => {
 
     it("contains active-graph refresh rejection after Pull succeeds", async () => {
         const gitOps = makeGitOps();
+        gitOps.preparePullRebaseWithLocalChanges = vi.fn(async () => ({
+            kind: "ready",
+            context: {
+                repositoryRoot: "/repo",
+                branch: "main",
+                head: "a".repeat(40),
+                upstream: "origin/main",
+                dirty: false,
+            },
+        }));
+        gitOps.pullRebasePreservingLocalChanges = vi.fn(async () => ({ kind: "complete" }));
         const deps = makeDeps(gitOps);
         const refreshError = new Error("graph unavailable");
         deps.refreshActiveRepository = vi.fn(async () => {
             throw refreshError;
         });
-        mocks.runGitOperationFromPanel.mockImplementationOnce(async (actionDeps: unknown) => {
-            await (actionDeps as { refreshData: () => Promise<void> }).refreshData();
-        });
-        const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+        const actual = await vi.importActual<
+            typeof import("../../../src/views/commitPanelActions")
+        >("../../../src/views/commitPanelActions");
+        mocks.runGitOperationFromPanel.mockImplementationOnce(
+            actual.runGitOperationFromPanel as never,
+        );
+        mocks.pullFileRepositoryFromContext.mockImplementationOnce(async (_ctx, _ops, runPull) =>
+            runPull(gitOps, "/repo"),
+        );
         registerRepositoryCommands(deps);
-
-        try {
-            await expect(
-                mocks.commands.get("intelligit.filePull")?.({ clicked: "file" }),
-            ).resolves.toBeUndefined();
-            expect(consoleError).toHaveBeenCalledWith(
-                "Failed to refresh after file Pull:",
-                refreshError,
-            );
-        } finally {
-            consoleError.mockRestore();
-        }
+        await expect(
+            mocks.commands.get("intelligit.filePull")?.({ clicked: "file" }),
+        ).resolves.toBeUndefined();
 
         expect(mocks.showErrorMessage).toHaveBeenCalledWith(
-            "xx:Pull succeeded, but refresh failed: {message}",
+            "xx:Pull finished, but the view could not refresh: {message}",
         );
     });
 

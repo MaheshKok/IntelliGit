@@ -196,10 +196,18 @@ function registerWindowAndRepositoryCommands(deps: RepositoryCommandsDeps): void
         refreshService,
     } = deps;
     const runGraphGitOperation = async (operation: CommitPanelGitOperation): Promise<void> => {
+        const repoRoot = getRepoRoot();
+        const operationGitOps = operation === "pull" ? gitOps.deriveFor(repoRoot) : gitOps;
         await runGitOperationFromPanel(
             {
-                gitOps,
-                refreshData: refreshActiveRepository,
+                gitOps: operationGitOps,
+                refreshData: async () => {
+                    if (operation === "pull" && !areSameRepositoryRoot(repoRoot, getRepoRoot()))
+                        return;
+                    await refreshActiveRepository();
+                },
+                openConflictSession: async () =>
+                    deps.openConflictSessionForRepository(operationGitOps, repoRoot, {}),
                 fireWorkingTreeChanged: () => undefined,
             },
             operation,
@@ -509,7 +517,26 @@ function registerMergeCommands(deps: RepositoryCommandsDeps): void {
                 await annotateWithGitBlame(ctx, gitOps);
             },
         ),
-        vscode.commands.registerCommand("intelligit.openConflictSession", async () => {
+        vscode.commands.registerCommand("intelligit.openConflictSession", async (ctx?: unknown) => {
+            // Explicit roots can arrive from a webview-backed Pull. Reject invalid payloads;
+            // never silently redirect a captured-repository request into the active repository.
+            if (ctx !== undefined) {
+                const root =
+                    ctx && typeof ctx === "object" && "repositoryRoot" in ctx
+                        ? ctx.repositoryRoot
+                        : undefined;
+                if (typeof root !== "string" || !deps.isKnownRepositoryRoot(root)) {
+                    throw new Error(
+                        vscode.l10n.t(
+                            "The requested repository is no longer available. Select it again before opening conflicts.",
+                        ),
+                    );
+                }
+                const scoped = gitOps.deriveFor(root);
+                const conflicts = await scoped.getConflictFilesDetailed();
+                if (conflicts.length) await deps.openConflictSessionForRepository(scoped, root, {});
+                return;
+            }
             const conflicts = await gitOps.getConflictFilesDetailed();
             if (conflicts.length === 0) {
                 showTimedInformationMessage(vscode.l10n.t("No unresolved merge conflicts found."));
@@ -590,9 +617,38 @@ function registerBranchCommands(deps: RepositoryCommandsDeps): void {
     for (const cmd of branchCommands) {
         deps.context.subscriptions.push(
             vscode.commands.registerCommand(cmd.id, async (item: unknown) => {
+                // Update may wait on the fence and consent. Capture its complete ownership
+                // synchronously; rebuilding only this dispatch leaves other branch actions intact.
+                const repoRoot = deps.getRepoRoot();
+                const updateGitOps =
+                    cmd.id === "intelligit.updateBranch"
+                        ? deps.gitOps.deriveFor(repoRoot)
+                        : undefined;
+                const currentBranch = deps.getCurrentBranchName();
+                const branches = deps.getCurrentBranches();
+                const updateCommand = updateGitOps
+                    ? createBranchCommands({
+                          executor: deps.executor.deriveFor(repoRoot),
+                          gitOps: updateGitOps,
+                          getCurrentBranchName: () => currentBranch,
+                          getCurrentBranches: () => branches,
+                          createWorktree: (opts) =>
+                              deps.worktreeService.createWorktree(opts).then(() => undefined),
+                          openConflictSession: (labels = {}) =>
+                              deps.openConflictSessionForRepository(updateGitOps, repoRoot, labels),
+                          refreshConflictUi: async () => {
+                              if (areSameRepositoryRoot(repoRoot, deps.getRepoRoot()))
+                                  await deps.refreshService().refreshConflictUi();
+                          },
+                          refreshRepository: async () => {
+                              if (areSameRepositoryRoot(repoRoot, deps.getRepoRoot()))
+                                  await deps.refreshActiveRepository();
+                          },
+                      }).find((entry) => entry.id === cmd.id)
+                    : undefined;
                 if (
                     BRANCH_COMMAND_FENCE_DECISIONS[cmd.id] !== false &&
-                    (await rejectWhenOperationInProgress(deps.gitOps))
+                    (await rejectWhenOperationInProgress(updateGitOps ?? deps.gitOps))
                 )
                     return;
 
@@ -602,7 +658,7 @@ function registerBranchCommands(deps: RepositoryCommandsDeps): void {
                     ("branch" in item || "branches" in item || "branchNames" in item)
                         ? (item as { branch?: Branch; branches?: Branch[]; branchNames?: string[] })
                         : { branch: undefined };
-                return cmd.handler(validated);
+                return (updateCommand ?? cmd).handler(validated);
             }),
         );
     }
@@ -887,17 +943,10 @@ function registerCommitFileCommands(deps: RepositoryCommandsDeps): void {
                         gitOps: scopedGitOps,
                         refreshData: async () => {
                             if (!areSameRepositoryRoot(repoRoot, getRepoRoot())) return;
-                            try {
-                                await refreshActiveRepository();
-                            } catch (error) {
-                                console.error("Failed to refresh after file Pull:", error);
-                                await vscode.window.showErrorMessage(
-                                    vscode.l10n.t("Pull succeeded, but refresh failed: {message}", {
-                                        message: getErrorMessage(error),
-                                    }),
-                                );
-                            }
+                            await refreshActiveRepository();
                         },
+                        openConflictSession: async () =>
+                            deps.openConflictSessionForRepository(scopedGitOps, repoRoot, {}),
                         fireWorkingTreeChanged: () => undefined,
                     },
                     "pull",

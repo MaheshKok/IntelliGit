@@ -39,15 +39,29 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { execFileSync } from "node:child_process";
+import { readFileSync, realpathSync, writeFileSync } from "node:fs";
 
 import { createCommitInfoVscodeDouble } from "../../visual/recorder/commitInfoVscodeDouble";
 
 // Hoisted above the imports below -- see `recordCommitInfoWebviewFixture.test.ts` (and
 // `CommitInfoViewProvider.test.ts`, which this file otherwise mirrors) for why this must be a
 // plain, non-mocked import ahead of the `vi.mock` call it feeds.
-vi.mock("vscode", () => createCommitInfoVscodeDouble());
+vi.mock("vscode", () => {
+    const api = createCommitInfoVscodeDouble();
+    Object.assign(api.window, { showWarningMessage: vi.fn() });
+    Object.assign(api.commands, { registerCommand: vi.fn() });
+    return api;
+});
+
+vi.mock("../../../src/utils/notifications", () => ({
+    showTimedInformationMessage: vi.fn(),
+    showTimedWarningMessage: vi.fn(),
+    runWithNotificationProgress: vi.fn(async (_title, task) => task({ report: vi.fn() })),
+}));
 
 import type * as vscode from "vscode";
+import * as vscodeRuntime from "vscode";
 import { createFakeExtensionUri } from "../../visual/recorder/commitInfoVscodeDouble";
 import { throwingDouble } from "../../visual/recorder/throwingDouble";
 import { toGitEnvironment } from "../../visual/recorder/recordingGitEnvironment";
@@ -59,6 +73,16 @@ import { CommitGraphViewProvider } from "../../../src/views/CommitGraphViewProvi
 import type { CommitDetail } from "../../../src/types";
 import { FIXTURE_REFS, seedFixtureTemplate, type FixtureTemplate } from "../../fixtures/repo/seed";
 import { createScratchWorkspaces } from "../fixtures/scratchWorkspaces";
+import { registerRepositoryCommands } from "../../../src/activation/repositoryCommands";
+import { UndockedViewProvider } from "../../../src/views/UndockedViewProvider";
+import { CommitPanelViewProvider } from "../../../src/views/CommitPanelViewProvider";
+import { createNoopNativeCommitInputBridge } from "../../helpers/nativeCommitInputBridgeDouble";
+import { buildUndockedProviderConstructorArguments } from "../../visual/recorder/recordUndockedWebviewFixture";
+import {
+    getCreatedWebviewPanels,
+    resetCreatedWebviewPanelsForTests,
+} from "../../visual/recorder/webviewPanelDouble";
+import { removeScratchDirectories } from "../../helpers/scratchDirectories";
 
 /** A resolve-context/token stand-in `resolveWebviewView` never reads -- same reasoning as
  * `CommitInfoViewProvider.test.ts`'s own `INERT_CONTEXT`/`INERT_TOKEN`. */
@@ -185,6 +209,230 @@ beforeAll(async () => {
 
 afterAll(async () => {
     await scratch.removeAll();
+});
+
+describe("Pull provider root binding", () => {
+    it.each([
+        ["graph", "preparation"],
+        ["graph", "consent"],
+        ["undocked", "preparation"],
+        ["undocked", "consent"],
+        ["changes", "preparation"],
+        ["changes", "consent"],
+    ] as const)(
+        "%s Pull keeps the same mutable executor switch during %s away from the approved repository",
+        async (surface, pauseAt) => {
+            const fixture = realpathSync(
+                await mkdtemp(path.join(tmpdir(), "intelligit-provider-pull-")),
+            );
+            const env = {
+                ...process.env,
+                GIT_CONFIG_GLOBAL: "/dev/null",
+                GIT_CONFIG_NOSYSTEM: "1",
+                GIT_TERMINAL_PROMPT: "0",
+            };
+            /** Uses local fixture remotes only; no user Git configuration or network is consulted. */
+            const git = (root: string, ...args: string[]): string =>
+                execFileSync("git", args, {
+                    cwd: root,
+                    env,
+                    encoding: "utf8",
+                    stdio: ["ignore", "pipe", "pipe"],
+                }).trimEnd();
+            const origin = path.join(fixture, "origin.git");
+            const upstream = path.join(fixture, "upstream");
+            const rootA = path.join(fixture, "a");
+            const rootB = path.join(fixture, "b");
+            let dispose: (() => void) | undefined;
+            let resume!: () => void;
+            try {
+                git(fixture, "init", "--bare", "--initial-branch=main", origin);
+                git(fixture, "clone", origin, upstream);
+                git(upstream, "config", "user.name", "Fixture");
+                git(upstream, "config", "user.email", "fixture@example.test");
+                writeFileSync(path.join(upstream, "remote.txt"), "before\n");
+                git(upstream, "add", ".");
+                git(upstream, "commit", "-m", "base");
+                git(upstream, "push", "-u", "origin", "main");
+                for (const root of [rootA, rootB]) {
+                    git(fixture, "clone", origin, root);
+                    git(root, "config", "user.name", "Fixture");
+                    git(root, "config", "user.email", "fixture@example.test");
+                }
+                writeFileSync(path.join(upstream, "remote.txt"), "incoming\n");
+                git(upstream, "commit", "-am", "incoming");
+                git(upstream, "push");
+                if (pauseAt === "consent")
+                    writeFileSync(path.join(rootA, "local.txt"), "owned A\n");
+                const bRefs = git(rootB, "show-ref");
+                const executor = new GitExecutor(rootA, undefined, env);
+                const gitOps = new GitOps(executor);
+                let activeRoot = rootA;
+                let reached!: () => void;
+                const blocked = new Promise<void>((resolve) => {
+                    reached = resolve;
+                });
+                const paused = new Promise<void>((resolve) => {
+                    resume = resolve;
+                });
+                const preparedRoots: string[] = [];
+                const originalPrepare = GitOps.prototype.preparePullRebaseWithLocalChanges;
+                vi.spyOn(GitOps.prototype, "preparePullRebaseWithLocalChanges").mockImplementation(
+                    async function (this: GitOps) {
+                        if (pauseAt === "preparation") {
+                            reached();
+                            await paused;
+                        }
+                        const prepared = await originalPrepare.call(this);
+                        if (prepared.kind === "ready")
+                            preparedRoots.push(prepared.context.repositoryRoot);
+                        return prepared;
+                    },
+                );
+                vi.mocked(vscodeRuntime.window.showWarningMessage).mockImplementation(async () => {
+                    reached();
+                    await paused;
+                    return "Save Changes and Pull" as never;
+                });
+                vi.spyOn(vscodeRuntime.window, "showErrorMessage").mockResolvedValue(undefined);
+                const handlers = new Map<string, (...args: unknown[]) => unknown>();
+                vi.mocked(vscodeRuntime.commands.registerCommand).mockImplementation(
+                    (id, handler) => {
+                        handlers.set(id, handler);
+                        return { dispose() {} };
+                    },
+                );
+                vi.spyOn(vscodeRuntime.commands, "executeCommand").mockImplementation(
+                    async (id, ...args) => {
+                        const handler = handlers.get(id);
+                        if (!handler) throw new Error(`Unregistered command ${id}`);
+                        return (await handler(...args)) as never;
+                    },
+                );
+                const refresh = vi.fn(async () => undefined);
+                const refreshedRoots: string[] = [];
+                registerRepositoryCommands({
+                    context: { subscriptions: [], extensionUri: createFakeExtensionUri() },
+                    executor,
+                    gitOps,
+                    getRepoRoot: () => activeRoot,
+                    getCurrentBranches: () => [],
+                    getCurrentBranchName: () => "main",
+                    refreshActiveRepository: refresh,
+                } as unknown as Parameters<typeof registerRepositoryCommands>[0]);
+                let pull: () => Promise<void>;
+                let switchProvider = (): void => {};
+                if (surface === "graph") {
+                    const provider = new CommitGraphViewProvider(
+                        createFakeExtensionUri(),
+                        gitOps,
+                        new CredentialStore(createInertSecretStorage()),
+                        buildProviderOptions("card"),
+                    );
+                    const view = createInspectableFakeCommitGraphWebviewView();
+                    provider.resolveWebviewView(view.webviewView, INERT_CONTEXT, INERT_TOKEN);
+                    vi.spyOn(provider, "refresh").mockImplementation(refresh);
+                    pull = () => view.receiveMessage({ type: "pull" });
+                    dispose = () => provider.dispose();
+                } else if (surface === "undocked") {
+                    const args: ConstructorParameters<typeof UndockedViewProvider> = [
+                        ...buildUndockedProviderConstructorArguments({ repoRoot: rootA, gitOps }),
+                    ];
+                    args[7] = {
+                        ...args[7],
+                        executor,
+                        nativeCommitInputBridgeFactory: createNoopNativeCommitInputBridge,
+                    };
+                    const provider = new UndockedViewProvider(...args);
+                    resetCreatedWebviewPanelsForTests();
+                    provider.open();
+                    const panel = getCreatedWebviewPanels().at(-1)!;
+                    vi.spyOn(
+                        provider as unknown as { refreshCommitPanelData(): Promise<void> },
+                        "refreshCommitPanelData",
+                    ).mockImplementation(refresh);
+                    pull = () => panel.receiveMessage({ type: "pull" });
+                    switchProvider = () =>
+                        provider.setRepositoryRootUri(vscodeRuntime.Uri.file(rootB));
+                    dispose = () => provider.dispose();
+                } else {
+                    const provider = new CommitPanelViewProvider(
+                        createFakeExtensionUri(),
+                        gitOps,
+                        vscodeRuntime.Uri.file(rootA),
+                        undefined,
+                        undefined,
+                        undefined,
+                        true,
+                        undefined,
+                        undefined,
+                        createNoopNativeCommitInputBridge,
+                    );
+                    const view = createInspectableFakeCommitGraphWebviewView();
+                    provider.resolveWebviewView(view.webviewView, INERT_CONTEXT, INERT_TOKEN);
+                    vi.spyOn(provider, "refreshData").mockImplementation(
+                        async (_notify, runtime) => {
+                            if (runtime)
+                                refreshedRoots.push(await runtime.gitOps.getRepositoryRoot());
+                        },
+                    );
+                    vi.spyOn(
+                        provider as unknown as { refreshGraphData(): Promise<void> },
+                        "refreshGraphData",
+                    ).mockResolvedValue();
+                    pull = () => view.receiveMessage({ type: "pull", repositoryRoot: rootA });
+                    dispose = () => provider.dispose();
+                }
+                const updating = pull();
+                await Promise.race([
+                    blocked,
+                    updating.then(() => {
+                        throw new Error("Pull returned before the preparation or consent barrier");
+                    }),
+                ]);
+                // Mutate the original executor in place, exactly as active-repository switching does.
+                activeRoot = rootB;
+                executor.setRoot(rootB);
+                switchProvider();
+                resume();
+                await updating;
+                expect(
+                    preparedRoots,
+                    "preparation must stay on A even when the same executor switches to B",
+                ).toEqual([rootA]);
+                expect(
+                    readFileSync(path.join(rootA, "remote.txt"), "utf8"),
+                    "the originally approved A must receive the pull",
+                ).toBe("incoming\n");
+                expect(
+                    readFileSync(path.join(rootB, "remote.txt"), "utf8"),
+                    "B must remain untouched",
+                ).toBe("before\n");
+                expect(git(rootB, "show-ref"), "B must not even fetch new remote refs").toBe(bRefs);
+                expect(git(rootB, "stash", "list")).toBe("");
+                if (pauseAt === "consent") {
+                    expect(readFileSync(path.join(rootA, "local.txt"), "utf8")).toBe("owned A\n");
+                    expect(git(rootA, "stash", "list")).toContain("IntelliGit");
+                }
+                if (surface !== "changes")
+                    expect(
+                        refresh,
+                        "late Pull refresh must not read the newly selected B",
+                    ).not.toHaveBeenCalled();
+                else
+                    expect(
+                        refreshedRoots,
+                        "the original Changes runtime must refresh A after the shared executor switches to B",
+                    ).toEqual([rootA]);
+            } finally {
+                resume?.();
+                dispose?.();
+                vi.restoreAllMocks();
+                await removeScratchDirectories(fixture);
+            }
+        },
+        15_000,
+    );
 });
 
 describe("CommitGraphViewProvider redundant setCommitDetail post on webview reload", () => {

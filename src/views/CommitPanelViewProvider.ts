@@ -412,6 +412,11 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         };
     }
 
+    /**
+     * Retains one facade per repository runtime, including the initial active repository.
+     * A derived executor prevents activation's mutable executor from redirecting actions and
+     * refreshes that are still owned by an earlier repository selection.
+     */
     private setRepositoriesInternal(
         repositories: DiscoveredRepository[],
         activeRoot?: string,
@@ -444,7 +449,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             }
             const gitOps =
                 repository.root === activeRoot && activeGitOps
-                    ? activeGitOps
+                    ? activeGitOps.deriveFor(repository.root)
                     : this.gitOps.deriveFor(repository.root);
             const runtime = new CommitPanelRepositoryRuntime(
                 repository,

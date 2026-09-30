@@ -742,18 +742,22 @@ function renderedButtonActions(html: string): string[] {
     return Array.from(html.matchAll(/<button[^>]+data-action="([^"]+)"/g)).map((match) => match[1]);
 }
 
-function makeGitOpsMock() {
-    return {
+/**
+ * Scripts repository behavior independently of facade identity. A same-root derivation gets
+ * a distinct facade with the configured spies; another root gets isolated state and status.
+ */
+function makeGitOpsMock(repositoryRoot = "/repo") {
+    const gitOps = {
         // The commit panel reads the operation kind and derives its own fence input from it, so
         // tests that need a busy index script this rather than the boolean predicate.
         getActiveOperation: vi.fn(async () => "none"),
         hasWholeIndexOperationInProgress: vi.fn(async () => false),
-        // Derived per-root instances mirror the module-level MockGitOps: status comes
-        // from gitStatusByRoot so multi-repo tests can script non-active repositories.
-        deriveFor: vi.fn((root: string): object => ({
-            ...makeGitOpsMock(),
-            getStatus: vi.fn(async () => gitStatusByRoot.get(root) ?? []),
-        })),
+        deriveFor: vi.fn((root: string): object => {
+            if (root === repositoryRoot) return { ...gitOps };
+            const derived = makeGitOpsMock(root);
+            derived.getStatus.mockImplementation(async () => gitStatusByRoot.get(root) ?? []);
+            return derived;
+        }),
         getLog: vi.fn(async () => [
             {
                 hash: "abc1234",
@@ -830,6 +834,7 @@ function makeGitOpsMock() {
         getFileContentAtRef: vi.fn(async () => "stash file content\n"),
         getFileHistory: vi.fn(async () => "history line"),
     };
+    return gitOps;
 }
 
 // Minimal CredentialStore double for the view providers' GitLab provider. The github
@@ -2558,6 +2563,8 @@ describe("view providers integration", () => {
         });
 
         postMessageSpy.mockClear();
+        // Same-root facades share scripted spies; isolate selection from ready's hydration.
+        gitOps.getStashFiles.mockClear();
         const selectedStashGitOps = makeGitOpsMock();
         gitOps.deriveFor.mockImplementation((root: string) => {
             expect(root).toBe("/repo");

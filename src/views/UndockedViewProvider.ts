@@ -940,6 +940,37 @@ export class UndockedViewProvider {
         );
     }
 
+    /** Pins Pull before preparation or consent yields and fences refresh against root switches. */
+    private async pullFromSelectedRepository(): Promise<void> {
+        const repositoryRoot = this.selectedRepositoryRoot;
+        const repositorySwitchSeq = this.repositorySwitchSeq;
+        const canRefresh = () =>
+            repositoryRoot === this.selectedRepositoryRoot &&
+            repositorySwitchSeq === this.repositorySwitchSeq;
+        await runGitOperationFromPanel(
+            {
+                gitOps: this.gitOps.deriveFor(repositoryRoot),
+                refreshData: () =>
+                    canRefresh()
+                        ? this.refreshCommitPanelData(false, canRefresh)
+                        : Promise.resolve(),
+                refreshGraphData: async () => {
+                    if (!canRefresh()) return;
+                    await this.sendBranches(canRefresh);
+                    if (!canRefresh()) return;
+                    await this.loadInitial(canRefresh);
+                    if (!canRefresh()) return;
+                    this.postCommitDetailState();
+                },
+                fireWorkingTreeChanged: () => {
+                    if (canRefresh()) this._onDidChangeWorkingTree.fire();
+                },
+            },
+            "pull",
+        );
+    }
+
+    /** Dispatches validated webview actions, routing Pull through a captured repository facade. */
     private async handleMessage(msg: UnifiedOutbound): Promise<void> {
         const commitRepositoryRoot = this.repoRootUri.fsPath;
         const commitDraftStorageKey = this.getCommitDraftStorageKey();
@@ -1241,8 +1272,10 @@ export class UndockedViewProvider {
                 );
                 break;
             }
-            case "fetch":
             case "pull":
+                await this.pullFromSelectedRepository();
+                break;
+            case "fetch":
             case "sync":
                 await runGitOperationFromPanel(actionDeps, msg.type);
                 break;

@@ -10,6 +10,15 @@ import {
     launchFixtureWorkspace,
 } from "./hostFixtures/electronLaunchHelpers";
 import { resolveVSCodeExecutable } from "./hostFixtures/resolveVSCodeExecutable";
+import {
+    chooseFilePull,
+    expectPullConsent,
+    expectRestoredPull,
+    launchPullFixture,
+    prepareDirtyPull,
+    pullFixtureGit,
+    readPullState,
+} from "./hostFixtures/pullLocalChanges";
 
 test.use({ scenario: "clean" });
 
@@ -85,6 +94,86 @@ test("pulls the selected file repository without changing branch, status, or sel
             before.status,
         );
         expect(await readFile(selectedFile)).toEqual(before.selectedBytes);
+    } finally {
+        await app.close();
+    }
+});
+
+test("dirty file Pull restores split staging and untracked bytes after changed upstream", async ({
+    fixtureWorkspace,
+}, testInfo) => {
+    test.setTimeout(120_000);
+    const prepared = await prepareDirtyPull(fixtureWorkspace.workspace);
+    const { app, page } = await launchPullFixture(fixtureWorkspace);
+    try {
+        await chooseFilePull(page);
+        await expectPullConsent(page);
+        await page.screenshot({ path: testInfo.outputPath("dirty-pull-consent.png") });
+        await page.getByRole("button", { name: "Save Changes and Pull", exact: true }).click();
+        await expectRestoredPull(fixtureWorkspace.workspace, prepared);
+        await expect(page.locator(".notifications-toasts")).toContainText(
+            /local changes were restored/i,
+        );
+    } finally {
+        await app.close();
+    }
+});
+
+test("cancelling visible dirty Pull consent leaves files, index, refs and stashes unchanged", async ({
+    fixtureWorkspace,
+}) => {
+    test.setTimeout(120_000);
+    const prepared = await prepareDirtyPull(fixtureWorkspace.workspace);
+    const { app, page } = await launchPullFixture(fixtureWorkspace);
+    try {
+        await chooseFilePull(page);
+        await expectPullConsent(page);
+        await page.keyboard.press("Escape");
+        await expect(
+            page.getByRole("button", { name: "Save Changes and Pull", exact: true }),
+        ).toBeHidden();
+        expect(await readPullState(fixtureWorkspace.workspace, prepared.untrackedPath)).toEqual(
+            prepared.before,
+        );
+    } finally {
+        await app.close();
+    }
+});
+
+test("incoming untracked collision reports incomplete restoration and retains both versions", async ({
+    fixtureWorkspace,
+}, testInfo) => {
+    test.setTimeout(120_000);
+    const workspace = fixtureWorkspace.workspace;
+    const prepared = await prepareDirtyPull(workspace, true);
+    const { app, page } = await launchPullFixture(fixtureWorkspace);
+    try {
+        await chooseFilePull(page);
+        await expectPullConsent(page);
+        await page.getByRole("button", { name: "Save Changes and Pull", exact: true }).click();
+        const notifications = page.locator(".notifications-toasts");
+        await expect(notifications).toContainText(
+            "The pull completed, but some local changes could not be restored.",
+        );
+        await expect(notifications).not.toContainText(
+            /Pulled successfully|local changes were restored/i,
+        );
+        const owned = pullFixtureGit(workspace, ["stash", "list", "--format=%H"])
+            .trim()
+            .split("\n")[0];
+        await expect(notifications).toContainText(owned.slice(0, 7));
+        expect(pullFixtureGit(workspace, ["rev-parse", "HEAD"]).trim()).toBe(prepared.incomingHead);
+        expect(pullFixtureGit(workspace, ["ls-files", "--unmerged"])).toBe("");
+        expect(await readFile(path.join(workspace.root, prepared.untrackedPath), "utf8")).toBe(
+            "changed upstream bytes\n",
+        );
+        expect(pullFixtureGit(workspace, ["show", `${owned}^3:${prepared.untrackedPath}`])).toBe(
+            "saved local untracked bytes\n",
+        );
+        expect(pullFixtureGit(workspace, ["show-ref"], workspace.originRoot)).toBe(
+            prepared.before.originRefs,
+        );
+        await page.screenshot({ path: testInfo.outputPath("pull-restoration-failed.png") });
     } finally {
         await app.close();
     }
