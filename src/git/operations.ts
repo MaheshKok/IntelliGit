@@ -10,6 +10,7 @@ import {
     writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
+import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { readEmptyTreeOid } from "./emptyTree";
 import { GitExecutor } from "./executor";
@@ -435,6 +436,47 @@ export class GitOps {
         }
     }
 
+    /** Lists remote names strictly so a Git read failure cannot appear as an empty repository. */
+    async getRemoteNames(): Promise<string[]> {
+        const output = await this.executor.run(["remote"]);
+        return output
+            .replace(/\r?\n$/, "")
+            .split(/\r?\n/)
+            .filter((name) => name.length > 0);
+    }
+
+    /** Reads literal configured fetch URLs, without applying Git's insteadOf expansion. */
+    async getConfiguredRemoteUrls(name: string): Promise<string[]> {
+        if (!name || /[\0\r\n]/.test(name)) throw new Error("Invalid remote name.");
+        const result = await this.executor.runBinary(
+            ["config", "--null", "--get-all", "--", `remote.${name}.url`],
+            { expectedExitCodes: [0, 1] },
+        );
+        if (result.exitCode === 1) return [];
+        const urls = result.stdout.toString("utf8").split("\0");
+        urls.pop(); // Git's -z output ends with a delimiter, not another value.
+        return urls;
+    }
+
+    /** Renames a remote through Git so tracking refs and related configuration follow it. */
+    async renameRemote(oldName: string, newName: string): Promise<void> {
+        assertValidRemoteName(oldName);
+        assertValidRemoteName(newName);
+        await this.executor.run(["remote", "rename", "--", oldName, newName]);
+    }
+
+    /** Replaces only the original configured fetch URL; Git rejects ambiguous duplicate matches. */
+    async setRemoteUrl(name: string, oldUrl: string | undefined, newUrl: string): Promise<void> {
+        assertValidRemoteName(name);
+        if (!newUrl.trim() || /[\0\r\n]/.test(newUrl)) throw new Error("Invalid remote URL.");
+        if (oldUrl === undefined) {
+            await this.executor.run(["remote", "set-url", "--", name, newUrl]);
+            return;
+        }
+        const escaped = oldUrl.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        await this.executor.run(["remote", "set-url", "--", name, newUrl, `^${escaped}$`]);
+    }
+
     /** Reads a validated remote URL so host services can inspect provider metadata. */
     async getRemoteUrl(remote: string): Promise<string | null> {
         assertValidRemoteName(remote);
@@ -443,6 +485,24 @@ export class GitOps {
             return out.trim() || null;
         } catch {
             return null;
+        }
+    }
+
+    /** Reads every effective Git push destination, including pushurl and pushInsteadOf rewrites. */
+    async getRemotePushUrls(remote: string): Promise<string[]> {
+        assertValidRemoteName(remote);
+        try {
+            const output = await this.executor.run([
+                "remote",
+                "get-url",
+                "--push",
+                "--all",
+                remote,
+            ]);
+            const urls = output.replace(/\r?\n$/, "");
+            return urls ? urls.split(/\r?\n/) : [];
+        } catch {
+            return [];
         }
     }
 
@@ -1222,6 +1282,31 @@ export class GitOps {
      */
     async fetch(): Promise<string> {
         return this.executor.run(["fetch"]);
+    }
+
+    /** Fetches a branch into a unique ref so another fetch cannot replace its approved commit. */
+    async fetchRemoteBranch(remote: string, branch: string): Promise<string> {
+        assertValidRemoteName(remote);
+        assertValidBranchName(branch);
+        const temporaryRef = `refs/intelligit/fetch/${randomUUID()}`;
+        try {
+            await this.executor.run([
+                "fetch",
+                "--",
+                remote,
+                `refs/heads/${branch}:${temporaryRef}`,
+            ]);
+            return (
+                await this.executor.run([
+                    "rev-parse",
+                    "--verify",
+                    "--end-of-options",
+                    `${temporaryRef}^{commit}`,
+                ])
+            ).trim();
+        } finally {
+            await this.executor.run(["update-ref", "-d", temporaryRef]);
+        }
     }
     /** Verifies the push remote, creates or amends a commit, then pushes the current branch. */
     async commitAndPush(message: string, amend: boolean = false): Promise<string> {

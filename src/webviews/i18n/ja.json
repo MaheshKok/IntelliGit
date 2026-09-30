@@ -375,5 +375,21 @@
     },
     "merge.status.noChanges": "変更なし",
     "merge.status.allConflictsResolved": "すべての競合が解決済み",
-    "mergeSession.rebasing": "{current} を {selected} にリベースしています"
+    "mergeSession.rebasing": "{current} を {selected} にリベースしています",
+    "manageRemotes.title": "Git リモート",
+    "manageRemotes.loading": "リモートを読み込み中…",
+    "manageRemotes.actions": "リモートの操作",
+    "manageRemotes.name": "名前",
+    "manageRemotes.url": "URL",
+    "manageRemotes.add": "リモートを追加",
+    "manageRemotes.remove": "リモートを削除",
+    "manageRemotes.edit": "リモートを編集",
+    "manageRemotes.empty": "リモートが設定されていません。リモートを追加してください。",
+    "manageRemotes.defineRemote": "リモートを定義",
+    "manageRemotes.additionalUrls": "追加のフェッチ URL {count} 件は保持されます。",
+    "manageRemotes.cancel": "キャンセル",
+    "manageRemotes.save": "保存",
+    "manageRemotes.retry": "再試行",
+    "manageRemotes.close": "閉じる",
+    "manageRemotes.staleForm": "リモートのデータが変更されました。現在の値を確認して再試行してください。"
 }

@@ -59,6 +59,11 @@ export async function runCloneFlow(secrets?: vscode.SecretStorage): Promise<void
     }
 }
 
+/** Starts the existing GitHub clone path without the generic provider picker. */
+export async function runGitHubCloneFlow(): Promise<void> {
+    await cloneViaGitHub();
+}
+
 // ---------------------------------------------------------------------------
 // Provider picker
 // ---------------------------------------------------------------------------

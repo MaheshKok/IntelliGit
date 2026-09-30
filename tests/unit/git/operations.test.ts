@@ -103,6 +103,138 @@ async function listIndexSnapshotDirs(): Promise<Set<string>> {
     return new Set(entries.filter((name) => name.startsWith("intelligit-index-")));
 }
 
+describe("GitOps.getRemotePushUrls", () => {
+    it("returns the effective default and multiple configured push destinations", async () => {
+        const root = await createGitRepository();
+        await git(root, ["remote", "add", "origin", "https://github.com/o/fetch.git"]);
+        const scoped = gitOpsFor(root);
+        expect(await scoped.getRemotePushUrls("origin")).toEqual([
+            "https://github.com/o/fetch.git",
+        ]);
+
+        await git(root, [
+            "config",
+            "--add",
+            "remote.origin.pushurl",
+            "https://github.com/o/push-one.git",
+        ]);
+        await git(root, [
+            "config",
+            "--add",
+            "remote.origin.pushurl",
+            "https://example.invalid/o/push-two.git",
+        ]);
+        expect(await scoped.getRemotePushUrls("origin")).toEqual([
+            "https://github.com/o/push-one.git",
+            "https://example.invalid/o/push-two.git",
+        ]);
+    });
+
+    it("returns Git's pushInsteadOf rewrite and fails closed for an unreadable remote", async () => {
+        const root = await createGitRepository();
+        await git(root, [
+            "config",
+            "url.https://github.com/rewritten/.pushInsteadOf",
+            "https://example.invalid/",
+        ]);
+        await git(root, ["remote", "add", "origin", "https://example.invalid/o/repo.git"]);
+        const scoped = gitOpsFor(root);
+        expect(await scoped.getRemotePushUrls("origin")).toEqual([
+            "https://github.com/rewritten/o/repo.git",
+        ]);
+        expect(await scoped.getRemotePushUrls("missing")).toEqual([]);
+    });
+});
+
+describe("GitOps.fetchRemoteBranch", () => {
+    it("returns the requested commit when another fetch replaces FETCH_HEAD before resolution", async () => {
+        const parent = await createGitRepository();
+        await git(parent, ["checkout", "-b", "develop"]);
+        await commitFile(parent, "parent.txt", "approved parent\n");
+        const expected = (await git(parent, ["rev-parse", "HEAD"])).trim();
+        const competing = await createGitRepository();
+        await git(competing, ["checkout", "-b", "develop"]);
+        await commitFile(competing, "other.txt", "competing fetch\n");
+        const fork = await createGitRepository();
+        await git(fork, ["remote", "add", "upstream", parent]);
+        await git(fork, ["remote", "add", "competing", competing]);
+        class InterleavingExecutor extends GitExecutor {
+            override async run(args: string[]): Promise<string> {
+                const output = await super.run(args);
+                if (args[0] === "fetch" && args[2] === "upstream") {
+                    await git(fork, ["fetch", "--", "competing", "refs/heads/develop"]);
+                }
+                return output;
+            }
+        }
+
+        const fetched = await new GitOps(new InterleavingExecutor(fork)).fetchRemoteBranch(
+            "upstream",
+            "develop",
+        );
+
+        expect(fetched, "requested parent OID survives a competing FETCH_HEAD write").toBe(
+            expected,
+        );
+        expect(
+            await git(fork, ["for-each-ref", "--format=%(refname)", "refs/intelligit/fetch"]),
+        ).toBe("");
+    });
+
+    it("removes its temporary fetch ref when the requested branch does not exist", async () => {
+        const parent = await createGitRepository();
+        await git(parent, ["checkout", "-b", "develop"]);
+        await commitFile(parent, "base.txt", "parent\n");
+        const fork = await createGitRepository();
+        await git(fork, ["remote", "add", "upstream", parent]);
+
+        await expect(gitOpsFor(fork).fetchRemoteBranch("upstream", "missing")).rejects.toThrow();
+        expect(
+            await git(fork, ["for-each-ref", "--format=%(refname)", "refs/intelligit/fetch"]),
+        ).toBe("");
+    });
+    it("selects the parent branch rather than a same-name tag", async () => {
+        const parent = await createGitRepository();
+        await git(parent, ["checkout", "-b", "develop"]);
+        await commitFile(parent, "base.txt", "base\n");
+        await git(parent, ["tag", "develop"]);
+        await commitFile(parent, "new.txt", "latest branch\n");
+        const expected = (await git(parent, ["rev-parse", "refs/heads/develop"])).trim();
+
+        const fork = await createGitRepository();
+        await git(fork, ["remote", "add", "upstream", parent]);
+        const fetched = await gitOpsFor(fork).fetchRemoteBranch("upstream", "develop");
+
+        expect(fetched, "branch OID must win same-name tag").toBe(expected);
+        expect((await git(fork, ["rev-parse", "FETCH_HEAD"])).trim()).toBe(expected);
+    });
+    it("fetches a non-main parent branch and rebases onto its fetched commit", async () => {
+        const parent = await createGitRepository();
+        await git(parent, ["checkout", "-b", "develop"]);
+        await commitFile(parent, "base.txt", "parent base\n");
+
+        const fork = await createGitRepository();
+        await git(fork, ["config", "user.useConfigOnly", "true"]);
+        await git(fork, ["config", "user.name", "Test"]);
+        await git(fork, ["config", "user.email", "test@example.invalid"]);
+        await git(fork, ["remote", "add", "upstream", parent]);
+        const scoped = gitOpsFor(fork);
+        await scoped.fetchRemoteBranch("upstream", "develop");
+        await git(fork, ["checkout", "-b", "feature", "FETCH_HEAD"]);
+        await commitFile(fork, "feature.txt", "fork change\n");
+        await commitFile(parent, "parent.txt", "parent change\n");
+
+        await scoped.fetchRemoteBranch("upstream", "develop");
+        await scoped.rebase("FETCH_HEAD");
+
+        expect(await readFile(path.join(fork, "parent.txt"), "utf8")).toBe("parent change\n");
+        expect(await readFile(path.join(fork, "feature.txt"), "utf8")).toBe("fork change\n");
+        expect((await git(fork, ["merge-base", "HEAD", "FETCH_HEAD"])).trim()).toBe(
+            (await git(fork, ["rev-parse", "FETCH_HEAD"])).trim(),
+        );
+    });
+});
+
 describe("GitOps.getGitDirectories", () => {
     it("resolves Git-managed directories and the normalized repository root", async () => {
         const directories = await new GitOps(new GitExecutor(process.cwd())).getGitDirectories();

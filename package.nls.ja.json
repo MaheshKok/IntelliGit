@@ -107,5 +107,15 @@
     "command.fileResetHead": "HEAD をリセット…",
     "command.fileStashChanges": "変更をスタッシュ…",
     "command.fileContextUnstashChanges": "スタッシュの変更を復元…",
+    "submenu.github": "GitHub",
+    "command.github.createPullRequest": "プルリクエストを作成...",
+    "command.github.viewPullRequests": "プルリクエストを表示",
+    "command.github.syncFork": "フォークを同期",
+    "command.github.createGist": "Gist を作成...",
+    "command.github.viewInBrowser": "ブラウザーで表示",
+    "command.github.shareProject": "GitHub でプロジェクトを共有",
+    "command.github.cloneRepository": "GitHub からリポジトリをクローン...",
+    "command.github.manageAccounts": "GitHub アカウントを管理...",
+    "command.fileManageRemotes": "リモートを管理…",
     "configuration.repositoryScanMaxDepth.markdownDescription": "リポジトリ検出時にワークスペースフォルダー内の Git リポジトリをスキャンする深さを制御します。デフォルトは 2 です。深さ制限なしでスキャンするには -1 に設定します。"
 }

@@ -1003,6 +1003,82 @@ describe("extension manifest", () => {
             expect(nls[key]).toBeTruthy();
         }
     });
+    it("contributes the ordered GitHub submenu after Unstash on both shared native file menus", () => {
+        const manifest = JSON.parse(
+            readFileSync(path.join(process.cwd(), "package.json"), "utf8"),
+        ) as {
+            contributes: {
+                commands: Array<{ command: string; title: string }>;
+                submenus: Array<{ id: string; label: string }>;
+                menus: Record<
+                    string,
+                    Array<{ command?: string; submenu?: string; group?: string }>
+                >;
+            };
+            activationEvents: string[];
+        };
+        const children = [
+            "createPullRequest",
+            "viewPullRequests",
+            "syncFork",
+            "createGist",
+            "viewInBrowser",
+            "shareProject",
+            "cloneRepository",
+            "manageAccounts",
+        ].map((name) => `intelligit.github.${name}`);
+        expect(manifest.contributes.submenus).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({
+                    id: "intelligit.githubContext",
+                    label: "%submenu.github%",
+                }),
+            ]),
+        );
+        for (const menuName of ["intelligit.fileContext", "intelligit.editorContext"]) {
+            const menu = manifest.contributes.menus[menuName];
+            const unstash = menu.findIndex(
+                (item) => item.command === "intelligit.fileContextUnstashChanges",
+            );
+            expect(menu[unstash + 1]).toMatchObject({
+                submenu: "intelligit.githubContext",
+                group: "4_branch@9",
+            });
+            expect(menu[unstash + 2]).toMatchObject({
+                command: "intelligit.fileManageRemotes",
+                when: "resourceScheme == file",
+                group: "4_branch@10",
+            });
+            expect(menu[unstash + 3]).toEqual({
+                command: "intelligit.cloneRepository",
+                when: "resourceScheme == file",
+                group: "4_branch@11",
+            });
+        }
+        expect(manifest.contributes.menus["intelligit.githubContext"]).toEqual(
+            children.map((command, index) => ({
+                command,
+                when: "resourceScheme == file",
+                group: `${index < 5 ? "1_browse" : index < 7 ? "2_share" : "3_accounts"}@${index < 5 ? index + 1 : index < 7 ? index - 4 : 1}`,
+            })),
+        );
+        for (const command of children) {
+            expect(manifest.contributes.commands.some((entry) => entry.command === command)).toBe(
+                true,
+            );
+            expect(manifest.activationEvents).toContain(`onCommand:${command}`);
+        }
+        const nls = JSON.parse(
+            readFileSync(path.join(process.cwd(), "package.nls.json"), "utf8"),
+        ) as Record<string, string>;
+        expect(nls["submenu.github"]).toBe("GitHub");
+        expect(nls["command.fileManageRemotes"]).toBe("Manage Remotes…");
+        expect(nls["command.cloneRepository"]).toBe("Clone Repository");
+        expect(manifest.activationEvents).toContain("onCommand:intelligit.fileManageRemotes");
+        for (const command of children) {
+            expect(nls[`command.github.${command.split(".").at(-1)}`]).toBeTruthy();
+        }
+    });
 
     it("contributes the repository scan max depth setting", () => {
         const manifest = JSON.parse(

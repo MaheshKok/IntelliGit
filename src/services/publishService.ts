@@ -7,6 +7,7 @@ import { getErrorMessage } from "../utils/errors";
 import { runGitCommandWithAskpass } from "./gitAskpass";
 import { showTimedInformationMessage, showTimedWarningMessage } from "../utils/notifications";
 import { isValidBranchName } from "../utils/gitRefs";
+import { githubCloneUrl, githubIdentityFromRemote, githubRepositoryUrl } from "../git/githubUrls";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -70,6 +71,7 @@ export async function runPublishBranchFlow(
     branchName: string,
     repoRoot: string,
     secrets?: vscode.SecretStorage,
+    onlyGitHub = false,
 ): Promise<void> {
     // 1. Resolve remote strategy before any provider repository is created.
     const remotes = await gitOps.getRemotes();
@@ -78,41 +80,19 @@ export async function runPublishBranchFlow(
 
     let remoteBranchName = remotePlan.remoteBranchName ?? defaultPublishedBranchName(branchName);
     if (remotePlan.kind === "existing") {
-        try {
-            await vscode.window.withProgress(
-                {
-                    location: vscode.ProgressLocation.Notification,
-                    title: vscode.l10n.t("Pushing to {remote}...", {
-                        remote: remotePlan.remoteName,
-                    }),
-                    cancellable: false,
-                },
-                async () => {
-                    await gitOps.pushWithUpstream(
-                        remotePlan.remoteName,
-                        branchName,
-                        remoteBranchName,
-                    );
-                },
-            );
-            showTimedInformationMessage(
-                vscode.l10n.t('Branch "{branch}" published to {remote}.', {
-                    branch: remoteBranchName,
-                    remote: remotePlan.remoteName,
-                }),
-            );
-        } catch (err) {
-            vscode.window.showErrorMessage(
-                vscode.l10n.t("Failed to publish branch: {message}", {
-                    message: getErrorMessage(err),
-                }),
-            );
-        }
+        await publishToExistingRemote(
+            gitOps,
+            branchName,
+            remoteBranchName,
+            remotePlan.remoteName,
+            repoRoot,
+            onlyGitHub,
+        );
         return;
     }
 
     // 2. Provider
-    const provider = await pickPublishProvider();
+    const provider = onlyGitHub ? "github" : await pickPublishProvider();
     if (!provider) return;
 
     // 3. Visibility
@@ -152,6 +132,27 @@ export async function runPublishBranchFlow(
         });
         if (!publishedBranchName) return;
         remoteBranchName = publishedBranchName.trim();
+    }
+
+    if (onlyGitHub) {
+        const action = vscode.l10n.t("Share Project");
+        const confirm = await vscode.window.showWarningMessage(
+            vscode.l10n.t(
+                "Create {repository} on GitHub as {visibility} and push {branch} from {root}?",
+                {
+                    repository: repoName,
+                    visibility:
+                        visibility === "private"
+                            ? vscode.l10n.t("Private")
+                            : vscode.l10n.t("Public"),
+                    branch: remoteBranchName,
+                    root: repoRoot,
+                },
+            ),
+            { modal: true },
+            action,
+        );
+        if (confirm !== action) return;
     }
 
     // 6. Authenticate
@@ -200,6 +201,29 @@ export async function runPublishBranchFlow(
         return;
     }
 
+    if (onlyGitHub) {
+        const cloneIdentity = githubIdentityFromRemote(created.cloneUrl);
+        const pageIdentity = githubIdentityFromRemote(created.htmlUrl);
+        if (
+            !cloneIdentity ||
+            !pageIdentity ||
+            cloneIdentity.owner !== pageIdentity.owner ||
+            cloneIdentity.repo !== pageIdentity.repo
+        ) {
+            await vscode.window.showErrorMessage(
+                vscode.l10n.t(
+                    "GitHub returned an unsafe repository destination. No remote was added or pushed.",
+                ),
+            );
+            return;
+        }
+        created = {
+            ...created,
+            cloneUrl: githubCloneUrl(cloneIdentity),
+            htmlUrl: githubRepositoryUrl(cloneIdentity),
+        };
+    }
+
     // 8. Add clean remote URL and push with transient askpass credentials.
     let remoteAdded = false;
     try {
@@ -245,6 +269,91 @@ export async function runPublishBranchFlow(
         const message = getErrorMessage(err);
         vscode.window.showErrorMessage(
             vscode.l10n.t("Failed to publish branch: {message}", { message }),
+        );
+    }
+}
+
+/** Publishes the captured repository through the GitHub path of the existing flow. */
+export async function runPublishGitHubProjectFlow(
+    gitOps: GitOps,
+    branchName: string,
+    repoRoot: string,
+): Promise<void> {
+    await runPublishBranchFlow(gitOps, branchName, repoRoot, undefined, true);
+}
+
+/** Pushes to an existing remote, requiring a GitHub identity and consent for Share. */
+async function publishToExistingRemote(
+    gitOps: GitOps,
+    branchName: string,
+    remoteBranchName: string,
+    remoteName: string,
+    repoRoot: string,
+    onlyGitHub: boolean,
+): Promise<void> {
+    let approvedUrl: string | null = null;
+    if (onlyGitHub) {
+        const url = await gitOps.getRemoteUrl(remoteName);
+        const pushUrls = await gitOps.getRemotePushUrls(remoteName);
+        if (
+            !url ||
+            !githubIdentityFromRemote(url) ||
+            pushUrls.length === 0 ||
+            pushUrls.some((pushUrl) => !githubIdentityFromRemote(pushUrl))
+        ) {
+            await vscode.window.showErrorMessage(
+                vscode.l10n.t("The selected existing remote is not a public GitHub repository."),
+            );
+            return;
+        }
+        approvedUrl = url;
+        const action = vscode.l10n.t("Share Project");
+        const confirm = await vscode.window.showWarningMessage(
+            vscode.l10n.t("Push {branch} from {root} to GitHub remote {remote}?", {
+                branch: remoteBranchName,
+                root: repoRoot,
+                remote: `${remoteName} (${pushUrls.join(", ")})`,
+            }),
+            { modal: true },
+            action,
+        );
+        if (confirm !== action) return;
+        const currentPushUrls = await gitOps.getRemotePushUrls(remoteName);
+        if (
+            (await gitOps.getRemoteUrl(remoteName)) !== approvedUrl ||
+            currentPushUrls.length !== pushUrls.length ||
+            currentPushUrls.some((pushUrl, index) => pushUrl !== pushUrls[index])
+        ) {
+            await vscode.window.showErrorMessage(
+                vscode.l10n.t(
+                    "The selected GitHub remote changed while sharing. Run Share Project again.",
+                ),
+            );
+            return;
+        }
+    }
+    try {
+        await vscode.window.withProgress(
+            {
+                location: vscode.ProgressLocation.Notification,
+                title: vscode.l10n.t("Pushing to {remote}...", { remote: remoteName }),
+                cancellable: false,
+            },
+            async () => {
+                await gitOps.pushWithUpstream(remoteName, branchName, remoteBranchName);
+            },
+        );
+        showTimedInformationMessage(
+            vscode.l10n.t('Branch "{branch}" published to {remote}.', {
+                branch: remoteBranchName,
+                remote: remoteName,
+            }),
+        );
+    } catch (err) {
+        vscode.window.showErrorMessage(
+            vscode.l10n.t("Failed to publish branch: {message}", {
+                message: getErrorMessage(err),
+            }),
         );
     }
 }

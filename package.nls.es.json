@@ -107,5 +107,15 @@
     "command.fileResetHead": "Restablecer HEAD…",
     "command.fileStashChanges": "Guardar cambios en stash…",
     "command.fileContextUnstashChanges": "Restaurar cambios del stash…",
+    "submenu.github": "GitHub",
+    "command.github.createPullRequest": "Crear pull request...",
+    "command.github.viewPullRequests": "Ver pull requests",
+    "command.github.syncFork": "Sincronizar fork",
+    "command.github.createGist": "Crear Gist...",
+    "command.github.viewInBrowser": "Ver en el navegador",
+    "command.github.shareProject": "Compartir proyecto en GitHub",
+    "command.github.cloneRepository": "Clonar repositorio desde GitHub...",
+    "command.github.manageAccounts": "Administrar cuentas de GitHub...",
+    "command.fileManageRemotes": "Administrar remotos…",
     "configuration.repositoryScanMaxDepth.markdownDescription": "Controla la profundidad utilizada para buscar repositorios Git dentro de las carpetas del espacio de trabajo durante la detección de repositorios. El valor predeterminado es 2. Establezca en -1 para buscar sin límite de profundidad."
 }

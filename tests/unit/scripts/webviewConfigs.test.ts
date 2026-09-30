@@ -6,7 +6,7 @@ import { getWebviewWatchConfigs } from "../../../scripts/watch.js";
 import { createWebviewBuildOptions, WEBVIEW_CONFIGS } from "../../../scripts/webviewConfigs.js";
 
 describe("webview bundle configuration", () => {
-    it("derives ten build and watch configs including the shared highlighter", () => {
+    it("derives eleven build and watch configs including the shared highlighter", () => {
         const expectedConfigs = WEBVIEW_CONFIGS.map(({ entry, out }) => {
             const config = createWebviewBuildOptions({ entry, out });
             return {
@@ -24,8 +24,8 @@ describe("webview bundle configuration", () => {
 
         expect(getWebviewBuildConfigs(false)).toEqual(expectedConfigs);
         expect(getWebviewWatchConfigs()).toEqual(expectedConfigs);
-        expect(expectedConfigs).toHaveLength(10);
-        expect(expectedConfigs.map(({ format }) => format)).toEqual(Array(10).fill("iife"));
+        expect(expectedConfigs).toHaveLength(11);
+        expect(expectedConfigs.map(({ format }) => format)).toEqual(Array(11).fill("iife"));
     });
 
     it("keeps top-level webview variables out of the classic-script global scope", async () => {

@@ -200,11 +200,10 @@ test("Explorer, tab, and editor stash clicked B repository while active A stays 
         const beforeCancel = await snapshot(b, env, bFiles);
         await file.click({ button: "right" });
         await chooseStash(page);
-        await expect(page.locator(".quick-input-widget input").first()).toHaveValue(
-            "Stashed changes",
-        );
-        await page.keyboard.press("Escape");
-        await expect(page.locator(".quick-input-widget input").first()).toBeHidden();
+        const cancelInput = page.locator(".quick-input-widget input").first();
+        await expect(cancelInput).toHaveValue("Stashed changes");
+        await cancelInput.press("Escape");
+        await expect(cancelInput).toBeHidden();
         expect(await snapshot(b, env, bFiles)).toEqual(beforeCancel);
 
         await writeFile(path.join(b, "selected.txt"), "B guard staged\n");

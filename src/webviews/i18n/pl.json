@@ -405,5 +405,21 @@
     },
     "merge.status.noChanges": "Bez zmian",
     "merge.status.allConflictsResolved": "Wszystkie konflikty rozwiązane",
-    "mergeSession.rebasing": "Zmiana bazy {current} na {selected}"
+    "mergeSession.rebasing": "Zmiana bazy {current} na {selected}",
+    "manageRemotes.title": "Repozytoria zdalne Git",
+    "manageRemotes.loading": "Wczytywanie repozytoriów zdalnych…",
+    "manageRemotes.actions": "Działania na repozytoriach zdalnych",
+    "manageRemotes.name": "Nazwa",
+    "manageRemotes.url": "URL",
+    "manageRemotes.add": "Dodaj repozytorium zdalne",
+    "manageRemotes.remove": "Usuń repozytorium zdalne",
+    "manageRemotes.edit": "Edytuj repozytorium zdalne",
+    "manageRemotes.empty": "Nie skonfigurowano repozytoriów zdalnych. Dodaj jedno, aby rozpocząć.",
+    "manageRemotes.defineRemote": "Zdefiniuj repozytorium zdalne",
+    "manageRemotes.additionalUrls": "Pozostałe adresy URL pobierania ({count}) zostaną zachowane.",
+    "manageRemotes.cancel": "Anuluj",
+    "manageRemotes.save": "Zapisz",
+    "manageRemotes.retry": "Spróbuj ponownie",
+    "manageRemotes.close": "Zamknij",
+    "manageRemotes.staleForm": "Dane repozytorium zdalnego uległy zmianie. Sprawdź aktualne wartości i spróbuj ponownie."
 }

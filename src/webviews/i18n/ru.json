@@ -405,5 +405,21 @@
     },
     "merge.status.noChanges": "Без изменений",
     "merge.status.allConflictsResolved": "Все конфликты разрешены",
-    "mergeSession.rebasing": "Перебазирование {current} на {selected}"
+    "mergeSession.rebasing": "Перебазирование {current} на {selected}",
+    "manageRemotes.title": "Удалённые репозитории Git",
+    "manageRemotes.loading": "Загрузка удалённых репозиториев…",
+    "manageRemotes.actions": "Действия с удалёнными репозиториями",
+    "manageRemotes.name": "Имя",
+    "manageRemotes.url": "URL",
+    "manageRemotes.add": "Добавить удалённый репозиторий",
+    "manageRemotes.remove": "Удалить удалённый репозиторий",
+    "manageRemotes.edit": "Изменить удалённый репозиторий",
+    "manageRemotes.empty": "Удалённые репозитории не настроены. Добавьте репозиторий, чтобы начать.",
+    "manageRemotes.defineRemote": "Настроить удалённый репозиторий",
+    "manageRemotes.additionalUrls": "Дополнительные URL для получения ({count}) будут сохранены.",
+    "manageRemotes.cancel": "Отмена",
+    "manageRemotes.save": "Сохранить",
+    "manageRemotes.retry": "Повторить",
+    "manageRemotes.close": "Закрыть",
+    "manageRemotes.staleForm": "Данные удалённого репозитория изменились. Проверьте текущие значения и повторите попытку."
 }

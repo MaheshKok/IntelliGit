@@ -395,5 +395,21 @@
     },
     "merge.status.noChanges": "Sem alterações.",
     "merge.status.allConflictsResolved": "Todos os conflitos resolvidos",
-    "mergeSession.rebasing": "A fazer rebase de {current} em {selected}"
+    "mergeSession.rebasing": "A fazer rebase de {current} em {selected}",
+    "manageRemotes.title": "Remotos do Git",
+    "manageRemotes.loading": "A carregar remotos…",
+    "manageRemotes.actions": "Ações de remotos",
+    "manageRemotes.name": "Nome",
+    "manageRemotes.url": "URL",
+    "manageRemotes.add": "Adicionar remoto",
+    "manageRemotes.remove": "Remover remoto",
+    "manageRemotes.edit": "Editar remoto",
+    "manageRemotes.empty": "Não há remotos configurados. Adicione um para começar.",
+    "manageRemotes.defineRemote": "Definir remoto",
+    "manageRemotes.additionalUrls": "Serão mantidos {count} URL adicionais de obtenção.",
+    "manageRemotes.cancel": "Cancelar",
+    "manageRemotes.save": "Guardar",
+    "manageRemotes.retry": "Tentar novamente",
+    "manageRemotes.close": "Fechar",
+    "manageRemotes.staleForm": "Os dados do remoto foram alterados. Verifique os valores atuais e tente novamente."
 }

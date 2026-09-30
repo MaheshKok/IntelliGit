@@ -385,5 +385,21 @@
     },
     "merge.status.noChanges": "Keine Änderungen",
     "merge.status.allConflictsResolved": "Alle Konflikte gelöst",
-    "mergeSession.rebasing": "{current} wird auf {selected} rebased"
+    "mergeSession.rebasing": "{current} wird auf {selected} rebased",
+    "manageRemotes.title": "Git-Remotes",
+    "manageRemotes.loading": "Remotes werden geladen…",
+    "manageRemotes.actions": "Remote-Aktionen",
+    "manageRemotes.name": "Name",
+    "manageRemotes.url": "URL",
+    "manageRemotes.add": "Remote hinzufügen",
+    "manageRemotes.remove": "Remote entfernen",
+    "manageRemotes.edit": "Remote bearbeiten",
+    "manageRemotes.empty": "Keine Remotes konfiguriert. Fügen Sie zunächst ein Remote hinzu.",
+    "manageRemotes.defineRemote": "Remote definieren",
+    "manageRemotes.additionalUrls": "{count} weitere Abruf-URLs bleiben erhalten.",
+    "manageRemotes.cancel": "Abbrechen",
+    "manageRemotes.save": "Speichern",
+    "manageRemotes.retry": "Erneut versuchen",
+    "manageRemotes.close": "Schließen",
+    "manageRemotes.staleForm": "Die Remote-Daten haben sich geändert. Prüfen Sie die aktuellen Werte und versuchen Sie es erneut."
 }

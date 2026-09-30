@@ -81,6 +81,27 @@ describe("GitOps", () => {
             ]);
         });
 
+        it("constructs remote rename and selective URL commands", async () => {
+            const executor = createMockExecutor({});
+            const ops = new GitOps(executor);
+            await ops.renameRemote("origin", "upstream");
+            await ops.setRemoteUrl("upstream", "ssh://host/repo.git?x=1", "../new repo.git");
+            await ops.setRemoteUrl("upstream", undefined, "../first.git");
+
+            expect((executor.run as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0])).toEqual([
+                ["remote", "rename", "--", "origin", "upstream"],
+                [
+                    "remote",
+                    "set-url",
+                    "--",
+                    "upstream",
+                    "../new repo.git",
+                    "^ssh://host/repo\\.git\\?x=1$",
+                ],
+                ["remote", "set-url", "--", "upstream", "../first.git"],
+            ]);
+        });
+
         it("reads a remote URL for host-side provider metadata", async () => {
             const executor = createMockExecutor({
                 "remote get-url origin": "https://github.com/user/repo.git\n",

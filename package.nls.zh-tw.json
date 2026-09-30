@@ -107,5 +107,15 @@
     "command.fileResetHead": "重設 HEAD…",
     "command.fileStashChanges": "儲藏變更…",
     "command.fileContextUnstashChanges": "還原儲藏的變更…",
+    "submenu.github": "GitHub",
+    "command.github.createPullRequest": "建立提取要求...",
+    "command.github.viewPullRequests": "檢視提取要求",
+    "command.github.syncFork": "同步分支儲存庫",
+    "command.github.createGist": "建立 Gist...",
+    "command.github.viewInBrowser": "在瀏覽器中檢視",
+    "command.github.shareProject": "在 GitHub 上分享專案",
+    "command.github.cloneRepository": "從 GitHub 複製儲存庫...",
+    "command.github.manageAccounts": "管理 GitHub 帳戶...",
+    "command.fileManageRemotes": "管理遠端存放庫…",
     "configuration.repositoryScanMaxDepth.markdownDescription": "控制在存放庫探索期間於工作區資料夾中掃描 Git 存放庫的深度。預設值為 2。設定為 -1 可無深度限制進行掃描。"
 }

@@ -5,6 +5,34 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.36.0] - 2026-09-30
+
+### Added
+
+- Added `intelligit.repositoryScanMaxDepth` to control repository discovery per workspace folder. The default is 2 directory levels; use `0` to scan only the workspace root or `-1` for unlimited depth.
+
+### Changed
+
+- Repository discovery now limits filesystem traversal by default, avoiding deep scans of large workspace trees. Set the scan depth higher if nested repositories are more than two levels below a workspace folder.
+
+## [0.35.21] - 2026-09-28
+
+### Added
+
+- Added **Clone Repository** after Manage Remotes in the Explorer, editor-tab, and editor file menus. The existing clone flow lets users choose a provider and destination before cloning.
+
+## [0.35.20] - 2026-09-27
+
+### Added
+
+- Added **Manage Remotes…** after GitHub in the Explorer, editor-tab, and editor file menus. A repository-bound Git Remotes dialog lists configured remotes and supports adding, editing, renaming, and confirmed removal while retaining other remote URLs and settings.
+
+## [0.35.19] - 2026-09-27
+
+### Added
+
+- Added a **GitHub** submenu after Unstash Changes in Explorer, editor-tab, and editor file menus. Create or view pull requests, sync a fork, create a confirmed Gist, view the selected tracked file on GitHub, share a project, clone a GitHub repository, or manage GitHub accounts.
+
 ## [0.35.18] - 2026-09-27
 
 ### Added

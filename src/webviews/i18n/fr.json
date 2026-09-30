@@ -395,5 +395,21 @@
     },
     "merge.status.noChanges": "Aucun changement",
     "merge.status.allConflictsResolved": "Tous les conflits résolus",
-    "mergeSession.rebasing": "Rebasage de {current} sur {selected}"
+    "mergeSession.rebasing": "Rebasage de {current} sur {selected}",
+    "manageRemotes.title": "Dépôts distants Git",
+    "manageRemotes.loading": "Chargement des dépôts distants…",
+    "manageRemotes.actions": "Actions sur les dépôts distants",
+    "manageRemotes.name": "Nom",
+    "manageRemotes.url": "URL",
+    "manageRemotes.add": "Ajouter un dépôt distant",
+    "manageRemotes.remove": "Supprimer le dépôt distant",
+    "manageRemotes.edit": "Modifier le dépôt distant",
+    "manageRemotes.empty": "Aucun dépôt distant configuré. Ajoutez-en un pour commencer.",
+    "manageRemotes.defineRemote": "Définir un dépôt distant",
+    "manageRemotes.additionalUrls": "{count} URL de récupération supplémentaires seront conservées.",
+    "manageRemotes.cancel": "Annuler",
+    "manageRemotes.save": "Enregistrer",
+    "manageRemotes.retry": "Réessayer",
+    "manageRemotes.close": "Fermer",
+    "manageRemotes.staleForm": "Les données du dépôt distant ont changé. Vérifiez les valeurs actuelles et réessayez."
 }

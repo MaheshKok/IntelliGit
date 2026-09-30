@@ -20,9 +20,9 @@ function runGit(cwd: string, env: NodeJS.ProcessEnv, args: string[]): string {
 /** Opens the native New Branch input from an already open IntelliGit file submenu. */
 async function chooseNewBranch(page: Page): Promise<void> {
     const parent = page.getByRole("menuitem", { name: "IntelliGit", exact: true });
-    await parent.click();
+    await parent.hover();
     const action = page.getByRole("menuitem", { name: /^New Branch(?:\.\.\.|…)/ });
-    if (!(await action.count())) {
+    if (!(await action.isVisible())) {
         await parent.hover();
         await page.keyboard.press("ArrowRight");
     }

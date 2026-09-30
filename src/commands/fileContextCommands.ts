@@ -23,8 +23,10 @@ import { runMergeCommand, type MergeLabels } from "./mergeCommand";
 import { runRebaseCommand } from "./rebaseCommand";
 import { rejectWhenOperationInProgress } from "./operationFence";
 import { runResetWorkflow } from "./commitBasicActions";
+import { ManageRemotesPanel } from "../views/ManageRemotesPanel";
 
-interface ResolvedFileCommandContext {
+/** Immutable clicked-file ownership and repository scope captured before user interaction. */
+export interface ResolvedFileCommandContext {
     selectedUri: vscode.Uri;
     canonicalFilePath: string;
     repoRoot: string;
@@ -867,7 +869,7 @@ async function resolveCanonicalFileLocation(
  * lexical suffix beneath that ancestor's canonical path. Its caller must then validate an exact
  * tracked deletion; other commands continue to require the immediate parent to exist.
  */
-async function resolveFileCommandContext(
+export async function resolveFileCommandContext(
     ctx: unknown,
     gitOps: GitOps,
     options?: { allowMissingParent?: boolean },
@@ -907,6 +909,29 @@ async function resolveFileCommandContext(
         repoRelativePath: relativePath.split(path.sep).join("/"),
         gitOps: gitOps.deriveFor(repoRoot),
     };
+}
+
+/** Opens Manage Remotes with the clicked file's repository captured before panel interaction. */
+export async function manageRemotesFileFromContext(
+    ctx: unknown,
+    gitOps: GitOps,
+    extensionUri: vscode.Uri,
+    refresh: (repoRoot: string) => Promise<void>,
+): Promise<void> {
+    try {
+        const resolved = await resolveFileCommandContext(ctx, gitOps);
+        if (!resolved) {
+            await vscode.window.showErrorMessage(
+                vscode.l10n.t("Manage Remotes is only available for local files."),
+            );
+            return;
+        }
+        ManageRemotesPanel.open(extensionUri, resolved.gitOps, resolved.repoRoot, refresh);
+    } catch (error) {
+        await vscode.window.showErrorMessage(
+            vscode.l10n.t("Manage Remotes failed: {message}", { message: getErrorMessage(error) }),
+        );
+    }
 }
 
 /**

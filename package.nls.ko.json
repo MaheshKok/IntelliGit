@@ -107,5 +107,15 @@
     "command.fileResetHead": "HEAD 재설정…",
     "command.fileStashChanges": "변경 내용 스태시…",
     "command.fileContextUnstashChanges": "스태시 변경 사항 복원…",
+    "submenu.github": "GitHub",
+    "command.github.createPullRequest": "풀 리퀘스트 만들기...",
+    "command.github.viewPullRequests": "풀 리퀘스트 보기",
+    "command.github.syncFork": "포크 동기화",
+    "command.github.createGist": "Gist 만들기...",
+    "command.github.viewInBrowser": "브라우저에서 보기",
+    "command.github.shareProject": "GitHub에서 프로젝트 공유",
+    "command.github.cloneRepository": "GitHub에서 저장소 복제...",
+    "command.github.manageAccounts": "GitHub 계정 관리...",
+    "command.fileManageRemotes": "원격 저장소 관리…",
     "configuration.repositoryScanMaxDepth.markdownDescription": "리포지토리 검색 중 작업 영역 폴더 내에서 Git 리포지토리를 검색하는 깊이를 제어합니다. 기본값은 2입니다. 깊이 제한 없이 검색하려면 -1로 설정합니다."
 }

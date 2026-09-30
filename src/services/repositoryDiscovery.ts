@@ -57,6 +57,10 @@ export type ResolveGitRepository = (candidateRoot: string) => Promise<ResolvedGi
  */
 export const DEFAULT_REPOSITORY_SCAN_MAX_DEPTH = 2;
 
+/**
+ * Reads folder-scoped settings when running inside VS Code. Standalone discovery
+ * callers fall back to the default depth when the extension API is unavailable.
+ */
 function getVsCodeConfiguration(
     scope?: string | import("vscode").Uri,
 ): { get<T>(section: string, defaultValue?: T): T | undefined } | undefined {
@@ -71,7 +75,7 @@ function getVsCodeConfiguration(
 }
 
 /**
- * Options that customize repository discovery without changing filesystem traversal.
+ * Options that customize repository validation and filesystem traversal.
  */
 export interface DiscoverGitRepositoriesOptions {
     /** Optional resolver used to validate and canonicalize each `.git` marker hit. */
@@ -281,8 +285,9 @@ export async function discoverGitRepositories(
     // workspace root is itself a candidate (the user may have opened a repository or a
     // subdirectory of one) alongside every nested `.git` marker.
     const candidates: string[] = [...roots];
-    for (const workspaceRoot of roots) {
-        const maxDepth = resolveRepositoryScanMaxDepth(options, workspaceRoot);
+    for (const [index, workspaceRoot] of roots.entries()) {
+        // Folder settings belong to the opened path, which can differ from its realpath.
+        const maxDepth = resolveRepositoryScanMaxDepth(options, workspaceRoots[index]);
         // Sequential walk keeps recursive filesystem IO bounded.
         // react-doctor-disable-next-line react-doctor/async-await-in-loop
         await collectGitMarkerDirs(workspaceRoot, candidates, maxDepth, 0);

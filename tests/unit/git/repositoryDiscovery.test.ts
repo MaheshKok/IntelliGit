@@ -356,4 +356,31 @@ describe("discoverGitRepositories", () => {
         expect(repoRoots).toContain(path.resolve(repoInB));
         expect(repoRoots).toContain(path.resolve(deepRepoInB));
     });
+
+    it("uses the original workspace path for folder settings when opened through a symlink", async () => {
+        const workspace = await makeTempWorkspace();
+        const linkParent = await makeTempWorkspace();
+        const workspaceLink = path.join(linkParent, "workspace-link");
+        const nestedRepo = path.join(workspace, "nested");
+        await makeGitMarker(workspace);
+        await makeGitMarker(nestedRepo);
+        await fs.symlink(
+            workspace,
+            workspaceLink,
+            process.platform === "win32" ? "junction" : "dir",
+        );
+
+        const configuration = (resource?: string) => ({
+            get: <T>(section: string): T | undefined =>
+                section === "repositoryScanMaxDepth"
+                    ? ((resource === workspaceLink ? 0 : 2) as T)
+                    : undefined,
+        });
+        const repos = await discoverGitRepositories([workspaceLink], {
+            resolveGitRepository: resolverFor([workspace, nestedRepo]),
+            configuration,
+        });
+
+        expect(repos.map((repo) => repo.root)).toEqual([workspace]);
+    });
 });

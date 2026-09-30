@@ -145,6 +145,9 @@ test("Explorer, tab and editor unstash clicked B by OID while active A stays unc
 
         await page.getByRole("treeitem").filter({ hasText: "native-unstash-changes-b" }).click();
         const file = page.locator('[role="treeitem"][aria-label="selected.txt"][aria-level="2"]');
+        const appliedNotice = page.locator(".notifications-toasts .notification-toast").filter({
+            hasText: "IntelliGit: Stash applied. The stash was kept.",
+        });
         const scenarios = [
             {
                 surface: "explorer",
@@ -172,6 +175,9 @@ test("Explorer, tab and editor unstash clicked B by OID while active A stays unc
             },
         ] as const;
         for (const scenario of scenarios) {
+            // A previous Apply toast must disappear before it can prove this invocation completed.
+            if (scenario.action === "Apply")
+                await expect(appliedNotice).toBeHidden({ timeout: 30_000 });
             if (scenario.surface === "explorer") await openExplorerMenu(page, file);
             if (scenario.surface === "tab") {
                 await file.dblclick();
@@ -189,6 +195,7 @@ test("Explorer, tab and editor unstash clicked B by OID while active A stays unc
             await pick(page, scenario.selector);
             await pick(page, scenario.action);
             await pick(page, scenario.index);
+            if (scenario.action === "Apply") await expect(appliedNotice).toBeVisible();
             await expect
                 .poll(() => readFile(path.join(b, "selected.txt"), "utf8"))
                 .toBe(scenario.content);
@@ -222,10 +229,11 @@ test("Explorer, tab and editor unstash clicked B by OID while active A stays unc
         await expect
             .poll(() => readFile(path.join(b, "selected.txt"), "utf8"))
             .toBe("branch worktree\n");
-        expect(git(b, env, ["show", ":selected.txt"])).toBe("branch staged");
+        // Stash removal happens after Git finishes restoring both the worktree and index.
         await expect
             .poll(() => git(b, env, ["stash", "list", "--format=%H"]).split("\n"))
             .not.toContain(branchOid);
+        expect(git(b, env, ["show", ":selected.txt"])).toBe("branch staged");
         expect(await snapshot(a, env)).toEqual(aBefore);
 
         await page.getByRole("tab", { name: /selected\.txt/ }).click();
@@ -244,7 +252,9 @@ test("Explorer, tab and editor unstash clicked B by OID while active A stays unc
         git(b, env, ["stash", "clear"]);
         const emptyHead = git(b, env, ["rev-parse", "HEAD"]);
         await chooseExplorerUnstash(page, file);
-        await expect(page.getByRole("dialog", { name: /No stashes found in/ })).toBeVisible();
+        await expect(
+            page.getByRole("alert").filter({ hasText: "No stashes found in" }),
+        ).toHaveCount(1);
         expect(git(b, env, ["rev-parse", "HEAD"])).toBe(emptyHead);
         expect(git(b, env, ["stash", "list", "--format=%H"])).toBe("");
 
@@ -257,12 +267,16 @@ test("Explorer, tab and editor unstash clicked B by OID while active A stays unc
         const newerOid = git(b, env, ["rev-parse", "stash@{0}"]);
         git(b, env, ["stash", "drop", "stash@{0}"]);
         await chooseExplorerUnstash(page, file);
-        await page.keyboard.press("Escape");
-        await expect(page.locator(".quick-input-widget input").first()).toBeHidden();
+        const cancelInput = page.locator(".quick-input-widget input").first();
+        await expect(cancelInput).toBeVisible();
+        await cancelInput.press("Escape");
+        await expect(cancelInput).toBeHidden();
         expect(git(b, env, ["stash", "list", "--format=%H"])).toBe(olderOid);
         expect(await readFile(path.join(b, "selected.txt"), "utf8")).toBe("B baseline\n");
 
         await chooseExplorerUnstash(page, file);
+        // Cancelled QuickPicks retain hidden rows; wait for this invocation before shifting refs.
+        await expect(page.locator(".quick-input-widget input").first()).toBeVisible();
         await expect(page.locator(".quick-input-widget")).toContainText("older selected");
         await expect(page.locator(".quick-input-widget")).toContainText(olderOid.slice(0, 8));
         await expect(page.locator(".quick-input-widget")).not.toContainText(newerOid.slice(0, 8));
@@ -274,9 +288,11 @@ test("Explorer, tab and editor unstash clicked B by OID while active A stays unc
             .locator(".quick-input-list .monaco-list-row")
             .filter({ hasText: olderOid.slice(0, 8) });
         await expect(olderRow).toHaveCount(1);
+        await expect(appliedNotice).toBeHidden({ timeout: 30_000 });
         await olderRow.click();
         await pick(page, "Apply");
         await pick(page, "Do Not Reinstate Index");
+        await expect(appliedNotice).toBeVisible();
         await expect
             .poll(() => readFile(path.join(b, "selected.txt"), "utf8"))
             .toBe("older selected\n");

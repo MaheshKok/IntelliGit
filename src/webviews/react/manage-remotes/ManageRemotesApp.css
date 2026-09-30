@@ -1,0 +1,180 @@
+.manage-remotes {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: min(100%, 660px);
+    max-height: calc(100vh - 32px);
+    padding: 16px;
+    margin: 16px auto;
+    overflow: auto;
+    border: 1px solid var(--vscode-panel-border);
+    color: var(--vscode-foreground);
+    background: var(--vscode-editor-background);
+}
+
+.manage-remotes__header h1 {
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 1.35;
+}
+.manage-remotes__repo {
+    display: block;
+    max-width: 100%;
+    margin-top: 3px;
+    overflow: hidden;
+    color: var(--vscode-descriptionForeground);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.manage-remotes__toolbar {
+    display: flex;
+    gap: 2px;
+}
+.manage-remotes button {
+    min-height: 27px;
+    padding: 3px 10px;
+    border: 1px solid var(--vscode-button-border, transparent);
+    border-radius: 2px;
+    color: var(--vscode-button-foreground);
+    background: var(--vscode-button-background);
+    cursor: pointer;
+}
+.manage-remotes button:hover:not(:disabled) {
+    background: var(--vscode-button-hoverBackground);
+}
+.manage-remotes button:disabled {
+    opacity: 0.55;
+    cursor: default;
+}
+.manage-remotes button:focus-visible,
+.manage-remotes input:focus-visible,
+.manage-remotes tr:focus-visible {
+    outline: 2px solid var(--vscode-focusBorder);
+    outline-offset: -2px;
+}
+.manage-remotes .manage-remotes__icon {
+    display: inline-grid;
+    place-items: center;
+    width: 28px;
+    min-height: 27px;
+    padding: 3px;
+    border-color: transparent;
+    color: var(--vscode-foreground);
+    background: transparent;
+}
+.manage-remotes .manage-remotes__icon:hover:not(:disabled) {
+    background: var(--vscode-toolbar-hoverBackground);
+}
+.manage-remotes__table-wrap {
+    min-height: 128px;
+    max-height: min(46vh, 320px);
+    overflow: auto;
+    border: 1px solid var(--vscode-panel-border);
+}
+.manage-remotes table {
+    width: 100%;
+    min-width: 350px;
+    border-collapse: collapse;
+    table-layout: fixed;
+}
+.manage-remotes th,
+.manage-remotes td {
+    padding: 5px 8px;
+    overflow: hidden;
+    text-align: left;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.manage-remotes th {
+    font-weight: 600;
+    border-bottom: 1px solid var(--vscode-panel-border);
+}
+.manage-remotes th:first-child {
+    width: 30%;
+}
+.manage-remotes tr[aria-selected="true"] {
+    color: var(--vscode-list-activeSelectionForeground);
+    background: var(--vscode-list-activeSelectionBackground);
+}
+.manage-remotes tbody tr {
+    cursor: default;
+}
+.manage-remotes tbody tr:hover:not([aria-selected="true"]) {
+    background: var(--vscode-list-hoverBackground);
+}
+.manage-remotes__empty {
+    padding: 18px 8px;
+    color: var(--vscode-descriptionForeground);
+}
+.manage-remotes__form {
+    padding: 10px 0 2px;
+    border-top: 1px solid var(--vscode-panel-border);
+}
+.manage-remotes__form h2 {
+    margin-bottom: 10px;
+    font-size: 13px;
+    font-weight: 600;
+}
+.manage-remotes__form form {
+    display: grid;
+    grid-template-columns: minmax(60px, 90px) minmax(0, 1fr);
+    gap: 8px;
+    align-items: center;
+}
+.manage-remotes__form label {
+    min-width: 0;
+}
+.manage-remotes__form input {
+    width: 100%;
+    min-height: 27px;
+    padding: 3px 6px;
+    border: 1px solid var(--vscode-input-border, var(--vscode-panel-border));
+    border-radius: 2px;
+    color: var(--vscode-input-foreground);
+    background: var(--vscode-input-background);
+}
+.manage-remotes__note {
+    grid-column: 2;
+    color: var(--vscode-descriptionForeground);
+}
+.manage-remotes__form-actions {
+    grid-column: 1 / -1;
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
+.manage-remotes__error {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    padding: 6px 8px;
+    color: var(--vscode-errorForeground);
+    background: var(--vscode-inputValidation-errorBackground);
+    border: 1px solid var(--vscode-inputValidation-errorBorder);
+}
+.manage-remotes__error span {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+.manage-remotes__footer {
+    display: flex;
+    justify-content: flex-end;
+    padding-top: 10px;
+}
+@media (max-width: 430px) {
+    .manage-remotes {
+        padding: 10px;
+    }
+    .manage-remotes__form form {
+        grid-template-columns: 1fr;
+        gap: 4px;
+    }
+    .manage-remotes__form input {
+        margin-bottom: 6px;
+    }
+    .manage-remotes__note,
+    .manage-remotes__form-actions {
+        grid-column: 1;
+    }
+}

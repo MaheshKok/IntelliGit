@@ -104,12 +104,17 @@ vi.mock("child_process", () => ({
     execFile: mocks.execFile,
 }));
 
-import { runPublishBranchFlow } from "../../../src/services/publishService";
+import {
+    runPublishBranchFlow,
+    runPublishGitHubProjectFlow,
+} from "../../../src/services/publishService";
 import type { GitOps } from "../../../src/git/operations";
 
 function makeGitOps(remotes: string[] = []): GitOps {
     return {
         getRemotes: vi.fn(async () => remotes),
+        getRemoteUrl: vi.fn(async () => "https://github.com/o/repo.git"),
+        getRemotePushUrls: vi.fn(async () => ["https://github.com/o/repo.git"]),
         addRemote: vi.fn(async () => undefined),
         removeRemote: vi.fn(async () => undefined),
         pushWithUpstream: vi.fn(async () => ""),
@@ -282,6 +287,127 @@ function mockRemotePickerSelection(action: "existing" | "create", value: string)
 }
 
 describe("publishService phase 5", () => {
+    it("GitHub-only Share rejects a mixed GitHub and non-GitHub push URL list", async () => {
+        const scoped = makeGitOps(["origin"]);
+        vi.mocked(scoped.getRemotePushUrls).mockResolvedValueOnce([
+            "https://github.com/o/approved.git",
+            "https://example.invalid/o/other.git",
+        ]);
+        mockRemotePickerSelection("existing", "origin/feature/slash");
+
+        await runPublishGitHubProjectFlow(scoped, "feature/slash", "/clicked-b");
+
+        expect(
+            mocks.showWarningMessage,
+            "unsafe push list is never offered",
+        ).not.toHaveBeenCalled();
+        expect(
+            scoped.pushWithUpstream,
+            "unsafe push list never receives a push",
+        ).not.toHaveBeenCalled();
+        expect(mocks.showErrorMessage).toHaveBeenCalledWith(expect.stringContaining("GitHub"));
+    });
+
+    it("GitHub-only Share refuses a changed push URL while fetch URL stays fixed", async () => {
+        const scoped = makeGitOps(["origin"]);
+        let pushUrls = ["https://github.com/o/approved.git"];
+        vi.mocked(scoped.getRemotePushUrls).mockImplementation(async () => pushUrls);
+        mockRemotePickerSelection("existing", "origin/feature/slash");
+        mocks.showWarningMessage.mockImplementationOnce(
+            async (_message: string, _options: unknown, action: string) => {
+                pushUrls = ["https://github.com/o/changed.git"];
+                return action;
+            },
+        );
+
+        await runPublishGitHubProjectFlow(scoped, "feature/slash", "/clicked-b");
+
+        expect(
+            scoped.pushWithUpstream,
+            "stale push destination never receives a push",
+        ).not.toHaveBeenCalled();
+        expect(mocks.showErrorMessage).toHaveBeenCalledWith(expect.stringContaining("changed"));
+    });
+
+    it("GitHub-only Share shows every validated push destination before pushing", async () => {
+        const scoped = makeGitOps(["origin"]);
+        vi.mocked(scoped.getRemotePushUrls).mockResolvedValue([
+            "https://github.com/o/first.git",
+            "git@github.com:o/second.git",
+        ]);
+        mockRemotePickerSelection("existing", "origin/feature/slash");
+        mocks.showWarningMessage.mockImplementationOnce(
+            async (_message: string, _options: unknown, action: string) => action,
+        );
+
+        await runPublishGitHubProjectFlow(scoped, "feature/slash", "/clicked-b");
+
+        expect(mocks.showWarningMessage.mock.calls[0][0]).toContain(
+            "https://github.com/o/first.git",
+        );
+        expect(mocks.showWarningMessage.mock.calls[0][0]).toContain("git@github.com:o/second.git");
+        expect(scoped.pushWithUpstream).toHaveBeenCalledWith(
+            "origin",
+            "feature/slash",
+            "feature/slash",
+        );
+    });
+    it("GitHub-only Share refuses a remote changed during confirmation", async () => {
+        const scoped = makeGitOps(["origin"]);
+        let url = "https://github.com/o/repo.git";
+        vi.mocked(scoped.getRemoteUrl).mockImplementation(async () => url);
+        mockRemotePickerSelection("existing", "origin/feature/slash");
+        mocks.showWarningMessage.mockImplementationOnce(
+            async (_message: string, _options: unknown, action: string) => {
+                url = "https://github.com/other/destination.git";
+                return action;
+            },
+        );
+
+        await runPublishGitHubProjectFlow(scoped, "feature/slash", "/clicked-b");
+
+        expect(
+            scoped.pushWithUpstream,
+            "stale destination never receives a push",
+        ).not.toHaveBeenCalled();
+        expect(mocks.showErrorMessage).toHaveBeenCalledWith(expect.stringContaining("changed"));
+    });
+    it("GitHub-only Share confirms an existing GitHub remote before pushing clicked B", async () => {
+        const scoped = makeGitOps(["origin"]);
+        mockRemotePickerSelection("existing", "origin/feature/slash");
+        mocks.showWarningMessage.mockResolvedValue(undefined);
+
+        await runPublishGitHubProjectFlow(scoped, "feature/slash", "/clicked-b");
+
+        expect(mocks.showWarningMessage, "existing GitHub push confirmation").toHaveBeenCalledWith(
+            expect.stringContaining("/clicked-b"),
+            { modal: true },
+            expect.any(String),
+        );
+        expect(scoped.pushWithUpstream, "cancel keeps clicked B untouched").not.toHaveBeenCalled();
+    });
+    it("GitHub-only Share keeps clicked B and requires confirmation before creation", async () => {
+        const scoped = makeGitOps();
+        mocks.showQuickPick.mockResolvedValue({ value: "private" });
+        mocks.showInputBox
+            .mockResolvedValueOnce("clicked-b")
+            .mockResolvedValueOnce("feature/slash");
+        mocks.showWarningMessage.mockResolvedValue(undefined);
+        await runPublishGitHubProjectFlow(scoped, "feature/slash", "/clicked-b");
+        expect(scoped.getRemotes).toHaveBeenCalledOnce();
+        expect(mocks.showQuickPick).toHaveBeenCalledOnce();
+        expect(
+            mocks.showQuickPick.mock.calls[0][0].map((item: { value: string }) => item.value),
+        ).toEqual(["private", "public"]);
+        expect(mocks.showWarningMessage).toHaveBeenCalledWith(
+            expect.stringContaining("as Private"),
+            { modal: true },
+            expect.any(String),
+        );
+        expect(mocks.showWarningMessage.mock.calls[0][0]).toContain("/clicked-b");
+        expect(mocks.httpsRequest, "cancel before GitHub write").not.toHaveBeenCalled();
+        expect(scoped.addRemote).not.toHaveBeenCalled();
+    });
     beforeEach(() => {
         vi.clearAllMocks();
         mocks.configValues.clear();

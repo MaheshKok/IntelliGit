@@ -2,7 +2,7 @@
     "name": "intelligit",
     "displayName": "IntelliGit",
     "description": "%extension.description%",
-    "version": "0.35.18",
+    "version": "0.36.0",
     "publisher": "MaheshKok",
     "icon": "media/intelligit-icon.png",
     "license": "MIT",
@@ -66,6 +66,15 @@
         "onCommand:intelligit.openFolder",
         "onCommand:intelligit.initializeRepository",
         "onCommand:intelligit.publishBranch",
+        "onCommand:intelligit.github.createPullRequest",
+        "onCommand:intelligit.github.viewPullRequests",
+        "onCommand:intelligit.github.syncFork",
+        "onCommand:intelligit.github.createGist",
+        "onCommand:intelligit.github.viewInBrowser",
+        "onCommand:intelligit.github.shareProject",
+        "onCommand:intelligit.github.cloneRepository",
+        "onCommand:intelligit.github.manageAccounts",
+        "onCommand:intelligit.fileManageRemotes",
         "onCommand:intelligit.commitChecks.signIn",
         "onCommand:intelligit.commitChecks.signOut",
         "onCommand:intelligit.showReviewPrompt",
@@ -509,6 +518,51 @@
                 "category": "%intelligit%"
             },
             {
+                "command": "intelligit.fileManageRemotes",
+                "title": "%command.fileManageRemotes%",
+                "category": "%intelligit%"
+            },
+            {
+                "command": "intelligit.github.createPullRequest",
+                "title": "%command.github.createPullRequest%",
+                "category": "%intelligit%"
+            },
+            {
+                "command": "intelligit.github.viewPullRequests",
+                "title": "%command.github.viewPullRequests%",
+                "category": "%intelligit%"
+            },
+            {
+                "command": "intelligit.github.syncFork",
+                "title": "%command.github.syncFork%",
+                "category": "%intelligit%"
+            },
+            {
+                "command": "intelligit.github.createGist",
+                "title": "%command.github.createGist%",
+                "category": "%intelligit%"
+            },
+            {
+                "command": "intelligit.github.viewInBrowser",
+                "title": "%command.github.viewInBrowser%",
+                "category": "%intelligit%"
+            },
+            {
+                "command": "intelligit.github.shareProject",
+                "title": "%command.github.shareProject%",
+                "category": "%intelligit%"
+            },
+            {
+                "command": "intelligit.github.cloneRepository",
+                "title": "%command.github.cloneRepository%",
+                "category": "%intelligit%"
+            },
+            {
+                "command": "intelligit.github.manageAccounts",
+                "title": "%command.github.manageAccounts%",
+                "category": "%intelligit%"
+            },
+            {
                 "command": "intelligit.fileJumpToSource",
                 "title": "%command.jumpToSource%",
                 "category": "%intelligit%"
@@ -735,6 +789,11 @@
                 "id": "intelligit.editorContext",
                 "label": "%intelligit%",
                 "icon": "$(git-branch)"
+            },
+            {
+                "id": "intelligit.githubContext",
+                "label": "%submenu.github%",
+                "icon": "$(github)"
             }
         ],
         "menus": {
@@ -941,6 +1000,21 @@
                     "command": "intelligit.fileContextUnstashChanges",
                     "when": "resourceScheme == file",
                     "group": "4_branch@8"
+                },
+                {
+                    "submenu": "intelligit.githubContext",
+                    "when": "resourceScheme == file",
+                    "group": "4_branch@9"
+                },
+                {
+                    "command": "intelligit.fileManageRemotes",
+                    "when": "resourceScheme == file",
+                    "group": "4_branch@10"
+                },
+                {
+                    "command": "intelligit.cloneRepository",
+                    "when": "resourceScheme == file",
+                    "group": "4_branch@11"
                 }
             ],
             "intelligit.editorContext": [
@@ -1043,6 +1117,63 @@
                     "command": "intelligit.fileContextUnstashChanges",
                     "when": "resourceScheme == file",
                     "group": "4_branch@8"
+                },
+                {
+                    "submenu": "intelligit.githubContext",
+                    "when": "resourceScheme == file",
+                    "group": "4_branch@9"
+                },
+                {
+                    "command": "intelligit.fileManageRemotes",
+                    "when": "resourceScheme == file",
+                    "group": "4_branch@10"
+                },
+                {
+                    "command": "intelligit.cloneRepository",
+                    "when": "resourceScheme == file",
+                    "group": "4_branch@11"
+                }
+            ],
+            "intelligit.githubContext": [
+                {
+                    "command": "intelligit.github.createPullRequest",
+                    "when": "resourceScheme == file",
+                    "group": "1_browse@1"
+                },
+                {
+                    "command": "intelligit.github.viewPullRequests",
+                    "when": "resourceScheme == file",
+                    "group": "1_browse@2"
+                },
+                {
+                    "command": "intelligit.github.syncFork",
+                    "when": "resourceScheme == file",
+                    "group": "1_browse@3"
+                },
+                {
+                    "command": "intelligit.github.createGist",
+                    "when": "resourceScheme == file",
+                    "group": "1_browse@4"
+                },
+                {
+                    "command": "intelligit.github.viewInBrowser",
+                    "when": "resourceScheme == file",
+                    "group": "1_browse@5"
+                },
+                {
+                    "command": "intelligit.github.shareProject",
+                    "when": "resourceScheme == file",
+                    "group": "2_share@1"
+                },
+                {
+                    "command": "intelligit.github.cloneRepository",
+                    "when": "resourceScheme == file",
+                    "group": "2_share@2"
+                },
+                {
+                    "command": "intelligit.github.manageAccounts",
+                    "when": "resourceScheme == file",
+                    "group": "3_accounts@1"
                 }
             ],
             "view/title": [
@@ -1459,7 +1590,7 @@
         "test:watch": "bun vitest",
         "test:visual": "playwright test --config playwright.visual.config.ts",
         "test:visual:container": "./tests/e2e/docker/run.sh 'bun install --frozen-lockfile && bun run build && bun run test:visual'",
-        "test:e2e": "playwright test --config playwright.e2e.config.ts tests/e2e/flows/flows.spec.ts tests/e2e/undockShortcut.spec.ts tests/e2e/gitLogPersistence.spec.ts tests/e2e/gitLogLayout.spec.ts tests/e2e/fileContextCompareBranchOrTag.spec.ts tests/e2e/fileContextShowCurrentRevision.spec.ts tests/e2e/fileContextAnnotateWithGitBlame.spec.ts tests/e2e/fileContextRollback.spec.ts tests/e2e/fileContextFetch.spec.ts tests/e2e/fileContextPull.spec.ts tests/e2e/fileContextPush.spec.ts tests/e2e/fileContextCommit.spec.ts tests/e2e/fileContextAddToVcs.spec.ts tests/e2e/fileContextMerge.spec.ts tests/e2e/fileContextBranches.spec.ts tests/e2e/fileContextNewBranch.spec.ts tests/e2e/fileContextNewTag.spec.ts tests/e2e/fileContextResetHead.spec.ts tests/e2e/fileContextStashChanges.spec.ts tests/e2e/fileContextUnstashChanges.spec.ts",
+        "test:e2e": "playwright test --config playwright.e2e.config.ts tests/e2e/flows/flows.spec.ts tests/e2e/undockShortcut.spec.ts tests/e2e/gitLogPersistence.spec.ts tests/e2e/gitLogLayout.spec.ts tests/e2e/fileContextCompareBranchOrTag.spec.ts tests/e2e/fileContextShowCurrentRevision.spec.ts tests/e2e/fileContextAnnotateWithGitBlame.spec.ts tests/e2e/fileContextRollback.spec.ts tests/e2e/fileContextFetch.spec.ts tests/e2e/fileContextPull.spec.ts tests/e2e/fileContextPush.spec.ts tests/e2e/fileContextCommit.spec.ts tests/e2e/fileContextAddToVcs.spec.ts tests/e2e/fileContextMerge.spec.ts tests/e2e/fileContextBranches.spec.ts tests/e2e/fileContextNewBranch.spec.ts tests/e2e/fileContextNewTag.spec.ts tests/e2e/fileContextResetHead.spec.ts tests/e2e/fileContextStashChanges.spec.ts tests/e2e/fileContextUnstashChanges.spec.ts tests/e2e/fileContextGitHub.spec.ts tests/e2e/fileContextManageRemotes.spec.ts tests/e2e/fileContextClone.spec.ts",
         "test:e2e:diff-viewer": "playwright test --config playwright.e2e.config.ts tests/e2e/diffViewer.spec.ts",
         "test:e2e:diff-viewer:perf": "playwright test --config playwright.e2e.config.ts tests/e2e/diffViewer.performance.spec.ts",
         "test:e2e:container": "./tests/e2e/docker/run.sh 'bun install --frozen-lockfile && bun run build && xvfb-run -a bun run test:e2e'",

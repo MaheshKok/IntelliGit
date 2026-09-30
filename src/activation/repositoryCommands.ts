@@ -16,6 +16,7 @@ import {
     compareFileWithRevision,
     fetchFile,
     mergeFileFromContext,
+    manageRemotesFileFromContext,
     newBranchFileFromContext,
     newTagFileFromContext,
     resetHeadFileFromContext,
@@ -31,6 +32,16 @@ import {
 import { GitOps } from "../git/operations";
 import { remoteUrlToWebUrl } from "../git/remoteWebUrl";
 import { runPublishBranchFlow } from "../services/publishService";
+import { runCloneFlow, runGitHubCloneFlow } from "../services/cloneService";
+import {
+    createGitHubGistFromContext,
+    createGitHubPullRequestFromContext,
+    manageGitHubAccounts,
+    shareGitHubProjectFromContext,
+    syncGitHubForkFromContext,
+    viewGitHubFileFromContext,
+    viewGitHubPullRequestsFromContext,
+} from "../commands/githubContextCommands";
 import type { WorktreeService } from "../services/worktreeService";
 import {
     applySelectedCommitFileChange,
@@ -801,6 +812,19 @@ function registerCommitFileCommands(deps: RepositoryCommandsDeps): void {
                 }
             });
         }),
+        vscode.commands.registerCommand("intelligit.fileManageRemotes", async (ctx: unknown) => {
+            await manageRemotesFileFromContext(
+                ctx,
+                gitOps,
+                deps.context.extensionUri,
+                async (repoRoot) => {
+                    await refreshService().refreshCommitPanels();
+                    if (areSameRepositoryRoot(repoRoot, getRepoRoot())) {
+                        await refreshActiveRepository();
+                    }
+                },
+            );
+        }),
         vscode.commands.registerCommand(
             "intelligit.fileContextUnstashChanges",
             async (ctx: unknown) => {
@@ -815,6 +839,46 @@ function registerCommitFileCommands(deps: RepositoryCommandsDeps): void {
                         deps.openConflictSessionForRepository(scopedGitOps, repoRoot, {}),
                 });
             },
+        ),
+        vscode.commands.registerCommand("intelligit.github.createPullRequest", (ctx: unknown) =>
+            createGitHubPullRequestFromContext(ctx, gitOps),
+        ),
+        vscode.commands.registerCommand("intelligit.github.viewPullRequests", (ctx: unknown) =>
+            viewGitHubPullRequestsFromContext(ctx, gitOps),
+        ),
+        vscode.commands.registerCommand("intelligit.github.syncFork", (ctx: unknown) =>
+            syncGitHubForkFromContext(ctx, gitOps, {
+                refresh: async (repoRoot) => {
+                    await refreshService().refreshCommitPanels();
+                    if (areSameRepositoryRoot(repoRoot, getRepoRoot()))
+                        await refreshActiveRepository();
+                },
+                refreshConflicts: async (repoRoot) => {
+                    await refreshService().refreshCommitPanels();
+                    if (areSameRepositoryRoot(repoRoot, getRepoRoot()))
+                        await refreshService().refreshConflictUi();
+                },
+                openConflictSession: async (scopedGitOps, repoRoot) =>
+                    deps.openConflictSessionForRepository(scopedGitOps, repoRoot, {}),
+            }),
+        ),
+        vscode.commands.registerCommand("intelligit.github.createGist", (ctx: unknown) =>
+            createGitHubGistFromContext(ctx, gitOps),
+        ),
+        vscode.commands.registerCommand("intelligit.github.viewInBrowser", (ctx: unknown) =>
+            viewGitHubFileFromContext(ctx, gitOps),
+        ),
+        vscode.commands.registerCommand("intelligit.github.shareProject", (ctx: unknown) =>
+            shareGitHubProjectFromContext(ctx, gitOps),
+        ),
+        vscode.commands.registerCommand("intelligit.github.cloneRepository", () =>
+            runGitHubCloneFlow(),
+        ),
+        vscode.commands.registerCommand("intelligit.cloneRepository", () =>
+            runCloneFlow(deps.context.secrets),
+        ),
+        vscode.commands.registerCommand("intelligit.github.manageAccounts", () =>
+            manageGitHubAccounts(),
         ),
         vscode.commands.registerCommand("intelligit.filePull", async (ctx: unknown) => {
             await pullFileRepositoryFromContext(ctx, gitOps, async (scopedGitOps, repoRoot) => {
