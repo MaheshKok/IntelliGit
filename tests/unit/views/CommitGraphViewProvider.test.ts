@@ -41,6 +41,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { gitSpellingOf } from "../../helpers/gitPathSpelling";
 
 import { createCommitInfoVscodeDouble } from "../../visual/recorder/commitInfoVscodeDouble";
 
@@ -399,7 +400,7 @@ describe("Pull provider root binding", () => {
                 expect(
                     preparedRoots,
                     "preparation must stay on A even when the same executor switches to B",
-                ).toEqual([rootA]);
+                ).toEqual([path.resolve(gitSpellingOf(rootA))]);
                 expect(
                     readFileSync(path.join(rootA, "remote.txt"), "utf8"),
                     "the originally approved A must receive the pull",
@@ -423,7 +424,7 @@ describe("Pull provider root binding", () => {
                     expect(
                         refreshedRoots,
                         "the original Changes runtime must refresh A after the shared executor switches to B",
-                    ).toEqual([rootA]);
+                    ).toEqual([gitSpellingOf(rootA)]);
             } finally {
                 resume?.();
                 dispose?.();

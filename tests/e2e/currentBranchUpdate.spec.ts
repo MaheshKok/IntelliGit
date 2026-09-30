@@ -28,10 +28,10 @@ test("current branch Update requests consent and restores local work after chang
         await expectPullConsent(page);
         await page.screenshot({ path: testInfo.outputPath("current-update-consent.png") });
         await page.getByRole("button", { name: "Save Changes and Pull", exact: true }).click();
-        await expectRestoredPull(fixtureWorkspace.workspace, prepared);
         await expect(page.locator(".notifications-toasts")).toContainText(
             /local changes were restored/i,
         );
+        await expectRestoredPull(fixtureWorkspace.workspace, prepared);
     } finally {
         await app.close();
     }

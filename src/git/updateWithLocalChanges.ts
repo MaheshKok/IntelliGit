@@ -16,7 +16,7 @@ export interface PullUpdateContext {
 }
 
 /** A retained recovery copy. Only its immutable object ID is ever used for restoration. */
-export interface PullUpdateBackup {
+interface PullUpdateBackup {
     oid: string;
     message: string;
 }
@@ -33,7 +33,7 @@ export type PullUpdateRefusal =
     | "context-changed";
 
 /** Failures retain diagnostics and distinguish restored work from uncertain partial mutations. */
-export interface PullUpdateFailure {
+interface PullUpdateFailure {
     kind: "failed";
     phase: "preflight" | "save" | "pull" | "restore";
     error: unknown;

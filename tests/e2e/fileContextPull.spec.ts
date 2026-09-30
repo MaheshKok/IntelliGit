@@ -110,10 +110,10 @@ test("dirty file Pull restores split staging and untracked bytes after changed u
         await expectPullConsent(page);
         await page.screenshot({ path: testInfo.outputPath("dirty-pull-consent.png") });
         await page.getByRole("button", { name: "Save Changes and Pull", exact: true }).click();
-        await expectRestoredPull(fixtureWorkspace.workspace, prepared);
         await expect(page.locator(".notifications-toasts")).toContainText(
             /local changes were restored/i,
         );
+        await expectRestoredPull(fixtureWorkspace.workspace, prepared);
     } finally {
         await app.close();
     }

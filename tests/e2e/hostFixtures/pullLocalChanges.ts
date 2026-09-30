@@ -34,7 +34,7 @@ export async function prepareDirtyPull(workspace: FixtureWorkspace, collision = 
     git(["commit", "-m", "Seed split staging for native Pull"]);
     git(["push", "origin", "HEAD:refs/heads/main"]);
     const author = path.join(path.dirname(workspace.profileDir), "pull-author");
-    git(["clone", "--quiet", workspace.originRoot, author]);
+    git(["clone", "--quiet", "--branch", "main", workspace.originRoot, author]);
     await writeFile(path.join(author, INCOMING_PATH), INCOMING);
     git(["add", "--", INCOMING_PATH], author);
     git(["commit", "-m", "Change incoming content for native Pull"], author);
@@ -66,7 +66,7 @@ export async function readPullState(workspace: FixtureWorkspace, untrackedPath: 
     };
 }
 
-/** Launches the real extension after fixture mutations finish, without invoking the action by RPC. */
+/** Launches the real extension and closes it if initialization fails before the caller receives it. */
 export async function launchPullFixture(fixture: FixtureWorkspaceFixture) {
     const repoRoot = path.resolve(__dirname, "../../..");
     const app = await launchFixtureWorkspace({
@@ -76,11 +76,16 @@ export async function launchPullFixture(fixture: FixtureWorkspaceFixture) {
         channelDir: fixture.channelDir,
         timeout: 60_000,
     });
-    const page = await app.firstWindow();
-    await page.waitForLoadState("domcontentloaded");
-    await dismissFirstRunDialogs(page);
-    await waitForE2eChannelReady(fixture.channelDir);
-    return { app, page };
+    try {
+        const page = await app.firstWindow();
+        await page.waitForLoadState("domcontentloaded");
+        await dismissFirstRunDialogs(page);
+        await waitForE2eChannelReady(fixture.channelDir);
+        return { app, page };
+    } catch (error) {
+        await app.close().catch(() => undefined);
+        throw error;
+    }
 }
 
 /** Chooses the existing Pull command from the native Explorer context menu. */
