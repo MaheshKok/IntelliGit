@@ -887,12 +887,13 @@ describe("registerRepositoryCommands", () => {
 
     it("registers Annotate with Git Blame through the file-context wrapper", async () => {
         const gitOps = makeGitOps();
-        registerRepositoryCommands(makeDeps(gitOps));
+        const deps = makeDeps(gitOps);
+        registerRepositoryCommands(deps);
         const context = { clicked: "file" };
 
         await mocks.commands.get("intelligit.annotateWithGitBlame")?.(context);
 
-        expect(mocks.annotateWithGitBlame).toHaveBeenCalledWith(context, gitOps);
+        expect(mocks.annotateWithGitBlame).toHaveBeenCalledWith(context, gitOps, deps.context);
     });
 
     it("refreshes active-repository data after fetching the active file repository", async () => {

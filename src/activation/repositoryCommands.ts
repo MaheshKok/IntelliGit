@@ -514,7 +514,7 @@ function registerMergeCommands(deps: RepositoryCommandsDeps): void {
         vscode.commands.registerCommand(
             "intelligit.annotateWithGitBlame",
             async (ctx?: unknown) => {
-                await annotateWithGitBlame(ctx, gitOps);
+                await annotateWithGitBlame(ctx, gitOps, context);
             },
         ),
         vscode.commands.registerCommand("intelligit.openConflictSession", async (ctx?: unknown) => {

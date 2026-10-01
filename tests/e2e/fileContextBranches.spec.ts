@@ -89,6 +89,8 @@ test("shows Branches in three native menus and cancels without Git mutation befo
         const branchMenuItem = page.getByRole("menuitem", { name: /^Branches(?:\.\.\.|…)/ });
         await expect(branchMenuItem).toBeVisible();
         await page.screenshot({ path: testInfo.outputPath("branches-tab-menu.png") });
+        // Move off the parent so its hover cannot reopen the submenu after Escape.
+        await branchMenuItem.hover();
         await branchMenuItem.press("Escape");
         await expect(branchMenuItem).toBeHidden();
         await expect(page.getByRole("menuitem", { name: "IntelliGit", exact: true })).toBeVisible();

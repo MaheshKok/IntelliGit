@@ -334,6 +334,19 @@ describe("GitExecutor", () => {
         expect(output.truncated).toBe(true);
     });
 
+    itPosix("cancels a long-running real process and releases its abort listener", async () => {
+        await withFakeGit("printf ready; exec sleep 30", async (executor) => {
+            const controller = new AbortController();
+            const started = Date.now();
+            const running = executor.runBinary(["blame"], { signal: controller.signal });
+            const check = expect(running).rejects.toMatchObject({ name: "AbortError" });
+            await new Promise((resolve) => setTimeout(resolve, 100));
+            controller.abort();
+            await check;
+            expect(Date.now() - started).toBeLessThan(2_000);
+        });
+    });
+
     itPosix("names the terminating signal when the Git process is killed", async () => {
         await expect(runFakeGit("kill -TERM $$", ["commit"])).rejects.toThrow(
             "git commit was terminated by signal SIGTERM",

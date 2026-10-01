@@ -53,6 +53,18 @@ IntelliGit pulls those workflows into one JetBrains-inspired surface:
 
 ## Feature Gallery
 
+### Editor Blame Annotations
+
+Right-click a tracked file, editor tab, or source editor and choose
+**IntelliGit > Annotate with Git Blame** to toggle a fixed-width annotation
+column before the source on each line. It shows the short commit, author date,
+and author; hover for the full commit and message. The source remains editable,
+and annotations refresh after buffer edits, saves, and repository changes.
+Unsaved lines are labeled **Uncommitted changes**, without writing the file.
+
+VS Code's public extension API places this column inside the text area, after
+the line numbers; it cannot add a separate JetBrains-style gutter outside them.
+
 ### Three-Pane Merge Editor
 
 ![IntelliGit three-pane merge editor showing Yours, editable Result, and Theirs side by side](media/screenshots/three-pane-merge-editor.png)
@@ -308,6 +320,16 @@ bun run test -- tests/unit/gitops.test.ts
 
 # Run tests matching a pattern.
 bun run test -- -t "CommitPanelApp"
+```
+
+The Electron E2E suite uses a pinned VS Code build by default. To validate with
+an existing installation, set `INTELLIGIT_VSCODE_EXECUTABLE` to its executable
+path (outside this checkout):
+
+```bash
+INTELLIGIT_VSCODE_EXECUTABLE="/Applications/Visual Studio Code.app/Contents/MacOS/Code" \
+  bunx playwright test --config playwright.e2e.config.ts --project=e2e \
+  tests/e2e/fileContextAnnotateWithGitBlame.spec.ts
 ```
 
 ## Architecture

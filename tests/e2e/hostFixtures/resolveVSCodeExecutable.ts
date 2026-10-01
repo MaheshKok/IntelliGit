@@ -37,7 +37,7 @@
 
 import path from "node:path";
 import os from "node:os";
-import { mkdir, writeFile } from "node:fs/promises";
+import { access, mkdir, writeFile } from "node:fs/promises";
 import { downloadAndUnzipVSCode } from "@vscode/test-electron";
 import { VSCODE_VERSION } from "./vscodeVersion";
 
@@ -120,6 +120,13 @@ export async function resolveVSCodeExecutable(
     repoRoot: string,
     version = resolveVSCodeVersion(),
 ): Promise<string> {
+    const installedExecutable = process.env.INTELLIGIT_VSCODE_EXECUTABLE?.trim();
+    if (installedExecutable) {
+        const executablePath = path.resolve(installedExecutable);
+        assertExecutableIsOutsideRepo(executablePath, repoRoot);
+        await access(executablePath);
+        return executablePath;
+    }
     const cachePath = vscodeCachePath();
     // `downloadAndUnzipVSCode` creates the cache directory with a NON-recursive `mkdirSync`, so it
     // works only where the parent already exists. Nothing guaranteed that. On macOS the parent got
