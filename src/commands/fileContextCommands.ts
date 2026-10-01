@@ -24,6 +24,7 @@ import { runRebaseCommand } from "./rebaseCommand";
 import { rejectWhenOperationInProgress } from "./operationFence";
 import { runResetWorkflow } from "./commitBasicActions";
 import { ManageRemotesPanel } from "../views/ManageRemotesPanel";
+import { getFileBlameAnnotations } from "../services/fileBlameAnnotations";
 
 /** Immutable clicked-file ownership and repository scope captured before user interaction. */
 export interface ResolvedFileCommandContext {
@@ -33,8 +34,6 @@ export interface ResolvedFileCommandContext {
     repoRelativePath: string;
     gitOps: GitOps;
 }
-
-const MAX_GIT_BLAME_OUTPUT_BYTES = 4 * 1024 * 1024;
 
 /** Captured-repository actions; callers refresh active views only if their root still matches. */
 interface FileMergeCallbacks {
@@ -1369,13 +1368,16 @@ export async function showCurrentRevision(ctx: unknown, gitOps: GitOps): Promise
 }
 
 /**
- * Opens Git blame output for a selected local file in an immutable virtual document.
+ * Toggles line-start Git blame annotations in the selected file's native source editor.
  *
- * Dirty documents are passed to Git through stdin so the view reflects the exact editor buffer,
- * including an empty buffer, without writing the document or repository. Output is capped at
- * 4 MiB and discarded entirely when Git reports truncation.
+ * Repository ownership is captured before opening the editor; the activation-owned service
+ * keeps unsaved text, split editors, and subsequent repository changes aligned with each line.
  */
-export async function annotateWithGitBlame(ctx: unknown, gitOps: GitOps): Promise<void> {
+export async function annotateWithGitBlame(
+    ctx: unknown,
+    gitOps: GitOps,
+    context: vscode.ExtensionContext,
+): Promise<void> {
     try {
         const resolved = await resolveFileCommandContext(ctx, gitOps);
         if (!resolved) {
@@ -1385,32 +1387,7 @@ export async function annotateWithGitBlame(ctx: unknown, gitOps: GitOps): Promis
             return;
         }
 
-        const dirtyDocument = vscode.workspace.textDocuments.find(
-            (document) =>
-                document.isDirty && document.uri.toString() === resolved.selectedUri.toString(),
-        );
-        const args = ["blame", "--date=short"];
-        if (dirtyDocument) args.push("--contents", "-");
-        args.push("--", resolved.repoRelativePath);
-
-        const executor = new GitExecutor(resolved.repoRoot);
-        const result = await executor.runBinary(args, {
-            ...(dirtyDocument ? { input: Buffer.from(dirtyDocument.getText()) } : {}),
-            maxOutputBytes: MAX_GIT_BLAME_OUTPUT_BYTES,
-        });
-        if (result.truncated) {
-            await vscode.window.showErrorMessage(
-                vscode.l10n.t("Git Blame output is too large to open (maximum 4 MiB)."),
-            );
-            return;
-        }
-
-        const uri = createReadonlyDiffUri(
-            `${resolved.repoRelativePath}.blame`,
-            result.stdout.toString("utf8"),
-            vscode.l10n.t("Git Blame"),
-        );
-        await vscode.window.showTextDocument(uri);
+        await getFileBlameAnnotations(context).toggle(resolved);
     } catch (error) {
         await vscode.window.showErrorMessage(
             vscode.l10n.t("Annotate with Git Blame failed: {message}", {

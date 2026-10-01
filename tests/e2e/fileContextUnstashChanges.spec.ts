@@ -71,12 +71,11 @@ async function chooseExplorerUnstash(page: Page, file: ReturnType<Page["locator"
     await chooseUnstash(page, () => openExplorerMenu(page, file));
 }
 
-/** Explicitly selects an item from the currently visible native QuickPick. */
+/** Waits for the requested step and clicks its exact label without typing into a closing picker. */
 async function pick(page: Page, value: string): Promise<void> {
-    const input = page.locator(".quick-input-widget input").first();
-    await expect(input).toBeVisible();
-    await input.fill(value);
-    await page.keyboard.press("Enter");
+    const option = page.getByRole("option").filter({ has: page.getByText(value, { exact: true }) });
+    await expect(option).toBeVisible();
+    await option.click();
 }
 
 test("Explorer, tab and editor unstash clicked B by OID while active A stays unchanged", async ({
@@ -112,7 +111,12 @@ test("Explorer, tab and editor unstash clicked B by OID while active A stays unc
     const app = await launchFixtureWorkspace({
         executablePath: await resolveVSCodeExecutable(extensionRoot),
         repoRoot: extensionRoot,
-        workspace: fixtureWorkspace.workspace,
+        // Background status reads must not compete with this test's external fixture writes.
+        // Required mutation locks still apply; only optional index-cache writes are disabled.
+        workspace: {
+            ...fixtureWorkspace.workspace,
+            env: { ...env, GIT_OPTIONAL_LOCKS: "0" },
+        },
         channelDir: fixtureWorkspace.channelDir,
         timeout: 60_000,
     });
@@ -217,11 +221,11 @@ test("Explorer, tab and editor unstash clicked B by OID while active A stays unc
         const branchOid = git(b, env, ["rev-parse", "stash@{0}"]);
         await chooseExplorerUnstash(page, file);
         await pick(page, "stash@{0}");
-        await pick(page, "As New Branch");
-        const branchInput = page.locator(".quick-input-widget input").first();
+        await pick(page, "As New Branch…");
+        const branchInput = page.getByPlaceholder("branch-name", { exact: true });
         await expect(branchInput).toBeVisible();
         await branchInput.fill("feature/native-unstash");
-        await page.keyboard.press("Enter");
+        await branchInput.press("Enter");
         await expect
             .poll(() => git(b, env, ["branch", "--show-current"]))
             .toBe("feature/native-unstash");

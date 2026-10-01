@@ -201,6 +201,8 @@ test("Explorer, tab, and editor stash clicked B repository while active A stays 
         await file.click({ button: "right" });
         await chooseStash(page);
         const cancelInput = page.locator(".quick-input-widget input").first();
+        // VS Code reuses this input and retains its value while the next prompt is still hidden.
+        await expect(cancelInput).toBeVisible();
         await expect(cancelInput).toHaveValue("Stashed changes");
         await cancelInput.press("Escape");
         await expect(cancelInput).toBeHidden();

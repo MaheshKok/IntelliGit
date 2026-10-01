@@ -115,4 +115,85 @@ describe("GitExecutor stdin stream failures", () => {
 
         await expect(result).rejects.toThrow(/exited with 128: fatal: not a valid object name/);
     });
+
+    it("does not spawn Git when cancellation was already requested", async () => {
+        const controller = new AbortController();
+        controller.abort();
+        await expect(
+            new GitExecutor(process.cwd()).runBinary(["blame"], { signal: controller.signal }),
+        ).rejects.toMatchObject({ name: "AbortError" });
+        expect(spawnMock).not.toHaveBeenCalled();
+    });
+
+    it("kills cancelled Git and rejects only after the child closes", async () => {
+        const child = fakeChild();
+        child.kill = vi.fn(() => true);
+        spawnMock.mockReturnValue(child);
+        const controller = new AbortController();
+        const remove = vi.spyOn(controller.signal, "removeEventListener");
+        const result = new GitExecutor(process.cwd()).runBinary(["blame"], {
+            input: Buffer.from("source"),
+            signal: controller.signal,
+        });
+        let settled = false;
+        void result.catch(() => {
+            settled = true;
+        });
+        controller.abort();
+        expect(child.kill).toHaveBeenCalledOnce();
+        await Promise.resolve();
+        expect(settled).toBe(false);
+        child.stdin.emit("error", streamError("ERR_STREAM_DESTROYED", "cancelled stdin"));
+        child.stdout.end();
+        child.stderr.end();
+        child.emit("close", null, "SIGTERM");
+        await expect(result).rejects.toMatchObject({ name: "AbortError" });
+        expect(remove).toHaveBeenCalledWith("abort", expect.any(Function));
+    });
+
+    it("removes the abort listener after a normal exit", async () => {
+        const child = fakeChild();
+        child.kill = vi.fn(() => true);
+        spawnMock.mockReturnValue(child);
+        const controller = new AbortController();
+        const result = new GitExecutor(process.cwd()).runBinary(["blame"], {
+            signal: controller.signal,
+        });
+        exitWith(child, 0);
+        await expect(result).resolves.toMatchObject({ exitCode: 0 });
+        controller.abort();
+        expect(child.kill).not.toHaveBeenCalled();
+    });
+
+    it("removes the abort listener after a spawn failure", async () => {
+        const child = fakeChild();
+        child.kill = vi.fn(() => true);
+        spawnMock.mockReturnValue(child);
+        const controller = new AbortController();
+        const result = new GitExecutor(process.cwd()).runBinary(["blame"], {
+            signal: controller.signal,
+        });
+        child.emit("error", streamError("ENOENT", "Git unavailable"));
+        await expect(result).rejects.toThrow("Git unavailable");
+        child.stdout.end();
+        child.stderr.end();
+        child.emit("close", -1, null);
+        controller.abort();
+        expect(child.kill).not.toHaveBeenCalled();
+    });
+
+    it("preserves genuine stdin failures during cancellation", async () => {
+        const child = fakeChild();
+        spawnMock.mockReturnValue(child);
+        const controller = new AbortController();
+        const result = new GitExecutor(process.cwd()).runBinary(["blame"], {
+            signal: controller.signal,
+        });
+        controller.abort();
+        child.stdin.emit("error", streamError("ENOSPC", "no space left on device"));
+        child.stdout.end();
+        child.stderr.end();
+        child.emit("close", null, "SIGTERM");
+        await expect(result).rejects.toThrow("no space left on device");
+    });
 });

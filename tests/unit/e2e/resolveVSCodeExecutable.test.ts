@@ -1,9 +1,9 @@
 import { readFileSync } from "node:fs";
-import { mkdtemp } from "node:fs/promises";
+import { mkdtemp, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
     resolveVSCodeExecutable,
@@ -71,12 +71,20 @@ describe("resolveVSCodeVersion", () => {
 describe("resolveVSCodeExecutable", () => {
     /** Restored rather than deleted: CI legitimately sets this, and this file does not own it. */
     const realCacheOverride = process.env.INTELLIGIT_VSCODE_CACHE;
+    const realExecutableOverride = process.env.INTELLIGIT_VSCODE_EXECUTABLE;
     const scratchRoots: string[] = [];
+
+    beforeEach(() => {
+        delete process.env.INTELLIGIT_VSCODE_EXECUTABLE;
+        download.cacheWasDirectory = undefined;
+    });
 
     afterEach(async () => {
         vi.restoreAllMocks();
         if (realCacheOverride === undefined) delete process.env.INTELLIGIT_VSCODE_CACHE;
         else process.env.INTELLIGIT_VSCODE_CACHE = realCacheOverride;
+        if (realExecutableOverride === undefined) delete process.env.INTELLIGIT_VSCODE_EXECUTABLE;
+        else process.env.INTELLIGIT_VSCODE_EXECUTABLE = realExecutableOverride;
         await removeScratchDirectories(...scratchRoots.splice(0));
     });
 
@@ -104,5 +112,31 @@ describe("resolveVSCodeExecutable", () => {
         await resolveVSCodeExecutable(path.join(scratchRoot, "repo"));
 
         expect(download.cacheWasDirectory, "cache directory present at download time").toBe(true);
+    });
+
+    it("uses an installed executable outside the repository without downloading", async () => {
+        const root = await mkdtemp(path.join(os.tmpdir(), "intelligit-installed-code-"));
+        scratchRoots.push(root);
+        const executable = path.join(root, "Code");
+        await writeFile(executable, "");
+        process.env.INTELLIGIT_VSCODE_EXECUTABLE = ` ${executable} `;
+        expect(await resolveVSCodeExecutable(path.join(root, "repo"))).toBe(executable);
+        expect(download.cacheWasDirectory).toBeUndefined();
+    });
+
+    it("rejects an installed executable inside the repository", async () => {
+        process.env.INTELLIGIT_VSCODE_EXECUTABLE = path.resolve("repo", "Code");
+        await expect(resolveVSCodeExecutable(path.resolve("repo"))).rejects.toThrow(
+            "inside the repository",
+        );
+        expect(download.cacheWasDirectory).toBeUndefined();
+    });
+
+    it("rejects a missing installed executable without falling back to a download", async () => {
+        const root = await mkdtemp(path.join(os.tmpdir(), "intelligit-missing-code-"));
+        scratchRoots.push(root);
+        process.env.INTELLIGIT_VSCODE_EXECUTABLE = path.join(root, "missing");
+        await expect(resolveVSCodeExecutable(path.join(root, "repo"))).rejects.toThrow();
+        expect(download.cacheWasDirectory).toBeUndefined();
     });
 });

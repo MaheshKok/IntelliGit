@@ -1,3 +1,4 @@
+import path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { GitOps } from "../../../src/git/operations";
 
@@ -46,6 +47,8 @@ const mocks = vi.hoisted(() => {
         compareEditorFileWithRevision: vi.fn(async () => undefined),
         createReadonlyDiffUri: vi.fn(() => ({ scheme: "intelligit-diff", path: "/selected.ts" })),
         fetch: vi.fn(async () => undefined),
+        toggleBlame: vi.fn(async (_target: unknown) => undefined),
+        getFileBlameAnnotations: vi.fn(),
         getFileContentAtRef: vi.fn(async () => "committed HEAD content"),
         hasFileAtHead: vi.fn(async () => true),
         rollbackFiles: vi.fn(async () => undefined),
@@ -104,6 +107,9 @@ vi.mock("../../../src/services/diffService", () => ({
     createReadonlyDiffUri: mocks.createReadonlyDiffUri,
     showEditorFileDiff: mocks.showEditorFileDiff,
 }));
+vi.mock("../../../src/services/fileBlameAnnotations", () => ({
+    getFileBlameAnnotations: mocks.getFileBlameAnnotations,
+}));
 
 import {
     addFileToVcsFromContext,
@@ -138,6 +144,8 @@ const makeGitOps = (): GitOps =>
 
 beforeEach(() => {
     vi.clearAllMocks();
+    mocks.toggleBlame.mockReset().mockResolvedValue(undefined);
+    mocks.getFileBlameAnnotations.mockReturnValue({ toggle: mocks.toggleBlame });
     mocks.activeUri = mocks.FakeUri.file("/repo-a/active.ts");
     mocks.textDocuments.length = 0;
     mocks.executorRoots.length = 0;
@@ -920,68 +928,26 @@ describe("showCurrentRevision", () => {
 });
 
 describe("annotateWithGitBlame", () => {
-    const maxOutputBytes = 4 * 1024 * 1024;
+    const extensionContext = { subscriptions: [] } as unknown as import("vscode").ExtensionContext;
 
-    it("opens a readonly blame snapshot for the clicked file from its owning repository", async () => {
+    it("toggles annotations for the clicked file from its owning repository", async () => {
         const gitOps = makeGitOps();
         mocks.realpath.mockResolvedValueOnce("/private/repo/nested");
         mocks.executorRun.mockResolvedValueOnce("/private/repo\n");
-        mocks.executorRunBinary.mockResolvedValueOnce({
-            stdout: Buffer.from("abc123 (Ada 2026-09-19 1) source line\n"),
-            stderr: Buffer.alloc(0),
-            exitCode: 0,
-            truncated: false,
-        });
         const clicked = mocks.FakeUri.file("/linked/repo/nested/file with spaces.ts");
 
-        await annotateWithGitBlame(clicked, gitOps);
+        await annotateWithGitBlame(clicked, gitOps, extensionContext);
 
-        expect(mocks.executorRoots).toEqual(["/private/repo/nested", "/private/repo"]);
+        expect(mocks.executorRoots).toEqual(["/private/repo/nested"]);
         expect(gitOps.deriveFor).toHaveBeenCalledWith("/private/repo");
-        expect(mocks.executorRunBinary).toHaveBeenCalledWith(
-            ["blame", "--date=short", "--", "nested/file with spaces.ts"],
-            { maxOutputBytes },
-        );
-        expect(mocks.createReadonlyDiffUri).toHaveBeenCalledWith(
-            "nested/file with spaces.ts.blame",
-            "abc123 (Ada 2026-09-19 1) source line\n",
-            "Git Blame",
-        );
-        expect(mocks.showTextDocument).toHaveBeenCalledWith({
-            scheme: "intelligit-diff",
-            path: "/selected.ts",
+        expect(mocks.getFileBlameAnnotations).toHaveBeenCalledWith(extensionContext);
+        expect(mocks.toggleBlame).toHaveBeenCalledWith({
+            selectedUri: clicked,
+            canonicalFilePath: path.join("/private/repo/nested", "file with spaces.ts"),
+            repoRoot: "/private/repo",
+            repoRelativePath: "nested/file with spaces.ts",
+            gitOps: expect.anything(),
         });
-    });
-
-    it("passes the exact dirty document through blame stdin, including empty text", async () => {
-        const gitOps = makeGitOps();
-        const clicked = mocks.FakeUri.file("/repo-b/src/active.ts");
-        mocks.textDocuments.push({ uri: clicked, isDirty: true, getText: () => "" });
-
-        await annotateWithGitBlame(clicked, gitOps);
-
-        expect(mocks.executorRunBinary).toHaveBeenCalledWith(
-            ["blame", "--date=short", "--contents", "-", "--", "src/active.ts"],
-            { input: Buffer.alloc(0), maxOutputBytes },
-        );
-    });
-
-    it("rejects truncated blame output without opening a partial document", async () => {
-        const gitOps = makeGitOps();
-        mocks.executorRunBinary.mockResolvedValueOnce({
-            stdout: Buffer.alloc(maxOutputBytes, 0x61),
-            stderr: Buffer.alloc(0),
-            exitCode: 0,
-            truncated: true,
-        });
-
-        await annotateWithGitBlame(mocks.FakeUri.file("/repo-b/large.ts"), gitOps);
-
-        expect(mocks.createReadonlyDiffUri).not.toHaveBeenCalled();
-        expect(mocks.showTextDocument).not.toHaveBeenCalled();
-        expect(mocks.showErrorMessage).toHaveBeenCalledWith(
-            "Git Blame output is too large to open (maximum 4 MiB).",
-        );
     });
 
     it.each([
@@ -992,7 +958,7 @@ describe("annotateWithGitBlame", () => {
         async (context) => {
             const gitOps = makeGitOps();
 
-            await annotateWithGitBlame(context, gitOps);
+            await annotateWithGitBlame(context, gitOps, extensionContext);
 
             expect(gitOps.deriveFor).not.toHaveBeenCalled();
             expect(mocks.executorRunBinary).not.toHaveBeenCalled();
@@ -1006,9 +972,13 @@ describe("annotateWithGitBlame", () => {
 
     it("reports Git blame failures without opening a document", async () => {
         const gitOps = makeGitOps();
-        mocks.executorRunBinary.mockRejectedValueOnce(new Error("fatal: no such path"));
+        mocks.toggleBlame.mockRejectedValueOnce(new Error("fatal: no such path"));
 
-        await annotateWithGitBlame(mocks.FakeUri.file("/repo-b/untracked.ts"), gitOps);
+        await annotateWithGitBlame(
+            mocks.FakeUri.file("/repo-b/untracked.ts"),
+            gitOps,
+            extensionContext,
+        );
 
         expect(mocks.createReadonlyDiffUri).not.toHaveBeenCalled();
         expect(mocks.showTextDocument).not.toHaveBeenCalled();

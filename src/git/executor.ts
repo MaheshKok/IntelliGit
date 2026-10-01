@@ -12,6 +12,8 @@ export interface GitBinaryRunOptions {
     env?: Record<string, string>;
     /** Stops stdout acquisition after this many bytes, retaining only the bounded prefix. */
     maxOutputBytes?: number;
+    /** Cancels this invocation and waits for the Git process to close before rejecting. */
+    signal?: AbortSignal;
 }
 
 /** Raw process result for a binary Git invocation; streamed stdout is empty. */
@@ -158,6 +160,7 @@ export class GitExecutor {
         args: string[],
         options: GitBinaryRunOptions = {},
     ): Promise<GitBinaryRunResult> {
+        options.signal?.throwIfAborted();
         const expectedExitCodes = options.expectedExitCodes ?? [0];
         if (options.outputFile && options.maxOutputBytes !== undefined) {
             throw new Error(
@@ -176,6 +179,15 @@ export class GitExecutor {
             let stdoutBytes = 0;
             let truncated = false;
             let terminatedForOutputLimit = false;
+            let cancelled = false;
+            const abort = (): void => {
+                cancelled = true;
+                child.kill();
+            };
+            const removeAbortListener = (): void =>
+                options.signal?.removeEventListener("abort", abort);
+            options.signal?.addEventListener("abort", abort, { once: true });
+            if (options.signal?.aborted) abort();
             const stdoutDone = output
                 ? pipeline(child.stdout, output)
                 : new Promise<void>((resolve) => {
@@ -219,6 +231,12 @@ export class GitExecutor {
                     reject(error instanceof Error ? error : new Error(String(error)));
                     return;
                 }
+                if (cancelled) {
+                    reject(
+                        Object.assign(new Error("Git command cancelled."), { name: "AbortError" }),
+                    );
+                    return;
+                }
                 const result = {
                     stdout: output ? Buffer.alloc(0) : Buffer.concat(stdout),
                     stderr: Buffer.concat(stderr),
@@ -239,8 +257,12 @@ export class GitExecutor {
                     : `exited with ${result.exitCode}`;
                 reject(new Error(`git ${command} ${outcome}: ${stderrText}`));
             };
-            child.once("error", reject);
+            child.once("error", (error) => {
+                removeAbortListener();
+                reject(error);
+            });
             child.once("close", (exitCode, signal) => {
+                removeAbortListener();
                 void finish(exitCode, signal);
             });
             // A child that exits without draining stdin breaks the pipe, so this end() fails
@@ -251,7 +273,9 @@ export class GitExecutor {
             // input never fully arrived, and swallowing it would report a clean exit for a
             // command that read a truncated stdin.
             child.stdin.once("error", (error: NodeJS.ErrnoException) => {
-                if (!isExpectedStdinFailure(error, terminatedForOutputLimit)) reject(error);
+                if (!isExpectedStdinFailure(error, terminatedForOutputLimit || cancelled)) {
+                    reject(error);
+                }
             });
             if (options.input) child.stdin.end(options.input);
             else child.stdin.end();
@@ -265,7 +289,7 @@ export class GitExecutor {
  * `EPIPE` means the child was gone before the input landed, which the close handler reports
  * on its own terms; there is nothing left to say about it. `ERR_STREAM_DESTROYED` is only
  * that harmless when this executor destroyed the stream itself by killing a child that
- * overran the output limit -- otherwise the stream died for a reason nobody recorded.
+ * overran the output limit or was cancelled -- otherwise the stream died for an unrecorded reason.
  *
  * Everything else is a genuine write failure, and it has to reach the caller. Git reads the
  * input it was given and exits 0 on what it got, so a swallowed failure here is reported as a
