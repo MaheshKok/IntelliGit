@@ -838,5 +838,7 @@
     "Pull could not start: {message}": "Le tirage n’a pas pu démarrer : {message}",
     "Pull finished, but the view could not refresh: {message}": "Le tirage est terminé, mais la vue n’a pas pu être actualisée : {message}",
     "The conflict view could not open: {message}": "La vue des conflits n’a pas pu être ouverte : {message}",
-    "The requested repository is no longer available. Select it again before opening conflicts.": "Le dépôt demandé n’est plus disponible. Sélectionnez-le à nouveau avant d’ouvrir les conflits."
+    "The requested repository is no longer available. Select it again before opening conflicts.": "Le dépôt demandé n’est plus disponible. Sélectionnez-le à nouveau avant d’ouvrir les conflits.",
+    "Set intelligit.updateStrategy to \"rebase\" or \"merge\" before pulling.": "Définissez intelligit.updateStrategy sur \"rebase\" ou \"merge\" avant d'exécuter Pull.",
+    "Workspace folders for this repository have different intelligit.updateStrategy values. Choose the same value in each folder before pulling.": "Les dossiers de l'espace de travail de ce dépôt ont des valeurs différentes pour intelligit.updateStrategy. Choisissez la même valeur dans chaque dossier avant d'exécuter Pull."
 }

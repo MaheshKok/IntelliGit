@@ -1,6 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Branch } from "../../../src/types";
 
+vi.mock("../../../src/services/updateStrategy", () => ({
+    readPullUpdateStrategy: vi.fn(async () => "merge"),
+}));
+
 const mocks = vi.hoisted(() => ({
     showErrorMessage: vi.fn(),
     showTimedInformationMessage: vi.fn(),
@@ -61,7 +65,7 @@ function makeDeps(overrides: { hasUncommittedChanges?: boolean } = {}) {
         hasUncommittedChanges: vi.fn(async () => overrides.hasUncommittedChanges ?? false),
         getBranches: vi.fn(async () => [CURRENT, OTHER]),
         getConflictFilesDetailed: vi.fn(async () => []),
-        preparePullRebaseWithLocalChanges: vi.fn(async () => ({
+        preparePullWithLocalChanges: vi.fn(async () => ({
             kind: "ready",
             context: {
                 repositoryRoot: "/captured",
@@ -71,7 +75,7 @@ function makeDeps(overrides: { hasUncommittedChanges?: boolean } = {}) {
                 dirty: overrides.hasUncommittedChanges ?? false,
             },
         })),
-        pullRebasePreservingLocalChanges: vi.fn(async () => ({ kind: "complete" })),
+        pullPreservingLocalChanges: vi.fn(async () => ({ kind: "complete" })),
     };
     return {
         executor,
@@ -105,26 +109,25 @@ describe("intelligit.updateBranch", () => {
         vi.clearAllMocks();
     });
 
-    // The Changes toolbar's down-arrow and the graph toolbar's down-arrow both reach
-    // `runGitOperationFromPanel(..., "pull")`, which runs `pull --rebase`. The branch menu's
-    // "Update" ran `fetch` plus a merge instead, so the same intent produced two different
-    // histories depending on which control the user clicked (#218). All three run one operation
-    // now, so no `merge` may reach the executor for the checked-out branch.
-    it("routes Update on the current branch through the shared pull --rebase action", async () => {
+    // Current Update shares Pull's selected strategy instead of integrating the tracked ref separately.
+    it("routes Update on the current branch through the selected shared Pull strategy", async () => {
         const { executor, gitOps, deps } = makeDeps();
 
         await updateHandler(deps)({ branch: CURRENT });
 
         expect(
-            gitOps.pullRebasePreservingLocalChanges,
-            "Update on the checked-out branch did not run the shared pull --rebase operation",
+            gitOps.pullPreservingLocalChanges,
+            "Update on the checked-out branch did not run the shared Pull operation",
         ).toHaveBeenCalledTimes(1);
+        expect(gitOps.pullPreservingLocalChanges).toHaveBeenCalledWith(
+            expect.objectContaining({ strategy: "merge" }),
+        );
         const mergeCalls = executor.run.mock.calls.filter((call) =>
             (call[0] as string[] | undefined)?.includes("merge"),
         );
         expect(
             mergeCalls,
-            "Update on the checked-out branch still merged the tracked remote instead of rebasing",
+            "Update on the checked-out branch bypassed the shared Pull operation",
         ).toEqual([]);
     });
 
@@ -132,8 +135,8 @@ describe("intelligit.updateBranch", () => {
         const { executor, gitOps, deps } = makeDeps({ hasUncommittedChanges: true });
         mocks.showWarningMessage.mockResolvedValueOnce("Save Changes and Pull");
         await updateHandler(deps)({ branch: CURRENT });
-        expect(gitOps.pullRebasePreservingLocalChanges).toHaveBeenCalledWith(
-            expect.objectContaining({ saveLocalChanges: true }),
+        expect(gitOps.pullPreservingLocalChanges).toHaveBeenCalledWith(
+            expect.objectContaining({ saveLocalChanges: true, strategy: "merge" }),
         );
         expect(executor.run).not.toHaveBeenCalled();
         expect(gitOps.pullRebase).not.toHaveBeenCalled();

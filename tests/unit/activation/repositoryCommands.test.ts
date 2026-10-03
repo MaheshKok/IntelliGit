@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+vi.mock("../../../src/services/updateStrategy", () => ({
+    readPullUpdateStrategy: vi.fn(async () => "rebase"),
+}));
+
 const mocks = vi.hoisted(() => {
     const commands = new Map<string, (...args: unknown[]) => unknown>();
     const branchHandlers = new Map<string, ReturnType<typeof vi.fn>>();
@@ -1004,7 +1008,7 @@ describe("registerRepositoryCommands", () => {
 
     it("contains active-graph refresh rejection after Pull succeeds", async () => {
         const gitOps = makeGitOps();
-        gitOps.preparePullRebaseWithLocalChanges = vi.fn(async () => ({
+        gitOps.preparePullWithLocalChanges = vi.fn(async () => ({
             kind: "ready",
             context: {
                 repositoryRoot: "/repo",
@@ -1014,7 +1018,7 @@ describe("registerRepositoryCommands", () => {
                 dirty: false,
             },
         }));
-        gitOps.pullRebasePreservingLocalChanges = vi.fn(async () => ({ kind: "complete" }));
+        gitOps.pullPreservingLocalChanges = vi.fn(async () => ({ kind: "complete" }));
         const deps = makeDeps(gitOps);
         const refreshError = new Error("graph unavailable");
         deps.refreshActiveRepository = vi.fn(async () => {

@@ -256,9 +256,11 @@ test("Explorer, tab and editor unstash clicked B by OID while active A stays unc
         git(b, env, ["stash", "clear"]);
         const emptyHead = git(b, env, ["rev-parse", "HEAD"]);
         await chooseExplorerUnstash(page, file);
-        await expect(
-            page.getByRole("alert").filter({ hasText: "No stashes found in" }),
-        ).toHaveCount(1);
+        // Notification history retains the result even when older toasts fill the visible stack.
+        await page.getByRole("button", { name: "Notifications", exact: true }).click();
+        await expect(page.locator(".notifications-center")).toContainText("No stashes found in");
+        await page.keyboard.press("Escape");
+        await expect(page.locator(".notifications-center")).toBeHidden();
         expect(git(b, env, ["rev-parse", "HEAD"])).toBe(emptyHead);
         expect(git(b, env, ["stash", "list", "--format=%H"])).toBe("");
 

@@ -67,15 +67,99 @@ describe("pull with local changes using real Git", () => {
     });
 
     /** Captures the exact context that a command must retain across its consent dialog. */
-    async function update(saveLocalChanges = true) {
-        const preparation = await ops.preparePullRebaseWithLocalChanges();
+    async function update(saveLocalChanges = true, strategy: "rebase" | "merge" = "rebase") {
+        const preparation = await ops.preparePullWithLocalChanges();
         expect(preparation).toMatchObject({ kind: "ready" });
         if (preparation.kind !== "ready") throw new Error("Expected ready fixture");
-        return ops.pullRebasePreservingLocalChanges({
+        return ops.pullPreservingLocalChanges({
             expected: preparation.context,
             saveLocalChanges,
+            strategy,
         });
     }
+
+    it.each(["rebase", "merge"] as const)(
+        "%s produces the selected divergent history and restores exact local work",
+        async (strategy) => {
+            executor = new GitExecutor(local, undefined, {
+                ...gitEnv,
+                GIT_EDITOR: "false",
+                GIT_SEQUENCE_EDITOR: "false",
+            });
+            ops = new GitOps(executor);
+            git(local, "config", "pull.rebase", strategy === "merge" ? "true" : "false");
+            git(local, "config", "pull.ff", "only");
+            git(local, "config", "merge.ff", "only");
+            git(local, "config", "rebase.autoStash", "true");
+            git(local, "config", "merge.autoStash", "true");
+            writeFileSync(path.join(local, "committed-local.txt"), "local commit\n");
+            git(local, "add", "committed-local.txt");
+            git(local, "commit", "-m", "local only");
+            const localHead = git(local, "rev-parse", "HEAD");
+            const incomingHead = git(upstream, "rev-parse", "HEAD");
+            writeFileSync(path.join(local, "local.txt"), "staged\n");
+            git(local, "add", "local.txt");
+            writeFileSync(path.join(local, "local.txt"), "staged\nunstaged\n");
+            writeFileSync(path.join(local, "new file.txt"), "untracked bytes\n");
+            const staged = git(local, "diff", "--cached", "--binary");
+            const unstaged = git(local, "diff", "--binary");
+            const originRefs = git(origin, "show-ref");
+            const result = await update(true, strategy);
+            expect(
+                result.kind,
+                "selected strategy must integrate despite opposite Git config",
+            ).toBe("complete");
+            expect(
+                git(local, "show", "-s", "--format=%P", "HEAD").split(" "),
+                `${strategy} must create the selected history topology`,
+            ).toEqual(strategy === "merge" ? [localHead, incomingHead] : [incomingHead]);
+            expect(git(local, "diff", "--cached", "--binary")).toBe(staged);
+            expect(git(local, "diff", "--binary")).toBe(unstaged);
+            expect(readFileSync(path.join(local, "new file.txt"), "utf8")).toBe(
+                "untracked bytes\n",
+            );
+            expect(readFileSync(path.join(local, "committed-local.txt"), "utf8")).toBe(
+                "local commit\n",
+            );
+            expect(git(origin, "show-ref")).toBe(originRefs);
+            expect(result).toHaveProperty("backup.oid", git(local, "rev-parse", "refs/stash"));
+            expect(git(local, "stash", "list", "--format=%H").split("\n")).toHaveLength(1);
+        },
+    );
+
+    it("merge fast-forwards a clean repository without an extra commit or stash", async () => {
+        git(local, "config", "pull.ff", "false");
+        git(local, "config", "merge.ff", "false");
+        const incomingHead = git(upstream, "rev-parse", "HEAD");
+        expect(await update(false, "merge")).toEqual({ kind: "complete" });
+        expect(git(local, "rev-parse", "HEAD"), "Merge must fast-forward when possible").toBe(
+            incomingHead,
+        );
+        expect(git(local, "stash", "list")).toBe("");
+    });
+
+    it("merge conflicts retain saved work without applying it into the active merge", async () => {
+        writeFileSync(path.join(local, "remote.txt"), "conflicting local commit\n");
+        git(local, "add", "remote.txt");
+        git(local, "commit", "-m", "local conflict");
+        const localHead = git(local, "rev-parse", "HEAD");
+        writeFileSync(path.join(local, "saved.txt"), "saved staged bytes\n");
+        git(local, "add", "saved.txt");
+        writeFileSync(path.join(local, "saved.txt"), "saved unstaged bytes\n");
+        writeFileSync(path.join(local, "new.txt"), "saved untracked bytes\n");
+        const result = await update(true, "merge");
+        expect(result).toMatchObject({ kind: "integration-conflict", hasUnmergedPaths: true });
+        expect(git(local, "rev-parse", "MERGE_HEAD")).toBe(git(upstream, "rev-parse", "HEAD"));
+        expect(git(local, "rev-parse", "HEAD")).toBe(localHead);
+        expect(git(local, "show", ":saved.txt")).toBe("base saved");
+        expect(readFileSync(path.join(local, "saved.txt"), "utf8")).toBe("base saved\n");
+        const backup = git(local, "rev-parse", "refs/stash");
+        expect(result).toHaveProperty("backup.oid", backup);
+        expect(git(local, "show", `${backup}^2:saved.txt`)).toBe("saved staged bytes");
+        expect(git(local, "show", `${backup}:saved.txt`)).toBe("saved unstaged bytes");
+        expect(git(local, "show", `${backup}^3:new.txt`)).toBe("saved untracked bytes");
+        expect(() => readFileSync(path.join(local, "new.txt"))).toThrow();
+    });
 
     it("clean update creates no stash and never changes origin refs", async () => {
         const before = git(origin, "show-ref");
@@ -151,14 +235,14 @@ describe("pull with local changes using real Git", () => {
         if (reason === "no-upstream") git(local, "branch", "--unset-upstream");
         if (reason === "detached") git(local, "checkout", "--detach");
         if (reason === "unborn") git(local, "checkout", "--orphan", "unborn");
-        expect(await ops.preparePullRebaseWithLocalChanges()).toEqual({ kind: "refused", reason });
+        expect(await ops.preparePullWithLocalChanges()).toEqual({ kind: "refused", reason });
         expect(git(local, "stash", "list")).toBe("");
     });
 
     it("an untracked nested repository refuses before stash", async () => {
         git(local, "init", "nested repo");
         writeFileSync(path.join(local, "nested repo", "work.txt"), "nested work\n");
-        expect(await ops.preparePullRebaseWithLocalChanges()).toEqual({
+        expect(await ops.preparePullWithLocalChanges()).toEqual({
             kind: "refused",
             reason: "nested-repository",
         });
@@ -173,7 +257,7 @@ describe("pull with local changes using real Git", () => {
         git(local, "commit", "-m", "clean submodule");
         expect(await update()).toMatchObject({ kind: "complete" });
         writeFileSync(path.join(local, "module", "untracked.txt"), "module work\n");
-        expect(await ops.preparePullRebaseWithLocalChanges()).toEqual({
+        expect(await ops.preparePullWithLocalChanges()).toEqual({
             kind: "refused",
             reason: "unsupported-submodule",
         });
@@ -182,7 +266,7 @@ describe("pull with local changes using real Git", () => {
 
     it("staged gitlink changes are explicitly unsupported", async () => {
         git(local, "-c", "protocol.file.allow=always", "submodule", "add", origin, "module");
-        expect(await ops.preparePullRebaseWithLocalChanges()).toEqual({
+        expect(await ops.preparePullWithLocalChanges()).toEqual({
             kind: "refused",
             reason: "unsupported-submodule",
         });
@@ -356,7 +440,7 @@ describe("pull with local changes using real Git", () => {
         const second = new GitExecutor(sibling, gate, gitEnv);
         writeFileSync(path.join(local, "local.txt"), "owned first worktree\n");
         writeFileSync(path.join(sibling, "saved.txt"), "second worktree bytes\n");
-        const preparation = await first.preparePullRebaseWithLocalChanges();
+        const preparation = await first.preparePullWithLocalChanges();
         if (preparation.kind !== "ready") throw new Error("Expected ready fixture");
         let releasePull!: () => void;
         let sawPull!: () => void;
@@ -397,7 +481,8 @@ describe("pull with local changes using real Git", () => {
             if (args[0] === "stash" && args[1] === "apply") applyFinished = true;
             return result;
         });
-        const updating = first.pullRebasePreservingLocalChanges({
+        const updating = first.pullPreservingLocalChanges({
+            strategy: "rebase",
             expected: preparation.context,
             saveLocalChanges: true,
         });

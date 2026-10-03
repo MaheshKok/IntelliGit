@@ -117,5 +117,8 @@
     "command.github.cloneRepository": "從 GitHub 複製儲存庫...",
     "command.github.manageAccounts": "管理 GitHub 帳戶...",
     "command.fileManageRemotes": "管理遠端存放庫…",
-    "configuration.repositoryScanMaxDepth.markdownDescription": "控制在存放庫探索期間於工作區資料夾中掃描 Git 存放庫的深度。預設值為 2。設定為 -1 可無深度限制進行掃描。"
+    "configuration.repositoryScanMaxDepth.markdownDescription": "控制在存放庫探索期間於工作區資料夾中掃描 Git 存放庫的深度。預設值為 2。設定為 -1 可無深度限制進行掃描。",
+    "configuration.updateStrategy.markdownDescription": "選擇在目前分支上手動執行「拉取」和「更新」時如何整合傳入的提交。適用於沒有本機變更的存放庫，以及有本機變更的存放庫。可依工作區資料夾設定，讓不同的存放庫使用不同的策略。「同步」以及對其他分支執行的「更新」會維持現有行為。",
+    "configuration.updateStrategy.rebase.description": "在傳入的提交之上重新套用本機提交，以維持線性歷程記錄。",
+    "configuration.updateStrategy.merge.description": "保留現有提交，並在歷程記錄分歧時建立合併提交；可行時執行快轉。"
 }

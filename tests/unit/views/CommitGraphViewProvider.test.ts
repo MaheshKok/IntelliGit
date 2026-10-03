@@ -45,6 +45,10 @@ import { gitSpellingOf } from "../../helpers/gitPathSpelling";
 
 import { createCommitInfoVscodeDouble } from "../../visual/recorder/commitInfoVscodeDouble";
 
+vi.mock("../../../src/services/updateStrategy", () => ({
+    readPullUpdateStrategy: vi.fn(async () => "rebase"),
+}));
+
 // Hoisted above the imports below -- see `recordCommitInfoWebviewFixture.test.ts` (and
 // `CommitInfoViewProvider.test.ts`, which this file otherwise mirrors) for why this must be a
 // plain, non-mocked import ahead of the `vi.mock` call it feeds.
@@ -277,8 +281,8 @@ describe("Pull provider root binding", () => {
                     resume = resolve;
                 });
                 const preparedRoots: string[] = [];
-                const originalPrepare = GitOps.prototype.preparePullRebaseWithLocalChanges;
-                vi.spyOn(GitOps.prototype, "preparePullRebaseWithLocalChanges").mockImplementation(
+                const originalPrepare = GitOps.prototype.preparePullWithLocalChanges;
+                vi.spyOn(GitOps.prototype, "preparePullWithLocalChanges").mockImplementation(
                     async function (this: GitOps) {
                         if (pauseAt === "preparation") {
                             reached();

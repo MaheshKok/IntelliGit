@@ -117,5 +117,8 @@
     "command.github.cloneRepository": "从 GitHub 克隆仓库...",
     "command.github.manageAccounts": "管理 GitHub 帐户...",
     "command.fileManageRemotes": "管理远程仓库…",
-    "configuration.repositoryScanMaxDepth.markdownDescription": "控制在存储库发现期间扫描工作区文件夹中 Git 存储库的深度。默认值为 2。设置为 -1 可无深度限制进行扫描。"
+    "configuration.repositoryScanMaxDepth.markdownDescription": "控制在存储库发现期间扫描工作区文件夹中 Git 存储库的深度。默认值为 2。设置为 -1 可无深度限制进行扫描。",
+    "configuration.updateStrategy.markdownDescription": "选择在当前分支上手动执行“拉取”和“更新”时如何整合传入的提交。适用于没有本地更改的存储库和存在本地更改的存储库。可按工作区文件夹配置，以便为不同的存储库使用不同的策略。“同步”以及对其他分支执行的“更新”保持现有行为。",
+    "configuration.updateStrategy.rebase.description": "在传入的提交之上重新应用本地提交，以保持线性历史记录。",
+    "configuration.updateStrategy.merge.description": "保留现有提交，在历史记录分叉时创建合并提交；在可能时执行快进。"
 }

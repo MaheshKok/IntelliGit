@@ -117,5 +117,8 @@
     "command.github.cloneRepository": "GitHub에서 저장소 복제...",
     "command.github.manageAccounts": "GitHub 계정 관리...",
     "command.fileManageRemotes": "원격 저장소 관리…",
-    "configuration.repositoryScanMaxDepth.markdownDescription": "리포지토리 검색 중 작업 영역 폴더 내에서 Git 리포지토리를 검색하는 깊이를 제어합니다. 기본값은 2입니다. 깊이 제한 없이 검색하려면 -1로 설정합니다."
+    "configuration.repositoryScanMaxDepth.markdownDescription": "리포지토리 검색 중 작업 영역 폴더 내에서 Git 리포지토리를 검색하는 깊이를 제어합니다. 기본값은 2입니다. 깊이 제한 없이 검색하려면 -1로 설정합니다.",
+    "configuration.updateStrategy.markdownDescription": "현재 브랜치에서 풀과 업데이트를 수동으로 실행할 때 가져온 커밋을 통합하는 방법을 선택합니다. 로컬 변경 사항이 없는 리포지토리와 있는 리포지토리에 모두 적용됩니다. 리포지토리마다 다른 전략을 사용하려면 작업 영역 폴더별로 설정하세요. 동기화와 다른 브랜치의 업데이트는 기존 동작을 유지합니다.",
+    "configuration.updateStrategy.rebase.description": "가져온 커밋 위에 로컬 커밋을 다시 적용하여 이력을 선형으로 유지합니다.",
+    "configuration.updateStrategy.merge.description": "기존 커밋을 유지하고 이력이 갈라진 경우 병합 커밋을 만듭니다. 가능한 경우에는 빨리 감기를 수행합니다."
 }

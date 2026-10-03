@@ -1,20 +1,31 @@
 import { expect, test } from "./fixtureWorkspace";
+import { mkdir, writeFile } from "node:fs/promises";
+import path from "node:path";
 import {
     expectPullConsent,
     expectRestoredPull,
     launchPullFixture,
     prepareDirtyPull,
+    pullFixtureGit,
 } from "./hostFixtures/pullLocalChanges";
 import { IntelliGitView } from "./pageObjects/intelliGitView";
 import { Workbench } from "./pageObjects/workbench";
 
 test.use({ scenario: "clean" });
 
-test("current branch Update requests consent and restores local work after changed upstream", async ({
+test("current branch Update uses the workspace Merge setting and restores local work", async ({
     fixtureWorkspace,
 }, testInfo) => {
     test.setTimeout(120_000);
-    const prepared = await prepareDirtyPull(fixtureWorkspace.workspace);
+    const workspace = fixtureWorkspace.workspace;
+    await mkdir(path.join(workspace.root, ".vscode"), { recursive: true });
+    await writeFile(
+        path.join(workspace.root, ".vscode/settings.json"),
+        JSON.stringify({ "intelligit.updateStrategy": "merge" }),
+    );
+    pullFixtureGit(workspace, ["add", "--", ".vscode/settings.json"]);
+    pullFixtureGit(workspace, ["commit", "-m", "Set native workspace update strategy"]);
+    const prepared = await prepareDirtyPull(workspace, false, true);
     const { app, page } = await launchPullFixture(fixtureWorkspace);
     try {
         await new Workbench(page).runCommand("IntelliGit: Show Git Log");
@@ -31,7 +42,7 @@ test("current branch Update requests consent and restores local work after chang
         await expect(page.locator(".notifications-toasts")).toContainText(
             /local changes were restored/i,
         );
-        await expectRestoredPull(fixtureWorkspace.workspace, prepared);
+        await expectRestoredPull(workspace, prepared, "merge");
     } finally {
         await app.close();
     }

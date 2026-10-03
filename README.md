@@ -254,6 +254,9 @@ Configure IntelliGit from VS Code Settings or `settings.json`.
     // Enable tooltips inside IntelliGit webviews.
     "intelligit.tooltips.enabled": true,
 
+    // Manual Pull and current-branch Update: "rebase" (default) or "merge".
+    "intelligit.updateStrategy": "rebase",
+
     // Open IntelliGit as a unified editor tab when Show Git Log is invoked.
     "intelligit.undockableWindow": false,
 
@@ -273,6 +276,10 @@ Configure IntelliGit from VS Code Settings or `settings.json`.
     "intelligit.reviewPrompt.enabled": true,
 }
 ```
+
+Set `intelligit.updateStrategy` to `merge` to preserve existing commits when Pull or current-branch Update integrates incoming work. Rebase is the default. Configure the setting at workspace-folder scope when different repositories need different strategies; repositories in the same folder share that folder's choice. Both options use the existing save-and-restore flow for local changes. Sync and Update on other branches retain their existing behavior.
+
+If you open a subfolder of a Git repository, its folder setting applies. When multiple opened subfolders belong to the same repository, give them the same strategy; conflicting choices stop the update before saving or pulling.
 
 ## Development
 

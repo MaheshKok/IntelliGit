@@ -70,10 +70,15 @@ export type PullUpdateResult =
       }
     | PullUpdateFailure;
 
+/** Selects how incoming commits are integrated after local work has been saved. */
+export type PullUpdateStrategy = "rebase" | "merge";
+
 /** Consent permits saving Git-reported on-disk changes, excluding ignored files and editor buffers. */
 export interface PullUpdateOptions {
     expected: PullUpdateContext;
     saveLocalChanges: boolean;
+    /** Captured before consent; Git configuration cannot override this integration choice. */
+    strategy: PullUpdateStrategy;
     onProgress?: (phase: "saving" | "pulling" | "restoring") => void;
 }
 
@@ -272,7 +277,7 @@ async function restoreBackup(
 }
 
 /**
- * Saves, rebases, and applies exactly one owned stash under the caller's already-held gate.
+ * Saves, integrates with the selected strategy, and applies one owned stash under the held gate.
  * The supplied runner must be ungated and pinned to the captured worktree. Every backup remains
  * in the stash list, including after success; conflicts require deliberate manual recovery.
  */
@@ -280,6 +285,10 @@ export async function pullUpdateWithinGate(
     run: RunGit,
     options: PullUpdateOptions,
 ): Promise<PullUpdateResult> {
+    const pullArgs = {
+        rebase: ["pull", "--rebase", "--no-autostash"],
+        merge: ["pull", "--no-rebase", "--no-autostash", "--no-edit", "--ff"],
+    }[options.strategy];
     let phase: PullUpdateFailure["phase"] = "preflight";
     let backup: PullUpdateBackup | undefined;
     let backupName: string | undefined;
@@ -333,7 +342,7 @@ export async function pullUpdateWithinGate(
         progress(options, "pulling");
         let integrationError: unknown;
         try {
-            await run(["pull", "--rebase", "--no-autostash"]);
+            await run(pullArgs);
         } catch (error) {
             integrationError = error;
         }

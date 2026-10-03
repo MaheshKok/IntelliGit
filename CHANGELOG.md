@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.36.4] - 2026-10-03
+
+### Added
+
+- Choose Rebase or Merge for manual Pull and current-branch Update with the workspace-folder-aware `intelligit.updateStrategy` setting. Rebase remains the default, and both strategies preserve the existing local-change backup and restoration flow.
+
 ## [0.36.3] - 2026-10-02
 
 ### Changed

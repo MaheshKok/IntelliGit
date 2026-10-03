@@ -117,5 +117,8 @@
     "command.github.cloneRepository": "Repository von GitHub klonen...",
     "command.github.manageAccounts": "GitHub-Konten verwalten...",
     "command.fileManageRemotes": "Remotes verwalten…",
-    "configuration.repositoryScanMaxDepth.markdownDescription": "Steuert die Tiefe, bis zu der bei der Repository-Erkennung in Arbeitsbereichsordnern nach Git-Repositories gesucht wird. Standardwert ist 2. Auf -1 setzen, um ohne Tiefenbegrenzung zu suchen."
+    "configuration.repositoryScanMaxDepth.markdownDescription": "Steuert die Tiefe, bis zu der bei der Repository-Erkennung in Arbeitsbereichsordnern nach Git-Repositories gesucht wird. Standardwert ist 2. Auf -1 setzen, um ohne Tiefenbegrenzung zu suchen.",
+    "configuration.updateStrategy.markdownDescription": "Legt fest, wie die manuell ausgeführten Aktionen Pull und Aktualisieren auf dem aktuellen Branch eingehende Commits integrieren. Gilt für Repositories ohne und mit lokalen Änderungen. Konfigurieren Sie die Einstellung pro Arbeitsbereichsordner, um für verschiedene Repositories unterschiedliche Strategien zu verwenden. Synchronisieren und Aktualisieren auf anderen Branches behalten ihr bisheriges Verhalten bei.",
+    "configuration.updateStrategy.rebase.description": "Wendet lokale Commits erneut auf die eingehenden Commits an, um einen linearen Verlauf beizubehalten.",
+    "configuration.updateStrategy.merge.description": "Behält vorhandene Commits bei und erstellt bei auseinanderlaufenden Verläufen einen Merge-Commit; führt nach Möglichkeit einen Fast-Forward aus."
 }

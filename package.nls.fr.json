@@ -117,5 +117,8 @@
     "command.github.cloneRepository": "Cloner un dépôt depuis GitHub...",
     "command.github.manageAccounts": "Gérer les comptes GitHub...",
     "command.fileManageRemotes": "Gérer les dépôts distants…",
-    "configuration.repositoryScanMaxDepth.markdownDescription": "Contrôle la profondeur utilisée pour rechercher des dépôts Git dans les dossiers de l'espace de travail lors de la découverte de dépôts. La valeur par défaut est 2. Définissez sur -1 pour rechercher sans limite de profondeur."
+    "configuration.repositoryScanMaxDepth.markdownDescription": "Contrôle la profondeur utilisée pour rechercher des dépôts Git dans les dossiers de l'espace de travail lors de la découverte de dépôts. La valeur par défaut est 2. Définissez sur -1 pour rechercher sans limite de profondeur.",
+    "configuration.updateStrategy.markdownDescription": "Choisissez comment les actions manuelles Pull et Mise à jour intègrent les commits entrants dans la branche actuelle. S'applique aux dépôts sans modifications locales comme à ceux qui en contiennent. Configurez ce paramètre par dossier de l'espace de travail pour utiliser des stratégies différentes selon les dépôts. Synchroniser et Mise à jour sur les autres branches conservent leur comportement actuel.",
+    "configuration.updateStrategy.rebase.description": "Réapplique les commits locaux par-dessus les commits entrants pour conserver un historique linéaire.",
+    "configuration.updateStrategy.merge.description": "Conserve les commits existants et crée un commit de fusion lorsque les historiques divergent ; effectue une avance rapide lorsque c'est possible."
 }

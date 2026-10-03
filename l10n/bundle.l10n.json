@@ -1,4 +1,6 @@
 {
+    "Workspace folders for this repository have different intelligit.updateStrategy values. Choose the same value in each folder before pulling.": "Workspace folders for this repository have different intelligit.updateStrategy values. Choose the same value in each folder before pulling.",
+    "Set intelligit.updateStrategy to \"rebase\" or \"merge\" before pulling.": "Set intelligit.updateStrategy to \"rebase\" or \"merge\" before pulling.",
     "Merge is only available for local files.": "Merge is only available for local files.",
     "New Branch is only available for local files.": "New Branch is only available for local files.",
     "New Tag is only available for local files.": "New Tag is only available for local files.",

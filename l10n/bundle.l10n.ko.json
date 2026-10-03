@@ -838,5 +838,7 @@
     "Pull could not start: {message}": "풀을 시작하지 못했습니다: {message}",
     "Pull finished, but the view could not refresh: {message}": "풀은 종료되었지만 보기를 새로 고치지 못했습니다: {message}",
     "The conflict view could not open: {message}": "충돌 보기를 열지 못했습니다: {message}",
-    "The requested repository is no longer available. Select it again before opening conflicts.": "요청한 저장소를 더 이상 사용할 수 없습니다. 충돌을 열기 전에 다시 선택하세요."
+    "The requested repository is no longer available. Select it again before opening conflicts.": "요청한 저장소를 더 이상 사용할 수 없습니다. 충돌을 열기 전에 다시 선택하세요.",
+    "Set intelligit.updateStrategy to \"rebase\" or \"merge\" before pulling.": "풀하기 전에 intelligit.updateStrategy를 \"rebase\" 또는 \"merge\"로 설정하세요.",
+    "Workspace folders for this repository have different intelligit.updateStrategy values. Choose the same value in each folder before pulling.": "이 리포지토리의 작업 영역 폴더마다 intelligit.updateStrategy 값이 다릅니다. 풀하기 전에 각 폴더에서 같은 값을 선택하세요."
 }

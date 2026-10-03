@@ -6,7 +6,9 @@ import type {
     PullUpdateContext,
     PullUpdateRefusal,
     PullUpdateResult,
+    PullUpdateStrategy,
 } from "../git/updateWithLocalChanges";
+import { readPullUpdateStrategy } from "../services/updateStrategy";
 import { getErrorMessage } from "../utils/errors";
 import { RepositoryLockBusyError } from "../git/repositoryLock";
 import {
@@ -210,18 +212,28 @@ async function confirmPullLocalChanges(context: PullUpdateContext): Promise<bool
 /** Owns Pull's consent and presentation; every dependency must already be bound to the clicked repository. */
 async function pullFromPanel(deps: PullActionDeps): Promise<void> {
     const gitOps = deps.gitOps;
-    const preparation = await gitOps.preparePullRebaseWithLocalChanges();
+    const preparation = await gitOps.preparePullWithLocalChanges();
     if (preparation.kind !== "ready") {
         reportPullOutcome(preparation);
         return;
     }
     const context = preparation.context;
+    let strategy: PullUpdateStrategy;
+    try {
+        strategy = await readPullUpdateStrategy(context.repositoryRoot);
+    } catch (error) {
+        void vscode.window.showErrorMessage(
+            vscode.l10n.t("Pull could not start: {message}", { message: getErrorMessage(error) }),
+        );
+        return;
+    }
     if (context.dirty && !(await confirmPullLocalChanges(context))) return;
     const run = (saveLocalChanges: boolean): Promise<PullUpdateResult> =>
         runWithNotificationProgress(vscode.l10n.t("Pulling..."), async (progress) =>
-            gitOps.pullRebasePreservingLocalChanges({
+            gitOps.pullPreservingLocalChanges({
                 expected: context,
                 saveLocalChanges,
+                strategy,
                 onProgress: (phase) =>
                     progress.report({
                         message: {

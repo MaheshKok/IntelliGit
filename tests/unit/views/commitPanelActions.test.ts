@@ -52,6 +52,11 @@ import {
 } from "../../../src/views/commitPanelActions";
 import type { CommitPanelGitOperation } from "../../../src/views/commitPanelActions";
 import type { GitOps } from "../../../src/git/operations";
+import { readPullUpdateStrategy } from "../../../src/services/updateStrategy";
+
+vi.mock("../../../src/services/updateStrategy", () => ({
+    readPullUpdateStrategy: vi.fn(async () => "rebase"),
+}));
 import type {
     PullUpdateContext,
     PullUpdatePreparation,
@@ -81,12 +86,12 @@ function makeGitOps(upstream?: string): GitOps {
         ]),
         fetch: vi.fn(async () => ""),
         pullRebase: vi.fn(async () => ""),
-        preparePullRebaseWithLocalChanges: vi.fn(async (): Promise<PullUpdatePreparation> =>
+        preparePullWithLocalChanges: vi.fn(async (): Promise<PullUpdatePreparation> =>
             upstream
                 ? { kind: "ready", context: pullContext }
                 : { kind: "refused", reason: "no-upstream" },
         ),
-        pullRebasePreservingLocalChanges: vi.fn(async (): Promise<PullUpdateResult> => ({
+        pullPreservingLocalChanges: vi.fn(async (): Promise<PullUpdateResult> => ({
             kind: "complete",
         })),
         push: vi.fn(async () => ""),
@@ -120,7 +125,44 @@ function makeDeps(gitOps: GitOps) {
 describe("runGitOperationFromPanel", () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        vi.mocked(readPullUpdateStrategy).mockResolvedValue("rebase");
     });
+
+    it.each([false, true])("passes the chosen Merge strategy for dirty=%s", async (dirty) => {
+        const gitOps = makeGitOps("origin/main");
+        const context = { ...pullContext, dirty };
+        vi.mocked(gitOps.preparePullWithLocalChanges).mockResolvedValue({ kind: "ready", context });
+        vi.mocked(readPullUpdateStrategy).mockResolvedValue("merge");
+        if (dirty)
+            vscodeMock.window.showWarningMessage.mockResolvedValueOnce("Save Changes and Pull");
+        await runGitOperationFromPanel(makeDeps(gitOps), "pull");
+        expect(readPullUpdateStrategy).toHaveBeenCalledExactlyOnceWith(context.repositoryRoot);
+        expect(gitOps.pullPreservingLocalChanges).toHaveBeenCalledWith(
+            expect.objectContaining({
+                expected: context,
+                saveLocalChanges: dirty,
+                strategy: "merge",
+            }),
+        );
+    });
+
+    it.each(["invalid setting", "EACCES"])(
+        "stops before consent or mutation when strategy resolution fails: %s",
+        async (message) => {
+            const gitOps = makeGitOps("origin/main");
+            vi.mocked(gitOps.preparePullWithLocalChanges).mockResolvedValue({
+                kind: "ready",
+                context: { ...pullContext, dirty: true },
+            });
+            vi.mocked(readPullUpdateStrategy).mockRejectedValueOnce(new Error(message));
+            await runGitOperationFromPanel(makeDeps(gitOps), "pull");
+            expect(vscodeMock.window.showWarningMessage).not.toHaveBeenCalled();
+            expect(gitOps.pullPreservingLocalChanges).not.toHaveBeenCalled();
+            expect(vscodeMock.window.showErrorMessage).toHaveBeenCalledWith(
+                `Pull could not start: ${message}`,
+            );
+        },
+    );
 
     it("runs fetch when the current branch is unpublished", async () => {
         const gitOps = makeGitOps();
@@ -151,6 +193,7 @@ describe("runGitOperationFromPanel", () => {
     it.each<CommitPanelGitOperation>(["sync"])(
         "warns instead of running %s when the working tree is dirty",
         async (operation) => {
+            vi.mocked(readPullUpdateStrategy).mockResolvedValue("merge");
             const gitOps = makeGitOps("origin/main");
             const deps = makeDeps(gitOps);
             vi.mocked(gitOps.hasUncommittedChanges).mockResolvedValueOnce(true);
@@ -162,6 +205,7 @@ describe("runGitOperationFromPanel", () => {
                 "There are uncommitted changes, please commit or stash them first.",
             );
             expect(gitOps.getBranches).not.toHaveBeenCalled();
+            expect(readPullUpdateStrategy).not.toHaveBeenCalled();
             expect(gitOps.pullRebase).not.toHaveBeenCalled();
             expect(gitOps.push).not.toHaveBeenCalled();
             expect(vscodeMock.commands.executeCommand).not.toHaveBeenCalled();
@@ -169,6 +213,16 @@ describe("runGitOperationFromPanel", () => {
             expect(deps.fireWorkingTreeChanged).not.toHaveBeenCalled();
         },
     );
+
+    it("clean Sync keeps its existing rebase and push sequence with manual Merge selected", async () => {
+        vi.mocked(readPullUpdateStrategy).mockResolvedValue("merge");
+        const gitOps = makeGitOps("origin/main");
+        await runGitOperationFromPanel(makeDeps(gitOps), "sync");
+        expect(gitOps.pullRebase).toHaveBeenCalledOnce();
+        expect(gitOps.push).toHaveBeenCalledOnce();
+        expect(readPullUpdateStrategy).not.toHaveBeenCalled();
+        expect(gitOps.pullPreservingLocalChanges).not.toHaveBeenCalled();
+    });
 
     it("publishes an unpublished branch even when the working tree is dirty", async () => {
         const gitOps = makeGitOps();
@@ -213,11 +267,11 @@ describe("runGitOperationFromPanel", () => {
         const gitOps = makeGitOps("origin/main");
         const deps = makeDeps(gitOps);
         const context = { ...pullContext, dirty: true };
-        vi.mocked(gitOps.preparePullRebaseWithLocalChanges).mockResolvedValueOnce({
+        vi.mocked(gitOps.preparePullWithLocalChanges).mockResolvedValueOnce({
             kind: "ready",
             context,
         });
-        vi.mocked(gitOps.pullRebasePreservingLocalChanges).mockResolvedValueOnce({
+        vi.mocked(gitOps.pullPreservingLocalChanges).mockResolvedValueOnce({
             kind: "complete",
             backup: { oid: "b".repeat(40), message: "IntelliGit update: main backup" },
         });
@@ -228,7 +282,7 @@ describe("runGitOperationFromPanel", () => {
             expect.objectContaining({ modal: true, detail: expect.stringContaining("/repo") }),
             "Save Changes and Pull",
         );
-        expect(gitOps.pullRebasePreservingLocalChanges).toHaveBeenCalledWith(
+        expect(gitOps.pullPreservingLocalChanges).toHaveBeenCalledWith(
             expect.objectContaining({ expected: context, saveLocalChanges: true }),
         );
         expect(gitOps.pullRebase).not.toHaveBeenCalled();
@@ -246,20 +300,21 @@ describe("runGitOperationFromPanel", () => {
         "dirty Pull cancellation %s never starts the transaction",
         async (answer) => {
             const gitOps = makeGitOps("origin/main");
-            vi.mocked(gitOps.preparePullRebaseWithLocalChanges).mockResolvedValueOnce({
+            vi.mocked(gitOps.preparePullWithLocalChanges).mockResolvedValueOnce({
                 kind: "ready",
                 context: { ...pullContext, dirty: true },
             });
             vscodeMock.window.showWarningMessage.mockResolvedValueOnce(answer);
             await runGitOperationFromPanel(makeDeps(gitOps), "pull");
-            expect(gitOps.pullRebasePreservingLocalChanges).not.toHaveBeenCalled();
+            expect(gitOps.pullPreservingLocalChanges).not.toHaveBeenCalled();
             expect(gitOps.pullRebase).not.toHaveBeenCalled();
         },
     );
 
     it("clean Pull requests consent after gated revalidation discovers new dirt", async () => {
         const gitOps = makeGitOps("origin/main");
-        vi.mocked(gitOps.pullRebasePreservingLocalChanges)
+        vi.mocked(readPullUpdateStrategy).mockResolvedValueOnce("merge");
+        vi.mocked(gitOps.pullPreservingLocalChanges)
             .mockResolvedValueOnce({
                 kind: "confirmation-required",
                 context: { ...pullContext, dirty: true },
@@ -267,19 +322,20 @@ describe("runGitOperationFromPanel", () => {
             .mockResolvedValueOnce({ kind: "complete" });
         vscodeMock.window.showWarningMessage.mockResolvedValueOnce("Save Changes and Pull");
         await runGitOperationFromPanel(makeDeps(gitOps), "pull");
-        expect(gitOps.pullRebasePreservingLocalChanges).toHaveBeenNthCalledWith(
+        expect(gitOps.pullPreservingLocalChanges).toHaveBeenNthCalledWith(
             1,
-            expect.objectContaining({ saveLocalChanges: false }),
+            expect.objectContaining({ saveLocalChanges: false, strategy: "merge" }),
         );
-        expect(gitOps.pullRebasePreservingLocalChanges).toHaveBeenNthCalledWith(
+        expect(gitOps.pullPreservingLocalChanges).toHaveBeenNthCalledWith(
             2,
-            expect.objectContaining({ saveLocalChanges: true }),
+            expect.objectContaining({ saveLocalChanges: true, strategy: "merge" }),
         );
+        expect(readPullUpdateStrategy).toHaveBeenCalledOnce();
     });
 
     it("failed pull and failed restoration reports both diagnostics without pull-complete wording", async () => {
         const gitOps = makeGitOps("origin/main");
-        vi.mocked(gitOps.pullRebasePreservingLocalChanges).mockResolvedValueOnce({
+        vi.mocked(gitOps.pullPreservingLocalChanges).mockResolvedValueOnce({
             kind: "restore-failed",
             integration: "failed",
             integrationError: new Error("network offline"),
@@ -300,7 +356,7 @@ describe("runGitOperationFromPanel", () => {
 
     it("restoration conflicts open only the captured repository's conflict session", async () => {
         const gitOps = makeGitOps("origin/main");
-        vi.mocked(gitOps.pullRebasePreservingLocalChanges).mockResolvedValueOnce({
+        vi.mocked(gitOps.pullPreservingLocalChanges).mockResolvedValueOnce({
             kind: "restore-failed",
             integration: "succeeded",
             error: new Error("conflicts"),
@@ -318,7 +374,7 @@ describe("runGitOperationFromPanel", () => {
         const deps = makeDeps(gitOps);
         deps.refreshData.mockRejectedValueOnce(new Error("view unavailable"));
         await expect(runGitOperationFromPanel(deps, "pull")).resolves.toBeUndefined();
-        expect(gitOps.pullRebasePreservingLocalChanges).toHaveBeenCalledOnce();
+        expect(gitOps.pullPreservingLocalChanges).toHaveBeenCalledOnce();
         expect(vscodeMock.window.showInformationMessage).toHaveBeenCalledWith(
             "Pulled successfully.",
         );
@@ -335,25 +391,28 @@ describe("runGitOperationFromPanel", () => {
         const other = makeGitOps("origin/other");
         const deps = makeDeps(gitOps);
         const context = { ...pullContext, dirty: true };
-        vi.mocked(gitOps.preparePullRebaseWithLocalChanges).mockResolvedValueOnce({
+        vi.mocked(readPullUpdateStrategy).mockResolvedValue("merge");
+        vi.mocked(gitOps.preparePullWithLocalChanges).mockResolvedValueOnce({
             kind: "ready",
             context,
         });
         vscodeMock.window.showWarningMessage.mockImplementationOnce(async () => {
             deps.gitOps = other;
+            vi.mocked(readPullUpdateStrategy).mockResolvedValue("rebase");
             return "Save Changes and Pull";
         });
         await runGitOperationFromPanel(deps, "pull");
         expect(
-            gitOps.pullRebasePreservingLocalChanges,
+            gitOps.pullPreservingLocalChanges,
             "the originally approved repository must own the mutation",
-        ).toHaveBeenCalledWith(expect.objectContaining({ expected: context }));
-        expect(other.pullRebasePreservingLocalChanges).not.toHaveBeenCalled();
+        ).toHaveBeenCalledWith(expect.objectContaining({ expected: context, strategy: "merge" }));
+        expect(readPullUpdateStrategy).toHaveBeenCalledExactlyOnceWith(context.repositoryRoot);
+        expect(other.pullPreservingLocalChanges).not.toHaveBeenCalled();
     });
 
     it("changed context after confirmation is refused without complete-success messaging", async () => {
         const gitOps = makeGitOps("origin/main");
-        vi.mocked(gitOps.pullRebasePreservingLocalChanges).mockResolvedValueOnce({
+        vi.mocked(gitOps.pullPreservingLocalChanges).mockResolvedValueOnce({
             kind: "refused",
             reason: "context-changed",
         });
@@ -368,7 +427,7 @@ describe("runGitOperationFromPanel", () => {
 
     it("integration conflict keeps the backup and explains deliberate recovery after Continue or Abort", async () => {
         const gitOps = makeGitOps("origin/main");
-        vi.mocked(gitOps.pullRebasePreservingLocalChanges).mockResolvedValueOnce({
+        vi.mocked(gitOps.pullPreservingLocalChanges).mockResolvedValueOnce({
             kind: "integration-conflict",
             error: new Error("rebase conflict"),
             backup: { oid: "b".repeat(40), message: "retained backup" },
@@ -389,7 +448,7 @@ describe("runGitOperationFromPanel", () => {
 
     it("failed save with unverified object identity still exposes the searchable backup name", async () => {
         const gitOps = makeGitOps("origin/main");
-        vi.mocked(gitOps.pullRebasePreservingLocalChanges).mockResolvedValueOnce({
+        vi.mocked(gitOps.pullPreservingLocalChanges).mockResolvedValueOnce({
             kind: "failed",
             phase: "save",
             error: new Error("reflog unavailable"),

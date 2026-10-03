@@ -63,8 +63,8 @@ describe("pull with local changes contract", () => {
     afterEach(() => removeScratchDirectoriesSync(root));
 
     /** Runs the approved transaction and checks the permanent no-deletion boundary on every case. */
-    async function update(saveLocalChanges = true) {
-        const result = await pullUpdateWithinGate(run, { expected, saveLocalChanges });
+    async function update(saveLocalChanges = true, strategy: "rebase" | "merge" = "rebase") {
+        const result = await pullUpdateWithinGate(run, { expected, saveLocalChanges, strategy });
         expect(
             run.mock.calls.some(
                 ([args]) => args[0] === "stash" && ["drop", "pop", "clear"].includes(args[1]),
@@ -73,6 +73,16 @@ describe("pull with local changes contract", () => {
         ).toBe(false);
         return result;
     }
+
+    it.each([
+        ["rebase", ["pull", "--rebase", "--no-autostash"]],
+        ["merge", ["pull", "--no-rebase", "--no-autostash", "--no-edit", "--ff"]],
+    ] as const)("uses the explicit %s integration command", async (strategy, args) => {
+        expect(await update(true, strategy)).toMatchObject({ kind: "complete" });
+        expect(run).toHaveBeenCalledWith([...args]);
+        expect(run).toHaveBeenCalledWith(["stash", "apply", "--index", owned]);
+        expect(applyCalls, "exactly one indexed restoration").toBe(1);
+    });
 
     it("dirty work without consent requires confirmation without mutating", async () => {
         expect(await update(false)).toMatchObject({ kind: "confirmation-required" });

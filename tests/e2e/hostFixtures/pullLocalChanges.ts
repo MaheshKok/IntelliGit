@@ -26,8 +26,12 @@ export function pullFixtureGit(
     return execFileSync("git", args, { cwd, env: workspace.env, encoding: "utf8" });
 }
 
-/** Creates a changed remote tip and split index/worktree edits, with an optional incoming collision. */
-export async function prepareDirtyPull(workspace: FixtureWorkspace, collision = false) {
+/** Creates incoming commits and split local edits, optionally diverging history or colliding paths. */
+export async function prepareDirtyPull(
+    workspace: FixtureWorkspace,
+    collision = false,
+    divergent = false,
+) {
     const git = (args: string[], cwd?: string) => pullFixtureGit(workspace, args, cwd);
     await writeFile(path.join(workspace.root, LOCAL_PATH), BASE);
     git(["add", "--", LOCAL_PATH]);
@@ -41,13 +45,23 @@ export async function prepareDirtyPull(workspace: FixtureWorkspace, collision = 
     git(["push", "origin", "HEAD:refs/heads/main"], author);
     const incomingHead = git(["rev-parse", "HEAD"], author).trim();
 
+    if (divergent) {
+        await writeFile(
+            path.join(workspace.root, "pull-local-commit.txt"),
+            "local committed bytes\n",
+        );
+        git(["add", "--", "pull-local-commit.txt"]);
+        git(["commit", "-m", "Local divergent commit for native Pull"]);
+    }
+    const localHead = git(["rev-parse", "HEAD"]).trim();
+
     await writeFile(path.join(workspace.root, LOCAL_PATH), STAGED);
     git(["add", "--", LOCAL_PATH]);
     await writeFile(path.join(workspace.root, LOCAL_PATH), WORKTREE);
     const untrackedPath = collision ? INCOMING_PATH : "pull-untracked.txt";
     await writeFile(path.join(workspace.root, untrackedPath), UNTRACKED);
     const before = await readPullState(workspace, untrackedPath);
-    return { incomingHead, untrackedPath, before };
+    return { incomingHead, localHead, untrackedPath, before };
 }
 
 /** Captures Git ownership and exact user bytes so cancellation cannot pass after hidden mutation. */
@@ -107,13 +121,27 @@ export async function expectPullConsent(page: Page): Promise<void> {
     await expect(page.getByText("Pull with local changes?", { exact: true })).toBeVisible();
 }
 
-/** Proves upstream changed and local staging/content survived, with one retained operation backup. */
+/** Proves the selected history and exact local staging/content, with one retained operation backup. */
 export async function expectRestoredPull(
     workspace: FixtureWorkspace,
     prepared: Awaited<ReturnType<typeof prepareDirtyPull>>,
+    strategy?: "rebase" | "merge",
 ) {
     const git = (args: string[], cwd?: string) => pullFixtureGit(workspace, args, cwd);
-    await expect.poll(() => git(["rev-parse", "HEAD"]).trim()).toBe(prepared.incomingHead);
+    if (strategy) {
+        await expect
+            .poll(() => git(["show", "-s", "--format=%P", "HEAD"]).trim().split(" "))
+            .toEqual(
+                strategy === "merge"
+                    ? [prepared.localHead, prepared.incomingHead]
+                    : [prepared.incomingHead],
+            );
+        expect(await readFile(path.join(workspace.root, "pull-local-commit.txt"), "utf8")).toBe(
+            "local committed bytes\n",
+        );
+    } else {
+        await expect.poll(() => git(["rev-parse", "HEAD"]).trim()).toBe(prepared.incomingHead);
+    }
     await expect.poll(() => git(["show", `:${LOCAL_PATH}`])).toBe(STAGED);
     await expect.poll(() => readFile(path.join(workspace.root, LOCAL_PATH), "utf8")).toBe(WORKTREE);
     expect(await readFile(path.join(workspace.root, prepared.untrackedPath), "utf8")).toBe(

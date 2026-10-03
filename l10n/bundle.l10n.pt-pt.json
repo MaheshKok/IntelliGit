@@ -838,5 +838,7 @@
     "Pull could not start: {message}": "Não foi possível iniciar a operação de puxar: {message}",
     "Pull finished, but the view could not refresh: {message}": "A operação de puxar terminou, mas não foi possível atualizar a vista: {message}",
     "The conflict view could not open: {message}": "Não foi possível abrir a vista de conflitos: {message}",
-    "The requested repository is no longer available. Select it again before opening conflicts.": "O repositório solicitado já não está disponível. Selecione-o novamente antes de abrir os conflitos."
+    "The requested repository is no longer available. Select it again before opening conflicts.": "O repositório solicitado já não está disponível. Selecione-o novamente antes de abrir os conflitos.",
+    "Set intelligit.updateStrategy to \"rebase\" or \"merge\" before pulling.": "Defina intelligit.updateStrategy como \"rebase\" ou \"merge\" antes de executar Puxar.",
+    "Workspace folders for this repository have different intelligit.updateStrategy values. Choose the same value in each folder before pulling.": "As pastas da área de trabalho deste repositório têm valores diferentes para intelligit.updateStrategy. Escolha o mesmo valor em cada pasta antes de executar Puxar."
 }

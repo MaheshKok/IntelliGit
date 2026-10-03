@@ -117,5 +117,8 @@
     "command.github.cloneRepository": "Sklonuj repozytorium z GitHub...",
     "command.github.manageAccounts": "Zarządzaj kontami GitHub...",
     "command.fileManageRemotes": "Zarządzaj repozytoriami zdalnymi…",
-    "configuration.repositoryScanMaxDepth.markdownDescription": "Kontroluje głębokość skanowania w poszukiwaniu repozytoriów Git w folderach obszaru roboczego podczas wykrywania repozytoriów. Domyślnie 2. Ustaw -1, aby skanować bez limitu głębokości."
+    "configuration.repositoryScanMaxDepth.markdownDescription": "Kontroluje głębokość skanowania w poszukiwaniu repozytoriów Git w folderach obszaru roboczego podczas wykrywania repozytoriów. Domyślnie 2. Ustaw -1, aby skanować bez limitu głębokości.",
+    "configuration.updateStrategy.markdownDescription": "Wybierz, jak ręcznie uruchamiane działania Pull i Aktualizacja na bieżącej gałęzi integrują przychodzące commity. Dotyczy repozytoriów zarówno bez lokalnych zmian, jak i z nimi. Skonfiguruj to ustawienie osobno dla każdego folderu obszaru roboczego, aby używać różnych strategii w różnych repozytoriach. Synchronizuj oraz Aktualizacja na innych gałęziach zachowują dotychczasowe działanie.",
+    "configuration.updateStrategy.rebase.description": "Ponownie nakłada lokalne commity na przychodzące commity, aby zachować liniową historię.",
+    "configuration.updateStrategy.merge.description": "Zachowuje istniejące commity i tworzy commit scalający, gdy historie się rozchodzą; wykonuje fast-forward, gdy jest to możliwe."
 }

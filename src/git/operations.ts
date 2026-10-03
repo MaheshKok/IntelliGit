@@ -1278,15 +1278,15 @@ export class GitOps {
     }
 
     /** Captures read-only repository ownership and prerequisites before asking to save local work. */
-    async preparePullRebaseWithLocalChanges(): Promise<PullUpdatePreparation> {
+    async preparePullWithLocalChanges(): Promise<PullUpdatePreparation> {
         return preparePullUpdate((args) => this.executor.run(args));
     }
 
     /**
-     * Revalidates consent and keeps save, pull and indexed restoration inside one mutation gate.
+     * Revalidates consent and keeps save, the selected pull strategy and indexed restoration in one gate.
      * Uses only its captured ungated runner; named backups remain for deliberate manual recovery.
      */
-    async pullRebasePreservingLocalChanges(options: PullUpdateOptions): Promise<PullUpdateResult> {
+    async pullPreservingLocalChanges(options: PullUpdateOptions): Promise<PullUpdateResult> {
         return this.executor.runWithinMutationGate((run) => pullUpdateWithinGate(run, options));
     }
 

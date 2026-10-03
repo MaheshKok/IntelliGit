@@ -84,6 +84,7 @@ test("pulls the selected file repository without changing branch, status, or sel
         const pullAction = page.getByRole("menuitem", { name: /^Pull(?:$|\s)/ });
         await expect(pullAction).toBeVisible();
         await pullAction.hover();
+        await expect(pullAction.locator("..")).toHaveClass(/\bfocused\b/);
         await page.keyboard.press("Enter");
 
         await expect
@@ -99,11 +100,11 @@ test("pulls the selected file repository without changing branch, status, or sel
     }
 });
 
-test("dirty file Pull restores split staging and untracked bytes after changed upstream", async ({
+test("dirty file Pull defaults to Rebase and restores split staging and untracked bytes", async ({
     fixtureWorkspace,
 }, testInfo) => {
     test.setTimeout(120_000);
-    const prepared = await prepareDirtyPull(fixtureWorkspace.workspace);
+    const prepared = await prepareDirtyPull(fixtureWorkspace.workspace, false, true);
     const { app, page } = await launchPullFixture(fixtureWorkspace);
     try {
         await chooseFilePull(page);
@@ -113,7 +114,7 @@ test("dirty file Pull restores split staging and untracked bytes after changed u
         await expect(page.locator(".notifications-toasts")).toContainText(
             /local changes were restored/i,
         );
-        await expectRestoredPull(fixtureWorkspace.workspace, prepared);
+        await expectRestoredPull(fixtureWorkspace.workspace, prepared, "rebase");
     } finally {
         await app.close();
     }

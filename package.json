@@ -2,7 +2,7 @@
     "name": "intelligit",
     "displayName": "IntelliGit",
     "description": "%extension.description%",
-    "version": "0.36.3",
+    "version": "0.36.4",
     "publisher": "MaheshKok",
     "icon": "media/intelligit-icon.png",
     "license": "MIT",
@@ -1375,6 +1375,20 @@
                     "minimum": -1,
                     "scope": "resource",
                     "markdownDescription": "%configuration.repositoryScanMaxDepth.markdownDescription%"
+                },
+                "intelligit.updateStrategy": {
+                    "type": "string",
+                    "enum": [
+                        "rebase",
+                        "merge"
+                    ],
+                    "default": "rebase",
+                    "scope": "resource",
+                    "markdownDescription": "%configuration.updateStrategy.markdownDescription%",
+                    "enumDescriptions": [
+                        "%configuration.updateStrategy.rebase.description%",
+                        "%configuration.updateStrategy.merge.description%"
+                    ]
                 },
                 "intelligit.shelf.recordBaseRevisions": {
                     "type": "boolean",

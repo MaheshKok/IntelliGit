@@ -117,5 +117,8 @@
     "command.github.cloneRepository": "GitHub からリポジトリをクローン...",
     "command.github.manageAccounts": "GitHub アカウントを管理...",
     "command.fileManageRemotes": "リモートを管理…",
-    "configuration.repositoryScanMaxDepth.markdownDescription": "リポジトリ検出時にワークスペースフォルダー内の Git リポジトリをスキャンする深さを制御します。デフォルトは 2 です。深さ制限なしでスキャンするには -1 に設定します。"
+    "configuration.repositoryScanMaxDepth.markdownDescription": "リポジトリ検出時にワークスペースフォルダー内の Git リポジトリをスキャンする深さを制御します。デフォルトは 2 です。深さ制限なしでスキャンするには -1 に設定します。",
+    "configuration.updateStrategy.markdownDescription": "現在のブランチでプルとアップデートを手動実行したときに、取得したコミットを統合する方法を選択します。ローカルの変更がないリポジトリにも、変更があるリポジトリにも適用されます。リポジトリごとに異なる方法を使うには、ワークスペースフォルダー単位で設定してください。同期と、他のブランチに対するアップデートの動作は変わりません。",
+    "configuration.updateStrategy.rebase.description": "取得したコミットの上にローカルのコミットを再適用し、履歴を直線的に保ちます。",
+    "configuration.updateStrategy.merge.description": "既存のコミットを保持し、履歴が分岐している場合はマージコミットを作成します。可能な場合はファストフォワードを行います。"
 }

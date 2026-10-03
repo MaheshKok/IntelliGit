@@ -838,5 +838,7 @@
     "Pull could not start: {message}": "無法開始拉取：{message}",
     "Pull finished, but the view could not refresh: {message}": "拉取已結束，但無法重新整理檢視：{message}",
     "The conflict view could not open: {message}": "無法開啟衝突檢視：{message}",
-    "The requested repository is no longer available. Select it again before opening conflicts.": "要求的儲存庫已無法使用。開啟衝突前請重新選取此儲存庫。"
+    "The requested repository is no longer available. Select it again before opening conflicts.": "要求的儲存庫已無法使用。開啟衝突前請重新選取此儲存庫。",
+    "Set intelligit.updateStrategy to \"rebase\" or \"merge\" before pulling.": "拉取前，請將 intelligit.updateStrategy 設為 \"rebase\" 或 \"merge\"。",
+    "Workspace folders for this repository have different intelligit.updateStrategy values. Choose the same value in each folder before pulling.": "此存放庫的工作區資料夾使用了不同的 intelligit.updateStrategy 值。拉取前，請在每個資料夾中選擇相同的值。"
 }

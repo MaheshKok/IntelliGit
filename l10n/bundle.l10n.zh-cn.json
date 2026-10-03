@@ -838,5 +838,7 @@
     "Pull could not start: {message}": "无法开始拉取：{message}",
     "Pull finished, but the view could not refresh: {message}": "拉取已结束，但无法刷新视图：{message}",
     "The conflict view could not open: {message}": "无法打开冲突视图：{message}",
-    "The requested repository is no longer available. Select it again before opening conflicts.": "请求的仓库已不可用。打开冲突前请重新选择该仓库。"
+    "The requested repository is no longer available. Select it again before opening conflicts.": "请求的仓库已不可用。打开冲突前请重新选择该仓库。",
+    "Set intelligit.updateStrategy to \"rebase\" or \"merge\" before pulling.": "拉取前，请将 intelligit.updateStrategy 设置为 \"rebase\" 或 \"merge\"。",
+    "Workspace folders for this repository have different intelligit.updateStrategy values. Choose the same value in each folder before pulling.": "此存储库的工作区文件夹使用了不同的 intelligit.updateStrategy 值。拉取前，请在每个文件夹中选择相同的值。"
 }

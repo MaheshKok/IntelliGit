@@ -117,5 +117,8 @@
     "command.github.cloneRepository": "Clonar repositório do GitHub...",
     "command.github.manageAccounts": "Gerir contas GitHub...",
     "command.fileManageRemotes": "Gerir remotos…",
-    "configuration.repositoryScanMaxDepth.markdownDescription": "Controla a profundidade usada para procurar repositórios Git dentro das pastas da área de trabalho durante a descoberta de repositórios. O padrão é 2. Defina como -1 para procurar sem limite de profundidade."
+    "configuration.repositoryScanMaxDepth.markdownDescription": "Controla a profundidade usada para procurar repositórios Git dentro das pastas da área de trabalho durante a descoberta de repositórios. O padrão é 2. Defina como -1 para procurar sem limite de profundidade.",
+    "configuration.updateStrategy.markdownDescription": "Escolha como as ações manuais Puxar e Atualizar integram os commits recebidos no branch atual. Aplica-se a repositórios sem alterações locais e a repositórios com alterações locais. Configure por pasta da área de trabalho para utilizar estratégias diferentes em repositórios diferentes. Sincronizar e Atualizar noutros branches mantêm o comportamento existente.",
+    "configuration.updateStrategy.rebase.description": "Reaplica os commits locais sobre os commits recebidos para manter um histórico linear.",
+    "configuration.updateStrategy.merge.description": "Preserva os commits existentes e cria um commit de fusão quando os históricos divergem; efetua um avanço rápido quando possível."
 }

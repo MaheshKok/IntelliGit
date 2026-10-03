@@ -838,5 +838,7 @@
     "Pull could not start: {message}": "Der Pull konnte nicht gestartet werden: {message}",
     "Pull finished, but the view could not refresh: {message}": "Der Pull ist beendet, aber die Ansicht konnte nicht aktualisiert werden: {message}",
     "The conflict view could not open: {message}": "Die Konfliktansicht konnte nicht geöffnet werden: {message}",
-    "The requested repository is no longer available. Select it again before opening conflicts.": "Das angeforderte Repository ist nicht mehr verfügbar. Wählen Sie es erneut aus, bevor Sie Konflikte öffnen."
+    "The requested repository is no longer available. Select it again before opening conflicts.": "Das angeforderte Repository ist nicht mehr verfügbar. Wählen Sie es erneut aus, bevor Sie Konflikte öffnen.",
+    "Set intelligit.updateStrategy to \"rebase\" or \"merge\" before pulling.": "Setzen Sie intelligit.updateStrategy vor dem Pull auf \"rebase\" oder \"merge\".",
+    "Workspace folders for this repository have different intelligit.updateStrategy values. Choose the same value in each folder before pulling.": "Die Arbeitsbereichsordner dieses Repositorys haben unterschiedliche Werte für intelligit.updateStrategy. Wählen Sie vor dem Pull in jedem Ordner denselben Wert."
 }

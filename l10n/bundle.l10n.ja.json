@@ -838,5 +838,7 @@
     "Pull could not start: {message}": "プルを開始できませんでした: {message}",
     "Pull finished, but the view could not refresh: {message}": "プルは終了しましたが、ビューを更新できませんでした: {message}",
     "The conflict view could not open: {message}": "競合ビューを開けませんでした: {message}",
-    "The requested repository is no longer available. Select it again before opening conflicts.": "要求されたリポジトリは利用できなくなりました。競合を開く前に、もう一度選択してください。"
+    "The requested repository is no longer available. Select it again before opening conflicts.": "要求されたリポジトリは利用できなくなりました。競合を開く前に、もう一度選択してください。",
+    "Set intelligit.updateStrategy to \"rebase\" or \"merge\" before pulling.": "プルする前に intelligit.updateStrategy を \"rebase\" または \"merge\" に設定してください。",
+    "Workspace folders for this repository have different intelligit.updateStrategy values. Choose the same value in each folder before pulling.": "このリポジトリのワークスペースフォルダーで intelligit.updateStrategy の値が異なっています。プルする前に、各フォルダーで同じ値を選択してください。"
 }
