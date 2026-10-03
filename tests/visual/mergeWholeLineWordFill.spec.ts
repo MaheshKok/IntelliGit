@@ -1,4 +1,4 @@
-import { HOST_CONTEXT_FIXTURES } from "./hostContextFixtures";
+import { mountLegacyMerge } from "./legacyMerge";
 import { expect, test } from "./playwright/harnessPage";
 
 /**
@@ -167,9 +167,7 @@ test.describe("merge-editor whole-line word fill", () => {
         mountHarness,
         page,
     }) => {
-        await mountHarness("merge-editor", {
-            webviewFixture: HOST_CONTEXT_FIXTURES["merge-editor"],
-        });
+        await mountLegacyMerge(mountHarness, page);
         const survey = await surveyMergeMarks(page);
 
         // Anti-vacuity, and the reason it is not optional: the failure this file exists to catch

@@ -671,6 +671,7 @@ export async function activateRepositoryMode(
         const fileUri = vscode.Uri.file(path.join(capturedRoot, assertRepoRelativePath(filePath)));
         try {
             await MergeEditorPanel.open({
+                draftStore: context.workspaceState,
                 extensionUri: context.extensionUri,
                 gitOps: scopedGitOps,
                 getRepoRoot: () => capturedRoot,

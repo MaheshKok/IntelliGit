@@ -133,6 +133,20 @@ export class IntelliGitView {
         return this.frameOwning(FILE_HISTORY_MARKER, timeoutMs);
     }
 
+    /** Returns the full-document merge workbench opened by a conflict row. */
+    public async revealMergeWorkbench(
+        timeoutMs = DEFAULT_REVEAL_TIMEOUT_MS,
+    ): Promise<FrameLocator> {
+        return this.frameOwning(".merge-workbench", timeoutMs);
+    }
+
+    /** Returns the repository-scoped conflict chooser. */
+    public async revealConflictSession(
+        timeoutMs = DEFAULT_REVEAL_TIMEOUT_MS,
+    ): Promise<FrameLocator> {
+        return this.frameOwning(".session-root", timeoutMs);
+    }
+
     /**
      * Resolves the IntelliGit webview whose document renders `marker`, retrying while the workbench
      * finishes rendering it.

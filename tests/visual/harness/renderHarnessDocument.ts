@@ -148,7 +148,8 @@ ${styleLinks ? `${styleLinks}\n` : ""}</head>
         window.intelligitSettings = ${settingsJson};
         window.intelligitI18n = ${i18nJson};
     </script>
-${highlighterScript}    <script src="${escapeHtml(assetUrl(input.assetBaseUrl, context.scriptFile))}"></script>
+${highlighterScript}    <script src="${escapeHtml(assetUrl(input.assetBaseUrl, "webview-react.js"))}"></script>
+    <script src="${escapeHtml(assetUrl(input.assetBaseUrl, context.scriptFile))}"></script>
 </body>
 </html>`;
 }

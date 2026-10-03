@@ -120,8 +120,12 @@ describe("renderHarnessDocument", () => {
                 "webview-diffviewer.js",
                 "webview-mergeeditor.js",
             ].includes(context.scriptFile)
-                ? ["/dist/webview-shiki.js", `/dist/${context.scriptFile}`]
-                : [`/dist/${context.scriptFile}`];
+                ? [
+                      "/dist/webview-shiki.js",
+                      "/dist/webview-react.js",
+                      `/dist/${context.scriptFile}`,
+                  ]
+                : ["/dist/webview-react.js", `/dist/${context.scriptFile}`];
             expect(
                 [...document.querySelectorAll("script[src]")].map((script) =>
                     script.getAttribute("src"),
@@ -189,8 +193,8 @@ describe("renderHarnessDocument", () => {
             "data-adversarial-value": "> and ' & \"",
         });
         expect(document.querySelector("title")?.textContent).toBe('<script>& "title" \'</script>');
-        expect(scripts).toHaveLength(2);
-        expect(html.match(/<\/script>/g)).toHaveLength(2);
+        expect(scripts).toHaveLength(3);
+        expect(html.match(/<\/script>/g)).toHaveLength(3);
         expect(scriptJsonAssignment(document, "intelligitI18n")).toEqual(adversarialI18n);
     });
 

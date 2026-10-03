@@ -1,4 +1,5 @@
 import { HOST_CONTEXT_FIXTURES } from "./hostContextFixtures";
+import { mountLegacyMerge } from "./legacyMerge";
 import { expect, test } from "./playwright/harnessPage";
 
 /**
@@ -145,7 +146,8 @@ test.describe("diff chrome visibility", () => {
             mountHarness,
             page,
         }) => {
-            await mountHarness(surface, { webviewFixture: HOST_CONTEXT_FIXTURES[surface] });
+            if (surface === "merge-editor") await mountLegacyMerge(mountHarness, page);
+            else await mountHarness(surface, { webviewFixture: HOST_CONTEXT_FIXTURES[surface] });
             const chrome = await readChrome(page, bar);
 
             expect(chrome.barFound, `${bar} is not mounted, so nothing was measured`).toBe(true);
@@ -177,7 +179,8 @@ test.describe("diff chrome visibility", () => {
             mountHarness,
             page,
         }) => {
-            await mountHarness(surface, { webviewFixture: HOST_CONTEXT_FIXTURES[surface] });
+            if (surface === "merge-editor") await mountLegacyMerge(mountHarness, page);
+            else await mountHarness(surface, { webviewFixture: HOST_CONTEXT_FIXTURES[surface] });
             const chrome = await readChrome(page, bar);
 
             expect(chrome.blocks.length, "no code blocks were measured").toBeGreaterThan(0);

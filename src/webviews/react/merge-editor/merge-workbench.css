@@ -1,0 +1,245 @@
+.merge-workbench {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    color: var(--vscode-foreground);
+    background: var(--vscode-editor-background);
+}
+.mw-toolbar,
+.mw-footer,
+.mw-headings,
+.mw-hunks {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    border-bottom: 1px solid var(--vscode-panel-border);
+    padding: 6px 8px;
+    flex-shrink: 0;
+    background: var(--vscode-editorGroupHeader-tabsBackground);
+}
+.mw-toolbar {
+    flex-wrap: wrap;
+}
+.merge-workbench button,
+.merge-workbench select {
+    min-height: 28px;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    padding: 4px 7px;
+}
+.merge-workbench button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    cursor: pointer;
+}
+.mw-toolbar > button {
+    width: 28px;
+    height: 28px;
+    padding: 5px;
+}
+.merge-workbench button svg {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+}
+.merge-workbench button:hover,
+.merge-workbench button[aria-pressed="true"] {
+    background: var(--vscode-toolbar-hoverBackground);
+}
+.merge-workbench button:focus-visible,
+.merge-workbench select:focus-visible {
+    outline: 1px solid var(--vscode-focusBorder);
+}
+.merge-workbench button:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+.merge-workbench select {
+    background: var(--vscode-dropdown-background);
+    color: var(--vscode-dropdown-foreground);
+    max-width: 210px;
+}
+.mw-divider {
+    width: 1px;
+    height: 20px;
+    background: var(--vscode-panel-border);
+    margin: 0 3px;
+}
+.mw-status {
+    margin-left: auto;
+    white-space: nowrap;
+    padding: 0 5px;
+}
+.mw-headings {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr);
+    padding: 0;
+}
+.mw-headings span {
+    padding: 7px 12px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    border-right: 1px solid var(--vscode-panel-border);
+}
+.mw-panes {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 32px minmax(0, 1fr) 32px minmax(0, 1fr);
+}
+.mw-editor {
+    position: relative;
+    min-width: 0;
+    min-height: 0;
+    border-right: 1px solid var(--vscode-panel-border);
+    overflow: hidden;
+}
+.mw-connectors {
+    position: relative;
+    overflow: hidden;
+    background: var(--vscode-editor-background);
+}
+.mw-connectors svg {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+}
+.mw-connectors > svg path {
+    fill: var(--vscode-diffEditor-removedLineBackground, #cc555522);
+    stroke: var(--vscode-diffEditor-removedTextBorder, #cc555588);
+}
+.mw-connectors > svg path.resolved {
+    fill: var(--vscode-diffEditor-insertedLineBackground, #55aa6622);
+    stroke: var(--vscode-diffEditor-insertedTextBorder, #55aa6688);
+    stroke-dasharray: 3 3;
+}
+.mw-connectors button {
+    color: var(--vscode-editor-foreground);
+    position: absolute;
+    left: 3px;
+    width: 26px;
+    height: 22px;
+    min-height: 22px;
+    padding: 3px;
+    background: var(--vscode-editor-background);
+    border-color: var(--vscode-panel-border);
+}
+.mw-connectors button svg {
+    position: static;
+}
+.mw-connectors button[hidden] {
+    display: none;
+}
+.merge-word-change {
+    background: var(--vscode-diffEditor-removedTextBackground, #cc555544);
+    outline: 1px solid var(--vscode-diffEditor-removedTextBorder, transparent);
+}
+
+.mw-error {
+    padding: 8px 12px;
+    color: var(--vscode-errorForeground);
+    border-bottom: 1px solid var(--vscode-panel-border);
+}
+.mw-base {
+    height: 160px;
+    flex-shrink: 0;
+    overflow: auto;
+    border-top: 1px solid var(--vscode-panel-border);
+}
+.mw-base header {
+    padding: 5px 10px;
+    background: var(--vscode-editorGroupHeader-tabsBackground);
+}
+.mw-base pre {
+    padding: 8px 12px;
+    font-family: var(--vscode-editor-font-family);
+    color: var(--vscode-editor-foreground);
+}
+.mw-base[hidden] {
+    display: none;
+}
+.mw-base {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+.mw-base > div {
+    flex: 1;
+    min-height: 0;
+}
+.mw-base header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+.mw-error details {
+    max-height: 200px;
+    overflow: auto;
+}
+.mw-error pre {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+.merge-workbench[aria-busy="true"] .mw-editor {
+    pointer-events: none;
+}
+.mw-hunks {
+    overflow-x: auto;
+    border-top: 1px solid var(--vscode-panel-border);
+}
+.mw-hunks button {
+    flex-shrink: 0;
+}
+.mw-hunks button.active {
+    border-color: var(--vscode-focusBorder);
+}
+.mw-pending {
+    width: 6px;
+    height: 6px;
+    background: var(--vscode-editorWarning-foreground);
+}
+.mw-footer {
+    border-bottom: 0;
+    gap: 10px;
+}
+.mw-footer > span:first-of-type {
+    margin-right: auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.mw-footer > span:nth-of-type(2) {
+    color: var(--vscode-descriptionForeground);
+    white-space: nowrap;
+}
+.mw-footer .primary {
+    background: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
+}
+.merge-range-pending {
+    background: var(--vscode-diffEditor-removedTextBackground, transparent);
+    outline: 1px solid var(--vscode-diffEditor-removedTextBorder, transparent);
+}
+.merge-range-resolved {
+    background: var(--vscode-diffEditor-insertedTextBackground, transparent);
+    outline: 1px solid var(--vscode-diffEditor-insertedTextBorder, transparent);
+}
+@media (max-width: 650px) {
+    .mw-status {
+        width: 100%;
+        margin-left: 0;
+    }
+    .mw-footer {
+        flex-wrap: wrap;
+    }
+    .mw-footer > span:first-of-type {
+        width: 100%;
+    }
+}

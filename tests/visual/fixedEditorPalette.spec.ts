@@ -1,4 +1,5 @@
 import { expect, test } from "./playwright/harnessPage";
+import { mountLegacyMerge } from "./legacyMerge";
 import type { Page } from "@playwright/test";
 
 /** Resolves the host's editor token to the browser's RGB format for rendered comparisons. */
@@ -141,7 +142,7 @@ test("merge palette and first-row actions stay consistent across host themes", a
     mountHarness,
     page,
 }, testInfo) => {
-    await mountHarness("merge-editor", { webviewFixture: "conflicted.json" });
+    await mountLegacyMerge(mountHarness, page);
     await expect(page.locator(".merge-editor")).toHaveCSS(
         "background-color",
         await editorBackground(page),

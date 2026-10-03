@@ -26,6 +26,7 @@ import {
 } from "./hostFixtures/packageSmokeHelpers";
 import { IntelliGitView } from "./pageObjects/intelliGitView";
 import { Workbench } from "./pageObjects/workbench";
+import { runGitRaw } from "../fixtures/repo/gitRun";
 import { selectSoleVsix, verifyVsixPackage } from "../../scripts/verifyVsixPackage.js";
 
 const execFileAsync = promisify(execFile);
@@ -218,6 +219,50 @@ test.describe("installed VSIX package smoke", () => {
             });
             console.log(
                 "[package smoke] installed History window renders syntax-highlighted revision",
+            );
+            await historyWindow.close();
+            await runGitRaw(workspacePath, ["checkout", "-b", "incoming"], environment);
+            await writeFile(
+                path.join(workspacePath, "package-smoke.ts"),
+                "export const answer = 43;\n",
+            );
+            await runGitRaw(workspacePath, ["commit", "-am", "Incoming edit"], environment);
+            await runGitRaw(workspacePath, ["checkout", "main"], environment);
+            await writeFile(
+                path.join(workspacePath, "package-smoke.ts"),
+                "export const answer = 44;\n",
+            );
+            await runGitRaw(workspacePath, ["commit", "-am", "Local edit"], environment);
+            await runGitRaw(workspacePath, ["merge", "incoming"], environment).catch(
+                () => undefined,
+            );
+            expect(await runGitRaw(workspacePath, ["ls-files", "-u"], environment)).not.toBe("");
+            await new Workbench(window).runCommand("Open Conflict Session");
+            const conflicts = await intelliGitView.revealConflictSession();
+            await expect(conflicts.locator("tbody tr.row")).toHaveCount(1);
+            await conflicts.locator("tbody tr.row").click();
+            const merge = await intelliGitView.revealMergeWorkbench();
+            await expect(
+                merge.locator('[data-testid="merge-editor-1"] .cm-content'),
+            ).toHaveAttribute("contenteditable", "true");
+            await expect(merge.locator('.cm-content span[style*="color"]').first()).toBeVisible();
+            // A lingering workbench tab tooltip can cover this webview toolbar on Linux.
+            await window.mouse.move(0, 0);
+            await window.keyboard.press("Escape");
+            await expect(window.locator(".context-view .monaco-hover:visible")).toHaveCount(0);
+            await merge
+                .locator(".mw-toolbar")
+                .getByRole("button", { name: "Accept left change", exact: true })
+                .click();
+            await merge.getByRole("button", { name: "Apply", exact: true }).click();
+            await expect
+                .poll(() => runGitRaw(workspacePath, ["ls-files", "-u"], environment))
+                .toBe("");
+            expect(await runGitRaw(workspacePath, ["show", ":package-smoke.ts"], environment)).toBe(
+                "export const answer = 44;\n",
+            );
+            console.log(
+                "[package smoke] installed merge workbench resolves and stages a real conflict",
             );
         } catch (error) {
             console.log(

@@ -1,4 +1,5 @@
 import { oracles } from "../oracles";
+import { mountLegacyMerge } from "./legacyMerge";
 import { parseRgba } from "./playwright/collectOracleInputs";
 import { expect, test } from "./playwright/harnessPage";
 
@@ -6,7 +7,7 @@ test("merge identity and summaries stay readable without overlap", async ({
     mountHarness,
     page,
 }) => {
-    await mountHarness("merge-editor", { webviewFixture: "conflicted.json", locale: "de" });
+    await mountLegacyMerge(mountHarness, page, "de");
     const details = page.locator('[aria-controls="merge-details"]');
     await expect(details).toHaveAttribute("title", (await details.innerText()).trim());
     await details.click();

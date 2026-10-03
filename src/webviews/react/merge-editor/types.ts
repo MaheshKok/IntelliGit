@@ -1,5 +1,7 @@
 // Typed message protocol for the 3-way merge editor webview.
 
+import type { MergeWorkbenchInbound, MergeWorkbenchOutbound } from "../../protocol/mergeWorkbench";
+import type { SyntaxThemeInbound, SyntaxThemeOutbound } from "../../protocol/syntaxTheme";
 import type {
     MergeEditorData as ConflictParserMergeEditorData,
     MergeSegment,
@@ -15,6 +17,9 @@ export type { CommonSegment, ConflictSegment } from "../../../mergeEditor/confli
 
 /** Commands the merge editor posts to the extension host for loading, saving, and file-wide actions. */
 export type OutboundMessage =
+    | MergeWorkbenchOutbound
+    | SyntaxThemeOutbound
+    | { type: "openNativeMerge" }
     | { type: "ready" }
     | { type: "setIgnoreMode"; mode: "none" | "whitespace" }
     | { type: "applyResolution"; content: string }
@@ -26,7 +31,10 @@ export type OutboundMessage =
 
 /** Messages the extension host sends to initialize conflict data or report load failures. */
 export type InboundMessage =
-    { type: "setConflictData"; data: MergeEditorData } | { type: "loadError"; message: string };
+    | MergeWorkbenchInbound
+    | SyntaxThemeInbound
+    | { type: "setConflictData"; data: MergeEditorData }
+    | { type: "loadError"; message: string };
 
 /**
  * Resolution choice for a single conflict hunk.

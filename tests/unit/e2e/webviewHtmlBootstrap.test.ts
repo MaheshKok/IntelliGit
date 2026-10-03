@@ -88,6 +88,7 @@ describe("buildWebviewShellHtml E2E bootstrap", () => {
             expect(scripts.map((script) => script.getAttribute("src"))).toEqual([
                 null,
                 "webview:///dist/webview-shiki.js",
+                "webview:///dist/webview-react.js",
                 `webview:///dist/${scriptFile}`,
             ]);
             const nonce = scripts[0].getAttribute("nonce");
@@ -103,11 +104,12 @@ describe("buildWebviewShellHtml E2E bootstrap", () => {
         },
     );
 
-    it("keeps unrelated webviews on their single application script", async () => {
+    it("preloads React before unrelated application scripts without loading Shiki", async () => {
         mockVsCode();
         mockActivationState(false);
         const html = await buildHtml();
         expect([...html.matchAll(/src="([^"]+)"/g)].map((match) => match[1])).toEqual([
+            "webview:///dist/webview-react.js",
             "webview:///dist/webview-commitpanel.js",
         ]);
     });

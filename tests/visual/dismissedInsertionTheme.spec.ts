@@ -1,7 +1,8 @@
 import { expect, test } from "./playwright/harnessPage";
+import { mountLegacyMerge } from "./legacyMerge";
 
 test("dismissed insertion words return to host-theme syntax", async ({ mountHarness, page }) => {
-    await mountHarness("merge-editor", { webviewFixture: "conflicted.json" });
+    await mountLegacyMerge(mountHarness, page);
 
     await page.locator('[data-conflict-id="1"] .conflict-actions-right .discard-btn').click();
 

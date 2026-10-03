@@ -47,6 +47,7 @@ describe("merge editor preview shared runtime", () => {
         const scripts = [...html.matchAll(/<script([^>]*src="([^"]+)"[^>]*)>/g)];
         expect(scripts.map((script) => script[2])).toEqual([
             "/dist/webview-shiki.js",
+            "/dist/webview-react.js",
             "/dist/webview-mergeeditor.js",
         ]);
         for (const script of scripts) expect(script[1]).not.toMatch(/\b(?:async|defer|type)=?/);

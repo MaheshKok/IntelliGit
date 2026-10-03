@@ -24,8 +24,8 @@ describe("webview bundle configuration", () => {
 
         expect(getWebviewBuildConfigs(false)).toEqual(expectedConfigs);
         expect(getWebviewWatchConfigs()).toEqual(expectedConfigs);
-        expect(expectedConfigs).toHaveLength(11);
-        expect(expectedConfigs.map(({ format }) => format)).toEqual(Array(11).fill("iife"));
+        expect(expectedConfigs).toHaveLength(12);
+        expect(expectedConfigs.map(({ format }) => format)).toEqual(Array(12).fill("iife"));
     });
 
     it("keeps top-level webview variables out of the classic-script global scope", async () => {

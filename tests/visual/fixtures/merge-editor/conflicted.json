@@ -8,6 +8,14 @@
             "message": {
                 "type": "setConflictData",
                 "data": {
+                    "workbench": {
+                        "snapshotId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                        "draftKey": "mergeDraft.fixture",
+                        "base": "one\ntwo\nthree\n",
+                        "ours": "one\nTWO-MAIN\nthree\nBOTH-ADD\n",
+                        "theirs": "one\nTWO-CONFLICT\nthree\nBOTH-ADD\nTHEIRS-ONLY-ADD\n",
+                        "operation": "merge"
+                    },
                     "filePath": "conflict.txt",
                     "segments": [
                         {

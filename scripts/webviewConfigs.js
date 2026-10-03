@@ -2,6 +2,7 @@ const path = require("path");
 const { readFile } = require("node:fs/promises");
 
 const WEBVIEW_CONFIGS = [
+    { entry: "react/shared/reactRuntime", out: "webview-react" },
     { entry: "react/diff-core/shikiHighlighter", out: "webview-shiki" },
     { entry: "react/CommitGraphApp", out: "webview-commitgraph" },
     { entry: "react/CompactCommitGraphApp", out: "webview-compactcommitgraph" },
@@ -67,13 +68,34 @@ const grammarDataPlugin = {
 
 /**
  * Creates the shared IIFE esbuild options used by every browser webview bundle.
+ * React and its renderer execute once before an app, preserving one hooks identity.
  *
  * @param {{entry: string, out: string, production?: boolean}} options Entry module
  *   and output name, with optional production minification.
  * @returns {import("esbuild").BuildOptions} Browser-safe bundled options.
  */
 function createWebviewBuildOptions({ entry, out, production = false }) {
+    const sharedReactPlugin = {
+        name: "shared-react-runtime",
+        setup(build) {
+            const modules = {
+                react: "React",
+                "react/jsx-runtime": "JSX",
+                "react-dom/client": "Client",
+                "react-dom": "DOM",
+            };
+            build.onResolve(
+                { filter: /^(?:react|react\/jsx-runtime|react-dom(?:\/client)?)$/ },
+                (args) => ({ path: modules[args.path], namespace: "shared-react" }),
+            );
+            build.onLoad({ filter: /.*/, namespace: "shared-react" }, (args) => ({
+                contents: `module.exports = globalThis.IntelliGitReact.${args.path};`,
+                loader: "js",
+            }));
+        },
+    };
     const sharedHighlighter = out === "webview-shiki";
+    const sharedReact = out === "webview-react";
     const consumesHighlighter = [
         "webview-diffviewer",
         "webview-mergeeditor",
@@ -81,7 +103,10 @@ function createWebviewBuildOptions({ entry, out, production = false }) {
     ].includes(out);
     return {
         entryPoints: [
-            path.resolve(__dirname, `../src/webviews/${entry}.${sharedHighlighter ? "ts" : "tsx"}`),
+            path.resolve(
+                __dirname,
+                `../src/webviews/${entry}.${sharedHighlighter || sharedReact ? "ts" : "tsx"}`,
+            ),
         ],
         bundle: true,
         outfile: path.resolve(__dirname, `../dist/${out}.js`),
@@ -91,10 +116,13 @@ function createWebviewBuildOptions({ entry, out, production = false }) {
         sourcemap: true,
         minify: production,
         treeShaking: true,
-        ...(sharedHighlighter
-            ? { globalName: "IntelliGitSyntax", plugins: [grammarDataPlugin] }
-            : {}),
-        ...(consumesHighlighter ? { plugins: [sharedHighlighterPlugin] } : {}),
+        ...(sharedHighlighter ? { globalName: "IntelliGitSyntax" } : {}),
+        ...(sharedReact ? { globalName: "IntelliGitReact" } : {}),
+        plugins: sharedHighlighter
+            ? [grammarDataPlugin]
+            : sharedReact
+              ? []
+              : [...(consumesHighlighter ? [sharedHighlighterPlugin] : []), sharedReactPlugin],
         define: {
             "process.env.NODE_ENV": production ? '"production"' : '"development"',
         },
