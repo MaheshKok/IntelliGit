@@ -1626,7 +1626,7 @@
         "@types/react": "^18.2.48",
         "@types/react-dom": "^19.2.7",
         "@types/vscode": "1.107.0",
-        "@vitest/coverage-v8": "4.1.10",
+        "@vitest/coverage-v8": "5.0.2",
         "@vscode/test-electron": "^3.1.0",
         "@vscode/vsce": "^2.22.0",
         "dependency-cruiser": "^18.2.0",
