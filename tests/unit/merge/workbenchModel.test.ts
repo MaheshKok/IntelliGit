@@ -322,6 +322,33 @@ describe("merge workbench document", () => {
         expect(resultContent(session.state.doc, input)).toBe("base\n");
     });
 
+    it("restores decision and dismissal state from a draft", () => {
+        const { hunks, content } = buildWorkbenchDocument(data());
+        const entries = hunks.map(({ id, from, to, resolved }) => ({
+            id,
+            from,
+            to,
+            resolved,
+            decision: "ours",
+            edited: true,
+            dismissedOurs: true,
+            dismissedTheirs: true,
+        }));
+        expect(restoreDraftHunks(hunks, entries, content.length)?.[0]).toEqual({
+            ...hunks[0],
+            decision: "ours",
+            edited: true,
+            dismissed: { ours: true, theirs: true },
+        });
+        const legacy = hunks.map(({ id, from, to, resolved }) => ({ id, from, to, resolved }));
+        const restored = restoreDraftHunks(hunks, legacy, content.length);
+        expect(restored?.[0]).toMatchObject({
+            edited: false,
+            dismissed: { ours: false, theirs: false },
+        });
+        expect(Object.hasOwn(restored![0], "decision")).toBe(false);
+    });
+
     it("restores draft ranges with unedited and undismissed defaults", () => {
         const { hunks } = buildWorkbenchDocument(data());
         const draft = hunks.map(({ id, from, to, resolved }) => ({ id, from, to, resolved }));

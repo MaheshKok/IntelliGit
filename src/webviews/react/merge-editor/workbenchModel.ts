@@ -9,10 +9,11 @@ import {
 } from "@codemirror/state";
 import { invertedEffects, isolateHistory } from "@codemirror/commands";
 import type { MergeEditorData, ConflictSegment } from "../../../mergeEditor/conflictParser";
+import type { MergeChoice, MergeDraft } from "../../protocol/mergeWorkbench";
 import { getResultLines, isTrueConflict } from "./mergeState";
 
 /** Available replacements for a merge hunk. */
-export type MergeChoice = "ours" | "theirs" | "both" | "both-reversed" | "base" | "none";
+export type { MergeChoice };
 
 /** Segment grouping and whitespace policy loaded from the host. */
 export interface Grouping {
@@ -219,7 +220,7 @@ export function restoreDraftHunks(
     let previous = 0;
     for (const [index, source] of value.entries()) {
         if (!source || typeof source !== "object") return null;
-        const entry = source as Record<string, unknown>;
+        const entry = source as MergeDraft["hunks"][number];
         if (
             entry.id !== original[index].id ||
             !Number.isSafeInteger(entry.from) ||
@@ -237,6 +238,12 @@ export function restoreDraftHunks(
             from: entry.from,
             to: entry.to,
             resolved: entry.resolved,
+            ...(entry.decision !== undefined ? { decision: entry.decision } : {}),
+            edited: entry.edited ?? false,
+            dismissed: {
+                ours: entry.dismissedOurs ?? false,
+                theirs: entry.dismissedTheirs ?? false,
+            },
         });
         previous = entry.to;
     }

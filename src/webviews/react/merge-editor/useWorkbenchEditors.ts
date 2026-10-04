@@ -4,6 +4,7 @@ import { StateEffect, Transaction } from "@codemirror/state";
 import { createMergeCodeEditor, setInputHunks, setMergeSyntax } from "./codeEditor";
 import {
     buildWorkbenchDocument,
+    groupingField,
     groupingInit,
     replaceHunks,
     restoreDraftHunks,
@@ -51,7 +52,17 @@ export function useWorkbenchEditors(inputData: MergeEditorData) {
                 content: view.state.doc.toString(),
                 hunks: view.state
                     .field(workbenchHunks)
-                    .map(({ id, from, to, resolved }) => ({ id, from, to, resolved })),
+                    .map(({ id, from, to, resolved, decision, edited, dismissed }) => ({
+                        id,
+                        from,
+                        to,
+                        resolved,
+                        ...(decision !== undefined ? { decision } : {}),
+                        edited,
+                        dismissedOurs: dismissed.ours,
+                        dismissedTheirs: dismissed.theirs,
+                    })),
+                ignoreWhitespace: view.state.field(groupingField).ignoreWhitespace,
             };
             dirtyDraft.current = false;
             getVsCodeApi().setState(latestDraft.current);

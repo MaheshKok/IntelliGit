@@ -2,6 +2,7 @@
 import React, { act } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EditorView } from "@codemirror/view";
+import { workbenchHunks } from "../../../src/webviews/react/merge-editor/workbenchModel";
 import { MergeWorkbench } from "../../../src/webviews/react/merge-editor/MergeWorkbench";
 import { parseConflictVersions, detectEolMetadata } from "../../../src/mergeEditor/conflictParser";
 import { mount, unmount, initReactDomTestEnvironment } from "../../helpers/reactDomTestUtils";
@@ -80,6 +81,81 @@ afterEach(() => {
 });
 
 describe("merge workbench state and commands", () => {
+    it("serialises the current whitespace mode", async () => {
+        vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+        for (const ignoreWhitespace of [false, true]) {
+            api.postMessage.mockClear();
+            const input = ignoreWhitespace ? { ...data, diffOptions: { ignoreWhitespace } } : data;
+            const mounted = mount(<MergeWorkbench data={input} />);
+            try {
+                const view = result(mounted.container);
+                const hunk = view.state.field(workbenchHunks)[0];
+                act(() => view.dispatch({ changes: { from: hunk.from, insert: "edit" } }));
+                await act(async () => vi.advanceTimersByTimeAsync(250));
+                const messages = api.postMessage.mock.calls.filter(
+                    ([msg]) => msg.type === "saveMergeDraft",
+                );
+                expect(messages).toHaveLength(1);
+                const draft = messages[0][0].draft;
+                expect(draft.ignoreWhitespace).toBe(ignoreWhitespace);
+                expect(draft.hunks).toEqual([
+                    {
+                        id: hunk.id,
+                        from: hunk.from,
+                        to: hunk.to + 4,
+                        resolved: false,
+                        edited: true,
+                        dismissedOurs: false,
+                        dismissedTheirs: false,
+                    },
+                ]);
+                expect(Object.hasOwn(draft.hunks[0], "decision")).toBe(false);
+            } finally {
+                unmount(mounted.root, mounted.container);
+            }
+        }
+    });
+
+    it("restores per-hunk state from a matching local draft", async () => {
+        vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+        const draft = {
+            snapshotId: data.workbench.snapshotId,
+            content: "local draft\n",
+            hunks: [
+                {
+                    id: 0,
+                    from: 0,
+                    to: 12,
+                    resolved: true,
+                    decision: "ours",
+                    edited: true,
+                    dismissedOurs: true,
+                    dismissedTheirs: false,
+                },
+            ],
+        };
+        api.getState.mockReturnValue(draft);
+        const mounted = mount(<MergeWorkbench data={data} />);
+        try {
+            const view = result(mounted.container);
+            expect(view.state.field(workbenchHunks)[0]).toMatchObject({
+                decision: "ours",
+                edited: true,
+                dismissed: { ours: true, theirs: false },
+            });
+            act(() => view.dispatch({ changes: { from: view.state.doc.length, insert: "tail" } }));
+            await act(async () => vi.advanceTimersByTimeAsync(250));
+            expect(api.postMessage).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    type: "saveMergeDraft",
+                    draft: expect.objectContaining({ hunks: draft.hunks }),
+                }),
+            );
+        } finally {
+            unmount(mounted.root, mounted.container);
+        }
+    });
+
     it("debounces local and durable draft serialization until typing settles", async () => {
         vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
         const mounted = mount(<MergeWorkbench data={data} />);
