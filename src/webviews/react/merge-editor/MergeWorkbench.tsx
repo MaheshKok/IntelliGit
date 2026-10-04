@@ -27,6 +27,7 @@ import "./merge-workbench.css";
 
 /** Full-document three-way merge with reversible decisions and immutable inputs. */
 export function MergeWorkbench({ data: inputData }: { data: MergeEditorData }) {
+    const [active, setActive] = useState(0);
     const {
         data,
         hosts,
@@ -40,8 +41,7 @@ export function MergeWorkbench({ data: inputData }: { data: MergeEditorData }) {
         staleDraft,
         discardStaleDraft,
         flushDraft,
-    } = useWorkbenchEditors(inputData);
-    const [active, setActive] = useState(0);
+    } = useWorkbenchEditors(inputData, active);
     const [baseVisible, setBaseVisible] = useState(false);
     const [linked, setLinked] = useState(true);
     useMergeScrollSync(editors, hunks, linked);
@@ -251,7 +251,7 @@ export function MergeWorkbench({ data: inputData }: { data: MergeEditorData }) {
                             />
                         )}
                         <div
-                            className="mw-editor"
+                            className={`mw-editor pane-${["ours", "result", "theirs"][pane]}`}
                             data-testid={`merge-editor-${pane}`}
                             key={pane}
                             ref={(element) => {
@@ -267,6 +267,7 @@ export function MergeWorkbench({ data: inputData }: { data: MergeEditorData }) {
                     {tool("common.close", <VscClose />, () => setBaseVisible(false))}
                 </header>
                 <div
+                    className="pane-base"
                     ref={(element) => {
                         hosts.current[3] = element;
                     }}

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { EditorView } from "@codemirror/view";
 import { StateEffect, Transaction } from "@codemirror/state";
-import { createMergeCodeEditor, setInputHunks, setMergeSyntax } from "./codeEditor";
+import { createMergeCodeEditor, setActiveHunk, setInputHunks, setMergeSyntax } from "./codeEditor";
 import {
     buildWorkbenchDocument,
     groupingField,
@@ -22,7 +22,7 @@ import type { MergeEditorData } from "./types";
 import { t } from "../shared/i18n";
 
 /** Owns editors for one snapshot; asynchronous draft loads never overwrite an already edited result. */
-export function useWorkbenchEditors(inputData: MergeEditorData) {
+export function useWorkbenchEditors(inputData: MergeEditorData, active: number | null) {
     const [data] = useState(inputData);
     const [initial] = useState(() => buildWorkbenchDocument(data));
     const hosts = useRef<Array<HTMLDivElement | null>>([]);
@@ -99,6 +99,7 @@ export function useWorkbenchEditors(inputData: MergeEditorData) {
         ];
         const views = hosts.current.map((host, pane) =>
             createMergeCodeEditor(host!, contents[pane], {
+                pane: (["ours", "result", "theirs", "base"] as const)[pane],
                 readOnly: pane !== 1,
                 filePath: data.filePath,
                 label: labels[pane],
@@ -183,6 +184,12 @@ export function useWorkbenchEditors(inputData: MergeEditorData) {
             view.dispatch({ effects: setInputHunks.of(ranges) });
         });
     }, [hunks]);
+
+    useEffect(() => {
+        editors.current
+            .slice(0, 3)
+            .forEach(({ view }) => view.dispatch({ effects: setActiveHunk.of(active) }));
+    }, [active]);
 
     useEffect(() => {
         editors.current[1]?.setReadOnly(busy);

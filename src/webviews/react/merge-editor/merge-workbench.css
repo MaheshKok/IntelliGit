@@ -136,10 +136,6 @@
 .mw-connectors button[hidden] {
     display: none;
 }
-.merge-word-change {
-    background: var(--vscode-diffEditor-removedTextBackground, #cc555544);
-    outline: 1px solid var(--vscode-diffEditor-removedTextBorder, transparent);
-}
 
 .mw-error {
     padding: 8px 12px;
@@ -223,14 +219,6 @@
     background: var(--vscode-button-background);
     color: var(--vscode-button-foreground);
 }
-.merge-range-pending {
-    background: var(--vscode-diffEditor-removedTextBackground, transparent);
-    outline: 1px solid var(--vscode-diffEditor-removedTextBorder, transparent);
-}
-.merge-range-resolved {
-    background: var(--vscode-diffEditor-insertedTextBackground, transparent);
-    outline: 1px solid var(--vscode-diffEditor-insertedTextBorder, transparent);
-}
 @media (max-width: 650px) {
     .mw-status {
         width: 100%;
@@ -243,3 +231,142 @@
         width: 100%;
     }
 }
+
+/* rows: begin */
+.merge-editor.workbench .cm-lineNumbers .cm-gutterElement {
+    min-width: var(--merge-line-number-gutter);
+    box-sizing: border-box;
+    text-align: right;
+    padding: 0 7px 0 3px;
+    background: none;
+}
+
+.merge-editor.workbench .cm-line.mrow-pending.mrow-conflict {
+    background: var(--merge-conflict-block-bg);
+}
+.merge-editor.workbench .cm-gutterElement.mrow-pending.mrow-conflict {
+    background: var(--merge-conflict-ribbon-bg);
+}
+.merge-editor.workbench .mrow-insertion:is(.mrow-pending, .mrow-variant) {
+    background: var(--merge-inserted-block-bg);
+}
+.merge-editor.workbench .cm-line.mrow-modification:is(.mrow-pending, .mrow-variant) {
+    background: var(--merge-modified-block-bg);
+}
+.merge-editor.workbench .cm-gutterElement.mrow-modification:is(.mrow-pending, .mrow-variant) {
+    background: var(--pycharm-modified);
+}
+.merge-editor.workbench .cm-line.mrow-deletion:is(.mrow-pending, .mrow-variant) {
+    background: var(--merge-deleted-block-bg);
+}
+.merge-editor.workbench .cm-gutterElement.mrow-deletion:is(.mrow-pending, .mrow-variant) {
+    background: var(--pycharm-deleted);
+}
+.merge-editor.workbench .mrow.mrow-edited {
+    background: var(--merge-inserted-block-bg);
+}
+.merge-editor.workbench :is(.mrow-accepted, .mrow-settled, .mrow-plain, .mrow-dismissed) {
+    background: none;
+}
+.merge-editor.workbench .mrow-dismissed {
+    opacity: 0.5;
+}
+.merge-editor.workbench .cm-line {
+    color-scheme: light;
+}
+.merge-editor.workbench
+    .cm-line:is(.mrow-conflict, .mrow-insertion, .mrow-modification, .mrow-deletion):is(
+        .mrow-pending,
+        .mrow-variant
+    ),
+.merge-editor.workbench .cm-line.mrow-edited {
+    color-scheme: dark;
+}
+
+.merge-editor.workbench .cm-gutterElement.mrow-pending.mrow-conflict {
+    position: relative;
+}
+.merge-editor.workbench .cm-gutterElement.mrow-pending.mrow-conflict::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 1px;
+    background: var(--merge-pane-boundary);
+    pointer-events: none;
+    z-index: 2;
+}
+
+.merge-editor.workbench .mrow-conflict {
+    --merge-hunk-boundary: var(--pycharm-conflict);
+    --merge-hunk-boundary-width: 2px;
+}
+.merge-editor.workbench .mrow-insertion {
+    --merge-hunk-boundary: var(--merge-inserted-block-bg);
+    --merge-hunk-boundary-width: 2px;
+}
+.merge-editor.workbench .mrow-modification {
+    --merge-hunk-boundary: var(--pycharm-modified);
+    --merge-hunk-boundary-width: 2px;
+}
+.merge-editor.workbench .mrow-deletion {
+    --merge-hunk-boundary: var(--pycharm-deleted);
+    --merge-hunk-boundary-width: 2px;
+}
+.merge-editor.workbench .mrow-first,
+.merge-editor.workbench .mrow-empty {
+    box-shadow: inset 0 var(--merge-hunk-boundary-width) 0 0 var(--merge-hunk-boundary);
+}
+.merge-editor.workbench .mrow-last {
+    box-shadow: inset 0 calc(-1 * var(--merge-hunk-boundary-width)) 0 0 var(--merge-hunk-boundary);
+}
+.merge-editor.workbench .mrow-first.mrow-last {
+    box-shadow:
+        inset 0 var(--merge-hunk-boundary-width) 0 0 var(--merge-hunk-boundary),
+        inset 0 calc(-1 * var(--merge-hunk-boundary-width)) 0 0 var(--merge-hunk-boundary);
+}
+.merge-editor.workbench .mrow:is(.mrow-accepted, .mrow-dismissed, .mrow-settled, .mrow-plain) {
+    --merge-hunk-boundary: transparent;
+    box-shadow: none;
+}
+.merge-editor.workbench .mrow-active.mrow-first {
+    box-shadow:
+        inset 0 1px 0 0 color-mix(in srgb, var(--merge-accent) 16%, transparent),
+        inset 0 var(--merge-hunk-boundary-width) 0 0 var(--merge-hunk-boundary);
+}
+.merge-editor.workbench .mrow-active.mrow-last {
+    box-shadow:
+        inset 0 -1px 0 0 color-mix(in srgb, var(--merge-accent) 16%, transparent),
+        inset 0 calc(-1 * var(--merge-hunk-boundary-width)) 0 0 var(--merge-hunk-boundary);
+}
+.merge-editor.workbench .mrow-active.mrow-first.mrow-last {
+    box-shadow:
+        inset 0 1px 0 0 color-mix(in srgb, var(--merge-accent) 16%, transparent),
+        inset 0 -1px 0 0 color-mix(in srgb, var(--merge-accent) 16%, transparent),
+        inset 0 var(--merge-hunk-boundary-width) 0 0 var(--merge-hunk-boundary),
+        inset 0 calc(-1 * var(--merge-hunk-boundary-width)) 0 0 var(--merge-hunk-boundary);
+}
+
+.merge-editor.workbench .mrow-conflict .word-diff-change {
+    background: var(--pycharm-conflict);
+}
+.merge-editor.workbench .mrow-modification .word-diff-change {
+    background: var(--pycharm-modified);
+}
+.merge-editor.workbench .mrow-deletion .word-diff-change {
+    background: var(--pycharm-deleted);
+}
+.merge-editor.workbench .mrow-edited .word-diff-change {
+    background: var(--pycharm-inserted);
+}
+.merge-editor.workbench .mrow-insertion .word-diff-change {
+    background: transparent;
+}
+.merge-editor.workbench .word-diff-change.word-diff-whitespace {
+    background: color-mix(in srgb, var(--merge-editor-fg) 10%, transparent);
+}
+.merge-editor.workbench:not(.words-highlighted) .word-diff-change {
+    background: transparent;
+}
+/* rows: end */

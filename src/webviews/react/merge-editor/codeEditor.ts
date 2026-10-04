@@ -1,9 +1,18 @@
-import { Compartment, EditorState, StateEffect, StateField, type Range } from "@codemirror/state";
+import {
+    Compartment,
+    EditorState,
+    RangeSetBuilder,
+    StateEffect,
+    StateField,
+    type Range,
+} from "@codemirror/state";
 import {
     EditorView,
     keymap,
     lineNumbers,
-    highlightActiveLine,
+    gutter,
+    gutterLineClass,
+    GutterMarker,
     drawSelection,
     Decoration,
     ViewPlugin,
@@ -30,24 +39,36 @@ import {
     bridgeChangedWordRuns,
     tokenizeWordDiff,
 } from "../../../diff/wordDiff";
+import { LINE_HEIGHT_PX } from "../diff-core/mergeScrollLayout";
+import {
+    compareLinesFor,
+    isPhantomLine,
+    ownedLines,
+    rowClasses,
+    variantClass,
+    type WorkbenchPane,
+} from "./workbenchRows";
 
 const palette = EditorView.theme({
     "&": {
-        height: "100%",
+        height: "auto",
         color: "var(--vscode-editor-foreground)",
-        backgroundColor: "var(--vscode-editor-background)",
-        fontFamily: "var(--vscode-editor-font-family)",
-        fontSize: "var(--vscode-editor-font-size)",
+        backgroundColor: "transparent",
+        fontFamily: "var(--vscode-editor-font-family, monospace)",
+        fontSize: "var(--merge-code-font-size, var(--vscode-editor-font-size, 13px))",
     },
-    ".cm-scroller": { overflow: "auto", fontFamily: "inherit", lineHeight: "1.6" },
-    ".cm-content": { padding: "8px 0", caretColor: "var(--vscode-editorCursor-foreground)" },
+    ".cm-scroller": {
+        overflow: "hidden",
+        fontFamily: "inherit",
+        lineHeight: `${LINE_HEIGHT_PX}px`,
+        backgroundColor: "transparent",
+    },
+    ".cm-content": { padding: "0", caretColor: "var(--vscode-editorCursor-foreground)" },
+    ".cm-line": { padding: "0 9px" },
     ".cm-gutters": {
-        backgroundColor: "var(--vscode-editor-background)",
+        backgroundColor: "transparent",
         color: "color-mix(in srgb, var(--vscode-editorLineNumber-foreground) 60%, var(--vscode-editor-foreground))",
-        borderRight: "1px solid var(--vscode-panel-border)",
-    },
-    ".cm-activeLine, .cm-activeLineGutter": {
-        backgroundColor: "var(--vscode-editor-lineHighlightBackground)",
+        border: "none",
     },
     ".cm-selectionBackground, &.cm-focused .cm-selectionBackground": {
         backgroundColor: "var(--vscode-editor-selectionBackground)",
@@ -146,13 +167,18 @@ const inputHunks = StateField.define<readonly WorkbenchHunk[]>({
 });
 
 /** Highlights changed words inside nonempty base ranges without tinting whole-line insertions twice. */
-function wordDecorations(state: EditorState, hunks: readonly WorkbenchHunk[]): Range<Decoration>[] {
+function wordDecorations(
+    state: EditorState,
+    hunks: readonly WorkbenchHunk[],
+    pane: WorkbenchPane,
+): Range<Decoration>[] {
     const marks: Range<Decoration>[] = [];
     for (const hunk of hunks) {
-        if (!hunk.segment.baseLines.length) continue;
+        const compareLines = compareLinesFor(hunk, pane);
+        if (compareLines === undefined) continue;
         const text = state.doc.sliceString(hunk.from, hunk.to).replace(/\n$/, "");
         const lines = text.split("\n");
-        const compared = alignCompareLinesForWordDiff(lines, hunk.segment.baseLines);
+        const compared = alignCompareLinesForWordDiff(lines, compareLines);
         let offset = hunk.from;
         lines.forEach((line, index) => {
             const tokens = tokenizeWordDiff(line);
@@ -163,10 +189,11 @@ function wordDecorations(state: EditorState, hunks: readonly WorkbenchHunk[]): R
             tokens.forEach((token, i) => {
                 if (changed[i] && offset + token.length <= state.doc.length)
                     marks.push(
-                        Decoration.mark({ class: "merge-word-change" }).range(
-                            offset,
-                            offset + token.length,
-                        ),
+                        Decoration.mark({
+                            class: /^\s+$/.test(token)
+                                ? "word-diff-change word-diff-whitespace"
+                                : "word-diff-change",
+                        }).range(offset, offset + token.length),
                     );
                 offset += token.length;
             });
@@ -176,38 +203,120 @@ function wordDecorations(state: EditorState, hunks: readonly WorkbenchHunk[]): R
     return marks;
 }
 
-/** Rebuilds conflict decorations only when text or decision anchors change. */
-function conflictField(readOnly: boolean) {
-    return StateField.define<DecorationSet>({
-        create: () => Decoration.none,
+/** Selects the active hunk without adding a history event. */
+export const setActiveHunk = StateEffect.define<number | null>();
+const activeHunk = StateField.define<number | null>({
+    create: () => null,
+    update(value, transaction) {
+        for (const effect of transaction.effects) if (effect.is(setActiveHunk)) return effect.value;
+        return value;
+    },
+});
+
+class RowMarker extends GutterMarker {
+    constructor(readonly elementClass: string) {
+        super();
+    }
+    eq(other: RowMarker) {
+        return this.elementClass === other.elementClass;
+    }
+}
+
+class TextMarker extends GutterMarker {
+    constructor(readonly text: string) {
+        super();
+    }
+    eq(other: TextMarker) {
+        return this.text === other.text;
+    }
+    toDOM() {
+        return document.createTextNode(this.text);
+    }
+}
+
+function formatNumber(number: number, state: EditorState): string {
+    // CodeMirror also formats a synthetic width spacer (9, 99, ...) beyond the document.
+    return number <= state.doc.lines && isPhantomLine(state.doc, state.doc.line(number))
+        ? ""
+        : String(number);
+}
+
+function numberGutter() {
+    return gutter({
+        class: "cm-lineNumbers",
+        side: "after",
+        renderEmptyElements: true,
+        lineMarker: (view, block) => {
+            const line = view.state.doc.lineAt(block.from);
+            return isPhantomLine(view.state.doc, line) ? null : new TextMarker(String(line.number));
+        },
+    });
+}
+
+function hunkRows(state: EditorState, hunk: WorkbenchHunk, pane: WorkbenchPane, active: boolean) {
+    if (hunk.from === hunk.to) {
+        const line = state.doc.lineAt(hunk.from);
+        return isPhantomLine(state.doc, line)
+            ? []
+            : [{ from: line.from, classes: `mrow mrow-empty ${variantClass(hunk.segment)}` }];
+    }
+    const lines = ownedLines(state.doc, hunk.from, hunk.to);
+    return lines.map((number, index) => ({
+        from: state.doc.line(number).from,
+        classes: rowClasses(
+            hunk,
+            pane,
+            lines.length === 1
+                ? "only"
+                : index === 0
+                  ? "first"
+                  : index === lines.length - 1
+                    ? "last"
+                    : "middle",
+            active,
+        ),
+    }));
+}
+
+function rowDecorations(state: EditorState, pane: WorkbenchPane) {
+    const hunks = state.field(pane === "result" ? workbenchHunks : inputHunks);
+    const active = state.field(activeHunk);
+    const rows = hunks
+        .flatMap((hunk, index) => hunkRows(state, hunk, pane, active === index))
+        .sort((a, b) => a.from - b.from);
+    const gutters = new RangeSetBuilder<GutterMarker>();
+    const marks: Range<Decoration>[] = [];
+    for (const row of rows) {
+        marks.push(Decoration.line({ class: row.classes }).range(row.from));
+        gutters.add(row.from, row.from, new RowMarker(row.classes));
+    }
+    return {
+        lines: Decoration.set([...marks, ...wordDecorations(state, hunks, pane)], true),
+        gutters: gutters.finish(),
+    };
+}
+
+/** Shares row classes between code and gutters when text, decisions or active state change. */
+function rowField(pane: WorkbenchPane) {
+    return StateField.define<ReturnType<typeof rowDecorations>>({
+        create: (state) => rowDecorations(state, pane),
         update(value, transaction) {
             if (
                 !transaction.docChanged &&
                 !transaction.effects.some(
-                    (effect) => effect.is(replaceHunks) || effect.is(setInputHunks),
+                    (effect) =>
+                        effect.is(replaceHunks) ||
+                        effect.is(setInputHunks) ||
+                        effect.is(setActiveHunk),
                 )
             )
                 return value;
-            const hunks = transaction.state.field(readOnly ? inputHunks : workbenchHunks);
-            return Decoration.set(
-                [
-                    ...hunks.flatMap((hunk) =>
-                        hunk.to > hunk.from
-                            ? [
-                                  Decoration.mark({
-                                      class: hunk.resolved
-                                          ? "merge-range-resolved"
-                                          : "merge-range-pending",
-                                  }).range(hunk.from, hunk.to),
-                              ]
-                            : [],
-                    ),
-                    ...wordDecorations(transaction.state, hunks),
-                ],
-                true,
-            );
+            return rowDecorations(transaction.state, pane);
         },
-        provide: (field) => EditorView.decorations.from(field),
+        provide: (field) => [
+            EditorView.decorations.from(field, (value) => value.lines),
+            gutterLineClass.from(field, (value) => value.gutters),
+        ],
     });
 }
 
@@ -216,6 +325,7 @@ export function createMergeCodeEditor(
     parent: HTMLElement,
     content: string,
     options: {
+        pane: WorkbenchPane | "base";
         readOnly: boolean;
         filePath: string;
         label: string;
@@ -228,9 +338,8 @@ export function createMergeCodeEditor(
         doc: content.replace(/\r\n/g, "\n"),
         extensions: [
             palette,
-            lineNumbers(),
+            options.pane === "ours" ? numberGutter() : lineNumbers({ formatNumber }),
             drawSelection(),
-            highlightActiveLine(),
             syntaxPlugin(options.filePath, options.theme),
             search(),
             highlightSelectionMatches(),
@@ -240,8 +349,15 @@ export function createMergeCodeEditor(
                 EditorView.editable.of(!options.readOnly),
             ]),
             EditorView.contentAttributes.of({ "aria-label": options.label }),
-            ...(options.readOnly ? [inputHunks] : [history(), workbenchHunks, workbenchHistory]),
-            conflictField(options.readOnly),
+            activeHunk,
+            ...(options.pane === "base"
+                ? []
+                : [
+                      ...(options.pane === "result"
+                          ? [history(), workbenchHunks, workbenchHistory]
+                          : [inputHunks]),
+                      rowField(options.pane),
+                  ]),
             EditorView.updateListener.of((update) => {
                 if (
                     update.docChanged ||

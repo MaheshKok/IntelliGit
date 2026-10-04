@@ -135,7 +135,7 @@ interface ConflictSideCallbacks {
 
 /** Derived render flags for one conflict hunk: which sides are in the result,
  * which controls to show, and how the result/side panes compare against base. */
-interface ConflictView {
+export interface ConflictView {
     isEdited: boolean;
     isOurs: boolean;
     isTheirs: boolean;
@@ -228,7 +228,7 @@ function deriveResolutionState(
  * edits, and per-side dismissals. Pure helper so ConflictSection stays a thin
  * view over these derived values.
  */
-function deriveConflictView(
+export function deriveConflictView(
     segment: ConflictSegment,
     resolution: HunkResolution | undefined,
     editedLines: string[] | undefined,

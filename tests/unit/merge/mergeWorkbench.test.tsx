@@ -324,3 +324,204 @@ describe("merge workbench state and commands", () => {
         unmount(mounted.root, mounted.container);
     });
 });
+
+describe("merge workbench rows", () => {
+    it("paints pending conflict rows and gutter cells", () => {
+        const mounted = mount(<MergeWorkbench data={data} />);
+        try {
+            const host = mounted.container.querySelector('[data-testid="merge-editor-1"]')!;
+            expect(host.querySelectorAll(".cm-line.mrow-pending.mrow-conflict")).toHaveLength(1);
+            expect(
+                host.querySelectorAll(".cm-gutterElement.mrow-pending.mrow-conflict"),
+            ).toHaveLength(1);
+        } finally {
+            unmount(mounted.root, mounted.container);
+        }
+    });
+
+    it("ours pane orders code, then gutters", () => {
+        const mounted = mount(<MergeWorkbench data={data} />);
+        try {
+            const scroller = mounted.container.querySelector(".pane-ours .cm-scroller");
+            expect(scroller).not.toBeNull();
+            const content = scroller!.querySelector(".cm-content")!;
+            const gutters = scroller!.querySelector(".cm-gutters-after")!;
+            expect(scroller!.querySelector(".cm-gutters-before")?.childElementCount).toBe(0);
+            expect(
+                content.compareDocumentPosition(gutters) & Node.DOCUMENT_POSITION_FOLLOWING,
+            ).not.toBe(0);
+            expect(gutters.lastElementChild?.classList.contains("cm-lineNumbers")).toBe(true);
+        } finally {
+            unmount(mounted.root, mounted.container);
+        }
+    });
+
+    it("the phantom row has an empty number cell and no row class", () => {
+        const mounted = mount(<MergeWorkbench data={data} />);
+        try {
+            for (const pane of [0, 1, 2]) {
+                const host = mounted.container.querySelector(
+                    `[data-testid="merge-editor-${pane}"]`,
+                )!;
+                const view = EditorView.findFromDOM(
+                    host.querySelector(".cm-editor") as HTMLElement,
+                )!;
+                const cells = [
+                    ...host.querySelectorAll(".cm-lineNumbers .cm-gutterElement"),
+                ].filter((cell) => (cell as HTMLElement).style.visibility !== "hidden");
+                expect(cells.at(-1)?.textContent).toBe("");
+                expect(cells.filter((cell) => cell.textContent)).toHaveLength(
+                    view.state.doc.lines - 1,
+                );
+                const line = [...host.querySelectorAll(".cm-line")].at(-1)!;
+                expect([...line.classList].some((name) => name.startsWith("mrow"))).toBe(false);
+                expect([...cells.at(-1)!.classList].some((name) => name.startsWith("mrow"))).toBe(
+                    false,
+                );
+            }
+        } finally {
+            unmount(mounted.root, mounted.container);
+        }
+    });
+
+    it("a result without a final newline numbers every line", () => {
+        const mounted = mount(<MergeWorkbench data={{ ...data, hasTrailingNewline: false }} />);
+        try {
+            const view = result(mounted.container);
+            const cells = [
+                ...view.dom.querySelectorAll(".cm-lineNumbers .cm-gutterElement"),
+            ].filter(
+                (cell) => (cell as HTMLElement).style.visibility !== "hidden" && cell.textContent,
+            );
+            expect(view.state.doc.toString().endsWith("\n")).toBe(false);
+            expect(cells).toHaveLength(view.state.doc.lines);
+        } finally {
+            unmount(mounted.root, mounted.container);
+        }
+    });
+
+    it("marks the active hunk's rows in all three panes", () => {
+        const mounted = mount(<MergeWorkbench data={data} />);
+        try {
+            for (const pane of [0, 1, 2]) {
+                const host = mounted.container.querySelector(
+                    `[data-testid="merge-editor-${pane}"]`,
+                )!;
+                expect(host.querySelectorAll(".cm-line.mrow-active")).toHaveLength(1);
+                expect(host.querySelector(".cm-line.mrow-active")?.textContent).toBe(
+                    ["ours", "base", "theirs"][pane],
+                );
+                expect(host.querySelectorAll(".cm-gutterElement.mrow-active")).toHaveLength(1);
+            }
+        } finally {
+            unmount(mounted.root, mounted.container);
+        }
+    });
+});
+
+describe("workbench row updates", () => {
+    it("moves the active row classes in every pane without changing text", () => {
+        const versions = {
+            base: "a\nkeep\nb\n",
+            ours: "ours\nkeep\nours2\n",
+            theirs: "theirs\nkeep\ntheirs2\n",
+        };
+        const input = {
+            ...data,
+            segments: parseConflictVersions(versions.base, versions.ours, versions.theirs),
+            workbench: { ...data.workbench, ...versions },
+        };
+        const mounted = mount(<MergeWorkbench data={input} />);
+        try {
+            const before = result(mounted.container).state.doc.toString();
+            const buttons =
+                mounted.container.querySelectorAll<HTMLButtonElement>(".mw-hunks button");
+            act(() => buttons[1].click());
+            for (const pane of [0, 1, 2]) {
+                const host = mounted.container.querySelector(
+                    `[data-testid="merge-editor-${pane}"]`,
+                )!;
+                expect(host.querySelectorAll(".cm-line.mrow-active")).toHaveLength(1);
+                expect(host.querySelector(".cm-line.mrow-active")?.textContent).toBe(
+                    ["ours2", "b", "theirs2"][pane],
+                );
+            }
+            expect(result(mounted.container).state.doc.toString()).toBe(before);
+        } finally {
+            unmount(mounted.root, mounted.container);
+        }
+    });
+
+    it("drops accepted-pane word marks and paints live result edits including whitespace", () => {
+        const versions = {
+            base: "const value = old;\n",
+            ours: "const value = new;\n",
+            theirs: "const value = other;\n",
+        };
+        const input = {
+            ...data,
+            segments: parseConflictVersions(versions.base, versions.ours, versions.theirs),
+            workbench: { ...data.workbench, ...versions },
+        };
+        const mounted = mount(<MergeWorkbench data={input} />);
+        try {
+            const oursHost = mounted.container.querySelector('[data-testid="merge-editor-0"]')!;
+            expect(oursHost.querySelector(".word-diff-change")?.textContent).toBe("new");
+            click(mounted.container, "Accept left change");
+            expect(oursHost.querySelector(".word-diff-change")).toBeNull();
+            expect(result(mounted.container).dom.querySelector(".word-diff-change")).toBeNull();
+            const view = result(mounted.container);
+            act(() => view.dispatch({ changes: { from: 5, insert: " " } }));
+            expect(view.dom.querySelector(".mrow-edited .word-diff-change")).not.toBeNull();
+            expect(
+                view.dom.querySelector(".word-diff-change.word-diff-whitespace")?.textContent,
+            ).toMatch(/^\s+$/);
+            expect(
+                mounted.container.querySelector(
+                    ".merge-word-change, .merge-range-pending, .merge-range-resolved",
+                ),
+            ).toBeNull();
+        } finally {
+            unmount(mounted.root, mounted.container);
+        }
+    });
+
+    it.each([false, true])(
+        "suppresses empty EOF hunk classes only on a phantom row: %s",
+        (atEnd) => {
+            const versions = atEnd
+                ? { base: "head\n", ours: "head\nours\n", theirs: "head\ntheirs\n" }
+                : {
+                      base: "head\ntail\n",
+                      ours: "head\nours\ntail\n",
+                      theirs: "head\ntheirs\ntail\n",
+                  };
+            const input = {
+                ...data,
+                segments: parseConflictVersions(versions.base, versions.ours, versions.theirs),
+                workbench: { ...data.workbench, ...versions },
+            };
+            const mounted = mount(<MergeWorkbench data={input} />);
+            try {
+                const view = result(mounted.container);
+                expect(view.state.field(workbenchHunks)[0].from).toBe(
+                    view.state.field(workbenchHunks)[0].to,
+                );
+                expect(view.dom.querySelectorAll(".cm-line.mrow-empty")).toHaveLength(
+                    atEnd ? 0 : 1,
+                );
+                expect(view.dom.querySelectorAll(".cm-gutterElement.mrow-empty")).toHaveLength(
+                    atEnd ? 0 : 1,
+                );
+                const baseHost = mounted.container.querySelector(".pane-base")!;
+                expect(baseHost.querySelector(".mrow, .word-diff-change")).toBeNull();
+                expect(
+                    baseHost.querySelector(".cm-lineNumbers .cm-gutterElement:last-child")
+                        ?.textContent,
+                ).toBe("");
+            } finally {
+                unmount(mounted.root, mounted.container);
+            }
+        },
+    );
+});
