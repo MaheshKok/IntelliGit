@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.36.5] - 2026-10-04
+
+### Fixed
+
+- Pull and current-branch Update now default to Rebase when `intelligit.updateStrategy` is unset instead of rejecting the missing setting.
+
 ## [0.36.4] - 2026-10-03
 
 ### Added

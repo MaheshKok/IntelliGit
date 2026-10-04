@@ -40,13 +40,14 @@ async function configurationResources(repositoryRoot: string): Promise<vscode.Ur
     return children.length ? children : [vscode.Uri.file(repositoryRoot)];
 }
 
-/** Captures one strategy; invalid values, conflicting folder choices or unresolved scope stop the update. */
+/** Defaults an unset strategy to Rebase; invalid values, conflicting folders or unresolved scope stop the update. */
 export async function readPullUpdateStrategy(repositoryRoot: string): Promise<PullUpdateStrategy> {
     const resources = await configurationResources(repositoryRoot);
     const strategies = resources.map((resource) => {
-        const strategy = vscode.workspace
+        const configuredStrategy = vscode.workspace
             .getConfiguration("intelligit", resource)
             .get<unknown>("updateStrategy");
+        const strategy = configuredStrategy === undefined ? "rebase" : configuredStrategy;
         if (strategy !== "rebase" && strategy !== "merge") {
             throw new Error(
                 vscode.l10n.t(
