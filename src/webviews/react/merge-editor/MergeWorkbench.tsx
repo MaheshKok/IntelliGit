@@ -17,36 +17,13 @@ import {
 } from "react-icons/vsc";
 import type { MergeEditorData, OutboundMessage } from "./types";
 import { getVsCodeApi } from "../shared/vscodeApi";
-import { linesText, replaceHunks, resultContent } from "./workbenchModel";
+import { bulkResolve, replaceHunks, resultContent, type MergeChoice } from "./workbenchModel";
 import { useWorkbenchEditors } from "./useWorkbenchEditors";
 import { t } from "../shared/i18n";
 import type { MergeWorkbenchOutbound } from "../../protocol/mergeWorkbench";
 import { useMergeScrollSync } from "./useMergeScrollSync";
 import { MergeConnectors } from "./MergeConnectors";
 import "./merge-workbench.css";
-
-type Choice = "ours" | "theirs" | "both" | "both-reversed" | "base" | "none";
-
-/** Preserves the requested side order when composing one conflict's replacement lines. */
-function choiceLines(
-    choice: Choice,
-    segment: { oursLines: string[]; theirsLines: string[]; baseLines: string[] },
-): string[] {
-    switch (choice) {
-        case "ours":
-            return segment.oursLines;
-        case "theirs":
-            return segment.theirsLines;
-        case "both":
-            return [...segment.oursLines, ...segment.theirsLines];
-        case "both-reversed":
-            return [...segment.theirsLines, ...segment.oursLines];
-        case "base":
-            return segment.baseLines;
-        case "none":
-            return [];
-    }
-}
 
 /** Full-document three-way merge with reversible decisions and immutable inputs. */
 export function MergeWorkbench({ data: inputData }: { data: MergeEditorData }) {
@@ -92,32 +69,13 @@ export function MergeWorkbench({ data: inputData }: { data: MergeEditorData }) {
     );
 
     const resolve = useCallback(
-        (choice: Choice, selectedIndex = active) => {
+        (choice: MergeChoice, selectedIndex = active) => {
             const target = hunks[selectedIndex];
             const view = editors.current[1]?.view;
             if (!view || !target || busy) return;
             setActive(selectedIndex);
-            let content = linesText(choiceLines(choice, target.segment));
-            if (
-                target.to === view.state.doc.length &&
-                !data.hasTrailingNewline &&
-                content.endsWith("\n")
-            )
-                content = content.slice(0, -1);
-            const delta = content.length - (target.to - target.from);
-            const next = hunks.map((hunk, index) =>
-                index === selectedIndex
-                    ? { ...hunk, to: hunk.from + content.length, resolved: true }
-                    : index > selectedIndex
-                      ? { ...hunk, from: hunk.from + delta, to: hunk.to + delta }
-                      : hunk,
-            );
-            view.dispatch({
-                changes: { from: target.from, to: target.to, insert: content },
-                effects: replaceHunks.of(next),
+            view.dispatch(bulkResolve(view.state, new Map([[selectedIndex, choice]]), data), {
                 selection: { anchor: target.from },
-                userEvent: "input.merge",
-                annotations: isolateHistory.of("full"),
             });
             view.focus();
         },
@@ -239,7 +197,7 @@ export function MergeWorkbench({ data: inputData }: { data: MergeEditorData }) {
                     aria-label={t("merge.workbench.combine")}
                     value=""
                     disabled={!selected || busy}
-                    onChange={(event) => resolve(event.target.value as Choice)}
+                    onChange={(event) => resolve(event.target.value as MergeChoice)}
                 >
                     <option value="" disabled>
                         {t("merge.workbench.combine")}

@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { EditorView } from "@codemirror/view";
-import { Transaction } from "@codemirror/state";
+import { StateEffect, Transaction } from "@codemirror/state";
 import { createMergeCodeEditor, setInputHunks, setMergeSyntax } from "./codeEditor";
 import {
     buildWorkbenchDocument,
+    groupingInit,
     replaceHunks,
     restoreDraftHunks,
     workbenchHunks,
@@ -96,7 +97,10 @@ export function useWorkbenchEditors(inputData: MergeEditorData) {
         );
         editors.current = views;
         views[1].view.dispatch({
-            effects: replaceHunks.of(initial.hunks),
+            effects: [
+                StateEffect.appendConfig.of(groupingInit(data)),
+                replaceHunks.of(initial.hunks),
+            ],
             annotations: Transaction.addToHistory.of(false),
         });
         const restore = (value: unknown) => {

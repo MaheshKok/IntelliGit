@@ -1,7 +1,40 @@
-import { StateEffect, StateField, type ChangeDesc, type Text } from "@codemirror/state";
-import { invertedEffects } from "@codemirror/commands";
+import {
+    StateEffect,
+    StateField,
+    type ChangeDesc,
+    type EditorState,
+    type Extension,
+    type Text,
+    type TransactionSpec,
+} from "@codemirror/state";
+import { invertedEffects, isolateHistory } from "@codemirror/commands";
 import type { MergeEditorData, ConflictSegment } from "../../../mergeEditor/conflictParser";
 import { getResultLines, isTrueConflict } from "./mergeState";
+
+/** Available replacements for a merge hunk. */
+export type MergeChoice = "ours" | "theirs" | "both" | "both-reversed" | "base" | "none";
+
+/** Segment grouping and whitespace policy loaded from the host. */
+export interface Grouping {
+    ignoreWhitespace: boolean;
+    segments: MergeEditorData["segments"];
+}
+
+/** Holds the host's grouping for this editor snapshot. */
+export const groupingField = StateField.define<Grouping>({
+    create: () => {
+        throw new Error("groupingField needs init(data)");
+    },
+    update: (value) => value,
+});
+
+/** Initializes grouping from the loaded host data, including its whitespace policy. */
+export function groupingInit(data: MergeEditorData): Extension {
+    return groupingField.init(() => ({
+        ignoreWhitespace: data.diffOptions?.ignoreWhitespace === true,
+        segments: data.segments,
+    }));
+}
 
 /** Anchors each original merge range into the current editable result document. */
 export interface WorkbenchHunk {
@@ -13,6 +46,9 @@ export interface WorkbenchHunk {
     theirsFrom: number;
     theirsTo: number;
     resolved: boolean;
+    decision?: MergeChoice;
+    edited: boolean;
+    dismissed: { ours: boolean; theirs: boolean };
     conflict: boolean;
     segment: ConflictSegment;
 }
@@ -46,6 +82,8 @@ export function buildWorkbenchDocument(data: MergeEditorData): {
                 theirsFrom: theirsOffset,
                 theirsTo: theirsOffset + theirs.length,
                 resolved: !conflict,
+                edited: false,
+                dismissed: { ours: false, theirs: false },
                 conflict,
                 segment,
             });
@@ -62,8 +100,29 @@ export function buildWorkbenchDocument(data: MergeEditorData): {
 }
 
 /** Normalizes logical lines for editor transactions; output EOL is restored only at Apply. */
-export function linesText(lines: readonly string[]): string {
+function linesText(lines: readonly string[]): string {
     return lines.length ? lines.join("\n") + "\n" : "";
+}
+
+/** Preserves the requested side order when composing one conflict's replacement lines. */
+function choiceLines(
+    choice: MergeChoice,
+    segment: { oursLines: string[]; theirsLines: string[]; baseLines: string[] },
+): string[] {
+    switch (choice) {
+        case "ours":
+            return segment.oursLines;
+        case "theirs":
+            return segment.theirsLines;
+        case "both":
+            return [...segment.oursLines, ...segment.theirsLines];
+        case "both-reversed":
+            return [...segment.theirsLines, ...segment.oursLines];
+        case "base":
+            return segment.baseLines;
+        case "none":
+            return [];
+    }
 }
 
 /** Maps decisions with edits, including insertions into formerly empty conflict ranges. */
@@ -77,6 +136,7 @@ function mapHunks(hunks: readonly WorkbenchHunk[], changes: ChangeDesc): Workben
             ...hunk,
             from,
             to,
+            edited: hunk.edited || !!changes.touchesRange(hunk.from, hunk.to),
         };
     });
 }
@@ -100,6 +160,53 @@ export const workbenchHistory = invertedEffects.of((transaction) =>
         ? [replaceHunks.of(transaction.startState.field(workbenchHunks))]
         : [],
 );
+
+/** Resolves all selected hunks in one history step using start-document coordinates. */
+export function bulkResolve(
+    state: EditorState,
+    picks: ReadonlyMap<number, MergeChoice>,
+    data: MergeEditorData,
+): TransactionSpec {
+    const changes: { from: number; to: number; insert: string }[] = [];
+    const doc = state.doc;
+    let delta = 0;
+    const next = state.field(workbenchHunks).map((target, index) => {
+        const from = target.from + delta;
+        const choice = picks.get(index);
+        if (choice === undefined) return { ...target, from, to: target.to + delta };
+        let content = linesText(choiceLines(choice, target.segment));
+        if (target.to === doc.length && !data.hasTrailingNewline && content.endsWith("\n"))
+            content = content.slice(0, -1);
+        changes.push({ from: target.from, to: target.to, insert: content });
+        delta += content.length - (target.to - target.from);
+        return {
+            ...target,
+            from,
+            to: from + content.length,
+            decision: choice,
+            resolved: true,
+            edited: false,
+            dismissed: choice === "none" ? { ours: false, theirs: false } : target.dismissed,
+        };
+    });
+    return {
+        changes,
+        effects: replaceHunks.of(next),
+        userEvent: "input.merge",
+        annotations: isolateHistory.of("full"),
+    };
+}
+
+/** Dismisses one side without mutating the source hunks or changing their document ranges. */
+export function dismissSide(
+    hunks: readonly WorkbenchHunk[],
+    index: number,
+    side: "ours" | "theirs",
+): WorkbenchHunk[] {
+    return hunks.map((hunk, current) =>
+        current === index ? { ...hunk, dismissed: { ...hunk.dismissed, [side]: true } } : hunk,
+    );
+}
 
 /** Bounds a stored draft's offsets and identities against the current immutable conflict input. */
 export function restoreDraftHunks(
