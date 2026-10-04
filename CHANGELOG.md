@@ -15,6 +15,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Applying a merge result validates the captured Git stages, operation, working file, and unsaved editor state before replacing and staging a literal file path. Changed inputs retain the draft; unsupported binary, special-file, and deleted-side conflicts offer the native resolver. Shelf sessions keep the existing renderer.
 
+## [0.36.5] - 2026-10-04
+
+### Fixed
+
+- Pull and current-branch Update now default to Rebase when `intelligit.updateStrategy` is unset instead of rejecting the missing setting.
+
 ## [0.36.4] - 2026-10-03
 
 ### Added

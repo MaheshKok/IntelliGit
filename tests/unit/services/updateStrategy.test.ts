@@ -30,13 +30,18 @@ describe("repository update strategy", () => {
         vi.mocked(realpath).mockImplementation(async (root) => String(root));
     });
 
-    it("reads the captured repository resource with no duplicated default", async () => {
+    it("reads the captured repository resource", async () => {
         expect(await readPullUpdateStrategy("/repo")).toBe("rebase");
         expect(mocks.getConfiguration).toHaveBeenCalledExactlyOnceWith("intelligit", {
             scheme: "file",
             fsPath: "/repo",
         });
         expect(mocks.get).toHaveBeenCalledExactlyOnceWith("updateStrategy");
+    });
+
+    it("defaults to rebase when the update strategy is not set", async () => {
+        mocks.get.mockReturnValue(undefined);
+        await expect(readPullUpdateStrategy("/repo")).resolves.toBe("rebase");
     });
 
     it("uses independent values for different repository resources", async () => {
@@ -127,7 +132,7 @@ describe("repository update strategy", () => {
         expect(mocks.getConfiguration).not.toHaveBeenCalled();
     });
 
-    it.each([undefined, "squash", true])("rejects unsupported resolved value %s", async (value) => {
+    it.each([null, "", "squash", true])("rejects unsupported resolved value %s", async (value) => {
         mocks.get.mockReturnValue(value);
         await expect(readPullUpdateStrategy("/repo")).rejects.toThrow(
             "Set intelligit.updateStrategy",
