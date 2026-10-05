@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
+import type { HunkActionCallbacks } from "./workbenchGutter";
 import { EditorView } from "@codemirror/view";
 import { StateEffect, Transaction } from "@codemirror/state";
 import { createMergeCodeEditor, setActiveHunk, setInputHunks, setMergeSyntax } from "./codeEditor";
@@ -22,7 +23,11 @@ import type { MergeEditorData } from "./types";
 import { t } from "../shared/i18n";
 
 /** Owns editors for one snapshot; asynchronous draft loads never overwrite an already edited result. */
-export function useWorkbenchEditors(inputData: MergeEditorData, active: number | null) {
+export function useWorkbenchEditors(
+    inputData: MergeEditorData,
+    active: number | null,
+    actions: RefObject<HunkActionCallbacks | null>,
+) {
     const [data] = useState(inputData);
     const [initial] = useState(() => buildWorkbenchDocument(data));
     const hosts = useRef<Array<HTMLDivElement | null>>([]);
@@ -105,6 +110,7 @@ export function useWorkbenchEditors(inputData: MergeEditorData, active: number |
                 label: labels[pane],
                 theme: initialTheme.current,
                 update: pane === 1 ? update : undefined,
+                actions: pane === 0 || pane === 2 ? actions : undefined,
             }),
         );
         editors.current = views;
@@ -162,7 +168,7 @@ export function useWorkbenchEditors(inputData: MergeEditorData, active: number |
             window.removeEventListener("pagehide", flushDraft);
             for (const editor of views) editor.view.destroy();
         };
-    }, [data, initial, update, flushDraft]);
+    }, [data, initial, update, flushDraft, actions]);
 
     useEffect(() => {
         editors.current.forEach(({ view }) =>

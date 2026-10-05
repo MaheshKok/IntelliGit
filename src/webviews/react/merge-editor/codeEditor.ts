@@ -21,6 +21,8 @@ import {
 } from "@codemirror/view";
 import { history, historyKeymap, defaultKeymap, indentWithTab } from "@codemirror/commands";
 import { search, searchKeymap, highlightSelectionMatches } from "@codemirror/search";
+import type { RefObject } from "react";
+import { actionGutter, type HunkActionCallbacks } from "./workbenchGutter";
 import {
     replaceHunks,
     workbenchHunks,
@@ -330,6 +332,7 @@ export function createMergeCodeEditor(
         filePath: string;
         label: string;
         theme: ShikiTheme;
+        actions?: RefObject<HunkActionCallbacks | null>;
         update?: (view: EditorView) => void;
     },
 ): { view: EditorView; setReadOnly: (readOnly: boolean) => void } {
@@ -338,7 +341,13 @@ export function createMergeCodeEditor(
         doc: content.replace(/\r\n/g, "\n"),
         extensions: [
             palette,
+            options.pane === "ours" && options.actions
+                ? actionGutter("ours", options.actions, (state) => state.field(inputHunks), "after")
+                : [],
             options.pane === "ours" ? numberGutter() : lineNumbers({ formatNumber }),
+            options.pane === "theirs" && options.actions
+                ? actionGutter("theirs", options.actions, (state) => state.field(inputHunks))
+                : [],
             drawSelection(),
             syntaxPlugin(options.filePath, options.theme),
             search(),

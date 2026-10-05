@@ -6,6 +6,7 @@ import React, { useCallback, useState } from "react";
 import type { ConflictSegment, HunkResolution, HunkSideDismissal } from "./types";
 import { getEffectiveResultLines, splitEditedText } from "./mergeState";
 import { t } from "../shared/i18n";
+import { CHEVRON_PATH, CROSS_PATH, PLUS_PATH, MIRROR_TRANSFORM } from "./hunkActionGlyph";
 import {
     CodeBlock,
     intrinsicSizeStyle,
@@ -308,12 +309,8 @@ function HunkActionIcon({
                 strokeWidth="1"
             >
                 <path
-                    d={
-                        direction
-                            ? "M5.9 1.4 1.3 6l4.6 4.6M10.2 1.4 5.6 6l4.6 4.6"
-                            : "M2.1 2.1l7.8 7.8m0-7.8L2.1 9.9"
-                    }
-                    transform={direction === "right" ? "translate(12 0) scale(-1 1)" : undefined}
+                    d={direction ? CHEVRON_PATH : CROSS_PATH}
+                    transform={direction === "right" ? MIRROR_TRANSFORM : undefined}
                 />
             </svg>
             {append && (
@@ -325,7 +322,7 @@ function HunkActionIcon({
                     stroke="currentColor"
                     strokeWidth="1"
                 >
-                    <path d="M3 0v6M0 3h6" />
+                    <path d={PLUS_PATH} />
                 </svg>
             )}
         </span>

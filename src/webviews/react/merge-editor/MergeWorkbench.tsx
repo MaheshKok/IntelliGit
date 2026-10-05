@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useLayoutEffect, useRef, useState } from "react";
 import { EditorView } from "@codemirror/view";
 import { isolateHistory, undo, redo, undoDepth, redoDepth } from "@codemirror/commands";
 import { openSearchPanel } from "@codemirror/search";
@@ -17,7 +17,15 @@ import {
 } from "react-icons/vsc";
 import type { MergeEditorData, OutboundMessage } from "./types";
 import { getVsCodeApi } from "../shared/vscodeApi";
-import { bulkResolve, replaceHunks, resultContent, type MergeChoice } from "./workbenchModel";
+import {
+    bulkResolve,
+    dismissSide,
+    replaceHunks,
+    resultContent,
+    type MergeChoice,
+} from "./workbenchModel";
+import { hunkView } from "./workbenchRows";
+import type { HunkActionCallbacks } from "./workbenchGutter";
 import { useWorkbenchEditors } from "./useWorkbenchEditors";
 import { t } from "../shared/i18n";
 import type { MergeWorkbenchOutbound } from "../../protocol/mergeWorkbench";
@@ -28,6 +36,7 @@ import "./merge-workbench.css";
 /** Full-document three-way merge with reversible decisions and immutable inputs. */
 export function MergeWorkbench({ data: inputData }: { data: MergeEditorData }) {
     const [active, setActive] = useState(0);
+    const actions = useRef<HunkActionCallbacks | null>(null);
     const {
         data,
         hosts,
@@ -41,7 +50,7 @@ export function MergeWorkbench({ data: inputData }: { data: MergeEditorData }) {
         staleDraft,
         discardStaleDraft,
         flushDraft,
-    } = useWorkbenchEditors(inputData, active);
+    } = useWorkbenchEditors(inputData, active, actions);
     const [baseVisible, setBaseVisible] = useState(false);
     const [linked, setLinked] = useState(true);
     useMergeScrollSync(editors, hunks, linked);
@@ -81,6 +90,43 @@ export function MergeWorkbench({ data: inputData }: { data: MergeEditorData }) {
         },
         [active, busy, data, editors, hunks],
     );
+    const callbacks: HunkActionCallbacks = {
+        accept(index, side) {
+            const target = hunks[index];
+            if (!target || busy) return;
+            const view = hunkView(target);
+            resolve(
+                side === "ours"
+                    ? view.leftAppend
+                        ? "both-reversed"
+                        : "ours"
+                    : view.rightAppend
+                      ? "both"
+                      : "theirs",
+                index,
+            );
+        },
+        dismiss(index, side) {
+            const target = hunks[index];
+            const resultView = editors.current[1]?.view;
+            if (!resultView || !target || busy) return;
+            const view = hunkView(target);
+            if (side === "ours" ? view.theirsDismissed : view.oursDismissed) {
+                resolve("none", index);
+                return;
+            }
+            setActive(index);
+            resultView.dispatch({
+                effects: replaceHunks.of(dismissSide(hunks, index, side)),
+                userEvent: "input.merge",
+                annotations: isolateHistory.of("full"),
+            });
+        },
+    };
+    useLayoutEffect(() => {
+        const { accept, dismiss } = callbacks;
+        actions.current = { accept, dismiss };
+    });
     const markResolved = () => {
         if (result && selected)
             result.dispatch({

@@ -7,6 +7,15 @@ import { MergeWorkbench } from "../../../src/webviews/react/merge-editor/MergeWo
 import { parseConflictVersions, detectEolMetadata } from "../../../src/mergeEditor/conflictParser";
 import { mount, unmount, initReactDomTestEnvironment } from "../../helpers/reactDomTestUtils";
 import { installWebviewI18n } from "../../helpers/webviewI18nTestUtils";
+import { undo, undoDepth } from "@codemirror/commands";
+import { t } from "../../../src/webviews/react/shared/i18n";
+import { hunkView, ownedLines } from "../../../src/webviews/react/merge-editor/workbenchRows";
+import {
+    CHEVRON_PATH,
+    CROSS_PATH,
+    PLUS_PATH,
+    MIRROR_TRANSFORM,
+} from "../../../src/webviews/react/merge-editor/hunkActionGlyph";
 
 const api = vi.hoisted(() => ({
     postMessage: vi.fn(),
@@ -32,6 +41,36 @@ const data = {
         theirs,
         operation: "merge",
     },
+};
+
+const actionVersions = {
+    base: "head\nbase one\nbase two\ntail\n",
+    ours: "head\nours one\nours two\ntail\n",
+    theirs: "head\ntheirs one\ntheirs two\ntail\n",
+};
+const actionData = {
+    ...data,
+    segments: parseConflictVersions(
+        actionVersions.base,
+        actionVersions.ours,
+        actionVersions.theirs,
+    ),
+    workbench: { ...data.workbench, ...actionVersions },
+};
+
+const twoActionVersions = {
+    base: "head\nbase one\nbase two\nkeep\nbase three\nbase four\ntail\n",
+    ours: "head\nours one\nours two\nkeep\nours three\nours four\ntail\n",
+    theirs: "head\ntheirs one\ntheirs two\nkeep\ntheirs three\ntheirs four\ntail\n",
+};
+const twoActionData = {
+    ...data,
+    segments: parseConflictVersions(
+        twoActionVersions.base,
+        twoActionVersions.ours,
+        twoActionVersions.theirs,
+    ),
+    workbench: { ...data.workbench, ...twoActionVersions },
 };
 
 function click(container: HTMLElement, label: string) {
@@ -78,6 +117,283 @@ afterEach(() => {
     Reflect.deleteProperty(Range.prototype, "getBoundingClientRect");
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
+});
+
+function expectActionRows(
+    container: HTMLElement,
+    pane: "ours" | "theirs" | "result",
+    state: string,
+) {
+    const hunk = result(container).state.field(workbenchHunks)[0];
+    const host = container.querySelector(`.pane-${pane}`)!;
+    const view = EditorView.findFromDOM(host.querySelector<HTMLElement>(".cm-editor")!)!;
+    const from = pane === "ours" ? hunk.oursFrom : pane === "theirs" ? hunk.theirsFrom : hunk.from;
+    const to = pane === "ours" ? hunk.oursTo : pane === "theirs" ? hunk.theirsTo : hunk.to;
+    const rows = ownedLines(view.state.doc, from, to);
+    expect(host.querySelectorAll(`.cm-line.mrow-${state}`)).toHaveLength(rows.length);
+    const lines = host.querySelectorAll(".cm-line");
+    for (const row of rows) expect(lines[row - 1].classList.contains(`mrow-${state}`)).toBe(true);
+    return rows.length;
+}
+
+function expectPendingActionRows(container: HTMLElement) {
+    for (const pane of ["ours", "theirs", "result"] as const)
+        expect(expectActionRows(container, pane, "pending")).toBe(2);
+}
+
+function actionButton(container: HTMLElement, selector: string) {
+    const button = container.querySelector<HTMLButtonElement>(selector);
+    expect(button, selector).not.toBeNull();
+    return button!;
+}
+
+describe("merge workbench action gutters", () => {
+    it("left gutter accept resolves ours, then shows the right accept in append mode", () => {
+        const mounted = mount(<MergeWorkbench data={actionData} />);
+        try {
+            expectPendingActionRows(mounted.container);
+            const view = result(mounted.container);
+            act(() => actionButton(mounted.container, ".pane-ours .accept-btn").click());
+            const hunk = view.state.field(workbenchHunks)[0];
+            expect(view.state.doc.sliceString(hunk.from, hunk.to)).toBe("ours one\nours two\n");
+            expectActionRows(mounted.container, "ours", "accepted");
+            const append = actionButton(mounted.container, ".pane-theirs .accept-btn.append-btn");
+            expect(append.getAttribute("aria-label")).toBe(t("merge.hunk.appendRight"));
+            expect(append.querySelectorAll("path")[1].getAttribute("d")).toBe(PLUS_PATH);
+            act(() => append.click());
+            expect(view.state.doc.toString()).toBe(
+                "head\nours one\nours two\ntheirs one\ntheirs two\ntail\n",
+            );
+            expectActionRows(mounted.container, "theirs", "accepted");
+            expectActionRows(mounted.container, "result", "plain");
+            expect(undoDepth(view.state)).toBe(2);
+        } finally {
+            unmount(mounted.root, mounted.container);
+        }
+    });
+
+    it("right gutter accept resolves theirs, then the left append puts theirs before ours", () => {
+        const mounted = mount(<MergeWorkbench data={actionData} />);
+        try {
+            expectPendingActionRows(mounted.container);
+            const view = result(mounted.container);
+            act(() => actionButton(mounted.container, ".pane-theirs .accept-btn").click());
+            const hunk = view.state.field(workbenchHunks)[0];
+            expect(view.state.doc.sliceString(hunk.from, hunk.to)).toBe("theirs one\ntheirs two\n");
+            expectActionRows(mounted.container, "theirs", "accepted");
+            const append = actionButton(mounted.container, ".pane-ours .accept-btn.append-btn");
+            expect(append.getAttribute("aria-label")).toBe(t("merge.hunk.appendLeft"));
+            act(() => append.click());
+            expect(view.state.field(workbenchHunks)[0].decision).toBe("both-reversed");
+            expect(view.state.doc.toString()).toBe(
+                "head\ntheirs one\ntheirs two\nours one\nours two\ntail\n",
+            );
+            expectActionRows(mounted.container, "ours", "accepted");
+            expect(undoDepth(view.state)).toBe(2);
+        } finally {
+            unmount(mounted.root, mounted.container);
+        }
+    });
+
+    it("discard on both sides settles the hunk", () => {
+        const mounted = mount(<MergeWorkbench data={actionData} />);
+        try {
+            expectPendingActionRows(mounted.container);
+            const view = result(mounted.container);
+            act(() => actionButton(mounted.container, ".pane-ours .discard-btn").click());
+            act(() => actionButton(mounted.container, ".pane-theirs .discard-btn").click());
+            expect(view.state.field(workbenchHunks)[0].decision).toBe("none");
+            const hunk = view.state.field(workbenchHunks)[0];
+            expect(hunk.from).toBe(hunk.to);
+            expectActionRows(mounted.container, "ours", "dismissed");
+            expectActionRows(mounted.container, "theirs", "dismissed");
+            expect(expectActionRows(mounted.container, "result", "plain")).toBe(0);
+            expect(view.state.doc.toString()).toBe("head\ntail\n");
+            expect(undoDepth(view.state)).toBe(2);
+        } finally {
+            unmount(mounted.root, mounted.container);
+        }
+    });
+
+    it("a single discard dismisses one side and is one undo step", () => {
+        const mounted = mount(<MergeWorkbench data={actionData} />);
+        try {
+            expectPendingActionRows(mounted.container);
+            const view = result(mounted.container);
+            const before = view.state.doc.toString();
+            act(() => actionButton(mounted.container, ".pane-ours .discard-btn").click());
+            expectActionRows(mounted.container, "ours", "dismissed");
+            expect(view.state.doc.toString()).toBe(before);
+            expect(undoDepth(view.state)).toBe(1);
+            act(() => {
+                expect(undo(view)).toBe(true);
+            });
+            expectPendingActionRows(mounted.container);
+        } finally {
+            unmount(mounted.root, mounted.container);
+        }
+    });
+
+    it("discarding the second hunk activates every owned ours row", () => {
+        const mounted = mount(<MergeWorkbench data={twoActionData} />);
+        try {
+            const hunks = result(mounted.container).state.field(workbenchHunks);
+            expect(hunks).toHaveLength(2);
+            for (const pane of ["ours", "theirs", "result"] as const) {
+                const host = mounted.container.querySelector(`.pane-${pane}`)!;
+                const view = EditorView.findFromDOM(
+                    host.querySelector<HTMLElement>(".cm-editor")!,
+                )!;
+                const lines = host.querySelectorAll(".cm-line");
+                expect(host.querySelectorAll(".cm-line.mrow-pending")).toHaveLength(4);
+                for (const hunk of hunks) {
+                    const from =
+                        pane === "ours"
+                            ? hunk.oursFrom
+                            : pane === "theirs"
+                              ? hunk.theirsFrom
+                              : hunk.from;
+                    const to =
+                        pane === "ours" ? hunk.oursTo : pane === "theirs" ? hunk.theirsTo : hunk.to;
+                    const rows = ownedLines(view.state.doc, from, to);
+                    expect(rows).toHaveLength(2);
+                    for (const row of rows)
+                        expect(lines[row - 1].classList.contains("mrow-pending")).toBe(true);
+                }
+            }
+            const host = mounted.container.querySelector(".pane-ours")!;
+            const view = EditorView.findFromDOM(host.querySelector<HTMLElement>(".cm-editor")!)!;
+            const firstRows = ownedLines(view.state.doc, hunks[0].oursFrom, hunks[0].oursTo);
+            const secondRows = ownedLines(view.state.doc, hunks[1].oursFrom, hunks[1].oursTo);
+            const lines = host.querySelectorAll(".cm-line");
+            expect(host.querySelectorAll(".cm-line.mrow-active")).toHaveLength(firstRows.length);
+            for (const row of firstRows)
+                expect(lines[row - 1].classList.contains("mrow-active")).toBe(true);
+            for (const row of secondRows)
+                expect(lines[row - 1].classList.contains("mrow-active")).toBe(false);
+            const actions = host.querySelectorAll(".conflict-actions-left");
+            expect(actions).toHaveLength(2);
+            act(() => actions[1].querySelector<HTMLButtonElement>(".discard-btn")!.click());
+            const updatedLines = host.querySelectorAll(".cm-line");
+            for (const row of secondRows)
+                expect(updatedLines[row - 1].classList.contains("mrow-active")).toBe(true);
+            expect(host.querySelectorAll(".cm-line.mrow-active")).toHaveLength(secondRows.length);
+            for (const row of firstRows)
+                expect(updatedLines[row - 1].classList.contains("mrow-active")).toBe(false);
+        } finally {
+            unmount(mounted.root, mounted.container);
+        }
+    });
+
+    it("no action marker sits on the phantom row", () => {
+        const versions = { base: "a\nx\n", ours: "a\n", theirs: "a\ny\n" };
+        const input = {
+            ...data,
+            segments: parseConflictVersions(versions.base, versions.ours, versions.theirs),
+            workbench: { ...data.workbench, ...versions },
+        };
+        const mounted = mount(<MergeWorkbench data={input} />);
+        try {
+            const hunks = result(mounted.container).state.field(workbenchHunks);
+            expect(hunks).toHaveLength(1);
+            expect(hunkView(hunks[0]).showLeftActions).toBe(true);
+            expect(hunks[0].oursFrom).toBe(versions.ours.length);
+            expect(hunks[0].oursTo).toBe(hunks[0].oursFrom);
+            const cells = mounted.container.querySelectorAll(
+                ".pane-ours .merge-action-gutter .cm-gutterElement",
+            );
+            expect(cells.length).toBeGreaterThan(0);
+            expect(cells[cells.length - 1].childElementCount).toBe(0);
+            expect(
+                mounted.container.querySelectorAll(".pane-ours .conflict-actions-left"),
+            ).toHaveLength(0);
+        } finally {
+            unmount(mounted.root, mounted.container);
+        }
+    });
+
+    it("action gutters sit between code and numbers", () => {
+        const mounted = mount(<MergeWorkbench data={actionData} />);
+        try {
+            expectPendingActionRows(mounted.container);
+            for (const pane of ["ours", "theirs"]) {
+                const host = mounted.container.querySelector(`.pane-${pane}`)!;
+                const order =
+                    pane === "ours"
+                        ? [".cm-content", ".merge-action-gutter", ".cm-lineNumbers"]
+                        : [".cm-lineNumbers", ".merge-action-gutter", ".cm-content"];
+                const nodes = order.map((selector) => host.querySelector(selector));
+                for (const node of nodes) expect(node).not.toBeNull();
+                for (let index = 0; index < nodes.length - 1; index++)
+                    expect(
+                        nodes[index]!.compareDocumentPosition(nodes[index + 1]!) &
+                            Node.DOCUMENT_POSITION_FOLLOWING,
+                    ).not.toBe(0);
+            }
+            expect(
+                mounted.container.querySelector(
+                    ".pane-result .merge-action-gutter, .pane-base .merge-action-gutter",
+                ),
+            ).toBeNull();
+        } finally {
+            unmount(mounted.root, mounted.container);
+        }
+    });
+
+    it("gutter buttons carry main's labels and glyphs", () => {
+        const mounted = mount(<MergeWorkbench data={actionData} />);
+        try {
+            expectPendingActionRows(mounted.container);
+            for (const [pane, side, suffix] of [
+                ["ours", "left", "Left"],
+                ["theirs", "right", "Right"],
+            ]) {
+                const host = mounted.container.querySelector(`.pane-${pane}`)!;
+                const discard = actionButton(
+                    mounted.container,
+                    `.pane-${pane} .conflict-actions-${side} .discard-btn`,
+                );
+                const accept = actionButton(
+                    mounted.container,
+                    `.pane-${pane} .conflict-actions-${side} .accept-btn`,
+                );
+                for (const [button, key] of [
+                    [discard, `merge.hunk.ignore${suffix}`],
+                    [accept, `merge.hunk.accept${suffix}`],
+                ] as const) {
+                    expect(button.getAttribute("aria-label")).toBe(t(key));
+                    expect(button.title).toBe(t(key));
+                    expect(button.type).toBe("button");
+                    const glyph = button.querySelector(".hunk-action-glyph")!;
+                    expect(glyph.getAttribute("aria-hidden")).toBe("true");
+                    const svg = glyph.querySelector("svg")!;
+                    for (const [attr, value] of Object.entries({
+                        width: "12",
+                        height: "12",
+                        viewBox: "0 0 12 12",
+                        fill: "none",
+                        stroke: "currentColor",
+                        "stroke-width": "1",
+                    }))
+                        expect(svg.getAttribute(attr)).toBe(value);
+                    const down = new MouseEvent("mousedown", { bubbles: true, cancelable: true });
+                    act(() => button.dispatchEvent(down));
+                    expect(down.defaultPrevented).toBe(true);
+                }
+                expect(discard.querySelector("path")?.getAttribute("d")).toBe(CROSS_PATH);
+                expect(accept.querySelector("path")?.getAttribute("d")).toBe(CHEVRON_PATH);
+                expect(accept.querySelector("path")?.getAttribute("transform")).toBe(
+                    pane === "ours" ? MIRROR_TRANSFORM : null,
+                );
+                const bubbled = vi.fn();
+                host.addEventListener("click", bubbled);
+                act(() => discard.click());
+                expect(bubbled).not.toHaveBeenCalled();
+            }
+        } finally {
+            unmount(mounted.root, mounted.container);
+        }
+    });
 });
 
 describe("merge workbench state and commands", () => {
@@ -411,7 +727,18 @@ describe("merge workbench rows", () => {
                 expect(host.querySelector(".cm-line.mrow-active")?.textContent).toBe(
                     ["ours", "base", "theirs"][pane],
                 );
-                expect(host.querySelectorAll(".cm-gutterElement.mrow-active")).toHaveLength(1);
+                for (const gutter of host.querySelectorAll(".cm-gutter"))
+                    expect(gutter.querySelectorAll(".cm-gutterElement.mrow-active")).toHaveLength(
+                        1,
+                    );
+                const actions = host.querySelector(".merge-action-gutter");
+                if (pane === 1) expect(actions).toBeNull();
+                else {
+                    expect(actions).not.toBeNull();
+                    expect(actions!.querySelectorAll(".cm-gutterElement.mrow-active")).toHaveLength(
+                        1,
+                    );
+                }
             }
         } finally {
             unmount(mounted.root, mounted.container);
