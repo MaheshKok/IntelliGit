@@ -87,12 +87,6 @@
     white-space: nowrap;
     border-right: 1px solid var(--vscode-panel-border);
 }
-.mw-panes {
-    flex: 1;
-    min-height: 0;
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 32px minmax(0, 1fr) 32px minmax(0, 1fr);
-}
 .mw-editor {
     position: relative;
     min-width: 0;
@@ -100,42 +94,32 @@
     border-right: 1px solid var(--vscode-panel-border);
     overflow: hidden;
 }
-.mw-connectors {
-    position: relative;
-    overflow: hidden;
-    background: var(--vscode-editor-background);
+/* scroller: begin */
+/* Bridge until the root carries `.merge-editor` (Phase 6), which declares these. */
+.merge-workbench {
+    --merge-editor-bg: var(--vscode-editor-background);
+    --merge-editor-fg: var(--vscode-editor-foreground);
+    --merge-accent: var(--vscode-textLink-foreground);
 }
-.mw-connectors svg {
-    position: absolute;
-    inset: 0;
-    pointer-events: none;
+.merge-workbench > .merge-content-shell {
+    flex: 1;
+    min-height: 0;
 }
-.mw-connectors > svg path {
-    fill: var(--vscode-diffEditor-removedLineBackground, #cc555522);
-    stroke: var(--vscode-diffEditor-removedTextBorder, #cc555588);
+.merge-workbench .overview-marker {
+    min-height: 2px;
+    padding: 0;
+    border: none;
+    border-radius: 1px;
 }
-.mw-connectors > svg path.resolved {
-    fill: var(--vscode-diffEditor-insertedLineBackground, #55aa6622);
-    stroke: var(--vscode-diffEditor-insertedTextBorder, #55aa6688);
-    stroke-dasharray: 3 3;
+.merge-workbench .merge-content .cm-content {
+    padding-right: var(--merge-horizontal-room, 0px);
 }
-.mw-connectors button {
-    color: var(--vscode-editor-foreground);
-    position: absolute;
-    left: 3px;
-    width: 26px;
-    height: 22px;
-    min-height: 22px;
-    padding: 3px;
-    background: var(--vscode-editor-background);
-    border-color: var(--vscode-panel-border);
+/* Scroll geometry must reach its measured height in the same layout pass as the caret. */
+.merge-workbench .merge-vscroll-spacer,
+.merge-workbench .cm-gap {
+    transition-property: none;
 }
-.mw-connectors button svg {
-    position: static;
-}
-.mw-connectors button[hidden] {
-    display: none;
-}
+/* scroller: end */
 
 .mw-error {
     padding: 8px 12px;

@@ -2,6 +2,7 @@
 import React, { act } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EditorView } from "@codemirror/view";
+import * as codeEditor from "../../../src/webviews/react/merge-editor/codeEditor";
 import { workbenchHunks } from "../../../src/webviews/react/merge-editor/workbenchModel";
 import { MergeWorkbench } from "../../../src/webviews/react/merge-editor/MergeWorkbench";
 import { parseConflictVersions, detectEolMetadata } from "../../../src/mergeEditor/conflictParser";
@@ -72,6 +73,189 @@ const twoActionData = {
     ),
     workbench: { ...data.workbench, ...twoActionVersions },
 };
+
+const scrollVersions = {
+    base: "head\nbase one\nbase two\nkeep\nbase three\nbase four\ntail\n",
+    ours: "head\nours one\nkeep\nours three\nours four\ntail\n",
+    theirs: "head\ntheirs one\ntheirs two\ntheirs extra\nkeep\ntheirs three\ntheirs four\ntail\n",
+};
+const scrollData = {
+    ...data,
+    segments: parseConflictVersions(
+        scrollVersions.base,
+        scrollVersions.ours,
+        scrollVersions.theirs,
+    ),
+    workbench: { ...data.workbench, ...scrollVersions },
+};
+
+describe("shared workbench layout", () => {
+    it("a scroll request is answered by the workbench, not CodeMirror", async () => {
+        const factory = vi.spyOn(codeEditor, "createMergeCodeEditor");
+        const mounted = mount(<MergeWorkbench data={data} />);
+        try {
+            const view = result(mounted.container);
+            const ref = factory.mock.calls.find(([, , options]) => options.pane === "result")![2]
+                .scrollHandler;
+            expect(ref?.current).toBeTypeOf("function");
+            // CodeMirror only processes scroll requests for a nonzero editor height.
+            // The workbench viewport deliberately retains jsdom's zero clientHeight.
+            Object.defineProperty(view.scrollDOM, "clientHeight", { value: 80 });
+            const handler = vi.fn(ref!.current!);
+            Object.assign(ref!, { current: handler });
+            act(() => view.dispatch({ effects: EditorView.scrollIntoView(view.state.doc.length) }));
+            await act(async () => {
+                await vi.waitFor(() => expect(handler).toHaveBeenCalledTimes(1));
+            });
+            expect(handler.mock.calls[0][0]).toBe("result");
+            expect(handler.mock.results[0].value).toBe(true);
+            expect(mounted.container.querySelector(".merge-viewport")!.scrollTop).toBe(0);
+        } finally {
+            unmount(mounted.root, mounted.container);
+        }
+    });
+    it("the find panel opens in the find host", () => {
+        const mounted = mount(<MergeWorkbench data={data} />);
+        try {
+            click(mounted.container, "Find in result");
+            expect(mounted.container.querySelector(".merge-find-host .cm-search")).not.toBeNull();
+            expect(
+                mounted.container.querySelector('[data-testid="merge-editor-1"] .cm-search'),
+            ).toBeNull();
+        } finally {
+            unmount(mounted.root, mounted.container);
+        }
+    });
+    it("rail marker click activates the hunk", () => {
+        const mounted = mount(<MergeWorkbench data={twoActionData} />);
+        try {
+            const markers = mounted.container.querySelectorAll<HTMLButtonElement>(
+                ".overview-marker.marker-conflict",
+            );
+            expect(markers).toHaveLength(2);
+            act(() => markers[1].click());
+            const hunks = result(mounted.container).state.field(workbenchHunks);
+            for (const [pane, from, to] of [
+                ["ours", "oursFrom", "oursTo"],
+                ["result", "from", "to"],
+                ["theirs", "theirsFrom", "theirsTo"],
+            ] as const) {
+                const host = mounted.container.querySelector(`.pane-${pane}`)!;
+                const view = EditorView.findFromDOM(
+                    host.querySelector<HTMLElement>(".cm-editor")!,
+                )!;
+                const lines = host.querySelectorAll(".cm-line");
+                const rows = ownedLines(view.state.doc, hunks[1][from], hunks[1][to]);
+                expect(rows.length).toBeGreaterThanOrEqual(2);
+                expect(host.querySelectorAll(".cm-line.mrow-active")).toHaveLength(rows.length);
+                for (const row of rows)
+                    expect(lines[row - 1].classList.contains("mrow-active")).toBe(true);
+                for (const row of ownedLines(view.state.doc, hunks[0][from], hunks[0][to]))
+                    expect(lines[row - 1].classList.contains("mrow-active")).toBe(false);
+            }
+            expect(markers[1].getAttribute("aria-current")).toBe("true");
+        } finally {
+            unmount(mounted.root, mounted.container);
+        }
+    });
+    it("has one vertical scroller", () => {
+        const mounted = mount(<MergeWorkbench data={twoActionData} />);
+        try {
+            const container = mounted.container;
+            expect(container.querySelectorAll(".merge-content")).toHaveLength(1);
+            const columns = [
+                ...container.querySelectorAll(".merge-content > .merge-viewport > .merge-col"),
+            ];
+            expect(columns).toHaveLength(3);
+            expect(
+                columns.map((col) =>
+                    col.querySelector("[data-testid]")?.getAttribute("data-testid"),
+                ),
+            ).toEqual(["merge-editor-0", "merge-editor-1", "merge-editor-2"]);
+            expect(
+                columns.map((col) =>
+                    col.firstElementChild?.classList.contains(
+                        ["pane-ours", "pane-result", "pane-theirs"][columns.indexOf(col)],
+                    ),
+                ),
+            ).toEqual([true, true, true]);
+            for (const scroller of container.querySelectorAll(".cm-scroller")) {
+                const style = getComputedStyle(scroller);
+                expect(style.overflow).toBe("hidden");
+                expect(["auto", "scroll"]).not.toContain(style.overflowY);
+            }
+            expect(container.querySelector(".mw-panes")).toBeNull();
+            expect(container.querySelector(".mw-connectors")).toBeNull();
+        } finally {
+            unmount(mounted.root, mounted.container);
+        }
+    });
+    it("translates the columns from the shared scroll position", async () => {
+        const { buildVerticalLayout, paneOffsetForCanonical, LINE_HEIGHT_PX } =
+            await import("../../../src/webviews/react/diff-core/mergeScrollLayout");
+        const { layoutSegments } =
+            await import("../../../src/webviews/react/merge-editor/workbenchLayout");
+        const { groupingField } =
+            await import("../../../src/webviews/react/merge-editor/workbenchModel");
+        const { MERGE_PANES } =
+            await import("../../../src/webviews/react/merge-editor/mergeRibbons");
+        const frames = new Map<number, FrameRequestCallback>();
+        let nextFrame = 0;
+        vi.stubGlobal(
+            "requestAnimationFrame",
+            vi.fn((callback: FrameRequestCallback) => {
+                frames.set(++nextFrame, callback);
+                return nextFrame;
+            }),
+        );
+        vi.stubGlobal("cancelAnimationFrame", (id: number) => frames.delete(id));
+        const flush = () => {
+            const pending = [...frames.values()];
+            frames.clear();
+            act(() => pending.forEach((callback) => callback(0)));
+        };
+        const mounted = mount(<MergeWorkbench data={scrollData} />);
+        try {
+            const { state } = result(mounted.container);
+            const info = layoutSegments(
+                state.field(groupingField).segments,
+                state.field(workbenchHunks),
+                state.doc,
+            );
+            const layout = buildVerticalLayout(info.paneLines, MERGE_PANES);
+            expect(MERGE_PANES.map((pane) => layout.paneHPx[pane][1])).toEqual(
+                [1, 2, 3].map((rows) => rows * LINE_HEIGHT_PX),
+            );
+            flush();
+            const content = mounted.container.querySelector<HTMLDivElement>(".merge-content")!;
+            const viewport = mounted.container.querySelector<HTMLDivElement>(".merge-viewport")!;
+            const columns = [...viewport.querySelectorAll<HTMLDivElement>(".merge-col")];
+            viewport.scrollTop = 12;
+            viewport.scrollLeft = 7;
+            columns.forEach((col) => {
+                col.scrollTop = 9;
+                col.scrollLeft = 4;
+            });
+            content.scrollTop = layout.canonicalTopPx[1] + layout.canonicalHPx[1] / 2;
+            const framesBeforeScroll = frames.size;
+            act(() => content.dispatchEvent(new Event("scroll")));
+            act(() => content.dispatchEvent(new Event("scroll")));
+            expect(frames.size).toBe(framesBeforeScroll + 1);
+            flush();
+            MERGE_PANES.forEach((pane, index) => {
+                expect(columns[index].style.transform).toBe(
+                    `translateY(${-paneOffsetForCanonical(layout, pane, content.scrollTop)}px)`,
+                );
+                expect(columns[index].scrollTop).toBe(0);
+                expect(columns[index].scrollLeft).toBe(0);
+            });
+            expect(viewport.scrollTop).toBe(0);
+            expect(viewport.scrollLeft).toBe(0);
+        } finally {
+            unmount(mounted.root, mounted.container);
+        }
+    });
+});
 
 function click(container: HTMLElement, label: string) {
     const button =

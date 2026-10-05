@@ -2,7 +2,13 @@ import { useCallback, useEffect, useRef, useState, type RefObject } from "react"
 import type { HunkActionCallbacks } from "./workbenchGutter";
 import { EditorView } from "@codemirror/view";
 import { StateEffect, Transaction } from "@codemirror/state";
-import { createMergeCodeEditor, setActiveHunk, setInputHunks, setMergeSyntax } from "./codeEditor";
+import {
+    createMergeCodeEditor,
+    setActiveHunk,
+    setInputHunks,
+    setMergeSyntax,
+    type WorkbenchScrollHandler,
+} from "./codeEditor";
 import {
     buildWorkbenchDocument,
     groupingField,
@@ -27,6 +33,13 @@ export function useWorkbenchEditors(
     inputData: MergeEditorData,
     active: number | null,
     actions: RefObject<HunkActionCallbacks | null>,
+    {
+        findHost,
+        scrollHandler,
+    }: {
+        findHost: RefObject<HTMLElement | null>;
+        scrollHandler: RefObject<WorkbenchScrollHandler | null>;
+    },
 ) {
     const [data] = useState(inputData);
     const [initial] = useState(() => buildWorkbenchDocument(data));
@@ -111,6 +124,8 @@ export function useWorkbenchEditors(
                 theme: initialTheme.current,
                 update: pane === 1 ? update : undefined,
                 actions: pane === 0 || pane === 2 ? actions : undefined,
+                scrollHandler: pane < 3 ? scrollHandler : undefined,
+                findHost: pane === 1 ? (findHost.current ?? undefined) : undefined,
             }),
         );
         editors.current = views;
@@ -168,7 +183,7 @@ export function useWorkbenchEditors(
             window.removeEventListener("pagehide", flushDraft);
             for (const editor of views) editor.view.destroy();
         };
-    }, [data, initial, update, flushDraft, actions]);
+    }, [data, initial, update, flushDraft, actions, findHost, scrollHandler]);
 
     useEffect(() => {
         editors.current.forEach(({ view }) =>

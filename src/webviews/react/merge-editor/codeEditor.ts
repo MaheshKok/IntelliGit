@@ -5,6 +5,7 @@ import {
     StateEffect,
     StateField,
     type Range,
+    type SelectionRange,
 } from "@codemirror/state";
 import {
     EditorView,
@@ -16,6 +17,7 @@ import {
     drawSelection,
     Decoration,
     ViewPlugin,
+    panels,
     type ViewUpdate,
     type DecorationSet,
 } from "@codemirror/view";
@@ -50,6 +52,14 @@ import {
     variantClass,
     type WorkbenchPane,
 } from "./workbenchRows";
+
+/** Hands editor scroll requests to the shared workbench scrollers. */
+export type WorkbenchScrollHandler = (
+    pane: WorkbenchPane,
+    view: EditorView,
+    range: SelectionRange,
+    scrollOptions: Parameters<Parameters<typeof EditorView.scrollHandler.of>[0]>[2],
+) => boolean;
 
 const palette = EditorView.theme({
     "&": {
@@ -333,9 +343,13 @@ export function createMergeCodeEditor(
         label: string;
         theme: ShikiTheme;
         actions?: RefObject<HunkActionCallbacks | null>;
+        scrollHandler?: RefObject<WorkbenchScrollHandler | null>;
+        findHost?: HTMLElement;
         update?: (view: EditorView) => void;
     },
 ): { view: EditorView; setReadOnly: (readOnly: boolean) => void } {
+    if (options.pane === "result" && !options.findHost)
+        throw new Error("merge-workbench: find host is missing");
     const editability = new Compartment();
     const state = EditorState.create({
         doc: content.replace(/\r\n/g, "\n"),
@@ -351,6 +365,7 @@ export function createMergeCodeEditor(
             drawSelection(),
             syntaxPlugin(options.filePath, options.theme),
             search(),
+            options.pane === "result" ? panels({ bottomContainer: options.findHost }) : [],
             highlightSelectionMatches(),
             keymap.of([indentWithTab, ...defaultKeymap, ...searchKeymap, ...historyKeymap]),
             editability.of([
@@ -362,6 +377,15 @@ export function createMergeCodeEditor(
             ...(options.pane === "base"
                 ? []
                 : [
+                      EditorView.scrollHandler.of(
+                          (view, range, scrollOptions) =>
+                              options.scrollHandler?.current?.(
+                                  options.pane as WorkbenchPane,
+                                  view,
+                                  range,
+                                  scrollOptions,
+                              ) ?? false,
+                      ),
                       ...(options.pane === "result"
                           ? [history(), workbenchHunks, workbenchHistory]
                           : [inputHunks]),

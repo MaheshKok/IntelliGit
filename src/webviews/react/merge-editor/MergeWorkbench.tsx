@@ -1,5 +1,4 @@
 import React, { useCallback, useLayoutEffect, useRef, useState } from "react";
-import { EditorView } from "@codemirror/view";
 import { isolateHistory, undo, redo, undoDepth, redoDepth } from "@codemirror/commands";
 import { openSearchPanel } from "@codemirror/search";
 import {
@@ -29,14 +28,19 @@ import type { HunkActionCallbacks } from "./workbenchGutter";
 import { useWorkbenchEditors } from "./useWorkbenchEditors";
 import { t } from "../shared/i18n";
 import type { MergeWorkbenchOutbound } from "../../protocol/mergeWorkbench";
-import { useMergeScrollSync } from "./useMergeScrollSync";
-import { MergeConnectors } from "./MergeConnectors";
+import { useWorkbenchLayout } from "./useWorkbenchLayout";
+import type { WorkbenchScrollHandler } from "./codeEditor";
+import { MERGE_PANES } from "./mergeRibbons";
+import { OverviewRail } from "./segments";
+import { scrollRangePx } from "../diff-core/mergeScrollLayout";
 import "./merge-workbench.css";
 
 /** Full-document three-way merge with reversible decisions and immutable inputs. */
 export function MergeWorkbench({ data: inputData }: { data: MergeEditorData }) {
     const [active, setActive] = useState(0);
     const actions = useRef<HunkActionCallbacks | null>(null);
+    const findHost = useRef<HTMLDivElement | null>(null);
+    const scrollHandler = useRef<WorkbenchScrollHandler | null>(null);
     const {
         data,
         hosts,
@@ -50,10 +54,25 @@ export function MergeWorkbench({ data: inputData }: { data: MergeEditorData }) {
         staleDraft,
         discardStaleDraft,
         flushDraft,
-    } = useWorkbenchEditors(inputData, active, actions);
+    } = useWorkbenchEditors(inputData, active, actions, { findHost, scrollHandler });
     const [baseVisible, setBaseVisible] = useState(false);
     const [linked, setLinked] = useState(true);
-    useMergeScrollSync(editors, hunks, linked);
+    const {
+        layout,
+        markers,
+        viewportH,
+        contentRef,
+        viewportRef,
+        onScroll,
+        jumpTo,
+        horizontalRef,
+        horizontalInnerRef,
+        onHorizontalScroll,
+        handleScrollRequest,
+    } = useWorkbenchLayout(editors, hunks);
+    useLayoutEffect(() => {
+        scrollHandler.current = handleScrollRequest;
+    }, [handleScrollRequest]);
     const pending = hunks.filter((hunk) => hunk.conflict && !hunk.resolved).length;
     const selected = hunks[active];
     const result = editors.current[1]?.view;
@@ -63,18 +82,9 @@ export function MergeWorkbench({ data: inputData }: { data: MergeEditorData }) {
             if (!hunks.length) return;
             const next = (index + hunks.length) % hunks.length;
             setActive(next);
-            const hunk = hunks[next];
-            const positions = [hunk.oursFrom, hunk.from, hunk.theirsFrom];
-            editors.current.slice(0, 3).forEach(({ view }, pane) =>
-                view.dispatch({
-                    effects: EditorView.scrollIntoView(
-                        Math.min(positions[pane], view.state.doc.length),
-                        { y: "center" },
-                    ),
-                }),
-            );
+            jumpTo(next);
         },
-        [editors, hunks],
+        [jumpTo, hunks],
     );
 
     const resolve = useCallback(
@@ -279,33 +289,54 @@ export function MergeWorkbench({ data: inputData }: { data: MergeEditorData }) {
                     <button onClick={discardStaleDraft}>{t("merge.workbench.discardDraft")}</button>
                 </div>
             )}
+            <div className="merge-find-host" ref={findHost} />
             <div className="mw-headings">
                 <span>{data.oursLabel}</span>
                 <span>{t("merge.workbench.result")}</span>
                 <span>{data.theirsLabel}</span>
             </div>
-            <div className="mw-panes">
-                {[0, 1, 2].map((pane) => (
-                    <React.Fragment key={pane}>
-                        {pane > 0 && (
-                            <MergeConnectors
-                                editors={editors}
-                                hunks={hunks}
-                                side={pane === 1 ? "ours" : "theirs"}
-                                busy={busy}
-                                accept={(index) => resolve(pane === 1 ? "ours" : "theirs", index)}
-                            />
-                        )}
-                        <div
-                            className={`mw-editor pane-${["ours", "result", "theirs"][pane]}`}
-                            data-testid={`merge-editor-${pane}`}
-                            key={pane}
-                            ref={(element) => {
-                                hosts.current[pane] = element;
-                            }}
-                        />
-                    </React.Fragment>
-                ))}
+            <div className="merge-content-shell">
+                <div className="merge-content" ref={contentRef} onScroll={onScroll}>
+                    <div className="merge-viewport" ref={viewportRef}>
+                        {MERGE_PANES.map((pane, index) => (
+                            <React.Fragment key={pane}>
+                                {index > 0 && (
+                                    <div
+                                        className={`merge-gutter merge-gutter-${index === 1 ? "left" : "right"}`}
+                                        aria-hidden="true"
+                                    />
+                                )}
+                                <div className={`merge-col col-${pane}`}>
+                                    <div
+                                        className={`mw-editor pane-${["ours", "result", "theirs"][index]}`}
+                                        data-testid={`merge-editor-${index}`}
+                                        ref={(element) => {
+                                            hosts.current[index] = element;
+                                        }}
+                                    />
+                                </div>
+                            </React.Fragment>
+                        ))}
+                    </div>
+                    <div
+                        className="merge-vscroll-spacer"
+                        style={{ height: scrollRangePx(layout.canonicalTotalPx, viewportH) }}
+                        aria-hidden="true"
+                    />
+                </div>
+                <div
+                    ref={horizontalRef}
+                    className="merge-horizontal-scroll"
+                    aria-hidden="true"
+                    onScroll={onHorizontalScroll}
+                >
+                    <div ref={horizontalInnerRef} className="merge-horizontal-scroll-inner" />
+                </div>
+                <OverviewRail
+                    markers={markers}
+                    activeConflictId={selected?.id ?? null}
+                    onJump={(id) => jump(hunks.findIndex((hunk) => hunk.id === id))}
+                />
             </div>
             <section className="mw-base" hidden={!baseVisible}>
                 <header>

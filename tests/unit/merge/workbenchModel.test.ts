@@ -16,7 +16,6 @@ import {
     workbenchHistory,
 } from "../../../src/webviews/react/merge-editor/workbenchModel";
 import { parseMergeDraft } from "../../../src/webviews/protocol/mergeWorkbench";
-import { mappedMergePosition } from "../../../src/webviews/react/merge-editor/useMergeScrollSync";
 
 function data(
     base = "head\nbase\ntail\n",
@@ -428,11 +427,5 @@ describe("merge workbench document", () => {
             parseMergeDraft({ snapshotId: "a".repeat(64), content: "text", hunks: [] }),
         ).not.toBeNull();
         expect(parseMergeDraft({ snapshotId: "stale", content: "text", hunks: [] })).toBeNull();
-    });
-    it("maps scrolling by matching conflict boundaries", () => {
-        const { hunks } = buildWorkbenchDocument(data());
-        const lengths = [15, 15, 17];
-        expect(mappedMergePosition(hunks[0].from, 1, 2, hunks, lengths)).toBe(hunks[0].theirsFrom);
-        expect(mappedMergePosition(hunks[0].to, 1, 2, hunks, lengths)).toBe(hunks[0].theirsTo);
     });
 });
