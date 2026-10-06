@@ -1,6 +1,7 @@
 import React, { useLayoutEffect, useRef, useState } from "react";
 import type { MergeEditorData } from "./types";
 import { useWorkbenchCommands } from "./useWorkbenchCommands";
+import { useWorkbenchKeyboard } from "./useWorkbenchKeyboard";
 import type { HunkActionCallbacks } from "./workbenchGutter";
 import { useWorkbenchEditors } from "./useWorkbenchEditors";
 import {
@@ -14,7 +15,7 @@ import {
 import { workbenchCounts } from "./workbenchLayout";
 import { paneChangeCount } from "./mergeState";
 import { useWorkbenchLayout } from "./useWorkbenchLayout";
-import type { WorkbenchScrollHandler } from "./codeEditor";
+import type { WorkbenchScrollHandler, WorkbenchKeyCommands } from "./codeEditor";
 import { MERGE_PANES } from "./mergeRibbons";
 import { ConnectorLayer, OverviewRail } from "./segments";
 import { scrollRangePx } from "../diff-core/mergeScrollLayout";
@@ -26,6 +27,7 @@ export function MergeWorkbench({ data: inputData }: { data: MergeEditorData }) {
     const actions = useRef<HunkActionCallbacks | null>(null);
     const findHost = useRef<HTMLDivElement | null>(null);
     const scrollHandler = useRef<WorkbenchScrollHandler | null>(null);
+    const keymap = useRef<WorkbenchKeyCommands | null>(null);
     const {
         data,
         hosts,
@@ -41,7 +43,7 @@ export function MergeWorkbench({ data: inputData }: { data: MergeEditorData }) {
         staleDraft,
         discardStaleDraft,
         flushDraft,
-    } = useWorkbenchEditors(inputData, active, actions, { findHost, scrollHandler });
+    } = useWorkbenchEditors(inputData, active, actions, { findHost, scrollHandler, keymap });
     const [baseVisible, setBaseVisible] = useState(false);
     const [highlightWords, setHighlightWords] = useState(true);
     const [showDetails, setShowDetails] = useState(false);
@@ -79,6 +81,7 @@ export function MergeWorkbench({ data: inputData }: { data: MergeEditorData }) {
         actions,
         jumpTo,
     });
+    useWorkbenchKeyboard(hunks, commands, keymap);
     const rootStyle = {
         ...(editorStats
             ? {

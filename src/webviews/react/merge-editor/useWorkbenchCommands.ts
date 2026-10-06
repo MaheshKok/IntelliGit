@@ -68,7 +68,7 @@ export function useWorkbenchCommands({
     );
 
     const resolve = useCallback(
-        (choice: MergeChoice, selectedIndex = active) => {
+        (choice: MergeChoice, selectedIndex = active, { focus = true } = {}) => {
             const target = selectedIndex === null ? undefined : hunks[selectedIndex];
             const view = editors.current[1]?.view;
             if (!view || !target || selectedIndex === null || busy) return;
@@ -76,10 +76,31 @@ export function useWorkbenchCommands({
             view.dispatch(bulkResolve(view.state, new Map([[selectedIndex, choice]]), data), {
                 selection: { anchor: target.from },
             });
-            view.focus();
+            if (focus) view.focus();
+            return true;
         },
         [active, busy, data, editors, hunks, setActive],
     );
+    const resolveFromKeyboard = (choice: MergeChoice) => {
+        const target = active ?? hunks.findIndex((hunk) => hunk.conflict && !hunk.resolved);
+        const hunk = hunks[target];
+        if (!hunk) return;
+        if (
+            (choice === "both" || choice === "both-reversed") &&
+            hunk.segment.changeKind !== "conflict"
+        )
+            return;
+        if (!resolve(choice, target, { focus: false })) return;
+        const targetPos = conflictIndices.indexOf(target);
+        const ordered = [
+            ...conflictIndices.slice(targetPos + 1),
+            ...conflictIndices.slice(0, Math.max(targetPos, 0)),
+        ];
+        const next = ordered.find(
+            (index) => index !== target && hunks[index].conflict && !hunks[index].resolved,
+        );
+        if (next !== undefined) jump(next);
+    };
     const callbacks: HunkActionCallbacks = {
         accept(index, side) {
             const target = hunks[index];
@@ -197,6 +218,7 @@ export function useWorkbenchCommands({
         jumpUnresolved,
         jump,
         resolve,
+        resolveFromKeyboard,
         markResolved,
         apply,
         close,

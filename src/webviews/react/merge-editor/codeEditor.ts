@@ -1,5 +1,6 @@
 import {
     Compartment,
+    Prec,
     EditorState,
     RangeSetBuilder,
     StateEffect,
@@ -60,6 +61,13 @@ export type WorkbenchScrollHandler = (
     range: SelectionRange,
     scrollOptions: Parameters<Parameters<typeof EditorView.scrollHandler.of>[0]>[2],
 ) => boolean;
+
+/** Commands rebound by React without recreating the result editor. */
+export type WorkbenchKeyCommands = {
+    next(): void;
+    prev(): void;
+    applyIfClean(): boolean;
+};
 
 const palette = EditorView.theme({
     "&": {
@@ -344,6 +352,7 @@ export function createMergeCodeEditor(
         theme: ShikiTheme;
         actions?: RefObject<HunkActionCallbacks | null>;
         scrollHandler?: RefObject<WorkbenchScrollHandler | null>;
+        keymap?: RefObject<WorkbenchKeyCommands | null>;
         findHost?: HTMLElement;
         update?: (view: EditorView) => void;
     },
@@ -367,6 +376,30 @@ export function createMergeCodeEditor(
             search(),
             options.pane === "result" ? panels({ bottomContainer: options.findHost }) : [],
             highlightSelectionMatches(),
+            options.pane === "result"
+                ? Prec.highest(
+                      keymap.of([
+                          {
+                              key: "F7",
+                              run: () => {
+                                  options.keymap?.current?.next();
+                                  return true;
+                              },
+                          },
+                          {
+                              key: "Shift-F7",
+                              run: () => {
+                                  options.keymap?.current?.prev();
+                                  return true;
+                              },
+                          },
+                          {
+                              key: "Mod-Enter",
+                              run: () => options.keymap?.current?.applyIfClean() ?? false,
+                          },
+                      ]),
+                  )
+                : [],
             keymap.of([indentWithTab, ...defaultKeymap, ...searchKeymap, ...historyKeymap]),
             editability.of([
                 EditorState.readOnly.of(options.readOnly),

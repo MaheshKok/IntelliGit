@@ -9,6 +9,7 @@ import {
     setInputHunks,
     setMergeSyntax,
     type WorkbenchScrollHandler,
+    type WorkbenchKeyCommands,
 } from "./codeEditor";
 import {
     buildWorkbenchDocument,
@@ -38,9 +39,11 @@ export function useWorkbenchEditors(
     {
         findHost,
         scrollHandler,
+        keymap,
     }: {
         findHost: RefObject<HTMLElement | null>;
         scrollHandler: RefObject<WorkbenchScrollHandler | null>;
+        keymap: RefObject<WorkbenchKeyCommands | null>;
     },
 ) {
     const [data] = useState(inputData);
@@ -144,6 +147,7 @@ export function useWorkbenchEditors(
                 update: pane === 1 ? update : undefined,
                 actions: pane === 0 || pane === 2 ? actions : undefined,
                 scrollHandler: pane < 3 ? scrollHandler : undefined,
+                keymap: pane === 1 ? keymap : undefined,
                 findHost: pane === 1 ? (findHost.current ?? undefined) : undefined,
             }),
         );
@@ -202,7 +206,7 @@ export function useWorkbenchEditors(
             window.removeEventListener("pagehide", flushDraft);
             for (const editor of views) editor.view.destroy();
         };
-    }, [data, initial, update, flushDraft, actions, findHost, scrollHandler]);
+    }, [data, initial, update, flushDraft, actions, findHost, scrollHandler, keymap]);
 
     useEffect(() => {
         editors.current.forEach(({ view }) =>
