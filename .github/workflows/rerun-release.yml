@@ -1,0 +1,66 @@
+name: Re-run failed release
+
+# A push to main that fails `CI - Build & Release` leaves its version bumped but unpublished: the
+# release jobs report `skipped` and nothing ever asks again. Most of those failures are one-offs
+# that pass unchanged on a re-run -- v0.36.5 sat unpublished because VS Code hung at launch in the
+# E2E container (run 37227674896), on a commit the nightly suite passed twice. This re-runs only the
+# failed jobs, at most twice, so the release publishes without someone noticing the red run.
+#
+# Flake DETECTION is not weakened by it: the Nightly and Insiders suites still run with
+# `retries: 0` and no automatic re-run, and pull requests still run e2e-full once. Only the release
+# gate on main retries.
+on:
+    workflow_run:
+        workflows: ["CI - Build & Release"]
+        types: [completed]
+        branches: [main]
+
+permissions: {}
+
+jobs:
+    rerun:
+        # Attempt 1 only: the loop below owns attempts 2 and 3. That keeps the cap at two whether or
+        # not GitHub delivers `workflow_run` for re-runs started by GITHUB_TOKEN, and a human's manual
+        # re-run never gets an automatic one stacked on it. `event == 'push'` plus the repository
+        # check keep a fork pull request whose branch happens to be named main from reaching a job
+        # that holds `actions: write`.
+        if: ${{ github.event.workflow_run.conclusion == 'failure' && github.event.workflow_run.event == 'push' && github.event.workflow_run.run_attempt == 1 && github.event.workflow_run.head_repository.full_name == github.repository }}
+        runs-on: ubuntu-latest
+        # Bounds only this watcher. A re-run it already started keeps going if the watcher times out.
+        timeout-minutes: 120
+        permissions:
+            actions: write
+            contents: read
+
+        steps:
+            - name: Re-run failed jobs unless main has moved to a newer version
+              env:
+                  GH_TOKEN: ${{ github.token }}
+                  RUN_ID: ${{ github.event.workflow_run.id }}
+                  HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+              run: |
+                  version_at() {
+                    gh api "repos/$GITHUB_REPOSITORY/contents/package.json?ref=$1" -H "Accept: application/vnd.github.raw+json" \
+                      | node -p 'JSON.parse(require("fs").readFileSync(0, "utf8")).version'
+                  }
+                  failed_version=$(version_at "$HEAD_SHA")
+                  for attempt in 2 3; do
+                    # Keyed on the version, not the commit. A later push that bumps the version runs
+                    # its own release, and re-running this one could publish the older version after
+                    # it. A later push that does NOT bump skips releasing (publish.yml's "Version
+                    # unchanged" branch), so this run is still the only one that can publish it.
+                    main_version=$(version_at main)
+                    if [ "$main_version" != "$failed_version" ]; then
+                      echo "main moved from $failed_version to $main_version; the newer run owns the release."
+                      exit 0
+                    fi
+                    gh run rerun "$RUN_ID" --failed --repo "$GITHUB_REPOSITORY"
+                    until [ "$(gh run view "$RUN_ID" --repo "$GITHUB_REPOSITORY" --json attempt,status --jq '"\(.attempt) \(.status)"')" = "$attempt completed" ]; do
+                      sleep 60
+                    done
+                    conclusion=$(gh run view "$RUN_ID" --repo "$GITHUB_REPOSITORY" --json conclusion --jq .conclusion)
+                    echo "Attempt $attempt of run $RUN_ID: $conclusion"
+                    [ "$conclusion" = failure ] || exit 0
+                  done
+                  echo "::error::Run $RUN_ID still fails after two automatic re-runs. Audit it before any skip_e2e_gate dispatch."
+                  exit 1

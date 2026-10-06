@@ -1,7 +1,11 @@
-import { existsSync, readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { spawnSync } from "node:child_process";
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
+
+import { removeScratchDirectoriesSync } from "../../helpers/scratchDirectories";
 
 const REPOSITORY_ROOT = resolve(__dirname, "../../..");
 
@@ -87,6 +91,115 @@ function jobPermissionEntries(job: string): readonly string[] {
             .split("\n")
             .map((line) => line.trim()) ?? []
     );
+}
+
+/** Indent of a step's `run: |` body: `- name:` sits at 12, its keys at 14, the block scalar at 18. */
+const RUN_BODY_INDENT = " ".repeat(18);
+
+/** Extracts a step's `run: |` script and dedents it, so a test executes what CI executes. */
+function extractRunScript(step: string): string {
+    const marker = `\n${" ".repeat(14)}run: |\n`;
+    const start = step.indexOf(marker);
+    if (start === -1) return "";
+
+    const script: string[] = [];
+    for (const line of step.slice(start + marker.length).split("\n")) {
+        if (line.trim() !== "" && !line.startsWith(RUN_BODY_INDENT)) break;
+        script.push(line.slice(RUN_BODY_INDENT.length));
+    }
+    return script.join("\n");
+}
+
+/** The commit the failed release run was built from, and the version it bumped to. */
+const FAILED_RUN_SHA = "1111111111111111111111111111111111111111";
+const FAILED_VERSION = "0.36.5";
+
+interface RerunLoopOptions {
+    /** The `package.json` version main carries whenever the loop asks. */
+    readonly mainVersion: string;
+    /** What the run concludes on attempt 2, attempt 3, ... */
+    readonly conclusions: readonly string[];
+    readonly mainLookupFails?: boolean;
+}
+
+/**
+ * Runs the re-run loop against a stubbed `gh` whose run answers each new attempt with the next
+ * entry of `conclusions`. State lives in files because every `$(gh ...)` is a subshell, which
+ * would never see a variable that `gh run rerun` set.
+ *
+ * Two answers are deliberately unhelpful. main's tip is always a LATER commit than the failed run,
+ * as after a Dependabot merge that did not bump the version, so a guard keyed on the commit would
+ * give up on a release nothing else will publish. And the first status read after each re-run
+ * still shows the previous, failed attempt, as the API can, so a loop that does not wait for its
+ * own attempt number reads a stale failure and re-runs a run that is already running.
+ */
+function runRerunLoop(script: string, options: RerunLoopOptions) {
+    const workspace = mkdtempSync(join(tmpdir(), "rerun-release-"));
+    try {
+        const callsPath = join(workspace, "gh-calls");
+        const attemptPath = join(workspace, "attempt");
+        const pollsPath = join(workspace, "polls");
+        writeFileSync(callsPath, "");
+        writeFileSync(attemptPath, "1");
+        writeFileSync(pollsPath, "0");
+        const ghStub =
+            `sleep() { :; }\n` +
+            `gh() {\n` +
+            `  echo "$*" >> "$GH_CALLS"\n` +
+            `  local attempt polls conclusions\n` +
+            `  attempt=$(cat "$ATTEMPT_FILE"); polls=$(cat "$POLLS_FILE"); conclusions=($CONCLUSIONS)\n` +
+            `  case "$1 $2" in\n` +
+            `    "api repos/$GITHUB_REPOSITORY/commits/main") echo "$NEWER_SHA" ;;\n` +
+            `    "api repos/$GITHUB_REPOSITORY/contents/package.json?ref=$HEAD_SHA")\n` +
+            `      echo "{\\"version\\": \\"$FAILED_VERSION\\"}" ;;\n` +
+            `    "api repos/$GITHUB_REPOSITORY/contents/package.json?ref=main")\n` +
+            `      if [ "$MAIN_LOOKUP_FAILS" = 1 ]; then return 1; fi\n` +
+            `      echo "{\\"version\\": \\"$MAIN_VERSION\\"}" ;;\n` +
+            `    "run rerun") echo $((attempt + 1)) > "$ATTEMPT_FILE"; echo 0 > "$POLLS_FILE" ;;\n` +
+            `    "run view")\n` +
+            `      case "$*" in\n` +
+            `        *attempt,status*)\n` +
+            `          echo $((polls + 1)) > "$POLLS_FILE"\n` +
+            `          if [ "$polls" = 0 ]; then echo "$((attempt - 1)) completed"; else echo "$attempt completed"; fi ;;\n` +
+            `        *) if [ "$polls" -le 1 ]; then echo failure; else echo "\${conclusions[attempt - 2]}"; fi ;;\n` +
+            `      esac ;;\n` +
+            `    *) echo "unexpected gh call: $*" >&2; return 1 ;;\n` +
+            `  esac\n` +
+            `}\n`;
+        const scriptPath = join(workspace, "rerun.sh");
+        writeFileSync(scriptPath, `${ghStub}${script}`);
+
+        // GitHub's own bash invocation, so `-e` and `pipefail` behave as they do on the runner. The
+        // timeout turns a loop that never sees its attempt complete into a null status, not a hang.
+        const result = spawnSync("bash", ["--noprofile", "--norc", "-eo", "pipefail", scriptPath], {
+            cwd: workspace,
+            encoding: "utf8",
+            timeout: 10_000,
+            env: {
+                ...process.env,
+                ATTEMPT_FILE: attemptPath,
+                CONCLUSIONS: options.conclusions.join(" "),
+                FAILED_VERSION,
+                GH_CALLS: callsPath,
+                GITHUB_REPOSITORY: "test-owner/test-repo",
+                HEAD_SHA: FAILED_RUN_SHA,
+                MAIN_LOOKUP_FAILS: options.mainLookupFails ? "1" : "0",
+                MAIN_VERSION: options.mainVersion,
+                NEWER_SHA: "2".repeat(40),
+                POLLS_FILE: pollsPath,
+                RUN_ID: "12345",
+            },
+        });
+
+        return {
+            status: result.status,
+            reruns: readFileSync(callsPath, "utf8")
+                .split("\n")
+                .filter((call) => call.startsWith("run rerun")),
+        };
+    } finally {
+        removeScratchDirectoriesSync(workspace);
+    }
 }
 
 describe("CI quality hardening workflows", () => {
@@ -727,5 +840,83 @@ describe("CI quality hardening workflows", () => {
             ),
             "no second JavaScript ecosystem may be declared alongside it",
         ).toEqual([]);
+    });
+
+    it("re-runs only a failed main release push, with no grant beyond re-running it", () => {
+        const rerun = readRepositoryFile(".github/workflows/rerun-release.yml");
+        const trigger = extractTopLevelBlock(rerun, "on");
+        const job = extractJobBlock(rerun, "rerun");
+        const condition = job.match(/^ {8}if: (.+)$/m)?.[1] ?? "";
+
+        // `workflow_run` matches the publishing workflow by display name, not path, so the name is
+        // read from publish.yml itself: renaming it must turn this red, not silently stop re-runs.
+        const publishName = readRepositoryFile(".github/workflows/publish.yml").match(
+            /^name: (.+)$/m,
+        )?.[1];
+        expect(publishName, "publish.yml must declare a top-level name").toBeDefined();
+        expect(trigger).toContain(`workflows: ["${publishName}"]`);
+        expect(trigger).toContain("types: [completed]");
+        expect(trigger).toContain("branches: [main]");
+
+        expect(rerun).toMatch(/^permissions: \{\}$/m);
+        expect(jobPermissionEntries(job)).toEqual(["actions: write", "contents: read"]);
+        for (const clause of [
+            "github.event.workflow_run.conclusion == 'failure'",
+            "github.event.workflow_run.event == 'push'",
+            "github.event.workflow_run.run_attempt == 1",
+            "github.event.workflow_run.head_repository.full_name == github.repository",
+        ]) {
+            expect(condition, `the job condition must require ${clause}`).toContain(clause);
+        }
+    });
+
+    it.each([
+        {
+            title: "re-runs the failed jobs twice, then fails loudly",
+            options: { mainVersion: FAILED_VERSION, conclusions: ["failure", "failure"] },
+            status: 1,
+            reruns: 2,
+        },
+        {
+            title: "stops at the first re-run that passes, not at a stale read of the one before",
+            options: { mainVersion: FAILED_VERSION, conclusions: ["success"] },
+            status: 0,
+            reruns: 1,
+        },
+        {
+            title: "leaves the run alone once main has bumped to a newer version",
+            options: { mainVersion: "0.36.6", conclusions: ["success"] },
+            status: 0,
+            reruns: 0,
+        },
+        {
+            title: "fails instead of guessing when main's version cannot be read",
+            options: {
+                mainVersion: FAILED_VERSION,
+                conclusions: ["success"],
+                mainLookupFails: true,
+            },
+            status: 1,
+            reruns: 0,
+        },
+    ])("auto re-run $title", ({ options, status, reruns }) => {
+        const job = extractJobBlock(
+            readRepositoryFile(".github/workflows/rerun-release.yml"),
+            "rerun",
+        );
+        const script = extractRunScript(
+            extractStepBlock(job, "Re-run failed jobs unless main has moved to a newer version"),
+        );
+        expect(script, "the re-run step's script must be extractable").not.toBe("");
+
+        const result = runRerunLoop(script, options);
+
+        expect(result.status, "exit status of the re-run loop").toBe(status);
+        expect(result.reruns, "every re-run must target only the failed jobs of that run").toEqual(
+            Array.from(
+                { length: reruns },
+                () => "run rerun 12345 --failed --repo test-owner/test-repo",
+            ),
+        );
     });
 });
