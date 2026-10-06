@@ -431,5 +431,8 @@
     "merge.workbench.staleDraft": "Un brouillon d'un conflit précédent est disponible. Il n'a pas été appliqué à cette session.",
     "merge.workbench.inspectDraft": "Examiner le brouillon précédent",
     "merge.workbench.discardDraft": "Supprimer le brouillon précédent",
-    "merge.workbench.native": "Ouvrir dans VS Code"
+    "merge.workbench.native": "Ouvrir dans VS Code",
+    "merge.workbench.regroupNotice": "Modifier le traitement des espaces reconstruit le résultat. Vos modifications et décisions sont remplacées (Annuler les restaure).",
+    "merge.workbench.regroupApply": "Reconstruire le résultat",
+    "merge.workbench.regroupKeep": "Conserver le résultat actuel"
 }

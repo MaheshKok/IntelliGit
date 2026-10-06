@@ -411,5 +411,8 @@
     "merge.workbench.staleDraft": "存在先前衝突的草稿，未套用至本次工作階段。",
     "merge.workbench.inspectDraft": "檢視先前草稿",
     "merge.workbench.discardDraft": "捨棄先前草稿",
-    "merge.workbench.native": "在 VS Code 中開啟"
+    "merge.workbench.native": "在 VS Code 中開啟",
+    "merge.workbench.regroupNotice": "變更空白字元的處理方式會重新建立結果。您的編輯與解決選擇將被取代（可透過「復原」還原）。",
+    "merge.workbench.regroupApply": "重新建立結果",
+    "merge.workbench.regroupKeep": "保留目前結果"
 }

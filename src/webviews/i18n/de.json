@@ -421,5 +421,8 @@
     "merge.workbench.staleDraft": "Ein Entwurf eines früheren Konflikts ist vorhanden. Er wurde nicht auf diese Sitzung angewendet.",
     "merge.workbench.inspectDraft": "Vorherigen Entwurf ansehen",
     "merge.workbench.discardDraft": "Vorherigen Entwurf verwerfen",
-    "merge.workbench.native": "In VS Code öffnen"
+    "merge.workbench.native": "In VS Code öffnen",
+    "merge.workbench.regroupNotice": "Eine Änderung der Leerzeichenbehandlung erstellt das Ergebnis neu. Ihre Änderungen und Entscheidungen werden ersetzt (mit Rückgängig werden sie wiederhergestellt).",
+    "merge.workbench.regroupApply": "Ergebnis neu erstellen",
+    "merge.workbench.regroupKeep": "Aktuelles Ergebnis beibehalten"
 }

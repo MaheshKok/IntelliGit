@@ -411,5 +411,8 @@
     "merge.workbench.staleDraft": "이전 충돌의 초안이 있습니다. 현재 세션에는 적용되지 않았습니다.",
     "merge.workbench.inspectDraft": "이전 초안 확인",
     "merge.workbench.discardDraft": "이전 초안 삭제",
-    "merge.workbench.native": "VS Code에서 열기"
+    "merge.workbench.native": "VS Code에서 열기",
+    "merge.workbench.regroupNotice": "공백 처리 방식을 변경하면 결과가 다시 구성됩니다. 편집 내용과 선택한 해결 방식이 대체됩니다(실행 취소로 복원할 수 있습니다).",
+    "merge.workbench.regroupApply": "결과 다시 구성",
+    "merge.workbench.regroupKeep": "현재 결과 유지"
 }

@@ -411,5 +411,8 @@
     "merge.workbench.staleDraft": "以前の競合の下書きがあります。このセッションには適用されていません。",
     "merge.workbench.inspectDraft": "以前の下書きを確認",
     "merge.workbench.discardDraft": "以前の下書きを破棄",
-    "merge.workbench.native": "VS Code で開く"
+    "merge.workbench.native": "VS Code で開く",
+    "merge.workbench.regroupNotice": "空白の扱いを変更すると、結果が再構築されます。編集内容と選択した解決方法は置き換えられます（「元に戻す」で復元できます）。",
+    "merge.workbench.regroupApply": "結果を再構築",
+    "merge.workbench.regroupKeep": "現在の結果を保持"
 }

@@ -421,5 +421,8 @@
     "manageRemotes.save": "Save",
     "manageRemotes.retry": "Retry",
     "manageRemotes.close": "Close",
-    "manageRemotes.staleForm": "Remote data changed. Review the current values and try again."
+    "manageRemotes.staleForm": "Remote data changed. Review the current values and try again.",
+    "merge.workbench.regroupNotice": "Changing whitespace handling rebuilds the result. Your edits and decisions are replaced (Undo restores them).",
+    "merge.workbench.regroupApply": "Rebuild result",
+    "merge.workbench.regroupKeep": "Keep current result"
 }

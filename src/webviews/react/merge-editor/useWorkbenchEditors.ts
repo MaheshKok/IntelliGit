@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import type { HunkActionCallbacks } from "./workbenchGutter";
 import { undoDepth, redoDepth } from "@codemirror/commands";
 import { EditorView } from "@codemirror/view";
@@ -15,6 +15,9 @@ import {
     buildWorkbenchDocument,
     groupingField,
     groupingInit,
+    hunkAtCaret,
+    isPristineState,
+    regroupSpec,
     type Grouping,
     replaceHunks,
     restoreDraftHunks,
@@ -31,6 +34,33 @@ import {
 import type { MergeEditorData } from "./types";
 import { t } from "../shared/i18n";
 
+/** The whitespace select: a pristine result regroups at once, an edited one asks first. */
+export function useRegroupNotice(
+    grouping: Grouping | null,
+    isPristine: () => boolean,
+    regroup: (next: boolean) => void,
+) {
+    const [pending, setPending] = useState<boolean | null>(null);
+    // Undo/redo can reach the pending mode; the notice then has nothing left to ask.
+    if (pending !== null && pending === grouping?.ignoreWhitespace) setPending(null);
+    return {
+        pending,
+        change: (mode: "none" | "whitespace") => {
+            const next = mode === "whitespace";
+            if (next === grouping!.ignoreWhitespace) setPending(null);
+            else if (isPristine()) {
+                regroup(next);
+                setPending(null);
+            } else setPending(next);
+        },
+        apply: () => {
+            regroup(pending!);
+            setPending(null);
+        },
+        keep: () => setPending(null),
+    };
+}
+
 /** Owns editors for one snapshot; asynchronous draft loads never overwrite an already edited result. */
 export function useWorkbenchEditors(
     inputData: MergeEditorData,
@@ -40,10 +70,12 @@ export function useWorkbenchEditors(
         findHost,
         scrollHandler,
         keymap,
+        onActiveFromCaret,
     }: {
         findHost: RefObject<HTMLElement | null>;
         scrollHandler: RefObject<WorkbenchScrollHandler | null>;
         keymap: RefObject<WorkbenchKeyCommands | null>;
+        onActiveFromCaret: (index: number | null) => void;
     },
 ) {
     const [data] = useState(inputData);
@@ -70,6 +102,10 @@ export function useWorkbenchEditors(
     const latestDraft = useRef<MergeDraft | null>(null);
     const theme = useDiffSyntaxTheme();
     const initialTheme = useRef(theme);
+    const activeFromCaret = useRef(onActiveFromCaret);
+    useLayoutEffect(() => {
+        activeFromCaret.current = onActiveFromCaret;
+    }, [onActiveFromCaret]);
 
     const flushDraft = useCallback(() => {
         clearTimeout(saveTimer.current);
@@ -154,7 +190,24 @@ export function useWorkbenchEditors(
         editors.current = views;
         views[1].view.dispatch({
             effects: [
-                StateEffect.appendConfig.of(groupingInit(data)),
+                StateEffect.appendConfig.of([
+                    groupingInit(data),
+                    EditorView.updateListener.of((update) => {
+                        if (restoring.current) return;
+                        // The appendConfig transaction's start state has no grouping yet.
+                        if (!update.startState.field(groupingField, false)) return;
+                        // Merge commands set the active hunk themselves; their caret can sit mid-line.
+                        const command = update.transactions.some((transaction) =>
+                            transaction.isUserEvent("input.merge"),
+                        );
+                        if (
+                            (update.selectionSet && !command) ||
+                            update.startState.field(groupingField) !==
+                                update.state.field(groupingField)
+                        )
+                            activeFromCaret.current(hunkAtCaret(update.state));
+                    }),
+                ]),
                 replaceHunks.of(initial.hunks),
             ],
             annotations: Transaction.addToHistory.of(false),
@@ -168,15 +221,27 @@ export function useWorkbenchEditors(
                 return;
             }
             if (revision.current > 0 || latestDraft.current) return;
-            const ranges = restoreDraftHunks(initial.hunks, draft.hunks, draft.content.length);
+            const view = views[1].view;
+            const regroup =
+                draft.ignoreWhitespace !== undefined &&
+                draft.ignoreWhitespace !== view.state.field(groupingField).ignoreWhitespace
+                    ? regroupSpec(view.state, data, draft.ignoreWhitespace, { history: false })
+                    : undefined;
+            const original = regroup
+                ? view.state.update(regroup).state.field(workbenchHunks)
+                : initial.hunks;
+            const ranges = restoreDraftHunks(original, draft.hunks, draft.content.length);
             if (!ranges) return;
             restoring.current = true;
+            if (regroup) view.dispatch(regroup);
             views[1].view.dispatch({
                 changes: { from: 0, to: views[1].view.state.doc.length, insert: draft.content },
                 effects: replaceHunks.of(ranges),
                 annotations: Transaction.addToHistory.of(false),
             });
             restoring.current = false;
+            // Hunk indexes from the old grouping no longer apply (decision 10).
+            if (regroup) activeFromCaret.current(null);
             latestDraft.current = draft;
             getVsCodeApi().setState(draft);
         };
@@ -250,6 +315,14 @@ export function useWorkbenchEditors(
         });
         flushDraft();
     };
+    const isPristine = () => {
+        const view = editors.current[1]?.view;
+        return !!view && isPristineState(view.state, data);
+    };
+    const regroup = (next: boolean) => {
+        const view = editors.current[1]?.view;
+        if (view) view.dispatch(regroupSpec(view.state, data, next, { history: true }));
+    };
     return {
         data,
         initial,
@@ -266,5 +339,7 @@ export function useWorkbenchEditors(
         staleDraft,
         discardStaleDraft,
         flushDraft,
+        isPristine,
+        regroup,
     };
 }

@@ -1,6 +1,7 @@
 import {
     StateEffect,
     StateField,
+    Transaction,
     type ChangeDesc,
     type EditorState,
     type Extension,
@@ -8,7 +9,11 @@ import {
     type TransactionSpec,
 } from "@codemirror/state";
 import { invertedEffects, isolateHistory } from "@codemirror/commands";
-import type { MergeEditorData, ConflictSegment } from "../../../mergeEditor/conflictParser";
+import {
+    parseConflictVersions,
+    type MergeEditorData,
+    type ConflictSegment,
+} from "../../../mergeEditor/conflictParser";
 import type { MergeChoice, MergeDraft } from "../../protocol/mergeWorkbench";
 import { getResultLines, isTrueConflict } from "./mergeState";
 
@@ -21,12 +26,18 @@ export interface Grouping {
     segments: MergeEditorData["segments"];
 }
 
+/** Replaces grouping together with the result document and its hunks. */
+export const setGrouping = StateEffect.define<Grouping>();
+
 /** Holds the host's grouping for this editor snapshot. */
 export const groupingField = StateField.define<Grouping>({
     create: () => {
         throw new Error("groupingField needs init(data)");
     },
-    update: (value) => value,
+    update(value, transaction) {
+        for (const effect of transaction.effects) if (effect.is(setGrouping)) value = effect.value;
+        return value;
+    },
 });
 
 /** Initializes grouping from the loaded host data, including its whitespace policy. */
@@ -156,11 +167,68 @@ export const workbenchHunks = StateField.define<readonly WorkbenchHunk[]>({
 });
 
 /** Decisions and manual edits use the same reversible transaction boundary. */
-export const workbenchHistory = invertedEffects.of((transaction) =>
-    transaction.docChanged || transaction.effects.some((effect) => effect.is(replaceHunks))
-        ? [replaceHunks.of(transaction.startState.field(workbenchHunks))]
-        : [],
-);
+export const workbenchHistory = invertedEffects.of((transaction) => {
+    const effects: StateEffect<unknown>[] =
+        transaction.docChanged || transaction.effects.some((effect) => effect.is(replaceHunks))
+            ? [replaceHunks.of(transaction.startState.field(workbenchHunks))]
+            : [];
+    if (transaction.effects.some((effect) => effect.is(setGrouping)))
+        effects.push(setGrouping.of(transaction.startState.field(groupingField)));
+    return effects;
+});
+
+/** Rebuilds the captured versions in one reversible result transaction. */
+export function regroupSpec(
+    state: EditorState,
+    data: MergeEditorData,
+    next: boolean,
+    { history }: { history: boolean },
+): TransactionSpec {
+    if (!data.workbench) throw new Error("regroupSpec requires data.workbench");
+    const { base, ours, theirs } = data.workbench;
+    const segments = parseConflictVersions(base, ours, theirs, { ignoreWhitespace: next });
+    const built = buildWorkbenchDocument({ ...data, segments });
+    return {
+        changes: { from: 0, to: state.doc.length, insert: built.content },
+        effects: [
+            replaceHunks.of(built.hunks),
+            setGrouping.of({ ignoreWhitespace: next, segments }),
+        ],
+        userEvent: "input.merge",
+        annotations: history ? isolateHistory.of("full") : Transaction.addToHistory.of(false),
+    };
+}
+
+/** Uses the same physical-line ownership as row painting, then empty hunk anchors. */
+export function hunkAtCaret(state: EditorState): number | null {
+    const head = state.selection.main.head;
+    const line = state.doc.lineAt(head);
+    const hunks = state.field(workbenchHunks);
+    const owned = hunks.findIndex(
+        ({ from, to }) => from < to && from <= line.from && line.from < to,
+    );
+    if (owned !== -1) return owned;
+    const empty = hunks.findIndex(({ from, to }) => from === to && from === head);
+    return empty === -1 ? null : empty;
+}
+
+/** Detects edits and decisions against the current grouping's original result. */
+export function isPristineState(state: EditorState, data: MergeEditorData): boolean {
+    const { segments } = state.field(groupingField);
+    return (
+        state.doc.toString() === buildWorkbenchDocument({ ...data, segments }).content &&
+        state
+            .field(workbenchHunks)
+            .every(
+                (hunk) =>
+                    hunk.decision === undefined &&
+                    !hunk.edited &&
+                    !hunk.dismissed.ours &&
+                    !hunk.dismissed.theirs &&
+                    hunk.resolved === !hunk.conflict,
+            )
+    );
+}
 
 /** Resolves all selected hunks in one history step using start-document coordinates. */
 export function bulkResolve(

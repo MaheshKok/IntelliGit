@@ -441,5 +441,8 @@
     "merge.workbench.staleDraft": "Доступен черновик предыдущего конфликта. Он не применён к этому сеансу.",
     "merge.workbench.inspectDraft": "Просмотреть предыдущий черновик",
     "merge.workbench.discardDraft": "Удалить предыдущий черновик",
-    "merge.workbench.native": "Открыть в VS Code"
+    "merge.workbench.native": "Открыть в VS Code",
+    "merge.workbench.regroupNotice": "Изменение обработки пробельных символов пересоздаёт результат. Ваши правки и решения заменяются (действие «Отменить» восстанавливает их).",
+    "merge.workbench.regroupApply": "Пересоздать результат",
+    "merge.workbench.regroupKeep": "Сохранить текущий результат"
 }

@@ -3,7 +3,14 @@ import React, { act } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EditorView } from "@codemirror/view";
 import * as codeEditor from "../../../src/webviews/react/merge-editor/codeEditor";
-import { workbenchHunks } from "../../../src/webviews/react/merge-editor/workbenchModel";
+import {
+    workbenchHunks,
+    buildWorkbenchDocument,
+    groupingField,
+    regroupSpec,
+    isPristineState,
+} from "../../../src/webviews/react/merge-editor/workbenchModel";
+import { paneChangeCount } from "../../../src/webviews/react/merge-editor/mergeState";
 import { MergeWorkbench } from "../../../src/webviews/react/merge-editor/MergeWorkbench";
 import { parseConflictVersions, detectEolMetadata } from "../../../src/mergeEditor/conflictParser";
 import { mount, unmount, initReactDomTestEnvironment } from "../../helpers/reactDomTestUtils";
@@ -369,6 +376,617 @@ afterEach(() => {
     Reflect.deleteProperty(Range.prototype, "getBoundingClientRect");
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
+});
+
+const regroupVersions = {
+    base: "head\nb\nkeep\nbase one\nbase two\ntail\n",
+    ours: "head\n  b\nkeep\nours one\nours two\ntail\n",
+    theirs: "head\nb\nkeep\ntheirs one\ntheirs two\ntail\n",
+};
+const regroupData = {
+    ...data,
+    segments: parseConflictVersions(
+        regroupVersions.base,
+        regroupVersions.ours,
+        regroupVersions.theirs,
+    ),
+    workbench: { ...data.workbench, ...regroupVersions },
+};
+function expectActiveRows(container: HTMLElement, index: number | null, minRows = 2) {
+    const hunk = index === null ? undefined : result(container).state.field(workbenchHunks)[index];
+    for (const [pane, from, to] of [
+        ["ours", "oursFrom", "oursTo"],
+        ["result", "from", "to"],
+        ["theirs", "theirsFrom", "theirsTo"],
+    ] as const) {
+        const host = container.querySelector(`.pane-${pane}`)!;
+        if (!hunk) {
+            expect(host.querySelectorAll(".mrow-active").length, `${pane} clears active rows`).toBe(
+                0,
+            );
+            continue;
+        }
+        const view = EditorView.findFromDOM(host.querySelector<HTMLElement>(".cm-editor")!)!;
+        const rows = ownedLines(view.state.doc, hunk[from], hunk[to]);
+        expect(rows.length).toBeGreaterThanOrEqual(pane === "result" ? minRows : 2);
+        expect(
+            host.querySelectorAll(".cm-line.mrow-active").length,
+            `${pane} active owned row count for hunk ${index}`,
+        ).toBe(rows.length);
+        const lines = [...host.querySelectorAll(".cm-line")];
+        expect(lines.filter((line) => line.classList.contains("mrow-active"))).toEqual(
+            rows.map((row) => lines[row - 1]),
+        );
+    }
+    expect(
+        container.querySelector<HTMLButtonElement>('[aria-label="Confirm manual resolution"]')!
+            .disabled,
+    ).toBe(index === null);
+    expect(
+        container.querySelector<HTMLSelectElement>('[aria-label="Resolve change"]')!.disabled,
+    ).toBe(index === null);
+}
+
+function ignoreSelect(container: HTMLElement) {
+    return container.querySelector<HTMLSelectElement>(
+        `[aria-label="${t("merge.toolbar.ignoreMode.title")}"]`,
+    )!;
+}
+function changeIgnoreMode(container: HTMLElement, mode: "none" | "whitespace") {
+    const select = ignoreSelect(container);
+    act(() => {
+        select.value = mode;
+        select.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+}
+function whitespaceSegments(input = regroupData) {
+    const { base, ours, theirs } = input.workbench;
+    return parseConflictVersions(base, ours, theirs, { ignoreWhitespace: true });
+}
+
+describe("live whitespace toolbar", () => {
+    it("whitespace mode regroups a pristine result in one undo step", () => {
+        const fresh = buildWorkbenchDocument({ ...regroupData, segments: whitespaceSegments() });
+        const mounted = mount(<MergeWorkbench data={regroupData} />);
+        try {
+            const view = result(mounted.container);
+            expect(view.state.field(workbenchHunks)).toHaveLength(2);
+            expect(fresh.hunks).toHaveLength(1);
+            changeIgnoreMode(mounted.container, "whitespace");
+            expect(view.state.field(workbenchHunks)).toHaveLength(fresh.hunks.length);
+            expect(view.state.doc.toString()).toBe(fresh.content);
+            expect(undoDepth(view.state)).toBe(1);
+            expect(ignoreSelect(mounted.container).value).toBe("whitespace");
+        } finally {
+            unmount(mounted.root, mounted.container);
+        }
+    });
+    it("whitespace mode asks before replacing an edited result", () => {
+        const mounted = mount(<MergeWorkbench data={regroupData} />);
+        try {
+            const view = result(mounted.container);
+            act(() =>
+                view.dispatch({
+                    changes: { from: 1, insert: "typed edit" },
+                    userEvent: "input.type",
+                }),
+            );
+            const edited = view.state.doc.toString();
+            changeIgnoreMode(mounted.container, "whitespace");
+            const notice = mounted.container.querySelector(".merge-notice-regroup");
+            expect(notice, "edited result requires a regroup notice").not.toBeNull();
+            expect(notice!.getAttribute("role")).toBe("alert");
+            expect(notice!.textContent).toContain(
+                "Changing whitespace handling rebuilds the result. Your edits and decisions are replaced (Undo restores them).",
+            );
+            expect(view.state.doc.toString()).toBe(edited);
+            expect(ignoreSelect(mounted.container).value).toBe("none");
+            click(mounted.container, "Keep current result");
+            expect(mounted.container.querySelector(".merge-notice-regroup")).toBeNull();
+            expect(ignoreSelect(mounted.container).value).toBe("none");
+            expect(view.state.doc.toString()).toBe(edited);
+            changeIgnoreMode(mounted.container, "whitespace");
+            click(mounted.container, "Rebuild result");
+            expect(view.state.doc.toString()).toBe(
+                buildWorkbenchDocument({ ...regroupData, segments: whitespaceSegments() }).content,
+            );
+            expect(view.state.field(workbenchHunks)).toHaveLength(1);
+            expect(mounted.container.querySelector(".merge-notice-regroup")).toBeNull();
+            expect(ignoreSelect(mounted.container).value).toBe("whitespace");
+            click(mounted.container, "Undo");
+            expect(view.state.doc.toString()).toBe(edited);
+            expect(ignoreSelect(mounted.container).value).toBe("none");
+        } finally {
+            unmount(mounted.root, mounted.container);
+        }
+    });
+    it("undo after a regroup snaps the select back", () => {
+        const mounted = mount(<MergeWorkbench data={regroupData} />);
+        try {
+            changeIgnoreMode(mounted.container, "whitespace");
+            expect(ignoreSelect(mounted.container).value).toBe("whitespace");
+            click(mounted.container, "Undo");
+            expect(ignoreSelect(mounted.container).value, "Undo restores the select to none").toBe(
+                "none",
+            );
+            click(mounted.container, "Redo");
+            expect(ignoreSelect(mounted.container).value).toBe("whitespace");
+        } finally {
+            unmount(mounted.root, mounted.container);
+        }
+    });
+    it("details counts follow the regrouped segments", () => {
+        const versions = {
+            ...regroupVersions,
+            theirs: regroupVersions.theirs.replace("\nb\n", "\n b\n"),
+        };
+        const input = {
+            ...regroupData,
+            workbench: { ...regroupData.workbench, ...versions },
+            segments: parseConflictVersions(versions.base, versions.ours, versions.theirs),
+        };
+        const segments = whitespaceSegments(input);
+        const mounted = mount(<MergeWorkbench data={input} />);
+        try {
+            click(mounted.container, t("merge.toolbar.showDetails"));
+            for (const side of ["ours", "theirs"] as const)
+                expect(paneChangeCount(segments, side)).not.toBe(
+                    paneChangeCount(input.segments, side),
+                );
+            changeIgnoreMode(mounted.container, "whitespace");
+            const counts = mounted.container.querySelectorAll(".pane-meta-counts");
+            for (const [index, side] of (["ours", "theirs"] as const).entries()) {
+                expect(counts[index].parentElement!.hidden).toBe(false);
+                expect(counts[index].textContent, `${side} uses regrouped pane counts`).toBe(
+                    `${t("merge.count.changes", { count: paneChangeCount(segments, side) })}, ${t("merge.count.conflicts", { count: 1 })}`,
+                );
+            }
+        } finally {
+            unmount(mounted.root, mounted.container);
+        }
+    });
+    it("save after undo of a regroup writes the restored mode", () => {
+        const mounted = mount(<MergeWorkbench data={regroupData} />);
+        try {
+            const view = result(mounted.container);
+            const ids = view.state.field(workbenchHunks).map(({ id }) => id);
+            changeIgnoreMode(mounted.container, "whitespace");
+            expect(ignoreSelect(mounted.container).value).toBe("whitespace");
+            click(mounted.container, "Undo");
+            act(() => window.dispatchEvent(new Event("pagehide")));
+            const saved = api.postMessage.mock.calls
+                .filter(([message]) => message.type === "saveMergeDraft")
+                .at(-1)![0];
+            expect(saved.draft.ignoreWhitespace).toBe(false);
+            expect(saved.draft.hunks.map(({ id }: { id: string }) => id)).toEqual(ids);
+        } finally {
+            unmount(mounted.root, mounted.container);
+        }
+    });
+    it("restoring a draft in the other whitespace mode leaves no active hunk", () => {
+        const versions = {
+            base: "base one\nbase two\nkeep\nb",
+            ours: "ours one\nours two\nkeep\n  b",
+            theirs: "theirs one\ntheirs two\nkeep\nb",
+        };
+        const input = {
+            ...regroupData,
+            ...detectEolMetadata(versions.ours),
+            workbench: { ...regroupData.workbench, ...versions },
+            segments: parseConflictVersions(versions.base, versions.ours, versions.theirs),
+        };
+        const built = buildWorkbenchDocument({ ...input, segments: whitespaceSegments(input) });
+        expect(buildWorkbenchDocument(input).hunks[0].from).toBe(0);
+        expect(built.hunks[0].from).toBe(0);
+        api.getState.mockReturnValue({
+            snapshotId: input.workbench.snapshotId,
+            ignoreWhitespace: true,
+            content: built.content,
+            hunks: built.hunks.map(({ id, from, to, resolved }) => ({ id, from, to, resolved })),
+        });
+        const mounted = mount(<MergeWorkbench data={input} />);
+        try {
+            expect(ignoreSelect(mounted.container).value).toBe("whitespace");
+            expect(result(mounted.container).state.doc.toString()).toBe(built.content);
+            expectActiveRows(mounted.container, null);
+        } finally {
+            unmount(mounted.root, mounted.container);
+        }
+    });
+    it("the regroup notice is frozen while Apply is in flight", () => {
+        const mounted = mount(<MergeWorkbench data={regroupData} />);
+        try {
+            const view = result(mounted.container);
+            click(mounted.container, "Accept All Yours");
+            changeIgnoreMode(mounted.container, "whitespace");
+            expect(mounted.container.querySelector(".merge-notice-regroup")).not.toBeNull();
+            click(mounted.container, "Apply");
+            expect(view.contentDOM.getAttribute("contenteditable")).toBe("false");
+            const posted = view.state.doc.toString();
+            const buttons = [
+                ...mounted.container.querySelectorAll<HTMLButtonElement>(
+                    ".merge-notice-regroup button",
+                ),
+            ];
+            for (const label of ["Rebuild result", "Keep current result"])
+                expect(
+                    buttons.find((button) => button.textContent === label)!.disabled,
+                    `${label} is disabled during Apply`,
+                ).toBe(true);
+            click(mounted.container, "Rebuild result");
+            expect(view.state.doc.toString(), "Rebuild during Apply leaves the result").toBe(
+                posted,
+            );
+        } finally {
+            unmount(mounted.root, mounted.container);
+        }
+    });
+    it("undo back to the pending mode closes the regroup notice", () => {
+        const mounted = mount(<MergeWorkbench data={regroupData} />);
+        try {
+            const view = result(mounted.container);
+            act(() =>
+                view.dispatch({ changes: { from: 1, insert: "E1" }, userEvent: "input.type" }),
+            );
+            const e1 = view.state.doc.toString();
+            changeIgnoreMode(mounted.container, "whitespace");
+            click(mounted.container, "Rebuild result");
+            act(() =>
+                view.dispatch({ changes: { from: 0, insert: "E2" }, userEvent: "input.type" }),
+            );
+            changeIgnoreMode(mounted.container, "none");
+            expect(mounted.container.querySelector(".merge-notice-regroup")).not.toBeNull();
+            click(mounted.container, "Undo");
+            click(mounted.container, "Undo");
+            expect(ignoreSelect(mounted.container).value).toBe("none");
+            expect(view.state.doc.toString()).toBe(e1);
+            expect(
+                mounted.container.querySelector(".merge-notice-regroup"),
+                "the notice closes once the mode matches the pending choice",
+            ).toBeNull();
+            click(mounted.container, "Redo");
+            expect(ignoreSelect(mounted.container).value).toBe("whitespace");
+            expect(
+                mounted.container.querySelector(".merge-notice-regroup"),
+                "Redo does not bring back a stale notice",
+            ).toBeNull();
+        } finally {
+            unmount(mounted.root, mounted.container);
+        }
+    });
+    it("redo to the pending whitespace mode closes the regroup notice", () => {
+        const mounted = mount(<MergeWorkbench data={regroupData} />);
+        try {
+            const view = result(mounted.container);
+            act(() =>
+                view.dispatch({ changes: { from: 1, insert: "E1" }, userEvent: "input.type" }),
+            );
+            const e1 = view.state.doc.toString();
+            changeIgnoreMode(mounted.container, "whitespace");
+            click(mounted.container, "Rebuild result");
+            const rebuilt = view.state.doc.toString();
+            click(mounted.container, "Undo");
+            expect(view.state.doc.toString()).toBe(e1);
+            changeIgnoreMode(mounted.container, "whitespace");
+            expect(mounted.container.querySelector(".merge-notice-regroup")).not.toBeNull();
+            click(mounted.container, "Redo");
+            expect(ignoreSelect(mounted.container).value).toBe("whitespace");
+            expect(view.state.doc.toString()).toBe(rebuilt);
+            expect(
+                mounted.container.querySelector(".merge-notice-regroup"),
+                "the notice closes once Redo reaches the pending whitespace mode",
+            ).toBeNull();
+            click(mounted.container, "Undo");
+            expect(view.state.doc.toString(), "the typed edit is intact").toBe(e1);
+        } finally {
+            unmount(mounted.root, mounted.container);
+        }
+    });
+    it("a late draft in the other whitespace mode clears the active hunk", () => {
+        const built = buildWorkbenchDocument({ ...regroupData, segments: whitespaceSegments() });
+        const mounted = mount(<MergeWorkbench data={regroupData} />);
+        try {
+            const view = result(mounted.container);
+            act(() =>
+                view.dispatch({ selection: { anchor: view.state.field(workbenchHunks)[0].from } }),
+            );
+            expect(
+                mounted.container.querySelector<HTMLButtonElement>(
+                    '[aria-label="Confirm manual resolution"]',
+                )!.disabled,
+                "the caret activates hunk 0 before the late draft",
+            ).toBe(false);
+            receive({
+                type: "mergeDraft",
+                draft: {
+                    snapshotId: regroupData.workbench.snapshotId,
+                    ignoreWhitespace: true,
+                    content: built.content,
+                    hunks: built.hunks.map(({ id, from, to, resolved }) => ({
+                        id,
+                        from,
+                        to,
+                        resolved,
+                    })),
+                },
+            });
+            expect(ignoreSelect(mounted.container).value).toBe("whitespace");
+            expect(view.state.doc.toString()).toBe(built.content);
+            expectActiveRows(mounted.container, null);
+        } finally {
+            unmount(mounted.root, mounted.container);
+        }
+    });
+});
+
+describe("reversible grouping and caret activation", () => {
+    it("a draft carries its whitespace mode", () => {
+        const segments = parseConflictVersions(
+            regroupVersions.base,
+            regroupVersions.ours,
+            regroupVersions.theirs,
+            { ignoreWhitespace: true },
+        );
+        const built = buildWorkbenchDocument({ ...regroupData, segments });
+        expect(built.hunks).toHaveLength(1);
+        expect(buildWorkbenchDocument(regroupData).hunks).toHaveLength(2);
+        const draft = {
+            snapshotId: data.workbench.snapshotId,
+            ignoreWhitespace: true,
+            content: built.content + "draft text\n",
+            hunks: built.hunks.map(({ id, from, to, resolved }) => ({ id, from, to, resolved })),
+        };
+        api.getState.mockReturnValue(draft);
+        const mounted = mount(<MergeWorkbench data={regroupData} />);
+        try {
+            const view = result(mounted.container);
+            expect(
+                mounted.container.querySelector<HTMLSelectElement>(
+                    `[aria-label="${t("merge.toolbar.ignoreMode.title")}"]`,
+                )!.value,
+            ).toBe("whitespace");
+            expect(view.state.field(workbenchHunks).map(({ id }) => id)).toEqual(
+                built.hunks.map(({ id }) => id),
+            );
+            expect(view.state.doc.toString()).toBe(draft.content);
+            expect(view.state.field(groupingField)).toEqual({ ignoreWhitespace: true, segments });
+            expect(undoDepth(view.state)).toBe(0);
+            expect(api.setState).toHaveBeenCalledExactlyOnceWith(draft);
+            expect(
+                api.postMessage.mock.calls.filter(([message]) => message.type === "saveMergeDraft"),
+            ).toHaveLength(0);
+        } finally {
+            unmount(mounted.root, mounted.container);
+        }
+    });
+    it("a draft in the other whitespace mode with stale hunk ids is not applied", () => {
+        const initial = buildWorkbenchDocument(regroupData);
+        api.getState.mockReturnValue({
+            snapshotId: data.workbench.snapshotId,
+            ignoreWhitespace: true,
+            content: initial.content + "stale draft\n",
+            hunks: initial.hunks.map(({ id, from, to, resolved }) => ({ id, from, to, resolved })),
+        });
+        const mounted = mount(<MergeWorkbench data={regroupData} />);
+        try {
+            const view = result(mounted.container);
+            expect(view.state.doc.toString()).toBe(initial.content);
+            expect(
+                mounted.container.querySelector<HTMLSelectElement>(
+                    `[aria-label="${t("merge.toolbar.ignoreMode.title")}"]`,
+                )!.value,
+            ).toBe("none");
+            expect(view.state.field(workbenchHunks)).toEqual(initial.hunks);
+            expect(view.state.field(groupingField).segments).toBe(regroupData.segments);
+            expect(api.setState).not.toHaveBeenCalled();
+        } finally {
+            unmount(mounted.root, mounted.container);
+        }
+    });
+    it("pristine reports false after an edit, a decision or a dismissal", () => {
+        const mounted = mount(<MergeWorkbench data={actionData} />);
+        try {
+            const view = result(mounted.container);
+            const pristine = () => isPristineState(view.state, actionData);
+            expect(pristine()).toBe(true);
+            act(() =>
+                view.dispatch({
+                    changes: { from: 1, insert: "common edit" },
+                    userEvent: "input.type",
+                }),
+            );
+            expect(view.state.field(workbenchHunks).every((hunk) => !hunk.edited)).toBe(true);
+            expect(pristine()).toBe(false);
+            act(() => {
+                expect(undo(view)).toBe(true);
+            });
+            expect(pristine()).toBe(true);
+            act(() =>
+                mounted.container
+                    .querySelector<HTMLButtonElement>(".pane-ours .accept-btn")!
+                    .click(),
+            );
+            expect(pristine()).toBe(false);
+            act(() => {
+                expect(undo(view)).toBe(true);
+            });
+            expect(pristine()).toBe(true);
+            act(() =>
+                mounted.container
+                    .querySelector<HTMLButtonElement>(".pane-theirs .discard-btn")!
+                    .click(),
+            );
+            expect(view.state.field(workbenchHunks)[0].dismissed.theirs).toBe(true);
+            expect(pristine()).toBe(false);
+            act(() => {
+                expect(undo(view)).toBe(true);
+            });
+            expect(pristine()).toBe(true);
+        } finally {
+            unmount(mounted.root, mounted.container);
+        }
+    });
+    it("pristine compares with the current grouping after a regroup", () => {
+        const mounted = mount(<MergeWorkbench data={regroupData} />);
+        try {
+            const view = result(mounted.container);
+            act(() => view.dispatch(regroupSpec(view.state, regroupData, true, { history: true })));
+            expect(isPristineState(view.state, regroupData)).toBe(true);
+        } finally {
+            unmount(mounted.root, mounted.container);
+        }
+    });
+    it("placing the caret inside a hunk activates it in all three panes", () => {
+        const mounted = mount(<MergeWorkbench data={twoActionData} />);
+        try {
+            const view = result(mounted.container);
+            const second = view.state.field(workbenchHunks)[1];
+            expect(second.conflict).toBe(true);
+            act(() =>
+                view.dispatch({ selection: { anchor: view.state.doc.lineAt(second.from).to + 2 } }),
+            );
+            expectActiveRows(mounted.container, 1);
+        } finally {
+            unmount(mounted.root, mounted.container);
+        }
+    });
+    it("moving the caret into common text clears the active hunk", () => {
+        const mounted = mount(<MergeWorkbench data={twoActionData} />);
+        try {
+            const view = result(mounted.container);
+            act(() =>
+                mounted.container
+                    .querySelectorAll<HTMLButtonElement>(".overview-marker")[1]
+                    .click(),
+            );
+            expectActiveRows(mounted.container, 1);
+            act(() => view.dispatch({ selection: { anchor: 1 } }));
+            expectActiveRows(mounted.container, null);
+        } finally {
+            unmount(mounted.root, mounted.container);
+        }
+    });
+    it("an activation is not undone by its own selection change", () => {
+        const third = {
+            base: twoActionVersions.base + "base five\nbase six\nend\n",
+            ours: twoActionVersions.ours + "ours five\nours six\nend\n",
+            theirs: twoActionVersions.theirs + "theirs five\ntheirs six\nend\n",
+        };
+        const input = {
+            ...data,
+            segments: parseConflictVersions(third.base, third.ours, third.theirs),
+            workbench: { ...data.workbench, ...third },
+        };
+        const mounted = mount(<MergeWorkbench data={input} />);
+        try {
+            const view = result(mounted.container);
+            expect(view.state.field(workbenchHunks)).toHaveLength(3);
+            act(() =>
+                view.dispatch({
+                    selection: { anchor: view.state.field(workbenchHunks)[0].from + 1 },
+                }),
+            );
+            expectActiveRows(mounted.container, 0);
+            act(() =>
+                mounted.container
+                    .querySelectorAll<HTMLButtonElement>(".pane-ours .accept-btn")[1]
+                    .click(),
+            );
+            expectActiveRows(mounted.container, 1);
+            const caret = view.state.selection.main.head;
+            act(() =>
+                mounted.container
+                    .querySelectorAll<HTMLButtonElement>(".overview-marker")[2]
+                    .click(),
+            );
+            expectActiveRows(mounted.container, 2);
+            expect(view.state.selection.main.head).toBe(caret);
+            act(() => {
+                expect(undo(view)).toBe(true);
+            });
+            act(() =>
+                mounted.container
+                    .querySelectorAll<HTMLButtonElement>(".overview-marker")[0]
+                    .click(),
+            );
+            act(() =>
+                document.body.dispatchEvent(
+                    new KeyboardEvent("keydown", {
+                        key: "ArrowLeft",
+                        ctrlKey: true,
+                        bubbles: true,
+                        cancelable: true,
+                    }),
+                ),
+            );
+            expect(view.state.field(workbenchHunks)[0].decision).toBe("ours");
+            expectActiveRows(mounted.container, 1);
+        } finally {
+            unmount(mounted.root, mounted.container);
+        }
+    });
+    it("a regroup recomputes the active hunk from the caret", () => {
+        const versions = {
+            base: regroupVersions.base.replace("\ntail\n", ""),
+            ours: regroupVersions.ours.replace("\ntail\n", ""),
+            theirs: regroupVersions.theirs.replace("\ntail\n", ""),
+        };
+        const input = {
+            ...regroupData,
+            hasTrailingNewline: false,
+            segments: parseConflictVersions(versions.base, versions.ours, versions.theirs),
+            workbench: { ...data.workbench, ...versions },
+        };
+        const mounted = mount(<MergeWorkbench data={input} />);
+        try {
+            const view = result(mounted.container);
+            const original = view.state.field(workbenchHunks)[1];
+            act(() => view.dispatch({ selection: { anchor: original.to } }));
+            expectActiveRows(mounted.container, 1);
+            // A whole-document replacement maps the caret to EOF, inside this last hunk.
+            // No explicit selection: the grouping-change trigger must recompute the index.
+            const transaction = view.state.update(
+                regroupSpec(view.state, input, true, { history: true }),
+            );
+            expect(transaction.selection).toBeUndefined();
+            act(() => view.dispatch(transaction));
+            expect(view.state.field(workbenchHunks)).toHaveLength(1);
+            expectActiveRows(mounted.container, 0);
+            act(() => {
+                expect(undo(view)).toBe(true);
+            });
+            expectActiveRows(mounted.container, 1);
+        } finally {
+            unmount(mounted.root, mounted.container);
+        }
+    });
+    it("a resolve at a mid-line hunk boundary keeps the resolved hunk active", () => {
+        const mounted = mount(<MergeWorkbench data={actionData} />);
+        try {
+            const view = result(mounted.container);
+            const from = view.state.field(workbenchHunks)[0].from;
+            act(() =>
+                view.dispatch({
+                    changes: { from: from - 1, to: from },
+                    userEvent: "delete.backward",
+                }),
+            );
+            act(() =>
+                mounted.container
+                    .querySelector<HTMLButtonElement>(".pane-ours .accept-btn")!
+                    .click(),
+            );
+            const target = view.state.field(workbenchHunks)[0];
+            expect(target.decision).toBe("ours");
+            expect(view.state.selection.main.head).toBe(target.from);
+            expect(view.state.doc.lineAt(target.from).from).toBeLessThan(target.from);
+            // The accept's own caret sits on the preceding common row; it must not undo the activation.
+            // The glued first line leaves the result one owned row, so only that pane drops to 1.
+            expectActiveRows(mounted.container, 0, 1);
+        } finally {
+            unmount(mounted.root, mounted.container);
+        }
+    });
 });
 
 function expectActionRows(
@@ -1267,7 +1885,7 @@ describe("classic workbench chrome", () => {
                     button.getAttribute("aria-label"),
                 ),
             ).toEqual(["Previous conflict", "Next conflict"]);
-            expect((children[7] as HTMLSelectElement).disabled).toBe(true);
+            expect((children[7] as HTMLSelectElement).disabled).toBe(false);
             expect((children[7] as HTMLSelectElement).value).toBe("whitespace");
             expect((children[5] as HTMLButtonElement).disabled).toBe(true);
             expect((children[14] as HTMLSelectElement).disabled).toBe(true);

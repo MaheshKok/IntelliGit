@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { EditorState, Transaction } from "@codemirror/state";
+import { EditorState, StateEffect, Transaction } from "@codemirror/state";
 import { history, isolateHistory, undo, redo, undoDepth } from "@codemirror/commands";
 import { parseConflictVersions, detectEolMetadata } from "../../../src/mergeEditor/conflictParser";
 import {
@@ -8,6 +8,9 @@ import {
     dismissSide,
     groupingField,
     groupingInit,
+    regroupSpec,
+    setGrouping,
+    hunkAtCaret,
     type MergeChoice,
     replaceHunks,
     restoreDraftHunks,
@@ -69,6 +72,122 @@ function harness(input = data()) {
 }
 
 describe("merge workbench document", () => {
+    const versions = { base: "a\nb\n", ours: "a\n  b\n", theirs: "a\nb\nc\n" };
+    function regroupInput(source = versions) {
+        return {
+            ...data(source.base, source.ours, source.theirs),
+            workbench: { ...source, snapshotId: "snapshot", draftKey: "draft", operation: "merge" },
+        };
+    }
+    function groupedHarness(input = regroupInput()) {
+        const session = harness(input);
+        session.edit({ effects: StateEffect.appendConfig.of(groupingInit(input)) });
+        return session;
+    }
+    it("regroup, undo, redo restore text, hunks, segments and whitespace mode together", () => {
+        const input = regroupInput();
+        const session = groupedHarness(input);
+        const initialGrouping = session.state.field(groupingField);
+        const segments = parseConflictVersions(versions.base, versions.ours, versions.theirs, {
+            ignoreWhitespace: true,
+        });
+        const fresh = buildWorkbenchDocument({ ...input, segments });
+        session.edit(regroupSpec(session.state, input, true, { history: true }));
+        // This parser coalesces the adjacent changes into one hunk in both modes.
+        // The separate edited/dismissed fixture below proves an actual hunk-count drop.
+        expect(session.initial.hunks).toHaveLength(1);
+        expect(session.state.field(workbenchHunks)).toHaveLength(fresh.hunks.length);
+        expect(fresh.hunks).not.toEqual(session.initial.hunks);
+        expect(session.state.doc.toString()).toBe(fresh.content);
+        expect(session.state.field(workbenchHunks)).toEqual(fresh.hunks);
+        expect(session.state.field(groupingField).ignoreWhitespace).toBe(true);
+        expect(session.state.field(groupingField).segments).toHaveLength(segments.length);
+        expect(undoDepth(session.state)).toBe(1);
+        expect(session.undo()).toBe(true);
+        expect(session.state.doc.toString()).toBe(session.initial.content);
+        expect(session.state.field(workbenchHunks).map(({ id }) => id)).toEqual(
+            session.initial.hunks.map(({ id }) => id),
+        );
+        expect(session.state.field(groupingField)).toEqual(initialGrouping);
+        expect(session.redo()).toBe(true);
+        expect(session.state.doc.toString()).toBe(fresh.content);
+        expect(session.state.field(workbenchHunks)).toEqual(fresh.hunks);
+        expect(session.state.field(groupingField)).toEqual({ ignoreWhitespace: true, segments });
+    });
+    it("undo of a regroup restores each hunk's edited and dismissed flags", () => {
+        const input = regroupInput({
+            base: "head\nb\nkeep\nbase one\nbase two\ntail\n",
+            ours: "head\n  b\nkeep\nours one\nours two\ntail\n",
+            theirs: "head\nb\nkeep\ntheirs one\ntheirs two\ntail\n",
+        });
+        const session = groupedHarness(input);
+        expect(session.initial.hunks).toHaveLength(2);
+        session.edit({
+            changes: { from: session.initial.hunks[0].from + 1, insert: "edit" },
+            userEvent: "input.type",
+        });
+        session.edit({
+            effects: replaceHunks.of(dismissSide(session.state.field(workbenchHunks), 1, "theirs")),
+            annotations: isolateHistory.of("full"),
+        });
+        const before = session.state.field(workbenchHunks);
+        expect(before[0].edited).toBe(true);
+        expect(before[1].dismissed.theirs).toBe(true);
+        const { base, ours, theirs } = input.workbench;
+        const fresh = buildWorkbenchDocument({
+            ...input,
+            segments: parseConflictVersions(base, ours, theirs, { ignoreWhitespace: true }),
+        });
+        expect(fresh.hunks.length).toBeLessThan(before.length);
+        session.edit(regroupSpec(session.state, input, true, { history: true }));
+        expect(session.undo()).toBe(true);
+        expect(session.state.field(workbenchHunks)).toEqual(before);
+        expect(session.redo()).toBe(true);
+        expect(session.state.field(workbenchHunks)).toEqual(fresh.hunks);
+        expect(
+            session.state
+                .field(workbenchHunks)
+                .every((hunk) => !hunk.edited && !hunk.dismissed.ours && !hunk.dismissed.theirs),
+        ).toBe(true);
+    });
+    it("uses the last grouping effect and requires grouping state for history", () => {
+        const input = regroupInput();
+        const session = groupedHarness(input);
+        const first = { ignoreWhitespace: true, segments: [] };
+        const last = { ignoreWhitespace: false, segments: input.segments };
+        session.edit({ effects: [setGrouping.of(first), setGrouping.of(last)] });
+        expect(session.state.field(groupingField)).toBe(last);
+        expect(() => harness().edit({ effects: setGrouping.of(first) })).toThrow();
+    });
+    it("regroup without history preserves source newline metadata and rejects missing workbench", () => {
+        const input = regroupInput({ base: "a\nb", ours: "a\n  b", theirs: "a\nb\nc" });
+        const session = groupedHarness(input);
+        session.edit(regroupSpec(session.state, input, true, { history: false }));
+        expect(session.state.doc.toString()).toBe("a\nb\nc");
+        expect(undoDepth(session.state)).toBe(0);
+        expect(() => regroupSpec(session.state, data(), true, { history: true })).toThrow(
+            "data.workbench",
+        );
+    });
+    it("caret ownership follows line starts before empty hunk positions", () => {
+        const session = groupedHarness();
+        const template = session.initial.hunks[0];
+        session.edit({
+            changes: { from: 0, to: session.state.doc.length, insert: "abc\nxyz\n" },
+            effects: replaceHunks.of([
+                { ...template, from: 0, to: 1 },
+                { ...template, from: 1, to: 4 },
+                { ...template, from: 3, to: 3 },
+                { ...template, from: 8, to: 8 },
+            ]),
+            selection: { anchor: 3 },
+        });
+        expect(hunkAtCaret(session.state)).toBe(0);
+        session.edit({ selection: { anchor: 4 } });
+        expect(hunkAtCaret(session.state)).toBeNull();
+        session.edit({ selection: { anchor: 8 } });
+        expect(hunkAtCaret(session.state)).toBe(3);
+    });
     it("groupingField starts from the loaded data and throws without init", () => {
         expect(() => EditorState.create({ extensions: [groupingField] })).toThrow(
             "groupingField needs init(data)",

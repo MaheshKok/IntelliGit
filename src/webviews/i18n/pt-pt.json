@@ -431,5 +431,8 @@
     "merge.workbench.staleDraft": "Existe um rascunho de um conflito anterior. Não foi aplicado a esta sessão.",
     "merge.workbench.inspectDraft": "Examinar rascunho anterior",
     "merge.workbench.discardDraft": "Descartar rascunho anterior",
-    "merge.workbench.native": "Abrir no VS Code"
+    "merge.workbench.native": "Abrir no VS Code",
+    "merge.workbench.regroupNotice": "Alterar o tratamento dos espaços em branco reconstrói o resultado. As suas edições e decisões são substituídas (Desfazer restaura-as).",
+    "merge.workbench.regroupApply": "Reconstruir resultado",
+    "merge.workbench.regroupKeep": "Manter resultado atual"
 }

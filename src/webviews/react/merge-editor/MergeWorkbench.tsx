@@ -3,7 +3,7 @@ import type { MergeEditorData } from "./types";
 import { useWorkbenchCommands } from "./useWorkbenchCommands";
 import { useWorkbenchKeyboard } from "./useWorkbenchKeyboard";
 import type { HunkActionCallbacks } from "./workbenchGutter";
-import { useWorkbenchEditors } from "./useWorkbenchEditors";
+import { useRegroupNotice, useWorkbenchEditors } from "./useWorkbenchEditors";
 import {
     WorkbenchToolbar,
     WorkbenchDetails,
@@ -19,6 +19,7 @@ import type { WorkbenchScrollHandler, WorkbenchKeyCommands } from "./codeEditor"
 import { MERGE_PANES } from "./mergeRibbons";
 import { ConnectorLayer, OverviewRail } from "./segments";
 import { scrollRangePx } from "../diff-core/mergeScrollLayout";
+import { t } from "../shared/i18n";
 import "./merge-workbench.css";
 
 /** Full-document three-way merge with reversible decisions and immutable inputs. */
@@ -43,10 +44,18 @@ export function MergeWorkbench({ data: inputData }: { data: MergeEditorData }) {
         staleDraft,
         discardStaleDraft,
         flushDraft,
-    } = useWorkbenchEditors(inputData, active, actions, { findHost, scrollHandler, keymap });
+        isPristine,
+        regroup,
+    } = useWorkbenchEditors(inputData, active, actions, {
+        findHost,
+        scrollHandler,
+        keymap,
+        onActiveFromCaret: setActive,
+    });
     const [baseVisible, setBaseVisible] = useState(false);
     const [highlightWords, setHighlightWords] = useState(true);
     const [showDetails, setShowDetails] = useState(false);
+    const regroupNotice = useRegroupNotice(grouping, isPristine, regroup);
     const {
         layout,
         markers,
@@ -118,6 +127,7 @@ export function MergeWorkbench({ data: inputData }: { data: MergeEditorData }) {
                     highlightWords={highlightWords}
                     showDetails={showDetails}
                     ignoreMode={grouping.ignoreWhitespace ? "whitespace" : "none"}
+                    onIgnoreModeChange={regroupNotice.change}
                     onMoveActive={commands.moveActive}
                     onUndo={commands.undoResult}
                     onRedo={commands.redoResult}
@@ -143,6 +153,15 @@ export function MergeWorkbench({ data: inputData }: { data: MergeEditorData }) {
                 canJumpUnresolved={commands.canJumpUnresolved}
                 onJumpUnresolved={commands.jumpUnresolved}
             />
+            {regroupNotice.pending !== null && (
+                <WorkbenchNotice
+                    kind="regroup"
+                    message={t("merge.workbench.regroupNotice")}
+                    busy={busy}
+                    onApply={regroupNotice.apply}
+                    onKeep={regroupNotice.keep}
+                />
+            )}
             {error && <WorkbenchNotice kind="error" message={error} />}
             {staleDraft && (
                 <WorkbenchNotice

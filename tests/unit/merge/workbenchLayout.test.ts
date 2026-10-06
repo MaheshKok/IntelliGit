@@ -1,11 +1,20 @@
 import { describe, expect, it } from "vitest";
-import { EditorState } from "@codemirror/state";
+import { EditorState, Transaction } from "@codemirror/state";
+import { history, undo, redo } from "@codemirror/commands";
+import { parseConflictVersions } from "../../../src/mergeEditor/conflictParser";
 import fixture from "../../visual/fixtures/merge-editor/conflicted.json";
 import type {
     MergeEditorData,
     ConflictSegment,
 } from "../../../src/webviews/react/merge-editor/types";
-import { buildWorkbenchDocument } from "../../../src/webviews/react/merge-editor/workbenchModel";
+import {
+    buildWorkbenchDocument,
+    groupingField,
+    groupingInit,
+    regroupSpec,
+    workbenchHunks,
+    workbenchHistory,
+} from "../../../src/webviews/react/merge-editor/workbenchModel";
 import {
     MERGE_PANES,
     type MergePaneId,
@@ -44,6 +53,70 @@ function conflict(overrides: Partial<ConflictSegment> = {}): ConflictSegment {
 }
 
 describe("workbench layout", () => {
+    it("geometry after regroup, undo and redo matches a fresh load in each mode", () => {
+        const versions = { base: "a\nb\n", ours: "a\n  b\n", theirs: "a\nb\nc\n" };
+        const input = {
+            ...data,
+            hasTrailingNewline: true,
+            workbench: {
+                ...versions,
+                snapshotId: "snapshot",
+                draftKey: "draft",
+                operation: "merge",
+            },
+        };
+        const fresh = (ignoreWhitespace: boolean) => {
+            const loaded = {
+                ...input,
+                diffOptions: { ignoreWhitespace },
+                segments: parseConflictVersions(versions.base, versions.ours, versions.theirs, {
+                    ignoreWhitespace,
+                }),
+            };
+            const built = buildWorkbenchDocument(loaded);
+            return EditorState.create({
+                doc: built.content,
+                extensions: [
+                    history(),
+                    workbenchHunks.init(() => built.hunks),
+                    workbenchHistory,
+                    groupingInit(loaded),
+                ],
+            });
+        };
+        const geometry = (state: EditorState) => {
+            const segments = state.field(groupingField).segments;
+            const hunks = state.field(workbenchHunks);
+            const layout = layoutSegments(segments, hunks, state.doc);
+            return {
+                paneLines: layout.paneLines,
+                connectors: workbenchConnectors(hunks, segments).length,
+                markers: overviewMarkers(hunks, layout, null).length,
+            };
+        };
+        let state = fresh(false);
+        const none = geometry(state);
+        const whitespace = geometry(fresh(true));
+        expect(none).not.toEqual(whitespace);
+        state = state.update(
+            regroupSpec(state, { ...input, segments: state.field(groupingField).segments }, true, {
+                history: true,
+            }),
+        ).state;
+        expect(geometry(state)).toEqual(whitespace);
+        const target = {
+            get state() {
+                return state;
+            },
+            dispatch(transaction: Transaction) {
+                state = transaction.state;
+            },
+        };
+        expect(undo(target)).toBe(true);
+        expect(geometry(state)).toEqual(none);
+        expect(redo(target)).toBe(true);
+        expect(geometry(state)).toEqual(whitespace);
+    });
     it("ribbon specs exclude edited hunks and untouched auto-merges", () => {
         const segments = [
             { type: "common" as const, lines: ["head"] },

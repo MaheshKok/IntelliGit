@@ -441,5 +441,8 @@
     "merge.workbench.staleDraft": "Dostępny jest szkic wcześniejszego konfliktu. Nie zastosowano go w tej sesji.",
     "merge.workbench.inspectDraft": "Sprawdź poprzedni szkic",
     "merge.workbench.discardDraft": "Odrzuć poprzedni szkic",
-    "merge.workbench.native": "Otwórz w VS Code"
+    "merge.workbench.native": "Otwórz w VS Code",
+    "merge.workbench.regroupNotice": "Zmiana sposobu obsługi białych znaków przebudowuje wynik. Twoje edycje i decyzje zostaną zastąpione (Cofnij je przywraca).",
+    "merge.workbench.regroupApply": "Przebuduj wynik",
+    "merge.workbench.regroupKeep": "Zachowaj bieżący wynik"
 }

@@ -27,6 +27,7 @@ type ToolbarProps = {
     highlightWords: boolean;
     showDetails: boolean;
     ignoreMode: "none" | "whitespace";
+    onIgnoreModeChange: (mode: "none" | "whitespace") => void;
     onMoveActive: (delta: -1 | 1) => void;
     onUndo: () => void;
     onRedo: () => void;
@@ -52,6 +53,7 @@ export function WorkbenchToolbar({
     highlightWords,
     showDetails,
     ignoreMode,
+    onIgnoreModeChange,
     onMoveActive,
     onUndo,
     onRedo,
@@ -143,8 +145,10 @@ export function WorkbenchToolbar({
                 <select
                     className="toolbar-select"
                     value={ignoreMode}
-                    onChange={() => {}}
-                    disabled
+                    onChange={(event) =>
+                        onIgnoreModeChange(event.target.value as "none" | "whitespace")
+                    }
+                    disabled={busy}
                     title={t("merge.toolbar.ignoreMode.title")}
                     aria-label={t("merge.toolbar.ignoreMode.title")}
                 >
@@ -454,12 +458,39 @@ export function WorkbenchFooter({
 export function WorkbenchNotice(
     props:
         | { kind: "error"; message: string }
-        | { kind: "stale"; content: string; onDiscard: () => void },
+        | { kind: "stale"; content: string; onDiscard: () => void }
+        | {
+              kind: "regroup";
+              message: string;
+              busy: boolean;
+              onApply: () => void;
+              onKeep: () => void;
+          },
 ) {
     return (
         <div className={`merge-notice merge-notice-${props.kind}`} role="alert">
             {props.kind === "error" ? (
                 props.message
+            ) : props.kind === "regroup" ? (
+                <>
+                    {props.message}
+                    <button
+                        type="button"
+                        className="footer-btn secondary"
+                        onClick={props.onApply}
+                        disabled={props.busy}
+                    >
+                        {t("merge.workbench.regroupApply")}
+                    </button>
+                    <button
+                        type="button"
+                        className="footer-btn secondary"
+                        onClick={props.onKeep}
+                        disabled={props.busy}
+                    >
+                        {t("merge.workbench.regroupKeep")}
+                    </button>
+                </>
             ) : (
                 <>
                     {t("merge.workbench.staleDraft")}

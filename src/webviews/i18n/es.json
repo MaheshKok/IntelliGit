@@ -431,5 +431,8 @@
     "merge.workbench.staleDraft": "Hay un borrador de un conflicto anterior. No se ha aplicado a esta sesión.",
     "merge.workbench.inspectDraft": "Examinar borrador anterior",
     "merge.workbench.discardDraft": "Descartar borrador anterior",
-    "merge.workbench.native": "Abrir en VS Code"
+    "merge.workbench.native": "Abrir en VS Code",
+    "merge.workbench.regroupNotice": "Cambiar el tratamiento de los espacios en blanco reconstruye el resultado. Se reemplazan tus ediciones y decisiones (Deshacer las restaura).",
+    "merge.workbench.regroupApply": "Reconstruir resultado",
+    "merge.workbench.regroupKeep": "Conservar resultado actual"
 }
