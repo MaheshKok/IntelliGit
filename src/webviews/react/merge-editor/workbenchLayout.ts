@@ -1,9 +1,35 @@
 import type { Text } from "@codemirror/state";
 import type { DiffVerticalLayout, SegmentPaneLines } from "../diff-core/mergeScrollLayout";
-import type { MergePaneId } from "./mergeRibbons";
+import { connectorSideSpecs, type ConnectorRenderSpec, type MergePaneId } from "./mergeRibbons";
 import type { OverviewMarker } from "./segments";
 import type { Grouping, WorkbenchHunk } from "./workbenchModel";
-import { rowsInRange } from "./workbenchRows";
+import { resolutionOf, rowsInRange } from "./workbenchRows";
+
+/** Derives visible ribbon sides against the current grouping's layout indices. */
+export function workbenchConnectors(
+    hunks: readonly WorkbenchHunk[],
+    segments: Grouping["segments"],
+): ConnectorRenderSpec[] {
+    return hunks
+        .filter(
+            (hunk) =>
+                !hunk.edited &&
+                !(hunk.segment.autoResolvedLines !== undefined && hunk.decision === undefined),
+        )
+        .map((hunk) => {
+            const index = segments.indexOf(hunk.segment);
+            if (index === -1)
+                throw new Error("merge-editor: ribbon hunk is missing from the current segments");
+            return {
+                id: hunk.id,
+                index,
+                ...connectorSideSpecs(hunk.segment, resolutionOf(hunk), {
+                    ours: hunk.dismissed.ours,
+                    theirs: hunk.dismissed.theirs,
+                }),
+            };
+        });
+}
 
 /** Counts the current document's rows in segment order. */
 export function layoutSegments(

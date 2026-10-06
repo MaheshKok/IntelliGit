@@ -90,6 +90,72 @@ const scrollData = {
 };
 
 describe("shared workbench layout", () => {
+    it("renders one ribbon path per pending conflict side", () => {
+        const mounted = mount(<MergeWorkbench data={twoActionData} />);
+        try {
+            const viewport = mounted.container.querySelector(".merge-viewport")!;
+            const overlays = viewport.querySelectorAll(":scope > svg.merge-connectors");
+            expect(overlays).toHaveLength(1);
+            expect(viewport.lastElementChild).toBe(overlays[0]);
+            const paths = overlays[0].querySelectorAll("path.merge-connector");
+            expect(paths).toHaveLength(4);
+            for (const path of paths) {
+                expect(path.classList.contains("change-conflict")).toBe(true);
+                expect(path.classList.contains("connector-resolved")).toBe(false);
+            }
+        } finally {
+            unmount(mounted.root, mounted.container);
+        }
+    });
+    it("accepting a side resolves its ribbon", () => {
+        const mounted = mount(<MergeWorkbench data={twoActionData} />);
+        try {
+            const paths = () => [...mounted.container.querySelectorAll("path.merge-connector")];
+            expect(paths()).toHaveLength(4);
+            const secondHunk = paths().slice(2);
+            const secondClasses = secondHunk.map((path) => path.getAttribute("class"));
+            act(() =>
+                mounted.container
+                    .querySelector<HTMLButtonElement>(".pane-ours .accept-btn")!
+                    .click(),
+            );
+            const after = paths();
+            expect(after).toHaveLength(4);
+            // ConnectorLayer emits each hunk's left path before its right path.
+            expect(after.filter((path) => path.classList.contains("connector-resolved"))).toEqual([
+                after[0],
+            ]);
+            expect(
+                after
+                    .filter((_path, index) => index % 2 === 0)
+                    .filter((path) => path.classList.contains("connector-resolved")),
+            ).toHaveLength(1);
+            expect(after.slice(2)).toEqual(secondHunk);
+            expect(after.slice(2).map((path) => path.getAttribute("class"))).toEqual(secondClasses);
+        } finally {
+            unmount(mounted.root, mounted.container);
+        }
+    });
+    it("editing a hunk removes its ribbons", () => {
+        const mounted = mount(<MergeWorkbench data={twoActionData} />);
+        try {
+            const paths = () => [...mounted.container.querySelectorAll("path.merge-connector")];
+            expect(paths()).toHaveLength(4);
+            const secondHunk = paths().slice(2);
+            const view = result(mounted.container);
+            const first = view.state.field(workbenchHunks)[0];
+            act(() =>
+                view.dispatch({
+                    changes: { from: first.from + 1, insert: "typed" },
+                    userEvent: "input.type",
+                }),
+            );
+            expect(paths()).toHaveLength(2);
+            expect(paths()).toEqual(secondHunk);
+        } finally {
+            unmount(mounted.root, mounted.container);
+        }
+    });
     it("a scroll request is answered by the workbench, not CodeMirror", async () => {
         const factory = vi.spyOn(codeEditor, "createMergeCodeEditor");
         const mounted = mount(<MergeWorkbench data={data} />);

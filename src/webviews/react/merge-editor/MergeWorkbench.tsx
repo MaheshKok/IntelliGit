@@ -31,7 +31,7 @@ import type { MergeWorkbenchOutbound } from "../../protocol/mergeWorkbench";
 import { useWorkbenchLayout } from "./useWorkbenchLayout";
 import type { WorkbenchScrollHandler } from "./codeEditor";
 import { MERGE_PANES } from "./mergeRibbons";
-import { OverviewRail } from "./segments";
+import { ConnectorLayer, OverviewRail } from "./segments";
 import { scrollRangePx } from "../diff-core/mergeScrollLayout";
 import "./merge-workbench.css";
 
@@ -69,6 +69,8 @@ export function MergeWorkbench({ data: inputData }: { data: MergeEditorData }) {
         horizontalInnerRef,
         onHorizontalScroll,
         handleScrollRequest,
+        connectorSpecs,
+        registerPath,
     } = useWorkbenchLayout(editors, hunks);
     useLayoutEffect(() => {
         scrollHandler.current = handleScrollRequest;
@@ -317,6 +319,7 @@ export function MergeWorkbench({ data: inputData }: { data: MergeEditorData }) {
                                 </div>
                             </React.Fragment>
                         ))}
+                        <ConnectorLayer specs={connectorSpecs} registerPath={registerPath} />
                     </div>
                     <div
                         className="merge-vscroll-spacer"

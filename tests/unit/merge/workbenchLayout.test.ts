@@ -22,6 +22,7 @@ import {
     overviewMarkers,
     workbenchCounts,
     horizontalInnerWidth,
+    workbenchConnectors,
 } from "../../../src/webviews/react/merge-editor/workbenchLayout";
 
 const data = fixture.messages[0].message.data as MergeEditorData;
@@ -43,6 +44,49 @@ function conflict(overrides: Partial<ConflictSegment> = {}): ConflictSegment {
 }
 
 describe("workbench layout", () => {
+    it("ribbon specs exclude edited hunks and untouched auto-merges", () => {
+        const segments = [
+            { type: "common" as const, lines: ["head"] },
+            conflict({ id: 10, oursLines: ["ours one", "ours two"] }),
+            conflict({ id: 11, oursLines: ["edited one", "edited two"] }),
+            { type: "common" as const, lines: ["between"] },
+            conflict({
+                id: 12,
+                changeKind: "ours-only",
+                oursLines: ["auto one", "auto two"],
+                autoResolvedLines: ["auto one", "auto two"],
+            }),
+            conflict({
+                id: 13,
+                changeKind: "ours-only",
+                oursLines: ["decided one", "decided two"],
+                autoResolvedLines: ["decided one", "decided two"],
+            }),
+        ];
+        const { hunks, doc } = model(segments);
+        hunks[1] = { ...hunks[1], edited: true };
+        hunks[3] = { ...hunks[3], decision: "ours", resolved: true };
+        const specs = workbenchConnectors(hunks, segments);
+        expect(specs.map(({ id, index }) => ({ id, index }))).toEqual([
+            { id: 10, index: 1 },
+            { id: 13, index: 5 },
+        ]);
+        const { paneLines } = layoutSegments(segments, hunks, doc);
+        for (const spec of specs) {
+            expect(paneLines[spec.index]).toMatchObject({ conflict: true, id: spec.id });
+        }
+        expect(specs[0].left?.resolved).toBe(false);
+        expect(specs[0].right?.resolved).toBe(false);
+        expect(specs[1].left?.resolved).toBe(true);
+        expect(specs[1].left?.colorClass.split(" ")).toContain("connector-resolved");
+        expect(specs[1].right).toBeUndefined();
+    });
+    it("rejects a ribbon hunk missing from the current segments", () => {
+        const { hunks } = model([conflict()]);
+        expect(() => workbenchConnectors(hunks, [{ ...hunks[0].segment }])).toThrow(
+            "merge-editor: ribbon hunk is missing from the current segments",
+        );
+    });
     it("matches main's hand-counted committed fixture", () => {
         const expected: SegmentPaneLines<MergePaneId>[] = [
             { paneLines: { left: 1, middle: 1, right: 1 }, conflict: false },

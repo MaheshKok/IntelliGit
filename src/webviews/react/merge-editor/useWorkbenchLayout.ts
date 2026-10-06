@@ -1,4 +1,11 @@
-import { useCallback, useLayoutEffect, useRef, useState, type MutableRefObject } from "react";
+import {
+    useCallback,
+    useLayoutEffect,
+    useMemo,
+    useRef,
+    useState,
+    type MutableRefObject,
+} from "react";
 import type { EditorView } from "@codemirror/view";
 import {
     buildVerticalLayout,
@@ -7,15 +14,23 @@ import {
     type DiffVerticalLayout,
 } from "../diff-core/mergeScrollLayout";
 import { applyPaneOffsets, paneOffsetsForCanonical } from "../diff-core/scrollSync";
-import { MERGE_PANES, type MergePaneId } from "./mergeRibbons";
+import {
+    MERGE_PANES,
+    type MergePaneId,
+    type ConnectorRenderSpec,
+    measureRibbonSpans,
+    drawRibbons,
+    requirePxVar,
+} from "./mergeRibbons";
 import { groupingField, type WorkbenchHunk } from "./workbenchModel";
 import {
     layoutSegments,
     overviewMarkers,
     canonicalForPaneY,
     horizontalInnerWidth,
+    workbenchConnectors,
 } from "./workbenchLayout";
-import type { OverviewMarker } from "./segments";
+import type { ConnectorSpec, OverviewMarker } from "./segments";
 import type { WorkbenchScrollHandler } from "./codeEditor";
 
 function scrollVertical(
@@ -71,8 +86,29 @@ function resetScroll(element: HTMLElement | null) {
     if (element.scrollLeft) element.scrollLeft = 0;
 }
 
-function drawRibbons() {
-    // Phase 5 supplies the shared ribbon draw here.
+function gutterWidthOf(col: HTMLElement, withActions: boolean): number {
+    const width = [...col.querySelectorAll<HTMLElement>(".cm-gutters")].reduce(
+        (total, gutter) => total + gutter.offsetWidth,
+        0,
+    );
+    if (width > 0) return width;
+    return (
+        requirePxVar(col, "--merge-line-number-gutter") +
+        (withActions ? requirePxVar(col, "--merge-action-gutter") : 0)
+    );
+}
+
+function sameRibbonSpans(
+    previous: ReturnType<typeof measureRibbonSpans>,
+    next: NonNullable<ReturnType<typeof measureRibbonSpans>>,
+): boolean {
+    return (["left", "right"] as const).every((side) =>
+        (["band", "contour"] as const).every((kind) =>
+            (["x0", "curveX0", "curveX1", "x1"] as const).every(
+                (key) => previous?.[side][kind][key] === next[side][kind][key],
+            ),
+        ),
+    );
 }
 
 /** Drives the workbench's single vertical scroller and translated editor columns. */
@@ -92,10 +128,22 @@ export function useWorkbenchLayout(
     const [geometry, setGeometry] = useState(() => ({
         layout: buildVerticalLayout([], MERGE_PANES),
         markers: [] as OverviewMarker[],
+        connectorSpecs: [] as ConnectorSpec[],
     }));
     const layoutRef = useRef(geometry.layout);
+    const connectorsRef = useRef<ConnectorRenderSpec[]>([]);
+    const spansRef = useRef<ReturnType<typeof measureRibbonSpans>>(null);
+    const paths = useMemo(() => new Map<string, SVGPathElement>(), []);
+    const registerPath = useCallback(
+        (key: string, el: SVGPathElement | null) => {
+            if (el) paths.set(key, el);
+            else paths.delete(key);
+        },
+        [paths],
+    );
     const frameRef = useRef(0);
     const horizontalRoom = useRef(new WeakMap<HTMLElement, number>());
+    const requestedHorizontal = useRef<number | null>(null);
     const viewportHRef = useRef(0);
     const [viewportH, setViewportH] = useState(0);
 
@@ -134,12 +182,16 @@ export function useWorkbenchLayout(
                 const overflow = width - bar.clientWidth;
                 return {
                     width,
+                    spans:
+                        viewportRef.current && viewportRef.current.clientWidth > 0
+                            ? measureRibbonSpans(columnRefs.current, gutterWidthOf)
+                            : null,
                     rooms: natural.map(
                         (pane) => overflow - Math.max(0, pane.scrollWidth - pane.clientWidth),
                     ),
                 };
             },
-            write: ({ width, rooms }) => {
+            write: ({ width, rooms, spans }) => {
                 panes.forEach(({ view }, index) => {
                     const room = rooms[index];
                     if (horizontalRoom.current.get(view.scrollDOM) !== room) {
@@ -148,14 +200,35 @@ export function useWorkbenchLayout(
                     }
                 });
                 inner.style.width = `${width}px`;
-                syncHorizontal(bar.scrollLeft);
+                syncHorizontal(requestedHorizontal.current ?? bar.scrollLeft);
+                requestedHorizontal.current = null;
+                if (spans && !sameRibbonSpans(spansRef.current, spans)) {
+                    spansRef.current = spans;
+                    drawRibbons(
+                        layoutRef.current,
+                        offsets,
+                        viewportHRef.current,
+                        spans,
+                        connectorsRef.current,
+                        paths,
+                    );
+                }
             },
         });
         panes.slice(1).forEach(({ view }) => view.requestMeasure());
-        drawRibbons();
+        if (spansRef.current) {
+            drawRibbons(
+                layoutRef.current,
+                offsets,
+                viewportHRef.current,
+                spansRef.current,
+                connectorsRef.current,
+                paths,
+            );
+        }
         resetScroll(viewportRef.current);
         MERGE_PANES.forEach((pane) => resetScroll(columnRefs.current[pane]));
-    }, [editors, syncHorizontal]);
+    }, [editors, syncHorizontal, paths]);
 
     const handleScrollRequest = useCallback<WorkbenchScrollHandler>(
         (pane, view, range, _scrollOptions) => {
@@ -172,7 +245,10 @@ export function useWorkbenchLayout(
                     viewportHRef.current,
                 );
                 const left = horizontalPosition(view, range.head, bar.scrollLeft);
-                if (left !== null) syncHorizontal(left);
+                if (left !== null) {
+                    requestedHorizontal.current = left;
+                    syncHorizontal(left);
+                }
                 drawFrameNow();
             } catch (error) {
                 // CodeMirror falls back to native scrolling if a handler throws.
@@ -184,6 +260,7 @@ export function useWorkbenchLayout(
     );
 
     const onHorizontalScroll = useCallback(() => {
+        requestedHorizontal.current = null;
         const bar = horizontalRef.current;
         if (!bar) throw new Error("merge-workbench: horizontal bar is missing");
         syncHorizontal(bar.scrollLeft);
@@ -213,10 +290,21 @@ export function useWorkbenchLayout(
         const state = editors.current[1]?.view.state;
         // Editors mount in useWorkbenchEditors' effect and publish the initial hunks afterwards.
         if (!state) return;
-        const info = layoutSegments(state.field(groupingField).segments, hunks, state.doc);
+        const field = state.field(groupingField);
+        const info = layoutSegments(field.segments, hunks, state.doc);
         const layout = buildVerticalLayout(info.paneLines, MERGE_PANES);
+        const connectors = workbenchConnectors(hunks, field.segments);
         layoutRef.current = layout;
-        setGeometry({ layout, markers: overviewMarkers(hunks, info, null) });
+        connectorsRef.current = connectors;
+        setGeometry({
+            layout,
+            markers: overviewMarkers(hunks, info, null),
+            connectorSpecs: connectors.map(({ id, left, right }) => ({
+                id,
+                leftColorClass: left?.colorClass,
+                rightColorClass: right?.colorClass,
+            })),
+        });
         measureViewport();
         scheduleFrame();
     }, [editors, hunks, measureViewport, scheduleFrame]);
@@ -271,5 +359,6 @@ export function useWorkbenchLayout(
         onScroll: scheduleFrame,
         jumpTo,
         drawFrameNow,
+        registerPath,
     };
 }

@@ -114,7 +114,9 @@
 .merge-workbench .merge-content .cm-content {
     padding-right: var(--merge-horizontal-room, 0px);
 }
-/* Scroll geometry must reach its measured height in the same layout pass as the caret. */
+/* Scroll geometry must reach its measured size in the same layout pass as the caret. */
+.merge-workbench .merge-horizontal-scroll-inner,
+.merge-workbench .merge-content .cm-content,
 .merge-workbench .merge-vscroll-spacer,
 .merge-workbench .cm-gap {
     transition-property: none;

@@ -5,6 +5,7 @@ import { expect, test } from "./playwright/harnessPage";
 import { mountWorkbenchMerge } from "./legacyMerge";
 import fixture from "./fixtures/merge-editor/conflicted.json";
 import { parseConflictVersions } from "../../src/mergeEditor/conflictParser";
+import { LINE_HEIGHT_PX } from "../../src/webviews/react/diff-core/mergeScrollLayout";
 
 const uniqueToken = "ENDTOKEN";
 const longLineNumber = 80;
@@ -280,4 +281,73 @@ test("caret on an empty line returns the bar to 0", async ({ page }) => {
                 .evaluateAll((elements) => elements.map((element) => element.scrollLeft)),
         )
         .toEqual([0, 0, 0, 0]);
+});
+
+test("a scroll request right after a long line grows lands at the requested scrollLeft", async ({
+    page,
+}) => {
+    await page.locator(".merge-content").evaluate(
+        (element, top) => {
+            element.scrollTop = top;
+        },
+        (longLineNumber - 2) * LINE_HEIGHT_PX,
+    );
+    await settleScroll(page);
+    await page
+        .locator(".pane-result .cm-line")
+        .filter({ hasText: "wide " })
+        .click({ position: { x: 10, y: 10 } });
+    await page.keyboard.press("End");
+    await expectHorizontalAgreement(page);
+    const bar = page.locator(".merge-horizontal-scroll");
+    let previous = -1;
+    let stable = 0;
+    await expect
+        .poll(async () => {
+            const current = await bar.evaluate((element) => element.scrollLeft);
+            stable = current === previous ? stable + 1 : 0;
+            previous = current;
+            return stable;
+        })
+        .toBeGreaterThanOrEqual(3);
+    const oldMaximum = await bar.evaluate((element) => element.scrollWidth - element.clientWidth);
+    // One paste-like insert grows the line past the bar before the next measurement.
+    await page.keyboard.insertText("y".repeat(60));
+    await expect
+        .poll(() => bar.evaluate((element) => element.scrollWidth - element.clientWidth))
+        .toBeGreaterThan(oldMaximum);
+    await expect
+        .poll(
+            () =>
+                bar.evaluate((element) =>
+                    Math.abs(element.scrollWidth - element.clientWidth - element.scrollLeft),
+                ),
+            { message: "the grown line's end must not stay capped by the previous bar width" },
+        )
+        .toBeLessThanOrEqual(LINE_HEIGHT_PX);
+    await expect
+        .poll(
+            () =>
+                bar.evaluate((element) => {
+                    const panes = [...document.querySelectorAll(".merge-content .cm-scroller")];
+                    if (panes.length !== 3) throw new Error("expected three editor scrollers");
+                    return Math.max(
+                        ...panes.map((pane) => Math.abs(pane.scrollLeft - element.scrollLeft)),
+                    );
+                }),
+            { message: "all three editor scrollLeft values must match the shared bar" },
+        )
+        .toBeLessThanOrEqual(1);
+    const caret = await page.locator(".pane-result .cm-cursor").evaluate((element) => {
+        const scroller = document.querySelector(".pane-result .cm-scroller");
+        const gutters = document.querySelector(".pane-result .cm-gutters");
+        if (!scroller || !gutters) throw new Error("result content box is missing");
+        return {
+            left: element.getBoundingClientRect().left,
+            start: gutters.getBoundingClientRect().right,
+            end: scroller.getBoundingClientRect().right,
+        };
+    });
+    expect(caret.left).toBeGreaterThanOrEqual(caret.start);
+    expect(caret.left).toBeLessThanOrEqual(caret.end);
 });
