@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import type { HunkActionCallbacks } from "./workbenchGutter";
+import { undoDepth, redoDepth } from "@codemirror/commands";
 import { EditorView } from "@codemirror/view";
 import { StateEffect, Transaction } from "@codemirror/state";
 import {
@@ -13,6 +14,7 @@ import {
     buildWorkbenchDocument,
     groupingField,
     groupingInit,
+    type Grouping,
     replaceHunks,
     restoreDraftHunks,
     workbenchHunks,
@@ -46,6 +48,12 @@ export function useWorkbenchEditors(
     const hosts = useRef<Array<HTMLDivElement | null>>([]);
     const editors = useRef<ReturnType<typeof createMergeCodeEditor>[]>([]);
     const [hunks, setHunks] = useState(initial.hunks);
+    const [grouping, setGrouping] = useState<Grouping | null>(null);
+    const [editorStats, setEditorStats] = useState<{
+        maxLines: number;
+        canUndo: boolean;
+        canRedo: boolean;
+    } | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [busy, setBusy] = useState(false);
     const [saved, setSaved] = useState(false);
@@ -96,6 +104,17 @@ export function useWorkbenchEditors(
         (view: EditorView) => {
             const current = view.state.field(workbenchHunks);
             setHunks([...current]);
+            const currentGrouping = view.state.field(groupingField);
+            setGrouping((previous) => (previous === currentGrouping ? previous : currentGrouping));
+            setEditorStats({
+                maxLines: Math.max(
+                    ...editors.current
+                        .slice(0, 3)
+                        .map(({ view: editor }) => editor.state.doc.lines),
+                ),
+                canUndo: undoDepth(view.state) > 0,
+                canRedo: redoDepth(view.state) > 0,
+            });
             if (restoring.current) return;
             revision.current++;
             setSaved(false);
@@ -233,6 +252,8 @@ export function useWorkbenchEditors(
         hosts,
         editors,
         hunks,
+        grouping,
+        editorStats,
         error,
         setError,
         busy,

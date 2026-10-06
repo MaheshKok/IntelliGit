@@ -1,33 +1,18 @@
-import React, { useCallback, useLayoutEffect, useRef, useState } from "react";
-import { isolateHistory, undo, redo, undoDepth, redoDepth } from "@codemirror/commands";
-import { openSearchPanel } from "@codemirror/search";
-import {
-    VscArrowLeft,
-    VscArrowRight,
-    VscChevronUp,
-    VscChevronDown,
-    VscDiscard,
-    VscCheck,
-    VscSearch,
-    VscDebugRestart,
-    VscEye,
-    VscClose,
-    VscLink,
-} from "react-icons/vsc";
-import type { MergeEditorData, OutboundMessage } from "./types";
-import { getVsCodeApi } from "../shared/vscodeApi";
-import {
-    bulkResolve,
-    dismissSide,
-    replaceHunks,
-    resultContent,
-    type MergeChoice,
-} from "./workbenchModel";
-import { hunkView } from "./workbenchRows";
+import React, { useLayoutEffect, useRef, useState } from "react";
+import type { MergeEditorData } from "./types";
+import { useWorkbenchCommands } from "./useWorkbenchCommands";
 import type { HunkActionCallbacks } from "./workbenchGutter";
 import { useWorkbenchEditors } from "./useWorkbenchEditors";
-import { t } from "../shared/i18n";
-import type { MergeWorkbenchOutbound } from "../../protocol/mergeWorkbench";
+import {
+    WorkbenchToolbar,
+    WorkbenchDetails,
+    WorkbenchPaneHeaders,
+    WorkbenchFooter,
+    WorkbenchNotice,
+    WorkbenchBasePane,
+} from "./WorkbenchChrome";
+import { workbenchCounts } from "./workbenchLayout";
+import { paneChangeCount } from "./mergeState";
 import { useWorkbenchLayout } from "./useWorkbenchLayout";
 import type { WorkbenchScrollHandler } from "./codeEditor";
 import { MERGE_PANES } from "./mergeRibbons";
@@ -37,7 +22,7 @@ import "./merge-workbench.css";
 
 /** Full-document three-way merge with reversible decisions and immutable inputs. */
 export function MergeWorkbench({ data: inputData }: { data: MergeEditorData }) {
-    const [active, setActive] = useState(0);
+    const [active, setActive] = useState<number | null>(null);
     const actions = useRef<HunkActionCallbacks | null>(null);
     const findHost = useRef<HTMLDivElement | null>(null);
     const scrollHandler = useRef<WorkbenchScrollHandler | null>(null);
@@ -46,6 +31,8 @@ export function MergeWorkbench({ data: inputData }: { data: MergeEditorData }) {
         hosts,
         editors,
         hunks,
+        grouping,
+        editorStats,
         error,
         setError,
         busy,
@@ -56,7 +43,8 @@ export function MergeWorkbench({ data: inputData }: { data: MergeEditorData }) {
         flushDraft,
     } = useWorkbenchEditors(inputData, active, actions, { findHost, scrollHandler });
     const [baseVisible, setBaseVisible] = useState(false);
-    const [linked, setLinked] = useState(true);
+    const [highlightWords, setHighlightWords] = useState(true);
+    const [showDetails, setShowDetails] = useState(false);
     const {
         layout,
         markers,
@@ -75,228 +63,101 @@ export function MergeWorkbench({ data: inputData }: { data: MergeEditorData }) {
     useLayoutEffect(() => {
         scrollHandler.current = handleScrollRequest;
     }, [handleScrollRequest]);
-    const pending = hunks.filter((hunk) => hunk.conflict && !hunk.resolved).length;
-    const selected = hunks[active];
-    const result = editors.current[1]?.view;
+    const counts = workbenchCounts(hunks);
+    const pending = counts.unresolved;
 
-    const jump = useCallback(
-        (index: number) => {
-            if (!hunks.length) return;
-            const next = (index + hunks.length) % hunks.length;
-            setActive(next);
-            jumpTo(next);
-        },
-        [jumpTo, hunks],
-    );
-
-    const resolve = useCallback(
-        (choice: MergeChoice, selectedIndex = active) => {
-            const target = hunks[selectedIndex];
-            const view = editors.current[1]?.view;
-            if (!view || !target || busy) return;
-            setActive(selectedIndex);
-            view.dispatch(bulkResolve(view.state, new Map([[selectedIndex, choice]]), data), {
-                selection: { anchor: target.from },
-            });
-            view.focus();
-        },
-        [active, busy, data, editors, hunks],
-    );
-    const callbacks: HunkActionCallbacks = {
-        accept(index, side) {
-            const target = hunks[index];
-            if (!target || busy) return;
-            const view = hunkView(target);
-            resolve(
-                side === "ours"
-                    ? view.leftAppend
-                        ? "both-reversed"
-                        : "ours"
-                    : view.rightAppend
-                      ? "both"
-                      : "theirs",
-                index,
-            );
-        },
-        dismiss(index, side) {
-            const target = hunks[index];
-            const resultView = editors.current[1]?.view;
-            if (!resultView || !target || busy) return;
-            const view = hunkView(target);
-            if (side === "ours" ? view.theirsDismissed : view.oursDismissed) {
-                resolve("none", index);
-                return;
-            }
-            setActive(index);
-            resultView.dispatch({
-                effects: replaceHunks.of(dismissSide(hunks, index, side)),
-                userEvent: "input.merge",
-                annotations: isolateHistory.of("full"),
-            });
-        },
-    };
-    useLayoutEffect(() => {
-        const { accept, dismiss } = callbacks;
-        actions.current = { accept, dismiss };
+    const commands = useWorkbenchCommands({
+        data,
+        editors,
+        hunks,
+        busy,
+        flushDraft,
+        setBusy,
+        setError,
+        active,
+        setActive,
+        actions,
+        jumpTo,
     });
-    const markResolved = () => {
-        if (result && selected)
-            result.dispatch({
-                effects: replaceHunks.of(
-                    hunks.map((hunk) =>
-                        hunk.id === selected.id ? { ...hunk, resolved: !hunk.resolved } : hunk,
-                    ),
-                ),
-                userEvent: "input.merge",
-                annotations: isolateHistory.of("full"),
-            });
-    };
-    const apply = () => {
-        if (!result || pending || busy) return;
-        flushDraft();
-        setBusy(true);
-        setError(null);
-        getVsCodeApi<MergeWorkbenchOutbound>().postMessage({
-            type: "applyResolution",
-            snapshotId: data.workbench!.snapshotId,
-            content: resultContent(result.state.doc, data),
-        });
-    };
-    const close = () => {
-        flushDraft();
-        getVsCodeApi<OutboundMessage>().postMessage({ type: "close" });
-    };
-    const tool = (
-        key: string,
-        icon: React.ReactNode,
-        action: () => void,
-        disabled = false,
-        pressed?: boolean,
-    ) => (
-        <button
-            type="button"
-            title={t(key)}
-            aria-label={t(key)}
-            disabled={disabled}
-            aria-pressed={pressed}
-            onClick={action}
-        >
-            {icon}
-        </button>
-    );
+    const rootStyle = {
+        ...(editorStats
+            ? {
+                  "--merge-line-number-gutter": `max(33px, calc(${Math.max(2, String(editorStats.maxLines).length)}ch + 12px))`,
+              }
+            : {}),
+        ...(data.editorFontSize ? { "--merge-code-font-size": `${data.editorFontSize}px` } : {}),
+    } as React.CSSProperties;
 
     return (
         <div
-            className="merge-workbench"
+            className={[
+                "merge-editor",
+                "workbench",
+                highlightWords ? "words-highlighted" : "",
+                showDetails ? "details-expanded" : "",
+            ]
+                .filter(Boolean)
+                .join(" ")}
+            style={rootStyle}
             aria-busy={busy}
-            style={
-                data.editorFontSize
-                    ? ({
-                          "--vscode-editor-font-size": `${data.editorFontSize}px`,
-                      } as React.CSSProperties)
-                    : undefined
-            }
         >
-            <div className="mw-toolbar" role="toolbar">
-                {tool(
-                    "merge.toolbar.prevConflict.label",
-                    <VscChevronUp />,
-                    () => jump(active - 1),
-                    !hunks.length,
-                )}
-                {tool(
-                    "merge.toolbar.nextConflict.label",
-                    <VscChevronDown />,
-                    () => jump(active + 1),
-                    !hunks.length,
-                )}
-                <span className="mw-divider" />
-                {tool(
-                    "merge.workbench.undo",
-                    <VscDiscard />,
-                    () => {
-                        if (result) undo(result);
-                    },
-                    !result || !undoDepth(result.state) || busy,
-                )}
-                {tool(
-                    "merge.workbench.redo",
-                    <VscDebugRestart />,
-                    () => {
-                        if (result) redo(result);
-                    },
-                    !result || !redoDepth(result.state) || busy,
-                )}
-                {tool("merge.workbench.search", <VscSearch />, () => {
-                    if (result) openSearchPanel(result);
-                })}
-                {tool(
-                    "merge.workbench.base",
-                    <VscEye />,
-                    () => setBaseVisible(!baseVisible),
-                    false,
-                    baseVisible,
-                )}
-                {tool("merge.workbench.link", <VscLink />, () => setLinked(!linked), false, linked)}
-                <span className="mw-divider" />
-                {tool(
-                    "merge.workbench.takeOurs",
-                    <VscArrowRight />,
-                    () => resolve("ours"),
-                    !selected || busy,
-                )}
-                {tool(
-                    "merge.workbench.takeTheirs",
-                    <VscArrowLeft />,
-                    () => resolve("theirs"),
-                    !selected || busy,
-                )}
-                <select
-                    aria-label={t("merge.workbench.combine")}
-                    value=""
-                    disabled={!selected || busy}
-                    onChange={(event) => resolve(event.target.value as MergeChoice)}
-                >
-                    <option value="" disabled>
-                        {t("merge.workbench.combine")}
-                    </option>
-                    <option value="both">{t("merge.workbench.oursThenTheirs")}</option>
-                    <option value="both-reversed">{t("merge.workbench.theirsThenOurs")}</option>
-                    <option value="base">{t("merge.workbench.keepBase")}</option>
-                    <option value="none">{t("merge.status.removeBlock")}</option>
-                </select>
-                {tool(
-                    "merge.workbench.markResolved",
-                    <VscCheck />,
-                    markResolved,
-                    !selected || busy,
-                    selected?.resolved ?? false,
-                )}
-                <span className="mw-status" role="status">
-                    {t("merge.status.unresolved", { count: pending })}
-                </span>
-            </div>
-            {error && (
-                <div className="mw-error" role="alert">
-                    {error}
-                </div>
+            {grouping && editorStats && (
+                <WorkbenchToolbar
+                    total={counts.total}
+                    unresolved={pending}
+                    autoResolvedCount={counts.autoResolvedCount}
+                    active={active}
+                    busy={busy}
+                    canUndo={editorStats.canUndo}
+                    canRedo={editorStats.canRedo}
+                    baseVisible={baseVisible}
+                    selectedResolved={commands.selected?.resolved ?? false}
+                    highlightWords={highlightWords}
+                    showDetails={showDetails}
+                    ignoreMode={grouping.ignoreWhitespace ? "whitespace" : "none"}
+                    onMoveActive={commands.moveActive}
+                    onUndo={commands.undoResult}
+                    onRedo={commands.redoResult}
+                    onSearch={commands.search}
+                    onToggleBase={() => setBaseVisible(!baseVisible)}
+                    onMarkResolved={commands.markResolved}
+                    onToggleWords={() => setHighlightWords(!highlightWords)}
+                    onToggleDetails={() => setShowDetails(!showDetails)}
+                    onApplyNonConflicting={commands.applyNonConflicting}
+                    onAcceptAll={commands.acceptAll}
+                    onResolve={commands.resolve}
+                />
             )}
+            <WorkbenchDetails
+                showDetails={showDetails}
+                filePath={data.filePath}
+                resolved={counts.resolved}
+                total={counts.total}
+                unresolved={pending}
+                currentConflictIndex={commands.currentConflictIndex}
+                changeCount={hunks.length}
+                autoResolvedCount={counts.autoResolvedCount}
+                canJumpUnresolved={commands.canJumpUnresolved}
+                onJumpUnresolved={commands.jumpUnresolved}
+            />
+            {error && <WorkbenchNotice kind="error" message={error} />}
             {staleDraft && (
-                <div className="mw-error" role="alert">
-                    {t("merge.workbench.staleDraft")}
-                    <details>
-                        <summary>{t("merge.workbench.inspectDraft")}</summary>
-                        <pre>{staleDraft.content}</pre>
-                    </details>
-                    <button onClick={discardStaleDraft}>{t("merge.workbench.discardDraft")}</button>
-                </div>
+                <WorkbenchNotice
+                    kind="stale"
+                    content={staleDraft.content}
+                    onDiscard={discardStaleDraft}
+                />
             )}
             <div className="merge-find-host" ref={findHost} />
-            <div className="mw-headings">
-                <span>{data.oursLabel}</span>
-                <span>{t("merge.workbench.result")}</span>
-                <span>{data.theirsLabel}</span>
-            </div>
+            {grouping && (
+                <WorkbenchPaneHeaders
+                    data={data}
+                    showDetails={showDetails}
+                    oursChanges={paneChangeCount(grouping.segments, "ours")}
+                    theirsChanges={paneChangeCount(grouping.segments, "theirs")}
+                    total={counts.total}
+                />
+            )}
             <div className="merge-content-shell">
                 <div className="merge-content" ref={contentRef} onScroll={onScroll}>
                     <div className="merge-viewport" ref={viewportRef}>
@@ -310,7 +171,7 @@ export function MergeWorkbench({ data: inputData }: { data: MergeEditorData }) {
                                 )}
                                 <div className={`merge-col col-${pane}`}>
                                     <div
-                                        className={`mw-editor pane-${["ours", "result", "theirs"][index]}`}
+                                        className={`workbench-editor pane-${["ours", "result", "theirs"][index]}`}
                                         data-testid={`merge-editor-${index}`}
                                         ref={(element) => {
                                             hosts.current[index] = element;
@@ -337,63 +198,27 @@ export function MergeWorkbench({ data: inputData }: { data: MergeEditorData }) {
                 </div>
                 <OverviewRail
                     markers={markers}
-                    activeConflictId={selected?.id ?? null}
-                    onJump={(id) => jump(hunks.findIndex((hunk) => hunk.id === id))}
+                    activeConflictId={commands.selected?.id ?? null}
+                    onJump={(id) => commands.jump(hunks.findIndex((hunk) => hunk.id === id))}
                 />
             </div>
-            <section className="mw-base" hidden={!baseVisible}>
-                <header>
-                    {t("merge.workbench.base")}
-                    {tool("common.close", <VscClose />, () => setBaseVisible(false))}
-                </header>
-                <div
-                    className="pane-base"
-                    ref={(element) => {
-                        hosts.current[3] = element;
-                    }}
-                />
-            </section>
-            <div className="mw-hunks" role="toolbar">
-                {hunks.map((hunk, index) => (
-                    <button
-                        key={hunk.id}
-                        className={index === active ? "active" : ""}
-                        onClick={() => jump(index)}
-                        aria-pressed={index === active}
-                    >
-                        {hunk.resolved ? <VscCheck /> : <span className="mw-pending" />}{" "}
-                        {t("merge.workbench.change", { count: index + 1 })}
-                    </button>
-                ))}
-            </div>
-            <footer className="mw-footer">
-                <button
-                    title={t("merge.workbench.native")}
-                    aria-label={t("merge.workbench.native")}
-                    onClick={() => {
-                        flushDraft();
-                        getVsCodeApi<OutboundMessage>().postMessage({ type: "openNativeMerge" });
-                    }}
-                >
-                    <VscEye />
-                </button>
-                <span>{data.filePath}</span>
-                <span>{saved ? t("merge.workbench.draftSaved") : ""}</span>
-                <button
-                    onClick={() => {
-                        flushDraft();
-                        getVsCodeApi<OutboundMessage>().postMessage({
-                            type: "openConflictSession",
-                        });
-                    }}
-                >
-                    {t("merge.workbench.files")}
-                </button>
-                <button onClick={close}>{t("common.cancel")}</button>
-                <button className="primary" disabled={pending > 0 || busy} onClick={apply}>
-                    {t("common.apply")}
-                </button>
-            </footer>
+            <WorkbenchBasePane
+                visible={baseVisible}
+                hostRef={(element) => {
+                    hosts.current[3] = element;
+                }}
+                onClose={() => setBaseVisible(false)}
+            />
+            <WorkbenchFooter
+                isShelfSession={data.sessionKind === "shelf"}
+                saved={saved}
+                canApply={pending === 0 && !busy}
+                onAbort={commands.abort}
+                onOpenConflictSession={commands.openConflictSession}
+                onUseFile={commands.useFile}
+                onClose={commands.close}
+                onApply={commands.apply}
+            />
         </div>
     );
 }

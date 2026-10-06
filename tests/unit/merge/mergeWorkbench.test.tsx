@@ -325,7 +325,9 @@ describe("shared workbench layout", () => {
 
 function click(container: HTMLElement, label: string) {
     const button =
-        container.querySelector<HTMLButtonElement>(`.mw-toolbar button[aria-label="${label}"]`) ??
+        container.querySelector<HTMLButtonElement>(
+            `.merge-toolbar button[aria-label="${label}"]`,
+        ) ??
         [...container.querySelectorAll<HTMLButtonElement>("button")].find(
             (element) => element.textContent === label,
         );
@@ -513,6 +515,7 @@ describe("merge workbench action gutters", () => {
             }
             const host = mounted.container.querySelector(".pane-ours")!;
             const view = EditorView.findFromDOM(host.querySelector<HTMLElement>(".cm-editor")!)!;
+            act(() => actionButton(mounted.container, ".overview-marker").click());
             const firstRows = ownedLines(view.state.doc, hunks[0].oursFrom, hunks[0].oursTo);
             const secondRows = ownedLines(view.state.doc, hunks[1].oursFrom, hunks[1].oursTo);
             const lines = host.querySelectorAll(".cm-line");
@@ -794,24 +797,10 @@ describe("merge workbench state and commands", () => {
         );
         unmount(mounted.root, mounted.container);
     });
-    it("opens the native fallback without dropping the current draft", () => {
-        const mounted = mount(<MergeWorkbench data={data} />);
-        click(mounted.container, "Accept left change");
-        const button = mounted.container.querySelector<HTMLButtonElement>(
-            '.mw-footer button[aria-label="Open in VS Code"]',
-        )!;
-        act(() => button.click());
-        expect(api.postMessage).toHaveBeenCalledWith(
-            expect.objectContaining({ type: "saveMergeDraft" }),
-        );
-        expect(api.postMessage).toHaveBeenCalledWith({ type: "openNativeMerge" });
-        expect(result(mounted.container).state.doc.toString()).toBe(ours);
-        unmount(mounted.root, mounted.container);
-    });
     it("unifies side choices, manual editing and confirmations in undo/redo", () => {
         const mounted = mount(<MergeWorkbench data={data} />);
         const view = result(mounted.container);
-        click(mounted.container, "Accept left change");
+        act(() => actionButton(mounted.container, ".pane-ours .accept-btn").click());
         expect(view.state.doc.toString()).toContain("ours");
         click(mounted.container, "Undo");
         expect(view.state.doc.toString()).toContain("base");
@@ -821,11 +810,10 @@ describe("merge workbench state and commands", () => {
         click(mounted.container, "Confirm manual resolution");
         click(mounted.container, "Undo");
         click(mounted.container, "Base");
-        expect(mounted.container.querySelector(".mw-base")?.hasAttribute("hidden")).toBe(false);
+        expect(mounted.container.querySelector(".merge-base")?.hasAttribute("hidden")).toBe(false);
         click(mounted.container, "Find in result");
         expect(mounted.container.querySelector(".cm-search")).not.toBeNull();
-        click(mounted.container, "Synchronize scrolling");
-        click(mounted.container, "Accept right change");
+        act(() => actionButton(mounted.container, ".pane-theirs .accept-btn").click());
         expect(view.state.doc.toString()).toContain("theirs");
         unmount(mounted.root, mounted.container);
     });
@@ -833,7 +821,10 @@ describe("merge workbench state and commands", () => {
         "applies the %s decision and allows undo",
         (choice) => {
             const mounted = mount(<MergeWorkbench data={data} />);
-            const select = mounted.container.querySelector("select")!;
+            act(() => actionButton(mounted.container, ".overview-marker").click());
+            const select = mounted.container.querySelector<HTMLSelectElement>(
+                'select[aria-label="Resolve change"]',
+            )!;
             act(() => {
                 select.value = choice;
                 select.dispatchEvent(new Event("change", { bubbles: true }));
@@ -850,7 +841,7 @@ describe("merge workbench state and commands", () => {
     );
     it("freezes editing during Apply and restores it after a recoverable failure", () => {
         const mounted = mount(<MergeWorkbench data={data} />);
-        click(mounted.container, "Accept left change");
+        act(() => actionButton(mounted.container, ".pane-ours .accept-btn").click());
         click(mounted.container, "Apply");
         expect(api.postMessage).toHaveBeenCalledWith({
             type: "applyResolution",
@@ -883,7 +874,7 @@ describe("merge workbench state and commands", () => {
             type: "discardMergeDraft",
             snapshotId: "a".repeat(64),
         });
-        click(mounted.container, "Conflicted files");
+        click(mounted.container, "Conflicts");
         expect(api.postMessage).toHaveBeenCalledWith({ type: "openConflictSession" });
         click(mounted.container, "Cancel");
         expect(api.postMessage).toHaveBeenCalledWith({ type: "close" });
@@ -969,6 +960,7 @@ describe("merge workbench rows", () => {
     it("marks the active hunk's rows in all three panes", () => {
         const mounted = mount(<MergeWorkbench data={data} />);
         try {
+            act(() => actionButton(mounted.container, ".overview-marker").click());
             for (const pane of [0, 1, 2]) {
                 const host = mounted.container.querySelector(
                     `[data-testid="merge-editor-${pane}"]`,
@@ -1012,7 +1004,7 @@ describe("workbench row updates", () => {
         try {
             const before = result(mounted.container).state.doc.toString();
             const buttons =
-                mounted.container.querySelectorAll<HTMLButtonElement>(".mw-hunks button");
+                mounted.container.querySelectorAll<HTMLButtonElement>(".overview-marker");
             act(() => buttons[1].click());
             for (const pane of [0, 1, 2]) {
                 const host = mounted.container.querySelector(
@@ -1044,7 +1036,7 @@ describe("workbench row updates", () => {
         try {
             const oursHost = mounted.container.querySelector('[data-testid="merge-editor-0"]')!;
             expect(oursHost.querySelector(".word-diff-change")?.textContent).toBe("new");
-            click(mounted.container, "Accept left change");
+            act(() => actionButton(mounted.container, ".pane-ours .accept-btn").click());
             expect(oursHost.querySelector(".word-diff-change")).toBeNull();
             expect(result(mounted.container).dom.querySelector(".word-diff-change")).toBeNull();
             const view = result(mounted.container);
@@ -1101,4 +1093,321 @@ describe("workbench row updates", () => {
             }
         },
     );
+});
+
+describe("classic workbench chrome", () => {
+    it("footer Use File Ours posts acceptYours", () => {
+        const mounted = mount(<MergeWorkbench data={data} />);
+        try {
+            click(mounted.container, "Use File Ours");
+            expect(api.postMessage).toHaveBeenCalledWith({ type: "acceptYours" });
+            click(mounted.container, "Use File Theirs");
+            expect(api.postMessage).toHaveBeenCalledWith({ type: "acceptTheirs" });
+            click(mounted.container, t("merge.action.abortMerge"));
+            expect(api.postMessage).toHaveBeenCalledWith({ type: "abortMerge" });
+        } finally {
+            unmount(mounted.root, mounted.container);
+        }
+    });
+
+    it("accept all ours is one undo step", () => {
+        const mounted = mount(<MergeWorkbench data={twoActionData} />);
+        try {
+            const view = result(mounted.container);
+            const before = view.state.doc.toString();
+            click(mounted.container, "Accept All Yours");
+            expect(view.state.doc.toString()).toBe(twoActionVersions.ours);
+            expect(view.state.field(workbenchHunks).every((hunk) => hunk.resolved)).toBe(true);
+            expect(undoDepth(view.state), "accept all must be a single history entry").toBe(1);
+            click(mounted.container, "Undo");
+            expect(view.state.doc.toString()).toBe(before);
+            expect(view.state.field(workbenchHunks).every((hunk) => !hunk.resolved)).toBe(true);
+            click(mounted.container, "Accept All Theirs");
+            click(mounted.container, "Accept All Yours");
+            expect(view.state.doc.toString()).toBe(twoActionVersions.ours);
+        } finally {
+            unmount(mounted.root, mounted.container);
+        }
+    });
+
+    it("apply non-conflicting is one undo step", () => {
+        const versions = { base: "a\nb\n", ours: "a\nB\n", theirs: "a\nb\n" };
+        const segments = parseConflictVersions(versions.base, versions.ours, versions.theirs);
+        expect(segments.filter((segment) => segment.type === "conflict")).toMatchObject([
+            { changeKind: "ours-only" },
+        ]);
+        const mounted = mount(
+            <MergeWorkbench
+                data={{ ...data, segments, workbench: { ...data.workbench, ...versions } }}
+            />,
+        );
+        try {
+            const view = result(mounted.container);
+            const before = view.state.doc.toString();
+            const hunks = view.state.field(workbenchHunks);
+            click(mounted.container, t("merge.toolbar.applyNonConflicting"));
+            expect(view.state.doc.toString()).toBe(versions.ours);
+            expect(view.state.field(workbenchHunks)[0].decision).toBe("ours");
+            expect(undoDepth(view.state)).toBe(1);
+            click(mounted.container, "Undo");
+            expect(view.state.doc.toString()).toBe(before);
+            expect(view.state.field(workbenchHunks)).toEqual(hunks);
+            expect(actionButton(mounted.container, '[aria-label="Next conflict"]').disabled).toBe(
+                true,
+            );
+            expect(
+                actionButton(mounted.container, '[aria-label="Previous conflict"]').disabled,
+            ).toBe(true);
+        } finally {
+            unmount(mounted.root, mounted.container);
+        }
+    });
+
+    it("the wand adds no empty undo step when nothing is left to apply", () => {
+        const versions = { base: "a\nb\n", ours: "a\nB\n", theirs: "a\nb\n" };
+        const segments = parseConflictVersions(versions.base, versions.ours, versions.theirs);
+        const mounted = mount(
+            <MergeWorkbench
+                data={{ ...data, segments, workbench: { ...data.workbench, ...versions } }}
+            />,
+        );
+        try {
+            const view = result(mounted.container);
+            const wand = actionButton(
+                mounted.container,
+                `[aria-label="${t("merge.toolbar.applyNonConflicting")}"]`,
+            );
+            act(() => wand.click());
+            expect(undoDepth(view.state)).toBe(1);
+            const applied = view.state.doc.toString();
+            expect(wand.disabled, "wand must disable after the last non-conflicting decision").toBe(
+                true,
+            );
+            act(() => wand.click());
+            expect(undoDepth(view.state), "disabled wand must not add an empty undo step").toBe(1);
+            expect(view.state.doc.toString()).toBe(applied);
+        } finally {
+            unmount(mounted.root, mounted.container);
+        }
+    });
+
+    it("show details reveals #merge-details with counts", () => {
+        const mounted = mount(<MergeWorkbench data={twoActionData} />);
+        try {
+            const details = mounted.container.querySelector<HTMLElement>("#merge-details");
+            expect(details).not.toBeNull();
+            expect(details!.hidden).toBe(true);
+            click(mounted.container, "Show Details");
+            expect(details!.hidden).toBe(false);
+            expect(details!.textContent).toContain(
+                t("merge.header.conflictsResolved", { resolved: 0, total: 2 }),
+            );
+            const counts = mounted.container.querySelectorAll(".pane-meta-counts");
+            expect(counts).toHaveLength(2);
+            for (const count of counts)
+                expect(count.textContent).toBe(
+                    `${t("merge.count.changes", { count: 2 })}, ${t("merge.count.conflicts", { count: 2 })}`,
+                );
+            click(mounted.container, "Hide Details");
+            expect(details!.hidden).toBe(true);
+        } finally {
+            unmount(mounted.root, mounted.container);
+        }
+    });
+
+    it("status reads all conflicts resolved after the last decision", () => {
+        const mounted = mount(<MergeWorkbench data={data} />);
+        try {
+            const status = () => mounted.container.querySelector("#merge-remaining-status");
+            expect(status()?.textContent).toContain(t("merge.count.conflicts", { count: 1 }));
+            act(() => actionButton(mounted.container, ".pane-ours .accept-btn").click());
+            expect(status()?.textContent).toBe(t("merge.status.allConflictsResolved"));
+            expect(status()?.classList.contains("resolved")).toBe(true);
+            expect(
+                actionButton(
+                    mounted.container,
+                    '[aria-label="Confirm manual resolution"]',
+                ).getAttribute("aria-pressed"),
+            ).toBe("true");
+        } finally {
+            unmount(mounted.root, mounted.container);
+        }
+    });
+
+    it("toolbar order", () => {
+        const mounted = mount(
+            <MergeWorkbench data={{ ...data, diffOptions: { ignoreWhitespace: true } }} />,
+        );
+        try {
+            const children = [...mounted.container.querySelectorAll(".toolbar-left > *")];
+            expect(
+                children.map((child) => [
+                    child.className,
+                    child.getAttribute("aria-label") ?? child.textContent,
+                ]),
+            ).toEqual([
+                ["toolbar-nav-group", ""],
+                ["toolbar-icon-btn", "Undo"],
+                ["toolbar-icon-btn", "Redo"],
+                ["toolbar-icon-btn", "Find in result"],
+                ["toolbar-icon-btn", "Base"],
+                ["toolbar-icon-btn", "Confirm manual resolution"],
+                ["toolbar-separator", ""],
+                ["toolbar-select", t("merge.toolbar.ignoreMode.title")],
+                ["toolbar-btn subtle active", "Highlight words"],
+                ["toolbar-btn subtle ", "Show Details"],
+                ["toolbar-separator", ""],
+                ["toolbar-icon-btn", t("merge.toolbar.applyNonConflicting")],
+                ["toolbar-icon-btn", "Accept All Yours"],
+                ["toolbar-icon-btn", "Accept All Theirs"],
+                ["toolbar-select", "Resolve change"],
+            ]);
+            expect(
+                [...children[0].querySelectorAll("button")].map((button) =>
+                    button.getAttribute("aria-label"),
+                ),
+            ).toEqual(["Previous conflict", "Next conflict"]);
+            expect((children[7] as HTMLSelectElement).disabled).toBe(true);
+            expect((children[7] as HTMLSelectElement).value).toBe("whitespace");
+            expect((children[5] as HTMLButtonElement).disabled).toBe(true);
+            expect((children[14] as HTMLSelectElement).disabled).toBe(true);
+            expect(mounted.container.querySelector(".mrow-active")).toBeNull();
+        } finally {
+            unmount(mounted.root, mounted.container);
+        }
+    });
+
+    it("no .mw-hunks or mw- class remains", () => {
+        const mounted = mount(<MergeWorkbench data={data} />);
+        try {
+            expect(mounted.container.querySelector(".mw-hunks")).toBeNull();
+            const classes = [...mounted.container.querySelectorAll("[class]")].flatMap((node) => [
+                ...node.classList,
+            ]);
+            expect(classes.filter((name) => name.startsWith("mw-"))).toEqual([]);
+        } finally {
+            unmount(mounted.root, mounted.container);
+        }
+    });
+
+    it("the root carries merge-editor workbench and the gutter variable", () => {
+        const mounted = mount(<MergeWorkbench data={{ ...data, editorFontSize: 15 }} />);
+        try {
+            const root = mounted.container.firstElementChild as HTMLElement;
+            expect(root.className).toBe("merge-editor workbench words-highlighted");
+            const maxLines = Math.max(
+                ...[0, 1, 2].map(
+                    (pane) =>
+                        EditorView.findFromDOM(
+                            mounted.container.querySelector<HTMLElement>(
+                                `[data-testid="merge-editor-${pane}"] .cm-editor`,
+                            )!,
+                        )!.state.doc.lines,
+                ),
+            );
+            expect(root.style.getPropertyValue("--merge-line-number-gutter")).toBe(
+                `max(33px, calc(${Math.max(2, String(maxLines).length)}ch + 12px))`,
+            );
+            expect(root.style.getPropertyValue("--merge-code-font-size")).toBe("15px");
+            act(() =>
+                result(mounted.container).dispatch({
+                    changes: { from: 0, insert: "line\n".repeat(100) },
+                }),
+            );
+            expect(root.style.getPropertyValue("--merge-line-number-gutter")).toBe(
+                "max(33px, calc(3ch + 12px))",
+            );
+            click(mounted.container, "Highlight words");
+            expect(root.classList.contains("words-highlighted")).toBe(false);
+        } finally {
+            unmount(mounted.root, mounted.container);
+        }
+    });
+
+    it("prev/next cycle true conflicts only", () => {
+        const versions = {
+            base: "first\nkeep1\nsolo\nkeep2\nlast\n",
+            ours: "ours first\nkeep1\nOURS\nkeep2\nours last\n",
+            theirs: "theirs first\nkeep1\nsolo\nkeep2\ntheirs last\n",
+        };
+        const mounted = mount(
+            <MergeWorkbench
+                data={{
+                    ...data,
+                    segments: parseConflictVersions(versions.base, versions.ours, versions.theirs),
+                    workbench: { ...data.workbench, ...versions },
+                }}
+            />,
+        );
+        try {
+            expect(
+                result(mounted.container)
+                    .state.field(workbenchHunks)
+                    .map((hunk) => hunk.conflict),
+            ).toEqual([true, false, true]);
+            const activeText = () =>
+                mounted.container.querySelector(".pane-result .cm-line.mrow-active")?.textContent;
+            click(mounted.container, "Next conflict");
+            expect(activeText()).toBe("first");
+            click(mounted.container, "Next conflict");
+            expect(activeText(), "next must skip the one-sided middle hunk").toBe("last");
+            click(mounted.container, "Next conflict");
+            expect(activeText()).toBe("first");
+            click(mounted.container, "Previous conflict");
+            expect(activeText()).toBe("last");
+            act(() =>
+                mounted.container
+                    .querySelectorAll<HTMLButtonElement>(".overview-marker")[1]
+                    .click(),
+            );
+            expect(activeText()).toBe("OURS");
+            click(mounted.container, "Next conflict");
+            expect(activeText()).toBe("first");
+            act(() => actionButton(mounted.container, ".pane-ours .accept-btn").click());
+            expect(activeText()).toBe("ours first");
+        } finally {
+            unmount(mounted.root, mounted.container);
+        }
+    });
+
+    it("flushes the draft before opening Conflicts and shows saved status only after acknowledgement", () => {
+        const mounted = mount(<MergeWorkbench data={data} />);
+        try {
+            expect(mounted.container.querySelector(".footer-draft-status")).toBeNull();
+            act(() =>
+                result(mounted.container).dispatch({ changes: { from: 0, insert: "edit\n" } }),
+            );
+            api.postMessage.mockClear();
+            click(mounted.container, "Conflicts");
+            expect(api.postMessage.mock.calls.map(([message]) => message.type)).toEqual([
+                "saveMergeDraft",
+                "openConflictSession",
+            ]);
+            receive({ type: "mergeDraftSaved", revision: 1 });
+            expect(
+                mounted.container.querySelector('.footer-left .footer-draft-status[role="status"]')
+                    ?.textContent,
+            ).toBe("Draft saved");
+        } finally {
+            unmount(mounted.root, mounted.container);
+        }
+    });
+
+    it("hides Abort and Conflicts for shelf sessions", () => {
+        const mounted = mount(<MergeWorkbench data={{ ...data, sessionKind: "shelf" }} />);
+        try {
+            const labels = [...mounted.container.querySelectorAll(".footer-left button")].map(
+                (button) => button.textContent,
+            );
+            expect(labels).not.toContain(t("merge.action.abortMerge"));
+            expect(labels).not.toContain("Conflicts");
+            const right = [...mounted.container.querySelectorAll(".footer-right button")].map(
+                (button) => button.textContent,
+            );
+            expect(right).toContain(t("common.cancel"));
+            expect(right).toContain(t("common.apply"));
+        } finally {
+            unmount(mounted.root, mounted.container);
+        }
+    });
 });

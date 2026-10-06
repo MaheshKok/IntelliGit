@@ -1,6 +1,7 @@
 import type { Page } from "@playwright/test";
 import { expect, test } from "./playwright/harnessPage";
 import { mountWorkbenchMerge } from "./legacyMerge";
+import { parseConflictVersions } from "../../src/mergeEditor/conflictParser";
 import fixture from "./fixtures/merge-editor/conflicted.json";
 import type { MergeEditorData } from "../../src/webviews/react/merge-editor/types";
 import { LINE_HEIGHT_PX } from "../../src/webviews/react/diff-core/mergeScrollLayout";
@@ -11,6 +12,25 @@ const first = conflicts[0];
 const next = conflicts[1];
 const paths = "svg.merge-connectors path.merge-connector";
 const missingGutter = /merge-editor: CSS variable --merge-line-number-gutter is missing or 0/;
+
+function ribbonFillBox(element: SVGElement | HTMLElement) {
+    const path = element as SVGPathElement;
+    const matrix = path.getScreenCTM();
+    if (!matrix) throw new Error("ribbon has no screen matrix");
+    const box = path.getBBox();
+    const points = [
+        [box.x, box.y],
+        [box.x + box.width, box.y],
+        [box.x, box.y + box.height],
+        [box.x + box.width, box.y + box.height],
+    ].map(([x, y]) => new DOMPoint(x, y).matrixTransform(matrix));
+    return {
+        top: Math.min(...points.map((point) => point.y)),
+        bottom: Math.max(...points.map((point) => point.y)),
+        left: Math.min(...points.map((point) => point.x)),
+        right: Math.max(...points.map((point) => point.x)),
+    };
+}
 
 async function scrollTo(page: Page, top: number) {
     await page.locator(".merge-content").evaluate((element, value) => {
@@ -53,11 +73,10 @@ async function expectUnion(
             async () => {
                 const a = await rowExtent(page, left.pane, left.rows);
                 const b = await rowExtent(page, right.pane, right.rows);
-                const box = await path.boundingBox();
-                if (!box) throw new Error("ribbon has no box");
+                const box = await path.evaluate(ribbonFillBox);
                 return Math.max(
-                    Math.abs(box.y - Math.min(a.top, b.top)),
-                    Math.abs(box.y + box.height - Math.max(a.bottom, b.bottom)),
+                    Math.abs(box.top - Math.min(a.top, b.top)),
+                    Math.abs(box.bottom - Math.max(a.bottom, b.bottom)),
                 );
             },
             { message: `ribbon ${index} must span its adjacent owned rows` },
@@ -122,7 +141,9 @@ async function expectEdgeExtents(
 test.beforeEach(async ({ mountHarness, page }, testInfo) => {
     await mountWorkbenchMerge(async (context, options) => {
         const harness = await mountHarness(context, options);
-        if (testInfo.title === "zero-width gutters surface the required CSS-variable error") {
+        if (
+            testInfo.title === "a failing ribbon measure still sizes the bar and syncs the editors"
+        ) {
             harness.allowConsoleError(missingGutter);
         }
         return harness;
@@ -153,29 +174,26 @@ test("ribbons span the divider at the hunk's rows", async ({ page }) => {
         await expect(page.locator(paths).nth(index)).toHaveClass(/change-conflict/);
         await expect(page.locator(paths).nth(index)).not.toHaveClass(/connector-resolved/);
     }
-    const edges = await page.evaluate((selector) => {
+    const edges = await page.evaluate(() => {
         const rect = (query: string) => {
             const element = document.querySelector(query);
             if (!element) throw new Error(`missing ${query}`);
             return element.getBoundingClientRect();
         };
-        const oursHost = document.querySelector(".pane-ours");
-        if (!oursHost) throw new Error("ours editor host is missing");
-        // The PR chrome still has a host border; main's band spans use the column's outer edge.
-        const hostBorder = Number.parseFloat(getComputedStyle(oursHost).borderRightWidth);
-        return [...document.querySelectorAll(selector)].slice(0, 2).map((path, index) => ({
-            left: path.getBoundingClientRect().left,
-            right: path.getBoundingClientRect().right,
+        return [0, 1].map((index) => ({
             start:
-                index === 0
-                    ? rect(".pane-ours .cm-gutters-after").left + hostBorder
-                    : rect(".col-middle").right,
+                index === 0 ? rect(".pane-ours .cm-gutters-after").left : rect(".col-middle").right,
             end: rect(index === 0 ? ".pane-result .cm-gutters" : ".pane-theirs .cm-gutters").right,
         }));
-    }, paths);
-    for (const edge of edges) {
-        expect(Math.abs(edge.left - edge.start), JSON.stringify(edge)).toBeLessThanOrEqual(1);
-        expect(Math.abs(edge.right - edge.end), JSON.stringify(edge)).toBeLessThanOrEqual(1);
+    });
+    for (const [index, edge] of edges.entries()) {
+        const box = await page.locator(paths).nth(index).evaluate(ribbonFillBox);
+        expect(Math.abs(box.left - edge.start), JSON.stringify({ box, edge })).toBeLessThanOrEqual(
+            1,
+        );
+        expect(Math.abs(box.right - edge.end), JSON.stringify({ box, edge })).toBeLessThanOrEqual(
+            1,
+        );
     }
 });
 
@@ -282,7 +300,7 @@ test("ribbons line up with both columns when the pane offsets differ", async ({
     );
 });
 
-test("zero-width gutters surface the required CSS-variable error", async ({ page }) => {
+test("zero-width gutters fall back to the CSS-variable gutter widths", async ({ page }) => {
     const errors: string[] = [];
     page.on("console", (message) => {
         if (message.type() === "error") errors.push(message.text());
@@ -292,9 +310,9 @@ test("zero-width gutters surface the required CSS-variable error", async ({ page
         variable: getComputedStyle(viewport).getPropertyValue("--merge-line-number-gutter").trim(),
     }));
     expect(geometry.width).toBeGreaterThan(0);
-    expect(geometry.variable).toBe("");
+    expect(geometry.variable).not.toBe("");
     await page.addStyleTag({
-        content: ".merge-workbench .cm-gutters { display: none !important; }",
+        content: ".merge-editor.workbench .cm-gutters { display: none !important; }",
     });
     const gutterCount = await page.locator(".merge-col .cm-gutters").count();
     expect(gutterCount).toBeGreaterThan(0);
@@ -308,5 +326,138 @@ test("zero-width gutters surface the required CSS-variable error", async ({ page
         )
         .toEqual(Array.from({ length: gutterCount }, () => 0));
     await scrollTo(page, LINE_HEIGHT_PX);
+    await expect
+        .poll(
+            async () => {
+                const expected = await page.evaluate(() => {
+                    const col = (name: string) => {
+                        const element = document.querySelector<HTMLElement>(`.col-${name}`);
+                        if (!element) throw new Error(`missing column ${name}`);
+                        return element;
+                    };
+                    const width = (element: HTMLElement, name: string) => {
+                        const lineNumber = element.querySelector(
+                            ".cm-lineNumbers .cm-gutterElement",
+                        );
+                        if (!lineNumber) throw new Error("missing line-number gutter element");
+                        const length =
+                            name === "--merge-line-number-gutter"
+                                ? getComputedStyle(lineNumber).minWidth
+                                : getComputedStyle(element).getPropertyValue(name).trim();
+                        const value = Number.parseFloat(length);
+                        if (!length.endsWith("px") || !Number.isFinite(value) || value <= 0)
+                            throw new Error(`missing positive ${name}`);
+                        return value;
+                    };
+                    const left = col("left"),
+                        middle = col("middle"),
+                        right = col("right");
+                    const gutter = (element: HTMLElement, actions: boolean) =>
+                        width(element, "--merge-line-number-gutter") +
+                        (actions ? width(element, "--merge-action-gutter") : 0);
+                    return [
+                        [
+                            left.getBoundingClientRect().right - gutter(left, true),
+                            middle.getBoundingClientRect().left + gutter(middle, false),
+                        ],
+                        [
+                            middle.getBoundingClientRect().right,
+                            right.getBoundingClientRect().left + gutter(right, true),
+                        ],
+                    ];
+                });
+                const boxes = await Promise.all(
+                    expected.map((_, index) =>
+                        page.locator(paths).nth(index).evaluate(ribbonFillBox),
+                    ),
+                );
+                return Math.max(
+                    ...boxes.flatMap((box, index) => [
+                        Math.abs(box.left - expected[index][0]),
+                        Math.abs(box.right - expected[index][1]),
+                    ]),
+                );
+            },
+            { message: "ribbon x-edges must match CSS-variable gutter widths" },
+        )
+        .toBeLessThanOrEqual(1);
+    expect(errors.join("\n")).not.toMatch(missingGutter);
+});
+
+test("a failing ribbon measure still sizes the bar and syncs the editors", async ({
+    mountHarness,
+    page,
+}) => {
+    if (!data.workbench) throw new Error("fixture workbench snapshot is missing");
+    const longLine = "wide " + "x".repeat(440);
+    const versions = {
+        base: longLine + "\n" + data.workbench.base,
+        ours: longLine + "\n" + data.workbench.ours,
+        theirs: longLine + "\n" + data.workbench.theirs,
+    };
+    await mountWorkbenchMerge(
+        async (context, options) => {
+            const harness = await mountHarness(context, options);
+            harness.allowConsoleError(missingGutter);
+            return harness;
+        },
+        page,
+        {
+            ...data,
+            segments: parseConflictVersions(versions.base, versions.ours, versions.theirs),
+            workbench: { ...data.workbench, ...versions },
+        },
+    );
+    const errors: string[] = [];
+    page.on("console", (message) => {
+        if (message.type() === "error") errors.push(message.text());
+    });
+    await page
+        .locator(".pane-result .cm-line")
+        .filter({ hasText: "wide " })
+        .click({ position: { x: 10, y: 10 } });
+    await page.keyboard.press("End");
+    const bar = page.locator(".merge-horizontal-scroll");
+    await expect.poll(() => bar.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
+    const oldWidth = await bar.evaluate((element) => element.scrollWidth);
+    await page.addStyleTag({
+        content: `
+        .merge-col .cm-gutters { display: none !important; }
+        .merge-editor.workbench .merge-col { --merge-line-number-gutter: 0px !important; }
+    `,
+    });
+    await scrollTo(page, LINE_HEIGHT_PX);
     await expect.poll(() => errors.join("\n")).toMatch(missingGutter);
+    await page.keyboard.insertText("y".repeat(Math.ceil(oldWidth)));
+    await expect
+        .poll(
+            () =>
+                bar.evaluate((element) => {
+                    const result = document.querySelector(".pane-result .cm-scroller");
+                    if (!result) throw new Error("result scroller missing");
+                    return (
+                        result.scrollWidth -
+                        result.clientWidth -
+                        (element.scrollWidth - element.clientWidth)
+                    );
+                }),
+            { message: "bar overflow must cover the grown result overflow within 1px" },
+        )
+        .toBeLessThanOrEqual(1);
+    await expect
+        .poll(() => bar.evaluate((element) => element.scrollWidth))
+        .toBeGreaterThan(oldWidth);
+    await expect
+        .poll(
+            () =>
+                bar.evaluate((element) => {
+                    const panes = [...document.querySelectorAll(".merge-content .cm-scroller")];
+                    if (panes.length !== 3) throw new Error("expected three editor scrollers");
+                    return Math.max(
+                        ...panes.map((pane) => Math.abs(pane.scrollLeft - element.scrollLeft)),
+                    );
+                }),
+            { message: "all three editor scrollLeft values must match the shared bar" },
+        )
+        .toBeLessThanOrEqual(1);
 });

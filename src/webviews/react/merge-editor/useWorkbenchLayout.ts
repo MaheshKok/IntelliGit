@@ -92,10 +92,12 @@ function gutterWidthOf(col: HTMLElement, withActions: boolean): number {
         0,
     );
     if (width > 0) return width;
-    return (
-        requirePxVar(col, "--merge-line-number-gutter") +
-        (withActions ? requirePxVar(col, "--merge-action-gutter") : 0)
-    );
+    const lineNumber = col.querySelector(".cm-lineNumbers .cm-gutterElement");
+    const minWidth = lineNumber ? getComputedStyle(lineNumber).minWidth : "";
+    const lineNumberWidth = Number.parseFloat(minWidth);
+    if (!minWidth.endsWith("px") || !Number.isFinite(lineNumberWidth) || lineNumberWidth <= 0)
+        throw new Error("merge-editor: CSS variable --merge-line-number-gutter is missing or 0");
+    return lineNumberWidth + (withActions ? requirePxVar(col, "--merge-action-gutter") : 0);
 }
 
 function sameRibbonSpans(
@@ -133,6 +135,7 @@ export function useWorkbenchLayout(
     const layoutRef = useRef(geometry.layout);
     const connectorsRef = useRef<ConnectorRenderSpec[]>([]);
     const spansRef = useRef<ReturnType<typeof measureRibbonSpans>>(null);
+    const ribbonMeasureKey = useRef({});
     const paths = useMemo(() => new Map<string, SVGPathElement>(), []);
     const registerPath = useCallback(
         (key: string, el: SVGPathElement | null) => {
@@ -182,16 +185,12 @@ export function useWorkbenchLayout(
                 const overflow = width - bar.clientWidth;
                 return {
                     width,
-                    spans:
-                        viewportRef.current && viewportRef.current.clientWidth > 0
-                            ? measureRibbonSpans(columnRefs.current, gutterWidthOf)
-                            : null,
                     rooms: natural.map(
                         (pane) => overflow - Math.max(0, pane.scrollWidth - pane.clientWidth),
                     ),
                 };
             },
-            write: ({ width, rooms, spans }) => {
+            write: ({ width, rooms }) => {
                 panes.forEach(({ view }, index) => {
                     const room = rooms[index];
                     if (horizontalRoom.current.get(view.scrollDOM) !== room) {
@@ -202,6 +201,15 @@ export function useWorkbenchLayout(
                 inner.style.width = `${width}px`;
                 syncHorizontal(requestedHorizontal.current ?? bar.scrollLeft);
                 requestedHorizontal.current = null;
+            },
+        });
+        panes[0]?.view.requestMeasure({
+            key: ribbonMeasureKey,
+            read: () =>
+                viewportRef.current && viewportRef.current.clientWidth > 0
+                    ? measureRibbonSpans(columnRefs.current, gutterWidthOf)
+                    : null,
+            write: (spans) => {
                 if (spans && !sameRibbonSpans(spansRef.current, spans)) {
                     spansRef.current = spans;
                     drawRibbons(
