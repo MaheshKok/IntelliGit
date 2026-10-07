@@ -64,6 +64,14 @@ describe("workbench rows", () => {
         );
     });
 
+    it.each(["ours", "theirs"] as const)(
+        "keeps main's result conflict fill after confirming %s while the other side can stack",
+        (decision) => {
+            const hunk: WorkbenchHunk = { ...fixture().hunks[0], decision, resolved: true };
+            expect(rowState(hunk, "result")).toBe("pending");
+        },
+    );
+
     it("derives render flags and compare lines from main's resolution rules", () => {
         const hunk = fixture().hunks[0];
         expect(resolutionOf({ ...hunk, decision: "base" })).toBe("none");

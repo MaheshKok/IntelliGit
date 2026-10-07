@@ -92,6 +92,11 @@
     text-align: right;
     padding: 0 7px 0 3px;
     background: none;
+    border-right: 1px solid var(--merge-pane-boundary);
+}
+.merge-editor.workbench .pane-ours .cm-lineNumbers .cm-gutterElement {
+    border-right: 0;
+    border-left: 1px solid var(--merge-pane-boundary);
 }
 
 .merge-editor.workbench .cm-line.mrow-pending.mrow-conflict {
@@ -201,6 +206,11 @@
         inset 0 calc(-1 * var(--merge-hunk-boundary-width)) 0 0 var(--merge-hunk-boundary);
 }
 
+/* Host high-contrast word border; wholly inserted rows keep main's unmarked words. */
+.merge-editor.workbench :is(.mrow-conflict, .mrow-modification, .mrow-deletion) .word-diff-change {
+    outline: 1px solid var(--vscode-diffEditor-removedTextBorder);
+    outline-offset: -1px;
+}
 .merge-editor.workbench .mrow-conflict .word-diff-change {
     background: var(--pycharm-conflict);
 }
@@ -215,6 +225,10 @@
 }
 .merge-editor.workbench .mrow-insertion .word-diff-change {
     background: transparent;
+}
+.merge-editor.workbench .mrow-insertion.mrow-dismissed .word-diff-change {
+    color-scheme: light;
+    color: var(--merge-editor-fg);
 }
 .merge-editor.workbench .word-diff-change.word-diff-whitespace {
     background: color-mix(in srgb, var(--merge-editor-fg) 10%, transparent);

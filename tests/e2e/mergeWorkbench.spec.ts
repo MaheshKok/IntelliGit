@@ -24,20 +24,22 @@ async function openMerge(page: Page, reuseVisibleSession = false): Promise<Frame
     // Rows open on one click; a double click can land its second click on the revealed tab.
     await session.locator("tbody tr.row").click();
     const frame = await view.revealMergeWorkbench();
-    await expect(frame.locator(".merge-workbench")).toBeVisible();
+    await expect(frame.locator(".merge-editor.workbench")).toBeVisible();
     return frame;
 }
 
-/** Resolves each original change through visible per-change navigation and side decisions. */
+/** Resolves remaining conflicts through main's rail and per-hunk side decisions. */
 async function acceptOurs(frame: FrameLocator): Promise<void> {
-    const changes = frame.locator(".mw-hunks button");
-    for (let i = 0; i < (await changes.count()); i++) {
-        await changes.nth(i).click();
-        await frame
-            .locator(".mw-toolbar")
-            .getByRole("button", { name: "Accept left change", exact: true })
-            .click();
+    const changes = frame.locator(".overview-marker.unresolved");
+    const count = await changes.count();
+    for (let i = 0; i < count; i++) {
+        await changes.first().click();
+        await frame.locator(".pane-ours .merge-action-gutter .mrow-active .accept-btn").click();
+        await expect(changes).toHaveCount(count - i - 1);
     }
+    // Also select ours for empty-side hunks and decisions restored from a draft.
+    await frame.getByRole("button", { name: "Accept All Yours", exact: true }).click();
+    await expect(frame.locator("#merge-remaining-status")).toHaveText("All conflicts resolved");
 }
 
 test.describe("Full-document Git merge workbench", () => {
@@ -105,12 +107,7 @@ test.describe("Full-document Git merge workbench", () => {
                 frame.locator('[data-testid="merge-editor-0"] .cm-content'),
             ).toHaveAttribute("contenteditable", "false");
             const original = await result().innerText();
-            await frame
-                .locator(".mw-connectors")
-                .first()
-                .getByRole("button", { name: "Accept left change", exact: true })
-                .first()
-                .click();
+            await frame.locator(".pane-ours .accept-btn").first().click();
             const chosen = await result().innerText();
             expect(chosen).not.toBe(original);
             await frame.getByRole("button", { name: "Undo", exact: true }).click();
@@ -123,10 +120,12 @@ test.describe("Full-document Git merge workbench", () => {
             await result().press("Enter");
             await result().pressSequentially("manual draft");
             await expect(result()).toContainText("manual draft");
-            await expect(frame.locator(".mw-footer")).toContainText("Draft saved");
+            await expect(frame.locator(".merge-footer .footer-draft-status")).toContainText(
+                "Draft saved",
+            );
             const draft = await result().innerText();
             await frame.getByRole("button", { name: "Base", exact: true }).click();
-            await expect(frame.locator(".mw-base .cm-content")).toBeVisible();
+            await expect(frame.locator(".pane-base .cm-content")).toBeVisible();
             await page.screenshot({ path: testInfo.outputPath("merge-dark.png") });
             await writeFile(
                 settingsPath,
@@ -187,7 +186,7 @@ test.describe("Full-document Git merge workbench", () => {
             const draft = await result.innerText();
             await writeFile(path.join(workspace.root, "conflict.txt"), "external change\n");
             await frame.getByRole("button", { name: "Apply", exact: true }).click();
-            await expect(frame.locator(".mw-error")).toContainText("changed");
+            await expect(frame.locator(".merge-notice-error")).toContainText("changed");
             await expect.poll(() => result.innerText()).toBe(draft);
             await expect(result).toHaveAttribute("contenteditable", "true");
             expect(await readFile(path.join(workspace.root, "conflict.txt"), "utf8")).toBe(
@@ -233,7 +232,9 @@ test.describe("Full-document Git merge workbench", () => {
             await page.getByRole("tab").filter({ hasText: "Merge: conflict.txt" }).click();
             frame = await new IntelliGitView(page).revealMergeWorkbench();
             await frame.getByRole("button", { name: "Apply", exact: true }).click();
-            await expect(frame.locator(".mw-error")).toContainText("unsaved editor changes");
+            await expect(frame.locator(".merge-notice-error")).toContainText(
+                "unsaved editor changes",
+            );
             expect(await readFile(path.join(workspace.root, "conflict.txt"), "utf8")).toBe(before);
             expect(await runGit(workspace.root, ["ls-files", "-u"], workspace.env)).not.toBe("");
             await expect(
@@ -309,22 +310,34 @@ test.describe("Full-document Git merge workbench", () => {
             await dismissFirstRunDialogs(page);
             await waitForE2eChannelReady(fixtureWorkspace.channelDir);
             const frame = await openMerge(page);
-            await expect(frame.locator(".mw-hunks button")).toHaveCount(3);
+            await expect(frame.locator(".overview-marker")).toHaveCount(3);
+            await frame.locator(".overview-marker").first().click();
             const result = frame.locator('[data-testid="merge-editor-1"] .cm-content');
             await frame
                 .getByRole("combobox", { name: "Resolve change" })
                 .selectOption("both-reversed");
             await expect(result).toContainText('item5 = "theirs"');
             await expect(result).toContainText('item5 = "ours"');
-            const sourceScroll = frame.locator('[data-testid="merge-editor-0"] .cm-scroller');
-            const resultScroll = frame.locator('[data-testid="merge-editor-1"] .cm-scroller');
-            await sourceScroll.evaluate((element) => {
+            // One shared scroller moves every pane; the result text must move on screen with it.
+            const scroller = frame.locator(".merge-content");
+            const resultTop = () =>
+                result.evaluate((element) => element.getBoundingClientRect().top);
+            const startTop = await resultTop();
+            await scroller.evaluate((element) => {
                 element.scrollTop = 600;
             });
             await expect
-                .poll(() => resultScroll.evaluate((element) => element.scrollTop))
-                .toBeGreaterThan(300);
-            const scroll = await resultScroll.evaluate((element) => element.scrollTop);
+                .poll(async () => {
+                    const moved = startTop - (await resultTop());
+                    const scrolled = await scroller.evaluate((element) => element.scrollTop);
+                    return {
+                        moved,
+                        scrolled,
+                        follows: scrolled > 300 && Math.abs(moved - scrolled) <= 1,
+                    };
+                })
+                .toMatchObject({ follows: true });
+            const scroll = await scroller.evaluate((element) => element.scrollTop);
             const draft = await result.innerText();
             const comment = frame
                 .locator('[data-testid="merge-editor-1"] span[style*="color"]')
@@ -342,11 +355,10 @@ test.describe("Full-document Git merge workbench", () => {
                 );
                 await expect(frame.locator("body")).toHaveAttribute("data-vscode-theme-kind", kind);
                 await expect(comment).toHaveCSS("color", "rgb(51, 187, 119)");
-                await expect(frame.locator(".merge-word-change").first()).toHaveCSS(
-                    "outline-color",
-                    "rgb(238, 170, 17)",
-                );
-                expect(await resultScroll.evaluate((element) => element.scrollTop)).toBe(scroll);
+                await expect(
+                    frame.locator(".pane-ours .mrow-conflict .word-diff-change").first(),
+                ).toHaveCSS("outline-color", "rgb(238, 170, 17)");
+                expect(await scroller.evaluate((element) => element.scrollTop)).toBe(scroll);
                 expect(await result.innerText()).toBe(draft);
                 await expect(
                     frame.getByRole("button", { name: "Undo", exact: true }),
@@ -380,7 +392,7 @@ test.describe("Rebase conflict workbench", () => {
             await dismissFirstRunDialogs(page);
             await waitForE2eChannelReady(fixtureWorkspace.channelDir);
             const frame = await openMerge(page);
-            await expect(frame.locator(".mw-headings")).toContainText("Result");
+            await expect(frame.locator(".pane-meta-row")).toContainText("Result");
             await acceptOurs(frame);
             await frame.getByRole("button", { name: "Apply", exact: true }).click();
             await expect

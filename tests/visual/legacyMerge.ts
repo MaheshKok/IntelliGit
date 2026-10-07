@@ -30,8 +30,9 @@ export async function mountWorkbenchMerge(
     mountHarness: Parameters<typeof mountLegacyMerge>[0],
     page: Page,
     data: MergeEditorData = conflict.messages[0].message.data as MergeEditorData,
+    locale = "en",
 ): Promise<void> {
-    await mountHarness("shelf-conflict-editor", { locale: "en" });
+    await mountHarness("shelf-conflict-editor", { locale });
     await page.evaluate(
         (payload) =>
             window.dispatchEvent(

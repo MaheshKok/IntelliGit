@@ -137,7 +137,7 @@ export class IntelliGitView {
     public async revealMergeWorkbench(
         timeoutMs = DEFAULT_REVEAL_TIMEOUT_MS,
     ): Promise<FrameLocator> {
-        return this.frameOwning(".merge-workbench", timeoutMs);
+        return this.frameOwning(".merge-editor.workbench", timeoutMs);
     }
 
     /** Returns the repository-scoped conflict chooser. */

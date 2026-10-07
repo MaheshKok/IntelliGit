@@ -372,7 +372,7 @@ test("Explorer, tab and editor unstash clicked B by OID while active A stays unc
         await expect
             .poll(async () => {
                 for (const frame of page.frames()) {
-                    if (await frame.locator(".merge-workbench").count()) {
+                    if (await frame.locator(".merge-editor.workbench").count()) {
                         mergeFrame = frame;
                         return true;
                     }
@@ -380,15 +380,20 @@ test("Explorer, tab and editor unstash clicked B by OID while active A stays unc
                 return false;
             })
             .toBe(true);
-        await expect(mergeFrame!.locator(".merge-workbench")).toContainText("committed conflict");
-        await expect(mergeFrame!.locator(".merge-workbench")).toContainText("stash conflict");
-        const changes = mergeFrame!.locator(".mw-hunks button");
-        for (let index = 0; index < (await changes.count()); index++) {
-            await changes.nth(index).click();
+        await expect(mergeFrame!.locator(".merge-editor.workbench")).toContainText(
+            "committed conflict",
+        );
+        await expect(mergeFrame!.locator(".merge-editor.workbench")).toContainText(
+            "stash conflict",
+        );
+        const changes = mergeFrame!.locator(".overview-marker.unresolved");
+        const count = await changes.count();
+        for (let index = 0; index < count; index++) {
+            await changes.first().click();
             await mergeFrame!
-                .locator(".mw-toolbar")
-                .getByRole("button", { name: "Accept right change", exact: true })
+                .locator(".pane-theirs .merge-action-gutter .mrow-active .accept-btn")
                 .click();
+            await expect(changes).toHaveCount(count - index - 1);
         }
         await mergeFrame!.getByRole("button", { name: "Apply", exact: true }).click();
         await expect.poll(() => git(b, env, ["ls-files", "-u", "selected.txt"])).toBe("");

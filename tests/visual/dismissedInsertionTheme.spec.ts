@@ -1,22 +1,28 @@
+import { mergeSelectors } from "./mergeSelectors";
 import { expect, test } from "./playwright/harnessPage";
-import { mountLegacyMerge } from "./legacyMerge";
+import { mountLegacyMerge, mountWorkbenchMerge } from "./legacyMerge";
 
-test("dismissed insertion words return to host-theme syntax", async ({ mountHarness, page }) => {
-    await mountLegacyMerge(mountHarness, page);
+for (const target of ["legacy", "workbench"] as const) {
+    const selectors = mergeSelectors[target];
+    test(`dismissed insertion words return to host-theme syntax (${target})`, async ({
+        mountHarness,
+        page,
+    }) => {
+        if (target === "legacy") await mountLegacyMerge(mountHarness, page);
+        else await mountWorkbenchMerge(mountHarness, page);
 
-    await page.locator('[data-conflict-id="1"] .conflict-actions-right .discard-btn').click();
+        await page.locator(selectors.discardButton).click();
 
-    const row = page.locator(
-        '[data-conflict-id="1"] .conflict-column.dismissed .conflict-theirs .real-code-line',
-    );
-    const word = row.locator(".word-diff-change").first();
-    await expect(word).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+        const row = page.locator(selectors.dismissedRow);
+        const word = row.locator(selectors.wordFill).first();
+        await expect(word).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
 
-    const hostColor = await page
-        .locator(".merge-content")
-        .evaluate((element) => getComputedStyle(element).color);
-    await expect(row).toHaveCSS("color-scheme", "light");
-    await expect(row).toHaveCSS("color", hostColor);
-    await expect(word).toHaveCSS("color-scheme", "light");
-    await expect(word).toHaveCSS("color", hostColor);
-});
+        const hostColor = await page
+            .locator(selectors.content)
+            .evaluate((element) => getComputedStyle(element).color);
+        await expect(row).toHaveCSS("color-scheme", "light");
+        await expect(row).toHaveCSS("color", hostColor);
+        await expect(word).toHaveCSS("color-scheme", "light");
+        await expect(word).toHaveCSS("color", hostColor);
+    });
+}
