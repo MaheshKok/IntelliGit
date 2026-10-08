@@ -11,6 +11,7 @@ import {
     regroupSpec,
     setGrouping,
     hunkAtCaret,
+    resolveActiveHunk,
     type MergeChoice,
     replaceHunks,
     restoreDraftHunks,
@@ -187,6 +188,50 @@ describe("merge workbench document", () => {
         expect(hunkAtCaret(session.state)).toBeNull();
         session.edit({ selection: { anchor: 8 } });
         expect(hunkAtCaret(session.state)).toBe(3);
+    });
+    describe("active hunk resolver", () => {
+        const built = buildWorkbenchDocument(
+            data(
+                "head\nbase one\nkeep\nbase two\ntail\n",
+                "head\nours one\nkeep\nours two\ntail\n",
+                "head\ntheirs one\nkeep\ntheirs two\ntail\n",
+            ),
+        );
+        const hunks = built.hunks;
+        it("caret in a conflict hunk wins over the previous hunk", () => {
+            expect(resolveActiveHunk(hunks, 0, 1)).toBe(1);
+        });
+        it("caret in a one-sided hunk wins over a conflict", () => {
+            expect(resolveActiveHunk([hunks[0], { ...hunks[1], conflict: false }], 0, 1)).toBe(1);
+        });
+        it("common text keeps a valid previous hunk", () => {
+            expect(resolveActiveHunk(hunks, 1, null)).toBe(1);
+        });
+        it("common text replaces an out-of-range previous hunk", () => {
+            expect(resolveActiveHunk(hunks, hunks.length, null)).toBe(0);
+        });
+        it("main's rule picks the first unresolved true conflict", () => {
+            expect(resolveActiveHunk([{ ...hunks[0], resolved: true }, hunks[1]], null)).toBe(1);
+        });
+        it("main's rule skips an edited conflict", () => {
+            expect(resolveActiveHunk([{ ...hunks[0], edited: true }, hunks[1]], null)).toBe(1);
+        });
+        it("all conflicts resolved falls back to the first conflict", () => {
+            expect(
+                resolveActiveHunk(
+                    hunks.map((hunk) => ({ ...hunk, resolved: true })),
+                    null,
+                ),
+            ).toBe(0);
+        });
+        it("no conflicts and no previous or caret hunk returns null", () => {
+            expect(
+                resolveActiveHunk(
+                    hunks.map((hunk) => ({ ...hunk, conflict: false })),
+                    null,
+                ),
+            ).toBeNull();
+        });
     });
     it("groupingField starts from the loaded data and throws without init", () => {
         expect(() => EditorState.create({ extensions: [groupingField] })).toThrow(

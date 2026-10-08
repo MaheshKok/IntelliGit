@@ -212,6 +212,25 @@ export function hunkAtCaret(state: EditorState): number | null {
     return empty === -1 ? null : empty;
 }
 
+/** Shares true-conflict ordering and pending status with workbench commands. */
+export function conflictHunkIndices(hunks: readonly WorkbenchHunk[]) {
+    const conflictIndices = hunks.flatMap((hunk, index) => (hunk.conflict ? [index] : []));
+    const unresolvedIndices = conflictIndices.filter((index) => !hunks[index].resolved);
+    return { conflictIndices, unresolvedIndices };
+}
+
+/** Keeps a selection in common text, then uses the legacy editor's default conflict. */
+export function resolveActiveHunk(
+    hunks: readonly WorkbenchHunk[],
+    previous: number | null,
+    caret: number | null = null,
+): number | null {
+    if (caret !== null && hunks[caret]) return caret;
+    if (previous !== null && hunks[previous]) return previous;
+    const { conflictIndices, unresolvedIndices } = conflictHunkIndices(hunks);
+    return unresolvedIndices.find((index) => !hunks[index].edited) ?? conflictIndices[0] ?? null;
+}
+
 /** Detects edits and decisions against the current grouping's original result. */
 export function isPristineState(state: EditorState, data: MergeEditorData): boolean {
     const { segments } = state.field(groupingField);

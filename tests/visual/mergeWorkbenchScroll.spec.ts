@@ -34,6 +34,180 @@ const data: MergeEditorData = {
     },
 };
 
+async function caretBox(page: Page) {
+    return page.evaluate(() => {
+        const selection = window.getSelection();
+        if (!selection?.focusNode) throw new Error("caret selection is missing");
+        const range = document.createRange();
+        range.setStart(selection.focusNode, selection.focusOffset);
+        range.collapse(true);
+        const box = range.getClientRects()[0];
+        if (!box) throw new Error("caret has no measured rectangle");
+        return box.toJSON();
+    });
+}
+
+async function expectCaretInsideViewport(page: Page) {
+    await expect
+        .poll(async () => {
+            const caret = await caretBox(page);
+            const viewport = await page.locator(".merge-viewport").boundingBox();
+            if (!viewport) throw new Error("merge viewport is missing");
+            return (
+                caret.height > 0 &&
+                caret.top >= viewport.y - 1 &&
+                caret.bottom <= viewport.y + viewport.height + 1 &&
+                caret.left >= viewport.x - 1 &&
+                caret.right <= viewport.x + viewport.width + 1
+            );
+        })
+        .toBe(true);
+}
+
+async function wideLine(page: Page) {
+    await page.locator(".merge-content").evaluate((element, number) => {
+        const line = document.querySelector(".pane-result .cm-line");
+        if (!line) throw new Error("line height is missing");
+        element.scrollTop = (number - 2) * line.getBoundingClientRect().height;
+    }, longLineNumber);
+    await settleScroll(page);
+}
+
+async function scrollToFraction(page: Page, fraction: number) {
+    await expect
+        .poll(
+            () =>
+                page
+                    .locator(".merge-horizontal-scroll")
+                    .evaluate((bar) => bar.scrollWidth - bar.clientWidth),
+            { message: "long line creates shared horizontal overflow" },
+        )
+        .toBeGreaterThan(0);
+    await page.locator(".merge-horizontal-scroll").evaluate((bar, part) => {
+        bar.scrollLeft = (bar.scrollWidth - bar.clientWidth) * part;
+        bar.dispatchEvent(new Event("scroll"));
+    }, fraction);
+    await expectHorizontalAgreement(page, fraction > 0);
+}
+
+async function clickVisibleWideLine(page: Page) {
+    const point = await page.locator(".pane-result .cm-content").evaluate((content) => {
+        const line = [...content.querySelectorAll(".cm-line")].find((element) =>
+            element.textContent?.startsWith("wide "),
+        );
+        if (!line) throw new Error("wide line is missing");
+        const box = content.getBoundingClientRect();
+        const row = line.getBoundingClientRect();
+        return { x: box.left + box.width / 2, y: row.top + row.height / 2 };
+    });
+    await page.mouse.click(point.x, point.y);
+}
+
+// Compare against the same frame with only the requested paint hidden. This avoids counting
+// text or gutter icons that happen to share the theme's cursor/selection colour.
+async function paintCounts(page: Page, kind: "caret" | "selection") {
+    const geometry = await page.locator(".pane-result .cm-content").evaluate((content, kind) => {
+        const name =
+            kind === "caret"
+                ? "--vscode-editorCursor-foreground"
+                : "--vscode-editor-selectionBackground";
+        const colour = getComputedStyle(content).getPropertyValue(name).trim();
+        if (!colour || !CSS.supports("color", colour)) throw new Error(`${name} is missing`);
+        const canvas = document.createElement("canvas");
+        const context = canvas.getContext("2d")!;
+        context.fillStyle = colour;
+        context.fillRect(0, 0, 1, 1);
+        const rgba = [...context.getImageData(0, 0, 1, 1).data];
+        if (!rgba[3]) throw new Error(`${name} has no paint`);
+        const line = [...content.querySelectorAll(".cm-line")].find((element) =>
+            element.textContent?.startsWith("wide "),
+        );
+        if (!line) throw new Error("paint row is missing");
+        const gutters = [...document.querySelectorAll(".merge-content .cm-gutters")];
+        if (!gutters.length) throw new Error("gutter boxes are missing");
+        return {
+            rgba,
+            code: content.getBoundingClientRect().toJSON(),
+            row: line.getBoundingClientRect().toJSON(),
+            gutters: gutters.map((element) => element.getBoundingClientRect().toJSON()),
+            ratio: devicePixelRatio,
+        };
+    }, kind);
+    const hidden =
+        kind === "caret"
+            ? ".cm-content, .cm-content * { caret-color: transparent !important; } .cm-cursor { visibility: hidden !important; }"
+            : ".cm-content::selection, .cm-content ::selection { background: transparent !important; } .cm-selectionBackground { visibility: hidden !important; }";
+    const before = await page.screenshot({ caret: "initial", style: hidden });
+    const after = await page.screenshot({ caret: "initial" });
+    return page.evaluate(
+        async ({ before, after, geometry }) => {
+            const decode = async (base64: string) => {
+                const bytes = Uint8Array.from(atob(base64), (char) => char.charCodeAt(0));
+                const image = await createImageBitmap(new Blob([bytes], { type: "image/png" }));
+                const canvas = document.createElement("canvas");
+                canvas.width = image.width;
+                canvas.height = image.height;
+                const context = canvas.getContext("2d", { willReadFrequently: true })!;
+                context.drawImage(image, 0, 0);
+                const pixels = context.getImageData(0, 0, image.width, image.height);
+                image.close();
+                return pixels;
+            };
+            const [base, painted] = await Promise.all([decode(before), decode(after)]);
+            const { rgba, code, row, gutters, ratio } = geometry;
+            // A fractional clip edge can paint a partially covered device pixel. Gutters count
+            // only whole pixels, so their shared edge is not mistaken for gutter bleed.
+            const coversPixel = (box: typeof code, x: number, y: number) =>
+                x + 1 > box.left * ratio &&
+                x < box.right * ratio &&
+                y + 1 > box.top * ratio &&
+                y < box.bottom * ratio;
+            const containsPixel = (box: typeof code, x: number, y: number) =>
+                x >= box.left * ratio &&
+                x + 1 <= box.right * ratio &&
+                y >= box.top * ratio &&
+                y + 1 <= box.bottom * ratio;
+            const counts = { code: 0, gutters: 0, outside: 0 };
+            for (let y = Math.ceil(row.top * ratio); y < Math.floor(row.bottom * ratio); y++) {
+                for (let x = 0; x < painted.width; x++) {
+                    const offset = (y * painted.width + x) * 4;
+                    const changed = [0, 1, 2].some(
+                        (channel) => painted.data[offset + channel] !== base.data[offset + channel],
+                    );
+                    const matches = [0, 1, 2].every(
+                        (channel) =>
+                            painted.data[offset + channel] ===
+                            Math.round(
+                                (rgba[channel] * rgba[3]) / 255 +
+                                    base.data[offset + channel] * (1 - rgba[3] / 255),
+                            ),
+                    );
+                    if (!changed || !matches) continue;
+                    if (coversPixel(code, x, y)) counts.code++;
+                    else counts.outside++;
+                    if (gutters.some((box) => containsPixel(box, x, y))) counts.gutters++;
+                }
+            }
+            return counts;
+        },
+        { before: before.toString("base64"), after: after.toString("base64"), geometry },
+    );
+}
+
+async function expectCaretPaint(page: Page, step: string) {
+    // Native caret blinking is left intact; sample screenshot frames for at most 3 seconds.
+    await expect
+        .poll(async () => (await paintCounts(page, "caret")).code, {
+            message: `${step}: caret paints inside the code area`,
+            timeout: 3000,
+            intervals: [100],
+        })
+        .toBeGreaterThan(0);
+    const paint = await paintCounts(page, "caret");
+    expect(paint.gutters, `${step}: no caret paint in gutters`).toBe(0);
+    expect(paint.outside, `${step}: no caret paint outside code`).toBe(0);
+}
+
 async function settleScroll(page: Page) {
     let previous = -1;
     let stable = 0;
@@ -76,7 +250,7 @@ async function expectInsideViewport(page: Page, selector: string) {
         .toMatchObject({ inside: true });
 }
 
-async function expectHorizontalAgreement(page: Page) {
+async function expectHorizontalAgreement(page: Page, positive = true) {
     const bar = page.locator(".merge-horizontal-scroll");
     await expect
         .poll(() =>
@@ -84,22 +258,20 @@ async function expectHorizontalAgreement(page: Page) {
                 left: el.scrollLeft,
                 width: el.clientWidth,
                 total: el.scrollWidth,
-                panes: [...document.querySelectorAll(".merge-content .cm-scroller")].map(
-                    (pane) => ({
-                        width: pane.clientWidth,
-                        total: pane.scrollWidth,
-                        left: pane.scrollLeft,
-                    }),
-                ),
+                panes: [...document.querySelectorAll(".merge-content .cm-content")].map((pane) => ({
+                    width: pane.clientWidth,
+                    total: pane.scrollWidth,
+                    left: pane.scrollLeft,
+                })),
                 positive: el.scrollLeft > 0,
             })),
         )
-        .toMatchObject({ positive: true });
+        .toMatchObject({ positive });
     await expect
         .poll(async () => {
             const left = await bar.evaluate((el) => el.scrollLeft);
             return page
-                .locator(".merge-content .cm-scroller")
+                .locator(".merge-content .cm-content")
                 .evaluateAll(
                     (elements, expected) => elements.map((el) => el.scrollLeft === expected),
                     left,
@@ -110,6 +282,93 @@ async function expectHorizontalAgreement(page: Page) {
 
 test.beforeEach(async ({ mountHarness, page }) => {
     await mountWorkbenchMerge(mountHarness, page, data);
+});
+
+test("sideways caret paint is visible inside code and clipped at both edges", async ({ page }) => {
+    await wideLine(page);
+    await clickVisibleWideLine(page);
+    await page.keyboard.press("End");
+    await scrollToFraction(page, 0.5);
+    await clickVisibleWideLine(page);
+    await expectCaretPaint(page, "sideways");
+    for (const fraction of [1, 0]) {
+        await scrollToFraction(page, fraction);
+        const caret = await caretBox(page);
+        const code = await page.locator(".pane-result .cm-content").boundingBox();
+        if (!code) throw new Error("code box is missing");
+        expect(
+            caret.x < code.x || caret.x > code.x + code.width,
+            "caret crossed the clip edge",
+        ).toBe(true);
+        for (let frame = 0; frame < 3; frame++) {
+            const paint = await paintCounts(page, "caret");
+            expect(paint.gutters, "clipped caret never paints in a gutter").toBe(0);
+            expect(paint.outside, "clipped caret never paints outside code").toBe(0);
+            expect(paint.code, "scrolled-past caret no longer paints inside code").toBe(0);
+        }
+    }
+});
+
+test("sideways selection crossing either clip edge paints only inside code", async ({ page }) => {
+    await wideLine(page);
+    await clickVisibleWideLine(page);
+    await page.keyboard.press("End");
+    for (const key of ["End", "Home"]) {
+        await scrollToFraction(page, 0.5);
+        await clickVisibleWideLine(page);
+        await page.keyboard.press(`Shift+${key}`);
+        // Keyboard selection reveals its head; restore the shared offset to cross the clip edge.
+        await scrollToFraction(page, 0.5);
+        const crosses = await page.locator(".pane-result .cm-content").evaluate((content) => {
+            const selection = window.getSelection();
+            if (!selection?.rangeCount) throw new Error("selection range is missing");
+            const range = selection.getRangeAt(0).getBoundingClientRect();
+            const code = content.getBoundingClientRect();
+            return (
+                range.right > code.left &&
+                range.left < code.right &&
+                (range.left < code.left || range.right > code.right)
+            );
+        });
+        expect(crosses, `${key}: selection straddles a measured code edge`).toBe(true);
+        const paint = await paintCounts(page, "selection");
+        expect(paint.code, `${key}: selection paints inside code`).toBeGreaterThan(0);
+        expect(paint.gutters, `${key}: no selection-coloured pixels in any gutter`).toBe(0);
+        expect(paint.outside, `${key}: no selection-coloured pixels outside code`).toBe(0);
+    }
+});
+
+test("keyboard End arrows and Home keep caret paint and all panes synchronized", async ({
+    page,
+}) => {
+    await wideLine(page);
+    await clickVisibleWideLine(page);
+    const steps = await page.locator(".pane-result .cm-content").evaluate((content) => {
+        const line = [...content.querySelectorAll(".cm-line")].find((element) =>
+            element.textContent?.startsWith("wide "),
+        );
+        if (!line) throw new Error("wide line is missing");
+        const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
+        const text = walker.nextNode();
+        if (!text?.textContent) throw new Error("wide line text is missing");
+        const range = document.createRange();
+        range.setStart(text, 0);
+        range.setEnd(text, 1);
+        const width = range.getBoundingClientRect().width;
+        if (!width || !content.clientWidth) throw new Error("keyboard geometry is missing");
+        return Math.ceil(content.clientWidth / width) + 1;
+    });
+    await page.keyboard.press("End");
+    await expectCaretPaint(page, "End");
+    await expectHorizontalAgreement(page);
+    for (const key of ["ArrowLeft", "ArrowRight"]) {
+        for (let index = 0; index < steps; index++) await page.keyboard.press(key);
+        await expectCaretPaint(page, key);
+        await expectHorizontalAgreement(page);
+    }
+    await page.keyboard.press("Home");
+    await expectCaretPaint(page, "Home");
+    await expectHorizontalAgreement(page, false);
 });
 
 test.afterEach(async ({ page }) => {
@@ -186,7 +445,7 @@ test("typing at the end keeps the caret visible", async ({ page }) => {
     await page.locator(".pane-result .cm-line").first().click();
     await page.keyboard.press("ControlOrMeta+End");
     await page.keyboard.insertText("new\nlines\nend");
-    await expectInsideViewport(page, ".pane-result .cm-cursor");
+    await expectCaretInsideViewport(page);
     expect(await page.locator(".merge-content").evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
 });
 
@@ -200,7 +459,7 @@ test("Find next scrolls the match into the viewport", async ({ page }) => {
 test("caret navigation past the viewport scrolls .merge-content", async ({ page }) => {
     await page.locator(".pane-result .cm-line").first().click();
     for (let i = 0; i < 5; i++) await page.keyboard.press("PageDown");
-    await expectInsideViewport(page, ".pane-result .cm-cursor");
+    await expectCaretInsideViewport(page);
     expect(await page.locator(".merge-content").evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
 });
 
@@ -262,13 +521,9 @@ test("caret on an empty line returns the bar to 0", async ({ page }) => {
         if (!wide || wide.nextElementSibling?.textContent !== "")
             throw new Error("wide line followed by an empty line is not rendered");
         const line = wide.getBoundingClientRect();
-        const pane = element.closest(".cm-scroller")!.getBoundingClientRect();
-        const gutters = element
-            .closest(".cm-editor")!
-            .querySelector(".cm-gutters")!
-            .getBoundingClientRect();
+        const pane = element.getBoundingClientRect();
         return {
-            x: gutters.right + (pane.right - gutters.right) / 2,
+            x: pane.left + pane.width / 2,
             y: line.top + line.height / 2,
         };
     });
@@ -277,7 +532,7 @@ test("caret on an empty line returns the bar to 0", async ({ page }) => {
     await expect
         .poll(() =>
             page
-                .locator(".merge-horizontal-scroll, .merge-content .cm-scroller")
+                .locator(".merge-horizontal-scroll, .merge-content .cm-content")
                 .evaluateAll((elements) => elements.map((element) => element.scrollLeft)),
         )
         .toEqual([0, 0, 0, 0]);
@@ -329,7 +584,7 @@ test("a scroll request right after a long line grows lands at the requested scro
         .poll(
             () =>
                 bar.evaluate((element) => {
-                    const panes = [...document.querySelectorAll(".merge-content .cm-scroller")];
+                    const panes = [...document.querySelectorAll(".merge-content .cm-content")];
                     if (panes.length !== 3) throw new Error("expected three editor scrollers");
                     return Math.max(
                         ...panes.map((pane) => Math.abs(pane.scrollLeft - element.scrollLeft)),
@@ -338,16 +593,9 @@ test("a scroll request right after a long line grows lands at the requested scro
             { message: "all three editor scrollLeft values must match the shared bar" },
         )
         .toBeLessThanOrEqual(1);
-    const caret = await page.locator(".pane-result .cm-cursor").evaluate((element) => {
-        const scroller = document.querySelector(".pane-result .cm-scroller");
-        const gutters = document.querySelector(".pane-result .cm-gutters");
-        if (!scroller || !gutters) throw new Error("result content box is missing");
-        return {
-            left: element.getBoundingClientRect().left,
-            start: gutters.getBoundingClientRect().right,
-            end: scroller.getBoundingClientRect().right,
-        };
-    });
-    expect(caret.left).toBeGreaterThanOrEqual(caret.start);
-    expect(caret.left).toBeLessThanOrEqual(caret.end);
+    const caret = await caretBox(page);
+    const code = await page.locator(".pane-result .cm-content").boundingBox();
+    if (!code) throw new Error("result content box is missing");
+    expect(caret.left).toBeGreaterThanOrEqual(code.x);
+    expect(caret.left).toBeLessThanOrEqual(code.x + code.width);
 });

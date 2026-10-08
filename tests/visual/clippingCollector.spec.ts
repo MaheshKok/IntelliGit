@@ -103,7 +103,53 @@ const CLIP_CASES = `
     </div>
 `;
 
+const DRIVEN_CASES = `
+    <div data-testid="driving-bar" style="width:80px;overflow-x:auto"><div style="width:400px;height:1px"></div></div>
+
+    <div data-testid="driven-pane" style="width:80px;overflow:hidden;white-space:nowrap">
+        <span data-testid="driven-child">Long enough text to overflow its box</span>
+    </div>
+
+    <div style="width:80px;overflow:hidden;white-space:nowrap">
+        <span data-testid="undriven-child">Long enough text to overflow its box</span>
+    </div>
+`;
+
 test.describe("clipping collector truncation affordance", () => {
+    /**
+     * The merge workbench's shape: a pane that hides its overflow and is scrolled by a separate
+     * visible bar. The two panes are the same DOM; only `driven-pane` follows the bar, so a rule
+     * keyed on anything but that behaviour fails one of them.
+     */
+    test("treats a hidden box that follows a visible scroller as a scroller", async ({
+        mountHarness,
+        page,
+    }) => {
+        await mountHarness("commit-graph-card");
+        await page.locator("#root").evaluate((root, html) => {
+            root.innerHTML = html;
+            const bar = root.querySelector<HTMLElement>('[data-testid="driving-bar"]');
+            const pane = root.querySelector<HTMLElement>('[data-testid="driven-pane"]');
+            if (bar === null || pane === null)
+                throw new Error("driven-scroller fixture is missing");
+            bar.addEventListener("scroll", () => {
+                pane.scrollLeft = bar.scrollLeft;
+            });
+        }, DRIVEN_CASES);
+
+        const axesFor = axesForIn(await collectOracleInputs(page));
+
+        expect({
+            drivenChild: axesFor("driven-child"),
+            undrivenChild: axesFor("undriven-child"),
+        }).toEqual({
+            // One scroll of the bar away, exactly like text in an `overflow-x: auto` pane.
+            drivenChild: [],
+            // Nothing moves this pane, so its cut-off text is unreachable: still a defect.
+            undrivenChild: ["horizontal"],
+        });
+    });
+
     test("reports the axes the ellipsis affordance does not cover", async ({
         mountHarness,
         page,

@@ -129,19 +129,82 @@ function expectActiveRows(container: HTMLElement, index: number) {
 }
 
 describe("workbench keyboard", () => {
-    it("n from no active hunk paints every row of the first true conflict", () => {
-        const { container, active } = setup(true);
-        expect(active()).toBe(-1);
-        expect(key("n")).toBe(false);
-        expectActiveRows(container, 0);
+    it("no true conflicts leaves resolve and navigation keys inert with nothing active", () => {
+        const versions = {
+            base: "head\nbase\ntail\n",
+            ours: "head\nours only\ntail\n",
+            theirs: "head\nbase\ntail\n",
+        };
+        const input = fixture();
+        const mounted = mount(
+            <MergeWorkbench
+                data={{
+                    ...input,
+                    segments: parseConflictVersions(versions.base, versions.ours, versions.theirs),
+                    workbench: { ...input.workbench, ...versions },
+                }}
+            />,
+        );
+        const errors: unknown[] = [];
+        const onError = (event: ErrorEvent) => {
+            errors.push(event.error);
+            event.preventDefault();
+        };
+        window.addEventListener("error", onError);
+        try {
+            const { container } = mounted;
+            const view = EditorView.findFromDOM(
+                container.querySelector<HTMLElement>(".pane-result .cm-editor")!,
+            )!;
+            expect(view.state.field(workbenchHunks)).toHaveLength(1);
+            expect(view.state.field(workbenchHunks)[0].conflict).toBe(false);
+            const before = view.state.doc.toString();
+            const expectInactive = () => {
+                expect(
+                    container.querySelectorAll('.overview-marker[aria-current="true"]'),
+                ).toHaveLength(0);
+                expect(container.querySelectorAll(".mrow-active")).toHaveLength(0);
+                expect(
+                    container.querySelector<HTMLSelectElement>('[aria-label="Resolve change"]')!
+                        .disabled,
+                ).toBe(true);
+            };
+            expectInactive();
+            for (const [name, modifiers] of [
+                ["ArrowLeft", { ctrlKey: true }],
+                ["ArrowRight", { ctrlKey: true }],
+                ["x", {}],
+                ["b", {}],
+                ["n", {}],
+                ["p", {}],
+                ["F7", {}],
+                ["F7", { shiftKey: true }],
+            ] as const) {
+                expect(() => key(name, modifiers)).not.toThrow();
+                expect(errors, `${name} must not throw with no active conflict`).toEqual([]);
+                expect(view.state.doc.toString()).toBe(before);
+                expect(undoDepth(view.state)).toBe(0);
+                expectInactive();
+            }
+        } finally {
+            window.removeEventListener("error", onError);
+            unmount(mounted.root, mounted.container);
+        }
     });
-    it("p from no active hunk paints every row of the last true conflict", () => {
+    it("n from the initial conflict paints every row of the next true conflict", () => {
+        const { container, active } = setup(true);
+        expect(active()).toBe(0);
+        expect(key("n")).toBe(false);
+        expectActiveRows(container, 1);
+    });
+    it("p from the initial conflict paints every row of the last true conflict", () => {
         const { container } = setup(true);
         expect(key("p")).toBe(false);
         expectActiveRows(container, 2);
     });
     it("Ctrl-ArrowLeft accepts the first unresolved ours and jumps to the next", () => {
-        const { view, container } = setup();
+        const { view, container, active } = setup();
+        expect(active()).toBe(0);
         key("ArrowLeft", { ctrlKey: true });
         expect(hunkText(view, 0)).toBe("ours 1a\nours 1b\n");
         expect(undoDepth(view.state)).toBe(1);
@@ -149,6 +212,7 @@ describe("workbench keyboard", () => {
     });
     it("Ctrl-ArrowRight accepts theirs and jumps to the next unresolved", () => {
         const { view, active } = setup();
+        expect(active()).toBe(0);
         key("ArrowRight", { ctrlKey: true });
         expect(hunkText(view, 0)).toBe("theirs 1a\ntheirs 1b\n");
         expect(active()).toBe(1);
@@ -268,14 +332,14 @@ describe("workbench keyboard", () => {
     it("window F7, Shift-F7 and Shift-N use main's ordering and modifiers", () => {
         const { active } = setup();
         key("F7");
-        expect(active()).toBe(0);
-        key("N", { shiftKey: true });
         expect(active()).toBe(1);
+        key("N", { shiftKey: true });
+        expect(active()).toBe(2);
         key("F7", { shiftKey: true });
-        expect(active()).toBe(0);
+        expect(active()).toBe(1);
         expect(key("n", { altKey: true })).toBe(true);
         expect(key("n", { ctrlKey: true })).toBe(true);
-        expect(active()).toBe(0);
+        expect(active()).toBe(1);
     });
     it("ignores all editor contents and form fields including descendant targets", () => {
         const { container, activate, active } = setup();
@@ -295,9 +359,9 @@ describe("workbench keyboard", () => {
     it("handles non-Element targets and removes its listener on unmount", () => {
         const { root, container, active } = setup();
         key("n", {}, window);
-        expect(active()).toBe(0);
-        key("n", {}, document);
         expect(active()).toBe(1);
+        key("n", {}, document);
+        expect(active()).toBe(2);
         unmount(root, container);
         expect(key("n")).toBe(true);
     });

@@ -164,6 +164,62 @@ async function waitForRootSubtreeToSettle(page: Page): Promise<void> {
     });
 }
 
+/**
+ * Waits until every rendered merge-workbench gutter cell is as tall as the content block beside it.
+ * One long frame can satisfy the settle's quiet time while CodeMirror's gutter cells are still
+ * squeezed below their rows (14px beside 20px lines), painting without their bands -- the exact
+ * state the contrast and clipping oracles would then read.
+ *
+ * ponytail: "unchanged across 2 consecutive animation frames" is the stability check, not a time
+ * guess; its ceiling is a layout change scheduled later than the next frame (a timer or a long
+ * task), which this cannot see. Fails loudly at `maxWaitMs`.
+ */
+function waitForWorkbenchRowsToMatch(maxWaitMs: number): Promise<void> {
+    const snapshot = (): { mismatch: string | null; layout: string } => {
+        const parts: string[] = [];
+        for (const editor of document.querySelectorAll(".merge-editor.workbench .cm-editor")) {
+            if (editor.getClientRects().length === 0) continue;
+            const blocks = Array.from(editor.querySelectorAll(".cm-content > *"), (block) =>
+                block.getBoundingClientRect(),
+            );
+            for (const cell of editor.querySelectorAll(".cm-gutterElement")) {
+                if (getComputedStyle(cell).visibility === "hidden") continue;
+                const box = cell.getBoundingClientRect();
+                const beside = blocks.find(
+                    (block) => block.top <= box.top + 0.5 && box.top + 0.5 < block.bottom,
+                );
+                if (beside?.height !== box.height) {
+                    return {
+                        mismatch: `gutter cell "${cell.textContent ?? ""}" is ${box.height}px tall beside a ${beside?.height ?? "missing"}px row`,
+                        layout: "",
+                    };
+                }
+                parts.push(`${box.top},${box.height}`);
+            }
+        }
+        return { mismatch: null, layout: parts.join(";") };
+    };
+    return new Promise((resolve, reject) => {
+        const deadline = performance.now() + maxWaitMs;
+        let previous: string | null = null;
+        const frame = () => {
+            const { mismatch, layout } = snapshot();
+            if (mismatch === null && layout === previous) return resolve();
+            if (performance.now() > deadline) {
+                reject(
+                    new Error(
+                        `Workbench gutter rows did not match their lines within ${maxWaitMs}ms: ${mismatch ?? "layout still changing"}.`,
+                    ),
+                );
+                return;
+            }
+            previous = mismatch === null ? layout : null;
+            requestAnimationFrame(frame);
+        };
+        requestAnimationFrame(frame);
+    });
+}
+
 /** Installs the in-process browser harness and exposes its recorder-backed mount operation. */
 export const test = base.extend<VisualFixtures, VisualWorkerFixtures>({
     visualEnvironment: [
@@ -259,6 +315,7 @@ export const test = base.extend<VisualFixtures, VisualWorkerFixtures>({
                 // The dispatched messages drive a React re-render that has not necessarily
                 // committed or laid out yet -- wait for it before handing back to the caller.
                 await waitForRootSubtreeToSettle(page);
+                await page.evaluate(waitForWorkbenchRowsToMatch, SETTLE_MAX_MS);
             }
 
             return {

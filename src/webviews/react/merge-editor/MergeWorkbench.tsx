@@ -1,5 +1,6 @@
 import React, { useLayoutEffect, useRef, useState } from "react";
 import type { MergeEditorData } from "./types";
+import { buildWorkbenchDocument, resolveActiveHunk } from "./workbenchModel";
 import { useWorkbenchCommands } from "./useWorkbenchCommands";
 import { useWorkbenchKeyboard } from "./useWorkbenchKeyboard";
 import type { HunkActionCallbacks } from "./workbenchGutter";
@@ -24,10 +25,15 @@ import "./merge-workbench.css";
 
 /** Full-document three-way merge with reversible decisions and immutable inputs. */
 export function MergeWorkbench({ data: inputData }: { data: MergeEditorData }) {
-    const [active, setActive] = useState<number | null>(null);
+    const [initial] = useState(() => buildWorkbenchDocument(inputData));
+    // The initial pick becomes an independent user selection after load.
+    const [active, setActive] = useState<number | null>(() =>
+        resolveActiveHunk(initial.hunks, null),
+    );
     const actions = useRef<HunkActionCallbacks | null>(null);
     const findHost = useRef<HTMLDivElement | null>(null);
     const scrollHandler = useRef<WorkbenchScrollHandler | null>(null);
+    const layoutFrame = useRef<(() => void) | null>(null);
     const keymap = useRef<WorkbenchKeyCommands | null>(null);
     const {
         data,
@@ -46,9 +52,10 @@ export function MergeWorkbench({ data: inputData }: { data: MergeEditorData }) {
         flushDraft,
         isPristine,
         regroup,
-    } = useWorkbenchEditors(inputData, active, actions, {
+    } = useWorkbenchEditors(inputData, initial, active, actions, {
         findHost,
         scrollHandler,
+        layout: layoutFrame,
         keymap,
         onActiveFromCaret: setActive,
     });
@@ -73,7 +80,8 @@ export function MergeWorkbench({ data: inputData }: { data: MergeEditorData }) {
     } = useWorkbenchLayout(editors, hunks);
     useLayoutEffect(() => {
         scrollHandler.current = handleScrollRequest;
-    }, [handleScrollRequest]);
+        layoutFrame.current = onScroll;
+    }, [handleScrollRequest, onScroll]);
     const counts = workbenchCounts(hunks);
     const pending = counts.unresolved;
 

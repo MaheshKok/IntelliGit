@@ -433,7 +433,7 @@ test("a failing ribbon measure still sizes the bar and syncs the editors", async
         .poll(
             () =>
                 bar.evaluate((element) => {
-                    const result = document.querySelector(".pane-result .cm-scroller");
+                    const result = document.querySelector(".pane-result .cm-content");
                     if (!result) throw new Error("result scroller missing");
                     return (
                         result.scrollWidth -
@@ -451,7 +451,7 @@ test("a failing ribbon measure still sizes the bar and syncs the editors", async
         .poll(
             () =>
                 bar.evaluate((element) => {
-                    const panes = [...document.querySelectorAll(".merge-content .cm-scroller")];
+                    const panes = [...document.querySelectorAll(".merge-content .cm-content")];
                     if (panes.length !== 3) throw new Error("expected three editor scrollers");
                     return Math.max(
                         ...panes.map((pane) => Math.abs(pane.scrollLeft - element.scrollLeft)),

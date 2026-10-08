@@ -2,6 +2,7 @@ import {
     Compartment,
     Prec,
     EditorState,
+    RangeSet,
     RangeSetBuilder,
     StateEffect,
     StateField,
@@ -15,7 +16,6 @@ import {
     gutter,
     gutterLineClass,
     GutterMarker,
-    drawSelection,
     Decoration,
     ViewPlugin,
     panels,
@@ -90,7 +90,7 @@ const palette = EditorView.theme({
         color: "color-mix(in srgb, var(--vscode-editorLineNumber-foreground) 60%, var(--vscode-editor-foreground))",
         border: "none",
     },
-    ".cm-selectionBackground, &.cm-focused .cm-selectionBackground": {
+    ".cm-content::selection, .cm-content ::selection": {
         backgroundColor: "var(--vscode-editor-selectionBackground)",
     },
     ".cm-panels": {
@@ -242,6 +242,31 @@ class RowMarker extends GutterMarker {
     }
 }
 
+function phantomMarkers(state: EditorState): RangeSet<GutterMarker> {
+    const last = state.doc.line(state.doc.lines);
+    // Keep the phantom cell's width without extending the real rows' seam.
+    return isPhantomLine(state.doc, last)
+        ? RangeSet.of(new RowMarker("merge-phantom-row").range(last.from))
+        : (RangeSet.empty as RangeSet<GutterMarker>);
+}
+
+const phantomGutter = StateField.define<RangeSet<GutterMarker>>({
+    create: phantomMarkers,
+    update(value, transaction) {
+        if (!transaction.docChanged) return value;
+        const before = transaction.startState.doc.line(transaction.startState.doc.lines);
+        const after = transaction.newDoc.line(transaction.newDoc.lines);
+        if (
+            before.from === after.from &&
+            before.number === after.number &&
+            before.text === after.text
+        )
+            return value;
+        return phantomMarkers(transaction.state);
+    },
+    provide: (field) => gutterLineClass.from(field),
+});
+
 class TextMarker extends GutterMarker {
     constructor(readonly text: string) {
         super();
@@ -352,6 +377,7 @@ export function createMergeCodeEditor(
         theme: ShikiTheme;
         actions?: RefObject<HunkActionCallbacks | null>;
         scrollHandler?: RefObject<WorkbenchScrollHandler | null>;
+        layout?: RefObject<(() => void) | null>;
         keymap?: RefObject<WorkbenchKeyCommands | null>;
         findHost?: HTMLElement;
         update?: (view: EditorView) => void;
@@ -368,10 +394,10 @@ export function createMergeCodeEditor(
                 ? actionGutter("ours", options.actions, (state) => state.field(inputHunks), "after")
                 : [],
             options.pane === "ours" ? numberGutter() : lineNumbers({ formatNumber }),
+            phantomGutter,
             options.pane === "theirs" && options.actions
                 ? actionGutter("theirs", options.actions, (state) => state.field(inputHunks))
                 : [],
-            drawSelection(),
             syntaxPlugin(options.filePath, options.theme),
             search(),
             options.pane === "result" ? panels({ bottomContainer: options.findHost }) : [],
@@ -423,6 +449,11 @@ export function createMergeCodeEditor(
                           ? [history(), workbenchHunks, workbenchHistory]
                           : [inputHunks]),
                       rowField(options.pane),
+                      // The code area scrolls itself, so a newly rendered wide line resizes no box.
+                      EditorView.updateListener.of((update) => {
+                          if (update.viewportChanged || update.geometryChanged)
+                              options.layout?.current?.();
+                      }),
                   ]),
             EditorView.updateListener.of((update) => {
                 if (

@@ -9,6 +9,8 @@ import { isolateHistory, undo, redo } from "@codemirror/commands";
 import { openSearchPanel } from "@codemirror/search";
 import {
     bulkResolve,
+    conflictHunkIndices,
+    resolveActiveHunk,
     dismissSide,
     replaceHunks,
     resultContent,
@@ -52,16 +54,15 @@ export function useWorkbenchCommands({
     jumpTo,
 }: CommandOptions) {
     const selected = active === null ? undefined : hunks[active];
-    const pending = hunks.filter((hunk) => hunk.conflict && !hunk.resolved).length;
-    const conflictIndices = hunks.flatMap((hunk, index) => (hunk.conflict ? [index] : []));
-    const unresolvedIndices = conflictIndices.filter((index) => !hunks[index].resolved);
+    const { conflictIndices, unresolvedIndices } = conflictHunkIndices(hunks);
+    const pending = unresolvedIndices.length;
     const nextUnresolved =
         unresolvedIndices[(unresolvedIndices.indexOf(active ?? -1) + 1) % unresolvedIndices.length];
     const jump = useCallback(
         (index: number) => {
             if (!hunks.length) return;
             const next = (index + hunks.length) % hunks.length;
-            setActive(next);
+            setActive(resolveActiveHunk(hunks, next));
             jumpTo(next);
         },
         [jumpTo, hunks, setActive],
@@ -72,7 +73,7 @@ export function useWorkbenchCommands({
             const target = selectedIndex === null ? undefined : hunks[selectedIndex];
             const view = editors.current[1]?.view;
             if (!view || !target || selectedIndex === null || busy) return;
-            setActive(selectedIndex);
+            setActive(resolveActiveHunk(hunks, selectedIndex));
             view.dispatch(bulkResolve(view.state, new Map([[selectedIndex, choice]]), data), {
                 selection: { anchor: target.from },
             });
@@ -82,7 +83,7 @@ export function useWorkbenchCommands({
         [active, busy, data, editors, hunks, setActive],
     );
     const resolveFromKeyboard = (choice: MergeChoice) => {
-        const target = active ?? hunks.findIndex((hunk) => hunk.conflict && !hunk.resolved);
+        const target = active ?? unresolvedIndices[0] ?? -1;
         const hunk = hunks[target];
         if (!hunk) return;
         if (
@@ -96,9 +97,7 @@ export function useWorkbenchCommands({
             ...conflictIndices.slice(targetPos + 1),
             ...conflictIndices.slice(0, Math.max(targetPos, 0)),
         ];
-        const next = ordered.find(
-            (index) => index !== target && hunks[index].conflict && !hunks[index].resolved,
-        );
+        const next = ordered.find((index) => index !== target && unresolvedIndices.includes(index));
         if (next !== undefined) jump(next);
     };
     const callbacks: HunkActionCallbacks = {
@@ -126,7 +125,7 @@ export function useWorkbenchCommands({
                 resolve("none", index);
                 return;
             }
-            setActive(index);
+            setActive(resolveActiveHunk(hunks, index));
             resultView.dispatch({
                 effects: replaceHunks.of(dismissSide(hunks, index, side)),
                 userEvent: "input.merge",

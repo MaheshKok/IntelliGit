@@ -69,12 +69,9 @@ function horizontalPosition(view: EditorView, head: number, left: number): numbe
     const x =
         (coords?.left ??
             line!.getBoundingClientRect().left + parseFloat(getComputedStyle(line!).paddingLeft)) -
-        contentLeft;
-    const gutters = [...view.dom.querySelectorAll<HTMLElement>(".cm-gutters")].reduce(
-        (width, gutter) => width + gutter.offsetWidth,
-        0,
-    );
-    const visibleW = view.scrollDOM.clientWidth - gutters;
+        contentLeft +
+        view.contentDOM.scrollLeft;
+    const visibleW = view.contentDOM.clientWidth;
     if (x < left + LINE_HEIGHT_PX) return x - LINE_HEIGHT_PX;
     if (x > left + visibleW - LINE_HEIGHT_PX) return x - visibleW + LINE_HEIGHT_PX;
     return left;
@@ -156,7 +153,7 @@ export function useWorkbenchLayout(
             if (!bar) throw new Error("merge-workbench: horizontal bar is missing");
             bar.scrollLeft = left;
             editors.current.slice(0, 3).forEach(({ view }) => {
-                view.scrollDOM.scrollLeft = bar.scrollLeft;
+                view.contentDOM.scrollLeft = bar.scrollLeft;
             });
         },
         [editors],
@@ -176,10 +173,10 @@ export function useWorkbenchLayout(
             read: () => {
                 // Remove our previous room before measuring natural overflow, so edits can shrink it.
                 const natural = panes.map(({ view }) => ({
-                    clientWidth: view.scrollDOM.clientWidth,
+                    clientWidth: view.contentDOM.clientWidth,
                     scrollWidth:
-                        view.scrollDOM.scrollWidth -
-                        (horizontalRoom.current.get(view.scrollDOM) ?? 0),
+                        view.contentDOM.scrollWidth -
+                        (horizontalRoom.current.get(view.contentDOM) ?? 0),
                 }));
                 const width = horizontalInnerWidth(bar.clientWidth, natural);
                 const overflow = width - bar.clientWidth;
@@ -193,9 +190,9 @@ export function useWorkbenchLayout(
             write: ({ width, rooms }) => {
                 panes.forEach(({ view }, index) => {
                     const room = rooms[index];
-                    if (horizontalRoom.current.get(view.scrollDOM) !== room) {
-                        horizontalRoom.current.set(view.scrollDOM, room);
-                        view.scrollDOM.style.setProperty("--merge-horizontal-room", `${room}px`);
+                    if (horizontalRoom.current.get(view.contentDOM) !== room) {
+                        horizontalRoom.current.set(view.contentDOM, room);
+                        view.contentDOM.style.setProperty("--merge-horizontal-room", `${room}px`);
                     }
                 });
                 inner.style.width = `${width}px`;
@@ -272,7 +269,8 @@ export function useWorkbenchLayout(
         const bar = horizontalRef.current;
         if (!bar) throw new Error("merge-workbench: horizontal bar is missing");
         syncHorizontal(bar.scrollLeft);
-    }, [syncHorizontal]);
+        drawFrameNow();
+    }, [syncHorizontal, drawFrameNow]);
 
     const scheduleFrame = useCallback(() => {
         if (frameRef.current) return;

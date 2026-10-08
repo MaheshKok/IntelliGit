@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import React, { act } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { EditorView } from "@codemirror/view";
+import { EditorView, gutterLineClass } from "@codemirror/view";
 import * as codeEditor from "../../../src/webviews/react/merge-editor/codeEditor";
 import {
     workbenchHunks,
@@ -15,7 +15,7 @@ import { MergeWorkbench } from "../../../src/webviews/react/merge-editor/MergeWo
 import { parseConflictVersions, detectEolMetadata } from "../../../src/mergeEditor/conflictParser";
 import { mount, unmount, initReactDomTestEnvironment } from "../../helpers/reactDomTestUtils";
 import { installWebviewI18n } from "../../helpers/webviewI18nTestUtils";
-import { undo, undoDepth } from "@codemirror/commands";
+import { undo, redo, undoDepth } from "@codemirror/commands";
 import { t } from "../../../src/webviews/react/shared/i18n";
 import { hunkView, ownedLines } from "../../../src/webviews/react/merge-editor/workbenchRows";
 import {
@@ -97,6 +97,43 @@ const scrollData = {
 };
 
 describe("shared workbench layout", () => {
+    it("reuses phantom gutter markers until the last line changes", () => {
+        const editor = codeEditor.createMergeCodeEditor(
+            document.createElement("div"),
+            "head\ntail\n",
+            {
+                pane: "ours",
+                readOnly: true,
+                filePath: "file.txt",
+                label: "ours",
+                theme: "dark-plus",
+            },
+        );
+        const markers = () => editor.view.state.facet(gutterLineClass)[0];
+        try {
+            const initial = markers();
+            editor.view.dispatch({ changes: { from: 0, to: 4, insert: "HEAD" } });
+            expect(markers(), "same last line reuses the phantom marker set").toBe(initial);
+            editor.view.dispatch({
+                changes: { from: editor.view.state.doc.length, insert: "last" },
+            });
+            expect(markers(), "editing the last line rebuilds the phantom marker set").not.toBe(
+                initial,
+            );
+            expect(markers().size).toBe(0);
+            editor.view.dispatch({ changes: { from: editor.view.state.doc.length, insert: "\n" } });
+            expect(markers().size).toBe(1);
+            const phantom = markers();
+            editor.view.dispatch({ changes: { from: 0, insert: "prefix" } });
+            expect(markers(), "moving the last line rebuilds its marker position").not.toBe(
+                phantom,
+            );
+            expect(markers().iter().from).toBe(editor.view.state.doc.length);
+        } finally {
+            editor.view.destroy();
+        }
+    });
+
     it("renders one ribbon path per pending conflict side", () => {
         const mounted = mount(<MergeWorkbench data={twoActionData} />);
         try {
@@ -563,7 +600,7 @@ describe("live whitespace toolbar", () => {
             unmount(mounted.root, mounted.container);
         }
     });
-    it("restoring a draft in the other whitespace mode leaves no active hunk", () => {
+    it("restoring a draft in the other whitespace mode activates its first conflict", () => {
         const versions = {
             base: "base one\nbase two\nkeep\nb",
             ours: "ours one\nours two\nkeep\n  b",
@@ -588,7 +625,89 @@ describe("live whitespace toolbar", () => {
         try {
             expect(ignoreSelect(mounted.container).value).toBe("whitespace");
             expect(result(mounted.container).state.doc.toString()).toBe(built.content);
-            expectActiveRows(mounted.container, null);
+            expectActiveRows(mounted.container, 0);
+        } finally {
+            unmount(mounted.root, mounted.container);
+        }
+    });
+    it("whitespace-mode draft restore selects the first unresolved unedited conflict", () => {
+        const versions = {
+            base: "head\nbase one\nbase two\nkeep\nbase three\nbase four\ntail\nb\n",
+            ours: "head\nours one\nours two\nkeep\nours three\nours four\ntail\n  b\n",
+            theirs: "head\ntheirs one\ntheirs two\nkeep\ntheirs three\ntheirs four\ntail\nb\n",
+        };
+        const input = {
+            ...data,
+            segments: parseConflictVersions(versions.base, versions.ours, versions.theirs),
+            workbench: { ...data.workbench, ...versions },
+        };
+        const built = buildWorkbenchDocument({ ...input, segments: whitespaceSegments(input) });
+        expect(built.hunks).toHaveLength(2);
+        api.getState.mockReturnValue({
+            snapshotId: input.workbench.snapshotId,
+            ignoreWhitespace: true,
+            content: built.content,
+            hunks: built.hunks.map(({ id, from, to, resolved }, index) => ({
+                id,
+                from,
+                to,
+                resolved,
+                edited: index === 0,
+            })),
+        });
+        const mounted = mount(<MergeWorkbench data={input} />);
+        try {
+            expect(ignoreSelect(mounted.container).value).toBe("whitespace");
+            expectActiveRows(mounted.container, 1);
+        } finally {
+            unmount(mounted.root, mounted.container);
+        }
+    });
+    it("same-mode draft restore keeps a later user-selected conflict active", () => {
+        const built = buildWorkbenchDocument(twoActionData);
+        const mounted = mount(<MergeWorkbench data={twoActionData} />);
+        try {
+            const markers = () =>
+                mounted.container.querySelectorAll<HTMLButtonElement>(".overview-marker");
+            act(() => markers()[1].click());
+            expectActiveRows(mounted.container, 1);
+            act(() =>
+                window.dispatchEvent(
+                    new MessageEvent("message", {
+                        data: {
+                            type: "mergeDraft",
+                            draft: {
+                                snapshotId: twoActionData.workbench.snapshotId,
+                                ignoreWhitespace: false,
+                                content: built.content,
+                                hunks: built.hunks.map(({ id, from, to, resolved }, index) => ({
+                                    id,
+                                    from,
+                                    to,
+                                    resolved,
+                                    edited: index === 1,
+                                })),
+                            },
+                        },
+                    }),
+                ),
+            );
+            expect(result(mounted.container).state.field(workbenchHunks)[1].edited).toBe(true);
+            expectActiveRows(mounted.container, 1);
+            expect(markers()[1].getAttribute("aria-current")).toBe("true");
+        } finally {
+            unmount(mounted.root, mounted.container);
+        }
+    });
+    it("first conflict is active at load in the rail, rows and toolbar", () => {
+        const mounted = mount(<MergeWorkbench data={twoActionData} />);
+        try {
+            expectActiveRows(mounted.container, 0);
+            expect(
+                mounted.container
+                    .querySelectorAll(".overview-marker")[0]
+                    .getAttribute("aria-current"),
+            ).toBe("true");
         } finally {
             unmount(mounted.root, mounted.container);
         }
@@ -682,7 +801,7 @@ describe("live whitespace toolbar", () => {
             unmount(mounted.root, mounted.container);
         }
     });
-    it("a late draft in the other whitespace mode clears the active hunk", () => {
+    it("a late draft in the other whitespace mode activates its first conflict", () => {
         const built = buildWorkbenchDocument({ ...regroupData, segments: whitespaceSegments() });
         const mounted = mount(<MergeWorkbench data={regroupData} />);
         try {
@@ -712,7 +831,7 @@ describe("live whitespace toolbar", () => {
             });
             expect(ignoreSelect(mounted.container).value).toBe("whitespace");
             expect(view.state.doc.toString()).toBe(built.content);
-            expectActiveRows(mounted.container, null);
+            expectActiveRows(mounted.container, 0);
         } finally {
             unmount(mounted.root, mounted.container);
         }
@@ -850,7 +969,7 @@ describe("reversible grouping and caret activation", () => {
             unmount(mounted.root, mounted.container);
         }
     });
-    it("moving the caret into common text clears the active hunk", () => {
+    it("moving the caret into common text keeps the previous active hunk", () => {
         const mounted = mount(<MergeWorkbench data={twoActionData} />);
         try {
             const view = result(mounted.container);
@@ -861,7 +980,7 @@ describe("reversible grouping and caret activation", () => {
             );
             expectActiveRows(mounted.container, 1);
             act(() => view.dispatch({ selection: { anchor: 1 } }));
-            expectActiveRows(mounted.container, null);
+            expectActiveRows(mounted.container, 1);
         } finally {
             unmount(mounted.root, mounted.container);
         }
@@ -956,6 +1075,94 @@ describe("reversible grouping and caret activation", () => {
                 expect(undo(view)).toBe(true);
             });
             expectActiveRows(mounted.container, 1);
+        } finally {
+            unmount(mounted.root, mounted.container);
+        }
+    });
+    it("regroup drops an in-range index naming a different hunk through toggle undo and redo", () => {
+        const versions = {
+            base: "head\nb\nkeep\nbase one\nbase two\nkeep two\nbase three\nbase four\ntail\n",
+            ours: "head\n  b\nkeep\nours one\nours two\nkeep two\nours three\nours four\ntail\n",
+            theirs: "head\nb\nkeep\ntheirs one\ntheirs two\nkeep two\ntheirs three\ntheirs four\ntail\n",
+        };
+        const input = {
+            ...data,
+            segments: parseConflictVersions(versions.base, versions.ours, versions.theirs),
+            workbench: { ...data.workbench, ...versions },
+        };
+        const mounted = mount(<MergeWorkbench data={input} />);
+        try {
+            const view = result(mounted.container);
+            const markers = () =>
+                mounted.container.querySelectorAll<HTMLButtonElement>(".overview-marker");
+            expect(view.state.field(workbenchHunks)).toHaveLength(3);
+            const oldSecond = view.state.field(workbenchHunks)[1].segment.oursLines;
+            act(() => markers()[1].click());
+            act(() => view.dispatch({ selection: { anchor: 1 } }));
+            expectActiveRows(mounted.container, 1);
+            changeIgnoreMode(mounted.container, "whitespace");
+            expect(view.state.field(workbenchHunks)).toHaveLength(2);
+            expect(view.state.field(workbenchHunks)[1].segment.oursLines).not.toEqual(oldSecond);
+            expectActiveRows(mounted.container, 0);
+            expect(markers()[0].getAttribute("aria-current")).toBe("true");
+            click(mounted.container, "Undo");
+            expect(view.state.field(workbenchHunks)).toHaveLength(3);
+            expectActiveRows(mounted.container, 1);
+            expect(markers()[1].getAttribute("aria-current")).toBe("true");
+            click(mounted.container, "Redo");
+            expect(view.state.field(workbenchHunks)).toHaveLength(2);
+            expectActiveRows(mounted.container, 0);
+            expect(markers()[0].getAttribute("aria-current")).toBe("true");
+        } finally {
+            unmount(mounted.root, mounted.container);
+        }
+    });
+    it("regroup and redo replace a stale active index while the caret is in common text", () => {
+        const mounted = mount(<MergeWorkbench data={regroupData} />);
+        try {
+            const view = result(mounted.container);
+            const markers = () =>
+                mounted.container.querySelectorAll<HTMLButtonElement>(".overview-marker");
+            act(() => markers()[1].click());
+            act(() => view.dispatch({ selection: { anchor: 1 } }));
+            expectActiveRows(mounted.container, 1);
+            act(() => view.dispatch(regroupSpec(view.state, regroupData, true, { history: true })));
+            expect(view.state.field(workbenchHunks)).toHaveLength(1);
+            expectActiveRows(mounted.container, 0);
+            act(() => {
+                expect(undo(view)).toBe(true);
+            });
+            expect(view.state.field(workbenchHunks)).toHaveLength(2);
+            // Undo regroups too: index 0 is one-sided, so main's pick is conflict 1.
+            expect(markers()[1].getAttribute("aria-current")).toBe("true");
+            expectActiveRows(mounted.container, 1);
+            act(() => markers()[1].click());
+            act(() => {
+                expect(redo(view)).toBe(true);
+            });
+            expectActiveRows(mounted.container, 0);
+        } finally {
+            unmount(mounted.root, mounted.container);
+        }
+    });
+    it("caret leaving a one-sided hunk keeps that previous hunk active", () => {
+        const mounted = mount(<MergeWorkbench data={regroupData} />);
+        try {
+            const view = result(mounted.container);
+            const oneSided = view.state.field(workbenchHunks)[0];
+            expect(oneSided.conflict).toBe(false);
+            act(() => view.dispatch({ selection: { anchor: oneSided.from } }));
+            act(() => view.dispatch({ selection: { anchor: 1 } }));
+            expect(
+                mounted.container
+                    .querySelectorAll(".overview-marker")[0]
+                    .getAttribute("aria-current"),
+            ).toBe("true");
+            expect(
+                mounted.container.querySelector<HTMLButtonElement>(
+                    '[aria-label="Confirm manual resolution"]',
+                )!.disabled,
+            ).toBe(false);
         } finally {
             unmount(mounted.root, mounted.container);
         }
@@ -1887,9 +2094,9 @@ describe("classic workbench chrome", () => {
             ).toEqual(["Previous conflict", "Next conflict"]);
             expect((children[7] as HTMLSelectElement).disabled).toBe(false);
             expect((children[7] as HTMLSelectElement).value).toBe("whitespace");
-            expect((children[5] as HTMLButtonElement).disabled).toBe(true);
-            expect((children[14] as HTMLSelectElement).disabled).toBe(true);
-            expect(mounted.container.querySelector(".mrow-active")).toBeNull();
+            expect((children[5] as HTMLButtonElement).disabled).toBe(false);
+            expect((children[14] as HTMLSelectElement).disabled).toBe(false);
+            expect(mounted.container.querySelector(".mrow-active")).not.toBeNull();
         } finally {
             unmount(mounted.root, mounted.container);
         }
@@ -1965,7 +2172,6 @@ describe("classic workbench chrome", () => {
             ).toEqual([true, false, true]);
             const activeText = () =>
                 mounted.container.querySelector(".pane-result .cm-line.mrow-active")?.textContent;
-            click(mounted.container, "Next conflict");
             expect(activeText()).toBe("first");
             click(mounted.container, "Next conflict");
             expect(activeText(), "next must skip the one-sided middle hunk").toBe("last");

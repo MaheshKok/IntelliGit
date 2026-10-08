@@ -1,4 +1,13 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
+import {
+    useCallback,
+    useEffect,
+    useLayoutEffect,
+    useRef,
+    useState,
+    type RefObject,
+    type Dispatch,
+    type SetStateAction,
+} from "react";
 import type { HunkActionCallbacks } from "./workbenchGutter";
 import { undoDepth, redoDepth } from "@codemirror/commands";
 import { EditorView } from "@codemirror/view";
@@ -12,10 +21,11 @@ import {
     type WorkbenchKeyCommands,
 } from "./codeEditor";
 import {
-    buildWorkbenchDocument,
+    type buildWorkbenchDocument,
     groupingField,
     groupingInit,
     hunkAtCaret,
+    resolveActiveHunk,
     isPristineState,
     regroupSpec,
     type Grouping,
@@ -64,22 +74,24 @@ export function useRegroupNotice(
 /** Owns editors for one snapshot; asynchronous draft loads never overwrite an already edited result. */
 export function useWorkbenchEditors(
     inputData: MergeEditorData,
+    initial: ReturnType<typeof buildWorkbenchDocument>,
     active: number | null,
     actions: RefObject<HunkActionCallbacks | null>,
     {
         findHost,
         scrollHandler,
+        layout,
         keymap,
         onActiveFromCaret,
     }: {
         findHost: RefObject<HTMLElement | null>;
         scrollHandler: RefObject<WorkbenchScrollHandler | null>;
+        layout: RefObject<(() => void) | null>;
         keymap: RefObject<WorkbenchKeyCommands | null>;
-        onActiveFromCaret: (index: number | null) => void;
+        onActiveFromCaret: Dispatch<SetStateAction<number | null>>;
     },
 ) {
     const [data] = useState(inputData);
-    const [initial] = useState(() => buildWorkbenchDocument(data));
     const hosts = useRef<Array<HTMLDivElement | null>>([]);
     const editors = useRef<ReturnType<typeof createMergeCodeEditor>[]>([]);
     const [hunks, setHunks] = useState(initial.hunks);
@@ -183,6 +195,7 @@ export function useWorkbenchEditors(
                 update: pane === 1 ? update : undefined,
                 actions: pane === 0 || pane === 2 ? actions : undefined,
                 scrollHandler: pane < 3 ? scrollHandler : undefined,
+                layout: pane < 3 ? layout : undefined,
                 keymap: pane === 1 ? keymap : undefined,
                 findHost: pane === 1 ? (findHost.current ?? undefined) : undefined,
             }),
@@ -200,12 +213,22 @@ export function useWorkbenchEditors(
                         const command = update.transactions.some((transaction) =>
                             transaction.isUserEvent("input.merge"),
                         );
-                        if (
-                            (update.selectionSet && !command) ||
+                        const regrouped =
                             update.startState.field(groupingField) !==
-                                update.state.field(groupingField)
+                            update.state.field(groupingField);
+                        const caretChanged = (update.selectionSet && !command) || regrouped;
+                        if (
+                            caretChanged ||
+                            update.startState.field(workbenchHunks) !==
+                                update.state.field(workbenchHunks)
                         )
-                            activeFromCaret.current(hunkAtCaret(update.state));
+                            activeFromCaret.current((previous) =>
+                                resolveActiveHunk(
+                                    update.state.field(workbenchHunks),
+                                    regrouped ? null : previous,
+                                    caretChanged ? hunkAtCaret(update.state) : null,
+                                ),
+                            );
                     }),
                 ]),
                 replaceHunks.of(initial.hunks),
@@ -240,8 +263,10 @@ export function useWorkbenchEditors(
                 annotations: Transaction.addToHistory.of(false),
             });
             restoring.current = false;
-            // Hunk indexes from the old grouping no longer apply (decision 10).
-            if (regroup) activeFromCaret.current(null);
+            // Only a regroup invalidates the selection's hunk index.
+            activeFromCaret.current((previous) =>
+                resolveActiveHunk(ranges, regroup ? null : previous),
+            );
             latestDraft.current = draft;
             getVsCodeApi().setState(draft);
         };
@@ -271,7 +296,7 @@ export function useWorkbenchEditors(
             window.removeEventListener("pagehide", flushDraft);
             for (const editor of views) editor.view.destroy();
         };
-    }, [data, initial, update, flushDraft, actions, findHost, scrollHandler, keymap]);
+    }, [data, initial, update, flushDraft, actions, findHost, scrollHandler, layout, keymap]);
 
     useEffect(() => {
         editors.current.forEach(({ view }) =>

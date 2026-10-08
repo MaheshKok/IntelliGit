@@ -10,17 +10,22 @@ export async function mountLegacyMerge(
     ) => Promise<unknown>,
     page: Page,
     locale = "en",
+    {
+        // The shelf footer drops rows; pixel parity with the workbench needs the same session kind.
+        sessionKind = "shelf",
+        data: input = conflict.messages[0].message.data as MergeEditorData,
+    }: { sessionKind?: NonNullable<MergeEditorData["sessionKind"]>; data?: MergeEditorData } = {},
 ): Promise<void> {
     await mountHarness("shelf-conflict-editor", { locale });
-    const { workbench: _workbench, ...data } = conflict.messages[0].message.data;
+    const { workbench: _workbench, ...data } = input;
     await page.evaluate(
-        (payload) =>
+        ({ payload, sessionKind }) =>
             window.dispatchEvent(
                 new MessageEvent("message", {
-                    data: { type: "setConflictData", data: { ...payload, sessionKind: "shelf" } },
+                    data: { type: "setConflictData", data: { ...payload, sessionKind } },
                 }),
             ),
-        data,
+        { payload: data, sessionKind },
     );
     await page.locator(".merge-editor").waitFor();
 }

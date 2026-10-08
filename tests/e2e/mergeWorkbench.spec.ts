@@ -357,7 +357,7 @@ test.describe("Full-document Git merge workbench", () => {
                 await expect(comment).toHaveCSS("color", "rgb(51, 187, 119)");
                 await expect(
                     frame.locator(".pane-ours .mrow-conflict .word-diff-change").first(),
-                ).toHaveCSS("outline-color", "rgb(238, 170, 17)");
+                ).toHaveCSS("outline-style", "none");
                 expect(await scroller.evaluate((element) => element.scrollTop)).toBe(scroll);
                 expect(await result.innerText()).toBe(draft);
                 await expect(

@@ -101,8 +101,67 @@ export function assertNonEmptyCandidates(candidateCount: number): void {
     }
 }
 
+/**
+ * Marks every box that hides its horizontal overflow but follows a visible scroller with
+ * `data-oracle-driven-x`. Such a box is a scroller in all but its CSS: the merge workbench clips
+ * each code pane at its own box and drives all three from one shared bar, the same reachability
+ * main's panes get from `overflow-x: auto`. Found by behaviour rather than by class name: each
+ * rendered horizontal scroller is moved one pixel, every hidden box that follows is marked, and
+ * both are put back. A hidden box that no scroller moves is still a clipper.
+ */
+async function markScrollerDrivenBoxes(page: Page): Promise<void> {
+    await page.evaluate(async () => {
+        const root = document.querySelector("#root");
+        if (root === null) {
+            throw new Error("Oracle input collection could not find #root.");
+        }
+        const elements = Array.from(root.querySelectorAll("*"));
+        const hidden = elements.filter((element) => {
+            const { overflowX } = getComputedStyle(element);
+            return overflowX === "hidden" && element.scrollWidth > element.clientWidth;
+        });
+        if (hidden.length === 0) return;
+        const scrollers = elements.filter((element) => {
+            const { overflowX } = getComputedStyle(element);
+            return (
+                (overflowX === "auto" || overflowX === "scroll") &&
+                element.scrollWidth > element.clientWidth &&
+                element.getClientRects().length > 0
+            );
+        });
+        // Scroll events are dispatched on the next frame; the second frame lets their handlers'
+        // writes land before the boxes are read.
+        const frames = () =>
+            new Promise<void>((resolve) =>
+                requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+            );
+        for (const scroller of scrollers) {
+            const start = scroller.scrollLeft;
+            const before = hidden.map((element) => element.scrollLeft);
+            scroller.scrollLeft =
+                start + (start < scroller.scrollWidth - scroller.clientWidth ? 1 : -1);
+            await frames();
+            hidden.forEach((element, index) => {
+                if (element.scrollLeft !== before[index]) {
+                    element.setAttribute("data-oracle-driven-x", "");
+                }
+            });
+            scroller.scrollLeft = start;
+            await frames();
+            hidden.forEach((element, index) => {
+                if (element.scrollLeft !== before[index]) {
+                    throw new Error(
+                        "Oracle input collection could not restore a scroller-driven box's scroll position.",
+                    );
+                }
+            });
+        }
+    });
+}
+
 /** Collects live DOM geometry, colour, accessibility, and target data for the pure oracles. */
 export async function collectOracleInputs(page: Page): Promise<CollectedOracleInputs> {
+    await markScrollerDrivenBoxes(page);
     const collected = await page.evaluate(() => {
         const root = document.querySelector("#root");
         if (root === null) {
@@ -337,8 +396,13 @@ export async function collectOracleInputs(page: Page): Promise<CollectedOracleIn
                 // Inline axis only. `text-overflow` has no effect on the block axis, so a
                 // vertically clipped descendant has no affordance no matter what this ancestor
                 // declares, and that loss must still be reported.
+                //
+                // A box marked `data-oracle-driven-x` (see `markScrollerDrivenBoxes`) hides its
+                // overflow but follows a visible scroller, so on X it is a scroller, not a clipper.
+                const drivenX = ancestor.hasAttribute("data-oracle-driven-x");
                 const clipsX =
                     !scrolledX &&
+                    !drivenX &&
                     (ancestorStyle.overflowX === "hidden" || ancestorStyle.overflowX === "clip") &&
                     ancestorStyle.textOverflow !== "ellipsis";
                 const clipsY =
@@ -357,8 +421,9 @@ export async function collectOracleInputs(page: Page): Promise<CollectedOracleIn
                 // and hides on the same axis is impossible in CSS, but one that scrolls on X
                 // while hiding on Y must still clip Y at its own box.
                 scrolledX ||=
-                    (ancestorStyle.overflowX === "auto" || ancestorStyle.overflowX === "scroll") &&
-                    ancestor.scrollWidth > ancestor.clientWidth;
+                    drivenX ||
+                    ((ancestorStyle.overflowX === "auto" || ancestorStyle.overflowX === "scroll") &&
+                        ancestor.scrollWidth > ancestor.clientWidth);
                 scrolledY ||=
                     (ancestorStyle.overflowY === "auto" || ancestorStyle.overflowY === "scroll") &&
                     ancestor.scrollHeight > ancestor.clientHeight;

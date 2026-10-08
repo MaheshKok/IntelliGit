@@ -105,7 +105,7 @@ test("the active hunk ring uses main's focus colour", async ({ mountHarness, pag
         page.locator(".pane-result .cm-line.mrow-active.mrow-first").first(),
         ["box-shadow"],
     );
-    const actual = shadowColours(shadow)[0];
+    const actual = shadowColours(shadow).at(-1)!;
     expectPaint(actual);
     // The ring check can only tell the focus colour from the accent where the theme
     // gives them different values; say so out loud where it cannot.
