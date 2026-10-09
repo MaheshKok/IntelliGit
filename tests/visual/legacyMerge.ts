@@ -1,4 +1,5 @@
 import type { Page } from "@playwright/test";
+import { SETTLE_MAX_MS, waitForWorkbenchRowsToMatch } from "./playwright/harnessPage";
 import conflict from "./fixtures/merge-editor/conflicted.json";
 import type { MergeEditorData } from "../../src/webviews/react/merge-editor/types";
 
@@ -50,4 +51,6 @@ export async function mountWorkbenchMerge(
     await page.waitForFunction(
         () => document.querySelectorAll(".merge-content .cm-editor").length === 3,
     );
+    // This mount skips the harness fixture path, so it must run the gutter-row wait itself.
+    await page.evaluate(waitForWorkbenchRowsToMatch, SETTLE_MAX_MS);
 }

@@ -317,6 +317,8 @@ function rgb(image: Bitmap, x: number, y: number) {
 }
 
 function compare(main: Bitmap, workbench: Bitmap) {
+    // Height may differ by the toolbar (see compareRail); width never may.
+    expect(workbench.width, "shell screenshot width must match main").toBe(main.width);
     const width = Math.min(main.width, workbench.width);
     const height = Math.min(main.height, workbench.height);
     const diff: Bitmap = { width, height, data: Buffer.alloc(width * height * 4) };
@@ -529,6 +531,16 @@ function scrollState(page: Page, scroller: string) {
  * (main keeps one per hunk side, e.g. the missing side of a one-sided hunk) are excluded.
  */
 async function scrollSideways(page: Page, scroller: string, label: string, offset: number) {
+    // Setting scrollLeft before the bar's range reaches the offset clamps it and never retries.
+    await expect
+        .poll(
+            () =>
+                page
+                    .locator(".merge-horizontal-scroll")
+                    .evaluate((bar) => bar.scrollWidth - bar.clientWidth),
+            { message: `${label}: the shared bar can reach the offset` },
+        )
+        .toBeGreaterThanOrEqual(offset);
     await page.locator(".merge-horizontal-scroll").evaluate((bar, left) => {
         bar.scrollLeft = left;
     }, offset);

@@ -719,6 +719,7 @@ describe("MergeEditorPanel end-to-end merge flow", () => {
         expect(panel.postedMessages).toContainEqual({
             type: "loadError",
             message: "The file is no longer conflicted. Reopen the conflict list.",
+            nativeMerge: true,
         });
     });
 

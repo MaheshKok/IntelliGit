@@ -111,13 +111,13 @@ function getVsCodeApi() {
 // react-doctor-disable-next-line react-doctor/only-export-components -- Webview entrypoint.
 export function App() {
     const [data, setData] = useState<MergeEditorData | null>(null);
-    const [error, setError] = useState<string | null>(null);
+    const [error, setError] = useState<{ message: string; nativeMerge?: boolean } | null>(null);
     useEffect(() => {
         const receive = (event: MessageEvent<InboundMessage>) => {
             if (event.data.type === "setConflictData") {
                 setData(event.data.data);
                 setError(null);
-            } else if (event.data.type === "loadError") setError(event.data.message);
+            } else if (event.data.type === "loadError") setError(event.data);
         };
         window.addEventListener("message", receive);
         getVsCodeApi().postMessage({ type: "ready" });
@@ -126,13 +126,15 @@ export function App() {
     if (error)
         return (
             <div className="loading">
-                <div role="alert">{error}</div>
+                <div role="alert">{error.message}</div>
                 <button onClick={() => getVsCodeApi().postMessage({ type: "ready" })}>
                     {t("merge.error.retry")}
                 </button>
-                <button onClick={() => getVsCodeApi().postMessage({ type: "openNativeMerge" })}>
-                    {t("merge.workbench.native")}
-                </button>
+                {error.nativeMerge && (
+                    <button onClick={() => getVsCodeApi().postMessage({ type: "openNativeMerge" })}>
+                        {t("merge.workbench.native")}
+                    </button>
+                )}
             </div>
         );
     if (!data) return <div className="loading">{t("merge.loading")}</div>;

@@ -101,10 +101,11 @@ export class MergeEditorPanel {
                 vscode.window.showErrorMessage(errorMessage);
                 try {
                     if (!this.isAlive()) return;
-                    await this.panel.webview.postMessage({
-                        type: this.snapshot ? "resolutionError" : "loadError",
-                        message: errorMessage,
-                    });
+                    await this.panel.webview.postMessage(
+                        this.snapshot
+                            ? { type: "resolutionError", message: errorMessage }
+                            : { type: "loadError", message: errorMessage, nativeMerge: true },
+                    );
                 } catch {
                     // Panel may have been disposed between the liveness check and postMessage.
                 }
@@ -443,6 +444,7 @@ export class MergeEditorPanel {
                     message: vscode.l10n.t("File is not in a conflicted state: {path}", {
                         path: this.safePath,
                     }),
+                    nativeMerge: true,
                 });
             } else {
                 const labels = await this.gitOps.getMergeSideLabels();

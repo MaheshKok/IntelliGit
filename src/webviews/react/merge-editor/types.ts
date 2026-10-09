@@ -34,7 +34,8 @@ export type InboundMessage =
     | MergeWorkbenchInbound
     | SyntaxThemeInbound
     | { type: "setConflictData"; data: MergeEditorData }
-    | { type: "loadError"; message: string };
+    // Only Git merge sessions handle `openNativeMerge`, so only they set `nativeMerge`.
+    | { type: "loadError"; message: string; nativeMerge?: boolean };
 
 /**
  * Resolution choice for a single conflict hunk.

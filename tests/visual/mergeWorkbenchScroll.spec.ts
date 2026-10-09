@@ -73,7 +73,8 @@ async function wideLine(page: Page) {
     await settleScroll(page);
 }
 
-async function scrollToFraction(page: Page, fraction: number) {
+// The bar's range grows only after CodeMirror draws the long line; scrolling earlier clamps to 0.
+async function expectSharedOverflow(page: Page) {
     await expect
         .poll(
             () =>
@@ -83,6 +84,10 @@ async function scrollToFraction(page: Page, fraction: number) {
             { message: "long line creates shared horizontal overflow" },
         )
         .toBeGreaterThan(0);
+}
+
+async function scrollToFraction(page: Page, fraction: number) {
+    await expectSharedOverflow(page);
     await page.locator(".merge-horizontal-scroll").evaluate((bar, part) => {
         bar.scrollLeft = (bar.scrollWidth - bar.clientWidth) * part;
         bar.dispatchEvent(new Event("scroll"));
@@ -342,6 +347,7 @@ test("keyboard End arrows and Home keep caret paint and all panes synchronized",
     page,
 }) => {
     await wideLine(page);
+    await expectSharedOverflow(page);
     await clickVisibleWideLine(page);
     const steps = await page.locator(".pane-result .cm-content").evaluate((content) => {
         const line = [...content.querySelectorAll(".cm-line")].find((element) =>

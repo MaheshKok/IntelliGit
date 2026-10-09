@@ -43,7 +43,7 @@ const DEFAULT_LOCALE = "en";
 const SETTLE_MIN_STABLE_MS = 100;
 // Generous ceiling relative to SETTLE_MIN_STABLE_MS, so a render that never settles fails loudly
 // with a clear diagnostic instead of riding the suite's 30s test timeout to an opaque error.
-const SETTLE_MAX_MS = 3000;
+export const SETTLE_MAX_MS = 3000;
 
 interface WebviewFixtureMessage {
     readonly message: unknown;
