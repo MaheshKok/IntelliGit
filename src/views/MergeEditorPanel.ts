@@ -305,12 +305,13 @@ export class MergeEditorPanel {
                 },
             );
             this.applied = true;
-            await this.panel.webview.postMessage({ type: "resolutionApplied" });
+            // Git already staged the result, so its draft is dead even if the panel closed mid-Apply.
             await this.queueDraftUpdate(async () => {
                 const previous = parseMergeDraft(this.draftStore?.get(this.draftKey));
                 if (previous?.snapshotId === snapshot.id)
                     await this.draftStore?.update(this.draftKey, undefined);
-            });
+            }, true);
+            if (this.isAlive()) await this.panel.webview.postMessage({ type: "resolutionApplied" });
             showTimedInformationMessage(
                 vscode.l10n.t("Merged and staged: {path}", { path: this.safePath }),
             );
@@ -394,9 +395,10 @@ export class MergeEditorPanel {
     }
 
     /** Orders writes across panel lifetimes; superseded owners cannot enqueue stale recovery text. */
-    private queueDraftUpdate(update: () => Promise<void>): Promise<void> {
+    private queueDraftUpdate(update: () => Promise<void>, evenAfterClose = false): Promise<void> {
         const pending = this.draftQueue.then(async () => {
-            if (!this.isAlive() || MergeEditorPanel.panels.get(this.panelKey) !== this) return;
+            const owner = this.isAlive() && MergeEditorPanel.panels.get(this.panelKey) === this;
+            if (!owner && !evenAfterClose) return;
             await update();
         });
         const settled = pending.catch(() => undefined);
