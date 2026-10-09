@@ -6,6 +6,16 @@ import { expect, test } from "./playwright/harnessPage";
 
 for (const target of ["legacy", "workbench"] as const) {
     const selectors = mergeSelectors[target];
+    test(`${target} selectors exist for accept buttons and ribbons`, async ({
+        mountHarness,
+        page,
+    }) => {
+        if (target === "legacy") await mountLegacyMerge(mountHarness, page, "de");
+        else await mountWorkbenchMerge(mountHarness, page, undefined, "de");
+        await expect.poll(() => page.locator(selectors.acceptButton).count()).toBeGreaterThan(0);
+        await expect.poll(() => page.locator(selectors.ribbonPath).count()).toBeGreaterThan(0);
+    });
+
     test(`merge identity and summaries stay readable without overlap (${target})`, async ({
         mountHarness,
         page,

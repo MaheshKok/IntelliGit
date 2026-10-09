@@ -161,7 +161,30 @@ async function markScrollerDrivenBoxes(page: Page): Promise<void> {
 
 /** Collects live DOM geometry, colour, accessibility, and target data for the pure oracles. */
 export async function collectOracleInputs(page: Page): Promise<CollectedOracleInputs> {
-    await markScrollerDrivenBoxes(page);
+    let inputs: CollectedOracleInputs;
+    try {
+        await markScrollerDrivenBoxes(page);
+        inputs = await readOracleInputs(page);
+    } catch (error) {
+        // A cleanup failure (e.g. a closed page) must never replace the error it cleans up after.
+        await clearDrivenMarks(page).catch(() => undefined);
+        throw error;
+    }
+    await clearDrivenMarks(page);
+    return inputs;
+}
+
+/** Removes the temporary scroller-driven marks. */
+async function clearDrivenMarks(page: Page): Promise<void> {
+    await page.evaluate(() => {
+        for (const element of document.querySelectorAll("[data-oracle-driven-x]")) {
+            element.removeAttribute("data-oracle-driven-x");
+        }
+    });
+}
+
+/** Reads oracle inputs while temporary scroller-driven marks are still present. */
+async function readOracleInputs(page: Page): Promise<CollectedOracleInputs> {
     const collected = await page.evaluate(() => {
         const root = document.querySelector("#root");
         if (root === null) {

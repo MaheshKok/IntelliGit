@@ -174,16 +174,27 @@ async function waitForRootSubtreeToSettle(page: Page): Promise<void> {
  * guess; its ceiling is a layout change scheduled later than the next frame (a timer or a long
  * task), which this cannot see. Fails loudly at `maxWaitMs`.
  */
-function waitForWorkbenchRowsToMatch(maxWaitMs: number): Promise<void> {
+export function waitForWorkbenchRowsToMatch(maxWaitMs: number): Promise<void> {
     const snapshot = (): { mismatch: string | null; layout: string } => {
         const parts: string[] = [];
-        for (const editor of document.querySelectorAll(".merge-editor.workbench .cm-editor")) {
+        const editors = document.querySelectorAll(".merge-editor.workbench .cm-editor");
+        for (const [index, editor] of editors.entries()) {
             if (editor.getClientRects().length === 0) continue;
+            const cells = Array.from(editor.querySelectorAll(".cm-gutterElement")).filter(
+                (cell) =>
+                    cell.getClientRects().length > 0 &&
+                    getComputedStyle(cell).visibility !== "hidden",
+            );
+            if (cells.length === 0 && editor.querySelector(".cm-content")?.textContent?.trim()) {
+                return {
+                    mismatch: `editor ${index + 1} has content but no gutter cells`,
+                    layout: "",
+                };
+            }
             const blocks = Array.from(editor.querySelectorAll(".cm-content > *"), (block) =>
                 block.getBoundingClientRect(),
             );
-            for (const cell of editor.querySelectorAll(".cm-gutterElement")) {
-                if (getComputedStyle(cell).visibility === "hidden") continue;
+            for (const cell of cells) {
                 const box = cell.getBoundingClientRect();
                 const beside = blocks.find(
                     (block) => block.top <= box.top + 0.5 && box.top + 0.5 < block.bottom,

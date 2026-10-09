@@ -28,6 +28,7 @@ import { IntelliGitView } from "./pageObjects/intelliGitView";
 import { Workbench } from "./pageObjects/workbench";
 import { runGitRaw } from "../fixtures/repo/gitRun";
 import { selectSoleVsix, verifyVsixPackage } from "../../scripts/verifyVsixPackage.js";
+import en from "../../src/webviews/i18n/en.json";
 
 const execFileAsync = promisify(execFile);
 const REPO_ROOT = path.resolve(__dirname, "../..");
@@ -251,8 +252,11 @@ test.describe("installed VSIX package smoke", () => {
             await window.keyboard.press("Escape");
             await expect(window.locator(".context-view .monaco-hover:visible")).toHaveCount(0);
             await merge
-                .locator(".mw-toolbar")
-                .getByRole("button", { name: "Accept left change", exact: true })
+                .locator(".merge-toolbar")
+                .getByRole("button", {
+                    name: en["merge.toolbar.acceptAllYours.label"],
+                    exact: true,
+                })
                 .click();
             await merge.getByRole("button", { name: "Apply", exact: true }).click();
             await expect

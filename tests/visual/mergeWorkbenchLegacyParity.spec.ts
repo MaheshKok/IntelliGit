@@ -3,7 +3,58 @@ import type { Page, TestInfo } from "@playwright/test";
 import type { MergeEditorData } from "../../src/webviews/react/merge-editor/types";
 import conflict from "./fixtures/merge-editor/conflicted.json";
 import { mountLegacyMerge, mountWorkbenchMerge } from "./legacyMerge";
+import { mergeSelectors } from "./mergeSelectors";
 import { expect, test } from "./playwright/harnessPage";
+
+test("word-change outlines and borders match legacy, including high contrast", async ({
+    mountHarness,
+    page,
+}, testInfo) => {
+    const samples = [];
+    for (const target of ["legacy", "workbench"] as const) {
+        if (target === "legacy")
+            await mountLegacyMerge(mountHarness, page, "en", { sessionKind: "gitMerge" });
+        else await mountWorkbenchMerge(mountHarness, page);
+        const selectors = mergeSelectors[target];
+        // Read every mark across all panes and row variants, not just inserted rows.
+        const marks = page.locator(`${selectors.root} ${selectors.wordFill}`);
+        await expect.poll(() => marks.count()).toBeGreaterThan(0);
+        const styles = await marks.evaluateAll((elements) =>
+            elements.map((element) => {
+                const style = getComputedStyle(element);
+                return {
+                    outlineStyle: style.outlineStyle,
+                    outlineWidth: style.outlineWidth,
+                    borderTopStyle: style.borderTopStyle,
+                    borderRightStyle: style.borderRightStyle,
+                    borderBottomStyle: style.borderBottomStyle,
+                    borderLeftStyle: style.borderLeftStyle,
+                };
+            }),
+        );
+        expect(styles.length, `${target} word marks must not be empty`).toBeGreaterThan(0);
+        samples.push(styles);
+        await testInfo.attach(`${target}-word-change-edges`, {
+            body: JSON.stringify(styles, null, 2),
+            contentType: "application/json",
+        });
+    }
+    const [legacy, workbench] = samples;
+    expect(new Set(workbench.map((style) => JSON.stringify(style)))).toEqual(
+        new Set(legacy.map((style) => JSON.stringify(style))),
+    );
+    if (testInfo.project.name.startsWith("hc-")) {
+        for (const style of legacy) {
+            expect(style.outlineStyle === "none" || style.outlineWidth === "0px").toBe(true);
+            expect([
+                style.borderTopStyle,
+                style.borderRightStyle,
+                style.borderBottomStyle,
+                style.borderLeftStyle,
+            ]).toEqual(["none", "none", "none", "none"]);
+        }
+    }
+});
 
 interface Bitmap {
     width: number;

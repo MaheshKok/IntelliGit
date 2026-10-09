@@ -9,11 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Git conflicts open a full-document three-way merge workbench with immutable input panes, inline accept controls, linked change ribbons, base inspection, search, ordered combination choices, and shared undo/redo for decisions and manual edits. Drafts survive closing and reopening, and follow the current VS Code theme.
+- Type anywhere in the merge editor's result, with one undo/redo history for typing and accept/ignore choices. Closing the file saves your unfinished merge as a draft; reopening brings it back, with a warning if the file has changed. Keep both sides in either order, keep the base, or remove a block. A Base view and Find help you compare and search, with the same colours, gutters and buttons as before.
 
 ### Fixed
 
-- Applying a merge result validates the captured Git stages, operation, working file, and unsaved editor state before replacing and staging a literal file path. Changed inputs retain the draft; unsupported binary, special-file, and deleted-side conflicts offer the native resolver. Shelf sessions keep the existing renderer.
+- Apply refuses to overwrite a file that changed since the merge started and keeps your draft. Binary files, special files and conflicts where one side deleted the file offer VS Code's built-in resolver instead.
 
 ## [0.36.5] - 2026-10-04
 
