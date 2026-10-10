@@ -535,6 +535,23 @@ test("bar drag moves all three editors", async ({ page }) => {
     await expectHorizontalAgreement(page);
 });
 
+for (const [gesture, deltaX, deltaY, shift] of [
+    ["a sideways trackpad swipe", 200, 0, false],
+    ["Shift+wheel", 0, 200, true],
+] as const) {
+    test(`${gesture} over the panes moves all three editors`, async ({ page }) => {
+        await wideLine(page);
+        await expectSharedOverflow(page);
+        const box = await page.locator(".merge-content").boundingBox();
+        if (!box) throw new Error("merge content has no box");
+        await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+        if (shift) await page.keyboard.down("Shift");
+        await page.mouse.wheel(deltaX, deltaY);
+        if (shift) await page.keyboard.up("Shift");
+        await expectHorizontalAgreement(page);
+    });
+}
+
 test("Find panel renders inside .merge-find-host", async ({ page }) => {
     await page.getByRole("button", { name: "Find in result", exact: true }).click();
     await expect(page.locator(".merge-find-host .cm-search")).toHaveCount(1);

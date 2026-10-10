@@ -60,7 +60,8 @@ export function rowState(hunk: WorkbenchHunk, pane: WorkbenchPane): string {
         if (view.theirsInResult) return "accepted";
         return view.theirsDismissed ? "dismissed" : "pending";
     }
-    if (hunk.edited) return "edited";
+    // Like PyCharm, hand edits keep an unresolved conflict red until a side is accepted.
+    if (hunk.edited) return hunk.conflict && !hunk.resolved ? "pending" : "edited";
     if (view.resultIsUnresolved || !view.isResolved) return "pending";
     if (view.resultSettled) return "settled";
     return hunk.segment.changeKind !== "conflict" ? "variant" : "plain";

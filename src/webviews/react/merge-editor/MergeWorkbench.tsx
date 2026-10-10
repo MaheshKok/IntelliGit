@@ -70,6 +70,7 @@ export function MergeWorkbench({ data: inputData }: { data: MergeEditorData }) {
         contentRef,
         viewportRef,
         onScroll,
+        onWheel,
         jumpTo,
         horizontalRef,
         horizontalInnerRef,
@@ -189,7 +190,12 @@ export function MergeWorkbench({ data: inputData }: { data: MergeEditorData }) {
                 />
             )}
             <div className="merge-content-shell">
-                <div className="merge-content" ref={contentRef} onScroll={onScroll}>
+                <div
+                    className="merge-content"
+                    ref={contentRef}
+                    onScroll={onScroll}
+                    onWheel={onWheel}
+                >
                     <div className="merge-viewport" ref={viewportRef}>
                         {MERGE_PANES.map((pane, index) => (
                             <React.Fragment key={pane}>

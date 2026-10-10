@@ -272,6 +272,15 @@ export function useWorkbenchLayout(
         drawFrameNow();
     }, [syncHorizontal, drawFrameNow]);
 
+    // The panes clip sideways, so sideways wheel input (or Shift+wheel) drives the shared bar.
+    const onWheel = useCallback((event: Pick<WheelEvent, "deltaX" | "deltaY" | "shiftKey">) => {
+        const delta = event.deltaX || (event.shiftKey ? event.deltaY : 0);
+        if (!delta) return;
+        const bar = horizontalRef.current;
+        if (!bar) throw new Error("merge-workbench: horizontal bar is missing");
+        bar.scrollLeft += delta;
+    }, []);
+
     const scheduleFrame = useCallback(() => {
         if (frameRef.current) return;
         frameRef.current = requestAnimationFrame(() => {
@@ -363,6 +372,7 @@ export function useWorkbenchLayout(
         handleScrollRequest,
         onHorizontalScroll,
         onScroll: scheduleFrame,
+        onWheel,
         jumpTo,
         drawFrameNow,
         registerPath,

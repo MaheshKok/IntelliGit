@@ -41,7 +41,12 @@ describe("workbench rows", () => {
             "result",
             "mrow mrow-conflict mrow-plain",
         ],
-        [{ edited: true }, "result", "mrow mrow-conflict mrow-edited"],
+        [{ edited: true }, "result", "mrow mrow-conflict mrow-pending"],
+        [
+            { edited: true, decision: "ours", resolved: true },
+            "result",
+            "mrow mrow-conflict mrow-edited",
+        ],
         [{ decision: "base" }, "ours", "mrow mrow-conflict mrow-dismissed"],
         [{ decision: "base" }, "result", "mrow mrow-conflict mrow-plain"],
     ] as const)("paints %j in %s", (changes, pane, expected) => {
@@ -133,7 +138,7 @@ describe("workbench rows", () => {
         },
     );
 
-    it("typing at a hunk's end boundary marks it edited and paints it mrow-edited", () => {
+    it("typing at a conflict's end boundary marks it edited but keeps the conflict fill", () => {
         const initial = fixture("a\nkeep\nb\n", "ours\nkeep\nours2\n", "theirs\nkeep\ntheirs2\n");
         let state = EditorState.create({ doc: initial.content, extensions: [workbenchHunks] });
         state = state.update({ effects: replaceHunks.of(initial.hunks) }).state;
@@ -141,8 +146,9 @@ describe("workbench rows", () => {
         state = state.update({ changes: { from: initial.hunks[0].to, insert: "x" } }).state;
         const hunks = state.field(workbenchHunks);
         expect(hunks[0].edited).toBe(true);
-        expect(rowState(hunks[0], "result")).toBe("edited");
-        expect(rowClasses(hunks[0], "result", "only", false).split(" ")).toContain("mrow-edited");
+        // Like PyCharm, hand edits leave an unresolved conflict red until a side is accepted.
+        expect(rowState(hunks[0], "result")).toBe("pending");
+        expect(rowClasses(hunks[0], "result", "only", false).split(" ")).toContain("mrow-pending");
         expect(hunks[1].edited).toBe(false);
     });
 });

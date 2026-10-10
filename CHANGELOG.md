@@ -17,6 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Closing the merge editor while Apply is still staging no longer leaves an old draft that comes back later.
 - When the merge editor cannot load a conflict, it now offers VS Code's built-in resolver instead of only an error.
+- You can scroll the three merge panes sideways with a trackpad swipe or Shift+mouse wheel, not just the thin bar at the bottom.
+- A conflict you edit by hand in the middle pane now stays red, as in JetBrains IDEs, instead of turning green as if it were resolved.
 
 ## [0.37.0] - 2026-10-10
 
