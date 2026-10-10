@@ -1,194 +1,287 @@
-/* The workbench shares chrome and change colors with the existing merge renderer. */
-.merge-workbench {
-    height: 100%;
-}
-.merge-workbench button svg {
-    width: 12px;
-    height: 12px;
-    flex-shrink: 0;
-}
-.merge-workbench .toolbar-icon-btn[aria-pressed="true"] {
-    background: var(--vscode-toolbar-hoverBackground);
-    border-color: var(--merge-border);
-}
-.merge-workbench .toolbar-select {
-    max-width: 210px;
-}
-.mw-headings .pane-meta-label {
-    display: block;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-.mw-headings .pane-lock {
-    vertical-align: middle;
-    margin-right: 5px;
-    width: 12px;
-    height: 12px;
-}
-.mw-headings .pane-meta-center span {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-.mw-panes {
-    flex: 1;
-    min-height: 0;
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 28px minmax(0, 1fr) 28px minmax(0, 1fr);
-    overflow: hidden;
-}
-.mw-editor {
+.merge-editor.workbench .workbench-editor {
     position: relative;
     min-width: 0;
     min-height: 0;
     overflow: hidden;
 }
-.merge-workbench .cm-line {
-    padding: 0 10px;
-}
-.merge-workbench .cm-lineNumbers .cm-gutterElement {
-    min-width: var(--merge-line-number-gutter);
-    padding: 0 8px 0 4px;
-}
-.merge-workbench .col-left .cm-gutters {
-    order: 1;
-    left: auto;
-    right: 0;
-    border-right: none;
-    border-left: 1px solid var(--merge-pane-boundary);
-}
-.merge-workbench .col-left .cm-lineNumbers .cm-gutterElement {
-    min-width: calc(var(--merge-line-number-gutter) + var(--merge-action-gutter));
-    padding-left: var(--merge-action-gutter);
-}
-.merge-workbench .col-right .cm-lineNumbers .cm-gutterElement {
-    min-width: calc(var(--merge-line-number-gutter) + var(--merge-action-gutter));
-    padding-right: var(--merge-action-gutter);
-}
-.mw-connectors {
-    position: relative;
-    background: var(--merge-editor-bg);
-    z-index: 3;
-}
-.mw-connectors > svg {
-    position: absolute;
-    inset: 0;
-    pointer-events: none;
-    overflow: hidden;
-}
-.mw-connectors > svg path {
-    fill: var(--merge-conflict-ribbon-bg);
-    stroke: var(--merge-conflict-ribbon-bg);
-    stroke-width: 1;
-}
-.mw-connectors > svg path.merge-range-insertion {
-    fill: var(--merge-inserted-block-bg);
-    stroke: var(--merge-inserted-block-bg);
-}
-.mw-connectors > svg path.merge-range-resolved {
-    fill: none;
-    stroke: var(--merge-conflict-ribbon-bg);
-    stroke-dasharray: 2 2;
-}
-.mw-actions {
-    display: flex;
-    position: absolute;
-    width: 40px;
-    height: 24px;
-}
-.mw-connectors-ours .mw-actions {
-    left: calc(-1 * (var(--merge-line-number-gutter) + var(--merge-action-gutter)) + 2px);
-}
-.mw-connectors-theirs .mw-actions {
-    left: calc(28px + var(--merge-line-number-gutter) + 2px);
-    flex-direction: row-reverse;
-}
-.mw-actions[hidden] {
-    display: none;
-}
-.merge-workbench .cm-line.merge-range-pending {
-    background: var(--merge-conflict-block-bg);
-    color-scheme: dark;
-    color: var(--merge-action-icon);
-}
-.merge-workbench .cm-gutterElement.merge-range-pending {
-    background: var(--merge-conflict-ribbon-bg);
-    color: var(--merge-action-icon);
-}
-.merge-workbench .cm-line.merge-range-insertion,
-.merge-workbench .cm-gutterElement.merge-range-insertion {
-    background: var(--merge-inserted-block-bg);
-    color-scheme: dark;
-}
-.merge-workbench .cm-line.merge-range-insertion,
-.merge-workbench .cm-gutterElement.merge-range-insertion {
-    color: var(--merge-action-icon);
-}
-.merge-workbench .cm-line.merge-range-resolved,
-.merge-workbench .cm-gutterElement.merge-range-resolved {
-    background: transparent;
-}
-.merge-workbench :is(.cm-line, .cm-gutterElement).merge-range-resolved {
-    position: relative;
-}
-.merge-workbench .merge-range-resolved.merge-range-start::before,
-.merge-workbench .merge-range-resolved.merge-range-end::after {
-    content: "";
-    position: absolute;
-    left: 0;
-    right: 0;
-    height: 0;
-    border-top: 1px dotted var(--merge-conflict-ribbon-bg);
+.merge-editor.workbench[aria-busy="true"] .workbench-editor {
     pointer-events: none;
 }
-.merge-workbench .merge-range-resolved.merge-range-start::before {
-    top: 0;
-}
-.merge-workbench .merge-range-resolved.merge-range-end::after {
-    bottom: 0;
-}
-.merge-word-change {
-    background: var(--pycharm-conflict);
-    outline: 1px solid var(--vscode-diffEditor-removedTextBorder, transparent);
-}
-.mw-error {
+.merge-editor.workbench .merge-notice {
     padding: 8px 12px;
-    color: var(--vscode-errorForeground);
+    color: var(--merge-danger-text);
     border-bottom: 1px solid var(--merge-border);
 }
-.mw-error details {
+.merge-editor.workbench .merge-notice details {
     max-height: 200px;
     overflow: auto;
 }
-.mw-error pre {
+.merge-editor.workbench .merge-notice pre {
     white-space: pre-wrap;
     overflow-wrap: anywhere;
 }
-.mw-base {
+.merge-editor.workbench .merge-base {
     height: 160px;
     flex-shrink: 0;
-    border-top: 1px solid var(--merge-border);
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    border-top: 1px solid var(--merge-border);
 }
-.mw-base[hidden] {
+.merge-editor.workbench .merge-base[hidden] {
     display: none;
 }
-.mw-base header {
-    padding: 3px 10px;
-    background: var(--merge-toolbar-bg);
+.merge-editor.workbench .merge-base > div {
+    flex: 1;
+    min-height: 0;
+}
+.merge-editor.workbench .merge-base header {
+    padding: 5px 10px;
+    background: var(--merge-header-bg);
     display: flex;
     align-items: center;
     justify-content: space-between;
 }
-.mw-base > div {
+.merge-editor.workbench .footer-draft-status {
+    color: var(--merge-muted);
+    font-size: 11px;
+}
+.merge-editor.workbench .toolbar-icon-btn[aria-pressed="true"] {
+    background: color-mix(in srgb, var(--vscode-button-background) 34%, transparent);
+    border-color: color-mix(in srgb, var(--vscode-button-background) 64%, transparent);
+    opacity: 1;
+}
+
+/* scroller: begin */
+.merge-editor.workbench > .merge-content-shell {
     flex: 1;
     min-height: 0;
 }
-.mw-draft-status {
-    color: var(--merge-muted);
+/* The code area is its own horizontal scroller and clips at its box, like main's overflow:hidden cell. */
+.merge-editor.workbench .merge-content .cm-content {
+    flex: 1 1 0;
+    min-width: 0;
+    overflow: hidden;
+    display: grid;
+    grid-template-columns: minmax(max-content, auto) var(--merge-horizontal-room, 0px);
 }
-.merge-workbench[aria-busy="true"] .mw-editor {
+.merge-editor.workbench .merge-content .cm-content > * {
+    grid-column: 1;
+}
+/* Scroll geometry must reach its measured size in the same layout pass as the caret. */
+.merge-editor.workbench .merge-horizontal-scroll-inner,
+.merge-editor.workbench .merge-content .cm-content,
+.merge-editor.workbench .merge-vscroll-spacer,
+.merge-editor.workbench .cm-gap {
+    transition-property: none;
+}
+/* scroller: end */
+
+/* action gutter: begin */
+.merge-editor.workbench .merge-action-gutter {
+    width: var(--merge-action-gutter);
+}
+.merge-editor.workbench .merge-action-gutter .cm-gutterElement {
+    overflow: visible;
+}
+.merge-editor.workbench .merge-action-gutter .conflict-actions-left,
+.merge-editor.workbench .merge-action-gutter .conflict-actions-right {
+    position: static;
+    margin-top: -2px;
+    margin-left: 2px;
+    display: flex;
+    gap: 0;
+}
+/* action gutter: end */
+
+/* rows: begin */
+.merge-editor.workbench .cm-gutters {
+    background: transparent;
+    color: color-mix(in srgb, var(--merge-editor-fg) 64%, var(--merge-editor-bg));
+}
+.merge-editor.workbench .cm-lineNumbers .cm-gutterElement {
+    min-width: var(--merge-line-number-gutter);
+    box-sizing: border-box;
+    text-align: right;
+    padding: 0 7px 0 3px;
+    background: none;
+    border-right: 1px solid var(--merge-pane-boundary);
+}
+.merge-editor.workbench .pane-ours .cm-lineNumbers .cm-gutterElement {
+    border-right: 0;
+    border-left: 1px solid var(--merge-pane-boundary);
+}
+.merge-editor.workbench .cm-lineNumbers .cm-gutterElement.merge-phantom-row {
+    border-color: transparent;
+}
+
+.merge-editor.workbench .cm-line.mrow-pending.mrow-conflict {
+    background: var(--merge-conflict-block-bg);
+}
+.merge-editor.workbench .cm-gutterElement.mrow-pending.mrow-conflict {
+    background: var(--merge-conflict-ribbon-bg);
+}
+.merge-editor.workbench .mrow-insertion:is(.mrow-pending, .mrow-variant) {
+    background: var(--merge-inserted-block-bg);
+}
+.merge-editor.workbench .cm-line.mrow-modification:is(.mrow-pending, .mrow-variant) {
+    background: var(--merge-modified-block-bg);
+}
+.merge-editor.workbench .cm-gutterElement.mrow-modification:is(.mrow-pending, .mrow-variant) {
+    background: var(--pycharm-modified);
+}
+.merge-editor.workbench .cm-line.mrow-deletion:is(.mrow-pending, .mrow-variant) {
+    background: var(--merge-deleted-block-bg);
+}
+.merge-editor.workbench .cm-gutterElement.mrow-deletion:is(.mrow-pending, .mrow-variant) {
+    background: var(--pycharm-deleted);
+}
+.merge-editor.workbench .mrow.mrow-edited {
+    background: var(--merge-inserted-block-bg);
+}
+.merge-editor.workbench :is(.mrow-accepted, .mrow-settled, .mrow-plain, .mrow-dismissed) {
+    background: none;
+}
+.merge-editor.workbench .mrow-dismissed {
+    opacity: 0.5;
+}
+/* Dark banded-row text matches main's `merge-editor.css:872-875` (#abb2bf); --merge-action-icon only shares that value. */
+.merge-editor.workbench .cm-line {
+    color-scheme: light;
+    color: light-dark(var(--merge-editor-fg), var(--merge-action-icon));
+}
+.merge-editor.workbench
+    .cm-line:is(.mrow-conflict, .mrow-insertion, .mrow-modification, .mrow-deletion):is(
+        .mrow-pending,
+        .mrow-variant
+    ),
+.merge-editor.workbench .cm-line.mrow-edited {
+    color-scheme: dark;
+}
+
+.merge-editor.workbench .cm-gutterElement.mrow-pending.mrow-conflict {
+    position: relative;
+}
+.merge-editor.workbench
+    .pane-ours
+    .cm-lineNumbers
+    .cm-gutterElement.mrow-pending.mrow-conflict::after,
+.merge-editor.workbench
+    .pane-theirs
+    .merge-action-gutter
+    .cm-gutterElement.mrow-pending.mrow-conflict::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 1px;
+    background: var(--merge-pane-boundary);
     pointer-events: none;
+    z-index: 2;
+}
+
+.merge-editor.workbench .mrow-conflict {
+    --merge-hunk-boundary: var(--pycharm-conflict);
+    --merge-hunk-boundary-width: 2px;
+}
+.merge-editor.workbench .mrow-insertion {
+    --merge-hunk-boundary: var(--merge-inserted-block-bg);
+    --merge-hunk-boundary-width: 2px;
+}
+.merge-editor.workbench .mrow-modification {
+    --merge-hunk-boundary: var(--pycharm-modified);
+    --merge-hunk-boundary-width: 2px;
+}
+.merge-editor.workbench .mrow-deletion {
+    --merge-hunk-boundary: var(--pycharm-deleted);
+    --merge-hunk-boundary-width: 2px;
+}
+.merge-editor.workbench .mrow-first,
+.merge-editor.workbench .mrow-empty {
+    box-shadow: inset 0 var(--merge-hunk-boundary-width) 0 0 var(--merge-hunk-boundary);
+}
+.merge-editor.workbench .mrow-last {
+    box-shadow: inset 0 calc(-1 * var(--merge-hunk-boundary-width)) 0 0 var(--merge-hunk-boundary);
+}
+.merge-editor.workbench .mrow-first.mrow-last {
+    box-shadow:
+        inset 0 var(--merge-hunk-boundary-width) 0 0 var(--merge-hunk-boundary),
+        inset 0 calc(-1 * var(--merge-hunk-boundary-width)) 0 0 var(--merge-hunk-boundary);
+}
+.merge-editor.workbench .mrow:is(.mrow-accepted, .mrow-dismissed, .mrow-settled, .mrow-plain) {
+    --merge-hunk-boundary: transparent;
+    box-shadow: none;
+}
+/* Boundaries precede the ring, matching the legacy hunk's shadow stack. */
+.merge-editor.workbench .mrow-active.mrow-first {
+    box-shadow:
+        inset 0 var(--merge-hunk-boundary-width) 0 0 var(--merge-hunk-boundary),
+        inset 0 0 0 1px color-mix(in srgb, var(--vscode-focusBorder) 16%, transparent);
+}
+.merge-editor.workbench .mrow-active.mrow-last {
+    box-shadow:
+        inset 0 calc(-1 * var(--merge-hunk-boundary-width)) 0 0 var(--merge-hunk-boundary),
+        inset 0 0 0 1px color-mix(in srgb, var(--vscode-focusBorder) 16%, transparent);
+}
+.merge-editor.workbench .mrow-active.mrow-first.mrow-last {
+    box-shadow:
+        inset 0 var(--merge-hunk-boundary-width) 0 0 var(--merge-hunk-boundary),
+        inset 0 calc(-1 * var(--merge-hunk-boundary-width)) 0 0 var(--merge-hunk-boundary),
+        inset 0 0 0 1px color-mix(in srgb, var(--vscode-focusBorder) 16%, transparent);
+}
+
+/* Main's row bands cover hunk shadows in both code and gutter cells. */
+.merge-editor.workbench :is(.cm-line, .cm-gutterElement).mrow:not(.mrow-empty) {
+    position: relative;
+    isolation: isolate;
+}
+.merge-editor.workbench :is(.cm-line, .cm-gutterElement).mrow:not(.mrow-empty)::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: inherit;
+    z-index: -1;
+    pointer-events: none;
+}
+.merge-editor.workbench .mrow-conflict .word-diff-change {
+    background: var(--pycharm-conflict);
+}
+.merge-editor.workbench .mrow-modification .word-diff-change {
+    background: var(--pycharm-modified);
+}
+.merge-editor.workbench .mrow-deletion .word-diff-change {
+    background: var(--pycharm-deleted);
+}
+.merge-editor.workbench .mrow-edited .word-diff-change {
+    background: var(--pycharm-inserted);
+}
+.merge-editor.workbench .mrow-insertion .word-diff-change {
+    background: transparent;
+}
+.merge-editor.workbench .mrow-insertion.mrow-dismissed .word-diff-change {
+    color-scheme: light;
+    color: var(--merge-editor-fg);
+}
+.merge-editor.workbench .word-diff-change.word-diff-whitespace {
+    background: color-mix(in srgb, var(--merge-editor-fg) 10%, transparent);
+}
+.merge-editor.workbench:not(.words-highlighted) .word-diff-change {
+    background: transparent;
+}
+/* rows: end */
+
+/* Adjacent token marks form one changed run, as in the legacy word renderer. */
+.merge-editor.workbench
+    .word-diff-change:not(.word-diff-whitespace):has(
+        + .word-diff-change:not(.word-diff-whitespace)
+    ) {
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+}
+.merge-editor.workbench
+    .word-diff-change:not(.word-diff-whitespace)
+    + .word-diff-change:not(.word-diff-whitespace) {
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
 }

@@ -322,6 +322,38 @@ describe("MergeEditorPanel end-to-end merge flow", () => {
         expect([...values.values()]).toEqual([undefined]);
     });
 
+    it("clears the committed draft when the panel closes while Apply is staging", async () => {
+        await createConflictRepo();
+        const values = new Map<string, unknown>();
+        const store = {
+            get: (key: string) => values.get(key),
+            update: async (key: string, value: unknown) => {
+                values.set(key, value);
+            },
+        };
+        const gitOps = new GitOps(new GitExecutor(repoRoot));
+        const derive = gitOps.deriveFor.bind(gitOps);
+        gitOps.deriveFor = (root) => {
+            const derived = derive(root);
+            const apply = derived.applyMergeResolution.bind(derived);
+            derived.applyMergeResolution = async (...args) => {
+                lastPanel().dispose();
+                await apply(...args);
+            };
+            return derived;
+        };
+        await MergeEditorPanel.open(makeOptions(gitOps, { draftStore: store as never }));
+        const panel = lastPanel();
+        await fireMessage(panel, { type: "ready" });
+        const snapshotId = findConflictData(panel).workbench!.snapshotId;
+        const draft = { snapshotId, content: "draft", hunks: [] };
+        await fireMessage(panel, { type: "saveMergeDraft", draft, revision: 1 });
+        expect([...values.values()]).toEqual([draft]);
+        await fireMessage(panel, { type: "applyResolution", content: "resolved\n" });
+        expect(git(["ls-files", "-u"])).toBe("");
+        expect([...values.values()]).toEqual([undefined]);
+    });
+
     it("keeps successful staging terminal when durable draft cleanup rejects", async () => {
         await createConflictRepo();
         let value: unknown;
@@ -835,6 +867,7 @@ describe("MergeEditorPanel end-to-end merge flow", () => {
         expect(panel.postedMessages).toContainEqual({
             type: "loadError",
             message: "The file is no longer conflicted. Reopen the conflict list.",
+            nativeMerge: true,
         });
     });
 

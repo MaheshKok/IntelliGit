@@ -321,18 +321,13 @@
     "merge.workbench.redo": "Redo",
     "merge.workbench.search": "Find in result",
     "merge.workbench.base": "Base",
-    "merge.workbench.link": "Synchronize scrolling",
-    "merge.workbench.takeOurs": "Accept left change",
-    "merge.workbench.takeTheirs": "Accept right change",
     "merge.workbench.combine": "Resolve change",
     "merge.workbench.oursThenTheirs": "Left then right",
     "merge.workbench.theirsThenOurs": "Right then left",
     "merge.workbench.keepBase": "Keep base",
     "merge.workbench.markResolved": "Confirm manual resolution",
     "merge.workbench.result": "Result",
-    "merge.workbench.change": "Change {count}",
     "merge.workbench.draftSaved": "Draft saved",
-    "merge.workbench.files": "Conflicted files",
     "merge.workbench.staleDraft": "A draft from an earlier conflict is available. It was not applied to this session.",
     "merge.workbench.inspectDraft": "Inspect previous draft",
     "merge.workbench.discardDraft": "Discard previous draft",
@@ -421,5 +416,8 @@
     "manageRemotes.save": "Save",
     "manageRemotes.retry": "Retry",
     "manageRemotes.close": "Close",
-    "manageRemotes.staleForm": "Remote data changed. Review the current values and try again."
+    "manageRemotes.staleForm": "Remote data changed. Review the current values and try again.",
+    "merge.workbench.regroupNotice": "Changing whitespace handling rebuilds the result. Your edits and decisions are replaced (Undo restores them).",
+    "merge.workbench.regroupApply": "Rebuild result",
+    "merge.workbench.regroupKeep": "Keep current result"
 }

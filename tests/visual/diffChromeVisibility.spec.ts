@@ -1,5 +1,6 @@
+import { mergeSelectors } from "./mergeSelectors";
 import { HOST_CONTEXT_FIXTURES } from "./hostContextFixtures";
-import { mountLegacyMerge } from "./legacyMerge";
+import { mountLegacyMerge, mountWorkbenchMerge } from "./legacyMerge";
 import { expect, test } from "./playwright/harnessPage";
 
 /**
@@ -73,138 +74,165 @@ interface Chrome {
 async function readChrome(
     page: import("@playwright/test").Page,
     barSelector: string,
+    selectors = mergeSelectors.legacy,
 ): Promise<Chrome> {
-    return page.evaluate((selector) => {
-        // Canvas normalises every colour syntax to 8-bit RGBA. An unparseable value leaves
-        // `fillStyle` at whatever it held, so a sentinel goes in first: if the assignment is
-        // rejected the sentinel survives and this throws, instead of reporting the sentinel's
-        // own opaque alpha and passing an assertion that never measured anything.
-        const SENTINEL = "rgba(1, 2, 3, 0.5)";
-        const canvas = document.createElement("canvas");
-        canvas.width = 1;
-        canvas.height = 1;
-        const context = canvas.getContext("2d");
-        if (context === null) throw new Error("no 2d canvas context");
-        const alphaOf = (color: string): number => {
-            context.fillStyle = SENTINEL;
-            context.fillStyle = color;
-            if (context.fillStyle === SENTINEL) throw new Error(`canvas cannot parse ${color}`);
-            context.clearRect(0, 0, 1, 1);
-            context.fillRect(0, 0, 1, 1);
-            return context.getImageData(0, 0, 1, 1).data[3] / 255;
-        };
+    return page.evaluate(
+        ({ selector, selectors }) => {
+            // Canvas normalises every colour syntax to 8-bit RGBA. An unparseable value leaves
+            // `fillStyle` at whatever it held, so a sentinel goes in first: if the assignment is
+            // rejected the sentinel survives and this throws, instead of reporting the sentinel's
+            // own opaque alpha and passing an assertion that never measured anything.
+            const SENTINEL = "rgba(1, 2, 3, 0.5)";
+            const canvas = document.createElement("canvas");
+            canvas.width = 1;
+            canvas.height = 1;
+            const context = canvas.getContext("2d");
+            if (context === null) throw new Error("no 2d canvas context");
+            const alphaOf = (color: string): number => {
+                context.fillStyle = SENTINEL;
+                context.fillStyle = color;
+                if (context.fillStyle === SENTINEL) throw new Error(`canvas cannot parse ${color}`);
+                context.clearRect(0, 0, 1, 1);
+                context.fillRect(0, 0, 1, 1);
+                return context.getImageData(0, 0, 1, 1).data[3] / 255;
+            };
 
-        const bar = document.querySelector<HTMLElement>(selector);
-        const blocks = [...document.querySelectorAll<HTMLElement>(".code-block")].flatMap(
-            (block) => {
-                const gutter = block.querySelector<HTMLElement>(".line-numbers");
-                const code = block.querySelector<HTMLElement>(".code-lines");
-                const number = block.querySelector<HTMLElement>(".line-number");
-                if (gutter === null || code === null || number === null) return [];
-                const gutterBox = gutter.getBoundingClientRect();
-                const codeBox = code.getBoundingClientRect();
-                const style = getComputedStyle(number);
-                const codeFacing = (
-                    codeBox.left < gutterBox.left ? "left" : "right"
-                ) as BlockChrome["codeFacing"];
-                const facing =
-                    codeFacing === "left"
-                        ? { width: style.borderLeftWidth, color: style.borderLeftColor }
-                        : { width: style.borderRightWidth, color: style.borderRightColor };
-                const outer =
-                    codeFacing === "left"
-                        ? { width: style.borderRightWidth, color: style.borderRightColor }
-                        : { width: style.borderLeftWidth, color: style.borderLeftColor };
-                return [
-                    {
-                        codeFacing,
-                        facingWidth: parseFloat(facing.width),
-                        facingAlpha: alphaOf(facing.color),
-                        outerWidth: parseFloat(outer.width),
-                        outerAlpha: alphaOf(outer.color),
-                    },
-                ];
-            },
-        );
+            const bar = document.querySelector<HTMLElement>(selector);
+            const blocks = [...document.querySelectorAll<HTMLElement>(selectors.block)].flatMap(
+                (block) => {
+                    const gutter = block.querySelector<HTMLElement>(selectors.gutter);
+                    const code = block.querySelector<HTMLElement>(selectors.code);
+                    const number = block.querySelector<HTMLElement>(selectors.numberRow);
+                    if (gutter === null || code === null || number === null) return [];
+                    const gutterBox = gutter.getBoundingClientRect();
+                    const codeBox = code.getBoundingClientRect();
+                    const style = getComputedStyle(number);
+                    const codeFacing = (
+                        codeBox.left < gutterBox.left ? "left" : "right"
+                    ) as BlockChrome["codeFacing"];
+                    const facing =
+                        codeFacing === "left"
+                            ? { width: style.borderLeftWidth, color: style.borderLeftColor }
+                            : { width: style.borderRightWidth, color: style.borderRightColor };
+                    const outer =
+                        codeFacing === "left"
+                            ? { width: style.borderRightWidth, color: style.borderRightColor }
+                            : { width: style.borderLeftWidth, color: style.borderLeftColor };
+                    return [
+                        {
+                            codeFacing,
+                            facingWidth: parseFloat(facing.width),
+                            facingAlpha: alphaOf(facing.color),
+                            outerWidth: parseFloat(outer.width),
+                            outerAlpha: alphaOf(outer.color),
+                        },
+                    ];
+                },
+            );
 
-        return {
-            viewportWidth: window.innerWidth,
-            barFound: bar !== null,
-            barMaxScroll: bar === null ? 0 : Math.round(bar.scrollWidth - bar.clientWidth),
-            thumbAlpha:
-                bar === null
-                    ? 0
-                    : alphaOf(getComputedStyle(bar, "::-webkit-scrollbar-thumb").backgroundColor),
-            blocks,
-        };
-    }, barSelector);
+            return {
+                viewportWidth: window.innerWidth,
+                barFound: bar !== null,
+                barMaxScroll: bar === null ? 0 : Math.round(bar.scrollWidth - bar.clientWidth),
+                thumbAlpha:
+                    bar === null
+                        ? 0
+                        : alphaOf(
+                              getComputedStyle(bar, "::-webkit-scrollbar-thumb").backgroundColor,
+                          ),
+                blocks,
+            };
+        },
+        { selector: barSelector, selectors },
+    );
 }
 
 test.describe("diff chrome visibility", () => {
     for (const { surface, bar } of SURFACES) {
-        test(`${surface}: the shared horizontal scrollbar draws a thumb`, async ({
-            mountHarness,
-            page,
-        }) => {
-            if (surface === "merge-editor") await mountLegacyMerge(mountHarness, page);
-            else await mountHarness(surface, { webviewFixture: HOST_CONTEXT_FIXTURES[surface] });
-            const chrome = await readChrome(page, bar);
+        for (const target of surface === "merge-editor"
+            ? (["legacy", "workbench"] as const)
+            : (["legacy"] as const)) {
+            const suffix = surface === "merge-editor" ? ` (${target})` : "";
+            test(`${surface}: the shared horizontal scrollbar draws a thumb${suffix}`, async ({
+                mountHarness,
+                page,
+            }) => {
+                if (surface === "merge-editor") {
+                    if (target === "legacy") await mountLegacyMerge(mountHarness, page);
+                    else await mountWorkbenchMerge(mountHarness, page);
+                } else
+                    await mountHarness(surface, { webviewFixture: HOST_CONTEXT_FIXTURES[surface] });
+                const chrome = await readChrome(
+                    page,
+                    surface === "merge-editor" ? mergeSelectors[target].bar : bar,
+                    mergeSelectors[target],
+                );
 
-            expect(chrome.barFound, `${bar} is not mounted, so nothing was measured`).toBe(true);
+                expect(chrome.barFound, `${bar} is not mounted, so nothing was measured`).toBe(
+                    true,
+                );
 
-            // `barFound` plus a thumb colour is not evidence the user has a bar to grab. The
-            // thumb's colour is a property of the CSS rule and resolves even on a bar with no
-            // extent at all: measured at 1200px, where this element is 0x0 -- scrollWidth and
-            // clientWidth both zero -- `::-webkit-scrollbar-thumb` still reports alpha 0.24. So a
-            // regression that collapsed the bar at every width would keep both assertions green.
-            // Asserted only below the overflow width, because at 1200px having nothing to scroll
-            // is the correct answer rather than a defect.
-            if (chrome.viewportWidth < LINES_OVERFLOW_BELOW) {
+                // `barFound` plus a thumb colour is not evidence the user has a bar to grab. The
+                // thumb's colour is a property of the CSS rule and resolves even on a bar with no
+                // extent at all: measured at 1200px, where this element is 0x0 -- scrollWidth and
+                // clientWidth both zero -- `::-webkit-scrollbar-thumb` still reports alpha 0.24. So a
+                // regression that collapsed the bar at every width would keep both assertions green.
+                // Asserted only below the overflow width, because at 1200px having nothing to scroll
+                // is the correct answer rather than a defect.
+                if (chrome.viewportWidth < LINES_OVERFLOW_BELOW) {
+                    expect(
+                        chrome.barMaxScroll,
+                        `${bar} is mounted at ${chrome.viewportWidth}px, where every line overflows ` +
+                            `its pane, but reports nothing to scroll -- so the thumb assertion below ` +
+                            `is measuring a bar the user can never reach`,
+                    ).toBeGreaterThan(0);
+                }
+
                 expect(
-                    chrome.barMaxScroll,
-                    `${bar} is mounted at ${chrome.viewportWidth}px, where every line overflows ` +
-                        `its pane, but reports nothing to scroll -- so the thumb assertion below ` +
-                        `is measuring a bar the user can never reach`,
+                    chrome.thumbAlpha,
+                    `${bar} paints no thumb: the bar scrolls ${chrome.barMaxScroll}px and the user ` +
+                        `cannot see or grab it`,
                 ).toBeGreaterThan(0);
-            }
+            });
 
-            expect(
-                chrome.thumbAlpha,
-                `${bar} paints no thumb: the bar scrolls ${chrome.barMaxScroll}px and the user ` +
-                    `cannot see or grab it`,
-            ).toBeGreaterThan(0);
-        });
+            test(`${surface}: the line-number gutter is separated from the code it numbers${suffix}`, async ({
+                mountHarness,
+                page,
+            }) => {
+                if (surface === "merge-editor") {
+                    if (target === "legacy") await mountLegacyMerge(mountHarness, page);
+                    else await mountWorkbenchMerge(mountHarness, page);
+                } else
+                    await mountHarness(surface, { webviewFixture: HOST_CONTEXT_FIXTURES[surface] });
+                const chrome = await readChrome(
+                    page,
+                    surface === "merge-editor" ? mergeSelectors[target].bar : bar,
+                    mergeSelectors[target],
+                );
 
-        test(`${surface}: the line-number gutter is separated from the code it numbers`, async ({
-            mountHarness,
-            page,
-        }) => {
-            if (surface === "merge-editor") await mountLegacyMerge(mountHarness, page);
-            else await mountHarness(surface, { webviewFixture: HOST_CONTEXT_FIXTURES[surface] });
-            const chrome = await readChrome(page, bar);
+                expect(chrome.blocks.length, "no code blocks were measured").toBeGreaterThan(0);
 
-            expect(chrome.blocks.length, "no code blocks were measured").toBeGreaterThan(0);
+                const unpainted = chrome.blocks.filter(
+                    (block) => block.facingAlpha === 0 || block.facingWidth < 1,
+                );
+                expect(
+                    unpainted.length,
+                    `${unpainted.length}/${chrome.blocks.length} code blocks let the gutter meet the ` +
+                        `code with no seam, first: ${JSON.stringify(unpainted[0])}`,
+                ).toBe(0);
 
-            const unpainted = chrome.blocks.filter(
-                (block) => block.facingAlpha === 0 || block.facingWidth < 1,
-            );
-            expect(
-                unpainted.length,
-                `${unpainted.length}/${chrome.blocks.length} code blocks let the gutter meet the ` +
-                    `code with no seam, first: ${JSON.stringify(unpainted[0])}`,
-            ).toBe(0);
-
-            // Width AND alpha: a zero-width border still reports whatever colour it inherited,
-            // so alpha alone would flag every block that simply has no border on that side.
-            const outerPainted = chrome.blocks.filter(
-                (block) => block.outerAlpha > 0 && block.outerWidth >= 1,
-            );
-            expect(
-                outerPainted.length,
-                `${outerPainted.length}/${chrome.blocks.length} code blocks paint the gutter's ` +
-                    `outer edge, which doubles the pane boundary beside it, first: ` +
-                    `${JSON.stringify(outerPainted[0])}`,
-            ).toBe(0);
-        });
+                // Width AND alpha: a zero-width border still reports whatever colour it inherited,
+                // so alpha alone would flag every block that simply has no border on that side.
+                const outerPainted = chrome.blocks.filter(
+                    (block) => block.outerAlpha > 0 && block.outerWidth >= 1,
+                );
+                expect(
+                    outerPainted.length,
+                    `${outerPainted.length}/${chrome.blocks.length} code blocks paint the gutter's ` +
+                        `outer edge, which doubles the pane boundary beside it, first: ` +
+                        `${JSON.stringify(outerPainted[0])}`,
+                ).toBe(0);
+            });
+        }
     }
 });

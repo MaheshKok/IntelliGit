@@ -106,10 +106,11 @@ export class MergeEditorPanel {
                 vscode.window.showErrorMessage(errorMessage);
                 try {
                     if (!this.isAlive()) return;
-                    await this.panel.webview.postMessage({
-                        type: this.snapshot ? "resolutionError" : "loadError",
-                        message: errorMessage,
-                    });
+                    await this.panel.webview.postMessage(
+                        this.snapshot
+                            ? { type: "resolutionError", message: errorMessage }
+                            : { type: "loadError", message: errorMessage, nativeMerge: true },
+                    );
                 } catch {
                     // Panel may have been disposed between the liveness check and postMessage.
                 }
@@ -312,18 +313,20 @@ export class MergeEditorPanel {
             // Staging is terminal; delivery or recovery cleanup cannot reopen this session.
             try {
                 try {
-                    await this.panel.webview.postMessage({ type: "resolutionApplied" });
-                } catch (error) {
-                    console.error("[IntelliGit] Failed to deliver merge completion:", error);
-                }
-                try {
+                    // Git already staged the result, so its draft is dead even if the panel closed mid-Apply.
                     await this.queueDraftUpdate(async () => {
                         const previous = parseMergeDraft(this.draftStore?.get(this.draftKey));
                         if (previous?.snapshotId === snapshot.id)
                             await this.draftStore?.update(this.draftKey, undefined);
-                    });
+                    }, true);
                 } catch (error) {
                     console.error("[IntelliGit] Failed to clear an applied merge draft:", error);
+                }
+                try {
+                    if (this.isAlive())
+                        await this.panel.webview.postMessage({ type: "resolutionApplied" });
+                } catch (error) {
+                    console.error("[IntelliGit] Failed to deliver merge completion:", error);
                 }
                 showTimedInformationMessage(
                     vscode.l10n.t("Merged and staged: {path}", { path: this.safePath }),
@@ -410,9 +413,10 @@ export class MergeEditorPanel {
     }
 
     /** Orders writes across panel lifetimes; superseded owners cannot enqueue stale recovery text. */
-    private queueDraftUpdate(update: () => Promise<void>): Promise<void> {
+    private queueDraftUpdate(update: () => Promise<void>, evenAfterClose = false): Promise<void> {
         const pending = this.draftQueue.then(async () => {
-            if (!this.isAlive() || MergeEditorPanel.panels.get(this.panelKey) !== this) return;
+            const owner = this.isAlive() && MergeEditorPanel.panels.get(this.panelKey) === this;
+            if (!owner && !evenAfterClose) return;
             await update();
         });
         const settled = pending.catch(() => undefined);
@@ -460,6 +464,7 @@ export class MergeEditorPanel {
                     message: vscode.l10n.t("File is not in a conflicted state: {path}", {
                         path: this.safePath,
                     }),
+                    nativeMerge: true,
                 });
             } else {
                 const labels = await this.gitOps.getMergeSideLabels();

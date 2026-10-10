@@ -3,6 +3,7 @@ import { collectOracleInputs } from "./playwright/collectOracleInputs";
 import type { CollectedOracleInputs } from "./playwright/collectOracleInputs";
 import { oracles } from "../oracles";
 import type { ClippingInput } from "./oracles/geometry";
+import type { Page } from "@playwright/test";
 
 const { findClippingLosses } = oracles.get("geometry");
 
@@ -103,7 +104,114 @@ const CLIP_CASES = `
     </div>
 `;
 
+const DRIVEN_CASES = `
+    <div data-testid="driving-bar" style="width:80px;overflow-x:auto"><div style="width:400px;height:1px"></div></div>
+
+    <div data-testid="driven-pane" style="width:80px;overflow:hidden;white-space:nowrap">
+        <span data-testid="driven-child">Long enough text to overflow its box</span>
+    </div>
+
+    <div style="width:80px;overflow-x:hidden">
+        <div data-testid="nested-driven-pane" style="width:80px;overflow:hidden;white-space:nowrap">
+            <span data-testid="nested-driven-child">Long enough text to overflow both boxes</span>
+        </div>
+    </div>
+
+    <div style="width:80px;overflow:hidden;white-space:nowrap">
+        <span data-testid="undriven-child">Long enough text to overflow its box</span>
+    </div>
+`;
+
+/** Installs boxes driven by one visible bar, including a box inside another X clipper. */
+async function installDrivenFixture(page: Page): Promise<void> {
+    await page.locator("#root").evaluate((root, html) => {
+        root.innerHTML = html;
+        const bar = root.querySelector<HTMLElement>('[data-testid="driving-bar"]');
+        const panes = root.querySelectorAll<HTMLElement>(
+            '[data-testid="driven-pane"], [data-testid="nested-driven-pane"]',
+        );
+        if (bar === null || panes.length !== 2)
+            throw new Error("driven-scroller fixture is missing");
+        bar.addEventListener("scroll", () => {
+            for (const pane of panes) pane.scrollLeft = bar.scrollLeft;
+        });
+    }, DRIVEN_CASES);
+}
+
 test.describe("clipping collector truncation affordance", () => {
+    /**
+     * The merge workbench's shape: a pane that hides its overflow and is scrolled by a separate
+     * visible bar. The two panes are the same DOM; only `driven-pane` follows the bar, so a rule
+     * keyed on anything but that behaviour fails one of them.
+     */
+    test("treats a hidden box that follows a visible scroller as a scroller", async ({
+        mountHarness,
+        page,
+    }) => {
+        await mountHarness("commit-graph-card");
+        await installDrivenFixture(page);
+
+        const axesFor = axesForIn(await collectOracleInputs(page));
+
+        expect({
+            drivenChild: axesFor("driven-child"),
+            undrivenChild: axesFor("undriven-child"),
+        }).toEqual({
+            // One scroll of the bar away, exactly like text in an `overflow-x: auto` pane.
+            drivenChild: [],
+            // Nothing moves this pane, so its cut-off text is unreachable: still a defect.
+            undrivenChild: ["horizontal"],
+        });
+        expect(
+            await page.evaluate(() => document.querySelectorAll("[data-oracle-driven-x]").length),
+            "collection removes every temporary driven-X mark",
+        ).toBe(0);
+    });
+
+    test("does not clip X at ancestors above a scroller-driven box", async ({
+        mountHarness,
+        page,
+    }) => {
+        await mountHarness("commit-graph-card");
+        await installDrivenFixture(page);
+        const axesFor = axesForIn(await collectOracleInputs(page));
+        expect(axesFor("nested-driven-child"), "outer clipper respects driven X").toEqual([]);
+    });
+
+    test("removes driven-X marks when collection throws", async ({ mountHarness, page }) => {
+        await mountHarness("commit-graph-card");
+        await installDrivenFixture(page);
+        await page.evaluate(() => {
+            document.createRange = () => {
+                throw new Error("fixture range collection failure");
+            };
+        });
+        await expect(collectOracleInputs(page)).rejects.toThrow("fixture range collection failure");
+        expect(
+            await page.evaluate(() => document.querySelectorAll("[data-oracle-driven-x]").length),
+            "failed collection removes every temporary driven-X mark",
+        ).toBe(0);
+    });
+
+    test("keeps the collection error when cleanup also fails", async ({ mountHarness, page }) => {
+        await mountHarness("commit-graph-card");
+        await installDrivenFixture(page);
+        await page.evaluate(() => {
+            document.createRange = () => {
+                throw new Error("fixture range collection failure");
+            };
+            // Fail only the cleanup query: a prototype patch would also break React's own renders.
+            const querySelectorAll = document.querySelectorAll.bind(document);
+            document.querySelectorAll = ((selector: string) => {
+                if (selector === "[data-oracle-driven-x]") {
+                    throw new Error("fixture cleanup failure");
+                }
+                return querySelectorAll(selector);
+            }) as typeof document.querySelectorAll;
+        });
+        await expect(collectOracleInputs(page)).rejects.toThrow("fixture range collection failure");
+    });
+
     test("reports the axes the ellipsis affordance does not cover", async ({
         mountHarness,
         page,
