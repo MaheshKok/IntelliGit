@@ -242,13 +242,17 @@ async function expectCaretPaint(page: Page, step: string) {
     expect(paint.outside, `${step}: no caret paint outside code`).toBe(0);
 }
 
-async function settleScroll(page: Page) {
+async function settleScroll(
+    page: Page,
+    selector = ".merge-content",
+    axis: "scrollTop" | "scrollLeft" = "scrollTop",
+) {
     let previous = -1;
     let stable = 0;
     await expect
         .poll(
             async () => {
-                const current = await page.locator(".merge-content").evaluate((el) => el.scrollTop);
+                const current = await page.locator(selector).evaluate((el, key) => el[key], axis);
                 stable = current === previous ? stable + 1 : 0;
                 previous = current;
                 return stable;
@@ -351,7 +355,9 @@ test("sideways selection crossing either clip edge paints only inside code", asy
         await scrollToFraction(page, 0.5);
         await clickVisibleWideLine(page);
         await page.keyboard.press(`Shift+${key}`);
-        // Keyboard selection reveals its head; restore the shared offset to cross the clip edge.
+        // Keyboard selection reveals its head a frame later; let that land, then restore the
+        // shared offset to cross the clip edge.
+        await settleScroll(page, ".merge-horizontal-scroll", "scrollLeft");
         await scrollToFraction(page, 0.5);
         const crosses = await page.locator(".pane-result .cm-content").evaluate((content) => {
             const selection = window.getSelection();
