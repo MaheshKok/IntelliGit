@@ -206,7 +206,10 @@ export async function recordMergeEditorWebviewFixture(
         const captured = sink
             .getMessages()
             .filter((message) => message.contextId === MERGE_EDITOR_CONTEXT_ID);
-        const canonicalized = canonicalizeCapturedMessages(captured, options.roots, []);
+        const canonicalized = canonicalizeCapturedMessages(captured, options.roots, [
+            { path: ["data", "workbench", "snapshotId"], placeholder: "a".repeat(64) },
+            { path: ["data", "workbench", "draftKey"], placeholder: "mergeDraft.fixture" },
+        ]);
         return buildWebviewFixture(
             MERGE_EDITOR_CONTEXT_ID,
             MERGE_EDITOR_CONFLICTED_SCENARIO,

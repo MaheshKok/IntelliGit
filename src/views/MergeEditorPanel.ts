@@ -2,9 +2,14 @@
 // Loads base/ours/theirs from Git index stages, streams parsed segments to the
 // webview, and applies resolutions by writing the merged file and staging it.
 
-import * as fs from "fs";
+import { parseMergeDraft } from "../webviews/protocol/mergeWorkbench";
 import * as path from "path";
 import * as vscode from "vscode";
+import { createHash } from "node:crypto";
+import { realpath } from "node:fs/promises";
+import { areSameRepositoryRoot } from "../utils/repositoryRoot";
+import type { MergeResolutionSnapshot } from "../git/mergeResolution";
+import { DiffSyntaxThemeService } from "./shared/DiffSyntaxThemeService";
 import { captureWebview } from "../e2e/webviewCapture";
 import { GitOps } from "../git/operations";
 import {
@@ -37,10 +42,11 @@ export interface MergeEditorPanelOptions {
     filePath: string;
     onConflictStateChanged: () => Promise<void>;
     onOpenConflictSession?: () => Promise<void>;
+    draftStore?: vscode.Memento;
 }
 
 /** Maximum merged-file payload accepted from the webview, guarding runaway messages. */
-const MAX_APPLY_CONTENT_BYTES = 100 * 1024 * 1024;
+const MAX_APPLY_CONTENT_BYTES = 2 * 1024 * 1024;
 
 /**
  * Owns one native merge-editor webview panel per conflicted file path.
@@ -52,10 +58,17 @@ const MAX_APPLY_CONTENT_BYTES = 100 * 1024 * 1024;
  */
 export class MergeEditorPanel {
     private static readonly panels = new Map<string, MergeEditorPanel>();
+    private static readonly draftQueues = new Map<string, Promise<void>>();
 
     private readonly panel: vscode.WebviewPanel;
     private disposed = false;
     private diffOptions: MergeDiffOptions = {};
+    private snapshot?: MergeResolutionSnapshot;
+    private applying = false;
+    private applied = false;
+    private loading?: Promise<void>;
+    private loadedData?: MergeEditorData;
+    private readonly syntaxTheme: DiffSyntaxThemeService;
 
     /**
      * Binds webview HTML, message handling, and disposal tracking for a new panel.
@@ -69,8 +82,13 @@ export class MergeEditorPanel {
         private readonly safePath: string,
         private onConflictStateChanged: () => Promise<void>,
         private onOpenConflictSession?: () => Promise<void>,
+        private readonly draftStore?: vscode.Memento,
     ) {
         this.panel = panel;
+        this.syntaxTheme = new DiffSyntaxThemeService(
+            panel.webview,
+            vscode.Uri.file(path.join(repoRoot, safePath)),
+        );
         panel.webview.html = this.getHtml(panel.webview);
 
         panel.webview.onDidReceiveMessage(async (msg) => {
@@ -78,15 +96,21 @@ export class MergeEditorPanel {
             try {
                 await this.handleMessage(message);
             } catch (error) {
-                if (!this.isAlive()) return;
+                console.error(
+                    "[IntelliGit] Merge editor operation failed:",
+                    error,
+                    error instanceof Error && error.cause ? getErrorMessage(error.cause) : "",
+                );
+                if (!this.isAlive() || this.applied) return;
                 const errorMessage = getErrorMessage(error);
                 vscode.window.showErrorMessage(errorMessage);
                 try {
                     if (!this.isAlive()) return;
-                    await this.panel.webview.postMessage({
-                        type: "loadError",
-                        message: errorMessage,
-                    });
+                    await this.panel.webview.postMessage(
+                        this.snapshot
+                            ? { type: "resolutionError", message: errorMessage }
+                            : { type: "loadError", message: errorMessage, nativeMerge: true },
+                    );
                 } catch {
                     // Panel may have been disposed between the liveness check and postMessage.
                 }
@@ -95,6 +119,7 @@ export class MergeEditorPanel {
 
         panel.onDidDispose(() => {
             this.disposed = true;
+            this.syntaxTheme.dispose();
             if (MergeEditorPanel.panels.get(this.panelKey) === this) {
                 MergeEditorPanel.panels.delete(this.panelKey);
             }
@@ -105,10 +130,15 @@ export class MergeEditorPanel {
      * Opens or reveals the native merge editor for a repository-relative conflict file.
      *
      * The path is validated before any panel state exists. Reopening an existing panel
-     * refreshes its callbacks and conflict data instead of duplicating editors.
+     * refreshes callbacks without reseeding an unsaved result.
      */
-    static async open(options: MergeEditorPanelOptions): Promise<void> {
-        const safePath = assertRepoRelativePath(options.filePath);
+    static open(options: MergeEditorPanelOptions): Promise<void> {
+        let safePath: string;
+        try {
+            safePath = assertRepoRelativePath(options.filePath);
+        } catch (error) {
+            return Promise.reject(new Error(getErrorMessage(error)));
+        }
 
         const repoRoot = path.resolve(options.getRepoRoot());
         const panelKey = JSON.stringify([repoRoot, safePath]);
@@ -117,8 +147,8 @@ export class MergeEditorPanel {
             existing.onConflictStateChanged = options.onConflictStateChanged;
             existing.onOpenConflictSession = options.onOpenConflictSession;
             existing.panel.reveal(vscode.ViewColumn.Active);
-            await existing.postConflictData();
-            return;
+            // Revealing an existing session must never reseed an unsaved result.
+            return Promise.resolve();
         }
 
         const rawPanel = vscode.window.createWebviewPanel(
@@ -142,8 +172,10 @@ export class MergeEditorPanel {
             safePath,
             options.onConflictStateChanged,
             options.onOpenConflictSession,
+            options.draftStore,
         );
         MergeEditorPanel.panels.set(panelKey, instance);
+        return Promise.resolve();
     }
 
     /** Reports whether any native merge editor panel is currently open. */
@@ -158,14 +190,38 @@ export class MergeEditorPanel {
      * payload; side-accepting commands resolve through Git rather than webview content.
      */
     private async handleMessage(raw: unknown): Promise<void> {
+        if (!this.isAlive()) return;
         const msg = typeof raw === "object" && raw !== null ? (raw as Record<string, unknown>) : {};
         const type = typeof msg.type === "string" ? msg.type : "";
         switch (type) {
+            case "requestSyntaxTheme":
+                await this.syntaxTheme.publish();
+                return;
             case "ready":
-                await this.postConflictData();
+                this.loading ??= this.postConflictData().finally(() => {
+                    this.loading = undefined;
+                });
+                await this.loading;
+                return;
+
+            case "loadMergeDraft":
+                await this.loadDraft();
+                return;
+            case "saveMergeDraft": {
+                await this.saveDraft(msg);
+                return;
+            }
+            case "discardMergeDraft":
+                await this.queueDraftUpdate(async () => {
+                    const previous = parseMergeDraft(this.draftStore?.get(this.draftKey));
+                    if (previous?.snapshotId === msg.snapshotId)
+                        await this.draftStore?.update(this.draftKey, undefined);
+                });
                 return;
 
             case "setIgnoreMode": {
+                // Comparison-policy changes must not replace an editable result or its anchors.
+                if (this.snapshot) return;
                 const mode = msg.mode;
                 if (mode !== "none" && mode !== "whitespace") return;
                 this.diffOptions = { ignoreWhitespace: mode === "whitespace" };
@@ -174,23 +230,31 @@ export class MergeEditorPanel {
             }
 
             case "applyResolution": {
+                if (msg.snapshotId !== this.snapshot?.id)
+                    throw new Error(
+                        vscode.l10n.t(
+                            "The conflict session changed. Reopen the merge editor before applying.",
+                        ),
+                    );
                 const content = msg.content;
                 if (typeof content !== "string") {
-                    throw new Error("Merge result payload must be a string.");
+                    throw new Error(vscode.l10n.t("Merge result payload must be a string."));
                 }
                 if (content.length > MAX_APPLY_CONTENT_BYTES) {
-                    throw new Error("Merge result payload exceeds the supported size.");
+                    throw new Error(
+                        vscode.l10n.t("Merge result payload exceeds the supported size."),
+                    );
                 }
                 await this.applyResolvedContent(content);
                 return;
             }
 
             case "acceptYours":
-                await this.acceptSide("ours");
+                if (this.snapshot) await this.applyResolvedContent(this.snapshot.ours);
                 return;
 
             case "acceptTheirs":
-                await this.acceptSide("theirs");
+                if (this.snapshot) await this.applyResolvedContent(this.snapshot.theirs);
                 return;
 
             case "openConflictSession":
@@ -206,9 +270,19 @@ export class MergeEditorPanel {
                 return;
 
             case "close":
+                await this.draftQueue;
                 this.panel.dispose();
                 return;
 
+            case "openNativeMerge": {
+                const uri = vscode.Uri.file(path.join(this.repoRoot, this.safePath));
+                try {
+                    await vscode.commands.executeCommand("git.openMergeEditor", uri);
+                } catch {
+                    await vscode.commands.executeCommand("vscode.open", uri);
+                }
+                return;
+            }
             default:
                 return;
         }
@@ -221,19 +295,67 @@ export class MergeEditorPanel {
      * switch mid-session cannot redirect the file outside the original work tree.
      */
     private async applyResolvedContent(content: string): Promise<void> {
-        const absolutePath = path.join(this.repoRoot, this.safePath);
-        await runWithNotificationProgress(
-            vscode.l10n.t("Applying merge result for {path}...", { path: this.safePath }),
-            async () => {
-                await fs.promises.writeFile(absolutePath, content, "utf8");
-                await this.gitOps.stageFile(this.safePath);
-            },
-        );
-        showTimedInformationMessage(
-            vscode.l10n.t("Merged and staged: {path}", { path: this.safePath }),
-        );
-        await this.notifyConflictStateChanged();
-        if (this.isAlive()) this.panel.dispose();
+        if (this.applying || this.applied) return;
+        const snapshot = this.snapshot;
+        if (!snapshot)
+            throw new Error(vscode.l10n.t("Load the conflict before applying a resolution."));
+        this.applying = true;
+        try {
+            await runWithNotificationProgress(
+                vscode.l10n.t("Applying merge result for {path}...", { path: this.safePath }),
+                async () => {
+                    await this.gitOps.applyMergeResolution(this.safePath, snapshot, content, () =>
+                        this.assertNoDirtyEditor(),
+                    );
+                },
+            );
+            this.applied = true;
+            // Staging is terminal; delivery or recovery cleanup cannot reopen this session.
+            try {
+                try {
+                    // Git already staged the result, so its draft is dead even if the panel closed mid-Apply.
+                    await this.queueDraftUpdate(async () => {
+                        const previous = parseMergeDraft(this.draftStore?.get(this.draftKey));
+                        if (previous?.snapshotId === snapshot.id)
+                            await this.draftStore?.update(this.draftKey, undefined);
+                    }, true);
+                } catch (error) {
+                    console.error("[IntelliGit] Failed to clear an applied merge draft:", error);
+                }
+                try {
+                    if (this.isAlive())
+                        await this.panel.webview.postMessage({ type: "resolutionApplied" });
+                } catch (error) {
+                    console.error("[IntelliGit] Failed to deliver merge completion:", error);
+                }
+                showTimedInformationMessage(
+                    vscode.l10n.t("Merged and staged: {path}", { path: this.safePath }),
+                );
+                await this.notifyConflictStateChanged();
+            } finally {
+                if (this.isAlive()) this.panel.dispose();
+            }
+        } finally {
+            this.applying = false;
+        }
+    }
+
+    /** Refuses dirty buffers even when the workspace spells the same path through an alias. */
+    private async assertNoDirtyEditor(): Promise<void> {
+        const target = await realpath(path.join(this.repoRoot, this.safePath));
+        const documents = vscode.workspace.textDocuments ?? [];
+        for (const document of documents) {
+            if (!document.isDirty || document.uri.scheme !== "file") continue;
+            // Workspace aliases (including macOS /var) must not bypass unsaved-buffer protection.
+            const candidate = await realpath(document.uri.fsPath).catch(() => document.uri.fsPath);
+            if (document.isDirty && areSameRepositoryRoot(target, candidate)) {
+                throw new Error(
+                    vscode.l10n.t(
+                        "The file has unsaved editor changes. Save or discard them before applying; your merge draft is retained.",
+                    ),
+                );
+            }
+        }
     }
 
     /** Confirms and aborts the repository merge backing this editor panel. */
@@ -245,21 +367,6 @@ export class MergeEditorPanel {
                 if (this.isAlive()) this.panel.dispose();
             },
         });
-    }
-
-    /**
-     * Resolves the whole file to one side through Git checkout and staging.
-     */
-    private async acceptSide(side: "ours" | "theirs"): Promise<void> {
-        const progressLabel =
-            side === "ours"
-                ? vscode.l10n.t("Accepting yours for {path}...", { path: this.safePath })
-                : vscode.l10n.t("Accepting theirs for {path}...", { path: this.safePath });
-        await runWithNotificationProgress(progressLabel, async () => {
-            await this.gitOps.acceptConflictSide(this.safePath, side);
-        });
-        await this.notifyConflictStateChanged();
-        if (this.isAlive()) this.panel.dispose();
     }
 
     /**
@@ -277,8 +384,61 @@ export class MergeEditorPanel {
         }
     }
 
+    /** Waits for prior owners' writes before loading the durable recovery copy. */
+    private async loadDraft(): Promise<void> {
+        await this.draftQueue;
+        if (!this.isAlive()) return;
+        await this.panel.webview.postMessage({
+            type: "mergeDraft",
+            draft: parseMergeDraft(this.draftStore?.get(this.draftKey)),
+        });
+    }
+
+    /** Validates and acknowledges a serialized draft without replacing an earlier operation. */
+    private async saveDraft(msg: Record<string, unknown>): Promise<void> {
+        const draft = parseMergeDraft(msg.draft);
+        if (!draft || draft.snapshotId !== this.snapshot?.id || !Number.isSafeInteger(msg.revision))
+            return;
+        await this.queueDraftUpdate(async () => {
+            if (this.applied || !this.draftStore) return;
+            const previous = parseMergeDraft(this.draftStore.get(this.draftKey));
+            if (previous && previous.snapshotId !== draft.snapshotId) return;
+            await this.draftStore.update(this.draftKey, draft);
+            if (this.isAlive())
+                await this.panel.webview.postMessage({
+                    type: "mergeDraftSaved",
+                    revision: msg.revision,
+                });
+        });
+    }
+
+    /** Orders writes across panel lifetimes; superseded owners cannot enqueue stale recovery text. */
+    private queueDraftUpdate(update: () => Promise<void>, evenAfterClose = false): Promise<void> {
+        const pending = this.draftQueue.then(async () => {
+            const owner = this.isAlive() && MergeEditorPanel.panels.get(this.panelKey) === this;
+            if (!owner && !evenAfterClose) return;
+            await update();
+        });
+        const settled = pending.catch(() => undefined);
+        MergeEditorPanel.draftQueues.set(this.draftKey, settled);
+        void settled.then(() => {
+            if (MergeEditorPanel.draftQueues.get(this.draftKey) === settled)
+                MergeEditorPanel.draftQueues.delete(this.draftKey);
+        });
+        return pending;
+    }
+
+    /** Reopened panels wait for writes already in flight for the same durable draft key. */
+    private get draftQueue(): Promise<void> {
+        return MergeEditorPanel.draftQueues.get(this.draftKey) ?? Promise.resolve();
+    }
+
     private isAlive(): boolean {
         return !this.disposed;
+    }
+
+    private get draftKey(): string {
+        return "mergeDraft." + createHash("sha256").update(this.panelKey).digest("hex");
     }
 
     /**
@@ -289,7 +449,14 @@ export class MergeEditorPanel {
      */
     private async postConflictData(): Promise<void> {
         if (!this.isAlive()) return;
-        const versions = await this.gitOps.getConflictFileVersions(this.safePath);
+        if (this.loadedData) {
+            await this.panel.webview.postMessage({
+                type: "setConflictData",
+                data: this.loadedData,
+            });
+            return;
+        }
+        const versions = await this.gitOps.openMergeResolution(this.safePath);
         if (this.isAlive()) {
             if (versions.base === "" && versions.ours === "" && versions.theirs === "") {
                 await this.panel.webview.postMessage({
@@ -297,6 +464,7 @@ export class MergeEditorPanel {
                     message: vscode.l10n.t("File is not in a conflicted state: {path}", {
                         path: this.safePath,
                     }),
+                    nativeMerge: true,
                 });
             } else {
                 const labels = await this.gitOps.getMergeSideLabels();
@@ -314,6 +482,14 @@ export class MergeEditorPanel {
                     );
 
                     const data: MergeEditorData = {
+                        workbench: {
+                            snapshotId: versions.id,
+                            draftKey: this.draftKey,
+                            base: versions.base,
+                            ours: versions.ours,
+                            theirs: versions.theirs,
+                            operation: await this.gitOps.getActiveOperation(),
+                        },
                         filePath: this.safePath,
                         segments,
                         oursLabel: labels.ours,
@@ -325,6 +501,8 @@ export class MergeEditorPanel {
                     };
 
                     await this.panel.webview.postMessage({ type: "setConflictData", data });
+                    this.snapshot = versions;
+                    this.loadedData = data;
                 }
             }
         }

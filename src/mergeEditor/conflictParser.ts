@@ -60,6 +60,14 @@ export type MergeSegment = CommonSegment | ConflictSegment;
  * End-of-line metadata lets the save path preserve the original file shape when possible.
  */
 export interface MergeEditorData {
+    workbench?: {
+        snapshotId: string;
+        draftKey: string;
+        base: string;
+        ours: string;
+        theirs: string;
+        operation: string;
+    };
     filePath: string;
     segments: MergeSegment[];
     oursLabel: string;

@@ -271,6 +271,8 @@ function localizationCatalogFor(expression) {
         if (expression.text === "t") return "webview";
         // `shelfCommands.ts` wraps `vscode.l10n.t` to stay usable when the API is absent.
         if (expression.text === "localize") return "host";
+        // Merge safety errors use the same optional host API in Git-only tests.
+        if (expression.text === "mergeError") return "host";
         return "";
     }
 

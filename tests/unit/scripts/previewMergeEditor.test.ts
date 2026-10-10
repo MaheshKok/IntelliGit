@@ -14,7 +14,10 @@ type PreviewHandler = (
 ) => void;
 
 /** Runs the real preview entry point against an in-memory filesystem and HTTP transport. */
-function previewContext(missingAsset?: string) {
+function previewContext(
+    missingAsset?: string,
+    readText: (file: string) => string = (file) => readFileSync(file, "utf8"),
+) {
     const createServer = vi.fn((_handler: PreviewHandler) => ({ on: vi.fn(), listen: vi.fn() }));
     const exit = vi.fn(() => {
         throw new Error("preview exited");
@@ -24,6 +27,8 @@ function previewContext(missingAsset?: string) {
         existsSync: (file: string) => path.basename(file) !== missingAsset,
         readFile: (file: string, callback: (error: null, data: Buffer) => void) =>
             callback(null, Buffer.from(`asset:${path.basename(file)}`)),
+        // The sample conflict comes from the real visual fixture on disk.
+        readFileSync: (file: string) => readText(file),
     };
     const modules: Record<string, unknown> = { fs, http: { createServer }, path };
     const context = vm.createContext({
@@ -47,6 +52,7 @@ describe("merge editor preview shared runtime", () => {
         const scripts = [...html.matchAll(/<script([^>]*src="([^"]+)"[^>]*)>/g)];
         expect(scripts.map((script) => script[2])).toEqual([
             "/dist/webview-shiki.js",
+            "/dist/webview-react.js",
             "/dist/webview-mergeeditor.js",
         ]);
         for (const script of scripts) expect(script[1]).not.toMatch(/\b(?:async|defer|type)=?/);
@@ -65,6 +71,18 @@ describe("merge editor preview shared runtime", () => {
         );
         expect(exit).toHaveBeenCalledWith(1);
         expect(error.mock.calls[0][0]).toContain("webview-shiki.js. Run: bun run build");
+        expect(createServer).not.toHaveBeenCalled();
+    });
+
+    it("fails before opening a server when the fixture has no workbench block", () => {
+        const { context, createServer } = previewContext(undefined, (file) => {
+            const fixture = JSON.parse(readFileSync(file, "utf8"));
+            delete fixture.messages[0].message.data.workbench;
+            return JSON.stringify(fixture);
+        });
+        expect(() => vm.runInContext(readFileSync(scriptPath, "utf8"), context)).toThrow(
+            "Missing workbench data",
+        );
         expect(createServer).not.toHaveBeenCalled();
     });
 });

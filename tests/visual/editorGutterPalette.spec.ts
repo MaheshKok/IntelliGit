@@ -1,4 +1,6 @@
+import { mergeSelectors } from "./mergeSelectors";
 import { expect, test } from "./playwright/harnessPage";
+import { mountLegacyMerge, mountWorkbenchMerge } from "./legacyMerge";
 
 test("diff gutters, ribbons and collapsed lines use host change colors", async ({
     mountHarness,
@@ -38,29 +40,33 @@ test("diff gutters, ribbons and collapsed lines use host change colors", async (
     await page.screenshot({ path: testInfo.outputPath("diff-gutters.png") });
 });
 
-test("merge conflict gutters and thin boundaries retain dark colors", async ({
-    mountHarness,
-    page,
-}, testInfo) => {
-    await mountHarness("merge-editor", { webviewFixture: "conflicted.json" });
-    await expect(page.locator(".change-conflict .conflict-ours .real-line-row").first()).toHaveCSS(
-        "background-color",
-        "rgb(75, 21, 21)",
-    );
-    const connector = page.locator(".merge-connector.change-conflict").first();
-    await expect(connector).toHaveCSS("fill", "rgb(75, 21, 21)");
-    await expect(connector).toHaveCSS("stroke", "rgb(75, 21, 21)");
-    await expect(page.locator(".segment-conflict.change-conflict").first()).toHaveCSS(
-        "box-shadow",
-        /^rgb\(75, 21, 21\) 0px 2px 0px 0px inset, rgb\(75, 21, 21\) 0px -2px 0px 0px inset/,
-    );
-    await expect(page.locator(".merge-connector.variant-insertion").first()).toHaveCSS(
-        "fill",
-        "rgb(38, 75, 51)",
-    );
-    await expect(page.locator(".merge-connector.variant-insertion").first()).toHaveCSS(
-        "stroke",
-        "rgb(38, 75, 51)",
-    );
-    await page.screenshot({ path: testInfo.outputPath("merge-gutters.png") });
-});
+for (const target of ["legacy", "workbench"] as const) {
+    const selectors = mergeSelectors[target];
+    test(`merge conflict gutters and thin boundaries retain dark colors (${target})`, async ({
+        mountHarness,
+        page,
+    }, testInfo) => {
+        if (target === "legacy") await mountLegacyMerge(mountHarness, page);
+        else await mountWorkbenchMerge(mountHarness, page);
+        await expect(page.locator(selectors.pendingGutterCell).first()).toHaveCSS(
+            "background-color",
+            "rgb(75, 21, 21)",
+        );
+        const connector = page.locator(selectors.conflictRibbon).first();
+        await expect(connector).toHaveCSS("fill", "rgb(75, 21, 21)");
+        await expect(connector).toHaveCSS("stroke", "rgb(75, 21, 21)");
+        await expect(page.locator(selectors.conflictBoundary).first()).toHaveCSS(
+            "box-shadow",
+            /^rgb\(75, 21, 21\) 0px 2px 0px 0px inset, rgb\(75, 21, 21\) 0px -2px 0px 0px inset/,
+        );
+        await expect(page.locator(selectors.insertionRibbon).first()).toHaveCSS(
+            "fill",
+            "rgb(38, 75, 51)",
+        );
+        await expect(page.locator(selectors.insertionRibbon).first()).toHaveCSS(
+            "stroke",
+            "rgb(38, 75, 51)",
+        );
+        await page.screenshot({ path: testInfo.outputPath("merge-gutters.png") });
+    });
+}

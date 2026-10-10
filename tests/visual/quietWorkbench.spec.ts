@@ -1,47 +1,63 @@
+import { mergeSelectors } from "./mergeSelectors";
 import { oracles } from "../oracles";
+import { mountLegacyMerge, mountWorkbenchMerge } from "./legacyMerge";
 import { parseRgba } from "./playwright/collectOracleInputs";
 import { expect, test } from "./playwright/harnessPage";
 
-test("merge identity and summaries stay readable without overlap", async ({
-    mountHarness,
-    page,
-}) => {
-    await mountHarness("merge-editor", { webviewFixture: "conflicted.json", locale: "de" });
-    const details = page.locator('[aria-controls="merge-details"]');
-    await expect(details).toHaveAttribute("title", (await details.innerText()).trim());
-    await details.click();
-    await expect(details).toHaveAttribute("title", (await details.innerText()).trim());
-    const boxes = await page.locator(".merge-title, .merge-stats").evaluateAll((elements) =>
-        elements.map((element) => {
-            const box = element.getBoundingClientRect();
-            return { left: box.left, right: box.right, top: box.top, bottom: box.bottom };
-        }),
-    );
-    expect(boxes).toHaveLength(2);
-    const [title, stats] = boxes;
-    expect(
-        title.right <= stats.left || title.bottom <= stats.top || stats.bottom <= title.top,
-        "file identity and summary markers must not overlap",
-    ).toBe(true);
-    const summaries = page.locator(".merge-stat-pill");
-    await expect(summaries).toHaveCount(3);
-    for (const summary of await summaries.all()) {
-        await expect(summary).toBeVisible();
-        expect(await summary.textContent()).toMatch(/\d/);
+for (const target of ["legacy", "workbench"] as const) {
+    const selectors = mergeSelectors[target];
+    test(`${target} selectors exist for accept buttons and ribbons`, async ({
+        mountHarness,
+        page,
+    }) => {
+        if (target === "legacy") await mountLegacyMerge(mountHarness, page, "de");
+        else await mountWorkbenchMerge(mountHarness, page, undefined, "de");
+        await expect.poll(() => page.locator(selectors.acceptButton).count()).toBeGreaterThan(0);
+        await expect.poll(() => page.locator(selectors.ribbonPath).count()).toBeGreaterThan(0);
+    });
+
+    test(`merge identity and summaries stay readable without overlap (${target})`, async ({
+        mountHarness,
+        page,
+    }) => {
+        if (target === "legacy") await mountLegacyMerge(mountHarness, page, "de");
+        else await mountWorkbenchMerge(mountHarness, page, undefined, "de");
+        const details = page.locator(selectors.details);
+        await expect(details).toHaveAttribute("title", (await details.innerText()).trim());
+        await details.click();
+        await expect(details).toHaveAttribute("title", (await details.innerText()).trim());
+        const boxes = await page.locator(selectors.identity).evaluateAll((elements) =>
+            elements.map((element) => {
+                const box = element.getBoundingClientRect();
+                return { left: box.left, right: box.right, top: box.top, bottom: box.bottom };
+            }),
+        );
+        expect(boxes).toHaveLength(2);
+        const [title, stats] = boxes;
         expect(
-            await summary.evaluate((element) => element.scrollWidth <= element.clientWidth),
-            "localized status text must fit inside its marker",
+            title.right <= stats.left || title.bottom <= stats.top || stats.bottom <= title.top,
+            "file identity and summary markers must not overlap",
         ).toBe(true);
-    }
-    const path = page.locator(".merge-title .file-path");
-    await expect(path).toBeVisible();
-    // Font metrics vary across hosts; the complete fixture filename must fit on each.
-    await expect(path).toHaveText("conflict.txt");
-    expect(
-        await path.evaluate((element) => element.scrollWidth <= element.clientWidth),
-        "filename must remain readable without clipping",
-    ).toBe(true);
-});
+        const summaries = page.locator(selectors.summaries);
+        await expect(summaries).toHaveCount(3);
+        for (const summary of await summaries.all()) {
+            await expect(summary).toBeVisible();
+            expect(await summary.textContent()).toMatch(/\d/);
+            expect(
+                await summary.evaluate((element) => element.scrollWidth <= element.clientWidth),
+                "localized status text must fit inside its marker",
+            ).toBe(true);
+        }
+        const path = page.locator(selectors.filePath);
+        await expect(path).toBeVisible();
+        // Font metrics vary across hosts; the complete fixture filename must fit on each.
+        await expect(path).toHaveText("conflict.txt");
+        expect(
+            await path.evaluate((element) => element.scrollWidth <= element.clientWidth),
+            "filename must remain readable without clipping",
+        ).toBe(true);
+    });
+}
 
 for (const locale of ["en", "de", "ru"]) {
     test(`narrow conflict session keeps files and actions reachable in ${locale}`, async ({

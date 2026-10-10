@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.37.1] - 2026-10-10
+
+### Changed
+
+- The merge editor is back to its familiar look, with the same colours, gutters, accept buttons and change markers as before 0.37.0, while keeping typing anywhere in the result, drafts, the Base view and Find.
+
+### Fixed
+
+- Closing the merge editor while Apply is still staging no longer leaves an old draft that comes back later.
+- When the merge editor cannot load a conflict, it now offers VS Code's built-in resolver instead of only an error.
+- You can scroll the three merge panes sideways with a trackpad swipe or Shift+mouse wheel, not just the thin bar at the bottom.
+- A conflict you edit by hand in the middle pane now stays red, as in JetBrains IDEs, instead of turning green as if it were resolved.
+
+## [0.37.0] - 2026-10-10
+
+### Added
+
+- Git conflicts open a full-document three-way merge workbench with immutable input panes, inline accept controls, linked change ribbons, base inspection, search, ordered combination choices, and shared undo/redo for decisions and manual edits. Drafts survive closing and reopening, and follow the current VS Code theme.
+
+### Fixed
+
+- Applying a merge result validates the captured Git stages, operation, working file, and unsaved editor state before replacing and staging a literal file path. Changed inputs retain the draft; unsupported binary, special-file, and deleted-side conflicts offer the native resolver. Shelf sessions keep the existing renderer.
+
 ## [0.36.5] - 2026-10-04
 
 ### Fixed

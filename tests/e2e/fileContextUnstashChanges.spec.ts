@@ -372,7 +372,7 @@ test("Explorer, tab and editor unstash clicked B by OID while active A stays unc
         await expect
             .poll(async () => {
                 for (const frame of page.frames()) {
-                    if (await frame.locator(".merge-editor").count()) {
+                    if (await frame.locator(".merge-editor.workbench").count()) {
                         mergeFrame = frame;
                         return true;
                     }
@@ -380,9 +380,22 @@ test("Explorer, tab and editor unstash clicked B by OID while active A stays unc
                 return false;
             })
             .toBe(true);
-        await expect(mergeFrame!.locator(".merge-editor")).toContainText("committed conflict");
-        await expect(mergeFrame!.locator(".merge-editor")).toContainText("stash conflict");
-        await mergeFrame!.getByRole("button", { name: "Use File Theirs", exact: true }).click();
+        await expect(mergeFrame!.locator(".merge-editor.workbench")).toContainText(
+            "committed conflict",
+        );
+        await expect(mergeFrame!.locator(".merge-editor.workbench")).toContainText(
+            "stash conflict",
+        );
+        const changes = mergeFrame!.locator(".overview-marker.unresolved");
+        const count = await changes.count();
+        for (let index = 0; index < count; index++) {
+            await changes.first().click();
+            await mergeFrame!
+                .locator(".pane-theirs .merge-action-gutter .mrow-active .accept-btn")
+                .click();
+            await expect(changes).toHaveCount(count - index - 1);
+        }
+        await mergeFrame!.getByRole("button", { name: "Apply", exact: true }).click();
         await expect.poll(() => git(b, env, ["ls-files", "-u", "selected.txt"])).toBe("");
         expect(git(b, env, ["show", ":selected.txt"])).toBe("stash conflict");
         expect(await readFile(path.join(b, "selected.txt"), "utf8")).toBe("stash conflict\n");

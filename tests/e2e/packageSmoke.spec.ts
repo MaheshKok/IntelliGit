@@ -26,7 +26,10 @@ import {
 } from "./hostFixtures/packageSmokeHelpers";
 import { IntelliGitView } from "./pageObjects/intelliGitView";
 import { Workbench } from "./pageObjects/workbench";
+import { runGitRaw } from "../fixtures/repo/gitRun";
+import { readPackageSmokeHostLogs } from "./hostFixtures/packageSmokeLogs";
 import { selectSoleVsix, verifyVsixPackage } from "../../scripts/verifyVsixPackage.js";
+import en from "../../src/webviews/i18n/en.json";
 
 const execFileAsync = promisify(execFile);
 const REPO_ROOT = path.resolve(__dirname, "../..");
@@ -70,9 +73,11 @@ async function runPackageCli(options: {
 }
 
 test.describe("installed VSIX package smoke", () => {
-    test("installs the root VSIX and mounts IntelliGit from the installed extension", async () => {
+    test("installs the root VSIX and mounts IntelliGit from the installed extension", async ({}, testInfo) => {
         test.setTimeout(180_000);
         const directoriesToClean: string[] = [];
+        const mergeErrors: string[] = [];
+        let userDataDir: string | undefined;
         let electronApp: ElectronApplication | undefined;
 
         try {
@@ -111,9 +116,7 @@ test.describe("installed VSIX package smoke", () => {
                 cwd: workspacePath,
                 env: environment,
             });
-            const userDataDir = await mkdtemp(
-                path.join(tmpdir(), "intelligit-package-smoke-profile-"),
-            );
+            userDataDir = await mkdtemp(path.join(tmpdir(), "intelligit-package-smoke-profile-"));
             const extensionsDir = await mkdtemp(
                 path.join(tmpdir(), "intelligit-package-smoke-extensions-"),
             );
@@ -172,6 +175,12 @@ test.describe("installed VSIX package smoke", () => {
                 timeout: 60_000,
             });
             const window = await electronApp.firstWindow();
+            window.on("console", (message) => {
+                if (message.text().includes("[IntelliGit] Merge editor operation failed:")) {
+                    mergeErrors.push(message.text().slice(0, 16 * 1024));
+                    if (mergeErrors.length > 16) mergeErrors.shift();
+                }
+            });
             await window.waitForLoadState("domcontentloaded");
             await dismissFirstRunDialogs(window);
 
@@ -219,7 +228,72 @@ test.describe("installed VSIX package smoke", () => {
             console.log(
                 "[package smoke] installed History window renders syntax-highlighted revision",
             );
+            await historyWindow.close();
+            await runGitRaw(workspacePath, ["checkout", "-b", "incoming"], environment);
+            await writeFile(
+                path.join(workspacePath, "package-smoke.ts"),
+                "export const answer = 43;\n",
+            );
+            await runGitRaw(workspacePath, ["commit", "-am", "Incoming edit"], environment);
+            await runGitRaw(workspacePath, ["checkout", "main"], environment);
+            await writeFile(
+                path.join(workspacePath, "package-smoke.ts"),
+                "export const answer = 44;\n",
+            );
+            await runGitRaw(workspacePath, ["commit", "-am", "Local edit"], environment);
+            await runGitRaw(workspacePath, ["merge", "incoming"], environment).catch(
+                () => undefined,
+            );
+            expect(await runGitRaw(workspacePath, ["ls-files", "-u"], environment)).not.toBe("");
+            await new Workbench(window).runCommand("Open Conflict Session");
+            const conflicts = await intelliGitView.revealConflictSession();
+            await expect(conflicts.locator("tbody tr.row")).toHaveCount(1);
+            await conflicts.locator("tbody tr.row").click();
+            const merge = await intelliGitView.revealMergeWorkbench();
+            await expect(
+                merge.locator('[data-testid="merge-editor-1"] .cm-content'),
+            ).toHaveAttribute("contenteditable", "true");
+            await expect(merge.locator('.cm-content span[style*="color"]').first()).toBeVisible();
+            // A lingering workbench tab tooltip can cover this webview toolbar on Linux.
+            await window.mouse.move(0, 0);
+            await window.keyboard.press("Escape");
+            await expect(window.locator(".context-view .monaco-hover:visible")).toHaveCount(0);
+            await merge
+                .locator(".merge-toolbar")
+                .getByRole("button", {
+                    name: en["merge.toolbar.acceptAllYours.label"],
+                    exact: true,
+                })
+                .click();
+            await merge.getByRole("button", { name: "Apply", exact: true }).click();
+            await expect
+                .poll(() => runGitRaw(workspacePath, ["ls-files", "-u"], environment))
+                .toBe("");
+            expect(await runGitRaw(workspacePath, ["show", ":package-smoke.ts"], environment)).toBe(
+                "export const answer = 44;\n",
+            );
+            console.log(
+                "[package smoke] installed merge workbench resolves and stages a real conflict",
+            );
         } catch (error) {
+            if (mergeErrors.length) {
+                await testInfo.attach("merge-operation-errors.log", {
+                    body: mergeErrors.join("\n"),
+                    contentType: "text/plain",
+                });
+            }
+            if (userDataDir) {
+                try {
+                    for (const log of await readPackageSmokeHostLogs(userDataDir)) {
+                        await testInfo.attach(log.name, {
+                            body: log.body,
+                            contentType: "text/plain",
+                        });
+                    }
+                } catch (diagnosticError) {
+                    console.warn("Package smoke host logs unavailable:", diagnosticError);
+                }
+            }
             console.log(
                 "Package smoke windows:",
                 await electronApp

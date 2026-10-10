@@ -1,4 +1,5 @@
-import { HOST_CONTEXT_FIXTURES } from "./hostContextFixtures";
+import { mergeSelectors } from "./mergeSelectors";
+import { mountLegacyMerge, mountWorkbenchMerge } from "./legacyMerge";
 import { expect, test } from "./playwright/harnessPage";
 
 /**
@@ -72,8 +73,11 @@ interface MarkSurvey {
  * transparent `color-mix` both normalise to `0,0,0,0`, which is the point -- this asserts what is
  * painted, not which syntax expressed it.
  */
-async function surveyMergeMarks(page: import("@playwright/test").Page): Promise<MarkSurvey> {
-    return page.evaluate(() => {
+async function surveyMergeMarks(
+    page: import("@playwright/test").Page,
+    selectors: typeof mergeSelectors.legacy,
+): Promise<MarkSurvey> {
+    return page.evaluate((selectors) => {
         const canvas = document.createElement("canvas");
         const ctx = canvas.getContext("2d");
         if (ctx === null) throw new Error("no 2d context: nothing was measured");
@@ -94,7 +98,13 @@ async function surveyMergeMarks(page: import("@playwright/test").Page): Promise<
             return `${r},${g},${b},${a}`;
         };
 
-        const COLUMNS = ["conflict-ours", "conflict-theirs", "conflict-result"];
+        const COLUMNS = [selectors.oursClass, selectors.theirsClass, selectors.resultClass];
+        const classes: Record<string, string> = {
+            "variant-insertion": selectors.insertionClass,
+            "variant-deletion": selectors.deletionClass,
+            "variant-modification": selectors.modificationClass,
+            "change-conflict": selectors.conflictClass,
+        };
         const oneSided: unknown[] = [];
         const twoSided: unknown[] = [];
         const blockCounts: Record<string, number> = {
@@ -104,24 +114,22 @@ async function surveyMergeMarks(page: import("@playwright/test").Page): Promise<
             "change-conflict": 0,
         };
 
-        const wrappers = Array.from(
-            document.querySelectorAll<HTMLElement>(".merge-editor .segment-conflict"),
-        );
+        const wrappers = Array.from(document.querySelectorAll<HTMLElement>(selectors.wrappers));
         for (const wrapper of wrappers) {
             for (const key of Object.keys(blockCounts)) {
-                if (wrapper.classList.contains(key)) blockCounts[key] += 1;
+                if (wrapper.classList.contains(classes[key])) blockCounts[key] += 1;
             }
 
             // Only the two populations this file compares. `variant-deletion` and
             // `variant-modification` are counted above but not sampled: the first cannot be
             // reproduced by any committed fixture, and the second is the merge editor's own
             // two-sided case, already represented by the conflict control.
-            const oneSidedWrapper = wrapper.classList.contains("variant-insertion");
-            const controlWrapper = wrapper.classList.contains("change-conflict");
+            const oneSidedWrapper = wrapper.classList.contains(selectors.insertionClass);
+            const controlWrapper = wrapper.classList.contains(selectors.conflictClass);
             if (!oneSidedWrapper && !controlWrapper) continue;
 
             for (const mark of Array.from(
-                wrapper.querySelectorAll<HTMLElement>(".word-diff-change"),
+                wrapper.querySelectorAll<HTMLElement>(selectors.wordFill),
             )) {
                 // The band is whatever actually paints behind this mark, found by walking out to
                 // the wrapper. Naming a class instead would measure the wrong element in the one
@@ -159,63 +167,65 @@ async function surveyMergeMarks(page: import("@playwright/test").Page): Promise<
         }
 
         return { oneSided, twoSided, blockCounts };
-    }) as Promise<MarkSurvey>;
+    }, selectors) as Promise<MarkSurvey>;
 }
 
-test.describe("merge-editor whole-line word fill", () => {
-    test("a wholly inserted hunk tints the line once, and a conflict still marks its words", async ({
-        mountHarness,
-        page,
-    }) => {
-        await mountHarness("merge-editor", {
-            webviewFixture: HOST_CONTEXT_FIXTURES["merge-editor"],
+for (const target of ["legacy", "workbench"] as const) {
+    const selectors = mergeSelectors[target];
+    test.describe("merge-editor whole-line word fill", () => {
+        test(`a wholly inserted hunk tints the line once, and a conflict still marks its words (${target})`, async ({
+            mountHarness,
+            page,
+        }) => {
+            if (target === "legacy") await mountLegacyMerge(mountHarness, page);
+            else await mountWorkbenchMerge(mountHarness, page);
+            const survey = await surveyMergeMarks(page, selectors);
+
+            // Anti-vacuity, and the reason it is not optional: the failure this file exists to catch
+            // is a SECOND tint, and every cheap way to remove a second tint -- dropping the rule,
+            // dropping the spans, losing the fixture's one-sided hunk -- also removes the samples.
+            // Asserting on an empty list is how a suite reports "fixed" for "no longer measured".
+            // `blockCounts` is in the message so an empty survey says WHICH half went: a zero
+            // `variant-insertion` count means the fixture regressed, a non-zero one with no samples
+            // means the spans did.
+            expect(
+                survey.oneSided.length,
+                `no word marks were found inside a wholly inserted hunk, so nothing was measured. ` +
+                    `Wrappers found: ${JSON.stringify(survey.blockCounts)}`,
+            ).toBeGreaterThan(0);
+
+            expect(
+                survey.twoSided.length,
+                `no word marks were found inside a conflict hunk, so the control below cannot ` +
+                    `distinguish this fix from deleting every word mark in the merge editor. ` +
+                    `Wrappers found: ${JSON.stringify(survey.blockCounts)}`,
+            ).toBeGreaterThan(0);
+
+            const doubled = survey.oneSided.filter((sample) => sample.addsTint);
+            // Tallied by column rather than reported as one number: the unchanged column fails for a
+            // different reason than the changed one -- a mark over a transparent band rather than a
+            // mark over a wash -- and a bare count cannot say which of the two a fix reached.
+            const byColumn = doubled.reduce<Record<string, number>>((tally, sample) => {
+                tally[sample.column] = (tally[sample.column] ?? 0) + 1;
+                return tally;
+            }, {});
+            expect(
+                doubled.length,
+                `${doubled.length}/${survey.oneSided.length} word marks inside a wholly inserted ` +
+                    `hunk paint a second tint over the band beneath them, so the line reads as two ` +
+                    `shades of one colour instead of one. By column: ${JSON.stringify(byColumn)}. ` +
+                    `First: ${JSON.stringify(doubled[0])}`,
+            ).toBe(0);
+
+            // The control. A conflict hunk has a counterpart on both sides, so "which words differ"
+            // has an answer and the mark is the only thing that gives it -- this must keep painting.
+            const marked = survey.twoSided.filter((sample) => sample.addsTint);
+            expect(
+                marked.length,
+                `no word mark inside a conflict hunk paints a tint of its own, so a reader cannot ` +
+                    `see which words differ between the two sides. ` +
+                    `Samples: ${JSON.stringify(survey.twoSided.slice(0, 3))}`,
+            ).toBeGreaterThan(0);
         });
-        const survey = await surveyMergeMarks(page);
-
-        // Anti-vacuity, and the reason it is not optional: the failure this file exists to catch
-        // is a SECOND tint, and every cheap way to remove a second tint -- dropping the rule,
-        // dropping the spans, losing the fixture's one-sided hunk -- also removes the samples.
-        // Asserting on an empty list is how a suite reports "fixed" for "no longer measured".
-        // `blockCounts` is in the message so an empty survey says WHICH half went: a zero
-        // `variant-insertion` count means the fixture regressed, a non-zero one with no samples
-        // means the spans did.
-        expect(
-            survey.oneSided.length,
-            `no word marks were found inside a wholly inserted hunk, so nothing was measured. ` +
-                `Wrappers found: ${JSON.stringify(survey.blockCounts)}`,
-        ).toBeGreaterThan(0);
-
-        expect(
-            survey.twoSided.length,
-            `no word marks were found inside a conflict hunk, so the control below cannot ` +
-                `distinguish this fix from deleting every word mark in the merge editor. ` +
-                `Wrappers found: ${JSON.stringify(survey.blockCounts)}`,
-        ).toBeGreaterThan(0);
-
-        const doubled = survey.oneSided.filter((sample) => sample.addsTint);
-        // Tallied by column rather than reported as one number: the unchanged column fails for a
-        // different reason than the changed one -- a mark over a transparent band rather than a
-        // mark over a wash -- and a bare count cannot say which of the two a fix reached.
-        const byColumn = doubled.reduce<Record<string, number>>((tally, sample) => {
-            tally[sample.column] = (tally[sample.column] ?? 0) + 1;
-            return tally;
-        }, {});
-        expect(
-            doubled.length,
-            `${doubled.length}/${survey.oneSided.length} word marks inside a wholly inserted ` +
-                `hunk paint a second tint over the band beneath them, so the line reads as two ` +
-                `shades of one colour instead of one. By column: ${JSON.stringify(byColumn)}. ` +
-                `First: ${JSON.stringify(doubled[0])}`,
-        ).toBe(0);
-
-        // The control. A conflict hunk has a counterpart on both sides, so "which words differ"
-        // has an answer and the mark is the only thing that gives it -- this must keep painting.
-        const marked = survey.twoSided.filter((sample) => sample.addsTint);
-        expect(
-            marked.length,
-            `no word mark inside a conflict hunk paints a tint of its own, so a reader cannot ` +
-                `see which words differ between the two sides. ` +
-                `Samples: ${JSON.stringify(survey.twoSided.slice(0, 3))}`,
-        ).toBeGreaterThan(0);
     });
-});
+}
