@@ -1627,7 +1627,7 @@
         "@shikijs/themes": "4.4.3",
         "@types/jsdom": "^30.0.0",
         "@types/node": "^26.6.3",
-        "@types/react": "^18.2.48",
+        "@types/react": "^19.3.0",
         "@types/react-dom": "^19.2.7",
         "@types/vscode": "1.107.0",
         "@vitest/coverage-v8": "4.1.10",
