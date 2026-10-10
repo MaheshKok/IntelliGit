@@ -109,8 +109,13 @@ async function clickVisibleWideLine(page: Page) {
 }
 
 // Compare against the same frame with only the requested paint hidden. This avoids counting
-// text or gutter icons that happen to share the theme's cursor/selection colour.
-async function paintCounts(page: Page, kind: "caret" | "selection") {
+// text or gutter icons that happen to share the theme's cursor/selection colour. Given `frames`
+// (two shots of an unmoved view), count pixels the paint toggles between them in either order.
+async function paintCounts(
+    page: Page,
+    kind: "caret" | "selection",
+    frames?: { before: Buffer; after: Buffer },
+) {
     const geometry = await page.locator(".pane-result .cm-content").evaluate((content, kind) => {
         const name =
             kind === "caret"
@@ -142,10 +147,10 @@ async function paintCounts(page: Page, kind: "caret" | "selection") {
         kind === "caret"
             ? ".cm-content, .cm-content * { caret-color: transparent !important; } .cm-cursor { visibility: hidden !important; }"
             : ".cm-content::selection, .cm-content ::selection { background: transparent !important; } .cm-selectionBackground { visibility: hidden !important; }";
-    const before = await page.screenshot({ caret: "initial", style: hidden });
-    const after = await page.screenshot({ caret: "initial" });
+    const before = frames?.before ?? (await page.screenshot({ caret: "initial", style: hidden }));
+    const after = frames?.after ?? (await page.screenshot({ caret: "initial" }));
     return page.evaluate(
-        async ({ before, after, geometry }) => {
+        async ({ before, after, geometry, either }) => {
             const decode = async (base64: string) => {
                 const bytes = Uint8Array.from(atob(base64), (char) => char.charCodeAt(0));
                 const image = await createImageBitmap(new Blob([bytes], { type: "image/png" }));
@@ -179,14 +184,16 @@ async function paintCounts(page: Page, kind: "caret" | "selection") {
                     const changed = [0, 1, 2].some(
                         (channel) => painted.data[offset + channel] !== base.data[offset + channel],
                     );
-                    const matches = [0, 1, 2].every(
-                        (channel) =>
-                            painted.data[offset + channel] ===
-                            Math.round(
-                                (rgba[channel] * rgba[3]) / 255 +
-                                    base.data[offset + channel] * (1 - rgba[3] / 255),
-                            ),
-                    );
+                    const over = (top: ImageData, under: ImageData) =>
+                        [0, 1, 2].every(
+                            (channel) =>
+                                top.data[offset + channel] ===
+                                Math.round(
+                                    (rgba[channel] * rgba[3]) / 255 +
+                                        under.data[offset + channel] * (1 - rgba[3] / 255),
+                                ),
+                        );
+                    const matches = over(painted, base) || (either && over(base, painted));
                     if (!changed || !matches) continue;
                     if (coversPixel(code, x, y)) counts.code++;
                     else counts.outside++;
@@ -195,20 +202,42 @@ async function paintCounts(page: Page, kind: "caret" | "selection") {
             }
             return counts;
         },
-        { before: before.toString("base64"), after: after.toString("base64"), geometry },
+        {
+            before: before.toString("base64"),
+            after: after.toString("base64"),
+            geometry,
+            either: Boolean(frames),
+        },
     );
 }
 
+// Chrome does not repaint a native caret for a caret-color change, so a style-hidden frame can
+// still show it. Instead wait up to 3 seconds for the native blink to toggle the caret between
+// two frames of an unmoved view; any movement restarts from the newer frame.
 async function expectCaretPaint(page: Page, step: string) {
-    // Native caret blinking is left intact; sample screenshot frames for at most 3 seconds.
-    await expect
-        .poll(async () => (await paintCounts(page, "caret")).code, {
-            message: `${step}: caret paints inside the code area`,
-            timeout: 3000,
-            intervals: [100],
-        })
-        .toBeGreaterThan(0);
-    const paint = await paintCounts(page, "caret");
+    const view = () =>
+        page.evaluate(() =>
+            JSON.stringify([
+                window.getSelection()!.getRangeAt(0).getBoundingClientRect(),
+                document.querySelector(".merge-horizontal-scroll")!.scrollLeft,
+                document.querySelector(".merge-content")!.scrollTop,
+            ]),
+        );
+    const frame = async () => {
+        const state = await view();
+        const png = await page.screenshot({ caret: "initial" });
+        return { png, state: state === (await view()) ? state : undefined };
+    };
+    let reference = await frame();
+    let paint = { code: 0, gutters: 0, outside: 0 };
+    for (const deadline = Date.now() + 3000; !paint.code && Date.now() < deadline;) {
+        await page.waitForTimeout(100);
+        const next = await frame();
+        if (next.state && next.state === reference.state)
+            paint = await paintCounts(page, "caret", { before: reference.png, after: next.png });
+        else reference = next;
+    }
+    expect(paint.code, `${step}: caret paints inside the code area`).toBeGreaterThan(0);
     expect(paint.gutters, `${step}: no caret paint in gutters`).toBe(0);
     expect(paint.outside, `${step}: no caret paint outside code`).toBe(0);
 }
