@@ -117,7 +117,7 @@ describe("workbench layout", () => {
         expect(redo(target)).toBe(true);
         expect(geometry(state)).toEqual(whitespace);
     });
-    it("ribbon specs exclude edited hunks and untouched auto-merges", () => {
+    it("ribbon specs retain edited hunks and exclude untouched auto-merges", () => {
         const segments = [
             { type: "common" as const, lines: ["head"] },
             conflict({ id: 10, oursLines: ["ours one", "ours two"] }),
@@ -142,6 +142,7 @@ describe("workbench layout", () => {
         const specs = workbenchConnectors(hunks, segments);
         expect(specs.map(({ id, index }) => ({ id, index }))).toEqual([
             { id: 10, index: 1 },
+            { id: 11, index: 2 },
             { id: 13, index: 5 },
         ]);
         const { paneLines } = layoutSegments(segments, hunks, doc);
@@ -150,9 +151,39 @@ describe("workbench layout", () => {
         }
         expect(specs[0].left?.resolved).toBe(false);
         expect(specs[0].right?.resolved).toBe(false);
-        expect(specs[1].left?.resolved).toBe(true);
-        expect(specs[1].left?.colorClass.split(" ")).toContain("connector-resolved");
-        expect(specs[1].right).toBeUndefined();
+        expect(specs[1].left?.resolved).toBe(false);
+        expect(specs[1].right?.resolved).toBe(false);
+        expect(specs[2].left?.resolved).toBe(true);
+        expect(specs[2].left?.colorClass.split(" ")).toContain("connector-resolved");
+        expect(specs[2].right).toBeUndefined();
+    });
+    it.each([undefined, "ours", "theirs", "both", "both-reversed", "none", "base"] as const)(
+        "edited ribbons span the current result instead of the previous %s decision",
+        (decision) => {
+            const { hunks } = model([conflict()]);
+            const edited = {
+                ...hunks[0],
+                edited: true,
+                decision,
+                dismissed: { ours: true, theirs: true },
+            };
+            const [spec] = workbenchConnectors([edited], [edited.segment]);
+            expect(spec, "manual editing must retain the hunk's divider bands").toBeDefined();
+            for (const side of [spec.left, spec.right]) {
+                expect(side?.resolved).toBe(false);
+                expect(side?.midSlice).toBeUndefined();
+            }
+        },
+    );
+    it("an edited automatic merge retains its contributing ribbon", () => {
+        const { hunks } = model([
+            conflict({ changeKind: "ours-only", autoResolvedLines: ["ours"] }),
+        ]);
+        const edited = { ...hunks[0], edited: true };
+        const [spec] = workbenchConnectors([edited], [edited.segment]);
+        expect(spec, "manual editing must retain the automatic hunk's divider band").toBeDefined();
+        expect(spec.left?.resolved).toBe(false);
+        expect(spec.right).toBeUndefined();
     });
     it("rejects a ribbon hunk missing from the current segments", () => {
         const { hunks } = model([conflict()]);

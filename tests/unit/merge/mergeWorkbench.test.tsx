@@ -180,12 +180,12 @@ describe("shared workbench layout", () => {
             unmount(mounted.root, mounted.container);
         }
     });
-    it("editing a hunk removes its ribbons", () => {
+    it("editing a hunk preserves its ribbons and the adjacent hunk", () => {
         const mounted = mount(<MergeWorkbench data={twoActionData} />);
         try {
             const paths = () => [...mounted.container.querySelectorAll("path.merge-connector")];
             expect(paths()).toHaveLength(4);
-            const secondHunk = paths().slice(2);
+            const before = paths();
             const view = result(mounted.container);
             const first = view.state.field(workbenchHunks)[0];
             act(() =>
@@ -194,8 +194,8 @@ describe("shared workbench layout", () => {
                     userEvent: "input.type",
                 }),
             );
-            expect(paths()).toHaveLength(2);
-            expect(paths()).toEqual(secondHunk);
+            expect(paths()).toHaveLength(4);
+            expect(paths()).toEqual(before);
         } finally {
             unmount(mounted.root, mounted.container);
         }

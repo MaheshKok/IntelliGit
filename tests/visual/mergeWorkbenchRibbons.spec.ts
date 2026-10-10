@@ -212,21 +212,42 @@ test("accepting a side turns its ribbon into a resolved contour", async ({ page 
     await expect(page.locator(paths).nth(0)).toHaveAttribute("d", / Z M /);
 });
 
-test("typing inside a hunk removes its ribbons", async ({ page }) => {
-    const before = await page.locator(paths).count();
-    await page
-        .locator(".pane-result .cm-line")
-        .filter({ hasText: new RegExp(`^${first.baseLines[0]}$`) })
-        .click();
-    await page.keyboard.type("z");
-    await expect(page.locator(paths)).toHaveCount(before - 2);
-    await expectUnion(
+for (const insert of ["z", "z\nextra\n"]) {
+    test(`typing ${JSON.stringify(insert)} inside a hunk preserves its ribbons`, async ({
         page,
-        0,
-        { pane: "result", rows: next.theirsLines },
-        { pane: "theirs", rows: next.theirsLines },
-    );
-});
+    }) => {
+        const before = await page.locator(paths).count();
+        await page
+            .locator(".pane-result .cm-line")
+            .filter({ hasText: new RegExp(`^${first.baseLines[0]}$`) })
+            .click();
+        await page.keyboard.press("Home");
+        await page.keyboard.insertText(insert);
+        await expect(
+            page.locator(paths),
+            "manual editing must retain both divider bands",
+        ).toHaveCount(before);
+        const resultRows = (insert + first.baseLines.join("\n")).split("\n");
+        await expectEdgeExtents(
+            page,
+            0,
+            { pane: "ours", rows: first.oursLines },
+            { pane: "result", rows: resultRows },
+        );
+        await expectEdgeExtents(
+            page,
+            1,
+            { pane: "result", rows: resultRows },
+            { pane: "theirs", rows: first.theirsLines },
+        );
+        await expectUnion(
+            page,
+            2,
+            { pane: "result", rows: next.theirsLines },
+            { pane: "theirs", rows: next.theirsLines },
+        );
+    });
+}
 
 test("a hunk scrolled out of view hides its ribbon", async ({ page }) => {
     await scrollTo(
