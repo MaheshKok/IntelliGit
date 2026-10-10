@@ -130,7 +130,8 @@ ${styleLinks ? `${styleLinks}\n` : ""}
         window.intelligitSettings = ${settingsPayload};
         window.intelligitI18n = ${i18nPayloadJson};${e2eBootstrapScript}
     </script>
-${highlighterScript}    <script nonce="${nonce}" src="${escapeHtmlAttr(String(scriptUri))}"></script>
+${highlighterScript}    <script nonce="${nonce}" src="${escapeHtmlAttr(String(webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, "dist", "webview-react.js"))))}"></script>
+    <script nonce="${nonce}" src="${escapeHtmlAttr(String(scriptUri))}"></script>
 </body>
 </html>`;
 }

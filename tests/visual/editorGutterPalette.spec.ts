@@ -1,4 +1,5 @@
 import { expect, test } from "./playwright/harnessPage";
+import { mountLegacyMerge } from "./legacyMerge";
 
 test("diff gutters, ribbons and collapsed lines use host change colors", async ({
     mountHarness,
@@ -42,7 +43,7 @@ test("merge conflict gutters and thin boundaries retain dark colors", async ({
     mountHarness,
     page,
 }, testInfo) => {
-    await mountHarness("merge-editor", { webviewFixture: "conflicted.json" });
+    await mountLegacyMerge(mountHarness, page);
     await expect(page.locator(".change-conflict .conflict-ours .real-line-row").first()).toHaveCSS(
         "background-color",
         "rgb(75, 21, 21)",

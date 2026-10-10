@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.37.0] - 2026-10-10
+
+### Added
+
+- Git conflicts open a full-document three-way merge workbench with immutable input panes, inline accept controls, linked change ribbons, base inspection, search, ordered combination choices, and shared undo/redo for decisions and manual edits. Drafts survive closing and reopening, and follow the current VS Code theme.
+
+### Fixed
+
+- Applying a merge result validates the captured Git stages, operation, working file, and unsaved editor state before replacing and staging a literal file path. Changed inputs retain the draft; unsupported binary, special-file, and deleted-side conflicts offer the native resolver. Shelf sessions keep the existing renderer.
+
 ## [0.36.5] - 2026-10-04
 
 ### Fixed

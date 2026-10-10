@@ -14,6 +14,11 @@ import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { readEmptyTreeOid } from "./emptyTree";
 import { GitExecutor } from "./executor";
+import {
+    readMergeResolutionSnapshot,
+    applyMergeResolution,
+    type MergeResolutionSnapshot,
+} from "./mergeResolution";
 import { resolveGitDir } from "./gitDirectory";
 import { isExclusiveCreateBlocked } from "./repositoryLock";
 import {
@@ -1906,6 +1911,28 @@ export class GitOps {
             return null;
         }
     }
+    /** Captures immutable, bounded text stages for one conflict file. */
+    async openMergeResolution(filePath: string): Promise<MergeResolutionSnapshot> {
+        return readMergeResolutionSnapshot(this.executor, await this.getRepositoryRoot(), filePath);
+    }
+
+    /** Saves a text resolution only while the opened Git and working-tree snapshot remains current. */
+    async applyMergeResolution(
+        filePath: string,
+        snapshot: MergeResolutionSnapshot,
+        content: string,
+        assertNoDirtyEditor: () => void | Promise<void>,
+    ): Promise<void> {
+        await applyMergeResolution(
+            this.executor,
+            await this.getRepositoryRoot(),
+            filePath,
+            snapshot,
+            content,
+            assertNoDirtyEditor,
+        );
+    }
+
     /** Stages one literal repository path, typically after conflict-side resolution. */
     async stageFile(filePath: string): Promise<void> {
         await this.executor.run(withLiteralPathspecs(["add", "--", filePath]));

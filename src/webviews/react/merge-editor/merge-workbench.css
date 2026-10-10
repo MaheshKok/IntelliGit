@@ -1,0 +1,194 @@
+/* The workbench shares chrome and change colors with the existing merge renderer. */
+.merge-workbench {
+    height: 100%;
+}
+.merge-workbench button svg {
+    width: 12px;
+    height: 12px;
+    flex-shrink: 0;
+}
+.merge-workbench .toolbar-icon-btn[aria-pressed="true"] {
+    background: var(--vscode-toolbar-hoverBackground);
+    border-color: var(--merge-border);
+}
+.merge-workbench .toolbar-select {
+    max-width: 210px;
+}
+.mw-headings .pane-meta-label {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.mw-headings .pane-lock {
+    vertical-align: middle;
+    margin-right: 5px;
+    width: 12px;
+    height: 12px;
+}
+.mw-headings .pane-meta-center span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.mw-panes {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 28px minmax(0, 1fr) 28px minmax(0, 1fr);
+    overflow: hidden;
+}
+.mw-editor {
+    position: relative;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+}
+.merge-workbench .cm-line {
+    padding: 0 10px;
+}
+.merge-workbench .cm-lineNumbers .cm-gutterElement {
+    min-width: var(--merge-line-number-gutter);
+    padding: 0 8px 0 4px;
+}
+.merge-workbench .col-left .cm-gutters {
+    order: 1;
+    left: auto;
+    right: 0;
+    border-right: none;
+    border-left: 1px solid var(--merge-pane-boundary);
+}
+.merge-workbench .col-left .cm-lineNumbers .cm-gutterElement {
+    min-width: calc(var(--merge-line-number-gutter) + var(--merge-action-gutter));
+    padding-left: var(--merge-action-gutter);
+}
+.merge-workbench .col-right .cm-lineNumbers .cm-gutterElement {
+    min-width: calc(var(--merge-line-number-gutter) + var(--merge-action-gutter));
+    padding-right: var(--merge-action-gutter);
+}
+.mw-connectors {
+    position: relative;
+    background: var(--merge-editor-bg);
+    z-index: 3;
+}
+.mw-connectors > svg {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    overflow: hidden;
+}
+.mw-connectors > svg path {
+    fill: var(--merge-conflict-ribbon-bg);
+    stroke: var(--merge-conflict-ribbon-bg);
+    stroke-width: 1;
+}
+.mw-connectors > svg path.merge-range-insertion {
+    fill: var(--merge-inserted-block-bg);
+    stroke: var(--merge-inserted-block-bg);
+}
+.mw-connectors > svg path.merge-range-resolved {
+    fill: none;
+    stroke: var(--merge-conflict-ribbon-bg);
+    stroke-dasharray: 2 2;
+}
+.mw-actions {
+    display: flex;
+    position: absolute;
+    width: 40px;
+    height: 24px;
+}
+.mw-connectors-ours .mw-actions {
+    left: calc(-1 * (var(--merge-line-number-gutter) + var(--merge-action-gutter)) + 2px);
+}
+.mw-connectors-theirs .mw-actions {
+    left: calc(28px + var(--merge-line-number-gutter) + 2px);
+    flex-direction: row-reverse;
+}
+.mw-actions[hidden] {
+    display: none;
+}
+.merge-workbench .cm-line.merge-range-pending {
+    background: var(--merge-conflict-block-bg);
+    color-scheme: dark;
+    color: var(--merge-action-icon);
+}
+.merge-workbench .cm-gutterElement.merge-range-pending {
+    background: var(--merge-conflict-ribbon-bg);
+    color: var(--merge-action-icon);
+}
+.merge-workbench .cm-line.merge-range-insertion,
+.merge-workbench .cm-gutterElement.merge-range-insertion {
+    background: var(--merge-inserted-block-bg);
+    color-scheme: dark;
+}
+.merge-workbench .cm-line.merge-range-insertion,
+.merge-workbench .cm-gutterElement.merge-range-insertion {
+    color: var(--merge-action-icon);
+}
+.merge-workbench .cm-line.merge-range-resolved,
+.merge-workbench .cm-gutterElement.merge-range-resolved {
+    background: transparent;
+}
+.merge-workbench :is(.cm-line, .cm-gutterElement).merge-range-resolved {
+    position: relative;
+}
+.merge-workbench .merge-range-resolved.merge-range-start::before,
+.merge-workbench .merge-range-resolved.merge-range-end::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 0;
+    border-top: 1px dotted var(--merge-conflict-ribbon-bg);
+    pointer-events: none;
+}
+.merge-workbench .merge-range-resolved.merge-range-start::before {
+    top: 0;
+}
+.merge-workbench .merge-range-resolved.merge-range-end::after {
+    bottom: 0;
+}
+.merge-word-change {
+    background: var(--pycharm-conflict);
+    outline: 1px solid var(--vscode-diffEditor-removedTextBorder, transparent);
+}
+.mw-error {
+    padding: 8px 12px;
+    color: var(--vscode-errorForeground);
+    border-bottom: 1px solid var(--merge-border);
+}
+.mw-error details {
+    max-height: 200px;
+    overflow: auto;
+}
+.mw-error pre {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+.mw-base {
+    height: 160px;
+    flex-shrink: 0;
+    border-top: 1px solid var(--merge-border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+.mw-base[hidden] {
+    display: none;
+}
+.mw-base header {
+    padding: 3px 10px;
+    background: var(--merge-toolbar-bg);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+.mw-base > div {
+    flex: 1;
+    min-height: 0;
+}
+.mw-draft-status {
+    color: var(--merge-muted);
+}
+.merge-workbench[aria-busy="true"] .mw-editor {
+    pointer-events: none;
+}

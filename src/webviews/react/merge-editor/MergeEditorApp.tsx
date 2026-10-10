@@ -19,6 +19,7 @@ import type {
     HunkResolution,
     InboundMessage,
     MergeSegment,
+    MergeEditorData,
     OutboundMessage,
 } from "./types";
 import { getVsCodeApi as getSharedVsCodeApi } from "../shared/vscodeApi";
@@ -82,6 +83,7 @@ import {
 } from "../diff-core/scrollSync";
 import { CommonPaneBlock } from "../diff-core/segments";
 import "./merge-editor.css";
+import { MergeWorkbench } from "./MergeWorkbench";
 
 const EMPTY_SEGMENTS: MergeSegment[] = [];
 
@@ -259,6 +261,42 @@ function getVsCodeApi() {
 
 // --- App ---
 
+/** Routes Git and Shelf sessions without installing legacy handlers in the full-document editor. */
+// react-doctor-disable-next-line react-doctor/only-export-components -- Webview entrypoint.
+export function App() {
+    const [data, setData] = useState<MergeEditorData | null>(null);
+    const [error, setError] = useState<string | null>(null);
+    useEffect(() => {
+        const receive = (event: MessageEvent<InboundMessage>) => {
+            if (event.data.type === "setConflictData") {
+                setData(event.data.data);
+                setError(null);
+            } else if (event.data.type === "loadError") setError(event.data.message);
+        };
+        window.addEventListener("message", receive);
+        getVsCodeApi().postMessage({ type: "ready" });
+        return () => window.removeEventListener("message", receive);
+    }, []);
+    if (error)
+        return (
+            <div className="loading">
+                <div role="alert">{error}</div>
+                <button onClick={() => getVsCodeApi().postMessage({ type: "ready" })}>
+                    {t("merge.error.retry")}
+                </button>
+                <button onClick={() => getVsCodeApi().postMessage({ type: "openNativeMerge" })}>
+                    {t("merge.workbench.native")}
+                </button>
+            </div>
+        );
+    if (!data) return <div className="loading">{t("merge.loading")}</div>;
+    return data.workbench ? (
+        <MergeWorkbench key={data.workbench.snapshotId} data={data} />
+    ) : (
+        <LegacyApp data={data} />
+    );
+}
+
 /**
  * Hosts the three-way merge editor, translating conflict data into synchronized
  * pane rows, local hunk resolutions, overview markers, keyboard navigation, and
@@ -266,9 +304,9 @@ function getVsCodeApi() {
  */
 // Webview entrypoint owns merge-editor state orchestration and root render side effects.
 // react-doctor-disable-next-line react-doctor/only-export-components, react-doctor/no-giant-component, react-doctor/prefer-useReducer, react-doctor/no-high-complexity-react-function -- Merge state, pane geometry, and host commands intentionally orchestrate in one entrypoint.
-export function App() {
+function LegacyApp({ data }: { data: MergeEditorData }) {
     const [state, dispatch] = useReducer(reducer, {
-        data: null,
+        data,
         error: null,
         resolutions: {},
         edits: {},
@@ -862,7 +900,6 @@ export function App() {
     const trueConflictIds = useMemo(() => trueConflicts.map((seg) => seg.id), [trueConflicts]);
 
     useEffect(() => {
-        const vscode = getVsCodeApi();
         const handler = (event: MessageEvent<InboundMessage>) => {
             if (event.data.type === "setConflictData") {
                 setIgnoreMode(
@@ -874,7 +911,6 @@ export function App() {
             }
         };
         window.addEventListener("message", handler);
-        vscode.postMessage({ type: "ready" });
         return () => window.removeEventListener("message", handler);
     }, []);
 
@@ -1144,6 +1180,7 @@ export function App() {
     }
 
     const total = trueConflictCount(segments);
+
     const resolved = resolvedTrueConflictCount(segments, state.resolutions, state.edits);
     const unresolved = total - resolved;
     const canApply = allResolved(segments, state.resolutions, state.edits);

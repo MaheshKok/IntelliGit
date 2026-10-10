@@ -587,7 +587,21 @@ const WEBVIEW_ENTRIES = [
     { kind: "webview", id: "close", mutating: false },
     { kind: "webview", id: "editText", mutating: true, notCovered: WEBVIEW_NOT_COVERED },
     { kind: "webview", id: "setIgnoreMode", mutating: false },
-    { kind: "webview", id: "applyResolution", mutating: true, notCovered: WEBVIEW_NOT_COVERED },
+    {
+        kind: "webview",
+        id: "applyResolution",
+        mutating: true,
+        coveredBySpec: "tests/e2e/mergeWorkbench.spec.ts",
+    },
+    { kind: "webview", id: "openNativeMerge", mutating: false },
+    { kind: "webview", id: "loadMergeDraft", mutating: false },
+    {
+        kind: "webview",
+        id: "saveMergeDraft",
+        mutating: true,
+        coveredBySpec: "tests/e2e/mergeWorkbench.spec.ts",
+    },
+    { kind: "webview", id: "discardMergeDraft", mutating: true, notCovered: WEBVIEW_NOT_COVERED },
     { kind: "webview", id: "openConflictSession", mutating: false },
 ] satisfies readonly CoverageEntry[];
 

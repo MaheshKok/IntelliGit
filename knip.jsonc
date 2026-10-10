@@ -12,6 +12,8 @@
         "src/webviews/react/CompactCommitGraphApp.tsx",
         "src/webviews/react/commit-panel/CommitPanelApp.tsx",
         "src/webviews/react/CommitInfoApp.tsx",
+        // Preloaded classic React runtime is built by scripts/webviewConfigs.js.
+        "src/webviews/react/shared/reactRuntime.ts",
         "src/webviews/react/merge-editor/MergeEditorApp.tsx",
         "src/webviews/react/merge-conflicts-session/MergeConflictSessionApp.tsx",
         "src/webviews/react/UndockedApp.tsx",

@@ -33,7 +33,17 @@ export async function replaceRegularWorktreeFile(
     relativePath: string,
     bytes: Uint8Array,
 ): Promise<void> {
-    const target = resolveRepositoryPath(repositoryRoot, validateShelfManifestPath(relativePath));
+    return replaceMergeWorktreeFile(repositoryRoot, validateShelfManifestPath(relativePath), bytes);
+}
+
+/** Shares the contained atomic replacement while merge paths keep Git's literal filename rules. */
+export async function replaceMergeWorktreeFile(
+    repositoryRoot: string,
+    relativePath: string,
+    bytes: Uint8Array,
+    beforeReplace?: () => Promise<void>,
+): Promise<void> {
+    const target = resolveRepositoryPath(repositoryRoot, relativePath);
     await ensureContainedParent(repositoryRoot, target);
     const existing = await assertRegularTarget(target);
 
@@ -58,6 +68,7 @@ export async function replaceRegularWorktreeFile(
         // The last look before the swap. Everything after this is a directory-entry operation, so
         // this is the final point at which a replaced `target` can still be refused.
         await assertRegularTarget(target);
+        await beforeReplace?.();
         await rename(temporary, target);
         renamed = true;
     } finally {

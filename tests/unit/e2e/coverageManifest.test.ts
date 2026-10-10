@@ -52,6 +52,7 @@ const OUTBOUND_UNION_DECLARATIONS = [
     "src/webviews/protocol/diffViewerTypes.ts:OutboundMessage",
     "src/webviews/protocol/fileHistory.ts:HistoryOutbound",
     "src/webviews/protocol/mergeConflictSessionTypes.ts:OutboundMessage",
+    "src/webviews/protocol/mergeWorkbench.ts:MergeWorkbenchOutbound",
     "src/webviews/protocol/syntaxTheme.ts:SyntaxThemeOutbound",
     "src/webviews/protocol/undockedMessages.ts:GraphOutbound",
     "src/webviews/protocol/undockedMessages.ts:UndockedCommitPanelOutbound",
@@ -112,6 +113,20 @@ function manifestKey(entry: (typeof COVERAGE_MANIFEST)[number]): string {
 }
 
 describe("E2E coverage manifest", () => {
+    it("runs merge workbench resolutions and drafts in the standard E2E suite", () => {
+        const packageJson = JSON.parse(
+            readFileSync(path.join(REPO_ROOT, "package.json"), "utf8"),
+        ) as PackageJson;
+        expect(packageJson.scripts?.["test:e2e"]?.split(/\s+/)).toContain(
+            "tests/e2e/mergeWorkbench.spec.ts",
+        );
+        for (const id of ["applyResolution", "saveMergeDraft"]) {
+            expect(
+                COVERAGE_MANIFEST.find((entry) => entry.kind === "webview" && entry.id === id)
+                    ?.coveredBySpec,
+            ).toBe("tests/e2e/mergeWorkbench.spec.ts");
+        }
+    });
     it("runs native file-context Clone in the standard E2E suite", () => {
         const packageJson = JSON.parse(
             readFileSync(path.join(REPO_ROOT, "package.json"), "utf8"),
