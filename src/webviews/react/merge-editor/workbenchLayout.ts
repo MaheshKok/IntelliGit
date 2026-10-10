@@ -5,7 +5,7 @@ import type { OverviewMarker } from "./segments";
 import type { Grouping, WorkbenchHunk } from "./workbenchModel";
 import { resolutionOf, rowsInRange } from "./workbenchRows";
 
-/** Derives visible ribbon sides against the current grouping's layout indices. */
+/** Keeps ribbons aligned to current hunk rows; manual edits supersede prior side slices. */
 export function workbenchConnectors(
     hunks: readonly WorkbenchHunk[],
     segments: Grouping["segments"],
@@ -13,8 +13,11 @@ export function workbenchConnectors(
     return hunks
         .filter(
             (hunk) =>
-                !hunk.edited &&
-                !(hunk.segment.autoResolvedLines !== undefined && hunk.decision === undefined),
+                !(
+                    hunk.segment.autoResolvedLines !== undefined &&
+                    hunk.decision === undefined &&
+                    !hunk.edited
+                ),
         )
         .map((hunk) => {
             const index = segments.indexOf(hunk.segment);
@@ -23,10 +26,11 @@ export function workbenchConnectors(
             return {
                 id: hunk.id,
                 index,
-                ...connectorSideSpecs(hunk.segment, resolutionOf(hunk), {
-                    ours: hunk.dismissed.ours,
-                    theirs: hunk.dismissed.theirs,
-                }),
+                ...connectorSideSpecs(
+                    hunk.segment,
+                    hunk.edited ? undefined : resolutionOf(hunk),
+                    hunk.edited ? undefined : hunk.dismissed,
+                ),
             };
         });
 }
