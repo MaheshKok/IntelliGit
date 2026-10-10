@@ -27,6 +27,7 @@ import {
 import { IntelliGitView } from "./pageObjects/intelliGitView";
 import { Workbench } from "./pageObjects/workbench";
 import { runGitRaw } from "../fixtures/repo/gitRun";
+import { readPackageSmokeHostLogs } from "./hostFixtures/packageSmokeLogs";
 import { selectSoleVsix, verifyVsixPackage } from "../../scripts/verifyVsixPackage.js";
 import en from "../../src/webviews/i18n/en.json";
 
@@ -72,9 +73,11 @@ async function runPackageCli(options: {
 }
 
 test.describe("installed VSIX package smoke", () => {
-    test("installs the root VSIX and mounts IntelliGit from the installed extension", async () => {
+    test("installs the root VSIX and mounts IntelliGit from the installed extension", async ({}, testInfo) => {
         test.setTimeout(180_000);
         const directoriesToClean: string[] = [];
+        const mergeErrors: string[] = [];
+        let userDataDir: string | undefined;
         let electronApp: ElectronApplication | undefined;
 
         try {
@@ -113,9 +116,7 @@ test.describe("installed VSIX package smoke", () => {
                 cwd: workspacePath,
                 env: environment,
             });
-            const userDataDir = await mkdtemp(
-                path.join(tmpdir(), "intelligit-package-smoke-profile-"),
-            );
+            userDataDir = await mkdtemp(path.join(tmpdir(), "intelligit-package-smoke-profile-"));
             const extensionsDir = await mkdtemp(
                 path.join(tmpdir(), "intelligit-package-smoke-extensions-"),
             );
@@ -174,6 +175,12 @@ test.describe("installed VSIX package smoke", () => {
                 timeout: 60_000,
             });
             const window = await electronApp.firstWindow();
+            window.on("console", (message) => {
+                if (message.text().includes("[IntelliGit] Merge editor operation failed:")) {
+                    mergeErrors.push(message.text().slice(0, 16 * 1024));
+                    if (mergeErrors.length > 16) mergeErrors.shift();
+                }
+            });
             await window.waitForLoadState("domcontentloaded");
             await dismissFirstRunDialogs(window);
 
@@ -269,6 +276,24 @@ test.describe("installed VSIX package smoke", () => {
                 "[package smoke] installed merge workbench resolves and stages a real conflict",
             );
         } catch (error) {
+            if (mergeErrors.length) {
+                await testInfo.attach("merge-operation-errors.log", {
+                    body: mergeErrors.join("\n"),
+                    contentType: "text/plain",
+                });
+            }
+            if (userDataDir) {
+                try {
+                    for (const log of await readPackageSmokeHostLogs(userDataDir)) {
+                        await testInfo.attach(log.name, {
+                            body: log.body,
+                            contentType: "text/plain",
+                        });
+                    }
+                } catch (diagnosticError) {
+                    console.warn("Package smoke host logs unavailable:", diagnosticError);
+                }
+            }
             console.log(
                 "Package smoke windows:",
                 await electronApp

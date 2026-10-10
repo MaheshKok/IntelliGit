@@ -96,7 +96,12 @@ export class MergeEditorPanel {
             try {
                 await this.handleMessage(message);
             } catch (error) {
-                if (!this.isAlive()) return;
+                console.error(
+                    "[IntelliGit] Merge editor operation failed:",
+                    error,
+                    error instanceof Error && error.cause ? getErrorMessage(error.cause) : "",
+                );
+                if (!this.isAlive() || this.applied) return;
                 const errorMessage = getErrorMessage(error);
                 vscode.window.showErrorMessage(errorMessage);
                 try {
@@ -290,7 +295,7 @@ export class MergeEditorPanel {
      * switch mid-session cannot redirect the file outside the original work tree.
      */
     private async applyResolvedContent(content: string): Promise<void> {
-        if (this.applying) return;
+        if (this.applying || this.applied) return;
         const snapshot = this.snapshot;
         if (!snapshot)
             throw new Error(vscode.l10n.t("Load the conflict before applying a resolution."));
@@ -305,18 +310,31 @@ export class MergeEditorPanel {
                 },
             );
             this.applied = true;
-            // Git already staged the result, so its draft is dead even if the panel closed mid-Apply.
-            await this.queueDraftUpdate(async () => {
-                const previous = parseMergeDraft(this.draftStore?.get(this.draftKey));
-                if (previous?.snapshotId === snapshot.id)
-                    await this.draftStore?.update(this.draftKey, undefined);
-            }, true);
-            if (this.isAlive()) await this.panel.webview.postMessage({ type: "resolutionApplied" });
-            showTimedInformationMessage(
-                vscode.l10n.t("Merged and staged: {path}", { path: this.safePath }),
-            );
-            await this.notifyConflictStateChanged();
-            if (this.isAlive()) this.panel.dispose();
+            // Staging is terminal; delivery or recovery cleanup cannot reopen this session.
+            try {
+                try {
+                    // Git already staged the result, so its draft is dead even if the panel closed mid-Apply.
+                    await this.queueDraftUpdate(async () => {
+                        const previous = parseMergeDraft(this.draftStore?.get(this.draftKey));
+                        if (previous?.snapshotId === snapshot.id)
+                            await this.draftStore?.update(this.draftKey, undefined);
+                    }, true);
+                } catch (error) {
+                    console.error("[IntelliGit] Failed to clear an applied merge draft:", error);
+                }
+                try {
+                    if (this.isAlive())
+                        await this.panel.webview.postMessage({ type: "resolutionApplied" });
+                } catch (error) {
+                    console.error("[IntelliGit] Failed to deliver merge completion:", error);
+                }
+                showTimedInformationMessage(
+                    vscode.l10n.t("Merged and staged: {path}", { path: this.safePath }),
+                );
+                await this.notifyConflictStateChanged();
+            } finally {
+                if (this.isAlive()) this.panel.dispose();
+            }
         } finally {
             this.applying = false;
         }

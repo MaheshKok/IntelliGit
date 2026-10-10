@@ -38,6 +38,7 @@ beforeEach(async () => {
     root = await mkdtemp(path.join(os.tmpdir(), "intelligit-merge-resolution-"));
 });
 afterEach(async () => {
+    vi.restoreAllMocks();
     await removeScratchDirectories(root);
 });
 
@@ -215,16 +216,23 @@ describe("immutable merge resolutions", () => {
         await conflict();
         const snapshot = await readMergeResolutionSnapshot(executor, root, "file.ts");
         await writeFile(path.join(root, ".git/index.lock"), "lock");
-        await expect(
-            applyMergeResolution(
-                executor,
-                root,
-                "file.ts",
-                snapshot,
-                "resolved\n",
-                () => undefined,
-            ),
-        ).rejects.toThrow("staging failed");
+        const runBinary = vi.spyOn(GitExecutor.prototype, "runBinary");
+        const error: unknown = await applyMergeResolution(
+            executor,
+            root,
+            "file.ts",
+            snapshot,
+            "resolved\n",
+            () => undefined,
+        ).catch((failure: unknown) => failure);
+        expect(error).toBeInstanceOf(Error);
+        expect((error as Error).message).toContain("staging failed");
+        expect((error as Error).cause).toBeInstanceOf(Error);
+        expect(((error as Error).cause as Error).message).toContain("index.lock");
+        expect(
+            runBinary.mock.calls.filter(([args]) => args[1] === "add").map(([args]) => args),
+        ).toEqual([["--literal-pathspecs", "add", "--", "file.ts"]]);
+        expect(await readFile(path.join(root, ".git/index.lock"), "utf8")).toBe("lock");
         expect(await readFile(path.join(root, "file.ts"), "utf8")).toBe("resolved\n");
         expect(git("ls-files", "-u")).not.toBe("");
     });

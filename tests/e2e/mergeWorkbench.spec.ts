@@ -198,6 +198,58 @@ test.describe("Full-document Git merge workbench", () => {
         }
     });
 
+    test("retains the saved result, draft and Git error when staging is locked", async ({
+        fixtureWorkspace,
+    }, testInfo) => {
+        const { workspace } = fixtureWorkspace;
+        const stages = await runGit(workspace.root, ["ls-files", "-u"], workspace.env);
+        const mergeErrors: string[] = [];
+        const ours = await runGit(workspace.root, ["show", ":2:conflict.txt"], workspace.env);
+        const app = await launchFixtureWorkspace({
+            executablePath: await resolveVSCodeExecutable(REPO_ROOT),
+            repoRoot: REPO_ROOT,
+            workspace,
+            channelDir: fixtureWorkspace.channelDir,
+            timeout: 60_000,
+        });
+        try {
+            const page = await app.firstWindow();
+            await dismissFirstRunDialogs(page);
+            await waitForE2eChannelReady(fixtureWorkspace.channelDir);
+            const frame = await openMerge(page);
+            await acceptOurs(frame);
+            await expect(frame.locator(".merge-footer .footer-draft-status")).toContainText(
+                "Draft saved",
+            );
+            page.on("console", (message) => {
+                if (message.text().includes("[IntelliGit] Merge editor operation failed:")) {
+                    mergeErrors.push(message.text());
+                }
+            });
+            const lockPath = path.join(workspace.root, ".git/index.lock");
+            await writeFile(lockPath, "owned by test", { flag: "wx" });
+            await frame.getByRole("button", { name: "Apply", exact: true }).click();
+            await expect(frame.locator(".merge-notice-error")).toContainText("staging failed");
+            await expect(frame.locator(".merge-footer .footer-draft-status")).toContainText(
+                "Draft saved",
+            );
+            await expect(
+                frame.locator('[data-testid="merge-editor-1"] .cm-content'),
+            ).toHaveAttribute("contenteditable", "true");
+            expect(await readFile(path.join(workspace.root, "conflict.txt"), "utf8")).toBe(ours);
+            expect(await runGit(workspace.root, ["ls-files", "-u"], workspace.env)).toBe(stages);
+            expect(await readFile(lockPath, "utf8")).toBe("owned by test");
+            await expect.poll(() => mergeErrors.join("\n")).toContain("index.lock");
+            await testInfo.attach("merge-operation-errors.log", {
+                body: mergeErrors.join("\n"),
+                contentType: "text/plain",
+            });
+            await page.screenshot({ path: testInfo.outputPath("merge-stage-failure.png") });
+        } finally {
+            await app.close();
+        }
+    });
+
     test("refuses Apply over unsaved native editor changes", async ({ fixtureWorkspace }) => {
         const { workspace } = fixtureWorkspace;
         const settingsPath = path.join(workspace.root, ".vscode/settings.json");

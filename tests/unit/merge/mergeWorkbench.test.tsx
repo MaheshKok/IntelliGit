@@ -1681,6 +1681,20 @@ describe("merge workbench state and commands", () => {
         expect(api.setState).toHaveBeenCalledWith(null);
         unmount(mounted.root, mounted.container);
     });
+    it("keeps a completed resolution read-only despite a late error", () => {
+        const mounted = mount(<MergeWorkbench data={data} />);
+        click(mounted.container, "Accept All Yours");
+        click(mounted.container, "Apply");
+        receive({ type: "resolutionApplied" });
+        api.postMessage.mockClear();
+        receive({ type: "resolutionError", message: "cleanup failed" });
+        expect(result(mounted.container).contentDOM.getAttribute("contenteditable")).toBe("false");
+        expect(mounted.container.querySelector('[role="alert"]')).toBeNull();
+        act(() => window.dispatchEvent(new Event("pagehide")));
+        expect(api.postMessage).not.toHaveBeenCalled();
+        unmount(mounted.root, mounted.container);
+    });
+
     it("restores matching local drafts before late durable loads and preserves stale drafts", () => {
         const draft = {
             snapshotId: data.workbench.snapshotId,

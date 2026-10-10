@@ -33,6 +33,7 @@ const mocks = vi.hoisted(() => {
         showErrorMessage: vi.fn(async () => undefined),
         showWarningMessage: vi.fn(async () => undefined),
         executeCommand: vi.fn(async () => undefined),
+        completionDeliveryError: undefined as Error | undefined,
         textDocuments: [] as Array<{ uri: { scheme: string; fsPath: string }; isDirty: boolean }>,
     };
 });
@@ -108,6 +109,11 @@ vi.mock("vscode", () => {
                             return { dispose: () => undefined };
                         },
                         postMessage: async (msg: unknown) => {
+                            if (
+                                (msg as { type?: string }).type === "resolutionApplied" &&
+                                mocks.completionDeliveryError
+                            )
+                                throw mocks.completionDeliveryError;
                             captured.postedMessages.push(msg);
                             return true;
                         },
@@ -251,6 +257,7 @@ beforeEach(async () => {
     repoRoot = await fs.mkdtemp(path.join(os.tmpdir(), "intelligit-merge-editor-"));
     mocks.capturedPanels.length = 0;
     mocks.textDocuments.length = 0;
+    mocks.completionDeliveryError = undefined;
     vi.clearAllMocks();
 });
 
@@ -262,6 +269,7 @@ afterEach(async () => {
         }
     }
     await removeScratchDirectories(repoRoot);
+    vi.restoreAllMocks();
 });
 
 describe("MergeEditorPanel end-to-end merge flow", () => {
@@ -344,6 +352,114 @@ describe("MergeEditorPanel end-to-end merge flow", () => {
         await fireMessage(panel, { type: "applyResolution", content: "resolved\n" });
         expect(git(["ls-files", "-u"])).toBe("");
         expect([...values.values()]).toEqual([undefined]);
+    });
+
+    it("keeps successful staging terminal when durable draft cleanup rejects", async () => {
+        await createConflictRepo();
+        let value: unknown;
+        const cleanupError = new Error("draft storage unavailable");
+        let release!: () => void;
+        let cleanupStarted!: () => void;
+        const cleanupGate = new Promise<void>((resolve) => {
+            release = resolve;
+        });
+        const cleaning = new Promise<void>((resolve) => {
+            cleanupStarted = resolve;
+        });
+        const diagnostics = vi.spyOn(console, "error").mockImplementation(() => undefined);
+        const store = {
+            get: () => value,
+            update: vi.fn(async (_key: string, next: unknown) => {
+                if (next === undefined) {
+                    cleanupStarted();
+                    await cleanupGate;
+                    throw cleanupError;
+                }
+                value = next;
+            }),
+        };
+        const onConflictStateChanged = vi.fn(async () => undefined);
+        await MergeEditorPanel.open(
+            makeOptions(new GitOps(new GitExecutor(repoRoot)), {
+                draftStore: store as never,
+                onConflictStateChanged,
+            }),
+        );
+        const panel = lastPanel();
+        await fireMessage(panel, { type: "ready" });
+        const snapshotId = findConflictData(panel).workbench!.snapshotId;
+        const draft = { snapshotId, content: "resolved\n", hunks: [] };
+        await fireMessage(panel, { type: "saveMergeDraft", draft, revision: 1 });
+        const applying = fireMessage(panel, { type: "applyResolution", content: draft.content });
+        await cleaning;
+        await fireMessage(panel, { type: "applyResolution", content: "late apply\n" });
+        const lateSave = fireMessage(panel, {
+            type: "saveMergeDraft",
+            draft: { ...draft, content: "late draft\n" },
+            revision: 2,
+        });
+        release();
+        await Promise.all([applying, lateSave]);
+        expect(git(["ls-files", "-u"])).toBe("");
+        expect(git(["show", ":shared.ts"])).toBe(draft.content);
+        expect(panel.postedMessages).toContainEqual({ type: "resolutionApplied" });
+        expect(panel.postedMessages).not.toContainEqual(
+            expect.objectContaining({ type: "resolutionError" }),
+        );
+        expect(mocks.showErrorMessage).not.toHaveBeenCalled();
+        expect(mocks.showInformationMessage).toHaveBeenCalledWith("Merged and staged: shared.ts");
+        expect(onConflictStateChanged).toHaveBeenCalledOnce();
+        expect(panel.disposed).toBe(true);
+        expect(value).toEqual(draft);
+        expect(diagnostics).toHaveBeenCalledWith(
+            "[IntelliGit] Failed to clear an applied merge draft:",
+            cleanupError,
+        );
+        await fireMessage(panel, { type: "saveMergeDraft", draft, revision: 2 });
+        expect(store.update).toHaveBeenCalledTimes(2);
+    });
+
+    it("finishes staged resolutions even when completion delivery rejects", async () => {
+        await createConflictRepo();
+        let value: unknown;
+        const store = {
+            get: () => value,
+            update: async (_key: string, next: unknown) => {
+                value = next;
+            },
+        };
+        const diagnostics = vi.spyOn(console, "error").mockImplementation(() => undefined);
+        const deliveryError = new Error("webview unavailable");
+        const onConflictStateChanged = vi.fn(async () => undefined);
+        await MergeEditorPanel.open(
+            makeOptions(new GitOps(new GitExecutor(repoRoot)), {
+                draftStore: store as never,
+                onConflictStateChanged,
+            }),
+        );
+        const panel = lastPanel();
+        await fireMessage(panel, { type: "ready" });
+        const draft = {
+            snapshotId: findConflictData(panel).workbench!.snapshotId,
+            content: "resolved\n",
+            hunks: [],
+        };
+        await fireMessage(panel, { type: "saveMergeDraft", draft, revision: 1 });
+        mocks.completionDeliveryError = deliveryError;
+        await fireMessage(panel, { type: "applyResolution", content: draft.content });
+        expect(git(["ls-files", "-u"])).toBe("");
+        expect(git(["show", ":shared.ts"])).toBe(draft.content);
+        expect(panel.postedMessages).not.toContainEqual(
+            expect.objectContaining({ type: "resolutionError" }),
+        );
+        expect(mocks.showErrorMessage).not.toHaveBeenCalled();
+        expect(onConflictStateChanged).toHaveBeenCalledOnce();
+        expect(panel.disposed).toBe(true);
+        expect(value).toBeUndefined();
+        expect(diagnostics).toHaveBeenCalledWith(
+            "[IntelliGit] Failed to deliver merge completion:",
+            deliveryError,
+        );
     });
 
     it("orders in-flight saves across native disposal and rejects superseded queued writes", async () => {
