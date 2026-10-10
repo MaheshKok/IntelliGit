@@ -213,7 +213,7 @@ async function paintCounts(
 
 // Chrome does not repaint a native caret for a caret-color change, so a style-hidden frame can
 // still show it. Instead wait up to 3 seconds for the native blink to toggle the caret between
-// two frames of an unmoved view; any movement restarts from the newer frame.
+// adjacent frames of an unmoved view; any movement restarts from the newer frame.
 async function expectCaretPaint(page: Page, step: string) {
     const view = () =>
         page.evaluate(() =>
@@ -235,7 +235,7 @@ async function expectCaretPaint(page: Page, step: string) {
         const next = await frame();
         if (next.state && next.state === reference.state)
             paint = await paintCounts(page, "caret", { before: reference.png, after: next.png });
-        else reference = next;
+        reference = next;
     }
     expect(paint.code, `${step}: caret paints inside the code area`).toBeGreaterThan(0);
     expect(paint.gutters, `${step}: no caret paint in gutters`).toBe(0);
