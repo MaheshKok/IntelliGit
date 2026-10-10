@@ -2,12 +2,28 @@ import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { blameDate, parseBlame } from "../../../src/git/blame";
+import { blameDate, parseBlame, type BlameLine } from "../../../src/git/blame";
 import { GitExecutor } from "../../../src/git/executor";
 import { removeScratchDirectories } from "../../helpers/scratchDirectories";
 
 const maxOutputBytes = 4 * 1024 * 1024;
 const filename = "file with spaces.ts";
+const pseudoCommit = "0".repeat(40);
+
+/** Git stamps the --contents pseudo-commit with the wall clock, ignoring GIT_AUTHOR_DATE. */
+function withoutPseudoCommitClock(lines: readonly BlameLine[]): BlameLine[] {
+    return lines.map((line) => (line.commit === pseudoCommit ? { ...line, authorTime: 0 } : line));
+}
+
+/** Copies blame lines, moving the author clock one second later where `shifted` holds. */
+function nextSecond(
+    lines: readonly BlameLine[],
+    shifted: (line: BlameLine) => boolean,
+): BlameLine[] {
+    return lines.map((line) =>
+        shifted(line) ? { ...line, authorTime: line.authorTime + 1 } : line,
+    );
+}
 
 describe("porcelain blame with real Git", () => {
     let directory: string;
@@ -92,14 +108,21 @@ describe("porcelain blame with real Git", () => {
             ["blame", "--line-porcelain", "--contents", "-", "--", filename],
             options,
         );
-        const lines = parseBlame(compact.stdout.toString("utf8"));
-        expect(lines).toEqual(parseBlame(repeated.stdout.toString("utf8")));
+        const lines = withoutPseudoCommitClock(parseBlame(compact.stdout.toString("utf8")));
+        const lineLines = parseBlame(repeated.stdout.toString("utf8"));
+        expect(lines).toEqual(withoutPseudoCommitClock(lineLines));
+        // The two runs may straddle a second boundary; only the pseudo-commit's clock may differ.
+        const isPseudo = (line: BlameLine) => line.commit === pseudoCommit;
+        expect(lines).toEqual(withoutPseudoCommitClock(nextSecond(lineLines, isPseudo)));
+        expect(lines).not.toEqual(
+            withoutPseudoCommitClock(nextSecond(lineLines, (line) => !isPseudo(line))),
+        );
         expect(lines.map((line) => line.commit)).toEqual([
             first,
             first,
             second,
             first,
-            "0".repeat(40),
+            pseudoCommit,
         ]);
         // Git's pseudo-author for --contents varies by version; the zero hash is stable.
         expect(lines.slice(0, 4).map((line) => line.author)).toEqual([
