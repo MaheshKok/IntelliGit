@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.37.3] - 2026-10-13
+
+### Fixed
+
+- Background Git status reads skip optional index refresh locking by default, reducing lock contention with concurrent stash, add and commit operations.
+- Reset Head end-to-end checks wait for the reset-mode picker before selecting a mode, avoiding races with the preceding revision input.
+- Unstash end-to-end checks dismiss completed stash success notifications before the next action so stale notices cannot mask completion or cover the merge editor's Apply button.
+- Git Log persistence checks wait for the VS Code workbench to be ready. Git Log and Stash checks capture host notifications, profile logs and window diagnostics when startup or native Git operations fail.
+
 ## [0.37.2] - 2026-10-12
 
 ### Added
