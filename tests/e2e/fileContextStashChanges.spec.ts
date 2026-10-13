@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { mkdir, readFile, realpath, writeFile } from "node:fs/promises";
 import path from "node:path";
-import type { Page } from "@playwright/test";
+import type { ElectronApplication, Page } from "@playwright/test";
 import { E2eControlChannelClient, waitForE2eChannelReady } from "./controlChannelClient";
 import { expect, test } from "./fixtureWorkspace";
 import {
@@ -9,6 +9,7 @@ import {
     launchFixtureWorkspace,
 } from "./hostFixtures/electronLaunchHelpers";
 import { resolveVSCodeExecutable } from "./hostFixtures/resolveVSCodeExecutable";
+import { WorkbenchDiagnostics } from "./hostFixtures/electronWorkbench";
 
 test.use({ scenario: "clean" });
 
@@ -50,7 +51,7 @@ async function chooseStash(page: Page): Promise<void> {
 
 test("Explorer, tab, and editor stash clicked B repository while active A stays unchanged", async ({
     fixtureWorkspace,
-}) => {
+}, testInfo) => {
     test.setTimeout(210_000);
     const extensionRoot = path.resolve(__dirname, "../..");
     const a = fixtureWorkspace.workspace.root;
@@ -79,14 +80,18 @@ test("Explorer, tab, and editor stash clicked B repository while active A stays 
     const bFiles = ["selected.txt", "second.txt", "untracked.txt", "ignored.log"];
     const aBefore = await snapshot(a, env, aFiles);
 
-    const app = await launchFixtureWorkspace({
-        executablePath: await resolveVSCodeExecutable(extensionRoot),
-        repoRoot: extensionRoot,
-        workspace: fixtureWorkspace.workspace,
-        channelDir: fixtureWorkspace.channelDir,
-        timeout: 60_000,
-    });
+    const diagnostics = new WorkbenchDiagnostics(fixtureWorkspace.workspace.profileDir);
+    let app: ElectronApplication | undefined;
+    let failed = false;
     try {
+        app = await launchFixtureWorkspace({
+            executablePath: await resolveVSCodeExecutable(extensionRoot),
+            repoRoot: extensionRoot,
+            workspace: fixtureWorkspace.workspace,
+            channelDir: fixtureWorkspace.channelDir,
+            timeout: 60_000,
+        });
+        diagnostics.observe(app);
         const page = await app.firstWindow();
         await page.waitForLoadState("domcontentloaded");
         await dismissFirstRunDialogs(page);
@@ -221,7 +226,19 @@ test("Explorer, tab, and editor stash clicked B repository while active A stays 
         await page.keyboard.press("Escape");
         expect(await snapshot(b, env, bFiles)).toEqual(beforeGuard);
         expect(await snapshot(a, env, aFiles)).toEqual(aBefore);
+    } catch (error) {
+        failed = true;
+        // Preserve the complete Git error in the host notification and profile logs. Screenshots
+        // can clip the lock path, making a real stash failure look like a slow count assertion.
+        await diagnostics.attach(testInfo);
+        throw error;
     } finally {
-        await app.close();
+        diagnostics.dispose();
+        try {
+            await app?.close();
+        } catch (closeError) {
+            if (!failed) throw closeError;
+            console.warn("Electron cleanup after test failure:", closeError);
+        }
     }
 });

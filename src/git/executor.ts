@@ -155,7 +155,11 @@ export class GitExecutor {
         );
     }
 
-    /** Runs Git without decoding stdout; output-file mode streams stdout and returns an empty buffer. */
+    /**
+     * Runs Git without decoding stdout; output-file mode streams stdout and returns an empty buffer.
+     * Status skips optional index refreshes by default so background status reads cannot take
+     * the index lock from a concurrent mutation. Explicit environment settings still win.
+     */
     async runBinary(
         args: string[],
         options: GitBinaryRunOptions = {},
@@ -167,11 +171,19 @@ export class GitExecutor {
                 "Git binary output cannot be both streamed to a file and byte-limited.",
             );
         }
+        const env = { ...process.env, ...this.defaultEnv, ...options.env };
+        // Status runs outside the mutation gate, but normally writes refreshed stat information
+        // back to the index as an optimization. That optional lock can make a concurrent stash,
+        // add, or commit fail. Keep this limited to status, whose refresh honors this setting;
+        // unknown commands, aliases, and mutations retain their normal environment.
+        if (resolveSubcommand(args) === "status") {
+            env.GIT_OPTIONAL_LOCKS ??= "0";
+        }
         return new Promise<GitBinaryRunResult>((resolve, reject) => {
             const child = spawn("git", args, {
                 cwd: this.repoRoot,
                 stdio: "pipe",
-                env: { ...process.env, ...this.defaultEnv, ...options.env },
+                env,
             });
             const stdout: Buffer[] = [];
             const stderr: Buffer[] = [];

@@ -9,6 +9,7 @@ import {
     launchFixtureWorkspace,
 } from "./hostFixtures/electronLaunchHelpers";
 import { resolveVSCodeExecutable } from "./hostFixtures/resolveVSCodeExecutable";
+import { selectResetMode, type ResetMode } from "./pageObjects/nativeGitControls";
 
 test.use({ scenario: "clean" });
 
@@ -38,15 +39,13 @@ async function resetTo(
     b: string,
     env: NodeJS.ProcessEnv,
     target: string,
-    mode: string,
+    mode: ResetMode,
     oid: string,
 ): Promise<void> {
     const input = page.locator(".quick-input-widget input").first();
     await input.fill(target);
     await page.keyboard.press("Enter");
-    await expect(input).toBeVisible();
-    await input.fill(mode);
-    await page.keyboard.press("Enter");
+    await selectResetMode(page, mode);
     await expect(
         page.getByRole("dialog", { name: new RegExp(`${mode} reset`, "i") }),
     ).toBeVisible();
@@ -170,8 +169,7 @@ test("three native file menus reset clicked B in every mode while A is unchanged
         const conflictInput = page.locator(".quick-input-widget input").first();
         await conflictInput.fill(zero);
         await page.keyboard.press("Enter");
-        await conflictInput.fill("keep");
-        await page.keyboard.press("Enter");
+        await selectResetMode(page, "keep");
         await page.getByRole("button", { name: "Reset", exact: true }).click();
         await expect(page.getByRole("dialog", { name: /Reset failed:/ })).toBeVisible();
         await page.keyboard.press("Escape");
@@ -188,8 +186,7 @@ test("three native file menus reset clicked B in every mode while A is unchanged
         const input = page.locator(".quick-input-widget input").first();
         await input.fill("moving");
         await page.keyboard.press("Enter");
-        await input.fill("soft");
-        await page.keyboard.press("Enter");
+        await selectResetMode(page, "soft");
         await expect(page.getByRole("dialog", { name: /Soft reset main/ })).toBeVisible();
         runGit(b, env, ["update-ref", "refs/heads/moving", zero, one]);
         await page.getByRole("button", { name: "Reset", exact: true }).click();
@@ -211,8 +208,7 @@ test("three native file menus reset clicked B in every mode while A is unchanged
         await chooseReset(page);
         await input.fill(two);
         await page.keyboard.press("Enter");
-        await input.fill("hard");
-        await page.keyboard.press("Enter");
+        await selectResetMode(page, "hard");
         await expect(page.getByRole("dialog", { name: /Hard reset main/ })).toBeVisible();
         await page.keyboard.press("Escape");
         expect(runGit(b, env, ["rev-parse", "HEAD"])).toBe(one);

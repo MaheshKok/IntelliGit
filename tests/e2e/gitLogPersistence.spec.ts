@@ -1,10 +1,12 @@
 import path from "node:path";
+import type { ElectronApplication } from "@playwright/test";
 import { expect, test } from "./fixtureWorkspace";
 import { waitForE2eChannelReady } from "./controlChannelClient";
 import {
     dismissFirstRunDialogs,
     launchFixtureWorkspace,
 } from "./hostFixtures/electronLaunchHelpers";
+import { waitForWorkbench, WorkbenchDiagnostics } from "./hostFixtures/electronWorkbench";
 import { resolveVSCodeExecutable } from "./hostFixtures/resolveVSCodeExecutable";
 import { IntelliGitView } from "./pageObjects/intelliGitView";
 import { Workbench } from "./pageObjects/workbench";
@@ -13,22 +15,25 @@ const REPO_ROOT = path.resolve(__dirname, "../..");
 
 test("bottom Git Log preserves its loaded document and commit details across panel tab switches", async ({
     fixtureWorkspace,
-}) => {
-    const app = await launchFixtureWorkspace({
-        executablePath:
-            process.env.INTELLIGIT_E2E_EXECUTABLE_PATH ??
-            (await resolveVSCodeExecutable(REPO_ROOT)),
-        repoRoot: REPO_ROOT,
-        workspace: fixtureWorkspace.workspace,
-        channelDir: fixtureWorkspace.channelDir,
-        timeout: 60_000,
-    });
+}, testInfo) => {
+    const diagnostics = new WorkbenchDiagnostics(fixtureWorkspace.workspace.profileDir);
+    let app: ElectronApplication | undefined;
+    let failed = false;
     try {
-        const page = await app.firstWindow();
+        app = await launchFixtureWorkspace({
+            executablePath:
+                process.env.INTELLIGIT_E2E_EXECUTABLE_PATH ??
+                (await resolveVSCodeExecutable(REPO_ROOT)),
+            repoRoot: REPO_ROOT,
+            workspace: fixtureWorkspace.workspace,
+            channelDir: fixtureWorkspace.channelDir,
+            timeout: 60_000,
+        });
+        diagnostics.observe(app);
+        const page = await waitForWorkbench(app);
         const hostWindow = await app.browserWindow(page);
         // Keep all three panes visible even when the host starts with an auxiliary sidebar.
         await hostWindow.evaluate((browserWindow) => browserWindow.setContentSize(1600, 900));
-        await page.waitForLoadState("domcontentloaded");
         await dismissFirstRunDialogs(page);
         await waitForE2eChannelReady(fixtureWorkspace.channelDir);
         const workbench = new Workbench(page);
@@ -61,7 +66,18 @@ test("bottom Git Log preserves its loaded document and commit details across pan
                 useInnerText: true,
             });
         }
+    } catch (error) {
+        failed = true;
+        await diagnostics.attach(testInfo);
+        throw error;
     } finally {
-        await app.close();
+        diagnostics.dispose();
+        try {
+            await app?.close();
+        } catch (closeError) {
+            // A teardown error must not hide the readiness or persistence failure and its cause.
+            if (!failed) throw closeError;
+            console.warn("Electron cleanup after test failure:", closeError);
+        }
     }
 });

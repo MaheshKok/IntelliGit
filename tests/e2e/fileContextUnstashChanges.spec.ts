@@ -9,6 +9,7 @@ import {
     launchFixtureWorkspace,
 } from "./hostFixtures/electronLaunchHelpers";
 import { resolveVSCodeExecutable } from "./hostFixtures/resolveVSCodeExecutable";
+import { dismissStashSuccessNotifications } from "./pageObjects/nativeGitControls";
 
 test.use({ scenario: "clean" });
 
@@ -179,9 +180,9 @@ test("Explorer, tab and editor unstash clicked B by OID while active A stays unc
             },
         ] as const;
         for (const scenario of scenarios) {
-            // A previous Apply toast must disappear before it can prove this invocation completed.
-            if (scenario.action === "Apply")
-                await expect(appliedNotice).toBeHidden({ timeout: 30_000 });
+            // A previous Apply notice cannot prove this invocation completed.
+            await dismissStashSuccessNotifications(page);
+            await expect(appliedNotice).toBeHidden();
             if (scenario.surface === "explorer") await openExplorerMenu(page, file);
             if (scenario.surface === "tab") {
                 await file.dblclick();
@@ -239,6 +240,7 @@ test("Explorer, tab and editor unstash clicked B by OID while active A stays unc
             .not.toContain(branchOid);
         expect(git(b, env, ["show", ":selected.txt"])).toBe("branch staged");
         expect(await snapshot(a, env)).toEqual(aBefore);
+        await dismissStashSuccessNotifications(page);
 
         await page.getByRole("tab", { name: /selected\.txt/ }).click();
         await page.keyboard.press("ControlOrMeta+W");
@@ -280,6 +282,7 @@ test("Explorer, tab and editor unstash clicked B by OID while active A stays unc
         expect(git(b, env, ["stash", "list", "--format=%H"])).toBe(olderOid);
         expect(await readFile(path.join(b, "selected.txt"), "utf8")).toBe("B baseline\n");
 
+        await dismissStashSuccessNotifications(page);
         await chooseExplorerUnstash(page, file);
         // Cancelled QuickPicks retain hidden rows; wait for this invocation before shifting refs.
         await expect(page.locator(".quick-input-widget input").first()).toBeVisible();
@@ -294,7 +297,7 @@ test("Explorer, tab and editor unstash clicked B by OID while active A stays unc
             .locator(".quick-input-list .monaco-list-row")
             .filter({ hasText: olderOid.slice(0, 8) });
         await expect(olderRow).toHaveCount(1);
-        await expect(appliedNotice).toBeHidden({ timeout: 30_000 });
+        await expect(appliedNotice).toBeHidden();
         await olderRow.click();
         await pick(page, "Apply");
         await pick(page, "Do Not Reinstate Index");
@@ -395,6 +398,9 @@ test("Explorer, tab and editor unstash clicked B by OID while active A stays unc
                 .click();
             await expect(changes).toHaveCount(count - index - 1);
         }
+        // An earlier branch-apply success can cover the bottom-right Apply button indefinitely.
+        // Dismiss it through the host UI; a normal click must still pass actionability checks.
+        await dismissStashSuccessNotifications(page);
         await mergeFrame!.getByRole("button", { name: "Apply", exact: true }).click();
         await expect.poll(() => git(b, env, ["ls-files", "-u", "selected.txt"])).toBe("");
         expect(git(b, env, ["show", ":selected.txt"])).toBe("stash conflict");
