@@ -32,7 +32,11 @@ export async function dismissStashSuccessNotifications(page: Page): Promise<void
     while ((await successes.count()) > 0) {
         const notification = successes.first();
         await notification.hover();
-        await notification.getByRole("button", { name: "Clear Notification", exact: true }).click();
+        // VS Code's ActionBar appends the configured shortcut to the accessible name, e.g.
+        // "Clear Notification (Delete)". Keep the action anchored while allowing that suffix.
+        await notification
+            .getByRole("button", { name: /^Clear Notification(?: \(.+\))?$/ })
+            .click();
     }
     await page.keyboard.press("Escape");
     await center.waitFor({ state: "hidden" });

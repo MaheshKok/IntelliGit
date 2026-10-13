@@ -81,9 +81,14 @@ describe("dismissStashSuccessNotifications", () => {
         ).toBe(false);
         expect(open.click).toHaveBeenCalledOnce();
         expect(notification.getByRole).toHaveBeenCalledWith("button", {
-            name: "Clear Notification",
-            exact: true,
+            name: /^Clear Notification(?: \(.+\))?$/,
         });
+        const clearName = notification.getByRole.mock.calls[0][1].name as RegExp;
+        expect(clearName.test("Clear Notification")).toBe(true);
+        expect(clearName.test("Clear Notification (Delete)")).toBe(true);
+        expect(clearName.test("Clear Notification (Backspace)")).toBe(true);
+        expect(clearName.test("Clear All Notifications")).toBe(false);
+        expect(clearName.test("Unrelated Clear Notification")).toBe(false);
         expect(clear.click).toHaveBeenCalledTimes(2);
         expect(clear.click.mock.calls).toEqual([[], []]);
         expect(page.keyboard.press).toHaveBeenCalledWith("Escape");
