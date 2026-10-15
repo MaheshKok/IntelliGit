@@ -1,5 +1,6 @@
 import { ChangelistStore } from "../changes/changelistStore";
 import {
+    attachAfterChangelistLoad,
     changelistDraftBridge,
     saveAggregateDraft,
     readAggregateDraft,
@@ -456,13 +457,22 @@ export class UndockedViewProvider {
         this.sendRepositories();
     }
 
+    /** Hydrate durable drafts before native attachment; removed roots cannot attach from late replies. */
     private syncBridgeRoots(): void {
         const nextRoots = new Set(this.repositories.map((repository) => repository.root));
         for (const root of this.bridgedRoots) {
             if (!nextRoots.has(root)) this.nativeCommitInputBridge.detach(root);
         }
-        for (const root of nextRoots) this.nativeCommitInputBridge.attach(root);
         this.bridgedRoots = nextRoots;
+        for (const root of nextRoots)
+            attachAfterChangelistLoad(
+                this.workspaceState,
+                root,
+                () => this.gitOps.deriveFor(root).getGitDirectories(),
+                () => {
+                    if (this.bridgedRoots.has(root)) this.nativeCommitInputBridge.attach(root);
+                },
+            );
     }
 
     /**

@@ -130,7 +130,7 @@ describe("changelist schema and lifecycle", () => {
 
     it.each([
         null,
-        { schemaVersion: 3, entries: [] },
+        { schemaVersion: 4, entries: [] },
         { schemaVersion: 2, entries: legacy().entries },
     ])("refuses corrupt or future metadata without overwriting it (%j)", async (invalid) => {
         const storage = persistence(invalid);

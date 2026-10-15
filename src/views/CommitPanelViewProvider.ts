@@ -1,5 +1,6 @@
 import { ChangelistStore } from "../changes/changelistStore";
 import {
+    attachAfterChangelistLoad,
     changelistDraftBridge,
     saveAggregateDraft,
     readAggregateDraft,
@@ -455,7 +456,15 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             );
             runtime.lastKnownChangedFileCount = this.getStoredChangedFileCount(runtime);
             this.runtimes.set(repository.root, runtime);
-            this.nativeCommitInputBridge.attach(repository.root);
+            attachAfterChangelistLoad(
+                this.workspaceState,
+                repository.root,
+                () => gitOps.getGitDirectories(),
+                () => {
+                    if (this.runtimes.get(repository.root) === runtime)
+                        this.nativeCommitInputBridge.attach(repository.root);
+                },
+            );
         }
 
         this.repositories = repositories;

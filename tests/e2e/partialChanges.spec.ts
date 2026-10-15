@@ -52,6 +52,65 @@ async function createList(page: Page, frame: FrameLocator, name: string): Promis
 test.describe("Selected changes and changelists", () => {
     test.use({ scenario: "clean" });
 
+    test("attributes new edits to the active list and preserves earlier ownership through reload", async ({
+        fixtureWorkspace,
+    }) => {
+        const { workspace } = fixtureWorkspace;
+        await createFiles(workspace.root, workspace.env);
+        const firstOnly = base.replace("first = 1", "first = 3");
+        await writeFile(path.join(workspace.root, FILE), firstOnly);
+        const app = await launchFixtureWorkspace({
+            executablePath: await resolveVSCodeExecutable(REPO_ROOT),
+            repoRoot: REPO_ROOT,
+            workspace,
+            channelDir: fixtureWorkspace.channelDir,
+            timeout: 60_000,
+        });
+        try {
+            const page = await app.firstWindow();
+            await dismissFirstRunDialogs(page);
+            await waitForE2eChannelReady(fixtureWorkspace.channelDir);
+            let sidebar = await new IntelliGitView(page).reveal();
+            await createList(page, sidebar, "Later edits");
+            await sidebar
+                .getByRole("combobox", { name: "Changelists", exact: true })
+                .selectOption({ label: "Later edits" });
+            await sidebar.getByRole("button", { name: "Make active", exact: true }).click();
+            await expect(
+                sidebar
+                    .getByRole("combobox", { name: "Changelists", exact: true })
+                    .locator("option:checked"),
+            ).toHaveText("Later edits (Active)");
+            const shifted = `// independent header\n${working}`;
+            await writeFile(path.join(workspace.root, FILE), shifted);
+            await sidebar.getByTestId("commit-tab").getByTestId("refresh-button").click();
+            await expect(
+                sidebar.getByRole("checkbox", { name: FILE, exact: true }).first(),
+            ).toBeVisible();
+            await Promise.all([
+                page.waitForEvent("domcontentloaded"),
+                new Workbench(page).runCommand("Developer: Reload Window"),
+            ]);
+            sidebar = await new IntelliGitView(page).reveal();
+            await sidebar
+                .getByRole("combobox", { name: "Changelists", exact: true })
+                .selectOption({ label: "Changes" });
+            await chooseFile(sidebar);
+            await sidebar.locator("#commit-area-message").fill("Earlier edit only");
+            await expect(sidebar.getByTestId("commit-action-commit")).toBeEnabled();
+            await sidebar.getByTestId("commit-action-commit").click();
+            await expect
+                .poll(() => runGit(workspace.root, ["show", `HEAD:${FILE}`], workspace.env))
+                .toBe(firstOnly);
+            expect(await readFile(path.join(workspace.root, FILE), "utf8")).toBe(shifted);
+            expect(await runGit(workspace.root, ["show", `:${OTHER}`], workspace.env)).toBe(
+                "user staged\n",
+            );
+        } finally {
+            await app.close();
+        }
+    });
+
     test("amends only the All message while preserving staged and working changes", async ({
         fixtureWorkspace,
     }) => {

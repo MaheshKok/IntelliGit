@@ -91,19 +91,44 @@ regular record directories even when the journal cannot be parsed. Pending recor
 that have become valid are not discarded through this unreadable-record path.
 Unknown index locks are never removed with their metadata.
 
-List writes use shared workspace storage, revision compare-and-swap and root-bound
-commit leases. Stale assignments/selections require explicit review. Corrupt
-metadata is refused, not overwritten.
+List writes use an authoritative schema-3 record in the worktree's own Git directory,
+`intelligit/changelists/state.json`. Canonical root and Git-directory identities separate
+linked worktrees and clones. Atomic replacement, file fsync, POSIX directory fsync and a
+separate metadata lease protect updates; Windows lacks directory fsync through this Node
+API. Revision checks reload the record under that lease. The lease remains held throughout
+a selected commit, preventing another extension process from moving its ownership.
+Windows poll for metadata revisions once per second. Corrupt or missing authoritative
+records are refused, never replaced by cached workspace metadata.
 
-Version-1 metadata migrates on its next successful write. The original record is
-saved under `intelligit.changelists.v1.backup` before version 2 is published at the
-existing `intelligit.changelists.v1` key. The version marker also makes older
-clients refuse that record. Stable list IDs, labels, ownership, stale fences and
-explicit empty selections survive migration; legacy worktree drafts become All
-drafts, and their original keys remain available. A conflicting backup, corrupt
-record or unknown schema version is refused without overwriting it. Shared-pane
-serialization remains scoped to one extension host; durable cross-process
-coordination is outside this phase.
+On first connection, version-1 or version-2 workspace metadata is validated and preserved
+in `intelligit/changelists/migration.json`. Version-1 IDs, labels, ownership, explicit empty
+selections and legacy All drafts survive. The original v1 backup key remains available.
+A schema-3 sentinel stays at `intelligit.changelists.v1` so older clients refuse the record.
+Conflicting pre-existing workspace state is saved separately as `migration-conflict-*.json`
+and requires review. Restore/recovery should inspect these copies; deleting the authoritative
+record is not a reset procedure. Metadata recovery never changes Git refs, index or worktree.
+
+## Ownership Through Later Edits
+
+For supported saved text, the host retains hashed base/worktree lines, prior coordinates,
+change hashes and bounded surrounding context. Unique, order-preserving matches carry
+ownership through line shifts and hunk splits/joins. Editing inside a single owned insertion
+keeps its owner. Independent new blocks use the active list at observation; activation first
+reconciles the saved working tree. Unsaved native buffers are still rejected by partial
+mutations; live unsaved-buffer attribution and gutter interactions are later editor work.
+
+Repeated or overlapping evidence that cannot establish one owner requires review. A concurrent
+revision that prevents proving attribution also keeps a review fence. Base changes can consume
+ownership only when the resulting working content is verified unchanged. A simultaneous base
+and local-content change remains conservative and requires review. Renaming a tracked split
+file preserves its old metadata and fences the destination instead of guessing a new owner.
+
+Two recent exact-content snapshots support undo/redo ownership restoration. History never
+restores a previously included selection. Explicit emptiness stays empty; a nonempty selection
+is carried forward only when every selected line maps exactly. Changed selected content needs
+review. The persisted metadata budget is 64 MiB per worktree; failed or oversized writes do not
+replace the last good record. Range hashes and history stay in the host and are omitted from
+webview state.
 
 Selected inclusion is persisted for its scope and the All view before Git
 publication. A persistence failure aborts before committing; failed post-commit
@@ -126,8 +151,9 @@ reports an explicit selection-review warning.
 
 ## Performance and Verification
 
-Diffs are requested for the active file, not once per list. Text/snapshot caches
-are bounded. Large commit trees virtualize above 200 visible rows using the
+Saved modified text is observed once per file, independently of the number of lists.
+Unchanged worktree bytes plus HEAD/ref/index/config context avoid repeated diff capture
+within a running host; reloads rebuild that observation cache. Text/snapshot caches are bounded. Large commit trees virtualize above 200 visible rows using the
 existing scroller and row components; small trees keep the existing layout.
 The partial diff and CodeMirror preview also render bounded viewports.
 
@@ -137,9 +163,28 @@ of 69.8 ms, checkbox p95 of 33.4 ms, 40 rendered file rows and 6.81 MiB retained
 JS heap growth. Before virtualization, the comparable file-list baseline measured
 3,182.5 ms first render, 1,065.1 ms checkbox p95 and 335.85 MiB heap growth.
 These small-sample, warm-cache harness results are not Electron IPC, remote
-filesystem latency or a bound on hook/signing time. Initial full-stat host refresh
-still costs roughly one second at 10,000 changed files; lazy statistics are not
-implemented here.
+filesystem latency or a bound on hook/signing time. Those renderer-only numbers predate automatic range tracking. Cold range capture adds
+Git reads and durable metadata writes per supported changed file; it is not covered by
+that timing result. High-volume end-to-end behavior remains a phase-five validation item.
+
+A separate October 15 macOS/Bun metadata benchmark used 20-line files, each split across
+two owners with an explicit empty All selection. It measured the schema-3 record, including
+range hashes, at 1,000/10,000 files and 20/100 lists:
+
+| Files | Lists | Reload | Browser projection | Durable draft update | Map all shifted files |
+| --- | --- | --- | --- | --- | --- |
+| 1,000 | 20 | 25 ms | 26 ms | 57 ms | 32 ms |
+| 1,000 | 100 | 22 ms | 28 ms | 56 ms | 25 ms |
+| 10,000 | 20 | 216 ms | 284 ms | 541 ms | 218 ms |
+| 10,000 | 100 | 196 ms | 252 ms | 538 ms | 244 ms |
+
+The largest record was 45.9 MB and its browser projection was 4.1 MB. The benchmark
+process peaked around 863 MiB RSS while retaining fixture objects; this is not an isolated
+extension-host memory measurement. These single-sample results exclude Git capture,
+Electron rendering, undo history, remote storage and competing processes. The current
+whole-record persistence and synchronous reads have a measurable cost at 10,000 split
+files; the phase-five end-to-end checks must include that cost rather than reuse the older
+renderer-only result.
 
 Focused verification:
 

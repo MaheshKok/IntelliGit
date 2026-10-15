@@ -13,6 +13,9 @@ export const MAX_PARTIAL_TEXT_BYTES = 2 * 1024 * 1024;
 const MAX_DIFF_BYTES = 8 * 1024 * 1024;
 const MARKERS = ["MERGE_HEAD", "CHERRY_PICK_HEAD", "REVERT_HEAD", "rebase-merge", "rebase-apply"];
 
+/** Known eligibility refusal; unlike an I/O or stale-snapshot failure, whole-file handling is defined. */
+export class PartialChangesUnsupportedError extends Error {}
+
 /** Host-only fences never travel through a browser message. */
 export interface PartialFileSnapshot {
     view: ChangeFileView;
@@ -54,7 +57,9 @@ async function readPartialWorktree(root: string, file: string): Promise<Buffer> 
     await assertContainedParent(root, target);
     const before = await lstat(target);
     if (!before.isFile() || before.isSymbolicLink() || before.size > MAX_PARTIAL_TEXT_BYTES) {
-        throw new Error("Partial changes require a regular text file of at most 2 MiB.");
+        throw new PartialChangesUnsupportedError(
+            "Partial changes require a regular text file of at most 2 MiB.",
+        );
     }
     const bytes = await readFile(target);
     const after = await lstat(target);
@@ -121,11 +126,13 @@ export async function readPartialSnapshot(
     const entry = singleBlobEntry(index, file);
     const flags = await executor.run(["--literal-pathspecs", "ls-files", "-v", "-z", "--", file]);
     if (flags !== `H ${file}\0`)
-        throw new Error("Sparse and assume-unchanged files require whole-file handling.");
+        throw new PartialChangesUnsupportedError(
+            "Sparse and assume-unchanged files require whole-file handling.",
+        );
     const tree = await executor.run(["--literal-pathspecs", "ls-tree", "-z", head, "--", file]);
     const original = /^(100644|100755) blob ([a-f0-9]{40,64})\t([^\0]+)\0$/.exec(tree);
     if (!original || original[3] !== file || original[1] !== entry.mode) {
-        throw new Error(
+        throw new PartialChangesUnsupportedError(
             "Added, deleted, renamed and mode-changing files require whole-file handling.",
         );
     }
@@ -225,14 +232,17 @@ async function readPartialBlob(executor: GitExecutor, oid: string): Promise<stri
         maxOutputBytes: MAX_PARTIAL_TEXT_BYTES,
         signal: AbortSignal.timeout(10_000),
     });
-    if (result.truncated) throw new Error("The file exceeds the partial-change text limit.");
+    if (result.truncated)
+        throw new PartialChangesUnsupportedError("The file exceeds the partial-change text limit.");
     assertText(result.stdout);
     return result.stdout.toString("utf8");
 }
 
 function assertText(bytes: Buffer): void {
     if (bytes.length > MAX_PARTIAL_TEXT_BYTES || !isUtf8(bytes) || bytes.includes(0)) {
-        throw new Error("Binary, non-UTF-8 and oversized files require whole-file handling.");
+        throw new PartialChangesUnsupportedError(
+            "Binary, non-UTF-8 and oversized files require whole-file handling.",
+        );
     }
     let lines = 0;
     let width = 0;
@@ -242,7 +252,9 @@ function assertText(bytes: Buffer): void {
             width = 0;
         } else width++;
         if (lines > 100_000 || width > 16_384) {
-            throw new Error("Very long lines and large line counts require whole-file handling.");
+            throw new PartialChangesUnsupportedError(
+                "Very long lines and large line counts require whole-file handling.",
+            );
         }
     }
 }
@@ -250,7 +262,9 @@ function assertText(bytes: Buffer): void {
 function singleBlobEntry(index: string, file: string) {
     const match = /^(100644|100755) ([a-f0-9]{40,64}) 0\t([^\0]+)\0$/.exec(index);
     if (!match || match[3] !== file || /^0+$/.test(match[2])) {
-        throw new Error("Conflicts and special index entries require whole-file handling.");
+        throw new PartialChangesUnsupportedError(
+            "Conflicts and special index entries require whole-file handling.",
+        );
     }
     return { mode: match[1], oid: match[2] };
 }
@@ -268,7 +282,7 @@ async function readAttributes(executor: GitExecutor, file: string): Promise<stri
     const values = output.split("\0");
     for (let i = 0; i + 2 < values.length; i += 3) {
         if (values[i] !== file || !["unspecified", "unset"].includes(values[i + 2])) {
-            throw new Error(
+            throw new PartialChangesUnsupportedError(
                 "Custom filters and working-tree encodings require whole-file handling.",
             );
         }
@@ -287,7 +301,9 @@ async function canonicalWorktree(
     if (clean === (await hash(["hash-object", "--stdin"], raw))) return raw.toString("utf8");
     const normalized = Buffer.from(raw.toString("utf8").replace(/\r\n/g, "\n"));
     if (clean !== (await hash(["hash-object", "--stdin"], normalized))) {
-        throw new Error("Unsupported clean conversion. Use whole-file handling.");
+        throw new PartialChangesUnsupportedError(
+            "Unsupported clean conversion. Use whole-file handling.",
+        );
     }
     return normalized.toString("utf8");
 }
@@ -320,7 +336,8 @@ async function computeBlocks(executor: GitExecutor, base: string, target: string
                 signal: AbortSignal.timeout(10_000),
             },
         );
-        if (result.truncated) throw new Error("The diff exceeds the supported size.");
+        if (result.truncated)
+            throw new PartialChangesUnsupportedError("The diff exceeds the supported size.");
         return parseChangeDiff(result.stdout.toString("utf8"), base, target);
     } finally {
         await rm(directory, { recursive: true, force: true });

@@ -37,6 +37,7 @@ vi.mock("vscode", () => {
 });
 import { ChangeWorkflowHost } from "../../../src/views/ChangeWorkflowHost";
 import { ChangelistStore } from "../../../src/changes/changelistStore";
+import { ChangelistPersistence } from "../../../src/changes/changelistPersistence";
 import { PartialChanges } from "../../../src/git/partialChanges";
 import { PartialIndexPublicationError } from "../../../src/git/partialIndexTransaction";
 import * as vscode from "vscode";
@@ -80,6 +81,18 @@ beforeEach(async () => {
     git(["commit", "-qm", "base"]);
     baselineHead = git(["rev-parse", "HEAD"]);
     persistenceFailure = "none";
+    const persist = ChangelistPersistence.prototype.write;
+    vi.spyOn(ChangelistPersistence.prototype, "write").mockImplementation(async function (
+        this: ChangelistPersistence,
+        state,
+    ) {
+        if (
+            persistenceFailure === "before" ||
+            (persistenceFailure === "after" && git(["rev-parse", "HEAD"]) !== baselineHead)
+        )
+            throw new Error("injected metadata storage failure");
+        return persist.call(this, state);
+    });
     await writeFile(path.join(root, "file.txt"), working);
     gitOps = new GitOps(new GitExecutor(root));
     values = new Map<string, unknown>();
@@ -148,6 +161,92 @@ async function partialEditor() {
 }
 
 describe("root-bound selected-change host", () => {
+    it("captures pending edits under the old active list before switching future attribution", async () => {
+        const created = await store.create(root, store.get(root).revision, "Later");
+        const id = created.lists[1].id;
+        await writeFile(path.join(root, "file.txt"), `pending edit\n${working}`);
+        await host.handle({
+            type: "changelistAction",
+            repositoryRoot: root,
+            action: "activate",
+            listId: id,
+            revision: created.revision,
+        });
+        const state = store.get(root);
+        expect(state.activeId).toBe(id);
+        expect(state.changes["file.txt"].stale).toBe(false);
+        expect(state.changes["file.txt"].lines).toEqual({});
+        expect(state.files["file.txt"]).toBe("default");
+    });
+
+    it("does not overwrite another window's activation during observation", async () => {
+        let state = await store.create(root, store.get(root).revision, "Requested");
+        const requested = state.lists[1].id;
+        state = await store.create(root, state.revision, "Other window");
+        const other = state.lists[2].id;
+        await writeFile(path.join(root, "file.txt"), `pending edit\n${working}`);
+        const open = PartialChanges.prototype.open;
+        vi.spyOn(PartialChanges.prototype, "open").mockImplementationOnce(async function (
+            this: PartialChanges,
+            ...args
+        ) {
+            const view = await open.apply(this, args);
+            await store.activate(root, store.get(root).revision, other);
+            return view;
+        });
+        await host.handle({
+            type: "changelistAction",
+            repositoryRoot: root,
+            action: "activate",
+            listId: requested,
+            revision: state.revision,
+        });
+        expect(store.get(root).activeId).toBe(other);
+        expect(store.get(root).changes["file.txt"].stale).toBe(true);
+        expect(posted).toContainEqual(
+            expect.objectContaining({
+                type: "error",
+                message: expect.stringContaining("Changelists changed"),
+            }),
+        );
+    });
+
+    it("opens unchanged text when a concurrent draft save advances the metadata revision", async () => {
+        const open = PartialChanges.prototype.open;
+        vi.spyOn(PartialChanges.prototype, "open").mockImplementationOnce(async function (
+            this: PartialChanges,
+            ...args
+        ) {
+            const view = await open.apply(this, args);
+            await store.saveDraft(root, "all", "", "Other window draft");
+            return view;
+        });
+        const { messages } = await partialEditor();
+        expect(messages.some((message) => message.type === "partialFile")).toBe(true);
+        expect(store.draft(root, "all")).toBe("Other window draft");
+        expect(git(["rev-parse", "HEAD"])).toBe(baselineHead);
+    });
+
+    it("reports a completed commit accurately when its metadata lease release fails", async () => {
+        const { panel, selection, messages } = await partialEditor();
+        const begin = store.beginCommit.bind(store);
+        vi.spyOn(store, "beginCommit").mockImplementationOnce(async (repository) => {
+            const release = await begin(repository);
+            return async () => {
+                await release();
+                throw new Error("injected release failure");
+            };
+        });
+        await panel.receiveMessage({ type: "commitSelection", selection, message: "One commit" });
+        expect(git(["show", "HEAD:file.txt"])).toBe(first);
+        expect(git(["rev-list", "--count", "HEAD"])).toBe("2\n");
+        expect(messages.some((message) => message.type === "partialError")).toBe(false);
+        expect(posted).toContainEqual(
+            expect.objectContaining({ message: expect.stringContaining("Do not retry") }),
+        );
+        expect(store.isCommitting(root)).toBe(false);
+    });
+
     it.each([false, true])(
         "restores staging inclusion after a dirty-buffer refusal and later commits the prior choice (existing=%s)",
         async (existing) => {
@@ -177,9 +276,9 @@ describe("root-bound selected-change host", () => {
                 }),
             );
             expect(store.get(root).changes["file.txt"].selections).toEqual(before);
-            expect(new ChangelistStore(storage).get(root).changes["file.txt"].selections).toEqual(
-                before,
-            );
+            const restarted = new ChangelistStore(storage);
+            await restarted.connect(root, path.join(root, ".git"));
+            expect(restarted.get(root).changes["file.txt"].selections).toEqual(before);
             expect(await readFile(path.join(root, ".git/index"))).toEqual(index);
             expect(git(["rev-parse", "HEAD"])).toBe(baselineHead);
             (vscode.workspace.textDocuments as vscode.TextDocument[]).length = 0;
@@ -549,7 +648,9 @@ describe("root-bound selected-change host", () => {
                 message: expect.stringContaining("commit succeeded"),
             }),
         );
-        const persisted = new ChangelistStore(storage).get(root);
+        const restarted = new ChangelistStore(storage);
+        await restarted.connect(root, path.join(root, ".git"));
+        const persisted = restarted.get(root);
         expect(persisted.changes["file.txt"].selections?.all.lineIds).toEqual(selection.lineIds);
         const head = git(["rev-parse", "HEAD"]);
         await host.handle({

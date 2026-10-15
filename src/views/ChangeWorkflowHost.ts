@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import type { GitOps } from "../git/operations";
 import type { PartialChanges } from "../git/partialChanges";
-import { ChangelistStore } from "../changes/changelistStore";
+import { ChangelistRevisionError, ChangelistStore } from "../changes/changelistStore";
 import { changeIds, validateSelection } from "../changes/selection";
 import type { ChangelistReply, ChangelistOutbound } from "../webviews/protocol/changelists";
 import type { SelectedFileChanges } from "../webviews/protocol/changeSelection";
@@ -16,6 +16,8 @@ import { showTimedWarningMessage } from "../utils/notifications";
 import { PartialIndexPublicationError } from "../git/partialIndexTransaction";
 import type { ChangelistState } from "../webviews/protocol/changeSelection";
 import type { PartialFileSnapshot } from "../git/partialSnapshot";
+import { ChangeRangeTracker } from "../changes/changeRangeTracker";
+import { rangeSnapshot } from "../changes/rangeMapping";
 
 interface ChangeWorkflowDeps {
     root: string;
@@ -53,30 +55,64 @@ export class ChangeWorkflowHost {
     private readonly partial: PartialChanges;
     private readonly unsubscribe: () => void;
     private committing = false;
+    private readonly tracker: ChangeRangeTracker;
+    private connected?: Promise<void>;
+    private readonly poll: ReturnType<typeof setInterval>;
+    private lastRevision = -1;
 
     /** Shares workspace metadata while each provider retains its own root-bound Git facade. */
     constructor(private readonly deps: ChangeWorkflowDeps) {
         this.store = ChangelistStore.forStorage(deps.workspaceState);
         this.partial = deps.gitOps.partialChangesFor(deps.root);
-        this.unsubscribe = this.store.subscribe((root, state) => {
+        this.tracker = new ChangeRangeTracker(deps.root, this.partial, this.store);
+        this.unsubscribe = this.store.subscribe((root) => {
             if (root === this.deps.root)
                 this.deps.post({
                     type: "setChangelists",
                     repositoryRoot: root,
-                    state,
+                    state: this.store.view(root),
                     busy: this.committing || this.store.isCommitting(root),
                     ...(this.partial.recoveryIssues().length ? { hasRecoveryIssues: true } : {}),
                 });
         });
+        this.poll = setInterval(() => {
+            if (!this.connected) return;
+            try {
+                const revision = this.store.get(deps.root).revision;
+                if (revision !== this.lastRevision) {
+                    this.lastRevision = revision;
+                    this.post();
+                }
+            } catch {
+                this.post();
+            }
+        }, 1000);
+        this.poll.unref();
     }
 
     /** Releases provider delivery; already-open editors still own their captured root. */
     dispose(): void {
         this.unsubscribe();
+        clearInterval(this.poll);
+    }
+
+    /** Durable migration is awaited before host intents can mutate metadata or Git. */
+    private connect(): Promise<void> {
+        this.connected ??= this.deps.gitOps
+            .getGitDirectories()
+            .then(({ gitDir }) => this.store.connect(this.deps.root, gitDir))
+            .catch((error: unknown) => {
+                this.connected = undefined;
+                throw error;
+            });
+        return this.connected;
     }
 
     /** Updates membership from an already acquired status snapshot without another Git scan. */
     async reconcile(files: readonly WorkingFile[]): Promise<void> {
+        await this.connect();
+        if (this.store.isCommitting(this.deps.root)) return;
+        await this.tracker.reconcile(files);
         await this.store.reconcileFiles(
             this.deps.root,
             files.filter((file) => file.status !== "!").map((file) => file.path),
@@ -89,6 +125,7 @@ export class ChangeWorkflowHost {
         if (raw.repositoryRoot !== this.deps.root)
             throw new Error("Unknown changelist repository.");
         try {
+            await this.connect();
             const message = raw as unknown as ChangelistOutbound;
             switch (message.type) {
                 case "loadChangelists": {
@@ -171,7 +208,7 @@ export class ChangeWorkflowHost {
             this.deps.post({
                 type: "setChangelists",
                 repositoryRoot: this.deps.root,
-                state: this.store.get(this.deps.root),
+                state: this.store.view(this.deps.root),
                 busy: this.committing || this.store.isCommitting(this.deps.root),
                 ...(this.partial.recoveryIssues().length ? { hasRecoveryIssues: true } : {}),
             });
@@ -186,16 +223,31 @@ export class ChangeWorkflowHost {
         }
     }
 
+    /** Hold the metadata lease across Git publication; release failures never invite a duplicate commit. */
     private async runCommit(operation: () => Promise<void>): Promise<void> {
         if (this.committing) throw new Error("A selected commit is already in progress.");
         this.committing = true;
         this.post();
-        let release: (() => void) | undefined;
+        let release: (() => Promise<void>) | undefined;
+        let completed = false;
         try {
             release = await this.store.beginCommit(this.deps.root);
-            await this.deps.runCommit(operation);
+            await this.deps.runCommit(async () => {
+                await operation();
+                completed = true;
+            });
         } finally {
-            release?.();
+            try {
+                await release?.();
+            } catch (error) {
+                console.error("[IntelliGit] Changelist lease release failed:", error);
+                if (completed)
+                    this.warnCommitReview(
+                        vscode.l10n.t(
+                            "Selected commit succeeded, but its selection metadata needs review. Do not retry the commit.",
+                        ),
+                    );
+            }
             this.committing = false;
             this.post();
         }
@@ -220,7 +272,7 @@ export class ChangeWorkflowHost {
                 await this.editList(message.action, revision, id);
                 break;
             case "activate":
-                await this.store.activate(this.deps.root, revision, id);
+                await this.activate(revision, id);
                 break;
             case "resetSelection":
                 await this.store.resetSelection(
@@ -270,6 +322,18 @@ export class ChangeWorkflowHost {
             default:
                 throw new Error("Unknown changelist action.");
         }
+    }
+
+    /** Observe existing edits under the old active list before changing only future attribution. */
+    private async activate(revision: number, id: string): Promise<void> {
+        const before = this.store.get(this.deps.root);
+        if (before.revision !== revision) throw new ChangelistRevisionError();
+        await this.tracker.reconcile(this.deps.files());
+        const latest = this.store.get(this.deps.root);
+        // Observation may advance ownership revisions itself. Preserve those writes, but
+        // never overwrite another window's intervening active-list choice.
+        if (latest.activeId !== before.activeId) throw new ChangelistRevisionError();
+        await this.store.activate(this.deps.root, latest.revision, id);
     }
 
     /** Collects all metadata before a single CAS write, so cancelling any prompt changes nothing. */
@@ -424,16 +488,29 @@ export class ChangeWorkflowHost {
         const listId = requestedList ?? "all";
         new PartialChangesPanel(this.deps.extensionUri, file, {
             load: async (side) => {
+                const revision = this.store.get(this.deps.root).revision;
                 const view = await this.partial.open(file, side);
                 const snapshot = this.partial.snapshot(view.snapshotId);
-                if (side === "working")
-                    await this.store.registerChanges(
-                        this.deps.root,
-                        view.path,
-                        snapshot.contentId,
-                        changeIds(view.blocks).length,
-                    );
-                const lists = this.store.get(this.deps.root);
+                if (side === "working") {
+                    try {
+                        await this.store.track(
+                            this.deps.root,
+                            view.path,
+                            rangeSnapshot(snapshot),
+                            revision,
+                        );
+                    } catch (error) {
+                        // A concurrent observer/draft writer need not prevent a read-only load
+                        // when the authoritative record already describes these exact bytes.
+                        if (
+                            !(error instanceof ChangelistRevisionError) ||
+                            this.store.get(this.deps.root).changes[view.path]?.contentId !==
+                                snapshot.contentId
+                        )
+                            throw error;
+                    }
+                }
+                const lists = this.store.view(this.deps.root);
                 return { file: view, contentId: snapshot.contentId, lists, listId };
             },
             stage: async (selection) => {
@@ -475,7 +552,7 @@ export class ChangeWorkflowHost {
                         throw error;
                     }
                 } finally {
-                    release();
+                    await release();
                 }
                 await this.deps.actions.refreshData();
                 this.deps.actions.fireWorkingTreeChanged();
@@ -594,6 +671,8 @@ export class ChangeWorkflowHost {
             throw new Error("Unknown changelist.");
         const hasPartial = paths.some(
             (file) =>
+                state.changes[file]?.stale ||
+                (id !== "all" && state.changes[file]?.tracking !== undefined) ||
                 Object.keys(state.changes[file]?.lines ?? {}).length > 0 ||
                 state.changes[file]?.selections?.[id] !== undefined,
         );
@@ -789,6 +868,7 @@ export class ChangeWorkflowHost {
                     file.fingerprints,
                     available,
                     changeIds(view.blocks).length,
+                    rangeSnapshot(snapshot),
                 );
             }
         } catch (error) {

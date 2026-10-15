@@ -2,6 +2,26 @@ import { ChangelistStore } from "../changes/changelistStore";
 import type { NativeCommitInputBridgeOptions } from "./nativeCommitInputBridge";
 import type * as vscode from "vscode";
 
+/** Attach native inputs only after durable drafts are loaded; failures preserve the native buffer. */
+export function attachAfterChangelistLoad(
+    storage: vscode.Memento | undefined,
+    root: string,
+    directories: () => Promise<{ gitDir: string }>,
+    attach: () => void,
+): void {
+    const store = ChangelistStore.forStorage(storage);
+    if (!store.needsConnection(root)) {
+        attach();
+        return;
+    }
+    void directories()
+        .then(({ gitDir }) => store.connect(root, gitDir))
+        .then(attach)
+        .catch((error: unknown) => {
+            console.error("[IntelliGit] Native changelist drafts require review:", error);
+        });
+}
+
 /** Native SCM mirrors the last focused scope, shared by docked and undocked providers. */
 export function changelistDraftBridge(
     storage: vscode.Memento | undefined,
