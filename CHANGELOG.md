@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.38.1] - 2026-10-15
+
+This release adds the first changelist-management phase on top of 0.38.0. Four later implementation phases remain planned.
+
+### Added
+
+- Group changed files by changelist, show split files under each owning list, and remember expanded groups. The selected commit scope and the active list for new changes are shown separately.
+- Create and edit list descriptions, optionally activate new lists, and create a destination while moving whole files. Rename or remove the original list, choose where removed-list changes go, and retain a valid active list when the last list is removed.
+- Keep separate commit-message drafts for each worktree, changelist and the explicit All scope. Descriptions stay separate from messages, and the native SCM input follows the focused composer.
+
+### Fixed
+
+- Preserve drafts and explicit empty selections across list switches, delayed saves, concurrent panes and late generated-message replies. Completing a commit clears only its captured, unchanged draft when configured.
+- Migrate version-1 changelist metadata only after saving its original record, preserving list IDs, ownership, stale-selection safeguards and legacy drafts. Corrupt, conflicting or unknown-version records are refused without being overwritten.
+- Require an explicit choice when removing lists with conflicting drafts or combining ambiguous selections, and refuse whole-file moves that would discard partial ownership.
+
 ## [0.38.0] - 2026-10-15
 
 This release delivers PR #333's changelist and selected-change foundation. Four follow-up phases remain planned and are not included in this release.
