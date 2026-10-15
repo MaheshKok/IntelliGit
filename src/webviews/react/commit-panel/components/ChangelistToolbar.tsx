@@ -38,7 +38,7 @@ export function ChangelistToolbar({
 }) {
     const state = workflow.metadata;
     if (!state) return null;
-    const own = workflow.filter !== "all" && workflow.filter !== "default";
+    const own = workflow.filter !== "all";
     const tools = [
         {
             icon: VscAdd,
@@ -48,7 +48,7 @@ export function ChangelistToolbar({
         },
         {
             icon: VscEdit,
-            label: t("changes.renameList"),
+            label: t("changes.editList"),
             run: () => workflow.command("rename"),
             disabled: !own,
         },
@@ -118,7 +118,7 @@ export function ChangelistToolbar({
                 <option value="all">{t("changes.all")}</option>
                 {state.lists.map((list) => (
                     <option key={list.id} value={list.id}>
-                        {list.id === "default" ? t("changes.default") : list.name}
+                        {list.name}
                         {list.id === state.activeId ? ` (${t("changes.active")})` : ""}
                     </option>
                 ))}

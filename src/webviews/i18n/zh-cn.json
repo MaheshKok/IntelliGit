@@ -466,5 +466,10 @@
     "changes.useSelection": "将选择用于提交",
     "changes.wholeFile": "选择整文件",
     "changes.reviewSelection": "部分选择需要复查",
-    "changes.reviewRecovery": "检查部分暂存区恢复"
+    "changes.reviewRecovery": "检查部分暂存区恢复",
+    "changes.editList": "编辑更改列表",
+    "changes.includeList": "在提交中包含 {name}",
+    "changes.fileCount": "文件数：{count}",
+    "changes.listActions": "{name} 的操作",
+    "changes.emptyList": "此列表中没有更改"
 }

@@ -496,5 +496,10 @@
     "changes.useSelection": "Użyj wyboru do commitu",
     "changes.wholeFile": "Wybierz cały plik",
     "changes.reviewSelection": "Częściowy wybór wymaga przeglądu",
-    "changes.reviewRecovery": "Sprawdź odzyskiwanie częściowego indeksu"
+    "changes.reviewRecovery": "Sprawdź odzyskiwanie częściowego indeksu",
+    "changes.editList": "Edytuj listę zmian",
+    "changes.includeList": "Uwzględnij {name} w commicie",
+    "changes.fileCount": "Liczba plików: {count}",
+    "changes.listActions": "Działania dla {name}",
+    "changes.emptyList": "Brak zmian na tej liście"
 }

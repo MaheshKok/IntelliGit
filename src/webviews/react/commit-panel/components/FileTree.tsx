@@ -22,6 +22,7 @@ interface Props {
     folderIconsByName?: ThemeFolderIconMap;
     checkedPaths: Set<string>;
     partialPaths?: ReadonlySet<string>;
+    selectionDisabled?: boolean;
     onToggleFile: (path: string) => void;
     onToggleFolder: (files: WorkingFile[]) => void;
     onToggleSection: (files: WorkingFile[]) => void;
@@ -355,6 +356,7 @@ export function FileTree({
     folderIconsByName,
     checkedPaths,
     partialPaths,
+    selectionDisabled = false,
     onToggleFile,
     onToggleFolder,
     onToggleSection,
@@ -524,6 +526,7 @@ export function FileTree({
                 >
                     <FileSection
                         repositoryRoot={repositoryRoot}
+                        checkboxVisibility={selectionDisabled ? "hidden" : "visible"}
                         label={t("commitPanel.changes")}
                         count={trackedUniqueCount}
                         stats={trackedStats}
@@ -558,6 +561,7 @@ export function FileTree({
             {unversioned.length > 0 && (
                 <FileSection
                     repositoryRoot={repositoryRoot}
+                    checkboxVisibility={selectionDisabled ? "hidden" : "visible"}
                     label={t("commitPanel.unversionedFiles")}
                     count={unversionedUniqueCount}
                     stats={unversionedStats}

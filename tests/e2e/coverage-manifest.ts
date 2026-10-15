@@ -513,6 +513,7 @@ const WEBVIEW_ENTRIES = [
     { kind: "webview", id: "saveCommitDraft", mutating: false },
     { kind: "webview", id: "loadChangelists", mutating: false },
     { kind: "webview", id: "changelistAction", mutating: false },
+    { kind: "webview", id: "changelistDraft", mutating: false },
     { kind: "webview", id: "openPartialChanges", mutating: false },
     { kind: "webview", id: "useSelection", mutating: false },
     { kind: "webview", id: "assignSelection", mutating: false },

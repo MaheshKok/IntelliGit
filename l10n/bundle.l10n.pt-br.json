@@ -881,5 +881,15 @@
     "The requested repository is no longer available. Select it again before running branch actions.": "O repositório solicitado não está mais disponível. Selecione-o novamente antes das ações de branch.",
     "The selected branch is no longer available. Refresh the repository and try again.": "A branch selecionada não está mais disponível. Atualize o repositório e tente novamente.",
     "Branch action failed: {message}": "Falha na ação de branch: {message}",
-    "IntelliGit must run on the remote workspace host. Install or enable it there and remove any remote.extensionKind UI override before running Git commands.": "IntelliGit deve executar no host do espaço de trabalho remoto. Instale ou ative-o nesse host e remova qualquer configuração de host de interface em remote.extensionKind antes de executar comandos Git."
+    "IntelliGit must run on the remote workspace host. Install or enable it there and remove any remote.extensionKind UI override before running Git commands.": "IntelliGit deve executar no host do espaço de trabalho remoto. Instale ou ative-o nesse host e remova qualquer configuração de host de interface em remote.extensionKind antes de executar comandos Git.",
+    "Changelist description": "Descrição da lista de alterações",
+    "Enter at most 4000 characters.": "Digite no máximo 4000 caracteres.",
+    "Keep the current active changelist": "Manter a lista de alterações ativa atual",
+    "Make the new changelist active": "Ativar a nova lista de alterações",
+    "Move remaining changes to changelist": "Mover alterações restantes para a lista de alterações",
+    "Append both drafts": "Combinar os dois rascunhos",
+    "Keep destination draft": "Manter o rascunho de destino",
+    "Keep removed list's draft": "Manter o rascunho da lista removida",
+    "Choose the commit draft to preserve": "Escolher o rascunho de commit a manter",
+    "Remove {source} and move its changes to {target}? File content and staging are preserved.": "Remover {source} e mover suas alterações para {target}? O conteúdo dos arquivos e a área de preparação serão preservados."
 }

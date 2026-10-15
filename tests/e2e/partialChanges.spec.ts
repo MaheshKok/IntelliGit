@@ -41,6 +41,9 @@ async function createList(page: Page, frame: FrameLocator, name: string): Promis
     await expect(input).toBeVisible();
     await input.fill(name);
     await input.press("Enter");
+    await expect(page.locator(".quick-input-title")).toContainText("Changelist description");
+    await input.press("Enter");
+    await page.getByText("Keep the current active changelist", { exact: true }).click();
     await expect(
         frame.getByRole("combobox", { name: "Changelists", exact: true }).locator("option"),
     ).toContainText([name]);

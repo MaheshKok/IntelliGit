@@ -32,6 +32,10 @@ export interface ChangeFileView {
 interface Changelist {
     id: string;
     name: string;
+    /** User documentation, independent of the commit message. */
+    description?: string;
+    /** Persisted composer text for this list only. */
+    draft?: string;
 }
 
 /** Only fingerprints, not complete file contents, are persisted for block ownership. */
@@ -46,6 +50,8 @@ export interface ChangeOwnership {
             contentId: string;
             lineIds: string[];
             total: number;
+            /** A lifecycle merge could not prove equivalent inclusion; explicit review is required. */
+            reviewRequired?: boolean;
         }
     >;
 }
@@ -57,6 +63,10 @@ export interface ChangelistState {
     lists: Changelist[];
     files: Record<string, string>;
     changes: Record<string, ChangeOwnership>;
+    /** All is an aggregate commit scope, never an ownership identifier. */
+    allDraft?: string;
+    /** Bounded deletion redirects restore saved view scopes without reviving removed IDs. */
+    removedScopes?: Record<string, string>;
 }
 
 /** One correlated selection; the host resolves every identifier from its own snapshot. */

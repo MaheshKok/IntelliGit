@@ -1,3 +1,9 @@
+import { ChangelistStore } from "../changes/changelistStore";
+import {
+    changelistDraftBridge,
+    saveAggregateDraft,
+    readAggregateDraft,
+} from "./changelistDraftBridge";
 // Manages a vscode.WebviewPanel (editor tab) that combines the commit graph
 // and commit panel into a single unified view. Used when the user enables
 // intelligit.undockableWindow to allow dragging to a second monitor.
@@ -357,28 +363,13 @@ export class UndockedViewProvider {
             options.nativeCommitInputBridgeFactory ??
             ((bridgeOptions) => new NativeCommitInputBridge(bridgeOptions))
         )({
-            readDraft: (root) => this.getStoredCommitDraft(root),
-            persistDraft: (root, text) => {
-                try {
-                    void Promise.resolve(
-                        this.workspaceState?.update(
-                            this.getCommitDraftStorageKey(root),
-                            text || undefined,
-                        ),
-                    ).catch((error: unknown) => {
-                        console.error("[IntelliGit] Failed to persist commit draft:", error);
-                    });
-                } catch (error: unknown) {
-                    console.error("[IntelliGit] Failed to persist commit draft:", error);
-                }
-            },
-            onNativeChange: (root, message) => {
+            ...changelistDraftBridge(this.workspaceState, (root, message) => {
                 this.postToWebview({
                     type: "restoreCommitDraft",
                     repositoryRoot: root,
                     message,
                 });
-            },
+            }),
         });
         this.commitChecks = new CommitChecksCoordinator(
             this.gitOps,
@@ -1262,10 +1253,11 @@ export class UndockedViewProvider {
                 if (!repository) {
                     throw new Error("Unknown repository root received from webview.");
                 }
-                this.setFromPanelSafely(repository.root, message);
-                await this.workspaceState?.update(
+                this.mirrorAggregateText(repository.root, message);
+                await saveAggregateDraft(
+                    this.workspaceState,
                     this.getCommitDraftStorageKey(repository.root),
-                    message || undefined,
+                    message,
                 );
                 break;
             }
@@ -1478,12 +1470,12 @@ export class UndockedViewProvider {
                 .get<boolean>("clearLastCommit", true) !== false;
         if (clearCommitMessage && this.workspaceState) {
             try {
-                await this.workspaceState.update(storageKey, undefined);
+                await saveAggregateDraft(this.workspaceState, storageKey, "");
             } catch {
                 clearCommitMessage = false;
             }
         }
-        if (clearCommitMessage) this.setFromPanelSafely(root, "");
+        if (clearCommitMessage) this.mirrorAggregateText(root, "");
         if (this.repoRootUri.fsPath !== root) return;
         this.postToWebview({ type: "committed", repositoryRoot: root, clearCommitMessage });
     }
@@ -1521,6 +1513,17 @@ export class UndockedViewProvider {
             root,
             extensionUri: this.extensionUri,
             workspaceState: this.workspaceState,
+            mirrorDraft: (_scope, text) => this.setFromPanelSafely(root, text),
+            postScopedCommit: () =>
+                this.postToWebview({
+                    type: "committed",
+                    repositoryRoot: root,
+                    clearCommitMessage: false,
+                }),
+            clearLastCommit: () =>
+                vscode.workspace
+                    .getConfiguration("intelligit")
+                    .get<boolean>("clearLastCommit", true),
             gitOps,
             files: () => (current() ? this.files : []),
             post: (message) => this.postToWebview(message),
@@ -2191,10 +2194,17 @@ export class UndockedViewProvider {
         return `${UndockedViewProvider.COMMIT_DRAFT_KEY_PREFIX}${repositoryRoot}`;
     }
     private getStoredCommitDraft(repositoryRoot = this.repoRootUri.fsPath): string {
-        return (
-            this.workspaceState?.get<string>(this.getCommitDraftStorageKey(repositoryRoot)) ?? ""
+        return readAggregateDraft(
+            this.workspaceState,
+            this.getCommitDraftStorageKey(repositoryRoot),
         );
     }
+    /** Compatibility messages address All and cannot replace the focused named-list mirror. */
+    private mirrorAggregateText(root: string | undefined, message: string): void {
+        if (root && ChangelistStore.forStorage(this.workspaceState).mirrorScope(root) === "all")
+            this.setFromPanelSafely(root, message);
+    }
+
     private setFromPanelSafely(root: string | undefined, message: string): void {
         if (!root) return;
         try {
@@ -2203,24 +2213,18 @@ export class UndockedViewProvider {
             console.error("[IntelliGit] Failed to mirror commit draft:", error);
         }
     }
-    private async mirrorPanelText(root: string, message: string): Promise<void> {
-        this.setFromPanelSafely(root, message);
-        await this.workspaceState?.update(
-            this.getCommitDraftStorageKey(root),
-            message || undefined,
-        );
-    }
+
     private async handleGetLastCommitMessage(): Promise<void> {
         const repositoryRoot = this.selectedRepositoryRoot;
         const switchSeq = this.repositorySwitchSeq;
+        const store = ChangelistStore.forStorage(this.workspaceState);
+        const expected = store.draft(repositoryRoot, "all");
         const lastMsg = await this.gitOps.deriveFor(repositoryRoot).getLastCommitMessage();
         if (this.repositorySwitchSeq !== switchSeq) return;
-        this.postToWebview({
-            type: "lastCommitMessage",
-            repositoryRoot,
-            message: lastMsg,
-        });
-        await this.mirrorPanelText(repositoryRoot, lastMsg);
+        await store.saveDraft(repositoryRoot, "all", expected, lastMsg);
+        if (store.mirrorScope(repositoryRoot) === "all")
+            this.setFromPanelSafely(repositoryRoot, lastMsg);
+        this.postToWebview({ type: "lastCommitMessage", repositoryRoot, message: lastMsg });
     }
     /**
      * Sends validated persisted column widths before the webview performs layout writes.

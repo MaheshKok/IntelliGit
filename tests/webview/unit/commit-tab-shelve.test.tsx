@@ -8,7 +8,11 @@ import { CommitTab } from "../../../src/webviews/react/commit-panel/components/C
 import theme from "../../../src/webviews/react/commit-panel/theme";
 import { initReactDomTestEnvironment, mount, unmount } from "../../helpers/reactDomTestUtils";
 
-const vscode = vi.hoisted(() => ({ postMessage: vi.fn() }));
+const vscode = vi.hoisted(() => ({
+    postMessage: vi.fn(),
+    getState: vi.fn(() => ({})),
+    setState: vi.fn(),
+}));
 
 vi.mock("../../../src/webviews/react/shared/vscodeApi", () => ({ getVsCodeApi: () => vscode }));
 

@@ -466,5 +466,10 @@
     "changes.useSelection": "選択をコミットに使用",
     "changes.wholeFile": "ファイル全体を選択",
     "changes.reviewSelection": "部分選択を確認してください",
-    "changes.reviewRecovery": "部分インデックスの復旧を確認"
+    "changes.reviewRecovery": "部分インデックスの復旧を確認",
+    "changes.editList": "変更リストを編集",
+    "changes.includeList": "{name} をコミットに含める",
+    "changes.fileCount": "ファイル数: {count}",
+    "changes.listActions": "{name} の操作",
+    "changes.emptyList": "このリストに変更はありません"
 }

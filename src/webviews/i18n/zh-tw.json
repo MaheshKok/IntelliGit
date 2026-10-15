@@ -466,5 +466,10 @@
     "changes.useSelection": "將選取內容用於提交",
     "changes.wholeFile": "選取整個檔案",
     "changes.reviewSelection": "部分選取需要複查",
-    "changes.reviewRecovery": "檢查部分暫存區復原"
+    "changes.reviewRecovery": "檢查部分暫存區復原",
+    "changes.editList": "編輯變更清單",
+    "changes.includeList": "在提交中包含 {name}",
+    "changes.fileCount": "檔案數：{count}",
+    "changes.listActions": "{name} 的操作",
+    "changes.emptyList": "此清單中沒有變更"
 }

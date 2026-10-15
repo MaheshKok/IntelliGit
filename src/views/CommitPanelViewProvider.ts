@@ -1,3 +1,9 @@
+import { ChangelistStore } from "../changes/changelistStore";
+import {
+    changelistDraftBridge,
+    saveAggregateDraft,
+    readAggregateDraft,
+} from "./changelistDraftBridge";
 // WebviewViewProvider for the Commit panel in the sidebar.
 // Shows working tree changes with checkboxes, commit message input,
 // commit/push buttons, amend toggle, and stash management.
@@ -328,28 +334,13 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         this.nativeCommitInputBridge = (
             nativeCommitInputBridgeFactory ?? ((options) => new NativeCommitInputBridge(options))
         )({
-            readDraft: (root) => this.getStoredCommitDraft(this.runtimes.get(root)),
-            persistDraft: (root, text) => {
-                try {
-                    void Promise.resolve(
-                        this.workspaceState?.update(
-                            this.getCommitDraftStorageKey(this.runtimes.get(root)),
-                            text || undefined,
-                        ),
-                    ).catch((error: unknown) => {
-                        console.error("[IntelliGit] Failed to persist commit draft:", error);
-                    });
-                } catch (error: unknown) {
-                    console.error("[IntelliGit] Failed to persist commit draft:", error);
-                }
-            },
-            onNativeChange: (root, message) => {
+            ...changelistDraftBridge(this.workspaceState, (root, message) => {
                 this.postToWebview({
                     type: "restoreCommitDraft",
                     repositoryRoot: root,
                     message,
                 });
-            },
+            }),
         });
         this.loadStoredChangedFileCounts();
         if (repoRootUri) {
@@ -980,15 +971,16 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                         .get<boolean>("clearLastCommit", true) !== false;
                 if (clearCommitMessage && this.workspaceState) {
                     try {
-                        await this.workspaceState.update(
+                        await saveAggregateDraft(
+                            this.workspaceState,
                             this.getCommitDraftStorageKey(runtime),
-                            undefined,
+                            "",
                         );
                     } catch {
                         clearCommitMessage = false;
                     }
                 }
-                if (clearCommitMessage) this.setFromPanelSafely(runtime?.repository.root, "");
+                if (clearCommitMessage) this.mirrorAggregateText(runtime?.repository.root, "");
                 this.postToWebview({
                     type: "committed",
                     clearCommitMessage,
@@ -1010,6 +1002,17 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             root,
             extensionUri: this.extensionUri,
             workspaceState: this.workspaceState,
+            mirrorDraft: (_scope, text) => this.setFromPanelSafely(root, text),
+            postScopedCommit: () =>
+                this.postToWebview({
+                    type: "committed",
+                    repositoryRoot: root,
+                    clearCommitMessage: false,
+                }),
+            clearLastCommit: () =>
+                vscode.workspace
+                    .getConfiguration("intelligit")
+                    .get<boolean>("clearLastCommit", true),
             gitOps: runtime.gitOps,
             files: () => runtime.files,
             post: (message) => this.postToWebview(message),
@@ -1970,9 +1973,10 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 const runtime = scopedRuntime();
                 const message = assertString(msg.message, "message");
                 this.setFromPanelForRuntime(runtime, message);
-                await this.workspaceState?.update(
+                await saveAggregateDraft(
+                    this.workspaceState,
                     this.getCommitDraftStorageKey(runtime),
-                    message || undefined,
+                    message,
                 );
                 break;
             }
@@ -2428,8 +2432,15 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
      * Reads the persisted commit draft for the active repository, defaulting to an empty input.
      */
     private getStoredCommitDraft(runtime?: CommitPanelRepositoryRuntime): string {
-        return this.workspaceState?.get<string>(this.getCommitDraftStorageKey(runtime)) ?? "";
+        if (!this.workspaceState || (!runtime && !this.repoRootUri)) return "";
+        return readAggregateDraft(this.workspaceState, this.getCommitDraftStorageKey(runtime));
     }
+    /** Compatibility messages address All and cannot replace the focused named-list mirror. */
+    private mirrorAggregateText(root: string | undefined, message: string): void {
+        if (root && ChangelistStore.forStorage(this.workspaceState).mirrorScope(root) === "all")
+            this.setFromPanelSafely(root, message);
+    }
+
     private setFromPanelSafely(root: string | undefined, message: string): void {
         if (!root) return;
         try {
@@ -2442,37 +2453,30 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         runtime: CommitPanelRepositoryRuntime | undefined,
         message: string,
     ): void {
-        this.setFromPanelSafely(runtime?.repository.root, message);
-    }
-    private async mirrorPanelTextForRuntime(
-        runtime: CommitPanelRepositoryRuntime | undefined,
-        message: string,
-    ): Promise<void> {
-        if (!runtime) return;
-        await this.mirrorPanelText(runtime.repository.root, message);
+        this.mirrorAggregateText(runtime?.repository.root, message);
     }
     private async handleGetLastCommitMessage(
         runtime: CommitPanelRepositoryRuntime | undefined,
     ): Promise<void> {
+        const root = runtime?.repository.root;
+        const store = ChangelistStore.forStorage(this.workspaceState);
+        const expected = root ? store.draft(root, "all") : undefined;
         const lastMsg = await (runtime?.gitOps ?? this.gitOps).getLastCommitMessage();
         // The repository list can change during the await. A removed or replaced
         // runtime must not post, and must not mirror: getCommitDraftStorageKey would
         // fall back to the current repoRootUri and file this text under another repo.
         if (runtime && this.runtimes.get(runtime.repository.root) !== runtime) return;
+        if (root) {
+            await store.saveDraft(root, "all", expected, lastMsg);
+            if (store.mirrorScope(root) === "all") this.setFromPanelSafely(root, lastMsg);
+        }
         this.postToWebview({
             type: "lastCommitMessage",
-            ...(runtime ? { repositoryRoot: runtime.repository.root } : {}),
+            ...(root ? { repositoryRoot: root } : {}),
             message: lastMsg,
         });
-        await this.mirrorPanelTextForRuntime(runtime, lastMsg);
     }
-    private async mirrorPanelText(root: string, message: string): Promise<void> {
-        this.setFromPanelSafely(root, message);
-        await this.workspaceState?.update(
-            this.getCommitDraftStorageKey(this.runtimes.get(root)),
-            message || undefined,
-        );
-    }
+
     /**
      * Releases theme listeners, icon resources, and event emitters owned by the Changes provider.
      */

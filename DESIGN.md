@@ -290,6 +290,16 @@ Search fields use a 26px control inside the 32px toolbar rhythm. Section titles,
 - **Hover:** A translucent host hover wash. Never a border; a border on hover causes 1px layout shift.
 - **Status:** Always a colored glyph *plus* a label or letter code. Color alone is never the carrier.
 
+### Changelist Groups and Scoped Composer
+
+Changelists extend the existing dense tree and anchored composer. They use the same host theme, type scale, and controls as the rest of the commit panel.
+
+- **Group header:** A compact horizontal strip (28px minimum height, 8px horizontal padding, 6px gaps) holds the disclosure chevron, inclusion checkbox, list name, optional Active label, unique-file count, and actions menu. List names use 12px type and truncate with an ellipsis; supporting labels and counts use 11px type.
+- **Selected scope versus Active:** The selected list header uses `JETBRAINS_UI.color.selected`, `selectedForeground`, and `SHADOW.selectedRing`. The inset ring remains necessary in light and high-contrast themes. The active list instead carries a bold name and an explicit localized Active label; it can differ from the selected scope. Keep these two states independently legible.
+- **Scoped inclusion:** Checkboxes operate within the selected list or All scope. Other lists remain visible with their inclusion controls disabled. Partial or review-required selections retain a mixed checkbox state rather than appearing fully included; group counts describe unique file paths even when staged and unstaged rows share a path.
+- **Expansion and menus:** Group expansion is saved per repository and list, and the existing toolbar's Expand All / Collapse All controls also expand or collapse the groups. List actions open from the header's context menu or its labeled ellipsis button. The header owns that menu so file rows retain their native file context menus.
+- **Composer scope:** Append the exact selected list name, or the localized All label, to the visible Commit Message label and the textarea's accessible name. The scope stays beside the writing surface as the draft changes; the existing resize handle, Generate/Stop control, and wrapping action row retain their established treatment.
+
 ### Commit Graph (signature component)
 
 The graph is rendered on HTML5 Canvas rather than DOM, and its geometry is fixed: 10px lane width, 1.5px branch lines, 1.3px merge lines, 4.5px commit dots with a 2px inner radius and a 2px ring in the canvas background color. That ring is what keeps a dot legible when a line passes behind it. Lanes cycle the Muted Signal Set round-robin. The graph caps at 100px of lane width — beyond roughly ten concurrent lanes it stops widening, because a graph wide enough to show every branch is a graph nobody can read.

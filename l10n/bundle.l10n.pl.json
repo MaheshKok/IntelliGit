@@ -881,5 +881,15 @@
     "The requested repository is no longer available. Select it again before running branch actions.": "Żądane repozytorium nie jest już dostępne. Wybierz je ponownie przed operacjami na gałęziach.",
     "The selected branch is no longer available. Refresh the repository and try again.": "Wybrana gałąź nie jest już dostępna. Odśwież repozytorium i spróbuj ponownie.",
     "Branch action failed: {message}": "Operacja na gałęzi nie powiodła się: {message}",
-    "IntelliGit must run on the remote workspace host. Install or enable it there and remove any remote.extensionKind UI override before running Git commands.": "IntelliGit musi działać na hoście zdalnego obszaru roboczego. Zainstaluj lub włącz go tam i usuń wymuszenie hosta UI w remote.extensionKind przed poleceniami Git."
+    "IntelliGit must run on the remote workspace host. Install or enable it there and remove any remote.extensionKind UI override before running Git commands.": "IntelliGit musi działać na hoście zdalnego obszaru roboczego. Zainstaluj lub włącz go tam i usuń wymuszenie hosta UI w remote.extensionKind przed poleceniami Git.",
+    "Changelist description": "Opis listy zmian",
+    "Enter at most 4000 characters.": "Wpisz maksymalnie 4000 znaków.",
+    "Keep the current active changelist": "Zachowaj bieżącą aktywną listę zmian",
+    "Make the new changelist active": "Ustaw nową listę zmian jako aktywną",
+    "Move remaining changes to changelist": "Przenieś pozostałe zmiany do listy zmian",
+    "Append both drafts": "Połącz oba szkice",
+    "Keep destination draft": "Zachowaj szkic docelowy",
+    "Keep removed list's draft": "Zachowaj szkic usuwanej listy",
+    "Choose the commit draft to preserve": "Wybierz szkic commita do zachowania",
+    "Remove {source} and move its changes to {target}? File content and staging are preserved.": "Usunąć {source} i przenieść zmiany do {target}? Zawartość plików i stan indeksu zostaną zachowane."
 }

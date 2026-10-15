@@ -486,5 +486,10 @@
     "changes.useSelection": "Usar selección para el commit",
     "changes.wholeFile": "Seleccionar archivo completo",
     "changes.reviewSelection": "La selección parcial requiere revisión",
-    "changes.reviewRecovery": "Revisar recuperación del índice parcial"
+    "changes.reviewRecovery": "Revisar recuperación del índice parcial",
+    "changes.editList": "Editar lista de cambios",
+    "changes.includeList": "Incluir {name} en el commit",
+    "changes.fileCount": "Número de archivos: {count}",
+    "changes.listActions": "Acciones para {name}",
+    "changes.emptyList": "No hay cambios en esta lista"
 }

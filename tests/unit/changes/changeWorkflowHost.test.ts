@@ -113,6 +113,7 @@ beforeEach(async () => {
             fireWorkingTreeChanged: () => undefined,
             maybeOfferPublishBranch: async () => undefined,
         },
+        postScopedCommit: delivered,
         runCommit: (operation) => operation(),
     });
     await host.reconcile(files);

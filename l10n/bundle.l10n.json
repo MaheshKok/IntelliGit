@@ -881,5 +881,15 @@
     "The requested repository is no longer available. Select it again before running branch actions.": "The requested repository is no longer available. Select it again before running branch actions.",
     "The selected branch is no longer available. Refresh the repository and try again.": "The selected branch is no longer available. Refresh the repository and try again.",
     "Branch action failed: {message}": "Branch action failed: {message}",
-    "IntelliGit must run on the remote workspace host. Install or enable it there and remove any remote.extensionKind UI override before running Git commands.": "IntelliGit must run on the remote workspace host. Install or enable it there and remove any remote.extensionKind UI override before running Git commands."
+    "IntelliGit must run on the remote workspace host. Install or enable it there and remove any remote.extensionKind UI override before running Git commands.": "IntelliGit must run on the remote workspace host. Install or enable it there and remove any remote.extensionKind UI override before running Git commands.",
+    "Changelist description": "Changelist description",
+    "Enter at most 4000 characters.": "Enter at most 4000 characters.",
+    "Keep the current active changelist": "Keep the current active changelist",
+    "Make the new changelist active": "Make the new changelist active",
+    "Move remaining changes to changelist": "Move remaining changes to changelist",
+    "Append both drafts": "Append both drafts",
+    "Keep destination draft": "Keep destination draft",
+    "Keep removed list's draft": "Keep removed list's draft",
+    "Choose the commit draft to preserve": "Choose the commit draft to preserve",
+    "Remove {source} and move its changes to {target}? File content and staging are preserved.": "Remove {source} and move its changes to {target}? File content and staging are preserved."
 }

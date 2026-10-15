@@ -3,6 +3,116 @@ import path from "node:path";
 import type { ChangelistState } from "../../src/webviews/protocol/changeSelection";
 import { expect, test } from "./playwright/harnessPage";
 
+test("split files retain separate group scopes, empty inclusion and distinct commit drafts", async ({
+    page,
+    mountHarness,
+}, testInfo) => {
+    const harness = await mountHarness("commit-panel", { webviewFixture: "dirty.json" });
+    const state: ChangelistState = {
+        revision: 2,
+        activeId: "default",
+        allDraft: "Aggregate draft",
+        lists: [
+            { id: "default", name: "Changes", description: "General work", draft: "General draft" },
+            {
+                id: "feature",
+                name: "Feature",
+                description: "Calculation work",
+                draft: "Feature draft",
+            },
+        ],
+        files: {
+            "mutable.txt": "default",
+            "binary.bin": "default",
+            "topic-renamed.txt": "default",
+            "crlf.txt": "default",
+            "untracked.txt": "default",
+        },
+        changes: {
+            "mutable.txt": {
+                contentId: "content",
+                totalChanges: 4,
+                lines: { fingerprint: "feature" },
+                selections: { feature: { contentId: "content", lineIds: [], total: 4 } },
+            },
+        },
+    };
+    await page.evaluate(
+        (state) =>
+            window.dispatchEvent(
+                new MessageEvent("message", {
+                    data: { type: "setChangelists", repositoryRoot: "<ROOT>", state },
+                }),
+            ),
+        state,
+    );
+    const scope = page.getByRole("combobox", { name: "Changelists", exact: true });
+    const composer = page.getByRole("textbox", { name: /^Commit Message · / });
+    await expect(composer).toHaveValue("Aggregate draft");
+    await scope.selectOption("feature");
+    await expect(composer).toHaveValue("Feature draft");
+    const feature = page.locator('[data-changelist-id="feature"]');
+    const general = page.locator('[data-changelist-id="default"]');
+    await expect(feature.getByText("mutable.txt", { exact: true }).first()).toBeVisible();
+    await expect(general.getByText("mutable.txt", { exact: true }).first()).toBeVisible();
+    await expect(general.getByText("Active", { exact: true })).toBeVisible();
+    await feature.getByRole("checkbox", { name: "Include Feature in commit", exact: true }).click();
+    await expect(
+        feature.getByRole("checkbox", { name: "Include Feature in commit", exact: true }),
+    ).toHaveJSProperty("indeterminate", true);
+    await expect(page.getByRole("button", { name: "Commit", exact: true })).toBeDisabled();
+    expect(
+        (await harness.recordedMessages()).some(
+            (value) =>
+                typeof value === "object" &&
+                value !== null &&
+                "action" in value &&
+                value.action === "activate",
+        ),
+    ).toBe(false);
+    await expect(composer).toHaveAccessibleName("Commit Message · Feature");
+    const cancelled = await feature
+        .locator("[data-vscode-context]")
+        .first()
+        .evaluate(
+            (element) =>
+                !element.dispatchEvent(
+                    new MouseEvent("contextmenu", { bubbles: true, cancelable: true }),
+                ),
+        );
+    expect(cancelled).toBe(false);
+    await page.getByRole("button", { name: "Collapse All", exact: true }).click();
+    await expect(feature.getByRole("group", { name: "Feature", exact: true })).toHaveCount(0);
+    await page.getByRole("button", { name: "Expand All", exact: true }).click();
+    await expect(feature.getByRole("group", { name: "Feature", exact: true })).toBeVisible();
+    await expect(feature.getByText("mutable.txt", { exact: true }).first()).toBeVisible();
+    await expect(general.getByText("mutable.txt", { exact: true }).first()).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath("grouped-changelists.png") });
+    await scope.selectOption("all");
+    await expect(composer).toHaveValue("Aggregate draft");
+    await scope.selectOption("default");
+    await expect(composer).toHaveValue("General draft");
+    const removed: ChangelistState = {
+        ...state,
+        revision: 3,
+        activeId: "feature",
+        lists: [state.lists[1]],
+        files: Object.fromEntries(Object.keys(state.files).map((file) => [file, "feature"])),
+        removedScopes: { default: "feature" },
+    };
+    await page.evaluate(
+        (state) =>
+            window.dispatchEvent(
+                new MessageEvent("message", {
+                    data: { type: "setChangelists", repositoryRoot: "<ROOT>", state },
+                }),
+            ),
+        removed,
+    );
+    await expect(scope).toHaveValue("feature");
+    await expect(composer).toHaveValue("Feature draft");
+});
+
 test("recovery review is explicitly routed to the captured repository", async ({
     page,
     mountHarness,

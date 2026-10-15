@@ -16,6 +16,8 @@ export type CommitMessageGenerationStatus = "idle" | "requested" | "running";
 
 interface Props {
     commitMessage: string;
+    /** Exact selected metadata scope, independent of the active changelist. */
+    draftScope?: string;
     isAmend: boolean;
     onMessageChange: (message: string) => void;
     onAmendChange: (isAmend: boolean) => void;
@@ -94,6 +96,7 @@ function getBranchIndicatorUpstream(
 // react-doctor-disable-next-line react-doctor/no-many-boolean-props
 export function CommitArea({
     commitMessage,
+    draftScope,
     isAmend,
     onMessageChange,
     onAmendChange,
@@ -203,6 +206,7 @@ export function CommitArea({
                         color="var(--intelligit-pycharm-foreground)"
                     >
                         {t("commit.message.label")}
+                        {draftScope ? ` · ${draftScope}` : ""}
                     </Box>
                     <Box
                         // An icon button has nothing to cut, copy, or paste; without this the
@@ -235,7 +239,7 @@ export function CommitArea({
                     // The placeholder is a hint, not a name: it asks a question and
                     // moves with the copy. Name the field explicitly so assistive
                     // tech and the e2e locator keep a stable handle on it.
-                    aria-label={t("commit.message.label")}
+                    aria-label={`${t("commit.message.label")}${draftScope ? ` · ${draftScope}` : ""}`}
                     placeholder={t("commit.message.placeholder")}
                     resize="none"
                     w="100%"

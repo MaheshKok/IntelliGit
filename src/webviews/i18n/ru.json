@@ -496,5 +496,10 @@
     "changes.useSelection": "Использовать выбор для коммита",
     "changes.wholeFile": "Выбрать весь файл",
     "changes.reviewSelection": "Частичный выбор требует проверки",
-    "changes.reviewRecovery": "Проверить восстановление частичного индекса"
+    "changes.reviewRecovery": "Проверить восстановление частичного индекса",
+    "changes.editList": "Редактировать список изменений",
+    "changes.includeList": "Включить {name} в коммит",
+    "changes.fileCount": "Количество файлов: {count}",
+    "changes.listActions": "Действия для {name}",
+    "changes.emptyList": "В этом списке нет изменений"
 }

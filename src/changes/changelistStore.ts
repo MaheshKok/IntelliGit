@@ -14,9 +14,13 @@ interface CommitInclusion {
     total: number;
 }
 
+// Keep the original key: schema 2 is also a downgrade sentinel that v1 clients refuse.
 const STORAGE_KEY = "intelligit.changelists.v1";
+const BACKUP_KEY = "intelligit.changelists.v1.backup";
+const MAX_DRAFT = 100_000;
+const MAX_DESCRIPTION = 4_000;
 /** A stable fallback independent of locale or a user-created list name. */
-export const DEFAULT_CHANGELIST_ID = "default";
+const DEFAULT_CHANGELIST_ID = "default";
 const instances = new WeakMap<MetadataStorage, ChangelistStore>();
 const MAX_LISTS = 100;
 const MAX_FILES = 20_000;
@@ -25,14 +29,15 @@ function emptyState(): ChangelistState {
     return {
         revision: 0,
         activeId: DEFAULT_CHANGELIST_ID,
-        lists: [{ id: DEFAULT_CHANGELIST_ID, name: "Default" }],
+        lists: [{ id: DEFAULT_CHANGELIST_ID, name: "Changes", description: "", draft: "" }],
+        allDraft: "",
         files: Object.create(null) as Record<string, string>,
         changes: Object.create(null) as Record<string, ChangeOwnership>,
     };
 }
 
 function nameFor(value: string): string {
-    const name = value.trim();
+    const name = value.normalize("NFC").trim();
     if (!name || name.length > 80 || /[\u0000-\u001f]/.test(name)) {
         throw new Error("A changelist name must contain 1 to 80 printable characters.");
     }
@@ -45,7 +50,9 @@ export class ChangelistStore {
     private writes = Promise.resolve();
     private readonly listeners = new Set<(root: string, state: ChangelistState) => void>();
     private loadError?: string;
+    private migrationSource?: unknown;
     private readonly commitLeases = new Map<string, string>();
+    private readonly mirrorScopes = new Map<string, string>();
 
     /** Reuses the workspace store so independent panels cannot overwrite each other's lists. */
     static forStorage(storage?: MetadataStorage): ChangelistStore {
@@ -66,7 +73,7 @@ export class ChangelistStore {
             typeof saved !== "object" ||
             !("entries" in saved) ||
             !("schemaVersion" in saved) ||
-            saved.schemaVersion !== 1
+            (saved.schemaVersion !== 1 && saved.schemaVersion !== 2)
         ) {
             this.loadError = "Changelist metadata is invalid and will not be overwritten.";
             return;
@@ -87,19 +94,38 @@ export class ChangelistStore {
                 this.loadError = "Changelist metadata is invalid and will not be overwritten.";
                 return;
             }
-            const state = parseState(entry.state);
+            const state = parseState(entry.state, saved.schemaVersion);
             if (!state) {
                 this.loadError = "Changelist metadata is invalid and will not be overwritten.";
                 return;
             }
+            if (saved.schemaVersion === 1) {
+                const legacyDraft = storage?.get<unknown>(`commitDraft:${entry.root}`);
+                if (
+                    legacyDraft !== undefined &&
+                    (typeof legacyDraft !== "string" || legacyDraft.length > MAX_DRAFT)
+                ) {
+                    this.loadError = "Changelist draft is invalid and will not be overwritten.";
+                    return;
+                }
+                state.allDraft = typeof legacyDraft === "string" ? legacyDraft : "";
+            }
             this.roots.set(entry.root, state);
         }
+        if (saved.schemaVersion === 1) this.migrationSource = structuredClone(saved);
     }
 
     /** Returns an independent snapshot without exposing mutable host-owned maps. */
     get(root: string): ChangelistState {
         if (this.loadError) throw new Error(this.loadError);
-        return structuredClone(this.roots.get(root) ?? emptyState());
+        const existing = this.roots.get(root);
+        if (existing) return structuredClone(existing);
+        const state = emptyState();
+        const legacy = this.storage?.get<unknown>(`commitDraft:${root}`);
+        if (legacy !== undefined && (typeof legacy !== "string" || legacy.length > MAX_DRAFT))
+            throw new Error("Changelist draft is invalid and will not be overwritten.");
+        state.allDraft = typeof legacy === "string" ? legacy : "";
+        return state;
     }
 
     /** Subscriptions report metadata changes only, never Git or filesystem mutations. */
@@ -160,27 +186,46 @@ export class ChangelistStore {
     }
 
     /** Creates a named list under revision compare-and-swap. */
-    create(root: string, revision: number, name: string): Promise<ChangelistState> {
+    create(
+        root: string,
+        revision: number,
+        name: string,
+        description = "",
+        makeActive = false,
+        movePaths: readonly string[] = [],
+    ): Promise<ChangelistState> {
         return this.write(root, revision, (state) => {
             if (state.lists.length >= MAX_LISTS) throw new Error("Too many changelists.");
             const accepted = nameFor(name);
-            if (state.lists.some((list) => list.name.toLowerCase() === accepted.toLowerCase())) {
+            if (
+                state.lists.some(
+                    (list) => list.name.normalize("NFC").toLowerCase() === accepted.toLowerCase(),
+                )
+            ) {
                 throw new Error("A changelist with this name already exists.");
             }
-            state.lists.push({ id: randomUUID(), name: accepted });
+            const id = randomUUID();
+            state.lists.push({
+                id,
+                name: accepted,
+                description: descriptionFor(description),
+                draft: "",
+            });
+            moveWholeFiles(state, id, movePaths);
+            if (makeActive) state.activeId = id;
         });
     }
 
-    /** Renames only a user list; the default list remains a stable fallback. */
+    /** Renames any list without changing its stable identity or saved intent. */
     rename(root: string, revision: number, id: string, name: string): Promise<ChangelistState> {
         return this.write(root, revision, (state) => {
             const list = requireList(state, id);
-            if (id === DEFAULT_CHANGELIST_ID)
-                throw new Error("The default changelist cannot be renamed.");
             const accepted = nameFor(name);
             if (
                 state.lists.some(
-                    (item) => item.id !== id && item.name.toLowerCase() === accepted.toLowerCase(),
+                    (item) =>
+                        item.id !== id &&
+                        item.name.normalize("NFC").toLowerCase() === accepted.toLowerCase(),
                 )
             ) {
                 throw new Error("A changelist with this name already exists.");
@@ -197,42 +242,144 @@ export class ChangelistStore {
         });
     }
 
-    /** Moves checked files atomically and drops their obsolete per-line ownership. */
+    /** Moves only whole files atomically, preserving every saved inclusion and partial owner. */
     moveFiles(
         root: string,
         revision: number,
         id: string,
         paths: readonly string[],
     ): Promise<ChangelistState> {
-        if (paths.length > MAX_FILES) throw new Error("Too many changelist files.");
-        const safe = paths.map(assertRepoRelativePath);
         return this.write(root, revision, (state) => {
             requireList(state, id);
-            for (const file of safe) {
-                if (!Object.hasOwn(state.files, file)) throw new Error("The file list changed.");
-                state.files[file] = id;
-                delete state.changes[file];
-            }
+            moveWholeFiles(state, id, paths);
         });
     }
 
-    /** Removing a list moves its members to Default without staging or deleting anything. */
-    remove(root: string, revision: number, id: string): Promise<ChangelistState> {
+    /** Edits description and name atomically; cancellation belongs to the host before this call. */
+    edit(
+        root: string,
+        revision: number,
+        id: string,
+        name: string,
+        description: string,
+    ): Promise<ChangelistState> {
         return this.write(root, revision, (state) => {
-            requireList(state, id);
-            if (id === DEFAULT_CHANGELIST_ID)
-                throw new Error("The default changelist cannot be removed.");
-            state.lists = state.lists.filter((list) => list.id !== id);
-            if (state.activeId === id) state.activeId = DEFAULT_CHANGELIST_ID;
-            for (const file of Object.keys(state.files)) {
-                if (state.files[file] === id) state.files[file] = DEFAULT_CHANGELIST_ID;
+            const list = requireList(state, id);
+            const accepted = nameFor(name);
+            if (
+                state.lists.some(
+                    (item) =>
+                        item.id !== id &&
+                        item.name.normalize("NFC").toLowerCase() === accepted.toLowerCase(),
+                )
+            )
+                throw new Error("A changelist with this name already exists.");
+            list.name = accepted;
+            list.description = descriptionFor(description);
+        });
+    }
+
+    /** Reads one exact scope; a removed ID never falls back to All or the active list. */
+    draft(root: string, scope: string): string {
+        const state = this.get(root);
+        return scope === "all" ? (state.allDraft ?? "") : (requireList(state, scope).draft ?? "");
+    }
+
+    /** The last focused composer owns the native SCM mirror; selection never activates a list. */
+    selectDraft(root: string, scope: string): void {
+        this.draft(root, scope);
+        this.mirrorScopes.set(root, scope);
+    }
+
+    /** Removed mirror scopes follow their destination; delayed writes still carry the original ID. */
+    mirrorScope(root: string): string {
+        const scope = this.mirrorScopes.get(root) ?? "all";
+        return scope === "all" || this.get(root).lists.some((list) => list.id === scope)
+            ? scope
+            : (this.get(root).removedScopes?.[scope] ?? "all");
+    }
+
+    /** Clears only the exact successfully committed draft while the host owns the commit lease. */
+    clearCommittedDraft(root: string, scope: string, expected: string): Promise<ChangelistState> {
+        return this.write(
+            root,
+            undefined,
+            (state) => {
+                const list = scope === "all" ? undefined : requireList(state, scope);
+                if (list) {
+                    if ((list.draft ?? "").trim() === expected.trim()) list.draft = "";
+                } else if ((state.allDraft ?? "").trim() === expected.trim()) state.allDraft = "";
+            },
+            false,
+        );
+    }
+
+    /** Compare-and-swap prevents a delayed pane, native edit or AI result overwriting newer text. */
+    saveDraft(
+        root: string,
+        scope: string,
+        expected: string | undefined,
+        text: string,
+    ): Promise<ChangelistState> {
+        if (text.length > MAX_DRAFT)
+            return Promise.reject(new Error("The commit draft is too long."));
+        return this.write(root, undefined, (state) => {
+            const list = scope === "all" ? undefined : requireList(state, scope);
+            const previous = list ? (list.draft ?? "") : (state.allDraft ?? "");
+            if (expected !== undefined && previous !== expected)
+                throw new Error(
+                    "The commit draft changed. Review the latest text before retrying.",
+                );
+            if (list) list.draft = text;
+            else state.allDraft = text;
+        });
+    }
+
+    /** Removes metadata only, remapping every owner and fencing ambiguous inclusion atomically. */
+    remove(
+        root: string,
+        revision: number,
+        id: string,
+        targetId?: string,
+        draftChoice?: "source" | "target" | "append",
+    ): Promise<ChangelistState> {
+        return this.write(root, revision, (state) => {
+            const source = requireList(state, id);
+            const survivors = state.lists.filter((list) => list.id !== id);
+            if (targetId === id) throw new Error("Choose a surviving destination changelist.");
+            let target = targetId
+                ? survivors.find((list) => list.id === targetId)
+                : (survivors.find((list) => list.id === state.activeId) ?? survivors[0]);
+            if (targetId && !target)
+                throw new Error("The destination changelist no longer exists.");
+            if (!target) {
+                // Never reuse the removed ID: stale panes must fail, including after deleting the last list.
+                target = { id: randomUUID(), name: "Changes", description: "", draft: "" };
+                survivors.push(target);
             }
-            for (const ownership of Object.values(state.changes)) {
-                if (ownership.selections) delete ownership.selections[id];
+            const incoming = source.draft ?? "";
+            const existing = target.draft ?? "";
+            if (incoming && existing && !draftChoice)
+                throw new Error(
+                    "Choose which commit draft to keep or append before removing the list.",
+                );
+            if (!existing || draftChoice === "source") target.draft = incoming;
+            else if (draftChoice === "append" && incoming)
+                target.draft = `${existing}\n\n${incoming}`;
+            if ((target.draft?.length ?? 0) > MAX_DRAFT)
+                throw new Error("The combined commit draft is too long.");
+            for (const [file, ownership] of Object.entries(state.changes)) {
+                mergeScopeSelection(ownership, state.files[file], id, target.id);
                 for (const line of Object.keys(ownership.lines)) {
-                    if (ownership.lines[line] === id) ownership.lines[line] = DEFAULT_CHANGELIST_ID;
+                    if (ownership.lines[line] === id) ownership.lines[line] = target.id;
                 }
             }
+            for (const file of Object.keys(state.files)) {
+                if (state.files[file] === id) state.files[file] = target.id;
+            }
+            redirectRemovedScope(state, id, target.id);
+            state.lists = survivors;
+            if (state.activeId === id) state.activeId = target.id;
         });
     }
 
@@ -489,7 +636,12 @@ export class ChangelistStore {
                     ChangeOwnership
                 >;
                 mutate(next);
-                if (JSON.stringify(before) === JSON.stringify(next)) return before;
+                if (
+                    JSON.stringify(before) === JSON.stringify(next) &&
+                    this.migrationSource === undefined &&
+                    this.roots.has(root)
+                )
+                    return before;
                 next.revision++;
                 const entries = [...this.roots]
                     .filter(([key]) => key !== root)
@@ -499,7 +651,9 @@ export class ChangelistStore {
                 if (Buffer.byteLength(JSON.stringify(entries)) > 4 * 1024 * 1024) {
                     throw new Error("Changelist metadata exceeds its storage budget.");
                 }
-                await this.storage?.update(STORAGE_KEY, { schemaVersion: 1, entries });
+                if (this.migrationSource !== undefined) await this.backupMigration();
+                await this.storage?.update(STORAGE_KEY, { schemaVersion: 2, entries });
+                this.migrationSource = undefined;
                 this.roots.set(root, next);
                 this.notify(root, next);
                 return structuredClone(next);
@@ -509,6 +663,14 @@ export class ChangelistStore {
             () => undefined,
         );
         return operation;
+    }
+
+    /** A pre-existing backup must describe this migration; never replace unrelated recovery evidence. */
+    private async backupMigration(): Promise<void> {
+        const backup = this.storage?.get(BACKUP_KEY);
+        if (backup !== undefined && JSON.stringify(backup) !== JSON.stringify(this.migrationSource))
+            throw new Error("A different changelist migration backup requires review.");
+        if (backup === undefined) await this.storage?.update(BACKUP_KEY, this.migrationSource);
     }
 
     /** Only known committed identities are consumed; unmatched remaining groups require review. */
@@ -564,7 +726,7 @@ function requireList(state: ChangelistState, id: string) {
     return list;
 }
 
-function parseState(value: unknown): ChangelistState | undefined {
+function parseState(value: unknown, version: 1 | 2): ChangelistState | undefined {
     if (!metadataRecord(value)) return undefined;
     const state = value as ChangelistState;
     if (!validStateHeader(state)) return undefined;
@@ -578,10 +740,18 @@ function parseState(value: unknown): ChangelistState | undefined {
             )
                 return undefined;
             nameFor(list.name);
+            if (!validListText(list.description, list.draft, version)) return undefined;
             if (ids.has(list.id)) return undefined;
             ids.add(list.id);
         }
-        if (!ids.has(DEFAULT_CHANGELIST_ID) || !ids.has(state.activeId)) return undefined;
+        if (!ids.has(state.activeId)) return undefined;
+        if (version === 1 && !ids.has(DEFAULT_CHANGELIST_ID)) return undefined;
+        if (
+            version === 2 &&
+            (typeof state.allDraft !== "string" || state.allDraft.length > MAX_DRAFT)
+        )
+            return undefined;
+        if (!validRedirects(state.removedScopes, ids)) return undefined;
         if (Object.keys(state.files).length > MAX_FILES) return undefined;
         for (const [file, id] of Object.entries(state.files)) {
             assertRepoRelativePath(file);
@@ -591,7 +761,12 @@ function parseState(value: unknown): ChangelistState | undefined {
             assertRepoRelativePath(file);
             if (!validOwnership(ownership, ids)) return undefined;
         }
-        return structuredClone(state);
+        const parsed = structuredClone(state);
+        if (version === 1) {
+            parsed.lists = parsed.lists.map((list) => ({ ...list, description: "", draft: "" }));
+            parsed.allDraft = "";
+        }
+        return parsed;
     } catch {
         return undefined;
     }
@@ -608,6 +783,7 @@ function validStateHeader(state: ChangelistState): boolean {
         Number.isSafeInteger(state.revision) &&
         state.revision >= 0 &&
         Array.isArray(state.lists) &&
+        state.lists.length > 0 &&
         state.lists.length <= MAX_LISTS &&
         metadataRecord(state.files) !== undefined &&
         metadataRecord(state.changes) !== undefined
@@ -643,6 +819,8 @@ function validCommitSelections(ownership: ChangeOwnership, ids: ReadonlySet<stri
         if (
             !metadataRecord(selection) ||
             typeof selection.contentId !== "string" ||
+            (selection.reviewRequired !== undefined &&
+                typeof selection.reviewRequired !== "boolean") ||
             !Array.isArray(selection.lineIds) ||
             selection.lineIds.length > 100_000 ||
             selection.lineIds.some(
@@ -655,4 +833,102 @@ function validCommitSelections(ownership: ChangeOwnership, ids: ReadonlySet<stri
             return false;
     }
     return true;
+}
+
+/** Descriptions are bounded plain text and may contain line breaks. */
+function descriptionFor(value: string): string {
+    if (value.length > MAX_DESCRIPTION || value.includes("\0"))
+        throw new Error("A changelist description must contain at most 4000 characters.");
+    return value;
+}
+
+/** Preserve exact explicit unions; unknown implicit ranges keep their fence and require review. */
+function mergeScopeSelection(
+    ownership: ChangeOwnership,
+    fallback: string | undefined,
+    source: string,
+    target: string,
+): void {
+    const selections = ownership.selections;
+    if (!selections) return;
+    const incoming = selections[source];
+    const existing = selections[target];
+    const sourceOwns = fallback === source || Object.values(ownership.lines).includes(source);
+    const targetOwns = fallback === target || Object.values(ownership.lines).includes(target);
+    if (
+        incoming &&
+        existing &&
+        incoming.contentId === existing.contentId &&
+        incoming.total === existing.total &&
+        !incoming.reviewRequired &&
+        !existing.reviewRequired &&
+        incoming.lineIds.length === existing.lineIds.length &&
+        incoming.lineIds.every((line) => existing.lineIds.includes(line))
+    ) {
+        selections[target] = {
+            ...existing,
+            lineIds: [...new Set([...existing.lineIds, ...incoming.lineIds])],
+        };
+    } else if (incoming || (sourceOwns && existing)) {
+        const preserved = existing ?? incoming;
+        selections[target] = {
+            ...preserved,
+            lineIds: [...preserved.lineIds],
+            ...(incoming && !targetOwns && !existing ? {} : { reviewRequired: true }),
+        };
+    }
+    delete selections[source];
+}
+
+/** Validate new text fields without inventing content for a corrupt version-2 record. */
+function validListText(description: unknown, draft: unknown, version: 1 | 2): boolean {
+    if (version === 1) return true;
+    if (typeof description !== "string" || typeof draft !== "string" || draft.length > MAX_DRAFT)
+        return false;
+    descriptionFor(description);
+    return true;
+}
+
+/** Redirects can only name removed IDs and currently surviving destinations. */
+function validRedirects(value: unknown, ids: ReadonlySet<string>): boolean {
+    if (value === undefined) return true;
+    const entries = metadataRecord(value);
+    return (
+        !!entries &&
+        Object.keys(entries).length <= 100 &&
+        Object.entries(entries).every(
+            ([from, to]) =>
+                (from === DEFAULT_CHANGELIST_ID || /^[a-f0-9-]{36}$/.test(from)) &&
+                !ids.has(from) &&
+                typeof to === "string" &&
+                ids.has(to),
+        )
+    );
+}
+
+/** Creation-with-move and existing-list moves share the same atomic safety checks. */
+function moveWholeFiles(state: ChangelistState, id: string, paths: readonly string[]): void {
+    if (paths.length > MAX_FILES) throw new Error("Too many changelist files.");
+    for (const value of paths) {
+        const file = assertRepoRelativePath(value);
+        if (!Object.hasOwn(state.files, file)) throw new Error("The file list changed.");
+        const ownership = state.changes[file];
+        if (
+            ownership &&
+            (Object.keys(ownership.lines).length || Object.keys(ownership.selections ?? {}).length)
+        )
+            throw new Error("Move partial selections through their partial editor.");
+        state.files[file] = id;
+    }
+}
+
+/** Keep recent deleted view scopes pointed at surviving lists, including chained deletions. */
+function redirectRemovedScope(state: ChangelistState, removed: string, target: string): void {
+    const redirects = Object.fromEntries(
+        Object.entries(state.removedScopes ?? {})
+            .slice(-99)
+            .map(([from, to]) => [from, to === removed ? target : to]),
+    );
+    redirects[removed] = target;
+    state.removedScopes = redirects;
 }

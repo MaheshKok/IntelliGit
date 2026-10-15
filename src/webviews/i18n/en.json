@@ -476,5 +476,10 @@
     "changes.useSelection": "Use selection for commit",
     "changes.wholeFile": "Select whole file",
     "changes.reviewSelection": "Partial selection needs review",
-    "changes.reviewRecovery": "Review partial-index recovery"
+    "changes.reviewRecovery": "Review partial-index recovery",
+    "changes.editList": "Edit changelist",
+    "changes.includeList": "Include {name} in commit",
+    "changes.fileCount": "File count: {count}",
+    "changes.listActions": "Actions for {name}",
+    "changes.emptyList": "No changes in this list"
 }

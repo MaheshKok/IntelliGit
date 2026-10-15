@@ -1,9 +1,18 @@
 # Changelists and Selected Changes
 
 Changelists are worktree-scoped metadata, not branches, stashes or separate Git
-indexes. The Changes toolbar supports creating, renaming, removing and activating
-lists, filtering their files and moving whole-file membership. The active list
-owns newly discovered changes. Removing a list moves its membership to Default.
+indexes. The Changes panel groups files by list, including a separate occurrence
+for each owner of a split file. Selecting a group changes the commit scope; the
+independent Active label identifies the list that owns newly discovered changes.
+Group expansion is remembered per repository and list.
+
+Create or edit a list's name and description from its actions. Creation can also
+make the new list active; moving whole files can create a destination list in the
+same operation. The original list can be renamed or removed. Removal asks for a
+surviving destination, preserves ownership and inclusion metadata, and redirects
+the active list and open scope when necessary. Removing the last list creates a
+fresh list named Changes. Ambiguous combined selections require explicit review;
+whole-file moves refuse to discard partial ownership or saved selections.
 
 Open **Partial changes** for one checked ordinary text file. Select blocks or
 individual added/deleted lines; the read-only, syntax-highlighted preview shows
@@ -15,6 +24,15 @@ not its existing whole-file `commit --only` path. Committing a list includes onl
 its ownership in split files. Successful partial commits consume committed
 ownership and leave an explicit empty inclusion for that scope; selecting the
 whole file again is an explicit choice to include its remaining changes.
+
+Each list and the explicit All scope have separate commit drafts for each
+worktree. Descriptions never serve as commit messages. The composer label names
+its scope, and the native SCM input mirrors the last focused composer. Draft
+writes capture their repository and list, use compare-and-swap, and retain local
+text when another pane wins a conflict. Switching scope cancels message generation
+and ignores its late reply. Successful commits clear only the captured scope's
+unchanged message when the clear-last-commit setting is enabled. Removal with two
+nonempty drafts requires a choice to append both or keep one.
 
 ## Supported Scope
 
@@ -76,6 +94,16 @@ Unknown index locks are never removed with their metadata.
 List writes use shared workspace storage, revision compare-and-swap and root-bound
 commit leases. Stale assignments/selections require explicit review. Corrupt
 metadata is refused, not overwritten.
+
+Version-1 metadata migrates on its next successful write. The original record is
+saved under `intelligit.changelists.v1.backup` before version 2 is published at the
+existing `intelligit.changelists.v1` key. The version marker also makes older
+clients refuse that record. Stable list IDs, labels, ownership, stale fences and
+explicit empty selections survive migration; legacy worktree drafts become All
+drafts, and their original keys remain available. A conflicting backup, corrupt
+record or unknown schema version is refused without overwriting it. Shared-pane
+serialization remains scoped to one extension host; durable cross-process
+coordination is outside this phase.
 
 Selected inclusion is persisted for its scope and the All view before Git
 publication. A persistence failure aborts before committing; failed post-commit

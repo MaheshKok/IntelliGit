@@ -2,12 +2,13 @@ import React, { useRef } from "react";
 import { Box, Flex } from "@chakra-ui/react";
 import { AmendContextSection } from "./AmendContextSection";
 import { CommitArea } from "./CommitArea";
-import { FileTree } from "./FileTree";
+import { ChangelistGroups } from "./ChangelistGroups";
 import { ShelveDialog } from "./ShelveDialog";
 import { Toolbar } from "./Toolbar";
 import { ContextMenu } from "../../shared/components/ContextMenu";
 import { useDragResize } from "../hooks/useDragResize";
 import { type CommitTabProps, useCommitTabController } from "./CommitTabController";
+import { t } from "../../shared/i18n";
 import { useChangelists } from "../hooks/useChangelists";
 import { ChangelistToolbar } from "./ChangelistToolbar";
 
@@ -61,6 +62,7 @@ function CommitTabLayout({
     const partialFileActions = [...workflow.checkedPaths].some((file) =>
         workflow.partialPaths.has(file),
     );
+    const composer = scopedComposerProps(props, workflow);
     return (
         <Flex
             ref={containerRef}
@@ -112,34 +114,41 @@ function CommitTabLayout({
                 workflow={workflow}
                 disabled={props.wholeIndexOperationInProgress === true}
             />
-            {workflow.error ? <div role="alert">{workflow.error}</div> : null}
+            {workflow.error || workflow.draft.error ? (
+                <div role="alert">{workflow.draft.error ?? workflow.error}</div>
+            ) : null}
             <Box flex="1 1 auto" overflowY="auto" minH="40px" bg="var(--intelligit-pycharm-panel)">
-                <FileTree
-                    repositoryRoot={props.repositoryRoot}
-                    files={workflow.files}
-                    groupByDir={props.groupByDir}
-                    showIgnoredFiles={props.showIgnoredFiles}
-                    folderIcon={props.folderIcon}
-                    folderExpandedIcon={props.folderExpandedIcon}
-                    folderIconsByName={props.folderIconsByName}
-                    checkedPaths={workflow.checkedPaths}
-                    partialPaths={workflow.partialPaths}
-                    onToggleFile={workflow.toggleFile}
-                    onToggleFolder={workflow.toggleFolder}
-                    onToggleSection={workflow.toggleSection}
-                    isAllChecked={workflow.allChecked}
-                    isSomeChecked={workflow.someChecked}
-                    onFileClick={controller.handleFileClick}
-                    onTrackUnversionedFiles={controller.handleTrackUnversionedFiles}
-                    onShelfFileDragStart={
-                        partialFileActions ? undefined : props.onShelfFileDragStart
-                    }
-                    expandAllSignal={controller.expandAllSignal}
-                    collapseAllSignal={controller.collapseAllSignal}
+                <ChangelistGroups
+                    workflow={workflow}
+                    files={props.files}
+                    tree={{
+                        repositoryRoot: props.repositoryRoot,
+                        files: workflow.files,
+                        groupByDir: props.groupByDir,
+                        showIgnoredFiles: props.showIgnoredFiles,
+                        folderIcon: props.folderIcon,
+                        folderExpandedIcon: props.folderExpandedIcon,
+                        folderIconsByName: props.folderIconsByName,
+                        checkedPaths: workflow.checkedPaths,
+                        partialPaths: workflow.partialPaths,
+                        onToggleFile: workflow.toggleFile,
+                        onToggleFolder: workflow.toggleFolder,
+                        onToggleSection: workflow.toggleSection,
+                        isAllChecked: workflow.allChecked,
+                        isSomeChecked: workflow.someChecked,
+                        onFileClick: controller.handleFileClick,
+                        onTrackUnversionedFiles: controller.handleTrackUnversionedFiles,
+                        onShelfFileDragStart: partialFileActions
+                            ? undefined
+                            : props.onShelfFileDragStart,
+                        expandAllSignal: controller.expandAllSignal,
+                        collapseAllSignal: controller.collapseAllSignal,
+                    }}
                 />
             </Box>
             <CommitResizeHandle onDragMouseDown={onDragMouseDown} onDragKeyDown={onDragKeyDown} />
             <Box
+                onFocusCapture={workflow.draft.focus}
                 flexShrink={0}
                 h={`${bottomHeight}px`}
                 overflow="hidden"
@@ -147,40 +156,26 @@ function CommitTabLayout({
                 flexDirection="column"
             >
                 <CommitArea
-                    commitMessage={props.commitMessage}
+                    commitMessage={workflow.draft.message}
+                    draftScope={
+                        workflow.metadata
+                            ? workflow.filter === "all"
+                                ? t("changes.all")
+                                : workflow.metadata.lists.find(
+                                      (list) => list.id === workflow.filter,
+                                  )?.name
+                            : undefined
+                    }
                     isAmend={props.isAmend}
-                    onMessageChange={props.onMessageChange}
-                    onAmendChange={props.onAmendChange}
+                    onMessageChange={workflow.draft.change}
                     onCommit={() => workflow.commit()}
                     onPush={() => workflow.commit(true)}
                     onForcePush={props.onForcePush}
-                    canCommit={
-                        !workflow.busy &&
-                        workflow.hasEligibleSelection &&
-                        (workflow.filter === "all"
-                            ? props.canCommit
-                            : !props.isRefreshing &&
-                              !props.wholeIndexOperationInProgress &&
-                              !props.isAmend &&
-                              props.commitMessage.trim().length > 0 &&
-                              workflow.checkedPaths.size > 0)
-                    }
-                    canPush={
-                        props.canPush ||
-                        (!workflow.busy &&
-                            workflow.hasEligibleSelection &&
-                            workflow.filter !== "all" &&
-                            !props.isRefreshing &&
-                            !props.isAmend &&
-                            props.commitMessage.trim().length > 0)
-                    }
+                    {...composer}
                     pushLabel={props.pushLabel}
                     currentBranchAhead={props.currentBranchAhead}
                     currentBranchName={props.currentBranchName}
                     currentBranchUpstream={props.currentBranchUpstream}
-                    generationStatus={props.generationStatus}
-                    onGenerateMessage={props.onGenerateMessage}
-                    onCancelGeneration={props.onCancelGeneration}
                     hasCommits={props.hasCommits}
                     hasCheckedPaths={workflow.checkedPaths.size > 0}
                     wholeIndexOperationInProgress={props.wholeIndexOperationInProgress}
@@ -231,4 +226,29 @@ function CommitResizeHandle({
             }}
         />
     );
+}
+
+/** Keeps legacy readiness behavior until metadata arrives and fences scope-aware composer actions. */
+function scopedComposerProps(props: CommitTabProps, workflow: ReturnType<typeof useChangelists>) {
+    const ready =
+        !workflow.busy &&
+        !workflow.draft.pending &&
+        !workflow.draft.error &&
+        !props.isRefreshing &&
+        !props.wholeIndexOperationInProgress;
+    const hasCommit = workflow.hasEligibleSelection && workflow.draft.message.trim().length > 0;
+    return {
+        canCommit:
+            ready &&
+            (workflow.metadata
+                ? hasCommit && (!props.isAmend || workflow.filter === "all")
+                : props.canCommit),
+        canPush: ready && (props.canPush || hasCommit),
+        generationStatus: workflow.metadata
+            ? workflow.draft.generationStatus
+            : props.generationStatus,
+        onGenerateMessage: workflow.metadata ? workflow.draft.generate : props.onGenerateMessage,
+        onCancelGeneration: workflow.metadata ? workflow.draft.cancel : props.onCancelGeneration,
+        onAmendChange: workflow.metadata ? workflow.draft.amend : props.onAmendChange,
+    };
 }

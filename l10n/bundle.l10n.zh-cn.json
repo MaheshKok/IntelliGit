@@ -881,5 +881,15 @@
     "The requested repository is no longer available. Select it again before running branch actions.": "请求的仓库已不可用。请重新选择仓库后再执行分支操作。",
     "The selected branch is no longer available. Refresh the repository and try again.": "所选分支已不可用。请刷新仓库后重试。",
     "Branch action failed: {message}": "分支操作失败：{message}",
-    "IntelliGit must run on the remote workspace host. Install or enable it there and remove any remote.extensionKind UI override before running Git commands.": "IntelliGit 必须在远程工作区宿主上运行。请在远程主机安装或启用插件，并移除 remote.extensionKind 中强制使用 UI 宿主的配置后再执行 Git 命令。"
+    "IntelliGit must run on the remote workspace host. Install or enable it there and remove any remote.extensionKind UI override before running Git commands.": "IntelliGit 必须在远程工作区宿主上运行。请在远程主机安装或启用插件，并移除 remote.extensionKind 中强制使用 UI 宿主的配置后再执行 Git 命令。",
+    "Changelist description": "更改列表描述",
+    "Enter at most 4000 characters.": "最多输入 4000 个字符。",
+    "Keep the current active changelist": "保留当前活动更改列表",
+    "Make the new changelist active": "将新更改列表设为活动列表",
+    "Move remaining changes to changelist": "将剩余更改移至更改列表",
+    "Append both drafts": "合并两个草稿",
+    "Keep destination draft": "保留目标列表草稿",
+    "Keep removed list's draft": "保留被移除列表的草稿",
+    "Choose the commit draft to preserve": "选择要保留的提交草稿",
+    "Remove {source} and move its changes to {target}? File content and staging are preserved.": "移除 {source} 并将其更改移至 {target}？文件内容和暂存状态将保留。"
 }

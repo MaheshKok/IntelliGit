@@ -19,9 +19,7 @@ export class ChangesPanel {
 
     /** Enters the commit message in the commit screen's accessible text box. */
     public async typeCommitMessage(message: string): Promise<void> {
-        await this.frame
-            .getByRole("textbox", { name: "Commit Message", exact: true })
-            .fill(message);
+        await this.frame.getByRole("textbox", { name: /^Commit Message(?: · .+)?$/ }).fill(message);
     }
 
     /** Invokes the commit action for the currently staged paths. */

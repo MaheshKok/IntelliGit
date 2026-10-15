@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import type { GitOps } from "../git/operations";
 import type { PartialChanges } from "../git/partialChanges";
-import { ChangelistStore, DEFAULT_CHANGELIST_ID } from "../changes/changelistStore";
+import { ChangelistStore } from "../changes/changelistStore";
 import { changeIds, validateSelection } from "../changes/selection";
 import type { ChangelistReply, ChangelistOutbound } from "../webviews/protocol/changelists";
 import type { SelectedFileChanges } from "../webviews/protocol/changeSelection";
@@ -28,11 +28,15 @@ interface ChangeWorkflowDeps {
     ): void;
     actions: CommitPanelActionDeps;
     runCommit(operation: () => Promise<void>): Promise<void>;
+    mirrorDraft?(scope: string, text: string): void;
+    postScopedCommit?(): void;
+    clearLastCommit?(): boolean;
 }
 type CommitPanelActionDeps = Parameters<typeof commitSelectedFromPanel>[0];
 
 const COMMANDS = new Set([
     "loadChangelists",
+    "changelistDraft",
     "changelistAction",
     "openPartialChanges",
     "commitChangelist",
@@ -96,6 +100,47 @@ export class ChangeWorkflowHost {
                             : await this.deps.gitOps.getStatus({ withStats: false }),
                     );
                     if (recovered) await this.deps.actions.refreshData();
+                    break;
+                }
+                case "changelistDraft": {
+                    const scope = assertString(message.listId, "listId");
+                    if (message.action === "save") {
+                        const requestId = assertString(message.requestId, "requestId");
+                        try {
+                            await this.store.saveDraft(
+                                this.deps.root,
+                                scope,
+                                assertString(message.expected, "expected"),
+                                assertString(message.message, "message"),
+                            );
+                            this.deps.post({
+                                type: "changelistDraftResult",
+                                repositoryRoot: this.deps.root,
+                                listId: scope,
+                                requestId,
+                                message: this.store.draft(this.deps.root, scope),
+                            });
+                        } catch (error) {
+                            this.deps.post({
+                                type: "changelistDraftResult",
+                                repositoryRoot: this.deps.root,
+                                listId: scope,
+                                requestId,
+                                message:
+                                    this.store
+                                        .get(this.deps.root)
+                                        .lists.find((list) => list.id === scope)?.draft ??
+                                    this.store.get(this.deps.root).allDraft ??
+                                    "",
+                                error: getErrorMessage(error),
+                            });
+                            throw error;
+                        }
+                    } else if (message.action === "select")
+                        this.store.selectDraft(this.deps.root, scope);
+                    else throw new Error("Unknown commit draft action.");
+                    if (this.store.mirrorScope(this.deps.root) === scope)
+                        this.deps.mirrorDraft?.(scope, this.store.draft(this.deps.root, scope));
                     break;
                 }
                 case "changelistAction":
@@ -170,28 +215,9 @@ export class ChangeWorkflowHost {
                 await this.reviewRecovery();
                 break;
             case "create":
-            case "rename": {
-                const name = await vscode.window.showInputBox({
-                    title:
-                        message.action === "create"
-                            ? vscode.l10n.t("New changelist")
-                            : vscode.l10n.t("Rename changelist"),
-                    value:
-                        message.action === "rename"
-                            ? this.store.get(this.deps.root).lists.find((list) => list.id === id)
-                                  ?.name
-                            : "",
-                    validateInput: (value) =>
-                        !value.trim() || value.length > 80
-                            ? vscode.l10n.t("Enter a changelist name of 1 to 80 characters.")
-                            : undefined,
-                });
-                if (name === undefined) return;
-                if (message.action === "create")
-                    await this.store.create(this.deps.root, revision, name);
-                else await this.store.rename(this.deps.root, revision, id, name);
+            case "rename":
+                await this.editList(message.action, revision, id);
                 break;
-            }
             case "activate":
                 await this.store.activate(this.deps.root, revision, id);
                 break;
@@ -223,26 +249,145 @@ export class ChangeWorkflowHost {
                     id ||
                     (
                         await vscode.window.showQuickPick(
-                            this.store
-                                .get(this.deps.root)
-                                .lists.map((list) => ({ label: list.name, id: list.id })),
+                            [
+                                ...metadata.lists
+                                    .filter((list) => list.id !== source)
+                                    .map((list) => ({ label: list.name, id: list.id })),
+                                { label: vscode.l10n.t("New changelist"), id: "new" },
+                            ],
                             { title: vscode.l10n.t("Move selected changes") },
                         )
                     )?.id;
-                if (chosen) await this.store.moveFiles(this.deps.root, revision, chosen, paths);
+                if (chosen === "new") await this.editList("create", revision, "", paths);
+                else if (chosen)
+                    await this.store.moveFiles(this.deps.root, revision, chosen, paths);
                 break;
             }
-            case "remove": {
-                const confirm = await vscode.window.showWarningMessage(
-                    vscode.l10n.t("Remove this changelist and move its changes to Default?"),
-                    { modal: true },
-                    vscode.l10n.t("Remove"),
-                );
-                if (confirm) await this.store.remove(this.deps.root, revision, id);
+            case "remove":
+                await this.removeList(revision, id);
                 break;
-            }
             default:
                 throw new Error("Unknown changelist action.");
+        }
+    }
+
+    /** Collects all metadata before a single CAS write, so cancelling any prompt changes nothing. */
+    private async editList(
+        action: "create" | "rename",
+        revision: number,
+        id: string,
+        movePaths: readonly string[] = [],
+    ): Promise<void> {
+        const name = await vscode.window.showInputBox({
+            title:
+                action === "create"
+                    ? vscode.l10n.t("New changelist")
+                    : vscode.l10n.t("Rename changelist"),
+            value:
+                action === "rename"
+                    ? this.store.get(this.deps.root).lists.find((list) => list.id === id)?.name
+                    : "",
+            validateInput: (value) =>
+                !value.trim() || value.length > 80
+                    ? vscode.l10n.t("Enter a changelist name of 1 to 80 characters.")
+                    : undefined,
+        });
+        if (name === undefined) return;
+        const description = await vscode.window.showInputBox({
+            title: vscode.l10n.t("Changelist description"),
+            value:
+                action === "rename"
+                    ? (this.store.get(this.deps.root).lists.find((list) => list.id === id)
+                          ?.description ?? "")
+                    : "",
+            validateInput: (value) =>
+                value.length > 4000 ? vscode.l10n.t("Enter at most 4000 characters.") : undefined,
+        });
+        if (description === undefined) return;
+        if (action === "create") {
+            const active = await vscode.window.showQuickPick(
+                [
+                    {
+                        label: vscode.l10n.t("Keep the current active changelist"),
+                        active: false,
+                    },
+                    {
+                        label: vscode.l10n.t("Make the new changelist active"),
+                        active: true,
+                    },
+                ],
+                { title: vscode.l10n.t("New changelist") },
+            );
+            if (!active) return;
+            await this.store.create(
+                this.deps.root,
+                revision,
+                name,
+                description,
+                active.active,
+                movePaths,
+            );
+        } else await this.store.edit(this.deps.root, revision, id, name, description);
+    }
+
+    /** Names a surviving destination and resolves draft conflicts before removing any metadata. */
+    private async removeList(revision: number, id: string): Promise<void> {
+        const state = this.store.get(this.deps.root);
+        const source = state.lists.find((list) => list.id === id);
+        if (!source) throw new Error("The changelist no longer exists.");
+        const survivors = state.lists.filter((list) => list.id !== id);
+        const target = survivors.length
+            ? await vscode.window.showQuickPick(
+                  [...survivors]
+                      .sort(
+                          (a, b) =>
+                              Number(b.id === state.activeId) - Number(a.id === state.activeId),
+                      )
+                      .map((list) => ({ label: list.name, list })),
+                  { title: vscode.l10n.t("Move remaining changes to changelist") },
+              )
+            : undefined;
+        if (survivors.length && !target) return;
+        let draftChoice: "source" | "target" | "append" | undefined;
+        if (source.draft && target?.list.draft) {
+            const choice = await vscode.window.showQuickPick(
+                [
+                    {
+                        label: vscode.l10n.t("Append both drafts"),
+                        detail: `${target.list.draft}\n\n${source.draft}`,
+                        choice: "append" as const,
+                    },
+                    {
+                        label: vscode.l10n.t("Keep destination draft"),
+                        detail: target.list.draft,
+                        choice: "target" as const,
+                    },
+                    {
+                        label: vscode.l10n.t("Keep removed list's draft"),
+                        detail: source.draft,
+                        choice: "source" as const,
+                    },
+                ],
+                { title: vscode.l10n.t("Choose the commit draft to preserve") },
+            );
+            if (!choice) return;
+            draftChoice = choice.choice;
+        }
+        const confirm = await vscode.window.showWarningMessage(
+            vscode.l10n.t(
+                "Remove {source} and move its changes to {target}? File content and staging are preserved.",
+                {
+                    source: source.name,
+                    target: target?.list.name ?? "Changes",
+                },
+            ),
+            { modal: true },
+            vscode.l10n.t("Remove"),
+        );
+        if (confirm) {
+            await this.store.remove(this.deps.root, revision, id, target?.list.id, draftChoice);
+            const scope = this.store.mirrorScope(this.deps.root);
+            this.deps.mirrorDraft?.(scope, this.store.draft(this.deps.root, scope));
         }
     }
 
@@ -382,7 +527,7 @@ export class ChangeWorkflowHost {
                         original,
                     );
                     await this.consumeSelection([{ path: file, fingerprints }], listId);
-                    await this.afterCommit();
+                    await this.afterCommit(listId, message);
                 });
                 return commit;
             },
@@ -452,13 +597,19 @@ export class ChangeWorkflowHost {
         if (!hasPartial) {
             if (id !== "all" && paths.some((file) => state.files[file] !== id))
                 throw new Error("The files belong to another changelist.");
-            await commitSelectedFromPanel(this.deps.actions, {
-                paths,
-                message: assertString(message.message, "message"),
-                amend: message.amend === true,
-                push: message.push === true,
-                rejectActiveOperation: true,
-            });
+            await commitSelectedFromPanel(
+                {
+                    ...this.deps.actions,
+                    postCommitted: () => this.completeDraft(id, message.message),
+                },
+                {
+                    paths,
+                    message: assertString(message.message, "message"),
+                    amend: message.amend === true,
+                    push: message.push === true,
+                    rejectActiveOperation: true,
+                },
+            );
             return;
         }
         if (message.amend)
@@ -482,13 +633,16 @@ export class ChangeWorkflowHost {
             if (ownership && (ownership.stale || ownership.contentId !== snapshot.contentId)) {
                 throw new Error("Change assignments need review. Reopen the partial editor.");
             }
-            if (inclusion && inclusion.contentId !== snapshot.contentId) {
+            if (
+                inclusion &&
+                (inclusion.reviewRequired || inclusion.contentId !== snapshot.contentId)
+            ) {
                 throw new Error("The partial selection needs review. Reopen its changes.");
             }
             const included = inclusion
                 ? validateSelection(view.blocks, inclusion.lineIds)
                 : undefined;
-            const fallback = state.files[file] ?? DEFAULT_CHANGELIST_ID;
+            const fallback = state.files[file] ?? state.activeId;
             const lines = view.blocks
                 .flatMap((block) => block.lines)
                 .filter(
@@ -535,7 +689,7 @@ export class ChangeWorkflowHost {
             initialSnapshot,
         );
         await this.consumeSelection(consumed, id);
-        await this.afterCommit();
+        await this.afterCommit(id, message.message);
         if (message.push === true) await runGitOperationFromPanel(this.deps.actions, "push");
     }
 
@@ -647,9 +801,20 @@ export class ChangeWorkflowHost {
         }
     }
 
-    private async afterCommit(): Promise<void> {
+    /** Completion consumes only the captured scope's unchanged draft; publication is never retried. */
+    private async completeDraft(scope: string, message: string): Promise<void> {
+        this.deps.postScopedCommit?.();
+        if (this.deps.clearLastCommit?.() === false) return;
+        await this.store.clearCommittedDraft(this.deps.root, scope, message);
+        if (this.store.mirrorScope(this.deps.root) === scope)
+            this.deps.mirrorDraft?.(scope, this.store.draft(this.deps.root, scope));
+    }
+
+    private async afterCommit(scope?: string, message?: string): Promise<void> {
         const results = await Promise.allSettled([
-            this.deps.actions.postCommitted(),
+            scope === undefined
+                ? this.deps.actions.postCommitted()
+                : this.completeDraft(scope, message ?? ""),
             this.deps.actions.refreshData(),
             this.deps.actions.refreshGraphData?.() ?? Promise.resolve(),
         ]);

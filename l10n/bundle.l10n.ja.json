@@ -881,5 +881,15 @@
     "The requested repository is no longer available. Select it again before running branch actions.": "要求されたリポジトリは利用できません。ブランチ操作の前に選択し直してください。",
     "The selected branch is no longer available. Refresh the repository and try again.": "選択したブランチは利用できません。リポジトリを更新して再試行してください。",
     "Branch action failed: {message}": "ブランチ操作に失敗しました: {message}",
-    "IntelliGit must run on the remote workspace host. Install or enable it there and remove any remote.extensionKind UI override before running Git commands.": "IntelliGit はリモートワークスペースのホストで実行する必要があります。そのホストでインストールまたは有効化し、Git コマンドの前に remote.extensionKind の UI ホスト指定を削除してください。"
+    "IntelliGit must run on the remote workspace host. Install or enable it there and remove any remote.extensionKind UI override before running Git commands.": "IntelliGit はリモートワークスペースのホストで実行する必要があります。そのホストでインストールまたは有効化し、Git コマンドの前に remote.extensionKind の UI ホスト指定を削除してください。",
+    "Changelist description": "変更リストの説明",
+    "Enter at most 4000 characters.": "4000文字以内で入力してください。",
+    "Keep the current active changelist": "現在のアクティブな変更リストを維持",
+    "Make the new changelist active": "新しい変更リストをアクティブにする",
+    "Move remaining changes to changelist": "残りの変更の移動先リスト",
+    "Append both drafts": "両方の下書きを連結",
+    "Keep destination draft": "移動先の下書きを保持",
+    "Keep removed list's draft": "削除するリストの下書きを保持",
+    "Choose the commit draft to preserve": "保持するコミットの下書きを選択",
+    "Remove {source} and move its changes to {target}? File content and staging are preserved.": "{source} を削除して変更を {target} に移動しますか？ファイル内容とステージング状態は保持されます。"
 }

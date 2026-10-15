@@ -4,6 +4,15 @@ import type { ChangelistState, ChangeFileView, SelectedFileChanges } from "./cha
 export type ChangelistOutbound =
     | { type: "loadChangelists"; repositoryRoot: string }
     | {
+          type: "changelistDraft";
+          repositoryRoot: string;
+          listId: string;
+          action: "select" | "save";
+          requestId?: string;
+          expected?: string;
+          message?: string;
+      }
+    | {
           type: "changelistAction";
           repositoryRoot: string;
           revision: number;
@@ -32,13 +41,22 @@ export type ChangelistOutbound =
       };
 
 /** Lists are metadata snapshots, not browser-owned Git state. */
-export type ChangelistReply = {
-    type: "setChangelists";
-    repositoryRoot: string;
-    state: ChangelistState;
-    busy?: boolean;
-    hasRecoveryIssues?: boolean;
-};
+export type ChangelistReply =
+    | {
+          type: "setChangelists";
+          repositoryRoot: string;
+          state: ChangelistState;
+          busy?: boolean;
+          hasRecoveryIssues?: boolean;
+      }
+    | {
+          type: "changelistDraftResult";
+          repositoryRoot: string;
+          listId: string;
+          requestId: string;
+          message: string;
+          error?: string;
+      };
 
 /** The standalone partial editor cannot choose another repository or filesystem target. */
 export type PartialEditorOutbound =

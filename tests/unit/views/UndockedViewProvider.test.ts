@@ -1,3 +1,4 @@
+import { ChangelistStore } from "../../../src/changes/changelistStore";
 /**
  * Regression test for the `lastPostedPayload` reset inside `UndockedViewProvider`'s `ready` message
  * handler (`src/views/UndockedViewProvider.ts:949`, immediately before the `postCommitDetailState()`
@@ -354,6 +355,49 @@ describe("UndockedViewProvider commit-detail re-post on webview reload", () => {
 });
 
 describe("UndockedViewProvider native commit bridge wiring", () => {
+    it("keeps a late amend reply from replacing a newer All draft", async () => {
+        const { bridge, provider, workspace, root, gitOps } = createBridgeProvider();
+        const reply = Promise.withResolvers<string>();
+        const error = vi
+            .spyOn(vscodeRuntime.window, "showErrorMessage")
+            .mockResolvedValueOnce(undefined);
+        vi.spyOn(gitOps, "deriveFor").mockReturnValue({
+            getLastCommitMessage: () => reply.promise,
+        } as GitOps);
+        const panel = openTestPanel(provider);
+        const request = panel.receiveMessage({ type: "getLastCommitMessage" });
+        const store = ChangelistStore.forStorage(workspace.state);
+        await store.saveDraft(root, "all", "", "newer user text");
+        reply.resolve("old commit text");
+        await request;
+        expect(store.draft(root, "all")).toBe("newer user text");
+        expect(error).toHaveBeenCalledWith(
+            "The commit draft changed. Review the latest text before retrying.",
+        );
+        error.mockRestore();
+        expect(bridge.setFromPanel).toEqual([]);
+        provider.dispose();
+        resetCreatedWebviewPanelsForTests();
+    });
+
+    it("keeps a compatibility All save out of the focused named-list native mirror", async () => {
+        const { bridge, provider, workspace, root } = createBridgeProvider();
+        const store = ChangelistStore.forStorage(workspace.state);
+        await store.saveDraft(root, "default", "", "named draft");
+        store.selectDraft(root, "default");
+        const panel = openTestPanel(provider);
+        await panel.receiveMessage({
+            type: "saveCommitDraft",
+            repositoryRoot: root,
+            message: "aggregate draft",
+        });
+        expect(store.draft(root, "all")).toBe("aggregate draft");
+        expect(store.draft(root, "default")).toBe("named draft");
+        expect(bridge.setFromPanel).toEqual([]);
+        provider.dispose();
+        resetCreatedWebviewPanelsForTests();
+    });
+
     it("saveCommitDraft calls setFromPanel before persistence", async () => {
         const { bridge, provider, workspace, root } = createBridgeProvider();
         const panel = openTestPanel(provider);
@@ -366,12 +410,12 @@ describe("UndockedViewProvider native commit bridge wiring", () => {
 
         expect(bridge.setFromPanel).toEqual([{ root, message: "panel" }]);
         expect(bridge.order).toEqual(["bridge", "persist"]);
-        expect(workspace.values.get(`commitDraft:${root}`)).toBe("panel");
+        expect(ChangelistStore.forStorage(workspace.state).draft(root, "all")).toBe("panel");
         provider.dispose();
         resetCreatedWebviewPanelsForTests();
     });
 
-    it("native change persists and posts restoreCommitDraft synchronously", () => {
+    it("native change posts restoreCommitDraft after persistence", async () => {
         const { bridge, provider, workspace, root } = createBridgeProvider();
         const panel = openTestPanel(provider);
         const posted: unknown[] = [];
@@ -385,8 +429,11 @@ describe("UndockedViewProvider native commit bridge wiring", () => {
         callbacks.persistDraft(root, "native");
         callbacks.onNativeChange(root, "native");
 
-        expect(bridge.order).toEqual(["persist"]);
-        expect(workspace.values.get(`commitDraft:${root}`)).toBe("native");
+        await vi.waitFor(() => expect(bridge.order).toEqual(["persist"]));
+        await vi.waitFor(() =>
+            expect(posted.at(-1)).toMatchObject({ type: "restoreCommitDraft", message: "native" }),
+        );
+        expect(ChangelistStore.forStorage(workspace.state).draft(root, "all")).toBe("native");
         expect(posted.at(-1)).toEqual({
             type: "restoreCommitDraft",
             repositoryRoot: root,
@@ -407,7 +454,7 @@ describe("UndockedViewProvider native commit bridge wiring", () => {
             message: "safe",
         });
 
-        expect(workspace.values.get(`commitDraft:${root}`)).toBe("safe");
+        expect(ChangelistStore.forStorage(workspace.state).draft(root, "all")).toBe("safe");
         provider.dispose();
         resetCreatedWebviewPanelsForTests();
     });
@@ -450,7 +497,7 @@ describe("UndockedViewProvider native commit bridge wiring", () => {
         await panel.receiveMessage({ type: "getLastCommitMessage" });
 
         expect(bridge.setFromPanel).toContainEqual({ root, message: "last message" });
-        expect(workspace.values.get(`commitDraft:${root}`)).toBe("last message");
+        expect(ChangelistStore.forStorage(workspace.state).draft(root, "all")).toBe("last message");
         provider.dispose();
         resetCreatedWebviewPanelsForTests();
     });
@@ -475,12 +522,17 @@ describe("UndockedViewProvider native commit bridge wiring", () => {
         );
         provider.setRepositories(repositories, rootB);
         provider.setRepositories(repositories, rootA);
-        await workspace.state.update(`commitDraft:${rootA}`, "newer draft");
+        await ChangelistStore.forStorage(workspace.state).saveDraft(
+            rootA,
+            "all",
+            "",
+            "newer draft",
+        );
         reply.resolve("stale last message");
         await request;
 
         expect(bridge.setFromPanel).toEqual([]);
-        expect(workspace.values.get(`commitDraft:${rootA}`)).toBe("newer draft");
+        expect(ChangelistStore.forStorage(workspace.state).draft(rootA, "all")).toBe("newer draft");
         expect(
             posted.filter((message) => isRecord(message) && message.type === "lastCommitMessage"),
         ).toEqual([]);

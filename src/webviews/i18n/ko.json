@@ -466,5 +466,10 @@
     "changes.useSelection": "선택 항목을 커밋에 사용",
     "changes.wholeFile": "전체 파일 선택",
     "changes.reviewSelection": "부분 선택 검토 필요",
-    "changes.reviewRecovery": "부분 인덱스 복구 검토"
+    "changes.reviewRecovery": "부분 인덱스 복구 검토",
+    "changes.editList": "변경 목록 편집",
+    "changes.includeList": "커밋에 {name} 포함",
+    "changes.fileCount": "파일 수: {count}",
+    "changes.listActions": "{name} 작업",
+    "changes.emptyList": "이 목록에 변경 사항이 없습니다"
 }

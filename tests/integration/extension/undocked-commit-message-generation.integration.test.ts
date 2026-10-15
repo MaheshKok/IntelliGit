@@ -855,10 +855,15 @@ describe("UndockedViewProvider commit-message generation", () => {
             message: "generated for repo a",
         });
 
-        expect(workspaceState.update).toHaveBeenCalledWith(
-            expect.stringContaining(REPO_A),
-            "generated for repo a",
-        );
+        expect(workspaceState.update).toHaveBeenCalledWith("intelligit.changelists.v1", {
+            schemaVersion: 2,
+            entries: expect.arrayContaining([
+                {
+                    root: REPO_A,
+                    state: expect.objectContaining({ allDraft: "generated for repo a" }),
+                },
+            ]),
+        });
         await send({
             type: "saveCommitDraft",
             repositoryRoot: "/unknown",

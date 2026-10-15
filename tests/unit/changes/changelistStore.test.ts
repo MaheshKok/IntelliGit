@@ -108,7 +108,11 @@ describe("worktree changelist metadata", () => {
         state = await store.moveFiles("/one", state.revision, feature, ["one.txt"]);
         state = await store.remove("/one", state.revision, feature);
         expect(state.files).toEqual({ "one.txt": "default" });
-        await expect(store.remove("/one", state.revision, "default")).rejects.toThrow();
+        state = await store.remove("/one", state.revision, "default");
+        expect(state.lists).toHaveLength(1);
+        expect(state.lists[0].name).toBe("Changes");
+        expect(state.activeId).not.toBe("default");
+        expect(state.files["one.txt"]).toBe(state.activeId);
     });
 
     it("marks per-line ownership stale after content changes and requires explicit review", async () => {

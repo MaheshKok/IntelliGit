@@ -211,13 +211,39 @@ function PartialStatus({ data, error }: { data: FileData | null; error: string }
                     {t("changes.reviewAssignments")}
                 </div>
             ) : null}
-            {inclusion && inclusion.contentId !== data?.contentId ? (
+            {inclusion && (inclusion.reviewRequired || inclusion.contentId !== data?.contentId) ? (
                 <div className="partial-status" role="status">
                     {t("changes.reviewSelection")}
                 </div>
             ) : null}
         </>
     );
+}
+
+/** Resolve inclusion conservatively; a review fence takes precedence over a pane's local cache. */
+function initialSelection(
+    reply: FileData,
+    available: ReadonlySet<string>,
+    restore?: string[],
+): string[] {
+    const selection =
+        reply.file.side === "working"
+            ? reply.lists.changes[reply.file.path]?.selections?.[reply.listId]
+            : undefined;
+    if (selection?.reviewRequired) return [];
+    if (restore) return restore;
+    if (selection) return selection.contentId === reply.contentId ? selection.lineIds : [];
+    if (reply.file.side === "index" || reply.listId === "all") return [...available];
+    return reply.file.blocks
+        .flatMap((block) => block.lines)
+        .filter(
+            (line) =>
+                line.kind !== "context" &&
+                (reply.lists.changes[reply.file.path]?.lines[line.fingerprint] ??
+                    reply.lists.files[reply.file.path] ??
+                    reply.lists.activeId) === reply.listId,
+        )
+        .map((line) => line.id);
 }
 
 /** Presents immutable host snapshots; only identities and explicit selections are sent back. */
@@ -249,30 +275,7 @@ export function PartialChangesApp() {
                         : saved?.contentId === reply.contentId
                           ? saved.ids
                           : undefined;
-                const savedSelection =
-                    reply.file.side === "working"
-                        ? reply.lists.changes[reply.file.path]?.selections?.[reply.listId]
-                        : undefined;
-                const initial =
-                    restore ??
-                    (savedSelection?.contentId === reply.contentId
-                        ? savedSelection.lineIds
-                        : savedSelection
-                          ? []
-                          : reply.file.side === "index" || reply.listId === "all"
-                            ? [...available]
-                            : reply.file.blocks
-                                  .flatMap((block) => block.lines)
-                                  .filter(
-                                      (line) =>
-                                          line.kind !== "context" &&
-                                          (reply.lists.changes[reply.file.path]?.lines[
-                                              line.fingerprint
-                                          ] ??
-                                              reply.lists.files[reply.file.path] ??
-                                              "default") === reply.listId,
-                                  )
-                                  .map((line) => line.id));
+                const initial = initialSelection(reply, available, restore);
                 setSelected(new Set(initial.filter((id) => available.has(id))));
                 setData(reply);
                 current.current = reply;
@@ -428,7 +431,7 @@ export function PartialChangesApp() {
                     >
                         {(data?.lists.lists ?? []).map((list) => (
                             <option key={list.id} value={list.id}>
-                                {list.id === "default" ? t("changes.default") : list.name}
+                                {list.name}
                             </option>
                         ))}
                     </select>

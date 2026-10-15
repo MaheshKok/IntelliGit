@@ -476,5 +476,10 @@
     "changes.useSelection": "Auswahl für Commit verwenden",
     "changes.wholeFile": "Gesamte Datei auswählen",
     "changes.reviewSelection": "Teilauswahl muss geprüft werden",
-    "changes.reviewRecovery": "Wiederherstellung des Teilindex prüfen"
+    "changes.reviewRecovery": "Wiederherstellung des Teilindex prüfen",
+    "changes.editList": "Änderungsliste bearbeiten",
+    "changes.includeList": "{name} in Commit einschließen",
+    "changes.fileCount": "Dateianzahl: {count}",
+    "changes.listActions": "Aktionen für {name}",
+    "changes.emptyList": "Keine Änderungen in dieser Liste"
 }

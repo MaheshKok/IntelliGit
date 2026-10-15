@@ -881,5 +881,15 @@
     "The requested repository is no longer available. Select it again before running branch actions.": "Запрошенный репозиторий больше недоступен. Выберите его снова перед операциями с ветками.",
     "The selected branch is no longer available. Refresh the repository and try again.": "Выбранная ветка больше недоступна. Обновите репозиторий и повторите попытку.",
     "Branch action failed: {message}": "Операция с веткой не удалась: {message}",
-    "IntelliGit must run on the remote workspace host. Install or enable it there and remove any remote.extensionKind UI override before running Git commands.": "IntelliGit должен работать на хосте удалённого рабочего пространства. Установите или включите его там и уберите принудительный UI-хост в remote.extensionKind перед командами Git."
+    "IntelliGit must run on the remote workspace host. Install or enable it there and remove any remote.extensionKind UI override before running Git commands.": "IntelliGit должен работать на хосте удалённого рабочего пространства. Установите или включите его там и уберите принудительный UI-хост в remote.extensionKind перед командами Git.",
+    "Changelist description": "Описание списка изменений",
+    "Enter at most 4000 characters.": "Введите не более 4000 символов.",
+    "Keep the current active changelist": "Сохранить текущий активный список изменений",
+    "Make the new changelist active": "Сделать новый список изменений активным",
+    "Move remaining changes to changelist": "Переместить оставшиеся изменения в список",
+    "Append both drafts": "Объединить оба черновика",
+    "Keep destination draft": "Сохранить черновик целевого списка",
+    "Keep removed list's draft": "Сохранить черновик удаляемого списка",
+    "Choose the commit draft to preserve": "Выберите черновик коммита для сохранения",
+    "Remove {source} and move its changes to {target}? File content and staging are preserved.": "Удалить {source} и переместить изменения в {target}? Содержимое файлов и состояние индекса сохранятся."
 }

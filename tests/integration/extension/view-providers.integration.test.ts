@@ -1,3 +1,4 @@
+import { ChangelistStore } from "../../../src/changes/changelistStore";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -2467,8 +2468,8 @@ describe("view providers integration", () => {
         resolveCommit();
         await commit;
 
-        expect(workspaceStore.update).toHaveBeenCalledWith("commitDraft:/repo-a", undefined);
-        expect(workspaceStore.update).not.toHaveBeenCalledWith("commitDraft:/repo-b", undefined);
+        expect(new ChangelistStore(workspaceStore).draft("/repo-a", "all")).toBe("");
+        expect(new ChangelistStore(workspaceStore).draft("/repo-b", "all")).toBe("draft B");
         expect(postMessageSpy).not.toHaveBeenCalledWith(
             expect.objectContaining({ type: "committed" }),
         );
@@ -2659,7 +2660,7 @@ describe("view providers integration", () => {
         expect(gitOps.getLog).toHaveBeenCalledWith(500, "main", undefined, 1);
 
         await send({ type: "saveCommitDraft", repositoryRoot: "/repo", message: "new draft" });
-        expect(workspaceStore.update).toHaveBeenCalledWith("commitDraft:/repo", "new draft");
+        expect(new ChangelistStore(workspaceStore).draft("/repo", "all")).toBe("new draft");
 
         await send({ type: "stageFiles", paths: ["src/a.ts"] });
         await send({ type: "unstageFiles", paths: ["src/a.ts"] });
@@ -6896,7 +6897,7 @@ describe("view providers integration", () => {
         expect(gitOps.commitAndPush).not.toHaveBeenCalled();
         expect(gitOps.push).toHaveBeenCalled();
         expect(withProgress).toHaveBeenCalled();
-        expect(draftStore.update).toHaveBeenCalledWith("commitDraft:/repo", undefined);
+        expect(new ChangelistStore(draftStore).draft("/repo", "all")).toBe("");
         expect(postMessageSpy).toHaveBeenCalledWith(
             expect.objectContaining({ type: "committed", clearCommitMessage: true }),
         );
@@ -6931,7 +6932,7 @@ describe("view providers integration", () => {
         await webview.send({ type: "saveCommitDraft", message: "feat: retain" });
         await webview.send({ type: "commit", message: "feat: retain", amend: false });
 
-        expect(draftStore.update).toHaveBeenCalledWith("commitDraft:/repo", "feat: retain");
+        expect(new ChangelistStore(draftStore).draft("/repo", "all")).toBe("feat: retain");
         expect(draftStore.update).not.toHaveBeenCalledWith("commitDraft:/repo", undefined);
         expect(postMessageSpy).toHaveBeenCalledWith(
             expect.objectContaining({ type: "committed", clearCommitMessage: false }),
@@ -7003,7 +7004,7 @@ describe("view providers integration", () => {
         });
 
         await webview.send({ type: "saveCommitDraft", message: "draft changed" });
-        expect(draftStore.update).toHaveBeenCalledWith("commitDraft:/repo", "draft changed");
+        expect(new ChangelistStore(draftStore).draft("/repo", "all")).toBe("draft changed");
 
         provider.dispose();
     });

@@ -881,5 +881,15 @@
     "The requested repository is no longer available. Select it again before running branch actions.": "Le dépôt demandé n'est plus disponible. Sélectionnez-le à nouveau avant les actions de branche.",
     "The selected branch is no longer available. Refresh the repository and try again.": "La branche sélectionnée n'est plus disponible. Actualisez le dépôt et réessayez.",
     "Branch action failed: {message}": "Échec de l'action de branche : {message}",
-    "IntelliGit must run on the remote workspace host. Install or enable it there and remove any remote.extensionKind UI override before running Git commands.": "IntelliGit doit s'exécuter sur l'hôte de l'espace de travail distant. Installez-le ou activez-le sur cet hôte et supprimez toute substitution d'hôte d'interface dans remote.extensionKind avant les commandes Git."
+    "IntelliGit must run on the remote workspace host. Install or enable it there and remove any remote.extensionKind UI override before running Git commands.": "IntelliGit doit s'exécuter sur l'hôte de l'espace de travail distant. Installez-le ou activez-le sur cet hôte et supprimez toute substitution d'hôte d'interface dans remote.extensionKind avant les commandes Git.",
+    "Changelist description": "Description de la liste de modifications",
+    "Enter at most 4000 characters.": "Saisissez au maximum 4000 caractères.",
+    "Keep the current active changelist": "Conserver la liste de modifications active actuelle",
+    "Make the new changelist active": "Activer la nouvelle liste de modifications",
+    "Move remaining changes to changelist": "Déplacer les modifications restantes vers une liste",
+    "Append both drafts": "Combiner les deux brouillons",
+    "Keep destination draft": "Conserver le brouillon de destination",
+    "Keep removed list's draft": "Conserver le brouillon de la liste supprimée",
+    "Choose the commit draft to preserve": "Choisir le brouillon de commit à conserver",
+    "Remove {source} and move its changes to {target}? File content and staging are preserved.": "Supprimer {source} et déplacer ses modifications vers {target} ? Le contenu des fichiers et l’index sont conservés."
 }

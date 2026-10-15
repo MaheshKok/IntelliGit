@@ -52,6 +52,44 @@ beforeEach(() => {
 });
 
 describe("selected change editor protocol", () => {
+    it("fences a deletion-merged selection even when a pane retains the same content snapshot", () => {
+        const mounted = mount(<PartialChangesApp />);
+        try {
+            receive(data);
+            const boxes = () => [
+                ...mounted.container.querySelectorAll<HTMLInputElement>(
+                    ".partial-line input[type=checkbox]",
+                ),
+            ];
+            expect(boxes().some((box) => box.checked)).toBe(true);
+            receive({
+                ...data,
+                lists: {
+                    ...data.lists,
+                    changes: {
+                        "test.txt": {
+                            contentId: "content",
+                            lines: {},
+                            selections: {
+                                all: {
+                                    contentId: "content",
+                                    lineIds: ["0:1"],
+                                    total: 2,
+                                    reviewRequired: true,
+                                },
+                            },
+                        },
+                    },
+                },
+            });
+            expect(boxes()).not.toHaveLength(0);
+            expect(boxes().every((box) => !box.checked)).toBe(true);
+            expect(mounted.container.textContent).toContain("Partial selection needs review");
+        } finally {
+            unmount(mounted.root, mounted.container);
+        }
+    });
+
     it("does not apply working inclusion to a different index snapshot", () => {
         const mounted = mount(<PartialChangesApp />);
         try {

@@ -1,3 +1,4 @@
+import { useChangelistDraft } from "./useChangelistDraft";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ChangelistState } from "../../../protocol/changeSelection";
 import type { ChangelistOutbound, ChangelistReply } from "../../../protocol/changelists";
@@ -33,6 +34,12 @@ function savedView(value: Record<string, unknown> | undefined, root: string) {
     return { filter: typeof view?.filter === "string" ? view.filter : "all", checked };
 }
 
+/** Deleted scope redirects affect presentation only; commits still require an existing exact ID. */
+function resolveViewScope(state: ChangelistState, scope: string): string {
+    if (scope === "all" || state.lists.some((list) => list.id === scope)) return scope;
+    return state.removedScopes?.[scope] ?? "all";
+}
+
 /** A file can appear in multiple lists when its different lines have different owners. */
 export function changelistFiles(
     files: WorkingFile[],
@@ -41,7 +48,9 @@ export function changelistFiles(
 ): WorkingFile[] {
     if (id === "all") return files;
     return files.filter((file) => {
-        const assigned = Object.hasOwn(state.files, file.path) ? state.files[file.path] : "default";
+        const assigned = Object.hasOwn(state.files, file.path)
+            ? state.files[file.path]
+            : state.activeId;
         const ownership = state.changes[file.path];
         const known = ownership?.totalChanges;
         return (
@@ -93,19 +102,10 @@ export function useChangelists(props: CommitTabProps) {
                                   previous.metadata?.revision === message.state.revision
                                       ? previous.metadata
                                       : message.state,
-                              filter:
-                                  previous.root === root &&
-                                  (previous.filter === "all" ||
-                                      message.state.lists.some(
-                                          (list: { id: string }) => list.id === previous.filter,
-                                      ))
-                                      ? previous.filter
-                                      : saved.filter === "all" ||
-                                          message.state.lists.some(
-                                              (list: { id: string }) => list.id === saved.filter,
-                                          )
-                                        ? saved.filter
-                                        : "all",
+                              filter: resolveViewScope(
+                                  message.state,
+                                  previous.root === root ? previous.filter : saved.filter,
+                              ),
                               checked: previous.root === root ? previous.checked : saved.checked,
                               busy: message.busy === true,
                               hasRecoveryIssues: message.hasRecoveryIssues === true,
@@ -153,17 +153,19 @@ export function useChangelists(props: CommitTabProps) {
                         const ownership = metadata?.changes[file.path];
                         return (
                             ownership?.selections?.[filter] !== undefined ||
-                            (filter !== "all" &&
-                                Object.values(ownership?.lines ?? {}).some((id) => id !== filter))
+                            Object.keys(ownership?.lines ?? {}).length > 0
                         );
                     })
                     .map((file) => file.path),
             ),
         [files, filter, metadata],
     );
+    const draft = useChangelistDraft(props, metadata, filter, checkedPaths);
     const hasEligibleSelection = [...checkedPaths].some((file) => {
         const selection = metadata?.changes[file]?.selections?.[filter];
-        return selection === undefined || selection.lineIds.length > 0;
+        return (
+            selection === undefined || (!selection.reviewRequired && selection.lineIds.length > 0)
+        );
     });
     useEffect(() => {
         if (!root || !metadata) return;
@@ -179,9 +181,11 @@ export function useChangelists(props: CommitTabProps) {
     }, [api, filter, metadata, root, state.checked]);
     const choose = useCallback(
         (value: string) => {
+            draft.cancel();
+            if (value !== "all" && props.isAmend) props.onAmendChange(false);
             setState((previous) => ({ ...previous, root, filter: value, error: undefined }));
         },
-        [root],
+        [root, draft, props],
     );
     const toggle = useCallback(
         (changed: WorkingFile[]) => {
@@ -211,6 +215,7 @@ export function useChangelists(props: CommitTabProps) {
                 | "move"
                 | "resetSelection"
                 | "reviewRecovery",
+            listId = filter,
         ) => {
             if (!root || !metadata) return;
             setState((previous) => ({ ...previous, busy: true, error: undefined }));
@@ -220,7 +225,7 @@ export function useChangelists(props: CommitTabProps) {
                 revision: metadata.revision,
                 action,
                 ...(action === "move" ? { sourceListId: filter } : {}),
-                ...(action !== "create" && action !== "move" ? { listId: filter } : {}),
+                ...(action !== "create" && action !== "move" ? { listId } : {}),
                 ...(action === "move" || action === "resetSelection"
                     ? { paths: [...checkedPaths] }
                     : {}),
@@ -239,23 +244,13 @@ export function useChangelists(props: CommitTabProps) {
     }, [api, checkedPaths, filter, root]);
     const commit = useCallback(
         (push = false) => {
-            const partial =
-                metadata &&
-                [...checkedPaths].some(
-                    (file) =>
-                        Object.keys(metadata.changes[file]?.lines ?? {}).length > 0 ||
-                        metadata.changes[file]?.selections?.[filter] !== undefined,
-                );
-            if (
-                !root ||
-                !metadata ||
-                (filter === "all" && !partial) ||
-                props.wholeIndexOperationInProgress
-            ) {
+            if (!root || !metadata) {
                 if (push) props.onPush();
                 else props.onCommit();
                 return;
             }
+            if (props.wholeIndexOperationInProgress || draft.pending || draft.error) return;
+            if (push && checkedPaths.size === 0) return props.onPush();
             setState((previous) => ({ ...previous, busy: true, error: undefined }));
             api.postMessage({
                 type: "commitChangelist",
@@ -263,14 +258,15 @@ export function useChangelists(props: CommitTabProps) {
                 revision: metadata.revision,
                 listId: filter,
                 paths: [...checkedPaths],
-                message: props.commitMessage.trim(),
+                message: draft.message.trim(),
                 amend: props.isAmend,
                 push,
             });
         },
-        [api, checkedPaths, filter, metadata, props, root],
+        [api, checkedPaths, draft, filter, metadata, props, root],
     );
     return {
+        draft,
         metadata,
         filter,
         files,
@@ -280,6 +276,10 @@ export function useChangelists(props: CommitTabProps) {
         choose,
         command,
         openPartial,
+        openFile: (path: string, listId: string) => {
+            if (root)
+                api.postMessage({ type: "openPartialChanges", repositoryRoot: root, path, listId });
+        },
         commit,
         busy: state.root === root && state.busy,
         hasRecoveryIssues: state.root === root && state.hasRecoveryIssues === true,

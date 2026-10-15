@@ -881,5 +881,15 @@
     "The requested repository is no longer available. Select it again before running branch actions.": "要求的儲存庫已無法使用。請重新選取儲存庫後再執行分支操作。",
     "The selected branch is no longer available. Refresh the repository and try again.": "所選分支已無法使用。請重新整理儲存庫後重試。",
     "Branch action failed: {message}": "分支操作失敗：{message}",
-    "IntelliGit must run on the remote workspace host. Install or enable it there and remove any remote.extensionKind UI override before running Git commands.": "IntelliGit 必須在遠端工作區主機上執行。請在遠端主機安裝或啟用擴充功能，並移除 remote.extensionKind 中強制使用 UI 主機的設定後再執行 Git 命令。"
+    "IntelliGit must run on the remote workspace host. Install or enable it there and remove any remote.extensionKind UI override before running Git commands.": "IntelliGit 必須在遠端工作區主機上執行。請在遠端主機安裝或啟用擴充功能，並移除 remote.extensionKind 中強制使用 UI 主機的設定後再執行 Git 命令。",
+    "Changelist description": "變更清單描述",
+    "Enter at most 4000 characters.": "最多輸入 4000 個字元。",
+    "Keep the current active changelist": "保留目前作用中的變更清單",
+    "Make the new changelist active": "將新變更清單設為作用中",
+    "Move remaining changes to changelist": "將剩餘變更移至變更清單",
+    "Append both drafts": "合併兩個草稿",
+    "Keep destination draft": "保留目標清單草稿",
+    "Keep removed list's draft": "保留被移除清單的草稿",
+    "Choose the commit draft to preserve": "選擇要保留的提交草稿",
+    "Remove {source} and move its changes to {target}? File content and staging are preserved.": "移除 {source} 並將其變更移至 {target}？檔案內容和暫存狀態將保留。"
 }

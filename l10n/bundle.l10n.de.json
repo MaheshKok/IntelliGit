@@ -881,5 +881,15 @@
     "The requested repository is no longer available. Select it again before running branch actions.": "Das angeforderte Repository ist nicht mehr verfügbar. Vor Branch-Aktionen erneut auswählen.",
     "The selected branch is no longer available. Refresh the repository and try again.": "Der ausgewählte Branch ist nicht mehr verfügbar. Das Repository aktualisieren und erneut versuchen.",
     "Branch action failed: {message}": "Branch-Aktion fehlgeschlagen: {message}",
-    "IntelliGit must run on the remote workspace host. Install or enable it there and remove any remote.extensionKind UI override before running Git commands.": "IntelliGit muss auf dem Remote-Arbeitsbereichshost ausgeführt werden. Dort installieren oder aktivieren und vor Git-Befehlen alle UI-Host-Überschreibungen in remote.extensionKind entfernen."
+    "IntelliGit must run on the remote workspace host. Install or enable it there and remove any remote.extensionKind UI override before running Git commands.": "IntelliGit muss auf dem Remote-Arbeitsbereichshost ausgeführt werden. Dort installieren oder aktivieren und vor Git-Befehlen alle UI-Host-Überschreibungen in remote.extensionKind entfernen.",
+    "Changelist description": "Beschreibung der Änderungsliste",
+    "Enter at most 4000 characters.": "Geben Sie höchstens 4000 Zeichen ein.",
+    "Keep the current active changelist": "Aktuelle aktive Änderungsliste beibehalten",
+    "Make the new changelist active": "Neue Änderungsliste aktivieren",
+    "Move remaining changes to changelist": "Verbleibende Änderungen in Änderungsliste verschieben",
+    "Append both drafts": "Beide Entwürfe zusammenführen",
+    "Keep destination draft": "Zielentwurf beibehalten",
+    "Keep removed list's draft": "Entwurf der entfernten Liste beibehalten",
+    "Choose the commit draft to preserve": "Zu behaltenden Commit-Entwurf auswählen",
+    "Remove {source} and move its changes to {target}? File content and staging are preserved.": "{source} entfernen und seine Änderungen nach {target} verschieben? Dateiinhalte und Staging bleiben erhalten."
 }

@@ -881,5 +881,15 @@
     "The requested repository is no longer available. Select it again before running branch actions.": "El repositorio solicitado ya no está disponible. Vuelva a seleccionarlo antes de ejecutar acciones de rama.",
     "The selected branch is no longer available. Refresh the repository and try again.": "La rama seleccionada ya no está disponible. Actualice el repositorio y vuelva a intentarlo.",
     "Branch action failed: {message}": "Error en la acción de rama: {message}",
-    "IntelliGit must run on the remote workspace host. Install or enable it there and remove any remote.extensionKind UI override before running Git commands.": "IntelliGit debe ejecutarse en el host del espacio de trabajo remoto. Instálelo o actívelo allí y elimine cualquier anulación de host de interfaz en remote.extensionKind antes de ejecutar comandos Git."
+    "IntelliGit must run on the remote workspace host. Install or enable it there and remove any remote.extensionKind UI override before running Git commands.": "IntelliGit debe ejecutarse en el host del espacio de trabajo remoto. Instálelo o actívelo allí y elimine cualquier anulación de host de interfaz en remote.extensionKind antes de ejecutar comandos Git.",
+    "Changelist description": "Descripción de la lista de cambios",
+    "Enter at most 4000 characters.": "Introduce un máximo de 4000 caracteres.",
+    "Keep the current active changelist": "Mantener la lista de cambios activa actual",
+    "Make the new changelist active": "Activar la nueva lista de cambios",
+    "Move remaining changes to changelist": "Mover los cambios restantes a una lista de cambios",
+    "Append both drafts": "Combinar ambos borradores",
+    "Keep destination draft": "Conservar el borrador de destino",
+    "Keep removed list's draft": "Conservar el borrador de la lista eliminada",
+    "Choose the commit draft to preserve": "Elegir el borrador de commit que se conservará",
+    "Remove {source} and move its changes to {target}? File content and staging are preserved.": "¿Eliminar {source} y mover sus cambios a {target}? Se conservan el contenido de los archivos y el área de preparación."
 }

@@ -56,9 +56,12 @@
                     "lists": [
                         {
                             "id": "default",
-                            "name": "Default"
+                            "name": "Changes",
+                            "description": "",
+                            "draft": ""
                         }
                     ],
+                    "allDraft": "",
                     "files": {
                         "mutable.txt": "default"
                     },
