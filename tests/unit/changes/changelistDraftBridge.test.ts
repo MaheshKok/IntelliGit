@@ -1,7 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 import type * as vscode from "vscode";
 import { ChangelistStore } from "../../../src/changes/changelistStore";
-import { changelistDraftBridge } from "../../../src/views/changelistDraftBridge";
+import {
+    changelistDraftBridge,
+    readAggregateDraft,
+    saveAggregateDraft,
+} from "../../../src/views/changelistDraftBridge";
 
 function fixture() {
     const values = new Map<string, unknown>();
@@ -55,4 +59,88 @@ describe("native changelist draft routing", () => {
             [feature]: "default",
         });
     });
+});
+
+describe("refused metadata draft reads", () => {
+    it.each([
+        {
+            label: "corrupt metadata",
+            metadata: null,
+            legacy: "recoverable",
+            expected: "recoverable",
+        },
+        {
+            label: "future metadata",
+            metadata: { schemaVersion: 99, entries: [] },
+            legacy: "future draft",
+            expected: "future draft",
+        },
+        {
+            label: "invalid legacy migration",
+            metadata: {
+                schemaVersion: 1,
+                entries: [
+                    {
+                        root: "/one",
+                        state: {
+                            revision: 0,
+                            activeId: "default",
+                            lists: [{ id: "default", name: "Changes" }],
+                            files: {},
+                            changes: {},
+                        },
+                    },
+                ],
+            },
+            legacy: 123,
+            expected: "",
+        },
+        { label: "missing legacy text", metadata: null, legacy: undefined, expected: "" },
+        {
+            label: "non-string legacy text",
+            metadata: null,
+            legacy: { text: "invalid" },
+            expected: "",
+        },
+        {
+            label: "oversized legacy text",
+            metadata: null,
+            legacy: "x".repeat(100_001),
+            expected: "",
+        },
+        {
+            label: "maximum legacy text",
+            metadata: null,
+            legacy: "x".repeat(100_000),
+            expected: "x".repeat(100_000),
+        },
+    ])(
+        "keeps $label readable without permitting writes",
+        async ({ metadata, legacy, expected }) => {
+            const original = new Map<string, unknown>([
+                ["intelligit.changelists.v1", metadata],
+                ["commitDraft:/one", legacy],
+            ]);
+            const values = structuredClone(original);
+            const storage = {
+                get: <T>(key: string) => values.get(key) as T | undefined,
+                update: vi.fn(async (key: string, value: unknown) => {
+                    values.set(key, value);
+                }),
+                keys: () => [...values.keys()],
+            } satisfies vscode.Memento;
+            const bridge = changelistDraftBridge(storage, vi.fn());
+            expect(bridge.readDraft("/one")).toBe(expected);
+            expect(readAggregateDraft(storage, "commitDraft:/one")).toBe(expected);
+            expect(readAggregateDraft(storage, "commitDraft:/other")).toBe("");
+            await expect(
+                saveAggregateDraft(storage, "commitDraft:/one", "replacement"),
+            ).rejects.toThrow("will not be overwritten");
+            expect(() => ChangelistStore.forStorage(storage).get("/one")).toThrow(
+                "will not be overwritten",
+            );
+            expect(storage.update).not.toHaveBeenCalled();
+            expect(values).toEqual(original);
+        },
+    );
 });

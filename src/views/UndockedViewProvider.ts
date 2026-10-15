@@ -2193,6 +2193,7 @@ export class UndockedViewProvider {
     private getCommitDraftStorageKey(repositoryRoot = this.repoRootUri.fsPath): string {
         return `${UndockedViewProvider.COMMIT_DRAFT_KEY_PREFIX}${repositoryRoot}`;
     }
+    /** Restores the explicit All draft for the requested repository, with a bounded legacy fallback when metadata is refused. */
     private getStoredCommitDraft(repositoryRoot = this.repoRootUri.fsPath): string {
         return readAggregateDraft(
             this.workspaceState,
@@ -2214,6 +2215,7 @@ export class UndockedViewProvider {
         }
     }
 
+    /** Captures the repository and All draft before reading HEAD; a switch or competing draft edit prevents stale replacement. */
     private async handleGetLastCommitMessage(): Promise<void> {
         const repositoryRoot = this.selectedRepositoryRoot;
         const switchSeq = this.repositorySwitchSeq;

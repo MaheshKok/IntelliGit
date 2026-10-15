@@ -25,6 +25,7 @@ const instances = new WeakMap<MetadataStorage, ChangelistStore>();
 const MAX_LISTS = 100;
 const MAX_FILES = 20_000;
 
+/** Creates a fresh worktree with one active list and independent empty list and All drafts. */
 function emptyState(): ChangelistState {
     return {
         revision: 0,
@@ -36,6 +37,7 @@ function emptyState(): ChangelistState {
     };
 }
 
+/** Normalizes list names before comparison and rejects empty, oversized, or control-bearing text. */
 function nameFor(value: string): string {
     const name = value.normalize("NFC").trim();
     if (!name || name.length > 80 || /[\u0000-\u001f]/.test(name)) {
@@ -610,6 +612,7 @@ export class ChangelistStore {
         );
     }
 
+    /** Serializes host-local mutations, checks revisions and commit leases, and publishes only after durable storage and migration backup succeed. */
     private async write(
         root: string,
         revision: number | undefined,
@@ -726,6 +729,7 @@ function requireList(state: ChangelistState, id: string) {
     return list;
 }
 
+/** Validates persisted ownership and scope identities before cloning them; v1 gains empty draft fields without changing inclusion or IDs. */
 function parseState(value: unknown, version: 1 | 2): ChangelistState | undefined {
     if (!metadataRecord(value)) return undefined;
     const state = value as ChangelistState;
@@ -778,6 +782,7 @@ function metadataRecord(value: unknown): Record<string, unknown> | undefined {
         : undefined;
 }
 
+/** Rejects unbounded lists, invalid revisions, and non-record ownership maps before reading nested persisted values. */
 function validStateHeader(state: ChangelistState): boolean {
     return (
         Number.isSafeInteger(state.revision) &&
@@ -811,6 +816,7 @@ function validOwnership(ownership: ChangeOwnership, ids: ReadonlySet<string>): b
     return validCommitSelections(ownership, ids);
 }
 
+/** Accepts bounded, exact-scope inclusion records, including explicit empty selections and stale-review fences. */
 function validCommitSelections(ownership: ChangeOwnership, ids: ReadonlySet<string>): boolean {
     if (ownership.selections === undefined) return true;
     if (!metadataRecord(ownership.selections)) return false;

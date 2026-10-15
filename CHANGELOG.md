@@ -19,6 +19,8 @@ This release adds the first changelist-management phase on top of 0.38.0. Four l
 
 ### Fixed
 
+- Keep the commit panel readable when changelist metadata is refused, restoring only bounded legacy draft text while retaining write protection.
+- Restore All-scope message-only amend and message generation without selected files, including amend-and-push, while keeping named-list amend disabled.
 - Preserve drafts and explicit empty selections across list switches, delayed saves, concurrent panes and late generated-message replies. Completing a commit clears only its captured, unchanged draft when configured.
 - Migrate version-1 changelist metadata only after saving its original record, preserving list IDs, ownership, stale-selection safeguards and legacy drafts. Corrupt, conflicting or unknown-version records are refused without being overwritten.
 - Require an explicit choice when removing lists with conflicting drafts or combining ambiguous selections, and refuse whole-file moves that would discard partial ownership.

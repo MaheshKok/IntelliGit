@@ -52,6 +52,56 @@ async function createList(page: Page, frame: FrameLocator, name: string): Promis
 test.describe("Selected changes and changelists", () => {
     test.use({ scenario: "clean" });
 
+    test("amends only the All message while preserving staged and working changes", async ({
+        fixtureWorkspace,
+    }) => {
+        const { workspace } = fixtureWorkspace;
+        await createFiles(workspace.root, workspace.env);
+        const tree = await runGit(workspace.root, ["rev-parse", "HEAD^{tree}"], workspace.env);
+        const indexTree = await runGit(workspace.root, ["write-tree"], workspace.env);
+        const app = await launchFixtureWorkspace({
+            executablePath: await resolveVSCodeExecutable(REPO_ROOT),
+            repoRoot: REPO_ROOT,
+            workspace,
+            channelDir: fixtureWorkspace.channelDir,
+            timeout: 60_000,
+        });
+        try {
+            const page = await app.firstWindow();
+            await dismissFirstRunDialogs(page);
+            await waitForE2eChannelReady(fixtureWorkspace.channelDir);
+            const sidebar = await new IntelliGitView(page).reveal();
+            await expect(
+                sidebar.getByRole("combobox", { name: "Changelists", exact: true }),
+            ).toHaveValue("all");
+            await sidebar
+                .getByRole("checkbox", { name: "Include Changes in commit", exact: true })
+                .uncheck();
+            await expect(
+                sidebar.getByRole("checkbox", { name: FILE, exact: true }).first(),
+            ).not.toBeChecked();
+            await expect(
+                sidebar.getByRole("checkbox", { name: OTHER, exact: true }).first(),
+            ).not.toBeChecked();
+            await sidebar.getByTestId("amend-checkbox").check();
+            await expect(sidebar.locator("#commit-area-message")).toHaveValue("Partial baseline");
+            await sidebar.locator("#commit-area-message").fill("Reviewed message-only amend");
+            await expect(sidebar.getByTestId("commit-action-commit")).toBeEnabled();
+            await sidebar.getByTestId("commit-action-commit").click();
+            await expect
+                .poll(() => runGit(workspace.root, ["log", "-1", "--format=%s"], workspace.env))
+                .toBe("Reviewed message-only amend\n");
+            expect(await runGit(workspace.root, ["rev-parse", "HEAD^{tree}"], workspace.env)).toBe(
+                tree,
+            );
+            expect(await runGit(workspace.root, ["write-tree"], workspace.env)).toBe(indexTree);
+            expect(await readFile(path.join(workspace.root, FILE), "utf8")).toBe(working);
+            expect(await readFile(path.join(workspace.root, OTHER), "utf8")).toBe("user staged\n");
+        } finally {
+            await app.close();
+        }
+    });
+
     test("keeps the sidebar open when revealed twice", async ({ fixtureWorkspace }) => {
         const { workspace } = fixtureWorkspace;
         const app = await launchFixtureWorkspace({

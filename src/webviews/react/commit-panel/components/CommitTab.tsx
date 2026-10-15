@@ -236,13 +236,12 @@ function scopedComposerProps(props: CommitTabProps, workflow: ReturnType<typeof 
         !workflow.draft.error &&
         !props.isRefreshing &&
         !props.wholeIndexOperationInProgress;
-    const hasCommit = workflow.hasEligibleSelection && workflow.draft.message.trim().length > 0;
+    // All can amend HEAD without paths or replacement text; named lists cannot amend.
+    const hasCommit = props.isAmend
+        ? workflow.filter === "all" && props.hasCommits !== false
+        : workflow.hasEligibleSelection && workflow.draft.message.trim().length > 0;
     return {
-        canCommit:
-            ready &&
-            (workflow.metadata
-                ? hasCommit && (!props.isAmend || workflow.filter === "all")
-                : props.canCommit),
+        canCommit: ready && (workflow.metadata ? hasCommit : props.canCommit),
         canPush: ready && (props.canPush || hasCommit),
         generationStatus: workflow.metadata
             ? workflow.draft.generationStatus

@@ -173,13 +173,15 @@ export function useChangelistDraft(
                 });
         },
         generate: () => {
+            const canAmend = props.isAmend && scope === "all" && props.hasCommits !== false;
             if (
                 !root ||
                 !state ||
                 generation.current ||
                 buffer.pending.size ||
                 buffer.error ||
-                !paths.size
+                (props.isAmend && !canAmend) ||
+                (!paths.size && !canAmend)
             )
                 return;
             const requestId = `changelist-generation-${++sequence}`;

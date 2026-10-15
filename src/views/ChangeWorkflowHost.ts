@@ -201,6 +201,7 @@ export class ChangeWorkflowHost {
         }
     }
 
+    /** Validates webview list commands against their captured revision; partial ownership requires the range editor rather than a whole-file move. */
     private async changeList(
         message: Extract<ChangelistOutbound, { type: "changelistAction" }>,
     ): Promise<void> {
@@ -418,6 +419,7 @@ export class ChangeWorkflowHost {
         if (confirm) await this.partial.discardRecovery(chosen.issue.id, chosen.issue.location);
     }
 
+    /** Binds a partial editor to its captured list and repository; selections are revalidated against host snapshots before Git mutations. */
     private open(file: string, requestedList: string | undefined): void {
         const listId = requestedList ?? "all";
         new PartialChangesPanel(this.deps.extensionUri, file, {
@@ -579,6 +581,7 @@ export class ChangeWorkflowHost {
         return snapshot;
     }
 
+    /** Checks list identity and revision, then commits exact whole-file or partial inclusion; stale ranges and partial amend are refused. */
     private async commitList(
         message: Extract<ChangelistOutbound, { type: "commitChangelist" }>,
     ): Promise<void> {
@@ -810,6 +813,7 @@ export class ChangeWorkflowHost {
             this.deps.mirrorDraft?.(scope, this.store.draft(this.deps.root, scope));
     }
 
+    /** Settles draft completion and refresh independently after Git succeeds so notification failures cannot turn success into a retryable commit. */
     private async afterCommit(scope?: string, message?: string): Promise<void> {
         const results = await Promise.allSettled([
             scope === undefined

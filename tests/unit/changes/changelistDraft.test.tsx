@@ -156,3 +156,37 @@ describe("captured changelist composer", () => {
         );
     });
 });
+
+/** Exercises pathless requests through the real draft hook rather than a button mock. */
+function EmptyAmendHarness({
+    scope,
+    isAmend,
+    hasCommits,
+}: {
+    scope: string;
+    isAmend: boolean;
+    hasCommits?: boolean;
+}) {
+    draft = useChangelistDraft({ ...props, isAmend, hasCommits }, state, scope, new Set());
+    return <output>{draft.message}</output>;
+}
+
+describe("pathless draft generation", () => {
+    it.each([
+        { scope: "all", isAmend: true, hasCommits: true, allowed: true },
+        { scope: "all", isAmend: true, hasCommits: undefined, allowed: true },
+        { scope: "all", isAmend: true, hasCommits: false, allowed: false },
+        { scope: "all", isAmend: false, hasCommits: true, allowed: false },
+        { scope: "feature", isAmend: true, hasCommits: true, allowed: false },
+    ])("gates $scope amend=$isAmend history=$hasCommits", ({ allowed, ...options }) => {
+        act(() => mounted.root.render(<EmptyAmendHarness {...options} />));
+        api.postMessage.mockClear();
+        act(() => draft.generate());
+        const generated = api.postMessage.mock.calls
+            .map(([message]) => message)
+            .filter((message) => message.type === "generateCommitMessage");
+        expect(generated).toHaveLength(allowed ? 1 : 0);
+        if (allowed)
+            expect(generated[0]).toMatchObject({ repositoryRoot: "/one", paths: [], amend: true });
+    });
+});

@@ -955,6 +955,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             : undefined;
     }
 
+    /** Captures repository-specific commit callbacks; All draft clearing is mirrored only after persistence succeeds. */
     private actionDepsForRuntime(runtime?: CommitPanelRepositoryRuntime) {
         return {
             gitOps: runtime?.gitOps ?? this.gitOps,
@@ -2449,12 +2450,14 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             console.error("[IntelliGit] Failed to mirror commit draft:", error);
         }
     }
+    /** Routes compatibility text to the captured runtime without replacing a focused named-list mirror. */
     private setFromPanelForRuntime(
         runtime: CommitPanelRepositoryRuntime | undefined,
         message: string,
     ): void {
         this.mirrorAggregateText(runtime?.repository.root, message);
     }
+    /** Loads HEAD text for All with a draft compare-and-swap; removed runtimes and newer drafts cannot be overwritten by a late reply. */
     private async handleGetLastCommitMessage(
         runtime: CommitPanelRepositoryRuntime | undefined,
     ): Promise<void> {

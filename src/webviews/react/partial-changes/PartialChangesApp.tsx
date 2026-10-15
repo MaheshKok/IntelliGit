@@ -195,6 +195,7 @@ function PartialDiff({
     );
 }
 
+/** Announces stale ownership and inclusion separately so an explicit empty selection is never mistaken for an unselected file. */
 function PartialStatus({ data, error }: { data: FileData | null; error: string }) {
     const ownership = data?.lists.changes[data.file.path];
     const inclusion =

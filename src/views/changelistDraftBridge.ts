@@ -10,7 +10,13 @@ export function changelistDraftBridge(
     const store = ChangelistStore.forStorage(storage);
     const pending = new Map<string, { text: string }>();
     return {
-        readDraft: (root) => store.draft(root, store.mirrorScope(root)),
+        readDraft: (root) => {
+            try {
+                return store.draft(root, store.mirrorScope(root));
+            } catch {
+                return readLegacyDraft(storage, `commitDraft:${root}`);
+            }
+        },
         persistDraft: (root, text) => {
             // Capture before enqueueing: a later focus/root change cannot redirect this native edit.
             const scope = store.mirrorScope(root);
@@ -53,13 +59,26 @@ export function saveAggregateDraft(
     return ChangelistStore.forStorage(storage).saveDraft(root, "all", undefined, text);
 }
 
-/** Reads migrated All text without adopting the last-focused named scope. */
+/**
+ * Reads All without adopting a named scope. Refused metadata leaves the composer readable
+ * from the bounded legacy draft; writes still go through the store's refusal checks.
+ */
 export function readAggregateDraft(
     storage: vscode.Memento | undefined,
     storageKey: string,
 ): string {
-    return ChangelistStore.forStorage(storage).draft(
-        storageKey.slice("commitDraft:".length),
-        "all",
-    );
+    try {
+        return ChangelistStore.forStorage(storage).draft(
+            storageKey.slice("commitDraft:".length),
+            "all",
+        );
+    } catch {
+        return readLegacyDraft(storage, storageKey);
+    }
+}
+
+/** Restores only bounded text; invalid legacy values never reach native or webview inputs. */
+function readLegacyDraft(storage: vscode.Memento | undefined, storageKey: string): string {
+    const legacy = storage?.get<unknown>(storageKey);
+    return typeof legacy === "string" && legacy.length <= 100_000 ? legacy : "";
 }

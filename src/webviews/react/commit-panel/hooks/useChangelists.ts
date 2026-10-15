@@ -16,6 +16,7 @@ interface ClientState {
     error?: string;
 }
 
+/** Restores bounded per-worktree filters and checkbox choices; callers reconcile saved paths against current files. */
 function savedView(value: Record<string, unknown> | undefined, root: string) {
     const views = value?.changelistViews;
     if (!views || typeof views !== "object") return { filter: "all", checked: {} };
@@ -250,7 +251,7 @@ export function useChangelists(props: CommitTabProps) {
                 return;
             }
             if (props.wholeIndexOperationInProgress || draft.pending || draft.error) return;
-            if (push && checkedPaths.size === 0) return props.onPush();
+            if (push && checkedPaths.size === 0 && !props.isAmend) return props.onPush();
             setState((previous) => ({ ...previous, busy: true, error: undefined }));
             api.postMessage({
                 type: "commitChangelist",
