@@ -135,6 +135,29 @@ describe("authoritative worktree changelist persistence", () => {
         ).toBe("Other workspace");
     });
 
+    it.each([false, true])(
+        "refuses another root's conflicting migration after connecting the first root (reload=%s)",
+        async (reload) => {
+            const otherRoot = path.join(root, "other");
+            const otherGitDir = path.join(otherRoot, ".git");
+            await mkdir(otherGitDir, { recursive: true });
+            const first = new ChangelistStore(storage());
+            await first.create(otherRoot, 0, "Durable owner");
+            await first.connect(otherRoot, otherGitDir);
+            const legacy = storage();
+            const second = new ChangelistStore(legacy);
+            await second.create(root, 0, "First repository");
+            await second.create(otherRoot, 0, "Unmigrated workspace owner");
+            await second.connect(root, gitDir);
+            const migrating = reload ? new ChangelistStore(legacy) : second;
+            await expect(
+                migrating.connect(otherRoot, otherGitDir),
+                "connecting one root must not authorize a conflicting migration in another",
+            ).rejects.toThrow("Conflicting");
+            expect(first.get(otherRoot).lists[1].name).toBe("Durable owner");
+        },
+    );
+
     it("refuses an interrupted corrupt backup and a missing authoritative record", async () => {
         const directory = path.join(gitDir, "intelligit/changelists");
         await mkdir(directory, { recursive: true });

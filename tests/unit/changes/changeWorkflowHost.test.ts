@@ -318,6 +318,30 @@ describe("root-bound selected-change host", () => {
         expect(state.files["file.txt"]).toBe("default");
     });
 
+    it("keeps edits omitted from cached status in the old active list", async () => {
+        await writeFile(path.join(root, "newly-dirty.txt"), base);
+        git(["add", "--", "newly-dirty.txt"]);
+        git(["commit", "-qm", "add clean tracked file"]);
+        const created = await store.create(root, store.get(root).revision, "Later");
+        const id = created.lists[1].id;
+        await writeFile(path.join(root, "newly-dirty.txt"), first);
+        await host.handle({
+            type: "changelistAction",
+            repositoryRoot: root,
+            action: "activate",
+            listId: id,
+            revision: created.revision,
+        });
+        await host.reconcile(await gitOps.getStatus({ withStats: false }));
+        const state = store.get(root);
+        expect(state.activeId).toBe(id);
+        expect(
+            state.files["newly-dirty.txt"],
+            "an edit saved before activation must retain the previous active owner",
+        ).toBe("default");
+        expect(state.changes["newly-dirty.txt"].stale).toBe(false);
+    });
+
     it("does not overwrite another window's activation during observation", async () => {
         let state = await store.create(root, store.get(root).revision, "Requested");
         const requested = state.lists[1].id;
