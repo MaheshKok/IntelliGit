@@ -172,13 +172,30 @@ describe("root-bound selected-change host", () => {
             await host.reconcile(hostDeps.files());
             vi.advanceTimersByTime(1000);
             posted.length = 0;
-            let failure: string | undefined = "metadata needs review";
+            let failure: string | undefined;
             const get = store.get.bind(store);
-            vi.spyOn(store, "get").mockImplementation((repositoryRoot) => {
+            const reads = vi.spyOn(store, "get").mockImplementation((repositoryRoot) => {
                 if (failure) throw new Error(failure);
                 return get(repositoryRoot);
             });
+            reads.mockImplementationOnce(() => {
+                throw new Error("temporary metadata read failure");
+            });
+            vi.advanceTimersByTime(1000);
+            expect(
+                posted,
+                "the captured poll error must be reported without a second read",
+            ).toEqual([
+                {
+                    type: "error",
+                    repositoryRoot: root,
+                    message: "Changelist action failed: temporary metadata read failure",
+                },
+            ]);
+            vi.advanceTimersByTime(1000);
+            posted.length = 0;
 
+            failure = "metadata needs review";
             vi.advanceTimersByTime(3000);
             expect(posted, "a persistent read failure should be delivered once").toEqual([
                 {
@@ -202,8 +219,12 @@ describe("root-bound selected-change host", () => {
                 posted,
                 "recovery must allow the same failure to be reported again",
             ).toHaveLength(3);
+            const readsBeforeDisposal = reads.mock.calls.length;
             host.dispose();
             vi.advanceTimersByTime(2000);
+            expect(reads.mock.calls.length, "disposed hosts must stop reading metadata").toBe(
+                readsBeforeDisposal,
+            );
             expect(posted, "disposed hosts must stop polling").toHaveLength(3);
         } finally {
             host.dispose();
