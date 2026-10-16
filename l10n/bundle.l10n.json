@@ -894,5 +894,8 @@
     "Remove {source} and move its changes to {target}? File content and staging are preserved.": "Remove {source} and move its changes to {target}? File content and staging are preserved.",
     "Commit partial text and structural changes separately.": "Commit partial text and structural changes separately.",
     "Commit Whole Files": "Commit Whole Files",
-    "These deleted or renamed files have stale change assignments. Commit their complete changes?": "These deleted or renamed files have stale change assignments. Commit their complete changes?"
+    "These deleted or renamed files have stale change assignments. Commit their complete changes?": "These deleted or renamed files have stale change assignments. Commit their complete changes?",
+    "Open Partial Changes is only available for local files.": "Open Partial Changes is only available for local files.",
+    "Open Partial Changes failed: {message}": "Open Partial Changes failed: {message}",
+    "Selected file is not in a known IntelliGit repository.": "Selected file is not in a known IntelliGit repository."
 }

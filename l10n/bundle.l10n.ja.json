@@ -894,5 +894,8 @@
     "Remove {source} and move its changes to {target}? File content and staging are preserved.": "{source} を削除して変更を {target} に移動しますか？ファイル内容とステージング状態は保持されます。",
     "Commit partial text and structural changes separately.": "テキストの部分的な変更と構造的な変更は別々にコミットしてください。",
     "Commit Whole Files": "ファイル全体をコミット",
-    "These deleted or renamed files have stale change assignments. Commit their complete changes?": "削除または名前変更されたこれらのファイルでは、変更の割り当てが古くなっています。ファイルの変更全体をコミットしますか？"
+    "These deleted or renamed files have stale change assignments. Commit their complete changes?": "削除または名前変更されたこれらのファイルでは、変更の割り当てが古くなっています。ファイルの変更全体をコミットしますか？",
+    "Open Partial Changes is only available for local files.": "部分的な変更を開けるのはローカルファイルのみです。",
+    "Open Partial Changes failed: {message}": "部分的な変更を開けませんでした: {message}",
+    "Selected file is not in a known IntelliGit repository.": "選択したファイルは、IntelliGit が認識するリポジトリ内にありません。"
 }

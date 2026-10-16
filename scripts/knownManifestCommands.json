@@ -66,6 +66,7 @@
         "intelligit.openFolder",
         "intelligit.openMergeConflict",
         "intelligit.openMergeConflictInVsCode",
+        "intelligit.openPartialChanges",
         "intelligit.openRepository",
         "intelligit.openRepository.color",
         "intelligit.openUndocked",

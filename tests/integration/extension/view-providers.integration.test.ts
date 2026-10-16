@@ -1,6 +1,7 @@
 import { ChangelistStore } from "../../../src/changes/changelistStore";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { mkdtemp } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
+import { mkdtemp, mkdir, writeFile, realpath } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { removeScratchDirectories } from "../../helpers/scratchDirectories";
@@ -1008,6 +1009,74 @@ async function setupCommitPanelProvider(
     return { provider, gitOps, webview, draftStore };
 }
 
+/** Real Git repositories with distinct content and an unresolved normal Changes view. */
+async function nativePartialProviderFixture() {
+    const directory = await realpath(
+        await mkdtemp(path.join(tmpdir(), "intelligit-native-partial-")),
+    );
+    const roots = [path.join(directory, "a"), path.join(directory, "b")];
+    for (const root of roots) {
+        await mkdir(root);
+        const run = (args: string[]) => execFileSync("git", args, { cwd: root, stdio: "pipe" });
+        run(["init", "-q"]);
+        run(["config", "user.name", "Native"]);
+        run(["config", "user.email", "native@example.invalid"]);
+        run(["config", "commit.gpgSign", "false"]);
+        await writeFile(path.join(root, "file.txt"), "base\n");
+        run(["add", "file.txt"]);
+        run(["commit", "-qm", "base"]);
+        await writeFile(path.join(root, "file.txt"), `repository ${path.basename(root)} change\n`);
+    }
+    const { GitExecutor } = await vi.importActual<typeof import("../../../src/git/executor")>(
+        "../../../src/git/executor",
+    );
+    const { GitOps } = await vi.importActual<typeof import("../../../src/git/operations")>(
+        "../../../src/git/operations",
+    );
+    const { ChangelistStore: CurrentStore } = await import("../../../src/changes/changelistStore");
+    const { CommitPanelViewProvider } = await import("../../../src/views/CommitPanelViewProvider");
+    const state = createMemento();
+    const executor = new GitExecutor(roots[0]);
+    const gitOps = new GitOps(executor);
+    const attached: string[] = [];
+    const provider = new CommitPanelViewProvider(
+        vscodeMock.Uri.file("/ext") as never,
+        gitOps,
+        vscodeMock.Uri.file(roots[0]) as never,
+        state as never,
+        undefined,
+        undefined,
+        true,
+        undefined,
+        undefined,
+        () => ({
+            ...createNoopNativeCommitInputBridge(),
+            attach: (root: string) => {
+                attached.push(root);
+            },
+        }),
+    );
+    provider.setRepositories(
+        roots.map((root) => ({ root, name: path.basename(root), isWorktree: false })),
+        roots[0],
+    );
+    await vi.waitFor(() => expect(attached).toEqual(expect.arrayContaining(roots)));
+    return {
+        directory,
+        roots,
+        provider,
+        executor,
+        gitOps,
+        state,
+        Store: CurrentStore,
+        dispose: async () => {
+            for (const panel of createdWebviewPanels) panel.dispose();
+            provider.dispose();
+            await removeScratchDirectories(directory);
+        },
+    };
+}
+
 describe("view providers integration", () => {
     beforeEach(async () => {
         // Normally primed once during activation, before any diff-opening code can run. This
@@ -1064,6 +1133,121 @@ describe("view providers integration", () => {
             }) => Promise<void>;
             await nativeDelegate({ isCancellationRequested: false });
         });
+    });
+
+    it("native partial entry uses repository B while A is selected", async () => {
+        const fixture = await nativePartialProviderFixture();
+        const { ChangeWorkflowHost } = await import("../../../src/views/ChangeWorkflowHost");
+        const calls = vi.spyOn(ChangeWorkflowHost.prototype, "openFromEditor");
+        try {
+            for (let attempt = 0; attempt < 2; attempt++) {
+                await fixture.provider.openPartialChanges(fixture.roots[1], "file.txt");
+                postMessageSpy.mockClear();
+                await createdWebviewPanels.at(-1)!.send({ type: "ready" });
+                const data = postMessageSpy.mock.calls
+                    .map(([message]) => message)
+                    .find((message) => message.type === "partialFile");
+                expect(data, "repository B must produce a usable partial panel").toMatchObject({
+                    listId: "all",
+                    file: { path: "file.txt" },
+                });
+                expect(
+                    JSON.stringify(data.file.blocks),
+                    "explicit repository B must win over selected A",
+                ).toContain("repository b change");
+                expect(JSON.stringify(data.file.blocks)).not.toContain("repository a change");
+            }
+            expect(
+                (fixture.provider as unknown as { activeRepositoryRoot: string })
+                    .activeRepositoryRoot,
+            ).toBe(fixture.roots[0]);
+            expect(calls.mock.instances[0], "native opens must reuse the root's workflow").toBe(
+                calls.mock.instances[1],
+            );
+        } finally {
+            calls.mockRestore();
+            await fixture.dispose();
+        }
+    });
+
+    it("native partial entry rejects an unknown repository without opening a panel", async () => {
+        const fixture = await nativePartialProviderFixture();
+        try {
+            await expect(
+                fixture.provider.openPartialChanges(
+                    path.join(fixture.directory, "unknown"),
+                    "file.txt",
+                ),
+                "unknown roots must not fall back to the selected repository",
+            ).rejects.toThrow("known IntelliGit repository");
+            expect(createdWebviewPanels).toHaveLength(0);
+        } finally {
+            await fixture.dispose();
+        }
+    });
+
+    it("native partial entry works before the commit view is resolved", async () => {
+        const fixture = await nativePartialProviderFixture();
+        try {
+            await fixture.provider.openPartialChanges(fixture.roots[1], "file.txt");
+            await createdWebviewPanels.at(-1)!.send({ type: "ready" });
+            expect(postMessageSpy.mock.calls.map(([message]) => message)).toContainEqual(
+                expect.objectContaining({ type: "partialFile", listId: "all" }),
+            );
+            expect(JSON.stringify(postMessageSpy.mock.calls)).toContain("repository b change");
+        } finally {
+            await fixture.dispose();
+        }
+    });
+
+    it("native command reports hidden-view durable connection failure", async () => {
+        const fixture = await nativePartialProviderFixture();
+        const { registerRepositoryCommands } =
+            await import("../../../src/activation/repositoryCommands");
+        const contextCommands = await import("../../../src/commands/fileContextCommands");
+        const resolve = vi.spyOn(contextCommands, "resolveFileCommandContext").mockResolvedValue({
+            repoRoot: fixture.roots[1],
+            repoRelativePath: "file.txt",
+        } as never);
+        const connect = vi
+            .spyOn(fixture.Store.prototype, "connect")
+            .mockRejectedValueOnce(new Error("hidden-view durable failure"));
+        const translate = vi
+            .spyOn(vscodeMock.l10n, "t")
+            .mockImplementation((message, values) =>
+                message.replace(
+                    /\{([^}]+)\}/g,
+                    (match, key: string) =>
+                        (values as Record<string, string> | undefined)?.[key] ?? match,
+                ),
+            );
+        try {
+            registerRepositoryCommands({
+                context: { subscriptions: [], extensionUri: vscodeMock.Uri.file("/ext") },
+                executor: fixture.executor,
+                gitOps: fixture.gitOps,
+                worktreeService: {},
+                getRepoRoot: () => fixture.roots[0],
+                getCurrentBranches: () => [],
+                getCurrentBranchName: () => "main",
+                refreshService: () => ({}),
+                openPartialChanges: (root: string, file: string) =>
+                    fixture.provider.openPartialChanges(root, file),
+            } as never);
+            await registeredCommands.get("intelligit.openPartialChanges")?.(
+                vscodeMock.Uri.file(path.join(fixture.roots[1], "file.txt")),
+            );
+            expect(
+                showErrorMessage,
+                "hidden-view connection failure must reach native error UI",
+            ).toHaveBeenCalledWith(expect.stringContaining("hidden-view durable failure"));
+            expect(createdWebviewPanels).toHaveLength(0);
+        } finally {
+            translate.mockRestore();
+            connect.mockRestore();
+            resolve.mockRestore();
+            await fixture.dispose();
+        }
     });
 
     it("CommitPanelViewProvider sends one correlated generation request with its fresh validated snapshot", async () => {

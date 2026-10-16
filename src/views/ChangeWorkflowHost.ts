@@ -12,6 +12,7 @@ import { assertRepoPathArray, assertString } from "./messageValidation";
 import { commitSelectedFromPanel, runGitOperationFromPanel } from "./commitPanelActions";
 import { showDiffFromPanel } from "./panelFileActions";
 import { getErrorMessage } from "../utils/errors";
+import { assertRepoRelativePath } from "../utils/fileOps";
 import { showTimedWarningMessage } from "../utils/notifications";
 import { PartialIndexPublicationError } from "../git/partialIndexTransaction";
 import type { ChangelistState } from "../webviews/protocol/changeSelection";
@@ -107,6 +108,16 @@ export class ChangeWorkflowHost {
     dispose(): void {
         this.unsubscribe();
         clearInterval(this.poll);
+    }
+
+    /**
+     * Opens this root's aggregate partial editor after durable state is connected.
+     * Path and connection failures reject to the native caller before a panel opens.
+     */
+    async openFromEditor(file: string): Promise<void> {
+        const filePath = assertRepoRelativePath(file);
+        await this.connect();
+        this.open(filePath, undefined);
     }
 
     /** Durable migration is awaited before host intents can mutate metadata or Git. */

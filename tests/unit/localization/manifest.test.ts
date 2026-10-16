@@ -53,6 +53,7 @@ type ExtensionManifest = {
     contributes?: {
         commands?: CommandContribution[];
         menus?: {
+            [key: string]: WebviewContextMenuItem[] | undefined;
             commandPalette?: WebviewContextMenuItem[];
             "webview/context"?: WebviewContextMenuItem[];
             "view/title"?: WebviewContextMenuItem[];
@@ -75,6 +76,43 @@ type ExtensionManifest = {
 };
 
 describe("extension manifest", () => {
+    it("contributes native partial changes only to editor context surfaces", () => {
+        const manifest = JSON.parse(
+            readFileSync(path.join(process.cwd(), "package.json"), "utf8"),
+        ) as ExtensionManifest;
+        const command = "intelligit.openPartialChanges";
+        expect(
+            manifest.contributes?.commands?.filter((entry) => entry.command === command),
+        ).toEqual([{ command, title: "%command.openPartialChanges%", category: "%intelligit%" }]);
+        const menus = manifest.contributes?.menus ?? {};
+        for (const surface of ["intelligit.editorContext", "editor/title/context"]) {
+            expect(menus[surface]?.filter((entry) => entry.command === command)).toEqual([
+                { command, when: "resourceScheme == file", group: "0_commit@3" },
+            ]);
+        }
+        for (const surface of [
+            "editor/title",
+            "intelligit.fileContext",
+            "explorer/context",
+            "commandPalette",
+        ]) {
+            expect(menus[surface]?.filter((entry) => entry.command === command) ?? []).toEqual([]);
+        }
+        expect(menus["editor/title/context"]).toContainEqual(
+            expect.objectContaining({ submenu: "intelligit.fileContext" }),
+        );
+        expect(menus["editor/context"]).toContainEqual(
+            expect.objectContaining({ submenu: "intelligit.editorContext" }),
+        );
+        expect(menus["explorer/context"]).toContainEqual(
+            expect.objectContaining({ submenu: "intelligit.fileContext" }),
+        );
+        const catalog = JSON.parse(
+            readFileSync(path.join(process.cwd(), "package.nls.json"), "utf8"),
+        );
+        expect(catalog["command.openPartialChanges"]).toBe("Open Partial Changes");
+    });
+
     it("requires the workspace extension host and refuses virtual-only filesystem workspaces", () => {
         const manifest = JSON.parse(
             readFileSync(path.join(process.cwd(), "package.json"), "utf8"),

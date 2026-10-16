@@ -20,6 +20,7 @@ import {
     newBranchFileFromContext,
     newTagFileFromContext,
     resetHeadFileFromContext,
+    resolveFileCommandContext,
     stashChangesFromContext,
     unstashChangesFromContext,
     rebaseFileFromContext,
@@ -103,6 +104,8 @@ interface RepositoryCommandsDeps {
         labels: { sourceBranch?: string; targetBranch?: string },
     ) => Promise<void>;
     openVsCodeMergeEditorForFile: (filePath: string) => Promise<void>;
+    /** Opens the resolved local file through its known repository's shared partial workflow. */
+    openPartialChanges: (repositoryRoot: string, filePath: string) => Promise<void>;
 }
 
 /** Narrows command payloads from tree rows before file operations touch the repository. */
@@ -853,6 +856,24 @@ function registerCommitFileCommands(deps: RepositoryCommandsDeps): void {
     } = deps;
 
     context.subscriptions.push(
+        vscode.commands.registerCommand("intelligit.openPartialChanges", async (ctx: unknown) => {
+            try {
+                const resolved = await resolveFileCommandContext(ctx, gitOps);
+                if (!resolved) {
+                    await vscode.window.showErrorMessage(
+                        vscode.l10n.t("Open Partial Changes is only available for local files."),
+                    );
+                    return;
+                }
+                await deps.openPartialChanges(resolved.repoRoot, resolved.repoRelativePath);
+            } catch (error) {
+                await vscode.window.showErrorMessage(
+                    vscode.l10n.t("Open Partial Changes failed: {message}", {
+                        message: getErrorMessage(error),
+                    }),
+                );
+            }
+        }),
         vscode.commands.registerCommand("intelligit.fileCommit", async (ctx: unknown) => {
             await commitFileFromContext(
                 ctx,

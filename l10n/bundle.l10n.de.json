@@ -894,5 +894,8 @@
     "Remove {source} and move its changes to {target}? File content and staging are preserved.": "{source} entfernen und seine Änderungen nach {target} verschieben? Dateiinhalte und Staging bleiben erhalten.",
     "Commit partial text and structural changes separately.": "Partielle Textänderungen und strukturelle Änderungen getrennt committen.",
     "Commit Whole Files": "Vollständige Dateien committen",
-    "These deleted or renamed files have stale change assignments. Commit their complete changes?": "Die Änderungszuordnungen dieser gelöschten oder umbenannten Dateien sind veraltet. Alle Änderungen dieser Dateien committen?"
+    "These deleted or renamed files have stale change assignments. Commit their complete changes?": "Die Änderungszuordnungen dieser gelöschten oder umbenannten Dateien sind veraltet. Alle Änderungen dieser Dateien committen?",
+    "Open Partial Changes is only available for local files.": "Teiländerungen können nur für lokale Dateien geöffnet werden.",
+    "Open Partial Changes failed: {message}": "Teiländerungen konnten nicht geöffnet werden: {message}",
+    "Selected file is not in a known IntelliGit repository.": "Die ausgewählte Datei befindet sich nicht in einem bekannten IntelliGit-Repository."
 }

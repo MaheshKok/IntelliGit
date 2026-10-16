@@ -535,6 +535,20 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         });
     }
 
+    /**
+     * Opens a local file in its registered repository's aggregate partial editor.
+     * Unknown roots and workflow failures reject without changing the selected repository.
+     */
+    async openPartialChanges(repositoryRoot: string, filePath: string): Promise<void> {
+        const runtime = this.runtimes.get(repositoryRoot);
+        if (!runtime) {
+            throw new Error(
+                vscode.l10n.t("Selected file is not in a known IntelliGit repository."),
+            );
+        }
+        await this.changeWorkflow(runtime).openFromEditor(filePath);
+    }
+
     private getActiveRuntime(): CommitPanelRepositoryRuntime | undefined {
         return this.activeRepositoryRoot !== null
             ? this.runtimes.get(this.activeRepositoryRoot)

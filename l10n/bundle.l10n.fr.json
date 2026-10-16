@@ -894,5 +894,8 @@
     "Remove {source} and move its changes to {target}? File content and staging are preserved.": "Supprimer {source} et déplacer ses modifications vers {target} ? Le contenu des fichiers et l’index sont conservés.",
     "Commit partial text and structural changes separately.": "Créez des commits distincts pour les modifications partielles de texte et les modifications structurelles.",
     "Commit Whole Files": "Créer un commit des fichiers entiers",
-    "These deleted or renamed files have stale change assignments. Commit their complete changes?": "Les affectations des modifications de ces fichiers supprimés ou renommés sont obsolètes. Créer un commit de toutes leurs modifications ?"
+    "These deleted or renamed files have stale change assignments. Commit their complete changes?": "Les affectations des modifications de ces fichiers supprimés ou renommés sont obsolètes. Créer un commit de toutes leurs modifications ?",
+    "Open Partial Changes is only available for local files.": "Les modifications partielles ne peuvent être ouvertes que pour des fichiers locaux.",
+    "Open Partial Changes failed: {message}": "Impossible d’ouvrir les modifications partielles : {message}",
+    "Selected file is not in a known IntelliGit repository.": "Le fichier sélectionné n’est pas dans un dépôt connu d’IntelliGit."
 }

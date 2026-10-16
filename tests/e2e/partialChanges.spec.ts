@@ -1,10 +1,10 @@
-import { readFile, readdir, writeFile, mkdir } from "node:fs/promises";
+import { readFile, readdir, writeFile, mkdir, realpath } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
 import path from "node:path";
 import type { FrameLocator, Page } from "@playwright/test";
 import { expect, test } from "./fixtureWorkspace";
 import { runGitRaw as runGit } from "../fixtures/repo/gitRun";
-import { waitForE2eChannelReady } from "./controlChannelClient";
+import { E2eControlChannelClient, waitForE2eChannelReady } from "./controlChannelClient";
 import {
     launchFixtureWorkspace,
     dismissFirstRunDialogs,
@@ -51,6 +51,278 @@ async function createList(page: Page, frame: FrameLocator, name: string): Promis
 
 test.describe("Selected changes and changelists", () => {
     test.use({ scenario: "clean" });
+
+    test("native partial entry routes editor menus and palette to a linked worktree without Git changes", async ({
+        fixtureWorkspace,
+    }, testInfo) => {
+        const { workspace } = fixtureWorkspace;
+        await createFiles(workspace.root, workspace.env);
+        const unsupported = "native-long-line.txt";
+        await writeFile(path.join(workspace.root, unsupported), "baseline\n");
+        await runGit(workspace.root, ["add", "--", unsupported], workspace.env);
+        await runGit(
+            workspace.root,
+            ["commit", "-m", "Unsupported content baseline", "--only", "--", unsupported],
+            workspace.env,
+        );
+        const a = await realpath(workspace.root);
+        const b = path.join(a, "native-partial-b");
+        await runGit(a, ["worktree", "add", "-b", "native-partial-b", b], workspace.env);
+        const bWorking = base.replace("first = 1", "first = 7").replace("second = 2", "second = 8");
+        await writeFile(path.join(b, FILE), base.replace("first = 1", "first = 7"));
+        await runGit(b, ["add", "--", FILE], workspace.env);
+        await writeFile(path.join(b, FILE), bWorking);
+        const unsupportedBytes = `long line starts ${"x".repeat(17_000)}\n`;
+        await writeFile(path.join(b, unsupported), unsupportedBytes);
+        const gitDirB = (
+            await runGit(b, ["rev-parse", "--absolute-git-dir"], workspace.env)
+        ).trim();
+        const metadataB = path.join(gitDirB, "intelligit/changelists/state.json");
+        const settingsPath = path.join(workspace.root, ".vscode/settings.json");
+        await mkdir(path.dirname(settingsPath), { recursive: true });
+        await writeFile(
+            settingsPath,
+            JSON.stringify({
+                "diffEditor.renderSideBySide": true,
+                "diffEditor.useInlineViewWhenSpaceIsLimited": false,
+            }),
+        );
+        const app = await launchFixtureWorkspace({
+            executablePath: await resolveVSCodeExecutable(REPO_ROOT),
+            repoRoot: REPO_ROOT,
+            workspace,
+            channelDir: fixtureWorkspace.channelDir,
+            timeout: 60_000,
+        });
+        try {
+            const page = await app.firstWindow();
+            await dismissFirstRunDialogs(page);
+            await waitForE2eChannelReady(fixtureWorkspace.channelDir);
+            const workbench = new Workbench(page);
+            const view = new IntelliGitView(page);
+            const channel = new E2eControlChannelClient(fixtureWorkspace.channelDir);
+            const chooseRepository = async (name: string) => {
+                await workbench.runCommand("IntelliGit: Select Repository");
+                const input = page.getByPlaceholder("Select IntelliGit repository", {
+                    exact: true,
+                });
+                await expect(input).toBeVisible();
+                await input.fill(name);
+                await input.press("Enter");
+            };
+            const selectedRepository = async () => {
+                const result = await channel.request({
+                    store: "memento",
+                    scope: "workspace",
+                    key: "intelligit.selectedRepositoryRoot",
+                    operation: "snapshot",
+                });
+                return result.ok && result.result;
+            };
+            const openB = async () => {
+                await page.keyboard.press("ControlOrMeta+P");
+                const input = page.locator(".quick-input-widget .quick-input-box input").first();
+                await input.fill(path.join(workspace.root, "native-partial-b", FILE));
+                await input.press("Enter");
+                await expect(
+                    page
+                        .locator(".editor-group-container .monaco-editor:visible .view-lines")
+                        .first(),
+                ).toContainText("first = 7");
+            };
+            const snapshot = async (root: string) => ({
+                head: await runGit(root, ["rev-parse", "HEAD"], workspace.env),
+                index: await readFile(
+                    path.resolve(
+                        root,
+                        (
+                            await runGit(root, ["rev-parse", "--git-path", "index"], workspace.env)
+                        ).trim(),
+                    ),
+                ),
+                worktree: await readFile(path.join(root, FILE)),
+                staged: await runGit(root, ["diff", "--cached", "--binary"], workspace.env),
+                unstaged: await runGit(root, ["diff", "--binary"], workspace.env),
+            });
+            const choosePartialSubmenu = async () => {
+                const parent = page.getByRole("menuitem", { name: "IntelliGit", exact: true });
+                await parent.click();
+                const action = page.getByRole("menuitem", {
+                    name: "Open Partial Changes",
+                    exact: true,
+                });
+                if (!(await action.count())) {
+                    await parent.hover();
+                    await page.keyboard.press("ArrowRight");
+                }
+                await expect(action).toBeVisible();
+                await action.hover();
+                await page.keyboard.press("Enter");
+            };
+            await chooseRepository(path.basename(a));
+            await expect.poll(selectedRepository).toMatchObject({ kind: "value", value: a });
+            await openB();
+            await chooseRepository("native-partial-b");
+            await expect.poll(selectedRepository).toMatchObject({ kind: "value", value: b });
+            await chooseRepository(path.basename(a));
+            await expect.poll(selectedRepository).toMatchObject({ kind: "value", value: a });
+            // Selection confirms discovery; fresh metadata stays lazy until its first workflow opens.
+            const beforeA = await snapshot(a);
+            const beforeB = await snapshot(b);
+            for (const surface of ["title", "body", "palette", "working-diff"] as const) {
+                if (surface !== "title") {
+                    await openB();
+                    await chooseRepository(path.basename(a));
+                    await expect
+                        .poll(selectedRepository)
+                        .toMatchObject({ kind: "value", value: a });
+                }
+                if (surface === "title") {
+                    await page
+                        .getByRole("tab", { name: new RegExp(FILE.replace(".", "\\.")) })
+                        .last()
+                        .click({ button: "right" });
+                    await expect(
+                        page.getByRole("menuitem", { name: "IntelliGit", exact: true }),
+                    ).toBeVisible();
+                    await page
+                        .getByRole("menuitem", { name: "Open Partial Changes", exact: true })
+                        .hover();
+                    await page.keyboard.press("Enter");
+                } else if (surface === "body") {
+                    await page
+                        .locator(".editor-group-container .monaco-editor:visible .view-lines")
+                        .first()
+                        .click({ button: "right" });
+                    await choosePartialSubmenu();
+                } else if (surface === "palette") {
+                    await workbench.runCommand("IntelliGit: Open Partial Changes");
+                } else {
+                    await page.keyboard.press("ControlOrMeta+Shift+P");
+                    await page
+                        .getByPlaceholder("Type the name of a command to run.", { exact: true })
+                        .fill(">Git: Open Changes");
+                    await page
+                        .getByRole("option", { name: "Git: Open Changes", exact: true })
+                        .filter({ hasText: "git.openChange" })
+                        .click();
+                    const workingEditor = page.locator(
+                        ".monaco-diff-editor .editor.modified .view-lines:visible",
+                    );
+                    await expect(workingEditor).toContainText("first = 7");
+                    const originalEditor = page.locator(
+                        ".monaco-diff-editor .editor.original .view-lines:visible",
+                    );
+                    await originalEditor.click({ button: "right" });
+                    const originalSubmenu = page.getByRole("menuitem", {
+                        name: "IntelliGit",
+                        exact: true,
+                    });
+                    if (await originalSubmenu.count()) await originalSubmenu.click();
+                    await expect(
+                        page.getByRole("menuitem", { name: "Open Partial Changes", exact: true }),
+                    ).toHaveCount(0);
+                    await page.keyboard.press("Escape");
+                    await workbench.runCommand("IntelliGit: Open Partial Changes");
+                    await expect(
+                        page.getByText("Open Partial Changes is only available for local files.", {
+                            exact: true,
+                        }),
+                    ).toBeVisible();
+                    await workingEditor.click();
+                    await chooseRepository(path.basename(a));
+                    await expect
+                        .poll(selectedRepository)
+                        .toMatchObject({ kind: "value", value: a });
+                    await workingEditor.click({ button: "right" });
+                    await choosePartialSubmenu();
+                }
+                const editor = await view.revealPartialChanges(FILE);
+                await expect(editor.locator(".partial-block")).toHaveCount(2);
+                await expect(editor.locator(".partial-changes")).toContainText("first = 7");
+                await expect(editor.locator(".partial-changes")).toContainText("second = 8");
+                expect(await snapshot(a), `${surface}: selected A Git bytes`).toEqual(beforeA);
+                expect(await snapshot(b), `${surface}: addressed B Git bytes`).toEqual(beforeB);
+                expect(await selectedRepository()).toMatchObject({ kind: "value", value: a });
+                await page.screenshot({
+                    path: testInfo.outputPath(`native-partial-${surface}.png`),
+                });
+                const partialTab = page.getByRole("tab", { name: /Selected changes:/ });
+                await partialTab.click({ button: "middle" });
+                await expect(partialTab).toHaveCount(0);
+            }
+            await chooseRepository("native-partial-b");
+            const sidebar = await view.reveal();
+            await createList(page, sidebar, "Native assignment");
+            await sidebar
+                .getByRole("combobox", { name: "Changelists", exact: true })
+                .selectOption({ label: "Native assignment" });
+            await sidebar.locator("#commit-area-message").fill("preserved native draft");
+            await expect
+                .poll(
+                    async () =>
+                        JSON.parse(await readFile(metadataB, "utf8")).state.lists.find(
+                            (list: { name: string }) => list.name === "Native assignment",
+                        )?.draft,
+                )
+                .toBe("preserved native draft");
+            const beforeState = JSON.parse(await readFile(metadataB, "utf8")).state;
+            await openB();
+            await chooseRepository(path.basename(a));
+            await expect.poll(selectedRepository).toMatchObject({ kind: "value", value: a });
+            await workbench.runCommand("IntelliGit: Open Partial Changes");
+            const editor = await view.revealPartialChanges(FILE);
+            await expect(editor.locator(".partial-block")).toHaveCount(2);
+            await editor.getByRole("checkbox", { name: "Select block 1", exact: true }).uncheck();
+            await editor
+                .getByRole("combobox", { name: "Target changelist", exact: true })
+                .selectOption({ label: "Native assignment" });
+            await editor.getByRole("button", { name: "Assign selected", exact: true }).click();
+            await expect
+                .poll(async () =>
+                    Object.values(
+                        JSON.parse(await readFile(metadataB, "utf8")).state.changes[FILE].lines,
+                    ),
+                )
+                .toContain(
+                    beforeState.lists.find(
+                        (list: { name: string }) => list.name === "Native assignment",
+                    ).id,
+                );
+            const afterState = JSON.parse(await readFile(metadataB, "utf8")).state;
+            expect(afterState.activeId).toBe(beforeState.activeId);
+            expect(afterState.lists).toEqual(beforeState.lists);
+            expect(afterState.allDraft).toBe(beforeState.allDraft);
+            expect(await snapshot(a)).toEqual(beforeA);
+            expect(await snapshot(b)).toEqual(beforeB);
+            await page.screenshot({ path: testInfo.outputPath("native-partial-assignment.png") });
+            await page.getByRole("tab", { name: /Selected changes:/ }).click({ button: "middle" });
+            await page.keyboard.press("ControlOrMeta+P");
+            const input = page.locator(".quick-input-widget .quick-input-box input").first();
+            await input.fill(path.join(b, unsupported));
+            await input.press("Enter");
+            await expect(
+                page.locator(".editor-group-container .monaco-editor:visible .view-lines").first(),
+            ).toContainText("long line starts");
+            await chooseRepository(path.basename(a));
+            await expect.poll(selectedRepository).toMatchObject({ kind: "value", value: a });
+            await workbench.runCommand("IntelliGit: Open Partial Changes");
+            // Failed loads have no file snapshot, so only the panel's generic marker exists.
+            const unsupportedPanel = await view.revealPartialChanges();
+            await expect(unsupportedPanel.getByRole("alert")).toHaveText(
+                "Selected changes failed: Very long lines and large line counts require whole-file handling.",
+            );
+            await expect(unsupportedPanel.locator(".partial-block")).toHaveCount(0);
+            expect(await snapshot(a), "unsupported content: selected A Git bytes").toEqual(beforeA);
+            expect(await snapshot(b), "unsupported content: addressed B Git bytes").toEqual(
+                beforeB,
+            );
+            expect(await readFile(path.join(b, unsupported), "utf8")).toBe(unsupportedBytes);
+            await page.screenshot({ path: testInfo.outputPath("native-partial-unsupported.png") });
+        } finally {
+            await app.close();
+        }
+    });
 
     test("attributes new edits to the active list and preserves earlier ownership through reload", async ({
         fixtureWorkspace,

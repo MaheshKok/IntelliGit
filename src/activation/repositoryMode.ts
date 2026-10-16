@@ -1400,6 +1400,7 @@ export async function activateRepositoryMode(
         openConflictSession,
         openConflictSessionForRepository,
         openVsCodeMergeEditorForFile,
+        openPartialChanges: (root, filePath) => commitPanel.openPartialChanges(root, filePath),
     });
     registerShelfCommands({
         context,

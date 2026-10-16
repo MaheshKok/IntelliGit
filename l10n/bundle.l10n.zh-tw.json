@@ -894,5 +894,8 @@
     "Remove {source} and move its changes to {target}? File content and staging are preserved.": "移除 {source} 並將其變更移至 {target}？檔案內容和暫存狀態將保留。",
     "Commit partial text and structural changes separately.": "請分別提交部分文字變更和結構性變更。",
     "Commit Whole Files": "提交整個檔案",
-    "These deleted or renamed files have stale change assignments. Commit their complete changes?": "這些已刪除或重新命名檔案的變更歸組已過時。要提交它們的全部變更嗎？"
+    "These deleted or renamed files have stale change assignments. Commit their complete changes?": "這些已刪除或重新命名檔案的變更歸組已過時。要提交它們的全部變更嗎？",
+    "Open Partial Changes is only available for local files.": "僅能為本機檔案開啟部分變更。",
+    "Open Partial Changes failed: {message}": "無法開啟部分變更：{message}",
+    "Selected file is not in a known IntelliGit repository.": "所選檔案不在 IntelliGit 已知的儲存庫中。"
 }

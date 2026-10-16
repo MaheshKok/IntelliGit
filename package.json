@@ -2,7 +2,7 @@
     "name": "intelligit",
     "displayName": "IntelliGit",
     "description": "%extension.description%",
-    "version": "0.38.2",
+    "version": "0.38.3",
     "publisher": "MaheshKok",
     "icon": "media/intelligit-icon.png",
     "license": "MIT",
@@ -452,6 +452,11 @@
                 "icon": "$(git-commit)"
             },
             {
+                "command": "intelligit.openPartialChanges",
+                "title": "%command.openPartialChanges%",
+                "category": "%intelligit%"
+            },
+            {
                 "command": "intelligit.fileRollback",
                 "title": "%command.rollback%",
                 "category": "%intelligit%",
@@ -899,6 +904,11 @@
                     "submenu": "intelligit.fileContext",
                     "when": "resourceScheme == file",
                     "group": "2_history@1"
+                },
+                {
+                    "command": "intelligit.openPartialChanges",
+                    "when": "resourceScheme == file",
+                    "group": "0_commit@3"
                 }
             ],
             "explorer/context": [
@@ -1140,6 +1150,11 @@
                     "command": "intelligit.cloneRepository",
                     "when": "resourceScheme == file",
                     "group": "4_branch@11"
+                },
+                {
+                    "command": "intelligit.openPartialChanges",
+                    "when": "resourceScheme == file",
+                    "group": "0_commit@3"
                 }
             ],
             "intelligit.githubContext": [

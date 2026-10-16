@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { execFileSync } from "node:child_process";
-import { mkdtemp, readFile, writeFile, chmod } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile, chmod, readdir, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import {
@@ -163,6 +163,32 @@ async function partialEditor() {
     };
 }
 
+/** Snapshots Git bytes without status refreshes that could rewrite the index. */
+async function nativeGitSnapshot() {
+    return {
+        head: git(["rev-parse", "HEAD"]),
+        index: await readFile(path.resolve(root, git(["rev-parse", "--git-path", "index"]).trim())),
+        worktree: await readFile(path.join(root, "file.txt")),
+        staged: git(["diff", "--cached", "--binary"]),
+        unstaged: git(["diff", "--binary"]),
+    };
+}
+
+/** Completes the real partial panel's ready exchange and requires usable file data. */
+async function readyNativePanel() {
+    const panel = getCreatedWebviewPanels().at(-1)!;
+    const messages: PartialEditorReply[] = [];
+    panel.webview.postMessage = (message: unknown) => {
+        messages.push(message as PartialEditorReply);
+        return Promise.resolve(true);
+    };
+    await panel.receiveMessage({ type: "ready" });
+    const data = messages.find((message) => message.type === "partialFile");
+    expect(data, JSON.stringify(messages)).toBeDefined();
+    if (!data || data.type !== "partialFile") throw new Error("Missing native partial data");
+    return data;
+}
+
 describe("root-bound selected-change host", () => {
     it("reports each persistent poll failure once and reports it again after recovery", async () => {
         host.dispose();
@@ -230,6 +256,129 @@ describe("root-bound selected-change host", () => {
             host.dispose();
             vi.useRealTimers();
         }
+    });
+
+    it("native entry opens a usable aggregate editor without changing scope or Git state", async () => {
+        const created = await store.create(root, store.get(root).revision, "Native list");
+        const id = created.lists.find((list) => list.name === "Native list")!.id;
+        await store.activate(root, store.get(root).revision, id);
+        await store.saveDraft(root, "all", "", "aggregate draft");
+        await store.saveDraft(root, id, "", "named draft");
+        store.selectDraft(root, id);
+        const before = store.get(root);
+        const gitBefore = await nativeGitSnapshot();
+        await host.openFromEditor("file.txt");
+        const data = await readyNativePanel();
+        expect(data).toMatchObject({ listId: "all", file: { path: "file.txt" } });
+        expect(JSON.stringify(data.file.blocks)).toContain("selected");
+        expect(JSON.stringify(data.file.blocks)).toContain("remaining");
+        expect(store.get(root).activeId).toBe(before.activeId);
+        expect(store.get(root).lists).toEqual(before.lists);
+        expect(store.get(root).allDraft).toBe(before.allDraft);
+        expect(store.mirrorScope(root)).toBe(id);
+        expect(
+            await nativeGitSnapshot(),
+            "opening must preserve HEAD, raw index, worktree and diffs",
+        ).toEqual(gitBefore);
+    });
+
+    it.each(["../outside.txt", "/outside.txt"])(
+        "native entry rejects traversal before connecting or opening a panel: %s",
+        async (file) => {
+            host.dispose();
+            host = new ChangeWorkflowHost(hostDeps);
+            const connect = vi.spyOn(ChangelistStore.prototype, "connect");
+            await expect(
+                host.openFromEditor(file),
+                "unsafe native paths must reject",
+            ).rejects.toThrow();
+            expect(
+                connect,
+                "unsafe native paths must reject before connecting",
+            ).not.toHaveBeenCalled();
+            expect(getCreatedWebviewPanels()).toHaveLength(0);
+        },
+    );
+
+    it("native entry accepts a nested repository-relative filename", async () => {
+        await mkdir(path.join(root, "nested"));
+        await writeFile(path.join(root, "nested/file.txt"), "nested base\n");
+        git(["add", "nested/file.txt"]);
+        git(["commit", "-qm", "nested baseline"]);
+        await writeFile(path.join(root, "nested/file.txt"), "nested change\n");
+        await host.openFromEditor("nested/file.txt");
+        const data = await readyNativePanel();
+        expect(data.file.path).toBe("nested/file.txt");
+        expect(JSON.stringify(data.file.blocks)).toContain("nested change");
+    });
+
+    it("native entry waits for durable connection before opening a panel", async () => {
+        host.dispose();
+        host = new ChangeWorkflowHost(hostDeps);
+        let finish!: () => void;
+        const pending = new Promise<void>((resolve) => {
+            finish = resolve;
+        });
+        const connect = vi
+            .spyOn(ChangelistStore.prototype, "connect")
+            .mockImplementationOnce(() => pending);
+        const opening = host.openFromEditor("file.txt");
+        try {
+            await vi.waitFor(() => expect(connect).toHaveBeenCalledOnce());
+            expect(
+                getCreatedWebviewPanels().length,
+                "native entry must not open before durable connection",
+            ).toBe(0);
+        } finally {
+            finish();
+            await opening;
+        }
+        expect(getCreatedWebviewPanels()).toHaveLength(1);
+    });
+
+    it("native entry propagates durable connection failure without opening a panel", async () => {
+        host.dispose();
+        host = new ChangeWorkflowHost(hostDeps);
+        const connect = vi
+            .spyOn(ChangelistStore.prototype, "connect")
+            .mockRejectedValueOnce(new Error("native durable failure"));
+        await expect(host.openFromEditor("file.txt")).rejects.toThrow("native durable failure");
+        expect(getCreatedWebviewPanels()).toHaveLength(0);
+        connect.mockRestore();
+        await host.openFromEditor("file.txt");
+        expect((await readyNativePanel()).file.path).toBe("file.txt");
+    });
+
+    it("native entry preserves interrupted-publication recovery", async () => {
+        const partial = gitOps.partialChangesFor(root);
+        const view = await partial.open("file.txt");
+        await expect(
+            partial.commit(
+                [{ snapshotId: view.snapshotId, lineIds: changeIds(view.blocks.slice(0, 1)) }],
+                "recoverable native",
+                () => undefined,
+                {
+                    afterPublish: async () => {
+                        throw new Error("native crash boundary");
+                    },
+                },
+            ),
+        ).rejects.toThrow("commit succeeded");
+        const committed = git(["rev-parse", "HEAD"]);
+        const journals = path.join(root, ".git/intelligit/partial-index");
+        expect(await readdir(journals)).toHaveLength(1);
+        expect(git(["show", ":file.txt"])).toBe(base);
+        await host.openFromEditor("file.txt");
+        const data = await readyNativePanel();
+        expect(data.file.path).toBe("file.txt");
+        expect(git(["rev-parse", "HEAD"])).toBe(committed);
+        expect(git(["show", ":file.txt"]), "native ready must recover the prepared index").toBe(
+            first,
+        );
+        expect(await readFile(path.join(root, "file.txt"), "utf8")).toBe(working);
+        expect(await partial.recover()).toBe(false);
+        expect(partial.recoveryIssues()).toEqual([]);
+        expect(await readdir(journals)).toEqual([]);
     });
 
     it.each(

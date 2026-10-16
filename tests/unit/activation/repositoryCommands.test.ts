@@ -30,6 +30,7 @@ const mocks = vi.hoisted(() => {
         stashChangesFromContext: vi.fn(),
         unstashChangesFromContext: vi.fn(),
         commitFileFromContext: vi.fn(),
+        resolveFileCommandContext: vi.fn(),
         commitSelectedFromPanel: vi.fn(async (_deps: unknown, _options: unknown) => undefined),
         compareFileWithBranchOrTag: vi.fn(async () => undefined),
         compareFileWithRevision: vi.fn(async () => undefined),
@@ -82,7 +83,8 @@ vi.mock("vscode", () => ({
         executeCommand: mocks.executeCommand,
     },
     l10n: {
-        t: (message: string) => mocks.l10nT(message),
+        t: (message: string, values?: Record<string, string>) =>
+            values ? mocks.l10nT(message, values) : mocks.l10nT(message),
     },
     window: {
         showErrorMessage: mocks.showErrorMessage,
@@ -109,6 +111,7 @@ vi.mock("../../../src/commands/fileContextCommands", () => ({
     stashChangesFromContext: mocks.stashChangesFromContext,
     unstashChangesFromContext: mocks.unstashChangesFromContext,
     commitFileFromContext: mocks.commitFileFromContext,
+    resolveFileCommandContext: mocks.resolveFileCommandContext,
     compareFileWithBranchOrTag: mocks.compareFileWithBranchOrTag,
     compareFileWithRevision: mocks.compareFileWithRevision,
     fetchFile: mocks.fetchFile,
@@ -245,10 +248,120 @@ const makeDeps = (gitOps: GitOps) => {
         openConflictSession: vi.fn(),
         openConflictSessionForRepository: vi.fn(),
         openVsCodeMergeEditorForFile: vi.fn(),
+        openPartialChanges: vi.fn().mockResolvedValue(undefined),
     } as Parameters<typeof registerRepositoryCommands>[0];
 };
 
 describe("registerRepositoryCommands", () => {
+    describe("native partial command", () => {
+        beforeEach(() => {
+            mocks.l10nT.mockImplementation((message: string, values: Record<string, string> = {}) =>
+                message.replace(/\{([^}]+)\}/g, (match, key: string) => values[key] ?? match),
+            );
+        });
+        it("opens partial changes for the explicit file repository instead of the selected repository", async () => {
+            const gitOps = makeGitOps();
+            const deps = makeDeps(gitOps);
+            deps.getRepoRoot = () => "/repo-a";
+            const uri = mocks.FakeUri.file("/repo-b/selected.ts");
+            mocks.resolveFileCommandContext.mockResolvedValue({
+                repoRoot: "/repo-b",
+                repoRelativePath: "selected.ts",
+            });
+            registerRepositoryCommands(deps);
+            const handler = mocks.commands.get("intelligit.openPartialChanges");
+            expect(handler, "native partial command must be registered").toBeTypeOf("function");
+            await handler?.(uri);
+            expect(
+                mocks.resolveFileCommandContext,
+                "explicit file context must reach the resolver",
+            ).toHaveBeenCalledWith(uri, gitOps);
+            expect(deps.openPartialChanges).toHaveBeenCalledExactlyOnceWith(
+                "/repo-b",
+                "selected.ts",
+            );
+            expect(deps.setActiveRepository).not.toHaveBeenCalled();
+            expect(deps.clearSelection).not.toHaveBeenCalled();
+        });
+
+        it("passes absent context unchanged for active-file resolution", async () => {
+            const gitOps = makeGitOps();
+            const deps = makeDeps(gitOps);
+            mocks.resolveFileCommandContext.mockResolvedValue({
+                repoRoot: "/repo-b",
+                repoRelativePath: "active.ts",
+            });
+            registerRepositoryCommands(deps);
+            await mocks.commands.get("intelligit.openPartialChanges")?.();
+            expect(mocks.resolveFileCommandContext).toHaveBeenCalledWith(undefined, gitOps);
+            expect(deps.openPartialChanges).toHaveBeenCalledExactlyOnceWith("/repo-b", "active.ts");
+        });
+
+        it.each([{ scheme: "git", fsPath: "/repo-b/file.ts" }, null, { invalid: true }])(
+            "does not substitute an active file for rejected explicit context %j",
+            async (context) => {
+                const gitOps = makeGitOps();
+                const deps = makeDeps(gitOps);
+                mocks.resolveFileCommandContext.mockImplementation(async (input) =>
+                    input === undefined
+                        ? { repoRoot: "/repo-a", repoRelativePath: "active.ts" }
+                        : undefined,
+                );
+                registerRepositoryCommands(deps);
+                await mocks.commands.get("intelligit.openPartialChanges")?.(context);
+                expect(
+                    mocks.resolveFileCommandContext,
+                    "rejected explicit context must not become active-file fallback",
+                ).toHaveBeenCalledWith(context, gitOps);
+                expect(deps.openPartialChanges).not.toHaveBeenCalled();
+                expect(mocks.showErrorMessage).toHaveBeenCalledWith(
+                    expect.stringContaining("only available for local files"),
+                );
+            },
+        );
+
+        it("reports resolution failure without opening another file", async () => {
+            const deps = makeDeps(makeGitOps());
+            mocks.resolveFileCommandContext.mockRejectedValue(new Error("resolution refused"));
+            registerRepositoryCommands(deps);
+            await mocks.commands.get("intelligit.openPartialChanges")?.();
+            expect(mocks.showErrorMessage).toHaveBeenCalledWith(
+                expect.stringContaining("resolution refused"),
+            );
+            expect(deps.openPartialChanges).not.toHaveBeenCalled();
+            expect(deps.setActiveRepository).not.toHaveBeenCalled();
+        });
+
+        it("awaits and reports provider failure", async () => {
+            const deps = makeDeps(makeGitOps());
+            mocks.resolveFileCommandContext.mockResolvedValue({
+                repoRoot: "/repo-b",
+                repoRelativePath: "file.ts",
+            });
+            let fail!: (error: Error) => void;
+            vi.mocked(deps.openPartialChanges).mockImplementation(
+                () =>
+                    new Promise((_resolve, reject) => {
+                        fail = reject;
+                    }),
+            );
+            registerRepositoryCommands(deps);
+            let settled = false;
+            const command = Promise.resolve(
+                mocks.commands.get("intelligit.openPartialChanges")?.(),
+            ).then(() => {
+                settled = true;
+            });
+            await vi.waitFor(() => expect(deps.openPartialChanges).toHaveBeenCalled());
+            expect(settled, "native command must await the provider").toBe(false);
+            fail(new Error("connection refused"));
+            await command;
+            expect(mocks.showErrorMessage).toHaveBeenCalledWith(
+                expect.stringContaining("connection refused"),
+            );
+        });
+    });
+
     it.each([
         ["conflictAcceptYours", "ours"],
         ["conflictAcceptTheirs", "theirs"],
@@ -986,6 +1099,7 @@ describe("registerRepositoryCommands", () => {
         mocks.showWarningMessage.mockReset();
         mocks.branchHandlers.clear();
         mocks.commands.clear();
+        mocks.resolveFileCommandContext.mockReset();
         vi.clearAllMocks();
         mocks.l10nT.mockImplementation((message: string) => `xx:${message}`);
         mocks.commitFileFromContext.mockImplementation(
