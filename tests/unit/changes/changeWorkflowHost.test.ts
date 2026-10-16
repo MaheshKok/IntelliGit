@@ -164,6 +164,53 @@ async function partialEditor() {
 }
 
 describe("root-bound selected-change host", () => {
+    it("reports each persistent poll failure once and reports it again after recovery", async () => {
+        host.dispose();
+        vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+        try {
+            host = new ChangeWorkflowHost(hostDeps);
+            await host.reconcile(hostDeps.files());
+            vi.advanceTimersByTime(1000);
+            posted.length = 0;
+            let failure: string | undefined = "metadata needs review";
+            const get = store.get.bind(store);
+            vi.spyOn(store, "get").mockImplementation((repositoryRoot) => {
+                if (failure) throw new Error(failure);
+                return get(repositoryRoot);
+            });
+
+            vi.advanceTimersByTime(3000);
+            expect(posted, "a persistent read failure should be delivered once").toEqual([
+                {
+                    type: "error",
+                    repositoryRoot: root,
+                    message: "Changelist action failed: metadata needs review",
+                },
+            ]);
+            failure = "metadata is unavailable";
+            vi.advanceTimersByTime(2000);
+            expect(posted, "a different read failure must remain visible").toHaveLength(2);
+            expect(posted.at(-1)).toMatchObject({
+                message: "Changelist action failed: metadata is unavailable",
+            });
+
+            failure = undefined;
+            vi.advanceTimersByTime(1000);
+            failure = "metadata is unavailable";
+            vi.advanceTimersByTime(2000);
+            expect(
+                posted,
+                "recovery must allow the same failure to be reported again",
+            ).toHaveLength(3);
+            host.dispose();
+            vi.advanceTimersByTime(2000);
+            expect(posted, "disposed hosts must stop polling").toHaveLength(3);
+        } finally {
+            host.dispose();
+            vi.useRealTimers();
+        }
+    });
+
     it.each(
         ["delete", "rename"].flatMap((operation) =>
             ["all", "named"].map((scope) => [operation, scope]),
