@@ -164,6 +164,101 @@ async function partialEditor() {
 }
 
 describe("root-bound selected-change host", () => {
+    it.each(["delete", "rename"])(
+        "requires whole-file confirmation for a tracked %s before committing it",
+        async (operation) => {
+            const file = operation === "rename" ? "renamed.txt" : "file.txt";
+            git(operation === "rename" ? ["mv", "file.txt", file] : ["rm", "-f", "file.txt"]);
+            await host.reconcile(await gitOps.getStatus({ withStats: false }));
+            expect(store.get(root).changes[file].stale).toBe(true);
+            const open = vi.spyOn(PartialChanges.prototype, "open");
+            const warning = vi.mocked(vscode.window.showWarningMessage);
+            warning.mockResolvedValueOnce("Commit Whole Files" as never);
+
+            await host.handle({
+                type: "commitChangelist",
+                repositoryRoot: root,
+                revision: store.get(root).revision,
+                listId: "all",
+                paths: [file],
+                message: "structural change",
+                amend: false,
+                push: false,
+            });
+
+            expect(
+                warning,
+                "stale structural changes require explicit whole-file review",
+            ).toHaveBeenCalledWith(
+                expect.any(String),
+                expect.objectContaining({ modal: true, detail: expect.stringContaining(file) }),
+                "Commit Whole Files",
+            );
+            expect(
+                open,
+                "structural files cannot enter the partial snapshot path",
+            ).not.toHaveBeenCalled();
+            expect(git(["log", "-1", "--format=%s"])).toBe("structural change\n");
+            expect(git(["status", "--porcelain"])).toBe("");
+        },
+    );
+
+    it("preserves Git and stale metadata when whole-file review is cancelled", async () => {
+        git(["rm", "-f", "file.txt"]);
+        await host.reconcile(await gitOps.getStatus({ withStats: false }));
+        const before = store.get(root);
+        const index = git(["ls-files", "--stage"]);
+        const open = vi.spyOn(PartialChanges.prototype, "open");
+        vi.mocked(vscode.window.showWarningMessage).mockResolvedValueOnce(undefined);
+        await host.handle({
+            type: "commitChangelist",
+            repositoryRoot: root,
+            revision: before.revision,
+            listId: before.activeId,
+            paths: ["file.txt"],
+            message: "cancelled",
+        });
+        expect(vscode.window.showWarningMessage).toHaveBeenCalled();
+        expect(open).not.toHaveBeenCalled();
+        expect(git(["rev-parse", "HEAD"])).toBe(baselineHead);
+        expect(git(["ls-files", "--stage"])).toBe(index);
+        expect(store.get(root)).toEqual(before);
+    });
+
+    it("refuses mixed partial and structural work before opening snapshots or changing Git", async () => {
+        await writeFile(path.join(root, "other.txt"), base);
+        git(["add", "other.txt"]);
+        git(["commit", "-qm", "other file"]);
+        await writeFile(path.join(root, "other.txt"), working);
+        await host.reconcile(await gitOps.getStatus({ withStats: false }));
+        git(["rm", "-f", "file.txt"]);
+        await host.reconcile(await gitOps.getStatus({ withStats: false }));
+        const before = store.get(root);
+        const head = git(["rev-parse", "HEAD"]);
+        const index = git(["ls-files", "--stage"]);
+        const open = vi.spyOn(PartialChanges.prototype, "open");
+        await host.handle({
+            type: "commitChangelist",
+            repositoryRoot: root,
+            revision: before.revision,
+            listId: before.activeId,
+            paths: ["file.txt", "other.txt"],
+            message: "mixed work",
+        });
+        expect(posted).toContainEqual(
+            expect.objectContaining({
+                type: "error",
+                message: expect.stringContaining(
+                    "Commit partial text and structural changes separately.",
+                ),
+            }),
+        );
+        expect(open).not.toHaveBeenCalled();
+        expect(git(["rev-parse", "HEAD"])).toBe(head);
+        expect(git(["ls-files", "--stage"])).toBe(index);
+        expect(await readFile(path.join(root, "other.txt"), "utf8")).toBe(working);
+    });
+
     it("keeps initial loading busy while interrupted transaction recovery is pending", async () => {
         host.dispose();
         let finishRecovery!: () => void;
