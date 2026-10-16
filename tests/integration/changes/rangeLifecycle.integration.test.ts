@@ -260,10 +260,24 @@ describe("range ownership across real Git lifecycle operations", () => {
         expect(await readFile(path.join(root, "text.txt"), "utf8")).toBe(both);
     });
 
+    it("retains explicit empty inclusion when an external commit makes a file clean", async () => {
+        const view = await partial.open("text.txt");
+        const snapshot = partial.snapshot(view.snapshotId);
+        await store.recordSelection(root, "text.txt", snapshot.contentId, "all", [], 4);
+        git("add", "text.txt");
+        git("commit", "-qm", "external commit");
+        await refresh();
+        expect(store.get(root).changes["text.txt"]).toMatchObject({
+            totalChanges: 0,
+            selections: { all: { lineIds: [] } },
+        });
+        expect(store.get(root).files["text.txt"]).toBe("default");
+    });
+
     it("restores ownership after stash push/apply and consumes a verified external commit", async () => {
         git("stash", "push", "-qm", "range work");
         await refresh();
-        expect(store.get(root).changes["text.txt"].totalChanges).toBe(0);
+        expect(store.get(root).changes["text.txt"]).toMatchObject({ totalChanges: 0 });
         git("stash", "apply", "--quiet");
         await refresh();
         expect(await fingerprintOwners()).toEqual({ calculation: "default", color: listB });

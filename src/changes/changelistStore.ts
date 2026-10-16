@@ -297,7 +297,7 @@ export class ChangelistStore {
         return this.commitLeases.has(root);
     }
 
-    /** Assigns first-seen files to the active list without rescanning any file's diff. */
+    /** Assigns new files and prunes consumed records, retaining clean history for stash/undo restoration. */
     async reconcileFiles(root: string, paths: readonly string[]): Promise<ChangelistState> {
         if (paths.length > MAX_FILES) throw new Error("Too many changelist files.");
         const safe = [...new Set(paths.map(assertRepoRelativePath))];
@@ -308,7 +308,19 @@ export class ChangelistStore {
             (state) => {
                 const current = new Set(safe);
                 for (const file of Object.keys(state.files)) {
-                    if (!current.has(file) && !state.changes[file]) {
+                    const change = state.changes[file];
+                    const consumed =
+                        change &&
+                        !change.stale &&
+                        change.totalChanges === 0 &&
+                        Object.keys(change.lines).length === 0 &&
+                        Object.keys(change.selections ?? {}).length === 0 &&
+                        !change.history?.some(
+                            ({ snapshot }) =>
+                                snapshot.baseHash === change.tracking?.baseHash &&
+                                snapshot.anchors.length > 0,
+                        );
+                    if (!current.has(file) && (!change || consumed)) {
                         delete state.files[file];
                         delete state.changes[file];
                     }

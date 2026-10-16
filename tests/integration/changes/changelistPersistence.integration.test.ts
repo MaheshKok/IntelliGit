@@ -49,15 +49,16 @@ describe("authoritative worktree changelist persistence", () => {
         const firstAttempt = new Promise<void>((resolve) => {
             attempted = resolve;
         });
-        vi.spyOn(RepositoryLock.prototype, "acquire").mockImplementationOnce(
-            async function (directory) {
-                try {
-                    return await acquire.call(this, directory);
-                } finally {
-                    attempted();
-                }
-            },
-        );
+        vi.spyOn(RepositoryLock.prototype, "acquire").mockImplementationOnce(async function (
+            this: RepositoryLock,
+            directory,
+        ) {
+            try {
+                return await acquire.call(this, directory);
+            } finally {
+                attempted();
+            }
+        });
         const saved = second
             .saveDraft(root, "all", "", "Concurrent draft")
             .catch((error: unknown) => error);
@@ -67,20 +68,27 @@ describe("authoritative worktree changelist persistence", () => {
         expect(first.draft(root, "all")).toBe("Concurrent draft");
     });
 
-    it("leaves no published migration backup after an interrupted write and permits retry", async () => {
-        const persistence = await ChangelistPersistence.open(root, gitDir);
-        const value = { root, legacy: undefined, state: new ChangelistStore().get(root) };
-        const probe = await fs.open(path.join(root, "probe"), "w");
-        await probe.close();
-        vi.spyOn(Object.getPrototypeOf(probe) as fs.FileHandle, "writeFile").mockRejectedValueOnce(
-            new Error("interrupted backup write"),
-        );
-        await expect(persistence.backup(value)).rejects.toThrow("interrupted backup write");
-        const filename = path.join(persistence.directory, "migration.json");
-        await expect(readFile(filename)).rejects.toMatchObject({ code: "ENOENT" });
-        await persistence.backup(value);
-        expect(JSON.parse(await readFile(filename, "utf8"))).toEqual({ root, state: value.state });
-    });
+    it.each(["writeFile", "sync"] as const)(
+        "leaves no published migration backup after an interrupted %s and permits retry",
+        async (operation) => {
+            const persistence = await ChangelistPersistence.open(root, gitDir);
+            const value = { root, legacy: undefined, state: new ChangelistStore().get(root) };
+            const probe = await fs.open(path.join(root, "probe"), "w");
+            await probe.close();
+            vi.spyOn(
+                Object.getPrototypeOf(probe) as fs.FileHandle,
+                operation,
+            ).mockRejectedValueOnce(new Error("interrupted backup write"));
+            await expect(persistence.backup(value)).rejects.toThrow("interrupted backup write");
+            const filename = path.join(persistence.directory, "migration.json");
+            await expect(readFile(filename)).rejects.toMatchObject({ code: "ENOENT" });
+            await persistence.backup(value);
+            expect(JSON.parse(await readFile(filename, "utf8"))).toEqual({
+                root,
+                state: value.state,
+            });
+        },
+    );
 
     it("hydrates native SCM from disk before attaching after a workspace reload", async () => {
         const legacy = storage();

@@ -2,6 +2,7 @@ import { lstat, readFile } from "node:fs/promises";
 import path from "node:path";
 import type { PartialChanges } from "../git/partialChanges";
 import { PartialChangesUnsupportedError } from "../git/partialSnapshot";
+import { RepositoryLockBusyError } from "../git/repositoryLock";
 import type { WorkingFile } from "../types";
 import { assertContainedParent } from "../shelf/recoveryPaths";
 import { assertRepoRelativePath } from "../utils/repoRelativePath";
@@ -76,6 +77,7 @@ export class ChangeRangeTracker {
                 this.observed.set(file, `${hash}:${observation}`);
             } catch (error) {
                 this.observed.delete(file);
+                if (error instanceof RepositoryLockBusyError) throw error;
                 if (error instanceof ChangelistRevisionError) {
                     if (this.store.get(this.root).changes[file]?.contentId !== capturedContentId)
                         await this.store.requireReview(this.root, file, true);

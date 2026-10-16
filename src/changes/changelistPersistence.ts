@@ -1,8 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { lstatSync, readFileSync } from "node:fs";
-import { mkdir, open, realpath, rename, rm } from "node:fs/promises";
+import { link, mkdir, open, realpath, rename, rm } from "node:fs/promises";
 import path from "node:path";
 import { RepositoryLock } from "../git/repositoryLock";
+import { acquireWithBoundedWait } from "../git/boundedLockRetry";
 import type { ChangelistState } from "../webviews/protocol/changeSelection";
 import { changeFingerprint } from "./parseDiff";
 
@@ -50,9 +51,12 @@ export class ChangelistPersistence {
         return new ChangelistPersistence(canonicalRoot, canonicalGit, directory);
     }
 
-    /** A lease spans read/check/write, or the complete selected-commit metadata transaction. */
+    /** Brief contention retries; the acquired lease spans read/check/write or the selected commit. */
     acquire(): Promise<() => Promise<void>> {
-        return this.lock.acquire(this.gitDir);
+        return acquireWithBoundedWait(() => this.lock.acquire(this.gitDir), {
+            timeoutMs: 2_000,
+            retryDelayMs: 25,
+        });
     }
 
     /** Synchronous bounded reads keep existing draft read APIs fresh across extension hosts. */
@@ -93,9 +97,8 @@ export class ChangelistPersistence {
     /** Migration evidence is create-once and is never replaced by a later window's stale copy. */
     async backup(value: { legacy: unknown; root: string; state: ChangelistState }): Promise<void> {
         const filename = path.join(this.directory, "migration.json");
-        let handle;
         try {
-            handle = await open(filename, "wx", 0o600);
+            await this.publish(filename, value, true);
         } catch (error) {
             if (hasCode(error, "EEXIST")) {
                 const stat = lstatSync(filename);
@@ -111,12 +114,6 @@ export class ChangelistPersistence {
             }
             throw error;
         }
-        try {
-            await handle.writeFile(JSON.stringify(value));
-            await handle.sync();
-        } finally {
-            await handle.close();
-        }
     }
 
     /** Preserve a conflicting workspace migration separately instead of overwriting either intent. */
@@ -130,8 +127,8 @@ export class ChangelistPersistence {
         );
     }
 
-    /** Private temporary names prevent truncation and collision with another writer or recovery file. */
-    private async publish(filename: string, value: unknown): Promise<void> {
+    /** Fsync before publication; create-only links also preserve existing migration evidence. */
+    private async publish(filename: string, value: unknown, createOnly = false): Promise<void> {
         const bytes = JSON.stringify(value);
         if (Buffer.byteLength(bytes) > MAX_BYTES)
             throw new Error("Changelist metadata exceeds its storage budget.");
@@ -141,7 +138,8 @@ export class ChangelistPersistence {
             await handle.writeFile(bytes);
             await handle.sync();
             await handle.close();
-            await rename(temporary, filename);
+            if (createOnly) await link(temporary, filename);
+            else await rename(temporary, filename);
             if (process.platform !== "win32") {
                 const directory = await open(this.directory, "r");
                 try {
