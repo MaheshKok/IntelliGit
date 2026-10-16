@@ -30,6 +30,7 @@ export function changelistDraftBridge(
     const store = ChangelistStore.forStorage(storage);
     const pending = new Map<string, { text: string }>();
     return {
+        /** Reads the focused scope, preserving the legacy draft when durable metadata is refused. */
         readDraft: (root) => {
             try {
                 return store.draft(root, store.mirrorScope(root));
@@ -37,6 +38,7 @@ export function changelistDraftBridge(
                 return readLegacyDraft(storage, `commitDraft:${root}`);
             }
         },
+        /** Saves against the captured scope and pending draft; failed writes never clear a newer edit. */
         persistDraft: (root, text) => {
             // Capture before enqueueing: a later focus/root change cannot redirect this native edit.
             const scope = store.mirrorScope(root);
@@ -57,6 +59,7 @@ export function changelistDraftBridge(
                     if (pending.get(key) === edit) pending.delete(key);
                 });
         },
+        /** Mirrors All only after pending persistence settles; named-list edits stay in their scope. */
         onNativeChange: (root, text) => {
             if (
                 !pending.has(JSON.stringify([root, store.mirrorScope(root)])) &&

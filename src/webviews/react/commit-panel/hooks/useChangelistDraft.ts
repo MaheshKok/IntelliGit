@@ -103,6 +103,7 @@ export function useChangelistDraft(
     }, [api, cancel, root, scope, ready]);
 
     useEffect(() => {
+        /** Applies matching acknowledgements and saves generated text only while its captured draft is unchanged. */
         const receive = (
             event: MessageEvent<
                 ChangelistReply | Extract<InboundMessage, { type: "commitMessageGeneration" }>

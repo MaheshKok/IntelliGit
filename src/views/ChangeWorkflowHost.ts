@@ -60,8 +60,12 @@ export class ChangeWorkflowHost {
     private connected?: Promise<void>;
     private readonly poll: ReturnType<typeof setInterval>;
     private lastRevision = -1;
+    private lastPollError?: string;
 
-    /** Shares workspace metadata while each provider retains its own root-bound Git facade. */
+    /**
+     * Shares metadata through a root-bound Git facade and polls until disposal.
+     * Repeated poll failures are reported once per message until a successful read.
+     */
     constructor(private readonly deps: ChangeWorkflowDeps) {
         this.store = ChangelistStore.forStorage(deps.workspaceState);
         this.partial = deps.gitOps.partialChangesFor(deps.root);
@@ -80,12 +84,20 @@ export class ChangeWorkflowHost {
             if (!this.connected) return;
             try {
                 const revision = this.store.get(deps.root).revision;
+                this.lastPollError = undefined;
                 if (revision !== this.lastRevision) {
                     this.lastRevision = revision;
                     this.post();
                 }
-            } catch {
-                this.post();
+            } catch (error) {
+                const message = getErrorMessage(error);
+                if (message === this.lastPollError) return;
+                this.lastPollError = message;
+                this.deps.post({
+                    type: "error",
+                    repositoryRoot: deps.root,
+                    message: vscode.l10n.t("Changelist action failed: {message}", { message }),
+                });
             }
         }, 1000);
         this.poll.unref();
