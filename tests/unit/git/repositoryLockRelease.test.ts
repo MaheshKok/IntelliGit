@@ -67,7 +67,7 @@ describe("failed repository lock release", () => {
         await writeFile(lockPath, foreign);
         await release();
         expect(
-            await readFile(lockPath, "utf8"),
+            await readFile(lockPath, "utf8").catch(() => undefined),
             "cleanup must preserve a different owner nonce",
         ).toBe(foreign);
         await expect(new RepositoryLock(options).acquire(directory)).rejects.toBeInstanceOf(
@@ -108,5 +108,53 @@ describe("failed repository lock release", () => {
             await Promise.all([first, second]);
         }
         await expect(readFile(lockPath, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+    });
+
+    it("preserves newer failed cleanup when an older owner's temporary removal fails later", async () => {
+        const { directory, options, lockPath, release, failure } = await fixture();
+        const owner = JSON.parse(await readFile(lockPath, "utf8")) as { nonce: string };
+        const temporaryPath = `${lockPath}.${owner.nonce}`;
+        const realRm = vi.mocked(rm).getMockImplementation()!;
+        let finishOldCleanup!: () => void;
+        const oldCleanup = new Promise<void>((resolve) => {
+            finishOldCleanup = resolve;
+        });
+        let oldCleanupStarted!: () => void;
+        const started = new Promise<void>((resolve) => {
+            oldCleanupStarted = resolve;
+        });
+        let failTemporary = true;
+        let failNewOwner = false;
+        vi.mocked(rm).mockImplementation(async (file, options) => {
+            if (String(file) === temporaryPath && failTemporary) {
+                failTemporary = false;
+                oldCleanupStarted();
+                await oldCleanup;
+                throw failure;
+            }
+            if (String(file) === lockPath && failNewOwner) {
+                failNewOwner = false;
+                throw failure;
+            }
+            return realRm(file, options);
+        });
+        const first = release().catch((error: unknown) => error);
+        await started;
+        try {
+            const releaseNew = await new RepositoryLock(options).acquire(directory);
+            failNewOwner = true;
+            await expect(releaseNew()).rejects.toBe(failure);
+        } finally {
+            finishOldCleanup();
+        }
+        expect(await first).toBe(failure);
+        const recovered = await new RepositoryLock(options)
+            .acquire(directory)
+            .catch(() => undefined);
+        expect(
+            recovered,
+            "newer failed cleanup must survive an older owner's late failure",
+        ).toBeTypeOf("function");
+        await recovered?.();
     });
 });
