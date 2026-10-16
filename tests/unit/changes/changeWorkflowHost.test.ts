@@ -55,6 +55,7 @@ import type { PartialEditorReply } from "../../../src/webviews/protocol/changeli
 let root: string;
 let gitOps: GitOps;
 let host: ChangeWorkflowHost;
+let hostDeps: ConstructorParameters<typeof ChangeWorkflowHost>[0];
 let store: ChangelistStore;
 let posted: unknown[];
 let baselineHead: string;
@@ -113,7 +114,7 @@ beforeEach(async () => {
     posted = [];
     delivered.mockClear();
     resetCreatedWebviewPanelsForTests();
-    host = new ChangeWorkflowHost({
+    hostDeps = {
         root,
         extensionUri: createFakeExtensionUri(),
         gitOps,
@@ -129,7 +130,8 @@ beforeEach(async () => {
         },
         postScopedCommit: delivered,
         runCommit: (operation) => operation(),
-    });
+    };
+    host = new ChangeWorkflowHost(hostDeps);
     await host.reconcile(files);
 });
 afterEach(async () => {
@@ -162,6 +164,91 @@ async function partialEditor() {
 }
 
 describe("root-bound selected-change host", () => {
+    it("keeps initial loading busy while interrupted transaction recovery is pending", async () => {
+        host.dispose();
+        let finishRecovery!: () => void;
+        const pending = new Promise<void>((resolve) => {
+            finishRecovery = resolve;
+        });
+        const recover = vi
+            .spyOn(PartialChanges.prototype, "recover")
+            .mockImplementationOnce(async () => {
+                await pending;
+                return false;
+            });
+        host = new ChangeWorkflowHost(hostDeps);
+        const load = host.handle({ type: "loadChangelists", repositoryRoot: root });
+        try {
+            await vi.waitFor(() => expect(recover).toHaveBeenCalledOnce());
+            await store.saveDraft(root, "all", "", "metadata arriving during initial recovery");
+            expect(
+                posted.at(-1),
+                "initial recovery must not enable changelist actions",
+            ).toMatchObject({
+                type: "setChangelists",
+                busy: true,
+            });
+        } finally {
+            finishRecovery();
+            await load;
+        }
+        expect(posted.at(-1)).toMatchObject({ type: "setChangelists", busy: false });
+    });
+
+    it("keeps cold reconciliation busy while repository connection is pending", async () => {
+        host.dispose();
+        let finishConnection!: () => void;
+        const pending = new Promise<void>((resolve) => {
+            finishConnection = resolve;
+        });
+        const directories = await gitOps.getGitDirectories();
+        vi.spyOn(gitOps, "getGitDirectories").mockImplementationOnce(async () => {
+            await pending;
+            return directories;
+        });
+        host = new ChangeWorkflowHost(hostDeps);
+        const refresh = host.reconcile(hostDeps.files());
+        try {
+            await store.saveDraft(root, "all", "", "metadata arriving during connection");
+            expect(posted.at(-1), "connection-time metadata must not enable actions").toMatchObject(
+                {
+                    type: "setChangelists",
+                    busy: true,
+                },
+            );
+        } finally {
+            finishConnection();
+            await refresh;
+        }
+    });
+
+    it("keeps reconciliation busy until membership reconciliation settles", async () => {
+        let finishMembership!: () => void;
+        const pending = new Promise<void>((resolve) => {
+            finishMembership = resolve;
+        });
+        const reconcileFiles = store.reconcileFiles;
+        const membership = vi
+            .spyOn(store, "reconcileFiles")
+            .mockImplementationOnce(async (...args) => {
+                await pending;
+                return reconcileFiles.apply(store, args);
+            });
+        const refresh = host.reconcile(hostDeps.files());
+        try {
+            await vi.waitFor(() => expect(membership).toHaveBeenCalledOnce());
+            await store.saveDraft(root, "all", "", "metadata arriving during membership update");
+            expect(posted.at(-1), "pending membership must not enable actions").toMatchObject({
+                type: "setChangelists",
+                busy: true,
+            });
+        } finally {
+            finishMembership();
+            await refresh;
+        }
+        expect(posted.at(-1)).toMatchObject({ type: "setChangelists", busy: false });
+    });
+
     it("keeps actions busy until every overlapping range reconciliation finishes", async () => {
         let finishFirst!: () => void;
         let finishSecond!: () => void;
