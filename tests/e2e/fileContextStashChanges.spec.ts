@@ -10,6 +10,7 @@ import {
 } from "./hostFixtures/electronLaunchHelpers";
 import { resolveVSCodeExecutable } from "./hostFixtures/resolveVSCodeExecutable";
 import { WorkbenchDiagnostics } from "./hostFixtures/electronWorkbench";
+import { Workbench } from "./pageObjects/workbench";
 
 test.use({ scenario: "clean" });
 
@@ -134,7 +135,7 @@ test("Explorer, tab, and editor stash clicked B repository while active A stays 
                 .filter(Boolean);
             if (surface === "explorer") await file.click({ button: "right" });
             if (surface === "tab") {
-                await file.dblclick();
+                await new Workbench(page).openFile("selected.txt");
                 await expect(page.getByRole("tab", { name: /selected\.txt/ })).toBeVisible();
                 await page.getByRole("tab", { name: /selected\.txt/ }).click({ button: "right" });
             }

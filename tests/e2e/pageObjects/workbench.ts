@@ -37,8 +37,8 @@ export class Workbench {
      *   one in the selecting click -- so recovering from a closed palette cannot be attached to
      *   whichever step happened to notice it.
      *
-     * Re-sending the chord is safe: it runs "Show All Commands", which re-opens an open palette
-     * rather than toggling it shut, and `fill` replaces whatever a previous attempt typed.
+     * Dismiss a failed picker before reopening so commands registered after its first snapshot
+     * are enumerated again; repeating the same query in a visible picker keeps stale results.
      */
     public async runCommand(label: string): Promise<void> {
         const modifier = process.platform === "darwin" ? "Meta" : "Control";
@@ -58,6 +58,7 @@ export class Workbench {
                 // Rethrow the last attempt's own error: whichever step it came from, it names the
                 // locator or the palette contents, which a hand-written message would throw away.
                 if (attempt === PALETTE_ATTEMPTS) throw error;
+                await this.page.keyboard.press("Escape");
             }
         }
     }

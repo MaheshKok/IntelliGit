@@ -55,6 +55,7 @@ export class ChangeWorkflowHost {
     private readonly partial: PartialChanges;
     private readonly unsubscribe: () => void;
     private committing = false;
+    private reconciling = 0;
     private readonly tracker: ChangeRangeTracker;
     private connected?: Promise<void>;
     private readonly poll: ReturnType<typeof setInterval>;
@@ -71,7 +72,7 @@ export class ChangeWorkflowHost {
                     type: "setChangelists",
                     repositoryRoot: root,
                     state: this.store.view(root),
-                    busy: this.committing || this.store.isCommitting(root),
+                    busy: this.reconciling > 0 || this.committing || this.store.isCommitting(root),
                     ...(this.partial.recoveryIssues().length ? { hasRecoveryIssues: true } : {}),
                 });
         });
@@ -108,22 +109,30 @@ export class ChangeWorkflowHost {
         return this.connected;
     }
 
-    /** Updates membership from an already acquired status snapshot without another Git scan. */
+    /** Keeps actions busy through overlapping range observations and membership updates. */
     async reconcile(files: readonly WorkingFile[]): Promise<void> {
-        await this.connect();
-        if (this.store.isCommitting(this.deps.root)) return;
-        await this.tracker.reconcile(files);
-        await this.store.reconcileFiles(
-            this.deps.root,
-            files.filter((file) => file.status !== "!").map((file) => file.path),
-        );
-        this.post();
+        this.reconciling++;
+        try {
+            await this.connect();
+            this.post();
+            if (this.store.isCommitting(this.deps.root)) return;
+            await this.tracker.reconcile(files);
+            await this.store.reconcileFiles(
+                this.deps.root,
+                files.filter((file) => file.status !== "!").map((file) => file.path),
+            );
+        } finally {
+            this.reconciling--;
+            this.post();
+        }
     }
 
-    /** Validates repository identity before metadata dialogs or Git actions. */
+    /** Validates repository identity and keeps initial recovery/loading busy before allowing actions. */
     async handle(raw: Record<string, unknown>): Promise<void> {
         if (raw.repositoryRoot !== this.deps.root)
             throw new Error("Unknown changelist repository.");
+        const loading = raw.type === "loadChangelists";
+        if (loading) this.reconciling++;
         try {
             await this.connect();
             const message = raw as unknown as ChangelistOutbound;
@@ -199,6 +208,7 @@ export class ChangeWorkflowHost {
                 }),
             });
         } finally {
+            if (loading) this.reconciling--;
             this.post();
         }
     }
@@ -209,7 +219,10 @@ export class ChangeWorkflowHost {
                 type: "setChangelists",
                 repositoryRoot: this.deps.root,
                 state: this.store.view(this.deps.root),
-                busy: this.committing || this.store.isCommitting(this.deps.root),
+                busy:
+                    this.reconciling > 0 ||
+                    this.committing ||
+                    this.store.isCommitting(this.deps.root),
                 ...(this.partial.recoveryIssues().length ? { hasRecoveryIssues: true } : {}),
             });
         } catch (error) {
