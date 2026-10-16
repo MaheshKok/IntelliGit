@@ -2379,6 +2379,67 @@ describe("view providers integration", () => {
         provider.dispose();
     });
 
+    it.each(["commit", "commitAndPush", "commitSelected"])(
+        "UndockedViewProvider preserves a newer aggregate draft during %s",
+        async (type) => {
+            const { UndockedViewProvider } =
+                await import("../../../src/views/UndockedViewProvider");
+            const gitOps = makeGitOpsMock();
+            gitOps.deriveFor.mockImplementation(() => gitOps);
+            let finishCommit!: () => void;
+            gitOps.commit.mockImplementation(
+                () =>
+                    new Promise<string>((resolve) => {
+                        finishCommit = () => resolve("ok");
+                    }),
+            );
+            const workspaceStore = createMemento({ "commitDraft:/repo": "captured draft" });
+            const provider = createTestUndockedViewProvider(
+                UndockedViewProvider,
+                { fsPath: "/ext", path: "/ext" } as never,
+                gitOps as never,
+                { fsPath: "/repo", path: "/repo" } as never,
+                makeCredentialStore() as never,
+                workspaceStore as never,
+            );
+            const testProvider = provider as unknown as {
+                panel: { webview: { postMessage: typeof postMessageSpy }; dispose: () => void };
+                handleMessage(message: unknown): Promise<void>;
+            };
+            testProvider.panel = { webview: { postMessage: postMessageSpy }, dispose: vi.fn() };
+            try {
+                const commit = testProvider.handleMessage({
+                    type,
+                    message: "captured draft",
+                    amend: false,
+                    push: false,
+                    paths: ["src/a.ts"],
+                });
+                await flushMicrotasks();
+                expect(gitOps.commit).toHaveBeenCalled();
+                await testProvider.handleMessage({
+                    type: "saveCommitDraft",
+                    repositoryRoot: "/repo",
+                    message: "newer draft",
+                });
+                finishCommit();
+                await commit;
+                expect(
+                    ChangelistStore.forStorage(workspaceStore).draft("/repo", "all"),
+                    "commit completion must preserve the newer aggregate draft",
+                ).toBe("newer draft");
+                expect(postMessageSpy).toHaveBeenCalledWith(
+                    expect.objectContaining({
+                        type: "committed",
+                        clearCommitMessage: false,
+                    }),
+                );
+            } finally {
+                provider.dispose();
+            }
+        },
+    );
+
     it("UndockedViewProvider reports commit completion when draft cleanup rejects", async () => {
         const { UndockedViewProvider } = await import("../../../src/views/UndockedViewProvider");
         const gitOps = makeGitOpsMock();
@@ -6866,6 +6927,47 @@ describe("view providers integration", () => {
         expect(executeCommand).not.toHaveBeenCalledWith("intelligit.publishBranch");
         provider.dispose();
     });
+
+    it.each(["commit", "commitAndPush", "commitSelected"])(
+        "CommitPanelViewProvider preserves a newer aggregate draft during %s",
+        async (type) => {
+            const { provider, gitOps, webview, draftStore } = await setupCommitPanelProvider();
+            let finishCommit!: () => void;
+            gitOps.commit.mockImplementation(
+                () =>
+                    new Promise<string>((resolve) => {
+                        finishCommit = () => resolve("ok");
+                    }),
+            );
+            try {
+                await webview.send({ type: "saveCommitDraft", message: "captured draft" });
+                const commit = webview.send({
+                    type,
+                    message: "captured draft",
+                    amend: false,
+                    push: false,
+                    paths: ["src/a.ts"],
+                });
+                await flushMicrotasks();
+                expect(gitOps.commit).toHaveBeenCalled();
+                await webview.send({ type: "saveCommitDraft", message: "newer draft" });
+                finishCommit();
+                await commit;
+                expect(
+                    ChangelistStore.forStorage(draftStore).draft("/repo", "all"),
+                    "commit completion must preserve the newer aggregate draft",
+                ).toBe("newer draft");
+                expect(postMessageSpy).toHaveBeenCalledWith(
+                    expect.objectContaining({
+                        type: "committed",
+                        clearCommitMessage: false,
+                    }),
+                );
+            } finally {
+                provider.dispose();
+            }
+        },
+    );
 
     it("CommitPanelViewProvider clears stored commit text after successful commit flows by default", async () => {
         const { provider, gitOps, webview, draftStore } = await setupCommitPanelProvider();
