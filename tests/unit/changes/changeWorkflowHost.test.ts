@@ -1044,3 +1044,52 @@ describe("root-bound selected-change host", () => {
         expect(delivered).toHaveBeenCalledTimes(1);
     });
 });
+
+it("commits 65 fully owned files without partial limits and preserves unrelated state", async () => {
+    const paths = Array.from({ length: 65 }, (_, i) => `owned-${i}.txt`);
+    const ownedBase = `${"unchanged ".repeat(100)}\n`.repeat(300);
+    const ownedWorking = `${ownedBase}changed\n`;
+    expect(Buffer.byteLength(ownedWorking) * paths.length).toBeGreaterThan(16 * 1024 * 1024);
+    for (const file of paths) await writeFile(path.join(root, file), ownedBase);
+    git(["add", "--", ...paths]);
+    git(["commit", "-qm", "65 tracked files"]);
+    await writeFile(path.join(root, "file.txt"), first);
+    git(["add", "--", "file.txt"]);
+    await writeFile(path.join(root, "file.txt"), working);
+    await store.saveDraft(root, "all", "", "unrelated aggregate draft");
+    const created = await store.create(root, store.get(root).revision, "Fully owned");
+    const id = created.lists.find((list) => list.name === "Fully owned")!.id;
+    await store.activate(root, store.get(root).revision, id);
+    for (const file of paths) await writeFile(path.join(root, file), ownedWorking);
+    await host.reconcile(await gitOps.getStatus({ withStats: false }));
+    const state = store.get(root);
+    for (const file of paths) {
+        expect(state.files[file], "file fallback belongs to the requested list").toBe(id);
+        expect(state.changes[file].tracking).toBeDefined();
+        expect(state.changes[file].stale).not.toBe(true);
+        expect(state.changes[file].selections?.[id]).toBeUndefined();
+        expect(Object.values(state.changes[file].lines).every((owner) => owner === id)).toBe(true);
+    }
+    const head = git(["rev-parse", "HEAD"]).trim();
+    const unrelatedIndex = git(["ls-files", "--stage", "--", "file.txt"]);
+    await host.handle({
+        type: "commitChangelist",
+        repositoryRoot: root,
+        revision: state.revision,
+        listId: id,
+        paths,
+        message: "all 65 owned files",
+    });
+    expect(
+        posted.filter((message) => (message as { type?: string }).type === "error"),
+        "fully owned files without explicit inclusion must not acquire the partial-only cap",
+    ).toEqual([]);
+    expect(git(["rev-list", "--count", `${head}..HEAD`]).trim()).toBe("1");
+    expect(
+        git(["diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD"]).trim().split("\n").sort(),
+    ).toEqual([...paths].sort());
+    for (const file of paths) expect(git(["show", `HEAD:${file}`])).toBe(ownedWorking);
+    expect(git(["ls-files", "--stage", "--", "file.txt"])).toBe(unrelatedIndex);
+    expect(await readFile(path.join(root, "file.txt"), "utf8")).toBe(working);
+    expect(store.get(root).allDraft).toBe("unrelated aggregate draft");
+}, 120_000);
