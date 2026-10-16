@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { GitExecutor } from "../../../src/git/executor";
 import { GitOps } from "../../../src/git/operations";
 import { PartialChanges } from "../../../src/git/partialChanges";
+import { RepositoryLockBusyError } from "../../../src/git/repositoryLock";
 import { ChangelistStore } from "../../../src/changes/changelistStore";
 import { ChangeRangeTracker } from "../../../src/changes/changeRangeTracker";
 import { rangeSnapshot } from "../../../src/changes/rangeMapping";
@@ -74,6 +75,21 @@ afterEach(async () => {
 });
 
 describe("range ownership across real Git lifecycle operations", () => {
+    it("surfaces an exhausted metadata lease without making ownership stale and retries the observation", async () => {
+        const before = store.get(root);
+        await writeFile(path.join(root, "text.txt"), `new header\n${both}`);
+        vi.spyOn(store, "track").mockRejectedValueOnce(new RepositoryLockBusyError());
+        await expect(refresh()).rejects.toBeInstanceOf(RepositoryLockBusyError);
+        expect(store.get(root)).toEqual(before);
+        await refresh();
+        expect(await fingerprintOwners()).toEqual({
+            "new header": listB,
+            calculation: "default",
+            color: listB,
+        });
+        expect(store.get(root).changes["text.txt"].stale).not.toBe(true);
+    });
+
     it("retries a draft-only race without losing new-edit attribution", async () => {
         await writeFile(path.join(root, "text.txt"), `new header\n${both}`);
         const other = new ChangelistStore();
@@ -254,8 +270,8 @@ describe("range ownership across real Git lifecycle operations", () => {
         git("add", "text.txt");
         git("commit", "-qm", "external commit");
         await refresh();
-        expect(store.get(root).changes["text.txt"].totalChanges).toBe(0);
-        expect(store.get(root).changes["text.txt"].stale).toBe(false);
+        expect(store.get(root).changes["text.txt"]).toBeUndefined();
+        expect(store.get(root).files["text.txt"]).toBeUndefined();
         expect(await readFile(path.join(root, "text.txt"), "utf8")).toBe(both);
     });
 

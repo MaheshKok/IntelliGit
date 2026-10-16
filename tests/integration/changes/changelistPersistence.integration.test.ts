@@ -1,11 +1,13 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fork } from "node:child_process";
+import * as fs from "node:fs/promises";
 import { mkdtemp, mkdir, readFile, writeFile, readdir, rm } from "node:fs/promises";
 import path from "node:path";
 import { tmpdir } from "node:os";
 import { build } from "esbuild";
 import { ChangelistStore } from "../../../src/changes/changelistStore";
 import { ChangelistPersistence } from "../../../src/changes/changelistPersistence";
+import { RepositoryLock } from "../../../src/git/repositoryLock";
 import { removeScratchDirectories } from "../../helpers/scratchDirectories";
 import {
     attachAfterChangelistLoad,
@@ -20,6 +22,7 @@ beforeEach(async () => {
     await mkdir(gitDir);
 });
 afterEach(async () => {
+    vi.restoreAllMocks();
     await removeScratchDirectories(root);
 });
 
@@ -35,6 +38,50 @@ function storage() {
 }
 
 describe("authoritative worktree changelist persistence", () => {
+    it("retries a brief cross-window lease without losing the draft", async () => {
+        const first = new ChangelistStore();
+        const second = new ChangelistStore();
+        await first.connect(root, gitDir);
+        await second.connect(root, gitDir);
+        const release = await first.beginCommit(root);
+        const acquire = RepositoryLock.prototype.acquire;
+        let attempted!: () => void;
+        const firstAttempt = new Promise<void>((resolve) => {
+            attempted = resolve;
+        });
+        vi.spyOn(RepositoryLock.prototype, "acquire").mockImplementationOnce(
+            async function (directory) {
+                try {
+                    return await acquire.call(this, directory);
+                } finally {
+                    attempted();
+                }
+            },
+        );
+        const saved = second
+            .saveDraft(root, "all", "", "Concurrent draft")
+            .catch((error: unknown) => error);
+        await firstAttempt;
+        await release();
+        expect(await saved).not.toBeInstanceOf(Error);
+        expect(first.draft(root, "all")).toBe("Concurrent draft");
+    });
+
+    it("leaves no published migration backup after an interrupted write and permits retry", async () => {
+        const persistence = await ChangelistPersistence.open(root, gitDir);
+        const value = { root, legacy: undefined, state: new ChangelistStore().get(root) };
+        const probe = await fs.open(path.join(root, "probe"), "w");
+        await probe.close();
+        vi.spyOn(Object.getPrototypeOf(probe) as fs.FileHandle, "writeFile").mockRejectedValueOnce(
+            new Error("interrupted backup write"),
+        );
+        await expect(persistence.backup(value)).rejects.toThrow("interrupted backup write");
+        const filename = path.join(persistence.directory, "migration.json");
+        await expect(readFile(filename)).rejects.toMatchObject({ code: "ENOENT" });
+        await persistence.backup(value);
+        expect(JSON.parse(await readFile(filename, "utf8"))).toEqual({ root, state: value.state });
+    });
+
     it("hydrates native SCM from disk before attaching after a workspace reload", async () => {
         const legacy = storage();
         const first = new ChangelistStore(legacy);
