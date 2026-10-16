@@ -61,6 +61,11 @@ function nameFor(value: string): string {
     return name;
 }
 
+/** A stable validator identity permits reuse of already-validated authoritative schema-3 state. */
+function parseDurableState(value: unknown): ChangelistState | undefined {
+    return parseState(value, 2);
+}
+
 /** Serialized, revisioned worktree metadata shared by docked and undocked providers. */
 export class ChangelistStore {
     private readonly roots = new Map<string, ChangelistState>();
@@ -145,7 +150,7 @@ export class ChangelistStore {
         if (this.loadError) throw new Error(this.loadError);
         const persistence = this.durable.get(root);
         if (persistence) {
-            const saved = persistence.read((value) => parseState(value, 2));
+            const saved = persistence.read(parseDurableState);
             if (!saved) throw new Error("Changelist metadata disappeared and requires review.");
             this.roots.set(root, saved);
         }
@@ -170,7 +175,7 @@ export class ChangelistStore {
             const persistence = await ChangelistPersistence.open(root, gitDir);
             const release = await persistence.acquire();
             try {
-                const existing = persistence.read((value) => parseState(value, 2));
+                const existing = persistence.read(parseDurableState);
                 if (
                     existing &&
                     this.roots.has(root) &&

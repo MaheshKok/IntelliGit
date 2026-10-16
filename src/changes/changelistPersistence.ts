@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { lstatSync, readFileSync } from "node:fs";
+import { lstatSync, readFileSync, type BigIntStats } from "node:fs";
 import { link, mkdir, open, realpath, rename, rm } from "node:fs/promises";
 import path from "node:path";
 import { RepositoryLock } from "../git/repositoryLock";
@@ -23,6 +23,11 @@ interface Envelope {
  */
 export class ChangelistPersistence {
     private readonly lock: RepositoryLock;
+    private cached?: {
+        identity: string;
+        parse: (value: unknown) => ChangelistState | undefined;
+        state: ChangelistState;
+    };
     readonly filename: string;
 
     /** Binds paths already canonicalized by open; metadata locking remains separate from Git's index lock. */
@@ -60,15 +65,28 @@ export class ChangelistPersistence {
         });
     }
 
-    /** Synchronous bounded reads keep existing draft read APIs fresh across extension hosts. */
+    /**
+     * Reuses validated state only while the file identity and parser are unchanged. Callers
+     * must not mutate the borrowed state; ChangelistStore returns independent snapshots.
+     * Missing, unsafe, or unreadable records invalidate the cache and retain read failures.
+     */
     read(parse: (value: unknown) => ChangelistState | undefined): ChangelistState | undefined {
         let bytes: string;
+        let identity: string | undefined;
         try {
-            const stat = lstatSync(this.filename);
+            const stat = lstatSync(this.filename, { bigint: true });
             if (!stat.isFile() || stat.isSymbolicLink() || stat.size > MAX_BYTES)
                 throw new Error("Changelist metadata requires review and will not be overwritten.");
+            identity = recordIdentity(stat);
+            if (this.cached?.identity === identity && this.cached.parse === parse)
+                return this.cached.state;
+            this.cached = undefined;
             bytes = readFileSync(this.filename, "utf8");
+            // A rename during the read must not associate new bytes with the previous inode.
+            if (recordIdentity(lstatSync(this.filename, { bigint: true })) !== identity)
+                identity = undefined;
         } catch (error) {
+            this.cached = undefined;
             if (hasCode(error, "ENOENT")) return undefined;
             throw error;
         }
@@ -81,6 +99,7 @@ export class ChangelistPersistence {
             !state
         )
             throw new Error("Changelist metadata requires review and will not be overwritten.");
+        if (identity !== undefined) this.cached = { identity, parse, state };
         return state;
     }
 
@@ -172,6 +191,11 @@ export class ChangelistPersistence {
             await rm(temporary, { force: true });
         }
     }
+}
+
+/** Nanosecond timestamps retain same-size edits; device and inode distinguish atomic replacements. */
+function recordIdentity(stat: BigIntStats): string {
+    return `${stat.dev}:${stat.ino}:${stat.size}:${stat.mtimeNs}:${stat.ctimeNs}`;
 }
 
 /** Error-code checks retain permission and malformed-state failures rather than treating them as absence. */

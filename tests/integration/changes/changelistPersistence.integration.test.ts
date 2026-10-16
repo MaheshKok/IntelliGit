@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fork } from "node:child_process";
+import * as syncFs from "node:fs";
 import * as fs from "node:fs/promises";
 import { mkdtemp, mkdir, readFile, writeFile, readdir, rm } from "node:fs/promises";
 import path from "node:path";
@@ -13,6 +14,11 @@ import {
     attachAfterChangelistLoad,
     changelistDraftBridge,
 } from "../../../src/views/changelistDraftBridge";
+
+vi.mock("node:fs", async (importOriginal) => {
+    const actual = await importOriginal<typeof import("node:fs")>();
+    return { ...actual, readFileSync: vi.fn(actual.readFileSync) };
+});
 
 let root: string;
 let gitDir: string;
@@ -43,7 +49,7 @@ describe("authoritative worktree changelist persistence", () => {
         const second = new ChangelistStore();
         await first.connect(root, gitDir);
         await second.connect(root, gitDir);
-        const initial = first.get(root);
+        const initial = structuredClone(first.get(root));
         const parse = vi.spyOn(JSON, "parse");
         for (let read = 0; read < 20; read++) {
             const snapshot = first.get(root);
@@ -53,7 +59,10 @@ describe("authoritative worktree changelist persistence", () => {
             parse,
             "unchanged metadata must not be parsed for every snapshot read",
         ).not.toHaveBeenCalled();
-        expect(first.get(root)).toEqual(initial);
+        expect(
+            first.get(root),
+            "caller edits must not mutate the cached authoritative state",
+        ).toEqual(initial);
         await second.saveDraft(root, "all", "", "Published by another window");
         parse.mockClear();
         expect(
@@ -63,6 +72,95 @@ describe("authoritative worktree changelist persistence", () => {
         expect(parse).toHaveBeenCalledTimes(1);
         expect(first.get(root).allDraft).toBe("Published by another window");
         expect(parse, "the replacement must be validated only once").toHaveBeenCalledTimes(1);
+    });
+
+    it("invalidates warm metadata after a same-inode same-size edit", async () => {
+        const store = new ChangelistStore();
+        await store.connect(root, gitDir);
+        await store.saveDraft(root, "all", "", "Draft A");
+        expect(store.draft(root, "all")).toBe("Draft A");
+        const filename = path.join(gitDir, "intelligit/changelists/state.json");
+        const before = await fs.stat(filename);
+        const original = await readFile(filename, "utf8");
+        await writeFile(filename, original.replace("Draft A", "Draft B"));
+        // Force a distinguishable timestamp even on filesystems with coarse clock resolution.
+        await fs.utimes(filename, before.atime, new Date(before.mtimeMs + 2_000));
+        const after = await fs.stat(filename);
+        expect(after.ino).toBe(before.ino);
+        expect(after.size).toBe(before.size);
+        expect(
+            store.draft(root, "all"),
+            "same-size in-place edits must invalidate cached metadata",
+        ).toBe("Draft B");
+    });
+
+    it("does not reuse validation performed by a different parser", async () => {
+        const persistence = await ChangelistPersistence.open(root, gitDir);
+        const state = new ChangelistStore().get(root);
+        await persistence.write(state);
+        const accept = vi.fn(() => state);
+        persistence.read(accept);
+        persistence.read(accept);
+        expect(
+            accept,
+            "the same validator must run once for an unchanged record",
+        ).toHaveBeenCalledTimes(1);
+        const reject = vi.fn(() => undefined);
+        expect(
+            () => persistence.read(reject),
+            "a changed validator must not inherit cached acceptance",
+        ).toThrow("requires review");
+        expect(reject).toHaveBeenCalledTimes(1);
+        persistence.read(accept);
+        expect(accept, "failed validation must discard the previous cache").toHaveBeenCalledTimes(
+            2,
+        );
+    });
+
+    it("refuses missing and corrupt metadata after warming the cache and recovers from replacement", async () => {
+        const store = new ChangelistStore();
+        await store.connect(root, gitDir);
+        const state = store.get(root);
+        const persistence = await ChangelistPersistence.open(root, gitDir);
+        await rm(persistence.filename);
+        expect(
+            () => store.get(root),
+            "a cache must not hide deleted authoritative metadata",
+        ).toThrow("disappeared");
+        await persistence.write(state);
+        expect(store.get(root)).toEqual(state);
+        await writeFile(persistence.filename, "{broken state");
+        expect(() => store.get(root), "a cache must not hide a corrupt replacement").toThrow();
+        expect(() => store.get(root), "a failed read must not revive cached state").toThrow();
+        await persistence.write({ ...state, allDraft: "Recovered" });
+        expect(store.draft(root, "all")).toBe("Recovered");
+    });
+
+    it("does not cache bytes under the identity observed before a concurrent rename", async () => {
+        const store = new ChangelistStore();
+        await store.connect(root, gitDir);
+        const state = store.get(root);
+        const persistence = await ChangelistPersistence.open(root, gitDir);
+        const replacement = `${persistence.filename}.replacement`;
+        const envelope = JSON.parse(await readFile(persistence.filename, "utf8")) as {
+            state: typeof state;
+        };
+        envelope.state.allDraft = "Concurrent replacement";
+        await writeFile(replacement, JSON.stringify(envelope));
+        const read = await vi.importActual<typeof import("node:fs")>("node:fs");
+        vi.mocked(syncFs.readFileSync).mockImplementationOnce(() => {
+            syncFs.renameSync(replacement, persistence.filename);
+            return read.readFileSync(persistence.filename, "utf8");
+        });
+        const parse = vi.fn((value: unknown) => value as typeof envelope.state);
+        expect(persistence.read(parse)?.allDraft).toBe("Concurrent replacement");
+        persistence.read(parse);
+        expect(
+            parse,
+            "a rename during the read must leave the result uncached",
+        ).toHaveBeenCalledTimes(2);
+        persistence.read(parse);
+        expect(parse, "a later stable read may be reused").toHaveBeenCalledTimes(2);
     });
 
     it("retries a brief cross-window lease without losing the draft", async () => {
