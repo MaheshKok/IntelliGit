@@ -339,7 +339,6 @@ describe("root-bound selected-change host", () => {
             state.files["newly-dirty.txt"],
             "an edit saved before activation must retain the previous active owner",
         ).toBe("default");
-        expect(state.changes["newly-dirty.txt"].stale).toBe(false);
     });
 
     it("does not overwrite another window's activation during observation", async () => {

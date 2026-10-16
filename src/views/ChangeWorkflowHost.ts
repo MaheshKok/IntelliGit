@@ -341,7 +341,7 @@ export class ChangeWorkflowHost {
     private async activate(revision: number, id: string): Promise<void> {
         const before = this.store.get(this.deps.root);
         if (before.revision !== revision) throw new ChangelistRevisionError();
-        await this.tracker.reconcile(this.deps.files());
+        await this.tracker.reconcile(await this.deps.gitOps.getStatus({ withStats: false }));
         const latest = this.store.get(this.deps.root);
         // Observation may advance ownership revisions itself. Preserve those writes, but
         // never overwrite another window's intervening active-list choice.

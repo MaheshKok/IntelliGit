@@ -116,6 +116,24 @@ export class ChangelistPersistence {
         }
     }
 
+    /** Only this root's immutable seed proves its migration; missing or corrupt evidence cannot authorize it. */
+    migratedFrom(root: string, state: ChangelistState): boolean {
+        const filename = path.join(this.directory, "migration.json");
+        try {
+            const stat = lstatSync(filename);
+            if (!stat.isFile() || stat.isSymbolicLink() || stat.size > MAX_BYTES)
+                throw new Error("Changelist migration backup requires review.");
+            const saved = JSON.parse(readFileSync(filename, "utf8")) as {
+                root?: unknown;
+                state?: unknown;
+            } | null;
+            return saved?.root === root && JSON.stringify(saved.state) === JSON.stringify(state);
+        } catch (error) {
+            if (hasCode(error, "ENOENT")) return false;
+            throw error;
+        }
+    }
+
     /** Preserve a conflicting workspace migration separately instead of overwriting either intent. */
     async preserveConflict(value: unknown): Promise<void> {
         await this.publish(

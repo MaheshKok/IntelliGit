@@ -173,9 +173,9 @@ export class ChangelistStore {
                 const existing = persistence.read((value) => parseState(value, 2));
                 if (
                     existing &&
-                    !this.requiresConnection &&
                     this.roots.has(root) &&
-                    JSON.stringify(existing) !== JSON.stringify(seed)
+                    JSON.stringify(existing) !== JSON.stringify(seed) &&
+                    !persistence.migratedFrom(root, seed)
                 ) {
                     await persistence.preserveConflict({
                         legacy: this.storage?.get(STORAGE_KEY),
@@ -185,7 +185,7 @@ export class ChangelistStore {
                     throw new Error("Conflicting changelist migration metadata requires review.");
                 }
                 const entries = [...this.roots].map(([key, state]) => ({ root: key, state }));
-                if (!entries.some((entry) => entry.root === root))
+                if (!existing && !entries.some((entry) => entry.root === root))
                     entries.push({ root, state: seed });
                 if (!existing)
                     await persistence.backup({
