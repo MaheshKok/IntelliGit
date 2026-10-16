@@ -47,6 +47,7 @@ export class RepositoryLockBusyError extends Error {
 
 /** Cross-process repository lock rooted in Git's common directory. */
 export class RepositoryLock {
+    private static readonly failedReleases = new Map<string, Set<() => Promise<void>>>();
     private readonly heartbeatIntervalMs: number;
     private readonly staleAfterMs: number;
     private readonly livenessProbe: (pid: number) => Promise<boolean>;
@@ -66,10 +67,13 @@ export class RepositoryLock {
         this.lockFileName = options.lockFileName ?? "repo.lock";
     }
 
-    /** Acquires the configured lock domain and returns an idempotent release callback. */
+    /** Retries this process's failed cleanup before acquiring; live leases are never reclaimed here. */
     async acquire(commonDir: string): Promise<() => Promise<void>> {
         const lockDir = this.lockDirectory ?? path.join(commonDir, "intelligit");
         const lockPath = path.join(lockDir, this.lockFileName);
+        await Promise.all(
+            [...(RepositoryLock.failedReleases.get(lockPath) ?? [])].map((release) => release()),
+        );
         await mkdir(lockDir, { recursive: true, mode: 0o700 });
         const owner: LockOwner = { nonce: randomUUID(), pid: process.pid, heartbeatAt: Date.now() };
 
@@ -180,8 +184,10 @@ export class RepositoryLock {
         }
     }
 
+    /** Serializes release attempts and retains failed owner-checked cleanup for the next acquisition. */
     private releaseCallback(lockPath: string, owner: LockOwner): () => Promise<void> {
         let released = false;
+        let releaseAttempt: Promise<void> | undefined;
         // Named for this owner, so no other process ever writes it and a crash leaves at most
         // one behind per owner rather than one per heartbeat.
         const temporaryPath = `${lockPath}.${owner.nonce}`;
@@ -217,19 +223,36 @@ export class RepositoryLock {
                 });
         }, this.heartbeatIntervalMs);
         heartbeat.unref();
-        return async () => {
-            if (released) return;
-            released = true;
+        /** A failed removal remains retryable without restarting heartbeats or replaying the mutation. */
+        const release = (): Promise<void> => {
+            if (released) return Promise.resolve();
+            if (releaseAttempt) return releaseAttempt;
             clearInterval(heartbeat);
-            await pendingWrite;
-            const existing = await readLockFile(lockPath);
-            // A read-compare-rm race remains only after a takeover contender has restored this owner;
-            // rename-based takeover prevents it from deleting a fresh lock before this check.
-            if (existing.kind === "owned" && existing.owner.nonce === owner.nonce) {
-                await rm(lockPath, { force: true });
-            }
-            await rm(temporaryPath, { force: true });
+            releaseAttempt = pendingWrite
+                .then(async () => {
+                    const existing = await readLockFile(lockPath);
+                    // Preserve the existing nonce fence on every retry, including after another owner takes over.
+                    if (existing.kind === "owned" && existing.owner.nonce === owner.nonce) {
+                        await rm(lockPath, { force: true });
+                    }
+                    await rm(temporaryPath, { force: true });
+                    released = true;
+                    const failed = RepositoryLock.failedReleases.get(lockPath);
+                    failed?.delete(release);
+                    if (failed?.size === 0) RepositoryLock.failedReleases.delete(lockPath);
+                })
+                .catch((error: unknown) => {
+                    const failed = RepositoryLock.failedReleases.get(lockPath) ?? new Set();
+                    failed.add(release);
+                    RepositoryLock.failedReleases.set(lockPath, failed);
+                    throw error;
+                })
+                .finally(() => {
+                    releaseAttempt = undefined;
+                });
+            return releaseAttempt;
         };
+        return release;
     }
 }
 

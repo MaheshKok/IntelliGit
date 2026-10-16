@@ -148,6 +148,7 @@ describe("failed repository lock release", () => {
             finishOldCleanup();
         }
         expect(await first).toBe(failure);
+        await release();
         const recovered = await new RepositoryLock(options)
             .acquire(directory)
             .catch(() => undefined);
