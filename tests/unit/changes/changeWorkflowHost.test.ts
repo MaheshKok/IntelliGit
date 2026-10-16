@@ -38,6 +38,7 @@ vi.mock("vscode", () => {
 import { ChangeWorkflowHost } from "../../../src/views/ChangeWorkflowHost";
 import { ChangelistStore } from "../../../src/changes/changelistStore";
 import { ChangelistPersistence } from "../../../src/changes/changelistPersistence";
+import { ChangeRangeTracker } from "../../../src/changes/changeRangeTracker";
 import { PartialChanges } from "../../../src/git/partialChanges";
 import { PartialIndexPublicationError } from "../../../src/git/partialIndexTransaction";
 import * as vscode from "vscode";
@@ -161,6 +162,57 @@ async function partialEditor() {
 }
 
 describe("root-bound selected-change host", () => {
+    it("keeps actions busy until every overlapping range reconciliation finishes", async () => {
+        let finishFirst!: () => void;
+        let finishSecond!: () => void;
+        const first = new Promise<void>((resolve) => {
+            finishFirst = resolve;
+        });
+        const second = new Promise<void>((resolve) => {
+            finishSecond = resolve;
+        });
+        const reconcile = vi
+            .spyOn(ChangeRangeTracker.prototype, "reconcile")
+            .mockReturnValueOnce(first)
+            .mockReturnValueOnce(second);
+        const files = await gitOps.getStatus({ withStats: false });
+        const firstRefresh = host.reconcile(files);
+        const secondRefresh = host.reconcile(files);
+        try {
+            await vi.waitFor(() => expect(reconcile).toHaveBeenCalledTimes(2));
+            expect(
+                posted.at(-1),
+                "actions must remain disabled while ranges are loading",
+            ).toMatchObject({ type: "setChangelists", busy: true });
+            await store.saveDraft(root, "all", "", "another pane's draft");
+            expect(
+                posted.at(-1),
+                "intermediate metadata delivery must preserve busy state",
+            ).toMatchObject({ type: "setChangelists", busy: true });
+            finishFirst();
+            await firstRefresh;
+            expect(
+                posted.at(-1),
+                "one completed refresh must not enable a pending refresh",
+            ).toMatchObject({ type: "setChangelists", busy: true });
+            finishSecond();
+            await secondRefresh;
+            expect(posted.at(-1)).toMatchObject({ type: "setChangelists", busy: false });
+        } finally {
+            finishFirst();
+            finishSecond();
+            await Promise.all([firstRefresh, secondRefresh]);
+        }
+    });
+
+    it("releases the range reconciliation busy state after a failed observation", async () => {
+        vi.spyOn(ChangeRangeTracker.prototype, "reconcile").mockRejectedValueOnce(
+            new Error("injected range observation failure"),
+        );
+        await expect(host.reconcile([])).rejects.toThrow("injected range observation failure");
+        expect(posted.at(-1)).toMatchObject({ type: "setChangelists", busy: false });
+    });
+
     it("captures pending edits under the old active list before switching future attribution", async () => {
         const created = await store.create(root, store.get(root).revision, "Later");
         const id = created.lists[1].id;
