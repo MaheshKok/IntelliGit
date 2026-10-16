@@ -38,6 +38,33 @@ function storage() {
 }
 
 describe("authoritative worktree changelist persistence", () => {
+    it("reuses validated metadata until another window publishes a replacement", async () => {
+        const first = new ChangelistStore();
+        const second = new ChangelistStore();
+        await first.connect(root, gitDir);
+        await second.connect(root, gitDir);
+        const initial = first.get(root);
+        const parse = vi.spyOn(JSON, "parse");
+        for (let read = 0; read < 20; read++) {
+            const snapshot = first.get(root);
+            snapshot.lists[0].name = "Caller-owned edit";
+        }
+        expect(
+            parse,
+            "unchanged metadata must not be parsed for every snapshot read",
+        ).not.toHaveBeenCalled();
+        expect(first.get(root)).toEqual(initial);
+        await second.saveDraft(root, "all", "", "Published by another window");
+        parse.mockClear();
+        expect(
+            first.draft(root, "all"),
+            "an atomic replacement must invalidate the cached state",
+        ).toBe("Published by another window");
+        expect(parse).toHaveBeenCalledTimes(1);
+        expect(first.get(root).allDraft).toBe("Published by another window");
+        expect(parse, "the replacement must be validated only once").toHaveBeenCalledTimes(1);
+    });
+
     it("retries a brief cross-window lease without losing the draft", async () => {
         const first = new ChangelistStore();
         const second = new ChangelistStore();
