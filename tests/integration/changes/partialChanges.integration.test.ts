@@ -630,3 +630,113 @@ describe("partial changes on real Git", () => {
         expect(await readFile(path.join(root, "text.txt"), "utf8")).toBe(working);
     });
 });
+
+it("returns to partial handling before mutation when complete ownership is not proven", async () => {
+    const view = await workflow.open("text.txt");
+    const head = git(["rev-parse", "HEAD"]);
+    const index = await readFile(path.join(root, ".git/index"));
+    expect(
+        await workflow.tryCommitWholeFiles(
+            ["text.txt"],
+            "split owners",
+            () => false,
+            () => undefined,
+        ),
+    ).toBeUndefined();
+    expect(git(["rev-parse", "HEAD"])).toBe(head);
+    expect(await readFile(path.join(root, ".git/index"))).toEqual(index);
+    expect(workflow.snapshot(view.snapshotId).view.snapshotId).toBe(view.snapshotId);
+});
+
+it.each([
+    ["capture", "text.txt"],
+    ["capture", "other.txt"],
+    ["hook", "text.txt"],
+    ["hook", "other.txt"],
+] as const)(
+    "whole-owned snapshot guard rejects a %s-time change in %s",
+    async (when, changedFile) => {
+        await writeFile(path.join(root, "other.txt"), "owned second file\n");
+        if (when === "hook") {
+            const hook = path.join(root, ".git/hooks/pre-commit");
+            await writeFile(hook, "#!/bin/sh\nprintf ran > owned-hook-ran\n");
+            await chmod(hook, 0o755);
+        }
+        const head = git(["rev-parse", "HEAD"]);
+        const index = await readFile(path.join(root, ".git/index"));
+        let injected = false;
+        await expect(
+            workflow.tryCommitWholeFiles(
+                ["text.txt", "other.txt"],
+                "stale whole file",
+                () => true,
+                async () => {
+                    if (
+                        !injected &&
+                        (when === "capture" || (await readdir(root)).includes("owned-hook-ran"))
+                    ) {
+                        injected = true;
+                        await writeFile(path.join(root, changedFile), "external edit\n");
+                    }
+                },
+            ),
+        ).rejects.toThrow("changed");
+        expect(injected, "the whole-owned transaction reached the requested file fence").toBe(true);
+        expect(git(["rev-parse", "HEAD"]), "file drift must prevent ref publication").toBe(head);
+        expect(await readFile(path.join(root, ".git/index"))).toEqual(index);
+        expect(await readFile(path.join(root, changedFile), "utf8")).toBe("external edit\n");
+    },
+);
+
+it.each(["failure", "extra content"] as const)(
+    "whole-owned commits preserve HEAD and index after hook %s",
+    async (kind) => {
+        const hook = path.join(root, ".git/hooks/pre-commit");
+        await writeFile(
+            hook,
+            kind === "failure"
+                ? "#!/bin/sh\nexit 1\n"
+                : "#!/bin/sh\nprintf extra > other.txt\ngit add -- other.txt\n",
+        );
+        await chmod(hook, 0o755);
+        const head = git(["rev-parse", "HEAD"]);
+        const index = await readFile(path.join(root, ".git/index"));
+        await expect(
+            workflow.tryCommitWholeFiles(
+                ["text.txt"],
+                "guard hook",
+                () => true,
+                () => undefined,
+            ),
+        ).rejects.toThrow();
+        expect(git(["rev-parse", "HEAD"]), "a rejected hook must not publish").toBe(head);
+        expect(await readFile(path.join(root, ".git/index"))).toEqual(index);
+    },
+);
+
+it("recovers whole-owned index publication without creating another commit", async () => {
+    const head = git(["rev-parse", "HEAD"]).trim();
+    await writeFile(path.join(root, "other.txt"), "unrelated staged\n");
+    git(["add", "--", "other.txt"]);
+    const unrelatedIndex = git(["ls-files", "--stage", "--", "other.txt"]);
+    await expect(
+        workflow.tryCommitWholeFiles(
+            ["text.txt"],
+            "recover whole file",
+            () => true,
+            () => undefined,
+            {
+                afterPublish: () => {
+                    throw new Error("interrupted whole publication");
+                },
+            },
+        ),
+    ).rejects.toThrow("commit succeeded");
+    const published = git(["rev-parse", "HEAD"]);
+    expect(await workflow.recover()).toBe(true);
+    expect(git(["rev-parse", "HEAD"])).toBe(published);
+    expect(git(["rev-list", "--count", `${head}..HEAD`]).trim()).toBe("1");
+    expect(git(["show", "HEAD:text.txt"])).toBe(working);
+    expect(git(["show", ":text.txt"])).toBe(working);
+    expect(git(["ls-files", "--stage", "--", "other.txt"])).toBe(unrelatedIndex);
+});

@@ -38,7 +38,11 @@ nonempty drafts requires a choice to append both or keep one.
 
 - Existing tracked UTF-8 regular files, at most 2 MiB, 100,000 lines and 16,384
   bytes per line; Git-compatible CRLF clean conversion.
-- A selected commit includes 1 to 64 text files, at most 16 MiB of selected text.
+- A partial-selection commit includes 1 to 64 text files, at most 16 MiB of selected text.
+- A named changelist can commit more files or combined text when every changed line
+  belongs to that list, tracking is current, and no explicit inclusion is recorded.
+  This whole-owned text route retains the per-file limits above and the same
+  snapshot, ownership, hook, publication and recovery checks.
 - Detached HEAD and separate Git worktrees are supported.
 - Binary/non-UTF-8 files, adds/deletes/renames/mode changes, submodules, sparse or
   assume-unchanged entries and custom filters/working-tree encodings use the

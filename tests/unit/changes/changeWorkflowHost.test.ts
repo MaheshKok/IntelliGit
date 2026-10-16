@@ -1045,6 +1045,7 @@ describe("root-bound selected-change host", () => {
     });
 });
 
+// The 65-file, >16 MiB real-Git fixture exceeded 180s under full-suite contention.
 it("commits 65 fully owned files without partial limits and preserves unrelated state", async () => {
     const paths = Array.from({ length: 65 }, (_, i) => `owned-${i}.txt`);
     const ownedBase = `${"unchanged ".repeat(100)}\n`.repeat(300);
@@ -1092,4 +1093,70 @@ it("commits 65 fully owned files without partial limits and preserves unrelated 
     expect(git(["ls-files", "--stage", "--", "file.txt"])).toBe(unrelatedIndex);
     expect(await readFile(path.join(root, "file.txt"), "utf8")).toBe(working);
     expect(store.get(root).allDraft).toBe("unrelated aggregate draft");
-}, 120_000);
+}, 300_000);
+
+it.each(["capture", "hook"] as const)(
+    "whole-owned metadata guard rejects a %s-time revision change",
+    async (when) => {
+        const marker = path.join(root, "owned-hook-ran");
+        if (when === "hook") {
+            const hook = path.join(root, ".git/hooks/pre-commit");
+            await writeFile(hook, "#!/bin/sh\nprintf ran > owned-hook-ran\n");
+            await chmod(hook, 0o755);
+        }
+        const state = store.get(root);
+        const head = git(["rev-parse", "HEAD"]);
+        const index = await readFile(path.join(root, ".git/index"));
+        const commit = PartialChanges.prototype.tryCommitWholeFiles;
+        let injected = false;
+        vi.spyOn(PartialChanges.prototype, "tryCommitWholeFiles").mockImplementation(
+            async function (this: PartialChanges, paths, message, ownsSnapshot, guard, faults) {
+                return commit.call(
+                    this,
+                    paths,
+                    message,
+                    ownsSnapshot,
+                    async (files) => {
+                        if (
+                            !injected &&
+                            (when === "capture" ||
+                                (await readFile(marker, "utf8").catch(() => undefined)))
+                        ) {
+                            injected = true;
+                            await store.registerChanges(
+                                root,
+                                "observed.txt",
+                                "newer-observation",
+                                1,
+                            );
+                        }
+                        await guard(files);
+                    },
+                    faults,
+                );
+            },
+        );
+        await host.handle({
+            type: "commitChangelist",
+            repositoryRoot: root,
+            revision: state.revision,
+            listId: state.activeId,
+            paths: ["file.txt"],
+            message: "must not publish",
+        });
+        expect(injected, "the whole-owned transaction reached the requested metadata fence").toBe(
+            true,
+        );
+        expect(posted).toContainEqual(
+            expect.objectContaining({
+                type: "error",
+                message: expect.stringContaining("Changelists changed during commit preparation"),
+            }),
+        );
+        expect(git(["rev-parse", "HEAD"]), "metadata drift must prevent ref publication").toBe(
+            head,
+        );
+        expect(await readFile(path.join(root, ".git/index"))).toEqual(index);
+        expect(store.get(root).changes["observed.txt"].contentId).toBe("newer-observation");
+    },
+);

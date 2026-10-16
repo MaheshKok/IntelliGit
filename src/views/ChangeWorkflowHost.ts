@@ -754,6 +754,64 @@ export class ChangeWorkflowHost {
         return "whole";
     }
 
+    /** Whole-owned tracked text uses exact transaction fences without manufacturing partial inclusion. */
+    private async tryCommitWholeOwned(
+        paths: readonly string[],
+        state: ChangelistState,
+        id: string,
+        message: Extract<ChangelistOutbound, { type: "commitChangelist" }>,
+    ): Promise<boolean> {
+        if (
+            id === "all" ||
+            message.amend === true ||
+            !paths.length ||
+            !paths.every((file) => {
+                const ownership = state.changes[file];
+                return (
+                    ownership?.tracking &&
+                    !ownership.stale &&
+                    ownership.selections?.[id] === undefined
+                );
+            })
+        )
+            return false;
+        const consumed: { path: string; fingerprints: ReadonlySet<string> }[] = [];
+        const commit = await this.partial.tryCommitWholeFiles(
+            paths,
+            assertString(message.message, "message"),
+            (snapshot) => {
+                const file = snapshot.view.path;
+                const ownership = state.changes[file];
+                if (ownership.contentId !== snapshot.contentId)
+                    throw new Error("Change assignments need review. Reopen the partial editor.");
+                const fallback = state.files[file] ?? state.activeId;
+                const lines = snapshot.view.blocks
+                    .flatMap((block) => block.lines)
+                    .filter((line) => line.kind !== "context");
+                if (
+                    !lines.length ||
+                    lines.some((line) => (ownership.lines[line.fingerprint] ?? fallback) !== id)
+                )
+                    return false;
+                consumed.push({
+                    path: file,
+                    fingerprints: new Set(lines.map((line) => line.fingerprint)),
+                });
+                return true;
+            },
+            async (files) => {
+                if (this.store.get(this.deps.root).revision !== state.revision)
+                    throw new Error("Changelists changed during commit preparation.");
+                await assertChangeBuffersSaved(this.deps.root, files);
+            },
+        );
+        if (commit === undefined) return false;
+        await this.consumeSelection(consumed, id);
+        await this.afterCommit(id, message.message);
+        if (message.push === true) await runGitOperationFromPanel(this.deps.actions, "push");
+        return true;
+    }
+
     /** Checks list/revision and exact inclusion; stale structural files require review, while tracked text keeps snapshot fences. */
     private async commitList(
         message: Extract<ChangelistOutbound, { type: "commitChangelist" }>,
@@ -765,6 +823,7 @@ export class ChangeWorkflowHost {
         const id = assertString(message.listId, "listId");
         if (id !== "all" && !state.lists.some((list) => list.id === id))
             throw new Error("Unknown changelist.");
+        if (await this.tryCommitWholeOwned(paths, state, id, message)) return;
         const route = await this.reviewCommitPaths(paths, state, id, message.amend === true);
         if (route === "cancelled") return;
         if (route === "whole") {
