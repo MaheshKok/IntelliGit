@@ -158,6 +158,62 @@ describe("authoritative worktree changelist persistence", () => {
         },
     );
 
+    it("accepts current durable drafts when this root's original migration seed matches", async () => {
+        const legacy = storage();
+        const first = new ChangelistStore(legacy);
+        await first.saveDraft(root, "all", undefined, "Migration draft");
+        await first.connect(root, gitDir);
+        await first.saveDraft(root, "all", "Migration draft", "Current durable draft");
+        const reloaded = new ChangelistStore(legacy);
+        await expect(
+            reloaded.connect(root, gitDir),
+            "a proven migrated seed must allow later authoritative edits",
+        ).resolves.toBeUndefined();
+        expect(reloaded.draft(root, "all")).toBe("Current durable draft");
+    });
+
+    it("reloads a fresh workspace that adopted another workspace's durable metadata", async () => {
+        const first = new ChangelistStore(storage());
+        await first.saveDraft(root, "all", undefined, "Original migration draft");
+        await first.connect(root, gitDir);
+        const freshWorkspace = storage();
+        const second = new ChangelistStore(freshWorkspace);
+        await second.connect(root, gitDir);
+        expect(second.draft(root, "all")).toBe("Original migration draft");
+        await first.saveDraft(root, "all", "Original migration draft", "Later durable draft");
+        const reloaded = new ChangelistStore(freshWorkspace);
+        await expect(
+            reloaded.connect(root, gitDir),
+            "a workspace without legacy intent must remain connected after reload",
+        ).resolves.toBeUndefined();
+        expect(reloaded.draft(root, "all")).toBe("Later durable draft");
+    });
+
+    it.each(["missing", "corrupt", "other-root"] as const)(
+        "refuses divergent migration intent when its proof is %s without changing either source",
+        async (proof) => {
+            const legacy = storage();
+            const first = new ChangelistStore(legacy);
+            await first.saveDraft(root, "all", undefined, "Migration draft");
+            await first.connect(root, gitDir);
+            await first.saveDraft(root, "all", "Migration draft", "Current durable draft");
+            const directory = path.join(gitDir, "intelligit/changelists");
+            const filename = path.join(directory, "migration.json");
+            if (proof === "missing") await rm(filename);
+            else if (proof === "corrupt") await writeFile(filename, "{interrupted");
+            else {
+                const backup = JSON.parse(await readFile(filename, "utf8"));
+                backup.root = path.join(root, "other");
+                await writeFile(filename, JSON.stringify(backup));
+            }
+            const workspaceBefore = structuredClone(legacy.get("intelligit.changelists.v1"));
+            const durableBefore = await readFile(path.join(directory, "state.json"), "utf8");
+            await expect(new ChangelistStore(legacy).connect(root, gitDir)).rejects.toThrow();
+            expect(legacy.get("intelligit.changelists.v1")).toEqual(workspaceBefore);
+            expect(await readFile(path.join(directory, "state.json"), "utf8")).toBe(durableBefore);
+        },
+    );
+
     it("refuses an interrupted corrupt backup and a missing authoritative record", async () => {
         const directory = path.join(gitDir, "intelligit/changelists");
         await mkdir(directory, { recursive: true });
